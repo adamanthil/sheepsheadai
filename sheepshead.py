@@ -99,14 +99,15 @@ class Game:
 		self.players = []
 
 		for i in range(5):
-			print(i * 6, i * 6 + 6)
 			hand = self.deck[i * 6: i * 6 + 6]
-			print(f"Player {i + 1}: ", hand)
 			self.players.append(Player(self, i + 1, hand))
 
+	def play_random(self):
+		print("Playing Sheepshead Randomly!")
+		for p in self.players:
+			print(f"Player {p.position}: ", p.hand)
 		print("Blind: ", self.blind)
 
-	def play_random(self):
 		while not self.is_done():
 			for player in self.players:
 				actions = player.get_valid_action_ids()
