@@ -36,7 +36,7 @@ TRUMP_POWER = {k: len(TRUMP) - v for v, k in enumerate(TRUMP)}
 FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 
 
-def get_card_suit():
+def get_card_suit(card):
 	return "T" if card in TRUMP else card[-1]
 
 
@@ -64,6 +64,10 @@ def get_card_points(card):
 	if "J" in card:
 		return 2
 	return 0
+
+
+def filter_by_suit(hand, suit):
+	return [c for c in hand if get_card_suit(c) == suit]
 
 
 def get_trick_points(trick):
@@ -95,12 +99,30 @@ class Game:
 		self.players = []
 
 		for i in range(5):
-			hand = self.deck[i * 5: i * 5 + 6]
-			print(hand)
+			print(i * 6, i * 6 + 6)
+			hand = self.deck[i * 6: i * 6 + 6]
+			print(f"Player {i + 1}: ", hand)
 			self.players.append(Player(self, i + 1, hand))
 
-		print("blind: ", self.blind)
+		print("Blind: ", self.blind)
 
+	def play_random(self):
+		while not self.is_done():
+			for player in self.players:
+				actions = player.get_valid_action_ids()
+				if actions:
+					action = random.sample(actions, 1)[0]
+					if 3 in actions:
+						action = 3
+
+					print(f" -- Player {player.position}: {ACTION_LOOKUP[action]}")
+					player.act(action)
+
+		print("Bury: ", self.bury)
+		print("Points taken: ", self.points_taken)
+		print(f"Game done! Picker score: {self.get_picker_points()}  Defenders score: {self.get_defender_points()}")
+		scores = [p.get_score() for p in self.players]
+		print(f"Scores: {scores}")
 
 	def is_done(self):
 		return len(self.history) == 6 and len(self.history[5]) == 5 and self.history[5][4]
@@ -108,8 +130,13 @@ class Game:
 	def get_picker_points(self):
 		if self.is_done():
 			points = self.points_taken[self.picker - 1]
+			# Add bury
+			if points:
+				points += get_trick_points(self.bury)
+			# Add partner points
 			if not self.alone_called and not self.picker == self.partner:
 				points += self.points_taken[self.partner - 1]
+
 			return points
 		return False
 
@@ -119,6 +146,10 @@ class Game:
 			for i, taken in enumerate(self.points_taken):
 				if i + 1 != self.picker and i + 1 != self.partner:
 					points += taken
+
+			# Add bury if picker got no points
+			if not self.points_taken[self.picker - 1]:
+				points += get_trick_points(self.bury)
 			return points
 		return False
 
@@ -133,6 +164,10 @@ class Player:
 	@property
 	def picker(self):
 		return self.game.picker
+
+	@property
+	def last_passed(self):
+		return self.game.last_passed
 
 	@property
 	def blind(self):
@@ -199,28 +234,35 @@ class Player:
 		if not self.picker:
 			if self.last_passed != self.position - 1:
 				return set()
-			return set("PICK", "PASS")
+			return set(["PICK", "PASS"])
 
 		actions = set()
 
 		# We picked.
 		if self.is_picker and not self.play_started:
 			# Need to bury.
-			if not self.bury:
-				actions.update([f"BURY {c}" for c in self.blind])
-				actions.update([f"BURY {c}" for c in self.hand])
+			if len(self.bury) != 2:
+				actions.update([f"BURY {c}" for c in set(self.hand)])
 				return actions
 
 			# Can call alone if you want before hand begins
-			if self.bury:
+			if self.bury and not self.alone_called:
 				actions.add("ALONE")
 
 		# Exclude actions when not our turn
-		if not self.play_started or self.last_player != self.position - 1:
+		if len(self.bury) != 2 or self.last_player != self.position - 1:
 			return set()
 
-		# Current hand is valid play
-		actions.update([f"PLAY {c}" for c in self.hand])
+		# Determine which cards are valid to play
+		if not self.game.current_suit:
+			# Current hand is valid
+			actions.update([f"PLAY {c}" for c in self.hand])
+		else:
+			cards_in_suit = filter_by_suit(self.hand, self.game.current_suit)
+			if cards_in_suit:
+				actions.update([f"PLAY {c}" for c in cards_in_suit])
+			else:
+				actions.update([f"PLAY {c}" for c in self.hand])
 
 		return actions
 
@@ -229,19 +271,22 @@ class Player:
 		return set(ACTION_IDS[a] for a in self.get_valid_actions())
 
 	def act(self, action_id):
-		if action_id not in self.get_valid_action_ids:
+		if action_id not in self.get_valid_action_ids():
 			return False
 
 		action = ACTION_LOOKUP[action_id]
 
 		if action == "PICK":
 			self.game.picker = self.position
+			self.hand.extend(self.game.blind)
 
 		if action == "PASS":
 			self.game.last_passed += 1
 
 		if "BURY" in action:
-			self.game.bury.append(action[5:])
+			card = action[5:]
+			self.game.bury.append(card)
+			self.hand.remove(card)
 
 		if action == "ALONE":
 			self.game.alone_called = True
@@ -253,9 +298,10 @@ class Player:
 		if "PLAY" in action:
 			card = action[5:]
 			self.game.current_hand.append(card)
+			self.hand.remove(card)
 			self.game.last_player += 1
 
-			if card == "JD":
+			if card == "JD" and not self.game.alone_called:
 				self.game.partner = self.position
 
 			if self.game.last_player == 1:
@@ -265,18 +311,21 @@ class Player:
 				self.game.history.append(self.game.current_hand)
 				winner = get_trick_winner(self.game.current_hand)
 				self.game.points_taken[winner - 1] += get_trick_points(self.game.current_hand)
+				print("Trick points: %i" % get_trick_points(self.game.current_hand))
+				print("Winner %i" % get_trick_winner(self.game.current_hand))
 
 				self.game.current_hand = []
+				self.game.current_suit = ""
 				self.game.last_player = 0
 
 		return True
 
 	def get_score(self):
-		if self.is_done():
+		if self.game.is_done():
 			picker_points = self.game.get_picker_points()
 			defender_points = self.game.get_defender_points()
 			if picker_points + defender_points != 120:
-				raise RuntimeException(f"Points don't add up to 120! Picker: {picker_points} Defenders: {defender_points}")
+				raise Exception(f"Points don't add up to 120! Picker: {picker_points} Defenders: {defender_points}")
 			multiplier = 1
 			if picker_points == 120:
 				multiplier = 3
@@ -299,13 +348,5 @@ class Player:
 		return 0
 
 
-
-# hand = random.sample(DECK, 6)
-# print(hand)
-
 game = Game()
-
-
-# print(ACTIONS)
-# print(ACTION_LOOKUP)
-# print(ACTION_IDS)
+game.play_random()
