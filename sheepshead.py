@@ -329,13 +329,13 @@ class Player:
 			multiplier = 1
 			if picker_points == 120:
 				multiplier = 3
-			if picker_points > 90:
+			elif picker_points > 90:
 				multiplier = 2
-			if defender_points == 120:
+			elif defender_points == 120:
 				multiplier = -3
-			if defender_points >= 90:
+			elif defender_points >= 90:
 				multiplier = -2
-			if defender_points >= 60:
+			elif defender_points >= 60:
 				multiplier = -1
 
 			if self.is_picker and self.is_partner:
