@@ -40,9 +40,9 @@ def get_card_suit(card):
 	return "T" if card in TRUMP else card[-1]
 
 
-def get_trick_winner(trick):
+def get_trick_winner(trick, leader):
 	power_list = []
-	suit = get_card_suit(trick[0])
+	suit = get_card_suit(trick[leader - 1])
 	for card in trick:
 		try:
 			power = 100 * TRUMP_POWER[card]
@@ -89,15 +89,26 @@ class Game:
 		self.bury = []
 		self.alone_called = False
 		self.play_started = False
-		self.last_player = 0 # Position of last player to play a card
-		self.current_hand = []
-		self.current_suit = ""
+		self.players = []
 		self.points_taken = [0, 0, 0, 0, 0]
 		# Nested list of all cards played in game so far
-		self.history = []
+		self.history = [
+			["", "", "", "", ""],
+			["", "", "", "", ""],
+			["", "", "", "", ""],
+			["", "", "", "", ""],
+			["", "", "", "", ""],
+			["", "", "", "", ""],
+		]
 
-		self.players = []
+		# Internal state variables
+		self.last_player = 0 # Position of last player to play a card
+		self.leader = 0 # Position of leader this hand
+		self.cards_played = 0 # Number of cards played this trick
+		self.current_suit = ""
+		self.current_trick = 0
 
+		# Setup players and deal
 		for i in range(5):
 			hand = self.deck[i * 6: i * 6 + 6]
 			self.players.append(Player(self, i + 1, hand))
@@ -111,13 +122,19 @@ class Game:
 		while not self.is_done():
 			for player in self.players:
 				actions = player.get_valid_action_ids()
-				if actions:
+				# print(f"PLAYER {player.position}")
+				# print([ACTION_LOOKUP[a] for a in actions])
+				while actions:
 					action = random.sample(actions, 1)[0]
-					if 3 in actions:
-						action = 3
+
+					# Calling ALONE is an optional action, so only occasionally choose it
+					if 3 in actions and random.random() < 0.8:
+						break
 
 					print(f" -- Player {player.position}: {ACTION_LOOKUP[action]}")
 					player.act(action)
+
+					actions = player.get_valid_action_ids()
 
 		print("Bury: ", self.bury)
 		print("Points taken: ", self.points_taken)
@@ -126,17 +143,19 @@ class Game:
 		print(f"Scores: {scores}")
 
 	def is_done(self):
-		return len(self.history) == 6 and len(self.history[5]) == 5 and self.history[5][4]
+		return self.last_passed == 5 or "" not in self.history[5]
 
 	def get_picker_points(self):
 		if self.is_done():
 			points = self.points_taken[self.picker - 1]
+
+			# Add partner points
+			if not self.alone_called and self.picker != self.partner:
+				points += self.points_taken[self.partner - 1]
+
 			# Add bury
 			if points:
 				points += get_trick_points(self.bury)
-			# Add partner points
-			if not self.alone_called and not self.picker == self.partner:
-				points += self.points_taken[self.partner - 1]
 
 			return points
 		return False
@@ -169,6 +188,10 @@ class Player:
 	@property
 	def last_passed(self):
 		return self.game.last_passed
+
+	@property
+	def current_trick(self):
+		return self.game.current_trick
 
 	@property
 	def blind(self):
@@ -221,11 +244,10 @@ class Player:
 		state.extend([DECK_IDS[c] for c in self.bury] if self.is_picker and self.bury else [0, 0])
 
 		state = np.array(state, dtype=np.uint8)
-
-		history2d = np.zeros((6, 5))
-		for i, hand in enumerate(self.history):
-			history2d[i, :len(hand)] = np.array([DECK_IDS[c] for c in hand])
-		state = np.hstack([state, history2d.flatten()])
+		history = np.zeros((6, 5))
+		for i, trick in enumerate(self.game.history):
+		        history[i] = np.array([DECK_IDS[c] if c else 0 for c in trick])
+		state = np.hstack([state, history.flatten()])
 		return state
 
 	def get_valid_actions(self):
@@ -243,27 +265,31 @@ class Player:
 		if self.is_picker and not self.play_started:
 			# Need to bury.
 			if len(self.bury) != 2:
-				actions.update([f"BURY {c}" for c in set(self.hand)])
-				return actions
+				return set([f"BURY {c}" for c in set(self.hand)])
 
 			# Can call alone if you want before hand begins
 			if self.bury and not self.alone_called:
 				actions.add("ALONE")
 
+		# Exclude actions when waiting on bury
+		if len(self.bury) != 2:
+			return set()
+
 		# Exclude actions when not our turn
-		if len(self.bury) != 2 or self.last_player != self.position - 1:
+		if self.play_started and self.last_player != self.position - 1:
 			return set()
 
 		# Determine which cards are valid to play
-		if not self.game.current_suit:
-			# Current hand is valid
-			actions.update([f"PLAY {c}" for c in self.hand])
-		else:
-			cards_in_suit = filter_by_suit(self.hand, self.game.current_suit)
-			if cards_in_suit:
-				actions.update([f"PLAY {c}" for c in cards_in_suit])
-			else:
+		if self.last_player == self.position - 1:
+			if not self.game.current_suit:
+				# Entire hand is valid at start of trick
 				actions.update([f"PLAY {c}" for c in self.hand])
+			else:
+				cards_in_suit = filter_by_suit(self.hand, self.game.current_suit)
+				if cards_in_suit:
+					actions.update([f"PLAY {c}" for c in cards_in_suit])
+				else:
+					actions.update([f"PLAY {c}" for c in self.hand])
 
 		return actions
 
@@ -282,7 +308,7 @@ class Player:
 			self.hand.extend(self.game.blind)
 
 		if action == "PASS":
-			self.game.last_passed += 1
+			self.game.last_passed = self.position
 
 		if "BURY" in action:
 			card = action[5:]
@@ -298,31 +324,41 @@ class Player:
 
 		if "PLAY" in action:
 			card = action[5:]
-			self.game.current_hand.append(card)
+
+			# Set leader and suit if we are the first to play this trick
+			if not self.game.last_player:
+				self.game.current_suit = get_card_suit(card)
+				self.game.leader = self.position
+
+			self.game.history[self.current_trick][self.position - 1] = card
 			self.hand.remove(card)
-			self.game.last_player += 1
+			self.game.last_player = self.position
+			self.game.cards_played += 1
 
 			if card == "JD" and not self.game.alone_called:
 				self.game.partner = self.position
 
-			if self.game.last_player == 1:
-				self.game.current_suit = get_card_suit(card)
-
 			if self.game.last_player == 5:
-				self.game.history.append(self.game.current_hand)
-				winner = get_trick_winner(self.game.current_hand)
-				self.game.points_taken[winner - 1] += get_trick_points(self.game.current_hand)
-				print("Trick points: %i" % get_trick_points(self.game.current_hand))
-				print("Winner %i" % get_trick_winner(self.game.current_hand))
-
-				self.game.current_hand = []
-				self.game.current_suit = ""
 				self.game.last_player = 0
+
+			if self.game.cards_played == 5:
+				trick = self.game.history[self.current_trick]
+				winner = get_trick_winner(trick, self.game.leader)
+				self.game.points_taken[winner - 1] += get_trick_points(trick)
+				print("Trick points: %i" % get_trick_points(trick))
+				print("Winner %i" % get_trick_winner(trick, self.game.leader))
+
+				# Next trick must start with winner
+				self.game.last_player = winner - 1
+				self.game.current_trick += 1
+				self.game.current_suit = ""
+				self.game.leader = 0
+				self.game.cards_played = 0
 
 		return True
 
 	def get_score(self):
-		if self.game.is_done():
+		if self.game.is_done() and self.game.picker:
 			picker_points = self.game.get_picker_points()
 			defender_points = self.game.get_defender_points()
 			if picker_points + defender_points != 120:
@@ -349,5 +385,6 @@ class Player:
 		return 0
 
 
-game = Game()
-game.play_random()
+if __name__ == '__main__':
+	game = Game()
+	game.play_random()
