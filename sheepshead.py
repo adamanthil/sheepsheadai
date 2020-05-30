@@ -168,7 +168,7 @@ class Game:
 					points += taken
 
 			# Add bury if picker got no points
-			if not self.points_taken[self.picker - 1]:
+			if not self.get_picker_points():
 				points += get_trick_points(self.bury)
 			return points
 		return False
