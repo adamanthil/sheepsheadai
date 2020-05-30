@@ -224,7 +224,7 @@ class Player:
 		"""Integer vector of current game state.
 		Values in order:
 			[0] player position
-			[1-6] card ID of each card in starting hand
+			[1-6] card ID of each card in hand
 			[7] last position to pass on picking blind
 			[8] position of picker
 			[9] alone called (bool)
@@ -233,14 +233,18 @@ class Player:
 			[13-14] card ID of cards buried (if known)
 			[15-44] card ID of each card played in game
 		"""
+
 		state = [self.position]
-		state.extend([DECK_IDS[c] for c in self.initial_hand])
+		state.extend(([DECK_IDS[c] for c in self.hand] + [0] * 6)[:6])
 		state.append(self.last_passed)
 		state.append(self.picker)
 		state.append(self.alone_called)
 		state.append(self.play_started)
-		state.extend([DECK_IDS[c] for c in self.blind] if self.is_picker and self.blind else [0, 0])
-		state.extend([DECK_IDS[c] for c in self.bury] if self.is_picker and self.bury else [0, 0])
+
+		blind = (([DECK_IDS[c] for c in self.blind] if self.is_picker else []) + [0] * 2)[:2]
+		bury = (([DECK_IDS[c] for c in self.bury] if self.is_picker else []) + [0] * 2)[:2]
+		state.extend(blind)
+		state.extend(bury)
 
 		state = np.array(state, dtype=np.uint8)
 		history = np.zeros((6, 5))
@@ -341,11 +345,15 @@ class Player:
 				self.game.last_player = 0
 
 			if self.game.cards_played == 5:
+				# Handle Jack of Diamonds in bury on final play
+				if self.current_trick == 5 and "JD" in self.bury:
+					self.game.partner = self.game.picker
+
 				trick = self.game.history[self.current_trick]
 				winner = get_trick_winner(trick, self.game.leader)
 				self.game.points_taken[winner - 1] += get_trick_points(trick)
-				print("Trick points: %i" % get_trick_points(trick))
-				print("Winner %i" % get_trick_winner(trick, self.game.leader))
+				# print("Trick points: %i" % get_trick_points(trick))
+				# print("Winner %i" % get_trick_winner(trick, self.game.leader))
 
 				# Next trick must start with winner
 				self.game.last_player = winner - 1

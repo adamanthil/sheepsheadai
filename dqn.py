@@ -7,23 +7,24 @@
 # https://www.youtube.com/watch?v=SMZfgeHFFcA
 
 
-from keras.layers import Activiation, Dense, Flatten
+import functools
+import numpy as np
+from keras.layers import Activation, Dense, Flatten, Input
 from keras.models import Sequential, load_model
 from keras.optimizers import Adam
 from keras import backend as K
-import numpy as np
 
 class ReplayBuffer:
 	def __init__(self, max_size, input_shape):
 		self.mem_size = max_size
 		self.mem_cntr = 0
 
-		self.state_memory = np.zeroes((self.mem_size, *input_shape), dtype=np.int8)
-		self.new_state_memory = np.zeroes((self.mem_size, *input_shape), dtype=np.int8)
+		self.state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.int8)
+		self.new_state_memory = np.zeros((self.mem_size, *input_shape), dtype=np.int8)
 
-		self.action_memory = np.zeroes(self.mem_size, dtype=np.int8)
-		self.reward_memory = np.zeroes(self.mem_size, dtype=np.int8)
-		self.terminal_memory = np.zeroes(sefl.mem_size, dtype=np.uint8)
+		self.action_memory = np.zeros(self.mem_size, dtype=np.int8)
+		self.reward_memory = np.zeros(self.mem_size, dtype=np.int8)
+		self.terminal_memory = np.zeros(self.mem_size, dtype=np.uint8)
 
 	def store_transition(self, state, action, reward, state_, done):
 		index = self.mem_cntr % self.mem_size
@@ -48,9 +49,9 @@ class ReplayBuffer:
 		return states, actions, rewards, new_states, dones
 
 
-def build_dqn(lr, n_actions, n_actions, input_dims, fc1_dims):
+def build_dqn(lr, n_actions, input_dims, fc1_dims):
 	model = Sequential()
-	model.add(Dense(fc1_dims, activation="relu", input_shape=(*input_dims)))
+	model.add(Dense(fc1_dims, activation="relu", input_shape=(*input_dims,)))
 	model.add(Dense(fc1_dims, activation="relu"))
 	model.add(Dense(n_actions))
 
@@ -64,7 +65,7 @@ class Agent:
 		self, alpha, gamma, n_actions, epsilon, batch_size, replace, input_dims,
 		eps_dec=1e-5, eps_min=0.01, mem_size=1000000, q_eval_fname="q_eval.h5", q_target_fname="q_target.h5"
 	):
-		self.action_space = [i for i in range(n_actions)]
+		self.action_space = [i for i in range(1, n_actions + 1)]
 		self.gamma = gamma
 		self.epsilon = epsilon
 		self.eps_dec = eps_dec
@@ -85,13 +86,21 @@ class Agent:
 	def store_transition(self, state, action, reward, new_state, done):
 		self.memory.store_transition(state, action, reward, new_state, done)
 
-	def choose_action(self, state):
+	def choose_action(self, state, valid_actions):
+		valid_actions = np.array(list(valid_actions), dtype=np.int8)
+		valid_actions = np.intersect1d(self.action_space, valid_actions)
 		if np.random.random() < self.epsilon:
-			action = np.random.choice(self.action_space)
+			action = np.random.choice(valid_actions)
 		else:
-			actions = self.q_eval.predict(state)
-			action = np.argmax(actions)
-
+			weights = self.q_eval.predict(np.expand_dims(state, axis=0))
+			# weights = self.q_eval(np.expand_dims(state, axis=0))
+			best_weight = 0.0
+			action = 0
+			for i, weight in enumerate(weights[0]):
+				current_action = i + 1
+				if weight > best_weight and current_action in valid_actions:
+					action = current_action
+					best_weight = weight
 		return action
 
 	def learn(self):
@@ -105,7 +114,7 @@ class Agent:
 			indices = np.arange(self.batch_size, dtype=np.int32)
 			q_target = np.copy(q_eval)
 
-			q_target[indices, action] = reward + self.gamma * np.max(q_next, axis=1) * done
+			q_target[indices, action - 1] = reward + self.gamma * np.max(q_next, axis=1) * done
 
 			self.q_eval.train_on_batch(state, q_target)
 

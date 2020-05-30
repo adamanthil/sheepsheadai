@@ -2,16 +2,18 @@ import numpy as np
 from dqn import Agent
 from sheepshead import Game, ACTIONS
 
+
 if __name__ == "__main__":
-	num_games = 1000
+	num_games = 100000
 	load_checkpoint = False
 	best_score = -12
+	state_size = 45
 
 	agent = Agent(
 		gamma=0.99,
 		epsilon=1.0,
 		alpha=0.001,
-		input_dims=(44),
+		input_dims=(state_size,),
 		n_actions=len(ACTIONS),
 		mem_size=25000,
 		eps_min=0.02,
@@ -23,48 +25,72 @@ if __name__ == "__main__":
 	if load_checkpoint:
 		agent.load_models()
 
-	scores, eps_history = [], []
+	picker_scores, eps_history = [], []
 	n_steps = 0
 
-	for i in range(num_games):
-		score = 0
-		# state = Game() - player ???
-		# state = env.reset()
+	for e in range(num_games):
 		game = Game()
-		done = False
-		while not done:
+		picker_score = 0
+		while not game.is_done():
 
-			for player in game.players:
-				actions = player.get_valid_action_ids()
+			states = np.zeros((5, state_size), dtype=np.int8)
+			states_ = np.zeros((5, state_size), dtype=np.int8)
+			actions = np.zeros(5, dtype=np.int8)
 
-			# Fix for sheepshead
-			action = agent.choose_action(state)
-			state_, reward, done, info = env.step(action)
+			for i, player in enumerate(game.players):
+				valid_actions = player.get_valid_action_ids()
+				while valid_actions:
+					# Save last action for this player if necessary
+					if actions[i]:
+						state_ = player.get_state_vector()
+						reward = player.get_score()
+						agent.store_transition(states[i], actions[i], reward, state_, int(game.is_done()))
+						states[i] = state_
+						n_steps += 1
 
+					states[i] = player.get_state_vector()
+					if len(states[i]) == 1:
+						# DEBUG
+						print(player.position, player.picker, player.partner, game.is_done(), states[i])
+					actions[i] = agent.choose_action(states[i], valid_actions)
+					player.act(actions[i])
+
+					valid_actions = player.get_valid_action_ids()
+
+					# new state for each agent should be the state when they next have actions
+					# save it immediately if we still have actions
+					if valid_actions:
+						state_ = player.get_state_vector()
+						reward = player.get_score()
+						agent.store_transition(states[i], actions[i], reward, state_, int(game.is_done()))
+						states[i] = state_
+						n_steps += 1
+
+		# Save final state and scores for each player this game
+		for i, player in enumerate(game.players):
+			state_ = player.get_state_vector()
+			reward = player.get_score()
+			if player.is_picker:
+				picker_score = reward
+			agent.store_transition(states[i], actions[i], reward, state_, int(game.is_done()))
 			n_steps += 1
-			score += reward
-			if not load_checkpoint:
-				agent.store_transition(state, action, reward, state_, int(done))
-				agent.learn()
-			else:
-				# Fix to step through
-				env.render()
 
-			state = state_
-		scores.append(score)
+		agent.learn()
 
-		avg_score = np.mean(scores[-100:])
+		picker_scores.append(picker_score)
+
+		avg_score = np.mean(picker_scores[-100:])
 		print(
-			"episode ", i,
-			"score ", score,
+			f"episode {e}",
+			f"score {picker_score}",
 			"average score %.2f" % avg_score,
 			"epsilon score %.2f" % agent.epsilon,
-			"steps", n_steps,
+			f"steps {n_steps}",
 		)
 
 		if avg_score > best_score:
 			agent.save_models()
-			print("avg score %.2f better than best score %.2f" % (avg_score, best_score))
+			print("avg picker score %.2f better than best score %.2f" % (avg_score, best_score))
 			best_score = avg_score
 
 		eps_history.append(agent.epsilon)
