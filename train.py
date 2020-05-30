@@ -4,7 +4,7 @@ from sheepshead import Game, ACTIONS
 
 
 if __name__ == "__main__":
-	num_games = 100000
+	num_games = 10000000
 	load_checkpoint = False
 	best_score = -12
 	state_size = 45
@@ -17,15 +17,15 @@ if __name__ == "__main__":
 		n_actions=len(ACTIONS),
 		mem_size=25000,
 		eps_min=0.02,
-		batch_size=32,
+		batch_size=128,
 		replace=1000,
-		eps_dec=1e-5,
+		eps_dec=1e-6,
 	)
 
 	if load_checkpoint:
 		agent.load_models()
 
-	picker_scores, eps_history = [], []
+	picker_scores = []
 	n_steps = 0
 
 	for e in range(num_games):
@@ -79,21 +79,18 @@ if __name__ == "__main__":
 
 		picker_scores.append(picker_score)
 
-		avg_score = np.mean(picker_scores[-100:])
-		print(
-			f"episode {e}",
-			f"score {picker_score}",
-			"average score %.2f" % avg_score,
-			"epsilon score %.2f" % agent.epsilon,
-			f"steps {n_steps}",
-		)
+		if e % 100 == 0:
+			avg_score = np.mean(picker_scores[-1000:])
+			batch_score = np.mean(picker_scores[-100:])
+			print(
+				f"episode {e}",
+				"batch score avg 100 %.2f" % batch_score,
+				"long score avg 1000 %.2f" % avg_score,
+				"epsilon score %.2f" % agent.epsilon,
+				f"steps {n_steps}",
+			)
 
-		if avg_score > best_score:
-			agent.save_models()
-			print("avg picker score %.2f better than best score %.2f" % (avg_score, best_score))
-			best_score = avg_score
-
-		eps_history.append(agent.epsilon)
-
-	# x = [i + 1 for i in range(num_games)]
-	# plotLearning(x, scores, eps_history, filename)
+			if avg_score > best_score:
+				agent.save_models()
+				print("avg picker score %.2f better than best score %.2f" % (avg_score, best_score))
+				best_score = avg_score
