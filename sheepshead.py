@@ -16,6 +16,9 @@ ACTIONS = [
 	"PICK",
 	"PASS",
 	"ALONE",
+	# Opposite action from calling ALONE. Standard Jack of Diamonds partner.
+	# Avoids lacking an action for state transition.
+	"JD PARTNER",
 ]
 # Add bury actions for all cards
 BURY_ACTIONS = [f"BURY {c}" for c in DECK]
@@ -126,10 +129,6 @@ class Game:
 				# print([ACTION_LOOKUP[a] for a in actions])
 				while actions:
 					action = random.sample(actions, 1)[0]
-
-					# Calling ALONE is an optional action, so only occasionally choose it
-					if 3 in actions and random.random() < 0.8:
-						break
 
 					print(f" -- Player {player.position}: {ACTION_LOOKUP[action]}")
 					player.act(action)
@@ -259,17 +258,15 @@ class Player:
 				return set()
 			return set(["PICK", "PASS"])
 
-		actions = set()
-
 		# We picked.
 		if self.is_picker and not self.play_started:
 			# Need to bury.
 			if len(self.bury) != 2:
 				return set([f"BURY {c}" for c in set(self.hand)])
 
-			# Can call alone if you want before hand begins
-			if self.bury and not self.alone_called:
-				actions.add("ALONE")
+			# Call ALONE or JD PARTNER to begin hand
+			if self.bury:
+				return set(["ALONE", "JD PARTNER"])
 
 		# Exclude actions when waiting on bury
 		if len(self.bury) != 2:
@@ -279,8 +276,10 @@ class Player:
 		if self.play_started and self.last_player != self.position - 1:
 			return set()
 
+		actions = set()
+
 		# Determine which cards are valid to play
-		if self.last_player == self.position - 1:
+		if self.play_started and self.last_player == self.position - 1:
 			if not self.game.current_suit:
 				# Entire hand is valid at start of trick
 				actions.update([f"PLAY {c}" for c in self.hand])
@@ -319,7 +318,7 @@ class Player:
 			self.game.alone_called = True
 			self.game.partner = self.position
 
-		if not self.play_started and "PLAY" in action:
+		if action in ("ALONE", "JD PARTNER"):
 			self.game.play_started = True
 
 		if "PLAY" in action:
