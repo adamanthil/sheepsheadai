@@ -128,7 +128,7 @@ class Game:
 				# print(f"PLAYER {player.position}")
 				# print([ACTION_LOOKUP[a] for a in actions])
 				while actions:
-					action = random.sample(actions, 1)[0]
+					action = random.sample(list(actions), 1)[0]
 
 					print(f" -- Player {player.position}: {ACTION_LOOKUP[action]}")
 					player.act(action)
