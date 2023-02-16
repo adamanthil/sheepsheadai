@@ -1,5 +1,7 @@
 import numpy as np
 import random
+from collections import deque
+from utils import PlayerExperience
 
 
 TRUMP = [
@@ -141,8 +143,24 @@ class Game:
 		scores = [p.get_score() for p in self.players]
 		print(f"Scores: {scores}")
 
+	def __str__(self):
+		out = ""
+		out += f"Picking hand: {self.get_picker().initial_hand}\n"
+		out += f"Picker: {self.picker} - Partner: {self.partner}\n"
+		out += f"Blind: {self.blind}\n"
+		out += f"Bury: {self.bury}\n"
+		out += f"Points taken: {self.points_taken}\n"
+		out += f"Picker score: {self.get_picker_points()}  Defenders score: {self.get_defender_points()}\n"
+		scores = [p.get_score() for p in self.players]
+		out += (f"Scores: {scores}\n")
+
+		return out
+
 	def is_done(self):
 		return self.last_passed == 5 or "" not in self.history[5]
+
+	def get_picker(self):
+		return self.players[self.picker - 1]
 
 	def get_picker_points(self):
 		if self.is_done():
@@ -179,6 +197,8 @@ class Player:
 		self.position = position
 		self.initial_hand = hand
 		self.hand = hand[:]
+		self.start_states = deque()
+		self.actions = deque()
 
 	@property
 	def picker(self):
@@ -304,6 +324,9 @@ class Player:
 		if action_id not in self.get_valid_action_ids():
 			return False
 
+		self.start_states.append(self.get_state_vector())
+		self.actions.append(action_id)
+
 		action = ACTION_LOOKUP[action_id]
 
 		if action == "PICK":
@@ -390,6 +413,40 @@ class Player:
 				return multiplier
 			return -1 * multiplier
 		return 0
+
+	def get_experiences(self):
+		if self.game.is_done():
+			experiences = deque()
+			end_state = self.get_state_vector()
+			i = 0
+
+			# Generates PlayerExperience tuples in reverse order
+			# End state for each agent is the state when they next have actions,
+			# Which corresponds to the previous start state
+			while self.start_states:
+				start_state = self.start_states.pop()
+				action = self.actions.pop()
+				if i == 0:
+					score = self.get_score()
+					done = 1
+				else:
+					score = 0
+					done = 0
+
+				experiences.appendleft(PlayerExperience(
+					start_state,
+					action,
+					score,
+					end_state,
+					done,
+				))
+
+				end_state = start_state
+				i += 1
+
+			return experiences
+
+		raise Exception("Cannot get experiences when game is incomplete.")
 
 
 if __name__ == '__main__':
