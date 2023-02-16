@@ -71,22 +71,15 @@ class Agent():
             valid_actions (set): Set of valid IDs from action_space. (1 indexed)
             eps (float): epsilon, for epsilon-greedy action selection
         """
-        valid_actions = np.array(list(valid_actions), dtype=np.int8)
-        valid_actions = np.intersect1d(self.action_space, valid_actions)
-        valid_mask = np.zeros(len(self.action_space), dtype=np.int8)
-        np.put(valid_mask, valid_actions - 1, 1)
 
-        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
-        self.qnetwork_local.eval()
-        with torch.no_grad():
-            action_values = self.qnetwork_local(state)
-        self.qnetwork_local.train()
+        valid_actions_int8 = np.array(list(valid_actions), dtype=np.int8)
+        valid_actions_int8 = np.intersect1d(self.action_space, valid_actions_int8)
 
         # Epsilon-greedy action selection
         if random.random() > eps:
-            action =  np.argmax(np.where(valid_mask, action_values.cpu().data.numpy(), np.NINF)) + 1
+            action =  np.argmax(self.get_action_weights(state, valid_actions, True)) + 1
         else:
-            action = np.random.choice(valid_actions)
+            action = np.random.choice(valid_actions_int8)
 
         if action < 0:
             # DEBUG
@@ -100,6 +93,22 @@ class Agent():
         # print(f"{ACTIONS[action - 1]}")
 
         return action
+
+    def get_action_weights(self, state, valid_actions, train=False):
+        valid_actions = np.array(list(valid_actions), dtype=np.int8)
+        valid_actions = np.intersect1d(self.action_space, valid_actions)
+        valid_mask = np.zeros(len(self.action_space), dtype=np.int8)
+        np.put(valid_mask, valid_actions - 1, 1)
+
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        self.qnetwork_local.eval()
+        with torch.no_grad():
+            action_values = self.qnetwork_local(state)
+
+        if train:
+            self.qnetwork_local.train()
+
+        return np.where(valid_mask, action_values.cpu().data.numpy(), np.NINF)
 
     def learn(self, experiences, gamma):
         """Update value parameters using given batch of experience tuples.

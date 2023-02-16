@@ -4,7 +4,7 @@ import torch
 from argparse import ArgumentParser
 
 from dqn import Agent
-from sheepshead import Game, ACTIONS, STATE_SIZE
+from sheepshead import Game, Player, ACTIONS, DECK, STATE_SIZE
 
 
 parser = ArgumentParser(
@@ -25,9 +25,10 @@ instructions = f"""
 Welcome to the interactive Sheepshead AI player and evaluator.
 
 Commands:
-  p - Play a sample game
-  h - Help
-  q - Quit
+  play - Play a sample game
+  pick - Evaluate picking engine
+  h    - Help
+  q    - Quit
 
 {'-'*40}
 """
@@ -55,6 +56,30 @@ def play(agent):
     print(f"{'-'*40}")
     print(game)
 
+
+def pick_evaluator(agent):
+
+    while True:
+        position = int(input("Enter position [1-5]: "))
+        hand = input("Enter hand (e.g. 'QC QS JD 10H 8C 7S'): ")
+        hand = hand.split(" ")
+
+        game = Game()
+        player = Player(game, position, hand)
+        game.last_passed = position - 1
+
+        state = player.get_state_vector()
+        valid_actions = player.get_valid_action_ids()
+
+        weights = agent.get_action_weights(state, valid_actions)
+        pick_percent = (weights[0][0] / (weights[0][0] + weights[0][1])) * 100
+        print("Pick with %.2f confidence\n" % pick_percent)
+
+        again = input("Again? (y/n): ")
+        if again != "y":
+            return
+
+
 if __name__ == "__main__":
 
     agent = Agent(
@@ -71,7 +96,11 @@ if __name__ == "__main__":
             exit()
         if choice == "h":
             print(instructions)
-        if choice == "p":
+        if choice == "play":
             print("Playing a sample game!")
             play(agent)
+        if choice == "pick":
+            print("Pick evaluator!")
+            print("Evaluate model weight of PICK action with specific hands.")
+            pick_evaluator(agent)
         print()
