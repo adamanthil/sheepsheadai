@@ -122,9 +122,7 @@ class Game:
 
 	def play_random(self):
 		print("Playing Sheepshead Randomly!")
-		for p in self.players:
-			print(f"Player {p.position}: ", p.hand)
-		print("Blind: ", self.blind)
+		self.print_player_hands()
 
 		while not self.is_done():
 			for player in self.players:
@@ -145,10 +143,15 @@ class Game:
 		scores = [p.get_score() for p in self.players]
 		print(f"Scores: {scores}")
 
+	def print_player_hands(self, player_names=["Player 1", "Player 2", "Player 3", "Player 4", "Player 5"]):
+		for p in self.players:
+			print(f"{player_names[p.position - 1].ljust(8)}: ", p.hand)
+		print("Blind: ", self.blind)
+
 	def __str__(self):
 		out = ""
-		out += f"Picking hand: {self.get_picker().initial_hand}\n"
 		out += f"Picker: {self.picker} - Partner: {self.partner}\n"
+		out += f"Picking hand: {self.get_picker().initial_hand}\n"
 		out += f"Blind: {self.blind}\n"
 		out += f"Bury: {self.bury}\n"
 		out += f"Points taken: {self.points_taken}\n"
