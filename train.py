@@ -13,7 +13,7 @@ if __name__ == "__main__":
     best_score = -12
 
     eps_start=1.0
-    eps_end=0.02
+    eps_end=0.04
     eps_decay=0.999995
 
     agent = Agent(
