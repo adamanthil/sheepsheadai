@@ -1,7 +1,3 @@
 pip-tools
-#TensorFlow
-#Keras
-#Keras-RL
 numpy
 torch
-#torchvision

@@ -40,6 +40,8 @@ DECK_IDS = {k: v + 1 for v, k in enumerate(DECK)}
 TRUMP_POWER = {k: len(TRUMP) - v for v, k in enumerate(TRUMP)}
 FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 
+STATE_SIZE = 45
+
 
 def get_card_suit(card):
 	return "T" if card in TRUMP else card[-1]

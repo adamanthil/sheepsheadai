@@ -84,7 +84,7 @@ class Agent():
 
         # Epsilon-greedy action selection
         if random.random() > eps:
-            action =  np.argmax(np.where(valid_mask, action_values.cpu().data.numpy(), 0)) + 1
+            action =  np.argmax(np.where(valid_mask, action_values.cpu().data.numpy(), np.NINF)) + 1
         else:
             action = np.random.choice(valid_actions)
 
