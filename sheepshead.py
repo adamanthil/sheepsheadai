@@ -84,6 +84,75 @@ def get_trick_points(trick):
 	return points
 
 
+def get_state_str(state):
+	"""Return a human readable state string.
+	Values in order:
+		[0] player position
+		[1-6] card ID of each card in hand
+		[7] last position to pass on picking blind
+		[8] position of picker
+		[9] alone called (bool)
+		[10] play has started (bool)
+		[11-12] card ID of cards in blind (if known)
+		[13-14] card ID of cards buried (if known)
+		[15-44] card ID of each card played in game
+	"""
+	out = ""
+	out += f"Player #: {int(state[0])}\n"
+
+	if (state[10]):
+		out += f"Game Phase: Play\n"
+		out += f"Picker: {int(state[8])}\n"
+		out += f"Alone: {int(state[9])}\n"
+
+		state_start = 15
+		trick = ""
+		for i in range(30):
+			if i % 5 == 0:
+				if trick:
+					out += f"Trick {int(i / 5)}: {trick}\n"
+				trick = ""
+			card_index = state_start + i
+			card_id = int(state[card_index])
+			if card_id:
+				trick += f"{DECK[card_id - 1]} "
+
+		# Include final trick if needed (end of the loop)
+		if trick:
+			out += f"Trick 6: {trick}\n"
+
+	else:
+		out += f"Game Phase: Picking\n"
+
+	hand = ""
+	for i in range(1, 7):
+		if state[i]:
+			hand += DECK[int(state[i] - 1)] + " "
+
+
+	out += f"Hand: {hand}\n"
+
+	return out
+
+
+
+def get_experience_str(experience):
+	"""Return a human readable string from an experience tuple.
+	"""
+	out = "--------- Experience ---------\n"
+	out += "Starting state:\n"
+	out += get_state_str(experience.state)
+	out += "-----------------------------\n"
+	out += f"Action: {ACTIONS[experience.action - 1]}\n"
+	out += "-----------------------------\n"
+	out += "Ending state:\n"
+	out += get_state_str(experience.next_state)
+	out += "-----------------------------\n"
+	out += f"Reward: {experience.reward}\n"
+	out += "-----------------------------\n\n"
+	return out
+
+
 class Game:
 	def __init__(self):
 		self.deck = DECK[:]
@@ -97,7 +166,7 @@ class Game:
 		self.alone_called = False
 		self.play_started = False
 		self.players = []
-		self.points_taken = [0, 0, 0, 0, 0]
+		self.points_taken = [0, 0, 0, 0, 0] # Sum of all points taken for each player
 		# Nested list of all cards played in game so far
 		self.history = [
 			["", "", "", "", ""],
@@ -107,6 +176,8 @@ class Game:
 			["", "", "", "", ""],
 			["", "", "", "", ""],
 		]
+		self.trick_points = [0, 0, 0, 0, 0, 0] # Points of each trick
+		self.trick_winners = [0, 0, 0, 0, 0, 0] # Player ID of each trick winner
 
 		# Internal state variables
 		self.last_player = 0 # Position of last player to play a card
@@ -139,7 +210,7 @@ class Game:
 
 		print("Bury: ", self.bury)
 		print("Points taken: ", self.points_taken)
-		print(f"Game done! Picker score: {self.get_picker_points()}  Defenders score: {self.get_defender_points()}")
+		print(f"Game done! Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}")
 		scores = [p.get_score() for p in self.players]
 		print(f"Scores: {scores}")
 
@@ -155,7 +226,7 @@ class Game:
 		out += f"Blind: {self.blind}\n"
 		out += f"Bury: {self.bury}\n"
 		out += f"Points taken: {self.points_taken}\n"
-		out += f"Picker score: {self.get_picker_points()}  Defenders score: {self.get_defender_points()}\n"
+		out += f"Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}\n"
 		scores = [p.get_score() for p in self.players]
 		out += (f"Scores: {scores}\n")
 
@@ -167,7 +238,7 @@ class Game:
 	def get_picker(self):
 		return self.players[self.picker - 1]
 
-	def get_picker_points(self):
+	def get_final_picker_points(self):
 		if self.is_done():
 			points = self.points_taken[self.picker - 1]
 
@@ -182,7 +253,7 @@ class Game:
 			return points
 		return False
 
-	def get_defender_points(self):
+	def get_final_defender_points(self):
 		if self.is_done():
 			points = 0
 			for i, taken in enumerate(self.points_taken):
@@ -190,7 +261,7 @@ class Game:
 					points += taken
 
 			# Add bury if picker got no points
-			if not self.get_picker_points():
+			if not self.get_final_picker_points():
 				points += get_trick_points(self.bury)
 			return points
 		return False
@@ -204,6 +275,7 @@ class Player:
 		self.hand = hand[:]
 		self.start_states = deque()
 		self.actions = deque()
+		self.rewards = deque()
 
 	@property
 	def picker(self):
@@ -337,14 +409,17 @@ class Player:
 		if action == "PICK":
 			self.game.picker = self.position
 			self.hand.extend(self.game.blind)
+			self.rewards.append(0)
 
 		if action == "PASS":
 			self.game.last_passed = self.position
+			self.rewards.append(0)
 
 		if "BURY" in action:
 			card = action[5:]
 			self.game.bury.append(card)
 			self.hand.remove(card)
+			self.rewards.append(get_card_points(card))
 
 		if action == "ALONE":
 			self.game.alone_called = True
@@ -352,6 +427,7 @@ class Player:
 
 		if action in ("ALONE", "JD PARTNER"):
 			self.game.play_started = True
+			self.rewards.append(0)
 
 		if "PLAY" in action:
 			card = action[5:]
@@ -379,9 +455,33 @@ class Player:
 
 				trick = self.game.history[self.current_trick]
 				winner = get_trick_winner(trick, self.game.leader)
-				self.game.points_taken[winner - 1] += get_trick_points(trick)
+				winner_index = winner - 1
+				trick_points = get_trick_points(trick)
+				self.game.trick_points[self.current_trick] = trick_points
+				self.game.trick_winners[self.current_trick] = winner
+				self.game.points_taken[winner_index] += trick_points
 				# print("Trick points: %i" % get_trick_points(trick))
 				# print("Winner %i" % get_trick_winner(trick, self.game.leader))
+
+				# Add point rewards for each player after trick ends
+				for i, player in enumerate(self.game.players):
+					if (
+						# Player took trick themselves
+						i == winner_index
+
+						# Picking team and partner took trick
+						or player.is_picker and self.game.partner == winner
+						or player.is_partner and self.game.picker == winner
+
+						# Defending team and partners took trick (must know partner)
+						or self.game.partner and not player.is_picker and not player.is_partner
+						and winner != self.game.picker and winner != self.game.picker
+					):
+						player.rewards.append(trick_points)
+						# print(f"AWARD for {i}: {trick_points}")
+					else:
+						# print("NO REWARD THIS TRICK")
+						player.rewards.append(0)
 
 				# Next trick must start with winner
 				self.game.last_player = winner - 1
@@ -394,8 +494,8 @@ class Player:
 
 	def get_score(self):
 		if self.game.is_done() and self.game.picker:
-			picker_points = self.game.get_picker_points()
-			defender_points = self.game.get_defender_points()
+			picker_points = self.game.get_final_picker_points()
+			defender_points = self.game.get_final_defender_points()
 			if picker_points + defender_points != 120:
 				raise Exception(f"Points don't add up to 120! Picker: {picker_points} Defenders: {defender_points}")
 			multiplier = 1
@@ -423,7 +523,7 @@ class Player:
 		if self.game.is_done():
 			experiences = deque()
 			end_state = self.get_state_vector()
-			i = 0
+			done = 1
 
 			# Generates PlayerExperience tuples in reverse order
 			# End state for each agent is the state when they next have actions,
@@ -431,23 +531,20 @@ class Player:
 			while self.start_states:
 				start_state = self.start_states.pop()
 				action = self.actions.pop()
-				if i == 0:
-					score = self.get_score()
-					done = 1
-				else:
-					score = 0
-					done = 0
+				reward = self.rewards.pop()
+				if done:
+					reward += self.get_score() * 100
 
 				experiences.appendleft(PlayerExperience(
 					start_state,
 					action,
-					score,
+					reward,
 					end_state,
 					done,
 				))
 
 				end_state = start_state
-				i += 1
+				done = 0
 
 			return experiences
 

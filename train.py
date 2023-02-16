@@ -4,7 +4,7 @@ import numpy as np
 from collections import deque
 
 from dqn import Agent
-from sheepshead import Game, ACTIONS, STATE_SIZE
+from sheepshead import Game, ACTIONS, STATE_SIZE, get_experience_str
 
 
 if __name__ == "__main__":
@@ -56,6 +56,10 @@ if __name__ == "__main__":
             for exp in experiences:
                 agent.step(*exp)
                 n_steps += 1
+            #     print(get_experience_str(exp))
+
+            # print(game)
+            # exit(0)
 
         picker_scores.append(picker_score)
 
