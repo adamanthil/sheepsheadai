@@ -432,10 +432,9 @@ class Player:
 		if "PLAY" in action:
 			card = action[5:]
 
-			# Set leader and suit if we are the first to play this trick
-			if not self.game.last_player:
+			# Set suit lead if we are the first to play this trick
+			if self.game.leader == self.game.last_player:
 				self.game.current_suit = get_card_suit(card)
-				self.game.leader = self.position
 
 			self.game.history[self.current_trick][self.position - 1] = card
 			self.hand.remove(card)
@@ -484,10 +483,10 @@ class Player:
 						player.rewards.append(0)
 
 				# Next trick must start with winner
+				self.game.leader = winner - 1
 				self.game.last_player = winner - 1
 				self.game.current_trick += 1
 				self.game.current_suit = ""
-				self.game.leader = 0
 				self.game.cards_played = 0
 
 		return True
