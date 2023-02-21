@@ -532,7 +532,7 @@ class Player:
 				action = self.actions.pop()
 				reward = self.rewards.pop()
 				if done:
-					reward += self.get_score() * 100
+					reward = self.get_score() * 100
 
 				experiences.appendleft(PlayerExperience(
 					start_state,
