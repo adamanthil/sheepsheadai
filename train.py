@@ -102,6 +102,6 @@ if __name__ == "__main__":
                 print('Saving network...')
                 torch.save(agents[0].qnetwork_local.state_dict(), 'checkpoint.pth')
 
-        if e and e % 100000 == 0:
-            print("Saving 100k snapshot")
-            torch.save(agent.qnetwork_local.state_dict(), f'checkpoint-{int(e/100000)}.pth')
+        if e and e % 200000 == 0:
+            print("Saving 200k snapshot")
+            torch.save(agents[0].qnetwork_local.state_dict(), f'checkpoint-{int(e/200000)}.pth')
