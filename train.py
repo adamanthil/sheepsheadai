@@ -12,21 +12,26 @@ if __name__ == "__main__":
     load_checkpoint = False
     best_score = -12
 
-    eps_start=1.0
-    eps_end=0.04
-    eps_decay=0.999995
+    # eps_start=1.0
+    eps_start=0.8
+    eps_end=0.1
+    eps_decay=0.9999995
 
-    agent = Agent(
-        state_size=STATE_SIZE,
-        action_size=len(ACTIONS),
-        seed=0
-    )
+    agents = []
+    for i in range(5):
+        agents.append(Agent(
+            state_size=STATE_SIZE,
+            action_size=len(ACTIONS),
+            seed=i
+        ))
 
     if load_checkpoint:
         print('Loading network from checkpoint.')
-        agent.qnetwork_local.load_state_dict(torch.load('checkpoint.pth'))
+        for i in range(5):
+            agents[i].qnetwork_local.load_state_dict(torch.load('checkpoint.pth'))
 
     picker_scores = []
+    rewards = []
     n_steps = 0
 
     eps = eps_start
@@ -35,11 +40,15 @@ if __name__ == "__main__":
         picker_score = 0
         while not game.is_done():
 
-            for player in game.players:
+            for i, player in enumerate(game.players):
                 valid_actions = player.get_valid_action_ids()
                 while valid_actions:
                     state = player.get_state_vector()
-                    action = agent.act(state, valid_actions, eps)
+
+                    # Stabilize learning by only randomizing agent in 0 position
+                    epsilon = eps if i == 0 else 0
+
+                    action = agents[i].act(state, valid_actions, epsilon)
                     player.act(action)
                     valid_actions = player.get_valid_action_ids()
 
@@ -54,25 +63,34 @@ if __name__ == "__main__":
 
             experiences = player.get_experiences()
             for exp in experiences:
-                agent.step(*exp)
+                agents[i].step(*exp)
+                rewards.append(exp.reward)
                 n_steps += 1
-            #     print(get_experience_str(exp))
-
-            # print(game)
-            # exit(0)
 
         picker_scores.append(picker_score)
+
+        # Shuffle agents to generalize position
+        if e % 10 == 0:
+            random.shuffle(agents)
 
         eps = max(eps_end, eps_decay*eps) # decrease epsilon
 
         if e % 100 == 0:
             avg_score = np.mean(picker_scores[-1000:])
             batch_score = np.mean(picker_scores[-100:])
+            avg_reward = np.mean(rewards[-10000:])
+
+            # Clean up memory
+            del picker_scores[:(len(picker_scores) - 1000)]
+            del picker_scores[:(len(picker_scores) - 100)]
+            del picker_scores[:(len(picker_scores) - 10000)]
+
             print(
                 f"episode {e}",
                 "batch score avg 100 %.2f" % batch_score,
                 "long score avg 1000 %.2f" % avg_score,
                 "best score %.2f" % best_score,
+                "avg_reward %.2f" % avg_reward,
                 "epsilon %.2f" % eps,
                 f"steps {n_steps}",
             )
@@ -82,7 +100,7 @@ if __name__ == "__main__":
                 best_score = avg_score
 
                 print('Saving network...')
-                torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
+                torch.save(agents[0].qnetwork_local.state_dict(), 'checkpoint.pth')
 
         if e and e % 100000 == 0:
             print("Saving 100k snapshot")
