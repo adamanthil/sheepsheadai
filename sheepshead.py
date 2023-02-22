@@ -40,16 +40,15 @@ DECK_IDS = {k: v + 1 for v, k in enumerate(DECK)}
 TRUMP_POWER = {k: len(TRUMP) - v for v, k in enumerate(TRUMP)}
 FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 
-STATE_SIZE = 45
+STATE_SIZE = 133
 
 
 def get_card_suit(card):
 	return "T" if card in TRUMP else card[-1]
 
 
-def get_trick_winner(trick, leader):
+def get_trick_winner(trick, suit):
 	power_list = []
-	suit = get_card_suit(trick[leader - 1])
 	for card in trick:
 		try:
 			power = 100 * TRUMP_POWER[card]
@@ -83,52 +82,77 @@ def get_trick_points(trick):
 		points += get_card_points(card)
 	return points
 
+def get_deck_vector(cards):
+	"""Returns a vector of 32 booleans in DECK order
+	indicating whether the passed list contains each card."""
+
+	vector = np.zeros(len(DECK), dtype=np.uint8)
+	for card in cards:
+		vector[DECK_IDS[card] - 1] = 1
+
+	return vector
+
+def get_cards_from_vector(vector):
+	"""Reverses deck vector to retrieve list of human readable cards."""
+	return [DECK[i] for i, exists in enumerate(vector) if exists]
+
 
 def get_state_str(state):
 	"""Return a human readable state string.
 	Values in order:
 		[0] player position
-		[1-6] card ID of each card in hand
-		[7] last position to pass on picking blind
-		[8] position of picker
-		[9] alone called (bool)
-		[10] play has started (bool)
-		[11-12] card ID of cards in blind (if known)
-		[13-14] card ID of cards buried (if known)
-		[15-44] card ID of each card played in game
+		[1] last position to pass on picking blind
+		[2] position of picker
+		[3] position of partner (if known)
+		[4] alone called (bool)
+		[5] play has started (bool)
+		[6] current trick
+		[7-38] 	boolean values for cards in current hand in DECK order
+				(e.g. if hand has QC, index 6 will have value 1 otherwise 0)
+		[39-70]	boolean values for cards in blind (if known)
+		[71-102] boolean values for cards buried (if known)
+		[103-132] card ID of each card played in game in reverse trick order starting with current trick
 	"""
 	out = ""
 	out += f"Player #: {int(state[0])}\n"
 
-	if (state[10]):
+	if (state[5]):
 		out += f"Game Phase: Play\n"
-		out += f"Picker: {int(state[8])}\n"
-		out += f"Alone: {int(state[9])}\n"
+		out += f"Picker: {int(state[2])}\n"
+		out += f"Partner: {int(state[3])}\n"
+		out += f"Alone: {int(state[4])}\n"
 
-		state_start = 15
+		state_start = 103
+		tricks = ""
 		trick = ""
+		trick_number = int(state[6]) + 1
 		for i in range(30):
-			if i % 5 == 0:
-				if trick:
-					out += f"Trick {int(i / 5)}: {trick}\n"
+			if i % 5 == 0 and i != 0:
+				tricks += f"Trick {trick_number}: {trick}\n"
 				trick = ""
+				trick_number -= 1
+				if trick_number < 1:
+					break
+
 			card_index = state_start + i
 			card_id = int(state[card_index])
 			if card_id:
 				trick += f"{DECK[card_id - 1]} "
+			else:
+				trick += "__ "
 
-		# Include final trick if needed (end of the loop)
+
+		# Include first trick if needed (end of the loop)
 		if trick:
-			out += f"Trick 6: {trick}\n"
+			tricks += f"Trick 1: {trick}\n"
+
+		out += tricks
 
 	else:
 		out += f"Game Phase: Picking\n"
 
 	hand = ""
-	for i in range(1, 7):
-		if state[i]:
-			hand += DECK[int(state[i] - 1)] + " "
-
+	hand = " ".join(get_cards_from_vector(state[7:39]))
 
 	out += f"Hand: {hand}\n"
 
@@ -178,10 +202,11 @@ class Game:
 		]
 		self.trick_points = [0, 0, 0, 0, 0, 0] # Points of each trick
 		self.trick_winners = [0, 0, 0, 0, 0, 0] # Player ID of each trick winner
+		self.leaders = [0, 0, 0, 0, 0, 0] # Player ID of each trick leader
 
 		# Internal state variables
 		self.last_player = 0 # Position of last player to play a card
-		self.leader = 0 # Position of leader this hand
+		self.leader = 0 # Position of leader this trick
 		self.cards_played = 0 # Number of cards played this trick
 		self.current_suit = ""
 		self.current_trick = 0
@@ -282,6 +307,10 @@ class Player:
 		return self.game.picker
 
 	@property
+	def partner(self):
+		return self.game.partner
+
+	@property
 	def last_passed(self):
 		return self.game.last_passed
 
@@ -321,32 +350,51 @@ class Player:
 		"""Integer vector of current game state.
 		Values in order:
 			[0] player position
-			[1-6] card ID of each card in hand
-			[7] last position to pass on picking blind
-			[8] position of picker
-			[9] alone called (bool)
-			[10] play has started (bool)
-			[11-12] card ID of cards in blind (if known)
-			[13-14] card ID of cards buried (if known)
-			[15-44] card ID of each card played in game
+			[1] last position to pass on picking blind
+			[2] position of picker
+			[3] position of partner (if known)
+			[4] alone called (bool)
+			[5] play has started (bool)
+			[6] current trick
+			[7-38] 	boolean values for cards in current hand in DECK order
+					(e.g. if hand has QC, index 6 will have value 1 otherwise 0)
+			[39-70]	boolean values for cards in blind (if known)
+			[71-102] boolean values for cards buried (if known)
+			[103-132] card ID of each card played in game in reverse trick order starting with current trick
+					Each trick ordered clockwise starting with this player:
+					Player 1:
+						1 2 3 4 5
+					Player 2:
+						2 3 4 5 1
 		"""
 
 		state = [self.position]
-		state.extend(([DECK_IDS[c] for c in self.hand] + [0] * 6)[:6])
 		state.append(self.last_passed)
 		state.append(self.picker)
+		partner = self.partner if self.partner else "JD" in self.hand
+		state.append(partner)
 		state.append(self.alone_called)
 		state.append(self.play_started)
-
-		blind = (([DECK_IDS[c] for c in self.blind] if self.is_picker else []) + [0] * 2)[:2]
-		bury = (([DECK_IDS[c] for c in self.bury] if self.is_picker else []) + [0] * 2)[:2]
-		state.extend(blind)
-		state.extend(bury)
+		state.append(self.current_trick)
+		state.extend(get_deck_vector(self.hand))
+		state.extend(get_deck_vector(self.blind if self.is_picker else []))
+		state.extend(get_deck_vector(self.bury if self.is_picker else []))
 
 		state = np.array(state, dtype=np.uint8)
 		history = np.zeros((6, 5))
-		for i, trick in enumerate(self.game.history):
-		        history[i] = np.array([DECK_IDS[c] if c else 0 for c in trick])
+		i = 0
+		if self.play_started:
+			for t in reversed(range(min(self.current_trick, 5) + 1)):
+				trick = self.game.history[t]
+				c = self.position - self.game.leaders[t]
+				for j in range(5):
+					card = DECK_IDS[trick[c]] if trick[c] else 0
+					history[i][j] = card
+
+					c = 0 if c == 4 else c + 1
+
+				history[i] = np.array([DECK_IDS[c] if c else 0 for c in trick])
+				i += 1
 		state = np.hstack([state, history.flatten()])
 		return state
 
@@ -427,13 +475,15 @@ class Player:
 
 		if action in ("ALONE", "JD PARTNER"):
 			self.game.play_started = True
+			self.game.leader = 1
+			self.game.leaders[0] = 1
 			self.rewards.append(0)
 
 		if "PLAY" in action:
 			card = action[5:]
 
 			# Set suit lead if we are the first to play this trick
-			if self.game.leader == self.game.last_player:
+			if self.game.leader == self.game.last_player + 1:
 				self.game.current_suit = get_card_suit(card)
 
 			self.game.history[self.current_trick][self.position - 1] = card
@@ -453,14 +503,17 @@ class Player:
 					self.game.partner = self.game.picker
 
 				trick = self.game.history[self.current_trick]
-				winner = get_trick_winner(trick, self.game.leader)
+				winner = get_trick_winner(trick, self.game.current_suit)
 				winner_index = winner - 1
 				trick_points = get_trick_points(trick)
 				self.game.trick_points[self.current_trick] = trick_points
 				self.game.trick_winners[self.current_trick] = winner
 				self.game.points_taken[winner_index] += trick_points
+
+				if self.current_trick < 5:
+					self.game.leaders[self.current_trick + 1] = winner
 				# print("Trick points: %i" % get_trick_points(trick))
-				# print("Winner %i" % get_trick_winner(trick, self.game.leader))
+				# print("Winner %i" % get_trick_winner(trick, self.game.current_suit))
 
 				# Add point rewards for each player after trick ends
 				for i, player in enumerate(self.game.players):
@@ -483,11 +536,13 @@ class Player:
 						player.rewards.append(0)
 
 				# Next trick must start with winner
-				self.game.leader = winner - 1
+				self.game.leader = winner
 				self.game.last_player = winner - 1
-				self.game.current_trick += 1
 				self.game.current_suit = ""
 				self.game.cards_played = 0
+
+				if self.game.current_trick < 5:
+					self.game.current_trick += 1
 
 		return True
 
