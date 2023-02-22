@@ -97,6 +97,23 @@ def get_cards_from_vector(vector):
 	return [DECK[i] for i, exists in enumerate(vector) if exists]
 
 
+def get_hand_pick_reward(hand):
+	"""Uses a simple heuristic to return an integer reward of whether a hand is pickable."""
+	num_queens = 0
+	num_jacks = 0
+	num_trump = 0
+
+	for card in hand:
+		if card[0] == "Q":
+			num_queens += 1
+		elif card[0] == "J":
+			num_jacks += 1
+		elif card[-1] == "D":
+			num_trump += 1
+
+	return num_queens * 3 + num_jacks * 2 + num_trump - 8
+
+
 def get_state_str(state):
 	"""Return a human readable state string.
 	Values in order:
@@ -456,8 +473,10 @@ class Player:
 
 		if action == "PICK":
 			self.game.picker = self.position
+			reward = get_hand_pick_reward(self.hand)
 			self.hand.extend(self.game.blind)
-			self.rewards.append(0)
+			# self.rewards.append(0)
+			self.rewards.append(reward)
 
 		if action == "PASS":
 			self.game.last_passed = self.position
