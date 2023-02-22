@@ -1,3 +1,4 @@
 pip-tools
 numpy
+scipy
 torch

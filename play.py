@@ -2,6 +2,7 @@
 
 import torch
 from argparse import ArgumentParser
+from scipy.special import softmax
 
 from dqn import Agent
 from sheepshead import Game, Player, ACTIONS, DECK, STATE_SIZE
@@ -72,8 +73,8 @@ def pick_evaluator(agent):
         valid_actions = player.get_valid_action_ids()
 
         weights = agent.get_action_weights(state, valid_actions)
-        pick_percent = (weights[0][0] / (weights[0][0] + weights[0][1])) * 100
-        print("Pick with %.2f confidence\n" % pick_percent)
+        normalized = softmax([weights[0][0], weights[0][1]])
+        print("Pick with %.2f confidence\n" % (normalized[0] * 100))
 
         again = input("Again? (y/n): ")
         if again != "y":
