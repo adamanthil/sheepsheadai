@@ -39,6 +39,7 @@ if __name__ == "__main__":
     for e in range(num_games):
         game = Game()
         picker_score = 0
+        exploring_player = random.randrange(5)
         while not game.is_done():
 
             for i, player in enumerate(game.players):
@@ -46,8 +47,8 @@ if __name__ == "__main__":
                 while valid_actions:
                     state = player.get_state_vector()
 
-                    # Stabilize learning by only randomizing agent in 0 position
-                    epsilon = eps if i == 0 else 0
+                    # Stabilize learning by only randomizing one agent
+                    epsilon = eps if i == exploring_player else 0
 
                     action = agents[i].act(state, valid_actions, epsilon)
                     player.act(action)
