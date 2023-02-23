@@ -167,8 +167,10 @@ def get_state_str(state):
 
 	else:
 		out += f"Game Phase: Picking\n"
+		blind = " ".join(get_cards_from_vector(state[39:71]))
+		if blind:
+			out += f"Blind: {blind}\n"
 
-	hand = ""
 	hand = " ".join(get_cards_from_vector(state[7:39]))
 
 	out += f"Hand: {hand}\n"

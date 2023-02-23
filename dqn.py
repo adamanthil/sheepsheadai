@@ -24,7 +24,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Agent():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, seed):
+    def __init__(self, state_size, action_size, seed=None):
         """Initialize an Agent object.
 
         Params
@@ -155,7 +155,7 @@ class Agent():
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, action_size, buffer_size, batch_size, seed):
+    def __init__(self, action_size, buffer_size, batch_size, seed=None):
         """Initialize a ReplayBuffer object.
 
         Params

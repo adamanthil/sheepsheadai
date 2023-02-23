@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 from scipy.special import softmax
 
 from dqn import Agent
-from sheepshead import Game, Player, ACTIONS, DECK, STATE_SIZE
+from sheepshead import Game, Player, ACTIONS, DECK, STATE_SIZE, get_experience_str
 
 
 parser = ArgumentParser(
@@ -55,6 +55,10 @@ def play(agent):
                 # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
 
     print(f"{'-'*40}")
+    print("Player 1 experiences:")
+    print(f"{'-'*40}")
+    for exp in game.players[0].get_experiences():
+        print(get_experience_str(exp))
     print(game)
 
 
@@ -86,7 +90,7 @@ if __name__ == "__main__":
     agent = Agent(
         state_size=STATE_SIZE,
         action_size=len(ACTIONS),
-        seed=0,
+        # seed=0,
     )
     agent.qnetwork_local.load_state_dict(torch.load(args.model))
     print(instructions)
