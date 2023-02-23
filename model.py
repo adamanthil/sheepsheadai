@@ -2,6 +2,7 @@
 # https://github.com/udacity/deep-reinforcement-learning
 
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -36,3 +37,8 @@ class QNetwork(nn.Module):
         x = F.relu(self.fc3(x))
         x = F.relu(self.fc4(x))
         return self.fc5(x)
+
+    def get_trainable_params(self):
+        model_parameters = filter(lambda p: p.requires_grad, self.parameters())
+        params = sum([np.prod(p.size()) for p in model_parameters])
+        return params

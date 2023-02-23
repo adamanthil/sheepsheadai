@@ -24,6 +24,7 @@ if __name__ == "__main__":
             action_size=len(ACTIONS),
             seed=i
         ))
+    print(f"Trainable parameters: {agents[0].qnetwork_local.get_trainable_params()}")
 
     if load_checkpoint:
         print('Loading network from checkpoint.')
