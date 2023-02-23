@@ -111,7 +111,7 @@ def get_hand_pick_reward(hand):
 		elif card[-1] == "D":
 			num_trump += 1
 
-	return num_queens * 3 + num_jacks * 2 + num_trump - 8
+	return num_queens * 3 + num_jacks * 2 + num_trump - 7
 
 
 def get_state_str(state):
