@@ -488,7 +488,10 @@ class Player:
 			card = action[5:]
 			self.game.bury.append(card)
 			self.hand.remove(card)
-			self.rewards.append(get_card_points(card))
+			if get_card_suit(card) == "T":
+				self.rewards.append(-1)
+			else:
+				self.rewards.append(get_card_points(card))
 
 		if action == "ALONE":
 			self.game.alone_called = True
@@ -608,7 +611,18 @@ class Player:
 				action = self.actions.pop()
 				reward = self.rewards.pop()
 				if done:
-					reward = self.get_score() * 100
+					score = self.get_score()
+					reward = score * 100
+
+					# For the picker, use discounted final score
+					# to update picking reward
+					if self.is_picker:
+						picking_reward = self.rewards.popleft()
+						picking_reward += score * 50
+						self.rewards.appendleft(picking_reward)
+
+				if ACTION_LOOKUP[action] == "ALONE":
+					reward += score * 50
 
 				experiences.appendleft(PlayerExperience(
 					start_state,
