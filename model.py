@@ -32,10 +32,10 @@ class QNetwork(nn.Module):
 
     def forward(self, state):
         """Build a network that maps state -> action values."""
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        x = F.relu(self.fc4(x))
+        x = F.leaky_relu(self.fc1(state))
+        x = F.leaky_relu(self.fc2(x))
+        x = F.leaky_relu(self.fc3(x))
+        x = F.leaky_relu(self.fc4(x))
         return self.fc5(x)
 
     def get_trainable_params(self):
