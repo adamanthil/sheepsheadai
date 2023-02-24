@@ -1,34 +1,72 @@
 import random
 import torch
 import numpy as np
-from collections import deque
+from argparse import ArgumentParser
 
 from dqn import Agent
 from sheepshead import Game, ACTIONS, STATE_SIZE, get_experience_str
 
 
+parser = ArgumentParser(
+    prog = "Play Sheepshead",
+    description = "Interactive Sheepshead AI player and evaluator",
+)
+parser.add_argument(
+    "-l",
+    "--load",
+    help="Load an existing PyTorch model state_dict file.",
+    nargs="?",
+)
+parser.add_argument(
+    "-es",
+    "--epsilon-start",
+    help="The starting value of epsilon hyperparameter. Default 1.0",
+    nargs="?",
+    type=float,
+    const=1.0,
+    default=1.0,
+)
+parser.add_argument(
+    "-ee",
+    "--epsilon-end",
+    help="The end value of epsilon hyperparameter. Default 0.1",
+    nargs="?",
+    type=float,
+    const=0.1,
+    default=0.1,
+)
+parser.add_argument(
+    "--seed",
+    help="The random seed for the agent. Default 100",
+    nargs="?",
+    type=int,
+    const=100,
+    default=100,
+)
+
+args = parser.parse_args()
+
+
 if __name__ == "__main__":
     num_games = int(1e7)
-    load_checkpoint = False
     best_score = -12
 
-    eps_start=1.0
-    # eps_start=0.2
-    eps_end=0.05
-    eps_decay=0.999995
+    eps_start = args.epsilon_start
+    eps_end = args.epsilon_end
+    eps_decay=0.999998
 
     agents = []
     agent = Agent(
         state_size=STATE_SIZE,
         action_size=len(ACTIONS),
-        seed=100
+        seed=args.seed,
     )
     print(f"Trainable parameters: {agent.qnetwork_local.get_trainable_params()}")
 
-    if load_checkpoint:
+    if args.load:
         print('Loading network from checkpoint.')
         for i in range(5):
-            agent.qnetwork_local.load_state_dict(torch.load('save-checkpoints/checkpoint-picking-training.pth'))
+            agent.qnetwork_local.load_state_dict(torch.load(args.load))
 
     picker_scores = []
     rewards = []
