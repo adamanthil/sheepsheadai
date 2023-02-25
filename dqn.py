@@ -81,12 +81,6 @@ class Agent():
         else:
             action = np.random.choice(valid_actions_int8)
 
-        if action < 0:
-            # DEBUG
-            print("ON NOES")
-            print(state, valid_actions)
-            exit(1)
-
         # from sheepshead import ACTIONS
         # print("valid_actions", valid_actions)
         # print(f"ACTING {action}: ")
