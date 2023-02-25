@@ -132,7 +132,7 @@ if __name__ == "__main__":
                 "batch score avg 100 %.2f" % batch_score,
                 "long score avg 1000 %.2f" % avg_score,
                 "best score %.2f" % best_score,
-                "avg_reward %.2f" % avg_reward,
+                "avg_reward %.5f" % avg_reward,
                 "epsilon %.2f" % eps,
                 f"steps {n_steps}",
             )

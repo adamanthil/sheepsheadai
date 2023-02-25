@@ -475,10 +475,10 @@ class Player:
 
 		if action == "PICK":
 			self.game.picker = self.position
-			reward = get_hand_pick_reward(self.hand)
+			# reward = get_hand_pick_reward(self.hand)
 			self.hand.extend(self.game.blind)
-			# self.rewards.append(0)
-			self.rewards.append(reward)
+			self.rewards.append(0)
+			# self.rewards.append(reward)
 
 		if action == "PASS":
 			self.game.last_passed = self.position
@@ -489,9 +489,9 @@ class Player:
 			self.game.bury.append(card)
 			self.hand.remove(card)
 			if get_card_suit(card) == "T":
-				self.rewards.append(-1)
+				self.rewards.append(-0.01)
 			else:
-				self.rewards.append(get_card_points(card))
+				self.rewards.append(get_card_points(card) / 120 * .25)
 
 		if action == "ALONE":
 			self.game.alone_called = True
@@ -553,7 +553,7 @@ class Player:
 						or self.game.partner and not player.is_picker and not player.is_partner
 						and winner != self.game.picker and winner != self.game.picker
 					):
-						player.rewards.append(trick_points)
+						player.rewards.append(trick_points / 120 * .25)
 						# print(f"AWARD for {i}: {trick_points}")
 					else:
 						# print("NO REWARD THIS TRICK")
@@ -612,17 +612,17 @@ class Player:
 				reward = self.rewards.pop()
 				if done:
 					score = self.get_score()
-					reward = score * 100
+					reward = score / 12
 
 					# For the picker, use discounted final score
 					# to update picking reward
 					if self.is_picker:
 						picking_reward = self.rewards.popleft()
-						picking_reward += score * 50
-						self.rewards.appendleft(picking_reward)
+						# picking_reward += score * 50
+						self.rewards.appendleft(score / 24)
 
 				if ACTION_LOOKUP[action] == "ALONE":
-					reward += score * 50
+					reward = score / 24
 
 				experiences.appendleft(PlayerExperience(
 					start_state,
