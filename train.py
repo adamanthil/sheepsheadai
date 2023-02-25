@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     eps_start = args.epsilon_start
     eps_end = args.epsilon_end
-    eps_decay=0.999998
+    eps_decay=0.999999
 
     agents = []
     agent = Agent(
