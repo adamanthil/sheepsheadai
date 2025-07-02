@@ -1,7 +1,6 @@
 import numpy as np
 import random
 from collections import deque
-from utils import PlayerExperience
 
 
 TRUMP = [
@@ -97,23 +96,6 @@ def get_cards_from_vector(vector):
 	return [DECK[i] for i, exists in enumerate(vector) if exists]
 
 
-def get_hand_pick_reward(hand):
-	"""Uses a simple heuristic to return an integer reward of whether a hand is pickable."""
-	num_queens = 0
-	num_jacks = 0
-	num_trump = 0
-
-	for card in hand:
-		if card[0] == "Q":
-			num_queens += 1
-		elif card[0] == "J":
-			num_jacks += 1
-		elif card[-1] == "D":
-			num_trump += 1
-
-	return num_queens * 3 + num_jacks * 2 + num_trump - 7
-
-
 def get_state_str(state):
 	"""Return a human readable state string.
 	Values in order:
@@ -191,8 +173,6 @@ def get_experience_str(experience):
 	out += "Ending state:\n"
 	out += get_state_str(experience.next_state)
 	out += "-----------------------------\n"
-	out += f"Reward: {experience.reward}\n"
-	out += "-----------------------------\n\n"
 	return out
 
 
@@ -319,7 +299,6 @@ class Player:
 		self.hand = hand[:]
 		self.start_states = deque()
 		self.actions = deque()
-		self.rewards = deque()
 
 	@property
 	def picker(self):
@@ -475,23 +454,15 @@ class Player:
 
 		if action == "PICK":
 			self.game.picker = self.position
-			reward = get_hand_pick_reward(self.hand)
 			self.hand.extend(self.game.blind)
-			# self.rewards.append(0)
-			self.rewards.append(reward)
 
 		if action == "PASS":
 			self.game.last_passed = self.position
-			self.rewards.append(0)
 
 		if "BURY" in action:
 			card = action[5:]
 			self.game.bury.append(card)
 			self.hand.remove(card)
-			if get_card_suit(card) == "T":
-				self.rewards.append(-1)
-			else:
-				self.rewards.append(get_card_points(card))
 
 		if action == "ALONE":
 			self.game.alone_called = True
@@ -501,7 +472,6 @@ class Player:
 			self.game.play_started = True
 			self.game.leader = 1
 			self.game.leaders[0] = 1
-			self.rewards.append(0)
 
 		if "PLAY" in action:
 			card = action[5:]
@@ -538,26 +508,6 @@ class Player:
 					self.game.leaders[self.current_trick + 1] = winner
 				# print("Trick points: %i" % get_trick_points(trick))
 				# print("Winner %i" % get_trick_winner(trick, self.game.current_suit))
-
-				# Add point rewards for each player after trick ends
-				for i, player in enumerate(self.game.players):
-					if (
-						# Player took trick themselves
-						i == winner_index
-
-						# Picking team and partner took trick
-						or player.is_picker and self.game.partner == winner
-						or player.is_partner and self.game.picker == winner
-
-						# Defending team and partners took trick (must know partner)
-						or self.game.partner and not player.is_picker and not player.is_partner
-						and winner != self.game.picker and winner != self.game.picker
-					):
-						player.rewards.append(trick_points)
-						# print(f"AWARD for {i}: {trick_points}")
-					else:
-						# print("NO REWARD THIS TRICK")
-						player.rewards.append(0)
 
 				# Next trick must start with winner
 				self.game.leader = winner
@@ -596,48 +546,6 @@ class Player:
 				return multiplier
 			return -1 * multiplier
 		return 0
-
-	def get_experiences(self):
-		if self.game.is_done():
-			experiences = deque()
-			end_state = self.get_state_vector()
-			done = 1
-
-			# Generates PlayerExperience tuples in reverse order
-			# End state for each agent is the state when they next have actions,
-			# Which corresponds to the previous start state
-			while self.start_states:
-				start_state = self.start_states.pop()
-				action = self.actions.pop()
-				reward = self.rewards.pop()
-				if done:
-					score = self.get_score()
-					reward = score * 100
-
-					# For the picker, use discounted final score
-					# to update picking reward
-					if self.is_picker:
-						picking_reward = self.rewards.popleft()
-						picking_reward += score * 50
-						self.rewards.appendleft(picking_reward)
-
-				if ACTION_LOOKUP[action] == "ALONE":
-					reward += score * 50
-
-				experiences.appendleft(PlayerExperience(
-					start_state,
-					action,
-					reward,
-					end_state,
-					done,
-				))
-
-				end_state = start_state
-				done = 0
-
-			return experiences
-
-		raise Exception("Cannot get experiences when game is incomplete.")
 
 
 if __name__ == '__main__':
