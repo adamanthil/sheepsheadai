@@ -160,6 +160,17 @@ def get_state_str(state):
     return out
 
 
+def colorize_card(card):
+    if card in TRUMP:
+        # Trump cards in yellow
+        return f"\033[93m{card}\033[0m"
+    return card
+
+
+def pretty_card_list(card_list):
+    return " ".join([colorize_card(c) for c in card_list])
+
+
 class Game:
     def __init__(self):
         self.deck = DECK[:]
@@ -224,15 +235,15 @@ class Game:
 
     def print_player_hands(self, player_names=["Player 1", "Player 2", "Player 3", "Player 4", "Player 5"]):
         for p in self.players:
-            print(f"{player_names[p.position - 1].ljust(8)}: ", p.hand)
-        print("Blind: ", self.blind)
+            print(f"{player_names[p.position - 1].ljust(8)}: {pretty_card_list(p.hand)}")
+        print(f"Blind: {pretty_card_list(self.blind)}")
 
     def __str__(self):
         out = ""
         out += f"Picker: {self.picker} - Partner: {self.partner}\n"
-        out += f"Picking hand: {self.get_picker().initial_hand}\n"
-        out += f"Blind: {self.blind}\n"
-        out += f"Bury: {self.bury}\n"
+        out += f"Picking hand: {pretty_card_list(self.get_picker().initial_hand)}\n"
+        out += f"Blind: {pretty_card_list(self.blind)}\n"
+        out += f"Bury: {pretty_card_list(self.bury)}\n"
         out += f"Points taken: {self.points_taken}\n"
         out += f"Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}\n"
         scores = [p.get_score() for p in self.players]

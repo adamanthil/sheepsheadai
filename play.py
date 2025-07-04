@@ -4,7 +4,7 @@ import torch
 from argparse import ArgumentParser
 
 from ppo import PPOAgent
-from sheepshead import Game, Player, ACTIONS, STATE_SIZE, ACTION_IDS, PLAY_ACTIONS, TRUMP
+from sheepshead import Game, Player, ACTIONS, STATE_SIZE, ACTION_IDS, PLAY_ACTIONS, colorize_card
 
 
 parser = ArgumentParser(
@@ -19,32 +19,6 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-
-# ANSI color codes
-RED = '\033[91m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-MAGENTA = '\033[95m'
-CYAN = '\033[96m'
-RESET = '\033[0m'
-
-def colorize_card(card):
-    """Return a colorized version of the card string."""
-    if card in TRUMP:
-        return f"{YELLOW}{card}{RESET}"  # Trump cards in yellow
-    else:
-        return card  # Fail cards in default color
-
-def print_colored_hands(game, player_names=["Player 1", "Player 2", "Player 3", "Player 4", "Player 5"]):
-    """Print player hands with trump cards colored."""
-    for p in game.players:
-        colored_hand = [colorize_card(card) for card in p.hand]
-        print(f"{player_names[p.position - 1].ljust(8)}: {' '.join(colored_hand)}")
-
-    # Also colorize the blind
-    colored_blind = [colorize_card(card) for card in game.blind]
-    print(f"Blind   : {' '.join(colored_blind)}")
 
 instructions = f"""
 {'-'*40}
@@ -63,7 +37,7 @@ def play(agent):
     game = Game()
 
     players = ['Dan', 'Kyle', 'Trevor', 'John', 'Andrew']
-    print_colored_hands(game, players)
+    game.print_player_hands(players)
     print(f"{'-'*40}")
 
     card_count = 0
