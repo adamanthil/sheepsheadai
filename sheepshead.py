@@ -160,22 +160,6 @@ def get_state_str(state):
 	return out
 
 
-
-def get_experience_str(experience):
-	"""Return a human readable string from an experience tuple.
-	"""
-	out = "--------- Experience ---------\n"
-	out += "Starting state:\n"
-	out += get_state_str(experience.state)
-	out += "-----------------------------\n"
-	out += f"Action: {ACTIONS[experience.action - 1]}\n"
-	out += "-----------------------------\n"
-	out += "Ending state:\n"
-	out += get_state_str(experience.next_state)
-	out += "-----------------------------\n"
-	return out
-
-
 class Game:
 	def __init__(self):
 		self.deck = DECK[:]
