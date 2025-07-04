@@ -100,7 +100,7 @@ def get_state_str(state):
     """Return a human readable state string.
     Values in order:
         [0] player position
-        [1] last position to pass on picking blind
+        [1] last position to pass on picking blind (or 6 if leaster mode)
         [2] position of picker
         [3] position of partner (if known)
         [4] alone called (bool)
@@ -115,11 +115,17 @@ def get_state_str(state):
     out = ""
     out += f"Player #: {int(state[0])}\n"
 
+    # Check if this is leaster mode
+    is_leaster = int(state[1]) == 6
+
     if (state[5]):
-        out += f"Game Phase: Play\n"
-        out += f"Picker: {int(state[2])}\n"
-        out += f"Partner: {int(state[3])}\n"
-        out += f"Alone: {int(state[4])}\n"
+        if is_leaster:
+            out += "Game Phase: Play (Leaster)\n"
+        else:
+            out += "Game Phase: Play\n"
+            out += f"Picker: {int(state[2])}\n"
+            out += f"Partner: {int(state[3])}\n"
+            out += f"Alone: {int(state[4])}\n"
 
         state_start = 103
         tricks = ""
@@ -148,7 +154,10 @@ def get_state_str(state):
         out += tricks
 
     else:
-        out += f"Game Phase: Picking\n"
+        if is_leaster:
+            out += "Game Phase: Leaster (all players passed)\n"
+        else:
+            out += "Game Phase: Picking\n"
         blind = " ".join(get_cards_from_vector(state[39:71]))
         if blind:
             out += f"Blind: {blind}\n"
@@ -183,6 +192,7 @@ class Game:
         self.bury = []
         self.alone_called = False
         self.play_started = False
+        self.is_leaster = False
         self.players = []
         self.points_taken = [0, 0, 0, 0, 0] # Sum of all points taken for each player
         # Nested list of all cards played in game so far
@@ -227,9 +237,16 @@ class Game:
 
                     actions = player.get_valid_action_ids()
 
-        print("Bury: ", self.bury)
-        print("Points taken: ", self.points_taken)
-        print(f"Game done! Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}")
+        if self.is_leaster:
+            print("Leaster - all players passed!")
+            print("Points taken: ", self.points_taken)
+            winner = self.get_leaster_winner()
+            print(f"Leaster winner: Player {winner}")
+        else:
+            print("Bury: ", self.bury)
+            print("Points taken: ", self.points_taken)
+            print(f"Game done! Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}")
+
         scores = [p.get_score() for p in self.players]
         print(f"Scores: {scores}")
 
@@ -240,25 +257,37 @@ class Game:
 
     def __str__(self):
         out = ""
-        out += f"Picker: {self.picker} - Partner: {self.partner}\n"
-        out += f"Picking hand: {pretty_card_list(self.get_picker().initial_hand)}\n"
-        out += f"Blind: {pretty_card_list(self.blind)}\n"
-        out += f"Bury: {pretty_card_list(self.bury)}\n"
-        out += f"Points taken: {self.points_taken}\n"
-        out += f"Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}\n"
-        scores = [p.get_score() for p in self.players]
-        out += (f"Scores: {scores}\n")
+        if self.is_leaster:
+            out += "Leaster\n"
+            out += f"Points taken: {self.points_taken}\n"
+            if self.is_done():
+                winner = self.get_leaster_winner()
+                out += f"Leaster winner: Player {winner}\n"
+        else:
+            out += f"Picker: {self.picker} - Partner: {self.partner}\n"
+            if self.picker:
+                out += f"Picking hand: {pretty_card_list(self.get_picker().initial_hand)}\n"
+            out += f"Blind: {pretty_card_list(self.blind)}\n"
+            out += f"Bury: {pretty_card_list(self.bury)}\n"
+            out += f"Points taken: {self.points_taken}\n"
+            if self.is_done():
+                out += f"Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}\n"
+
+        if self.is_done():
+            scores = [p.get_score() for p in self.players]
+            out += (f"Scores: {scores}\n")
 
         return out
 
     def is_done(self):
-        return self.last_passed == 5 or "" not in self.history[5]
+        # Game is done when all tricks are played
+        return "" not in self.history[5]
 
     def get_picker(self):
         return self.players[self.picker - 1]
 
     def get_final_picker_points(self):
-        if self.is_done():
+        if self.is_done() and not self.is_leaster:
             points = self.points_taken[self.picker - 1]
 
             # Add partner points
@@ -273,7 +302,7 @@ class Game:
         return False
 
     def get_final_defender_points(self):
-        if self.is_done():
+        if self.is_done() and not self.is_leaster:
             points = 0
             for i, taken in enumerate(self.points_taken):
                 if i + 1 != self.picker and i + 1 != self.partner:
@@ -283,6 +312,25 @@ class Game:
             if not self.get_final_picker_points():
                 points += get_trick_points(self.bury)
             return points
+        return False
+
+    def get_leaster_winner(self):
+        """Returns the player position (1-5) of the winner of a leaster."""
+        if self.is_done() and self.is_leaster:
+            # Find players who took at least one trick
+            qualified_players = []
+            for i in range(5):
+                player_pos = i + 1
+                took_trick = any(self.trick_winners[j] == player_pos for j in range(6))
+                if took_trick:
+                    qualified_players.append((player_pos, self.points_taken[i]))
+
+            # Find minimum points among qualified players
+            min_points = min(points for _, points in qualified_players)
+            winners = [player_pos for player_pos, points in qualified_players if points == min_points]
+
+            # Return winner if unique, otherwise draw randomly for tie
+            return winners[0] if len(winners) == 1 else random.choice(winners)
         return False
 
 
@@ -343,7 +391,7 @@ class Player:
         """Integer vector of current game state.
         Values in order:
             [0] player position
-            [1] last position to pass on picking blind
+            [1] last position to pass on picking blind (or 6 if leaster mode)
             [2] position of picker
             [3] position of partner (if known)
             [4] alone called (bool)
@@ -362,7 +410,8 @@ class Player:
         """
 
         state = [self.position]
-        state.append(self.last_passed)
+        # Use value 6 to indicate leaster mode (since normal last_passed values are 0-5)
+        state.append(6 if self.game.is_leaster else self.last_passed)
         state.append(self.picker)
         partner = self.partner if self.partner else "JD" in self.hand
         state.append(partner)
@@ -395,7 +444,7 @@ class Player:
         """Get set of valid actions."""
 
         # No one yet picked, and not our turn
-        if not self.picker:
+        if not self.picker and not self.game.is_leaster:
             if self.last_passed != self.position - 1:
                 return set()
             return set(["PICK", "PASS"])
@@ -411,7 +460,7 @@ class Player:
                 return set(["ALONE", "JD PARTNER"])
 
         # Exclude actions when waiting on bury
-        if len(self.bury) != 2:
+        if not self.game.is_leaster and len(self.bury) != 2:
             return set()
 
         # Exclude actions when not our turn
@@ -454,6 +503,14 @@ class Player:
         if action == "PASS":
             self.game.last_passed = self.position
 
+            if self.game.last_passed == 5:
+                # Enter leaster mode
+                self.game.is_leaster = True
+                self.game.play_started = True
+                self.game.leader = 1
+                self.game.leaders[0] = 1
+                return False
+
         if "BURY" in action:
             card = action[5:]
             self.game.bury.append(card)
@@ -495,6 +552,11 @@ class Player:
                 winner = get_trick_winner(trick, self.game.current_suit)
                 winner_index = winner - 1
                 trick_points = get_trick_points(trick)
+
+                # In leaster mode, give blind to winner of first trick
+                if self.game.is_leaster and self.current_trick == 0:
+                    trick_points += get_trick_points(self.game.blind)
+
                 self.game.trick_points[self.current_trick] = trick_points
                 self.game.trick_winners[self.current_trick] = winner
                 self.game.points_taken[winner_index] += trick_points
@@ -516,30 +578,36 @@ class Player:
         return True
 
     def get_score(self):
-        if self.game.is_done() and self.game.picker:
-            picker_points = self.game.get_final_picker_points()
-            defender_points = self.game.get_final_defender_points()
-            if picker_points + defender_points != 120:
-                raise Exception(f"Points don't add up to 120! Picker: {picker_points} Defenders: {defender_points}")
-            multiplier = 1
-            if picker_points == 120:
-                multiplier = 3
-            elif picker_points > 90:
-                multiplier = 2
-            elif defender_points == 120:
-                multiplier = -3
-            elif defender_points >= 90:
-                multiplier = -2
-            elif defender_points >= 60:
-                multiplier = -1
+        if self.game.is_done():
+            if self.game.is_leaster:
+                winner = self.game.get_leaster_winner()
+                if winner == self.position:
+                    return 4
+                return -1
+            elif self.game.picker:
+                picker_points = self.game.get_final_picker_points()
+                defender_points = self.game.get_final_defender_points()
+                if picker_points + defender_points != 120:
+                    raise Exception(f"Points don't add up to 120! Picker: {picker_points} Defenders: {defender_points}")
+                multiplier = 1
+                if picker_points == 120:
+                    multiplier = 3
+                elif picker_points > 90:
+                    multiplier = 2
+                elif defender_points == 120:
+                    multiplier = -3
+                elif defender_points >= 90:
+                    multiplier = -2
+                elif defender_points >= 60:
+                    multiplier = -1
 
-            if self.is_picker and self.is_partner:
-                return 4 * multiplier
-            if self.is_picker:
-                return 2 * multiplier
-            if self.is_partner:
-                return multiplier
-            return -1 * multiplier
+                if self.is_picker and self.is_partner:
+                    return 4 * multiplier
+                if self.is_picker:
+                    return 2 * multiplier
+                if self.is_partner:
+                    return multiplier
+                return -1 * multiplier
         return 0
 
 
