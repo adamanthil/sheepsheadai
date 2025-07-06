@@ -81,8 +81,8 @@ def analyze_strategic_decisions(agent, num_samples=100):
                         card = action_name.split()[-1]
                         bury_quality['total_burys'] += 1
 
-                        # Good bury: low trump or fail cards
-                        if card in ["7D", "8D", "9D"] or card not in TRUMP:
+                        # Good bury: fail
+                        if card not in TRUMP:
                             bury_quality['good_burys'] += 1
                         else:
                             bury_quality['bad_burys'] += 1
@@ -116,7 +116,7 @@ def save_extended_training_plot(training_data, save_path='extended_training_prog
     ax1.plot(episodes, training_data['picker_avg'], label='Picker Avg', alpha=0.8)
     ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
     ax1.set_xlabel('Episode')
-    ax1.set_ylabel('Average Score')
+    ax1.set_ylabel('Average Picker Score')
     ax1.set_title('Score Progression')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
@@ -163,22 +163,24 @@ def save_extended_training_plot(training_data, save_path='extended_training_prog
             ax4.legend()
             ax4.grid(True, alpha=0.3)
 
-    # Learning rate
-    ax5.plot(episodes, training_data['learning_rate'], color='green', alpha=0.8)
+    # Training efficiency
+    games_per_min = [ep / (time_elapsed / 60) for ep, time_elapsed in zip(episodes, training_data['time_elapsed']) if time_elapsed > 0]
+    ax5.plot(episodes[:len(games_per_min)], games_per_min, color='brown', alpha=0.8)
     ax5.set_xlabel('Episode')
-    ax5.set_ylabel('Learning Rate')
-    ax5.set_title('Learning Rate Schedule')
-    ax5.set_yscale('log')
+    ax5.set_ylabel('Games per Minute')
+    ax5.set_title('Training Efficiency')
     ax5.grid(True, alpha=0.3)
 
-    # Training efficiency
-    if len(training_data['time_elapsed']) > 1:
-        games_per_min = [ep / (time_elapsed / 60) for ep, time_elapsed in zip(episodes, training_data['time_elapsed']) if time_elapsed > 0]
-        ax6.plot(episodes[:len(games_per_min)], games_per_min, color='brown', alpha=0.8)
+    # Team Point Difference
+    if 'team_point_diff' in training_data and len(training_data['team_point_diff']) > 0:
+        ax6.plot(episodes, training_data['team_point_diff'], color='red', alpha=0.8)
+        ax6.axhline(y=0, color='black', linestyle='--', alpha=0.5, label='Perfect Balance')
         ax6.set_xlabel('Episode')
-        ax6.set_ylabel('Games per Minute')
-        ax6.set_title('Training Efficiency')
+        ax6.set_ylabel('Team Point Difference')
+        ax6.set_title('Team Point Difference (Picker - Defender)')
+        ax6.legend()
         ax6.grid(True, alpha=0.3)
+
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
@@ -199,7 +201,8 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     print(f"  Activation function: {activation.upper()}")
     print("  Reward structure: SPARSE (final scores only)")
     print("  Opponent: SELF-PLAY")
-    print("  Evaluation: STRATEGIC DECISION QUALITY")
+    print("  Evaluation: STRATEGIC DECISION QUALITY + TEAM BALANCE")
+    print("  Best model: LOWEST TEAM POINT DIFFERENCE")
     print("="*60)
 
     # Create agent with optimized hyperparameters
@@ -238,7 +241,8 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     recent_scores = deque(maxlen=300)
     pick_decisions = deque(maxlen=3000)
     pass_decisions = deque(maxlen=3000)
-    best_picker_score = float('-inf')
+    team_point_differences = deque(maxlen=3000)
+    best_team_difference = float('inf')  # Lower is better (smaller point difference)
 
     # Extended training data for plotting
     training_data = {
@@ -252,7 +256,8 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         'pick_hand_correlation': [],
         'picker_trump_rate': [],
         'defender_trump_rate': [],
-        'bury_quality_rate': []
+        'bury_quality_rate': [],
+        'team_point_diff': []
     }
 
     # Create checkpoint directory with activation function suffix
@@ -334,11 +339,20 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
         pick_rate = episode_picks / (episode_picks + episode_passes) * 100 if (episode_picks + episode_passes) > 0 else 0
 
+        # Calculate team point difference (picker team points - defender team points)
+        if game.picker and not game.is_leaster:
+            picker_team_points = game.get_final_picker_points()
+            defender_team_points = game.get_final_defender_points()
+            team_point_diff = abs(picker_team_points - defender_team_points)
+        else:
+            team_point_diff = 0  # No team difference in leaster games
+
         all_scores.append(avg_score)
         picker_scores.append(picker_score)
         recent_scores.append(avg_score)
         pick_decisions.append(episode_picks)
         pass_decisions.append(episode_passes)
+        team_point_differences.append(team_point_diff)
         game_count += 1
 
         # Update model periodically
@@ -369,6 +383,7 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             current_picker = np.mean(picker_scores) if picker_scores else 0
             recent_avg = np.mean(recent_scores) if recent_scores else 0
             current_pick_rate = np.mean([p/(p+pa)*100 for p, pa in zip(pick_decisions, pass_decisions) if p+pa > 0]) if pick_decisions else 0
+            current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
             elapsed = time.time() - start_time
 
             # Collect data for plotting
@@ -379,6 +394,7 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             training_data['pick_rate'].append(current_pick_rate)
             training_data['learning_rate'].append(agent.actor_optimizer.param_groups[0]['lr'])
             training_data['time_elapsed'].append(elapsed)
+            training_data['team_point_diff'].append(current_team_diff)
 
             # Strategic metrics are collected separately during strategic evaluation intervals
             # Don't try to collect them here as they're not always available
@@ -390,16 +406,18 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             print(f"   Recent avg (300): {recent_avg:+.3f}")
             print(f"   Overall avg (3000): {current_avg:+.3f}")
             print(f"   Picker avg: {current_picker:+.3f}")
+            print(f"   Team point diff: {current_team_diff:+.1f}")
             print(f"   Pick rate: {current_pick_rate:.1f}%")
             print(f"   Training speed: {games_per_min:.1f} games/min")
             print(f"   Time elapsed: {elapsed/60:.1f} min")
             print("   " + "-" * 40)
 
-            # Save best model based on picker performance
-            if current_picker > best_picker_score:
-                best_picker_score = current_picker
+            # Save best model based on team point difference (lower is better)
+            # We want the absolute value to be as small as possible
+            if current_team_diff < best_team_difference:
+                best_team_difference = current_team_diff
                 agent.save(f'best_extended_{activation}_ppo.pth')
-                print(f"   🏆 New best picker avg: {best_picker_score:.3f}! Model saved.")
+                print(f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved.")
 
         # Save regular checkpoints
         if episode % save_interval == 0:
@@ -438,7 +456,8 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     print(f"\n🎉 Extended sparse training completed!")
     print(f"   Total time: {total_time/60:.1f} minutes ({total_time/3600:.1f} hours)")
     print(f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}")
-    print(f"   Best picker average: {best_picker_score:.3f}")
+    print(f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}")
+    print(f"   Best team point difference: {best_team_difference:.1f}")
     print(f"   Final pick rate: {np.mean([p/(p+pa)*100 for p, pa in zip(pick_decisions, pass_decisions) if p+pa > 0]):.1f}%")
     print(f"   Training speed: {(num_episodes-start_episode)/(total_time/60):.1f} episodes/min")
 
