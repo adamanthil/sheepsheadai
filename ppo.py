@@ -8,15 +8,27 @@ import random
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def swish(x):
+    """Swish activation function: x * sigmoid(x)"""
+    return x * torch.sigmoid(x)
+
 class ActorNetwork(nn.Module):
     """Policy network that outputs action probabilities"""
 
-    def __init__(self, state_size, action_size, hidden_size=512):
+    def __init__(self, state_size, action_size, hidden_size=512, activation='relu'):
         super(ActorNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, hidden_size)
         self.fc4 = nn.Linear(hidden_size, action_size)
+
+        # Set activation function
+        if activation == 'swish':
+            self.activation = swish
+        elif activation == 'relu':
+            self.activation = F.relu
+        else:
+            raise ValueError(f"Unsupported activation function: {activation}")
 
         # Initialize weights
         self.apply(self._init_weights)
@@ -27,9 +39,9 @@ class ActorNetwork(nn.Module):
             torch.nn.init.constant_(m.bias, 0)
 
     def forward(self, state, action_mask=None):
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
+        x = self.activation(self.fc1(state))
+        x = self.activation(self.fc2(x))
+        x = self.activation(self.fc3(x))
         logits = self.fc4(x)
 
         # Apply action mask for invalid actions
@@ -41,12 +53,20 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     """Value network that estimates state values"""
 
-    def __init__(self, state_size, hidden_size=512):
+    def __init__(self, state_size, hidden_size=512, activation='relu'):
         super(CriticNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, hidden_size)
         self.fc4 = nn.Linear(hidden_size, 1)
+
+        # Set activation function
+        if activation == 'swish':
+            self.activation = swish
+        elif activation == 'relu':
+            self.activation = F.relu
+        else:
+            raise ValueError(f"Unsupported activation function: {activation}")
 
         # Initialize weights
         self.apply(self._init_weights)
@@ -57,19 +77,19 @@ class CriticNetwork(nn.Module):
             torch.nn.init.constant_(m.bias, 0)
 
     def forward(self, state):
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
+        x = self.activation(self.fc1(state))
+        x = self.activation(self.fc2(x))
+        x = self.activation(self.fc3(x))
         return self.fc4(x)
 
 class PPOAgent:
-    def __init__(self, state_size, action_size, lr_actor=3e-4, lr_critic=3e-4):
+    def __init__(self, state_size, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='relu'):
         self.state_size = state_size
         self.action_size = action_size
 
         # Networks
-        self.actor = ActorNetwork(state_size, action_size).to(device)
-        self.critic = CriticNetwork(state_size).to(device)
+        self.actor = ActorNetwork(state_size, action_size, activation=activation).to(device)
+        self.critic = CriticNetwork(state_size, activation=activation).to(device)
 
         # Optimizers
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr_actor)

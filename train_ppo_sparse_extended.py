@@ -185,7 +185,7 @@ def save_extended_training_plot(training_data, save_path='extended_training_prog
     plt.close()
 
 def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_interval=5000,
-                            strategic_eval_interval=10000, resume_model=None):
+                            strategic_eval_interval=10000, resume_model=None, activation='relu'):
     """
     Extended sparse reward PPO training with strategic evaluation metrics.
     """
@@ -196,6 +196,7 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     print(f"  Update interval: {update_interval}")
     print(f"  Save interval: {save_interval}")
     print(f"  Strategic evaluation interval: {strategic_eval_interval}")
+    print(f"  Activation function: {activation.upper()}")
     print("  Reward structure: SPARSE (final scores only)")
     print("  Opponent: SELF-PLAY")
     print("  Evaluation: STRATEGIC DECISION QUALITY")
@@ -204,7 +205,8 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     # Create agent with optimized hyperparameters
     agent = PPOAgent(STATE_SIZE, len(ACTIONS),
                     lr_actor=1.5e-4,  # Slightly reduced for fine-tuning
-                    lr_critic=1.5e-4)
+                    lr_critic=1.5e-4,
+                    activation=activation)
 
     # Resume from specified model or try to load best existing
     start_episode = 0
@@ -253,8 +255,9 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         'bury_quality_rate': []
     }
 
-    # Create checkpoint directory
-    os.makedirs('checkpoints_extended', exist_ok=True)
+    # Create checkpoint directory with activation function suffix
+    checkpoint_dir = f'checkpoints_extended_{activation}'
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
     start_time = time.time()
     game_count = 0
@@ -395,17 +398,17 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             # Save best model based on picker performance
             if current_picker > best_picker_score:
                 best_picker_score = current_picker
-                agent.save('best_extended_ppo.pth')
+                agent.save(f'best_extended_{activation}_ppo.pth')
                 print(f"   🏆 New best picker avg: {best_picker_score:.3f}! Model saved.")
 
         # Save regular checkpoints
         if episode % save_interval == 0:
-            checkpoint_path = f'checkpoints_extended/extended_checkpoint_{episode}.pth'
+            checkpoint_path = f'{checkpoint_dir}/extended_{activation}_checkpoint_{episode}.pth'
             agent.save(checkpoint_path)
 
             # Save enhanced training plot
             if len(training_data['episodes']) > 10:
-                plot_path = f'checkpoints_extended/training_progress_{episode}.png'
+                plot_path = f'{checkpoint_dir}/training_progress_{episode}.png'
                 save_extended_training_plot(training_data, plot_path)
 
             # Calculate time since last checkpoint
@@ -425,11 +428,11 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         print("🔄 Final model update...")
         agent.update()
 
-    agent.save('final_extended_ppo.pth')
+    agent.save(f'final_extended_{activation}_ppo.pth')
 
     # Save final enhanced training plot
     if len(training_data['episodes']) > 0:
-        save_extended_training_plot(training_data, 'final_extended_training.png')
+        save_extended_training_plot(training_data, f'final_extended_{activation}_training.png')
 
     total_time = time.time() - start_time
     print(f"\n🎉 Extended sparse training completed!")
@@ -451,6 +454,8 @@ def main():
                        help="Number of episodes between strategic evaluations")
     parser.add_argument("--resume", type=str, default=None,
                        help="Model file to resume from")
+    parser.add_argument("--activation", type=str, default='relu', choices=['relu', 'swish'],
+                       help="Activation function to use (default: relu)")
 
     args = parser.parse_args()
 
@@ -467,7 +472,8 @@ def main():
         args.update_interval,
         args.save_interval,
         args.strategic_eval_interval,
-        args.resume
+        args.resume,
+        args.activation
     )
 
 if __name__ == "__main__":

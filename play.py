@@ -111,7 +111,7 @@ def pick_evaluator(agent):
 
 if __name__ == "__main__":
 
-    agent = PPOAgent(STATE_SIZE, len(ACTIONS))
+    agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation='swish')
     agent.load(args.model)
     print(instructions)
 
