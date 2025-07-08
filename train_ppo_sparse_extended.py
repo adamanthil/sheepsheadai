@@ -301,6 +301,7 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
                         'player': player,
                         'state': state,
                         'action': action,
+                        'action_name': action_name,
                         'log_prob': log_prob,
                         'value': value,
                         'valid_actions': valid_actions.copy()
@@ -310,24 +311,35 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
                     player.act(action)
                     valid_actions = player.get_valid_action_ids()
 
-        # Assign ONLY final scores as rewards
+        # Assign rewards only to last PLAY action of each player
         final_scores = [player.get_score() for player in game.players]
         episode_scores = final_scores[:]
+
+        # Find the last PLAY action for each player
+        last_play_indices = {}
+        for i, transition in enumerate(episode_transitions):
+            player_pos = transition['player'].position
+            if "PLAY" in transition['action_name']:
+                last_play_indices[player_pos] = i
 
         # Process transitions with sparse rewards
         for i, transition in enumerate(episode_transitions):
             player = transition['player']
-            final_score = final_scores[player.position - 1]
+            player_pos = player.position
+            final_score = final_scores[player_pos - 1]
 
-            # Sparse reward: ONLY final score, normalized
-            final_reward = final_score / 12
+            # Give normalized reward to the last PLAY action of each player
+            if i in last_play_indices.values():
+                reward = final_score / 12
+                done = True
+            else:
+                reward = 0.0
+                done = False
 
-            # Mark done only for last transition
-            done = (i == len(episode_transitions) - 1)
             agent.store_transition(
                 transition['state'],
                 transition['action'],
-                final_reward,
+                reward,
                 transition['value'],
                 transition['log_prob'],
                 done,
