@@ -15,12 +15,17 @@ def swish(x):
 class ActorNetwork(nn.Module):
     """Policy network that outputs action probabilities"""
 
-    def __init__(self, state_size, action_size, hidden_size=512, activation='relu'):
+    def __init__(self, state_size, action_size, hidden_size=256, activation='swish'):
         super(ActorNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, hidden_size)
-        self.fc4 = nn.Linear(hidden_size, action_size)
+        self.fc4 = nn.Linear(hidden_size, hidden_size)
+        self.fc5 = nn.Linear(hidden_size, hidden_size)
+        self.fc6 = nn.Linear(hidden_size, action_size)
+
+        # Layer normalization (applied before final layer)
+        self.layer_norm = nn.LayerNorm(hidden_size)
 
         # Set activation function
         if activation == 'swish':
@@ -42,7 +47,11 @@ class ActorNetwork(nn.Module):
         x = self.activation(self.fc1(state))
         x = self.activation(self.fc2(x))
         x = self.activation(self.fc3(x))
-        logits = self.fc4(x)
+        x = self.activation(self.fc4(x))
+        x = self.fc5(x)
+        x = self.layer_norm(x)
+        x = self.activation(x)
+        logits = self.fc6(x)
 
         # Apply action mask for invalid actions
         if action_mask is not None:
@@ -53,12 +62,14 @@ class ActorNetwork(nn.Module):
 class CriticNetwork(nn.Module):
     """Value network that estimates state values"""
 
-    def __init__(self, state_size, hidden_size=512, activation='relu'):
+    def __init__(self, state_size, hidden_size=256, activation='swish'):
         super(CriticNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, hidden_size)
-        self.fc4 = nn.Linear(hidden_size, 1)
+        self.fc4 = nn.Linear(hidden_size, hidden_size)
+        self.fc5 = nn.Linear(hidden_size, hidden_size)
+        self.fc6 = nn.Linear(hidden_size, 1)
 
         # Set activation function
         if activation == 'swish':
@@ -80,10 +91,12 @@ class CriticNetwork(nn.Module):
         x = self.activation(self.fc1(state))
         x = self.activation(self.fc2(x))
         x = self.activation(self.fc3(x))
-        return self.fc4(x)
+        x = self.activation(self.fc4(x))
+        x = self.activation(self.fc5(x))
+        return self.fc6(x)
 
 class PPOAgent:
-    def __init__(self, state_size, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='relu'):
+    def __init__(self, state_size, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='swish'):
         self.state_size = state_size
         self.action_size = action_size
 
@@ -264,6 +277,8 @@ class PPOAgent:
                 torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
                 self.critic_optimizer.step()
 
+        transitions = len(self.states)
+
         # Clear storage
         self.reset_storage()
 
@@ -271,7 +286,7 @@ class PPOAgent:
         return {
             'advantage_stats': advantage_stats,
             'value_target_stats': value_target_stats,
-            'num_transitions': len(self.states)
+            'num_transitions': transitions
         }
 
     def save(self, filepath):
