@@ -104,6 +104,72 @@ def analyze_strategic_decisions(agent, num_samples=100):
         'bury_quality_rate': bury_quality_rate
     }
 
+
+def calculate_trick_reward(trick_points):
+    """Calculate intermediate reward for trick points (1/120th of final reward scale)."""
+    return trick_points / 1440.0  # 1440 = 120 * 12
+
+
+def apply_trick_rewards(episode_transitions, current_trick_indices,
+                       trick_winner_pos, trick_reward, game):
+
+    # Apply rewards to all players who played cards in this trick
+    for trans_idx in current_trick_indices:
+        trans_player = episode_transitions[trans_idx]['player']
+
+        # Determine if this player is on the same team as the trick winner
+        if is_same_team_as_winner(trans_player, trick_winner_pos, game):
+            reward_multiplier = 1.0  # Same team as winner - positive reward
+        else:
+            reward_multiplier = -1.0  # Different team from winner - negative reward
+
+        # Apply the reward directly to the transition
+        episode_transitions[trans_idx]['intermediate_reward'] += trick_reward * reward_multiplier
+
+
+def is_same_team_as_winner(player, winner_pos, game):
+    """Check if a player is on the same team as the trick winner."""
+    if game.is_leaster:
+        return False
+
+    # Determine team membership for both players
+    player_picker_team = (player.is_picker or player.is_partner)
+
+    winner_player = game.players[winner_pos - 1]  # Convert to 0-indexed
+    winner_picker_team = (winner_player.is_picker or winner_player.is_partner)
+    return player_picker_team == winner_picker_team
+
+
+def calculate_final_reward(player_final_score):
+    """Calculate normalized final reward for a player's score."""
+    return player_final_score / 12.0
+
+
+def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player):
+    """Process and assign rewards to all transitions in the episode."""
+    for i, transition in enumerate(episode_transitions):
+        player = transition['player']
+        player_pos = player.position
+
+        # Apply final reward only to the last transition of each player
+        if i == last_transition_per_player[player_pos]:
+            final_reward = calculate_final_reward(final_scores[player_pos - 1])
+        else:
+            final_reward = 0.0
+
+        # Combine final reward with intermediate reward (already stored in transition)
+        total_reward = final_reward + transition['intermediate_reward']
+
+        # Mark episode completion only on the very last transition
+        is_episode_done = (i == len(episode_transitions) - 1)
+
+        yield {
+            'transition': transition,
+            'reward': total_reward,
+            'done': is_episode_done
+        }
+
+
 def save_extended_training_plot(training_data, save_path='extended_training_progress.png'):
     """Enhanced training plots with strategic metrics."""
     episodes = training_data['episodes']
@@ -189,7 +255,7 @@ def save_extended_training_plot(training_data, save_path='extended_training_prog
 def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_interval=5000,
                             strategic_eval_interval=10000, resume_model=None, activation='relu'):
     """
-    Extended sparse reward PPO training with strategic evaluation metrics.
+    Extended PPO training with strategic evaluation metrics.
     """
     print("🚀 Starting EXTENDED sparse reward PPO training...")
     print("="*60)
@@ -199,7 +265,8 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     print(f"  Save interval: {save_interval}")
     print(f"  Strategic evaluation interval: {strategic_eval_interval}")
     print(f"  Activation function: {activation.upper()}")
-    print("  Reward structure: SPARSE (final scores only)")
+    print("  Reward structure: final scores + intermediate trick points")
+    print("  Intermediate rewards: 1/120th of final scaled rewards (points/1440)")
     print("  Opponent: SELF-PLAY")
     print("  Evaluation: STRATEGIC DECISION QUALITY + TEAM BALANCE")
     print("  Best model: LOWEST TEAM POINT DIFFERENCE")
@@ -280,6 +347,12 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         # Store all transitions for this episode
         episode_transitions = []
 
+        # Track current trick's PLAY transition indices
+        current_trick_indices = []
+
+        # Track last transition index for each player
+        last_transition_per_player = {}
+
         # Play full game with self-play
         while not game.is_done():
             for player in game.players:
@@ -289,48 +362,66 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
                     state = player.get_state_vector()
                     action, log_prob, value = agent.act(state, valid_actions)
 
-                    # Track pick/pass decisions
+                    # Track pick/pass decisions for statistics
                     action_name = ACTIONS[action - 1]
                     if action_name == "PICK":
                         episode_picks += 1
                     elif action_name == "PASS":
                         episode_passes += 1
 
-                    # Store transition (no intermediate reward)
+                    # Store transition for this action
+                    transition_index = len(episode_transitions)
                     episode_transitions.append({
                         'player': player,
                         'state': state,
                         'action': action,
                         'log_prob': log_prob,
                         'value': value,
-                        'valid_actions': valid_actions.copy()
+                        'valid_actions': valid_actions.copy(),
+                        'intermediate_reward': 0.0  # Initialize intermediate reward
                     })
 
-                    # Execute action
+                    # Track PLAY actions for current trick
+                    if "PLAY" in action_name:
+                        current_trick_indices.append(transition_index)
+
+                    # Track last transition for this player
+                    last_transition_per_player[player.position] = transition_index
+
+                    if not game.is_leaster and game.was_trick_just_completed:
+                        trick_points = game.trick_points[game.current_trick]
+                        trick_winner = game.trick_winners[game.current_trick]
+                        trick_reward = calculate_trick_reward(trick_points)
+
+                        # Apply rewards to current trick's PLAY transitions
+                        apply_trick_rewards(
+                            episode_transitions,
+                            current_trick_indices,
+                            trick_winner,
+                            trick_reward,
+                            game
+                        )
+
+                        # Reset for next trick
+                        current_trick_indices = []
+
                     player.act(action)
+
                     valid_actions = player.get_valid_action_ids()
 
-        # Assign ONLY final scores as rewards
         final_scores = [player.get_score() for player in game.players]
         episode_scores = final_scores[:]
 
-        # Process transitions with sparse rewards
-        for i, transition in enumerate(episode_transitions):
-            player = transition['player']
-            final_score = final_scores[player.position - 1]
-
-            # Sparse reward: ONLY final score, normalized
-            final_reward = final_score / 12
-
-            # Mark done only for last transition
-            done = (i == len(episode_transitions) - 1)
+        # Process and store all transitions with appropriate rewards
+        for reward_data in process_episode_rewards(episode_transitions, final_scores, last_transition_per_player):
+            transition = reward_data['transition']
             agent.store_transition(
                 transition['state'],
                 transition['action'],
-                final_reward,
+                reward_data['reward'],
                 transition['value'],
                 transition['log_prob'],
-                done,
+                reward_data['done'],
                 transition['valid_actions']
             )
 
