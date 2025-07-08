@@ -156,7 +156,7 @@ def save_extended_training_plot(training_data, save_path='extended_training_prog
         strategic_episodes = episodes[::len(episodes)//len(training_data['bury_quality_rate'])] if len(training_data['bury_quality_rate']) > 0 else []
         if len(strategic_episodes) == len(training_data['bury_quality_rate']):
             ax4.plot(strategic_episodes, training_data['bury_quality_rate'], color='purple', alpha=0.8, marker='o')
-            ax4.axhline(y=80, color='purple', linestyle='--', alpha=0.5, label='Good Target')
+            ax4.axhline(y=90, color='purple', linestyle='--', alpha=0.5, label='Good Target')
             ax4.set_xlabel('Episode')
             ax4.set_ylabel('Good Bury Rate (%)')
             ax4.set_title('Bury Decision Quality')
