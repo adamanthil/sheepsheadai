@@ -172,7 +172,7 @@ class PPOAgent:
     def update(self, next_state=None, epochs=10, batch_size=64):
         """Update actor and critic networks using PPO"""
         if len(self.states) == 0:
-            return
+            return {}
 
         # Compute next value for GAE
         next_value = 0
@@ -183,6 +183,22 @@ class PPOAgent:
 
         # Compute advantages and returns
         advantages, returns = self.compute_gae(next_value)
+
+        # Store statistics before normalization
+        raw_advantages = advantages.copy()
+        advantage_stats = {
+            'mean': float(np.mean(raw_advantages)),
+            'std': float(np.std(raw_advantages)),
+            'min': float(np.min(raw_advantages)),
+            'max': float(np.max(raw_advantages))
+        }
+
+        value_target_stats = {
+            'mean': float(np.mean(returns)),
+            'std': float(np.std(returns)),
+            'min': float(np.min(returns)),
+            'max': float(np.max(returns))
+        }
 
         # Normalize advantages
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -250,6 +266,13 @@ class PPOAgent:
 
         # Clear storage
         self.reset_storage()
+
+        # Return training statistics
+        return {
+            'advantage_stats': advantage_stats,
+            'value_target_stats': value_target_stats,
+            'num_transitions': len(self.states)
+        }
 
     def save(self, filepath):
         """Save model parameters"""

@@ -358,7 +358,18 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         # Update model periodically
         if game_count >= update_interval:
             print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
-            agent.update(epochs=8, batch_size=256)
+            update_stats = agent.update(epochs=8, batch_size=256)
+
+            # Log advantage and value target statistics
+            if update_stats:
+                adv_stats = update_stats['advantage_stats']
+                val_stats = update_stats['value_target_stats']
+                num_transitions = update_stats['num_transitions']
+
+                print(f"   Transitions: {num_transitions}")
+                print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
+                print(f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
+
             game_count = 0
 
                 # Strategic evaluation at intervals
@@ -444,7 +455,17 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     # Final update and save
     if len(agent.states) > 0:
         print("🔄 Final model update...")
-        agent.update()
+        final_update_stats = agent.update()
+
+        # Log final advantage and value target statistics
+        if final_update_stats:
+            adv_stats = final_update_stats['advantage_stats']
+            val_stats = final_update_stats['value_target_stats']
+            num_transitions = final_update_stats['num_transitions']
+
+            print(f"   Final Transitions: {num_transitions}")
+            print(f"   Final Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
+            print(f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
 
     agent.save(f'final_extended_{activation}_ppo.pth')
 
