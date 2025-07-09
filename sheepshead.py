@@ -386,7 +386,13 @@ class Player:
 
     @property
     def is_partner(self):
+        """If this player has been revealed to be the partner"""
         return self.game.partner == self.position
+
+    @property
+    def is_secret_partner(self):
+        """If this player is partner, regardless of whether it's been revealed"""
+        return "JD" in self.hand
 
     def get_state_vector(self):
         """Integer vector of current game state.

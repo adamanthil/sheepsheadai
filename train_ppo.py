@@ -113,17 +113,33 @@ def apply_trick_rewards(episode_transitions, current_trick_indices,
                        trick_winner_pos, trick_reward, game):
 
     # Apply rewards to all players who played cards in this trick
-    for trans_idx in current_trick_indices:
-        trans_player = episode_transitions[trans_idx]['player']
+    for idx in current_trick_indices:
+        player = episode_transitions[idx]['player']
 
-        # Determine if this player is on the same team as the trick winner
-        if is_same_team_as_winner(trans_player, trick_winner_pos, game):
-            reward_multiplier = 1.0  # Same team as winner - positive reward
-        else:
-            reward_multiplier = -1.0  # Different team from winner - negative reward
+        # If this player knows they are on the same team as the trick winner, give a positive reward
+        # If they knows they are on a different team from the trick winner, give a negative reward
+        # If they don't know, give a zero reward
+
+        if player.game.partner: # Partner known
+            if is_same_team_as_winner(player, trick_winner_pos, game):
+                reward_multiplier = 1.0
+            else:
+                reward_multiplier = -1.0
+        else: # Partner unknown
+            if player.position == trick_winner_pos:
+                reward_multiplier = 1.0
+            elif player.is_secret_partner:
+                if player.game.picker == trick_winner_pos:
+                    reward_multiplier = 1.0
+                else:
+                    reward_multiplier = -1.0
+            elif not player.is_secret_partner and player.game.picker == trick_winner_pos:
+                reward_multiplier = -1.0
+            else:
+                reward_multiplier = 0.0
 
         # Apply the reward directly to the transition
-        episode_transitions[trans_idx]['intermediate_reward'] += trick_reward * reward_multiplier
+        episode_transitions[idx]['intermediate_reward'] += trick_reward * reward_multiplier
 
 
 def is_same_team_as_winner(player, winner_pos, game):
