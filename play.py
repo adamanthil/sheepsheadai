@@ -91,12 +91,16 @@ def pick_evaluator(agent):
 
         # Get action probabilities from PPO actor network
         state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
+        for action in valid_actions:
+            action_mask[action - 1] = True
+
         with torch.no_grad():
-            action_probs = agent.actor(state_tensor).softmax(dim=-1)
+            action_probs = agent.actor(state_tensor, action_mask.unsqueeze(0))
 
         # Extract pick/pass probabilities
-        pick_prob = action_probs[0][ACTION_IDS["PICK"] - 1].item() if ACTION_IDS["PICK"] in valid_actions else 0
-        pass_prob = action_probs[0][ACTION_IDS["PASS"] - 1].item() if ACTION_IDS["PASS"] in valid_actions else 0
+        pick_prob = action_probs[0][ACTION_IDS["PICK"] - 1].item()
+        pass_prob = action_probs[0][ACTION_IDS["PASS"] - 1].item()
 
         if pick_prob + pass_prob > 0:
             normalized_pick = pick_prob / (pick_prob + pass_prob)
