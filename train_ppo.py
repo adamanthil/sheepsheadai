@@ -161,33 +161,30 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         player = transition['player']
         player_pos = player.position
 
-        # Give normalized reward to the last PLAY action of each player
-        # AFTER agent has learned to pick. Before that, give final reward to all actions.
-        #
-        # Giving final reward to all actions for the full training makes reward attribution
-        # too difficult for more advanced strategies and caused network collapse on a large training run,
-        # leading to near zero logits on all actions.
-        #
-        # On the other hand, only giving the final reward to the last play action is too sparse
-        # and the network was unable to learn how to pick on initialization. Instead it gave up
-        # and learned to lose as spectacularly as possible to give the defenders the maximum points.
         final_score = final_scores[player_pos - 1]
-        if current_avg_picker_score >= 1:
+
+        if current_avg_picker_score >= 0.75:
+            # Pure sparse – only the player's last transition receives the final reward
+            give_reward = (i == last_transition_per_player[player_pos])
+            final_reward = (final_score / 12) if give_reward else 0.0
+        elif current_avg_picker_score > 0.25:
+            # Linear annealing from dense (avg = 0.25) to sparse (avg = 0.75)
+            progress = min(max((current_avg_picker_score - 0.25) / 0.5, 0.0), 1.0)  # clamp to [0,1]
             if i == last_transition_per_player[player_pos]:
+                # Always give full reward on the player's final action
                 final_reward = final_score / 12
             else:
-                final_reward = 0.0
-        elif current_avg_picker_score > 0.25:
-            # Use annealing to gradually transition to sparse rewards
-            final_reward = (final_score - (current_avg_picker_score - 0.25) / 0.75) / 12
+                # Scale reward for non-terminal actions
+                final_reward = final_score * (1.0 - progress) / 12
         else:
+            # Early training – dense reward to all actions
             final_reward = final_score / 12
 
-        # Combine final reward with intermediate reward (already stored in transition)
+        # Combine final reward with any intermediate reward already stored
         total_reward = final_reward + transition['intermediate_reward']
 
-        # Mark episode completion only on the very last transition
-        is_episode_done = (i == len(episode_transitions) - 1)
+        # Mark trajectory boundary at the player's final action
+        is_episode_done = (i == last_transition_per_player[player_pos])
 
         yield {
             'transition': transition,
@@ -206,7 +203,7 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     ax1.plot(episodes, training_data['picker_avg'], label='Picker Avg', alpha=0.8)
     ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
     ax1.axhline(y=0.25, color='blue', linestyle='--', alpha=0.5, label='Start Annealing')
-    ax1.axhline(y=1, color='green', linestyle='--', alpha=0.5, label='Sparse Rewards')
+    ax1.axhline(y=0.75, color='blue', linestyle='--', alpha=0.5, label='Sparse Rewards')
     ax1.set_xlabel('Episode')
     ax1.set_ylabel('Average Picker Score')
     ax1.set_title('Score Progression')
@@ -459,7 +456,15 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         # Update model periodically
         if game_count >= update_interval:
             print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
-            update_stats = agent.update(epochs=8, batch_size=256)
+
+            # linear entropy decay from 0.01 → 0.002 over training
+            entropy_start, entropy_end = 0.01, 0.002
+            decay_fraction = min(episode / num_episodes, 1.0)
+            agent.entropy_coeff = entropy_start + (entropy_end - entropy_start) * decay_fraction
+
+            # pass value of last state stored to GAE
+            last_state_for_gae = agent.states[-1] if agent.states else None
+            update_stats = agent.update(next_state=last_state_for_gae, epochs=8, batch_size=256)
 
             # Log advantage and value target statistics
             if update_stats:
