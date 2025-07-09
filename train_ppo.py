@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Extended long-term sparse reward PPO training for Sheepshead.
-Builds on the successful sparse_long approach with strategic evaluation metrics.
+Extended long-term PPO training for Sheepshead.
 """
 
 import torch
@@ -9,7 +8,7 @@ import numpy as np
 import random
 import time
 import os
-from collections import deque, defaultdict, Counter
+from collections import deque
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 
@@ -170,15 +169,13 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         }
 
 
-def save_extended_training_plot(training_data, save_path='extended_training_progress.png'):
+def save_training_plot(training_data, save_path='training_progress.png'):
     """Enhanced training plots with strategic metrics."""
     episodes = training_data['episodes']
 
     fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(15, 15))
 
     # Score progression
-    ax1.plot(episodes, training_data['recent_avg'], label='Recent (200)', alpha=0.7)
-    ax1.plot(episodes, training_data['overall_avg'], label='Overall (2000)', alpha=0.8)
     ax1.plot(episodes, training_data['picker_avg'], label='Picker Avg', alpha=0.8)
     ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
     ax1.set_xlabel('Episode')
@@ -252,14 +249,14 @@ def save_extended_training_plot(training_data, save_path='extended_training_prog
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
 
-def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_interval=5000,
-                            strategic_eval_interval=10000, resume_model=None, activation='relu'):
+def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
+                            strategic_eval_interval=10000, resume_model=None, activation='swish'):
     """
-    Extended PPO training with strategic evaluation metrics.
+    PPO training with strategic evaluation metrics.
     """
-    print("🚀 Starting EXTENDED sparse reward PPO training...")
+    print("🚀 Starting PPO training...")
     print("="*60)
-    print("EXTENDED TRAINING CONFIGURATION:")
+    print("TRAINING CONFIGURATION:")
     print(f"  Episodes: {num_episodes:,}")
     print(f"  Update interval: {update_interval}")
     print(f"  Save interval: {save_interval}")
@@ -291,27 +288,14 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         except Exception as e:
             print(f"❌ Could not load {resume_model}: {e}")
     else:
-        # Try to load the best existing model
-        for model_name in ['final_sparse_long_ppo.pth', 'best_sparse_long_ppo.pth']:
-            try:
-                agent.load(model_name)
-                print(f"✅ Loaded existing {model_name} for continuation")
-                break
-            except:
-                continue
-        else:
-            print("🆕 Starting fresh extended training")
+        print("🆕 Starting fresh training")
 
-    # Enhanced training tracking
-    all_scores = deque(maxlen=3000)
     picker_scores = deque(maxlen=3000)
-    recent_scores = deque(maxlen=300)
     pick_decisions = deque(maxlen=3000)
     pass_decisions = deque(maxlen=3000)
     team_point_differences = deque(maxlen=3000)
     best_team_difference = float('inf')  # Lower is better (smaller point difference)
 
-    # Extended training data for plotting
     training_data = {
         'episodes': [],
         'recent_avg': [],
@@ -328,14 +312,14 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     }
 
     # Create checkpoint directory with activation function suffix
-    checkpoint_dir = f'checkpoints_extended_{activation}'
+    checkpoint_dir = f'checkpoints_{activation}'
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     start_time = time.time()
     game_count = 0
     last_checkpoint_time = start_time
 
-    print(f"\n🎮 Beginning extended training... (target: {num_episodes:,} episodes)")
+    print(f"\n🎮 Beginning training... (target: {num_episodes:,} episodes)")
     print("-" * 60)
 
     for episode in range(start_episode + 1, num_episodes + 1):
@@ -426,9 +410,7 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             )
 
         # Track statistics
-        avg_score = np.mean(episode_scores)
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
-        pick_rate = episode_picks / (episode_picks + episode_passes) * 100 if (episode_picks + episode_passes) > 0 else 0
 
         # Calculate team point difference (picker team points - defender team points)
         if game.picker and not game.is_leaster:
@@ -438,9 +420,7 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
         else:
             team_point_diff = 0  # No team difference in leaster games
 
-        all_scores.append(avg_score)
         picker_scores.append(picker_score)
-        recent_scores.append(avg_score)
         pick_decisions.append(episode_picks)
         pass_decisions.append(episode_passes)
         team_point_differences.append(team_point_diff)
@@ -481,17 +461,13 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
 
         # Progress reporting and data collection
         if episode % 1000 == 0:
-            current_avg = np.mean(all_scores) if all_scores else 0
             current_picker = np.mean(picker_scores) if picker_scores else 0
-            recent_avg = np.mean(recent_scores) if recent_scores else 0
             current_pick_rate = np.mean([p/(p+pa)*100 for p, pa in zip(pick_decisions, pass_decisions) if p+pa > 0]) if pick_decisions else 0
             current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
             elapsed = time.time() - start_time
 
             # Collect data for plotting
             training_data['episodes'].append(episode)
-            training_data['recent_avg'].append(recent_avg)
-            training_data['overall_avg'].append(current_avg)
             training_data['picker_avg'].append(current_picker)
             training_data['pick_rate'].append(current_pick_rate)
             training_data['learning_rate'].append(agent.actor_optimizer.param_groups[0]['lr'])
@@ -505,8 +481,6 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             games_per_min = episode / (elapsed / 60) if elapsed > 0 else 0
 
             print(f"📊 Episode {episode:,}/{num_episodes:,} ({episode/num_episodes*100:.1f}%)")
-            print(f"   Recent avg (300): {recent_avg:+.3f}")
-            print(f"   Overall avg (3000): {current_avg:+.3f}")
             print(f"   Picker avg: {current_picker:+.3f}")
             print(f"   Team point diff: {current_team_diff:+.1f}")
             print(f"   Pick rate: {current_pick_rate:.1f}%")
@@ -518,18 +492,18 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             # We want the absolute value to be as small as possible
             if current_team_diff < best_team_difference:
                 best_team_difference = current_team_diff
-                agent.save(f'best_extended_{activation}_ppo.pth')
+                agent.save(f'best_{activation}_ppo.pth')
                 print(f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved.")
 
         # Save regular checkpoints
         if episode % save_interval == 0:
-            checkpoint_path = f'{checkpoint_dir}/extended_{activation}_checkpoint_{episode}.pth'
+            checkpoint_path = f'{checkpoint_dir}/{activation}_checkpoint_{episode}.pth'
             agent.save(checkpoint_path)
 
             # Save enhanced training plot
             if len(training_data['episodes']) > 10:
                 plot_path = f'{checkpoint_dir}/training_progress_{episode}.png'
-                save_extended_training_plot(training_data, plot_path)
+                save_training_plot(training_data, plot_path)
 
             # Calculate time since last checkpoint
             checkpoint_time = time.time()
@@ -558,14 +532,14 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
             print(f"   Final Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
             print(f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
 
-    agent.save(f'final_extended_{activation}_ppo.pth')
+    agent.save(f'final_{activation}_ppo.pth')
 
     # Save final enhanced training plot
     if len(training_data['episodes']) > 0:
-        save_extended_training_plot(training_data, f'final_extended_{activation}_training.png')
+        save_training_plot(training_data, f'final_{activation}_training.png')
 
     total_time = time.time() - start_time
-    print(f"\n🎉 Extended sparse training completed!")
+    print("\n🎉 Training completed!")
     print(f"   Total time: {total_time/60:.1f} minutes ({total_time/3600:.1f} hours)")
     print(f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}")
     print(f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}")
@@ -574,7 +548,7 @@ def train_sparse_ppo_extended(num_episodes=300000, update_interval=2048, save_in
     print(f"   Training speed: {(num_episodes-start_episode)/(total_time/60):.1f} episodes/min")
 
 def main():
-    parser = ArgumentParser(description="Extended sparse reward PPO training for Sheepshead")
+    parser = ArgumentParser(description="Sparse reward PPO training for Sheepshead")
     parser.add_argument("--episodes", type=int, default=300000,
                        help="Number of training episodes (default: 300,000)")
     parser.add_argument("--update-interval", type=int, default=2048,
@@ -585,8 +559,8 @@ def main():
                        help="Number of episodes between strategic evaluations")
     parser.add_argument("--resume", type=str, default=None,
                        help="Model file to resume from")
-    parser.add_argument("--activation", type=str, default='relu', choices=['relu', 'swish'],
-                       help="Activation function to use (default: relu)")
+    parser.add_argument("--activation", type=str, default='swish', choices=['relu', 'swish'],
+                       help="Activation function to use (default: swish)")
 
     args = parser.parse_args()
 
@@ -598,7 +572,7 @@ def main():
     # Ensure matplotlib uses a non-interactive backend
     plt.switch_backend('Agg')
 
-    train_sparse_ppo_extended(
+    train_ppo(
         args.episodes,
         args.update_interval,
         args.save_interval,
