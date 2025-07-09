@@ -112,6 +112,8 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     # Score progression
     ax1.plot(episodes, training_data['picker_avg'], label='Picker Avg', alpha=0.8)
     ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+    ax1.axhline(y=0.25, color='blue', linestyle='--', alpha=0.5, label='Start Annealing')
+    ax1.axhline(y=1, color='green', linestyle='--', alpha=0.5, label='Sparse Rewards')
     ax1.set_xlabel('Episode')
     ax1.set_ylabel('Average Picker Score')
     ax1.set_title('Score Progression')
@@ -228,6 +230,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     pass_decisions = deque(maxlen=3000)
     team_point_differences = deque(maxlen=3000)
     best_team_difference = float('inf')  # Lower is better (smaller point difference)
+    current_avg_picker_score = float('-inf')
 
     training_data = {
         'episodes': [],
@@ -313,12 +316,25 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             final_score = final_scores[player_pos - 1]
 
             # Give normalized reward to the last PLAY action of each player
-            if i in last_play_indices.values():
-                reward = final_score / 12
-                done = True
+            # AFTER agent has learned to pick. Before that, give final reward to all actions.
+            #
+            # Giving final reward to all actions for the full training makes reward attribution
+            # too difficult for more advanced strategies and caused network collapse on a large training run,
+            # leading to near zero logits on all actions.
+            #
+            # On the other hand, only giving the final reward to the last play action is too sparse
+            # and the network was unable to learn how to pick on initialization. Instead it gave up
+            # and learned to lose as spectacularly as possible to give the defenders the maximum points.
+            if current_avg_picker_score >= 1:
+                if i in last_play_indices.values():
+                    reward = final_score / 12
+                else:
+                    reward = 0.0
+            elif current_avg_picker_score > 0.25:
+                # Use annealing to gradually transition to sparse rewards
+                reward = (final_score - (current_avg_picker_score - 0.25) / 0.75) / 12
             else:
-                reward = 0.0
-                done = False
+                reward = final_score / 12
 
             agent.store_transition(
                 transition['state'],
@@ -326,7 +342,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                 reward,
                 transition['value'],
                 transition['log_prob'],
-                done,
+                True if i in last_play_indices.values() else False,
                 transition['valid_actions']
             )
 
@@ -382,14 +398,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
         # Progress reporting and data collection
         if episode % 1000 == 0:
-            current_picker = np.mean(picker_scores) if picker_scores else 0
+            current_avg_picker_score = np.mean(picker_scores) if picker_scores else 0
             current_pick_rate = np.mean([p/(p+pa)*100 for p, pa in zip(pick_decisions, pass_decisions) if p+pa > 0]) if pick_decisions else 0
             current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
             elapsed = time.time() - start_time
 
             # Collect data for plotting
             training_data['episodes'].append(episode)
-            training_data['picker_avg'].append(current_picker)
+            training_data['picker_avg'].append(current_avg_picker_score)
             training_data['pick_rate'].append(current_pick_rate)
             training_data['learning_rate'].append(agent.actor_optimizer.param_groups[0]['lr'])
             training_data['time_elapsed'].append(elapsed)
@@ -402,7 +418,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             games_per_min = episode / (elapsed / 60) if elapsed > 0 else 0
 
             print(f"📊 Episode {episode:,}/{num_episodes:,} ({episode/num_episodes*100:.1f}%)")
-            print(f"   Picker avg: {current_picker:+.3f}")
+            print(f"   Picker avg: {current_avg_picker_score:+.3f}")
             print(f"   Team point diff: {current_team_diff:+.1f}")
             print(f"   Pick rate: {current_pick_rate:.1f}%")
             print(f"   Training speed: {games_per_min:.1f} games/min")
