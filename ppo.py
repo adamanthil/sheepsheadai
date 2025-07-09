@@ -142,13 +142,16 @@ class PPOAgent:
             action_probs = self.actor(state, action_mask)
             value = self.critic(state)
 
+        # Create distribution for consistent log probability calculation
+        dist = torch.distributions.Categorical(action_probs)
+
         if deterministic:
             action = torch.argmax(action_probs, dim=1)
         else:
-            dist = torch.distributions.Categorical(action_probs)
             action = dist.sample()
 
-        log_prob = torch.log(action_probs.squeeze(0)[action.item()] + 1e-8)
+        # Get log probability from the distribution for consistency
+        log_prob = dist.log_prob(action)
 
         return action.item() + 1, log_prob.item(), value.item()  # Convert back to 1-indexed
 
@@ -252,20 +255,15 @@ class PPOAgent:
                 surr1 = ratios * batch_advantages
                 surr2 = torch.clamp(ratios, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * batch_advantages
 
-                # Actor loss
-                actor_loss = -torch.min(surr1, surr2).mean()
+                # Actor loss (includes entropy bonus for exploration)
+                actor_loss = -torch.min(surr1, surr2).mean() - self.entropy_coeff * entropy
 
                 # Critic loss - ensure both tensors have same shape
                 critic_loss = F.mse_loss(current_values, batch_returns.view(-1))
 
-                # Total loss
-                total_loss = (actor_loss +
-                             self.value_loss_coeff * critic_loss -
-                             self.entropy_coeff * entropy)
-
                 # Update actor
                 self.actor_optimizer.zero_grad()
-                actor_loss.backward(retain_graph=True)
+                actor_loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
                 self.actor_optimizer.step()
 
