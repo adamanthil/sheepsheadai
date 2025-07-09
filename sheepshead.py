@@ -214,6 +214,7 @@ class Game:
         self.cards_played = 0 # Number of cards played this trick
         self.current_suit = ""
         self.current_trick = 0
+        self.was_trick_just_completed = False
 
         # Setup players and deal
         for i in range(5):
@@ -385,7 +386,13 @@ class Player:
 
     @property
     def is_partner(self):
+        """If this player has been revealed to be the partner"""
         return self.game.partner == self.position
+
+    @property
+    def is_secret_partner(self):
+        """If this player is partner, regardless of whether it's been revealed"""
+        return "JD" in self.hand
 
     def get_state_vector(self):
         """Integer vector of current game state.
@@ -571,9 +578,12 @@ class Player:
                 self.game.last_player = winner - 1
                 self.game.current_suit = ""
                 self.game.cards_played = 0
+                self.game.was_trick_just_completed = True
 
                 if self.game.current_trick < 5:
                     self.game.current_trick += 1
+            elif self.game.was_trick_just_completed:
+                self.game.was_trick_just_completed = False
 
         return True
 
