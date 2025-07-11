@@ -33,6 +33,8 @@ def calculate_hand_strength(hand):
     for card in hand:
         if card[0] == 'Q':  # Queens are very strong
             strength += 4
+        elif card == 'JD':  # Jack of Diamonds should discourage picking
+            strength -= 1
         elif card[0] == 'J':  # Jacks are strong
             strength += 2
         elif card in TRUMP:  # Other trump cards
