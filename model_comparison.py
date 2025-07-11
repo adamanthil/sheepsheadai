@@ -6,6 +6,10 @@ This script runs simulations of Sheepshead games with different models
 playing against each other. It provides comprehensive statistical analysis
 including mean, median, mode, standard deviation, and statistical significance tests.
 
+For fair comparison, only ONE agent per model is tracked for statistics, with
+that agent rotating through all 5 positions equally over time. This eliminates
+bias from models controlling different numbers of positions.
+
 Usage:
     python model_comparison.py --games 10000 --model1 path/to/model1.pth --model2 path/to/model2.pth
 """
@@ -80,31 +84,49 @@ class ModelComparisonSimulator:
         self.results: List[GameResult] = []
         self.model_scores: Dict[str, List[int]] = defaultdict(list)
 
-        # Position rotation tracking
-        self.position_rotation_cycle = 5  # Rotate every 5 games to ensure equal distribution
+        # Position rotation tracking for tracked agents
+        self.position_rotation_cycle = 5  # Tracked agents rotate through all 5 positions
 
-    def get_rotated_positions(self, game_id: int) -> Dict[str, List[int]]:
-        """Get rotated position assignments for a given game."""
-        rotation_offset = game_id % self.position_rotation_cycle
+    def get_rotated_positions(self, game_id: int) -> Tuple[Dict[str, List[int]], Dict[str, int]]:
+        """Get rotated position assignments and tracked positions for a given game.
 
-        # Start with positions 1-5
-        positions = list(range(1, 6))
+        Returns:
+            position_assignments: Dict mapping model names to their assigned positions
+            tracked_positions: Dict mapping model names to their tracked position (for stats)
+        """
+        rotation_offset = game_id % 5  # 5-game rotation cycle for tracked agents
 
-        # Rotate positions by offset
-        rotated_positions = positions[rotation_offset:] + positions[:rotation_offset]
+                # Assign tracked positions - these rotate through all 5 positions
+        tracked_positions = {}
+        for i, config in enumerate(self.model_configs):
+            tracked_positions[config.name] = ((rotation_offset + i) % 5) + 1
 
-        # Assign positions to models
+        # Now assign all positions ensuring no overlap
         position_assignments = {}
-        pos_index = 0
+        used_positions = set()
 
+        # First pass: assign tracked positions
         for config in self.model_configs:
-            assigned_positions = []
-            for _ in range(config.num_positions):
-                assigned_positions.append(rotated_positions[pos_index])
-                pos_index += 1
-            position_assignments[config.name] = assigned_positions
+            tracked_pos = tracked_positions[config.name]
+            used_positions.add(tracked_pos)
 
-        return position_assignments
+        # Second pass: assign all positions including non-tracked ones
+        for config in self.model_configs:
+            model_positions = []
+            tracked_pos = tracked_positions[config.name]
+            model_positions.append(tracked_pos)
+
+            # Fill remaining positions for this model
+            available_positions = [p for p in range(1, 6) if p not in used_positions]
+            for _ in range(config.num_positions - 1):
+                if available_positions:
+                    pos = available_positions.pop(0)
+                    model_positions.append(pos)
+                    used_positions.add(pos)
+
+            position_assignments[config.name] = model_positions
+
+        return position_assignments, tracked_positions
 
     def load_models(self):
         """Load all models from their checkpoint files."""
@@ -125,9 +147,11 @@ class ModelComparisonSimulator:
         print("=" * 60)
 
         # Print model assignment info
-        print("Model assignments (positions will rotate every 5 games):")
+        print("Model assignments (ONLY tracked agent statistics are recorded for fair comparison):")
         for config in self.model_configs:
-            print(f"  {config.name}: Controls {config.num_positions} position(s)")
+            print(f"  {config.name}: Controls {config.num_positions} position(s), tracks 1 agent")
+        print("  • Each model's tracked agent rotates through all 5 positions equally")
+        print("  • Non-tracked agents still play but don't contribute to statistics")
         print()
 
         start_time = time.time()
@@ -142,16 +166,15 @@ class ModelComparisonSimulator:
                       f"- {games_per_sec:.1f} games/sec - ETA: {eta:.0f}s")
 
             # Get rotated positions for this game
-            position_assignments = self.get_rotated_positions(game_id)
+            position_assignments, tracked_positions = self.get_rotated_positions(game_id)
 
             result = self.play_game(game_id, position_assignments)
             self.results.append(result)
 
-            # Track scores by model using the rotated positions
+            # Track scores ONLY for the tracked agent from each model (fair comparison)
             for config in self.model_configs:
-                model_positions = position_assignments[config.name]
-                for pos in model_positions:
-                    self.model_scores[config.name].append(result.scores[pos - 1])
+                tracked_pos = tracked_positions[config.name]
+                self.model_scores[config.name].append(result.scores[tracked_pos - 1])
 
         elapsed = time.time() - start_time
         print(f"\n✅ Simulation completed in {elapsed:.1f}s ({self.num_games/elapsed:.1f} games/sec)")
@@ -233,7 +256,7 @@ class ModelComparisonSimulator:
                 'p25': percentiles[1],
                 'p75': percentiles[2],
                 'p90': percentiles[3],
-                'num_games': len(scores)
+                'num_games': len(scores)  # Games played by tracked agent
             }
 
         # Print summary statistics
@@ -387,7 +410,8 @@ class ModelComparisonSimulator:
                     'is_leaster': result.is_leaster,
                     'picker_points': result.picker_points,
                     'defender_points': result.defender_points,
-                    'position_assignments': self.get_rotated_positions(result.game_id)
+                    'position_assignments': self.get_rotated_positions(result.game_id)[0],
+                    'tracked_positions': self.get_rotated_positions(result.game_id)[1]
                 }
                 for result in self.results
             ],
@@ -408,14 +432,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Compare two models with 10k games (2 positions vs 3 positions)
+  # Compare two models with 10k games (only 1 tracked agent per model for fair comparison)
   python model_comparison.py --games 10000 \\
     --model1-path checkpoints_swish/swish_checkpoint_1000000.pth \\
     --model1-positions 2 \\
     --model2-path checkpoints_swish/swish_checkpoint_500000.pth \\
     --model2-positions 3
 
-  # Compare with custom names (3 positions vs 2 positions)
+  # Compare with custom names (tracked agents rotate through all positions)
   python model_comparison.py --games 5000 \\
     --model1-path final_swish_ppo.pth --model1-name "Final Model" --model1-positions 3 \\
     --model2-path best_swish_ppo.pth --model2-name "Best Model" --model2-positions 2
