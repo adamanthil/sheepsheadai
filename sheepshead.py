@@ -398,7 +398,7 @@ class Player:
         """Integer vector of current game state.
         Values in order:
             [0] player position
-            [1] last position to pass on picking blind (or 6 if leaster mode)
+            [1] last position to pass on picking blind
             [2] position of picker
             [3] position of partner (if known)
             [4] alone called (bool)
@@ -417,8 +417,7 @@ class Player:
         """
 
         state = [self.position]
-        # Use value 6 to indicate leaster mode (since normal last_passed values are 0-5)
-        state.append(6 if self.game.is_leaster else self.last_passed)
+        state.append(self.last_passed) # 5 if leaster mode. Everyone passed.
         state.append(self.picker)
         partner = self.partner if self.partner else "JD" in self.hand
         state.append(partner)
