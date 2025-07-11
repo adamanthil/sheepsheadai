@@ -17,12 +17,12 @@ def calculate_hand_strength(hand):
         if card[0] == 'Q':  # Queens are very strong
             strength += 4
         elif card[0] == 'J':  # Jacks are strong
-            strength += 3
-        elif card in TRUMP:  # Other trump cards
             strength += 2
-        elif card[0] == 'A':  # Aces are good
+        elif card in TRUMP:  # Other trump cards
             strength += 1
-        elif card[0:2] == '10':  # Tens are okay
+        elif card[0] == 'A':  # Aces are okay
+            strength += 0.5
+        elif card[0:2] == '10':  # Tens are okayish
             strength += 0.5
     return strength
 
@@ -50,12 +50,13 @@ def test_final_model(model_path):
         (["8H", "9H", "10H", "KH", "AH", "7C"], "Weak - No trump"),
 
         # Medium hands (borderline picks)
-        (["JC", "8D", "9D", "KD", "AC", "10S"], "Medium - One jack + some trump"),
-        (["QH", "7D", "8D", "KC", "AS", "10H"], "Medium - One queen + little trump"),
+        (["JC", "8D", "9D", "KD", "AC", "10S"], "Tempting but no - Jack of Clubs + 3 other trump"),
+        (["QD", "JH", "10D", "9D", "7S", "8C"], "Red death - 1 queen + 2 Jack + 2 little trump"),
+        (["QS", "7D", "8D", "9D", "AS", "10H"], "Medium - Q spades + 3 little trump"),
 
         # Strong hands (should often pick)
-        (["QC", "JD", "AD", "10D", "KD", "9D"], "Strong - Queen + jack + trump"),
-        (["QS", "QH", "JC", "JS", "AD", "10D"], "Very Strong - 2 queens + 2 jacks"),
+        (["QC", "JD", "AD", "10D", "KD", "9H"], "Strong - Queen + jack + only 1 fail. Forced alone"),
+        (["QS", "QH", "JC", "JS", "AC", "10S"], "Strong - 2 queens + 2 jacks"),
         (["QC", "QS", "QH", "JD", "JC", "JS"], "Extremely Strong - 3 queens + 3 jacks"),
     ]
 
@@ -95,12 +96,12 @@ def test_final_model(model_path):
         pick_probs.append(pick_percentage)
         hand_strengths.append(strength)
 
-        print(f"{description:30} | Strength: {strength:4.1f} | Pick: {pick_percentage:5.1f}%")
+        print(f"{description:60} | Strength: {strength:4.1f} | Pick: {pick_percentage:5.1f}%")
 
     # Calculate correlation
     correlation = np.corrcoef(hand_strengths, pick_probs)[0, 1] if len(hand_strengths) > 1 else 0
 
-    print("-" * 60)
+    print("-" * 80)
     print("📊 CORRELATION ANALYSIS:")
     print(f"Hand Strength vs Pick Probability: {correlation:.3f}")
     print()
