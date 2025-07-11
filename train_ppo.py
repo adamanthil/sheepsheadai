@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 
 from ppo import PPOAgent
-from sheepshead import Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP
+from sheepshead import TRUMP_POWER, Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP
 
 def analyze_strategic_decisions(agent, num_samples=100):
     """Analyze strategic decision quality instead of random opponent evaluation."""
@@ -366,12 +366,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
         # Play full game with self-play
         while not game.is_done():
+            play_action_count = 0
             for player in game.players:
                 valid_actions = player.get_valid_action_ids()
 
                 while valid_actions:
                     state = player.get_state_vector()
                     action, log_prob, value = agent.act(state, valid_actions)
+                    transition_index = len(episode_transitions)
 
                     # Track pick/pass decisions for statistics
                     action_name = ACTIONS[action - 1]
@@ -380,8 +382,19 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     elif action_name == "PASS":
                         episode_passes += 1
 
+                    intermedate_reward = 0.0
+                    # Track PLAY actions for current trick
+                    if "PLAY" in action_name:
+                        current_trick_indices.append(transition_index)
+
+                        # Add negative reward for leading trump as a defender
+                        if play_action_count == 0:
+                            card = action_name[5:]
+                            if not player.is_picker and not player.is_partner and not player.is_secret_partner and card in TRUMP:
+                                intermedate_reward = -0.1
+                        play_action_count += 1
+
                     # Store transition for this action
-                    transition_index = len(episode_transitions)
                     episode_transitions.append({
                         'player': player,
                         'state': state,
@@ -389,14 +402,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         'log_prob': log_prob,
                         'value': value,
                         'valid_actions': valid_actions.copy(),
-                        'intermediate_reward': 0.0  # Initialize intermediate reward
+                        'intermediate_reward': intermedate_reward,
                     })
 
-                    # Track PLAY actions for current trick
-                    if "PLAY" in action_name:
-                        current_trick_indices.append(transition_index)
-
-                    # Track last transition for this player
+                    # # Track last transition for this player
                     last_transition_per_player[player.position] = transition_index
 
                     if not game.is_leaster and game.was_trick_just_completed:
@@ -415,6 +424,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
                         # Reset for next trick
                         current_trick_indices = []
+                        play_action_count = 0
 
                     player.act(action)
 
