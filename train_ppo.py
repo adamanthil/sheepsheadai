@@ -109,12 +109,26 @@ def calculate_trick_reward(trick_points):
     return trick_points / 1440.0  # 1440 = 120 * 12
 
 
-def apply_trick_rewards(episode_transitions, current_trick_indices,
-                       trick_winner_pos, trick_reward, game):
+def apply_trick_rewards(trick_transitions, trick_winner_pos, trick_reward, game):
+
+    """Assign intermediate trick rewards to the *specific transitions* that
+    participated in the trick.
+
+    Parameters
+    ----------
+    trick_transitions : list[dict]
+        The list of transition objects (one per PLAY action in the trick).
+    trick_winner_pos : int
+        Position (1-based) of the player who won the trick.
+    trick_reward : float
+        Base reward to be distributed.
+    game : Game
+        The current game instance (for team membership logic).
+    """
 
     # Apply rewards to all players who played cards in this trick
-    for idx in current_trick_indices:
-        player = episode_transitions[idx]['player']
+    for transition in trick_transitions:
+        player = transition['player']
 
         # If this player knows they are on the same team as the trick winner, give a positive reward
         # If they knows they are on a different team from the trick winner, give a negative reward
@@ -139,7 +153,7 @@ def apply_trick_rewards(episode_transitions, current_trick_indices,
                 reward_multiplier = 0.0
 
         # Apply the reward directly to the transition
-        episode_transitions[idx]['intermediate_reward'] += trick_reward * reward_multiplier
+        transition['intermediate_reward'] += trick_reward * reward_multiplier
 
 
 def is_same_team_as_winner(player, winner_pos, game):
@@ -355,14 +369,11 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         episode_picks = 0
         episode_passes = 0
 
-        # Store all transitions for this episode
-        episode_transitions = []
+        # Store all transitions for this episode independently for each player
+        episode_transitions = {player.position: [] for player in game.players}
 
-        # Track current trick's PLAY transition indices
-        current_trick_indices = []
-
-        # Track last transition index for each player
-        last_transition_per_player = {}
+        # Track PLAY transitions for the current trick
+        current_trick_transitions = []
 
         # Play full game with self-play
         while not game.is_done():
@@ -373,7 +384,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                 while valid_actions:
                     state = player.get_state_vector()
                     action, log_prob, value = agent.act(state, valid_actions)
-                    transition_index = len(episode_transitions)
 
                     # Track pick/pass decisions for statistics
                     action_name = ACTIONS[action - 1]
@@ -383,19 +393,30 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         episode_passes += 1
 
                     intermedate_reward = 0.0
-                    # Track PLAY actions for current trick
-                    if "PLAY" in action_name:
-                        current_trick_indices.append(transition_index)
 
-                        # Add negative reward for leading trump as a defender
+                    # Track PLAY actions for current trick and apply negative
+                    # reward when a defender leads trump.
+                    if "PLAY" in action_name:
+                        # Placeholder for transition reference (filled after creation)
+                        current_trick_transitions.append(None)
+
+                        # If this is the first card of the trick, the current
+                        # player is the leader.
                         if play_action_count == 0:
                             card = action_name[5:]
-                            if not player.is_picker and not player.is_partner and not player.is_secret_partner and card in TRUMP:
-                                intermedate_reward = -0.1
+                            if (
+                                not player.is_picker
+                                and not player.is_partner
+                                and not player.is_secret_partner
+                                and card in TRUMP
+                            ):
+                                intermedate_reward = -0.1  # discourage leading trump as defender
+
+                        # Increment cards played in current trick
                         play_action_count += 1
 
                     # Store transition for this action
-                    episode_transitions.append({
+                    transition_dict = {
                         'player': player,
                         'state': state,
                         'action': action,
@@ -403,10 +424,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         'value': value,
                         'valid_actions': valid_actions.copy(),
                         'intermediate_reward': intermedate_reward,
-                    })
+                    }
 
-                    # # Track last transition for this player
-                    last_transition_per_player[player.position] = transition_index
+                    # Append to the player's list
+                    episode_transitions[player.position].append(transition_dict)
+
+                    # Replace the placeholder with the actual reference
+                    if "PLAY" in action_name:
+                        current_trick_transitions[-1] = transition_dict
 
                     if not game.is_leaster and game.was_trick_just_completed:
                         trick_points = game.trick_points[game.current_trick]
@@ -415,15 +440,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
                         # Apply rewards to current trick's PLAY transitions
                         apply_trick_rewards(
-                            episode_transitions,
-                            current_trick_indices,
+                            current_trick_transitions,
                             trick_winner,
                             trick_reward,
-                            game
+                            game,
                         )
 
                         # Reset for next trick
-                        current_trick_indices = []
+                        current_trick_transitions = []
                         play_action_count = 0
 
                     player.act(action)
@@ -433,8 +457,23 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         final_scores = [player.get_score() for player in game.players]
         episode_scores = final_scores[:]
 
+        # ---------------------------------------------
+        # Flatten per-player trajectories for PPO update
+        # ---------------------------------------------
+        flat_episode_transitions = []
+        last_transition_per_player = {}
+
+        for pos in episode_transitions:
+            player_transitions = episode_transitions[pos]
+            if not player_transitions:
+                continue
+
+            start_idx = len(flat_episode_transitions)
+            flat_episode_transitions.extend(player_transitions)
+            last_transition_per_player[pos] = start_idx + len(player_transitions) - 1
+
         # Process and store all transitions with appropriate rewards
-        for reward_data in process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, current_avg_picker_score):
+        for reward_data in process_episode_rewards(flat_episode_transitions, final_scores, last_transition_per_player, current_avg_picker_score):
             transition = reward_data['transition']
             agent.store_transition(
                 transition['state'],
