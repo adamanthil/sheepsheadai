@@ -150,8 +150,8 @@ class ModelComparisonSimulator:
             # Track scores by model using the rotated positions
             for config in self.model_configs:
                 model_positions = position_assignments[config.name]
-                model_total_score = sum(result.scores[pos - 1] for pos in model_positions)
-                self.model_scores[config.name].append(model_total_score)
+                for pos in model_positions:
+                    self.model_scores[config.name].append(result.scores[pos - 1])
 
         elapsed = time.time() - start_time
         print(f"\n✅ Simulation completed in {elapsed:.1f}s ({self.num_games/elapsed:.1f} games/sec)")
