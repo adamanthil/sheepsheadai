@@ -46,7 +46,7 @@ def calculate_hand_strength(hand):
     return strength
 
 
-def test_final_model(model_path, random_hands):
+def test_final_model(model_path, position, random_hands):
     """Test if the final model learned proper hand strength correlations."""
 
     print("🎯 TESTING FINAL TRAINED MODEL")
@@ -94,8 +94,8 @@ def test_final_model(model_path, random_hands):
     for hand, description in test_hands:
         # Setup game state for pick decision
         game = Game()
-        player = Player(game, 1, hand)  # Player 1's turn to pick
-        game.last_passed = 0  # It's player 1's turn
+        player = Player(game, position, hand)
+        game.last_passed = position - 1
 
         # Get state and valid actions
         state = player.get_state_vector()
@@ -131,12 +131,14 @@ def test_final_model(model_path, random_hands):
     for hand in sorted(hand_data, key=lambda x: x["strength"]):
         description = hand["description"] if hand["description"] else pretty_card_list(hand["hand"])
         padded_description = pad_text_with_ansi(description, 50)
-        print(f"{padded_description} | Strength: {hand['strength']:4.1f} | Pick: {hand['pick_percentage']:5.1f}%")
+        checkbox = "\033[92m✅\033[0m" if hand["pick_percentage"] > 50 else ""
+        print(f"{padded_description} | Strength: {hand['strength']:4.1f} | Pick: {hand['pick_percentage']:5.1f}% {checkbox}")
 
     # Calculate correlation
     correlation = np.corrcoef([hand["strength"] for hand in hand_data], [hand["pick_percentage"] for hand in hand_data])[0, 1] if len(hand_data) > 1 else 0
 
     print("-" * 80)
+    print(f"POSITION: {position}")
     print("📊 CORRELATION ANALYSIS:")
     print(f"Hand Strength vs Pick Probability: {correlation:.3f}")
     print()
@@ -175,10 +177,12 @@ def test_final_model(model_path, random_hands):
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Test picking of trained model")
-    parser.add_argument("--model", type=str, default="final_swish_ppo.pth",
+    parser.add_argument("-m", "--model", type=str, default="final_swish_ppo.pth",
                        help="Path to the trained model")
-    parser.add_argument("--random", action="store_true",
+    parser.add_argument("-p", "--position", type=int, default=1,
+                       help="Position of the player to test")
+    parser.add_argument("-r", "--random", action="store_true",
                        help="Whether to use random hands")
     args = parser.parse_args()
 
-    test_final_model(args.model, args.random)
+    test_final_model(args.model, args.position, args.random)
