@@ -156,6 +156,14 @@ def apply_trick_rewards(trick_transitions, trick_winner_pos, trick_reward, game)
         transition['intermediate_reward'] += trick_reward * reward_multiplier
 
 
+def apply_leaster_trick_rewards(trick_transitions, trick_winner_pos, trick_reward):
+    """Apply negative reward for taking points in leaster mode."""
+    for transition in trick_transitions:
+        player = transition['player']
+        if player.position == trick_winner_pos:
+            transition['intermediate_reward'] -= trick_reward
+
+
 def is_same_team_as_winner(player, winner_pos, game):
     """Check if a player is on the same team as the trick winner."""
     if game.is_leaster:
@@ -384,6 +392,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                 while valid_actions:
                     state = player.get_state_vector()
                     action, log_prob, value = agent.act(state, valid_actions)
+                    player.act(action)
+                    valid_actions = player.get_valid_action_ids()
 
                     # Track pick/pass decisions for statistics
                     action_name = ACTIONS[action - 1]
@@ -392,67 +402,56 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     elif action_name == "PASS":
                         episode_passes += 1
 
-                    intermedate_reward = 0.0
-
-                    # Track PLAY actions for current trick and apply negative
-                    # reward when a defender leads trump.
-                    if "PLAY" in action_name:
-                        # Placeholder for transition reference (filled after creation)
-                        current_trick_transitions.append(None)
-
-                        # If this is the first card of the trick, the current
-                        # player is the leader.
-                        if play_action_count == 0:
-                            card = action_name[5:]
-                            if (
-                                not player.is_picker
-                                and not player.is_partner
-                                and not player.is_secret_partner
-                                and card in TRUMP
-                            ):
-                                intermedate_reward = -0.1  # discourage leading trump as defender
-
-                        # Increment cards played in current trick
-                        play_action_count += 1
-
-                    # Store transition for this action
-                    transition_dict = {
+                    transition = {
                         'player': player,
                         'state': state,
                         'action': action,
                         'log_prob': log_prob,
                         'value': value,
                         'valid_actions': valid_actions.copy(),
-                        'intermediate_reward': intermedate_reward,
+                        'intermediate_reward': 0.0,
                     }
+                    episode_transitions[player.position].append(transition)
 
-                    # Append to the player's list
-                    episode_transitions[player.position].append(transition_dict)
-
-                    # Replace the placeholder with the actual reference
                     if "PLAY" in action_name:
-                        current_trick_transitions[-1] = transition_dict
+                        if play_action_count == 0:
+                            card = action_name[5:]
+                            if (
+                                not game.is_leaster
+                                and not player.is_picker
+                                and not player.is_partner
+                                and not player.is_secret_partner
+                                and card in TRUMP
+                            ):
+                                transition['intermediate_reward'] = -0.1  # discourage leading trump as defender
 
-                    if not game.is_leaster and game.was_trick_just_completed:
-                        trick_points = game.trick_points[game.current_trick]
-                        trick_winner = game.trick_winners[game.current_trick]
+                        play_action_count += 1
+
+                        # Track this transition for trick rewards
+                        current_trick_transitions.append(transition)
+
+                    if game.was_trick_just_completed:
+                        trick_points = game.trick_points[game.current_trick - 1]
+                        trick_winner = game.trick_winners[game.current_trick - 1]
                         trick_reward = calculate_trick_reward(trick_points)
-
                         # Apply rewards to current trick's PLAY transitions
-                        apply_trick_rewards(
-                            current_trick_transitions,
-                            trick_winner,
-                            trick_reward,
-                            game,
-                        )
+                        if not game.is_leaster:
+                            apply_trick_rewards(
+                                current_trick_transitions,
+                                trick_winner,
+                                trick_reward,
+                                game,
+                            )
+                        else:
+                            apply_leaster_trick_rewards(
+                                current_trick_transitions,
+                                trick_winner,
+                                trick_reward,
+                            )
 
                         # Reset for next trick
                         current_trick_transitions = []
                         play_action_count = 0
-
-                    player.act(action)
-
-                    valid_actions = player.get_valid_action_ids()
 
         final_scores = [player.get_score() for player in game.players]
         episode_scores = final_scores[:]

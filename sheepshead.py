@@ -579,8 +579,7 @@ class Player:
                 self.game.cards_played = 0
                 self.game.was_trick_just_completed = True
 
-                if self.game.current_trick < 5:
-                    self.game.current_trick += 1
+                self.game.current_trick += 1
             elif self.game.was_trick_just_completed:
                 self.game.was_trick_just_completed = False
 
