@@ -105,8 +105,8 @@ def analyze_strategic_decisions(agent, num_samples=100):
 
 
 def calculate_trick_reward(trick_points):
-    """Calculate intermediate reward for trick points (1/120th of final reward scale)."""
-    return trick_points / 1440.0  # 1440 = 120 * 12
+    """Calculate intermediate reward for trick points (1/60th of final reward scale)."""
+    return trick_points / 720.0  # 720 = 60 * 12
 
 
 def apply_trick_rewards(trick_transitions, trick_winner_pos, trick_reward, game):
