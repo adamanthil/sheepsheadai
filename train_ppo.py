@@ -393,7 +393,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     state = player.get_state_vector()
                     action, log_prob, value = agent.act(state, valid_actions)
                     player.act(action)
-                    valid_actions = player.get_valid_action_ids()
 
                     # Track pick/pass decisions for statistics
                     action_name = ACTIONS[action - 1]
@@ -452,6 +451,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         # Reset for next trick
                         current_trick_transitions = []
                         play_action_count = 0
+
+                    valid_actions = player.get_valid_action_ids()
 
         final_scores = [player.get_score() for player in game.players]
         episode_scores = final_scores[:]
