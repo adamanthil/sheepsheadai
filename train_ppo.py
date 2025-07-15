@@ -518,10 +518,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         if game_count >= update_interval:
             print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
 
-            # linear entropy decay from 0.01 → 0.002 over training
-            entropy_start, entropy_end = 0.01, 0.002
+            # Separate entropy decay schedules
+            entropy_play_start, entropy_play_end = 0.01, 0.002
+            entropy_pick_start, entropy_pick_end = 0.02, 0.005
+            entropy_bury_start, entropy_bury_end = 0.02, 0.005
             decay_fraction = min(episode / num_episodes, 1.0)
-            agent.entropy_coeff = entropy_start + (entropy_end - entropy_start) * decay_fraction
+            agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
+            agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
+            agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
 
             # pass value of last state stored to GAE
             last_state_for_gae = agent.states[-1] if agent.states else None

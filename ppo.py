@@ -297,10 +297,15 @@ class PPOAgent:
         # Hyperparameters
         self.gamma = 0.99
         self.gae_lambda = 0.95
-        self.clip_epsilon = 0.2
-        self.entropy_coeff = 0.01
+        # Separate entropy coefficients per head
+        self.entropy_coeff_pick = 0.02
+        self.entropy_coeff_bury = 0.02
+        self.entropy_coeff_play = 0.01
         self.value_loss_coeff = 0.5
         self.max_grad_norm = 0.5
+        self.clip_epsilon_pick = 0.3
+        self.clip_epsilon_bury = 0.25
+        self.clip_epsilon_play = 0.2
 
         # Storage for trajectory data
         self.reset_storage()
@@ -473,15 +478,51 @@ class PPOAgent:
                 # Calculate new log probabilities
                 dist = torch.distributions.Categorical(action_probs)
                 new_log_probs = dist.log_prob(batch_actions)
-                entropy = dist.entropy().mean()
+                # --- Entropy broken down by head --------------------
+                with torch.no_grad():
+                    probs = action_probs  # (batch, action_size)
+
+                    pick_idx = torch.tensor(self.action_groups['pick'], device=probs.device)
+                    bury_idx = torch.tensor(self.action_groups['bury'], device=probs.device)
+                    play_idx = torch.tensor(self.action_groups['play'], device=probs.device)
+
+                    probs_pick = probs[:, pick_idx]
+                    probs_bury = probs[:, bury_idx]
+                    probs_play = probs[:, play_idx]
+
+                    def entropy_from_probs(sub):
+                        sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
+                        return -(sub_norm * torch.log(sub_norm + 1e-8)).sum(dim=1).mean()
+
+                    pick_entropy = entropy_from_probs(probs_pick)
+                    bury_entropy = entropy_from_probs(probs_bury)
+                    play_entropy = entropy_from_probs(probs_play)
+
+                entropy_term = (self.entropy_coeff_pick * pick_entropy +
+                                self.entropy_coeff_bury * bury_entropy +
+                                self.entropy_coeff_play * play_entropy)
 
                 # Calculate ratios and surrogate losses
                 ratios = torch.exp(new_log_probs - batch_old_log_probs)
+
+                # Determine per-sample epsilon based on action type
+                # Recreate index tensors on the correct device
+                pick_idx_tensor = torch.tensor(self.action_groups['pick'], device=ratios.device)
+                bury_idx_tensor = torch.tensor(self.action_groups['bury'], device=ratios.device)
+
+                pick_mask_batch = (batch_actions.unsqueeze(1) == pick_idx_tensor).any(dim=1)
+                bury_mask_batch = (batch_actions.unsqueeze(1) == bury_idx_tensor).any(dim=1)
+
+                eps_tensor = torch.full_like(ratios, self.clip_epsilon_play)
+                eps_tensor[pick_mask_batch] = self.clip_epsilon_pick
+                eps_tensor[bury_mask_batch] = self.clip_epsilon_bury
+
                 surr1 = ratios * batch_advantages
-                surr2 = torch.clamp(ratios, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * batch_advantages
+                clipped_ratios = torch.maximum(torch.minimum(ratios, 1 + eps_tensor), 1 - eps_tensor)
+                surr2 = clipped_ratios * batch_advantages
 
                 # Actor loss (includes entropy bonus for exploration)
-                actor_loss = -torch.min(surr1, surr2).mean() - self.entropy_coeff * entropy
+                actor_loss = -torch.min(surr1, surr2).mean() - entropy_term
 
                 # Critic loss - ensure both tensors have same shape
                 critic_loss = F.mse_loss(current_values, batch_returns.view(-1))
