@@ -185,13 +185,13 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
 
         final_score = final_scores[player_pos - 1]
 
-        if current_avg_picker_score >= 0.75:
+        if current_avg_picker_score >= 0.5:
             # Pure sparse – only the player's last transition receives the final reward
             give_reward = (i == last_transition_per_player[player_pos])
             final_reward = (final_score / 12) if give_reward else 0.0
-        elif current_avg_picker_score > 0.25:
-            # Linear annealing from dense (avg = 0.25) to sparse (avg = 0.75)
-            progress = min(max((current_avg_picker_score - 0.25) / 0.5, 0.0), 1.0)  # clamp to [0,1]
+        elif current_avg_picker_score > 0:
+            # Linear annealing from dense (avg = 0 to sparse (avg = 0.5)
+            progress = min(max((current_avg_picker_score) / 0.5, 0.0), 1.0)  # clamp to [0,1]
             if i == last_transition_per_player[player_pos]:
                 # Always give full reward on the player's final action
                 final_reward = final_score / 12
@@ -224,8 +224,8 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     # Score progression
     ax1.plot(episodes, training_data['picker_avg'], label='Picker Avg', alpha=0.8)
     ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-    ax1.axhline(y=0.25, color='blue', linestyle='--', alpha=0.5, label='Start Annealing')
-    ax1.axhline(y=0.75, color='blue', linestyle='--', alpha=0.5, label='Sparse Rewards')
+    ax1.axhline(y=0, color='blue', linestyle='--', alpha=0.5, label='Start Annealing')
+    ax1.axhline(y=0.5, color='blue', linestyle='--', alpha=0.5, label='Sparse Rewards')
     ax1.set_xlabel('Episode')
     ax1.set_ylabel('Average Picker Score')
     ax1.set_title('Score Progression')
