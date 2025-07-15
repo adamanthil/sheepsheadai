@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 
 from ppo import PPOAgent
-from sheepshead import TRUMP_POWER, Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP
+from sheepshead import Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP
 
 def analyze_strategic_decisions(agent, num_samples=100):
     """Analyze strategic decision quality instead of random opponent evaluation."""
