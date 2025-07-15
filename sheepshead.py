@@ -187,15 +187,33 @@ def pretty_card_list(card_list):
     return " ".join([colorize_card(c) for c in card_list])
 
 
+def get_monte_carlo_pick_score(hand):
+    """Returns the expected score for a player picking from a hand
+    using a monte-carlo simulation of 30 random games."""
+
+    scores = []
+    for _ in range(30):
+        game = Game(picking_hand=hand, double_on_the_bump=False)
+        game.play_random(verbose=False)
+        scores.append(game.get_picker().get_score())
+    return sum(scores) / len(scores)
+
+
 class Game:
-    def __init__(self):
-        self.deck = DECK[:]
+    def __init__(self, double_on_the_bump=True, picking_player=None, picking_hand=None):
+        if picking_hand:
+            # Remove picking_hand cards from DECK to form the deck
+            self.deck = [card for card in DECK if card not in picking_hand]
+            if picking_player is None:
+                picking_player = random.randint(1, 5)
+        else:
+            self.deck = DECK[:]
         random.shuffle(self.deck)
 
-        self.last_passed = 0
-        self.picker = 0
+        self.last_passed = picking_player - 1 if picking_player else 0
+        self.picker = picking_player if picking_player else 0
         self.partner = 0
-        self.blind = self.deck[30:]
+        self.blind = self.deck[(len(self.deck) - 2):]
         self.bury = []
         self.alone_called = False
         self.play_started = False
@@ -214,6 +232,7 @@ class Game:
         self.trick_points = [0, 0, 0, 0, 0, 0] # Points of each trick
         self.trick_winners = [0, 0, 0, 0, 0, 0] # Player ID of each trick winner
         self.leaders = [0, 0, 0, 0, 0, 0] # Player ID of each trick leader
+        self.is_double_on_the_bump = double_on_the_bump
 
         # Internal state variables
         self.last_player = 0 # Position of last player to play a card
@@ -224,13 +243,29 @@ class Game:
         self.was_trick_just_completed = False
 
         # Setup players and deal
-        for i in range(5):
-            hand = self.deck[i * 6: i * 6 + 6]
-            self.players.append(Player(self, i + 1, hand))
+        if picking_hand is not None:
+            # Remove blind from deck
+            deal_deck = self.deck[:]
+            deal_deck = [card for card in deal_deck if card not in self.blind]
+            for i in range(5):
+                pos = i + 1
+                if pos == picking_player:
+                    hand = picking_hand[:]
+                    hand.extend(self.blind)
+                else:
+                    hand = random.sample(deal_deck, 6)
+                    deal_deck = [card for card in deal_deck if card not in hand]
+                self.players.append(Player(self, pos, hand))
+        else:
+            # Default: deal out first 30 cards in deck in order (last 2 are blind)
+            for i in range(5):
+                hand = self.deck[i * 6: i * 6 + 6]
+                self.players.append(Player(self, i + 1, hand))
 
-    def play_random(self):
-        print("Playing Sheepshead Randomly!")
-        self.print_player_hands()
+    def play_random(self, verbose=True):
+        if verbose:
+            print("Playing Sheepshead Randomly!")
+            self.print_player_hands()
 
         while not self.is_done():
             for player in self.players:
@@ -240,23 +275,28 @@ class Game:
                 while actions:
                     action = random.sample(list(actions), 1)[0]
 
-                    print(f" -- Player {player.position}: {ACTION_LOOKUP[action]}")
+                    if verbose:
+                        print(f" -- Player {player.position}: {ACTION_LOOKUP[action]}")
                     player.act(action)
 
                     actions = player.get_valid_action_ids()
 
         if self.is_leaster:
-            print("Leaster - all players passed!")
-            print("Points taken: ", self.points_taken)
+            if verbose:
+                print("Leaster - all players passed!")
+                print("Points taken: ", self.points_taken)
             winner = self.get_leaster_winner()
-            print(f"Leaster winner: Player {winner}")
+            if verbose:
+                print(f"Leaster winner: Player {winner}")
         else:
-            print("Bury: ", self.bury)
-            print("Points taken: ", self.points_taken)
-            print(f"Game done! Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}")
+            if verbose:
+                print("Bury: ", self.bury)
+                print("Points taken: ", self.points_taken)
+                print(f"Game done! Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}")
 
-        scores = [p.get_score() for p in self.players]
-        print(f"Scores: {scores}")
+        if verbose:
+            scores = [p.get_score() for p in self.players]
+            print(f"Scores: {scores}")
 
     def print_player_hands(self, player_names=["Player 1", "Player 2", "Player 3", "Player 4", "Player 5"]):
         for p in self.players:
@@ -642,11 +682,14 @@ class Player:
                 elif picker_points > 90:
                     multiplier = 2
                 elif defender_points == 120:
-                    multiplier = -6
+                    multiplier = -3
                 elif defender_points >= 90:
-                    multiplier = -4
-                elif defender_points >= 60:
                     multiplier = -2
+                elif defender_points >= 60:
+                    multiplier = -1
+
+                if multiplier < 0 and self.game.is_double_on_the_bump:
+                    multiplier *= 2
 
                 if self.is_picker and self.is_partner:
                     return 4 * multiplier

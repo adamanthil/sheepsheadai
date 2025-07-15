@@ -10,7 +10,7 @@ import random
 import re
 
 from ppo import PPOAgent
-from sheepshead import Game, Player, ACTIONS, DECK, STATE_SIZE, ACTION_IDS, TRUMP, pretty_card_list
+from sheepshead import Game, Player, ACTIONS, DECK, STATE_SIZE, ACTION_IDS, TRUMP, pretty_card_list, get_monte_carlo_pick_score
 
 def calculate_display_width(text):
     """Calculate the visible width of text, excluding ANSI escape sequences."""
@@ -132,7 +132,8 @@ def test_final_model(model_path, position, random_hands):
         description = hand["description"] if hand["description"] else pretty_card_list(hand["hand"])
         padded_description = pad_text_with_ansi(description, 50)
         checkbox = "\033[92m✅\033[0m" if hand["pick_percentage"] > 50 else ""
-        print(f"{padded_description} | Strength: {hand['strength']:4.1f} | Pick: {hand['pick_percentage']:5.1f}% {checkbox}")
+        simulated_pick_percentage = get_monte_carlo_pick_score(hand["hand"])
+        print(f"{padded_description} | Strength: {hand['strength']:4.1f} | Estimated Score: {simulated_pick_percentage:5.1f} | Model Pick: {hand['pick_percentage']:5.1f}% | {checkbox}")
 
     # Calculate correlation
     correlation = np.corrcoef([hand["strength"] for hand in hand_data], [hand["pick_percentage"] for hand in hand_data])[0, 1] if len(hand_data) > 1 else 0
