@@ -373,6 +373,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
     for episode in range(start_episode + 1, num_episodes + 1):
         game = Game()
+        # Reset recurrent hidden states in the actor at the start of each game
+        agent.reset_recurrent_state()
         episode_scores = []
         episode_picks = 0
         episode_passes = 0
@@ -391,7 +393,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
                 while valid_actions:
                     state = player.get_state_vector()
-                    action, log_prob, value = agent.act(state, valid_actions)
+                    action, log_prob, value = agent.act(state, valid_actions, player.position)
                     player.act(action)
 
                     # Track pick/pass decisions for statistics
@@ -451,6 +453,16 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         # Reset for next trick
                         current_trick_transitions = []
                         play_action_count = 0
+
+                        # ------------------------------------------------
+                        # propagate post-trick observation to all seats
+                        # ------------------------------------------------
+                        for seat in game.players:
+                            # Feed observation so recurrent state sees full trick outcome
+                            agent.observe(
+                                seat.get_state_vector(),
+                                seat.position,
+                            )
 
                     valid_actions = player.get_valid_action_ids()
 

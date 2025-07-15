@@ -39,7 +39,14 @@ DECK_IDS = {k: v + 1 for v, k in enumerate(DECK)}
 TRUMP_POWER = {k: len(TRUMP) - v for v, k in enumerate(TRUMP)}
 FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 
-STATE_SIZE = 133
+# Observation layout (minimal but complete):
+#  Header (8)                         : position, last_passed, picker, partner, alone, is_leaster, play_started, current_trick
+#  Hand                               : 32 one-hot
+#  Blind (picker only, else zeros)    : 32 one-hot
+#  Bury  (picker only, else zeros)    : 32 one-hot
+#  Current trick (seat-attributed)    : 5 × (33 card one-hot + 2 role bits) = 175
+#  Total                              : 8 + 32 + 32 + 32 + 175 = 279
+STATE_SIZE = 279
 
 
 def get_card_suit(card):
@@ -395,25 +402,43 @@ class Player:
         return "JD" in self.hand
 
     def get_state_vector(self):
-        """Integer vector of current game state.
-        Values in order:
-            [0] player position
-            [1] last position to pass on picking blind
-            [2] position of picker
-            [3] position of partner (if known)
-            [4] alone called (bool)
-            [5] play has started (bool)
-            [6] current trick
-            [7-38]     boolean values for cards in current hand in DECK order
-                    (e.g. if hand has QC, index 6 will have value 1 otherwise 0)
-            [39-70]    boolean values for cards in blind (if known)
-            [71-102] boolean values for cards buried (if known)
-            [103-132] card ID of each card played in game in reverse trick order starting with current trick
-                    Each trick ordered clockwise starting with this player:
-                    Player 1:
-                        1 2 3 4 5
-                    Player 2:
-                        2 3 4 5 1
+        """Return the integer observation vector for the *acting* player.
+
+        Layout (indices in ascending order):
+
+        Header (8 values)
+        ----------------
+        [0]   player position   (1-5)
+        [1]   last position to *pass* during blind picking (5 ⇒ all passed → leaster)
+        [2]   picker position (0 if not yet picked)
+        [3]   partner position *if known* (0 if unknown)
+        [4]   alone called                     (0/1)
+        [5]   is_leaster flag                  (0/1)
+        [6]   play_started flag                (0/1)
+        [7]   current trick index              (0-5)
+
+        Private zones (boolean one-hots)
+        ---------------------------------
+        [8-39]    hand cards   — 32 bits in DECK order
+        [40-71]   blind cards  — 32 bits (picker only, else zeros)
+        [72-103]  bury cards   — 32 bits (picker only, else zeros)
+
+        Current trick block  (5 seats × 35 = 175 values)
+        -------------------------------------------------
+        For each *relative* seat starting with self (index 0) and proceeding
+        clockwise (LHO, partner seat, RHO, across):
+
+            33-way one-hot for the card that seat has played this trick
+                • index 0  ⇒ "empty"  (seat has not yet played)
+                • index 1-32 map to DECK order
+
+            2 role flags appended:
+                • is_picker         (0/1)
+                • is_known_partner  (0/1)
+
+        This yields 5 × (33 + 2) = 175 elements.
+
+        Total length = 8 + 32 + 32 + 32 + 175 = 279 (see STATE_SIZE).
         """
 
         state = [self.position]
@@ -422,29 +447,43 @@ class Player:
         partner = self.partner if self.partner else "JD" in self.hand
         state.append(partner)
         state.append(self.alone_called)
+        state.append(self.game.is_leaster)
         state.append(self.play_started)
         state.append(self.current_trick)
+
+        # One-hot vectors for hand / blind / bury
         state.extend(get_deck_vector(self.hand))
         state.extend(get_deck_vector(self.blind if self.is_picker else []))
         state.extend(get_deck_vector(self.bury if self.is_picker else []))
 
-        state = np.array(state, dtype=np.uint8)
-        history = np.zeros((6, 5))
-        i = 0
-        if self.play_started:
-            for t in reversed(range(min(self.current_trick, 5) + 1)):
-                trick = self.game.history[t]
-                c = self.position - self.game.leaders[t]
-                for j in range(5):
-                    card = DECK_IDS[trick[c]] if trick[c] else 0
-                    history[i][j] = card
+        # --- Current trick seat-attributed one-hot + role bits ---
+        # Helper to build 33-length one-hot for a card id (0 means empty)
+        def one_hot_33(card_id):
+            vec = [0] * 33
+            if 0 <= card_id < 33:
+                vec[card_id] = 1
+            return vec
 
-                    c = 0 if c == 4 else c + 1
+        # Build for self (rel_seat = 0) then clockwise order
+        trick = self.game.history[self.current_trick] if self.current_trick < len(self.game.history) else ["" for _ in range(5)]
 
-                history[i] = np.array([DECK_IDS[c] if c else 0 for c in trick])
-                i += 1
-        state = np.hstack([state, history.flatten()])
-        return state
+        for rel_seat in range(5):
+            abs_seat = ((self.position + rel_seat - 1) % 5) + 1  # 1-5
+            card_str = trick[abs_seat - 1]
+            card_id = DECK_IDS.get(card_str, 0) if card_str else 0
+
+            # Card one-hot
+            state.extend(one_hot_33(card_id))
+
+            # Role bits
+            is_picker = 1 if abs_seat == self.game.picker else 0
+            is_partner_known = 1 if self.game.partner and abs_seat == self.game.partner else 0
+            state.append(is_picker)
+            state.append(is_partner_known)
+
+
+
+        return np.array(state, dtype=np.uint8)
 
     def get_valid_actions(self):
         """Get set of valid actions."""
