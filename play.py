@@ -117,6 +117,8 @@ if __name__ == "__main__":
 
     agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation='swish')
     agent.load(args.model)
+    param_count = sum(p.numel() for p in agent.actor.parameters())
+    print(f"Loaded model: {args.model} with {param_count:,} parameters")
     print(instructions)
 
     while True:
