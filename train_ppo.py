@@ -560,7 +560,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         # Progress reporting and data collection
         if episode % 1000 == 0:
             current_avg_picker_score = np.mean(picker_scores) if picker_scores else 0
-            current_pick_rate = np.mean([p/(p+pa)*100 for p, pa in zip(pick_decisions, pass_decisions) if p+pa > 0]) if pick_decisions else 0
+            # Compute pick-rate over all individual decisions (weighting games by the number of decisions they contributed)
+            total_picks = sum(pick_decisions)
+            total_passes = sum(pass_decisions)
+            current_pick_rate = (100 * total_picks / (total_picks + total_passes)) if (total_picks + total_passes) > 0 else 0
             current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
             elapsed = time.time() - start_time
 
@@ -642,7 +645,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     print(f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}")
     print(f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}")
     print(f"   Best team point difference: {best_team_difference:.1f}")
-    print(f"   Final pick rate: {np.mean([p/(p+pa)*100 for p, pa in zip(pick_decisions, pass_decisions) if p+pa > 0]):.1f}%")
+    total_picks = sum(pick_decisions)
+    total_passes = sum(pass_decisions)
+    final_pick_rate = (100 * total_picks / (total_picks + total_passes)) if (total_picks + total_passes) > 0 else 0
+    print(f"   Final pick rate: {final_pick_rate:.1f}%")
     print(f"   Training speed: {(num_episodes-start_episode)/(total_time/60):.1f} episodes/min")
 
 def main():
