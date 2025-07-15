@@ -177,7 +177,7 @@ def is_same_team_as_winner(player, winner_pos, game):
     return player_picker_team == winner_picker_team
 
 
-def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, current_avg_picker_score):
+def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, picker_baseline):
     """Process and assign rewards to all transitions in the episode."""
     for i, transition in enumerate(episode_transitions):
         player = transition['player']
@@ -185,28 +185,18 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
 
         final_score = final_scores[player_pos - 1]
 
-        if current_avg_picker_score >= 0.5:
-            # Pure sparse – only the player's last transition receives the final reward
-            give_reward = (i == last_transition_per_player[player_pos])
-            final_reward = (final_score / 12) if give_reward else 0.0
-        elif current_avg_picker_score > 0:
-            # Linear annealing from dense (avg = 0 to sparse (avg = 0.5)
-            progress = min(max((current_avg_picker_score) / 0.5, 0.0), 1.0)  # clamp to [0,1]
-            if i == last_transition_per_player[player_pos]:
-                # Always give full reward on the player's final action
-                final_reward = final_score / 12
-            else:
-                # Scale reward for non-terminal actions
-                final_reward = final_score * (1.0 - progress) / 12
+        # Mark trajectory boundary at the player's final action
+        is_episode_done = (i == last_transition_per_player[player_pos])
+
+        # Determine reward for final transition based on action type
+        if transition['action'] == ACTION_IDS["PICK"]:
+            # Add baseline-centered reward for pick decisions
+            final_reward = (final_score - picker_baseline) / 12
         else:
-            # Early training – dense reward to all actions
-            final_reward = final_score / 12
+            final_reward = (final_score / 12) if is_episode_done else 0.0
 
         # Combine final reward with any intermediate reward already stored
         total_reward = final_reward + transition['intermediate_reward']
-
-        # Mark trajectory boundary at the player's final action
-        is_episode_done = (i == last_transition_per_player[player_pos])
 
         yield {
             'transition': transition,
@@ -224,8 +214,6 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     # Score progression
     ax1.plot(episodes, training_data['picker_avg'], label='Picker Avg', alpha=0.8)
     ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-    ax1.axhline(y=0, color='blue', linestyle='--', alpha=0.5, label='Start Annealing')
-    ax1.axhline(y=0.5, color='blue', linestyle='--', alpha=0.5, label='Sparse Rewards')
     ax1.set_xlabel('Episode')
     ax1.set_ylabel('Average Picker Score')
     ax1.set_title('Score Progression')
@@ -360,6 +348,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         'team_point_diff': []
     }
 
+    # Running picker baseline for reward shaping
+    running_picker_baseline = 0.0
+    baseline_beta = 0.001  # smoothing factor
+
     # Create checkpoint directory with activation function suffix
     checkpoint_dir = f'checkpoints_{activation}'
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -396,13 +388,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     action, log_prob, value = agent.act(state, valid_actions, player.position)
                     player.act(action)
 
-                    # Track pick/pass decisions for statistics
-                    action_name = ACTIONS[action - 1]
-                    if action_name == "PICK":
-                        episode_picks += 1
-                    elif action_name == "PASS":
-                        episode_passes += 1
-
                     transition = {
                         'player': player,
                         'state': state,
@@ -412,6 +397,15 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         'valid_actions': valid_actions.copy(),
                         'intermediate_reward': 0.0,
                     }
+
+                    action_name = ACTIONS[action - 1]
+
+                    # Track pick/pass decisions for statistics
+                    if action_name == "PICK":
+                        episode_picks += 1
+                    elif action_name == "PASS":
+                        episode_passes += 1
+
                     episode_transitions[player.position].append(transition)
 
                     if "PLAY" in action_name:
@@ -485,7 +479,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             last_transition_per_player[pos] = start_idx + len(player_transitions) - 1
 
         # Process and store all transitions with appropriate rewards
-        for reward_data in process_episode_rewards(flat_episode_transitions, final_scores, last_transition_per_player, current_avg_picker_score):
+        for reward_data in process_episode_rewards(flat_episode_transitions, final_scores, last_transition_per_player, running_picker_baseline):
             transition = reward_data['transition']
             agent.store_transition(
                 transition['state'],
@@ -499,6 +493,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
         # Track statistics
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
+
+        # Update running baseline if there was a picker
+        if game.picker:
+            running_picker_baseline = (1 - baseline_beta) * running_picker_baseline + baseline_beta * picker_score
 
         # Calculate team point difference (picker team points - defender team points)
         if game.picker and not game.is_leaster:
