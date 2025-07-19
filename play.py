@@ -14,8 +14,8 @@ parser = ArgumentParser(
 parser.add_argument(
     "-m",
     "--model",
-    default="final_sparse_long_ppo.pth",
-    help="PyTorch model file. Default: final_sparse_long_ppo.pth"
+    default="final_swish_ppo.pth",
+    help="PyTorch model file. Default: final_swish_ppo.pth"
 )
 
 args = parser.parse_args()

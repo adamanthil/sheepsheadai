@@ -3,8 +3,14 @@ Deep learning AI for the Sheepshead cardgame.
 
 # Running
 
-Install dependencies
+Requires `uv`: https://docs.astral.sh/uv/getting-started/installation/
+
+Install dependencies (optional)
 ```
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
+uv sync
+```
+
+Running a game played by the agent:
+```
+uv run play.py
 ```
