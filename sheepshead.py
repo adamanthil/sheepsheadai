@@ -13,6 +13,22 @@ FAIL = [
 ]
 DECK = TRUMP + FAIL
 
+# ---------------------------------------------------------------------------
+# Partner-selection modes
+#   0 → Standard Jack-of-Diamonds partner
+#   1 → Called-Ace / Called-10 partner
+# ---------------------------------------------------------------------------
+PARTNER_BY_JD = 0
+PARTNER_BY_CALLED_ACE = 1
+# Valid cards that may be called as partner (fail Aces or 10s)
+CALLED_ACES = ["AC", "AS", "AH"]
+CALLED_10S = ["10C", "10S", "10H"]
+CALLED_PARTNER_CARDS = CALLED_ACES + CALLED_10S
+
+# Special token for a face-down “under” card when using called-ace variant
+UNDER_TOKEN = "UNDER"
+UNDER_CARD_ID = 33  # 0 = empty, 1-32 = real cards, 33 = unknown under
+
 ACTIONS = [
     "PICK",
     "PASS",
@@ -21,12 +37,24 @@ ACTIONS = [
     # Avoids lacking an action for state transition.
     "JD PARTNER",
 ]
-# Add bury actions for all cards
+
+# Add partner call actions
+CALL_ACTIONS = [f"CALL {c}" for c in CALLED_PARTNER_CARDS]
+UNDER_CALL_ACTIONS = [f"CALL {c} UNDER" for c in ["AC", "AS", "AH"]]
+CALL_ACTIONS.extend(UNDER_CALL_ACTIONS)
+ACTIONS.extend(CALL_ACTIONS)
+
+# Add UNDER actions for placing a card as an under
+UNDER_ACTIONS = [f"UNDER {c}" for c in DECK]
+ACTIONS.extend(UNDER_ACTIONS)
+
+# Add bury actions fior all cards
 BURY_ACTIONS = [f"BURY {c}" for c in DECK]
 ACTIONS.extend(BURY_ACTIONS)
 
 # Add play actions for all cards
 PLAY_ACTIONS = [f"PLAY {c}" for c in DECK]
+PLAY_ACTIONS.append(UNDER_TOKEN)
 ACTIONS.extend(PLAY_ACTIONS)
 
 # Define dics for quick action lookup
@@ -39,27 +67,31 @@ DECK_IDS = {k: v + 1 for v, k in enumerate(DECK)}
 TRUMP_POWER = {k: len(TRUMP) - v for v, k in enumerate(TRUMP)}
 FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 
-# Observation layout (minimal but complete):
-#  Header (8)                         : position, last_passed, picker, partner, alone, is_leaster, play_started, current_trick
+# Observation layout:
+#  Header (16)                        : partner_mode, player_pos, last_passed, picker, partner, alone, called_AC, called_AS, called_AH, called_10C, called_10S, called_10H, is_called_under, is_leaster, play_started, current_trick
 #  Hand                               : 32 one-hot
 #  Blind (picker only, else zeros)    : 32 one-hot
 #  Bury  (picker only, else zeros)    : 32 one-hot
-#  Current trick (seat-attributed)    : 5 × (33 card one-hot + 2 role bits) = 175
-#  Total                              : 8 + 32 + 32 + 32 + 175 = 279
-STATE_SIZE = 279
+#  Current trick (seat-attributed)    : 5 × (34 card one-hot + 2 role bits) = 180
+#  Total                              : 16 + 32 + 32 + 32 + 180 = 292
+STATE_SIZE = 292
 
 
 def get_card_suit(card):
     return "T" if card in TRUMP else card[-1]
 
 
-def get_trick_winner(trick, suit):
+def get_trick_winner(trick, suit, is_called_10_suit=False):
     power_list = []
     for card in trick:
         try:
             power = 100 * TRUMP_POWER[card]
         except KeyError:
-            power = FAIL_POWER[card] if get_card_suit(card) == suit else 0
+            if is_called_10_suit:
+                # Called 10s always take the suit if not trumped
+                power = len(FAIL_POWER) + 1
+            else:
+                power = FAIL_POWER[card] if get_card_suit(card) == suit else 0
         power_list.append(power)
     return power_list.index(max(power_list)) + 1
 
@@ -80,6 +112,42 @@ def get_card_points(card):
 
 def filter_by_suit(hand, suit):
     return [c for c in hand if get_card_suit(c) == suit]
+
+
+def get_leadable_called_partner_cards(hand, called_card):
+    # Filter out other cards in called suit besides the ace
+    return [c for c in hand if c == called_card or get_card_suit(c) != get_card_suit(called_card)]
+
+
+def get_playable_called_picker_cards(hand, called_card):
+    # Picker can't fail off called suit
+    if len(filter_by_suit(hand, get_card_suit(called_card))) == 1:
+        return [c for c in hand if get_card_suit(c) != get_card_suit(called_card)]
+    return hand
+
+
+def get_callable_cards(hand):
+    callable_cards = []
+    possible_under_suits = []
+    for card in CALLED_ACES:
+        if card in hand:
+            continue
+
+        suit = get_card_suit(card)
+        fails_in_suit = filter_by_suit(hand, suit)
+        if not fails_in_suit:
+            possible_under_suits.append(suit)
+            continue
+
+        callable_cards.append(card)
+
+    if callable_cards:
+        return callable_cards
+
+    if possible_under_suits:
+        return [f"A{suit} UNDER" for suit in possible_under_suits]
+
+    return CALLED_10S
 
 
 def get_trick_points(trick):
@@ -106,38 +174,56 @@ def get_cards_from_vector(vector):
 def get_state_str(state):
     """Return a human readable state string.
     Values in order:
-        [0] player position
-        [1] last position to pass on picking blind (or 6 if leaster mode)
-        [2] position of picker
-        [3] position of partner (if known)
-        [4] alone called (bool)
-        [5] play has started (bool)
-        [6] current trick
-        [7-38]     boolean values for cards in current hand in DECK order
+        [0] partner selection mode
+        [1] player position
+        [2] last position to pass on picking blind (or 6 if leaster mode)
+        [3] position of picker
+        [4] position of partner (if known)
+        [5] alone called (bool)
+        [6-11] called card one-hot (AC, AS, AH, 10C, 10S, 10H)
+        [12] is_called_under flag
+        [13] is_leaster flag
+        [14] play_started flag
+        [15] current trick
+        [16-47]     boolean values for cards in current hand in DECK order
                 (e.g. if hand has QC, index 6 will have value 1 otherwise 0)
-        [39-70]    boolean values for cards in blind (if known)
-        [71-102] boolean values for cards buried (if known)
-        [103-132] card ID of each card played in game in reverse trick order starting with current trick
+        [48-79]    boolean values for cards in blind (if known)
+        [80-111] boolean values for cards buried (if known)
+        [112-] one-hot vectors for cards played this trick
     """
     out = ""
-    out += f"Player #: {int(state[0])}\n"
+    out += f"Player #: {int(state[1])}\n"
+    if int(state[0]) == PARTNER_BY_CALLED_ACE:
+        called_idx = state[6:12].tolist() if hasattr(state, 'tolist') else state[6:12]
+        called_map = CALLED_PARTNER_CARDS
+        called_card = None
+        for idx, v in enumerate(called_idx):
+            if int(v):
+                called_card = called_map[idx]
+                break
+
+        if called_card:
+            out_str = f"Called card: {called_card}"
+            if int(state[12]):
+                out_str += " (under)"
+            out += out_str + "\n"
 
     # Check if this is leaster mode
-    is_leaster = int(state[1]) == 6
+    is_leaster = int(state[13]) == 1
 
-    if (state[5]):
+    if (state[14]):
         if is_leaster:
             out += "Game Phase: Play (Leaster)\n"
         else:
             out += "Game Phase: Play\n"
-            out += f"Picker: {int(state[2])}\n"
-            out += f"Partner: {int(state[3])}\n"
-            out += f"Alone: {int(state[4])}\n"
+            out += f"Picker: {int(state[3])}\n"
+            out += f"Partner: {int(state[4])}\n"
+            out += f"Alone: {int(state[5])}\n"
 
-        state_start = 103
+        state_start = 112  # 16 header + 96
         tricks = ""
         trick = ""
-        trick_number = int(state[6]) + 1
+        trick_number = int(state[15]) + 1
         for i in range(30):
             if i % 5 == 0 and i != 0:
                 tricks += f"Trick {trick_number}: {trick}\n"
@@ -148,7 +234,9 @@ def get_state_str(state):
 
             card_index = state_start + i
             card_id = int(state[card_index])
-            if card_id:
+            if card_id == UNDER_CARD_ID:
+                trick += "?? "
+            elif card_id:
                 trick += f"{DECK[card_id - 1]} "
             else:
                 trick += "__ "
@@ -165,11 +253,11 @@ def get_state_str(state):
             out += "Game Phase: Leaster (all players passed)\n"
         else:
             out += "Game Phase: Picking\n"
-        blind = " ".join(get_cards_from_vector(state[39:71]))
+        blind = " ".join(get_cards_from_vector(state[48:80]))
         if blind:
             out += f"Blind: {blind}\n"
 
-    hand = " ".join(get_cards_from_vector(state[7:39]))
+    hand = " ".join(get_cards_from_vector(state[16:48]))
 
     out += f"Hand: {hand}\n"
 
@@ -200,7 +288,15 @@ def get_monte_carlo_pick_score(hand):
 
 
 class Game:
-    def __init__(self, double_on_the_bump=True, picking_player=None, picking_hand=None):
+    def __init__(
+        self,
+        double_on_the_bump=True,
+        picking_player=None,
+        picking_hand=None,
+        is_leaster=False,
+        partner_selection_mode=PARTNER_BY_CALLED_ACE,
+    ):
+        self.partner_mode_flag = partner_selection_mode  # 0 = JD, 1 = Called Ace
         if picking_hand:
             # Remove picking_hand cards from DECK to form the deck
             self.deck = [card for card in DECK if card not in picking_hand]
@@ -215,7 +311,12 @@ class Game:
         self.partner = 0
         self.blind = self.deck[(len(self.deck) - 2):]
         self.bury = []
+        self.picker_chose_partner = False
+        self.was_called_suit_played = False
         self.alone_called = False
+        self.called_card = None
+        self.is_called_under = False  # Whether picker used an under call
+        self.under_card = None # The card that is to be played as an under
         self.play_started = False
         self.is_leaster = False
         self.players = []
@@ -326,6 +427,10 @@ class Game:
             out += (f"Scores: {scores}\n")
 
         return out
+
+    @property
+    def called_suit(self):
+        return get_card_suit(self.called_card) if self.called_card else None
 
     def is_done(self):
         # Game is done when all tricks are played
@@ -439,36 +544,47 @@ class Player:
     @property
     def is_secret_partner(self):
         """If this player is partner, regardless of whether it's been revealed"""
-        return "JD" in self.hand
+        if self.game.partner_mode_flag == PARTNER_BY_JD:
+            return "JD" in self.hand
+        # Called-Ace variant
+        return self.game.called_card in self.hand if self.game.called_card else False
 
     def get_state_vector(self):
         """Return the integer observation vector for the *acting* player.
 
         Layout (indices in ascending order):
 
-        Header (8 values)
+        Header (16 values)
         ----------------
-        [0]   player position   (1-5)
-        [1]   last position to *pass* during blind picking (5 ⇒ all passed → leaster)
-        [2]   picker position (0 if not yet picked)
-        [3]   partner position *if known* (0 if unknown)
-        [4]   alone called                     (0/1)
-        [5]   is_leaster flag                  (0/1)
-        [6]   play_started flag                (0/1)
-        [7]   current trick index              (0-5)
+        [0]   partner selection mode           (0 = JD, 1 = Called Ace)
+        [1]   player position                  (1-5)
+        [2]   last position to *pass* during blind picking (5 ⇒ all passed → leaster)
+        [3]   picker position (0 if not yet picked)
+        [4]   partner position *if known* (0 if unknown)
+        [5]   alone called                     (0/1)
+        [6]   called_AC (0/1)
+        [7]   called_AS (0/1)
+        [8]   called_AH (0/1)
+        [9]   called_10C (0/1)
+        [10]  called_10S (0/1)
+        [11]  called_10H (0/1)
+        [12]  is_called_under               (0/1)
+        [13]  is_leaster flag               (0/1)
+        [14]  play_started flag             (0/1)
+        [15]  current trick index           (0-5)
 
         Private zones (boolean one-hots)
         ---------------------------------
-        [8-39]    hand cards   — 32 bits in DECK order
-        [40-71]   blind cards  — 32 bits (picker only, else zeros)
-        [72-103]  bury cards   — 32 bits (picker only, else zeros)
+        [16-47]   hand cards   — 32 bits in DECK order
+        [48-79]   blind cards  — 32 bits (picker only, else zeros)
+        [80-111]  bury cards   — 32 bits (picker only, else zeros)
 
-        Current trick block  (5 seats × 35 = 175 values)
+        Current trick block  (5 seats × 36 = 180 values)
         -------------------------------------------------
         For each *relative* seat starting with self (index 0) and proceeding
         clockwise (LHO, partner seat, RHO, across):
 
-            33-way one-hot for the card that seat has played this trick
+            34-way one-hot for the card that seat has played this trick (index 33 = UNDER)
                 • index 0  ⇒ "empty"  (seat has not yet played)
                 • index 1-32 map to DECK order
 
@@ -476,20 +592,48 @@ class Player:
                 • is_picker         (0/1)
                 • is_known_partner  (0/1)
 
-        This yields 5 × (33 + 2) = 175 elements.
+        This yields 5 × (34 + 2) = 180 elements.
 
-        Total length = 8 + 32 + 32 + 32 + 175 = 279 (see STATE_SIZE).
+        Total length = 16 + 32 + 32 + 32 + 180 = 292 (see STATE_SIZE).
         """
 
-        state = [self.position]
+        # Partner-selection mode flag: 0 = JD, 1 = Called Ace
+        state = [self.game.partner_mode_flag]
+        state.append(self.position)
         state.append(self.last_passed) # 5 if leaster mode. Everyone passed.
         state.append(self.picker)
-        partner = self.partner if self.partner else "JD" in self.hand
+        partner = self.partner if self.partner else (1 if self.is_secret_partner else 0)
         state.append(partner)
         state.append(self.alone_called)
-        state.append(self.game.is_leaster)
-        state.append(self.play_started)
-        state.append(self.current_trick)
+
+        # Called card one-hot vector
+        called_card_one_hot = [0] * 6
+        if self.game.called_card:
+            if self.game.called_card == "AC":
+                called_card_one_hot[0] = 1
+            elif self.game.called_card == "AS":
+                called_card_one_hot[1] = 1
+            elif self.game.called_card == "AH":
+                called_card_one_hot[2] = 1
+            elif self.game.called_card == "10C":
+                called_card_one_hot[3] = 1
+            elif self.game.called_card == "10S":
+                called_card_one_hot[4] = 1
+            elif self.game.called_card == "10H":
+                called_card_one_hot[5] = 1
+        state.extend(called_card_one_hot)
+
+        # Under-call flag
+        state.append(1 if getattr(self.game, "is_called_under", False) else 0)
+
+        # is_leaster flag
+        state.append(1 if self.game.is_leaster else 0)
+
+        # play_started flag
+        state.append(1 if self.game.play_started else 0)
+
+        # current trick index
+        state.append(self.game.current_trick)
 
         # One-hot vectors for hand / blind / bury
         state.extend(get_deck_vector(self.hand))
@@ -497,10 +641,10 @@ class Player:
         state.extend(get_deck_vector(self.bury if self.is_picker else []))
 
         # --- Current trick seat-attributed one-hot + role bits ---
-        # Helper to build 33-length one-hot for a card id (0 means empty)
-        def one_hot_33(card_id):
-            vec = [0] * 33
-            if 0 <= card_id < 33:
+        # Helper to build 34-length one-hot for a card id (0 means empty, 33 = UNDER)
+        def one_hot_34(card_id):
+            vec = [0] * 34
+            if 0 <= card_id <= UNDER_CARD_ID:
                 vec[card_id] = 1
             return vec
 
@@ -510,10 +654,13 @@ class Player:
         for rel_seat in range(5):
             abs_seat = ((self.position + rel_seat - 1) % 5) + 1  # 1-5
             card_str = trick[abs_seat - 1]
-            card_id = DECK_IDS.get(card_str, 0) if card_str else 0
+            if card_str == UNDER_TOKEN:
+                card_id = UNDER_CARD_ID
+            else:
+                card_id = DECK_IDS.get(card_str, 0) if card_str else 0
 
             # Card one-hot
-            state.extend(one_hot_33(card_id))
+            state.extend(one_hot_34(card_id))
 
             # Role bits
             is_picker = 1 if abs_seat == self.game.picker else 0
@@ -536,13 +683,22 @@ class Player:
 
         # We picked.
         if self.is_picker and not self.play_started:
-            # Need to bury.
-            if len(self.bury) != 2:
-                return set([f"BURY {c}" for c in set(self.hand)])
+            if not self.game.picker_chose_partner:
+                if self.game.partner_mode_flag == PARTNER_BY_JD:
+                    return set(["ALONE", "JD PARTNER"])
+                else:
+                    actions = set(["ALONE"])
+                    actions.update([f"CALL {c}" for c in get_callable_cards(self.hand)])
+                    return actions
 
-            # Call ALONE or JD PARTNER to begin hand
-            if self.bury:
-                return set(["ALONE", "JD PARTNER"])
+            if self.game.is_called_under and not self.game.under_card:
+                return set([f"UNDER {c}" for c in self.hand])
+
+            # Need to bury.
+            if self.game.called_card:
+                return set([f"BURY {c}" for c in get_playable_called_picker_cards(self.hand, self.game.called_card)])
+            else:
+                return set([f"BURY {c}" for c in self.hand])
 
         # Exclude actions when waiting on bury
         if not self.game.is_leaster and len(self.bury) != 2:
@@ -557,14 +713,28 @@ class Player:
         # Determine which cards are valid to play
         if self.play_started and self.last_player == self.position - 1:
             if not self.game.current_suit:
-                # Entire hand is valid at start of trick
-                actions.update([f"PLAY {c}" for c in self.hand])
+                # Start of trick, generally we can play anything
+                if not self.is_partner and self.game.called_card and self.is_secret_partner:
+                    actions.update([f"PLAY {c}" for c in get_leadable_called_partner_cards(self.hand, self.game.called_card)])
+                else:
+                    actions.update([f"PLAY {c}" for c in self.hand])
+
+                if self.game.is_called_under and self.is_picker and not self.game.was_called_suit_played:
+                    actions.update(f"PLAY {UNDER_TOKEN}")
             else:
+                # Follow suit if possible
                 cards_in_suit = filter_by_suit(self.hand, self.game.current_suit)
                 if cards_in_suit:
                     actions.update([f"PLAY {c}" for c in cards_in_suit])
+                elif self.game.is_called_under and self.is_picker and self.game.current_suit == self.game.called_suit:
+                    actions.update([f"PLAY {UNDER_TOKEN}"])
                 else:
-                    actions.update([f"PLAY {c}" for c in self.hand])
+                    # Can't follow suit
+                    if self.is_picker and self.game.called_card and not self.game.was_called_suit_played and not self.game.current_trick < 5:
+                        # Picker can't fail off called suit
+                        actions.update([f"PLAY {c}" for c in get_playable_called_picker_cards(self.hand, self.game.called_card)])
+                    else:
+                        actions.update([f"PLAY {c}" for c in self.hand])
 
         return actions
 
@@ -601,40 +771,77 @@ class Player:
             self.game.bury.append(card)
             self.hand.remove(card)
 
+            if len(self.game.bury) == 2:
+                self.game.play_started = True
+                self.game.leader = 1
+                self.game.leaders[0] = 1
+
         if action == "ALONE":
             self.game.alone_called = True
             self.game.partner = self.position
 
+        if "CALL" in action:
+            parts = action.split()
+            called_card = parts[1]
+
+            self.game.called_card = called_card
+            self.game.picker_chose_partner = True
+
+            if action in UNDER_CALL_ACTIONS:
+                self.game.is_called_under = True
+
         if action in ("ALONE", "JD PARTNER"):
-            self.game.play_started = True
-            self.game.leader = 1
-            self.game.leaders[0] = 1
+            self.game.picker_chose_partner = True
+
+        if action in UNDER_ACTIONS:
+            parts = action.split()
+            under_card = parts[1]
+            self.game.under_card = under_card
+            self.hand.remove(under_card)
 
         if "PLAY" in action:
             card = action[5:]
 
             # Set suit lead if we are the first to play this trick
             if self.game.leader == self.game.last_player + 1:
-                self.game.current_suit = get_card_suit(card)
+                if card == UNDER_TOKEN:
+                    self.game.current_suit = self.game.called_suit
+                else:
+                    self.game.current_suit = get_card_suit(card)
 
             self.game.history[self.current_trick][self.position - 1] = card
             self.hand.remove(card)
             self.game.last_player = self.position
             self.game.cards_played += 1
 
-            if card == "JD" and not self.game.alone_called:
-                self.game.partner = self.position
+            # Reveal partner when the partner card is played
+            if not self.game.alone_called:
+                if self.game.partner_mode_flag == PARTNER_BY_JD and card == "JD":
+                    self.game.partner = self.position
+                elif self.game.partner_mode_flag == PARTNER_BY_CALLED_ACE and card == self.game.called_card:
+                    self.game.partner = self.position
 
             if self.game.last_player == 5:
                 self.game.last_player = 0
 
             if self.game.cards_played == 5:
-                # Handle Jack of Diamonds in bury on final play
-                if self.current_trick == 5 and "JD" in self.bury:
-                    self.game.partner = self.game.picker
+                if self.current_trick == 5:
+                    # Handle buried partner card on final play (JD only)
+                    if self.game.partner_mode_flag == PARTNER_BY_JD and "JD" in self.bury:
+                        self.game.partner = self.game.picker
 
                 trick = self.game.history[self.current_trick]
-                winner = get_trick_winner(trick, self.game.current_suit)
+
+                is_called_10_suit = (
+                    self.game.called_card
+                    and self.game.called_card in CALLED_10S
+                    and self.game.current_suit == self.game.called_suit
+                )
+                winner = get_trick_winner(
+                    trick,
+                    self.game.current_suit,
+                    is_called_10_suit
+                )
                 winner_index = winner - 1
                 trick_points = get_trick_points(trick)
 
@@ -642,9 +849,16 @@ class Player:
                 if self.game.is_leaster and self.current_trick == 0:
                     trick_points += get_trick_points(self.game.blind)
 
+                # If called under, add points to trick
+                if self.game.is_called_under and self.game.current_suit == self.game.called_suit and not self.game.was_called_suit_played:
+                    trick_points += get_card_points(self.game.under_card)
+
                 self.game.trick_points[self.current_trick] = trick_points
                 self.game.trick_winners[self.current_trick] = winner
                 self.game.points_taken[winner_index] += trick_points
+
+                if self.game.called_card and not self.game.was_called_suit_played and self.game.called_suit == self.game.current_suit:
+                    self.game.was_called_suit_played = True
 
                 if self.current_trick < 5:
                     self.game.leaders[self.current_trick + 1] = winner
