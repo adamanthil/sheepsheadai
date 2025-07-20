@@ -13,7 +13,14 @@ from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 
 from ppo import PPOAgent
-from sheepshead import Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP
+from sheepshead import Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+
+
+def get_partner_selection_mode(episode):
+    if episode % 2 == 0:
+        return PARTNER_BY_CALLED_ACE
+    return PARTNER_BY_JD
+
 
 def analyze_strategic_decisions(agent, num_samples=100):
     """Analyze strategic decision quality instead of random opponent evaluation."""
@@ -28,8 +35,8 @@ def analyze_strategic_decisions(agent, num_samples=100):
     pick_decisions = []
     hand_strengths = []
 
-    for _ in range(num_samples):
-        game = Game()
+    for episode in range(num_samples):
+        game = Game(partner_selection_mode=get_partner_selection_mode(episode))
 
         # Analyze pick decisions
         initial_player = game.players[0]
@@ -332,6 +339,9 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     team_point_differences = deque(maxlen=3000)
     best_team_difference = float('inf')  # Lower is better (smaller point difference)
     current_avg_picker_score = float('-inf')
+    number_of_leasters = 0
+    number_of_called_under = 0
+    number_of_called_10s = 0
 
     training_data = {
         'episodes': [],
@@ -364,7 +374,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     print("-" * 60)
 
     for episode in range(start_episode + 1, num_episodes + 1):
-        game = Game()
+        game = Game(partner_selection_mode=get_partner_selection_mode(episode))
         # Reset recurrent hidden states in the actor at the start of each game
         agent.reset_recurrent_state()
         episode_scores = []
@@ -506,6 +516,13 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         else:
             team_point_diff = 0  # No team difference in leaster games
 
+        if game.is_leaster:
+            number_of_leasters += 1
+        elif game.is_called_under:
+            number_of_called_under += 1
+        elif game.called_card and game.called_card.startswith("10"):
+            number_of_called_10s += 1
+
         picker_scores.append(picker_score)
         pick_decisions.append(episode_picks)
         pass_decisions.append(episode_passes)
@@ -582,9 +599,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             games_per_min = episode / (elapsed / 60) if elapsed > 0 else 0
 
             print(f"📊 Episode {episode:,}/{num_episodes:,} ({episode/num_episodes*100:.1f}%)")
+            print("   " + "-" * 40)
             print(f"   Picker avg: {current_avg_picker_score:+.3f}")
             print(f"   Team point diff: {current_team_diff:+.1f}")
             print(f"   Pick rate: {current_pick_rate:.1f}%")
+            print(f"   Number of leasters: {number_of_leasters}")
+            print(f"   Number of called under: {number_of_called_under}")
+            print(f"   Number of called 10s: {number_of_called_10s}")
+            print("   " + "-" * 40)
             print(f"   Training speed: {games_per_min:.1f} games/min")
             print(f"   Time elapsed: {elapsed/60:.1f} min")
             print("   " + "-" * 40)
