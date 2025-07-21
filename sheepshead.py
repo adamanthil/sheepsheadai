@@ -54,7 +54,7 @@ ACTIONS.extend(BURY_ACTIONS)
 
 # Add play actions for all cards
 PLAY_ACTIONS = [f"PLAY {c}" for c in DECK]
-PLAY_ACTIONS.append(UNDER_TOKEN)
+PLAY_ACTIONS.append(f"PLAY {UNDER_TOKEN}")
 ACTIONS.extend(PLAY_ACTIONS)
 
 # Define dics for quick action lookup
@@ -87,7 +87,7 @@ def get_trick_winner(trick, suit, is_called_10_suit=False):
         try:
             power = 100 * TRUMP_POWER[card]
         except KeyError:
-            if is_called_10_suit:
+            if is_called_10_suit and card[:2] == "10":
                 # Called 10s always take the suit if not trumped
                 power = len(FAIL_POWER) + 1
             else:
@@ -120,10 +120,10 @@ def get_leadable_called_partner_cards(hand, called_card):
 
 
 def get_playable_called_picker_cards(hand, called_card):
-    # Picker can't fail off called suit
+    # Picker can't fail off called suit (or the called card if they called themselves)
     if len(filter_by_suit(hand, get_card_suit(called_card))) == 1:
         return [c for c in hand if get_card_suit(c) != get_card_suit(called_card)]
-    return hand
+    return [c for c in hand if c != called_card]
 
 
 def get_callable_cards(hand):
@@ -368,6 +368,8 @@ class Game:
             print("Playing Sheepshead Randomly!")
             self.print_player_hands()
 
+        card_count = 0
+        bury_count = 0
         while not self.is_done():
             for player in self.players:
                 actions = player.get_valid_action_ids()
@@ -376,8 +378,29 @@ class Game:
                 while actions:
                     action = random.sample(list(actions), 1)[0]
 
+                    action_str = ACTION_LOOKUP[action]
+                    pretty_action_str = action_str
+
+                    if action_str in PLAY_ACTIONS:
+                        card_count += 1
+
+                    # Colorize cards in action descriptions
+                    if verbose and ("BURY" in action_str or "PLAY" in action_str or "UNDER" in action_str):
+                        card = action_str.split()[-1]  # Get the card from "BURY QC" or "PLAY QC"
+                        colored_card = colorize_card(card)
+                        pretty_action_str = action_str.replace(card, colored_card)
+
+                    if "BURY" in action_str:
+                        bury_count += 1
+
                     if verbose:
-                        print(f" -- Player {player.position}: {ACTION_LOOKUP[action]}")
+                        print(f" -- Player {player.position}: {pretty_action_str}")
+
+                    # Print a new line between tricks
+                    if verbose and (card_count == 5 or action_str in BURY_ACTIONS and bury_count == 2):
+                        print(f"{'-'*40}")
+                        card_count = 0
+
                     player.act(action)
 
                     actions = player.get_valid_action_ids()
@@ -720,21 +743,30 @@ class Player:
                     actions.update([f"PLAY {c}" for c in self.hand])
 
                 if self.game.is_called_under and self.is_picker and not self.game.was_called_suit_played:
-                    actions.update(f"PLAY {UNDER_TOKEN}")
+                    actions.update([f"PLAY {UNDER_TOKEN}"])
             else:
                 # Follow suit if possible
                 cards_in_suit = filter_by_suit(self.hand, self.game.current_suit)
-                if cards_in_suit:
+                if self.game.called_card and self.game.called_card in cards_in_suit:
+                    # We must play called card when suit is led
+                    actions.update([f"PLAY {self.game.called_card}"])
+                elif cards_in_suit:
                     actions.update([f"PLAY {c}" for c in cards_in_suit])
-                elif self.game.is_called_under and self.is_picker and self.game.current_suit == self.game.called_suit:
+                elif self.game.is_called_under and self.is_picker and not self.game.was_called_suit_played and self.game.current_suit == self.game.called_suit:
                     actions.update([f"PLAY {UNDER_TOKEN}"])
                 else:
                     # Can't follow suit
-                    if self.is_picker and self.game.called_card and not self.game.was_called_suit_played and not self.game.current_trick < 5:
+                    if self.is_picker and self.game.called_card and not self.game.was_called_suit_played and self.game.current_trick < 5:
                         # Picker can't fail off called suit
                         actions.update([f"PLAY {c}" for c in get_playable_called_picker_cards(self.hand, self.game.called_card)])
+                    elif self.game.called_card and not self.is_partner and self.is_secret_partner and self.game.current_trick < 5:
+                        # Partner can't fail off called card
+                        actions.update([f"PLAY {c}" for c in self.hand if c != self.game.called_card])
                     else:
                         actions.update([f"PLAY {c}" for c in self.hand])
+                        if self.is_picker and self.game.is_called_under and not self.game.was_called_suit_played and self.game.current_trick == 5:
+                            # Allow playing under on final trick even if called suit isn't led
+                            actions.update([f"PLAY {UNDER_TOKEN}"])
 
         return actions
 
@@ -810,9 +842,10 @@ class Player:
                     self.game.current_suit = get_card_suit(card)
 
             self.game.history[self.current_trick][self.position - 1] = card
-            self.hand.remove(card)
             self.game.last_player = self.position
             self.game.cards_played += 1
+            if card != UNDER_TOKEN:
+                self.hand.remove(card)
 
             # Reveal partner when the partner card is played
             if not self.game.alone_called:
@@ -835,6 +868,7 @@ class Player:
                 is_called_10_suit = (
                     self.game.called_card
                     and self.game.called_card in CALLED_10S
+                    and not self.game.was_called_suit_played
                     and self.game.current_suit == self.game.called_suit
                 )
                 winner = get_trick_winner(
@@ -849,8 +883,8 @@ class Player:
                 if self.game.is_leaster and self.current_trick == 0:
                     trick_points += get_trick_points(self.game.blind)
 
-                # If called under, add points to trick
-                if self.game.is_called_under and self.game.current_suit == self.game.called_suit and not self.game.was_called_suit_played:
+                # Add under points to trick if it was played
+                if self.game.is_called_under and UNDER_TOKEN in trick:
                     trick_points += get_card_points(self.game.under_card)
 
                 self.game.trick_points[self.current_trick] = trick_points
