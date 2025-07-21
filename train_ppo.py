@@ -228,7 +228,8 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     ax1.grid(True, alpha=0.3)
 
         # Pick rate and correlation
-    ax2.plot(episodes, training_data['pick_rate'], color='orange', alpha=0.8, label='Pick Rate')
+    ax2.plot(episodes, training_data['called_pick_rate'], color='orange', alpha=0.8, label='Called Ace Pick Rate')
+    ax2.plot(episodes, training_data['jd_pick_rate'], color='purple', alpha=0.8, label='JD Pick Rate')
     ax2_twin = ax2.twinx()
     if 'pick_hand_correlation' in training_data and len(training_data['pick_hand_correlation']) > 0:
         # Create episode list for strategic metrics (only available every strategic_eval_interval)
@@ -334,21 +335,19 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         print("🆕 Starting fresh training")
 
     picker_scores = deque(maxlen=3000)
-    pick_decisions = deque(maxlen=3000)
-    pass_decisions = deque(maxlen=3000)
+    pick_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
+    pass_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
     team_point_differences = deque(maxlen=3000)
     best_team_difference = float('inf')  # Lower is better (smaller point difference)
     current_avg_picker_score = float('-inf')
-    number_of_leasters = 0
-    number_of_called_under = 0
-    number_of_called_10s = 0
 
     training_data = {
         'episodes': [],
         'recent_avg': [],
         'overall_avg': [],
         'picker_avg': [],
-        'pick_rate': [],
+        'called_pick_rate': [],
+        'jd_pick_rate': [],
         'learning_rate': [],
         'time_elapsed': [],
         'pick_hand_correlation': [],
@@ -369,6 +368,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     start_time = time.time()
     game_count = 0
     last_checkpoint_time = start_time
+
+    # ---------------------------------------------
+    # Cumulative counters for rate statistics
+    # ---------------------------------------------
+    total_leasters = 0
+    total_called_under = 0
+    total_called_10s = 0
+    called_ace_episode_count = 0
 
     print(f"\n🎮 Beginning training... (target: {num_episodes:,} episodes)")
     print("-" * 60)
@@ -516,16 +523,25 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         else:
             team_point_diff = 0  # No team difference in leaster games
 
+        # --------------------------------------------------
+        # Update cumulative event counters for statistics
+        # --------------------------------------------------
         if game.is_leaster:
-            number_of_leasters += 1
-        elif game.is_called_under:
-            number_of_called_under += 1
-        elif game.called_card and game.called_card.startswith("10"):
-            number_of_called_10s += 1
+            total_leasters += 1
+
+        partner_mode = get_partner_selection_mode(episode)
+        if partner_mode == PARTNER_BY_CALLED_ACE:
+            called_ace_episode_count += 1
+
+            if not game.is_leaster:
+                if game.is_called_under:
+                    total_called_under += 1
+                elif game.called_card and game.called_card.startswith("10"):
+                    total_called_10s += 1
 
         picker_scores.append(picker_score)
-        pick_decisions.append(episode_picks)
-        pass_decisions.append(episode_passes)
+        pick_decisions[get_partner_selection_mode(episode)].append(episode_picks)
+        pass_decisions[get_partner_selection_mode(episode)].append(episode_passes)
         team_point_differences.append(team_point_diff)
         game_count += 1
 
@@ -578,16 +594,25 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         if episode % 1000 == 0:
             current_avg_picker_score = np.mean(picker_scores) if picker_scores else 0
             # Compute pick-rate over all individual decisions (weighting games by the number of decisions they contributed)
-            total_picks = sum(pick_decisions)
-            total_passes = sum(pass_decisions)
-            current_pick_rate = (100 * total_picks / (total_picks + total_passes)) if (total_picks + total_passes) > 0 else 0
+            total_called_picks = sum(pick_decisions[PARTNER_BY_CALLED_ACE])
+            total_called_passes = sum(pass_decisions[PARTNER_BY_CALLED_ACE])
+            total_jd_picks = sum(pick_decisions[PARTNER_BY_JD])
+            total_jd_passes = sum(pass_decisions[PARTNER_BY_JD])
+            current_called_pick_rate = (100 * total_called_picks / (total_called_picks + total_called_passes)) if (total_called_picks + total_called_passes) > 0 else 0
+            current_jd_pick_rate = (100 * total_jd_picks / (total_jd_picks + total_jd_passes)) if (total_jd_picks + total_jd_passes) > 0 else 0
             current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
+            current_leaster_rate = total_leasters / episode * 100
+            # Only consider Called-Ace episodes for the following two rates
+            ca_denominator = max(called_ace_episode_count, 1)
+            current_called_under_rate = total_called_under / ca_denominator * 100
+            current_called_10s_rate = total_called_10s / ca_denominator * 100
             elapsed = time.time() - start_time
 
             # Collect data for plotting
             training_data['episodes'].append(episode)
             training_data['picker_avg'].append(current_avg_picker_score)
-            training_data['pick_rate'].append(current_pick_rate)
+            training_data['called_pick_rate'].append(current_called_pick_rate)
+            training_data['jd_pick_rate'].append(current_jd_pick_rate)
             training_data['learning_rate'].append(agent.actor_optimizer.param_groups[0]['lr'])
             training_data['time_elapsed'].append(elapsed)
             training_data['team_point_diff'].append(current_team_diff)
@@ -602,10 +627,12 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             print("   " + "-" * 40)
             print(f"   Picker avg: {current_avg_picker_score:+.3f}")
             print(f"   Team point diff: {current_team_diff:+.1f}")
-            print(f"   Pick rate: {current_pick_rate:.1f}%")
-            print(f"   Number of leasters: {number_of_leasters}")
-            print(f"   Number of called under: {number_of_called_under}")
-            print(f"   Number of called 10s: {number_of_called_10s}")
+            print(f"   Called Ace Pick rate: {current_called_pick_rate:.1f}%")
+            print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
+            print("   " + "-" * 20)
+            print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
+            print(f"   Called Under Rate: {current_called_under_rate:.2f}%")
+            print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
             print("   " + "-" * 40)
             print(f"   Training speed: {games_per_min:.1f} games/min")
             print(f"   Time elapsed: {elapsed/60:.1f} min")
