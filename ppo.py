@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from sheepshead import ACTION_IDS
+from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -271,8 +271,15 @@ class PPOAgent:
         # Action groups for multi–head policy
         # --------------------------------------------------
         pick_indices = [ACTION_IDS["PICK"] - 1, ACTION_IDS["PASS"] - 1]
-        bury_indices = [idx - 1 for a, idx in ACTION_IDS.items() if a.startswith("BURY") or a in ("ALONE", "JD PARTNER")]
-        play_indices = [idx - 1 for a, idx in ACTION_IDS.items() if a.startswith("PLAY")]
+
+        # Bury-phase indices include:   (1) all explicit bury actions,
+        #                               (2) calling going alone,
+        #                               (3) all partner-calling actions (called ace and JD PARTNER).
+        #                               (4) All "UNDER" actions.
+        bury_phase_actions = BURY_ACTIONS + ["ALONE", "JD PARTNER"] + CALL_ACTIONS + UNDER_ACTIONS
+        bury_indices = sorted({ACTION_IDS[a] - 1 for a in bury_phase_actions})
+
+        play_indices = sorted({ACTION_IDS[a] - 1 for a in PLAY_ACTIONS})
 
         self.action_groups = {
             'pick': sorted(pick_indices),
