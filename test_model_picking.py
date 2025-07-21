@@ -10,7 +10,18 @@ import random
 import re
 
 from ppo import PPOAgent
-from sheepshead import Game, Player, ACTIONS, DECK, STATE_SIZE, ACTION_IDS, TRUMP, pretty_card_list, get_monte_carlo_pick_score
+from sheepshead import (
+    Game,
+    Player,
+    ACTIONS,
+    DECK,
+    STATE_SIZE,
+    ACTION_IDS,
+    TRUMP,
+    PARTNER_BY_JD,
+    PARTNER_BY_CALLED_ACE,
+    pretty_card_list,
+)
 
 def calculate_display_width(text):
     """Calculate the visible width of text, excluding ANSI escape sequences."""
@@ -46,7 +57,7 @@ def calculate_hand_strength(hand):
     return strength
 
 
-def test_final_model(model_path, position, random_hands):
+def test_final_model(model_path, position, random_hands, jack_of_diamonds=False):
     """Test if the final model learned proper hand strength correlations."""
 
     print("🎯 TESTING FINAL TRAINED MODEL")
@@ -93,7 +104,7 @@ def test_final_model(model_path, position, random_hands):
 
     for hand, description in test_hands:
         # Setup game state for pick decision
-        game = Game()
+        game = Game(partner_selection_mode=PARTNER_BY_JD if jack_of_diamonds else PARTNER_BY_CALLED_ACE)
         player = Player(game, position, hand)
         game.last_passed = position - 1
 
@@ -183,6 +194,8 @@ if __name__ == "__main__":
                        help="Position of the player to test")
     parser.add_argument("-r", "--random", action="store_true",
                        help="Whether to use random hands")
+    parser.add_argument("--jack-of-diamonds", action="store_true",
+                       help="Whether to use jack of diamonds for partner selection")
     args = parser.parse_args()
 
-    test_final_model(args.model, args.position, args.random)
+    test_final_model(args.model, args.position, args.random, args.jack_of_diamonds)
