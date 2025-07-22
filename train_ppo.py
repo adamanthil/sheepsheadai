@@ -4,6 +4,7 @@ Extended long-term PPO training for Sheepshead.
 """
 
 import torch
+import math
 import numpy as np
 import random
 import time
@@ -270,12 +271,14 @@ def save_training_plot(training_data, save_path='training_progress.png'):
             ax4.legend()
             ax4.grid(True, alpha=0.3)
 
-    # Training efficiency
-    games_per_min = [ep / (time_elapsed / 60) for ep, time_elapsed in zip(episodes, training_data['time_elapsed']) if time_elapsed > 0]
-    ax5.plot(episodes[:len(games_per_min)], games_per_min, color='brown', alpha=0.8)
+    # Entropy coefficient evolution
+    ax5.plot(episodes, training_data['entropy_pick'], label='Pick Coeff', color='blue')
+    ax5.plot(episodes, training_data['entropy_bury'], label='Bury Coeff', color='green')
+    ax5.plot(episodes, training_data['entropy_play'], label='Play Coeff', color='red')
     ax5.set_xlabel('Episode')
-    ax5.set_ylabel('Games per Minute')
-    ax5.set_title('Training Efficiency')
+    ax5.set_ylabel('Entropy Coefficient')
+    ax5.set_title('Entropy Coefficient Schedule')
+    ax5.legend()
     ax5.grid(True, alpha=0.3)
 
     # Team Point Difference
@@ -359,7 +362,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         'picker_trump_rate': [],
         'defender_trump_rate': [],
         'bury_quality_rate': [],
-        'team_point_diff': []
+        'team_point_diff': [],
+        'entropy_pick': [],
+        'entropy_bury': [],
+        'entropy_play': []
     }
 
     # Running picker baseline for reward shaping
@@ -542,15 +548,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         if game_count >= update_interval:
             print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
 
-            # Separate entropy decay schedules
-            entropy_play_start, entropy_play_end = 0.01, 0.002
-            entropy_pick_start, entropy_pick_end = 0.02, 0.005
-            entropy_bury_start, entropy_bury_end = 0.02, 0.005
-            decay_fraction = min(episode / num_episodes, 1.0)
-            agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
-            agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
-            agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
-
             # pass value of last state stored to GAE
             last_state_for_gae = agent.states[-1] if agent.states else None
             update_stats = agent.update(next_state=last_state_for_gae, epochs=8, batch_size=256)
@@ -564,6 +561,42 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                 print(f"   Transitions: {num_transitions}")
                 print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
                 print(f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
+
+            # --------------------------------------------------------
+            # Adaptive entropy coefficient tuning (target-entropy)
+            # --------------------------------------------------------
+            if update_stats:
+                pick_e = update_stats.get('pick_entropy', None)
+                bury_e = update_stats.get('bury_entropy', None)
+                play_e = update_stats.get('play_entropy', None)
+
+                if pick_e is not None:
+                    # Compute target entropies once using action group sizes
+                    if episode == 1:
+                        pick_size = len(agent.action_groups['pick'])
+                        bury_size = len(agent.action_groups['bury'])
+                        play_size = len(agent.action_groups['play'])
+
+                        pick_target = 0.15 * math.log(pick_size)
+                        bury_target = 0.15 * math.log(bury_size)
+                        play_target = 0.10 * math.log(play_size)
+
+                        adaptive_targets = (pick_target, bury_target, play_target)
+                    else:
+                        pick_target, bury_target, play_target = adaptive_targets
+
+                    def adjust(coeff, entropy, target):
+                        lower = target * 0.8
+                        upper = target * 1.2
+                        if entropy < lower:
+                            coeff *= 1.1  # encourage more exploration
+                        elif entropy > upper:
+                            coeff *= 0.9  # encourage exploitation
+                        return max(min(coeff, 0.05), 1e-4)
+
+                    agent.entropy_coeff_pick = adjust(agent.entropy_coeff_pick, pick_e, pick_target)
+                    agent.entropy_coeff_bury = adjust(agent.entropy_coeff_bury, bury_e, bury_target)
+                    agent.entropy_coeff_play = adjust(agent.entropy_coeff_play, play_e, play_target)
 
             game_count = 0
 
@@ -610,6 +643,9 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             training_data['learning_rate'].append(agent.actor_optimizer.param_groups[0]['lr'])
             training_data['time_elapsed'].append(elapsed)
             training_data['team_point_diff'].append(current_team_diff)
+            training_data['entropy_pick'].append(agent.entropy_coeff_pick)
+            training_data['entropy_bury'].append(agent.entropy_coeff_bury)
+            training_data['entropy_play'].append(agent.entropy_coeff_play)
 
             # Strategic metrics are collected separately during strategic evaluation intervals
             # Don't try to collect them here as they're not always available
