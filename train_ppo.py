@@ -337,6 +337,11 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     picker_scores = deque(maxlen=3000)
     pick_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
     pass_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
+
+    leaster_window = deque(maxlen=3000)          # 1 ⇒ leaster, 0 ⇒ regular game
+    called_ace_window = deque(maxlen=3000)       # 1 ⇒ partner mode = Called-Ace, else 0
+    called_under_window = deque(maxlen=3000)     # 1 ⇒ called-under occurred that game
+    called_10_window = deque(maxlen=3000)        # 1 ⇒ called-10s occurred that game
     team_point_differences = deque(maxlen=3000)
     best_team_difference = float('inf')  # Lower is better (smaller point difference)
     current_avg_picker_score = float('-inf')
@@ -368,14 +373,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     start_time = time.time()
     game_count = 0
     last_checkpoint_time = start_time
-
-    # ---------------------------------------------
-    # Cumulative counters for rate statistics
-    # ---------------------------------------------
-    total_leasters = 0
-    total_called_under = 0
-    total_called_10s = 0
-    called_ace_episode_count = 0
 
     print(f"\n🎮 Beginning training... (target: {num_episodes:,} episodes)")
     print("-" * 60)
@@ -524,26 +521,22 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             team_point_diff = 0  # No team difference in leaster games
 
         # --------------------------------------------------
-        # Update cumulative event counters for statistics
+        # Append episode outcome to rolling windows
         # --------------------------------------------------
-        if game.is_leaster:
-            total_leasters += 1
+        is_leaster_ep = 1 if game.is_leaster else 0
+        leaster_window.append(is_leaster_ep)
 
         partner_mode = get_partner_selection_mode(episode)
-        if partner_mode == PARTNER_BY_CALLED_ACE:
-            called_ace_episode_count += 1
+        is_called_ace_ep = 1 if partner_mode == PARTNER_BY_CALLED_ACE else 0
+        called_ace_window.append(is_called_ace_ep)
 
-            if not game.is_leaster:
-                if game.is_called_under:
-                    total_called_under += 1
-                elif game.called_card and game.called_card.startswith("10"):
-                    total_called_10s += 1
-
-        picker_scores.append(picker_score)
-        pick_decisions[get_partner_selection_mode(episode)].append(episode_picks)
-        pass_decisions[get_partner_selection_mode(episode)].append(episode_passes)
-        team_point_differences.append(team_point_diff)
-        game_count += 1
+        # Only meaningful for Called-Ace, non-leaster games
+        if is_called_ace_ep and not is_leaster_ep:
+            called_under_window.append(1 if game.is_called_under else 0)
+            called_10_window.append(1 if (game.called_card and game.called_card.startswith("10")) else 0)
+        else:
+            called_under_window.append(0)
+            called_10_window.append(0)
 
         # Update model periodically
         if game_count >= update_interval:
@@ -601,11 +594,12 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             current_called_pick_rate = (100 * total_called_picks / (total_called_picks + total_called_passes)) if (total_called_picks + total_called_passes) > 0 else 0
             current_jd_pick_rate = (100 * total_jd_picks / (total_jd_picks + total_jd_passes)) if (total_jd_picks + total_jd_passes) > 0 else 0
             current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
-            current_leaster_rate = total_leasters / episode * 100
-            # Only consider Called-Ace episodes for the following two rates
-            ca_denominator = max(called_ace_episode_count, 1)
-            current_called_under_rate = total_called_under / ca_denominator * 100
-            current_called_10s_rate = total_called_10s / ca_denominator * 100
+            # --- Rolling-window rates ---
+            current_leaster_rate = (sum(leaster_window) / len(leaster_window)) * 100 if leaster_window else 0
+
+            ca_denominator = sum(called_ace_window) or 1  # avoid divide-by-zero
+            current_called_under_rate = (sum(called_under_window) / ca_denominator) * 100
+            current_called_10s_rate = (sum(called_10_window) / ca_denominator) * 100
             elapsed = time.time() - start_time
 
             # Collect data for plotting
