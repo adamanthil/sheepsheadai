@@ -380,6 +380,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     game_count = 0
     last_checkpoint_time = start_time
 
+    adaptive_targets = None
+
     print(f"\n🎮 Beginning training... (target: {num_episodes:,} episodes)")
     print("-" * 60)
 
@@ -578,7 +580,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
                 if pick_e is not None:
                     # Compute target entropies once using action group sizes
-                    if episode == 1:
+                    if adaptive_targets is None:
                         pick_size = len(agent.action_groups['pick'])
                         bury_size = len(agent.action_groups['bury'])
                         play_size = len(agent.action_groups['play'])
