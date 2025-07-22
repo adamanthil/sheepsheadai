@@ -688,10 +688,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     print(f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}")
     print(f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}")
     print(f"   Best team point difference: {best_team_difference:.1f}")
-    total_picks = sum(pick_decisions)
-    total_passes = sum(pass_decisions)
-    final_pick_rate = (100 * total_picks / (total_picks + total_passes)) if (total_picks + total_passes) > 0 else 0
-    print(f"   Final pick rate: {final_pick_rate:.1f}%")
+    total_called_picks = sum(pick_decisions[PARTNER_BY_CALLED_ACE])
+    total_called_passes = sum(pass_decisions[PARTNER_BY_CALLED_ACE])
+    total_jd_picks = sum(pick_decisions[PARTNER_BY_JD])
+    total_jd_passes = sum(pass_decisions[PARTNER_BY_JD])
+    final_called_pick_rate = (100 * total_called_picks / (total_called_picks + total_called_passes)) if (total_called_picks + total_called_passes) > 0 else 0
+    final_jd_pick_rate = (100 * total_jd_picks / (total_jd_picks + total_jd_passes)) if (total_jd_picks + total_jd_passes) > 0 else 0
+    print(f"   Final called Ace Pick rate: {final_called_pick_rate:.1f}%")
+    print(f"   Final JD Pick rate: {final_jd_pick_rate:.1f}%")
     print(f"   Training speed: {(num_episodes-start_episode)/(total_time/60):.1f} episodes/min")
 
 def main():
