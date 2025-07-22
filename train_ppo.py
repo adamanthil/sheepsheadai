@@ -544,6 +544,12 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             called_under_window.append(0)
             called_10_window.append(0)
 
+        picker_scores.append(picker_score)
+        pick_decisions[get_partner_selection_mode(episode)].append(episode_picks)
+        pass_decisions[get_partner_selection_mode(episode)].append(episode_passes)
+        team_point_differences.append(team_point_diff)
+        game_count += 1
+
         # Update model periodically
         if game_count >= update_interval:
             print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
