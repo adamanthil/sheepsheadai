@@ -381,14 +381,6 @@ class PPOAgent:
         action_masks = torch.stack(self.action_masks).to(device)
 
         # PPO update
-        # -------------------------------------------------------------
-        # Track entropy across all minibatches for adaptive schedules
-        # -------------------------------------------------------------
-        total_pick_entropy = 0.0
-        total_bury_entropy = 0.0
-        total_play_entropy = 0.0
-        entropy_batches = 0
-
         for _ in range(epochs):
             # Shuffle data
             indices = torch.randperm(len(states))
@@ -430,12 +422,6 @@ class PPOAgent:
                     pick_entropy = entropy_from_probs(probs_pick)
                     bury_entropy = entropy_from_probs(probs_bury)
                     play_entropy = entropy_from_probs(probs_play)
-
-                # Accumulate for adaptive tuning stats
-                total_pick_entropy += pick_entropy.item()
-                total_bury_entropy += bury_entropy.item()
-                total_play_entropy += play_entropy.item()
-                entropy_batches += 1
 
                 entropy_term = (self.entropy_coeff_pick * pick_entropy +
                                 self.entropy_coeff_bury * bury_entropy +
@@ -483,22 +469,11 @@ class PPOAgent:
         # Clear storage
         self.reset_storage()
 
-        # Average entropies across minibatches for external adaptive logic
-        if entropy_batches > 0:
-            avg_pick_entropy = total_pick_entropy / entropy_batches
-            avg_bury_entropy = total_bury_entropy / entropy_batches
-            avg_play_entropy = total_play_entropy / entropy_batches
-        else:
-            avg_pick_entropy = avg_bury_entropy = avg_play_entropy = 0.0
-
         # Return training statistics
         return {
             'advantage_stats': advantage_stats,
             'value_target_stats': value_target_stats,
-            'num_transitions': transitions,
-            'pick_entropy': avg_pick_entropy,
-            'bury_entropy': avg_bury_entropy,
-            'play_entropy': avg_play_entropy,
+            'num_transitions': transitions
         }
 
     def save(self, filepath):
