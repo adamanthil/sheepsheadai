@@ -534,7 +534,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         if is_called_ace_ep and not is_leaster_ep:
             called_under_window.append(1 if game.is_called_under else 0)
             called_10_window.append(1 if (game.called_card and game.called_card.startswith("10")) else 0)
-        else:
+        elif is_called_ace_ep:
             called_under_window.append(0)
             called_10_window.append(0)
 
