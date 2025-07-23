@@ -378,7 +378,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     print("-" * 60)
 
     for episode in range(start_episode + 1, num_episodes + 1):
-        game = Game(partner_selection_mode=get_partner_selection_mode(episode))
+        partner_mode = get_partner_selection_mode(episode)
+        game = Game(partner_selection_mode=partner_mode)
         # Reset recurrent hidden states in the actor at the start of each game
         agent.reset_recurrent_state()
         episode_scores = []
@@ -526,7 +527,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         is_leaster_ep = 1 if game.is_leaster else 0
         leaster_window.append(is_leaster_ep)
 
-        partner_mode = get_partner_selection_mode(episode)
         is_called_ace_ep = 1 if partner_mode == PARTNER_BY_CALLED_ACE else 0
         called_ace_window.append(is_called_ace_ep)
 
