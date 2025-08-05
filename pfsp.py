@@ -486,6 +486,19 @@ class PFSPPopulation:
         population = self._get_population(partner_mode)
         max_size = self._get_max_population(partner_mode)
 
+        # First, prune agents with very low uncertainty (σ) – they are fully explored
+        LOW_SIGMA_THRESHOLD = 2.5
+        if len(population) > max_size:
+            low_sigma_agents = [agent for agent in population if agent.get_skill_uncertainty() < LOW_SIGMA_THRESHOLD]
+            # Remove oldest among low-sigma first
+            low_sigma_agents.sort(key=lambda a: a.metadata.creation_time)
+            for agent in low_sigma_agents:
+                if len(population) <= max_size:
+                    break
+                population.remove(agent)
+                self._delete_agent_files(agent)
+                print(f"🗑️  Pruned low-σ agent {agent.metadata.agent_id} (μ={agent.get_skill_estimate():.1f}, σ={agent.get_skill_uncertainty():.1f})")
+
         if len(population) <= max_size:
             return
 
@@ -493,11 +506,8 @@ class PFSPPopulation:
         agents_to_keep = self._select_diverse_population_subset(population, max_size)
         agents_to_remove_list = [agent for agent in population if agent not in agents_to_keep]
 
-        # Update the population list
-        if partner_mode == PARTNER_BY_JD:
-            self.jd_population = agents_to_keep
-        else:
-            self.called_ace_population = agents_to_keep
+        # Mutate the existing list in-place to avoid stale references
+        population[:] = agents_to_keep
 
         # Remove files for deleted agents
         for removed_agent in agents_to_remove_list:

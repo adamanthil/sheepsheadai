@@ -247,6 +247,8 @@ def train_pfsp(num_episodes: int = 500000,
 
     start_time = time.time()
     game_count = 0
+    # Track cumulative μ renormalisation shifts for logging
+    cumulative_renorm = 0.0
     transitions_since_update = 0
     last_checkpoint_time = start_time
 
@@ -255,6 +257,23 @@ def train_pfsp(num_episodes: int = 500000,
     print("-" * 80)
 
     for episode in range(start_episode + 1, num_episodes + 1):
+        # ------------------------------------------------------------------
+        # Prevent numerical overflow in OpenSkill ratings by renormalising μ
+        # ------------------------------------------------------------------
+        MAX_ABS_MU = 350.0
+        all_ratings = [training_rating] + [ag.rating for ag in population.jd_population] + [ag.rating for ag in population.called_ace_population]
+        extreme_mu = max(abs(r.mu) for r in all_ratings) if all_ratings else 0
+        if extreme_mu > MAX_ABS_MU:
+            shift = extreme_mu - MAX_ABS_MU
+            for r in all_ratings:
+                r.mu -= np.sign(r.mu) * shift
+            cumulative_renorm -= shift
+
+        # Throttle log noise – print cumulative shift once every 2 000 episodes
+        if episode % 2000 == 1:
+            print(f"⚖️  Cumulative rating μ renorm Δ over last 2k eps: {cumulative_renorm:+.1f}  (|μ|max={extreme_mu:.1f})")
+            cumulative_renorm = 0.0
+
         partner_mode = get_partner_selection_mode(episode)
 
         # Sample opponents from population based on current OpenSkill rating
@@ -329,8 +348,8 @@ def train_pfsp(num_episodes: int = 500000,
                     teams.append([opp_agent.rating])
                     agents_in_order.append(opp_agent)
                 else:
-                    # Self-play filler seat – use a fresh dummy rating so each player is unique
-                    teams.append([rating_model.rating()])
+                    # Self-play filler seat – share the training rating object so rating update is well-posed
+                    teams.append([training_rating])
                     agents_in_order.append(None)
 
         scores_for_rank = final_scores
@@ -504,12 +523,12 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Called Ace Pick rate: {current_called_pick_rate:.1f}%")
             print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
             print("   " + "-" * 25)
-            print(f"   Population JD: {jd_stats['size']} agents (avg skill: {jd_stats['avg_skill']:.1f})")
-            print(f"   Population CA: {ca_stats['size']} agents (avg skill: {ca_stats['avg_skill']:.1f})")
-            print("   " + "-" * 25)
             print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
             print(f"   Called Under Rate: {current_called_under_rate:.2f}%")
             print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
+            print("   " + "-" * 25)
+            print(f"   Population JD: {jd_stats['size']} agents (avg skill: {jd_stats['avg_skill']:.1f})")
+            print(f"   Population CA: {ca_stats['size']} agents (avg skill: {ca_stats['avg_skill']:.1f})")
             print("   " + "-" * 50)
             print(f"   Training speed: {games_per_min:.1f} games/min")
             print(f"   Time elapsed: {elapsed/60:.1f} min")
