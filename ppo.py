@@ -220,7 +220,7 @@ class PPOAgent:
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
 
         # Hyperparameters
-        self.gamma = 0.99
+        self.gamma = 0.9
         self.gae_lambda = 0.95
         # Separate entropy coefficients per head
         self.entropy_coeff_pick = 0.02
