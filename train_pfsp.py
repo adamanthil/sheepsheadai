@@ -90,8 +90,15 @@ def play_population_game(training_agent: PPOAgent,
                     }
                     episode_transitions.append(transition)
 
-                    # Apply discourage trump leading penalty for defenders
                     action_name = ACTIONS[action - 1]
+
+                    # Apply trump burying penalty
+                    if "BURY" in action_name:
+                        card = action_name[5:]
+                        if card in TRUMP:
+                            transition['intermediate_reward'] = -0.1
+
+                    # Apply discourage trump leading penalty for defenders
                     if "PLAY" in action_name:
                         if play_action_count == 0:
                             card = action_name[5:]
