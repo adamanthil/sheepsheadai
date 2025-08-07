@@ -13,26 +13,45 @@ def swish(x):
     return x * torch.sigmoid(x)
 
 
-class MultiHeadRecurrentActorNetwork(nn.Module):
-    """Actor network with an LSTM core and separate linear heads for the pick / bury / play
-    phases.  The three heads' logits are concatenated back into the full action
-    space order so existing masking logic continues to work unchanged.
+class PreNormResidual(nn.Module):
+    """Pre-norm residual MLP block: y = x + Linear(LN(x) -> hidden -> act -> dropout -> dim)."""
+    def __init__(self, dim: int, hidden_dim: int | None = None, dropout: float = 0.1, activation=swish):
+        super().__init__()
+        hidden_dim = hidden_dim or dim
+        self.norm = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, dim)
+        self.dropout = nn.Dropout(dropout)
+        self.activation = activation
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=1.0)
+            nn.init.constant_(m.bias, 0.0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.norm(x)
+        y = self.activation(self.fc1(y))
+        y = self.dropout(self.fc2(y))
+        return x + y
+
+
+class SharedRecurrentBackbone(nn.Module):
+    """Shared encoder + LSTM + post-LSTM trunk used by both actor and critic.
+
+    Layout:
+      - enc_proj: Linear(state_size -> 512)
+      - enc_blocks: 3 × PreNormResidual(512)
+      - lstm: LSTM(512 -> 256)
+      - trunk_blocks: 2 × PreNormResidual(256)
     """
 
-    def __init__(self, state_size, action_size, action_groups, hidden_size=256,
-                 lstm_size=128, activation='swish'):
-        super(MultiHeadRecurrentActorNetwork, self).__init__()
+    def __init__(self, state_size: int, activation: str = 'swish'):
+        super().__init__()
         self.state_size = state_size
-        self.action_size = action_size
-        self.action_groups = action_groups  # dict with keys 'pick', 'bury', 'play'
 
-        # === Encoder ===
-        self.enc_fc1 = nn.Linear(state_size, hidden_size)
-        self.enc_fc2 = nn.Linear(hidden_size, hidden_size)
-        self.enc_fc3 = nn.Linear(hidden_size, hidden_size)
-        self.enc_ln1 = nn.LayerNorm(hidden_size)
-
-        # Activation selector
         if activation == 'swish':
             self.activation = swish
         elif activation == 'relu':
@@ -40,18 +59,19 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         else:
             raise ValueError(f"Unsupported activation function: {activation}")
 
-        # === Recurrent core ===
-        self.lstm = nn.LSTM(hidden_size, lstm_size, batch_first=True)
+        # Encoder projection and residual blocks (512 width)
+        self.enc_proj = nn.Linear(state_size, 512)
+        self.enc_block1 = PreNormResidual(512, 512, dropout=0.1, activation=self.activation)
+        self.enc_block2 = PreNormResidual(512, 512, dropout=0.1, activation=self.activation)
+        self.enc_block3 = PreNormResidual(512, 512, dropout=0.1, activation=self.activation)
 
-        # === Heads ===
-        self.pick_head = nn.Linear(lstm_size, len(action_groups['pick']))
-        self.bury_head = nn.Linear(lstm_size, len(action_groups['bury']))
-        self.play_head = nn.Linear(lstm_size, len(action_groups['play']))
+        # Recurrent core
+        self.lstm = nn.LSTM(512, 256, batch_first=True)
 
-        # Buffer to hold hidden states for each player id (1-5).  Populated on the fly.
-        self._hidden_states = {}
+        # Shared post-LSTM trunk (256 width)
+        self.trunk_block1 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
+        self.trunk_block2 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
 
-        # Init
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -64,6 +84,73 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
                     nn.init.orthogonal_(param.data, gain=1.0)
                 elif 'bias' in name:
                     nn.init.constant_(param.data, 0.0)
+
+    def forward(self, state: torch.Tensor, hidden_in=None, return_hidden: bool = False):
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+
+        # Encoder
+        x = self.activation(self.enc_proj(state))
+        x = self.enc_block1(x)
+        x = self.enc_block2(x)
+        x = self.enc_block3(x)
+
+        # LSTM expects time dimension
+        x = x.unsqueeze(1)
+        lstm_out, new_hidden = self.lstm(x, hidden_in)
+        feat = lstm_out.squeeze(1)
+
+        # Shared trunk
+        feat = self.trunk_block1(feat)
+        feat = self.trunk_block2(feat)
+
+        if return_hidden:
+            return feat, new_hidden
+        return feat
+
+
+class MultiHeadRecurrentActorNetwork(nn.Module):
+    """Actor network with an LSTM core and separate linear heads for the pick / bury / play
+    phases.  The three heads' logits are concatenated back into the full action
+    space order so existing masking logic continues to work unchanged.
+    """
+
+    def __init__(self, backbone: SharedRecurrentBackbone, action_size, action_groups, activation='swish'):
+        super(MultiHeadRecurrentActorNetwork, self).__init__()
+        self.backbone = backbone  # registered; owns shared params
+        self.action_size = action_size
+        self.action_groups = action_groups  # dict with keys 'pick', 'bury', 'play'
+
+        # Activation selector
+        if activation == 'swish':
+            self.activation = swish
+        elif activation == 'relu':
+            self.activation = F.relu
+        else:
+            raise ValueError(f"Unsupported activation function: {activation}")
+
+        # === Actor-specific adapter after shared trunk ===
+        self.actor_adapter = nn.Sequential(
+            nn.LayerNorm(256),
+            nn.Linear(256, 256),
+            nn.ReLU() if activation == 'relu' else nn.Identity()
+        )
+
+        # === Heads ===
+        self.pick_head = nn.Linear(256, len(action_groups['pick']))
+        self.bury_head = nn.Linear(256, len(action_groups['bury']))
+        self.play_head = nn.Linear(256, len(action_groups['play']))
+
+        # Buffer to hold hidden states for each player id (1-5).  Populated on the fly.
+        self._hidden_states = {}
+
+        # Init
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=1.0)
+            nn.init.constant_(m.bias, 0.0)
 
     # ------------------------------------------------------------
     # Public helpers
@@ -95,22 +182,16 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         batch_size = state.size(0)
 
-        # ---- Encoder ----
-        x = self.activation(self.enc_fc1(state))
-        x = self.activation(self.enc_fc2(x))
-        x = self.activation(self.enc_fc3(x))
-        x = self.enc_ln1(x)  # LayerNorm before recurrent core
-
-        # Add time dimension for LSTM (seq_len=1)
-        x = x.unsqueeze(1)  # (batch, 1, hidden_size)
-
-        # Choose hidden state source
+        # Choose hidden state source (for shared LSTM)
         hidden = hidden_in
         if hidden is None and player_id is not None and batch_size == 1:
             hidden = self._hidden_states.get(player_id, None)
 
-        lstm_out, new_hidden = self.lstm(x, hidden)
-        lstm_out = lstm_out.squeeze(1)  # (batch, lstm_size)
+        # Shared backbone → features (256) + new hidden
+        feat, new_hidden = self.backbone(state, hidden_in=hidden, return_hidden=True)
+
+        # Actor adapter
+        feat = self.actor_adapter(feat)
 
         # Persist hidden state for this player (only if single sample and not using explicit hidden)
         if hidden_in is None and player_id is not None and batch_size == 1:
@@ -119,9 +200,9 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         # ---- Heads ----
         logits = torch.full((batch_size, self.action_size), -1e8, device=state.device)
 
-        pick_logits = self.pick_head(lstm_out)
-        bury_logits = self.bury_head(lstm_out)
-        play_logits = self.play_head(lstm_out)
+        pick_logits = self.pick_head(feat)
+        bury_logits = self.bury_head(feat)
+        play_logits = self.play_head(feat)
 
         logits[:, self.action_groups['pick']] = pick_logits
         logits[:, self.action_groups['bury']] = bury_logits
@@ -140,14 +221,14 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
 
 class RecurrentCriticNetwork(nn.Module):
-    """Value network that mirrors the encoder + LSTM structure of the actor but
-    ends with a single scalar output."""
+    """Critic head using the shared backbone with a critic-specific adapter layer."""
 
-    def __init__(self, state_size, hidden_size=256, lstm_size=128, activation='swish'):
-        super(RecurrentCriticNetwork, self).__init__()
-        self.state_size = state_size
+    def __init__(self, backbone: SharedRecurrentBackbone, activation='swish'):
+        super().__init__()
+        # Store a non-registered reference to the shared backbone to avoid
+        # duplicating parameters in the critic and to keep optimizer ownership
+        object.__setattr__(self, "_backbone", backbone)
 
-        # Activation selector
         if activation == 'swish':
             self.activation = swish
         elif activation == 'relu':
@@ -155,13 +236,12 @@ class RecurrentCriticNetwork(nn.Module):
         else:
             raise ValueError(f"Unsupported activation function: {activation}")
 
-        self.enc_fc1 = nn.Linear(state_size, hidden_size)
-        self.enc_fc2 = nn.Linear(hidden_size, hidden_size)
-        self.enc_fc3 = nn.Linear(hidden_size, hidden_size)
-        self.enc_ln1 = nn.LayerNorm(hidden_size)
-
-        self.lstm = nn.LSTM(hidden_size, lstm_size, batch_first=True)
-        self.value_head = nn.Linear(lstm_size, 1)
+        self.critic_adapter = nn.Sequential(
+            nn.LayerNorm(256),
+            nn.Linear(256, 256),
+            nn.ReLU() if activation == 'relu' else nn.Identity()
+        )
+        self.value_head = nn.Linear(256, 1)
 
         self.apply(self._init_weights)
 
@@ -169,27 +249,11 @@ class RecurrentCriticNetwork(nn.Module):
         if isinstance(m, nn.Linear):
             nn.init.orthogonal_(m.weight, gain=1.0)
             nn.init.constant_(m.bias, 0.0)
-        elif isinstance(m, nn.LSTM):
-            for name, param in m.named_parameters():
-                if 'weight' in name:
-                    nn.init.orthogonal_(param.data, gain=1.0)
-                elif 'bias' in name:
-                    nn.init.constant_(param.data, 0.0)
 
     def forward(self, state, hidden_in=None, return_hidden=False):
-        if state.dim() == 1:
-            state = state.unsqueeze(0)
-
-        x = self.activation(self.enc_fc1(state))
-        x = self.activation(self.enc_fc2(x))
-        x = self.activation(self.enc_fc3(x))
-        x = self.enc_ln1(x)
-
-        # Add time dimension for LSTM (seq_len=1)
-        x = x.unsqueeze(1)
-        lstm_out, new_hidden = self.lstm(x, hidden_in)
-        lstm_out = lstm_out.squeeze(1)
-        value = self.value_head(lstm_out)
+        feat, new_hidden = self._backbone(state, hidden_in=hidden_in, return_hidden=True)
+        feat = self.critic_adapter(feat)
+        value = self.value_head(feat)
         if return_hidden:
             return value, new_hidden
         return value
@@ -219,17 +283,18 @@ class PPOAgent:
             'play': sorted(play_indices),
         }
 
-        # Networks (recurrent + multi-head)
+        # Shared backbone and networks
+        self.backbone = SharedRecurrentBackbone(state_size, activation=activation).to(device)
         self.actor = MultiHeadRecurrentActorNetwork(
-            state_size,
+            self.backbone,
             action_size,
             self.action_groups,
             activation=activation,
         ).to(device)
 
-        self.critic = RecurrentCriticNetwork(state_size, activation=activation).to(device)
+        self.critic = RecurrentCriticNetwork(self.backbone, activation=activation).to(device)
 
-        # Optimizers
+        # Optimizers (single optimizer owns backbone via actor; critic excludes backbone)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr_actor)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
 
@@ -486,16 +551,14 @@ class PPOAgent:
                 actor_loss = -torch.min(surr1, surr2).mean() - entropy_term
                 critic_loss = F.mse_loss(values_seq, returns_seq.view(-1))
 
-                # Update actor
+                # Joint backward so backbone gets gradients from both losses; step backbone via actor optimizer only
                 self.actor_optimizer.zero_grad()
-                actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
-                self.actor_optimizer.step()
-
-                # Update critic
                 self.critic_optimizer.zero_grad()
-                critic_loss.backward()
+                total_loss = actor_loss + self.value_loss_coeff * critic_loss
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
                 torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+                self.actor_optimizer.step()
                 self.critic_optimizer.step()
 
         transitions = len(self.states)
