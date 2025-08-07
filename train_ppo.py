@@ -377,6 +377,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     print(f"\n🎮 Beginning training... (target: {num_episodes:,} episodes)")
     print("-" * 60)
 
+    transitions_since_update = 0
     for episode in range(start_episode + 1, num_episodes + 1):
         partner_mode = get_partner_selection_mode(episode)
         game = Game(partner_selection_mode=partner_mode)
@@ -504,7 +505,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         # Store events in chronological per-player order (obs and actions interleaved)
         for ev in flat_all:
             if ev.get('kind') == 'obs':
-                agent.store_observation(ev['state'])
+                agent.store_observation(ev['state'], player_id=ev['player'].position)
             else:
                 reward, done_flag = reward_map[id(ev)]
                 agent.store_transition(
@@ -514,8 +515,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     ev['value'],
                     ev['log_prob'],
                     done_flag,
-                    ev['valid_actions']
+                    ev['valid_actions'],
+                    player_id=ev['player'].position,
                 )
+                transitions_since_update += 1
 
         # Track statistics
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
@@ -555,9 +558,9 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         team_point_differences.append(team_point_diff)
         game_count += 1
 
-        # Update model periodically
-        if game_count >= update_interval:
-            print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
+        # Update model periodically by transition count (action transitions only)
+        if transitions_since_update >= update_interval:
+            print(f"🔄 Updating model after {transitions_since_update} transitions... (Episode {episode:,})")
 
             # Separate entropy decay schedules
             entropy_play_start, entropy_play_end = 0.02, 0.004
@@ -583,6 +586,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                 print(f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
 
             game_count = 0
+            transitions_since_update = 0
 
                 # Strategic evaluation at intervals
         if episode % strategic_eval_interval == 0:

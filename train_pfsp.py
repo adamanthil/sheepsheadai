@@ -134,7 +134,7 @@ def play_population_game(training_agent: PPOAgent,
                     for seat in game.players:
                         seat_agent = agents[seat.position - 1]
                         if seat_agent == training_agent:
-                            training_agent.store_observation(seat.get_state_vector())
+                            training_agent.store_observation(seat.get_state_vector(), player_id=seat.position)
                         else:
                             seat_agent.observe(seat.get_state_vector(), seat.position)
 
@@ -329,7 +329,8 @@ def train_pfsp(num_episodes: int = 500000,
                 transition['value'],
                 transition['log_prob'],
                 reward_data['done'],
-                transition['valid_actions']
+                transition['valid_actions'],
+                player_id=transition['player'].position,
             )
             transitions_since_update += 1
 

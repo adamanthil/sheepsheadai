@@ -389,7 +389,7 @@ class PPOAgent:
             _ = self.actor(state_t, action_mask_t, player_id)
             _ = self.critic(state_t)
 
-    def store_transition(self, state, action, reward, value, log_prob, done, valid_actions):
+    def store_transition(self, state, action, reward, value, log_prob, done, valid_actions, player_id=None):
         """Store transition data"""
         action_mask = self.get_action_mask(valid_actions, self.action_size)
         self.events.append({
@@ -401,9 +401,10 @@ class PPOAgent:
             'value': value,
             'log_prob': log_prob,
             'done': done,
+            'player_id': player_id,
         })
 
-    def store_observation(self, state, valid_actions=None):
+    def store_observation(self, state, valid_actions=None, player_id=None):
         """Store an observation-only frame to be used for recurrent unrolling during training.
         Does not contribute to GAE or PPO loss.
         """
@@ -415,34 +416,46 @@ class PPOAgent:
             'kind': 'obs',
             'state': state,
             'mask': mask,
+            'player_id': player_id,
         })
 
     def compute_gae(self, next_value=0):
-        """Compute GAE over action events only; write results back into events."""
-        # Extract action events
-        action_indices = [i for i, e in enumerate(self.events) if e['kind'] == 'action']
-        if not action_indices:
+        """Compute GAE per player over action events; write results back into events."""
+        # Group action indices by player
+        actions_by_player: dict[int | None, list[int]] = {}
+        for i, e in enumerate(self.events):
+            if e['kind'] == 'action':
+                pid = e.get('player_id', None)
+                actions_by_player.setdefault(pid, []).append(i)
+
+        all_advantages = []
+        all_returns = []
+        for pid, idxs in actions_by_player.items():
+            if not idxs:
+                continue
+            rewards = np.array([self.events[i]['reward'] for i in idxs])
+            # Bootstrap next value as 0.0 per player sequence
+            values = np.array([self.events[i]['value'] for i in idxs] + [0.0])
+            dones = np.array([self.events[i]['done'] for i in idxs] + [False])
+
+            advantages = np.zeros_like(rewards)
+            gae = 0.0
+            for t in reversed(range(len(rewards))):
+                delta = rewards[t] + self.gamma * values[t + 1] * (1 - dones[t]) - values[t]
+                gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
+                advantages[t] = gae
+            returns = advantages + values[:-1]
+
+            for i, adv, ret in zip(idxs, advantages, returns):
+                self.events[i]['advantage'] = float(adv)
+                self.events[i]['return'] = float(ret)
+
+            all_advantages.append(advantages)
+            all_returns.append(returns)
+
+        if not all_advantages:
             return np.array([]), np.array([])
-
-        rewards = np.array([self.events[i]['reward'] for i in action_indices])
-        values = np.array([self.events[i]['value'] for i in action_indices] + [next_value])
-        dones = np.array([self.events[i]['done'] for i in action_indices] + [False])
-
-        advantages = np.zeros_like(rewards)
-        gae = 0.0
-        for t in reversed(range(len(rewards))):
-            delta = rewards[t] + self.gamma * values[t + 1] * (1 - dones[t]) - values[t]
-            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
-            advantages[t] = gae
-
-        returns = advantages + values[:-1]
-
-        # Write back
-        for idx, adv, ret in zip(action_indices, advantages, returns):
-            self.events[idx]['advantage'] = float(adv)
-            self.events[idx]['return'] = float(ret)
-
-        return advantages, returns
+        return np.concatenate(all_advantages), np.concatenate(all_returns)
 
     def update(self, next_state=None, epochs=10, batch_size=64):
         """Update actor and critic networks using PPO with recurrent unrolling."""
@@ -479,39 +492,41 @@ class PPOAgent:
         if advantages.size:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # Convert to tensors
-        # Build tensor views of event fields
+        # Convert to tensors and indices
         states = [torch.FloatTensor(e['state']).to(device) for e in self.events]
         masks_t = [ (e['mask'].to(device) if isinstance(e['mask'], torch.Tensor) else torch.as_tensor(e['mask'], dtype=torch.bool, device=device)) for e in self.events]
         kinds = [e['kind'] for e in self.events]
-        action_indices = [i for i,k in enumerate(kinds) if k=='action']
-        # Map from global event index to its compact action position
-        ev_to_act_pos = {ev_idx: pos for pos, ev_idx in enumerate(action_indices)}
-        dones = torch.tensor([self.events[i]['done'] for i in action_indices], dtype=torch.bool, device=device)
-        actions = torch.tensor([self.events[i]['action'] for i in action_indices], dtype=torch.long, device=device)
-        old_log_probs = torch.tensor([self.events[i]['log_prob'] for i in action_indices], dtype=torch.float32, device=device)
-        returns_t = torch.tensor([self.events[i]['return'] for i in action_indices], dtype=torch.float32, device=device) if advantages.size else torch.tensor([], dtype=torch.float32, device=device)
-        adv_t = torch.tensor([self.events[i]['advantage'] for i in action_indices], dtype=torch.float32, device=device) if advantages.size else torch.tensor([], dtype=torch.float32, device=device)
+        pids = [e.get('player_id', None) for e in self.events]
+        events_by_player: dict[int | None, list[int]] = {}
+        for idx, pid in enumerate(pids):
+            events_by_player.setdefault(pid, []).append(idx)
 
-        # Build contiguous sequences delimited by done=True
-        # Build contiguous segments over event indices, ending when an action with done=True occurs
-        segments = []  # list of (start_event_idx, end_event_idx)
-        start = 0
-        action_cursor = 0
-        for ev_idx, kind in enumerate(kinds):
-            if kind == 'action':
-                if dones[action_cursor].item():
-                    segments.append((start, ev_idx))
-                    start = ev_idx + 1
-                action_cursor += 1
-        if start < len(self.events):
-            segments.append((start, len(self.events) - 1))
+        # Build contiguous segments per player delimited by that player's done=True actions
+        segments: list[tuple[int | None, int, int]] = []
+        for pid, ev_idxs in events_by_player.items():
+            action_ev_idxs = [i for i in ev_idxs if kinds[i] == 'action']
+            if not action_ev_idxs:
+                continue
+            # Build done flags for this player's actions in order
+            dones_pid = [self.events[i]['done'] for i in action_ev_idxs]
+            start = ev_idxs[0]
+            a_ptr = 0
+            for i in ev_idxs:
+                if kinds[i] == 'action':
+                    if dones_pid[a_ptr]:
+                        segments.append((pid, start, i))
+                        start = i + 1
+                    a_ptr += 1
+            if start <= ev_idxs[-1]:
+                segments.append((pid, start, ev_idxs[-1]))
 
         # Training epochs – sample by segments, keep temporal order inside
         for _ in range(epochs):
+            if not segments:
+                break
             perm = torch.randperm(len(segments))
             for seg_idx in perm.tolist():
-                seg_start, seg_end = segments[seg_idx]
+                pid, seg_start, seg_end = segments[seg_idx]
 
                 hidden_actor = None
                 hidden_critic = None
@@ -521,7 +536,7 @@ class PPOAgent:
                 probs_for_entropy = []
                 seg_global_positions = []
 
-                # Unroll sequence
+                # Unroll sequence for this player only
                 for ev_idx in range(seg_start, seg_end + 1):
                     s_t = states[ev_idx].unsqueeze(0)
                     m_t = masks_t[ev_idx].unsqueeze(0)
@@ -530,11 +545,11 @@ class PPOAgent:
                     action_probs_t, hidden_actor = self.actor(s_t, m_t, hidden_in=hidden_actor, return_hidden=True)
                     value_t, hidden_critic = self.critic(s_t, hidden_in=hidden_critic, return_hidden=True)
 
-                    if kinds[ev_idx] == 'action':
-                        gpos = ev_to_act_pos[ev_idx]
-                        seg_global_positions.append(gpos)
+                    if kinds[ev_idx] == 'action' and pids[ev_idx] == pid:
+                        seg_global_positions.append(ev_idx)
                         dist_t = torch.distributions.Categorical(action_probs_t)
-                        new_log_prob_t = dist_t.log_prob(actions[gpos].unsqueeze(0))
+                        action_idx = torch.tensor(self.events[ev_idx]['action'], device=device)
+                        new_log_prob_t = dist_t.log_prob(action_idx.unsqueeze(0))
                         new_log_probs_list.append(new_log_prob_t.squeeze(0))
                         values_list.append(value_t.squeeze(0).squeeze(-1))
                         probs_for_entropy.append(action_probs_t.squeeze(0))
@@ -548,10 +563,10 @@ class PPOAgent:
                 probs_seq = torch.stack(probs_for_entropy)           # (L, A)
 
                 # Slice old data for this segment over action steps only
-                selector = torch.tensor(seg_global_positions, dtype=torch.long, device=device)
-                old_log_probs_seq = old_log_probs.index_select(0, selector)
-                returns_seq = returns_t.index_select(0, selector) if adv_t.numel() else torch.tensor([], device=device)
-                adv_seq = adv_t.index_select(0, selector) if adv_t.numel() else torch.tensor([], device=device)
+                # Build old terms from events directly for these positions
+                old_log_probs_seq = torch.tensor([self.events[i]['log_prob'] for i in seg_global_positions], dtype=torch.float32, device=device)
+                returns_seq = torch.tensor([self.events[i]['return'] for i in seg_global_positions], dtype=torch.float32, device=device)
+                adv_seq = torch.tensor([self.events[i]['advantage'] for i in seg_global_positions], dtype=torch.float32, device=device)
 
                 # Entropy by head (averaged over sequence)
                 with torch.no_grad():
@@ -581,7 +596,7 @@ class PPOAgent:
                 pick_idx_tensor = torch.tensor(self.action_groups['pick'], device=ratios.device)
                 bury_idx_tensor = torch.tensor(self.action_groups['bury'], device=ratios.device)
 
-                actions_seq = actions.index_select(0, selector)
+                actions_seq = torch.tensor([self.events[i]['action'] for i in seg_global_positions], dtype=torch.long, device=device)
                 pick_mask_seq = (actions_seq.unsqueeze(1) == pick_idx_tensor).any(dim=1)
                 bury_mask_seq = (actions_seq.unsqueeze(1) == bury_idx_tensor).any(dim=1)
 
@@ -606,7 +621,7 @@ class PPOAgent:
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
 
-        transitions = len(action_indices)
+        transitions = sum(1 for e in self.events if e['kind'] == 'action')
 
         # Clear storage
         self.reset_storage()
