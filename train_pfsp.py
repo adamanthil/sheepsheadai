@@ -130,10 +130,13 @@ def play_population_game(training_agent: PPOAgent,
                     current_trick_transitions = []
                     play_action_count = 0
 
-                    # Propagate observations to all agents
+                    # Propagate observations to agents; store observation for training agent only
                     for seat in game.players:
                         seat_agent = agents[seat.position - 1]
-                        seat_agent.observe(seat.get_state_vector(), seat.position)
+                        if seat_agent == training_agent:
+                            training_agent.store_observation(seat.get_state_vector())
+                        else:
+                            seat_agent.observe(seat.get_state_vector(), seat.position)
 
                 valid_actions = player.get_valid_action_ids()
 
@@ -430,7 +433,7 @@ def train_pfsp(num_episodes: int = 500000,
             training_agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
 
             # Update
-            last_state_for_gae = training_agent.states[-1] if training_agent.states else None
+            last_state_for_gae = training_agent.events[-1]['state'] if getattr(training_agent, 'events', None) and training_agent.events else None
             update_stats = training_agent.update(next_state=last_state_for_gae, epochs=8, batch_size=256)
 
             if update_stats:

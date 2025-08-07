@@ -464,14 +464,15 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         play_action_count = 0
 
                         # ------------------------------------------------
-                        # propagate post-trick observation to all seats
+                        # Add post-trick observation frames for all seats
+                        # (stored for training-time recurrent unroll)
                         # ------------------------------------------------
                         for seat in game.players:
-                            # Feed observation so recurrent state sees full trick outcome
-                            agent.observe(
-                                seat.get_state_vector(),
-                                seat.position,
-                            )
+                            episode_transitions[seat.position].append({
+                                'kind': 'obs',
+                                'player': seat,
+                                'state': seat.get_state_vector(),
+                            })
 
                     valid_actions = player.get_valid_action_ids()
 
@@ -479,32 +480,42 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         episode_scores = final_scores[:]
 
         # ---------------------------------------------
-        # Flatten per-player trajectories for PPO update
+        # Flatten per-player trajectories; compute rewards
         # ---------------------------------------------
-        flat_episode_transitions = []
-        last_transition_per_player = {}
-
+        flat_all = []
         for pos in episode_transitions:
-            player_transitions = episode_transitions[pos]
-            if not player_transitions:
-                continue
+            flat_all.extend(episode_transitions[pos])
 
-            start_idx = len(flat_episode_transitions)
-            flat_episode_transitions.extend(player_transitions)
-            last_transition_per_player[pos] = start_idx + len(player_transitions) - 1
+        # Build action-only list preserving per-player order
+        flat_actions = [t for t in flat_all if t.get('kind', 'action') == 'action']
 
-        # Process and store all transitions with appropriate rewards
-        for reward_data in process_episode_rewards(flat_episode_transitions, final_scores, last_transition_per_player, running_picker_baseline):
-            transition = reward_data['transition']
-            agent.store_transition(
-                transition['state'],
-                transition['action'],
-                reward_data['reward'],
-                transition['value'],
-                transition['log_prob'],
-                reward_data['done'],
-                transition['valid_actions']
-            )
+        # Compute last action index per player within action-only list
+        last_transition_per_player = {}
+        for idx, t in enumerate(flat_actions):
+            ppos = t['player'].position
+            last_transition_per_player[ppos] = idx
+
+        # Compute rewards/done for action transitions
+        reward_map = {}
+        for reward_data in process_episode_rewards(flat_actions, final_scores, last_transition_per_player, running_picker_baseline):
+            tr = reward_data['transition']
+            reward_map[id(tr)] = (reward_data['reward'], reward_data['done'])
+
+        # Store events in chronological per-player order (obs and actions interleaved)
+        for ev in flat_all:
+            if ev.get('kind') == 'obs':
+                agent.store_observation(ev['state'])
+            else:
+                reward, done_flag = reward_map[id(ev)]
+                agent.store_transition(
+                    ev['state'],
+                    ev['action'],
+                    reward,
+                    ev['value'],
+                    ev['log_prob'],
+                    done_flag,
+                    ev['valid_actions']
+                )
 
         # Track statistics
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
@@ -557,8 +568,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
             agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
 
-            # pass value of last state stored to GAE
-            last_state_for_gae = agent.states[-1] if agent.states else None
+            # pass value of last state stored to GAE (use last stored event state)
+            last_state_for_gae = agent.events[-1]['state'] if getattr(agent, 'events', None) and agent.events else None
             update_stats = agent.update(next_state=last_state_for_gae, epochs=8, batch_size=256)
 
             # Log advantage and value target statistics
