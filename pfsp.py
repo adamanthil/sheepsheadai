@@ -999,7 +999,7 @@ class PFSPPopulation:
         jd_diversity = self.get_diversity_stats(PARTNER_BY_JD)
         ca_diversity = self.get_diversity_stats(PARTNER_BY_CALLED_ACE)
 
-        summary = "🏟️  PFSP Population Summary (Phase 2: Advanced Diversity)\n"
+        summary = "🏟️  PFSP Population Summary\n"
         summary += "=" * 65 + "\n"
 
         summary += "Jack-of-Diamonds Population:\n"
