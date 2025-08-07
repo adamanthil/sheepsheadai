@@ -75,14 +75,18 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     # ------------------------------------------------------------
     # Forward
     # ------------------------------------------------------------
-    def forward(self, state, action_mask=None, player_id=None):
-        """Parameters
+    def forward(self, state, action_mask=None, player_id=None, hidden_in=None, return_hidden=False):
+        """Unified forward pass supporting both cached and explicit hidden states.
+
+        Parameters
         ----------
         state : Tensor  (batch, state_size)  OR (state_size,) for single sample
-        action_mask : Bool Tensor same length as action space or None
-        player_id : int | None  – if provided, a persistent hidden state is kept
-        for that id; otherwise hidden state is initialised to zeros (used during
-        batched advantage computation)
+        action_mask : Bool Tensor broadcastable to (batch, action_size) or None
+        player_id : int | None  – if provided for single-sample inference and
+            hidden_in is None, uses and updates an internal hidden cache.
+        hidden_in : tuple(h, c) | None – explicit LSTM state for training-time
+            sequence unrolling. When provided, the internal cache is ignored.
+        return_hidden : bool – if True, also return the new hidden state.
         """
 
         # Ensure 2-D tensor (batch_first)
@@ -100,16 +104,16 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         # Add time dimension for LSTM (seq_len=1)
         x = x.unsqueeze(1)  # (batch, 1, hidden_size)
 
-        # Get / init hidden state
-        hidden = None
-        if player_id is not None and batch_size == 1:
+        # Choose hidden state source
+        hidden = hidden_in
+        if hidden is None and player_id is not None and batch_size == 1:
             hidden = self._hidden_states.get(player_id, None)
 
         lstm_out, new_hidden = self.lstm(x, hidden)
         lstm_out = lstm_out.squeeze(1)  # (batch, lstm_size)
 
-        # Persist hidden state for this player (only if single sample)
-        if player_id is not None and batch_size == 1:
+        # Persist hidden state for this player (only if single sample and not using explicit hidden)
+        if hidden_in is None and player_id is not None and batch_size == 1:
             self._hidden_states[player_id] = (new_hidden[0].detach(), new_hidden[1].detach())
 
         # ---- Heads ----
@@ -125,9 +129,14 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # Apply external action mask (invalid actions → large negative value)
         if action_mask is not None:
+            if action_mask.dim() == 1:
+                action_mask = action_mask.unsqueeze(0)
             logits = logits.masked_fill(~action_mask, -1e8)
 
-        return F.softmax(logits, dim=-1)
+        probs = F.softmax(logits, dim=-1)
+        if return_hidden:
+            return probs, new_hidden
+        return probs
 
 
 class RecurrentCriticNetwork(nn.Module):
@@ -167,7 +176,7 @@ class RecurrentCriticNetwork(nn.Module):
                 elif 'bias' in name:
                     nn.init.constant_(param.data, 0.0)
 
-    def forward(self, state):
+    def forward(self, state, hidden_in=None, return_hidden=False):
         if state.dim() == 1:
             state = state.unsqueeze(0)
 
@@ -176,9 +185,14 @@ class RecurrentCriticNetwork(nn.Module):
         x = self.activation(self.enc_fc3(x))
         x = self.enc_ln1(x)
 
-        lstm_out, _ = self.lstm(x)
+        # Add time dimension for LSTM (seq_len=1)
+        x = x.unsqueeze(1)
+        lstm_out, new_hidden = self.lstm(x, hidden_in)
         lstm_out = lstm_out.squeeze(1)
-        return self.value_head(lstm_out)
+        value = self.value_head(lstm_out)
+        if return_hidden:
+            return value, new_hidden
+        return value
 
 class PPOAgent:
     def __init__(self, state_size, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='swish'):
@@ -339,7 +353,7 @@ class PPOAgent:
         return advantages, returns
 
     def update(self, next_state=None, epochs=10, batch_size=64):
-        """Update actor and critic networks using PPO"""
+        """Update actor and critic networks using PPO with recurrent unrolling."""
         if len(self.states) == 0:
             return {}
 
@@ -376,44 +390,69 @@ class PPOAgent:
         states = torch.FloatTensor(np.array(self.states)).to(device)
         actions = torch.LongTensor(self.actions).to(device)
         old_log_probs = torch.FloatTensor(self.log_probs).to(device)
-        returns = torch.FloatTensor(returns).to(device)
-        advantages = torch.FloatTensor(advantages).to(device)
-        action_masks = torch.stack(self.action_masks).to(device)
+        returns_t = torch.FloatTensor(returns).to(device)
+        adv_t = torch.FloatTensor(advantages).to(device)
+        masks_t = torch.stack(self.action_masks).to(device)
+        dones = torch.tensor(self.dones, dtype=torch.bool, device=device)
 
-        # PPO update
+        # Build contiguous sequences delimited by done=True
+        segments = []  # list of (start_idx, end_idx)
+        start = 0
+        for idx, d in enumerate(dones):
+            if d.item():
+                segments.append((start, idx))
+                start = idx + 1
+        if start < len(states):
+            segments.append((start, len(states) - 1))
+
+        # Training epochs – sample by segments, keep temporal order inside
         for _ in range(epochs):
-            # Shuffle data
-            indices = torch.randperm(len(states))
+            perm = torch.randperm(len(segments))
+            for seg_idx in perm.tolist():
+                seg_start, seg_end = segments[seg_idx]
 
-            for start in range(0, len(states), batch_size):
-                end = start + batch_size
-                batch_indices = indices[start:end]
+                hidden_actor = None
+                hidden_critic = None
 
-                batch_states = states[batch_indices]
-                batch_actions = actions[batch_indices]
-                batch_old_log_probs = old_log_probs[batch_indices]
-                batch_returns = returns[batch_indices]
-                batch_advantages = advantages[batch_indices]
-                batch_masks = action_masks[batch_indices]
+                new_log_probs_list = []
+                values_list = []
+                probs_for_entropy = []
 
-                # Get current policy and value predictions
-                action_probs = self.actor(batch_states, batch_masks)
-                current_values = self.critic(batch_states).squeeze(-1)  # Only squeeze last dimension
+                # Unroll sequence
+                for t in range(seg_start, seg_end + 1):
+                    s_t = states[t]
+                    m_t = masks_t[t]
 
-                # Calculate new log probabilities
-                dist = torch.distributions.Categorical(action_probs)
-                new_log_probs = dist.log_prob(batch_actions)
-                # --- Entropy broken down by head --------------------
+                    action_probs_t, hidden_actor = self.actor(s_t, m_t, hidden_in=hidden_actor, return_hidden=True)
+                    value_t, hidden_critic = self.critic(s_t, hidden_in=hidden_critic, return_hidden=True)
+
+                    dist_t = torch.distributions.Categorical(action_probs_t)
+                    new_log_prob_t = dist_t.log_prob(actions[t].unsqueeze(0))  # shape (1,)
+
+                    new_log_probs_list.append(new_log_prob_t.squeeze(0))
+                    values_list.append(value_t.squeeze(0).squeeze(-1))  # scalar
+                    probs_for_entropy.append(action_probs_t.squeeze(0))
+
+                # Stack per-step tensors
+                new_log_probs_seq = torch.stack(new_log_probs_list)  # (L,)
+                values_seq = torch.stack(values_list)                # (L,)
+                probs_seq = torch.stack(probs_for_entropy)           # (L, A)
+
+                # Slice old data for this segment
+                old_log_probs_seq = old_log_probs[seg_start:seg_end+1]
+                returns_seq = returns_t[seg_start:seg_end+1]
+                adv_seq = adv_t[seg_start:seg_end+1]
+                actions_seq = actions[seg_start:seg_end+1]
+
+                # Entropy by head (averaged over sequence)
                 with torch.no_grad():
-                    probs = action_probs  # (batch, action_size)
+                    pick_idx = torch.tensor(self.action_groups['pick'], device=probs_seq.device)
+                    bury_idx = torch.tensor(self.action_groups['bury'], device=probs_seq.device)
+                    play_idx = torch.tensor(self.action_groups['play'], device=probs_seq.device)
 
-                    pick_idx = torch.tensor(self.action_groups['pick'], device=probs.device)
-                    bury_idx = torch.tensor(self.action_groups['bury'], device=probs.device)
-                    play_idx = torch.tensor(self.action_groups['play'], device=probs.device)
-
-                    probs_pick = probs[:, pick_idx]
-                    probs_bury = probs[:, bury_idx]
-                    probs_play = probs[:, play_idx]
+                    probs_pick = probs_seq[:, pick_idx]
+                    probs_bury = probs_seq[:, bury_idx]
+                    probs_play = probs_seq[:, play_idx]
 
                     def entropy_from_probs(sub):
                         sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
@@ -427,30 +466,25 @@ class PPOAgent:
                                 self.entropy_coeff_bury * bury_entropy +
                                 self.entropy_coeff_play * play_entropy)
 
-                # Calculate ratios and surrogate losses
-                ratios = torch.exp(new_log_probs - batch_old_log_probs)
+                # PPO ratio and clipping per step
+                ratios = torch.exp(new_log_probs_seq - old_log_probs_seq)
 
-                # Determine per-sample epsilon based on action type
-                # Recreate index tensors on the correct device
                 pick_idx_tensor = torch.tensor(self.action_groups['pick'], device=ratios.device)
                 bury_idx_tensor = torch.tensor(self.action_groups['bury'], device=ratios.device)
 
-                pick_mask_batch = (batch_actions.unsqueeze(1) == pick_idx_tensor).any(dim=1)
-                bury_mask_batch = (batch_actions.unsqueeze(1) == bury_idx_tensor).any(dim=1)
+                pick_mask_seq = (actions_seq.unsqueeze(1) == pick_idx_tensor).any(dim=1)
+                bury_mask_seq = (actions_seq.unsqueeze(1) == bury_idx_tensor).any(dim=1)
 
-                eps_tensor = torch.full_like(ratios, self.clip_epsilon_play)
-                eps_tensor[pick_mask_batch] = self.clip_epsilon_pick
-                eps_tensor[bury_mask_batch] = self.clip_epsilon_bury
+                eps_seq = torch.full_like(ratios, self.clip_epsilon_play)
+                eps_seq[pick_mask_seq] = self.clip_epsilon_pick
+                eps_seq[bury_mask_seq] = self.clip_epsilon_bury
 
-                surr1 = ratios * batch_advantages
-                clipped_ratios = torch.maximum(torch.minimum(ratios, 1 + eps_tensor), 1 - eps_tensor)
-                surr2 = clipped_ratios * batch_advantages
+                surr1 = ratios * adv_seq
+                clipped_ratios = torch.maximum(torch.minimum(ratios, 1 + eps_seq), 1 - eps_seq)
+                surr2 = clipped_ratios * adv_seq
 
-                # Actor loss (includes entropy bonus for exploration)
                 actor_loss = -torch.min(surr1, surr2).mean() - entropy_term
-
-                # Critic loss - ensure both tensors have same shape
-                critic_loss = F.mse_loss(current_values, batch_returns.view(-1))
+                critic_loss = F.mse_loss(values_seq, returns_seq.view(-1))
 
                 # Update actor
                 self.actor_optimizer.zero_grad()
