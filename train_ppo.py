@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 
 from ppo import PPOAgent
-from sheepshead import Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead import Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, get_card_suit
 
 
 def get_partner_selection_mode(episode):
@@ -196,7 +196,6 @@ def update_intermediate_rewards_for_action(game, player, action, transition, pla
         if card in TRUMP:
             transition['intermediate_reward'] += -0.1
 
-    # Discourage defenders from leading trump
     if "PLAY" in action_name:
         if play_action_count == 0:
             card = action_name[5:]
@@ -207,7 +206,18 @@ def update_intermediate_rewards_for_action(game, player, action, transition, pla
                 and not player.is_secret_partner
                 and card in TRUMP
             ):
+                # Discourage defenders from leading trump
                 transition['intermediate_reward'] += -0.1
+            elif (
+                game.called_card
+                and not player.is_picker
+                and not player.is_partner
+                and not player.is_secret_partner
+                and not game.was_called_suit_played
+                and game.called_suit == get_card_suit(card)
+            ):
+                # Encourage defenders to lead called suit
+                transition['intermediate_reward'] += 0.05
 
         play_action_count += 1
         current_trick_transitions.append(transition)
