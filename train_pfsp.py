@@ -20,13 +20,17 @@ from openskill.models import PlackettLuce
 from ppo import PPOAgent
 from pfsp import PFSPPopulation, create_initial_population_from_checkpoints
 from sheepshead import (Game, ACTIONS, STATE_SIZE, ACTION_IDS,
-                       TRUMP, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD)
+                       PARTNER_BY_CALLED_ACE, PARTNER_BY_JD)
 
 # Import the strategic analysis and utility functions from train_ppo.py
-from train_ppo import (analyze_strategic_decisions, calculate_trick_reward,
-                      apply_trick_rewards, apply_leaster_trick_rewards,
-                      process_episode_rewards, get_partner_selection_mode,
-                      save_training_plot)
+from train_ppo import (
+    analyze_strategic_decisions,
+    process_episode_rewards,
+    get_partner_selection_mode,
+    save_training_plot,
+    update_intermediate_rewards_for_action,
+    handle_trick_completion,
+)
 
 
 def play_population_game(training_agent: PPOAgent,
@@ -90,25 +94,15 @@ def play_population_game(training_agent: PPOAgent,
                     }
                     episode_transitions.append(transition)
 
-                    action_name = ACTIONS[action - 1]
-
-                    # Apply trump burying penalty
-                    if "BURY" in action_name:
-                        card = action_name[5:]
-                        if card in TRUMP:
-                            transition['intermediate_reward'] = -0.1
-
-                    # Apply discourage trump leading penalty for defenders
-                    if "PLAY" in action_name:
-                        if play_action_count == 0:
-                            card = action_name[5:]
-                            if (not game.is_leaster and not player.is_picker and
-                                not player.is_partner and not player.is_secret_partner and
-                                card in TRUMP):
-                                transition['intermediate_reward'] = -0.1
-
-                        play_action_count += 1
-                        current_trick_transitions.append(transition)
+                    # Shared intermediate reward shaping and trick tracking (for training agent only)
+                    play_action_count = update_intermediate_rewards_for_action(
+                        game,
+                        player,
+                        action,
+                        transition,
+                        play_action_count,
+                        current_trick_transitions,
+                    )
 
                 else:
                     # Opponent action (stochastic for diversity)
@@ -116,20 +110,11 @@ def play_population_game(training_agent: PPOAgent,
 
                 player.act(action)
 
-                # Handle trick completion
-                if game.was_trick_just_completed:
-                    trick_points = game.trick_points[game.current_trick - 1]
-                    trick_winner = game.trick_winners[game.current_trick - 1]
-                    trick_reward = calculate_trick_reward(trick_points)
-
-                    if not game.is_leaster:
-                        apply_trick_rewards(current_trick_transitions, trick_winner, trick_reward, game)
-                    else:
-                        apply_leaster_trick_rewards(current_trick_transitions, trick_winner, trick_reward)
-
-                    current_trick_transitions = []
-                    play_action_count = 0
-
+                # Handle trick completion; PFSP-specific observation propagation
+                trick_completed, play_action_count = handle_trick_completion(
+                    game, current_trick_transitions, play_action_count
+                )
+                if trick_completed:
                     # Propagate observations to agents; store observation for training agent only
                     for seat in game.players:
                         seat_agent = agents[seat.position - 1]

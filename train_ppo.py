@@ -184,6 +184,59 @@ def is_same_team_as_winner(player, winner_pos, game):
     return player_picker_team == winner_picker_team
 
 
+def update_intermediate_rewards_for_action(game, player, action, transition, play_action_count, current_trick_transitions):
+    """Apply shared intermediate reward shaping and trick tracking.
+    Returns the updated play_action_count.
+    """
+    action_name = ACTIONS[action - 1]
+
+    # Bury penalty: discourage burying trump
+    if "BURY" in action_name:
+        card = action_name[5:]
+        if card in TRUMP:
+            transition['intermediate_reward'] += -0.1
+
+    # Discourage defenders from leading trump
+    if "PLAY" in action_name:
+        if play_action_count == 0:
+            card = action_name[5:]
+            if (
+                not game.is_leaster
+                and not player.is_picker
+                and not player.is_partner
+                and not player.is_secret_partner
+                and card in TRUMP
+            ):
+                transition['intermediate_reward'] += -0.1
+
+        play_action_count += 1
+        current_trick_transitions.append(transition)
+
+    return play_action_count
+
+
+def handle_trick_completion(game, current_trick_transitions, play_action_count):
+    """If a trick has completed, apply trick-based rewards and reset tracking.
+
+    Returns a tuple: (trick_completed: bool, new_play_action_count: int)
+    """
+    if game.was_trick_just_completed:
+        trick_points = game.trick_points[game.current_trick - 1]
+        trick_winner = game.trick_winners[game.current_trick - 1]
+        trick_reward = calculate_trick_reward(trick_points)
+
+        if not game.is_leaster:
+            apply_trick_rewards(current_trick_transitions, trick_winner, trick_reward, game)
+        else:
+            apply_leaster_trick_rewards(current_trick_transitions, trick_winner, trick_reward)
+
+        # Reset tracking for next trick
+        current_trick_transitions.clear()
+        return True, 0
+
+    return False, play_action_count
+
+
 def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, picker_baseline):
     """Process and assign rewards to all transitions in the episode."""
     for i, transition in enumerate(episode_transitions):
@@ -424,46 +477,21 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
                     episode_transitions[player.position].append(transition)
 
-                    if "PLAY" in action_name:
-                        if play_action_count == 0:
-                            card = action_name[5:]
-                            if (
-                                not game.is_leaster
-                                and not player.is_picker
-                                and not player.is_partner
-                                and not player.is_secret_partner
-                                and card in TRUMP
-                            ):
-                                transition['intermediate_reward'] = -0.1  # discourage leading trump as defender
+                    # Apply shared intermediate rewards and track trick transitions
+                    play_action_count = update_intermediate_rewards_for_action(
+                        game,
+                        player,
+                        action,
+                        transition,
+                        play_action_count,
+                        current_trick_transitions,
+                    )
 
-                        play_action_count += 1
-
-                        # Track this transition for trick rewards
-                        current_trick_transitions.append(transition)
-
-                    if game.was_trick_just_completed:
-                        trick_points = game.trick_points[game.current_trick - 1]
-                        trick_winner = game.trick_winners[game.current_trick - 1]
-                        trick_reward = calculate_trick_reward(trick_points)
-                        # Apply rewards to current trick's PLAY transitions
-                        if not game.is_leaster:
-                            apply_trick_rewards(
-                                current_trick_transitions,
-                                trick_winner,
-                                trick_reward,
-                                game,
-                            )
-                        else:
-                            apply_leaster_trick_rewards(
-                                current_trick_transitions,
-                                trick_winner,
-                                trick_reward,
-                            )
-
-                        # Reset for next trick
-                        current_trick_transitions = []
-                        play_action_count = 0
-
+                    # Trick resolution and observation frames
+                    trick_completed, play_action_count = handle_trick_completion(
+                        game, current_trick_transitions, play_action_count
+                    )
+                    if trick_completed:
                         # ------------------------------------------------
                         # Add post-trick observation frames for all seats
                         # (stored for training-time recurrent unroll)
