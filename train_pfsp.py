@@ -430,6 +430,13 @@ def train_pfsp(num_episodes: int = 500000,
                 print(f"   Transitions: {num_transitions}")
                 print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
                 print(f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
+                if 'timing' in update_stats:
+                    t = update_stats['timing']
+                    print(
+                        f"   Timing - build: {t['build_s']:.3f}s, forward: {t['forward_s']:.3f}s, "
+                        f"backward: {t['backward_s']:.3f}s, step: {t['step_s']:.3f}s, total: {t['total_update_s']:.3f}s, "
+                        f"opt_steps: {t['optimizer_steps']}"
+                    )
 
             game_count = 0
             transitions_since_update = 0

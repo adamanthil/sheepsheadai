@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import time
 from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS
 
 
@@ -457,8 +458,11 @@ class PPOAgent:
             return np.array([]), np.array([])
         return np.concatenate(all_advantages), np.concatenate(all_returns)
 
-    def update(self, next_state=None, epochs=10, batch_size=64):
-        """Update actor and critic networks using PPO with recurrent unrolling."""
+    def update(self, next_state=None, epochs=6, batch_size=256):
+        """Update actor and critic networks using PPO with recurrent unrolling.
+        Includes performance optimisations and per-update timing logs.
+        """
+        t_update_start = time.time()
         if len(self.events) == 0:
             return {}
 
@@ -492,6 +496,7 @@ class PPOAgent:
         if advantages.size:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
+        t_build_start = time.time()
         # Convert to tensors and indices
         states = [torch.FloatTensor(e['state']).to(device) for e in self.events]
         masks_t = [ (e['mask'].to(device) if isinstance(e['mask'], torch.Tensor) else torch.as_tensor(e['mask'], dtype=torch.bool, device=device)) for e in self.events]
@@ -520,16 +525,32 @@ class PPOAgent:
             if start <= ev_idxs[-1]:
                 segments.append((pid, start, ev_idxs[-1]))
 
+        # Precompute static index tensors once
+        pick_idx_tensor_static = torch.tensor(self.action_groups['pick'], device=device)
+        bury_idx_tensor_static = torch.tensor(self.action_groups['bury'], device=device)
+        play_idx_tensor_static = torch.tensor(self.action_groups['play'], device=device)
+
+        t_build_end = time.time()
+
         # Training epochs – sample by segments, keep temporal order inside
+        forward_time = 0.0
+        backward_time = 0.0
+        step_time = 0.0
+        optimizer_steps = 0
         for _ in range(epochs):
             if not segments:
                 break
             perm = torch.randperm(len(segments))
+            # Accumulate gradients across segments to reduce step overhead
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            steps_accum = 0
+            actor_loss_accum = None
+            critic_loss_accum = None
             for seg_idx in perm.tolist():
                 pid, seg_start, seg_end = segments[seg_idx]
 
                 hidden_actor = None
-                hidden_critic = None
 
                 new_log_probs_list = []
                 values_list = []
@@ -541,18 +562,30 @@ class PPOAgent:
                     s_t = states[ev_idx].unsqueeze(0)
                     m_t = masks_t[ev_idx].unsqueeze(0)
 
-                    # Always step to update hidden state
-                    action_probs_t, hidden_actor = self.actor(s_t, m_t, hidden_in=hidden_actor, return_hidden=True)
-                    value_t, hidden_critic = self.critic(s_t, hidden_in=hidden_critic, return_hidden=True)
+                    # Step shared backbone once; derive actor/critic heads
+                    t_fwd_start = time.time()
+                    feat_t, hidden_actor = self.backbone(s_t, hidden_in=hidden_actor, return_hidden=True)
+                    # Actor
+                    actor_feat_t = self.actor.actor_adapter(feat_t)
+                    logits_t = torch.full((1, self.action_size), -1e8, device=feat_t.device)
+                    logits_t[:, self.action_groups['pick']] = self.actor.pick_head(actor_feat_t)
+                    logits_t[:, self.action_groups['bury']] = self.actor.bury_head(actor_feat_t)
+                    logits_t[:, self.action_groups['play']] = self.actor.play_head(actor_feat_t)
+                    logits_t = logits_t.masked_fill(~m_t, -1e8)
+                    probs_t = F.softmax(logits_t, dim=-1)
+                    # Critic
+                    critic_feat_t = self.critic.critic_adapter(feat_t)
+                    value_t = self.critic.value_head(critic_feat_t)
+                    forward_time += time.time() - t_fwd_start
 
                     if kinds[ev_idx] == 'action' and pids[ev_idx] == pid:
                         seg_global_positions.append(ev_idx)
-                        dist_t = torch.distributions.Categorical(action_probs_t)
+                        dist_t = torch.distributions.Categorical(probs_t)
                         action_idx = torch.tensor(self.events[ev_idx]['action'], device=device)
                         new_log_prob_t = dist_t.log_prob(action_idx.unsqueeze(0))
                         new_log_probs_list.append(new_log_prob_t.squeeze(0))
                         values_list.append(value_t.squeeze(0).squeeze(-1))
-                        probs_for_entropy.append(action_probs_t.squeeze(0))
+                        probs_for_entropy.append(probs_t.squeeze(0))
 
                 # Skip segments with no action steps
                 if len(seg_global_positions) == 0:
@@ -570,13 +603,9 @@ class PPOAgent:
 
                 # Entropy by head (averaged over sequence)
                 with torch.no_grad():
-                    pick_idx = torch.tensor(self.action_groups['pick'], device=probs_seq.device)
-                    bury_idx = torch.tensor(self.action_groups['bury'], device=probs_seq.device)
-                    play_idx = torch.tensor(self.action_groups['play'], device=probs_seq.device)
-
-                    probs_pick = probs_seq[:, pick_idx]
-                    probs_bury = probs_seq[:, bury_idx]
-                    probs_play = probs_seq[:, play_idx]
+                    probs_pick = probs_seq[:, pick_idx_tensor_static]
+                    probs_bury = probs_seq[:, bury_idx_tensor_static]
+                    probs_play = probs_seq[:, play_idx_tensor_static]
 
                     def entropy_from_probs(sub):
                         sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
@@ -593,12 +622,9 @@ class PPOAgent:
                 # PPO ratio and clipping per step
                 ratios = torch.exp(new_log_probs_seq - old_log_probs_seq)
 
-                pick_idx_tensor = torch.tensor(self.action_groups['pick'], device=ratios.device)
-                bury_idx_tensor = torch.tensor(self.action_groups['bury'], device=ratios.device)
-
                 actions_seq = torch.tensor([self.events[i]['action'] for i in seg_global_positions], dtype=torch.long, device=device)
-                pick_mask_seq = (actions_seq.unsqueeze(1) == pick_idx_tensor).any(dim=1)
-                bury_mask_seq = (actions_seq.unsqueeze(1) == bury_idx_tensor).any(dim=1)
+                pick_mask_seq = (actions_seq.unsqueeze(1) == pick_idx_tensor_static).any(dim=1)
+                bury_mask_seq = (actions_seq.unsqueeze(1) == bury_idx_tensor_static).any(dim=1)
 
                 eps_seq = torch.full_like(ratios, self.clip_epsilon_play)
                 eps_seq[pick_mask_seq] = self.clip_epsilon_pick
@@ -611,15 +637,47 @@ class PPOAgent:
                 actor_loss = -torch.min(surr1, surr2).mean() - entropy_term
                 critic_loss = F.mse_loss(values_seq, returns_seq.view(-1))
 
-                # Joint backward so backbone gets gradients from both losses; step backbone via actor optimizer only
-                self.actor_optimizer.zero_grad()
-                self.critic_optimizer.zero_grad()
-                total_loss = actor_loss + self.value_loss_coeff * critic_loss
+                # Accumulate and step periodically
+                steps_accum += new_log_probs_seq.shape[0]
+                if actor_loss_accum is None:
+                    actor_loss_accum = actor_loss
+                    critic_loss_accum = critic_loss
+                else:
+                    actor_loss_accum = actor_loss_accum + actor_loss
+                    critic_loss_accum = critic_loss_accum + critic_loss
+
+                if steps_accum >= batch_size:
+                    t_bwd = time.time()
+                    total_loss = actor_loss_accum + self.value_loss_coeff * critic_loss_accum
+                    total_loss.backward()
+                    backward_time += time.time() - t_bwd
+                    t_step = time.time()
+                    torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+                    torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+                    self.actor_optimizer.step()
+                    self.critic_optimizer.step()
+                    step_time += time.time() - t_step
+                    optimizer_steps += 1
+                    # Reset accumulators
+                    self.actor_optimizer.zero_grad()
+                    self.critic_optimizer.zero_grad()
+                    steps_accum = 0
+                    actor_loss_accum = None
+                    critic_loss_accum = None
+
+            # Flush remaining accumulation at end of epoch
+            if actor_loss_accum is not None:
+                t_bwd = time.time()
+                total_loss = actor_loss_accum + self.value_loss_coeff * critic_loss_accum
                 total_loss.backward()
+                backward_time += time.time() - t_bwd
+                t_step = time.time()
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
                 torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
+                step_time += time.time() - t_step
+                optimizer_steps += 1
 
         transitions = sum(1 for e in self.events if e['kind'] == 'action')
 
@@ -627,10 +685,20 @@ class PPOAgent:
         self.reset_storage()
 
         # Return training statistics
+        t_end = time.time()
+        timing = {
+            'build_s': t_build_end - t_build_start,
+            'forward_s': forward_time,
+            'backward_s': backward_time,
+            'step_s': step_time,
+            'total_update_s': t_end - t_update_start,
+            'optimizer_steps': optimizer_steps,
+        }
         return {
             'advantage_stats': advantage_stats,
             'value_target_stats': value_target_stats,
-            'num_transitions': transitions
+            'num_transitions': transitions,
+            'timing': timing,
         }
 
     def save(self, filepath):
