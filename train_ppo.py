@@ -346,7 +346,7 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
 
-def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
+def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
                             strategic_eval_interval=10000, resume_model=None, activation='swish'):
     """
     PPO training with strategic evaluation metrics.
@@ -758,7 +758,7 @@ def main():
     parser = ArgumentParser(description="Sparse reward PPO training for Sheepshead")
     parser.add_argument("--episodes", type=int, default=300000,
                        help="Number of training episodes (default: 300,000)")
-    parser.add_argument("--update-interval", type=int, default=2048,
+    parser.add_argument("--update-interval", type=int, default=4096,
                        help="Number of games between model updates")
     parser.add_argument("--save-interval", type=int, default=5000,
                        help="Number of episodes between checkpoints")

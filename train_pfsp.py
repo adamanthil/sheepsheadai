@@ -141,7 +141,7 @@ def play_population_game(training_agent: PPOAgent,
 
 
 def train_pfsp(num_episodes: int = 500000,
-               update_interval: int = 2048,
+               update_interval: int = 4096,
                save_interval: int = 5000,
                strategic_eval_interval: int = 10000,
                population_add_interval: int = 5000,
@@ -603,7 +603,7 @@ def main():
     parser = ArgumentParser(description="PFSP population-based training for Sheepshead")
     parser.add_argument("--episodes", type=int, default=500000,
                        help="Number of training episodes (default: 500,000)")
-    parser.add_argument("--update-interval", type=int, default=2048,
+    parser.add_argument("--update-interval", type=int, default=4096,
                        help="Number of transitions between model updates")
     parser.add_argument("--save-interval", type=int, default=5000,
                        help="Number of episodes between checkpoints")
