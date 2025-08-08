@@ -728,9 +728,10 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
                 print(f"   Estimated time remaining: {estimated_time:.1f} min")
 
     # Final update and save
-    if len(agent.states) > 0:
+    if agent.events:
         print("🔄 Final model update...")
-        final_update_stats = agent.update()
+        last_state_for_gae = agent.events[-1]['state']
+        final_update_stats = agent.update(next_state=last_state_for_gae)
 
         # Log final advantage and value target statistics
         if final_update_stats:

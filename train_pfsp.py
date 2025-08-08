@@ -568,9 +568,10 @@ def train_pfsp(num_episodes: int = 500000,
                 print(f"   Estimated time remaining: {estimated_time:.1f} min")
 
     # Final update and save
-    if len(training_agent.states) > 0:
+    if training_agent.events:
         print("🔄 Final model update...")
-        final_update_stats = training_agent.update()
+        last_state_for_gae = training_agent.events[-1]['state']
+        final_update_stats = training_agent.update(next_state=last_state_for_gae)
 
         if final_update_stats:
             adv_stats = final_update_stats['advantage_stats']
