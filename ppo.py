@@ -109,6 +109,39 @@ class SharedRecurrentBackbone(nn.Module):
             return feat, new_hidden
         return feat
 
+    def forward_sequence(self, states_bt: torch.Tensor, lengths: torch.Tensor, return_hidden: bool = False):
+        """Vectorized forward over a batch of sequences.
+
+        Parameters
+        ----------
+        states_bt : Tensor (B, T, state_size)
+        lengths : LongTensor (B,) true sequence lengths
+        return_hidden : bool
+
+        Returns
+        -------
+        feat_bt : Tensor (B, T, 256)
+        (optionally) (h, c) final LSTM state
+        """
+        # Encoder over (B, T, state_size)
+        x = self.activation(self.enc_proj(states_bt))
+        x = self.enc_block1(x)
+        x = self.enc_block2(x)
+        x = self.enc_block3(x)
+
+        # Pack and run LSTM
+        packed = torch.nn.utils.rnn.pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        packed_out, hidden = self.lstm(packed)
+        lstm_out_bt, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_out, batch_first=True)
+
+        # Shared trunk on (B, T, 256)
+        feat_bt = self.trunk_block1(lstm_out_bt)
+        feat_bt = self.trunk_block2(feat_bt)
+
+        if return_hidden:
+            return feat_bt, hidden
+        return feat_bt
+
 
 class MultiHeadRecurrentActorNetwork(nn.Module):
     """Actor network with an LSTM core and separate linear heads for the pick / bury / play
@@ -532,7 +565,7 @@ class PPOAgent:
 
         t_build_end = time.time()
 
-        # Training epochs – sample by segments, keep temporal order inside
+        # Training epochs – vectorized by batching segments
         forward_time = 0.0
         backward_time = 0.0
         step_time = 0.0
@@ -541,134 +574,137 @@ class PPOAgent:
             if not segments:
                 break
             perm = torch.randperm(len(segments))
-            # Accumulate gradients across segments to reduce step overhead
-            self.actor_optimizer.zero_grad()
-            self.critic_optimizer.zero_grad()
-            steps_accum = 0
-            actor_loss_accum = None
-            critic_loss_accum = None
-            for seg_idx in perm.tolist():
-                pid, seg_start, seg_end = segments[seg_idx]
+            # Choose minibatch size (number of segments)
+            mb_size = max(1, batch_size // 8)
+            for mb_start in range(0, len(segments), mb_size):
+                batch_idxs = perm[mb_start:mb_start + mb_size].tolist()
+                batch = [segments[i] for i in batch_idxs]
 
-                hidden_actor = None
+                lengths = []
+                states_list = []
+                masks_list = []
+                is_action_list = []
+                actions_list = []
+                old_lp_list = []
+                returns_list = []
+                adv_list = []
 
-                new_log_probs_list = []
-                values_list = []
-                probs_for_entropy = []
-                seg_global_positions = []
+                # Collate batch
+                for pid, seg_start, seg_end in batch:
+                    ev_range = list(range(seg_start, seg_end + 1))
+                    lengths.append(len(ev_range))
+                    states_list.append(torch.stack([states[i] for i in ev_range], dim=0))
+                    masks_list.append(torch.stack([masks_t[i] for i in ev_range], dim=0))
+                    is_act = torch.tensor([1 if (kinds[i] == 'action' and pids[i] == pid) else 0 for i in ev_range], dtype=torch.bool, device=device)
+                    is_action_list.append(is_act)
+                    act_bt = []
+                    olp_bt = []
+                    ret_bt = []
+                    adv_bt = []
+                    for i in ev_range:
+                        if kinds[i] == 'action' and pids[i] == pid:
+                            act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
+                            olp_bt.append(torch.tensor(self.events[i]['log_prob'], dtype=torch.float32, device=device))
+                            ret_bt.append(torch.tensor(self.events[i]['return'], dtype=torch.float32, device=device))
+                            adv_bt.append(torch.tensor(self.events[i]['advantage'], dtype=torch.float32, device=device))
+                        else:
+                            act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
+                            olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                            ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                            adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    actions_list.append(torch.stack(act_bt, dim=0))
+                    old_lp_list.append(torch.stack(olp_bt, dim=0))
+                    returns_list.append(torch.stack(ret_bt, dim=0))
+                    adv_list.append(torch.stack(adv_bt, dim=0))
 
-                # Unroll sequence for this player only
-                for ev_idx in range(seg_start, seg_end + 1):
-                    s_t = states[ev_idx].unsqueeze(0)
-                    m_t = masks_t[ev_idx].unsqueeze(0)
-
-                    # Step shared backbone once; derive actor/critic heads
-                    t_fwd_start = time.time()
-                    feat_t, hidden_actor = self.backbone(s_t, hidden_in=hidden_actor, return_hidden=True)
-                    # Actor
-                    actor_feat_t = self.actor.actor_adapter(feat_t)
-                    logits_t = torch.full((1, self.action_size), -1e8, device=feat_t.device)
-                    logits_t[:, self.action_groups['pick']] = self.actor.pick_head(actor_feat_t)
-                    logits_t[:, self.action_groups['bury']] = self.actor.bury_head(actor_feat_t)
-                    logits_t[:, self.action_groups['play']] = self.actor.play_head(actor_feat_t)
-                    logits_t = logits_t.masked_fill(~m_t, -1e8)
-                    probs_t = F.softmax(logits_t, dim=-1)
-                    # Critic
-                    critic_feat_t = self.critic.critic_adapter(feat_t)
-                    value_t = self.critic.value_head(critic_feat_t)
-                    forward_time += time.time() - t_fwd_start
-
-                    if kinds[ev_idx] == 'action' and pids[ev_idx] == pid:
-                        seg_global_positions.append(ev_idx)
-                        dist_t = torch.distributions.Categorical(probs_t)
-                        action_idx = torch.tensor(self.events[ev_idx]['action'], device=device)
-                        new_log_prob_t = dist_t.log_prob(action_idx.unsqueeze(0))
-                        new_log_probs_list.append(new_log_prob_t.squeeze(0))
-                        values_list.append(value_t.squeeze(0).squeeze(-1))
-                        probs_for_entropy.append(probs_t.squeeze(0))
-
-                # Skip segments with no action steps
-                if len(seg_global_positions) == 0:
+                B = len(batch)
+                if B == 0:
                     continue
-                # Stack per-action-step tensors
-                new_log_probs_seq = torch.stack(new_log_probs_list)  # (L,)
-                values_seq = torch.stack(values_list)                # (L,)
-                probs_seq = torch.stack(probs_for_entropy)           # (L, A)
+                T = max(lengths)
 
-                # Slice old data for this segment over action steps only
-                # Build old terms from events directly for these positions
-                old_log_probs_seq = torch.tensor([self.events[i]['log_prob'] for i in seg_global_positions], dtype=torch.float32, device=device)
-                returns_seq = torch.tensor([self.events[i]['return'] for i in seg_global_positions], dtype=torch.float32, device=device)
-                adv_seq = torch.tensor([self.events[i]['advantage'] for i in seg_global_positions], dtype=torch.float32, device=device)
+                def pad_to_bt(lst, fill):
+                    out = []
+                    for i, tlen in enumerate(lengths):
+                        pad = T - tlen
+                        if pad > 0:
+                            pad_shape = list(lst[i].shape)
+                            pad_shape[0] = pad
+                            pad_tensor = torch.full(pad_shape, fill, device=device, dtype=lst[i].dtype)
+                            out.append(torch.cat([lst[i], pad_tensor], dim=0))
+                        else:
+                            out.append(lst[i])
+                    return torch.stack(out, dim=0)
 
-                # Entropy by head (averaged over sequence)
+                states_bt = pad_to_bt(states_list, 0.0)       # (B, T, state)
+                masks_bt = pad_to_bt(masks_list, True)        # (B, T, A)
+                is_action_bt = pad_to_bt(is_action_list, False)  # (B, T)
+                actions_bt = pad_to_bt(actions_list, -1)      # (B, T)
+                old_lp_bt = pad_to_bt(old_lp_list, 0.0)       # (B, T)
+                returns_bt = pad_to_bt(returns_list, 0.0)     # (B, T)
+                adv_bt = pad_to_bt(adv_list, 0.0)             # (B, T)
+                lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
+
+                # Vectorized forward
+                t_fwd = time.time()
+                feat_bt = self.backbone.forward_sequence(states_bt, lengths_bt)
+                actor_feat_bt = self.actor.actor_adapter(feat_bt)
+                logits_bt = torch.full((B, T, self.action_size), -1e8, device=device)
+                logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt)
+                logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt)
+                logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt)
+                logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
+                probs_bt = F.softmax(logits_bt, dim=-1)
+                critic_feat_bt = self.critic.critic_adapter(feat_bt)
+                values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)  # (B, T)
+                forward_time += time.time() - t_fwd
+
+                # Gather action steps
+                flat_mask = is_action_bt.view(-1)
+                if flat_mask.sum() == 0:
+                    continue
+                probs_flat = probs_bt.view(-1, self.action_size)[flat_mask]
+                values_flat = values_bt.view(-1)[flat_mask]
+                actions_flat = actions_bt.view(-1)[flat_mask]
+                old_lp_flat = old_lp_bt.view(-1)[flat_mask]
+                returns_flat = returns_bt.view(-1)[flat_mask]
+                adv_flat = adv_bt.view(-1)[flat_mask]
+
+                # New log-probs
+                dist = torch.distributions.Categorical(probs_flat)
+                new_lp_flat = dist.log_prob(actions_flat)
+
+                # Entropy by head
                 with torch.no_grad():
-                    probs_pick = probs_seq[:, pick_idx_tensor_static]
-                    probs_bury = probs_seq[:, bury_idx_tensor_static]
-                    probs_play = probs_seq[:, play_idx_tensor_static]
-
+                    probs_pick = probs_flat[:, pick_idx_tensor_static]
+                    probs_bury = probs_flat[:, bury_idx_tensor_static]
+                    probs_play = probs_flat[:, play_idx_tensor_static]
                     def entropy_from_probs(sub):
                         sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
                         return -(sub_norm * torch.log(sub_norm + 1e-8)).sum(dim=1).mean()
-
                     pick_entropy = entropy_from_probs(probs_pick)
                     bury_entropy = entropy_from_probs(probs_bury)
                     play_entropy = entropy_from_probs(probs_play)
-
                 entropy_term = (self.entropy_coeff_pick * pick_entropy +
                                 self.entropy_coeff_bury * bury_entropy +
                                 self.entropy_coeff_play * play_entropy)
 
-                # PPO ratio and clipping per step
-                ratios = torch.exp(new_log_probs_seq - old_log_probs_seq)
+                # PPO loss vectorized
+                ratios = torch.exp(new_lp_flat - old_lp_flat)
+                is_pick = torch.isin(actions_flat, pick_idx_tensor_static)
+                is_bury = torch.isin(actions_flat, bury_idx_tensor_static)
+                eps_flat = torch.full_like(ratios, self.clip_epsilon_play)
+                eps_flat[is_pick] = self.clip_epsilon_pick
+                eps_flat[is_bury] = self.clip_epsilon_bury
+                surr1 = ratios * adv_flat
+                clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
+                actor_loss = -torch.min(surr1, clipped).mean() - entropy_term
+                critic_loss = F.mse_loss(values_flat, returns_flat.view(-1))
 
-                actions_seq = torch.tensor([self.events[i]['action'] for i in seg_global_positions], dtype=torch.long, device=device)
-                pick_mask_seq = (actions_seq.unsqueeze(1) == pick_idx_tensor_static).any(dim=1)
-                bury_mask_seq = (actions_seq.unsqueeze(1) == bury_idx_tensor_static).any(dim=1)
-
-                eps_seq = torch.full_like(ratios, self.clip_epsilon_play)
-                eps_seq[pick_mask_seq] = self.clip_epsilon_pick
-                eps_seq[bury_mask_seq] = self.clip_epsilon_bury
-
-                surr1 = ratios * adv_seq
-                clipped_ratios = torch.maximum(torch.minimum(ratios, 1 + eps_seq), 1 - eps_seq)
-                surr2 = clipped_ratios * adv_seq
-
-                actor_loss = -torch.min(surr1, surr2).mean() - entropy_term
-                critic_loss = F.mse_loss(values_seq, returns_seq.view(-1))
-
-                # Accumulate and step periodically
-                steps_accum += new_log_probs_seq.shape[0]
-                if actor_loss_accum is None:
-                    actor_loss_accum = actor_loss
-                    critic_loss_accum = critic_loss
-                else:
-                    actor_loss_accum = actor_loss_accum + actor_loss
-                    critic_loss_accum = critic_loss_accum + critic_loss
-
-                if steps_accum >= batch_size:
-                    t_bwd = time.time()
-                    total_loss = actor_loss_accum + self.value_loss_coeff * critic_loss_accum
-                    total_loss.backward()
-                    backward_time += time.time() - t_bwd
-                    t_step = time.time()
-                    torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
-                    torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
-                    self.actor_optimizer.step()
-                    self.critic_optimizer.step()
-                    step_time += time.time() - t_step
-                    optimizer_steps += 1
-                    # Reset accumulators
-                    self.actor_optimizer.zero_grad()
-                    self.critic_optimizer.zero_grad()
-                    steps_accum = 0
-                    actor_loss_accum = None
-                    critic_loss_accum = None
-
-            # Flush remaining accumulation at end of epoch
-            if actor_loss_accum is not None:
+                # Backward + step per minibatch
                 t_bwd = time.time()
-                total_loss = actor_loss_accum + self.value_loss_coeff * critic_loss_accum
+                total_loss = actor_loss + self.value_loss_coeff * critic_loss
+                self.actor_optimizer.zero_grad()
+                self.critic_optimizer.zero_grad()
                 total_loss.backward()
                 backward_time += time.time() - t_bwd
                 t_step = time.time()
