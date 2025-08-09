@@ -1,20 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { TableSummary } from '../lib/types';
+import styles from './page.module.css';
 
-type TableSummary = {
-  id: string;
-  name: string;
-  status: 'open' | 'playing' | 'finished';
-  rules: Record<string, any>;
-  fillWithAI: boolean;
-  seats: Record<string, string | null>;
-  host: string | null;
-};
+// Using shared type from web/lib/types
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:9000';
 
 export default function HomePage() {
+  const router = useRouter();
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('Quick Table');
@@ -53,7 +49,7 @@ export default function HomePage() {
         body: JSON.stringify({ display_name: displayName }),
       });
       const joined = await res2.json();
-      window.location.href = `/waiting/${t.id}?client_id=${joined.client_id}`;
+      router.push(`/waiting/${t.id}?client_id=${joined.client_id}`);
     } finally {
       setCreating(false);
     }
@@ -67,26 +63,26 @@ export default function HomePage() {
     });
     const data = await res.json();
     setJoinInfo(data);
-    window.location.href = `/waiting/${data.table.id}?client_id=${data.client_id}`;
+    router.push(`/waiting/${data.table.id}?client_id=${data.client_id}`);
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
+    <div className={styles.page}>
       <h1>Sheepshead AI</h1>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+      <div className={styles.controls}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Table name" />
         <button onClick={create} disabled={creating}>Create table</button>
-        <span style={{ marginLeft: 'auto' }}>
+        <span className={styles.nameRight}>
           Your name: <input value={displayName} onChange={e => setDisplayName(e.target.value)} />
         </span>
       </div>
-      <div style={{ marginTop: 24 }}>
+      <div className={styles.lobby}>
         <h2>Lobby</h2>
         {loading ? (<div>Loading…</div>) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className={styles.table}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left' }}>Name</th>
+                <th className={styles.thLeft}>Name</th>
                 <th>Status</th>
                 <th>Seats</th>
                 <th>Actions</th>

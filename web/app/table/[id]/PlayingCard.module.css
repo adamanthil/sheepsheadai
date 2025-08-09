@@ -1,0 +1,60 @@
+.card {
+  width: var(--w);
+  height: var(--h);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff, #eaeaea);
+  color: #111;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: var(--pad, 8px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  border: 1px solid rgba(0,0,0,0.25);
+}
+
+.blank {
+  background: rgba(255,255,255,0.2);
+}
+
+.redText {
+  color: #b3002d;
+}
+
+.highlight {
+  border: 2px solid #4ade80;
+  box-shadow: 0 12px 24px rgba(74,222,128,0.25);
+}
+
+.rankTop,
+.rankBottom {
+  font-weight: 700;
+  line-height: 1;
+}
+
+.rankTop.small,
+.rankBottom.small {
+  font-size: 10px;
+}
+
+.rankTop.normal,
+.rankBottom.normal {
+  font-size: 14px;
+}
+
+.rankTop.big,
+.rankBottom.big {
+  font-size: 16px;
+}
+
+.suit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.suit.small { font-size: 16px; }
+.suit.normal { font-size: 24px; }
+.suit.big { font-size: 28px; }
+
+.rankBottom { text-align: right; }
+
+

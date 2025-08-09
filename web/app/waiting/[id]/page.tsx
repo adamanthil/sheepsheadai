@@ -1,22 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import type { TableSummary } from '../../../lib/types';
+import styles from './page.module.css';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:9000';
 
-type TableInfo = {
-  id: string;
-  name: string;
-  status: 'open' | 'playing' | 'finished';
-  seats: Record<string, string | null>; // seat -> name
-  host: string | null;
-  runningBySeat?: Record<string, number>;
+type TableInfo = TableSummary & {
+  seats: Record<string, string | null>;
 };
 
 export default function WaitingRoom() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
+  const router = useRouter();
   const clientId = search.get('client_id') || '';
 
   const [table, setTable] = useState<TableInfo | null>(null);
@@ -67,12 +65,12 @@ export default function WaitingRoom() {
       setError(j?.detail || 'Start failed');
       return;
     }
-    window.location.href = `/table/${params?.id}?client_id=${clientId}`;
+    router.push(`/table/${params?.id}?client_id=${clientId}`);
   }
 
   const isHost = useMemo(() => {
     if (!table) return false;
-    return (table as any).hostId ? true : false;
+    return Boolean((table as any).hostId);
   }, [table]);
 
   const seatItems = useMemo(() => {
@@ -83,33 +81,33 @@ export default function WaitingRoom() {
   }, [table]);
 
   return (
-    <div style={{ minHeight: '100vh', color: 'white', background: 'radial-gradient(1200px 700px at 50% -200px, #1f3b08 0%, #0b1d08 60%, #061106 100%)' }}>
-      <div style={{ maxWidth: 1000, margin: '0 auto', padding: 24 }}>
-        <h2 style={{ marginTop: 0 }}>Waiting Room · {table?.name || params?.id}</h2>
-        {error && <div style={{ padding: '8px 12px', background: 'rgba(255,50,50,0.1)', border: '1px solid rgba(255,50,50,0.3)', borderRadius: 8, marginBottom: 10 }}>{error}</div>}
+    <div className={styles.root}>
+      <div className={styles.container}>
+        <h2>Waiting Room · {table?.name || params?.id}</h2>
+        {error && <div className={styles.error}>{error}</div>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+        <div className={styles.seatsGrid}>
           {seatItems.map(({ seat, name }) => (
-            <div key={seat} style={{ padding: 16, background: 'rgba(0,0,0,0.35)', borderRadius: 12, textAlign: 'center', border: '1px solid rgba(255,255,255,0.15)' }}>
+            <div key={seat} className={styles.seatCard}>
               <div style={{ opacity: 0.9, marginBottom: 6 }}>Seat {seat}</div>
               <div style={{ minHeight: 24, fontWeight: 600, fontSize: 16 }}>{name || '—'}</div>
               {!name && (
-                <button onClick={() => chooseSeat(seat)} style={{ marginTop: 8, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'white' }}>Take seat</button>
+                <button className={`${styles.btn} ${styles.btnSmall}`} onClick={() => chooseSeat(seat)}>Take seat</button>
               )}
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 12, marginTop: 16, alignItems: 'center' }}>
-          <button onClick={fillAI} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'white' }}>Fill empty seats with AI</button>
-          {isHost && (<button onClick={startGame} style={{ padding: '10px 14px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.35)', background: 'linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0.1))', color: 'white' }}>Start</button>)}
-          <div style={{ marginLeft: 'auto', opacity: 0.85 }}>Players: {seatItems.filter(s => !!s.name).length}/5</div>
+        <div className={styles.actionsRow}>
+          <button className={styles.btn} onClick={fillAI}>Fill empty seats with AI</button>
+          {isHost && (<button className={`${styles.btn} ${styles.btnPrimary}`} onClick={startGame}>Start</button>)}
+          <div className={styles.muted} style={{ marginLeft: 'auto' }}>Players: {seatItems.filter(s => !!s.name).length}/5</div>
         </div>
 
-        <div style={{ marginTop: 24, padding: 16, borderRadius: 12, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)' }}>
+          <div className={styles.runTotals}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>Running totals</div>
           {table?.runningBySeat ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+            <div className={styles.runTotalsGrid}>
               {Array.from({ length: 5 }, (_, i) => i + 1).map(seat => (
                 <div key={seat} style={{ textAlign: 'center', opacity: 0.95 }}>
                   <div style={{ fontSize: 13, opacity: 0.85 }}>Seat {seat}</div>

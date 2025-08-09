@@ -1,7 +1,10 @@
 "use client";
+import styles from './page.module.css';
+import cardStyles from './PlayingCard.module.css';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useParams } from 'next/navigation';
+import type { TableStateMsg, GameOverMsg } from '../../../lib/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:9000';
 
@@ -37,17 +40,7 @@ export function spotStyle(rel: number): React.CSSProperties {
   return { ...base, ...map[rel] };
 }
 
-type TableStateMsg = {
-  type: 'state';
-  table: any;
-  yourSeat: number;
-  actorSeat: number | null;
-  state: number[];
-  view: any;
-  valid_actions: number[];
-};
-
-type GameOverMsg = { type: 'game_over'; table: any };
+// Using shared types from web/lib/types
 
 export default function TablePage() {
   const params = useParams<{ id: string }>();
@@ -81,13 +74,16 @@ export default function TablePage() {
 
   useEffect(() => {
     if (!params?.id || !clientId) return;
-    const socket = new WebSocket(`${API_BASE.replace('http', 'ws')}/ws/table/${params.id}?client_id=${clientId}`);
+    const api = new URL(API_BASE);
+    const wsProto = api.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${api.host}/ws/table/${params.id}?client_id=${encodeURIComponent(clientId)}`;
+    const socket = new WebSocket(wsUrl);
     socket.onopen = () => setConnected(true);
     socket.onclose = () => setConnected(false);
     socket.onmessage = (ev) => {
       const msg = JSON.parse(ev.data) as TableStateMsg | GameOverMsg;
       if (msg.type === 'state') {
-        setLastState(prev => {
+        setLastState((prev: TableStateMsg | null) => {
           const prevWas = prev?.view?.was_trick_just_completed;
           const curWas = (msg as any).view?.was_trick_just_completed;
           // On trick completion: first pause showing previous trick, then animate, then hide
@@ -142,13 +138,7 @@ export default function TablePage() {
     return () => socket.close();
   }, [params?.id, clientId]);
 
-  // Ensure a game exists: auto-start on load if table hasn't started yet.
-  useEffect(() => {
-    if (!params?.id) return;
-    if (startTried.current) return;
-    startTried.current = true;
-    fetch(`${API_BASE}/api/tables/${params.id}/start`, { method: 'POST' }).catch(() => {});
-  }, [params?.id]);
+  // Do not auto-start; host will start from waiting room
 
   const takeAction = async (actionId: number) => {
     // Prefer HTTP action to avoid WS fragility
@@ -196,6 +186,14 @@ export default function TablePage() {
     return Number.isFinite(n) ? n : 0;
   }, [lastState]);
 
+  // Clear timers on unmount
+  useEffect(() => {
+    return () => {
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    };
+  }, []);
+
   const inPickDecision = !!lastState && !lastState.view.is_leaster && (lastState.view.picker === 0);
   const playStarted = useMemo(() => {
     if (!lastState) return false;
@@ -224,7 +222,7 @@ export default function TablePage() {
     if (!lastState) return null;
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {lastState.valid_actions.map((aid) => (
+        {lastState.valid_actions.map((aid: number) => (
           <button key={aid} onClick={() => takeAction(aid)}>
             {actionLookup[String(aid)] || `Action ${aid}`}
           </button>
@@ -234,9 +232,20 @@ export default function TablePage() {
   }, [lastState, actionLookup]);
 
   async function redeal() {
-    await fetch(`${API_BASE}/api/tables/${params?.id}/redeal`, { method: 'POST' });
-    // After redeal, auto-start again with same host control? For simplicity, start immediately.
-    await fetch(`${API_BASE}/api/tables/${params?.id}/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: null }) });
+    // Host-only: require client_id; backend will enforce
+    const id = params?.id;
+    if (!id || !clientId) return;
+    await fetch(`${API_BASE}/api/tables/${id}/redeal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId })
+    });
+    // Immediately start a new hand after redeal
+    await fetch(`${API_BASE}/api/tables/${id}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId })
+    }).catch(() => {});
   }
 
   // --- Layout helpers ---
@@ -304,36 +313,27 @@ export default function TablePage() {
   }, []);
 
   return (
-    <div style={{
-      padding: 16,
-      minHeight: '100vh',
-      background: 'radial-gradient(1200px 700px at 50% -200px, #1f3b08 0%, #0b1d08 60%, #061106 100%)',
-      color: 'white'
-    }}>
-      <div style={{ maxWidth: '100%', margin: '0 auto', paddingBottom: 90 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>Table {params?.id}</h2>
+    <div className={styles.root}>
+      <div className={styles.wrap}>
+        <div className={styles.topRow}>
+          <h2>Table {params?.id}</h2>
           <div style={{ opacity: 0.8 }}>Connection: {connected ? 'connected' : 'disconnected'}</div>
         </div>
 
         {!lastState ? (
           <div style={{ marginTop: 48, textAlign: 'center', opacity: 0.9 }}>Waiting for state…</div>
         ) : (
-          <div style={{ marginTop: 16 }}>
+          <div className={styles.tableArea}>
               {/* Table area full width */}
-              <div style={{
-                borderRadius: 16,
-                background: 'radial-gradient(600px 400px at 50% 50%, rgba(0,0,0,0.3), rgba(0,0,0,0.6))',
-                padding: 24,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-                width: 'min(1600px, 96vw)',
-                margin: '0 auto'
-              }}>
+              <div className={styles.tableFrame}>
                 {/* Current trick in table layout */}
-                <div style={{ textAlign: 'center', marginBottom: 12, opacity: 0.9 }}>
-                  Trick #{(lastState.view.current_trick_index || 0) + 1}
-                </div>
-                <div id="trick-container" ref={trickBoxRef} style={{ position: 'relative', height: Math.max(280, Math.floor(centerSize.h * 1.7)) }}>
+                <div className={styles.trickHeader}>Trick #{(lastState.view.current_trick_index || 0) + 1}</div>
+                <div
+                  id="trick-container"
+                  ref={trickBoxRef}
+                  className={styles.trickContainer}
+                  style={{ ['--trickH' as any]: `${Math.max(280, Math.floor(centerSize.h * 1.7))}px`, ['--cardW' as any]: `${centerSize.w}px` }}
+                >
                   {(() => {
                     const isPrev = !!showPrev;
                     const cards: string[] = isPrev ? (lastState.view.last_trick || []) : lastState.view.current_trick;
@@ -347,11 +347,11 @@ export default function TablePage() {
                         <div key={idx} style={{ ...spotStyle(r), width: centerSize.w }}>
                           <PlayingCard label={c || '__'} width={centerSize.w} height={centerSize.h} highlight={highlight} />
                           {r === 2 ? (
-                            <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: centerSize.w + 8, fontSize: 11, opacity: 0.95, whiteSpace: 'nowrap', textAlign: 'right', width: 120 }}>{name}</div>
+                            <div className={styles.nameLeftOfCard}>{name}</div>
                           ) : r === 3 ? (
-                            <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: centerSize.w + 20, fontSize: 11, opacity: 0.95, whiteSpace: 'nowrap', textAlign: 'left', width: 120 }}>{name}</div>
+                            <div className={styles.nameRightOfCard}>{name}</div>
                           ) : (
-                            <div style={{ textAlign: 'center', fontSize: 11, opacity: 0.85, marginTop: 4, whiteSpace: 'nowrap' }}>{name}</div>
+                            <div className={styles.nameBelow}>{name}</div>
                           )}
                           {(() => {
                             const status = pickStatusForSeat(absSeat);
@@ -376,17 +376,17 @@ export default function TablePage() {
 
                   {/* Previous trick info banner when toggled */}
                   {showPrev && !animTrick && lastState.view.last_trick ? (
-                    <div style={{ position: 'absolute', left: '50%', top: 8, transform: 'translateX(-50%)', padding: '6px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.35)', fontSize: 13 }}>
+                    <div className={styles.prevBanner}>
                       Previous trick · Winner: {nameForSeat(lastState.view.last_trick_winner, lastState.table)} · Points: {lastState.view.last_trick_points}
                     </div>
                   ) : null}
 
                   {/* Trick collect animation overlay */}
                   {animTrick && (
-                    <CollectOverlay yourSeat={lastState.yourSeat} winner={animTrick.winner} cards={animTrick.cards} centerSize={centerSize} />
+                    <CollectOverlay containerRef={trickBoxRef} yourSeat={lastState.yourSeat} winner={animTrick.winner} cards={animTrick.cards} centerSize={centerSize} />
                   )}
                   {callout && (
-                    <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', padding: '10px 14px', borderRadius: 12, backdropFilter: 'blur(6px)', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.25)', boxShadow: '0 10px 30px rgba(0,0,0,0.4)', pointerEvents: 'none' }}>
+                    <div className={styles.callout}>
                       <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.3 }}>
                         {callout.message}
                       </div>
@@ -398,8 +398,8 @@ export default function TablePage() {
 
                 {/* Your hand */}
                 <div style={{ marginTop: handTopMargin }}>
-                  <div style={{ opacity: 0.9, marginBottom: 8 }}>Your hand</div>
-                  <div ref={handRowRef} style={{ display: 'flex', flexWrap: 'nowrap', gap: 10, justifyContent: 'center' }}>
+                  <div className={styles.sectionTitle}>Your hand</div>
+                  <div ref={handRowRef} className={styles.handRow}>
                     {lastState.view.hand.map((c: string, idx: number) => {
                       const clickable = isCardClickable(c);
                       return (
@@ -411,18 +411,13 @@ export default function TablePage() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: 16, opacity: 0.85, fontSize: 13 }}>
+                <div className={styles.muted} style={{ marginTop: 16, fontSize: 13 }}>
                   Picker: {nameForSeat(lastState.view.picker, lastState.table)} · Partner: {nameForSeat(lastState.view.partner, lastState.table)} · Alone: {String(lastState.view.alone)} · Called: {lastState.view.called_card}{lastState.view.called_under ? ' (under)' : ''}
                 </div>
 
                 {/* Final banner */}
                 {lastState.view.is_done && lastState.view.final ? (
-                  <div style={{
-                    marginTop: 16,
-                    padding: 12,
-                    borderRadius: 10,
-                    background: 'linear-gradient(180deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05))'
-                  }}>
+                  <div className={styles.finalBanner}>
                     {lastState.view.final.mode === 'leaster' ? (
                       <div>
                         <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Game Over · Leaster</div>
@@ -436,7 +431,7 @@ export default function TablePage() {
                             </div>
                           ))}
                         </div>
-                        <div style={{ opacity: 0.95, marginTop: 8 }}>Points taken by player</div>
+                        <div className={styles.muted} style={{ marginTop: 8 }}>Points taken by player</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 6 }}>
                           {Array.from({ length: 5 }, (_, i) => i + 1).map((seat) => (
                             <div key={seat} style={{ textAlign: 'center' }}>
@@ -449,15 +444,15 @@ export default function TablePage() {
                     ) : (
                       <div>
                         <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Game Over</div>
-                        <div style={{ opacity: 0.95 }}>
+                        <div className={styles.muted}>
                           Picker: <strong>{nameForSeat(lastState.view.final.picker, lastState.table)}</strong>
                           {" · "}
                           Partner: <strong>{nameForSeat(lastState.view.final.partner, lastState.table)}</strong>
                         </div>
-                        <div style={{ opacity: 0.95, marginTop: 4 }}>
+                        <div className={styles.muted} style={{ marginTop: 4 }}>
                           Picker score: <strong>{lastState.view.final.picker_score}</strong> · Defenders score: <strong>{lastState.view.final.defender_score}</strong>
                         </div>
-                        <div style={{ opacity: 0.95, marginTop: 8 }}>Scores by player</div>
+                        <div className={styles.muted} style={{ marginTop: 8 }}>Scores by player</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 6 }}>
                           {Array.from({ length: 5 }, (_, i) => i + 1).map((seat) => (
                             <div key={seat} style={{ textAlign: 'center' }}>
@@ -481,21 +476,21 @@ export default function TablePage() {
 
       {/* Bottom Action Bar */}
       {lastState && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 50, backdropFilter: 'blur(6px)', background: 'linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.6))', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-          <div style={{ width: 'min(1600px, 96vw)', margin: '0 auto', padding: '10px 16px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-            <div style={{ fontSize: 13, opacity: 0.9 }}>{nameForSeat(lastState.yourSeat, lastState.table)} {lastState.actorSeat === lastState.yourSeat ? '· Your turn' : ''}</div>
+        <div className={styles.bottomBar}>
+          <div className={styles.bottomBarInner}>
+            <div className={styles.muted} style={{ fontSize: 13 }}>{nameForSeat(lastState.yourSeat, lastState.table)} {lastState.actorSeat === lastState.yourSeat ? '· Your turn' : ''}</div>
             {(lastState.view.last_trick && lastState.view.last_trick.length === 5) ? (
-              <button onClick={() => setShowPrev(p => !p)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'white' }}>{showPrev ? 'Hide previous trick' : 'Show previous trick'}</button>
+              <button onClick={() => setShowPrev(p => !p)}>{showPrev ? 'Hide previous trick' : 'Show previous trick'}</button>
             ) : null}
             {lastState.valid_actions.length ? actionButtons : (
-              <div style={{ opacity: 0.8 }}>
+              <div className={styles.dimmed}>
                 Waiting for {nameForSeat(lastState.actorSeat, lastState.table) || `Seat ${lastState.actorSeat || ''}`}…
               </div>
             )}
-            <div style={{ marginLeft: 'auto', fontSize: 12, opacity: 0.8 }}>
+            <div className={`${styles.pushRight} ${styles.dimmed}`} style={{ fontSize: 12 }}>
               Tricks: {lastState.view.trick_winners.filter((x: number) => x > 0).length}/6 · Points played so far: {lastState.view.trick_points.reduce((a: number, b: number) => a + (b || 0), 0)}
             </div>
-            <button onClick={() => setShowScores(true)} style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'white' }}>Scores</button>
+            <button onClick={() => setShowScores(true)}>Scores</button>
           </div>
         </div>
       )}
@@ -514,24 +509,13 @@ function PlayingCard({ label, small, highlight, width, height, bigMarks }: { lab
   const w = width ?? (small ? 48 : 76);
   const h = height ?? (small ? 64 : 108);
   const red = suit === 'H' || suit === 'D';
-  const border = highlight ? '2px solid #4ade80' : '1px solid rgba(0,0,0,0.25)';
-  const shadow = highlight ? '0 12px 24px rgba(74,222,128,0.25)' : '0 6px 16px rgba(0,0,0,0.35)';
+  const sizeClass = bigMarks ? 'big' : (small ? 'small' : 'normal');
+  const classNames = [cardStyles.card, highlight ? cardStyles.highlight : '', blank ? cardStyles.blank : '', red ? cardStyles.redText : ''].filter(Boolean).join(' ');
   return (
-    <div style={{
-      width: w,
-      height: h,
-      borderRadius: 10,
-      background: blank ? 'rgba(255,255,255,0.2)' : 'linear-gradient(180deg, #ffffff, #eaeaea)',
-      color: red ? '#b3002d' : '#111',
-      display: 'grid',
-      gridTemplateRows: 'auto 1fr auto',
-      padding: small ? 4 : 8,
-      boxShadow: shadow,
-      border
-    }}>
-      <div style={{ fontWeight: 700, fontSize: bigMarks ? 16 : (small ? 10 : 14), lineHeight: 1 }}>{rank}</div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: bigMarks ? 28 : (small ? 16 : 24) }}>{suitSymbol(suit)}</div>
-      <div style={{ textAlign: 'right', fontWeight: 700, fontSize: bigMarks ? 16 : (small ? 10 : 14), lineHeight: 1 }}>{rank}</div>
+    <div className={classNames} style={{ ['--w' as any]: `${w}px`, ['--h' as any]: `${h}px`, ['--pad' as any]: small ? '4px' : '8px' }}>
+      <div className={`${cardStyles.rankTop} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{rank}</div>
+      <div className={`${cardStyles.suit} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{suitSymbol(suit)}</div>
+      <div className={`${cardStyles.rankBottom} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{rank}</div>
     </div>
   );
 }
@@ -612,10 +596,9 @@ function ScoresOverlay({ onClose, table }: { onClose: () => void; table: any }) 
   );
 }
 
-function CollectOverlay({ yourSeat, winner, cards, centerSize }: { yourSeat: number; winner: number; cards: string[]; centerSize: { w: number; h: number } }) {
-  const container = typeof window !== 'undefined' ? (document.getElementById('trick-container') as HTMLElement | null) : null;
-  const cw = container?.clientWidth ?? 1000;
-  const ch = container?.clientHeight ?? 400;
+function CollectOverlay({ containerRef, yourSeat, winner, cards, centerSize }: { containerRef: React.MutableRefObject<HTMLDivElement | null>; yourSeat: number; winner: number; cards: string[]; centerSize: { w: number; h: number } }) {
+  const cw = containerRef.current?.clientWidth ?? 1000;
+  const ch = containerRef.current?.clientHeight ?? 400;
 
   const refs = useRef<Array<HTMLDivElement | null>>([]);
   if (refs.current.length !== cards.length) refs.current = Array(cards.length).fill(null);

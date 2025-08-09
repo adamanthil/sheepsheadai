@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 # from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+import logging
 
 # Import game and agent from existing project
 from sheepshead import (
@@ -18,10 +18,17 @@ from sheepshead import (
     Game,
     Player,
     get_cards_from_vector,
-    STATE_SIZE,
 )
 from ppo import PPOAgent
 import numpy as np
+from server.api.schemas import (
+    CreateTableRequest,
+    JoinTableRequest,
+    StartGameRequest,
+    ActionRequest,
+    SeatRequest,
+    RedealRequest,
+)
 
 
 # ------------------------------------------------------------
@@ -37,33 +44,6 @@ def _try_int(v: Any, default: int = 0) -> int:
 
 
 ACTION_SIZE = len(ACTION_IDS)
-
-
-# ------------------------------------------------------------
-# Data models (API schemas)
-# ------------------------------------------------------------
-
-
-class CreateTableRequest(BaseModel):
-    name: str
-    fillWithAI: bool = True
-    rules: Dict[str, Any] = {}
-
-
-class JoinTableRequest(BaseModel):
-    display_name: str
-    seat: Optional[int] = None
-
-
-class StartGameRequest(BaseModel):
-    # Optional, otherwise use table rules defaults
-    seed: Optional[int] = None
-    client_id: Optional[str] = None
-
-
-class ActionRequest(BaseModel):
-    client_id: str
-    action_id: int
 
 
 # ------------------------------------------------------------
@@ -95,6 +75,7 @@ class Table:
     game: Optional[Game] = None
     game_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     ai_agent: Optional[PPOAgent] = None
+    ai_task: Optional[asyncio.Task] = None
     ai_names: Dict[str, str] = field(default_factory=dict)  # occupant_id (AI*) -> display name
     running_scores: Dict[str, int] = field(default_factory=dict)  # occupant_id -> cumulative score
     results_counted: bool = False
@@ -173,6 +154,7 @@ tables = TableManager()
 
 
 app = FastAPI(title="Sheepshead Realtime API")
+logging.basicConfig(level=logging.INFO)
 
 # Optional global model path via env var SHEEPSHEAD_MODEL_PATH (set by run_server.sh)
 GLOBAL_MODEL_PATH: Optional[str] = os.environ.get("SHEEPSHEAD_MODEL_PATH")
@@ -301,7 +283,12 @@ async def broadcast_table_state(table: Table):
             "view": payload["view"],
             "valid_actions": valid_actions if conn.seat == actor_seat else [],
         }
-        await conn.websocket.send_text(json.dumps(msg))
+        try:
+            await conn.websocket.send_text(json.dumps(msg))
+        except WebSocketDisconnect:
+            conn.websocket = None
+        except Exception as exc:
+            logging.exception("broadcast send failed for table %s client %s: %s", table.id, cid, exc)
 
 
 async def ai_observe_all(table: Table, except_seat: Optional[int] = None):
@@ -319,12 +306,16 @@ async def ai_observe_all(table: Table, except_seat: Optional[int] = None):
 
 
 async def ai_take_turns(table: Table):
-    """Loop AI moves until a human is the actor or the game ends."""
+    """Loop AI moves until a human is the actor or the game ends.
+    Avoid holding the game lock across sleeps and network IO.
+    """
     if not table.game or not table.ai_agent:
         return
-    # Prevent concurrent mutation
-    async with table.game_lock:
-        while table.game and not table.game.is_done():
+    while table.game and not table.game.is_done():
+        # Determine if AI is the actor and select action under lock
+        async with table.game_lock:
+            if not table.game or not table.ai_agent:
+                break
             actor = get_actor_seat(table)
             if actor is None:
                 break
@@ -332,66 +323,71 @@ async def ai_take_turns(table: Table):
             if not occupant or not str(occupant).startswith("AI:"):
                 # Human's turn
                 break
-            # AI turn
             player = table.game.players[actor - 1]
             state = player.get_state_vector()
             valid = player.get_valid_action_ids()
             if not valid:
                 break
             action_id, _, _ = table.ai_agent.act(state, valid_actions=valid, player_id=actor, deterministic=False)
-
-            # Apply action; if invalid, surface the error
-            ok = player.act(action_id)
+            ok = player.act(int(action_id))
             if not ok:
-                raise RuntimeError(f"AI produced invalid action_id {action_id} for seat {actor}; valid set: {sorted(list(valid))}")
+                raise RuntimeError(
+                    f"AI produced invalid action_id {action_id} for seat {actor}; valid set: {sorted(list(valid))}"
+                )
 
-            # Let other AIs observe the transition
-            await ai_observe_all(table, except_seat=actor)
+        # After applying, let other AIs observe and broadcast
+        await ai_observe_all(table, except_seat=actor)
 
-            # Add a small delay before displaying AI card plays so states flow in order
-            action_str = ACTION_LOOKUP.get(action_id, "")
-            if isinstance(action_str, str) and action_str.startswith("PLAY "):
+        action_str = ACTION_LOOKUP.get(action_id, "")
+        if isinstance(action_str, str) and action_str.startswith("PLAY "):
+            await asyncio.sleep(0.5)
+        await broadcast_table_state(table)
+        if getattr(table.game, "was_trick_just_completed", False):
+            await asyncio.sleep(3.3)
+        else:
+            if isinstance(action_str, str) and action_str == "PASS":
                 await asyncio.sleep(0.5)
 
-            # Broadcast state after each AI action (with optional delay)
-            await broadcast_table_state(table)
-
-            # If that action just completed a trick, pause to let the client
-            # show the previous-trick view and collect animation before
-            # advancing into the next trick's auto-plays.
-            if getattr(table.game, "was_trick_just_completed", False):
-                # UI shows 2.0s pause + ~1.3s animation
-                await asyncio.sleep(3.3)
-            else:
-                # Add small pacing for non-play actions where appropriate
-                action_str = ACTION_LOOKUP.get(action_id, "")
-                if isinstance(action_str, str) and action_str == "PASS":
-                    await asyncio.sleep(0.5)
-
-        # If game ended via AI actions, mark finished, tally results, record history, and broadcast
-        if table.game and table.game.is_done():
-            table.status = "finished"
-            if not table.results_counted:
+    # If game ended via AI actions, mark finished, tally results, record history, and broadcast
+    if table.game and table.game.is_done():
+        table.status = "finished"
+        if not table.results_counted:
+            for i in range(1, 6):
+                occ = table.seats[i]
+                if not occ:
+                    continue
+                pscore = table.game.players[i - 1].get_score()
+                table.running_scores[occ] = table.running_scores.get(occ, 0) + int(pscore)
+            table.results_counted = True
+            try:
+                entry: Dict[str, Any] = {"hand": len(table.results_history) + 1, "timestamp": time.time(), "bySeat": {}, "sum": 0}
+                pub = table.to_public_dict()
                 for i in range(1, 6):
-                    occ = table.seats[i]
-                    if not occ:
-                        continue
-                    pscore = table.game.players[i - 1].get_score()
-                    table.running_scores[occ] = table.running_scores.get(occ, 0) + int(pscore)
-                table.results_counted = True
-                try:
-                    entry: Dict[str, Any] = {"hand": len(table.results_history) + 1, "timestamp": time.time(), "bySeat": {}, "sum": 0}
-                    pub = table.to_public_dict()
-                    for i in range(1, 6):
-                        name = pub["seats"][i]
-                        occ_id = pub["seatOccupants"][i]
-                        score = int(table.game.players[i - 1].get_score())
-                        entry["bySeat"][i] = {"name": name, "id": occ_id, "score": score}
-                        entry["sum"] += score
-                    table.results_history.append(entry)
-                except Exception:
-                    pass
-            await broadcast_table_state(table)
+                    name = pub["seats"][i]
+                    occ_id = pub["seatOccupants"][i]
+                    score = int(table.game.players[i - 1].get_score())
+                    entry["bySeat"][i] = {"name": name, "id": occ_id, "score": score}
+                    entry["sum"] += score
+                table.results_history.append(entry)
+            except Exception:
+                logging.exception("failed to append results history for table %s", table.id)
+        await broadcast_table_state(table)
+
+
+def schedule_ai_turns(table: Table, initial_delay: float = 0.0) -> None:
+    """Schedule background AI turns for a table, cancelling any prior task."""
+    async def _runner():
+        if initial_delay > 0:
+            await asyncio.sleep(initial_delay)
+        try:
+            await ai_take_turns(table)
+        except Exception:
+            logging.exception("ai_take_turns crashed for table %s", table.id)
+
+    # Cancel previous task if running
+    if table.ai_task and not table.ai_task.done():
+        table.ai_task.cancel()
+    table.ai_task = asyncio.create_task(_runner())
 
 
 # ------------------------------------------------------------
@@ -459,9 +455,7 @@ def fill_ai(table_id: str):
     return table.to_public_dict()
 
 
-class SeatRequest(BaseModel):
-    client_id: str
-    seat: int
+## SeatRequest imported from server.api.schemas
 
 
 @app.post("/api/tables/{table_id}/seat")
@@ -520,8 +514,8 @@ async def start_game(table_id: str, req: StartGameRequest):
     if table.status != "open":
         raise HTTPException(status_code=400, detail="already_started")
 
-    # Host-only start
-    if table.host_client_id and req.client_id and req.client_id != table.host_client_id:
+    # Host-only start: require a client_id and it must match host
+    if not req.client_id or not table.host_client_id or req.client_id != table.host_client_id:
         raise HTTPException(status_code=403, detail="only_host_can_start")
 
     # Fill empty seats with AIs if configured
@@ -563,41 +557,21 @@ async def start_game(table_id: str, req: StartGameRequest):
     # Create AI agent for this table if any AI players exist
     has_ai = any(str(v).startswith("AI:") for v in table.seats.values())
     if has_ai:
-        # Create one PPOAgent instance per table to isolate recurrent state
-        try:
-            agent = PPOAgent(state_size=STATE_SIZE, action_size=ACTION_SIZE)
-            # Attempt loading a checkpoint if present
-            candidate_paths = [
-                "pfsp_checkpoints_swish/pfsp_swish_checkpoint_200000.pth"
-                "final_pfsp_swish_ppo.pth",
-                "best_pfsp_swish_ppo.pth",
-                "final_swish_ppo.pth",
-                "best_swish_ppo.pth",
-            ]
-            for p in candidate_paths:
-                if os.path.exists(p):
-                    agent.load(p)
-                    break
-            table.ai_agent = agent
-            agent.reset_recurrent_state()
-        except Exception:
-            table.ai_agent = None
+        from server.services.ai_loader import load_agent
+        candidate_paths = [
+            "pfsp_checkpoints_swish/pfsp_swish_checkpoint_200000.pth",
+            "final_pfsp_swish_ppo.pth",
+            "best_pfsp_swish_ppo.pth",
+            "final_swish_ppo.pth",
+            "best_swish_ppo.pth",
+        ]
+        table.ai_agent = load_agent(os.environ.get("SHEEPSHEAD_MODEL_PATH"), candidate_paths)
 
-    # Initial broadcast
+    # Initial broadcast and schedule AI chain after a small delay
     await broadcast_table_state(table)
-    # Allow clients to connect/render before the first AI action
-    await asyncio.sleep(2.0)
-    # Let AIs auto-play up to human turn
-    await ai_take_turns(table)
-    # After AI chain, broadcast again to ensure humans see their turn
-    await broadcast_table_state(table)
+    schedule_ai_turns(table, initial_delay=2.0)
 
     return table.to_public_dict()
-
-
-class RedealRequest(BaseModel):
-    # host-triggered; no body currently required
-    pass
 
 
 @app.post("/api/tables/{table_id}/redeal")
@@ -606,6 +580,11 @@ async def redeal(table_id: str, req: RedealRequest | None = None):
         table = tables.get_table(table_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
+
+    # Host-only redeal: require client_id and it must match host
+    client_id: Optional[str] = req.client_id if req else None
+    if not client_id or not table.host_client_id or client_id != table.host_client_id:
+        raise HTTPException(status_code=403, detail="only_host_can_redeal")
 
     # Rotate seats clockwise (dealer becomes previous seat1 -> seat5)
     old = {i: table.seats[i] for i in range(1, 6)}
@@ -661,8 +640,7 @@ async def post_action(table_id: str, req: ActionRequest):
 
     await ai_observe_all(table, except_seat=conn.seat)
     await broadcast_table_state(table)
-    await ai_take_turns(table)
-    await broadcast_table_state(table)
+    schedule_ai_turns(table)
 
     # If the game has ended, ensure results are tallied and history is recorded
     if table.game and table.game.is_done():
@@ -721,60 +699,8 @@ async def table_ws(websocket: WebSocket, table_id: str):
     conn = table.clients[client_id]
     conn.websocket = websocket
 
-    # If no game yet, auto-start on first WS connection
-    if not table.game:
-        # Optionally fill AI seats if configured
-        if table.fill_with_ai:
-            for i in range(1, 6):
-                if not table.seats[i]:
-                    table.seats[i] = f"AI:{i}"
-
-        # Only auto-start if seats are full AND the host is seated
-        if all(table.seats[i] for i in range(1, 6)) and table.host_client_id and any(table.seats[i] == table.host_client_id for i in range(1, 6)):
-            rules = table.rules or {}
-            partner_mode = _try_int(rules.get("partnerMode", 1), 1)
-            double_on_the_bump = bool(rules.get("doubleOnTheBump", True))
-
-            game = Game(
-                double_on_the_bump=double_on_the_bump,
-                partner_selection_mode=partner_mode,
-            )
-            table.game = game
-            table.status = "playing"
-            if not table.initial_seat_order:
-                table.initial_seat_order = [str(table.seats[i] or f"AI:{i}") for i in range(1, 6)]
-                pub = table.to_public_dict()
-                for i in range(1, 6):
-                    occ = table.seats[i]
-                    if occ:
-                        table.initial_names[str(occ)] = pub["seats"][i]
-
-            # Create AI agent if needed
-            has_ai = any(str(v).startswith("AI:") for v in table.seats.values())
-            if has_ai and not table.ai_agent:
-                agent = PPOAgent(state_size=STATE_SIZE, action_size=ACTION_SIZE)
-                if GLOBAL_MODEL_PATH and os.path.exists(GLOBAL_MODEL_PATH):
-                    agent.load(GLOBAL_MODEL_PATH)
-                else:
-                    candidate_paths = [
-                        "pfsp_checkpoints_swish/pfsp_swish_checkpoint_200000.pth",
-                        "final_pfsp_swish_ppo.pth",
-                        "best_pfsp_swish_ppo.pth",
-                        "final_swish_ppo.pth",
-                        "best_swish_ppo.pth",
-                    ]
-                    for p in candidate_paths:
-                        if os.path.exists(p):
-                            agent.load(p)
-                            break
-                table.ai_agent = agent
-                agent.reset_recurrent_state()
-
-            # Initial broadcast and AI chain
-            await broadcast_table_state(table)
-            # Allow clients to connect/render before the first AI action
-            await asyncio.sleep(2.0)
-            await ai_take_turns(table)
+    # No auto-start here; waiting room/host will start explicitly
+    await broadcast_table_state(table)
 
     # Send initial/updated state after (potential) auto-start
     await broadcast_table_state(table)
@@ -805,12 +731,9 @@ async def table_ws(websocket: WebSocket, table_id: str):
                 # Let AIs observe transition
                 await ai_observe_all(table, except_seat=conn.seat)
 
-                # Broadcast
+                # Broadcast and schedule AI follow-up
                 await broadcast_table_state(table)
-
-                # If game continues, let AIs play until next human turn
-                await ai_take_turns(table)
-                await broadcast_table_state(table)
+                schedule_ai_turns(table)
 
             # Future: chat, ready, etc.
 
@@ -837,7 +760,7 @@ async def table_ws(websocket: WebSocket, table_id: str):
                         entry["sum"] += score
                     table.results_history.append(entry)
                 except Exception:
-                    pass
+                    logging.exception("failed to append results history for table %s", table.id)
                 # Final broadcast (one more time)
                 await broadcast_table_state(table)
                 # Close socket politely

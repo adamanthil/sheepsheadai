@@ -1,0 +1,84 @@
+.root {
+  min-height: 100vh;
+  color: white;
+  background: radial-gradient(1200px 700px at 50% -200px, #1f3b08 0%, #0b1d08 60%, #061106 100%);
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.error {
+  padding: 8px 12px;
+  background: rgba(255,50,50,0.1);
+  border: 1px solid rgba(255,50,50,0.3);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.seatsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.seatCard {
+  padding: 16px;
+  background: rgba(0,0,0,0.35);
+  border-radius: 12px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.actionsRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  align-items: center;
+}
+
+.runTotals {
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.runTotalsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.muted {
+  opacity: 0.85;
+}
+
+.btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.35);
+}
+
+.btnPrimary {
+  border: 1px solid rgba(255,255,255,0.35);
+  background: linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0.1));
+}
+
+.btnSmall {
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+

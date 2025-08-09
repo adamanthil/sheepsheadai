@@ -1,0 +1,29 @@
+.page {
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.nameRight {
+  margin-left: auto;
+}
+
+.lobby {
+  margin-top: 24px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.thLeft {
+  text-align: left;
+}
+
