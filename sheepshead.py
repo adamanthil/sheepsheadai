@@ -290,7 +290,7 @@ def get_monte_carlo_pick_score(hand):
 class Game:
     def __init__(
         self,
-        double_on_the_bump=True,
+        double_on_the_bump=False,
         picking_player=None,
         picking_hand=None,
         is_leaster=False,
