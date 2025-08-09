@@ -796,7 +796,6 @@ class Player:
                 self.game.play_started = True
                 self.game.leader = 1
                 self.game.leaders[0] = 1
-                return False
 
         if "BURY" in action:
             card = action[5:]
