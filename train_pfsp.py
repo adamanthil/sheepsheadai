@@ -304,8 +304,13 @@ def train_pfsp(num_episodes: int = 500000,
             player_pos = transition['player'].position
             last_transition_per_player[player_pos] = i
 
-        for reward_data in process_episode_rewards(episode_transitions, final_scores,
-                                                 last_transition_per_player, running_picker_baseline):
+        for reward_data in process_episode_rewards(
+            episode_transitions,
+            final_scores,
+            last_transition_per_player,
+            running_picker_baseline,
+            game.is_leaster
+        ):
             transition = reward_data['transition']
             training_agent.store_transition(
                 transition['state'],

@@ -247,7 +247,7 @@ def handle_trick_completion(game, current_trick_transitions, play_action_count):
     return False, play_action_count
 
 
-def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, picker_baseline):
+def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, picker_baseline, is_leaster):
     """Process and assign rewards to all transitions in the episode."""
     for i, transition in enumerate(episode_transitions):
         player = transition['player']
@@ -262,6 +262,11 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         if transition['action'] == ACTION_IDS["PICK"]:
             # Add baseline-centered reward for pick decisions
             final_reward = (final_score - picker_baseline) / 12
+        elif is_leaster:
+            # Preference against leasters
+            # Loss is twice as bad as standard game loss
+            leaster_reward = (final_score - 1) / 12
+            final_reward = leaster_reward if is_episode_done else 0.0
         else:
             final_reward = (final_score / 12) if is_episode_done else 0.0
 
@@ -536,7 +541,13 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
 
         # Compute rewards/done for action transitions
         reward_map = {}
-        for reward_data in process_episode_rewards(flat_actions, final_scores, last_transition_per_player, running_picker_baseline):
+        for reward_data in process_episode_rewards(
+            flat_actions,
+            final_scores,
+            last_transition_per_player,
+            running_picker_baseline,
+            game.is_leaster
+        ):
             tr = reward_data['transition']
             reward_map[id(tr)] = (reward_data['reward'], reward_data['done'])
 
