@@ -340,13 +340,16 @@ class PPOAgent:
         self.entropy_coeff_bury = 0.02
         self.entropy_coeff_play = 0.01
         self.value_loss_coeff = 0.5
-        self.max_grad_norm = 0.5
-        self.clip_epsilon_pick = 0.3
-        self.clip_epsilon_bury = 0.25
-        self.clip_epsilon_play = 0.2
+        self.max_grad_norm = 0.3
+        self.clip_epsilon_pick = 0.2
+        self.clip_epsilon_bury = 0.2
+        self.clip_epsilon_play = 0.15
+        self.value_clip_epsilon = 0.2
 
         # PPO early stopping target for approximate KL (per update)
-        self.target_kl = 0.015
+        self.target_kl = 0.02
+        # KL regularization coefficient (added to actor loss)
+        self.kl_coef = 0.2
 
         # Storage for trajectory data
         self.reset_storage()
@@ -679,7 +682,8 @@ class PPOAgent:
                 new_lp_flat = dist.log_prob(actions_flat)
 
                 # Approximate KL divergence between old and new policy on sampled actions
-                approx_kl = (old_lp_flat - new_lp_flat).mean().item()
+                approx_kl_t = (old_lp_flat - new_lp_flat).mean()
+                approx_kl = approx_kl_t.item()
                 last_approx_kl = approx_kl
 
                 # Entropy by head
@@ -697,6 +701,11 @@ class PPOAgent:
                                 self.entropy_coeff_bury * bury_entropy +
                                 self.entropy_coeff_play * play_entropy)
 
+                # Pre-step KL gate: if the policy shift is already too large, skip this minibatch
+                if self.target_kl is not None and approx_kl > self.target_kl:
+                    early_stop_triggered = True
+                    break
+
                 # PPO loss vectorized
                 ratios = torch.exp(new_lp_flat - old_lp_flat)
                 is_pick = torch.isin(actions_flat, pick_idx_tensor_static)
@@ -706,8 +715,16 @@ class PPOAgent:
                 eps_flat[is_bury] = self.clip_epsilon_bury
                 surr1 = ratios * adv_flat
                 clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
-                actor_loss = -torch.min(surr1, clipped).mean() - entropy_term
-                critic_loss = F.mse_loss(values_flat, returns_flat.view(-1))
+                # Add small KL penalty to discourage large policy shifts even before early-stop
+                actor_loss = -torch.min(surr1, clipped).mean() - entropy_term + self.kl_coef * approx_kl_t
+
+                # Critic loss with value clipping (PPO-style)
+                returns_target = returns_flat.view(-1)
+                values_old = values_flat.detach()
+                v_clipped = values_old + torch.clamp(values_flat - values_old, -self.value_clip_epsilon, self.value_clip_epsilon)
+                critic_loss_unclipped = F.mse_loss(values_flat, returns_target)
+                critic_loss_clipped = F.mse_loss(v_clipped, returns_target)
+                critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped)
 
                 # Backward + step per minibatch
                 t_bwd = time.time()

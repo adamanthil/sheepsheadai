@@ -375,7 +375,7 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
 
     # Create agent with optimized hyperparameters
     agent = PPOAgent(STATE_SIZE, len(ACTIONS),
-                    lr_actor=1.5e-4,  # Slightly reduced for fine-tuning
+                    lr_actor=5.0e-5,
                     lr_critic=1.5e-4,
                     activation=activation)
 

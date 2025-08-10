@@ -239,7 +239,7 @@ def train_pfsp(num_episodes: int = 500000,
 
     # Create training agent
     training_agent = PPOAgent(STATE_SIZE, len(ACTIONS),
-                            lr_actor=1.5e-4,
+                            lr_actor=5.0e-5,
                             lr_critic=1.5e-4,
                             activation=activation)
 
