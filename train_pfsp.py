@@ -218,8 +218,6 @@ def train_pfsp(num_episodes: int = 500000,
     team_point_differences = deque(maxlen=3000)
 
     best_team_difference = float('inf')
-    running_picker_baseline = 0.0
-    baseline_beta = 0.001
 
     training_data = {
         'episodes': [],
@@ -308,7 +306,6 @@ def train_pfsp(num_episodes: int = 500000,
             episode_transitions,
             final_scores,
             last_transition_per_player,
-            running_picker_baseline,
             game.is_leaster
         ):
             transition = reward_data['transition']
@@ -327,7 +324,6 @@ def train_pfsp(num_episodes: int = 500000,
         # Update statistics
         picker_score = training_data_single['score'] if training_data_single['was_picker'] else 0
         if training_data_single['was_picker']:
-            running_picker_baseline = (1 - baseline_beta) * running_picker_baseline + baseline_beta * picker_score
             picker_scores.append(picker_score)
 
         # ---------- OpenSkill rating update ----------
@@ -416,7 +412,7 @@ def train_pfsp(num_episodes: int = 500000,
 
             # Entropy decay
             entropy_play_start, entropy_play_end = 0.02, 0.004
-            entropy_pick_start, entropy_pick_end = 0.02, 0.002
+            entropy_pick_start, entropy_pick_end = 0.02, 0.010
             entropy_bury_start, entropy_bury_end = 0.02, 0.002
             decay_fraction = min(episode / num_episodes, 1.0)
             training_agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction

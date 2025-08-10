@@ -247,7 +247,7 @@ def handle_trick_completion(game, current_trick_transitions, play_action_count):
     return False, play_action_count
 
 
-def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, picker_baseline, is_leaster):
+def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, is_leaster):
     """Process and assign rewards to all transitions in the episode."""
     for i, transition in enumerate(episode_transitions):
         player = transition['player']
@@ -258,11 +258,8 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         # Mark trajectory boundary at the player's final action
         is_episode_done = (i == last_transition_per_player[player_pos])
 
-        # Determine reward for final transition based on action type
-        if transition['action'] == ACTION_IDS["PICK"]:
-            # Add baseline-centered reward for pick decisions
-            final_reward = (final_score - picker_baseline) / 12
-        elif is_leaster:
+        # Determine reward for final transition based on game type
+        if is_leaster:
             # Preference against leasters
             # Loss is twice as bad as standard game loss
             leaster_reward = (final_score - 1) / 12
@@ -426,8 +423,6 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
     }
 
     # Running picker baseline for reward shaping
-    running_picker_baseline = 0.0
-    baseline_beta = 0.001  # smoothing factor
 
     # Create checkpoint directory with activation function suffix
     checkpoint_dir = f'checkpoints_{activation}'
@@ -540,7 +535,6 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
             flat_actions,
             final_scores,
             last_transition_per_player,
-            running_picker_baseline,
             game.is_leaster
         ):
             tr = reward_data['transition']
@@ -567,9 +561,6 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
         # Track statistics
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
 
-        # Update running baseline if there was a picker
-        if game.picker:
-            running_picker_baseline = (1 - baseline_beta) * running_picker_baseline + baseline_beta * picker_score
 
         # Calculate team point difference (picker team points - defender team points)
         if game.picker and not game.is_leaster:
