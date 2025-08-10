@@ -374,11 +374,6 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
     print(f"  Save interval: {save_interval}")
     print(f"  Strategic evaluation interval: {strategic_eval_interval}")
     print(f"  Activation function: {activation.upper()}")
-    print("  Reward structure: final scores + intermediate trick points")
-    print("  Intermediate rewards: 1/120th of final scaled rewards (points/1440)")
-    print("  Opponent: SELF-PLAY")
-    print("  Evaluation: STRATEGIC DECISION QUALITY + TEAM BALANCE")
-    print("  Best model: LOWEST TEAM POINT DIFFERENCE")
     print("="*60)
 
     # Create agent with optimized hyperparameters
