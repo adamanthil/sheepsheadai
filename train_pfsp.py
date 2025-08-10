@@ -18,9 +18,20 @@ import copy
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
-from pfsp import PFSPPopulation, create_initial_population_from_checkpoints
-from sheepshead import (Game, ACTIONS, STATE_SIZE, ACTION_IDS,
-                       PARTNER_BY_CALLED_ACE, PARTNER_BY_JD)
+from pfsp import PFSPPopulation, create_initial_population_from_checkpoints, _estimate_hand_strength_category
+from sheepshead import (
+    Game,
+    ACTIONS,
+    STATE_SIZE,
+    ACTION_IDS,
+    PARTNER_BY_CALLED_ACE,
+    PARTNER_BY_JD,
+    TRUMP,
+    ACTION_LOOKUP,
+    UNDER_TOKEN,
+    get_card_points,
+    filter_by_suit,
+)
 
 # Import the strategic analysis and utility functions from train_ppo.py
 from train_ppo import (
@@ -68,6 +79,15 @@ def play_population_game(training_agent: PPOAgent,
     # Store transitions only for the training agent
     episode_transitions = []
     current_trick_transitions = []
+
+    # Map positions to population opponents for profile updates
+    pos_to_pop_agent = {}
+    opp_positions = [i for i in range(1, 6) if i != training_agent_position]
+    for i, opp in enumerate(opponents[:len(opp_positions)]):
+        pos_to_pop_agent[opp_positions[i]] = opp
+
+    # Hand strength categories captured once at start
+    hand_strength_by_pos = {p.position: _estimate_hand_strength_category(p.hand) for p in game.players}
 
     while not game.is_done():
         play_action_count = 0
@@ -124,6 +144,57 @@ def play_population_game(training_agent: PPOAgent,
                             seat_agent.observe(seat.get_state_vector(), seat.position)
 
                 valid_actions = player.get_valid_action_ids()
+
+                # --- Strategic profile updates for opponents only ---
+                pop_agent = pos_to_pop_agent.get(player.position)
+                if pop_agent:
+                    action_name = ACTION_LOOKUP[action]
+                    role = 'picker' if (player.is_picker or player.is_partner) else 'defender'
+
+                    # Pick/pass profiling (only valid during picking phase)
+                    if action_name in ("PICK", "PASS"):
+                        pop_agent.update_strategic_profile_from_game({
+                            'pick_decision': (action_name == "PICK"),
+                            'hand_strength_category': hand_strength_by_pos[player.position],
+                            'position': player.position,
+                        })
+
+                    # Bury profiling
+                    if action_name.startswith("BURY "):
+                        card = action_name.split()[-1]
+                        pop_agent.update_strategic_profile_from_game({
+                            'bury_decision': card,
+                            'card_points': get_card_points(card),
+                        })
+
+                    # ALONE vs partner call profiling
+                    if action_name == "ALONE":
+                        pop_agent.update_strategic_profile_from_game({'alone_call': True})
+                    elif action_name.startswith("CALL "):
+                        pop_agent.update_strategic_profile_from_game({'alone_call': False, 'called_card': action_name.split()[1]})
+
+                    # Lead trump (overall and early) and void behavior
+                    if action_name.startswith("PLAY "):
+                        card = action_name.split()[-1]
+                        is_lead = (game.cards_played == 0)
+                        is_early = is_lead and (game.current_trick <= 1)
+                        if is_lead:
+                            pop_agent.update_strategic_profile_from_game({
+                                'trump_lead': (card in TRUMP or card == UNDER_TOKEN),
+                                'role': role,
+                                'is_early_lead': is_early,
+                            })
+
+                        # Void logic: only when following and can't follow suit
+                        if not is_lead and game.current_suit:
+                            can_follow = len(filter_by_suit(player.hand, game.current_suit)) > 0
+                            if not can_follow:
+                                played_trump = (card in TRUMP or card == UNDER_TOKEN)
+                                pop_agent.update_strategic_profile_from_game({
+                                    'void_event': True,
+                                    'void_played_trump': played_trump,
+                                    'schmeared_points': 0 if played_trump else get_card_points(card),
+                                })
 
     final_scores = [player.get_score() for player in game.players]
 

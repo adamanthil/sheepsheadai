@@ -18,7 +18,37 @@ from pathlib import Path
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
-from sheepshead import Game, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
+from sheepshead import (
+    Game,
+    PARTNER_BY_JD,
+    PARTNER_BY_CALLED_ACE,
+    TRUMP,
+    ACTION_LOOKUP,
+    UNDER_TOKEN,
+    get_card_points,
+    filter_by_suit,
+)
+
+
+def _estimate_hand_strength_category(hand: List[str]) -> str:
+    """Heuristic hand strength bin used for pick profiling.
+    3 points for each Queen, 2 for each Jack, 1 for other trump.
+    weak ≤ 4, medium 5–7, strong ≥ 8.
+    """
+    score = 0
+    for c in hand:
+        if c in TRUMP:
+            if c.startswith('Q'):
+                score += 3
+            elif c.startswith('J'):
+                score += 2
+            else:
+                score += 1
+    if score <= 4:
+        return 'weak'
+    if score <= 7:
+        return 'medium'
+    return 'strong'
 
 
 @dataclass
@@ -32,6 +62,22 @@ class StrategicProfile:
     # Trump leading patterns
     trump_leads_as_picker: List[bool] = field(default_factory=list)
     trump_leads_as_defender: List[bool] = field(default_factory=list)
+
+    # Lead-trump counters (overall and early-trick)
+    lead_counts_picker: int = 0
+    lead_trump_counts_picker: int = 0
+    lead_counts_defender: int = 0
+    lead_trump_counts_defender: int = 0
+    early_lead_counts_picker: int = 0
+    early_lead_trump_counts_picker: int = 0
+    early_lead_counts_defender: int = 0
+    early_lead_trump_counts_defender: int = 0
+
+    # Void behavior counters (unable to follow suit)
+    void_events: int = 0
+    void_trump_events: int = 0
+    void_fail_events: int = 0
+    schmeared_points_sum: int = 0
 
     # Bury decision patterns
     bury_decisions: List[Tuple[str, int]] = field(default_factory=list)  # (card, points_value)
@@ -60,15 +106,32 @@ class StrategicProfile:
     def get_trump_lead_rate(self, role: str) -> float:
         """Get trump leading rate for picker or defender role."""
         if role == 'picker':
-            leads = self.trump_leads_as_picker
+            total = self.lead_counts_picker
+            trump = self.lead_trump_counts_picker
+            legacy = self.trump_leads_as_picker
         elif role == 'defender':
-            leads = self.trump_leads_as_defender
+            total = self.lead_counts_defender
+            trump = self.lead_trump_counts_defender
+            legacy = self.trump_leads_as_defender
         else:
             return 0.0
 
-        if not leads:
+        if total > 0:
+            return trump / max(1, total)
+        if legacy:
+            return sum(legacy) / len(legacy)
+        return 0.0
+
+    def get_early_trump_lead_rate(self, role: str) -> float:
+        if role == 'picker':
+            total = self.early_lead_counts_picker
+            trump = self.early_lead_trump_counts_picker
+        elif role == 'defender':
+            total = self.early_lead_counts_defender
+            trump = self.early_lead_trump_counts_defender
+        else:
             return 0.0
-        return sum(leads) / len(leads)
+        return (trump / max(1, total)) if total > 0 else 0.0
 
     def get_bury_quality_score(self) -> float:
         """Calculate bury decision quality (lower point cards are better)."""
@@ -79,6 +142,12 @@ class StrategicProfile:
         avg_points = sum(points for _, points in self.bury_decisions) / len(self.bury_decisions)
         # Normalize to 0-1 scale (assuming max card value is ~11 points)
         return max(0.0, 1.0 - (avg_points / 11.0))
+
+    def get_void_trump_rate(self) -> float:
+        return (self.void_trump_events / self.void_events) if self.void_events > 0 else 0.0
+
+    def get_avg_schmeared_points(self) -> float:
+        return (self.schmeared_points_sum / self.void_fail_events) if self.void_fail_events > 0 else 0.0
 
     def get_risk_tolerance(self) -> float:
         """Calculate risk tolerance score (0 = conservative, 1 = aggressive)."""
@@ -122,6 +191,18 @@ class StrategicProfile:
             'pick_rate_by_position': dict(self.pick_rate_by_position),
             'trump_leads_as_picker': self.trump_leads_as_picker[-50:],  # Keep recent data
             'trump_leads_as_defender': self.trump_leads_as_defender[-50:],
+            'lead_counts_picker': self.lead_counts_picker,
+            'lead_trump_counts_picker': self.lead_trump_counts_picker,
+            'lead_counts_defender': self.lead_counts_defender,
+            'lead_trump_counts_defender': self.lead_trump_counts_defender,
+            'early_lead_counts_picker': self.early_lead_counts_picker,
+            'early_lead_trump_counts_picker': self.early_lead_trump_counts_picker,
+            'early_lead_counts_defender': self.early_lead_counts_defender,
+            'early_lead_trump_counts_defender': self.early_lead_trump_counts_defender,
+            'void_events': self.void_events,
+            'void_trump_events': self.void_trump_events,
+            'void_fail_events': self.void_fail_events,
+            'schmeared_points_sum': self.schmeared_points_sum,
             'bury_decisions': self.bury_decisions[-20:],
             'alone_calls': self.alone_calls[-30:],
             'risky_plays': self.risky_plays[-50:],
@@ -141,6 +222,18 @@ class StrategicProfile:
         profile.pick_rate_by_position = defaultdict(list, data.get('pick_rate_by_position', {}))
         profile.trump_leads_as_picker = data.get('trump_leads_as_picker', [])
         profile.trump_leads_as_defender = data.get('trump_leads_as_defender', [])
+        profile.lead_counts_picker = data.get('lead_counts_picker', 0)
+        profile.lead_trump_counts_picker = data.get('lead_trump_counts_picker', 0)
+        profile.lead_counts_defender = data.get('lead_counts_defender', 0)
+        profile.lead_trump_counts_defender = data.get('lead_trump_counts_defender', 0)
+        profile.early_lead_counts_picker = data.get('early_lead_counts_picker', 0)
+        profile.early_lead_trump_counts_picker = data.get('early_lead_trump_counts_picker', 0)
+        profile.early_lead_counts_defender = data.get('early_lead_counts_defender', 0)
+        profile.early_lead_trump_counts_defender = data.get('early_lead_trump_counts_defender', 0)
+        profile.void_events = data.get('void_events', 0)
+        profile.void_trump_events = data.get('void_trump_events', 0)
+        profile.void_fail_events = data.get('void_fail_events', 0)
+        profile.schmeared_points_sum = data.get('schmeared_points_sum', 0)
         profile.bury_decisions = [tuple(item) if isinstance(item, list) else item
                                 for item in data.get('bury_decisions', [])]
         profile.alone_calls = data.get('alone_calls', [])
@@ -262,19 +355,24 @@ class PopulationAgent:
         if pick_diversities:
             diversity_components.append(np.mean(pick_diversities))
 
-        # Trump leading behavior diversity
-        trump_diversity = []
+        # Lead-trump behavior diversity (overall and early-trick)
+        lead_divs = []
         for role in ['picker', 'defender']:
             rate1 = self.strategic_profile.get_trump_lead_rate(role)
             rate2 = other.strategic_profile.get_trump_lead_rate(role)
-            trump_diversity.append(abs(rate1 - rate2))
+            early1 = self.strategic_profile.get_early_trump_lead_rate(role)
+            early2 = other.strategic_profile.get_early_trump_lead_rate(role)
+            lead_divs.extend([abs(rate1 - rate2), abs(early1 - early2)])
+        diversity_components.append(np.mean(lead_divs) if lead_divs else 0.0)
 
-        if trump_diversity:
-            diversity_components.append(np.mean(trump_diversity))
+        # Void behavior diversity (trump vs slough and schmear points)
+        void_rate_diff = abs(self.strategic_profile.get_void_trump_rate() - other.strategic_profile.get_void_trump_rate())
+        schmear_diff = abs(self.strategic_profile.get_avg_schmeared_points() - other.strategic_profile.get_avg_schmeared_points()) / 11.0
+        diversity_components.append(np.mean([void_rate_diff, schmear_diff]))
 
-        # Risk tolerance diversity
-        risk1 = self.strategic_profile.get_risk_tolerance()
-        risk2 = other.strategic_profile.get_risk_tolerance()
+        # Risk tolerance diversity (focus on ALONE usage)
+        risk1 = np.mean(self.strategic_profile.alone_calls) if self.strategic_profile.alone_calls else 0.0
+        risk2 = np.mean(other.strategic_profile.alone_calls) if other.strategic_profile.alone_calls else 0.0
         diversity_components.append(abs(risk1 - risk2))
 
         # Bury quality diversity
@@ -333,13 +431,36 @@ class PopulationAgent:
             self.strategic_profile.pick_rate_by_position[position].append(picked)
 
         if 'trump_lead' in game_data:
-            role = game_data.get('role', 'defender')  # picker, partner, defender
-            led_trump = game_data['trump_lead']
+            role = game_data.get('role', 'defender')
+            led_trump = bool(game_data['trump_lead'])
+            is_early = bool(game_data.get('is_early_lead', False))
 
             if role == 'picker':
+                self.strategic_profile.lead_counts_picker += 1
+                if led_trump:
+                    self.strategic_profile.lead_trump_counts_picker += 1
+                if is_early:
+                    self.strategic_profile.early_lead_counts_picker += 1
+                    if led_trump:
+                        self.strategic_profile.early_lead_trump_counts_picker += 1
                 self.strategic_profile.trump_leads_as_picker.append(led_trump)
             elif role in ['defender']:
+                self.strategic_profile.lead_counts_defender += 1
+                if led_trump:
+                    self.strategic_profile.lead_trump_counts_defender += 1
+                if is_early:
+                    self.strategic_profile.early_lead_counts_defender += 1
+                    if led_trump:
+                        self.strategic_profile.early_lead_trump_counts_defender += 1
                 self.strategic_profile.trump_leads_as_defender.append(led_trump)
+
+        if game_data.get('void_event', False):
+            self.strategic_profile.void_events += 1
+            if game_data.get('void_played_trump', False):
+                self.strategic_profile.void_trump_events += 1
+            else:
+                self.strategic_profile.void_fail_events += 1
+                self.strategic_profile.schmeared_points_sum += int(game_data.get('schmeared_points', 0))
 
         if 'bury_decision' in game_data:
             card = game_data['bury_decision']
@@ -596,7 +717,8 @@ class PFSPPopulation:
                         diversity_weight: float = 0.3,
                         exploitation_weight: float = 0.2,
                         curriculum_weight: float = 0.1,
-                        selected_opponents: List[PopulationAgent] = None) -> List[PopulationAgent]:
+                        selected_opponents: List[PopulationAgent] = None,
+                        uniform_mix: float = 0.15) -> List[PopulationAgent]:
         """Sample opponents using multi-objective selection (skill + diversity + exploitation + curriculum)."""
         population = self._get_population(partner_mode)
 
@@ -672,8 +794,17 @@ class PFSPPopulation:
             if not weights:
                 break
 
-            weights = np.array(weights)
-            weights = weights / weights.sum()
+            # Normalise weights and blend with a small uniform mixture for exploration breadth
+            weights = np.array(weights, dtype=np.float64)
+            total = weights.sum()
+            if total <= 0:
+                weights = np.ones_like(weights) / len(weights)
+            else:
+                weights = weights / total
+            if uniform_mix > 0:
+                uniform = np.full_like(weights, 1.0 / len(weights))
+                weights = (1 - uniform_mix) * weights + uniform_mix * uniform
+                weights = weights / weights.sum()
 
             selected_idx = np.random.choice(len(remaining_population), p=weights)
             selected_agent = remaining_population.pop(selected_idx)
@@ -831,6 +962,9 @@ class PFSPPopulation:
         # Create position to agent mapping
         pos_to_agent = {pos: agent for pos, agent in zip(positions, agents)}
 
+        # Hand strength categories captured once at start for pick profiling
+        hand_strength_by_pos = {p.position: _estimate_hand_strength_category(p.hand) for p in game.players}
+
         while not game.is_done():
             for player in game.players:
                 agent = pos_to_agent[player.position]
@@ -841,6 +975,51 @@ class PFSPPopulation:
                     action, _, _ = agent.agent.act(state, valid_actions, player.position, deterministic=True)
                     player.act(action)
                     valid_actions = player.get_valid_action_ids()
+
+                    # Profile strategic events
+                    action_name = ACTION_LOOKUP[action]
+                    role = 'picker' if (player.is_picker or player.is_partner) else 'defender'
+                    pop_agent = pos_to_agent[player.position]
+
+                    if action_name in ("PICK", "PASS"):
+                        pop_agent.update_strategic_profile_from_game({
+                            'pick_decision': (action_name == "PICK"),
+                            'hand_strength_category': hand_strength_by_pos[player.position],
+                            'position': player.position,
+                        })
+
+                    if action_name.startswith("BURY "):
+                        card = action_name.split()[-1]
+                        pop_agent.update_strategic_profile_from_game({
+                            'bury_decision': card,
+                            'card_points': get_card_points(card),
+                        })
+
+                    if action_name == "ALONE":
+                        pop_agent.update_strategic_profile_from_game({'alone_call': True})
+                    elif action_name.startswith("CALL "):
+                        pop_agent.update_strategic_profile_from_game({'alone_call': False, 'called_card': action_name.split()[1]})
+
+                    if action_name.startswith("PLAY "):
+                        card = action_name.split()[-1]
+                        is_lead = (game.cards_played == 0)
+                        is_early = is_lead and (game.current_trick <= 1)
+                        if is_lead:
+                            pop_agent.update_strategic_profile_from_game({
+                                'trump_lead': (card in TRUMP or card == UNDER_TOKEN),
+                                'role': role,
+                                'is_early_lead': is_early,
+                            })
+
+                        if not is_lead and game.current_suit:
+                            can_follow = len(filter_by_suit(player.hand, game.current_suit)) > 0
+                            if not can_follow:
+                                played_trump = (card in TRUMP or card == UNDER_TOKEN)
+                                pop_agent.update_strategic_profile_from_game({
+                                    'void_event': True,
+                                    'void_played_trump': played_trump,
+                                    'schmeared_points': 0 if played_trump else get_card_points(card),
+                                })
 
         # Return final scores
         return [player.get_score() for player in game.players]
