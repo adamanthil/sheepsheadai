@@ -345,6 +345,9 @@ class PPOAgent:
         self.clip_epsilon_bury = 0.25
         self.clip_epsilon_play = 0.2
 
+        # PPO early stopping target for approximate KL (per update)
+        self.target_kl = 0.015
+
         # Storage for trajectory data
         self.reset_storage()
 
@@ -570,6 +573,8 @@ class PPOAgent:
         backward_time = 0.0
         step_time = 0.0
         optimizer_steps = 0
+        early_stop_triggered = False
+        last_approx_kl = 0.0
         for _ in range(epochs):
             if not segments:
                 break
@@ -673,6 +678,10 @@ class PPOAgent:
                 dist = torch.distributions.Categorical(probs_flat)
                 new_lp_flat = dist.log_prob(actions_flat)
 
+                # Approximate KL divergence between old and new policy on sampled actions
+                approx_kl = (old_lp_flat - new_lp_flat).mean().item()
+                last_approx_kl = approx_kl
+
                 # Entropy by head
                 with torch.no_grad():
                     probs_pick = probs_flat[:, pick_idx_tensor_static]
@@ -715,6 +724,14 @@ class PPOAgent:
                 step_time += time.time() - t_step
                 optimizer_steps += 1
 
+                # Early stop further updates in this epoch if KL exceeds threshold
+                if self.target_kl is not None and last_approx_kl > self.target_kl:
+                    early_stop_triggered = True
+                    break
+
+            if early_stop_triggered:
+                break
+
         transitions = sum(1 for e in self.events if e['kind'] == 'action')
 
         # Clear storage
@@ -734,6 +751,8 @@ class PPOAgent:
             'advantage_stats': advantage_stats,
             'value_target_stats': value_target_stats,
             'num_transitions': transitions,
+            'approx_kl': last_approx_kl,
+            'early_stop': early_stop_triggered,
             'timing': timing,
         }
 

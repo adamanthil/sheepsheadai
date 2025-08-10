@@ -624,10 +624,14 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
                 adv_stats = update_stats['advantage_stats']
                 val_stats = update_stats['value_target_stats']
                 num_transitions = update_stats['num_transitions']
+                approx_kl = update_stats.get('approx_kl', None)
+                early_stop = update_stats.get('early_stop', False)
 
                 print(f"   Transitions: {num_transitions}")
                 print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
                 print(f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
+                if approx_kl is not None:
+                    print(f"   PPO KL: {approx_kl:.4f}  Early stop: {early_stop}")
                 if 'timing' in update_stats:
                     t = update_stats['timing']
                     print(
