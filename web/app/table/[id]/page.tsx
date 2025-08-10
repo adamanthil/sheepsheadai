@@ -62,7 +62,7 @@ export default function TablePage() {
   const [trickSize, setTrickSize] = useState<{ w: number; h: number }>({ w: 900, h: 400 });
   const handTopMargin = Math.max(32, Math.floor(centerSize.h * 0.2));
   const [showScores, setShowScores] = useState(false);
-  const [callout, setCallout] = useState<{ kind: 'PICK' | 'CALL' | 'LEASTER'; message: string } | null>(null);
+  const [callout, setCallout] = useState<{ kind: 'PICK' | 'CALL' | 'LEASTER' | 'ALONE'; message: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -106,29 +106,33 @@ export default function TablePage() {
             }
           }
           // Detect important phase callouts
-          try {
-            const prevPicker = prev?.view?.picker || 0;
-            const curPicker = (msg as any).view?.picker || 0;
-            const prevLeaster = !!prev?.view?.is_leaster;
-            const curLeaster = !!(msg as any).view?.is_leaster;
-            const prevCalled = prev?.view?.called_card || null;
-            const curCalled = (msg as any).view?.called_card || null;
-            const curCalledUnder = !!(msg as any).view?.called_under;
-            const playStarted = !!((msg as any).state?.[14] === 1);
-            if (curPicker > 0 && prevPicker === 0) {
-              const who = nameForSeat(curPicker, (msg as any).table);
-              setCallout({ kind: 'PICK', message: `${who} picked` });
-              setTimeout(() => setCallout(null), 1800);
-            } else if (!prevLeaster && curLeaster) {
-              setCallout({ kind: 'LEASTER', message: 'All passed · Leaster' });
-              setTimeout(() => setCallout(null), 1800);
-            } else if (curPicker > 0 && !playStarted && curCalled && prevCalled !== curCalled) {
-              const who = nameForSeat(curPicker, (msg as any).table);
-              const underTxt = curCalledUnder ? ' under' : '';
-              setCallout({ kind: 'CALL', message: `${who} calls ${curCalled}${underTxt}` });
-              setTimeout(() => setCallout(null), 1800);
-            }
-          } catch {}
+          const prevPicker = prev?.view?.picker || 0;
+          const curPicker = (msg as any).view?.picker || 0;
+          const prevLeaster = !!prev?.view?.is_leaster;
+          const curLeaster = !!(msg as any).view?.is_leaster;
+          const prevCalled = prev?.view?.called_card || null;
+          const curCalled = (msg as any).view?.called_card || null;
+          const curCalledUnder = !!(msg as any).view?.called_under;
+          const prevAlone = !!prev?.view?.alone;
+          const curAlone = !!(msg as any).view?.alone;
+          const playStarted = !!((msg as any).state?.[14] === 1);
+          if (curPicker > 0 && prevPicker === 0) {
+            const who = nameForSeat(curPicker, (msg as any).table);
+            setCallout({ kind: 'PICK', message: `${who} picked` });
+            setTimeout(() => setCallout(null), 1800);
+          } else if (!prevLeaster && curLeaster) {
+            setCallout({ kind: 'LEASTER', message: 'All passed · Leaster' });
+            setTimeout(() => setCallout(null), 1800);
+          } else if (curPicker > 0 && !playStarted && !prevAlone && curAlone) {
+            const who = nameForSeat(curPicker, (msg as any).table);
+            setCallout({ kind: 'ALONE', message: `${who} goes alone` });
+            setTimeout(() => setCallout(null), 1800);
+          } else if (curPicker > 0 && !playStarted && curCalled && prevCalled !== curCalled) {
+            const who = nameForSeat(curPicker, (msg as any).table);
+            const underTxt = curCalledUnder ? ' under' : '';
+            setCallout({ kind: 'CALL', message: `${who} calls ${curCalled}${underTxt}` });
+            setTimeout(() => setCallout(null), 1800);
+          }
           return msg;
         });
       }
