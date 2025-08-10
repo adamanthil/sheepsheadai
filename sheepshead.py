@@ -87,7 +87,7 @@ def get_trick_winner(trick, suit, is_called_10_suit=False):
         try:
             power = 100 * TRUMP_POWER[card]
         except KeyError:
-            if is_called_10_suit and card[:2] == "10":
+            if is_called_10_suit and card == f"10{suit}":
                 # Called 10s always take the suit if not trumped
                 power = len(FAIL_POWER) + 1
             else:
