@@ -94,9 +94,9 @@ def apply_leaster_trick_rewards(trick_transitions: List[Dict], trick_winner_pos:
             transition['intermediate_reward'] -= trick_reward
 
 
-def update_intermediate_rewards_for_action(game, player, action, transition, play_action_count, current_trick_transitions):
+def update_intermediate_rewards_for_action(game, player, action, transition, current_trick_transitions):
     """Apply shared intermediate reward shaping and trick tracking.
-    Returns the updated play_action_count.
+    Uses game engine state to detect leads and trick phase; no counter needed.
     """
     action_name = ACTIONS[action - 1]
 
@@ -120,7 +120,8 @@ def update_intermediate_rewards_for_action(game, player, action, transition, pla
             transition['intermediate_reward'] += -0.02
 
     if "PLAY" in action_name:
-        if play_action_count == 0:
+        is_lead = (game.cards_played == 0) and (game.leader == player.position)
+        if is_lead:
             card = action_name[5:]
             if (
                 not game.is_leaster
@@ -142,16 +143,13 @@ def update_intermediate_rewards_for_action(game, player, action, transition, pla
                 # Encourage defenders to lead called suit
                 transition['intermediate_reward'] += 0.05
 
-        play_action_count += 1
         current_trick_transitions.append(transition)
 
-    return play_action_count
 
-
-def handle_trick_completion(game, current_trick_transitions, play_action_count):
+def handle_trick_completion(game, current_trick_transitions):
     """If a trick has completed, apply trick-based rewards and reset tracking.
 
-    Returns a tuple: (trick_completed: bool, new_play_action_count: int)
+    Returns True if the trick just completed, else False.
     """
     if game.was_trick_just_completed:
         trick_points = game.trick_points[game.current_trick - 1]
@@ -165,9 +163,9 @@ def handle_trick_completion(game, current_trick_transitions, play_action_count):
 
         # Reset tracking for next trick
         current_trick_transitions.clear()
-        return True, 0
+        return True
 
-    return False, play_action_count
+    return False
 
 
 def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, is_leaster):

@@ -224,7 +224,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
         # Play full game with self-play
         while not game.is_done():
-            play_action_count = 0
             for player in game.players:
                 valid_actions = player.get_valid_action_ids()
 
@@ -254,18 +253,17 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     episode_transitions[player.position].append(transition)
 
                     # Apply shared intermediate rewards and track trick transitions
-                    play_action_count = update_intermediate_rewards_for_action(
+                    update_intermediate_rewards_for_action(
                         game,
                         player,
                         action,
                         transition,
-                        play_action_count,
                         current_trick_transitions,
                     )
 
                     # Trick resolution and observation frames
-                    trick_completed, play_action_count = handle_trick_completion(
-                        game, current_trick_transitions, play_action_count
+                    trick_completed = handle_trick_completion(
+                        game, current_trick_transitions
                     )
                     if trick_completed:
                         # ------------------------------------------------

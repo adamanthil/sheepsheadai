@@ -90,7 +90,6 @@ def play_population_game(training_agent: PPOAgent,
     hand_strength_by_pos = {p.position: estimate_hand_strength_category(p.hand) for p in game.players}
 
     while not game.is_done():
-        play_action_count = 0
         for player in game.players:
             current_agent = agents[player.position - 1]
             valid_actions = player.get_valid_action_ids()
@@ -115,12 +114,11 @@ def play_population_game(training_agent: PPOAgent,
                     episode_transitions.append(transition)
 
                     # Shared intermediate reward shaping and trick tracking (for training agent only)
-                    play_action_count = update_intermediate_rewards_for_action(
+                    update_intermediate_rewards_for_action(
                         game,
                         player,
                         action,
                         transition,
-                        play_action_count,
                         current_trick_transitions,
                     )
 
@@ -131,8 +129,8 @@ def play_population_game(training_agent: PPOAgent,
                 player.act(action)
 
                 # Handle trick completion; PFSP-specific observation propagation
-                trick_completed, play_action_count = handle_trick_completion(
-                    game, current_trick_transitions, play_action_count
+                trick_completed = handle_trick_completion(
+                    game, current_trick_transitions
                 )
                 if trick_completed:
                     # Propagate observations to agents; store observation for training agent only
