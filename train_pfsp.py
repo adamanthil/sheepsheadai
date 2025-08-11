@@ -529,6 +529,20 @@ def train_pfsp(num_episodes: int = 500000,
                 )
                 print(f"👥 Added training agent snapshot to {population._get_partner_mode_name(mode)} population (ID: {agent_id})")
 
+            # Log updated diversity stats after population change
+            jd_div = population.get_diversity_stats(PARTNER_BY_JD)
+            ca_div = population.get_diversity_stats(PARTNER_BY_CALLED_ACE)
+            print("   Diversity (JD): avg=%.3f, spread=%.3f, clusters=%d, alone_rate_range=(%.2f, %.2f), pick_cv={weak: %.2f, med: %.2f, strong: %.2f}, coverage={early: %.2f, void: %.2f}" % (
+                jd_div['avg_pairwise_diversity'], jd_div['diversity_spread'], jd_div['strategic_clusters'],
+                jd_div['alone_rate_range'][0], jd_div['alone_rate_range'][1],
+                jd_div['pick_rate_diversity']['weak'], jd_div['pick_rate_diversity']['medium'], jd_div['pick_rate_diversity']['strong'],
+                jd_div['coverage']['early_leads'], jd_div['coverage']['void_events']))
+            print("   Diversity (CA): avg=%.3f, spread=%.3f, clusters=%d, alone_rate_range=(%.2f, %.2f), pick_cv={weak: %.2f, med: %.2f, strong: %.2f}, coverage={early: %.2f, void: %.2f}" % (
+                ca_div['avg_pairwise_diversity'], ca_div['diversity_spread'], ca_div['strategic_clusters'],
+                ca_div['alone_rate_range'][0], ca_div['alone_rate_range'][1],
+                ca_div['pick_rate_diversity']['weak'], ca_div['pick_rate_diversity']['medium'], ca_div['pick_rate_diversity']['strong'],
+                ca_div['coverage']['early_leads'], ca_div['coverage']['void_events']))
+
         # Cross-evaluation periodically
         if episode % cross_eval_interval == 0:
             print(f"🏆 Running cross-evaluation tournaments... (Episode {episode:,})")

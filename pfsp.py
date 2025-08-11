@@ -386,17 +386,24 @@ class PopulationAgent:
         for strength in ['weak', 'medium', 'strong']:
             signature.append(self.strategic_profile.get_pick_rate_by_hand_strength(strength))
 
-        # Trump leading rates
+        # Trump leading rates (overall and early)
         signature.append(self.strategic_profile.get_trump_lead_rate('picker'))
         signature.append(self.strategic_profile.get_trump_lead_rate('defender'))
+        signature.append(self.strategic_profile.get_early_trump_lead_rate('picker'))
+        signature.append(self.strategic_profile.get_early_trump_lead_rate('defender'))
 
-        # Risk tolerance
-        signature.append(self.strategic_profile.get_risk_tolerance())
+        # Void behavior
+        signature.append(self.strategic_profile.get_void_trump_rate())
+        signature.append(min(1.0, self.strategic_profile.get_avg_schmeared_points() / 11.0))
+
+        # ALONE usage rate
+        alone_rate = np.mean(self.strategic_profile.alone_calls) if self.strategic_profile.alone_calls else 0.0
+        signature.append(alone_rate)
 
         # Bury quality
         signature.append(self.strategic_profile.get_bury_quality_score())
 
-        # Role performances
+        # Role performances (optional)
         for role in ['picker', 'partner', 'defender', 'leaster']:
             signature.append(self.strategic_profile.get_role_performance(role))
 
@@ -1109,8 +1116,9 @@ class PFSPPopulation:
                 'avg_pairwise_diversity': 0.0,
                 'diversity_spread': 0.0,
                 'strategic_clusters': 0,
-                'risk_tolerance_range': (0.0, 0.0),
-                'pick_rate_diversity': 0.0
+                'alone_rate_range': (0.0, 0.0),
+                'pick_rate_diversity': {'weak': 0.0, 'medium': 0.0, 'strong': 0.0},
+                'coverage': {'early_leads': 0.0, 'void_events': 0.0}
             }
 
         # Calculate pairwise diversity scores
@@ -1120,20 +1128,31 @@ class PFSPPopulation:
                 diversity = population[i].calculate_strategic_diversity(population[j])
                 diversity_scores.append(diversity)
 
-        # Risk tolerance analysis
-        risk_tolerances = [agent.strategic_profile.get_risk_tolerance() for agent in population]
+        # ALONE usage range (risk proxy)
+        alone_rates = [ (np.mean(agent.strategic_profile.alone_calls) if agent.strategic_profile.alone_calls else 0.0) for agent in population ]
 
-        # Pick rate diversity (coefficient of variation)
-        pick_rates = []
-        for agent in population:
-            avg_pick_rate = np.mean([
-                agent.strategic_profile.get_pick_rate_by_hand_strength('weak'),
-                agent.strategic_profile.get_pick_rate_by_hand_strength('medium'),
-                agent.strategic_profile.get_pick_rate_by_hand_strength('strong')
-            ])
-            pick_rates.append(avg_pick_rate)
+        # Pick rate diversity per bin (coefficient of variation)
+        def cv(values: list[float]) -> float:
+            m = np.mean(values)
+            return float(np.std(values) / (m + 1e-8)) if values else 0.0
+        pick_weak = [agent.strategic_profile.get_pick_rate_by_hand_strength('weak') for agent in population]
+        pick_med = [agent.strategic_profile.get_pick_rate_by_hand_strength('medium') for agent in population]
+        pick_str = [agent.strategic_profile.get_pick_rate_by_hand_strength('strong') for agent in population]
+        pick_rate_diversity = {
+            'weak': cv(pick_weak),
+            'medium': cv(pick_med),
+            'strong': cv(pick_str),
+        }
 
-        pick_rate_cv = np.std(pick_rates) / (np.mean(pick_rates) + 1e-8) if pick_rates else 0.0
+        # Coverage: fraction of agents with sufficient early leads and void events
+        EARLY_LEAD_MIN = 10
+        VOID_MIN = 10
+        early_lead_counts = [ (a.strategic_profile.early_lead_counts_picker + a.strategic_profile.early_lead_counts_defender) for a in population ]
+        void_counts = [ a.strategic_profile.void_events for a in population ]
+        coverage = {
+            'early_leads': float(np.mean([1.0 if c >= EARLY_LEAD_MIN else 0.0 for c in early_lead_counts])),
+            'void_events': float(np.mean([1.0 if c >= VOID_MIN else 0.0 for c in void_counts])),
+        }
 
         # Estimate strategic clusters using strategic signatures
         signatures = np.array([agent.get_strategic_signature() for agent in population])
@@ -1149,8 +1168,10 @@ class PFSPPopulation:
             'avg_pairwise_diversity': np.mean(diversity_scores) if diversity_scores else 0.0,
             'diversity_spread': np.std(diversity_scores) if diversity_scores else 0.0,
             'strategic_clusters': n_clusters,
-            'risk_tolerance_range': (np.min(risk_tolerances), np.max(risk_tolerances)) if risk_tolerances else (0.0, 0.0),
-            'pick_rate_diversity': pick_rate_cv
+            'alone_rate_range': (float(np.min(alone_rates)) if alone_rates else 0.0,
+                                 float(np.max(alone_rates)) if alone_rates else 0.0),
+            'pick_rate_diversity': pick_rate_diversity,
+            'coverage': coverage,
         }
 
     def get_population_summary(self) -> str:
@@ -1170,7 +1191,7 @@ class PFSPPopulation:
         summary += f"  🕐 Oldest Agent: {jd_stats['oldest_agent_days']:.1f} days\n"
         summary += f"  🎪 Strategic Diversity: {jd_diversity['avg_pairwise_diversity']:.3f}\n"
         summary += f"  🎭 Strategic Clusters: {jd_diversity['strategic_clusters']}\n"
-        summary += f"  🎲 Risk Range: {jd_diversity['risk_tolerance_range'][0]:.2f} - {jd_diversity['risk_tolerance_range'][1]:.2f}\n\n"
+        summary += f"  🎲 Alone Rate Range: {jd_diversity['alone_rate_range'][0]:.2f} - {jd_diversity['alone_rate_range'][1]:.2f}\n\n"
 
         summary += "Called-Ace Population:\n"
         summary += f"  📊 Size: {ca_stats['size']}/{self.max_population_called_ace}\n"
@@ -1179,7 +1200,7 @@ class PFSPPopulation:
         summary += f"  🕐 Oldest Agent: {ca_stats['oldest_agent_days']:.1f} days\n"
         summary += f"  🎪 Strategic Diversity: {ca_diversity['avg_pairwise_diversity']:.3f}\n"
         summary += f"  🎭 Strategic Clusters: {ca_diversity['strategic_clusters']}\n"
-        summary += f"  🎲 Risk Range: {ca_diversity['risk_tolerance_range'][0]:.2f} - {ca_diversity['risk_tolerance_range'][1]:.2f}\n"
+        summary += f"  🎲 Alone Rate Range: {ca_diversity['alone_rate_range'][0]:.2f} - {ca_diversity['alone_rate_range'][1]:.2f}\n"
 
         return summary
 
