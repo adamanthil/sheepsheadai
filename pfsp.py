@@ -28,27 +28,9 @@ from sheepshead import (
     get_card_points,
     filter_by_suit,
 )
+from training_utils import estimate_hand_strength_category
 
 
-def _estimate_hand_strength_category(hand: List[str]) -> str:
-    """Heuristic hand strength bin used for pick profiling.
-    3 points for each Queen, 2 for each Jack, 1 for other trump.
-    weak ≤ 4, medium 5–7, strong ≥ 8.
-    """
-    score = 0
-    for c in hand:
-        if c in TRUMP:
-            if c.startswith('Q'):
-                score += 3
-            elif c.startswith('J'):
-                score += 2
-            else:
-                score += 1
-    if score <= 4:
-        return 'weak'
-    if score <= 7:
-        return 'medium'
-    return 'strong'
 
 
 @dataclass
@@ -963,7 +945,7 @@ class PFSPPopulation:
         pos_to_agent = {pos: agent for pos, agent in zip(positions, agents)}
 
         # Hand strength categories captured once at start for pick profiling
-        hand_strength_by_pos = {p.position: _estimate_hand_strength_category(p.hand) for p in game.players}
+        hand_strength_by_pos = {p.position: estimate_hand_strength_category(p.hand) for p in game.players}
 
         while not game.is_done():
             for player in game.players:

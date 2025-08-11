@@ -18,7 +18,8 @@ import copy
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
-from pfsp import PFSPPopulation, create_initial_population_from_checkpoints, _estimate_hand_strength_category
+from pfsp import PFSPPopulation, create_initial_population_from_checkpoints
+from training_utils import estimate_hand_strength_category
 from sheepshead import (
     Game,
     ACTIONS,
@@ -33,9 +34,8 @@ from sheepshead import (
     filter_by_suit,
 )
 
-# Import the strategic analysis and utility functions from train_ppo.py
-from train_ppo import (
-    analyze_strategic_decisions,
+from train_ppo import analyze_strategic_decisions
+from training_utils import (
     process_episode_rewards,
     get_partner_selection_mode,
     save_training_plot,
@@ -87,7 +87,7 @@ def play_population_game(training_agent: PPOAgent,
         pos_to_pop_agent[opp_positions[i]] = opp
 
     # Hand strength categories captured once at start
-    hand_strength_by_pos = {p.position: _estimate_hand_strength_category(p.hand) for p in game.players}
+    hand_strength_by_pos = {p.position: estimate_hand_strength_category(p.hand) for p in game.players}
 
     while not game.is_done():
         play_action_count = 0
