@@ -535,9 +535,13 @@ class PPOAgent:
             'max': float(np.max(returns)) if advantages.size else 0.0,
         }
 
-        # Normalize advantages
+        # Normalize advantages and write back into events so the loss uses normalized values
         if advantages.size:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            adv_mean = advantages.mean()
+            adv_std = advantages.std() + 1e-8
+            for e in self.events:
+                if e.get('kind') == 'action':
+                    e['advantage'] = float((e['advantage'] - adv_mean) / adv_std)
 
         t_build_start = time.time()
         # Convert to tensors and indices
