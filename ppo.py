@@ -701,11 +701,6 @@ class PPOAgent:
                                 self.entropy_coeff_bury * bury_entropy +
                                 self.entropy_coeff_play * play_entropy)
 
-                # Pre-step KL gate: if the policy shift is already too large, skip this minibatch
-                if self.target_kl is not None and approx_kl > self.target_kl:
-                    early_stop_triggered = True
-                    break
-
                 # PPO loss vectorized
                 ratios = torch.exp(new_lp_flat - old_lp_flat)
                 is_pick = torch.isin(actions_flat, pick_idx_tensor_static)

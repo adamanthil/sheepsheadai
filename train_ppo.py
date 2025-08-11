@@ -358,7 +358,7 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
 
-def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
+def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                             strategic_eval_interval=10000, resume_model=None, activation='swish'):
     """
     PPO training with strategic evaluation metrics.
@@ -608,7 +608,7 @@ def train_ppo(num_episodes=300000, update_interval=4096, save_interval=5000,
 
             # pass value of last state stored to GAE (use last stored event state)
             last_state_for_gae = agent.events[-1]['state'] if getattr(agent, 'events', None) and agent.events else None
-            update_stats = agent.update(next_state=last_state_for_gae, epochs=8, batch_size=256)
+            update_stats = agent.update(next_state=last_state_for_gae, epochs=4, batch_size=256)
 
             # Log advantage and value target statistics
             if update_stats:
