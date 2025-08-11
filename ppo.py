@@ -351,7 +351,7 @@ class PPOAgent:
         self.value_clip_epsilon = 0.2
 
         # PPO early stopping target for approximate KL (per update)
-        self.target_kl = 0.02
+        self.target_kl = None
         # KL regularization coefficient (added to actor loss)
         self.kl_coef = 0.2
 
