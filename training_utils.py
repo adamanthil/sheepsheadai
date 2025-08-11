@@ -106,11 +106,11 @@ def update_intermediate_rewards_for_action(game, player, action, transition, pla
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 4:
-            pick_bonus, pass_bonus = -0.06, +0.06
+            pick_bonus, pass_bonus = -0.04, +0.04
         elif score <= 7:
-            pick_bonus, pass_bonus = +0.03, -0.03
+            pick_bonus, pass_bonus = +0.025, -0.025
         else:
-            pick_bonus, pass_bonus = +0.05, -0.05
+            pick_bonus, pass_bonus = +0.04, -0.04
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
 
     # Bury penalty: discourage burying trump
