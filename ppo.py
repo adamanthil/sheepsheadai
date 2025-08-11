@@ -317,6 +317,10 @@ class PPOAgent:
             'play': sorted(play_indices),
         }
 
+        # Explicit indices for PICK and PASS actions (0-indexed)
+        self.pick_action_index = ACTION_IDS["PICK"] - 1
+        self.pass_action_index = ACTION_IDS["PASS"] - 1
+
         # Shared backbone and networks
         self.backbone = SharedRecurrentBackbone(state_size, activation=activation).to(device)
         self.actor = MultiHeadRecurrentActorNetwork(
@@ -578,6 +582,16 @@ class PPOAgent:
         optimizer_steps = 0
         early_stop_triggered = False
         last_approx_kl = 0.0
+
+        # Instrumentation accumulators
+        ent_pick_sum = 0.0
+        ent_bury_sum = 0.0
+        ent_play_sum = 0.0
+        ent_batches = 0
+        pick_adv_sum = 0.0
+        pick_adv_count = 0
+        pass_adv_sum = 0.0
+        pass_adv_count = 0
         for _ in range(epochs):
             if not segments:
                 break
@@ -677,6 +691,17 @@ class PPOAgent:
                 returns_flat = returns_bt.view(-1)[flat_mask]
                 adv_flat = adv_bt.view(-1)[flat_mask]
 
+                # Record PICK/PASS advantages across minibatches
+                with torch.no_grad():
+                    pick_mask_specific = (actions_flat == self.pick_action_index)
+                    if pick_mask_specific.any():
+                        pick_adv_sum += adv_flat[pick_mask_specific].sum().item()
+                        pick_adv_count += int(pick_mask_specific.sum().item())
+                    pass_mask_specific = (actions_flat == self.pass_action_index)
+                    if pass_mask_specific.any():
+                        pass_adv_sum += adv_flat[pass_mask_specific].sum().item()
+                        pass_adv_count += int(pass_mask_specific.sum().item())
+
                 # New log-probs
                 dist = torch.distributions.Categorical(probs_flat)
                 new_lp_flat = dist.log_prob(actions_flat)
@@ -697,6 +722,11 @@ class PPOAgent:
                     pick_entropy = entropy_from_probs(probs_pick)
                     bury_entropy = entropy_from_probs(probs_bury)
                     play_entropy = entropy_from_probs(probs_play)
+                # Accumulate head entropies
+                ent_pick_sum += float(pick_entropy)
+                ent_bury_sum += float(bury_entropy)
+                ent_play_sum += float(play_entropy)
+                ent_batches += 1
                 entropy_term = (self.entropy_coeff_pick * pick_entropy +
                                 self.entropy_coeff_bury * bury_entropy +
                                 self.entropy_coeff_play * play_entropy)
@@ -766,6 +796,17 @@ class PPOAgent:
             'approx_kl': last_approx_kl,
             'early_stop': early_stop_triggered,
             'timing': timing,
+            'head_entropy': {
+                'pick': (ent_pick_sum / ent_batches) if ent_batches > 0 else 0.0,
+                'bury': (ent_bury_sum / ent_batches) if ent_batches > 0 else 0.0,
+                'play': (ent_play_sum / ent_batches) if ent_batches > 0 else 0.0,
+            },
+            'pick_pass_adv': {
+                'pick_mean': (pick_adv_sum / pick_adv_count) if pick_adv_count > 0 else 0.0,
+                'pick_count': pick_adv_count,
+                'pass_mean': (pass_adv_sum / pass_adv_count) if pass_adv_count > 0 else 0.0,
+                'pass_count': pass_adv_count,
+            },
         }
 
     def save(self, filepath):

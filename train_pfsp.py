@@ -500,12 +500,26 @@ def train_pfsp(num_episodes: int = 500000,
                 num_transitions = update_stats['num_transitions']
                 approx_kl = update_stats.get('approx_kl', None)
                 early_stop = update_stats.get('early_stop', False)
+                head_entropy = update_stats.get('head_entropy', {})
+                pick_pass_adv = update_stats.get('pick_pass_adv', {})
 
                 print(f"   Transitions: {num_transitions}")
                 print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
                 print(f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
                 if approx_kl is not None:
                     print(f"   PPO KL: {approx_kl:.4f}  Early stop: {early_stop}")
+                # Instrumentation logs: head entropy and PICK/PASS advantages
+                if head_entropy:
+                    print(
+                        f"   Entropy - pick: {head_entropy.get('pick', 0.0):.3f}, "
+                        f"bury: {head_entropy.get('bury', 0.0):.3f}, "
+                        f"play: {head_entropy.get('play', 0.0):.3f}"
+                    )
+                if pick_pass_adv:
+                    print(
+                        f"   Adv(PICK): {pick_pass_adv.get('pick_mean', 0.0):+.3f} (n={pick_pass_adv.get('pick_count', 0)}), "
+                        f"Adv(PASS): {pick_pass_adv.get('pass_mean', 0.0):+.3f} (n={pick_pass_adv.get('pass_count', 0)})"
+                    )
                 if 'timing' in update_stats:
                     t = update_stats['timing']
                     print(
