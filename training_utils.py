@@ -12,6 +12,7 @@ from sheepshead import (
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     get_card_suit,
+    get_cards_from_vector,
 )
 
 
@@ -98,6 +99,19 @@ def update_intermediate_rewards_for_action(game, player, action, transition, pla
     Returns the updated play_action_count.
     """
     action_name = ACTIONS[action - 1]
+
+    # Hand-conditioned PICK/PASS shaping (small human-like nudges)
+    if action_name in ("PICK", "PASS"):
+        state_vec = transition.get('state')
+        hand_cards = get_cards_from_vector(state_vec[16:48])
+        score = estimate_hand_strength_score(hand_cards)
+        if score <= 4:
+            pick_bonus, pass_bonus = -0.02, +0.02
+        elif score <= 7:
+            pick_bonus, pass_bonus = +0.01, -0.01
+        else:
+            pick_bonus, pass_bonus = +0.02, -0.02
+        transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
 
     # Bury penalty: discourage burying trump
     if "BURY" in action_name:
