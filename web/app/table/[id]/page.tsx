@@ -424,7 +424,8 @@ export default function TablePage() {
                           )}
                           {(() => {
                             const status = pickStatusForSeat(absSeat);
-                            if (!status) return null;
+                            // Skip showing label for user's position (r === 0) to avoid overlap with hand
+                            if (!status || r === 0) return null;
                             const color = status === 'PICK' ? 'rgba(34,197,94,0.25)'
                               : status === 'PASS' ? 'rgba(239,68,68,0.22)'
                               : 'rgba(234,179,8,0.22)';
@@ -467,7 +468,35 @@ export default function TablePage() {
 
                 {/* Your hand */}
                 <div style={{ marginTop: handTopMargin }}>
-                  <div className={styles.sectionTitle}>Your hand</div>
+                  <div className={styles.sectionTitle}>
+                    Your hand
+                    {(() => {
+                      // Show user's pick status in the section header
+                      const userStatus = pickStatusForSeat(lastState.yourSeat);
+                      if (!userStatus) return null;
+                      const color = userStatus === 'PICK' ? 'rgba(34,197,94,0.25)'
+                        : userStatus === 'PASS' ? 'rgba(239,68,68,0.22)'
+                        : 'rgba(234,179,8,0.22)';
+                      const border = userStatus === 'PICK' ? '1px solid rgba(34,197,94,0.5)'
+                        : userStatus === 'PASS' ? '1px solid rgba(239,68,68,0.45)'
+                        : '1px solid rgba(234,179,8,0.45)';
+                      return (
+                        <span style={{
+                          marginLeft: 8,
+                          display: 'inline-block',
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                          background: color,
+                          border,
+                          fontSize: 10,
+                          letterSpacing: 0.3,
+                          verticalAlign: 'middle'
+                        }}>
+                          {userStatus}
+                        </span>
+                      );
+                    })()}
+                  </div>
                   <div ref={handRowRef} className={styles.handRow}>
                     {lastState.view.hand.map((c: string, idx: number) => {
                       const clickable = isCardClickable(c);
