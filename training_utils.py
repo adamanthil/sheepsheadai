@@ -99,10 +99,10 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
     Uses game engine state to detect leads and trick phase; no counter needed.
     """
     action_name = ACTIONS[action - 1]
+    state_vec = transition.get('state')
 
     # Hand-conditioned PICK/PASS shaping (small human-like nudges)
     if action_name in ("PICK", "PASS"):
-        state_vec = transition.get('state')
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 4:
@@ -113,11 +113,20 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
             pick_bonus, pass_bonus = +0.04, -0.04
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
 
-    # Bury penalty: discourage burying trump
+    # Bury penalty: discourage burying trump if not required
     if "BURY" in action_name:
         card = action_name[5:]
-        if card in TRUMP:
-            transition['intermediate_reward'] += -0.02
+        # Derive allowed bury actions from this step's valid_actions
+        valid_actions = transition.get('valid_actions', set())
+        allowed_bury_cards = [ACTIONS[id - 1][5:] for id in valid_actions]
+        has_allowed_fail_bury = any(get_card_suit(c) != "T" for c in allowed_bury_cards)
+        has_allowed_trump_bury = any(get_card_suit(c) == "T" for c in allowed_bury_cards)
+
+        if card in TRUMP and has_allowed_fail_bury:
+            transition['intermediate_reward'] += -0.04
+        elif card not in TRUMP and has_allowed_trump_bury:
+            # Small preference when both options exist
+            transition['intermediate_reward'] += 0.01
 
     if "PLAY" in action_name:
         is_lead = (game.cards_played == 0) and (game.leader == player.position)
