@@ -1,14 +1,26 @@
 .card {
   width: var(--w);
   height: var(--h);
-  border-radius: 10px;
+  border-radius: 8px; /* Slightly smaller radius for mobile */
   background: linear-gradient(180deg, #ffffff, #eaeaea);
   color: #111;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  padding: var(--pad, 8px);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  padding: var(--pad, 6px); /* Smaller default padding for mobile */
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
   border: 1px solid rgba(0,0,0,0.25);
+  user-select: none; /* Prevent text selection on cards */
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on iOS */
+  touch-action: manipulation; /* Optimize for touch */
+}
+
+@media (min-width: 768px) {
+  .card {
+    border-radius: 10px;
+    padding: var(--pad, 8px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  }
 }
 
 .blank {
@@ -21,39 +33,74 @@
 
 .highlight {
   border: 2px solid #4ade80;
-  box-shadow: 0 12px 24px rgba(74,222,128,0.25);
+  box-shadow: 0 8px 20px rgba(74,222,128,0.3);
+  transform: scale(1.02); /* Subtle scale effect for mobile feedback */
+  transition: transform 0.15s ease;
+}
+
+@media (min-width: 768px) {
+  .highlight {
+    box-shadow: 0 12px 24px rgba(74,222,128,0.25);
+  }
 }
 
 .rankTop,
 .rankBottom {
   font-weight: 700;
   line-height: 1;
+  user-select: none;
 }
 
+/* Mobile-first font sizing */
 .rankTop.small,
 .rankBottom.small {
-  font-size: 10px;
+  font-size: 8px; /* Smaller for mobile */
 }
 
 .rankTop.normal,
 .rankBottom.normal {
-  font-size: 14px;
+  font-size: 12px; /* Smaller for mobile */
 }
 
 .rankTop.big,
 .rankBottom.big {
-  font-size: 16px;
+  font-size: 14px; /* Smaller for mobile */
+}
+
+@media (min-width: 768px) {
+  .rankTop.small,
+  .rankBottom.small {
+    font-size: 10px;
+  }
+
+  .rankTop.normal,
+  .rankBottom.normal {
+    font-size: 14px;
+  }
+
+  .rankTop.big,
+  .rankBottom.big {
+    font-size: 16px;
+  }
 }
 
 .suit {
   display: flex;
   align-items: center;
   justify-content: center;
+  user-select: none;
 }
 
-.suit.small { font-size: 16px; }
-.suit.normal { font-size: 24px; }
-.suit.big { font-size: 28px; }
+/* Mobile-first suit sizing */
+.suit.small { font-size: 14px; }
+.suit.normal { font-size: 20px; }
+.suit.big { font-size: 24px; }
+
+@media (min-width: 768px) {
+  .suit.small { font-size: 16px; }
+  .suit.normal { font-size: 24px; }
+  .suit.big { font-size: 28px; }
+}
 
 .rankBottom { text-align: right; }
 

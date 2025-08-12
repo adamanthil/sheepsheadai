@@ -1,46 +1,117 @@
 .root {
-  padding: 16px;
+  padding: 8px 8px 0 8px;
   min-height: 100vh;
   background: radial-gradient(1200px 700px at 50% -200px, #1f3b08 0%, #0b1d08 60%, #061106 100%);
   color: white;
+  overflow-x: hidden;
+}
+
+/* Mobile-first approach */
+@media (min-width: 768px) {
+  .root {
+    padding: 16px;
+  }
 }
 
 .wrap {
   max-width: 100%;
   margin: 0 auto;
-  padding-bottom: 90px;
+  padding-bottom: 80px; /* Smaller bottom padding on mobile */
+}
+
+@media (min-width: 768px) {
+  .wrap {
+    padding-bottom: 90px;
+  }
 }
 
 .topRow {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+@media (min-width: 480px) {
+  .topRow {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    text-align: left;
+  }
+}
+
+.topRow h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+@media (min-width: 768px) {
+  .topRow h2 {
+    font-size: 24px;
+  }
 }
 
 .tableArea {
-  margin-top: 16px;
+  margin-top: 8px;
+}
+
+@media (min-width: 768px) {
+  .tableArea {
+    margin-top: 16px;
+  }
 }
 
 .tableFrame {
-  border-radius: 16px;
+  border-radius: 12px;
   background: radial-gradient(600px 400px at 50% 50%, rgba(0,0,0,0.3), rgba(0,0,0,0.6));
-  padding: 24px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-  width: min(1600px, 96vw);
+  padding: 12px 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  width: 100%;
   margin: 0 auto;
+  max-width: 100vw;
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .tableFrame {
+    border-radius: 16px;
+    padding: 24px;
+    width: min(1600px, 96vw);
+  }
 }
 
 .trickContainer {
   position: relative;
   height: var(--trickH);
+  min-height: 200px; /* Ensure minimum height on mobile */
+  margin-bottom: 12px;
+}
+
+@media (min-width: 768px) {
+  .trickContainer {
+    min-height: 280px;
+    margin-bottom: 0;
+  }
 }
 
 .nameRight {
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
   opacity: 0.85;
   margin-top: 4px;
   white-space: nowrap;
+  max-width: 80px; /* Prevent overflow on mobile */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 768px) {
+  .nameRight {
+    font-size: 11px;
+    max-width: none;
+  }
 }
 
 .prevBanner {
@@ -48,42 +119,110 @@
   left: 50%;
   top: 8px;
   transform: translateX(-50%);
-  padding: 6px 10px;
-  border-radius: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
   background: rgba(0,0,0,0.35);
-  font-size: 13px;
+  font-size: 11px;
+  white-space: nowrap;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .prevBanner {
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    max-width: none;
+  }
 }
 
 .nameBelow {
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
   opacity: 0.85;
   margin-top: 4px;
+  margin-bottom: 16px; /* Add bottom margin to prevent overlap with "Your hand" */
   white-space: nowrap;
+  max-width: 80px; /* Prevent overflow on mobile */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 480px) {
+  .nameBelow {
+    margin-bottom: 20px; /* Slightly more space on larger screens */
+  }
+}
+
+@media (min-width: 768px) {
+  .nameBelow {
+    font-size: 11px;
+    max-width: none;
+    margin-bottom: 24px; /* Even more space on desktop */
+  }
 }
 
 .nameLeftOfCard {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  right: calc(var(--cardW) + 8px);
-  font-size: 11px;
+  right: calc(var(--cardW) + 12px); /* Reduced to be closer to card */
+  font-size: 9px;
   opacity: 0.95;
   white-space: nowrap;
   text-align: right;
-  width: 120px;
+  width: 80px; /* Increased width for better text display */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 480px) {
+  .nameLeftOfCard {
+    right: calc(var(--cardW) + 14px); /* Closer spacing for tablets */
+    width: 100px;
+  }
+}
+
+@media (min-width: 768px) {
+  .nameLeftOfCard {
+    right: calc(var(--cardW) + 16px); /* Closer for desktop - right-aligned text naturally creates more visual space */
+    font-size: 11px;
+    width: 120px;
+  }
 }
 
 .nameRightOfCard {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  left: calc(var(--cardW) + 20px);
-  font-size: 11px;
+  left: calc(var(--cardW) + 20px); /* Increased clearance since left-aligned text starts immediately */
+  font-size: 9px;
   opacity: 0.95;
   white-space: nowrap;
   text-align: left;
-  width: 120px;
+  width: 80px; /* Increased width for better text display */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (min-width: 480px) {
+  .nameRightOfCard {
+    left: calc(var(--cardW) + 22px); /* Increased spacing for tablets */
+    width: 100px;
+  }
+}
+
+@media (min-width: 768px) {
+  .nameRightOfCard {
+    left: calc(var(--cardW) + 26px); /* More space for desktop - left-aligned text needs more clearance */
+    font-size: 11px;
+    width: 120px;
+  }
 }
 
 .callout {
@@ -91,50 +230,168 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
   backdrop-filter: blur(6px);
   background: rgba(0,0,0,0.5);
   border: 1px solid rgba(255,255,255,0.25);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
   pointer-events: none;
+  font-size: 14px;
+  max-width: calc(100% - 32px);
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .callout {
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 16px;
+    max-width: none;
+  }
 }
 
 .trickHeader {
   text-align: center;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   opacity: 0.9;
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  .trickHeader {
+    margin-bottom: 12px;
+    font-size: 16px;
+  }
 }
 
 .sectionTitle {
   opacity: 0.9;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  font-size: 14px;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .sectionTitle {
+    margin-bottom: 8px;
+    font-size: 16px;
+    text-align: left;
+  }
 }
 
 .handRow {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 10px;
+  flex-wrap: wrap; /* Allow wrapping on mobile */
+  gap: 6px; /* Smaller gap on mobile */
   justify-content: center;
+  padding: 0 4px;
+  max-width: 100%;
+}
+
+@media (min-width: 480px) {
+  .handRow {
+    flex-wrap: nowrap; /* Back to no wrap on larger screens */
+    gap: 8px;
+  }
+}
+
+@media (min-width: 768px) {
+  .handRow {
+    gap: 10px;
+    padding: 0;
+  }
 }
 
 .finalBanner {
   margin-top: 16px;
+  margin-bottom: 100px; /* Add bottom margin to prevent overlap with bottom bar on mobile */
   padding: 12px;
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05));
 }
 
+@media (min-width: 768px) {
+  .finalBanner {
+    margin-bottom: 60px; /* Less margin needed on desktop */
+  }
+}
+
+/* Style buttons within final banner to be mobile-friendly */
+.finalBanner button {
+  min-height: 44px; /* Touch-friendly height */
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: transparent;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-right: 8px;
+  margin-bottom: 8px; /* Add bottom margin for wrapping */
+}
+
+@media (max-width: 479px) {
+  .finalBanner button {
+    width: 100%; /* Full width on mobile */
+    margin-right: 0;
+    margin-bottom: 8px;
+  }
+}
+
+.finalBanner button:active {
+  transform: scale(0.98);
+  background: rgba(255,255,255,0.1);
+}
+
+.finalBanner button:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.35);
+}
+
 .pushRight {
   margin-left: auto;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.85;
+  /* On mobile, don't push right - keep in flow */
+}
+
+@media (min-width: 480px) {
+  .pushRight {
+    font-size: 12px;
+  }
+}
+
+@media (min-width: 768px) {
+  .pushRight {
+    font-size: 14px;
+  }
 }
 
 .dimmed {
-  opacity: 0.8;
+  opacity: 0.75; /* Slightly more dimmed for mobile readability */
+}
+
+@media (min-width: 768px) {
+  .dimmed {
+    opacity: 0.8;
+  }
 }
 
 .muted {
-  opacity: 0.85;
+  opacity: 0.8; /* Better contrast on mobile */
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (min-width: 768px) {
+  .muted {
+    opacity: 0.85;
+    font-size: 13px;
+    line-height: 1.5;
+  }
 }
 
 .collectOverlay {
@@ -185,20 +442,92 @@
   bottom: 0;
   z-index: 50;
   backdrop-filter: blur(6px);
-  background: linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.6));
+  background: linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0.8));
   border-top: 1px solid rgba(255,255,255,0.15);
+  max-height: 40vh; /* Prevent taking up too much screen on mobile */
+  overflow-y: auto;
 }
 
 .bottomBarInner {
-  width: min(1600px, 96vw);
+  width: 100%;
   margin: 0 auto;
-  padding: 10px 16px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column; /* Stack vertically on mobile */
+  gap: 6px;
+  align-items: stretch;
+  color: white;
+  font-size: 13px;
+}
+
+@media (min-width: 480px) {
+  .bottomBarInner {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+  }
+}
+
+@media (min-width: 768px) {
+  .bottomBarInner {
+    width: min(1600px, 96vw);
+    padding: 10px 16px;
+    gap: 10px;
+    font-size: 14px;
+  }
+}
+
+/* Action buttons styling for mobile */
+.bottomBarInner button {
+  min-height: 44px; /* Touch-friendly size */
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.1);
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  white-space: nowrap;
+  flex: 1; /* Equal width buttons on mobile */
+  max-width: 200px; /* Prevent overly wide buttons */
+}
+
+@media (min-width: 480px) {
+  .bottomBarInner button {
+    flex: none; /* Reset flex on larger screens */
+    min-width: auto;
+  }
+}
+
+.bottomBarInner button:active {
+  background: rgba(255,255,255,0.2);
+  transform: scale(0.98);
+}
+
+.bottomBarInner button:hover {
+  background: rgba(255,255,255,0.15);
+  border-color: rgba(255,255,255,0.35);
+}
+
+/* Action buttons container */
+.bottomBarInner > div:has(button) {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  justify-content: center;
-  color: white;
+  gap: 6px;
+  width: 100%;
+  justify-content: stretch;
+}
+
+@media (min-width: 480px) {
+  .bottomBarInner > div:has(button) {
+    width: auto;
+    justify-content: center;
+  }
 }
 
 .scoresOverlay {
@@ -209,17 +538,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px; /* Ensure padding on mobile */
 }
 
 .scoresBox {
-  width: min(1000px, 94vw);
-  max-height: 80vh;
+  width: 100%;
+  max-width: 1000px;
+  max-height: 90vh; /* More height on mobile */
   overflow: auto;
   background: rgba(0,0,0,0.6);
   backdrop-filter: blur(6px);
   border: 1px solid rgba(255,255,255,0.2);
   border-radius: 12px;
   color: white;
+  margin: 0 8px; /* Side margins on mobile */
+}
+
+@media (min-width: 768px) {
+  .scoresBox {
+    width: min(1000px, 94vw);
+    max-height: 80vh;
+    margin: 0;
+  }
 }
 
 .scoresHeader {
@@ -227,9 +567,35 @@
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.15);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scoresHeader button {
+  min-height: 40px; /* Touch-friendly */
+  padding: 6px 10px;
 }
 
 .scoresBody {
-  padding: 16px;
+  padding: 12px;
+  overflow-x: auto; /* Allow horizontal scroll for wide tables */
+}
+
+@media (min-width: 768px) {
+  .scoresBody {
+    padding: 16px;
+  }
+}
+
+/* Make score tables mobile-friendly */
+.scoresBody table {
+  min-width: 300px; /* Ensure minimum width */
+  font-size: 13px;
+}
+
+@media (min-width: 768px) {
+  .scoresBody table {
+    font-size: 14px;
+  }
 }
 

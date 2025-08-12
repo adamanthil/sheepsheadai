@@ -60,7 +60,19 @@ export default function TablePage() {
   const [centerSize, setCenterSize] = useState<{ w: number; h: number }>({ w: 92, h: 138 });
   const trickBoxRef = useRef<HTMLDivElement | null>(null);
   const [trickSize, setTrickSize] = useState<{ w: number; h: number }>({ w: 900, h: 400 });
-  const handTopMargin = Math.max(32, Math.floor(centerSize.h * 0.2));
+  const handTopMargin = useMemo(() => {
+    // More generous spacing on mobile to accommodate bottom player name
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 480;
+    const isTablet = typeof window !== 'undefined' && window.innerWidth >= 480 && window.innerWidth < 768;
+
+    if (isMobile) {
+      return Math.max(40, Math.floor(centerSize.h * 0.25)); // Increased base and multiplier for mobile
+    } else if (isTablet) {
+      return Math.max(36, Math.floor(centerSize.h * 0.22)); // Intermediate for tablet
+    } else {
+      return Math.max(32, Math.floor(centerSize.h * 0.2)); // Original for desktop
+    }
+  }, [centerSize.h]);
   const [showScores, setShowScores] = useState(false);
   const [callout, setCallout] = useState<{ kind: 'PICK' | 'CALL' | 'LEASTER' | 'ALONE'; message: string } | null>(null);
 
@@ -225,9 +237,33 @@ export default function TablePage() {
   const actionButtons = useMemo(() => {
     if (!lastState) return null;
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 6,
+        justifyContent: 'center',
+        width: '100%'
+      }}>
         {lastState.valid_actions.map((aid: number) => (
-          <button key={aid} onClick={() => takeAction(aid)}>
+          <button
+            key={aid}
+            onClick={() => takeAction(aid)}
+            style={{
+              minHeight: '40px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.25)',
+              background: 'rgba(255,255,255,0.1)',
+              color: 'white',
+              fontSize: '14px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              whiteSpace: 'nowrap',
+              flex: window.innerWidth < 480 ? '1 1 auto' : 'none',
+              maxWidth: '200px',
+              textAlign: 'center'
+            }}
+          >
             {actionLookup[String(aid)] || `Action ${aid}`}
           </button>
         ))}
@@ -280,22 +316,51 @@ export default function TablePage() {
            validActionStrings.has(`UNDER ${card}`);
   }
 
-  // --- Responsive sizing: fit hand to a single row ---
+  // --- Responsive sizing: optimized for mobile ---
   useEffect(() => {
     function recalc() {
       const row = handRowRef.current;
       if (!row || !lastState) return;
       const count = Math.max(1, (lastState.view.hand as string[]).length || 6);
-      const gap = 10;
-      // Use viewport width to ensure single-row fitting across full width
-      const vw = Math.max(640, Math.min(window.innerWidth * 0.94, 1600));
-      const avail = vw - 40; // small padding
-      let w = Math.floor((avail - (count - 1) * gap) / count);
-      w = Math.max(64, Math.min(140, w));
+
+      // Mobile-first approach with better breakpoints
+      const isMobile = window.innerWidth < 480;
+      const isTablet = window.innerWidth >= 480 && window.innerWidth < 768;
+      const isDesktop = window.innerWidth >= 768;
+
+      let gap: number;
+      let maxCardWidth: number;
+      let minCardWidth: number;
+      let availableWidth: number;
+
+      if (isMobile) {
+        gap = 6;
+        maxCardWidth = 90;
+        minCardWidth = 50;
+        availableWidth = window.innerWidth * 0.92; // More padding on mobile
+      } else if (isTablet) {
+        gap = 8;
+        maxCardWidth = 120;
+        minCardWidth = 60;
+        availableWidth = window.innerWidth * 0.94;
+      } else {
+        gap = 10;
+        maxCardWidth = 140;
+        minCardWidth = 64;
+        availableWidth = Math.min(window.innerWidth * 0.94, 1600);
+      }
+
+      const totalGapSpace = (count - 1) * gap;
+      const cardSpace = availableWidth - totalGapSpace - 32; // Account for padding
+      let w = Math.floor(cardSpace / count);
+      w = Math.max(minCardWidth, Math.min(maxCardWidth, w));
+
       const h = Math.floor(w * 1.45);
       setHandSize({ w, h });
-      // Center cards should be larger for emphasis but not overlapping
-      const cw = Math.floor(w * 1.5);
+
+      // Center cards scaling - less dramatic on mobile
+      const centerScale = isMobile ? 1.3 : 1.5;
+      const cw = Math.floor(w * centerScale);
       const ch = Math.floor(cw * 1.45);
       setCenterSize({ w: cw, h: ch });
     }
@@ -468,8 +533,8 @@ export default function TablePage() {
                       </div>
                     )}
                     <div style={{ marginTop: 8 }}>
-                      <button onClick={() => redeal()} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'white' }}>Redeal</button>
-                      <button onClick={() => setShowScores(true)} style={{ marginLeft: 8, padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'white' }}>Show scores</button>
+                      <button onClick={() => redeal()}>Redeal</button>
+                      <button onClick={() => setShowScores(true)}>Show scores</button>
                     </div>
                   </div>
                 ) : null}
