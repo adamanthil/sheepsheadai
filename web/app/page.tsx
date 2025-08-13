@@ -133,76 +133,78 @@ export default function HomePage() {
 
   return (
     <div className={styles.page}>
-      <h1>Sheepshead AI</h1>
-      {error && (
-        <div style={{
-          background: 'rgba(255,50,50,0.1)',
-          border: '1px solid rgba(255,50,50,0.3)',
-          borderRadius: '8px',
-          padding: '12px',
-          marginBottom: '16px',
-          color: 'white',
-          fontSize: '14px'
-        }}>
-          {error}
-        </div>
-      )}
-      <div className={styles.controls}>
-        <input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Table name"
-          disabled={creating}
-        />
-        <button
-          onClick={handleCreateClick}
-          disabled={creating || !name.trim() || !displayName.trim()}
-          style={{
-            opacity: creating ? 0.7 : 1,
-            cursor: creating ? 'not-allowed' : 'pointer',
-            WebkitTapHighlightColor: 'transparent',
-            touchAction: 'manipulation'
-          }}
-        >
-          {creating ? 'Creating...' : 'Create table'}
-        </button>
-        <span className={styles.nameRight}>
-          Your name: <input
-            value={displayName}
-            onChange={e => setDisplayName(e.target.value)}
+      <div className={styles.pageContent}>
+        <h1>Sheepshead AI</h1>
+        {error && (
+          <div style={{
+            background: 'rgba(255,50,50,0.1)',
+            border: '1px solid rgba(255,50,50,0.3)',
+            borderRadius: '8px',
+            padding: '12px',
+            marginBottom: '16px',
+            color: 'white',
+            fontSize: '14px'
+          }}>
+            {error}
+          </div>
+        )}
+        <div className={styles.controls}>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Table name"
             disabled={creating}
           />
-        </span>
-      </div>
-      <div className={styles.lobby}>
-        <h2>Lobby</h2>
-        {loading ? (<div>Loading…</div>) : (
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th className={styles.thLeft}>Name</th>
-                <th>Status</th>
-                <th>Seats</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tables.map(t => {
-                const filled = Object.values(t.seats).filter(Boolean).length;
-                return (
-                  <tr key={t.id}>
-                    <td>{t.name}</td>
-                    <td>{t.status}</td>
-                    <td>{filled}/5</td>
-                    <td>
-                      <button onClick={() => join(t.id)} disabled={t.status !== 'open'}>Join</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+          <button
+            onClick={handleCreateClick}
+            disabled={creating || !name.trim() || !displayName.trim()}
+            style={{
+              opacity: creating ? 0.7 : 1,
+              cursor: creating ? 'not-allowed' : 'pointer',
+              WebkitTapHighlightColor: 'transparent',
+              touchAction: 'manipulation'
+            }}
+          >
+            {creating ? 'Creating...' : 'Create table'}
+          </button>
+          <span className={styles.nameRight}>
+            Your name: <input
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              disabled={creating}
+            />
+          </span>
+        </div>
+        <div className={styles.lobby}>
+          <h2>Lobby</h2>
+          {loading ? (<div>Loading…</div>) : (
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th className={styles.thLeft}>Name</th>
+                  <th>Status</th>
+                  <th>Seats</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tables.map(t => {
+                  const filled = Object.values(t.seats).filter(Boolean).length;
+                  return (
+                    <tr key={t.id}>
+                      <td>{t.name}</td>
+                      <td>{t.status}</td>
+                      <td>{filled}/5</td>
+                      <td>
+                        <button onClick={() => join(t.id)} disabled={t.status !== 'open'}>Join</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );
