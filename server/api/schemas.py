@@ -16,6 +16,11 @@ class JoinTableRequest(BaseModel):
     seat: Optional[int] = None
 
 
+class UpdateTableRulesRequest(BaseModel):
+    client_id: str
+    rules: Dict[str, Any]
+
+
 class StartGameRequest(BaseModel):
     client_id: str
     seed: Optional[int] = None

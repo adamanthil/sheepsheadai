@@ -25,6 +25,7 @@ from server.api.schemas import (
     CreateTableRequest,
     JoinTableRequest,
     StartGameRequest,
+    UpdateTableRulesRequest,
     ActionRequest,
     SeatRequest,
     RedealRequest,
@@ -60,6 +61,17 @@ class ClientConn:
 
 
 @dataclass
+class Occupant:
+    """Represents a player entity occupying a seat: human or AI.
+
+    Humans use their client_id as occupant id; AIs are ephemeral UUIDs.
+    """
+    id: str
+    display_name: str
+    is_ai: bool = False
+
+
+@dataclass
 class Table:
     id: str
     name: str
@@ -67,16 +79,17 @@ class Table:
     rules: Dict[str, Any] = field(default_factory=dict)
     fill_with_ai: bool = True
     host_client_id: Optional[str] = None
-    # seat index 1..5 → client_id or "AI:{idx}" placeholder
+    # seat index 1..5 → occupant_id (humans use client_id; AIs use ephemeral uuid)
     seats: Dict[int, Optional[str]] = field(default_factory=lambda: {i: None for i in range(1, 6)})
     # connected clients (client_id -> ClientConn)
     clients: Dict[str, ClientConn] = field(default_factory=dict)
+    # all occupants by id (AI always present here; humans optional)
+    occupants: Dict[str, Occupant] = field(default_factory=dict)
     # game/runtime
     game: Optional[Game] = None
     game_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     ai_agent: Optional[PPOAgent] = None
     ai_task: Optional[asyncio.Task] = None
-    ai_names: Dict[str, str] = field(default_factory=dict)  # occupant_id (AI*) -> display name
     running_scores: Dict[str, int] = field(default_factory=dict)  # occupant_id -> cumulative score
     results_counted: bool = False
     # History of completed hands at this table (in chronological order)
@@ -88,15 +101,15 @@ class Table:
     initial_names: Dict[str, str] = field(default_factory=dict)
 
     def to_public_dict(self) -> Dict[str, Any]:
-        # Resolve seat names (humans by display_name, AIs by ai_names)
         def seat_name(occ_id: Optional[str]) -> Optional[str]:
             if not occ_id:
                 return None
             if occ_id in self.clients:
                 return self.clients[occ_id].display_name
-            if occ_id.startswith("AI"):
-                return self.ai_names.get(occ_id, occ_id)
-            return occ_id
+            occ = self.occupants.get(occ_id)
+            if occ:
+                return occ.display_name
+            return None
 
         seats_named = {i: seat_name(self.seats[i]) for i in self.seats}
         seats_ids = {i: self.seats[i] for i in self.seats}
@@ -107,6 +120,13 @@ class Table:
             occ = self.seats[i]
             running_by_seat[i] = int(self.running_scores.get(occ or "", 0)) if occ else 0
 
+        # AI flags by seat via occupants metadata
+        seat_is_ai = {}
+        for i in self.seats:
+            occ_id = self.seats[i]
+            occ = self.occupants.get(occ_id or "") if occ_id else None
+            seat_is_ai[i] = bool(occ and occ.is_ai)
+
         return {
             "id": self.id,
             "name": self.name,
@@ -116,6 +136,7 @@ class Table:
             "seats": seats_named,
             "runningBySeat": running_by_seat,
             "seatOccupants": seats_ids,
+            "seatIsAI": seat_is_ai,
             "host": (self.clients[self.host_client_id].display_name if self.host_client_id and self.host_client_id in self.clients else None),
             "hostId": self.host_client_id,
             "resultsHistory": self.results_history,
@@ -307,7 +328,10 @@ async def ai_observe_all(table: Table, except_seat: Optional[int] = None):
     if not table.ai_agent or not table.game:
         return
     for seat, occupant in table.seats.items():
-        if not occupant or not str(occupant).startswith("AI:"):
+        if not occupant:
+            continue
+        occ = table.occupants.get(occupant)
+        if not occ or not occ.is_ai:
             continue
         if seat == except_seat:
             continue
@@ -332,7 +356,10 @@ async def ai_take_turns(table: Table):
             if actor is None:
                 break
             occupant = table.seats.get(actor)
-            if not occupant or not str(occupant).startswith("AI:"):
+            if not occupant:
+                break
+            occ = table.occupants.get(occupant)
+            if not occ or not occ.is_ai:
                 # Human's turn
                 break
             player = table.game.players[actor - 1]
@@ -420,14 +447,7 @@ def list_tables():
 @app.post("/api/tables")
 async def create_table(req: CreateTableRequest):
     table = await tables.create_table(req.name, req.fillWithAI, req.rules or {})
-    # Pre-generate AI placeholders and stable names (but don't assign seats yet)
-    ai_pool = [
-        "Dan", "Kyle", "John", "Trevor", "Tim", "Tom"
-    ]
-    for i in range(1, 6):
-        occ = f"AI:{i}"
-        table.ai_names[occ] = ai_pool[(i - 1) % len(ai_pool)]
-        table.running_scores[occ] = 0
+    # Initialize running scores store (empty); AI occupants are created on demand
     return table.to_public_dict()
 
 
@@ -448,6 +468,14 @@ async def join_table(table_id: str, req: JoinTableRequest):
     if not table.host_client_id:
         table.host_client_id = client_id
 
+    # Broadcast lobby update (new client connected) and a callout-style message
+    # Single broadcast including both event message and latest table snapshot
+    await broadcast_table_event(table, {
+        "type": "lobby_event",
+        "message": f"{req.display_name} joined the table",
+        "table": table.to_public_dict(),
+    })
+
     return {
         "client_id": client_id,
         "table": table.to_public_dict(),
@@ -455,15 +483,27 @@ async def join_table(table_id: str, req: JoinTableRequest):
 
 
 @app.post("/api/tables/{table_id}/fill_ai")
-def fill_ai(table_id: str):
+async def fill_ai(table_id: str, req: RedealRequest | None = None):
     try:
         table = tables.get_table(table_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
+    # Host-only: require client_id and it must match host
+    client_id: Optional[str] = req.client_id if req else None
+    if not client_id or not table.host_client_id or client_id != table.host_client_id:
+        raise HTTPException(status_code=403, detail="only_host_can_fill_ai")
+
+    ai_name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
     for i in range(1, 6):
         if not table.seats[i]:
-            table.seats[i] = f"AI:{i}"
+            occ_id = str(uuid.uuid4())
+            display_name = ai_name_pool[(i - 1) % len(ai_name_pool)]
+            table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
+            table.seats[i] = occ_id
+
+    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+
     return table.to_public_dict()
 
 
@@ -471,7 +511,7 @@ def fill_ai(table_id: str):
 
 
 @app.post("/api/tables/{table_id}/seat")
-def choose_seat(table_id: str, req: SeatRequest):
+async def choose_seat(table_id: str, req: SeatRequest):
     try:
         table = tables.get_table(table_id)
     except KeyError:
@@ -479,7 +519,10 @@ def choose_seat(table_id: str, req: SeatRequest):
 
     if req.seat not in {1, 2, 3, 4, 5}:
         raise HTTPException(status_code=400, detail="invalid_seat")
-    if table.seats.get(req.seat):
+    current = table.seats.get(req.seat)
+    # Disallow displacement only if current occupant is a human
+    if current and not (table.occupants.get(current).is_ai if table.occupants.get(current) else False):
+        # Occupied by a human, cannot displace
         raise HTTPException(status_code=400, detail="seat_taken")
     if req.client_id not in table.clients:
         raise HTTPException(status_code=400, detail="client_not_joined")
@@ -490,23 +533,38 @@ def choose_seat(table_id: str, req: SeatRequest):
             table.seats[i] = None
             break
 
-    # Assign
+    # Assign (displacing AI if present)
     table.seats[req.seat] = req.client_id
     table.clients[req.client_id].seat = req.seat
+
+    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+
     return table.to_public_dict()
 
 
 @app.post("/api/tables/{table_id}/start_waiting")
-def start_waiting(table_id: str):
+async def start_waiting(table_id: str, req: RedealRequest | None = None):
     # Host can ensure AIs fill empty seats in the waiting area but do not start game yet
     try:
         table = tables.get_table(table_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
+    # Host-only: require client_id and it must match host
+    client_id: Optional[str] = req.client_id if req else None
+    if not client_id or not table.host_client_id or client_id != table.host_client_id:
+        raise HTTPException(status_code=403, detail="only_host_can_fill_ai")
+
+    ai_name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
     for i in range(1, 6):
         if not table.seats[i]:
-            table.seats[i] = f"AI:{i}"
+            occ_id = str(uuid.uuid4())
+            display_name = ai_name_pool[(i - 1) % len(ai_name_pool)]
+            table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
+            table.seats[i] = occ_id
+
+    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+
     return table.to_public_dict()
 
 
@@ -514,6 +572,43 @@ def start_waiting(table_id: str):
 def get_actions():
     """Return action id to string mapping for the UI."""
     return {"action_lookup": ACTION_LOOKUP}
+
+
+async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:
+    """Broadcast any table-related event payload to all connected clients."""
+    msg_txt = json.dumps(payload)
+    for cid, conn in list(table.clients.items()):
+        ws = conn.websocket
+        if not ws:
+            continue
+        try:
+            await ws.send_text(msg_txt)
+        except WebSocketDisconnect:
+            conn.websocket = None
+        except Exception:
+            logging.exception("broadcast_table_event send failed for table %s client %s", table.id, cid)
+
+@app.patch("/api/tables/{table_id}/rules")
+async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
+    try:
+        table = tables.get_table(table_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table_not_found")
+
+    if table.status != "open":
+        raise HTTPException(status_code=400, detail="game_already_started")
+
+    # Only host can update rules
+    if not req.client_id or not table.host_client_id or req.client_id != table.host_client_id:
+        raise HTTPException(status_code=403, detail="only_host_can_update_rules")
+
+    # Update the rules
+    if not table.rules:
+        table.rules = {}
+    table.rules.update(req.rules)
+    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+
+    return {"status": "success", "rules": table.rules}
 
 
 @app.post("/api/tables/{table_id}/start")
@@ -534,7 +629,10 @@ async def start_game(table_id: str, req: StartGameRequest):
     if table.fill_with_ai:
         for i in range(1, 6):
             if not table.seats[i]:
-                table.seats[i] = f"AI:{i}"
+                occ_id = str(uuid.uuid4())
+                display_name = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"][(i - 1) % 6]
+                table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
+                table.seats[i] = occ_id
 
     # Must have 5 seats
     if not all(table.seats[i] for i in range(1, 6)):
@@ -558,7 +656,7 @@ async def start_game(table_id: str, req: StartGameRequest):
     table.results_counted = False
     # Capture initial order (once) from current seat occupants
     if not table.initial_seat_order:
-        table.initial_seat_order = [str(table.seats[i] or f"AI:{i}") for i in range(1, 6)]
+        table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
         # capture names snapshot
         pub = table.to_public_dict()
         for i in range(1, 6):
@@ -567,7 +665,7 @@ async def start_game(table_id: str, req: StartGameRequest):
                 table.initial_names[str(occ)] = pub["seats"][i]
 
     # Create AI agent for this table if any AI players exist
-    has_ai = any(str(v).startswith("AI:") for v in table.seats.values())
+    has_ai = any((table.occupants.get(occ_id).is_ai if occ_id and table.occupants.get(occ_id) else False) for occ_id in table.seats.values())
     if has_ai:
         from server.services.ai_loader import load_agent
         candidate_paths = [
@@ -578,6 +676,9 @@ async def start_game(table_id: str, req: StartGameRequest):
             "best_swish_ppo.pth",
         ]
         table.ai_agent = load_agent(os.environ.get("SHEEPSHEAD_MODEL_PATH"), candidate_paths)
+
+    # Notify lobby clients that the game has started
+    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
 
     # Initial broadcast and schedule AI chain after a small delay
     await broadcast_table_state(table)

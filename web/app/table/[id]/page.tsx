@@ -419,15 +419,16 @@ export default function TablePage() {
                       const r = relSeat(absSeat, lastState.yourSeat);
                       const highlight = isPrev && winnerSeat === absSeat;
                       const name = lastState.table?.seats?.[String(absSeat)] || `Seat ${absSeat}`;
+                      const isAi = Boolean(lastState.table?.seatIsAI?.[String(absSeat)]);
                       return (
                         <div key={idx} style={{ ...spotStyle(r), width: centerSize.w }}>
                           <PlayingCard label={c || '__'} width={centerSize.w} height={centerSize.h} highlight={highlight} />
                           {r === 2 ? (
-                            <div className={styles.nameLeftOfCard}>{name}</div>
+                            <div className={styles.nameLeftOfCard}><span className={styles.nameInline}><span>{name}</span>{isAi && <span className={styles.aiTag}>AI</span>}</span></div>
                           ) : r === 3 ? (
-                            <div className={styles.nameRightOfCard}>{name}</div>
+                            <div className={styles.nameRightOfCard}><span className={styles.nameInline}><span>{name}</span>{isAi && <span className={styles.aiTag}>AI</span>}</span></div>
                           ) : (
-                            <div className={styles.nameBelow}>{name}</div>
+                            <div className={styles.nameBelow}><span className={styles.nameInline}><span>{name}</span>{isAi && <span className={styles.aiTag}>AI</span>}</span></div>
                           )}
                           {(() => {
                             const status = pickStatusForSeat(absSeat);

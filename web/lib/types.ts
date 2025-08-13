@@ -5,6 +5,7 @@ export type TableSummary = {
   rules: Record<string, any>;
   fillWithAI: boolean;
   seats: Record<string, string | null>;
+  seatIsAI?: Record<string, boolean>;
   host: string | null;
   hostId?: string | null;
   runningBySeat?: Record<string, number>;
