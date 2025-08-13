@@ -106,11 +106,11 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 4:
-            pick_bonus, pass_bonus = -0.04, +0.04
+            pick_bonus, pass_bonus = -0.06, +0.06
         elif score <= 7:
-            pick_bonus, pass_bonus = +0.025, -0.025
+            pick_bonus, pass_bonus = +0.03, -0.03
         else:
-            pick_bonus, pass_bonus = +0.04, -0.04
+            pick_bonus, pass_bonus = +0.08, -0.08
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
 
     # Bury penalty: discourage burying trump if not required
@@ -186,7 +186,9 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         is_episode_done = (i == last_transition_per_player[player_pos])
 
         if is_leaster:
-            leaster_reward = (final_score - 1) / 12
+            # Downweight all leaster rewards.
+            # Agent should dislike playing leasters most of the time (similar to human behavior).
+            leaster_reward = (final_score - 2) / 12
             final_reward = leaster_reward if is_episode_done else 0.0
         else:
             final_reward = (final_score / 12) if is_episode_done else 0.0

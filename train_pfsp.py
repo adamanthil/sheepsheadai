@@ -509,8 +509,8 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
 
             # Entropy decay
-            entropy_play_start, entropy_play_end = 0.06, 0.015
-            entropy_pick_start, entropy_pick_end = 0.06, 0.015
+            entropy_play_start, entropy_play_end = 0.06, 0.02
+            entropy_pick_start, entropy_pick_end = 0.06, 0.02
             entropy_bury_start, entropy_bury_end = 0.05, 0.015
             decay_fraction = min(episode / num_episodes, 1.0)
             training_agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
