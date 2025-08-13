@@ -11,6 +11,7 @@ import numpy as np
 import random
 import time
 import os
+import csv
 from collections import deque
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
@@ -306,6 +307,34 @@ def train_pfsp(num_episodes: int = 500000,
     # Create checkpoint directory
     checkpoint_dir = f'pfsp_checkpoints_{activation}'
     os.makedirs(checkpoint_dir, exist_ok=True)
+    # CSV log files for ongoing progress/metrics
+    progress_csv = os.path.join(checkpoint_dir, 'pfsp_training_progress.csv')
+    strategic_csv = os.path.join(checkpoint_dir, 'pfsp_strategic_metrics.csv')
+
+    # If CSVs exist, preload them so training_data is continuous across resumes
+    start_time_offset = 0.0
+    if os.path.exists(progress_csv):
+        with open(progress_csv, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                training_data['episodes'].append(int(row['episode']))
+                training_data['picker_avg'].append(float(row['picker_avg']))
+                training_data['called_pick_rate'].append(float(row['called_pick_rate']))
+                training_data['jd_pick_rate'].append(float(row['jd_pick_rate']))
+                training_data['learning_rate'].append(float(row['learning_rate']))
+                training_data['time_elapsed'].append(float(row['time_elapsed']))
+                training_data['team_point_diff'].append(float(row['team_point_diff']))
+        if training_data['time_elapsed']:
+            start_time_offset = training_data['time_elapsed'][-1]
+
+    if os.path.exists(strategic_csv):
+        with open(strategic_csv, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                training_data['pick_hand_correlation'].append(float(row['pick_hand_correlation']))
+                training_data['picker_trump_rate'].append(float(row['picker_trump_rate']))
+                training_data['defender_trump_rate'].append(float(row['defender_trump_rate']))
+                training_data['bury_quality_rate'].append(float(row['bury_quality_rate']))
 
     start_time = time.time()
     game_count = 0
@@ -574,6 +603,20 @@ def train_pfsp(num_episodes: int = 500000,
             training_data['defender_trump_rate'].append(strategic_metrics['defender_trump_rate'])
             training_data['bury_quality_rate'].append(strategic_metrics['bury_quality_rate'])
 
+            # Append strategic metrics row to CSV (episode-keyed)
+            write_header = (not os.path.exists(strategic_csv)) or (os.path.getsize(strategic_csv) == 0)
+            with open(strategic_csv, 'a', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['episode','pick_hand_correlation','picker_trump_rate','defender_trump_rate','bury_quality_rate'])
+                if write_header:
+                    writer.writeheader()
+                writer.writerow({
+                    'episode': episode,
+                    'pick_hand_correlation': strategic_metrics['pick_hand_correlation'],
+                    'picker_trump_rate': strategic_metrics['picker_trump_rate'],
+                    'defender_trump_rate': strategic_metrics['defender_trump_rate'],
+                    'bury_quality_rate': strategic_metrics['bury_quality_rate'],
+                })
+
             print(f"   Pick-Hand Correlation: {strategic_metrics['pick_hand_correlation']:.3f}")
             print(f"   Picker Trump Rate: {strategic_metrics['picker_trump_rate']:.1f}%")
             print(f"   Defender Trump Rate: {strategic_metrics['defender_trump_rate']:.1f}%")
@@ -597,7 +640,7 @@ def train_pfsp(num_episodes: int = 500000,
             ca_denominator = sum(called_ace_window) or 1
             current_called_under_rate = (sum(called_under_window) / ca_denominator) * 100
             current_called_10s_rate = (sum(called_10_window) / ca_denominator) * 100
-            elapsed = time.time() - start_time
+            elapsed = start_time_offset + (time.time() - start_time)
 
             # Collect data for plotting
             training_data['episodes'].append(episode)
@@ -607,6 +650,22 @@ def train_pfsp(num_episodes: int = 500000,
             training_data['learning_rate'].append(training_agent.actor_optimizer.param_groups[0]['lr'])
             training_data['time_elapsed'].append(elapsed)
             training_data['team_point_diff'].append(current_team_diff)
+
+            # Append progress row to CSV (create with header if new)
+            write_header = (not os.path.exists(progress_csv)) or (os.path.getsize(progress_csv) == 0)
+            with open(progress_csv, 'a', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['episode','picker_avg','called_pick_rate','jd_pick_rate','learning_rate','time_elapsed','team_point_diff'])
+                if write_header:
+                    writer.writeheader()
+                writer.writerow({
+                    'episode': episode,
+                    'picker_avg': current_avg_picker_score,
+                    'called_pick_rate': current_called_pick_rate,
+                    'jd_pick_rate': current_jd_pick_rate,
+                    'learning_rate': training_agent.actor_optimizer.param_groups[0]['lr'],
+                    'time_elapsed': elapsed,
+                    'team_point_diff': current_team_diff,
+                })
 
             # Population statistics
             jd_stats = population.get_population_stats(PARTNER_BY_JD)
