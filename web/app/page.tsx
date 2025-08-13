@@ -23,6 +23,7 @@ export default function HomePage() {
   const [name, setName] = useState('Quick Table');
   const [displayName, setDisplayName] = useState('Player');
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [joinInfo, setJoinInfo] = useState<{ client_id: string; seat: number; table: TableSummary } | null>(null);
 
   const refresh = async () => {
@@ -40,47 +41,137 @@ export default function HomePage() {
     refresh();
   }, []);
 
+  // Mobile Safari compatible click handler
+  const handleCreateClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    create();
+  };
+
   const create = async () => {
+    // Clear any previous errors
+    setError(null);
     setCreating(true);
+
     try {
+      console.log('Creating table...', { API_BASE, name, displayName }); // Debug log for mobile Safari
+
+      // Create table
       const res = await fetch(`${API_BASE}/api/tables`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, fillWithAI: true, rules: { partnerMode: 1, doubleOnTheBump: true } }),
       });
+
+      if (!res.ok) {
+        throw new Error(`Failed to create table: ${res.status} ${res.statusText}`);
+      }
+
       const t = await res.json();
-      // Auto-join and go to waiting room
+      console.log('Table created:', t.id); // Debug log
+
+      // Auto-join the table
       const res2 = await fetch(`${API_BASE}/api/tables/${t.id}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ display_name: displayName }),
       });
+
+      if (!res2.ok) {
+        throw new Error(`Failed to join table: ${res2.status} ${res2.statusText}`);
+      }
+
       const joined = await res2.json();
-      router.push(`/waiting/${t.id}?client_id=${joined.client_id}`);
+      console.log('Joined table, navigating...'); // Debug log
+
+      // Use setTimeout to ensure state updates complete before navigation
+      setTimeout(() => {
+        router.push(`/waiting/${t.id}?client_id=${joined.client_id}`);
+      }, 100);
+
+    } catch (err) {
+      console.error('Create table error:', err); // Debug log
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create table. Please try again.';
+      setError(errorMessage);
     } finally {
       setCreating(false);
     }
   };
 
   const join = async (tableId: string) => {
-    const res = await fetch(`${API_BASE}/api/tables/${tableId}/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ display_name: displayName }),
-    });
-    const data = await res.json();
-    setJoinInfo(data);
-    router.push(`/waiting/${data.table.id}?client_id=${data.client_id}`);
+    setError(null);
+
+    try {
+      console.log('Joining table:', tableId); // Debug log
+
+      const res = await fetch(`${API_BASE}/api/tables/${tableId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: displayName }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to join table: ${res.status} ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      setJoinInfo(data);
+
+      console.log('Joined table, navigating...'); // Debug log
+
+      // Use setTimeout for consistent navigation behavior
+      setTimeout(() => {
+        router.push(`/waiting/${data.table.id}?client_id=${data.client_id}`);
+      }, 100);
+
+    } catch (err) {
+      console.error('Join table error:', err); // Debug log
+      const errorMessage = err instanceof Error ? err.message : 'Failed to join table. Please try again.';
+      setError(errorMessage);
+    }
   };
 
   return (
     <div className={styles.page}>
       <h1>Sheepshead AI</h1>
+      {error && (
+        <div style={{
+          background: 'rgba(255,50,50,0.1)',
+          border: '1px solid rgba(255,50,50,0.3)',
+          borderRadius: '8px',
+          padding: '12px',
+          marginBottom: '16px',
+          color: 'white',
+          fontSize: '14px'
+        }}>
+          {error}
+        </div>
+      )}
       <div className={styles.controls}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Table name" />
-        <button onClick={create} disabled={creating}>Create table</button>
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Table name"
+          disabled={creating}
+        />
+        <button
+          onClick={handleCreateClick}
+          disabled={creating || !name.trim() || !displayName.trim()}
+          style={{
+            opacity: creating ? 0.7 : 1,
+            cursor: creating ? 'not-allowed' : 'pointer',
+            WebkitTapHighlightColor: 'transparent',
+            touchAction: 'manipulation'
+          }}
+        >
+          {creating ? 'Creating...' : 'Create table'}
+        </button>
         <span className={styles.nameRight}>
-          Your name: <input value={displayName} onChange={e => setDisplayName(e.target.value)} />
+          Your name: <input
+            value={displayName}
+            onChange={e => setDisplayName(e.target.value)}
+            disabled={creating}
+          />
         </span>
       </div>
       <div className={styles.lobby}>
