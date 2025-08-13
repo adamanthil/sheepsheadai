@@ -159,13 +159,25 @@ logging.basicConfig(level=logging.INFO)
 # Optional global model path via env var SHEEPSHEAD_MODEL_PATH (set by run_server.sh)
 GLOBAL_MODEL_PATH: Optional[str] = os.environ.get("SHEEPSHEAD_MODEL_PATH")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS configuration
+if os.environ.get("ENV") == "production":
+    # Production: Only allow specific domain
+    cors_config = {
+        "allow_origins": ["https://yourdomain.com"],  # Replace with production domain
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+else:
+    # Development: Allow any host on port 3000 (localhost, .local domains, IPs, etc.)
+    cors_config = {
+        "allow_origin_regex": r"http://[^/]+:3000",
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+
+app.add_middleware(CORSMiddleware, **cors_config)
 
 
 # ------------------------------------------------------------
