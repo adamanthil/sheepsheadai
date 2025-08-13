@@ -123,7 +123,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         has_allowed_trump_bury = any(get_card_suit(c) == "T" for c in allowed_bury_cards)
 
         if card in TRUMP and has_allowed_fail_bury:
-            transition['intermediate_reward'] += -0.04
+            transition['intermediate_reward'] += -0.06
         elif card not in TRUMP and has_allowed_trump_bury:
             # Small preference when both options exist
             transition['intermediate_reward'] += 0.01

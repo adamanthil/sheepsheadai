@@ -346,7 +346,7 @@ class PPOAgent:
         self.value_loss_coeff = 0.5
         self.max_grad_norm = 0.3
         self.clip_epsilon_pick = 0.2
-        self.clip_epsilon_bury = 0.2
+        self.clip_epsilon_bury = 0.1
         self.clip_epsilon_play = 0.15
         self.value_clip_epsilon = 0.2
 
