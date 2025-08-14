@@ -188,7 +188,7 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         if is_leaster:
             # Downweight all leaster rewards.
             # Agent should dislike playing leasters most of the time (similar to human behavior).
-            leaster_reward = (final_score - 2) / 12
+            leaster_reward = (final_score - 2.5) / 12
             final_reward = leaster_reward if is_episode_done else 0.0
         else:
             final_reward = (final_score / 12) if is_episode_done else 0.0
