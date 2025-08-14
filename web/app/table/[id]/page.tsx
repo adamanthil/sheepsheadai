@@ -245,32 +245,12 @@ export default function TablePage() {
   const actionButtons = useMemo(() => {
     if (!lastState) return null;
     return (
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 6,
-        justifyContent: 'center',
-        width: '100%'
-      }}>
+      <div className={styles.actionButtons}>
         {lastState.valid_actions.map((aid: number) => (
           <button
             key={aid}
             onClick={() => takeAction(aid)}
-            style={{
-              minHeight: '40px',
-              padding: '8px 12px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.25)',
-              background: 'rgba(255,255,255,0.1)',
-              color: 'white',
-              fontSize: '14px',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              whiteSpace: 'nowrap',
-              flex: window.innerWidth < 480 ? '1 1 auto' : 'none',
-              maxWidth: '200px',
-              textAlign: 'center'
-            }}
+            className={styles.actionButton}
           >
             {actionLookup[String(aid)] || `Action ${aid}`}
           </button>
@@ -394,11 +374,11 @@ export default function TablePage() {
       <div className={styles.wrap}>
         <div className={styles.topRow}>
           <h2>Table {params?.id}</h2>
-          <div style={{ opacity: 0.8 }}>Connection: {connected ? 'connected' : 'disconnected'}</div>
+          <div className={styles.connectionStatus}>Connection: {connected ? 'connected' : 'disconnected'}</div>
         </div>
 
         {!lastState ? (
-          <div style={{ marginTop: 48, textAlign: 'center', opacity: 0.9 }}>Waiting for state…</div>
+          <div className={styles.waitingMessage}>Waiting for state…</div>
         ) : (
           <div className={styles.tableArea}>
               {/* Table area full width */}
@@ -422,7 +402,10 @@ export default function TablePage() {
                       const name = lastState.table?.seats?.[String(absSeat)] || `Seat ${absSeat}`;
                       const isAi = Boolean(lastState.table?.seatIsAI?.[String(absSeat)]);
                       return (
-                        <div key={idx} style={{ ...spotStyle(r), width: centerSize.w }}>
+                        <div
+                          key={idx}
+                          className={`${styles.trickSpot} ${styles[`spotR${r}` as 'spotR0']}`}
+                        >
                           <PlayingCard label={c || '__'} width={centerSize.w} height={centerSize.h} highlight={highlight} />
                           {r === 2 ? (
                             <div className={styles.nameLeftOfCard}><span className={ui.nameInline}><span>{name}</span>{isAi && <span className={ui.aiTag}>AI</span>}</span></div>
@@ -443,8 +426,8 @@ export default function TablePage() {
                               : '1px solid rgba(234,179,8,0.45)';
                             const text = status;
                             return (
-                              <div style={{ marginTop: 4, textAlign: 'center' }}>
-                                <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: 999, background: color, border, fontSize: 10, letterSpacing: 0.3 }}>{text}</span>
+                              <div className={styles.statusContainer}>
+                                <span className={`${styles.badge} ${status === 'PICK' ? styles.badgePick : status === 'PASS' ? styles.badgePass : styles.badgePending}`}>{text}</span>
                               </div>
                             );
                           })()}
@@ -466,9 +449,7 @@ export default function TablePage() {
                   )}
                   {callout && (
                     <div className={styles.callout}>
-                      <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.3 }}>
-                        {callout.message}
-                      </div>
+                      <div className={styles.calloutTitle}>{callout.message}</div>
                     </div>
                   )}
                 </div>
@@ -476,7 +457,7 @@ export default function TablePage() {
                 {/* Persistent previous strip removed in favor of toggle */}
 
                 {/* Your hand */}
-                <div style={{ marginTop: handTopMargin }}>
+                <div className={styles.handTopSpacer} style={{ ['--handTop' as any]: `${handTopMargin}px` }}>
                   <div className={styles.sectionTitle}>
                     Your hand
                     {(() => {
@@ -490,17 +471,7 @@ export default function TablePage() {
                         : userStatus === 'PASS' ? '1px solid rgba(239,68,68,0.45)'
                         : '1px solid rgba(234,179,8,0.45)';
                       return (
-                        <span style={{
-                          marginLeft: 8,
-                          display: 'inline-block',
-                          padding: '2px 6px',
-                          borderRadius: 999,
-                          background: color,
-                          border,
-                          fontSize: 10,
-                          letterSpacing: 0.3,
-                          verticalAlign: 'middle'
-                        }}>
+                        <span className={`${styles.badge} ${userStatus === 'PICK' ? styles.badgePick : userStatus === 'PASS' ? styles.badgePass : styles.badgePending} ${styles.ml8}`}>
                           {userStatus}
                         </span>
                       );
@@ -510,7 +481,7 @@ export default function TablePage() {
                     {lastState.view.hand.map((c: string, idx: number) => {
                       const clickable = isCardClickable(c);
                       return (
-                        <div key={idx} onClick={() => clickable && handleCardClick(c)} style={{ cursor: clickable ? 'pointer' : 'default' }}>
+                        <div key={idx} onClick={() => clickable && handleCardClick(c)} className={clickable ? styles.clickable : undefined}>
                           <PlayingCard label={c} highlight={clickable} width={handSize.w} height={handSize.h} bigMarks />
                         </div>
                       );
@@ -518,7 +489,7 @@ export default function TablePage() {
                   </div>
                 </div>
 
-                <div className={styles.muted} style={{ marginTop: 16, fontSize: 13 }}>
+                <div className={`${styles.muted} ${styles.metaRow}`}>
                   Picker: {nameForSeat(lastState.view.picker, lastState.table)} · Partner: {nameForSeat(lastState.view.partner, lastState.table)} · Alone: {String(lastState.view.alone)} · Called: {lastState.view.called_card}{lastState.view.called_under ? ' (under)' : ''}
                 </div>
 
@@ -527,50 +498,50 @@ export default function TablePage() {
                   <div className={styles.finalBanner}>
                     {lastState.view.final.mode === 'leaster' ? (
                       <div>
-                        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Game Over · Leaster</div>
-                        <div style={{ opacity: 0.95 }}>Winner: <strong>{nameForSeat(lastState.view.final.winner, lastState.table)}</strong></div>
-                        <div style={{ opacity: 0.95, marginTop: 8 }}>Scores by player</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 6 }}>
+                        <div className={styles.finalHeader}>Game Over · Leaster</div>
+                        <div className={styles.finalSubheading}>Winner: <strong>{nameForSeat(lastState.view.final.winner, lastState.table)}</strong></div>
+                        <div className={styles.finalSubheading}>Scores by player</div>
+                        <div className={styles.scoresGrid}>
                           {Array.from({ length: 5 }, (_, i) => i + 1).map((seat) => (
-                            <div key={seat} style={{ textAlign: 'center' }}>
-                              <div style={{ fontSize: 12, opacity: 0.85 }}>{nameForSeat(seat, lastState.table)}</div>
-                              <div style={{ fontWeight: 700 }}>{(lastState.view.final?.scores && lastState.view.final.scores[seat - 1]) || 0}</div>
+                            <div key={seat} className={styles.scoreCell}>
+                              <div className={styles.scoreName}>{nameForSeat(seat, lastState.table)}</div>
+                              <div className={styles.scoreValue}>{(lastState.view.final?.scores && lastState.view.final.scores[seat - 1]) || 0}</div>
                             </div>
                           ))}
                         </div>
-                        <div className={styles.muted} style={{ marginTop: 8 }}>Points taken by player</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 6 }}>
+                        <div className={`${styles.muted} ${styles.mt8}`}>Points taken by player</div>
+                        <div className={styles.scoresGrid}>
                           {Array.from({ length: 5 }, (_, i) => i + 1).map((seat) => (
-                            <div key={seat} style={{ textAlign: 'center' }}>
-                              <div style={{ fontSize: 12, opacity: 0.85 }}>{nameForSeat(seat, lastState.table)}</div>
-                              <div style={{ fontWeight: 700 }}>{(lastState.view.final?.points_taken && lastState.view.final.points_taken[seat - 1]) || 0}</div>
+                            <div key={seat} className={styles.scoreCell}>
+                              <div className={styles.scoreName}>{nameForSeat(seat, lastState.table)}</div>
+                              <div className={styles.scoreValue}>{(lastState.view.final?.points_taken && lastState.view.final.points_taken[seat - 1]) || 0}</div>
                             </div>
                           ))}
                         </div>
                       </div>
                     ) : (
                       <div>
-                        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Game Over</div>
+                        <div className={styles.finalHeader}>Game Over</div>
                         <div className={styles.muted}>
                           Picker: <strong>{nameForSeat(lastState.view.final.picker, lastState.table)}</strong>
                           {" · "}
                           Partner: <strong>{nameForSeat(lastState.view.final.partner, lastState.table)}</strong>
                         </div>
-                        <div className={styles.muted} style={{ marginTop: 4 }}>
+                        <div className={`${styles.muted} ${styles.mt4}`}>
                           Picker score: <strong>{lastState.view.final.picker_score}</strong> · Defenders score: <strong>{lastState.view.final.defender_score}</strong>
                         </div>
-                        <div className={styles.muted} style={{ marginTop: 8 }}>Scores by player</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 6 }}>
+                        <div className={`${styles.muted} ${styles.mt8}`}>Scores by player</div>
+                        <div className={styles.scoresGrid}>
                           {Array.from({ length: 5 }, (_, i) => i + 1).map((seat) => (
-                            <div key={seat} style={{ textAlign: 'center' }}>
-                              <div style={{ fontSize: 12, opacity: 0.85 }}>{nameForSeat(seat, lastState.table)}</div>
-                              <div style={{ fontWeight: 700 }}>{(lastState.view.final?.scores && lastState.view.final.scores[seat - 1]) || 0}</div>
+                            <div key={seat} className={styles.scoreCell}>
+                              <div className={styles.scoreName}>{nameForSeat(seat, lastState.table)}</div>
+                              <div className={styles.scoreValue}>{(lastState.view.final?.scores && lastState.view.final.scores[seat - 1]) || 0}</div>
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
-                    <div style={{ marginTop: 8 }}>
+                    <div className={styles.finalButtons}>
                       <button onClick={() => redeal()}>Redeal</button>
                       <button onClick={() => setShowScores(true)}>Show scores</button>
                     </div>
@@ -585,7 +556,7 @@ export default function TablePage() {
       {lastState && (
         <div className={styles.bottomBar}>
           <div className={styles.bottomBarInner}>
-            <div className={styles.muted} style={{ fontSize: 13 }}>{nameForSeat(lastState.yourSeat, lastState.table)} {lastState.actorSeat === lastState.yourSeat ? '· Your turn' : ''}</div>
+            <div className={`${styles.muted} ${styles.smallText}`}>{nameForSeat(lastState.yourSeat, lastState.table)} {lastState.actorSeat === lastState.yourSeat ? '· Your turn' : ''}</div>
             {(lastState.view.last_trick && lastState.view.last_trick.length === 5) ? (
               <button onClick={() => setShowPrev(p => !p)}>{showPrev ? 'Hide previous trick' : 'Show previous trick'}</button>
             ) : null}
@@ -594,7 +565,7 @@ export default function TablePage() {
                 Waiting for {nameForSeat(lastState.actorSeat, lastState.table) || `Seat ${lastState.actorSeat || ''}`}…
               </div>
             )}
-            <div className={`${styles.pushRight} ${styles.dimmed}`} style={{ fontSize: 12 }}>
+            <div className={`${styles.pushRight} ${styles.dimmed}`}>
               Tricks: {lastState.view.trick_winners.filter((x: number) => x > 0).length}/6 · Points played so far: {lastState.view.trick_points.reduce((a: number, b: number) => a + (b || 0), 0)}
             </div>
             <button onClick={() => setShowScores(true)}>Scores</button>
@@ -657,42 +628,42 @@ function ScoresOverlay({ onClose, table }: { onClose: () => void; table: any }) 
   const overallSum = Object.values(totalById).reduce((a, b) => a + (b || 0), 0);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 'min(1000px, 94vw)', maxHeight: '80vh', overflow: 'auto', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 12, color: 'white' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
-          <div style={{ fontWeight: 700 }}>Running totals</div>
-          <div style={{ marginLeft: 'auto' }}>
-            <button onClick={onClose} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'white' }}>Close</button>
+    <div className={styles.scoresOverlay}>
+      <div className={styles.scoresBox}>
+        <div className={styles.scoresHeader}>
+          <div><strong>Running totals</strong></div>
+          <div className={styles.mlAuto}>
+            <button onClick={onClose}>Close</button>
           </div>
         </div>
-        <div style={{ padding: 16 }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className={styles.scoresBody}>
+          <div>
+            <table className={styles.scoresTable}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>Hand</th>
+                  <th className={styles.thLeft}>Hand</th>
                   {columns.map((c, idx) => (
-                    <th key={idx} style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>{c.label}</th>
+                    <th key={idx} className={styles.thRight}>{c.label}</th>
                   ))}
-                  <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>Sum</th>
+                  <th className={styles.thRight}>Sum</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r, idx) => (
                   <tr key={idx}>
-                    <td style={{ padding: '6px 8px', opacity: 0.95 }}>{r.hand}</td>
+                    <td className={styles.tdHand}>{r.hand}</td>
                     {columns.map((c, i) => (
-                      <td key={i} style={{ textAlign: 'right', padding: '6px 8px' }}>{scoreFor(r, c.id)}</td>
+                      <td key={i} className={styles.tdRight}>{scoreFor(r, c.id)}</td>
                     ))}
-                    <td style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>{r.sum}</td>
+                    <td className={styles.tdRightBold}>{r.sum}</td>
                   </tr>
                 ))}
                 <tr>
-                  <td style={{ padding: '8px 8px', borderTop: '1px solid rgba(255,255,255,0.2)', fontWeight: 700 }}>Total</td>
+                  <td className={styles.tdTotalLabel}>Total</td>
                   {columns.map((c, i) => (
-                    <td key={i} style={{ textAlign: 'right', padding: '8px 8px', borderTop: '1px solid rgba(255,255,255,0.2)', fontWeight: 700 }}>{totalById[c.id]}</td>
+                    <td key={i} className={styles.tdRightTotal}>{totalById[c.id]}</td>
                   ))}
-                  <td style={{ textAlign: 'right', padding: '8px 8px', borderTop: '1px solid rgba(255,255,255,0.2)', fontWeight: 800 }}>{overallSum}</td>
+                  <td className={styles.tdRightTotal}>{overallSum}</td>
                 </tr>
               </tbody>
             </table>
@@ -779,12 +750,12 @@ function CollectOverlay({ containerRef, yourSeat, winner, cards, centerSize }: {
   }, [cards, yourSeat, winner, cw, ch]);
 
   return (
-    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 10 }}>
+    <div className={styles.collectOverlay}>
       {cards.map((c, idx) => (
         <div
           key={idx}
           ref={(el) => { refs.current[idx] = el; }}
-          style={{ position: 'absolute', left: 0, top: 0, transform: 'translate(-50%, -50%)', opacity: 1 }}
+          className={styles.collectCard}
         >
           <PlayingCard label={c || '__'} width={centerSize.w} height={centerSize.h} />
         </div>

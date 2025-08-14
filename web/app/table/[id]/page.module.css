@@ -600,3 +600,178 @@
   }
 }
 
+/* --- New classes migrated from inline styles in page.tsx --- */
+.connectionStatus {
+  opacity: 0.8;
+}
+
+.waitingMessage {
+  margin-top: 48px;
+  text-align: center;
+  opacity: 0.9;
+}
+
+.trickSpot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: var(--cardW);
+}
+
+/* Fixed spots for relative seats */
+.spotR0 { left: 50%; top: 84%; }
+.spotR1 { left: 17%; top: 66%; }
+.spotR2 { left: 27%; top: 20%; }
+.spotR3 { left: 73%; top: 20%; }
+.spotR4 { left: 83%; top: 66%; }
+
+.statusContainer {
+  margin-top: 4px;
+  text-align: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+
+.badgePick {
+  background: rgba(34,197,94,0.25);
+  border: 1px solid rgba(34,197,94,0.5);
+}
+
+.badgePass {
+  background: rgba(239,68,68,0.22);
+  border: 1px solid rgba(239,68,68,0.45);
+}
+
+.badgePending {
+  background: rgba(234,179,8,0.22);
+  border: 1px solid rgba(234,179,8,0.45);
+}
+
+.calloutTitle {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.handTopSpacer {
+  margin-top: var(--handTop);
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.metaRow {
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.finalHeader {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.finalSubheading {
+  opacity: 0.95;
+  margin-top: 8px;
+}
+
+.scoresGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.scoreCell {
+  text-align: center;
+}
+
+.scoreName {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.scoreValue {
+  font-weight: 700;
+}
+
+.finalButtons {
+  margin-top: 8px;
+}
+
+.smallText {
+  font-size: 12px;
+}
+
+.mlAuto {
+  margin-left: auto;
+}
+
+.ml8 { margin-left: 8px; }
+
+.collectCard {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  opacity: 1;
+}
+
+.tdHand {
+  padding: 6px 8px;
+  opacity: 0.95;
+}
+
+.tdRightBold {
+  text-align: right;
+  padding: 6px 8px;
+  font-weight: 600;
+}
+
+.tdRightTotal {
+  text-align: right;
+  padding: 8px 8px;
+  border-top: 1px solid rgba(255,255,255,0.2);
+  font-weight: 700;
+}
+
+.mt4 { margin-top: 4px; }
+.mt8 { margin-top: 8px; }
+
+/* Action buttons (mid-page) */
+.actionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  width: 100%;
+}
+
+.actionButton {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.1);
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  max-width: 200px;
+  text-align: center;
+}
+
+@media (max-width: 479px) {
+  .actionButton {
+    flex: 1 1 auto;
+  }
+}
+
