@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import type { TableSummary } from '../../../lib/types';
+import type { TableSummary, TableClosedMsg } from '../../../lib/types';
 import styles from './page.module.css';
 import ui from '../../styles/ui.module.css';
 
@@ -31,6 +31,7 @@ export default function WaitingRoom() {
   const [partnerMode, setPartnerMode] = useState<number>(1); // 1 = Called Ace (default), 0 = Jack of Diamonds
   const wsRef = useRef<WebSocket | null>(null);
   const [callout, setCallout] = useState<string | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -77,6 +78,12 @@ export default function WaitingRoom() {
         } else if (data?.type === 'lobby_event') {
           setCallout(String(data.message || ''));
           setTimeout(() => setCallout(null), 1800);
+        } else if (data?.type === 'table_closed') {
+          const m = data as TableClosedMsg;
+          setCallout('Table closed');
+          setTimeout(() => setCallout(null), 1200);
+          // Navigate home
+          router.push(`/`);
         } else if (data?.type === 'state') {
           const t = data.table as TableInfo;
           // If we receive state while in waiting room, the game has started
@@ -154,6 +161,13 @@ export default function WaitingRoom() {
     router.push(`/table/${params?.id}?client_id=${clientId}`);
   }
 
+  async function closeTable() {
+    if (!params?.id || !clientId) return;
+    await fetch(`${API_BASE}/api/tables/${params?.id}/close`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId })
+    });
+  }
+
   const isHost = useMemo(() => {
     if (!table || !clientId) return false;
     return (table as any).hostId === clientId;
@@ -225,6 +239,16 @@ export default function WaitingRoom() {
             <button className={styles.btn} onClick={fillAI}>Fill empty seats with AI</button>
           )}
           {isHost && (<button className={`${styles.btn} ${styles.btnPrimary}`} onClick={startGame}>Start</button>)}
+          {isHost && (
+            confirmClose ? (
+              <div className={styles.confirmRow}>
+                <button className={`${styles.btn} ${styles.btnDanger}`} onClick={closeTable}>Confirm close</button>
+                <button className={`${styles.btn}`} onClick={() => setConfirmClose(false)}>Cancel</button>
+              </div>
+            ) : (
+              <button className={`${styles.btn}`} onClick={() => setConfirmClose(true)}>Close table</button>
+            )
+          )}
           <div className={styles.muted} style={{ marginLeft: 'auto' }}>Players: {seatItems.filter(s => !!s.name).length}/5</div>
         </div>
       </div>

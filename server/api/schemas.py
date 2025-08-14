@@ -41,6 +41,10 @@ class RedealRequest(BaseModel):
     client_id: Optional[str] = None
 
 
+class CloseTableRequest(BaseModel):
+    client_id: str
+
+
 class TablePublic(BaseModel):
     id: str
     name: str

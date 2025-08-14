@@ -23,4 +23,4 @@ export type TableStateMsg = {
 
 export type GameOverMsg = { type: 'game_over'; table: any };
 
-
+export type TableClosedMsg = { type: 'table_closed'; reason?: string; tableId?: string };

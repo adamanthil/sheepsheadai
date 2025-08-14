@@ -215,6 +215,24 @@
   border-radius: 12px;
 }
 
+/* Danger variant for destructive actions */
+.btnDanger {
+  border: 1px solid rgba(239,68,68,0.45);
+  background: rgba(239,68,68,0.08);
+  color: rgba(255,220,220,0.95);
+}
+
+.btnDanger:hover {
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.6);
+}
+
+.confirmRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 @media (min-width: 768px) {
   .partnerModeSection {
     margin: 24px 0;

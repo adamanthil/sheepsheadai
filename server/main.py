@@ -29,6 +29,7 @@ from server.api.schemas import (
     ActionRequest,
     SeatRequest,
     RedealRequest,
+    CloseTableRequest,
 )
 
 
@@ -90,6 +91,8 @@ class Table:
     game_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     ai_agent: Optional[PPOAgent] = None
     ai_task: Optional[asyncio.Task] = None
+    # background task to auto-close the table when humans disconnect
+    autoclose_task: Optional[asyncio.Task] = None
     running_scores: Dict[str, int] = field(default_factory=dict)  # occupant_id -> cumulative score
     results_counted: bool = False
     # History of completed hands at this table (in chronological order)
@@ -164,6 +167,10 @@ class TableManager:
 
     def list_tables(self) -> List[Dict[str, Any]]:
         return [t.to_public_dict() for t in self.tables.values()]
+
+    def delete_table(self, table_id: str) -> None:
+        if table_id in self.tables:
+            del self.tables[table_id]
 
 
 tables = TableManager()
@@ -588,6 +595,70 @@ async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:
         except Exception:
             logging.exception("broadcast_table_event send failed for table %s client %s", table.id, cid)
 
+
+async def close_table(table: Table, reason: str = "closed") -> None:
+    """Gracefully close a table: cancel AI, notify clients, close websockets, and remove from manager."""
+    # Cancel AI/background tasks
+    if table.ai_task and not table.ai_task.done():
+        table.ai_task.cancel()
+    if table.autoclose_task and not table.autoclose_task.done():
+        table.autoclose_task.cancel()
+    # Mark finished/closed for broadcast
+    table.status = "finished"
+    try:
+        await broadcast_table_event(table, {"type": "table_closed", "reason": reason, "tableId": table.id})
+    except Exception:
+        pass
+    # Close sockets politely
+    for cid, conn in list(table.clients.items()):
+        ws = conn.websocket
+        if not ws:
+            continue
+        try:
+            await ws.send_text(json.dumps({"type": "table_closed", "reason": reason, "tableId": table.id}))
+            await ws.close()
+        except Exception:
+            conn.websocket = None
+    # Finally remove from registry
+    try:
+        tables.delete_table(table.id)
+    except Exception:
+        logging.exception("failed deleting table %s", table.id)
+
+
+def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 5.0) -> None:
+    """If there are no human players connected, schedule an auto-close after delay."""
+    # Determine if any connected human client has a websocket
+    def any_human_connected() -> bool:
+        for cid, conn in table.clients.items():
+            if conn.websocket is not None:
+                return True
+        return False
+
+    # If any human connected, cancel pending autoclose
+    if any_human_connected():
+        if table.autoclose_task and not table.autoclose_task.done():
+            table.autoclose_task.cancel()
+        return
+
+    async def _auto():
+        try:
+            await asyncio.sleep(delay_seconds)
+            # Re-check before closing
+            for _cid, _conn in table.clients.items():
+                if _conn.websocket is not None:
+                    return
+            await close_table(table, reason="idle_all_disconnected")
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logging.exception("autoclose task failed for table %s", table.id)
+
+    # Replace any existing task
+    if table.autoclose_task and not table.autoclose_task.done():
+        table.autoclose_task.cancel()
+    table.autoclose_task = asyncio.create_task(_auto())
+
 @app.patch("/api/tables/{table_id}/rules")
 async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
     try:
@@ -609,6 +680,21 @@ async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
     await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
 
     return {"status": "success", "rules": table.rules}
+
+
+@app.post("/api/tables/{table_id}/close")
+async def api_close_table(table_id: str, req: CloseTableRequest):
+    try:
+        table = tables.get_table(table_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table_not_found")
+
+    # Only host can close the table
+    if not req.client_id or not table.host_client_id or req.client_id != table.host_client_id:
+        raise HTTPException(status_code=403, detail="only_host_can_close")
+
+    await close_table(table, reason="host_closed")
+    return {"ok": True}
 
 
 @app.post("/api/tables/{table_id}/start")
@@ -811,6 +897,11 @@ async def table_ws(websocket: WebSocket, table_id: str):
 
     conn = table.clients[client_id]
     conn.websocket = websocket
+    # On connect, cancel any pending autoclose
+    try:
+        schedule_autoclose_if_no_humans(table)
+    except Exception:
+        logging.exception("failed to manage autoclose on connect for table %s", table.id)
 
     # No auto-start here; waiting room/host will start explicitly
     await broadcast_table_state(table)
@@ -890,6 +981,11 @@ async def table_ws(websocket: WebSocket, table_id: str):
         c = table.clients.get(client_id)
         if c:
             c.websocket = None
+        # If no humans are connected anymore, start autoclose timer
+        try:
+            schedule_autoclose_if_no_humans(table)
+        except Exception:
+            logging.exception("failed to schedule autoclose for table %s", table.id)
 
 
 # ------------------------------------------------------------

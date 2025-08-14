@@ -83,6 +83,7 @@ export default function TablePage() {
   }, [centerSize.h]);
   const [showScores, setShowScores] = useState(false);
   const [callout, setCallout] = useState<{ kind: 'PICK' | 'CALL' | 'LEASTER' | 'ALONE'; message: string } | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -101,8 +102,9 @@ export default function TablePage() {
     socket.onopen = () => setConnected(true);
     socket.onclose = () => setConnected(false);
     socket.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data) as TableStateMsg | GameOverMsg;
-      if (msg.type === 'state') {
+      const data: any = JSON.parse(ev.data);
+      if (data.type === 'state') {
+        const msg = data as TableStateMsg;
         setLastState((prev: TableStateMsg | null) => {
           const prevWas = prev?.view?.was_trick_just_completed;
           const curWas = (msg as any).view?.was_trick_just_completed;
@@ -155,6 +157,12 @@ export default function TablePage() {
           }
           return msg;
         });
+      } else if (data?.type === 'table_closed') {
+        setCallout({ kind: 'PICK', message: 'Table closed' });
+        setTimeout(() => setCallout(null), 1200);
+        try { socket.close(); } catch {}
+        // Redirect to home
+        window.location.href = '/';
       }
       // game_over message is informational; state messages keep coming
     };
@@ -258,6 +266,19 @@ export default function TablePage() {
       </div>
     );
   }, [lastState, actionLookup]);
+
+  const isHost = useMemo(() => {
+    if (!lastState || !clientId) return false;
+    const hostId = (lastState.table && (lastState.table.hostId || (lastState.table as any).host_id)) || null;
+    return !!hostId && String(hostId) === String(clientId);
+  }, [lastState, clientId]);
+
+  async function closeTable() {
+    if (!params?.id || !clientId) return;
+    await fetch(`${API_BASE}/api/tables/${params.id}/close`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId })
+    }).catch(() => {});
+  }
 
   async function redeal() {
     // Host-only: require client_id; backend will enforce
@@ -568,6 +589,16 @@ export default function TablePage() {
               Tricks: {lastState.view.trick_winners.filter((x: number) => x > 0).length}/6 · Points played so far: {lastState.view.trick_points.reduce((a: number, b: number) => a + (b || 0), 0)}
             </div>
             <button onClick={() => setShowScores(true)}>Scores</button>
+            {isHost && (
+              confirmClose ? (
+                <span className={styles.confirmCloseRow}>
+                  <button className={styles.dangerButton} onClick={closeTable}>Confirm close</button>
+                  <button onClick={() => setConfirmClose(false)}>Cancel</button>
+                </span>
+              ) : (
+                <button onClick={() => setConfirmClose(true)}>Close table</button>
+              )
+            )}
           </div>
         </div>
       )}

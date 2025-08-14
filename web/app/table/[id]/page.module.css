@@ -775,3 +775,33 @@
   }
 }
 
+/* Close table (danger) */
+.dangerButton {
+  border: 1px solid rgba(239,68,68,0.45);
+  color: rgba(255,200,200,0.95);
+  background: rgba(239,68,68,0.08);
+}
+
+.dangerButton:hover {
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.6);
+}
+
+/* Increase specificity inside bottom action bar so danger styles win */
+.bottomBarInner .dangerButton {
+  border: 1px solid rgba(239,68,68,0.45);
+  color: rgba(255,200,200,0.95);
+  background: rgba(239,68,68,0.08);
+}
+
+.bottomBarInner .dangerButton:hover {
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.6);
+}
+
+.confirmCloseRow {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
