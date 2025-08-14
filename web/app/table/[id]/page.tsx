@@ -373,7 +373,6 @@ export default function TablePage() {
     <div className={styles.root}>
       <div className={styles.wrap}>
         <div className={styles.topRow}>
-          <h2>Table {params?.id}</h2>
           <div className={styles.connectionStatus}>Connection: {connected ? 'connected' : 'disconnected'}</div>
         </div>
 

@@ -602,7 +602,7 @@
 
 /* --- New classes migrated from inline styles in page.tsx --- */
 .connectionStatus {
-  opacity: 0.8;
+  opacity: 0.6;
 }
 
 .waitingMessage {
@@ -620,8 +620,8 @@
 /* Fixed spots for relative seats */
 .spotR0 { left: 50%; top: 84%; }
 .spotR1 { left: 17%; top: 66%; }
-.spotR2 { left: 27%; top: 20%; }
-.spotR3 { left: 73%; top: 20%; }
+.spotR2 { left: 27%; top: 21%; }
+.spotR3 { left: 73%; top: 21%; }
 .spotR4 { left: 83%; top: 66%; }
 
 .statusContainer {
