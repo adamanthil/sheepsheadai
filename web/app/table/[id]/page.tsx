@@ -1,5 +1,6 @@
 "use client";
 import styles from './page.module.css';
+import ui from '../../styles/ui.module.css';
 import cardStyles from './PlayingCard.module.css';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -424,11 +425,11 @@ export default function TablePage() {
                         <div key={idx} style={{ ...spotStyle(r), width: centerSize.w }}>
                           <PlayingCard label={c || '__'} width={centerSize.w} height={centerSize.h} highlight={highlight} />
                           {r === 2 ? (
-                            <div className={styles.nameLeftOfCard}><span className={styles.nameInline}><span>{name}</span>{isAi && <span className={styles.aiTag}>AI</span>}</span></div>
+                            <div className={styles.nameLeftOfCard}><span className={ui.nameInline}><span>{name}</span>{isAi && <span className={ui.aiTag}>AI</span>}</span></div>
                           ) : r === 3 ? (
-                            <div className={styles.nameRightOfCard}><span className={styles.nameInline}><span>{name}</span>{isAi && <span className={styles.aiTag}>AI</span>}</span></div>
+                            <div className={styles.nameRightOfCard}><span className={ui.nameInline}><span>{name}</span>{isAi && <span className={ui.aiTag}>AI</span>}</span></div>
                           ) : (
-                            <div className={styles.nameBelow}><span className={styles.nameInline}><span>{name}</span>{isAi && <span className={styles.aiTag}>AI</span>}</span></div>
+                            <div className={styles.nameBelow}><span className={ui.nameInline}><span>{name}</span>{isAi && <span className={ui.aiTag}>AI</span>}</span></div>
                           )}
                           {(() => {
                             const status = pickStatusForSeat(absSeat);

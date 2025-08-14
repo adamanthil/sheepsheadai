@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { TableSummary } from '../../../lib/types';
 import styles from './page.module.css';
+import ui from '../../styles/ui.module.css';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
   if (typeof window === 'undefined') return 'http://localhost:9000';
@@ -169,7 +170,7 @@ export default function WaitingRoom() {
     <div className={styles.root}>
       <div className={styles.container}>
         {callout && (
-          <div className={styles.callout}>{callout}</div>
+          <div className={ui.callout}>{callout}</div>
         )}
         <h2>Waiting Room · {table?.name || params?.id}</h2>
         {error && <div className={styles.error}>{error}</div>}
@@ -180,10 +181,10 @@ export default function WaitingRoom() {
               <div style={{ opacity: 0.9, marginBottom: 6 }}>Seat {seat}</div>
               <div style={{ minHeight: 24, fontWeight: 600, fontSize: 16 }}>
                 {name ? (
-                  <span className={styles.nameWithTag}>
+                  <span className={ui.nameWithTag}>
                     <span>{name}</span>
                     {isAI && (
-                      <span className={styles.aiTag}>AI</span>
+                      <span className={ui.aiTag}>AI</span>
                     )}
                   </span>
                 ) : '—'}

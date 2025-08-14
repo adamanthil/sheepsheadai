@@ -210,23 +210,6 @@
   text-overflow: ellipsis;
 }
 
-.nameInline {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.aiTag {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 1;
-  color: rgba(255,255,255,0.9);
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.18);
-  opacity: 0.95;
-}
 
 @media (min-width: 480px) {
   .nameRightOfCard {
