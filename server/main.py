@@ -626,7 +626,7 @@ async def close_table(table: Table, reason: str = "closed") -> None:
         logging.exception("failed deleting table %s", table.id)
 
 
-def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 5.0) -> None:
+def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -> None:
     """If there are no human players connected, schedule an auto-close after delay."""
     # Determine if any connected human client has a websocket
     def any_human_connected() -> bool:
