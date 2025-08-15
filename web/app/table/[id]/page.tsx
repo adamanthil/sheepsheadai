@@ -366,12 +366,6 @@ export default function TablePage() {
 
       const h = Math.floor(w * 1.45);
       setHandSize({ w, h });
-
-      // Center cards scaling - less dramatic on mobile
-      const centerScale = isMobile ? 1.3 : 1.5;
-      const cw = Math.floor(w * centerScale);
-      const ch = Math.floor(cw * 1.45);
-      setCenterSize({ w: cw, h: ch });
     }
     recalc();
     window.addEventListener('resize', recalc);
@@ -389,6 +383,26 @@ export default function TablePage() {
     window.addEventListener('resize', recalcTrick);
     return () => window.removeEventListener('resize', recalcTrick);
   }, []);
+
+  // Compute center/table card size independently of hand size
+  useEffect(() => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
+    const isMobile = vw < 480;
+    const isTablet = vw >= 480 && vw < 768;
+    const containerW = trickSize.w || vw;
+
+    let cw: number;
+    if (isMobile) {
+      // Stable size on mobile; unaffected by hand count
+      cw = Math.floor(Math.min(120, Math.max(84, containerW * 0.22)));
+    } else if (isTablet) {
+      cw = Math.floor(Math.min(140, Math.max(96, containerW * 0.18)));
+    } else {
+      cw = Math.floor(Math.min(172, Math.max(112, containerW * 0.12)));
+    }
+    const ch = Math.floor(cw * 1.45);
+    setCenterSize({ w: cw, h: ch });
+  }, [trickSize]);
 
   return (
     <div className={styles.root}>
