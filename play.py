@@ -4,7 +4,7 @@ import torch
 from argparse import ArgumentParser
 
 from ppo import PPOAgent
-from sheepshead import Game, Player, ACTIONS, STATE_SIZE, ACTION_IDS, PLAY_ACTIONS, colorize_card
+from sheepshead import Game, Player, ACTIONS, STATE_SIZE, ACTION_IDS, PLAY_ACTIONS, colorize_card, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
 
 
 parser = ArgumentParser(
@@ -17,12 +17,23 @@ parser.add_argument(
     default="final_swish_ppo.pth",
     help="PyTorch model file. Default: final_swish_ppo.pth"
 )
+parser.add_argument(
+    "--partner-mode",
+    choices=["called-ace", "jd"],
+    default="called-ace",
+    help="Partner selection mode: 'called-ace' (default) or 'jd' (jack of diamonds)"
+)
 
 args = parser.parse_args()
 
+# Convert partner mode string to constant
+partner_mode = PARTNER_BY_CALLED_ACE if args.partner_mode == "called-ace" else PARTNER_BY_JD
+
+mode_name = "Called Ace" if partner_mode == PARTNER_BY_CALLED_ACE else "Jack of Diamonds"
 instructions = f"""
 {'-'*40}
 Welcome to the interactive Sheepshead AI player and evaluator.
+Partner Mode: {mode_name}
 
 Commands:
   play - Play a sample game
@@ -34,7 +45,7 @@ Commands:
 """
 
 def play(agent):
-    game = Game()
+    game = Game(partner_selection_mode=partner_mode)
 
     players = ['Dan', 'Kyle', 'Trevor', 'John', 'Andrew']
     game.print_player_hands(players)
@@ -82,7 +93,7 @@ def pick_evaluator(agent):
         hand = input("Enter hand (e.g. 'QC QS JD 10H 8C 7S'): ")
         hand = hand.split(" ")
 
-        game = Game()
+        game = Game(partner_selection_mode=partner_mode)
         player = Player(game, position, hand)
         game.last_passed = position - 1
 
