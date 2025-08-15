@@ -965,6 +965,16 @@ class PFSPPopulation:
                     player.act(action)
                     valid_actions = player.get_valid_action_ids()
 
+                    # Propagate observations to all agents at the end of the trick
+                    if game.was_trick_just_completed:
+                        for seat in game.players:
+                            seat_agent = pos_to_agent[seat.position]
+                            # Completed trick observation
+                            seat_agent.agent.observe(
+                                seat.get_last_trick_state_vector(),
+                                player_id=seat.position,
+                            )
+
                     # Profile strategic events
                     action_name = ACTION_LOOKUP[action]
                     role = 'picker' if (player.is_picker or player.is_partner) else 'defender'

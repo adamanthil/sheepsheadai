@@ -572,7 +572,7 @@ class Player:
         # Called-Ace variant
         return self.game.called_card in self.hand if self.game.called_card else False
 
-    def get_state_vector(self):
+    def get_state_vector(self, trick_index=None):
         """Return the integer observation vector for the *acting* player.
 
         Layout (indices in ascending order):
@@ -655,8 +655,9 @@ class Player:
         # play_started flag
         state.append(1 if self.game.play_started else 0)
 
-        # current trick index
-        state.append(self.game.current_trick)
+        # current trick index (allow override for last-trick observations)
+        cur_trick_idx = self.game.current_trick if trick_index is None else trick_index
+        state.append(cur_trick_idx)
 
         # One-hot vectors for hand / blind / bury
         state.extend(get_deck_vector(self.hand))
@@ -672,7 +673,7 @@ class Player:
             return vec
 
         # Build for self (rel_seat = 0) then clockwise order
-        trick = self.game.history[self.current_trick] if self.current_trick < len(self.game.history) else ["" for _ in range(5)]
+        trick = self.game.history[cur_trick_idx] if cur_trick_idx < len(self.game.history) else ["" for _ in range(5)]
 
         for rel_seat in range(5):
             abs_seat = ((self.position + rel_seat - 1) % 5) + 1  # 1-5
@@ -694,6 +695,15 @@ class Player:
 
 
         return np.array(state, dtype=np.uint8)
+
+    def get_last_trick_state_vector(self):
+        """Return the observation vector for the just-completed trick.
+
+        Uses the same logic as `get_state_vector`, but forces the trick index to
+        the last completed trick. If no trick has completed yet, falls back to 0.
+        """
+        last_idx = max(0, self.game.current_trick - 1)
+        return self.get_state_vector(trick_index=last_idx)
 
     def get_valid_actions(self):
         """Get set of valid actions."""

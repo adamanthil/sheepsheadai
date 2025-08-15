@@ -134,13 +134,13 @@ def play_population_game(training_agent: PPOAgent,
                     game, current_trick_transitions
                 )
                 if trick_completed:
-                    # Propagate observations to agents; store observation for training agent only
+                    # Emit observations for the completed trick using dedicated accessor
                     for seat in game.players:
                         seat_agent = agents[seat.position - 1]
                         if seat_agent == training_agent:
-                            training_agent.store_observation(seat.get_state_vector(), player_id=seat.position)
+                            training_agent.store_observation(seat.get_last_trick_state_vector(), player_id=seat.position)
                         else:
-                            seat_agent.observe(seat.get_state_vector(), seat.position)
+                            seat_agent.observe(seat.get_last_trick_state_vector(), seat.position)
 
                 valid_actions = player.get_valid_action_ids()
 
