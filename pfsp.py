@@ -871,12 +871,7 @@ class PFSPPopulation:
         except Exception as e:
             print(f"Warning: Failed to update ratings: {e}")
 
-    def run_cross_evaluation(
-        self,
-        partner_mode: int,
-        num_games: int = 1000,
-        max_agents: int = 25,
-    ) -> Dict:
+    def run_cross_evaluation(self, partner_mode: int, num_games: int, max_agents: int) -> Dict:
         """Run cross-evaluation tournament to update ratings."""
         population = self._get_population(partner_mode)
 
@@ -894,7 +889,7 @@ class PFSPPopulation:
             )[:max_agents]
 
         print(f"🏆 Running cross-evaluation for {self._get_partner_mode_name(partner_mode)} population")
-        print(f"   Evaluating {len(population)} agents with {num_games} games per pairing")
+        print(f"   Evaluating {len(population)} agents with {num_games} games")
 
         total_games = 0
         game_results = []

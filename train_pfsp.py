@@ -588,7 +588,7 @@ def train_pfsp(num_episodes: int = 500000,
         if episode % cross_eval_interval == 0:
             print(f"🏆 Running cross-evaluation tournaments... (Episode {episode:,})")
             for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
-                eval_stats = population.run_cross_evaluation(mode, num_games=1000, max_agents=25)
+                eval_stats = population.run_cross_evaluation(mode, num_games=500, max_agents=25)
                 if eval_stats:
                     print(f"   {population._get_partner_mode_name(mode)}: {eval_stats['games_played']} games, "
                           f"avg skill: {eval_stats['avg_skill_after']:.1f}")
