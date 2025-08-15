@@ -106,11 +106,11 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 4:
-            pick_bonus, pass_bonus = -0.06, +0.06
+            pick_bonus, pass_bonus = -0.05, +0.05
         elif score <= 7:
-            pick_bonus, pass_bonus = +0.02, -0.02
+            pick_bonus, pass_bonus = +0.01, -0.01
         else:
-            pick_bonus, pass_bonus = +0.08, -0.08
+            pick_bonus, pass_bonus = +0.06, -0.06
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
 
     # Bury penalty: discourage burying trump if not required
@@ -151,6 +151,13 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
             ):
                 # Encourage defenders to lead called suit
                 transition['intermediate_reward'] += 0.05
+            elif (
+                not game.is_leaster
+                and (player.is_partner or player.is_secret_partner)
+                and card in TRUMP
+            ):
+                # Gentle nudge toward partners leading trump
+                transition['intermediate_reward'] += 0.01
 
         current_trick_transitions.append(transition)
 
@@ -188,7 +195,7 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         if is_leaster:
             # Downweight all leaster rewards.
             # Agent should dislike playing leasters most of the time (similar to human behavior).
-            leaster_reward = (final_score - 2.5) / 12
+            leaster_reward = (final_score - 1) / 12
             final_reward = leaster_reward if is_episode_done else 0.0
         else:
             final_reward = (final_score / 12) if is_episode_done else 0.0
