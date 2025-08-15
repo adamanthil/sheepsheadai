@@ -871,10 +871,12 @@ class PFSPPopulation:
         except Exception as e:
             print(f"Warning: Failed to update ratings: {e}")
 
-    def run_cross_evaluation(self,
-                           partner_mode: int,
-                           n_games_per_pair: int = 10,
-                           max_agents: int = 20) -> Dict:
+    def run_cross_evaluation(
+        self,
+        partner_mode: int,
+        num_games: int = 1000,
+        max_agents: int = 25,
+    ) -> Dict:
         """Run cross-evaluation tournament to update ratings."""
         population = self._get_population(partner_mode)
 
@@ -885,19 +887,20 @@ class PFSPPopulation:
         # Limit to most recent/strongest agents to keep evaluation manageable
         if len(population) > max_agents:
             # Sort by skill and recency, take top agents
-            population = sorted(population,
-                              key=lambda x: x.get_skill_estimate() +
-                                          (x.metadata.creation_time - time.time()) / (24 * 3600 * 30),
-                              reverse=True)[:max_agents]
+            population = sorted(
+                population,
+                key=lambda x: x.get_skill_estimate() + (x.metadata.creation_time - time.time()) / (24 * 3600 * 30),
+                reverse=True
+            )[:max_agents]
 
         print(f"🏆 Running cross-evaluation for {self._get_partner_mode_name(partner_mode)} population")
-        print(f"   Evaluating {len(population)} agents with {n_games_per_pair} games per pairing")
+        print(f"   Evaluating {len(population)} agents with {num_games} games per pairing")
 
         total_games = 0
         game_results = []
 
         # Run round-robin style evaluation
-        for game_idx in range(n_games_per_pair):
+        for game_idx in range(num_games):
             # Shuffle agents for this round
             agents_shuffled = population.copy()
             random.shuffle(agents_shuffled)
