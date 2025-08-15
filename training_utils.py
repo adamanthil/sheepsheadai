@@ -108,7 +108,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         if score <= 4:
             pick_bonus, pass_bonus = -0.06, +0.06
         elif score <= 7:
-            pick_bonus, pass_bonus = +0.03, -0.03
+            pick_bonus, pass_bonus = +0.02, -0.02
         else:
             pick_bonus, pass_bonus = +0.08, -0.08
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
