@@ -903,77 +903,16 @@ async def table_ws(websocket: WebSocket, table_id: str):
     except Exception:
         logging.exception("failed to manage autoclose on connect for table %s", table.id)
 
-    # No auto-start here; waiting room/host will start explicitly
-    await broadcast_table_state(table)
-
-    # Send initial/updated state after (potential) auto-start
+    # Initial state broadcast for connected client
     await broadcast_table_state(table)
 
     try:
         while True:
-            msg = await websocket.receive_text()
-            data = json.loads(msg)
-
-            if data.get("type") == "take_action":
-                action_id = int(data.get("action_id", 0))
-                if not table.game or not conn.seat:
-                    continue
-                # Only allow if it's player's turn and action is valid
-                actor_seat = get_actor_seat(table)
-                if actor_seat != conn.seat:
-                    continue
-                valid = get_valid_action_ids_for_seat(table, conn.seat)
-                if action_id not in valid:
-                    continue
-                # Apply action under table lock
-                async with table.game_lock:
-                    player = table.game.players[conn.seat - 1]
-                    ok = player.act(action_id)
-                    if not ok:
-                        continue
-
-                # Let AIs observe transition
-                await ai_observe_all(table, except_seat=conn.seat)
-
-                # Broadcast and schedule AI follow-up
-                await broadcast_table_state(table)
-                schedule_ai_turns(table)
-
-            # Future: chat, ready, etc.
-
-            # End if game completed
-            if table.game and table.game.is_done():
-                # Mark finished
-                table.status = "finished"
-                # Tally running scores per occupant id once per game
-                if not table.results_counted:
-                    for i in range(1, 6):
-                        occ = table.seats[i]
-                        if not occ:
-                            continue
-                        pscore = table.game.players[i - 1].get_score()
-                        table.running_scores[occ] = table.running_scores.get(occ, 0) + int(pscore)
-                    table.results_counted = True
-                # Append to results history (hand outcome) and final broadcast
-                try:
-                    entry: Dict[str, Any] = {"hand": len(table.results_history) + 1, "timestamp": time.time(), "bySeat": {}, "sum": 0}
-                    for i in range(1, 6):
-                        name = table.to_public_dict()["seats"][i]
-                        score = int(table.game.players[i - 1].get_score())
-                        entry["bySeat"][i] = {"name": name, "score": score}
-                        entry["sum"] += score
-                    table.results_history.append(entry)
-                except Exception:
-                    logging.exception("failed to append results history for table %s", table.id)
-                # Final broadcast (one more time)
-                await broadcast_table_state(table)
-                # Close socket politely
-                await websocket.send_text(json.dumps({
-                    "type": "game_over",
-                    "table": table.to_public_dict(),
-                }))
-                # Let clients decide to disconnect; keep ws alive
-
+            try:
+                await websocket.receive_text()
+            except ValueError:
+                # Ignore malformed messages and continue waiting
+                logging.exception("Received malformed text over ws connection from client %s", client_id)
     except WebSocketDisconnect:
         pass
     finally:
