@@ -341,6 +341,13 @@ def train_pfsp(num_episodes: int = 500000,
     transitions_since_update = 0
     last_checkpoint_time = start_time
 
+    # --- Adaptive exploration for pick head ---
+    # If rolling pick rate dips below a threshold, temporarily bump pick entropy.
+    LOW_PICK_RATE_THRESHOLD = 20.0  # percent
+    PICK_ENTROPY_BUMP = 0.02        # added to base decayed pick entropy
+    PICK_ENTROPY_BUMP_DURATION = 50000  # episodes
+    pick_entropy_bump_until = 0
+
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
     print("-" * 80)
@@ -514,6 +521,10 @@ def train_pfsp(num_episodes: int = 500000,
             training_agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
             training_agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
             training_agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
+
+            # Apply temporary bump to pick entropy when enabled
+            if episode <= pick_entropy_bump_until:
+                training_agent.entropy_coeff_pick += PICK_ENTROPY_BUMP
 
             # Update
             last_state_for_gae = training_agent.events[-1]['state'] if getattr(training_agent, 'events', None) and training_agent.events else None
@@ -695,6 +706,18 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Training speed: {games_per_min:.1f} games/min")
             print(f"   Time elapsed: {elapsed/60:.1f} min")
             print("   " + "-" * 50)
+
+            # --- Check rolling pick rate and schedule entropy bump if too low ---
+            overall_picks = total_called_picks + total_jd_picks
+            overall_decisions = overall_picks + total_called_passes + total_jd_passes
+            overall_pick_rate = (100 * overall_picks / overall_decisions) if overall_decisions > 0 else 0.0
+
+            if overall_pick_rate < LOW_PICK_RATE_THRESHOLD and episode > pick_entropy_bump_until:
+                pick_entropy_bump_until = episode + PICK_ENTROPY_BUMP_DURATION
+                print(f"   ⚠️  Low pick rate detected ({overall_pick_rate:.1f}%). Increasing pick entropy by {PICK_ENTROPY_BUMP:.3f} for the next {PICK_ENTROPY_BUMP_DURATION:,} episodes.")
+            elif overall_pick_rate >= LOW_PICK_RATE_THRESHOLD and episode > pick_entropy_bump_until and pick_entropy_bump_until != 0:
+                # Reset any expired bump marker to reduce log noise later
+                pick_entropy_bump_until = 0
 
         # Save checkpoints
         if episode % save_interval == 0:
