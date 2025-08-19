@@ -330,7 +330,7 @@ export default function TablePage() {
            validActionStrings.has(`UNDER ${card}`);
   }
 
-  // --- Responsive sizing: optimized for mobile ---
+  // --- Responsive sizing: optimized for overlapping cards ---
   useEffect(() => {
     function recalc() {
       const row = handRowRef.current;
@@ -342,35 +342,60 @@ export default function TablePage() {
       const isTablet = window.innerWidth >= 480 && window.innerWidth < 768;
       const isDesktop = window.innerWidth >= 768;
 
-      let gap: number;
+      let minVisibleWidth: number; // Minimum visible left edge of each card
       let maxCardWidth: number;
       let minCardWidth: number;
       let availableWidth: number;
 
       if (isMobile) {
-        gap = 6;
-        maxCardWidth = 90;
-        minCardWidth = 50;
-        availableWidth = window.innerWidth * 0.92; // More padding on mobile
-      } else if (isTablet) {
-        gap = 8;
-        maxCardWidth = 120;
+        minVisibleWidth = 24; // Must show at least 24px of left edge on mobile
+        maxCardWidth = 110;
         minCardWidth = 60;
+        availableWidth = window.innerWidth * 0.92;
+      } else if (isTablet) {
+        minVisibleWidth = 32; // More visible area on tablet
+        maxCardWidth = 140;
+        minCardWidth = 80;
         availableWidth = window.innerWidth * 0.94;
       } else {
-        gap = 10;
-        maxCardWidth = 140;
-        minCardWidth = 64;
+        minVisibleWidth = 40; // Most visible area on desktop
+        maxCardWidth = 160;
+        minCardWidth = 100;
         availableWidth = Math.min(window.innerWidth * 0.94, 1600);
       }
 
-      const totalGapSpace = (count - 1) * gap;
-      const cardSpace = availableWidth - totalGapSpace - 32; // Account for padding
-      let w = Math.floor(cardSpace / count);
-      w = Math.max(minCardWidth, Math.min(maxCardWidth, w));
+            // Calculate overlapping layout parameters
+      // Total width = cardWidth + (count - 1) * visibleWidth
+      // where visibleWidth < cardWidth for overlap effect
+      const padding = 32; // Account for container padding
+      const maxTotalWidth = availableWidth - padding;
+
+      let w = maxCardWidth;
+      let visibleWidth = minVisibleWidth;
+
+      // Check if max card width fits with minimum visible widths
+      let totalNeeded = w + (count - 1) * visibleWidth;
+
+      if (totalNeeded > maxTotalWidth) {
+        // Try reducing card width first
+        w = Math.floor((maxTotalWidth - (count - 1) * visibleWidth));
+        w = Math.max(minCardWidth, w);
+
+        // If still doesn't fit, reduce visible width (increase overlap)
+        totalNeeded = w + (count - 1) * visibleWidth;
+        if (totalNeeded > maxTotalWidth) {
+          visibleWidth = Math.max(16, Math.floor((maxTotalWidth - w) / (count - 1))); // Never less than 16px visible
+        }
+      }
 
       const h = Math.floor(w * 1.45);
+
       setHandSize({ w, h });
+
+      // Store overlap info for CSS
+      row.style.setProperty('--cardWidth', `${w}px`);
+      row.style.setProperty('--visibleWidth', `${visibleWidth}px`);
+      row.style.setProperty('--h', `${h}px`);
     }
     recalc();
     window.addEventListener('resize', recalc);
@@ -640,8 +665,11 @@ function PlayingCard({ label, small, highlight, width, height, bigMarks }: { lab
   const classNames = [cardStyles.card, highlight ? cardStyles.highlight : '', blank ? cardStyles.blank : '', red ? cardStyles.redText : ''].filter(Boolean).join(' ');
   return (
     <div className={classNames} style={{ ['--w' as any]: `${w}px`, ['--h' as any]: `${h}px`, ['--pad' as any]: small ? '4px' : '8px' }}>
-      <div className={`${cardStyles.rankTop} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{rank}</div>
-      <div className={`${cardStyles.suit} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{suitSymbol(suit)}</div>
+      <div className={cardStyles.topSection}>
+        <div className={`${cardStyles.rankTop} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{rank}</div>
+        <div className={`${cardStyles.suitTopLeft} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{suitSymbol(suit)}</div>
+      </div>
+      <div className={`${cardStyles.suitCenter} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{suitSymbol(suit)}</div>
       <div className={`${cardStyles.rankBottom} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{rank}</div>
     </div>
   );

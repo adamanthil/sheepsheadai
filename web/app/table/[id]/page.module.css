@@ -283,25 +283,48 @@
 
 .handRow {
   display: flex;
-  flex-wrap: wrap; /* Allow wrapping on mobile */
-  gap: 6px; /* Smaller gap on mobile */
+  flex-wrap: nowrap; /* No wrapping - overlapping cards should always fit */
   justify-content: center;
   padding: 0 4px;
   max-width: 100%;
-}
-
-@media (min-width: 480px) {
-  .handRow {
-    flex-wrap: nowrap; /* Back to no wrap on larger screens */
-    gap: 8px;
-  }
+  position: relative;
 }
 
 @media (min-width: 768px) {
   .handRow {
-    gap: 10px;
     padding: 0;
   }
+}
+
+/* Individual card containers in overlapping layout */
+.handRow > div {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--cardWidth, 72px);
+}
+
+/* Create overlapping effect with transforms */
+.handRow > div:not(:first-child) {
+  margin-left: calc(var(--visibleWidth, 40px) - var(--cardWidth, 72px));
+}
+
+/* Z-index stacking: later cards (rightmost) appear on top */
+.handRow > div:nth-child(1) { z-index: 1; }
+.handRow > div:nth-child(2) { z-index: 2; }
+.handRow > div:nth-child(3) { z-index: 3; }
+.handRow > div:nth-child(4) { z-index: 4; }
+.handRow > div:nth-child(5) { z-index: 5; }
+.handRow > div:nth-child(6) { z-index: 6; }
+.handRow > div:nth-child(7) { z-index: 7; }
+.handRow > div:nth-child(8) { z-index: 8; }
+
+/* Ensure clickable area maintains card dimensions but is touch-friendly */
+.handRow .clickable {
+  /* Don't override width - let it use the calculated --cardWidth */
+  min-height: var(--h, 108px);
+  cursor: pointer;
+  /* Ensure the entire card area is clickable without disrupting layout */
+  display: block;
 }
 
 .finalBanner {

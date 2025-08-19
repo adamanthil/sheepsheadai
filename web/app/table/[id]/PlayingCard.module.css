@@ -15,6 +15,17 @@
   touch-action: manipulation; /* Optimize for touch */
 }
 
+.topSection {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.spacer {
+  /* Empty div to take up remaining space */
+}
+
 @media (min-width: 768px) {
   .card {
     border-radius: 10px;
@@ -51,57 +62,68 @@
   user-select: none;
 }
 
-/* Mobile-first font sizing */
+/* Mobile-first font sizing - slightly larger ranks to better match suit symbols */
 .rankTop.small,
 .rankBottom.small {
-  font-size: 8px; /* Smaller for mobile */
+  font-size: 10px;
 }
 
 .rankTop.normal,
 .rankBottom.normal {
-  font-size: 12px; /* Smaller for mobile */
+  font-size: 14px;
 }
 
 .rankTop.big,
 .rankBottom.big {
-  font-size: 14px; /* Smaller for mobile */
+  font-size: 16px;
 }
 
 @media (min-width: 768px) {
   .rankTop.small,
   .rankBottom.small {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .rankTop.normal,
   .rankBottom.normal {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .rankTop.big,
   .rankBottom.big {
-    font-size: 16px;
+    font-size: 18px;
   }
 }
 
-.suit {
+.suitTopLeft {
+  user-select: none;
+  line-height: 1;
+}
+
+.suitCenter {
   display: flex;
   align-items: center;
   justify-content: center;
   user-select: none;
 }
 
-/* Mobile-first suit sizing */
-.suit.small { font-size: 14px; }
-.suit.normal { font-size: 20px; }
-.suit.big { font-size: 24px; }
+/* Mobile-first suit sizing - make top-left suit slightly smaller than rank, center larger */
+.suitTopLeft.small { font-size: 9px; }
+.suitTopLeft.normal { font-size: 12px; }
+.suitTopLeft.big { font-size: 14px; }
+
+.suitCenter.small { font-size: 14px; }
+.suitCenter.normal { font-size: 20px; }
+.suitCenter.big { font-size: 24px; }
 
 @media (min-width: 768px) {
-  .suit.small { font-size: 16px; }
-  .suit.normal { font-size: 24px; }
-  .suit.big { font-size: 28px; }
+  .suitTopLeft.small { font-size: 10px; }
+  .suitTopLeft.normal { font-size: 14px; }
+  .suitTopLeft.big { font-size: 16px; }
+
+  .suitCenter.small { font-size: 16px; }
+  .suitCenter.normal { font-size: 24px; }
+  .suitCenter.big { font-size: 28px; }
 }
 
 .rankBottom { text-align: right; }
-
-
