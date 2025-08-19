@@ -254,15 +254,20 @@ export default function TablePage() {
     if (!lastState) return null;
     return (
       <div className={styles.actionButtons}>
-        {lastState.valid_actions.map((aid: number) => (
-          <button
-            key={aid}
-            onClick={() => takeAction(aid)}
-            className={styles.actionButton}
-          >
-            {actionLookup[String(aid)] || `Action ${aid}`}
-          </button>
-        ))}
+        {lastState.valid_actions.map((aid: number) => {
+          if (!actionLookup[String(aid)]?.startsWith("PLAY") && !actionLookup[String(aid)]?.startsWith("BURY")) {
+            return (
+              <button
+                key={aid}
+                onClick={() => takeAction(aid)}
+                className={styles.actionButton}
+              >
+                  {actionLookup[String(aid)] || `Action ${aid}`}
+                </button>
+              );
+            }
+            return null;
+        })}
       </div>
     );
   }, [lastState, actionLookup]);
