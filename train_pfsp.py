@@ -287,8 +287,6 @@ def train_pfsp(num_episodes: int = 500000,
     called_10_window = deque(maxlen=3000)
     team_point_differences = deque(maxlen=3000)
 
-    best_team_difference = float('inf')
-
     training_data = {
         'episodes': [],
         'picker_avg': [],
@@ -698,12 +696,6 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Time elapsed: {elapsed/60:.1f} min")
             print("   " + "-" * 50)
 
-            # Save best model
-            if current_team_diff < best_team_difference:
-                best_team_difference = current_team_diff
-                training_agent.save(f'best_pfsp_{activation}_ppo.pth')
-                print(f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved.")
-
         # Save checkpoints
         if episode % save_interval == 0:
             checkpoint_path = f'{checkpoint_dir}/pfsp_{activation}_checkpoint_{episode}.pth'
@@ -755,7 +747,6 @@ def train_pfsp(num_episodes: int = 500000,
     print(f"   Total time: {total_time/60:.1f} minutes ({total_time/3600:.1f} hours)")
     print(f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}")
     print(f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}")
-    print(f"   Best team point difference: {best_team_difference:.1f}")
 
     # Final population summary
     print("\n" + population.get_population_summary())
