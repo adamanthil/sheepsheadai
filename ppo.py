@@ -744,8 +744,49 @@ class PPOAgent:
                 eps_flat[is_bury] = self.clip_epsilon_bury
                 surr1 = ratios * adv_flat
                 clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
+
+                # --- Per-head loss reweighting ---------------------------------------
+                # Ensure pick / bury / play contribute roughly equally regardless of
+                # how many actions of each head appear in this minibatch.
+                with torch.no_grad():
+                    is_play = ~(is_pick | is_bury)
+                    count_pick = is_pick.sum().item()
+                    count_bury = is_bury.sum().item()
+                    count_play = is_play.sum().item()
+
+                    total_count = float(count_pick + count_bury + count_play)
+                    heads_present = int((count_pick > 0) + (count_bury > 0) + (count_play > 0))
+
+                    # Avoid division by zero. If a head is absent, its weight is 0.
+                    def per_head_weight(count: int) -> float:
+                        if heads_present == 0 or count == 0:
+                            return 0.0
+                        return total_count / (heads_present * float(count))
+
+                    w_pick = per_head_weight(count_pick)
+                    w_bury = per_head_weight(count_bury)
+                    w_play = per_head_weight(count_play)
+
+                    head_weight = torch.ones_like(ratios)
+                    if w_pick > 0.0:
+                        head_weight[is_pick] = head_weight[is_pick] * w_pick
+                    else:
+                        head_weight[is_pick] = 0.0
+                    if w_bury > 0.0:
+                        head_weight[is_bury] = head_weight[is_bury] * w_bury
+                    else:
+                        head_weight[is_bury] = 0.0
+                    if w_play > 0.0:
+                        head_weight[is_play] = head_weight[is_play] * w_play
+                    else:
+                        head_weight[is_play] = 0.0
+
+                # Policy loss with per-head weights (mean over samples for stability)
+                pg_loss_elements = -torch.min(surr1, clipped)
+                policy_loss = (pg_loss_elements * head_weight).mean()
+
                 # Add small KL penalty to discourage large policy shifts even before early-stop
-                actor_loss = -torch.min(surr1, clipped).mean() - entropy_term + self.kl_coef * approx_kl_t
+                actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
 
                 # Critic loss with value clipping (PPO-style)
                 returns_target = returns_flat.view(-1)
