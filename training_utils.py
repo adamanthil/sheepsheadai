@@ -106,11 +106,11 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 4:
-            pick_bonus, pass_bonus = -0.05, +0.05
+            pick_bonus, pass_bonus = -0.02, +0.02
         elif score <= 7:
-            pick_bonus, pass_bonus = +0.01, -0.01
+            pick_bonus, pass_bonus = +0.005, -0.005
         else:
-            pick_bonus, pass_bonus = +0.06, -0.06
+            pick_bonus, pass_bonus = +0.03, -0.03
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
 
     # Bury penalty: discourage burying trump if not required
@@ -123,7 +123,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         has_allowed_trump_bury = any(get_card_suit(c) == "T" for c in allowed_bury_cards)
 
         if card in TRUMP and has_allowed_fail_bury:
-            transition['intermediate_reward'] += -0.06
+            transition['intermediate_reward'] += -0.03
         elif card not in TRUMP and has_allowed_trump_bury:
             # Small preference when both options exist
             transition['intermediate_reward'] += 0.01
@@ -140,7 +140,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
                 and card in TRUMP
             ):
                 # Discourage defenders from leading trump
-                transition['intermediate_reward'] += -0.05
+                transition['intermediate_reward'] += -0.03
             elif (
                 game.called_card
                 and not player.is_picker
@@ -150,7 +150,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
                 and game.called_suit == get_card_suit(card)
             ):
                 # Encourage defenders to lead called suit
-                transition['intermediate_reward'] += 0.05
+                transition['intermediate_reward'] += 0.03
             elif (
                 not game.is_leaster
                 and (player.is_partner or player.is_secret_partner)
