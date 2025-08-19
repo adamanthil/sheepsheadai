@@ -827,7 +827,7 @@ class PFSPPopulation:
         }
 
     def update_ratings(self,
-                      game_results: List[Tuple[PopulationAgent, int, float]],
+                      game_results: List[Tuple[PopulationAgent, int, float, int]],
                       partner_mode: int):
         """Update agent ratings based on game results.
 
@@ -840,7 +840,7 @@ class PFSPPopulation:
 
         # Convert to format expected by OpenSkill
         # Create teams (each player is their own team)
-        teams = [[agent.rating] for agent, _, _ in game_results]
+        teams = [[agent.rating] for agent, _, _, _ in game_results]
 
         # Convert scores to rankings (lower rank = better performance)
         scores = [result[2] for result in game_results]
@@ -862,10 +862,10 @@ class PFSPPopulation:
             new_teams = self.rating_model.rate(teams, ranks=ranks)
 
             # Update agent ratings
-            for i, (agent, position, score) in enumerate(game_results):
+            for i, (agent, position, score, picker_seat) in enumerate(game_results):
                 agent.update_rating(new_teams[i][0])
                 # Also update performance tracking
-                was_picker = (position == 1)  # Assuming position 1 is picker
+                was_picker = (position == picker_seat)
                 agent.add_game_result(score, was_picker)
 
         except Exception as e:
@@ -913,12 +913,12 @@ class PFSPPopulation:
 
                 # Play game with population agents
                 agent_positions = list(range(1, 6))  # Positions 1-5
-                final_scores = self._play_evaluation_game(game, game_agents, agent_positions)
+                final_scores, picker_seat = self._play_evaluation_game(game, game_agents, agent_positions)
 
                 # Store results
                 round_results = []
                 for i, agent in enumerate(game_agents):
-                    round_results.append((agent, agent_positions[i], final_scores[i]))
+                    round_results.append((agent, agent_positions[i], final_scores[i], picker_seat))
 
                 game_results.extend(round_results)
                 total_games += 1
@@ -944,7 +944,7 @@ class PFSPPopulation:
             'skill_spread': np.std([a.get_skill_estimate() for a in population])
         }
 
-    def _play_evaluation_game(self, game: Game, agents: List[PopulationAgent], positions: List[int]) -> List[float]:
+    def _play_evaluation_game(self, game: Game, agents: List[PopulationAgent], positions: List[int]) -> Tuple[List[float], int]:
         """Play a single evaluation game and return final scores."""
         # Create position to agent mapping
         pos_to_agent = {pos: agent for pos, agent in zip(positions, agents)}
@@ -1018,8 +1018,8 @@ class PFSPPopulation:
                                     'schmeared_points': 0 if played_trump else get_card_points(card),
                                 })
 
-        # Return final scores
-        return [player.get_score() for player in game.players]
+        # Return final scores and picker seat
+        return [player.get_score() for player in game.players], game.picker
 
     def _save_agent(self, pop_agent: PopulationAgent):
         """Save agent to disk."""
