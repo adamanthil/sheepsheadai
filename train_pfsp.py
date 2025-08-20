@@ -351,6 +351,14 @@ def train_pfsp(num_episodes: int = 500000,
     PICK_ENTROPY_BUMP_DURATION = 50000  # episodes
     pick_entropy_bump_until = 0
 
+    # --- Adaptive exploration for partner head (ALONE decision) ---
+    # If rolling ALONE rate rises too high, temporarily bump partner entropy to
+    # encourage exploration of partner calls.
+    HIGH_ALONE_RATE_THRESHOLD = 50.0  # percent
+    PARTNER_ENTROPY_BUMP = 0.02       # added to base decayed partner entropy
+    PARTNER_ENTROPY_BUMP_DURATION = 50000  # episodes
+    partner_entropy_bump_until = 0
+
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
     print("-" * 80)
@@ -537,6 +545,10 @@ def train_pfsp(num_episodes: int = 500000,
             # Apply temporary bump to pick entropy when enabled
             if episode <= pick_entropy_bump_until:
                 training_agent.entropy_coeff_pick += PICK_ENTROPY_BUMP
+
+            # Apply temporary bump to partner entropy
+            if episode <= partner_entropy_bump_until:
+                training_agent.entropy_coeff_partner += PARTNER_ENTROPY_BUMP
 
             # Update
             last_state_for_gae = training_agent.events[-1]['state'] if getattr(training_agent, 'events', None) and training_agent.events else None
@@ -737,6 +749,14 @@ def train_pfsp(num_episodes: int = 500000,
             elif overall_pick_rate >= LOW_PICK_RATE_THRESHOLD and episode > pick_entropy_bump_until and pick_entropy_bump_until != 0:
                 # Reset any expired bump marker to reduce log noise later
                 pick_entropy_bump_until = 0
+
+            # --- Check rolling ALONE rate and schedule partner-head bump if too high ---
+            if current_alone_rate > HIGH_ALONE_RATE_THRESHOLD and episode > partner_entropy_bump_until:
+                partner_entropy_bump_until = episode + PARTNER_ENTROPY_BUMP_DURATION
+                print(f"   ⚠️  High ALONE rate detected ({current_alone_rate:.1f}%). Increasing partner entropy by {PARTNER_ENTROPY_BUMP:.3f} for the next {PARTNER_ENTROPY_BUMP_DURATION:,} episodes.")
+            elif current_alone_rate <= HIGH_ALONE_RATE_THRESHOLD and episode > partner_entropy_bump_until and partner_entropy_bump_until != 0:
+                # Reset any expired bump marker to reduce log noise later
+                partner_entropy_bump_until = 0
 
         # Save checkpoints
         if episode % save_interval == 0:
