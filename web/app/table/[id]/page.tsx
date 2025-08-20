@@ -562,7 +562,11 @@ export default function TablePage() {
                 </div>
 
                 <div className={`${styles.muted} ${styles.metaRow}`}>
-                  Picker: {nameForSeat(lastState.view.picker, lastState.table)} · Partner: {nameForSeat(lastState.view.partner, lastState.table)} · Alone: {String(lastState.view.alone)} · Called: {lastState.view.called_card}{lastState.view.called_under ? ' (under)' : ''}
+                  {lastState.view.mode === 'leaster' ? (
+                    'Leaster'
+                  ) : (
+                    <>Picker: {nameForSeat(lastState.view.picker, lastState.table)} · Partner: {lastState.view.alone ? "Alone" : lastState.view.partner ? nameForSeat(lastState.view.partner, lastState.table) : "(unknown)"} · Called: {lastState.view.called_card}{lastState.view.called_under ? ' (under)' : ''}</>
+                  )}
                 </div>
 
                 {/* Final banner */}
