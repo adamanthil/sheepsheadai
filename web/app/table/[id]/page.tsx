@@ -74,7 +74,7 @@ export default function TablePage() {
     const isTablet = typeof window !== 'undefined' && window.innerWidth >= 480 && window.innerWidth < 768;
 
     if (isMobile) {
-      return Math.max(40, Math.floor(centerSize.h * 0.25)); // Increased base and multiplier for mobile
+      return Math.max(54, Math.floor(centerSize.h * 0.25)); // Increased base and multiplier for mobile
     } else if (isTablet) {
       return Math.max(36, Math.floor(centerSize.h * 0.22)); // Intermediate for tablet
     } else {
@@ -348,12 +348,12 @@ export default function TablePage() {
       let availableWidth: number;
 
       if (isMobile) {
-        minVisibleWidth = 24; // Must show at least 24px of left edge on mobile
+        minVisibleWidth = 32; // Must show at least 32px of left edge on mobile
         maxCardWidth = 110;
         minCardWidth = 60;
         availableWidth = window.innerWidth * 0.92;
       } else if (isTablet) {
-        minVisibleWidth = 32; // More visible area on tablet
+        minVisibleWidth = 32;
         maxCardWidth = 140;
         minCardWidth = 80;
         availableWidth = window.innerWidth * 0.94;
@@ -384,7 +384,7 @@ export default function TablePage() {
         // If still doesn't fit, reduce visible width (increase overlap)
         totalNeeded = w + (count - 1) * visibleWidth;
         if (totalNeeded > maxTotalWidth) {
-          visibleWidth = Math.max(16, Math.floor((maxTotalWidth - w) / (count - 1))); // Never less than 16px visible
+          visibleWidth = Math.max(24, Math.floor((maxTotalWidth - w) / (count - 1))); // Never less than 24px visible
         }
       }
 
