@@ -889,7 +889,73 @@ class PPOAgent:
     def load(self, filepath):
         """Load model parameters"""
         checkpoint = torch.load(filepath, map_location=device)
-        self.actor.load_state_dict(checkpoint['actor_state_dict'])
+        actor_sd = checkpoint['actor_state_dict']
+        # Backward-compat: if checkpoint predates partner_head split, map old bury_head -> partner + bury
+        needs_split = ('partner_head.weight' not in actor_sd)
+        if needs_split and ('bury_head.weight' in actor_sd):
+            try:
+                old_w = actor_sd['bury_head.weight']  # (old_out, in)
+                old_b = actor_sd['bury_head.bias']    # (old_out,)
+                old_out, in_features = old_w.shape
+                # Reconstruct the old merged list and new lists (old merged included UNDER in partner set)
+                partner_actions = ["ALONE", "JD PARTNER"] + CALL_ACTIONS + UNDER_ACTIONS
+                old_merged_indices = sorted({ACTION_IDS[a] - 1 for a in (BURY_ACTIONS + partner_actions)})
+                new_partner_indices = list(self.action_groups['partner'])
+                new_bury_indices = list(self.action_groups['bury'])
+
+                # Sanity: old_out should equal len(old_merged_indices)
+                if len(old_merged_indices) != old_out:
+                    print("\n\n🚨 Backward-compat split ABORTED: row count mismatch")
+                    print(f"   old_bury_head rows: {old_out}  vs expected merged indices: {len(old_merged_indices)}")
+                    print("   Proceeding with non-strict load; new partner/bury heads will use random init.\n")
+                else:
+                    # Build lookup: global_idx -> row in new heads
+                    partner_row_for_global = {g_idx: new_partner_indices.index(g_idx) for g_idx in new_partner_indices}
+                    bury_row_for_global = {g_idx: new_bury_indices.index(g_idx) for g_idx in new_bury_indices}
+
+                    # Allocate new tensors
+                    new_partner_w = torch.zeros((len(new_partner_indices), in_features), dtype=old_w.dtype)
+                    new_partner_b = torch.zeros((len(new_partner_indices),), dtype=old_b.dtype)
+                    new_bury_w = torch.zeros((len(new_bury_indices), in_features), dtype=old_w.dtype)
+                    new_bury_b = torch.zeros((len(new_bury_indices),), dtype=old_b.dtype)
+
+                    # Scatter old rows into new heads based on global action index
+                    for old_row, global_idx in enumerate(old_merged_indices):
+                        if global_idx in partner_row_for_global:
+                            new_row = partner_row_for_global[global_idx]
+                            new_partner_w[new_row] = old_w[old_row]
+                            new_partner_b[new_row] = old_b[old_row]
+                        elif global_idx in bury_row_for_global:
+                            new_row = bury_row_for_global[global_idx]
+                            new_bury_w[new_row] = old_w[old_row]
+                            new_bury_b[new_row] = old_b[old_row]
+                        else:
+                            print(f"⚠️  Unexpected global action index during split: {global_idx}")
+
+                    # Inject into state dict
+                    actor_sd['partner_head.weight'] = new_partner_w
+                    actor_sd['partner_head.bias'] = new_partner_b
+                    actor_sd['bury_head.weight'] = new_bury_w
+                    actor_sd['bury_head.bias'] = new_bury_b
+            except (KeyError, RuntimeError, ValueError, IndexError, TypeError) as e:
+                print("\n\n🚨 Backward-compat split FAILED with expected error type")
+                print(f"   Error: {repr(e)}")
+                print("   Proceeding with non-strict load; new partner/bury heads will use random init.\n")
+
+        # Load non-strictly to allow for keys that may not exist in old checkpoints
+        self.actor.load_state_dict(actor_sd, strict=False)
         self.critic.load_state_dict(checkpoint['critic_state_dict'])
-        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        if 'actor_optimizer' in checkpoint:
+            try:
+                self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+            except (RuntimeError, ValueError, KeyError) as e:
+                print("\n\n🚨 Actor optimizer state load FAILED")
+                print(f"   Error: {repr(e)}")
+                print("   Continuing without optimizer state (will re-initialize optimizer moments).\n")
+        if 'critic_optimizer' in checkpoint:
+            try:
+                self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+            except (RuntimeError, ValueError, KeyError) as e:
+                print("\n\n🚨 Critic optimizer state load FAILED")
+                print(f"   Error: {repr(e)}")
+                print("   Continuing without optimizer state (will re-initialize optimizer moments).\n")
