@@ -391,9 +391,9 @@ def train_pfsp(num_episodes: int = 500000,
             training_agent_skill=training_skill,
             training_agent_id=training_agent_id,
             diversity_weight=0.35,
-            curriculum_weight=0.3,
+            curriculum_weight=0.4,
             exploitation_weight=0.1,
-            uniform_mix=0.25,
+            uniform_mix=0.15,
         )
 
         # If no opponents available, use self-play as fallback
