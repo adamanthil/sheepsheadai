@@ -170,6 +170,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     pass_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
 
     leaster_window = deque(maxlen=3000)          # 1 ⇒ leaster, 0 ⇒ regular game
+    alone_call_window = deque(maxlen=3000)       # 1 ⇒ ALONE called (non-leaster games)
     called_ace_window = deque(maxlen=3000)       # 1 ⇒ partner mode = Called-Ace, else 0
     called_under_window = deque(maxlen=3000)     # 1 ⇒ called-under occurred that game
     called_10_window = deque(maxlen=3000)        # 1 ⇒ called-10s occurred that game
@@ -357,6 +358,9 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             called_10_window.append(0)
 
         picker_scores.append(picker_score)
+        # ALONE tracking for games with a picker (exclude leaster)
+        if not game.is_leaster:
+            alone_call_window.append(1 if game.alone_called else 0)
         pick_decisions[get_partner_selection_mode(episode)].append(episode_picks)
         pass_decisions[get_partner_selection_mode(episode)].append(episode_passes)
         team_point_differences.append(team_point_diff)
@@ -442,6 +446,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
             # --- Rolling-window rates ---
             current_leaster_rate = (sum(leaster_window) / len(leaster_window)) * 100 if leaster_window else 0
+            current_alone_rate = (sum(alone_call_window) / len(alone_call_window)) * 100 if alone_call_window else 0
 
             ca_denominator = sum(called_ace_window) or 1  # avoid divide-by-zero
             current_called_under_rate = (sum(called_under_window) / ca_denominator) * 100
@@ -456,6 +461,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             training_data['learning_rate'].append(agent.actor_optimizer.param_groups[0]['lr'])
             training_data['time_elapsed'].append(elapsed)
             training_data['team_point_diff'].append(current_team_diff)
+            training_data['alone_rate'].append(current_alone_rate)
+            training_data['leaster_rate'].append(current_leaster_rate)
 
             # Strategic metrics are collected separately during strategic evaluation intervals
             # Don't try to collect them here as they're not always available
@@ -471,6 +478,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
             print("   " + "-" * 20)
             print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
+            print(f"   Alone Call Rate: {current_alone_rate:.2f}%")
             print(f"   Called Under Rate: {current_called_under_rate:.2f}%")
             print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
             print("   " + "-" * 40)

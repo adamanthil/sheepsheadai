@@ -265,13 +265,29 @@ def save_training_plot(training_data, save_path='training_progress.png'):
             ax4.legend()
             ax4.grid(True, alpha=0.3)
 
-    # Training efficiency
-    games_per_min = [ep / (time_elapsed / 60) for ep, time_elapsed in zip(episodes, training_data['time_elapsed']) if time_elapsed > 0]
-    ax5.plot(episodes[:len(games_per_min)], games_per_min, color='brown', alpha=0.8)
-    ax5.set_xlabel('Episode')
-    ax5.set_ylabel('Games per Minute')
-    ax5.set_title('Training Efficiency')
-    ax5.grid(True, alpha=0.3)
+    # Rates: Alone call and Leaster
+    # When resuming training, historical CSVs may not contain these rate series.
+    # Rather than require exact length matching with `episodes`, plot whatever
+    # portion is available by aligning each series to the tail of the episodes
+    # timeline. This keeps the figure renderable on resume while still showing
+    # new data going forward.
+    alone_rate = training_data.get('alone_rate', [])
+    leaster_rate = training_data.get('leaster_rate', [])
+    any_rate_plotted = False
+    if alone_rate:
+        ex = episodes[-len(alone_rate):]
+        ax5.plot(ex, alone_rate, color='brown', alpha=0.8, label='Alone Call Rate')
+        any_rate_plotted = True
+    if leaster_rate:
+        ex = episodes[-len(leaster_rate):]
+        ax5.plot(ex, leaster_rate, color='gray', alpha=0.8, label='Leaster Rate')
+        any_rate_plotted = True
+    if any_rate_plotted:
+        ax5.set_xlabel('Episode')
+        ax5.set_ylabel('Rate (%)')
+        ax5.set_title('Alone Call and Leaster Rates')
+        ax5.legend()
+        ax5.grid(True, alpha=0.3)
 
     # Team Point Difference
     if 'team_point_diff' in training_data and len(training_data['team_point_diff']) > 0:

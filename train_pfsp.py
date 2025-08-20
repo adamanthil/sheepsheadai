@@ -282,6 +282,7 @@ def train_pfsp(num_episodes: int = 500000,
     pick_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
     pass_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
     leaster_window = deque(maxlen=3000)
+    alone_call_window = deque(maxlen=3000)
     called_ace_window = deque(maxlen=3000)
     called_under_window = deque(maxlen=3000)
     called_10_window = deque(maxlen=3000)
@@ -299,6 +300,8 @@ def train_pfsp(num_episodes: int = 500000,
         'defender_trump_rate': [],
         'bury_quality_rate': [],
         'team_point_diff': [],
+        'alone_rate': [],
+        'leaster_rate': [],
         'population_stats': []
     }
 
@@ -503,6 +506,10 @@ def train_pfsp(num_episodes: int = 500000,
             called_under_window.append(0)
             called_10_window.append(0)
 
+        # Track ALONE calls only for games with a picker (exclude leaster)
+        if not game.is_leaster:
+            alone_call_window.append(1 if game.alone_called else 0)
+
         # Count pick/pass decisions from transitions
         episode_picks = sum(1 for t in episode_transitions if t['action'] == ACTION_IDS["PICK"])
         episode_passes = sum(1 for t in episode_transitions if t['action'] == ACTION_IDS["PASS"])
@@ -652,6 +659,7 @@ def train_pfsp(num_episodes: int = 500000,
 
             # Rolling window rates
             current_leaster_rate = (sum(leaster_window) / len(leaster_window)) * 100 if leaster_window else 0
+            current_alone_rate = (sum(alone_call_window) / len(alone_call_window)) * 100 if alone_call_window else 0
             ca_denominator = sum(called_ace_window) or 1
             current_called_under_rate = (sum(called_under_window) / ca_denominator) * 100
             current_called_10s_rate = (sum(called_10_window) / ca_denominator) * 100
@@ -665,11 +673,13 @@ def train_pfsp(num_episodes: int = 500000,
             training_data['learning_rate'].append(training_agent.actor_optimizer.param_groups[0]['lr'])
             training_data['time_elapsed'].append(elapsed)
             training_data['team_point_diff'].append(current_team_diff)
+            training_data['alone_rate'].append(current_alone_rate)
+            training_data['leaster_rate'].append(current_leaster_rate)
 
             # Append progress row to CSV (create with header if new)
             write_header = (not os.path.exists(progress_csv)) or (os.path.getsize(progress_csv) == 0)
             with open(progress_csv, 'a', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['episode','picker_avg','called_pick_rate','jd_pick_rate','learning_rate','time_elapsed','team_point_diff'])
+                writer = csv.DictWriter(f, fieldnames=['episode','picker_avg','called_pick_rate','jd_pick_rate','learning_rate','time_elapsed','team_point_diff','alone_rate','leaster_rate'])
                 if write_header:
                     writer.writeheader()
                 writer.writerow({
@@ -680,6 +690,8 @@ def train_pfsp(num_episodes: int = 500000,
                     'learning_rate': training_agent.actor_optimizer.param_groups[0]['lr'],
                     'time_elapsed': elapsed,
                     'team_point_diff': current_team_diff,
+                    'alone_rate': current_alone_rate,
+                    'leaster_rate': current_leaster_rate,
                 })
 
             # Population statistics
@@ -703,6 +715,7 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
             print("   " + "-" * 25)
             print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
+            print(f"   Alone Call Rate: {current_alone_rate:.2f}%")
             print(f"   Called Under Rate: {current_called_under_rate:.2f}%")
             print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
             print("   " + "-" * 25)
