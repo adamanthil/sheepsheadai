@@ -508,6 +508,259 @@ class PPOAgent:
             return np.array([]), np.array([])
         return np.concatenate(all_advantages), np.concatenate(all_returns)
 
+    # ------------------------------------------------------------------
+    # Internal helpers for PPO update
+    # ------------------------------------------------------------------
+    def _prepare_training_views(self):
+        states = [torch.FloatTensor(e['state']).to(device) for e in self.events]
+        masks_t = [
+            (e['mask'].to(device) if isinstance(e['mask'], torch.Tensor) else torch.as_tensor(e['mask'], dtype=torch.bool, device=device))
+            for e in self.events
+        ]
+        kinds = [e['kind'] for e in self.events]
+        pids = [e.get('player_id', None) for e in self.events]
+        return states, masks_t, kinds, pids
+
+    @staticmethod
+    def _index_events_by_player(pids: list[int | None]) -> dict[int | None, list[int]]:
+        events_by_player: dict[int | None, list[int]] = {}
+        for idx, pid in enumerate(pids):
+            events_by_player.setdefault(pid, []).append(idx)
+        return events_by_player
+
+    def _segments_from_events(self, events_by_player: dict[int | None, list[int]], kinds: list[str]):
+        segments: list[tuple[int | None, int, int]] = []
+        for pid, ev_idxs in events_by_player.items():
+            action_ev_idxs = [i for i in ev_idxs if kinds[i] == 'action']
+            if not action_ev_idxs:
+                continue
+            # Build done flags for this player's actions in order
+            dones_pid = [self.events[i]['done'] for i in action_ev_idxs]
+            start = ev_idxs[0]
+            a_ptr = 0
+            for i in ev_idxs:
+                if kinds[i] == 'action':
+                    if dones_pid[a_ptr]:
+                        segments.append((pid, start, i))
+                        start = i + 1
+                    a_ptr += 1
+            if start <= ev_idxs[-1]:
+                segments.append((pid, start, ev_idxs[-1]))
+        return segments
+
+    @staticmethod
+    def _pad_to_bt(lst, lengths, fill):
+        T = max(lengths)
+        out = []
+        for i, tlen in enumerate(lengths):
+            pad = T - tlen
+            if pad > 0:
+                pad_shape = list(lst[i].shape)
+                pad_shape[0] = pad
+                pad_tensor = torch.full(
+                    pad_shape,
+                    fill,
+                    device=lst[i].device,
+                    dtype=lst[i].dtype,
+                )
+                out.append(torch.cat([lst[i], pad_tensor], dim=0))
+            else:
+                out.append(lst[i])
+        return torch.stack(out, dim=0), T
+
+    def _build_minibatch_tensors(self, batch, states, masks_t, kinds, pids):
+        lengths = []
+        states_list = []
+        masks_list = []
+        is_action_list = []
+        actions_list = []
+        old_lp_list = []
+        returns_list = []
+        adv_list = []
+
+        for pid, seg_start, seg_end in batch:
+            ev_range = list(range(seg_start, seg_end + 1))
+            lengths.append(len(ev_range))
+            states_list.append(torch.stack([states[i] for i in ev_range], dim=0))
+            masks_list.append(torch.stack([masks_t[i] for i in ev_range], dim=0))
+            is_act = torch.tensor(
+                [1 if (kinds[i] == 'action' and pids[i] == pid) else 0 for i in ev_range],
+                dtype=torch.bool,
+                device=device,
+            )
+            is_action_list.append(is_act)
+
+            act_bt, olp_bt, ret_bt, adv_bt = [], [], [], []
+            for i in ev_range:
+                if kinds[i] == 'action' and pids[i] == pid:
+                    act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
+                    olp_bt.append(torch.tensor(self.events[i]['log_prob'], dtype=torch.float32, device=device))
+                    ret_bt.append(torch.tensor(self.events[i]['return'], dtype=torch.float32, device=device))
+                    adv_bt.append(torch.tensor(self.events[i]['advantage'], dtype=torch.float32, device=device))
+                else:
+                    act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
+                    olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+            actions_list.append(torch.stack(act_bt, dim=0))
+            old_lp_list.append(torch.stack(olp_bt, dim=0))
+            returns_list.append(torch.stack(ret_bt, dim=0))
+            adv_list.append(torch.stack(adv_bt, dim=0))
+
+        states_bt, _ = self._pad_to_bt(states_list, lengths, 0.0)
+        masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
+        is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
+        actions_bt, _ = self._pad_to_bt(actions_list, lengths, -1)
+        old_lp_bt, _ = self._pad_to_bt(old_lp_list, lengths, 0.0)
+        returns_bt, _ = self._pad_to_bt(returns_list, lengths, 0.0)
+        adv_bt, _ = self._pad_to_bt(adv_list, lengths, 0.0)
+        lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
+
+        return states_bt, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt
+
+    def _forward_vectorized(self, states_bt, masks_bt, lengths_bt):
+        feat_bt = self.backbone.forward_sequence(states_bt, lengths_bt)
+        actor_feat_bt = self.actor.actor_adapter(feat_bt)
+        B, T = states_bt.size(0), states_bt.size(1)
+        logits_bt = torch.full((B, T, self.action_size), -1e8, device=states_bt.device)
+        logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt)
+        logits_bt[:, :, self.action_groups['partner']] = self.actor.partner_head(actor_feat_bt)
+        logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt)
+        logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt)
+        logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
+        probs_bt = F.softmax(logits_bt, dim=-1)
+        critic_feat_bt = self.critic.critic_adapter(feat_bt)
+        values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
+        return probs_bt, values_bt
+
+    @staticmethod
+    def _flatten_action_steps(is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt):
+        flat_mask = is_action_bt.view(-1)
+        if flat_mask.sum() == 0:
+            return None
+        return (
+            probs_bt.view(-1, probs_bt.size(-1))[flat_mask],
+            values_bt.view(-1)[flat_mask],
+            actions_bt.view(-1)[flat_mask],
+            old_lp_bt.view(-1)[flat_mask],
+            returns_bt.view(-1)[flat_mask],
+            adv_bt.view(-1)[flat_mask],
+        )
+
+    @staticmethod
+    def _entropy_from_probs(sub):
+        sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
+        return -(sub_norm * torch.log(sub_norm + 1e-8)).sum(dim=1).mean()
+
+    def _head_entropies(self, probs_flat, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t):
+        probs_pick = probs_flat[:, pick_idx_t]
+        probs_partner = probs_flat[:, partner_idx_t]
+        probs_bury = probs_flat[:, bury_idx_t]
+        probs_play = probs_flat[:, play_idx_t]
+        return (
+            self._entropy_from_probs(probs_pick),
+            self._entropy_from_probs(probs_partner),
+            self._entropy_from_probs(probs_bury),
+            self._entropy_from_probs(probs_play),
+        )
+
+    def _per_head_weights(self, actions_flat, pick_idx_t, partner_idx_t, bury_idx_t, template):
+        is_pick = torch.isin(actions_flat, pick_idx_t)
+        is_partner = torch.isin(actions_flat, partner_idx_t)
+        is_bury = torch.isin(actions_flat, bury_idx_t)
+        is_play = ~(is_pick | is_partner | is_bury)
+
+        count_pick = is_pick.sum().item()
+        count_partner = is_partner.sum().item()
+        count_bury = is_bury.sum().item()
+        count_play = is_play.sum().item()
+        total_count = float(count_pick + count_partner + count_bury + count_play)
+        heads_present = int((count_pick > 0) + (count_partner > 0) + (count_bury > 0) + (count_play > 0))
+
+        def per_head_weight(count: int) -> float:
+            if heads_present == 0 or count == 0:
+                return 0.0
+            return total_count / (heads_present * float(count))
+
+        w_pick = per_head_weight(count_pick)
+        w_partner = per_head_weight(count_partner)
+        w_bury = per_head_weight(count_bury)
+        w_play = per_head_weight(count_play)
+
+        head_weight = torch.ones_like(template)
+        if w_pick > 0.0:
+            head_weight[is_pick] = head_weight[is_pick] * w_pick
+        else:
+            head_weight[is_pick] = 0.0
+        if w_partner > 0.0:
+            head_weight[is_partner] = head_weight[is_partner] * w_partner
+        else:
+            head_weight[is_partner] = 0.0
+        if w_bury > 0.0:
+            head_weight[is_bury] = head_weight[is_bury] * w_bury
+        else:
+            head_weight[is_bury] = 0.0
+        if w_play > 0.0:
+            head_weight[is_play] = head_weight[is_play] * w_play
+        else:
+            head_weight[is_play] = 0.0
+
+        return head_weight, is_pick, is_partner, is_bury
+
+    def _actor_critic_losses(
+        self,
+        probs_flat,
+        actions_flat,
+        old_lp_flat,
+        values_flat,
+        returns_flat,
+        adv_flat,
+        pick_idx_t,
+        partner_idx_t,
+        bury_idx_t,
+        play_idx_t,
+    ):
+        dist = torch.distributions.Categorical(probs_flat)
+        new_lp_flat = dist.log_prob(actions_flat)
+        approx_kl_t = (old_lp_flat - new_lp_flat).mean()
+
+        pick_entropy, partner_entropy, bury_entropy, play_entropy = self._head_entropies(
+            probs_flat, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
+        )
+        entropy_term = (
+            self.entropy_coeff_pick * pick_entropy
+            + self.entropy_coeff_partner * partner_entropy
+            + self.entropy_coeff_bury * bury_entropy
+            + self.entropy_coeff_play * play_entropy
+        )
+
+        ratios = torch.exp(new_lp_flat - old_lp_flat)
+        head_weight, is_pick, is_partner, is_bury = self._per_head_weights(
+            actions_flat, pick_idx_t, partner_idx_t, bury_idx_t, ratios
+        )
+
+        eps_flat = torch.full_like(ratios, self.clip_epsilon_play)
+        eps_flat[is_pick] = self.clip_epsilon_pick
+        eps_flat[is_partner] = self.clip_epsilon_partner
+        eps_flat[is_bury] = self.clip_epsilon_bury
+
+        surr1 = ratios * adv_flat
+        clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
+        pg_loss_elements = -torch.min(surr1, clipped)
+        policy_loss = (pg_loss_elements * head_weight).mean()
+
+        returns_target = returns_flat.view(-1)
+        values_old = values_flat.detach()
+        v_clipped = values_old + torch.clamp(
+            values_flat - values_old, -self.value_clip_epsilon, self.value_clip_epsilon
+        )
+        critic_loss_unclipped = F.mse_loss(values_flat, returns_target)
+        critic_loss_clipped = F.mse_loss(v_clipped, returns_target)
+        critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped)
+
+        actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
+        return actor_loss, critic_loss, approx_kl_t, (pick_entropy, partner_entropy, bury_entropy, play_entropy)
+
     def update(self, epochs=6, batch_size=256):
         """Update actor and critic networks using PPO with recurrent unrolling.
         Includes performance optimisations and per-update timing logs.
@@ -543,34 +796,11 @@ class PPOAgent:
                 if e.get('kind') == 'action':
                     e['advantage'] = float((e['advantage'] - adv_mean) / adv_std)
 
+        # Build static views and segments
         t_build_start = time.time()
-        # Convert to tensors and indices
-        states = [torch.FloatTensor(e['state']).to(device) for e in self.events]
-        masks_t = [ (e['mask'].to(device) if isinstance(e['mask'], torch.Tensor) else torch.as_tensor(e['mask'], dtype=torch.bool, device=device)) for e in self.events]
-        kinds = [e['kind'] for e in self.events]
-        pids = [e.get('player_id', None) for e in self.events]
-        events_by_player: dict[int | None, list[int]] = {}
-        for idx, pid in enumerate(pids):
-            events_by_player.setdefault(pid, []).append(idx)
-
-        # Build contiguous segments per player delimited by that player's done=True actions
-        segments: list[tuple[int | None, int, int]] = []
-        for pid, ev_idxs in events_by_player.items():
-            action_ev_idxs = [i for i in ev_idxs if kinds[i] == 'action']
-            if not action_ev_idxs:
-                continue
-            # Build done flags for this player's actions in order
-            dones_pid = [self.events[i]['done'] for i in action_ev_idxs]
-            start = ev_idxs[0]
-            a_ptr = 0
-            for i in ev_idxs:
-                if kinds[i] == 'action':
-                    if dones_pid[a_ptr]:
-                        segments.append((pid, start, i))
-                        start = i + 1
-                    a_ptr += 1
-            if start <= ev_idxs[-1]:
-                segments.append((pid, start, ev_idxs[-1]))
+        states, masks_t, kinds, pids = self._prepare_training_views()
+        events_by_player = self._index_events_by_player(pids)
+        segments = self._segments_from_events(events_by_player, kinds)
 
         # Precompute static index tensors once
         pick_idx_tensor_static = torch.tensor(self.action_groups['pick'], device=device)
@@ -598,6 +828,7 @@ class PPOAgent:
         pick_adv_count = 0
         pass_adv_sum = 0.0
         pass_adv_count = 0
+
         for _ in range(epochs):
             if not segments:
                 break
@@ -607,96 +838,31 @@ class PPOAgent:
             for mb_start in range(0, len(segments), mb_size):
                 batch_idxs = perm[mb_start:mb_start + mb_size].tolist()
                 batch = [segments[i] for i in batch_idxs]
-
-                lengths = []
-                states_list = []
-                masks_list = []
-                is_action_list = []
-                actions_list = []
-                old_lp_list = []
-                returns_list = []
-                adv_list = []
-
-                # Collate batch
-                for pid, seg_start, seg_end in batch:
-                    ev_range = list(range(seg_start, seg_end + 1))
-                    lengths.append(len(ev_range))
-                    states_list.append(torch.stack([states[i] for i in ev_range], dim=0))
-                    masks_list.append(torch.stack([masks_t[i] for i in ev_range], dim=0))
-                    is_act = torch.tensor([1 if (kinds[i] == 'action' and pids[i] == pid) else 0 for i in ev_range], dtype=torch.bool, device=device)
-                    is_action_list.append(is_act)
-                    act_bt = []
-                    olp_bt = []
-                    ret_bt = []
-                    adv_bt = []
-                    for i in ev_range:
-                        if kinds[i] == 'action' and pids[i] == pid:
-                            act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
-                            olp_bt.append(torch.tensor(self.events[i]['log_prob'], dtype=torch.float32, device=device))
-                            ret_bt.append(torch.tensor(self.events[i]['return'], dtype=torch.float32, device=device))
-                            adv_bt.append(torch.tensor(self.events[i]['advantage'], dtype=torch.float32, device=device))
-                        else:
-                            act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
-                            olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                            ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                            adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                    actions_list.append(torch.stack(act_bt, dim=0))
-                    old_lp_list.append(torch.stack(olp_bt, dim=0))
-                    returns_list.append(torch.stack(ret_bt, dim=0))
-                    adv_list.append(torch.stack(adv_bt, dim=0))
-
-                B = len(batch)
-                if B == 0:
+                if len(batch) == 0:
                     continue
-                T = max(lengths)
 
-                def pad_to_bt(lst, fill):
-                    out = []
-                    for i, tlen in enumerate(lengths):
-                        pad = T - tlen
-                        if pad > 0:
-                            pad_shape = list(lst[i].shape)
-                            pad_shape[0] = pad
-                            pad_tensor = torch.full(pad_shape, fill, device=device, dtype=lst[i].dtype)
-                            out.append(torch.cat([lst[i], pad_tensor], dim=0))
-                        else:
-                            out.append(lst[i])
-                    return torch.stack(out, dim=0)
-
-                states_bt = pad_to_bt(states_list, 0.0)       # (B, T, state)
-                masks_bt = pad_to_bt(masks_list, True)        # (B, T, A)
-                is_action_bt = pad_to_bt(is_action_list, False)  # (B, T)
-                actions_bt = pad_to_bt(actions_list, -1)      # (B, T)
-                old_lp_bt = pad_to_bt(old_lp_list, 0.0)       # (B, T)
-                returns_bt = pad_to_bt(returns_list, 0.0)     # (B, T)
-                adv_bt = pad_to_bt(adv_list, 0.0)             # (B, T)
-                lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
+                (
+                    states_bt,
+                    masks_bt,
+                    is_action_bt,
+                    actions_bt,
+                    old_lp_bt,
+                    returns_bt,
+                    adv_bt,
+                    lengths_bt,
+                ) = self._build_minibatch_tensors(batch, states, masks_t, kinds, pids)
 
                 # Vectorized forward
                 t_fwd = time.time()
-                feat_bt = self.backbone.forward_sequence(states_bt, lengths_bt)
-                actor_feat_bt = self.actor.actor_adapter(feat_bt)
-                logits_bt = torch.full((B, T, self.action_size), -1e8, device=device)
-                logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt)
-                logits_bt[:, :, self.action_groups['partner']] = self.actor.partner_head(actor_feat_bt)
-                logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt)
-                logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt)
-                logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
-                probs_bt = F.softmax(logits_bt, dim=-1)
-                critic_feat_bt = self.critic.critic_adapter(feat_bt)
-                values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)  # (B, T)
+                probs_bt, values_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
                 forward_time += time.time() - t_fwd
 
-                # Gather action steps
-                flat_mask = is_action_bt.view(-1)
-                if flat_mask.sum() == 0:
+                flat = self._flatten_action_steps(
+                    is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt
+                )
+                if flat is None:
                     continue
-                probs_flat = probs_bt.view(-1, self.action_size)[flat_mask]
-                values_flat = values_bt.view(-1)[flat_mask]
-                actions_flat = actions_bt.view(-1)[flat_mask]
-                old_lp_flat = old_lp_bt.view(-1)[flat_mask]
-                returns_flat = returns_bt.view(-1)[flat_mask]
-                adv_flat = adv_bt.view(-1)[flat_mask]
+                probs_flat, values_flat, actions_flat, old_lp_flat, returns_flat, adv_flat = flat
 
                 # Record PICK/PASS advantages across minibatches
                 with torch.no_grad():
@@ -709,107 +875,32 @@ class PPOAgent:
                         pass_adv_sum += adv_flat[pass_mask_specific].sum().item()
                         pass_adv_count += int(pass_mask_specific.sum().item())
 
-                # New log-probs
-                dist = torch.distributions.Categorical(probs_flat)
-                new_lp_flat = dist.log_prob(actions_flat)
+                # Losses and metrics
+                (
+                    actor_loss,
+                    critic_loss,
+                    approx_kl_t,
+                    (pick_entropy, partner_entropy, bury_entropy, play_entropy),
+                ) = self._actor_critic_losses(
+                    probs_flat,
+                    actions_flat,
+                    old_lp_flat,
+                    values_flat,
+                    returns_flat,
+                    adv_flat,
+                    pick_idx_tensor_static,
+                    partner_idx_tensor_static,
+                    bury_idx_tensor_static,
+                    play_idx_tensor_static,
+                )
+                last_approx_kl = float(approx_kl_t.item())
 
-                # Approximate KL divergence between old and new policy on sampled actions
-                approx_kl_t = (old_lp_flat - new_lp_flat).mean()
-                approx_kl = approx_kl_t.item()
-                last_approx_kl = approx_kl
-
-                # Entropy by head
-                with torch.no_grad():
-                    probs_pick = probs_flat[:, pick_idx_tensor_static]
-                    probs_partner = probs_flat[:, partner_idx_tensor_static]
-                    probs_bury = probs_flat[:, bury_idx_tensor_static]
-                    probs_play = probs_flat[:, play_idx_tensor_static]
-                    def entropy_from_probs(sub):
-                        sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
-                        return -(sub_norm * torch.log(sub_norm + 1e-8)).sum(dim=1).mean()
-                    pick_entropy = entropy_from_probs(probs_pick)
-                    partner_entropy = entropy_from_probs(probs_partner)
-                    bury_entropy = entropy_from_probs(probs_bury)
-                    play_entropy = entropy_from_probs(probs_play)
-                # Accumulate head entropies
+                # Entropy accumulation
                 ent_pick_sum += float(pick_entropy)
                 ent_partner_sum += float(partner_entropy)
                 ent_bury_sum += float(bury_entropy)
                 ent_play_sum += float(play_entropy)
                 ent_batches += 1
-                entropy_term = (self.entropy_coeff_pick * pick_entropy +
-                                self.entropy_coeff_partner * partner_entropy +
-                                self.entropy_coeff_bury * bury_entropy +
-                                self.entropy_coeff_play * play_entropy)
-
-                # PPO loss vectorized
-                ratios = torch.exp(new_lp_flat - old_lp_flat)
-                is_pick = torch.isin(actions_flat, pick_idx_tensor_static)
-                is_partner = torch.isin(actions_flat, partner_idx_tensor_static)
-                is_bury = torch.isin(actions_flat, bury_idx_tensor_static)
-                eps_flat = torch.full_like(ratios, self.clip_epsilon_play)
-                eps_flat[is_pick] = self.clip_epsilon_pick
-                eps_flat[is_partner] = self.clip_epsilon_partner
-                eps_flat[is_bury] = self.clip_epsilon_bury
-                surr1 = ratios * adv_flat
-                clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
-
-                # --- Per-head loss reweighting ---------------------------------------
-                # Ensure pick / partner / bury / play contribute roughly equally regardless of
-                # how many actions of each head appear in this minibatch.
-                with torch.no_grad():
-                    is_play = ~(is_pick | is_partner | is_bury)
-                    count_pick = is_pick.sum().item()
-                    count_partner = is_partner.sum().item()
-                    count_bury = is_bury.sum().item()
-                    count_play = is_play.sum().item()
-
-                    total_count = float(count_pick + count_partner + count_bury + count_play)
-                    heads_present = int((count_pick > 0) + (count_partner > 0) + (count_bury > 0) + (count_play > 0))
-
-                    # Avoid division by zero. If a head is absent, its weight is 0.
-                    def per_head_weight(count: int) -> float:
-                        if heads_present == 0 or count == 0:
-                            return 0.0
-                        return total_count / (heads_present * float(count))
-
-                    w_pick = per_head_weight(count_pick)
-                    w_partner = per_head_weight(count_partner)
-                    w_bury = per_head_weight(count_bury)
-                    w_play = per_head_weight(count_play)
-
-                    head_weight = torch.ones_like(ratios)
-                    if w_pick > 0.0:
-                        head_weight[is_pick] = head_weight[is_pick] * w_pick
-                    else:
-                        head_weight[is_pick] = 0.0
-                    if w_partner > 0.0:
-                        head_weight[is_partner] = head_weight[is_partner] * w_partner
-                    else:
-                        head_weight[is_partner] = 0.0
-                    if w_bury > 0.0:
-                        head_weight[is_bury] = head_weight[is_bury] * w_bury
-                    else:
-                        head_weight[is_bury] = 0.0
-                    if w_play > 0.0:
-                        head_weight[is_play] = head_weight[is_play] * w_play
-                    else:
-                        head_weight[is_play] = 0.0
-
-                # Policy loss with per-head weights (mean over samples for stability)
-                pg_loss_elements = -torch.min(surr1, clipped)
-                policy_loss = (pg_loss_elements * head_weight).mean()
-
-                # Add small KL penalty to discourage large policy shifts even before early-stop
-                actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
-
-                # Critic loss with value clipping (PPO-style)
-                returns_target = returns_flat.view(-1)
-                values_old = values_flat.detach()
-                v_clipped = values_old + torch.clamp(values_flat - values_old, -self.value_clip_epsilon, self.value_clip_epsilon)
-                critic_loss_unclipped = F.mse_loss(values_flat, returns_target)
-                critic_loss_clipped = F.mse_loss(v_clipped, returns_target)
-                critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped)
 
                 # Backward + step per minibatch
                 t_bwd = time.time()
@@ -818,6 +909,7 @@ class PPOAgent:
                 self.critic_optimizer.zero_grad()
                 total_loss.backward()
                 backward_time += time.time() - t_bwd
+
                 t_step = time.time()
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
                 torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
