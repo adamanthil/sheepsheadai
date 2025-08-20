@@ -113,8 +113,15 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
             pick_bonus, pass_bonus = +0.03, -0.03
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
 
+    # ALONE shaping: discourage going alone with weak hands
+    elif action_name == "ALONE":
+        hand_cards = get_cards_from_vector(state_vec[16:48])
+        score = estimate_hand_strength_score(hand_cards)
+        if score <= 7:
+            transition['intermediate_reward'] += -0.02
+
     # Bury penalty: discourage burying trump if not required
-    if "BURY" in action_name:
+    elif "BURY" in action_name:
         card = action_name[5:]
         # Derive allowed bury actions from this step's valid_actions
         valid_actions = transition.get('valid_actions', set())
@@ -128,7 +135,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
             # Small preference when both options exist
             transition['intermediate_reward'] += 0.01
 
-    if "PLAY" in action_name:
+    elif "PLAY" in action_name:
         is_lead = (game.cards_played == 0) and (game.leader == player.position)
         if is_lead:
             card = action_name[5:]
