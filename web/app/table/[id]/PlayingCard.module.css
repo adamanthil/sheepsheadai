@@ -22,10 +22,6 @@
   gap: 1px;
 }
 
-.spacer {
-  /* Empty div to take up remaining space */
-}
-
 @media (min-width: 768px) {
   .card {
     border-radius: 10px;

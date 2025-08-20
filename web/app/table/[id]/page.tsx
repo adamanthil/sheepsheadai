@@ -632,17 +632,19 @@ export default function TablePage() {
             <div className={`${styles.pushRight} ${styles.dimmed}`}>
               Tricks: {lastState.view.trick_winners.filter((x: number) => x > 0).length}/6 · Points played so far: {lastState.view.trick_points.reduce((a: number, b: number) => a + (b || 0), 0)}
             </div>
-            <button onClick={() => setShowScores(true)}>Scores</button>
-            {isHost && (
-              confirmClose ? (
-                <span className={styles.confirmCloseRow}>
-                  <button className={styles.dangerButton} onClick={closeTable}>Confirm close</button>
-                  <button onClick={() => setConfirmClose(false)}>Cancel</button>
-                </span>
-              ) : (
-                <button onClick={() => setConfirmClose(true)}>Close table</button>
-              )
-            )}
+            <div className={styles.bottomButtonRow}>
+              <button onClick={() => setShowScores(true)}>Scores</button>
+              {isHost && (
+                confirmClose ? (
+                  <span className={styles.confirmCloseRow}>
+                    <button className={styles.dangerButton} onClick={closeTable}>Confirm close</button>
+                    <button onClick={() => setConfirmClose(false)}>Cancel</button>
+                  </span>
+                ) : (
+                  <button onClick={() => setConfirmClose(true)}>Close table</button>
+                )
+              )}
+            </div>
           </div>
         </div>
       )}
