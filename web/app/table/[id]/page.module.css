@@ -252,20 +252,6 @@
   }
 }
 
-.trickHeader {
-  text-align: center;
-  margin-bottom: 8px;
-  opacity: 0.9;
-  font-size: 14px;
-}
-
-@media (min-width: 768px) {
-  .trickHeader {
-    margin-bottom: 12px;
-    font-size: 16px;
-  }
-}
-
 .sectionTitle {
   opacity: 0.9;
   margin-bottom: 6px;
@@ -472,13 +458,21 @@
   overflow-y: auto;
 }
 
+.showMoreActions {
+  margin-left: auto;
+}
+
+.rotate {
+  transform: rotate(180deg);
+}
+
 .bottomBarInner {
   width: 100%;
   max-width: 100vw;
   margin: 0 auto;
   padding: 8px 12px;
   display: flex;
-  flex-direction: column; /* Stack vertically on mobile */
+  flex-direction: column; /* container holds top row and optional more row */
   gap: 6px;
   align-items: stretch;
   color: white;
@@ -489,9 +483,7 @@
 @media (min-width: 480px) {
   .bottomBarInner {
     flex-direction: row;
-    flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
     gap: 8px;
     padding: 8px 16px;
     max-width: 100vw;
@@ -510,7 +502,7 @@
 /* Action buttons styling for mobile */
 .bottomBarInner button {
   min-height: 44px; /* Touch-friendly size */
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.25);
   background: rgba(255,255,255,0.1);
@@ -520,7 +512,7 @@
   transition: all 0.2s ease;
   text-align: center;
   white-space: nowrap;
-  flex: 1; /* Equal width buttons on mobile */
+  flex: 1; /* default; can be overridden with .noFlex */
   max-width: 200px; /* Prevent overly wide buttons */
 }
 
@@ -774,10 +766,11 @@
 /* Action buttons (mid-page) */
 .actionButtons {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* mobile: keep single row */
   gap: 6px;
-  justify-content: center;
-  width: 100%;
+  justify-content: flex-start;
+  width: auto;
+  overflow-x: auto; /* allow horizontal scroll if needed */
 }
 
 .actionButton {
@@ -798,6 +791,13 @@
 @media (max-width: 479px) {
   .actionButton {
     flex: 1 1 auto;
+  }
+}
+
+@media (min-width: 480px) {
+  .actionButtons {
+    flex-wrap: wrap; /* tablet/desktop: allow wrapping */
+    overflow-x: visible;
   }
 }
 
@@ -838,4 +838,61 @@
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+/* New: bottom bar rows and utilities */
+.bottomTopRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap !important; /* single row, override generic container */
+  overflow-x: auto; /* scroll if overflow */
+  justify-content: flex-start;
+}
+
+@media (min-width: 480px) {
+  .bottomTopRow {
+    flex-wrap: wrap !important; /* allow wrapping on tablet/desktop */
+    overflow-x: visible;
+    justify-content: center;
+  }
+}
+
+.bottomTopRow button {
+  flex: none; /* natural width in the single row */
+}
+
+.bottomMoreRow {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.noFlex {
+  flex: none !important;
+}
+
+/* Chevron toggle minimal button (mobile) */
+.bottomBarInner .chevronToggle {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: rgba(255,255,255,0.7);
+}
+.bottomBarInner .chevronToggle:hover {
+  color: rgba(255,255,255,0.9);
 }

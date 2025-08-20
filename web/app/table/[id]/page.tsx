@@ -84,6 +84,8 @@ export default function TablePage() {
   const [showScores, setShowScores] = useState(false);
   const [callout, setCallout] = useState<{ kind: 'PICK' | 'CALL' | 'LEASTER' | 'ALONE'; message: string } | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -224,6 +226,17 @@ export default function TablePage() {
       if (animTimerRef.current) clearTimeout(animTimerRef.current);
       if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
     };
+  }, []);
+
+  // Track viewport for mobile-only bottom bar behavior
+  useEffect(() => {
+    function handleResize() {
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
+      setIsMobile(vw < 480);
+    }
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const inPickDecision = !!lastState && !lastState.view.is_leaster && (lastState.view.picker === 0);
@@ -445,15 +458,12 @@ export default function TablePage() {
           <div className={styles.waitingMessage}>Waiting for state…</div>
         ) : (
           <div className={styles.tableArea}>
-              {/* Table area full width */}
               <div className={styles.tableFrame}>
-                {/* Current trick in table layout */}
-                <div className={styles.trickHeader}>Trick #{(lastState.view.current_trick_index || 0) + 1}</div>
                 <div
                   id="trick-container"
                   ref={trickBoxRef}
                   className={styles.trickContainer}
-                  style={{ ['--trickH' as any]: `${Math.max(280, Math.floor(centerSize.h * 1.7))}px`, ['--cardW' as any]: `${centerSize.w}px` }}
+                  style={{ ['--trickH' as any]: `${Math.max(400, Math.floor(centerSize.h * 1.7))}px`, ['--cardW' as any]: `${centerSize.w}px` }}
                 >
                   {(() => {
                     const isPrev = !!showPrev;
@@ -517,8 +527,6 @@ export default function TablePage() {
                     </div>
                   )}
                 </div>
-
-                {/* Persistent previous strip removed in favor of toggle */}
 
                 {/* Your hand */}
                 <div className={styles.handTopSpacer} style={{ ['--handTop' as any]: `${handTopMargin}px` }}>
@@ -620,31 +628,63 @@ export default function TablePage() {
       {lastState && (
         <div className={styles.bottomBar}>
           <div className={styles.bottomBarInner}>
-            <div className={`${styles.muted} ${styles.smallText}`}>{nameForSeat(lastState.yourSeat, lastState.table)} {lastState.actorSeat === lastState.yourSeat ? '· Your turn' : ''}</div>
-            {(lastState.view.last_trick && lastState.view.last_trick.length === 5) ? (
-              <button onClick={() => setShowPrev(p => !p)}>{showPrev ? 'Hide previous trick' : 'Show previous trick'}</button>
-            ) : null}
-            {lastState.valid_actions.length ? actionButtons : (
-              <div className={styles.dimmed}>
-                Waiting for {nameForSeat(lastState.actorSeat, lastState.table) || `Seat ${lastState.actorSeat || ''}`}…
-              </div>
+            {isMobile ? (
+              <>
+                <div className={styles.bottomTopRow}>
+                  {(lastState.view.last_trick && lastState.view.last_trick.length === 5) ? (
+                    <button aria-label={showPrev ? 'Hide previous trick' : 'Show previous trick'} className={styles.noFlex} onClick={() => setShowPrev(p => !p)}>{showPrev ? 'Hide previous trick' : 'Show previous trick'}</button>
+                  ) : null}
+                  {lastState.valid_actions.length ? actionButtons : (
+                    <div className={styles.dimmed}>
+                      Waiting for {nameForSeat(lastState.actorSeat, lastState.table) || `Seat ${lastState.actorSeat || ''}`}…
+                    </div>
+                  )}
+                  <button aria-label={showMoreActions ? 'Collapse actions' : 'Expand actions'} className={`${styles.noFlex} ${styles.chevronToggle} ${styles.showMoreActions} ${!showMoreActions ? styles.rotate : ''}`} onClick={() => setShowMoreActions(v => !v)}> ⌃ </button>
+                </div>
+                {showMoreActions && (
+                  <div className={styles.bottomMoreRow}>
+                    <button onClick={() => setShowScores(true)}>Scores</button>
+                    {isHost && (
+                      confirmClose ? (
+                        <span className={styles.confirmCloseRow}>
+                          <button className={styles.dangerButton} onClick={closeTable}>Confirm close</button>
+                          <button onClick={() => setConfirmClose(false)}>Cancel</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmClose(true)}>Close table</button>
+                      )
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className={styles.bottomTopRow}>
+                  <div className={`${styles.muted} ${styles.smallText}`}>{nameForSeat(lastState.yourSeat, lastState.table)} {lastState.actorSeat === lastState.yourSeat ? '· Your turn' : ''}</div>
+                  {(lastState.view.last_trick && lastState.view.last_trick.length === 5) ? (
+                    <button onClick={() => setShowPrev(p => !p)}>{showPrev ? 'Hide previous trick' : 'Show previous trick'}</button>
+                  ) : null}
+                  {lastState.valid_actions.length ? actionButtons : (
+                    <div className={styles.dimmed}>
+                      Waiting for {nameForSeat(lastState.actorSeat, lastState.table) || `Seat ${lastState.actorSeat || ''}`}…
+                    </div>
+                  )}
+                  <div className={styles.bottomButtonRow}>
+                    <button onClick={() => setShowScores(true)}>Scores</button>
+                    {isHost && (
+                      confirmClose ? (
+                        <span className={styles.confirmCloseRow}>
+                          <button className={styles.dangerButton} onClick={closeTable}>Confirm close</button>
+                          <button onClick={() => setConfirmClose(false)}>Cancel</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmClose(true)}>Close table</button>
+                      )
+                    )}
+                  </div>
+                </div>
+              </>
             )}
-            <div className={`${styles.pushRight} ${styles.dimmed}`}>
-              Tricks: {lastState.view.trick_winners.filter((x: number) => x > 0).length}/6 · Points played so far: {lastState.view.trick_points.reduce((a: number, b: number) => a + (b || 0), 0)}
-            </div>
-            <div className={styles.bottomButtonRow}>
-              <button onClick={() => setShowScores(true)}>Scores</button>
-              {isHost && (
-                confirmClose ? (
-                  <span className={styles.confirmCloseRow}>
-                    <button className={styles.dangerButton} onClick={closeTable}>Confirm close</button>
-                    <button onClick={() => setConfirmClose(false)}>Cancel</button>
-                  </span>
-                ) : (
-                  <button onClick={() => setConfirmClose(true)}>Close table</button>
-                )
-              )}
-            </div>
           </div>
         </div>
       )}
