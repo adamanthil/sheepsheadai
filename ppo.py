@@ -508,7 +508,7 @@ class PPOAgent:
             return np.array([]), np.array([])
         return np.concatenate(all_advantages), np.concatenate(all_returns)
 
-    def update(self, next_state=None, epochs=6, batch_size=256):
+    def update(self, epochs=6, batch_size=256):
         """Update actor and critic networks using PPO with recurrent unrolling.
         Includes performance optimisations and per-update timing logs.
         """
@@ -516,15 +516,8 @@ class PPOAgent:
         if len(self.events) == 0:
             return {}
 
-        # Compute next value for GAE
-        next_value = 0
-        if next_state is not None:
-            next_state = torch.FloatTensor(next_state).unsqueeze(0).to(device)
-            with torch.no_grad():
-                next_value = self.critic(next_state).item()
-
         # Compute advantages and returns
-        advantages, returns = self.compute_gae(next_value)
+        advantages, returns = self.compute_gae()
 
         # Store statistics before normalization
         raw_advantages = advantages.copy() if advantages.size else np.array([0.0])

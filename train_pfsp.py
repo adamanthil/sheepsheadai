@@ -551,8 +551,7 @@ def train_pfsp(num_episodes: int = 500000,
                 training_agent.entropy_coeff_partner += PARTNER_ENTROPY_BUMP
 
             # Update
-            last_state_for_gae = training_agent.events[-1]['state'] if getattr(training_agent, 'events', None) and training_agent.events else None
-            update_stats = training_agent.update(next_state=last_state_for_gae, epochs=4, batch_size=256)
+            update_stats = training_agent.update(epochs=4, batch_size=256)
 
             if update_stats:
                 adv_stats = update_stats['advantage_stats']
@@ -785,8 +784,7 @@ def train_pfsp(num_episodes: int = 500000,
     # Final update and save
     if training_agent.events:
         print("🔄 Final model update...")
-        last_state_for_gae = training_agent.events[-1]['state']
-        final_update_stats = training_agent.update(next_state=last_state_for_gae)
+        final_update_stats = training_agent.update()
 
         if final_update_stats:
             adv_stats = final_update_stats['advantage_stats']

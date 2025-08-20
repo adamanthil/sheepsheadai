@@ -381,9 +381,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             agent.entropy_coeff_partner = entropy_partner_start + (entropy_partner_end - entropy_partner_start) * decay_fraction
             agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
 
-            # pass value of last state stored to GAE (use last stored event state)
-            last_state_for_gae = agent.events[-1]['state'] if getattr(agent, 'events', None) and agent.events else None
-            update_stats = agent.update(next_state=last_state_for_gae, epochs=4, batch_size=256)
+            update_stats = agent.update(epochs=4, batch_size=256)
 
             # Log advantage and value target statistics
             if update_stats:
@@ -518,8 +516,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     # Final update and save
     if agent.events:
         print("🔄 Final model update...")
-        last_state_for_gae = agent.events[-1]['state']
-        final_update_stats = agent.update(next_state=last_state_for_gae)
+        final_update_stats = agent.update()
 
         # Log final advantage and value target statistics
         if final_update_stats:
