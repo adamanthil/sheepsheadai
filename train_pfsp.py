@@ -519,10 +519,12 @@ def train_pfsp(num_episodes: int = 500000,
             # Entropy decay
             entropy_play_start, entropy_play_end = 0.05, 0.02
             entropy_pick_start, entropy_pick_end = 0.05, 0.02
+            entropy_partner_start, entropy_partner_end = 0.05, 0.02
             entropy_bury_start, entropy_bury_end = 0.04, 0.015
             decay_fraction = min(episode / num_episodes, 1.0)
             training_agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
             training_agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
+            training_agent.entropy_coeff_partner = entropy_partner_start + (entropy_partner_end - entropy_partner_start) * decay_fraction
             training_agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
 
             # Apply temporary bump to pick entropy when enabled
@@ -551,6 +553,7 @@ def train_pfsp(num_episodes: int = 500000,
                 if head_entropy:
                     print(
                         f"   Entropy - pick: {head_entropy.get('pick', 0.0):.3f}, "
+                        f"partner: {head_entropy.get('partner', 0.0):.3f}, "
                         f"bury: {head_entropy.get('bury', 0.0):.3f}, "
                         f"play: {head_entropy.get('play', 0.0):.3f}"
                     )

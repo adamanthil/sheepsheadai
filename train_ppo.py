@@ -369,10 +369,12 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             # Separate entropy decay schedules
             entropy_play_start, entropy_play_end = 0.05, 0.03
             entropy_pick_start, entropy_pick_end = 0.05, 0.03
+            entropy_partner_start, entropy_partner_end = 0.05, 0.03
             entropy_bury_start, entropy_bury_end = 0.04, 0.02
             decay_fraction = min(episode / num_episodes, 1.0)
             agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
             agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
+            agent.entropy_coeff_partner = entropy_partner_start + (entropy_partner_end - entropy_partner_start) * decay_fraction
             agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
 
             # pass value of last state stored to GAE (use last stored event state)
@@ -398,6 +400,14 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         f"   Timing - build: {t['build_s']:.3f}s, forward: {t['forward_s']:.3f}s, "
                         f"backward: {t['backward_s']:.3f}s, step: {t['step_s']:.3f}s, total: {t['total_update_s']:.3f}s, "
                         f"opt_steps: {t['optimizer_steps']}"
+                    )
+                head_entropy = update_stats.get('head_entropy')
+                if head_entropy:
+                    print(
+                        f"   Entropy - pick: {head_entropy.get('pick', 0.0):.3f}, "
+                        f"partner: {head_entropy.get('partner', 0.0):.3f}, "
+                        f"bury: {head_entropy.get('bury', 0.0):.3f}, "
+                        f"play: {head_entropy.get('play', 0.0):.3f}"
                     )
 
             game_count = 0

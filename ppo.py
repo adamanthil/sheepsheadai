@@ -144,16 +144,17 @@ class SharedRecurrentBackbone(nn.Module):
 
 
 class MultiHeadRecurrentActorNetwork(nn.Module):
-    """Actor network with an LSTM core and separate linear heads for the pick / bury / play
-    phases.  The three heads' logits are concatenated back into the full action
-    space order so existing masking logic continues to work unchanged.
+    """Actor network with an LSTM core and separate linear heads for the
+    pick / partner-selection / bury / play phases. The four heads' logits are
+    concatenated back into the full action space order so existing masking
+    logic continues to work unchanged.
     """
 
     def __init__(self, backbone: SharedRecurrentBackbone, action_size, action_groups, activation='swish'):
         super(MultiHeadRecurrentActorNetwork, self).__init__()
         self.backbone = backbone  # registered; owns shared params
         self.action_size = action_size
-        self.action_groups = action_groups  # dict with keys 'pick', 'bury', 'play'
+        self.action_groups = action_groups  # dict with keys 'pick', 'partner', 'bury', 'play'
 
         # Activation selector
         if activation == 'swish':
@@ -172,6 +173,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # === Heads ===
         self.pick_head = nn.Linear(256, len(action_groups['pick']))
+        self.partner_head = nn.Linear(256, len(action_groups['partner']))
         self.bury_head = nn.Linear(256, len(action_groups['bury']))
         self.play_head = nn.Linear(256, len(action_groups['play']))
 
@@ -235,10 +237,12 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         logits = torch.full((batch_size, self.action_size), -1e8, device=state.device)
 
         pick_logits = self.pick_head(feat)
+        partner_logits = self.partner_head(feat)
         bury_logits = self.bury_head(feat)
         play_logits = self.play_head(feat)
 
         logits[:, self.action_groups['pick']] = pick_logits
+        logits[:, self.action_groups['partner']] = partner_logits
         logits[:, self.action_groups['bury']] = bury_logits
         logits[:, self.action_groups['play']] = play_logits
 
@@ -302,17 +306,18 @@ class PPOAgent:
         # --------------------------------------------------
         pick_indices = [ACTION_IDS["PICK"] - 1, ACTION_IDS["PASS"] - 1]
 
-        # Bury-phase indices include:   (1) all explicit bury actions,
-        #                               (2) calling going alone,
-        #                               (3) all partner-calling actions (called ace and JD PARTNER).
-        #                               (4) All "UNDER" actions.
-        bury_phase_actions = BURY_ACTIONS + ["ALONE", "JD PARTNER"] + CALL_ACTIONS + UNDER_ACTIONS
-        bury_indices = sorted({ACTION_IDS[a] - 1 for a in bury_phase_actions})
+        # Partner-selection head: ALONE, JD PARTNER, all partner CALL actions
+        partner_selection_actions = ["ALONE", "JD PARTNER"] + CALL_ACTIONS
+        partner_indices = sorted({ACTION_IDS[a] - 1 for a in partner_selection_actions})
+
+        # Bury head: explicit bury actions and UNDER actions
+        bury_indices = sorted({ACTION_IDS[a] - 1 for a in (BURY_ACTIONS + UNDER_ACTIONS)})
 
         play_indices = sorted({ACTION_IDS[a] - 1 for a in PLAY_ACTIONS})
 
         self.action_groups = {
             'pick': sorted(pick_indices),
+            'partner': sorted(partner_indices),
             'bury': sorted(bury_indices),
             'play': sorted(play_indices),
         }
@@ -341,11 +346,13 @@ class PPOAgent:
         self.gae_lambda = 0.95
         # Separate entropy coefficients per head
         self.entropy_coeff_pick = 0.02
+        self.entropy_coeff_partner = 0.02
         self.entropy_coeff_bury = 0.02
         self.entropy_coeff_play = 0.01
         self.value_loss_coeff = 0.5
         self.max_grad_norm = 0.3
         self.clip_epsilon_pick = 0.2
+        self.clip_epsilon_partner = 0.15
         self.clip_epsilon_bury = 0.1
         self.clip_epsilon_play = 0.15
         self.value_clip_epsilon = 0.2
@@ -574,6 +581,7 @@ class PPOAgent:
 
         # Precompute static index tensors once
         pick_idx_tensor_static = torch.tensor(self.action_groups['pick'], device=device)
+        partner_idx_tensor_static = torch.tensor(self.action_groups['partner'], device=device)
         bury_idx_tensor_static = torch.tensor(self.action_groups['bury'], device=device)
         play_idx_tensor_static = torch.tensor(self.action_groups['play'], device=device)
 
@@ -589,6 +597,7 @@ class PPOAgent:
 
         # Instrumentation accumulators
         ent_pick_sum = 0.0
+        ent_partner_sum = 0.0
         ent_bury_sum = 0.0
         ent_play_sum = 0.0
         ent_batches = 0
@@ -676,6 +685,7 @@ class PPOAgent:
                 actor_feat_bt = self.actor.actor_adapter(feat_bt)
                 logits_bt = torch.full((B, T, self.action_size), -1e8, device=device)
                 logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt)
+                logits_bt[:, :, self.action_groups['partner']] = self.actor.partner_head(actor_feat_bt)
                 logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt)
                 logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt)
                 logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
@@ -718,44 +728,51 @@ class PPOAgent:
                 # Entropy by head
                 with torch.no_grad():
                     probs_pick = probs_flat[:, pick_idx_tensor_static]
+                    probs_partner = probs_flat[:, partner_idx_tensor_static]
                     probs_bury = probs_flat[:, bury_idx_tensor_static]
                     probs_play = probs_flat[:, play_idx_tensor_static]
                     def entropy_from_probs(sub):
                         sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
                         return -(sub_norm * torch.log(sub_norm + 1e-8)).sum(dim=1).mean()
                     pick_entropy = entropy_from_probs(probs_pick)
+                    partner_entropy = entropy_from_probs(probs_partner)
                     bury_entropy = entropy_from_probs(probs_bury)
                     play_entropy = entropy_from_probs(probs_play)
                 # Accumulate head entropies
                 ent_pick_sum += float(pick_entropy)
+                ent_partner_sum += float(partner_entropy)
                 ent_bury_sum += float(bury_entropy)
                 ent_play_sum += float(play_entropy)
                 ent_batches += 1
                 entropy_term = (self.entropy_coeff_pick * pick_entropy +
+                                self.entropy_coeff_partner * partner_entropy +
                                 self.entropy_coeff_bury * bury_entropy +
                                 self.entropy_coeff_play * play_entropy)
 
                 # PPO loss vectorized
                 ratios = torch.exp(new_lp_flat - old_lp_flat)
                 is_pick = torch.isin(actions_flat, pick_idx_tensor_static)
+                is_partner = torch.isin(actions_flat, partner_idx_tensor_static)
                 is_bury = torch.isin(actions_flat, bury_idx_tensor_static)
                 eps_flat = torch.full_like(ratios, self.clip_epsilon_play)
                 eps_flat[is_pick] = self.clip_epsilon_pick
+                eps_flat[is_partner] = self.clip_epsilon_partner
                 eps_flat[is_bury] = self.clip_epsilon_bury
                 surr1 = ratios * adv_flat
                 clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
 
                 # --- Per-head loss reweighting ---------------------------------------
-                # Ensure pick / bury / play contribute roughly equally regardless of
+                # Ensure pick / partner / bury / play contribute roughly equally regardless of
                 # how many actions of each head appear in this minibatch.
                 with torch.no_grad():
-                    is_play = ~(is_pick | is_bury)
+                    is_play = ~(is_pick | is_partner | is_bury)
                     count_pick = is_pick.sum().item()
+                    count_partner = is_partner.sum().item()
                     count_bury = is_bury.sum().item()
                     count_play = is_play.sum().item()
 
-                    total_count = float(count_pick + count_bury + count_play)
-                    heads_present = int((count_pick > 0) + (count_bury > 0) + (count_play > 0))
+                    total_count = float(count_pick + count_partner + count_bury + count_play)
+                    heads_present = int((count_pick > 0) + (count_partner > 0) + (count_bury > 0) + (count_play > 0))
 
                     # Avoid division by zero. If a head is absent, its weight is 0.
                     def per_head_weight(count: int) -> float:
@@ -764,6 +781,7 @@ class PPOAgent:
                         return total_count / (heads_present * float(count))
 
                     w_pick = per_head_weight(count_pick)
+                    w_partner = per_head_weight(count_partner)
                     w_bury = per_head_weight(count_bury)
                     w_play = per_head_weight(count_play)
 
@@ -772,6 +790,10 @@ class PPOAgent:
                         head_weight[is_pick] = head_weight[is_pick] * w_pick
                     else:
                         head_weight[is_pick] = 0.0
+                    if w_partner > 0.0:
+                        head_weight[is_partner] = head_weight[is_partner] * w_partner
+                    else:
+                        head_weight[is_partner] = 0.0
                     if w_bury > 0.0:
                         head_weight[is_bury] = head_weight[is_bury] * w_bury
                     else:
@@ -843,6 +865,7 @@ class PPOAgent:
             'timing': timing,
             'head_entropy': {
                 'pick': (ent_pick_sum / ent_batches) if ent_batches > 0 else 0.0,
+                'partner': (ent_partner_sum / ent_batches) if ent_batches > 0 else 0.0,
                 'bury': (ent_bury_sum / ent_batches) if ent_batches > 0 else 0.0,
                 'play': (ent_play_sum / ent_batches) if ent_batches > 0 else 0.0,
             },
