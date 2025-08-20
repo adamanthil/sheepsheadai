@@ -351,11 +351,11 @@ class PPOAgent:
         self.entropy_coeff_play = 0.01
         self.value_loss_coeff = 0.5
         self.max_grad_norm = 0.3
-        self.clip_epsilon_pick = 0.2
+        self.clip_epsilon_pick = 0.15
         self.clip_epsilon_partner = 0.15
         self.clip_epsilon_bury = 0.1
         self.clip_epsilon_play = 0.15
-        self.value_clip_epsilon = 0.2
+        self.value_clip_epsilon = 0.15
 
         # PPO early stopping target for approximate KL (per update)
         self.target_kl = None
