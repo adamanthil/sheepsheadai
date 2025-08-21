@@ -4,7 +4,7 @@ import json
 import os
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +41,7 @@ from server.api.schemas import (
 def _try_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
-    except Exception:
+    except (ValueError, TypeError):
         return default
 
 
@@ -102,6 +102,10 @@ class Table:
     initial_seat_order: List[str] = field(default_factory=list)
     # Snapshot of display names at first hand start, keyed by occupant id
     initial_names: Dict[str, str] = field(default_factory=dict)
+    # Pending disconnect replacement tasks keyed by human client_id
+    disconnect_tasks: Dict[str, asyncio.Task] = field(default_factory=dict)
+    # Reserved AI occupant id to reclaim per human client id
+    reserved_ai_by_human: Dict[str, str] = field(default_factory=dict)
 
     def to_public_dict(self) -> Dict[str, Any]:
         def seat_name(occ_id: Optional[str]) -> Optional[str]:
@@ -425,15 +429,166 @@ def schedule_ai_turns(table: Table, initial_delay: float = 0.0) -> None:
     async def _runner():
         if initial_delay > 0:
             await asyncio.sleep(initial_delay)
-        try:
-            await ai_take_turns(table)
-        except Exception:
-            logging.exception("ai_take_turns crashed for table %s", table.id)
+        await ai_take_turns(table)
 
     # Cancel previous task if running
     if table.ai_task and not table.ai_task.done():
         table.ai_task.cancel()
     table.ai_task = asyncio.create_task(_runner())
+
+
+# ------------------------------------------------------------
+# Seat/occupant helpers for human/AI takeovers
+# ------------------------------------------------------------
+
+
+def _is_ai_occupant(table: Table, occ_id: Optional[str]) -> bool:
+    if not occ_id:
+        return False
+    occ = table.occupants.get(occ_id)
+    return bool(occ and occ.is_ai)
+
+
+def _first_ai_seat(table: Table) -> Optional[int]:
+    for i in range(1, 6):
+        if _is_ai_occupant(table, table.seats.get(i)):
+            return i
+    return None
+
+
+def _reserved_ai_ids(table: Table) -> Set[str]:
+    return {v for v in table.reserved_ai_by_human.values() if v}
+
+
+def _pick_join_ai_seat(table: Table) -> Optional[int]:
+    """Pick an AI seat for a newcomer, preferring AIs not reserved for disconnected humans.
+
+    Returns the seat index or None if no AI seat exists.
+    """
+    reserved_ids = _reserved_ai_ids(table)
+    non_reserved: List[int] = []
+    reserved: List[int] = []
+    for i in range(1, 6):
+        occ = table.seats.get(i)
+        if _is_ai_occupant(table, occ):
+            if occ in reserved_ids:
+                reserved.append(i)
+            else:
+                non_reserved.append(i)
+    if non_reserved:
+        return non_reserved[0]
+    if reserved:
+        return reserved[0]
+    return None
+
+
+def _find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
+    for i in range(1, 6):
+        if table.seats.get(i) == occ_id:
+            return i
+    return None
+
+
+def _allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
+    occ_id = str(uuid.uuid4())
+    name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
+    return Occupant(id=occ_id, display_name=display_name or name_pool[int(time.time()) % len(name_pool)], is_ai=True)
+
+
+async def _replace_ai_with_human_and_reserve(table: Table, seat: int, client_id: str) -> None:
+    """Replace AI at seat with human client and remember the AI for future reclaim."""
+    prev_occ = table.seats.get(seat)
+    if not _is_ai_occupant(table, prev_occ):
+        return
+    # Assign human to seat
+    table.seats[seat] = client_id
+    if client_id in table.clients:
+        table.clients[client_id].seat = seat
+    # Reserve AI occupant id for future reclamation for this human without stealing another human's reservation
+    if prev_occ:
+        if prev_occ in _reserved_ai_ids(table):
+            placeholder = _allocate_ai_occupant()
+            table.occupants[placeholder.id] = placeholder
+            table.reserved_ai_by_human[client_id] = placeholder.id
+        else:
+            table.reserved_ai_by_human[client_id] = prev_occ
+    # Notify others
+    await broadcast_table_event(table, {
+        "type": "lobby_event",
+        "message": f"{table.clients.get(client_id).display_name if client_id in table.clients else 'A player'} joined and took seat {seat}",
+        "table": table.to_public_dict(),
+    })
+    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+    # Re-evaluate AI turns
+    schedule_ai_turns(table)
+
+
+def _cancel_disconnect_task(table: Table, client_id: str) -> None:
+    task = table.disconnect_tasks.get(client_id)
+    if task and not task.done():
+        task.cancel()
+    table.disconnect_tasks.pop(client_id, None)
+
+
+def schedule_ai_replacement_for_disconnected_human(table: Table, client_id: str) -> None:
+    """After a grace period, replace the disconnected human's seat with AI and broadcast.
+
+    If the client reconnects before the delay, the task is cancelled.
+    """
+    async def _runner():
+        try:
+            # In waiting room (open), fill immediately; during play, wait 10s
+            delay = 0.0 if table.status == "open" else 10.0
+            if delay > 0:
+                await asyncio.sleep(delay)
+            conn = table.clients.get(client_id)
+            if not conn:
+                return
+            # If reconnected, abort
+            if conn.websocket is not None:
+                return
+            # Find seat currently occupied by this human id
+            seat_idx: Optional[int] = None
+            for i in range(1, 6):
+                if table.seats.get(i) == client_id:
+                    seat_idx = i
+                    break
+            if not seat_idx:
+                return
+            # Choose AI occupant: prefer reserved per-human, else allocate
+            ai_id = table.reserved_ai_by_human.get(client_id)
+            if not ai_id:
+                occ = _allocate_ai_occupant()
+                table.occupants[occ.id] = occ
+                ai_id = occ.id
+                table.reserved_ai_by_human[client_id] = ai_id
+            else:
+                if ai_id not in table.occupants:
+                    # Recreate placeholder if needed
+                    table.occupants[ai_id] = Occupant(id=ai_id, display_name="AI", is_ai=True)
+            # Perform replacement
+            table.seats[seat_idx] = ai_id
+            # Detach seat from human conn
+            conn.seat = None
+            # Announce and update
+            await broadcast_table_event(table, {
+                "type": "lobby_event",
+                "message": f"{conn.display_name} disconnected. Seat filled by AI.",
+                "table": table.to_public_dict(),
+            })
+            await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+            # If game is running, ensure AI can act
+            schedule_ai_turns(table)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logging.exception("disconnect replacement failed for table %s client %s", table.id, client_id)
+        finally:
+            table.disconnect_tasks.pop(client_id, None)
+
+    # Replace any existing pending task
+    _cancel_disconnect_task(table, client_id)
+    table.disconnect_tasks[client_id] = asyncio.create_task(_runner())
 
 
 # ------------------------------------------------------------
@@ -462,26 +617,38 @@ async def create_table(req: CreateTableRequest):
 async def join_table(table_id: str, req: JoinTableRequest):
     try:
         table = tables.get_table(table_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="table_not_found")
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="table_not_found") from e
 
-    if table.status != "open":
-        raise HTTPException(status_code=400, detail="table_not_open")
+    if table.status == "finished":
+        raise HTTPException(status_code=400, detail="table_finished")
 
     client_id = str(uuid.uuid4())
-    # Do not auto-assign a seat; lobby waiting area allows explicit seat selection
+    # Create client record
     conn = ClientConn(client_id=client_id, display_name=req.display_name, seat=None)
     table.clients[client_id] = conn
     if not table.host_client_id:
         table.host_client_id = client_id
 
-    # Broadcast lobby update (new client connected) and a callout-style message
-    # Single broadcast including both event message and latest table snapshot
-    await broadcast_table_event(table, {
-        "type": "lobby_event",
-        "message": f"{req.display_name} joined the table",
-        "table": table.to_public_dict(),
-    })
+    # If game is currently playing, auto-takeover an AI seat (prefer not-reserved)
+    if table.status == "playing":
+        ai_seat = _pick_join_ai_seat(table)
+        if ai_seat is None:
+            # No available AI seat to take over; joining is not permitted
+            # Remove tentative client record to avoid leaks
+            try:
+                del table.clients[client_id]
+            except Exception:
+                pass
+            raise HTTPException(status_code=400, detail="no_ai_seat_available")
+        await _replace_ai_with_human_and_reserve(table, ai_seat, client_id)
+    else:
+        # In the waiting room, announce presence; seat selection happens via /seat
+        await broadcast_table_event(table, {
+            "type": "lobby_event",
+            "message": f"{req.display_name} joined the table",
+            "table": table.to_public_dict(),
+        })
 
     return {
         "client_id": client_id,
@@ -493,8 +660,8 @@ async def join_table(table_id: str, req: JoinTableRequest):
 async def fill_ai(table_id: str, req: RedealRequest | None = None):
     try:
         table = tables.get_table(table_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="table_not_found")
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="table_not_found") from e
 
     # Host-only: require client_id and it must match host
     client_id: Optional[str] = req.client_id if req else None
@@ -521,8 +688,8 @@ async def fill_ai(table_id: str, req: RedealRequest | None = None):
 async def choose_seat(table_id: str, req: SeatRequest):
     try:
         table = tables.get_table(table_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="table_not_found")
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="table_not_found") from e
 
     if req.seat not in {1, 2, 3, 4, 5}:
         raise HTTPException(status_code=400, detail="invalid_seat")
@@ -541,8 +708,17 @@ async def choose_seat(table_id: str, req: SeatRequest):
             break
 
     # Assign (displacing AI if present)
+    prev_occ = table.seats.get(req.seat)
     table.seats[req.seat] = req.client_id
     table.clients[req.client_id].seat = req.seat
+    # If displacing an AI, set reservation for this human without stealing others' reservation
+    if _is_ai_occupant(table, prev_occ):
+        if prev_occ in _reserved_ai_ids(table):
+            placeholder = _allocate_ai_occupant()
+            table.occupants[placeholder.id] = placeholder
+            table.reserved_ai_by_human[req.client_id] = placeholder.id
+        else:
+            table.reserved_ai_by_human[req.client_id] = prev_occ  # type: ignore[arg-type]
 
     await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
 
@@ -554,8 +730,8 @@ async def start_waiting(table_id: str, req: RedealRequest | None = None):
     # Host can ensure AIs fill empty seats in the waiting area but do not start game yet
     try:
         table = tables.get_table(table_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="table_not_found")
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="table_not_found") from e
 
     # Host-only: require client_id and it must match host
     client_id: Optional[str] = req.client_id if req else None
@@ -603,6 +779,15 @@ async def close_table(table: Table, reason: str = "closed") -> None:
         table.ai_task.cancel()
     if table.autoclose_task and not table.autoclose_task.done():
         table.autoclose_task.cancel()
+    # Cancel any pending disconnect replacements
+    for cid, task in list(table.disconnect_tasks.items()):
+        try:
+            if task and not task.done():
+                task.cancel()
+        except Exception:
+            pass
+        finally:
+            table.disconnect_tasks.pop(cid, None)
     # Mark finished/closed for broadcast
     table.status = "finished"
     try:
@@ -897,11 +1082,25 @@ async def table_ws(websocket: WebSocket, table_id: str):
 
     conn = table.clients[client_id]
     conn.websocket = websocket
+    # Cancel any pending replacement for this client and attempt to reclaim reserved AI seat if needed
+    _cancel_disconnect_task(table, client_id)
+    # If this client has a reserved AI occupant currently seated, reclaim it
+    ai_id = table.reserved_ai_by_human.get(client_id)
+    if ai_id:
+        seat_idx = _find_seat_of_occupant(table, ai_id)
+        if seat_idx:
+            table.seats[seat_idx] = client_id
+            conn.seat = seat_idx
+            await broadcast_table_event(table, {
+                "type": "lobby_event",
+                "message": f"{conn.display_name} reconnected and reclaimed seat {seat_idx}",
+                "table": table.to_public_dict(),
+            })
+            await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+            # Re-evaluate AI turn loop
+            schedule_ai_turns(table)
     # On connect, cancel any pending autoclose
-    try:
-        schedule_autoclose_if_no_humans(table)
-    except Exception:
-        logging.exception("failed to manage autoclose on connect for table %s", table.id)
+    schedule_autoclose_if_no_humans(table)
 
     # Initial state broadcast for connected client
     await broadcast_table_state(table)
@@ -920,11 +1119,14 @@ async def table_ws(websocket: WebSocket, table_id: str):
         c = table.clients.get(client_id)
         if c:
             c.websocket = None
+            # If this client was seated, schedule AI replacement after a grace period
+            try:
+                if c.seat is not None:
+                    schedule_ai_replacement_for_disconnected_human(table, client_id)
+            except Exception:
+                logging.exception("failed to schedule AI replacement for client %s on table %s", client_id, table.id)
         # If no humans are connected anymore, start autoclose timer
-        try:
-            schedule_autoclose_if_no_humans(table)
-        except Exception:
-            logging.exception("failed to schedule autoclose for table %s", table.id)
+        schedule_autoclose_if_no_humans(table)
 
 
 # ------------------------------------------------------------

@@ -82,6 +82,9 @@ export default function HomePage() {
       }
 
       const joined = await res2.json();
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(`sheepshead_client_id_${t.id}`, joined.client_id);
+      }
       console.log('Joined table, navigating...'); // Debug log
 
       // Use setTimeout to ensure state updates complete before navigation
@@ -103,6 +106,14 @@ export default function HomePage() {
 
     try {
       console.log('Joining table:', tableId); // Debug log
+      // If we have a stored client id for this table, reuse it
+      if (typeof window !== 'undefined') {
+        const existing = window.localStorage.getItem(`sheepshead_client_id_${tableId}`);
+        if (existing) {
+          router.push(`/waiting/${tableId}?client_id=${existing}`);
+          return;
+        }
+      }
 
       const res = await fetch(`${API_BASE}/api/tables/${tableId}/join`, {
         method: 'POST',
@@ -115,6 +126,9 @@ export default function HomePage() {
       }
 
       const data = await res.json();
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(`sheepshead_client_id_${tableId}`, data.client_id);
+      }
       setJoinInfo(data);
 
       console.log('Joined table, navigating...'); // Debug log
@@ -183,20 +197,24 @@ export default function HomePage() {
                 <tr>
                   <th className={styles.thLeft}>Name</th>
                   <th>Status</th>
-                  <th>Seats</th>
+                  <th>Players</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {tables.map(t => {
-                  const filled = Object.values(t.seats).filter(Boolean).length;
+                  const humanFilled = Object.entries(t.seats || {}).reduce((acc, [k, name]) => {
+                    const isAI = (t.seatIsAI as any)?.[k] ?? false;
+                    return acc + (name && !isAI ? 1 : 0);
+                  }, 0);
+                  const canJoin = humanFilled < 5;
                   return (
                     <tr key={t.id}>
                       <td>{t.name}</td>
                       <td>{t.status}</td>
-                      <td>{filled}/5</td>
+                      <td>{humanFilled}/5</td>
                       <td>
-                        <button onClick={() => join(t.id)} disabled={t.status !== 'open'}>Join</button>
+                        <button onClick={() => join(t.id)} disabled={!canJoin}>Join</button>
                       </td>
                     </tr>
                   );

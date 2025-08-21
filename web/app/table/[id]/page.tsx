@@ -165,6 +165,18 @@ export default function TablePage() {
         try { socket.close(); } catch {}
         // Redirect to home
         window.location.href = '/';
+      } else if (data?.type === 'lobby_event') {
+        const msg = String(data.message || '');
+        if (msg) {
+          setCallout({ kind: 'PICK', message: msg });
+          setTimeout(() => setCallout(null), 1800);
+        }
+      } else if (data?.type === 'table_update') {
+        // Merge latest public table snapshot for immediate name/seat updates
+        const tbl = (data as any).table;
+        if (tbl) {
+          setLastState((prev: any) => prev ? { ...prev, table: tbl } : prev);
+        }
       }
       // game_over message is informational; state messages keep coming
     };

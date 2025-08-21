@@ -249,7 +249,7 @@ export default function WaitingRoom() {
               <button className={`${styles.btn}`} onClick={() => setConfirmClose(true)}>Close table</button>
             )
           )}
-          <div className={styles.muted} style={{ marginLeft: 'auto' }}>Players: {seatItems.filter(s => !!s.name).length}/5</div>
+          <div className={styles.muted} style={{ marginLeft: 'auto' }}>Players: {seatItems.filter(s => !!s.name && !s.isAI).length}/5</div>
         </div>
       </div>
     </div>
