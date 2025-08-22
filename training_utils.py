@@ -160,6 +160,15 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
                 transition['intermediate_reward'] += 0.05
             elif (
                 not game.is_leaster
+                and not player.is_picker
+                and not player.is_partner
+                and not player.is_secret_partner
+                and card not in TRUMP
+            ):
+                # Nudge defenders toward leading fail
+                transition['intermediate_reward'] += 0.02
+            elif (
+                not game.is_leaster
                 and (player.is_partner or player.is_secret_partner)
                 and card in TRUMP
             ):
