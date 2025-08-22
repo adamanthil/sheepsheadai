@@ -302,6 +302,7 @@ def train_pfsp(num_episodes: int = 500000,
         'team_point_diff': [],
         'alone_rate': [],
         'leaster_rate': [],
+        'strategic_episodes': [],
         'population_stats': []
     }
 
@@ -332,6 +333,7 @@ def train_pfsp(num_episodes: int = 500000,
         with open(strategic_csv, 'r', newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
+                training_data['strategic_episodes'].append(int(row['episode']))
                 training_data['pick_hand_correlation'].append(float(row['pick_hand_correlation']))
                 training_data['picker_trump_rate'].append(float(row['picker_trump_rate']))
                 training_data['defender_trump_rate'].append(float(row['defender_trump_rate']))
@@ -631,6 +633,7 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"🧠 Analyzing strategic decisions... (Episode {episode:,})")
             strategic_metrics = analyze_strategic_decisions(training_agent, num_samples=200)
 
+            training_data['strategic_episodes'].append(episode)
             training_data['pick_hand_correlation'].append(strategic_metrics['pick_hand_correlation'])
             training_data['picker_trump_rate'].append(strategic_metrics['picker_trump_rate'])
             training_data['defender_trump_rate'].append(strategic_metrics['defender_trump_rate'])

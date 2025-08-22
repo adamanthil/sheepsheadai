@@ -193,7 +193,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         'picker_trump_rate': [],
         'defender_trump_rate': [],
         'bury_quality_rate': [],
-        'team_point_diff': []
+        'team_point_diff': [],
+        'strategic_episodes': []
     }
 
     # Running picker baseline for reward shaping
@@ -423,6 +424,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             strategic_metrics = analyze_strategic_decisions(agent, num_samples=200)
 
             # Store strategic metrics
+            training_data['strategic_episodes'].append(episode)
             training_data['pick_hand_correlation'].append(strategic_metrics['pick_hand_correlation'])
             training_data['picker_trump_rate'].append(strategic_metrics['picker_trump_rate'])
             training_data['defender_trump_rate'].append(strategic_metrics['defender_trump_rate'])
