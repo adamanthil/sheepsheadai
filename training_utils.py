@@ -235,11 +235,20 @@ def save_training_plot(training_data, save_path='training_progress.png'):
     ax2.plot(episodes, training_data['jd_pick_rate'], color='purple', alpha=0.8, label='JD Pick Rate')
     ax2_twin = ax2.twinx()
     if 'pick_hand_correlation' in training_data and len(training_data['pick_hand_correlation']) > 0:
-        strategic_episodes = episodes[::len(episodes)//len(training_data['pick_hand_correlation'])] if len(training_data['pick_hand_correlation']) > 0 else []
-        if len(strategic_episodes) == len(training_data['pick_hand_correlation']):
-            ax2_twin.plot(strategic_episodes, training_data['pick_hand_correlation'], color='green', alpha=0.8, label='Hand Correlation', marker='o')
-            ax2_twin.set_ylabel('Hand Strength Correlation')
-            ax2_twin.legend(loc='upper right')
+        corr = training_data['pick_hand_correlation']
+        strat_eps = training_data.get('strategic_episodes', [])
+        if strat_eps:
+            # Align by trimming to common length from the tail
+            n = min(len(corr), len(strat_eps))
+            x = strat_eps[-n:]
+            y = corr[-n:]
+        else:
+            # Fallback: align to tail of episodes
+            x = episodes[-len(corr):]
+            y = corr
+        ax2_twin.plot(x, y, color='green', alpha=0.8, label='Hand Correlation', marker='o')
+        ax2_twin.set_ylabel('Hand Strength Correlation')
+        ax2_twin.legend(loc='upper right')
     ax2.set_xlabel('Episode')
     ax2.set_ylabel('Pick Rate (%)')
     ax2.set_title('Pick Strategy Quality')
@@ -248,29 +257,47 @@ def save_training_plot(training_data, save_path='training_progress.png'):
 
     # Trump leading rates
     if 'picker_trump_rate' in training_data and len(training_data['picker_trump_rate']) > 0:
-        strategic_episodes = episodes[::len(episodes)//len(training_data['picker_trump_rate'])] if len(training_data['picker_trump_rate']) > 0 else []
-        if len(strategic_episodes) == len(training_data['picker_trump_rate']):
-            ax3.plot(strategic_episodes, training_data['picker_trump_rate'], color='blue', alpha=0.8, label='Picker Team', marker='o')
-            ax3.plot(strategic_episodes, training_data['defender_trump_rate'], color='red', alpha=0.8, label='Defender Team', marker='o')
-            ax3.axhline(y=60, color='blue', linestyle='--', alpha=0.5, label='Picker Target')
-            ax3.axhline(y=20, color='red', linestyle='--', alpha=0.5, label='Defender Target')
-            ax3.set_xlabel('Episode')
-            ax3.set_ylabel('Trump Lead Rate (%)')
-            ax3.set_title('Trump Leading Strategy')
-            ax3.legend()
-            ax3.grid(True, alpha=0.3)
+        picker_trump = training_data['picker_trump_rate']
+        defender_trump = training_data.get('defender_trump_rate', [])
+        strat_eps = training_data.get('strategic_episodes', [])
+        if strat_eps:
+            n = min(len(picker_trump), len(defender_trump), len(strat_eps))
+            x = strat_eps[-n:]
+            y1 = picker_trump[-n:]
+            y2 = defender_trump[-n:]
+        else:
+            n = min(len(picker_trump), len(defender_trump))
+            x = episodes[-n:]
+            y1 = picker_trump[-n:]
+            y2 = defender_trump[-n:]
+        ax3.plot(x, y1, color='blue', alpha=0.8, label='Picker Team', marker='o')
+        ax3.plot(x, y2, color='red', alpha=0.8, label='Defender Team', marker='o')
+        ax3.axhline(y=60, color='blue', linestyle='--', alpha=0.5, label='Picker Target')
+        ax3.axhline(y=20, color='red', linestyle='--', alpha=0.5, label='Defender Target')
+        ax3.set_xlabel('Episode')
+        ax3.set_ylabel('Trump Lead Rate (%)')
+        ax3.set_title('Trump Leading Strategy')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
 
     # Bury quality
     if 'bury_quality_rate' in training_data and len(training_data['bury_quality_rate']) > 0:
-        strategic_episodes = episodes[::len(episodes)//len(training_data['bury_quality_rate'])] if len(training_data['bury_quality_rate']) > 0 else []
-        if len(strategic_episodes) == len(training_data['bury_quality_rate']):
-            ax4.plot(strategic_episodes, training_data['bury_quality_rate'], color='purple', alpha=0.8, marker='o')
-            ax4.axhline(y=90, color='purple', linestyle='--', alpha=0.5, label='Good Target')
-            ax4.set_xlabel('Episode')
-            ax4.set_ylabel('Good Bury Rate (%)')
-            ax4.set_title('Bury Decision Quality')
-            ax4.legend()
-            ax4.grid(True, alpha=0.3)
+        bury = training_data['bury_quality_rate']
+        strat_eps = training_data.get('strategic_episodes', [])
+        if strat_eps:
+            n = min(len(bury), len(strat_eps))
+            x = strat_eps[-n:]
+            y = bury[-n:]
+        else:
+            x = episodes[-len(bury):]
+            y = bury
+        ax4.plot(x, y, color='purple', alpha=0.8, marker='o')
+        ax4.axhline(y=90, color='purple', linestyle='--', alpha=0.5, label='Good Target')
+        ax4.set_xlabel('Episode')
+        ax4.set_ylabel('Good Bury Rate (%)')
+        ax4.set_title('Bury Decision Quality')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
 
     # Rates: Alone call and Leaster
     # When resuming training, historical CSVs may not contain these rate series.
