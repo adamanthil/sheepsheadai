@@ -46,8 +46,13 @@ def analyze_strategic_decisions(agent, num_samples=100):
         hand_strength = sum(3 if c[0] == 'Q' else 2 if c[0] == 'J' else 1 if c in TRUMP else 0 for c in initial_player.hand)
 
         state = torch.FloatTensor(initial_player.get_state_vector()).unsqueeze(0)
+        # Build action mask for the current decision so probabilities reflect only valid actions
+        initial_actions = initial_player.get_valid_action_ids()
+        action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
+        for valid_action in initial_actions:
+            action_mask[valid_action - 1] = True
         with torch.no_grad():
-            action_probs = agent.actor(state)
+            action_probs = agent.actor(state, action_mask.unsqueeze(0))
 
         pick_prob = action_probs[0, ACTION_IDS["PICK"] - 1].item()
         pick_decisions.append(pick_prob)
