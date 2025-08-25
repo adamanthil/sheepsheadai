@@ -23,8 +23,6 @@ from training_utils import (
 )
 
 
-
-
 def analyze_strategic_decisions(agent, num_samples=100):
     """Analyze strategic decision quality instead of random opponent evaluation."""
 
@@ -117,22 +115,6 @@ def analyze_strategic_decisions(agent, num_samples=100):
         'defender_trump_rate': defender_trump_rate,
         'bury_quality_rate': bury_quality_rate
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                             strategic_eval_interval=10000, resume_model=None, activation='swish'):
