@@ -17,11 +17,11 @@ from sheepshead import (
     DECK,
     STATE_SIZE,
     ACTION_IDS,
-    TRUMP,
     PARTNER_BY_JD,
     PARTNER_BY_CALLED_ACE,
     pretty_card_list,
 )
+from training_utils import estimate_hand_strength_score
 
 def calculate_display_width(text):
     """Calculate the visible width of text, excluding ANSI escape sequences."""
@@ -37,25 +37,6 @@ def pad_text_with_ansi(text, width):
     if padding_needed > 0:
         return text + ' ' * padding_needed
     return text
-
-def calculate_hand_strength(hand):
-    """Calculate objective hand strength score."""
-    strength = 0
-    for card in hand:
-        if card[0] == 'Q':  # Queens are very strong
-            strength += 4
-        elif card == 'JD':  # Jack of Diamonds should discourage picking
-            strength -= 1
-        elif card[0] == 'J':  # Jacks are strong
-            strength += 2
-        elif card in TRUMP:  # Other trump cards
-            strength += 1
-        elif card[0] == 'A':  # Aces are okay
-            strength += 0.5
-        elif card[0:2] == '10':  # Tens are okayish
-            strength += 0.5
-    return strength
-
 
 def test_final_model(model_path, position, random_hands, jack_of_diamonds=False):
     """Test if the final model learned proper hand strength correlations."""
@@ -130,7 +111,7 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
             pick_counts += 1
 
         # Calculate objective hand strength
-        strength = calculate_hand_strength(hand)
+        strength = estimate_hand_strength_score(hand)
 
         hand_data.append({
             "hand": hand,
