@@ -356,7 +356,7 @@ def train_pfsp(num_episodes: int = 500000,
     # --- Adaptive exploration for partner head (ALONE decision) ---
     # If rolling ALONE rate rises too high, temporarily bump partner entropy to
     # encourage exploration of partner calls.
-    HIGH_ALONE_RATE_THRESHOLD = 50.0  # percent
+    HIGH_ALONE_RATE_THRESHOLD = 25.0  # percent
     PARTNER_ENTROPY_BUMP = 0.02       # added to base decayed partner entropy
     PARTNER_ENTROPY_BUMP_DURATION = 50000  # episodes
     partner_entropy_bump_until = 0

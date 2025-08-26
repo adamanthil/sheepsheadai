@@ -134,9 +134,16 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         elif card not in TRUMP and has_allowed_trump_bury:
             # Small preference when both options exist
             transition['intermediate_reward'] += 0.01
+        elif not has_allowed_fail_bury and card.startswith("Q"):
+            # Even if we have to bury trump, we should not bury queens.
+            transition['intermediate_reward'] += -0.06
+        elif not has_allowed_fail_bury and card.startswith("J"):
+            # Even if we have to bury trump, unlikely we should bury jacks.
+            transition['intermediate_reward'] += -0.02
 
     elif "PLAY" in action_name:
         is_lead = (game.cards_played == 0) and (game.leader == player.position)
+        trick_index = state_vec[15]
         if is_lead:
             card = action_name[5:]
             if (
@@ -156,8 +163,8 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
                 and not game.was_called_suit_played
                 and game.called_suit == get_card_suit(card)
             ):
-                # Encourage defenders to lead called suit
-                transition['intermediate_reward'] += 0.05
+                # Encourage defenders to lead called suit (early)
+                transition['intermediate_reward'] += 0.06 - (0.01 * trick_index)
             elif (
                 not game.is_leaster
                 and not player.is_picker
