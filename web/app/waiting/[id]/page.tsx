@@ -29,6 +29,7 @@ export default function WaitingRoom() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [partnerMode, setPartnerMode] = useState<number>(1); // 1 = Called Ace (default), 0 = Jack of Diamonds
+  const [scoringMode, setScoringMode] = useState<number>(1); // 1 = Double on the Bump (default), 0 = Symmetric
   const wsRef = useRef<WebSocket | null>(null);
   const [callout, setCallout] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -42,10 +43,12 @@ export default function WaitingRoom() {
       const t = list.find(t => t.id === params?.id);
       if (t) {
         setTable(t);
-        // Initialize partner mode from table rules
+        // Initialize modes from table rules
         const rules = (t as any).rules || {};
-        const mode = rules.partnerMode !== undefined ? rules.partnerMode : 1; // Default to Called Ace
-        setPartnerMode(mode);
+        const pMode = rules.partnerMode !== undefined ? rules.partnerMode : 1; // Default to Called Ace
+        setPartnerMode(pMode);
+        const sMode = rules.doubleOnTheBump !== undefined ? (rules.doubleOnTheBump ? 1 : 0) : 1; // Default to Double on the Bump
+        setScoringMode(sMode);
       }
     } catch (e: any) {
       setError(String(e?.message || e));
@@ -72,6 +75,7 @@ export default function WaitingRoom() {
           setTable(t);
           const rules = (t as any).rules || {};
           if (rules.partnerMode !== undefined) setPartnerMode(rules.partnerMode);
+          if (rules.doubleOnTheBump !== undefined) setScoringMode(rules.doubleOnTheBump ? 1 : 0);
           if (t.status === 'playing') {
             router.push(`/table/${params.id}?client_id=${clientId}`);
           }
@@ -151,6 +155,24 @@ export default function WaitingRoom() {
     }
   }
 
+  async function updateScoringMode(newMode: number) {
+    try {
+      const res = await fetch(`${API_BASE}/api/tables/${params?.id}/rules`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, rules: { doubleOnTheBump: newMode === 1 } })
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j?.detail || 'Failed to update scoring mode');
+        return;
+      }
+      setScoringMode(newMode);
+    } catch (e: any) {
+      setError('Failed to update scoring mode');
+    }
+  }
+
   async function startGame() {
     const res = await fetch(`${API_BASE}/api/tables/${params?.id}/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) });
     if (!res.ok) {
@@ -210,9 +232,9 @@ export default function WaitingRoom() {
           ))}
         </div>
 
-        <div className={styles.partnerModeSection}>
-          <div className={styles.partnerModeLabel}>Partner Selection Mode</div>
-          <div className={styles.partnerModeToggle}>
+        <div className={styles.gameModeSection}>
+          <div className={styles.gameModeLabel}>Partner Selection Mode</div>
+          <div className={styles.gameModeToggle}>
             <button
               className={`${styles.toggleOption} ${partnerMode === 1 ? styles.toggleActive : ''}`}
               onClick={() => updatePartnerMode(1)}
@@ -226,10 +248,31 @@ export default function WaitingRoom() {
               Jack of Diamonds
             </button>
           </div>
-          <div className={styles.partnerModeDescription}>
+          <div className={styles.gameModeDescription}>
             {partnerMode === 1
               ? "The picker calls a fail Ace to find their partner"
               : "The player with the Jack of Diamonds is the partner"
+            }
+          </div>
+          <div className={`${styles.gameModeLabel} ${styles.gameModeInnerHeader}`}>Scoring</div>
+          <div className={styles.gameModeToggle}>
+            <button
+              className={`${styles.toggleOption} ${scoringMode === 1 ? styles.toggleActive : ''}`}
+              onClick={() => updateScoringMode(1)}
+            >
+              Double on the Bump
+            </button>
+            <button
+              className={`${styles.toggleOption} ${scoringMode === 0 ? styles.toggleActive : ''}`}
+              onClick={() => updateScoringMode(0)}
+            >
+              Symmetric
+            </button>
+          </div>
+          <div className={styles.gameModeDescription}>
+            {scoringMode === 1
+              ? "Picking team loses double when 'bumped'"
+              : "Picking team does not lose double"
             }
           </div>
         </div>

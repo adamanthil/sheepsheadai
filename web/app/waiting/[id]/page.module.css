@@ -207,12 +207,16 @@
   }
 }
 
-.partnerModeSection {
+.gameModeSection {
   margin: 20px 0;
   padding: 16px;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
+}
+
+.gameModeInnerHeader {
+  margin-top: 24px;
 }
 
 /* Danger variant for destructive actions */
@@ -234,13 +238,13 @@
 }
 
 @media (min-width: 768px) {
-  .partnerModeSection {
+  .gameModeSection {
     margin: 24px 0;
     padding: 20px;
   }
 }
 
-.partnerModeLabel {
+.gameModeLabel {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 12px;
@@ -249,13 +253,13 @@
 }
 
 @media (min-width: 768px) {
-  .partnerModeLabel {
+  .gameModeLabel {
     font-size: 18px;
     text-align: left;
   }
 }
 
-.partnerModeToggle {
+.gameModeToggle {
   display: flex;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
@@ -304,7 +308,7 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.15)) !important;
 }
 
-.partnerModeDescription {
+.gameModeDescription {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.75);
   text-align: center;
@@ -313,7 +317,7 @@
 }
 
 @media (min-width: 768px) {
-  .partnerModeDescription {
+  .gameModeDescription {
     font-size: 14px;
     text-align: left;
   }
