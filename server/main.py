@@ -482,6 +482,18 @@ def _pick_join_ai_seat(table: Table) -> Optional[int]:
     return None
 
 
+def _lowest_non_human_seat(table: Table) -> Optional[int]:
+    """Return the lowest seat index that is either empty or occupied by an AI.
+
+    Seats with human occupants (client ids) are skipped.
+    """
+    for i in range(1, 6):
+        occ = table.seats.get(i)
+        if not occ or _is_ai_occupant(table, occ):
+            return i
+    return None
+
+
 def _find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
     for i in range(1, 6):
         if table.seats.get(i) == occ_id:
@@ -643,12 +655,38 @@ async def join_table(table_id: str, req: JoinTableRequest):
             raise HTTPException(status_code=400, detail="no_ai_seat_available")
         await _replace_ai_with_human_and_reserve(table, ai_seat, client_id)
     else:
-        # In the waiting room, announce presence; seat selection happens via /seat
-        await broadcast_table_event(table, {
-            "type": "lobby_event",
-            "message": f"{req.display_name} joined the table",
-            "table": table.to_public_dict(),
-        })
+        # In the waiting room: auto-seat logic
+        # Host (first joiner) should default to seat 5; others take the lowest non-human seat
+        seat_to_take: Optional[int] = None
+        if table.host_client_id == client_id:
+            # Host path: take seat 5 if available (empty or AI)
+            if not table.seats.get(5) or _is_ai_occupant(table, table.seats.get(5)):
+                seat_to_take = 5
+        if seat_to_take is None:
+            seat_to_take = _lowest_non_human_seat(table)
+
+        if seat_to_take is not None:
+            prev_occ = table.seats.get(seat_to_take)
+            if _is_ai_occupant(table, prev_occ):
+                # Replace AI and reserve it for potential future reclaim
+                await _replace_ai_with_human_and_reserve(table, seat_to_take, client_id)
+            else:
+                # Empty seat: assign and broadcast
+                table.seats[seat_to_take] = client_id
+                conn.seat = seat_to_take
+                await broadcast_table_event(table, {
+                    "type": "lobby_event",
+                    "message": f"{req.display_name} joined and took seat {seat_to_take}",
+                    "table": table.to_public_dict(),
+                })
+                await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+        else:
+            # No seat available that is non-human; just announce join without seating
+            await broadcast_table_event(table, {
+                "type": "lobby_event",
+                "message": f"{req.display_name} joined the table",
+                "table": table.to_public_dict(),
+            })
 
     return {
         "client_id": client_id,
