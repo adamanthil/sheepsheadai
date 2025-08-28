@@ -30,6 +30,8 @@ from server.api.schemas import (
     SeatRequest,
     RedealRequest,
     CloseTableRequest,
+    AnalyzeSimulateRequest,
+    AnalyzeSimulateResponse,
 )
 
 
@@ -226,7 +228,15 @@ def build_player_state(player: Player) -> Dict[str, Any]:
     bury_cards = get_cards_from_vector(state_vec[80:112])
 
     game = player.game
-    current_trick = game.history[game.current_trick] if game.current_trick < len(game.history) else ["", "", "", "", ""]
+
+    # Only show current trick if play has started and there are cards played
+    current_trick = ["", "", "", "", ""]
+    if hasattr(game, 'play_started') and game.play_started and game.current_trick < len(game.history):
+        trick_cards = game.history[game.current_trick]
+        # Only show cards that have actually been played (non-empty strings)
+        for i, card in enumerate(trick_cards):
+            if card != "":
+                current_trick[i] = card
 
     # Last completed trick info
     last_trick_index = int(game.current_trick) - 1
@@ -793,6 +803,23 @@ async def start_waiting(table_id: str, req: RedealRequest | None = None):
 def get_actions():
     """Return action id to string mapping for the UI."""
     return {"action_lookup": ACTION_LOOKUP}
+
+
+# ------------------------------------------------------------
+# Analyze endpoints
+# ------------------------------------------------------------
+
+@app.post("/api/analyze/simulate")
+def analyze_simulate(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
+    """Simulate a full Sheepshead game and return detailed analysis trace."""
+    try:
+        from server.services.analyze import simulate_game
+        return simulate_game(req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.exception("analyze_simulate failed: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:

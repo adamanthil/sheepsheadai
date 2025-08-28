@@ -61,3 +61,52 @@ class TablePublic(BaseModel):
     initialNames: Dict[str, str]
 
 
+# Analyze AI Model schemas
+class AnalyzeSimulateRequest(BaseModel):
+    seed: Optional[int] = None
+    partnerMode: int = 1  # 0 = JD, 1 = Called Ace
+    deterministic: bool = False
+    modelPath: Optional[str] = None
+    maxSteps: int = 200
+
+
+class AnalyzeProbability(BaseModel):
+    actionId: int
+    action: str
+    prob: float
+
+
+class AnalyzeActionDetail(BaseModel):
+    stepIndex: int
+    seat: int
+    seatName: str
+    phase: str  # "pick" | "partner" | "bury" | "play"
+    actionId: int
+    action: str
+    valueEstimate: float
+    validActionIds: List[int]
+    probabilities: List[AnalyzeProbability]
+    view: Dict[str, Any]
+    state: Optional[List[float]] = None
+
+
+class AnalyzeGameSummary(BaseModel):
+    hands: Dict[str, List[str]]  # player name -> cards
+    blind: List[str]
+    picker: Optional[str] = None
+    partner: Optional[str] = None
+    bury: List[str]
+    pickerPoints: int
+    defenderPoints: int
+    scores: List[int]  # indexed by seat-1
+
+
+class AnalyzeSimulateResponse(BaseModel):
+    meta: Dict[str, Any]
+    actionLookup: Dict[int, str]
+    players: List[str]
+    summary: Optional[AnalyzeGameSummary] = None
+    trace: List[AnalyzeActionDetail]
+    final: Optional[Dict[str, Any]] = None
+
+

@@ -223,6 +223,27 @@ export default function HomePage() {
             </table>
           )}
         </div>
+
+        <div style={{
+          textAlign: 'center',
+          marginTop: '3rem',
+          paddingTop: '2rem',
+          borderTop: '1px solid #e2e8f0'
+        }}>
+          <a
+            href="/analyze"
+            style={{
+              color: '#64748b',
+              fontSize: '0.875rem',
+              textDecoration: 'none',
+              transition: 'color 0.2s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.color = '#3b82f6'}
+            onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+          >
+            🧠 Analyze AI model decisions
+          </a>
+        </div>
       </div>
     </div>
   );
