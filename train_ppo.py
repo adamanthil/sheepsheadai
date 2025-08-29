@@ -221,7 +221,6 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                 while valid_actions:
                     state = player.get_state_vector()
                     action, log_prob, value = agent.act(state, valid_actions, player.position)
-                    player.act(action)
 
                     transition = {
                         'player': player,
@@ -251,6 +250,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         transition,
                         current_trick_transitions,
                     )
+
+                    player.act(action)
 
                     # Trick resolution and observation frames
                     trick_completed = handle_trick_completion(
