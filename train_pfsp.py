@@ -16,6 +16,7 @@ from collections import deque
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 import copy
+from dataclasses import dataclass
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
@@ -43,6 +44,35 @@ from training_utils import (
     update_intermediate_rewards_for_action,
     handle_trick_completion,
 )
+
+
+@dataclass
+class PFSPHyperparams:
+    # Adaptive exploration for pick head
+    # If rolling pick rate dips below a threshold, temporarily bump pick entropy.
+    low_pick_rate_threshold: float = 20.0  # percent
+    pick_entropy_bump: float = 0.02        # added to base decayed pick entropy
+    pick_entropy_bump_duration: int = 50000  # episodes
+
+    # Adaptive exploration for partner head (ALONE decision)
+    # If rolling ALONE rate rises too high, temporarily bump partner entropy to
+    # encourage exploration of partner calls.
+    high_alone_rate_threshold: float = 25.0  # percent
+    partner_entropy_bump: float = 0.02       # added to base decayed partner entropy
+    partner_entropy_bump_duration: int = 50000  # episodes
+
+    # Entropy schedules (start -> end)
+    entropy_pick_start: float = 0.05
+    entropy_pick_end: float = 0.02
+    entropy_partner_start: float = 0.05
+    entropy_partner_end: float = 0.02
+    entropy_bury_start: float = 0.04
+    entropy_bury_end: float = 0.015
+    entropy_play_start: float = 0.05
+    entropy_play_end: float = 0.02
+
+
+DEFAULT_HYPERPARAMS = PFSPHyperparams()
 
 
 def play_population_game(training_agent: PPOAgent,
@@ -218,7 +248,8 @@ def train_pfsp(num_episodes: int = 500000,
                cross_eval_interval: int = 20000,
                resume_model: str = None,
                activation: str = 'swish',
-               initial_checkpoints: list = None):
+               initial_checkpoints: list = None,
+               hyperparams: PFSPHyperparams = DEFAULT_HYPERPARAMS):
     """
     PFSP training with population-based opponents.
     """
@@ -346,19 +377,7 @@ def train_pfsp(num_episodes: int = 500000,
     transitions_since_update = 0
     last_checkpoint_time = start_time
 
-    # --- Adaptive exploration for pick head ---
-    # If rolling pick rate dips below a threshold, temporarily bump pick entropy.
-    LOW_PICK_RATE_THRESHOLD = 20.0  # percent
-    PICK_ENTROPY_BUMP = 0.02        # added to base decayed pick entropy
-    PICK_ENTROPY_BUMP_DURATION = 50000  # episodes
     pick_entropy_bump_until = 0
-
-    # --- Adaptive exploration for partner head (ALONE decision) ---
-    # If rolling ALONE rate rises too high, temporarily bump partner entropy to
-    # encourage exploration of partner calls.
-    HIGH_ALONE_RATE_THRESHOLD = 25.0  # percent
-    PARTNER_ENTROPY_BUMP = 0.02       # added to base decayed partner entropy
-    PARTNER_ENTROPY_BUMP_DURATION = 50000  # episodes
     partner_entropy_bump_until = 0
 
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
@@ -534,10 +553,10 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
 
             # Entropy decay
-            entropy_play_start, entropy_play_end = 0.05, 0.02
-            entropy_pick_start, entropy_pick_end = 0.05, 0.02
-            entropy_partner_start, entropy_partner_end = 0.05, 0.02
-            entropy_bury_start, entropy_bury_end = 0.04, 0.015
+            entropy_play_start, entropy_play_end = hyperparams.entropy_play_start, hyperparams.entropy_play_end
+            entropy_pick_start, entropy_pick_end = hyperparams.entropy_pick_start, hyperparams.entropy_pick_end
+            entropy_partner_start, entropy_partner_end = hyperparams.entropy_partner_start, hyperparams.entropy_partner_end
+            entropy_bury_start, entropy_bury_end = hyperparams.entropy_bury_start, hyperparams.entropy_bury_end
             decay_fraction = min(episode / num_episodes, 1.0)
             training_agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
             training_agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
@@ -546,11 +565,11 @@ def train_pfsp(num_episodes: int = 500000,
 
             # Apply temporary bump to pick entropy when enabled
             if episode <= pick_entropy_bump_until:
-                training_agent.entropy_coeff_pick += PICK_ENTROPY_BUMP
+                training_agent.entropy_coeff_pick += hyperparams.pick_entropy_bump
 
             # Apply temporary bump to partner entropy
             if episode <= partner_entropy_bump_until:
-                training_agent.entropy_coeff_partner += PARTNER_ENTROPY_BUMP
+                training_agent.entropy_coeff_partner += hyperparams.partner_entropy_bump
 
             # Update
             update_stats = training_agent.update(epochs=4, batch_size=256)
@@ -745,18 +764,18 @@ def train_pfsp(num_episodes: int = 500000,
             overall_decisions = overall_picks + total_called_passes + total_jd_passes
             overall_pick_rate = (100 * overall_picks / overall_decisions) if overall_decisions > 0 else 0.0
 
-            if overall_pick_rate < LOW_PICK_RATE_THRESHOLD and episode > pick_entropy_bump_until:
-                pick_entropy_bump_until = episode + PICK_ENTROPY_BUMP_DURATION
-                print(f"   ⚠️  Low pick rate detected ({overall_pick_rate:.1f}%). Increasing pick entropy by {PICK_ENTROPY_BUMP:.3f} for the next {PICK_ENTROPY_BUMP_DURATION:,} episodes.")
-            elif overall_pick_rate >= LOW_PICK_RATE_THRESHOLD and episode > pick_entropy_bump_until and pick_entropy_bump_until != 0:
+            if overall_pick_rate < hyperparams.low_pick_rate_threshold and episode > pick_entropy_bump_until:
+                pick_entropy_bump_until = episode + hyperparams.pick_entropy_bump_duration
+                print(f"   ⚠️  Low pick rate detected ({overall_pick_rate:.1f}%). Increasing pick entropy by {hyperparams.pick_entropy_bump:.3f} for the next {hyperparams.pick_entropy_bump_duration:,} episodes.")
+            elif overall_pick_rate >= hyperparams.low_pick_rate_threshold and episode > pick_entropy_bump_until and pick_entropy_bump_until != 0:
                 # Reset any expired bump marker to reduce log noise later
                 pick_entropy_bump_until = 0
 
             # --- Check rolling ALONE rate and schedule partner-head bump if too high ---
-            if current_alone_rate > HIGH_ALONE_RATE_THRESHOLD and episode > partner_entropy_bump_until:
-                partner_entropy_bump_until = episode + PARTNER_ENTROPY_BUMP_DURATION
-                print(f"   ⚠️  High ALONE rate detected ({current_alone_rate:.1f}%). Increasing partner entropy by {PARTNER_ENTROPY_BUMP:.3f} for the next {PARTNER_ENTROPY_BUMP_DURATION:,} episodes.")
-            elif current_alone_rate <= HIGH_ALONE_RATE_THRESHOLD and episode > partner_entropy_bump_until and partner_entropy_bump_until != 0:
+            if current_alone_rate > hyperparams.high_alone_rate_threshold and episode > partner_entropy_bump_until:
+                partner_entropy_bump_until = episode + hyperparams.partner_entropy_bump_duration
+                print(f"   ⚠️  High ALONE rate detected ({current_alone_rate:.1f}%). Increasing partner entropy by {hyperparams.partner_entropy_bump:.3f} for the next {hyperparams.partner_entropy_bump_duration:,} episodes.")
+            elif current_alone_rate <= hyperparams.high_alone_rate_threshold and episode > partner_entropy_bump_until and partner_entropy_bump_until != 0:
                 # Reset any expired bump marker to reduce log noise later
                 partner_entropy_bump_until = 0
 
