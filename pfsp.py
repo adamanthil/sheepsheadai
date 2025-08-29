@@ -690,7 +690,7 @@ class PFSPPopulation:
     def _delete_agent_files(self, pop_agent: PopulationAgent):
         """Delete agent files from disk."""
         subdir = self._get_subdir(pop_agent.metadata.partner_mode)
-        agent_file = subdir / f"{pop_agent.metadata.agent_id}.pth"
+        agent_file = subdir / f"{pop_agent.metadata.agent_id}.pt"
         metadata_file = subdir / f"{pop_agent.metadata.agent_id}_metadata.json"
 
         for file_path in [agent_file, metadata_file]:
@@ -1026,7 +1026,7 @@ class PFSPPopulation:
         subdir = self._get_subdir(pop_agent.metadata.partner_mode)
 
         # Save model weights
-        model_path = subdir / f"{pop_agent.metadata.agent_id}.pth"
+        model_path = subdir / f"{pop_agent.metadata.agent_id}.pt"
         pop_agent.agent.save(str(model_path))
 
         # Save metadata
@@ -1079,7 +1079,7 @@ class PFSPPopulation:
                     metadata = AgentMetadata.from_dict(metadata_dict)
 
                     # Load agent model
-                    model_path = subdir / f"{metadata.agent_id}.pth"
+                    model_path = subdir / f"{metadata.agent_id}.pt"
                     if not model_path.exists():
                         print(f"Warning: Model file missing for {metadata.agent_id}")
                         continue

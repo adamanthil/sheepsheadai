@@ -1005,11 +1005,11 @@ async def start_game(table_id: str, req: StartGameRequest):
     if has_ai:
         from server.services.ai_loader import load_agent
         candidate_paths = [
-            "pfsp_checkpoints_swish/pfsp_swish_checkpoint_200000.pth",
-            "final_pfsp_swish_ppo.pth",
-            "best_pfsp_swish_ppo.pth",
-            "final_swish_ppo.pth",
-            "best_swish_ppo.pth",
+            "pfsp_checkpoints_swish/pfsp_swish_checkpoint_200000.pt",
+            "final_pfsp_swish_ppo.pt",
+            "best_pfsp_swish_ppo.pt",
+            "final_swish_ppo.pt",
+            "best_swish_ppo.pt",
         ]
         table.ai_agent = load_agent(os.environ.get("SHEEPSHEAD_MODEL_PATH"), candidate_paths)
 

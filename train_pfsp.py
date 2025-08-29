@@ -762,7 +762,7 @@ def train_pfsp(num_episodes: int = 500000,
 
         # Save checkpoints
         if episode % save_interval == 0:
-            checkpoint_path = f'{checkpoint_dir}/pfsp_{activation}_checkpoint_{episode}.pth'
+            checkpoint_path = f'{checkpoint_dir}/pfsp_{activation}_checkpoint_{episode}.pt'
             training_agent.save(checkpoint_path)
 
             # Save population state
@@ -798,7 +798,7 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Final Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
             print(f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
 
-    training_agent.save(f'final_pfsp_{activation}_ppo.pth')
+    training_agent.save(f'final_pfsp_{activation}_ppo.pt')
     population.save_population_state()
 
     # Save final training plot

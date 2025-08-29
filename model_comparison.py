@@ -11,7 +11,7 @@ that agent rotating through all 5 positions equally over time. This eliminates
 bias from models controlling different numbers of positions.
 
 Usage:
-    python model_comparison.py --games 10000 --model1 path/to/model1.pth --model2 path/to/model2.pth
+    python model_comparison.py --games 10000 --model1 path/to/model1.pt --model2 path/to/model2.pt
 """
 
 import torch
@@ -434,15 +434,15 @@ def main():
 Examples:
   # Compare two models with 10k games (only 1 tracked agent per model for fair comparison)
   python model_comparison.py --games 10000 \\
-    --model1-path checkpoints_swish/swish_checkpoint_1000000.pth \\
+    --model1-path checkpoints_swish/swish_checkpoint_1000000.pt \\
     --model1-positions 2 \\
-    --model2-path checkpoints_swish/swish_checkpoint_500000.pth \\
+    --model2-path checkpoints_swish/swish_checkpoint_500000.pt \\
     --model2-positions 3
 
   # Compare with custom names (tracked agents rotate through all positions)
   python model_comparison.py --games 5000 \\
-    --model1-path final_swish_ppo.pth --model1-name "Final Model" --model1-positions 3 \\
-    --model2-path best_swish_ppo.pth --model2-name "Best Model" --model2-positions 2
+    --model1-path final_swish_ppo.pt --model1-name "Final Model" --model1-positions 3 \\
+    --model2-path best_swish_ppo.pt --model2-name "Best Model" --model2-positions 2
         """
     )
 

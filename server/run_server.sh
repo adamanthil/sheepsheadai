@@ -4,7 +4,7 @@ set -euo pipefail
 PYTHON=${PYTHON:-python3}
 MODEL_PATH=""
 
-# Usage: bash server/run_server.sh [--model path/to/checkpoint.pth]
+# Usage: bash server/run_server.sh [--model path/to/checkpoint.pt]
 if [[ "${1:-}" == "--model" && -n "${2:-}" ]]; then
   MODEL_PATH="${2}"
   export SHEEPSHEAD_MODEL_PATH="${MODEL_PATH}"

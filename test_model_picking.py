@@ -169,7 +169,7 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Test picking of trained model")
-    parser.add_argument("-m", "--model", type=str, default="final_swish_ppo.pth",
+    parser.add_argument("-m", "--model", type=str, default="final_swish_ppo.pt",
                        help="Path to the trained model")
     parser.add_argument("-p", "--position", type=int, default=1,
                        help="Position of the player to test")

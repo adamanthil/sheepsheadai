@@ -50,15 +50,6 @@ def infer_phase_from_action_id(action_id: int, action_groups: Dict[str, List[int
     return "unknown"
 
 
-def get_candidate_model_paths() -> List[str]:
-    """Get candidate model paths following the same pattern as the table loading."""
-    return [
-        "best_pfsp_swish_ppo.pth",
-        "final_swish_ppo.pth",
-        "best_swish_ppo.pth"
-    ]
-
-
 def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     """Simulate a full Sheepshead game and return detailed analysis trace."""
 
@@ -69,9 +60,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # Load agent
     global_model_path = os.environ.get("SHEEPSHEAD_MODEL_PATH")
     model_path = req.modelPath or global_model_path
-    candidate_paths = get_candidate_model_paths()
 
-    agent = load_agent(model_path, candidate_paths)
+    agent = load_agent(model_path)
     if agent is None:
         raise ValueError("Failed to load AI model")
 

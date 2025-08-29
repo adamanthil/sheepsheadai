@@ -14,8 +14,8 @@ parser = ArgumentParser(
 parser.add_argument(
     "-m",
     "--model",
-    default="final_swish_ppo.pth",
-    help="PyTorch model file. Default: final_swish_ppo.pth"
+    default="final_swish_ppo.pt",
+    help="PyTorch model file. Default: final_swish_ppo.pt"
 )
 parser.add_argument(
     "--partner-mode",

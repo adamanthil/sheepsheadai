@@ -480,12 +480,12 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             # We want the absolute value to be as small as possible
             if current_team_diff < best_team_difference:
                 best_team_difference = current_team_diff
-                agent.save(f'best_{activation}_ppo.pth')
+                agent.save(f'best_{activation}_ppo.pt')
                 print(f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved.")
 
         # Save regular checkpoints
         if episode % save_interval == 0:
-            checkpoint_path = f'{checkpoint_dir}/{activation}_checkpoint_{episode}.pth'
+            checkpoint_path = f'{checkpoint_dir}/{activation}_checkpoint_{episode}.pt'
             agent.save(checkpoint_path)
 
             # Save enhanced training plot
@@ -520,7 +520,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             print(f"   Final Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
             print(f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
 
-    agent.save(f'final_{activation}_ppo.pth')
+    agent.save(f'final_{activation}_ppo.pt')
 
     # Save final enhanced training plot
     if len(training_data['episodes']) > 0:
