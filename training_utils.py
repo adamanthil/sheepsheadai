@@ -94,7 +94,17 @@ def apply_leaster_trick_rewards(trick_transitions: List[Dict], trick_winner_pos:
             transition['intermediate_reward'] -= trick_reward
 
 
-def update_intermediate_rewards_for_action(game, player, action, transition, current_trick_transitions):
+def update_intermediate_rewards_for_action(
+    game,
+    player,
+    action,
+    transition,
+    current_trick_transitions,
+    pick_weight=1.0, # Multiplier for pick head shaping
+    partner_weight=1.0, # Multiplier for partner head shaping
+    bury_weight=1.0, # Multiplier for bury head shaping
+    play_weight=1.0, # Multiplier for play head shaping
+):
     """Apply shared intermediate reward shaping and trick tracking.
     Uses game engine state to detect leads and trick phase; no counter needed.
     """
@@ -106,19 +116,21 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 4:
-            pick_bonus, pass_bonus = -0.05, +0.05
+            pick_bonus, pass_bonus = -0.15, +0.15
         elif score <= 7:
-            pick_bonus, pass_bonus = +0.01, -0.01
+            pick_bonus, pass_bonus = +0.02, -0.02
         else:
-            pick_bonus, pass_bonus = +0.06, -0.06
+            pick_bonus, pass_bonus = +0.2, -0.2
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
+        transition['intermediate_reward'] *= pick_weight
 
     # ALONE shaping: discourage going alone with weak hands
     elif action_name == "ALONE":
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 7:
-            transition['intermediate_reward'] += -0.02
+            transition['intermediate_reward'] += -0.2
+        transition['intermediate_reward'] *= partner_weight
 
     # Bury penalty: discourage burying trump if not required
     elif "BURY" in action_name:
@@ -130,16 +142,17 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
         has_allowed_trump_bury = any(get_card_suit(c) == "T" for c in allowed_bury_cards)
 
         if card in TRUMP and has_allowed_fail_bury:
-            transition['intermediate_reward'] += -0.06
+            transition['intermediate_reward'] += -0.2
         elif card not in TRUMP and has_allowed_trump_bury:
             # Small preference when both options exist
-            transition['intermediate_reward'] += 0.01
+            transition['intermediate_reward'] += 0.05
         elif not has_allowed_fail_bury and card.startswith("Q"):
             # Even if we have to bury trump, we should not bury queens.
-            transition['intermediate_reward'] += -0.06
+            transition['intermediate_reward'] += -0.2
         elif not has_allowed_fail_bury and card.startswith("J"):
             # Even if we have to bury trump, unlikely we should bury jacks.
-            transition['intermediate_reward'] += -0.02
+            transition['intermediate_reward'] += -0.1
+        transition['intermediate_reward'] *= bury_weight
 
     elif "PLAY" in action_name:
         is_lead = (game.cards_played == 0) and (game.leader == player.position)
@@ -154,7 +167,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
                 and card in TRUMP
             ):
                 # Discourage defenders from leading trump
-                transition['intermediate_reward'] += -0.05
+                transition['intermediate_reward'] += -0.1
             elif (
                 game.called_card
                 and not player.is_picker
@@ -164,7 +177,7 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
                 and game.called_suit == get_card_suit(card)
             ):
                 # Encourage defenders to lead called suit (early)
-                transition['intermediate_reward'] += 0.06 - (0.01 * trick_index)
+                transition['intermediate_reward'] += 0.1 - (0.02 * trick_index)
             elif (
                 not game.is_leaster
                 and not player.is_picker
@@ -173,14 +186,15 @@ def update_intermediate_rewards_for_action(game, player, action, transition, cur
                 and card not in TRUMP
             ):
                 # Nudge defenders toward leading fail
-                transition['intermediate_reward'] += 0.02
+                transition['intermediate_reward'] += 0.05
             elif (
                 not game.is_leaster
                 and (player.is_partner or player.is_secret_partner)
                 and card in TRUMP
             ):
                 # Gentle nudge toward partners leading trump
-                transition['intermediate_reward'] += 0.01
+                transition['intermediate_reward'] += 0.05
+        transition['intermediate_reward'] *= play_weight
 
         current_trick_transitions.append(transition)
 
