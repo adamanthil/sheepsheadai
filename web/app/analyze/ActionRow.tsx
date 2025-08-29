@@ -7,10 +7,12 @@ interface ActionRowProps {
   action: AnalyzeActionDetail;
   picker?: string;
   partner?: string;
-  normalizedValue: number; // 0-1 scale for color gradient
+  normalizedValue: number; // 0-1 scale for color gradient (value)
+  normalizedReward: number; // 0-1 scale for color gradient (reward)
+  normalizedStepReward?: number; // 0-1 scale for color gradient (immediate step reward)
 }
 
-export default function ActionRow({ action, picker, partner, normalizedValue }: ActionRowProps) {
+export default function ActionRow({ action, picker, partner, normalizedValue, normalizedReward, normalizedStepReward }: ActionRowProps) {
   const [expanded, setExpanded] = useState(false);
 
   const handleClick = () => {
@@ -39,12 +41,9 @@ export default function ActionRow({ action, picker, partner, normalizedValue }: 
     }
   };
 
-  const getValueStyle = () => {
-    // Convert 0-1 scale to HSL hue (0° = red, 120° = green)
-    const hue = normalizedValue * 120;
-    return {
-      '--value-hue': `${hue}deg`
-    } as React.CSSProperties;
+  const getHueStyle = (normalized: number) => {
+    const hue = normalized * 120; // 0 (red) .. 120 (green)
+    return { '--value-hue': `${hue}deg` } as React.CSSProperties;
   };
 
   return (
@@ -67,7 +66,7 @@ export default function ActionRow({ action, picker, partner, normalizedValue }: 
               {action.action}
             </div>
             <div className={styles.phaseText}>
-              {action.phase}
+              {action.phase} Head
             </div>
           </div>
         </div>
@@ -75,10 +74,28 @@ export default function ActionRow({ action, picker, partner, normalizedValue }: 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div
             className={styles.valueEstimate}
-            style={getValueStyle()}
+            style={getHueStyle(normalizedValue)}
           >
-            Value: {formatValue(action.valueEstimate)}
+            Value Estimate: {formatValue(action.valueEstimate)}
           </div>
+
+          {typeof action.discountedReturn === 'number' && (
+            <div
+              className={styles.valueEstimate}
+              style={getHueStyle(normalizedReward)}
+            >
+              Return: {formatValue(action.discountedReturn)}
+            </div>
+          )}
+
+          {typeof action.stepReward === 'number' && (
+            <div
+              className={styles.valueEstimate}
+              style={getHueStyle(typeof normalizedStepReward === 'number' ? normalizedStepReward : 0.5)}
+            >
+              Step Reward: {formatValue(action.stepReward)}
+            </div>
+          )}
 
           <div className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>
             ▼

@@ -84,6 +84,8 @@ class AnalyzeActionDetail(BaseModel):
     actionId: int
     action: str
     valueEstimate: float
+    discountedReturn: Optional[float] = None
+    stepReward: Optional[float] = None
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]

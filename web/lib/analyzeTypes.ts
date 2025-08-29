@@ -22,6 +22,8 @@ export interface AnalyzeActionDetail {
   actionId: number;
   action: string;
   valueEstimate: number;
+  discountedReturn?: number;
+  stepReward?: number;
   validActionIds: number[];
   probabilities: AnalyzeProbability[];
   view: Record<string, any>;
