@@ -59,7 +59,7 @@ def play(agent):
             # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
             while valid_actions:
                 state = player.get_state_vector()
-                action, _, _ = agent.act(state, valid_actions, deterministic=True)
+                action, _, _ = agent.act(state, valid_actions, player.position, deterministic=True)
                 action_str = ACTIONS[action - 1]
 
                 if action_str in PLAY_ACTIONS:
@@ -80,6 +80,10 @@ def play(agent):
 
                 player.act(action)
                 valid_actions = player.get_valid_action_ids()
+                # At end of trick, propagate observation frames so the LSTM sees the completed trick
+                if player.game.was_trick_just_completed:
+                    for seat in player.game.players:
+                        agent.observe(seat.get_last_trick_state_vector(), player_id=seat.position)
                 # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
 
     print(f"{'-'*40}")
