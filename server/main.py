@@ -388,7 +388,7 @@ async def ai_take_turns(table: Table):
             valid = player.get_valid_action_ids()
             if not valid:
                 break
-            action_id, _, _ = table.ai_agent.act(state, valid_actions=valid, player_id=actor, deterministic=False)
+            action_id, _, _ = table.ai_agent.act(state, valid_actions=valid, player_id=actor, deterministic=True)
             ok = player.act(int(action_id))
             if not ok:
                 raise RuntimeError(
