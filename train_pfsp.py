@@ -16,7 +16,7 @@ from collections import deque
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
@@ -62,29 +62,63 @@ class PFSPHyperparams:
     partner_entropy_bump_duration: int = 50000  # episodes
 
     # Entropy schedules (start -> end)
-    entropy_pick_start: float = 0.05
+    entropy_pick_start: float = 0.06
     entropy_pick_end: float = 0.02
     entropy_partner_start: float = 0.05
     entropy_partner_end: float = 0.02
-    entropy_bury_start: float = 0.04
+    entropy_bury_start: float = 0.05
     entropy_bury_end: float = 0.015
-    entropy_play_start: float = 0.05
+    entropy_play_start: float = 0.06
     entropy_play_end: float = 0.02
+
+    # Shaped reward schedules (percent -> weight). Defaults preserve current behavior.
+    shaping_schedule_pick: dict[int, float] = field(default_factory=lambda: {0: 1.0, 10: 1.0, 70: 0.1, 90: 0})
+    shaping_schedule_partner: dict[int, float] = field(default_factory=lambda: {0: 1.0, 30: 1.0, 80: 0.5})
+    shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 80: 0.5})
+    shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0, 20: 1.0, 60: 0.25, 90: 0})
 
 
 DEFAULT_HYPERPARAMS = PFSPHyperparams()
 
 
+def interpolated_weight(schedule: dict, progress_pct: float) -> float:
+    """Linear interpolation of schedule weights by percent progress.
+
+    schedule: mapping of percent (0-100) to weight.
+    progress_pct: current percent progress in [0, 100].
+    """
+    if not schedule:
+        return 1.0
+    # Normalize and sort points by percent
+    points = sorted((float(k), float(v)) for k, v in schedule.items())
+    # Clamp to endpoints
+    if progress_pct <= points[0][0]:
+        return points[0][1]
+    if progress_pct >= points[-1][0]:
+        return points[-1][1]
+    # Find segment and interpolate
+    for (k0, v0), (k1, v1) in zip(points, points[1:]):
+        if k0 <= progress_pct <= k1:
+            if k1 == k0:
+                return v1
+            t = (progress_pct - k0) / (k1 - k0)
+            return v0 + t * (v1 - v0)
+    # Fallback (should not hit due to clamps)
+    return points[-1][1]
+
+
 def play_population_game(training_agent: PPOAgent,
                         opponents: list,
                         partner_mode: int,
-                        training_agent_position: int = 1) -> tuple:
+                        training_agent_position: int = 1,
+                        shaping_weights: dict | None = None) -> tuple:
     """Play a single game with the training agent and population opponents.
 
     Returns:
         tuple: (game, episode_transitions, final_scores, training_agent_data)
     """
     game = Game(partner_selection_mode=partner_mode)
+    weights = shaping_weights or {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 1.0}
 
     # Reset recurrent states for all agents
     training_agent.reset_recurrent_state()
@@ -151,6 +185,10 @@ def play_population_game(training_agent: PPOAgent,
                         action,
                         transition,
                         current_trick_transitions,
+                        pick_weight=weights["pick"],
+                        partner_weight=weights["partner"],
+                        bury_weight=weights["bury"],
+                        play_weight=weights["play"],
                     )
 
                 else:
@@ -425,12 +463,22 @@ def train_pfsp(num_episodes: int = 500000,
         # Randomly select training agent position (1-5)
         training_position = random.randint(1, 5)
 
+        # Compute per-episode shaping weights from schedules
+        progress_pct = min(100.0, max(0.0, (episode / num_episodes) * 100.0))
+        shaping_weights = {
+            "pick": interpolated_weight(hyperparams.shaping_schedule_pick, progress_pct),
+            "partner": interpolated_weight(hyperparams.shaping_schedule_partner, progress_pct),
+            "bury": interpolated_weight(hyperparams.shaping_schedule_bury, progress_pct),
+            "play": interpolated_weight(hyperparams.shaping_schedule_play, progress_pct),
+        }
+
         # Play game
         game, episode_transitions, final_scores, training_data_single = play_population_game(
             training_agent=training_agent,
             opponents=opponents,
             partner_mode=partner_mode,
-            training_agent_position=training_position
+            training_agent_position=training_position,
+            shaping_weights=shaping_weights
         )
 
         # Process rewards and store transitions
