@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AnalyzeActionDetail } from '../../lib/analyzeTypes';
 import ProbabilityBar from './ProbabilityBar';
+import { PlayingCard } from '../../lib/components';
 import styles from './page.module.css';
 
 interface ActionDetailsProps {
@@ -33,7 +34,7 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
               </div>
               <div className={styles.cardList}>
                 {hand.map((card: string, i: number) => (
-                  <div key={i} className={styles.card}>{card}</div>
+                  <PlayingCard key={i} label={card} small />
                 ))}
               </div>
             </div>
@@ -46,7 +47,7 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
               </div>
               <div className={styles.cardList}>
                 {blind.map((card: string, i: number) => (
-                  <div key={i} className={styles.card}>{card}</div>
+                  <PlayingCard key={i} label={card} small />
                 ))}
               </div>
             </div>
@@ -59,7 +60,7 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
               </div>
               <div className={styles.cardList}>
                 {bury.map((card: string, i: number) => (
-                  <div key={i} className={styles.card}>{card}</div>
+                  <PlayingCard key={i} label={card} small />
                 ))}
               </div>
             </div>
@@ -72,7 +73,7 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
               </div>
               <div className={styles.cardList}>
                 {currentTrick.filter((card: string) => card !== '').map((card: string, i: number) => (
-                  <div key={i} className={styles.card}>{card}</div>
+                  <PlayingCard key={i} label={card} small />
                 ))}
               </div>
             </div>

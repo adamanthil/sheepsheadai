@@ -1,7 +1,7 @@
 "use client";
 import styles from './page.module.css';
 import ui from '../../styles/ui.module.css';
-import cardStyles from './PlayingCard.module.css';
+import { PlayingCard, parseCard, suitSymbol } from '../../../lib/components';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useParams } from 'next/navigation';
@@ -16,27 +16,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
   return `${protocol}//${hostname}:9000`;
 })();
 
-// --- Card helpers (module-level so both components can use) ---
-function parseCard(card: string): { rank: string; suit: 'C'|'S'|'H'|'D'|null } {
-  if (!card || card === '__' || card === 'UNDER') return { rank: card, suit: null };
-  if (card.startsWith('10')) return { rank: '10', suit: card.slice(2) as any };
-  return { rank: card[0], suit: card[1] as any };
-}
 
-function suitSymbol(s: 'C'|'S'|'H'|'D'|null) {
-  if (s === 'C') return '♣';
-  if (s === 'S') return '♠';
-  if (s === 'H') return '♥';
-  if (s === 'D') return '♦';
-  return '';
-}
 
 // Seat math + positions used by table layout and trick animations
-export function relSeat(absSeat: number, me: number) {
+function relSeat(absSeat: number, me: number) {
   return (absSeat - me + 5) % 5;
 }
 
-export function spotStyle(rel: number): React.CSSProperties {
+function spotStyle(rel: number): React.CSSProperties {
   const base: React.CSSProperties = { position: 'absolute', transform: 'translate(-50%, -50%)' };
   const map: Record<number, React.CSSProperties> = {
     0: { left: '50%', top: '84%' },
@@ -713,25 +700,7 @@ export default function TablePage() {
   );
 }
 
-function PlayingCard({ label, small, highlight, width, height, bigMarks }: { label: string; small?: boolean; highlight?: boolean; width?: number; height?: number; bigMarks?: boolean }) {
-  const blank = label === '__' || !label;
-  const { rank, suit } = parseCard(label);
-  const w = width ?? (small ? 48 : 76);
-  const h = height ?? (small ? 64 : 108);
-  const red = suit === 'H' || suit === 'D';
-  const sizeClass = bigMarks ? 'big' : (small ? 'small' : 'normal');
-  const classNames = [cardStyles.card, highlight ? cardStyles.highlight : '', blank ? cardStyles.blank : '', red ? cardStyles.redText : ''].filter(Boolean).join(' ');
-  return (
-    <div className={classNames} style={{ ['--w' as any]: `${w}px`, ['--h' as any]: `${h}px`, ['--pad' as any]: small ? '4px' : '8px' }}>
-      <div className={cardStyles.topSection}>
-        <div className={`${cardStyles.rankTop} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{rank}</div>
-        <div className={`${cardStyles.suitTopLeft} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{suitSymbol(suit)}</div>
-      </div>
-      <div className={`${cardStyles.suitCenter} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{suitSymbol(suit)}</div>
-      <div className={`${cardStyles.rankBottom} ${cardStyles[sizeClass as 'small'|'normal'|'big']}`}>{rank}</div>
-    </div>
-  );
-}
+
 
 function ScoresOverlay({ onClose, table }: { onClose: () => void; table: any }) {
   const history: Array<any> = table?.resultsHistory || [];
