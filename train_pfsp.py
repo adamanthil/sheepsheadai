@@ -206,6 +206,8 @@ def play_population_game(training_agent: PPOAgent,
                     for seat in game.players:
                         seat_agent = agents[seat.position - 1]
                         if seat_agent == training_agent:
+                            # Update training agent's recurrent hidden state and also store for unroll
+                            training_agent.observe(seat.get_last_trick_state_vector(), player_id=seat.position)
                             training_agent.store_observation(seat.get_last_trick_state_vector(), player_id=seat.position)
                         else:
                             seat_agent.observe(seat.get_last_trick_state_vector(), seat.position)

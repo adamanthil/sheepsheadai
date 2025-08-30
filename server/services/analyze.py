@@ -118,8 +118,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         action_mask = agent.get_action_mask(valid_actions, agent.action_size).unsqueeze(0)
 
         with torch.no_grad():
+            # Use the actor's previous hidden state so the critic's value reflects recurrent context
+            prev_hidden = agent.actor._hidden_states.get(actor_player.position, None)
             action_probs = agent.actor(state_tensor, action_mask, actor_player.position)
-            value = agent.critic(state_tensor)
+            value = agent.critic(state_tensor, hidden_in=prev_hidden)
 
         # Choose action
         if req.deterministic:

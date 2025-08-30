@@ -392,8 +392,12 @@ class PPOAgent:
         action_mask = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
 
         with torch.no_grad():
+            # Use the actor's previous hidden state for the critic so value matches recurrent context
+            prev_hidden = None
+            if player_id is not None:
+                prev_hidden = self.actor._hidden_states.get(player_id, None)
             action_probs = self.actor(state, action_mask, player_id)
-            value = self.critic(state)
+            value = self.critic(state, hidden_in=prev_hidden)
 
         # Create distribution for consistent log probability calculation
         dist = torch.distributions.Categorical(action_probs)

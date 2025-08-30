@@ -261,8 +261,12 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         # ------------------------------------------------
                         # Add post-trick observation frames for all seats
                         # (stored for training-time recurrent unroll)
+                        # Also update the online recurrent hidden state
                         # ------------------------------------------------
                         for seat in game.players:
+                            # Update online recurrent state
+                            agent.observe(seat.get_last_trick_state_vector(), player_id=seat.position)
+                            # Store for training-time unroll
                             episode_transitions[seat.position].append({
                                 'kind': 'obs',
                                 'player': seat,
