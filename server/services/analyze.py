@@ -6,7 +6,7 @@ from typing import Dict, List
 import numpy as np
 import torch
 
-from sheepshead import Game, Player, ACTION_LOOKUP
+from sheepshead import Game, Player, ACTION_LOOKUP, DECK
 from server.api.schemas import (
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
@@ -81,7 +81,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # Capture initial hands for summary
     initial_hands = {}
     for player in game.players:
-        initial_hands[players[player.position - 1]] = list(player.hand)
+        initial_hands[players[player.position - 1]] = sorted(list(player.hand), key=lambda card: DECK.index(card))
 
     # Capture blind for summary
     initial_blind = list(game.blind) if hasattr(game, 'blind') else []
