@@ -1,5 +1,6 @@
 import React from 'react';
 import { AnalyzeProbability } from '../../lib/analyzeTypes';
+import { CardText } from '../../lib/components';
 import styles from './page.module.css';
 
 interface ProbabilityBarProps {
@@ -13,7 +14,7 @@ export default function ProbabilityBar({ probability, maxProb }: ProbabilityBarP
   return (
     <div className={styles.probabilityItem}>
       <div className={styles.probabilityAction}>
-        {probability.action}
+        <CardText>{probability.action}</CardText>
       </div>
       <div className={styles.probabilityBarContainer}>
         <div

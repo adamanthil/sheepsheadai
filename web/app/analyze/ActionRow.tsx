@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AnalyzeActionDetail } from '../../lib/analyzeTypes';
 import ActionDetails from './ActionDetails';
+import { CardText } from '../../lib/components';
 import styles from './page.module.css';
 
 interface ActionRowProps {
@@ -63,7 +64,7 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
 
           <div className={styles.actionInfo}>
             <div className={styles.actionText}>
-              {action.action}
+              <CardText>{action.action}</CardText>
             </div>
             <div className={styles.phaseText}>
               {action.phase} Head

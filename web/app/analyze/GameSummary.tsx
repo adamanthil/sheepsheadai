@@ -1,5 +1,6 @@
 import React from 'react';
 import { AnalyzeGameSummary } from '../../lib/analyzeTypes';
+import { CardText } from '../../lib/components';
 import styles from './page.module.css';
 
 interface GameSummaryProps {
@@ -21,7 +22,9 @@ export default function GameSummary({ summary }: GameSummaryProps) {
                 <div className={styles.playerName}>{player}</div>
                 <div className={styles.cardList}>
                   {cards.map((card, i) => (
-                    <span key={i} className={styles.card}>{card}</span>
+                    <span key={i} className={styles.card}>
+                      <CardText>{card}</CardText>
+                    </span>
                   ))}
                 </div>
               </div>
@@ -35,7 +38,9 @@ export default function GameSummary({ summary }: GameSummaryProps) {
             <h4 className={styles.summarySubtitle}>Blind</h4>
             <div className={styles.cardList}>
               {summary.blind.map((card, i) => (
-                <span key={i} className={styles.card}>{card}</span>
+                <span key={i} className={styles.card}>
+                  <CardText>{card}</CardText>
+                </span>
               ))}
             </div>
           </div>
@@ -62,7 +67,9 @@ export default function GameSummary({ summary }: GameSummaryProps) {
                 <span className={styles.infoLabel}>Bury:</span>
                 <div className={styles.cardList}>
                   {summary.bury.map((card, i) => (
-                    <span key={i} className={styles.card}>{card}</span>
+                    <span key={i} className={styles.card}>
+                      <CardText>{card}</CardText>
+                    </span>
                   ))}
                 </div>
               </div>
