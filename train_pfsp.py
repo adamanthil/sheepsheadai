@@ -397,6 +397,11 @@ def train_pfsp(num_episodes: int = 500000,
                 training_data['learning_rate'].append(float(row['learning_rate']))
                 training_data['time_elapsed'].append(float(row['time_elapsed']))
                 training_data['team_point_diff'].append(float(row['team_point_diff']))
+                # Optional historical series (may be missing in early CSVs)
+                if 'alone_rate' in row and row['alone_rate'] != '':
+                    training_data['alone_rate'].append(float(row['alone_rate']))
+                if 'leaster_rate' in row and row['leaster_rate'] != '':
+                    training_data['leaster_rate'].append(float(row['leaster_rate']))
         if training_data['time_elapsed']:
             start_time_offset = training_data['time_elapsed'][-1]
 
