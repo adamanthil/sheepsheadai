@@ -145,7 +145,7 @@ def update_intermediate_rewards_for_action(
             transition['intermediate_reward'] += -0.2
         elif card not in TRUMP and has_allowed_trump_bury:
             # Small preference when both options exist
-            transition['intermediate_reward'] += 0.05
+            transition['intermediate_reward'] += 0.03
         elif not has_allowed_fail_bury and card.startswith("Q"):
             # Even if we have to bury trump, we should not bury queens.
             transition['intermediate_reward'] += -0.2
@@ -167,7 +167,7 @@ def update_intermediate_rewards_for_action(
                 and card in TRUMP
             ):
                 # Discourage defenders from leading trump
-                transition['intermediate_reward'] += -0.1
+                transition['intermediate_reward'] += -0.15
             elif (
                 game.called_card
                 and not player.is_picker
