@@ -726,7 +726,8 @@ class PPOAgent:
     ):
         dist = torch.distributions.Categorical(probs_flat)
         new_lp_flat = dist.log_prob(actions_flat)
-        approx_kl_t = (old_lp_flat - new_lp_flat).mean()
+        log_ratio = new_lp_flat - old_lp_flat
+        approx_kl_t = (torch.exp(log_ratio) - 1 - log_ratio).mean()
 
         pick_entropy, partner_entropy, bury_entropy, play_entropy = self._head_entropies(
             probs_flat, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
