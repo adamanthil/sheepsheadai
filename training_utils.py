@@ -128,7 +128,7 @@ def update_intermediate_rewards_for_action(
     elif action_name == "ALONE":
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
-        if score <= 7:
+        if score <= 8:
             transition['intermediate_reward'] += -0.2
         transition['intermediate_reward'] *= partner_weight
 
