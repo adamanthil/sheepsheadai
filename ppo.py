@@ -901,10 +901,10 @@ class PPOAgent:
                 last_approx_kl = float(approx_kl_t.item())
 
                 # Entropy accumulation
-                ent_pick_sum += float(pick_entropy)
-                ent_partner_sum += float(partner_entropy)
-                ent_bury_sum += float(bury_entropy)
-                ent_play_sum += float(play_entropy)
+                ent_pick_sum += pick_entropy.detach().item()
+                ent_partner_sum += partner_entropy.detach().item()
+                ent_bury_sum += bury_entropy.detach().item()
+                ent_play_sum += play_entropy.detach().item()
                 ent_batches += 1
 
                 # Backward + step per minibatch
