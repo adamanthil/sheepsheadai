@@ -164,6 +164,7 @@ def update_intermediate_rewards_for_action(
                 and not player.is_picker
                 and not player.is_partner
                 and not player.is_secret_partner
+                and trick_index < 5 # Don't penalize final trick trump leads
                 and card in TRUMP
             ):
                 # Discourage defenders from leading trump
