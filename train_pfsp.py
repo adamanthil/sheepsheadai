@@ -51,6 +51,7 @@ class PFSPHyperparams:
     # Adaptive exploration for pick head
     # If rolling pick rate dips below a threshold, temporarily bump pick entropy.
     low_pick_rate_threshold: float = 20.0  # percent
+    high_pick_rate_threshold: float = 60.0  # percent
     pick_entropy_bump: float = 0.02        # added to base decayed pick entropy
     pick_entropy_bump_duration: int = 50000  # episodes
 
@@ -814,23 +815,42 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Time elapsed: {elapsed/60:.1f} min")
             print("   " + "-" * 50)
 
-            # --- Check rolling pick rate and schedule entropy bump if too low ---
+            # --- Check rolling pick rate and schedule entropy bump if too low/high ---
             overall_picks = total_called_picks + total_jd_picks
             overall_decisions = overall_picks + total_called_passes + total_jd_passes
             overall_pick_rate = (100 * overall_picks / overall_decisions) if overall_decisions > 0 else 0.0
 
-            if overall_pick_rate < hyperparams.low_pick_rate_threshold and episode > pick_entropy_bump_until:
+            if (
+                overall_pick_rate < hyperparams.low_pick_rate_threshold and episode > pick_entropy_bump_until
+            ):
                 pick_entropy_bump_until = episode + hyperparams.pick_entropy_bump_duration
                 print(f"   ⚠️  Low pick rate detected ({overall_pick_rate:.1f}%). Increasing pick entropy by {hyperparams.pick_entropy_bump:.3f} for the next {hyperparams.pick_entropy_bump_duration:,} episodes.")
-            elif overall_pick_rate >= hyperparams.low_pick_rate_threshold and episode > pick_entropy_bump_until and pick_entropy_bump_until != 0:
+            elif (
+                overall_pick_rate > hyperparams.high_pick_rate_threshold and episode > pick_entropy_bump_until
+            ):
+                pick_entropy_bump_until = episode + hyperparams.pick_entropy_bump_duration
+                print(f"   ⚠️  High pick rate detected ({overall_pick_rate:.1f}%). Increasing pick entropy by {hyperparams.pick_entropy_bump:.3f} for the next {hyperparams.pick_entropy_bump_duration:,} episodes.")
+            elif (
+                overall_pick_rate >= hyperparams.low_pick_rate_threshold and
+                overall_pick_rate <= hyperparams.high_pick_rate_threshold and
+                episode > pick_entropy_bump_until and
+                pick_entropy_bump_until != 0
+            ):
                 # Reset any expired bump marker to reduce log noise later
                 pick_entropy_bump_until = 0
 
             # --- Check rolling ALONE rate and schedule partner-head bump if too high ---
-            if current_alone_rate > hyperparams.high_alone_rate_threshold and episode > partner_entropy_bump_until:
+            if (
+                current_alone_rate > hyperparams.high_alone_rate_threshold and episode > partner_entropy_bump_until
+            ):
                 partner_entropy_bump_until = episode + hyperparams.partner_entropy_bump_duration
                 print(f"   ⚠️  High ALONE rate detected ({current_alone_rate:.1f}%). Increasing partner entropy by {hyperparams.partner_entropy_bump:.3f} for the next {hyperparams.partner_entropy_bump_duration:,} episodes.")
-            elif current_alone_rate <= hyperparams.high_alone_rate_threshold and episode > partner_entropy_bump_until and partner_entropy_bump_until != 0:
+
+            if (
+                current_alone_rate <= hyperparams.high_alone_rate_threshold and
+                episode > partner_entropy_bump_until and
+                partner_entropy_bump_until != 0
+            ):
                 # Reset any expired bump marker to reduce log noise later
                 partner_entropy_bump_until = 0
 
