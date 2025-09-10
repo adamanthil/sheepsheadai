@@ -9,14 +9,10 @@ from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PL
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def swish(x):
-    """Swish activation function: x * sigmoid(x)"""
-    return x * torch.sigmoid(x)
-
 
 class PreNormResidual(nn.Module):
     """Pre-norm residual MLP block: y = x + Linear(LN(x) -> hidden -> act -> dropout -> dim)."""
-    def __init__(self, dim: int, hidden_dim: int | None = None, dropout: float = 0.1, activation=swish):
+    def __init__(self, dim: int, hidden_dim: int | None = None, dropout: float = 0.1, activation=F.silu):
         super().__init__()
         hidden_dim = hidden_dim or dim
         self.norm = nn.LayerNorm(dim)
@@ -54,7 +50,7 @@ class SharedRecurrentBackbone(nn.Module):
         self.state_size = state_size
 
         if activation == 'swish':
-            self.activation = swish
+            self.activation = F.silu
         elif activation == 'relu':
             self.activation = F.relu
         else:
@@ -158,7 +154,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # Activation selector
         if activation == 'swish':
-            self.activation = swish
+            self.activation = F.silu
         elif activation == 'relu':
             self.activation = F.relu
         else:
@@ -268,7 +264,7 @@ class RecurrentCriticNetwork(nn.Module):
         object.__setattr__(self, "_backbone", backbone)
 
         if activation == 'swish':
-            self.activation = swish
+            self.activation = F.silu
         elif activation == 'relu':
             self.activation = F.relu
         else:
