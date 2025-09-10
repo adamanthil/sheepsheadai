@@ -834,10 +834,8 @@ class PPOAgent:
             if not segments:
                 break
             perm = torch.randperm(len(segments))
-            # Choose minibatch size (number of segments)
-            mb_size = max(1, batch_size // 8)
-            for mb_start in range(0, len(segments), mb_size):
-                batch_idxs = perm[mb_start:mb_start + mb_size].tolist()
+            for mb_start in range(0, len(segments), batch_size):
+                batch_idxs = perm[mb_start:mb_start + batch_size].tolist()
                 batch = [segments[i] for i in batch_idxs]
                 if len(batch) == 0:
                     continue
