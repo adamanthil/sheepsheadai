@@ -73,10 +73,10 @@ class PFSPHyperparams:
     entropy_play_end: float = 0.02
 
     # Shaped reward schedules (percent -> weight).
-    shaping_schedule_pick: dict[int, float] = field(default_factory=lambda: {0: 1.0, 10: 1.0, 80: 0.25})
-    shaping_schedule_partner: dict[int, float] = field(default_factory=lambda: {0: 1.0, 40: 1.0, 80: 0.5})
-    shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 80: 0.5})
-    shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0, 40: 1.0, 90: 0.5})
+    shaping_schedule_pick: dict[int, float] = field(default_factory=lambda: {0: 1.0})
+    shaping_schedule_partner: dict[int, float] = field(default_factory=lambda: {0: 1.0})
+    shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0})
+    shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0})
 
 
 DEFAULT_HYPERPARAMS = PFSPHyperparams()
