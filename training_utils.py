@@ -117,9 +117,11 @@ def update_intermediate_rewards_for_action(
         score = estimate_hand_strength_score(hand_cards)
         if score <= 4:
             pick_bonus, pass_bonus = -0.15, +0.15
+        elif score <= 6:
+            pick_bonus, pass_bonus = 0, 0
         elif score <= 7:
-            pick_bonus, pass_bonus = +0.02, -0.02
-        else:
+            pick_bonus, pass_bonus = +0.05, -0.05
+        elif score >= 8:
             pick_bonus, pass_bonus = +0.2, -0.2
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
         transition['intermediate_reward'] *= pick_weight
