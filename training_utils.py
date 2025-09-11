@@ -57,33 +57,23 @@ def get_partner_selection_mode(episode: int) -> int:
 
 
 def calculate_trick_reward(trick_points: int) -> float:
-    """Intermediate reward for trick points (scaled)."""
-    return trick_points / 720.0  # 720 = 60 * 12
+    """Intermediate reward for trick points."""
+    return trick_points / 360.0
 
 
 def is_same_team_as_winner(player, winner_pos: int, game) -> bool:
     if game.is_leaster:
         return False
-    player_picker_team = (player.is_picker or player.is_partner)
+    player_picker_team = (player.is_picker or player.is_partner or player.is_secret_partner)
     winner_player = game.players[winner_pos - 1]
-    winner_picker_team = (winner_player.is_picker or winner_player.is_partner)
+    winner_picker_team = (winner_player.is_picker or winner_player.is_partner or winner_player.is_secret_partner)
     return player_picker_team == winner_picker_team
 
 
 def apply_trick_rewards(trick_transitions: List[Dict], trick_winner_pos: int, trick_reward: float, game) -> None:
     for transition in trick_transitions:
         player = transition['player']
-        if player.game.partner:  # Partner known
-            reward_multiplier = 1.0 if is_same_team_as_winner(player, trick_winner_pos, game) else -1.0
-        else:  # Partner unknown
-            if player.position == trick_winner_pos:
-                reward_multiplier = 1.0
-            elif player.is_secret_partner:
-                reward_multiplier = 1.0 if player.game.picker == trick_winner_pos else -1.0
-            elif (not player.is_secret_partner) and (player.game.picker == trick_winner_pos):
-                reward_multiplier = -1.0
-            else:
-                reward_multiplier = 0.0
+        reward_multiplier = 1.0 if is_same_team_as_winner(player, trick_winner_pos, game) else -1.0
         transition['intermediate_reward'] += trick_reward * reward_multiplier
 
 
@@ -180,7 +170,7 @@ def update_intermediate_rewards_for_action(
                 and game.called_suit == get_card_suit(card)
             ):
                 # Encourage defenders to lead called suit (early)
-                transition['intermediate_reward'] += 0.1 - (0.02 * trick_index)
+                transition['intermediate_reward'] += 0.12 - (0.02 * trick_index)
             elif (
                 not game.is_leaster
                 and not player.is_picker
