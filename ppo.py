@@ -39,9 +39,9 @@ class SharedRecurrentBackbone(nn.Module):
     """Shared encoder + LSTM + post-LSTM trunk used by both actor and critic.
 
     Layout:
-      - enc_proj: Linear(state_size -> 512)
-      - enc_blocks: 3 × PreNormResidual(512)
-      - lstm: LSTM(512 -> 256)
+      - enc_proj: Linear(state_size -> 256)
+      - enc_blocks: 3 × PreNormResidual(256)
+      - lstm: LSTM(256 -> 256)
       - trunk_blocks: 2 × PreNormResidual(256)
     """
 
@@ -56,14 +56,14 @@ class SharedRecurrentBackbone(nn.Module):
         else:
             raise ValueError(f"Unsupported activation function: {activation}")
 
-        # Encoder projection and residual blocks (512 width)
-        self.enc_proj = nn.Linear(state_size, 512)
-        self.enc_block1 = PreNormResidual(512, 512, dropout=0.1, activation=self.activation)
-        self.enc_block2 = PreNormResidual(512, 512, dropout=0.1, activation=self.activation)
-        self.enc_block3 = PreNormResidual(512, 512, dropout=0.1, activation=self.activation)
+        # Encoder projection and residual blocks (256 width)
+        self.enc_proj = nn.Linear(state_size, 256)
+        self.enc_block1 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
+        self.enc_block2 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
+        self.enc_block3 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
 
         # Recurrent core
-        self.lstm = nn.LSTM(512, 256, batch_first=True)
+        self.lstm = nn.LSTM(256, 256, batch_first=True)
 
         # Shared post-LSTM trunk (256 width)
         self.trunk_block1 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
