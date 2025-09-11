@@ -63,13 +63,13 @@ class PFSPHyperparams:
     partner_entropy_bump_duration: int = 50000  # episodes
 
     # Entropy schedules (start -> end)
-    entropy_pick_start: float = 0.06
+    entropy_pick_start: float = 0.05
     entropy_pick_end: float = 0.02
     entropy_partner_start: float = 0.05
     entropy_partner_end: float = 0.02
-    entropy_bury_start: float = 0.05
+    entropy_bury_start: float = 0.04
     entropy_bury_end: float = 0.015
-    entropy_play_start: float = 0.06
+    entropy_play_start: float = 0.05
     entropy_play_end: float = 0.02
 
     # Shaped reward schedules (percent -> weight).

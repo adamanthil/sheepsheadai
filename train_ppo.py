@@ -548,8 +548,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
 def main():
     parser = ArgumentParser(description="PPO training for Sheepshead")
-    parser.add_argument("--episodes", type=int, default=20000,
-                       help="Number of training episodes (default: 20,000)")
+    parser.add_argument("--episodes", type=int, default=100000,
+                       help="Number of training episodes (default: 100,000)")
     parser.add_argument("--update-interval", type=int, default=4096,
                        help="Number of games between model updates")
     parser.add_argument("--save-interval", type=int, default=5000,
