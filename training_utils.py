@@ -16,6 +16,10 @@ from sheepshead import (
 )
 
 
+LEASTER_FINAL_REWARD_BONUS = 0.05
+TRICK_POINT_RATIO = 360.0
+
+
 def estimate_hand_strength_score(cards: List[str]) -> int:
     """Return a simple strength score for a hand based on trump density.
 
@@ -58,7 +62,7 @@ def get_partner_selection_mode(episode: int) -> int:
 
 def calculate_trick_reward(trick_points: int) -> float:
     """Intermediate reward for trick points."""
-    return trick_points / 360.0
+    return trick_points / TRICK_POINT_RATIO
 
 
 def is_same_team_as_winner(player, winner_pos: int, game) -> bool:
@@ -223,9 +227,10 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         is_episode_done = (i == last_transition_per_player[player_pos])
 
         if is_leaster:
-            # Downweight all leaster rewards.
-            # Agent should dislike playing leasters most of the time (similar to human behavior).
-            leaster_reward = (final_score - 1) / 12
+            # Increase final reward for leasters to compensate for negative trick rewards.
+            # Agent should dislike playing leasters most of the time (similar to human behavior)
+            # but without this the bias is a bit too strong.
+            leaster_reward = final_score / 12 + LEASTER_FINAL_REWARD_BONUS
             final_reward = leaster_reward if is_episode_done else 0.0
         else:
             final_reward = (final_score / 12) if is_episode_done else 0.0
