@@ -359,6 +359,7 @@ def train_pfsp(num_episodes: int = 500000,
     called_under_window = deque(maxlen=3000)
     called_10_window = deque(maxlen=3000)
     team_point_differences = deque(maxlen=3000)
+    picker_window = deque(maxlen=3000)
 
     training_data = {
         'episodes': [],
@@ -519,6 +520,9 @@ def train_pfsp(num_episodes: int = 500000,
         picker_score = training_data_single['score'] if training_data_single['was_picker'] else 0
         if training_data_single['was_picker']:
             picker_scores.append(picker_score)
+
+        # Track how often the training agent is the picker (unconditional)
+        picker_window.append(1 if training_data_single['was_picker'] else 0)
 
         # ---------- OpenSkill rating update ----------
         position_to_agent = {}
@@ -752,6 +756,7 @@ def train_pfsp(num_episodes: int = 500000,
             ca_denominator = sum(called_ace_window) or 1
             current_called_under_rate = (sum(called_under_window) / ca_denominator) * 100
             current_called_10s_rate = (sum(called_10_window) / ca_denominator) * 100
+            current_picker_frequency = (sum(picker_window) / len(picker_window)) * 100 if picker_window else 0
             elapsed = start_time_offset + (time.time() - start_time)
 
             # Collect data for plotting
@@ -802,6 +807,7 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Team point diff: {current_team_diff:+.1f}")
             print(f"   Called Ace Pick rate: {current_called_pick_rate:.1f}%")
             print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
+            print(f"   Picker Frequency: {current_picker_frequency:.2f}%")
             print("   " + "-" * 25)
             print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
             print(f"   Alone Call Rate: {current_alone_rate:.2f}%")
