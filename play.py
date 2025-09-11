@@ -134,6 +134,8 @@ if __name__ == "__main__":
     agent.load(args.model)
     param_count = sum(p.numel() for p in agent.actor.parameters())
     print(f"Loaded model: {args.model} with {param_count:,} parameters")
+    print(f"State size: {STATE_SIZE}")
+    print(f"Action size: {len(ACTIONS)}")
     print(instructions)
 
     while True:
