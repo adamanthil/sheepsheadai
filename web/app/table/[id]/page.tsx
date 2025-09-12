@@ -1,7 +1,7 @@
 "use client";
 import styles from './page.module.css';
 import ui from '../../styles/ui.module.css';
-import { PlayingCard, parseCard, suitSymbol } from '../../../lib/components';
+import { PlayingCard, CardText } from '../../../lib/components';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useParams } from 'next/navigation';
@@ -274,7 +274,7 @@ export default function TablePage() {
                 onClick={() => takeAction(aid)}
                 className={styles.actionButton}
               >
-                  {actionLookup[String(aid)] || `Action ${aid}`}
+                  <CardText>{actionLookup[String(aid)] || `Action ${aid}`}</CardText>
                 </button>
               );
             }
