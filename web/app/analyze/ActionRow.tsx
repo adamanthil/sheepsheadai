@@ -55,7 +55,7 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
       >
         <div className={styles.actionBasic}>
           <div className={styles.stepIndex}>
-            {action.stepIndex}
+            {action.stepIndex + 1}
           </div>
 
           <div className={getSeatBadgeClass()}>
