@@ -154,13 +154,16 @@ def update_intermediate_rewards_for_action(
         is_lead = (game.cards_played == 0) and (game.leader == player.position)
         trick_index = state_vec[15]
         if is_lead:
+            valid_actions = transition.get('valid_actions', set())
+            allowed_play_cards = [ACTIONS[id - 1][5:] for id in valid_actions]
+            has_allowed_fail_play = any(get_card_suit(c) != "T" for c in allowed_play_cards)
             card = action_name[5:]
             if (
                 not game.is_leaster
                 and not player.is_picker
                 and not player.is_partner
                 and not player.is_secret_partner
-                and trick_index < 5 # Don't penalize final trick trump leads
+                and has_allowed_fail_play
                 and card in TRUMP
             ):
                 # Discourage defenders from leading trump
