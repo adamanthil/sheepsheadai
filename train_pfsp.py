@@ -59,7 +59,7 @@ class PFSPHyperparams:
     # If rolling ALONE rate rises too high, temporarily bump partner entropy to
     # encourage exploration of partner calls.
     high_alone_rate_threshold: float = 25.0  # percent
-    partner_entropy_bump: float = 0.02       # added to base decayed partner entropy
+    partner_entropy_bump: float = 0.05       # added to base decayed partner entropy
     partner_entropy_bump_duration: int = 50000  # episodes
 
     # Adaptive exploration for bury head (bury decisions quality)
