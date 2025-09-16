@@ -125,7 +125,7 @@ def update_intermediate_rewards_for_action(
         hand_cards = get_cards_from_vector(state_vec[16:48])
         score = estimate_hand_strength_score(hand_cards)
         if score <= 8:
-            transition['intermediate_reward'] += -0.2
+            transition['intermediate_reward'] += -0.25
         transition['intermediate_reward'] *= partner_weight
 
     # Bury penalty: discourage burying trump if not required
