@@ -62,6 +62,12 @@ class PFSPHyperparams:
     partner_entropy_bump: float = 0.02       # added to base decayed partner entropy
     partner_entropy_bump_duration: int = 50000  # episodes
 
+    # Adaptive exploration for bury head (bury decisions quality)
+    # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
+    low_bury_quality_threshold: float = 85.0  # percent
+    bury_entropy_bump: float = 0.04          # added to base decayed bury entropy
+    bury_entropy_bump_duration: int = 19000  # episodes
+
     # Entropy schedules (start -> end)
     entropy_pick_start: float = 0.05
     entropy_pick_end: float = 0.02
@@ -426,6 +432,7 @@ def train_pfsp(num_episodes: int = 500000,
 
     pick_entropy_bump_until = 0
     partner_entropy_bump_until = 0
+    bury_entropy_bump_until = 0
 
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
@@ -631,6 +638,10 @@ def train_pfsp(num_episodes: int = 500000,
             if episode <= partner_entropy_bump_until:
                 training_agent.entropy_coeff_partner += hyperparams.partner_entropy_bump
 
+            # Apply temporary bump to bury entropy
+            if episode <= bury_entropy_bump_until:
+                training_agent.entropy_coeff_bury += hyperparams.bury_entropy_bump
+
             # Update
             update_stats = training_agent.update(epochs=4, batch_size=256)
 
@@ -736,6 +747,21 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Picker Trump Rate: {strategic_metrics['picker_trump_rate']:.1f}%")
             print(f"   Defender Trump Rate: {strategic_metrics['defender_trump_rate']:.1f}%")
             print(f"   Bury Quality Rate: {strategic_metrics['bury_quality_rate']:.1f}%")
+
+            # --- Check bury quality rate and schedule bury-head entropy bump if too low ---
+            current_bury_quality_rate = strategic_metrics['bury_quality_rate']
+            if (
+                current_bury_quality_rate < hyperparams.low_bury_quality_threshold and episode > bury_entropy_bump_until
+            ):
+                bury_entropy_bump_until = episode + hyperparams.bury_entropy_bump_duration
+                print(f"   ⚠️  Low bury-quality rate detected ({current_bury_quality_rate:.1f}%). Increasing bury entropy by {hyperparams.bury_entropy_bump:.3f} for the next {hyperparams.bury_entropy_bump_duration:,} episodes.")
+            if (
+                current_bury_quality_rate >= hyperparams.low_bury_quality_threshold and
+                episode > bury_entropy_bump_until and
+                bury_entropy_bump_until != 0
+            ):
+                # Reset any expired bump marker to reduce log noise later
+                bury_entropy_bump_until = 0
 
         # Progress reporting
         if episode % 1000 == 0:
