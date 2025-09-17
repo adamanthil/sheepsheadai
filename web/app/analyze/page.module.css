@@ -426,26 +426,118 @@
   border-color: #9ca3af;
 }
 
-.stateVector {
+/* State Vector Table */
+.stateVectorTableWrapper {
   margin-top: 1rem;
-  background: #f9fafb;
+  margin-bottom: 1rem;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 1rem;
-  font-family: 'Monaco', 'Consolas', monospace;
-  font-size: 0.75rem;
-  max-height: 200px;
-  overflow-y: auto;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
 }
 
-.stateVectorLegend {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  background: #fffbeb;
-  border: 1px solid #fed7aa;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  color: #92400e;
+.stateVectorTableContainer {
+  /* max-height: 800px; */
+  overflow: auto;
+}
+
+.stateVectorTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+}
+
+.stateVectorHead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 1;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+}
+.stateVectorHead th:last-child { border-right: none; }
+
+.stateVectorCell,
+.stateVectorIndex,
+.stateVectorValue,
+.stateVectorMicroCat,
+.stateVectorSubCat,
+.stateVectorCategory {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+.stateVectorTable td:last-child { border-right: none; }
+
+.stateVectorIndex {
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+  background: #f9fafb;
+  min-width: 64px;
+}
+
+.stateVectorValue {
+  font-variant-numeric: tabular-nums;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: #111827;
+  min-width: 72px;
+}
+
+.valueHighlighted {
+  background: #fcf9e4;
+  font-weight: 700;
+}
+
+.cellHighlighted {
+  background: #fcf9e4;
+}
+
+.stateVectorMicroCat {
+  color: #374151;
+}
+
+.stateVectorSubCat {
+  color: #1f2937;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.stateVectorCategory {
+  color: #111827;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.rowHeader {
+  background: #f8fafc;
+}
+
+.rowPrivate {
+  background: #fafaf9;
+}
+
+.rowTrick {
+  background: #f9fafb;
+}
+
+.stateVectorFoot td {
+  padding: 0.5rem 0.75rem;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+  color: #64748b;
+}
+
+/* Group separators */
+.subGroupStart td { border-top: 2px solid #cbd5e1; }
+.catGroupStart td { border-top: 3px solid #94a3b8; }
+
+.subGroupDim td {
+  color: #9ca3af;
 }
 
 /* Loading State */
