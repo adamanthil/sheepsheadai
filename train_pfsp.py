@@ -58,9 +58,17 @@ class PFSPHyperparams:
     # Adaptive exploration for partner head (ALONE decision)
     # If rolling ALONE rate rises too high, temporarily bump partner entropy to
     # encourage exploration of partner calls.
-    high_alone_rate_threshold: float = 25.0  # percent
-    partner_entropy_bump: float = 0.05       # added to base decayed partner entropy
-    partner_entropy_bump_duration: int = 50000  # episodes
+    high_alone_rate_threshold: float = 30.0  # percent
+    partner_entropy_bump: float = 0.02       # added to base decayed partner entropy
+    partner_entropy_bump_duration: int = 20000  # episodes
+
+    # Partner-head temperature control
+    # Base τ=1.0 (no change). When ALONE rate exceeds threshold, raise τ toward max
+    # to soften partner selection and sample partner calls more often.
+    partner_temp_base: float = 1.0
+    partner_temp_max: float = 8.0
+    partner_temp_step: float = 0.2
+    alone_rate_hysteresis_down: float = 5.0  # percent below threshold before cooling
 
     # Adaptive exploration for bury head (bury decisions quality)
     # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
@@ -433,6 +441,10 @@ def train_pfsp(num_episodes: int = 500000,
     pick_entropy_bump_until = 0
     partner_entropy_bump_until = 0
     bury_entropy_bump_until = 0
+
+    # Apply initial partner-head temperature (τ) controller state
+    current_partner_temp = hyperparams.partner_temp_base
+    training_agent.set_head_temperatures(partner=current_partner_temp)
 
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
@@ -846,6 +858,20 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Training speed: {games_per_min:.1f} games/min")
             print(f"   Time elapsed: {elapsed/60:.1f} min")
             print("   " + "-" * 50)
+
+            # --- Adaptive partner-head temperature control (τ) ---
+            # If ALONE rate is too high, increase τ to soften the partner head;
+            # cool it back toward base when rate drops sufficiently below threshold.
+            desired_temp = current_partner_temp
+            if current_alone_rate > hyperparams.high_alone_rate_threshold:
+                desired_temp = min(current_partner_temp + hyperparams.partner_temp_step, hyperparams.partner_temp_max)
+            elif current_alone_rate < (hyperparams.high_alone_rate_threshold - hyperparams.alone_rate_hysteresis_down):
+                desired_temp = max(current_partner_temp - hyperparams.partner_temp_step, hyperparams.partner_temp_base)
+
+            if abs(desired_temp - current_partner_temp) > 1e-6:
+                current_partner_temp = desired_temp
+                training_agent.set_head_temperatures(partner=current_partner_temp)
+                print(f"   Partner head temperature τ adjusted to: {current_partner_temp:.2f}")
 
             # --- Check rolling pick rate and schedule entropy bump if too low/high ---
             overall_picks = total_called_picks + total_jd_picks

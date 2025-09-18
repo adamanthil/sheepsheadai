@@ -65,6 +65,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     if agent is None:
         raise ValueError("Failed to load AI model")
 
+    # agent.set_head_temperatures(partner=3.0)
+
     # Reset recurrent state before simulation
     agent.reset_recurrent_state()
 

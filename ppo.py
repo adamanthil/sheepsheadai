@@ -176,6 +176,13 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         # Buffer to hold hidden states for each player id (1-5).  Populated on the fly.
         self._hidden_states = {}
 
+        # Per-head temperatures (τ): logits will be divided by τ before softmax
+        # τ > 1.0 softens (higher entropy), τ < 1.0 sharpens. Defaults to 1.0.
+        self.temperature_pick = 1.0
+        self.temperature_partner = 1.0
+        self.temperature_bury = 1.0
+        self.temperature_play = 1.0
+
         # Init
         self.apply(self._init_weights)
 
@@ -190,6 +197,25 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     def reset_hidden(self):
         """Erase all stored hidden states (call at the start of every new game)."""
         self._hidden_states = {}
+
+    def set_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
+        """Set per-head softmax temperatures.
+
+        Parameters
+        ----------
+        pick, partner, bury, play : float | None
+            If provided, sets the corresponding head's temperature τ. Values are
+            clamped to a small positive minimum to avoid divide-by-zero.
+        """
+        eps = 1e-6
+        if pick is not None:
+            self.temperature_pick = max(float(pick), eps)
+        if partner is not None:
+            self.temperature_partner = max(float(partner), eps)
+        if bury is not None:
+            self.temperature_bury = max(float(bury), eps)
+        if play is not None:
+            self.temperature_play = max(float(play), eps)
 
     # ------------------------------------------------------------
     # Forward
@@ -255,10 +281,10 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         # ---- Heads ----
         logits = torch.full((batch_size, self.action_size), -1e8, device=state.device)
 
-        pick_logits = self.pick_head(feat)
-        partner_logits = self.partner_head(feat)
-        bury_logits = self.bury_head(feat)
-        play_logits = self.play_head(feat)
+        pick_logits = self.pick_head(feat) / self.temperature_pick
+        partner_logits = self.partner_head(feat) / self.temperature_partner
+        bury_logits = self.bury_head(feat) / self.temperature_bury
+        play_logits = self.play_head(feat) / self.temperature_play
 
         logits[:, self.action_groups['pick']] = pick_logits
         logits[:, self.action_groups['partner']] = partner_logits
@@ -380,6 +406,10 @@ class PPOAgent:
 
         # Storage for trajectory data
         self.reset_storage()
+
+    def set_head_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
+        """Convenience proxy to set per-head temperatures on the actor."""
+        self.actor.set_temperatures(pick=pick, partner=partner, bury=bury, play=play)
 
     def reset_storage(self):
         # Ordered list of events: each is a dict with keys:
@@ -643,10 +673,11 @@ class PPOAgent:
         actor_feat_bt = self.actor.actor_adapter(feat_bt)
         B, T = states_bt.size(0), states_bt.size(1)
         logits_bt = torch.full((B, T, self.action_size), -1e8, device=states_bt.device)
-        logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt)
-        logits_bt[:, :, self.action_groups['partner']] = self.actor.partner_head(actor_feat_bt)
-        logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt)
-        logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt)
+        # Apply per-head temperatures (divide logits by τ)
+        logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt) / max(self.actor.temperature_pick, 1e-6)
+        logits_bt[:, :, self.action_groups['partner']] = self.actor.partner_head(actor_feat_bt) / max(self.actor.temperature_partner, 1e-6)
+        logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt) / max(self.actor.temperature_bury, 1e-6)
+        logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt) / max(self.actor.temperature_play, 1e-6)
         logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
         probs_bt = F.softmax(logits_bt, dim=-1)
         critic_feat_bt = self.critic.critic_adapter(feat_bt)
