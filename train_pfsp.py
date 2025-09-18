@@ -70,7 +70,9 @@ class PFSPHyperparams:
     # Partner CALL mixture epsilon controller (probability floor over CALL actions)
     partner_call_eps_base: float = 0.0
     partner_call_eps_max_mid: float = 0.05   # when picker avg <= -0.5
-    partner_call_eps_max_high: float = 0.10  # when picker avg <= -1.2
+    partner_call_eps_mid_picker_avg_threshold: float = -0.5
+    partner_call_eps_max_high: float = 0.10  # when picker avg <= -1.0
+    partner_call_eps_high_picker_avg_threshold: float = -1.0
     partner_call_eps_step_up: float = 0.02
     partner_call_eps_step_down: float = 0.02
 
@@ -892,13 +894,13 @@ def train_pfsp(num_episodes: int = 500000,
 
             # --- Partner CALL mixture epsilon controller ---
             # Gradually increase ε when ALONE rate is high and picker avg is poor.
-            # Tiered caps: <= -0.5 -> mid cap; <= -1.2 -> high cap. Otherwise, decay toward base.
+            # Tiered caps: <= -0.5 -> mid cap; <= -1.0 -> high cap. Otherwise, decay toward base.
             desired_partner_eps_max = hyperparams.partner_call_eps_base
             # Gate epsilon scheduling on training-agent-only ALONE rate
             if current_training_alone_rate > hyperparams.high_alone_rate_threshold:
-                if current_avg_picker_score <= -1.2:
+                if current_avg_picker_score <= hyperparams.partner_call_eps_high_picker_avg_threshold:
                     desired_partner_eps_max = hyperparams.partner_call_eps_max_high
-                elif current_avg_picker_score <= -0.5:
+                elif current_avg_picker_score <= hyperparams.partner_call_eps_mid_picker_avg_threshold:
                     desired_partner_eps_max = hyperparams.partner_call_eps_max_mid
                 else:
                     desired_partner_eps_max = hyperparams.partner_call_eps_base
