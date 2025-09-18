@@ -49,19 +49,16 @@ from training_utils import (
 @dataclass
 class PFSPHyperparams:
     # Adaptive exploration for pick head
-    # If rolling pick rate dips below a threshold, temporarily bump pick entropy.
     low_pick_rate_threshold: float = 20.0  # percent
     high_pick_rate_threshold: float = 50.0  # percent
-    pick_entropy_bump: float = 0.04        # added to base decayed pick entropy
-    pick_entropy_bump_duration: int = 50000  # episodes
+    # Pick-head temperature control
+    pick_temp_base: float = 1.0
+    pick_temp_max: float = 2.5
+    pick_temp_step: float = 0.2
+    pick_rate_hysteresis_down: float = 2.5  # percent below high threshold before cooling
 
     # Adaptive exploration for partner head (ALONE decision)
-    # If rolling ALONE rate rises too high, temporarily bump partner entropy to
-    # encourage exploration of partner calls.
     high_alone_rate_threshold: float = 30.0  # percent
-    partner_entropy_bump: float = 0.02       # added to base decayed partner entropy
-    partner_entropy_bump_duration: int = 20000  # episodes
-
     # Partner-head temperature control
     # Base τ=1.0 (no change). When ALONE rate exceeds threshold, raise τ toward max
     # to soften partner selection and sample partner calls more often.
@@ -438,13 +435,12 @@ def train_pfsp(num_episodes: int = 500000,
     transitions_since_update = 0
     last_checkpoint_time = start_time
 
-    pick_entropy_bump_until = 0
-    partner_entropy_bump_until = 0
     bury_entropy_bump_until = 0
 
-    # Apply initial partner-head temperature (τ) controller state
+    # Apply initial partner/pick head temperatures (τ) controller state
     current_partner_temp = hyperparams.partner_temp_base
-    training_agent.set_head_temperatures(partner=current_partner_temp)
+    current_pick_temp = hyperparams.pick_temp_base
+    training_agent.set_head_temperatures(partner=current_partner_temp, pick=current_pick_temp)
 
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
@@ -642,13 +638,6 @@ def train_pfsp(num_episodes: int = 500000,
             training_agent.entropy_coeff_partner = entropy_partner_start + (entropy_partner_end - entropy_partner_start) * decay_fraction
             training_agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
 
-            # Apply temporary bump to pick entropy when enabled
-            if episode <= pick_entropy_bump_until:
-                training_agent.entropy_coeff_pick += hyperparams.pick_entropy_bump
-
-            # Apply temporary bump to partner entropy
-            if episode <= partner_entropy_bump_until:
-                training_agent.entropy_coeff_partner += hyperparams.partner_entropy_bump
 
             # Apply temporary bump to bury entropy
             if episode <= bury_entropy_bump_until:
@@ -871,46 +860,34 @@ def train_pfsp(num_episodes: int = 500000,
             if abs(desired_temp - current_partner_temp) > 1e-6:
                 current_partner_temp = desired_temp
                 training_agent.set_head_temperatures(partner=current_partner_temp)
-                print(f"   Partner head temperature τ adjusted to: {current_partner_temp:.2f}")
+                print(f"   ⚠️  Partner head temperature τ adjusted to: {current_partner_temp:.2f}")
 
-            # --- Check rolling pick rate and schedule entropy bump if too low/high ---
+            # --- Adaptive pick-head temperature control (τ) ---
+            # If pick rate is too high, increase τ_pick to soften the pick head;
+            # cool back toward base when rate drops below band.
             overall_picks = total_called_picks + total_jd_picks
             overall_decisions = overall_picks + total_called_passes + total_jd_passes
             overall_pick_rate = (100 * overall_picks / overall_decisions) if overall_decisions > 0 else 0.0
 
+            desired_pick_temp = current_pick_temp
+            # Heat when rate too high or too low; cool when inside band with hysteresis
             if (
-                overall_pick_rate < hyperparams.low_pick_rate_threshold and episode > pick_entropy_bump_until
+                overall_pick_rate > hyperparams.high_pick_rate_threshold or
+                overall_pick_rate < hyperparams.low_pick_rate_threshold
             ):
-                pick_entropy_bump_until = episode + hyperparams.pick_entropy_bump_duration
-                print(f"   ⚠️  Low pick rate detected ({overall_pick_rate:.1f}%). Increasing pick entropy by {hyperparams.pick_entropy_bump:.3f} for the next {hyperparams.pick_entropy_bump_duration:,} episodes.")
+                desired_pick_temp = min(current_pick_temp + hyperparams.pick_temp_step, hyperparams.pick_temp_max)
             elif (
-                overall_pick_rate > hyperparams.high_pick_rate_threshold and episode > pick_entropy_bump_until
+                current_pick_temp > hyperparams.pick_temp_base and
+                overall_pick_rate >= (hyperparams.low_pick_rate_threshold + hyperparams.pick_rate_hysteresis_down) and
+                overall_pick_rate <= (hyperparams.high_pick_rate_threshold - hyperparams.pick_rate_hysteresis_down)
             ):
-                pick_entropy_bump_until = episode + hyperparams.pick_entropy_bump_duration
-                print(f"   ⚠️  High pick rate detected ({overall_pick_rate:.1f}%). Increasing pick entropy by {hyperparams.pick_entropy_bump:.3f} for the next {hyperparams.pick_entropy_bump_duration:,} episodes.")
-            elif (
-                overall_pick_rate >= hyperparams.low_pick_rate_threshold and
-                overall_pick_rate <= hyperparams.high_pick_rate_threshold and
-                episode > pick_entropy_bump_until and
-                pick_entropy_bump_until != 0
-            ):
-                # Reset any expired bump marker to reduce log noise later
-                pick_entropy_bump_until = 0
+                desired_pick_temp = max(current_pick_temp - hyperparams.pick_temp_step, hyperparams.pick_temp_base)
 
-            # --- Check rolling ALONE rate and schedule partner-head bump if too high ---
-            if (
-                current_alone_rate > hyperparams.high_alone_rate_threshold and episode > partner_entropy_bump_until
-            ):
-                partner_entropy_bump_until = episode + hyperparams.partner_entropy_bump_duration
-                print(f"   ⚠️  High ALONE rate detected ({current_alone_rate:.1f}%). Increasing partner entropy by {hyperparams.partner_entropy_bump:.3f} for the next {hyperparams.partner_entropy_bump_duration:,} episodes.")
+            if abs(desired_pick_temp - current_pick_temp) > 1e-6:
+                current_pick_temp = desired_pick_temp
+                training_agent.set_head_temperatures(pick=current_pick_temp)
+                print(f"   ⚠️  Pick head temperature τ adjusted to: {current_pick_temp:.2f}")
 
-            if (
-                current_alone_rate <= hyperparams.high_alone_rate_threshold and
-                episode > partner_entropy_bump_until and
-                partner_entropy_bump_until != 0
-            ):
-                # Reset any expired bump marker to reduce log noise later
-                partner_entropy_bump_until = 0
 
         # Save checkpoints
         if episode % save_interval == 0:
