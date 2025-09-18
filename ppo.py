@@ -407,9 +407,28 @@ class PPOAgent:
         # Storage for trajectory data
         self.reset_storage()
 
+        # --------------------------------------------------
+        # Partner-call mixture: epsilon floor over CALL actions
+        # --------------------------------------------------
+        # Subset of partner head actions eligible for CALL-uniform mixing
+        self.partner_call_subindices = sorted(
+            {ACTION_IDS["JD PARTNER"] - 1} | {ACTION_IDS[a] - 1 for a in CALL_ACTIONS}
+        )
+        # Blending coefficient ε (0 disables; typical 0.02–0.10)
+        self.partner_call_epsilon = 0.0
+
     def set_head_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
         """Convenience proxy to set per-head temperatures on the actor."""
         self.actor.set_temperatures(pick=pick, partner=partner, bury=bury, play=play)
+
+    def set_partner_call_epsilon(self, eps: float):
+        """Set ε for uniform CALL mixture on partner steps (0.0 disables)."""
+        eps = float(eps)
+        if eps < 0.0:
+            eps = 0.0
+        if eps > 0.2:
+            eps = 0.2
+        self.partner_call_epsilon = eps
 
     def reset_storage(self):
         # Ordered list of events: each is a dict with keys:
@@ -432,18 +451,43 @@ class PPOAgent:
         if hasattr(self.actor, 'reset_hidden'):
             self.actor.reset_hidden()
 
+    def get_action_probs_with_logits(self, state, valid_actions, player_id=None):
+        """Return post-mixture action probabilities and pre-mix logits for a single state.
+
+        Applies partner CALL-uniform mixture if enabled. Keeps PPO on-policy by
+        exposing the same transformed distribution that sampling uses.
+        """
+        state_t = torch.FloatTensor(state).unsqueeze(0).to(device)
+        action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            probs, logits = self.actor.forward_with_logits(state_t, action_mask_t, player_id)
+
+        if self.partner_call_epsilon > 0.0:
+            mask = action_mask_t.squeeze(0)
+            probs_1 = probs.squeeze(0)
+            call_mask = torch.zeros_like(mask, dtype=torch.bool)
+            call_idx = torch.tensor(self.partner_call_subindices, dtype=torch.long, device=mask.device)
+            call_mask[call_idx] = True
+            valid_call_mask = call_mask & mask
+            if valid_call_mask.any():
+                u = valid_call_mask.float()
+                u = u / u.sum()
+                probs_1 = (1.0 - self.partner_call_epsilon) * probs_1 + self.partner_call_epsilon * u
+                probs = probs_1.unsqueeze(0)
+
+        return probs, logits
+
     def act(self, state, valid_actions, player_id=None, deterministic=False):
         """Select action given state and valid actions"""
-        state = torch.FloatTensor(state).unsqueeze(0).to(device)
-        action_mask = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
-
         with torch.no_grad():
             # Use the actor's previous hidden state for the critic so value matches recurrent context
             prev_hidden = None
             if player_id is not None:
                 prev_hidden = self.actor._hidden_states.get(player_id, None)
-            action_probs = self.actor(state, action_mask, player_id)
-            value = self.critic(state, hidden_in=prev_hidden)
+            action_probs, _ = self.get_action_probs_with_logits(state, valid_actions, player_id)
+            state_t = torch.FloatTensor(state).unsqueeze(0).to(device)
+            value = self.critic(state_t, hidden_in=prev_hidden)
 
         # Create distribution for consistent log probability calculation
         dist = torch.distributions.Categorical(action_probs)
@@ -680,6 +724,30 @@ class PPOAgent:
         logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt) / max(self.actor.temperature_play, 1e-6)
         logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
         probs_bt = F.softmax(logits_bt, dim=-1)
+
+        # Apply CALL-uniform mixture for partner-decision timesteps (vectorized)
+        if self.partner_call_epsilon > 0.0:
+            A = probs_bt.size(-1)
+            call_mask_template = torch.zeros(A, dtype=torch.bool, device=probs_bt.device)
+            call_mask_template[self.partner_call_subindices] = True
+            call_mask_bt = call_mask_template.view(1, 1, A) & masks_bt
+
+            call_count = call_mask_bt.float().sum(dim=-1, keepdim=True)   # (B, T, 1)
+            has_calls = (call_count > 0.5)
+
+            # Ucall: uniform over valid calls; zeros otherwise
+            ucall = torch.where(
+                has_calls,
+                call_mask_bt.float() / call_count.clamp_min(1.0),
+                torch.zeros_like(probs_bt)
+            )
+            eps_bt = torch.where(
+                has_calls,
+                torch.full_like(call_count, self.partner_call_epsilon),
+                torch.zeros_like(call_count)
+            )
+            probs_bt = (1.0 - eps_bt) * probs_bt + eps_bt * ucall
+
         critic_feat_bt = self.critic.critic_adapter(feat_bt)
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
         return probs_bt, values_bt

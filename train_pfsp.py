@@ -63,9 +63,16 @@ class PFSPHyperparams:
     # Base τ=1.0 (no change). When ALONE rate exceeds threshold, raise τ toward max
     # to soften partner selection and sample partner calls more often.
     partner_temp_base: float = 1.0
-    partner_temp_max: float = 8.0
+    partner_temp_max: float = 4.0
     partner_temp_step: float = 0.2
     alone_rate_hysteresis_down: float = 5.0  # percent below threshold before cooling
+
+    # Partner CALL mixture epsilon controller (probability floor over CALL actions)
+    partner_call_eps_base: float = 0.0
+    partner_call_eps_max_mid: float = 0.05   # when picker avg <= -0.5
+    partner_call_eps_max_high: float = 0.10  # when picker avg <= -1.2
+    partner_call_eps_step_up: float = 0.02
+    partner_call_eps_step_down: float = 0.02
 
     # Adaptive exploration for bury head (bury decisions quality)
     # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
@@ -366,6 +373,7 @@ def train_pfsp(num_episodes: int = 500000,
     pass_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
     leaster_window = deque(maxlen=3000)
     alone_call_window = deque(maxlen=3000)
+    training_alone_window = deque(maxlen=3000)
     called_ace_window = deque(maxlen=3000)
     called_under_window = deque(maxlen=3000)
     called_10_window = deque(maxlen=3000)
@@ -441,6 +449,10 @@ def train_pfsp(num_episodes: int = 500000,
     current_partner_temp = hyperparams.partner_temp_base
     current_pick_temp = hyperparams.pick_temp_base
     training_agent.set_head_temperatures(partner=current_partner_temp, pick=current_pick_temp)
+
+    # Partner CALL mixture epsilon controller state
+    current_partner_call_eps = hyperparams.partner_call_eps_base
+    training_agent.set_partner_call_epsilon(current_partner_call_eps)
 
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
@@ -612,7 +624,11 @@ def train_pfsp(num_episodes: int = 500000,
 
         # Track ALONE calls only for games with a picker (exclude leaster)
         if not game.is_leaster:
+            # Global population ALONE indicator (any picker)
             alone_call_window.append(1 if game.alone_called else 0)
+            # Training-agent-only ALONE indicator (only when training agent is picker)
+            if training_data_single['was_picker']:
+                training_alone_window.append(1 if game.alone_called else 0)
 
         # Count pick/pass decisions from transitions
         episode_picks = sum(1 for t in episode_transitions if t['action'] == ACTION_IDS["PICK"])
@@ -687,8 +703,18 @@ def train_pfsp(num_episodes: int = 500000,
         # Add agent to population periodically
         if episode % population_add_interval == 0:
             for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
+                # Snapshot training agent, but reset exploration knobs for population opponents
+                agent_snapshot = copy.deepcopy(training_agent)
+                # Reset partner/pick temperatures to base (avoid leaking training-time exploration)
+                agent_snapshot.set_head_temperatures(
+                    partner=hyperparams.partner_temp_base,
+                    pick=hyperparams.pick_temp_base,
+                )
+                # Disable CALL-uniform mixing for population agents
+                agent_snapshot.set_partner_call_epsilon(hyperparams.partner_call_eps_base)
+
                 agent_id = population.add_agent(
-                    agent=copy.deepcopy(training_agent),
+                    agent=agent_snapshot,
                     partner_mode=mode,
                     training_episodes=episode,
                     parent_id=None,
@@ -780,6 +806,7 @@ def train_pfsp(num_episodes: int = 500000,
             # Rolling window rates
             current_leaster_rate = (sum(leaster_window) / len(leaster_window)) * 100 if leaster_window else 0
             current_alone_rate = (sum(alone_call_window) / len(alone_call_window)) * 100 if alone_call_window else 0
+            current_training_alone_rate = (sum(training_alone_window) / len(training_alone_window)) * 100 if training_alone_window else 0
             ca_denominator = sum(called_ace_window) or 1
             current_called_under_rate = (sum(called_under_window) / ca_denominator) * 100
             current_called_10s_rate = (sum(called_10_window) / ca_denominator) * 100
@@ -836,10 +863,11 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
             print(f"   Picker Frequency: {current_picker_frequency:.2f}%")
             print("   " + "-" * 25)
-            print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
-            print(f"   Alone Call Rate: {current_alone_rate:.2f}%")
+            print(f"   Alone Call Rate (population): {current_alone_rate:.2f}%")
+            print(f"   Alone Call Rate (training): {current_training_alone_rate:.2f}%")
             print(f"   Called Under Rate: {current_called_under_rate:.2f}%")
             print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
+            print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
             print("   " + "-" * 25)
             print(f"   Population JD: {jd_stats['size']} agents (avg skill: {jd_stats['avg_skill']:.1f})")
             print(f"   Population CA: {ca_stats['size']} agents (avg skill: {ca_stats['avg_skill']:.1f})")
@@ -851,16 +879,42 @@ def train_pfsp(num_episodes: int = 500000,
             # --- Adaptive partner-head temperature control (τ) ---
             # If ALONE rate is too high, increase τ to soften the partner head;
             # cool it back toward base when rate drops sufficiently below threshold.
-            desired_temp = current_partner_temp
-            if current_alone_rate > hyperparams.high_alone_rate_threshold:
-                desired_temp = min(current_partner_temp + hyperparams.partner_temp_step, hyperparams.partner_temp_max)
-            elif current_alone_rate < (hyperparams.high_alone_rate_threshold - hyperparams.alone_rate_hysteresis_down):
-                desired_temp = max(current_partner_temp - hyperparams.partner_temp_step, hyperparams.partner_temp_base)
+            desired_partner_temp = current_partner_temp
+            if current_training_alone_rate > hyperparams.high_alone_rate_threshold:
+                desired_partner_temp = min(current_partner_temp + hyperparams.partner_temp_step, hyperparams.partner_temp_max)
+            elif current_training_alone_rate < (hyperparams.high_alone_rate_threshold - hyperparams.alone_rate_hysteresis_down):
+                desired_partner_temp = max(current_partner_temp - hyperparams.partner_temp_step, hyperparams.partner_temp_base)
 
-            if abs(desired_temp - current_partner_temp) > 1e-6:
-                current_partner_temp = desired_temp
+            if abs(desired_partner_temp - current_partner_temp) > 1e-6:
+                current_partner_temp = desired_partner_temp
                 training_agent.set_head_temperatures(partner=current_partner_temp)
                 print(f"   ⚠️  Partner head temperature τ adjusted to: {current_partner_temp:.2f}")
+
+            # --- Partner CALL mixture epsilon controller ---
+            # Gradually increase ε when ALONE rate is high and picker avg is poor.
+            # Tiered caps: <= -0.5 -> mid cap; <= -1.2 -> high cap. Otherwise, decay toward base.
+            desired_partner_eps_max = hyperparams.partner_call_eps_base
+            # Gate epsilon scheduling on training-agent-only ALONE rate
+            if current_training_alone_rate > hyperparams.high_alone_rate_threshold:
+                if current_avg_picker_score <= -1.2:
+                    desired_partner_eps_max = hyperparams.partner_call_eps_max_high
+                elif current_avg_picker_score <= -0.5:
+                    desired_partner_eps_max = hyperparams.partner_call_eps_max_mid
+                else:
+                    desired_partner_eps_max = hyperparams.partner_call_eps_base
+            else:
+                desired_partner_eps_max = hyperparams.partner_call_eps_base
+
+            desired_partner_eps = current_partner_call_eps
+            if desired_partner_eps_max > current_partner_call_eps:
+                desired_partner_eps = min(current_partner_call_eps + hyperparams.partner_call_eps_step_up, desired_partner_eps_max)
+            elif desired_partner_eps_max < current_partner_call_eps:
+                desired_partner_eps = max(current_partner_call_eps - hyperparams.partner_call_eps_step_down, desired_partner_eps_max)
+
+            if abs(desired_partner_eps - current_partner_call_eps) > 1e-6:
+                current_partner_call_eps = desired_partner_eps
+                training_agent.set_partner_call_epsilon(current_partner_call_eps)
+                print(f"   ⚠️  Partner CALL epsilon ε adjusted to: {current_partner_call_eps:.3f}")
 
             # --- Adaptive pick-head temperature control (τ) ---
             # If pick rate is too high, increase τ_pick to soften the pick head;

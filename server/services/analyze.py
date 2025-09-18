@@ -117,12 +117,11 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
         # Get action mask and compute logits + probabilities
         state_tensor = torch.FloatTensor(state).unsqueeze(0)
-        action_mask = agent.get_action_mask(valid_actions, agent.action_size).unsqueeze(0)
 
         with torch.no_grad():
             # Use the actor's previous hidden state so the critic's value reflects recurrent context
             prev_hidden = agent.actor._hidden_states.get(actor_player.position, None)
-            action_probs, logits = agent.actor.forward_with_logits(state_tensor, action_mask, actor_player.position)
+            action_probs, logits = agent.get_action_probs_with_logits(state, valid_actions, actor_player.position)
 
             value = agent.critic(state_tensor, hidden_in=prev_hidden)
 
