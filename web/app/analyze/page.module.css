@@ -403,6 +403,22 @@
   text-align: right;
 }
 
+/* Subtle inline logits */
+.probabilityLogit {
+  color: #9ca3af; /* gray-400 */
+  font-size: 0.75rem;
+  width: 60px;
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  margin-left: 10px;
+  transition: color 120ms ease;
+  font-variant-numeric: tabular-nums;
+  border-left: 2px solid #e5e7eb;
+}
+.probabilityItem:hover .probabilityLogit {
+  color: #6b7280; /* gray-500 on hover */
+}
+
 /* State Vector Section */
 .stateVectorSection {
   margin-top: 1.5rem;

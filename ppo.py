@@ -208,6 +208,29 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         return_hidden : bool – if True, also return the new hidden state.
         """
 
+        logits, new_hidden = self._compute_logits_and_hidden(state, action_mask, player_id, hidden_in)
+        probs = F.softmax(logits, dim=-1)
+        if return_hidden:
+            return probs, new_hidden
+        return probs
+
+    def forward_with_logits(self, state, action_mask=None, player_id=None, hidden_in=None, return_hidden=False):
+        """Forward pass that also returns pre-softmax logits.
+
+        Returns
+        -------
+        probs : Tensor
+        logits : Tensor
+        (optionally) new_hidden : tuple(h, c)
+        """
+        logits, new_hidden = self._compute_logits_and_hidden(state, action_mask, player_id, hidden_in)
+        probs = F.softmax(logits, dim=-1)
+        if return_hidden:
+            return probs, logits, new_hidden
+        return probs, logits
+
+    def _compute_logits_and_hidden(self, state, action_mask=None, player_id=None, hidden_in=None):
+        """Core helper to compute masked logits and manage hidden state updates."""
         # Ensure 2-D tensor (batch_first)
         if state.dim() == 1:
             state = state.unsqueeze(0)  # (1, state_size)
@@ -248,10 +271,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
                 action_mask = action_mask.unsqueeze(0)
             logits = logits.masked_fill(~action_mask, -1e8)
 
-        probs = F.softmax(logits, dim=-1)
-        if return_hidden:
-            return probs, new_hidden
-        return probs
+        return logits, new_hidden
 
 
 class RecurrentCriticNetwork(nn.Module):

@@ -24,6 +24,12 @@ export default function ProbabilityBar({ probability, maxProb }: ProbabilityBarP
       </div>
       <div className={styles.probabilityValue}>
         {(probability.prob * 100).toFixed(1)}%
+        <span
+          className={styles.probabilityLogit}
+          title={`logit: ${probability.logit.toFixed(4)}`}
+        >
+          ℓ {probability.logit.toFixed(2)}
+        </span>
       </div>
     </div>
   );

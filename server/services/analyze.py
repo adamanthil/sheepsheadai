@@ -113,14 +113,15 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         state = actor_player.get_state_vector()
         valid_actions = actor_player.get_valid_action_ids()
 
-        # Get action mask and compute probabilities
+        # Get action mask and compute logits + probabilities
         state_tensor = torch.FloatTensor(state).unsqueeze(0)
         action_mask = agent.get_action_mask(valid_actions, agent.action_size).unsqueeze(0)
 
         with torch.no_grad():
             # Use the actor's previous hidden state so the critic's value reflects recurrent context
             prev_hidden = agent.actor._hidden_states.get(actor_player.position, None)
-            action_probs = agent.actor(state_tensor, action_mask, actor_player.position)
+            action_probs, logits = agent.actor.forward_with_logits(state_tensor, action_mask, actor_player.position)
+
             value = agent.critic(state_tensor, hidden_in=prev_hidden)
 
         # Choose action
@@ -133,13 +134,16 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         # Build probabilities list (only for valid actions, sorted descending)
         probabilities = []
         action_probs_np = action_probs.squeeze().cpu().numpy()
+        logits_np = logits.squeeze().cpu().numpy()
         for valid_action_id in valid_actions:
             zero_indexed = valid_action_id - 1
             prob = float(action_probs_np[zero_indexed])
+            logit = float(logits_np[zero_indexed])
             probabilities.append(AnalyzeProbability(
                 actionId=valid_action_id,
                 action=ACTION_LOOKUP[valid_action_id],
-                prob=prob
+                prob=prob,
+                logit=logit
             ))
 
         # Sort probabilities by probability descending

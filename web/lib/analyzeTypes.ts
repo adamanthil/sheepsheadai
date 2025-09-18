@@ -12,6 +12,7 @@ export interface AnalyzeProbability {
   actionId: number;
   action: string;
   prob: number;
+  logit: number;
 }
 
 export interface AnalyzeActionDetail {

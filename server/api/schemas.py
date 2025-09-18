@@ -74,6 +74,7 @@ class AnalyzeProbability(BaseModel):
     actionId: int
     action: str
     prob: float
+    logit: float
 
 
 class AnalyzeActionDetail(BaseModel):
