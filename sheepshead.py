@@ -77,6 +77,11 @@ FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 STATE_SIZE = 292
 
 
+# Human-readable name for partner-selection modes
+def get_partner_mode_name(partner_mode: int) -> str:
+    return "Jack-of-Diamonds" if partner_mode == PARTNER_BY_JD else "Called-Ace"
+
+
 def get_card_suit(card):
     return "T" if card in TRUMP else card[-1]
 

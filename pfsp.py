@@ -28,11 +28,10 @@ from sheepshead import (
     ACTION_LOOKUP,
     UNDER_TOKEN,
     get_card_points,
+    get_partner_mode_name,
     filter_by_suit,
 )
 from training_utils import estimate_hand_strength_category
-
-
 
 
 @dataclass
@@ -584,14 +583,10 @@ class PFSPPopulation:
         # Save the new agent
         self._save_agent(pop_agent)
 
-        print(f"✅ Added agent {agent_id} to {self._get_partner_mode_name(partner_mode)} population")
+        print(f"✅ Added agent {agent_id} to {get_partner_mode_name(partner_mode)} population")
         print(f"   Population size: {len(population)}/{self._get_max_population(partner_mode)}")
 
         return agent_id
-
-    def _get_partner_mode_name(self, partner_mode: int) -> str:
-        """Get human-readable name for partner mode."""
-        return "Jack-of-Diamonds" if partner_mode == PARTNER_BY_JD else "Called-Ace"
 
     def _manage_population_size(self, partner_mode: int):
         """Remove agents if population exceeds max size, preserving diversity and strength."""
@@ -878,7 +873,7 @@ class PFSPPopulation:
         population = self._get_population(partner_mode)
 
         if len(population) < 2:
-            print(f"Skipping cross-evaluation for {self._get_partner_mode_name(partner_mode)} - insufficient agents")
+            print(f"Skipping cross-evaluation for {get_partner_mode_name(partner_mode)} - insufficient agents")
             return {}
 
         # Limit to most recent/strongest agents to keep evaluation manageable
@@ -890,7 +885,7 @@ class PFSPPopulation:
                 reverse=True
             )[:max_agents]
 
-        print(f"🏆 Running cross-evaluation for {self._get_partner_mode_name(partner_mode)} population")
+        print(f"🏆 Running cross-evaluation for {get_partner_mode_name(partner_mode)} population")
         print(f"   Evaluating {len(population)} agents with {num_games} games")
 
         total_games = 0
@@ -1100,7 +1095,7 @@ class PFSPPopulation:
                     continue
 
             if population:
-                print(f"📂 Loaded {len(population)} agents for {self._get_partner_mode_name(partner_mode)} population")
+                print(f"📂 Loaded {len(population)} agents for {get_partner_mode_name(partner_mode)} population")
 
     def save_population_state(self):
         """Save current population state to disk."""
@@ -1277,7 +1272,7 @@ def create_initial_population_from_checkpoints(population: PFSPPopulation,
                 )
 
                 agents_added[partner_mode] += 1
-                mode_name = population._get_partner_mode_name(partner_mode)
+                mode_name = get_partner_mode_name(partner_mode)
                 print(f"   ✅ Added {os.path.basename(checkpoint_path)} as {mode_name} agent")
 
             except Exception as e:

@@ -33,6 +33,7 @@ from sheepshead import (
     ACTION_LOOKUP,
     UNDER_TOKEN,
     get_card_points,
+    get_partner_mode_name,
     filter_by_suit,
 )
 
@@ -495,7 +496,7 @@ def train_pfsp(num_episodes: int = 500000,
 
         # If no opponents available, use self-play as fallback
         if len(opponents) == 0:
-            print(f"⚠️  No opponents available for {population._get_partner_mode_name(partner_mode)}, using self-play")
+            print(f"⚠️  No opponents available for {get_partner_mode_name(partner_mode)}, using self-play")
             opponents = []
 
         # Randomly select training agent position (1-5)
@@ -722,7 +723,7 @@ def train_pfsp(num_episodes: int = 500000,
                     parent_id=None,
                     activation=activation
                 )
-                print(f"👥 Added training agent snapshot to {population._get_partner_mode_name(mode)} population (ID: {agent_id})")
+                print(f"👥 Added training agent snapshot to {get_partner_mode_name(mode)} population (ID: {agent_id})")
 
             # Log updated diversity stats after population change
             jd_div = population.get_diversity_stats(PARTNER_BY_JD)
@@ -743,9 +744,8 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"🏆 Running cross-evaluation tournaments... (Episode {episode:,})")
             for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
                 eval_stats = population.run_cross_evaluation(mode, num_games=100, max_agents=25)
-                if eval_stats:
-                    print(f"   {population._get_partner_mode_name(mode)}: {eval_stats['games_played']} games, "
-                          f"avg skill: {eval_stats['avg_skill_after']:.1f}")
+                print(f"   {get_partner_mode_name(mode)}: {eval_stats['games_played']} games, "
+                        f"avg skill: {eval_stats['avg_skill_after']:.1f}")
 
         # Strategic evaluation
         if episode % strategic_eval_interval == 0:
