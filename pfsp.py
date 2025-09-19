@@ -16,6 +16,8 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from openskill.models import PlackettLuce
+from sklearn.cluster import DBSCAN
+
 
 from ppo import PPOAgent
 from sheepshead import (
@@ -1164,13 +1166,8 @@ class PFSPPopulation:
 
         # Estimate strategic clusters using strategic signatures
         signatures = np.array([agent.get_strategic_signature() for agent in population])
-        try:
-            from sklearn.cluster import DBSCAN
-            clustering = DBSCAN(eps=0.3, min_samples=2).fit(signatures)
-            n_clusters = len(set(clustering.labels_)) - (1 if -1 in clustering.labels_ else 0)
-        except ImportError:
-            # Fallback: simple heuristic based on diversity scores
-            n_clusters = max(1, len(population) // 3)  # Rough estimate
+        clustering = DBSCAN(eps=0.3, min_samples=2).fit(signatures)
+        n_clusters = len(set(clustering.labels_)) - (1 if -1 in clustering.labels_ else 0)
 
         return {
             'avg_pairwise_diversity': np.mean(diversity_scores) if diversity_scores else 0.0,
