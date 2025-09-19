@@ -747,6 +747,9 @@ def train_pfsp(num_episodes: int = 500000,
                 print(f"   {get_partner_mode_name(mode)}: {eval_stats['games_played']} games, "
                         f"avg skill: {eval_stats['avg_skill_after']:.1f}")
 
+            print(population.get_population_summary())
+            print("-" * 80)
+
         # Strategic evaluation
         if episode % strategic_eval_interval == 0:
             print(f"🧠 Analyzing strategic decisions... (Episode {episode:,})")
