@@ -38,7 +38,7 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
     const headerMicro: string[] = [
       'Partner selection mode (0 = JD, 1 = Called Ace)',
       'Player position (1-5)',
-      'Last position to pass on blind (5 ⇒ all passed → Leaster)',
+      'Last position to pass (5 ⇒ all passed → Leaster)',
       'Picker position (0 if not yet picked)',
       'Partner position (0 if unknown)',
       'Alone called flag (0/1)',
