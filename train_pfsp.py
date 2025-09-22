@@ -55,6 +55,13 @@ class PFSPHyperparams:
     pick_entropy_bump: float = 0.04        # added to base decayed pick entropy
     pick_entropy_bump_duration: int = 50000  # episodes
 
+    # PASS-floor epsilon controller (ensures minimum PASS probability on pick steps)
+    pass_floor_eps_base: float = 0.0
+    pass_floor_eps_target: float = 0.08
+    pass_floor_eps_step_up: float = 0.02
+    pass_floor_eps_step_down: float = 0.02
+    pass_floor_eps_picker_avg_threshold: float = -0.33
+
     # Adaptive exploration for partner head (ALONE decision; bump scheduling)
     high_alone_rate_threshold: float = 30.0  # percent
     partner_entropy_bump: float = 0.04       # added to base decayed partner entropy
@@ -62,9 +69,9 @@ class PFSPHyperparams:
 
     # Partner CALL mixture epsilon controller (probability floor over CALL actions)
     partner_call_eps_base: float = 0.0
-    partner_call_eps_max_mid: float = 0.05   # when picker avg <= -0.5
-    partner_call_eps_mid_picker_avg_threshold: float = -0.5
-    partner_call_eps_max_high: float = 0.10  # when picker avg <= -1.0
+    partner_call_eps_max_mid: float = 0.05   # when picker avg <= mid_picker_avg_threshold
+    partner_call_eps_mid_picker_avg_threshold: float = -0.33
+    partner_call_eps_max_high: float = 0.10  # when picker avg <= high_picker_avg_threshold
     partner_call_eps_high_picker_avg_threshold: float = -1.0
     partner_call_eps_step_up: float = 0.02
     partner_call_eps_step_down: float = 0.02
@@ -446,6 +453,10 @@ def train_pfsp(num_episodes: int = 500000,
     current_partner_call_eps = hyperparams.partner_call_eps_base
     training_agent.set_partner_call_epsilon(current_partner_call_eps)
 
+    # PASS-floor epsilon controller state
+    current_pass_floor_eps = hyperparams.pass_floor_eps_base
+    training_agent.set_pass_floor_epsilon(current_pass_floor_eps)
+
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
     print("-" * 80)
@@ -703,6 +714,8 @@ def train_pfsp(num_episodes: int = 500000,
                 agent_snapshot = copy.deepcopy(training_agent)
                 # Disable CALL-uniform mixing for population agents
                 agent_snapshot.set_partner_call_epsilon(hyperparams.partner_call_eps_base)
+                # Disable PASS-floor mixing for population agents
+                agent_snapshot.set_pass_floor_epsilon(hyperparams.pass_floor_eps_base)
 
                 agent_id = population.add_agent(
                     agent=agent_snapshot,
@@ -934,6 +947,22 @@ def train_pfsp(num_episodes: int = 500000,
                 pick_entropy_bump_until != 0
             ):
                 pick_entropy_bump_until = 0
+
+            # --- PASS-floor epsilon controller (activate when pick rate high and picker avg negative) ---
+            desired_pass_eps_max = hyperparams.pass_floor_eps_base
+            if (overall_pick_rate > hyperparams.high_pick_rate_threshold) and (current_avg_picker_score < hyperparams.pass_floor_eps_picker_avg_threshold):
+                desired_pass_eps_max = hyperparams.pass_floor_eps_target
+
+            desired_pass_eps = current_pass_floor_eps
+            if desired_pass_eps_max > current_pass_floor_eps:
+                desired_pass_eps = min(current_pass_floor_eps + hyperparams.pass_floor_eps_step_up, desired_pass_eps_max)
+            elif desired_pass_eps_max < current_pass_floor_eps:
+                desired_pass_eps = max(current_pass_floor_eps - hyperparams.pass_floor_eps_step_down, desired_pass_eps_max)
+
+            if abs(desired_pass_eps - current_pass_floor_eps) > 1e-6:
+                current_pass_floor_eps = desired_pass_eps
+                training_agent.set_pass_floor_epsilon(current_pass_floor_eps)
+                print(f"   ⚠️  PASS floor epsilon ε_pass adjusted to: {current_pass_floor_eps:.3f}")
 
 
         # Save checkpoints

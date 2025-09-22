@@ -417,6 +417,9 @@ class PPOAgent:
         # Blending coefficient ε (0 disables; typical 0.02–0.10)
         self.partner_call_epsilon = 0.0
 
+        # PASS-floor mixing epsilon (applies on PICK/PASS decision steps)
+        self.pass_floor_epsilon = 0.0
+
     def set_head_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
         """Convenience proxy to set per-head temperatures on the actor."""
         self.actor.set_temperatures(pick=pick, partner=partner, bury=bury, play=play)
@@ -429,6 +432,15 @@ class PPOAgent:
         if eps > 0.2:
             eps = 0.2
         self.partner_call_epsilon = eps
+
+    def set_pass_floor_epsilon(self, eps: float):
+        """Set ε for PASS-floor mixing on pick/pass steps (0.0 disables)."""
+        eps = float(eps)
+        if eps < 0.0:
+            eps = 0.0
+        if eps > 0.2:
+            eps = 0.2
+        self.pass_floor_epsilon = eps
 
     def reset_storage(self):
         # Ordered list of events: each is a dict with keys:
@@ -462,6 +474,17 @@ class PPOAgent:
 
         with torch.no_grad():
             probs, logits = self.actor.forward_with_logits(state_t, action_mask_t, player_id)
+
+        # PASS-floor mixing on pick/pass steps
+        if self.pass_floor_epsilon > 0.0:
+            mask = action_mask_t.squeeze(0)
+            probs_1 = probs.squeeze(0)
+            pass_idx = self.pass_action_index
+            if mask[pass_idx]:
+                u = torch.zeros_like(probs_1)
+                u[pass_idx] = 1.0
+                probs_1 = (1.0 - self.pass_floor_epsilon) * probs_1 + self.pass_floor_epsilon * u
+                probs = probs_1.unsqueeze(0)
 
         if self.partner_call_epsilon > 0.0:
             mask = action_mask_t.squeeze(0)
@@ -747,6 +770,19 @@ class PPOAgent:
                 torch.zeros_like(call_count)
             )
             probs_bt = (1.0 - eps_bt) * probs_bt + eps_bt * ucall
+
+        # Apply PASS-floor mixing for pick/pass decision timesteps (vectorized)
+        if self.pass_floor_epsilon > 0.0:
+            A = probs_bt.size(-1)
+            one_hot_pass = torch.zeros(A, dtype=probs_bt.dtype, device=probs_bt.device)
+            one_hot_pass[self.pass_action_index] = 1.0
+            one_hot_pass = one_hot_pass.view(1, 1, A)
+            valid_pass_bt = masks_bt[:, :, self.pass_action_index].unsqueeze(-1)
+            probs_bt = torch.where(
+                valid_pass_bt,
+                (1.0 - self.pass_floor_epsilon) * probs_bt + self.pass_floor_epsilon * one_hot_pass,
+                probs_bt,
+            )
 
         critic_feat_bt = self.critic.critic_adapter(feat_bt)
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
