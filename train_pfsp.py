@@ -60,7 +60,7 @@ class PFSPHyperparams:
     pass_floor_eps_target: float = 0.08
     pass_floor_eps_step_up: float = 0.02
     pass_floor_eps_step_down: float = 0.02
-    pass_floor_eps_picker_avg_threshold: float = -0.33
+    pass_floor_eps_picker_avg_threshold: float = -0.75
 
     # Adaptive exploration for partner head (ALONE decision; bump scheduling)
     high_alone_rate_threshold: float = 30.0  # percent
@@ -70,9 +70,9 @@ class PFSPHyperparams:
     # Partner CALL mixture epsilon controller (probability floor over CALL actions)
     partner_call_eps_base: float = 0.0
     partner_call_eps_max_mid: float = 0.05   # when picker avg <= mid_picker_avg_threshold
-    partner_call_eps_mid_picker_avg_threshold: float = -0.33
+    partner_call_eps_mid_picker_avg_threshold: float = -0.75
     partner_call_eps_max_high: float = 0.10  # when picker avg <= high_picker_avg_threshold
-    partner_call_eps_high_picker_avg_threshold: float = -1.0
+    partner_call_eps_high_picker_avg_threshold: float = -2
     partner_call_eps_step_up: float = 0.02
     partner_call_eps_step_down: float = 0.02
 

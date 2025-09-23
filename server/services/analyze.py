@@ -74,7 +74,6 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     partner_mode = 1 if req.partnerMode == 1 else 0  # Convert to Game's expected format
     game = Game(
         partner_selection_mode=partner_mode,
-        double_on_the_bump=False
     )
 
     # Player display names
