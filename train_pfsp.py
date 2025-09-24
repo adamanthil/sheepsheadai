@@ -63,6 +63,7 @@ class PFSPHyperparams:
     pass_floor_eps_picker_avg_threshold: float = -0.33
 
     # Adaptive exploration for partner head (ALONE decision; bump scheduling)
+    low_alone_rate_threshold: float = 2.5    # percent
     high_alone_rate_threshold: float = 30.0  # percent
     partner_entropy_bump: float = 0.04       # added to base decayed partner entropy
     partner_entropy_bump_duration: int = 50000  # episodes
@@ -884,17 +885,18 @@ def train_pfsp(num_episodes: int = 500000,
 
             # --- Adaptive partner-head entropy bump scheduling ---
             if (
-                current_training_alone_rate > hyperparams.high_alone_rate_threshold and
+                (current_training_alone_rate > hyperparams.high_alone_rate_threshold or
+                 current_training_alone_rate < hyperparams.low_alone_rate_threshold) and
                 episode > partner_entropy_bump_until
             ):
                 partner_entropy_bump_until = episode + hyperparams.partner_entropy_bump_duration
                 print(
-                    f"   ⚠️  High ALONE rate detected ({current_training_alone_rate:.2f}%). "
+                    f"   ⚠️  ALONE rate out of band ({current_training_alone_rate:.2f}%). "
                     f"Increasing partner entropy by {hyperparams.partner_entropy_bump:.3f} for the next "
                     f"{hyperparams.partner_entropy_bump_duration:,} episodes."
                 )
             if (
-                current_training_alone_rate <= hyperparams.high_alone_rate_threshold and
+                (hyperparams.low_alone_rate_threshold <= current_training_alone_rate <= hyperparams.high_alone_rate_threshold) and
                 episode > partner_entropy_bump_until and
                 partner_entropy_bump_until != 0
             ):
