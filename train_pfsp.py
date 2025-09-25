@@ -55,7 +55,9 @@ class PFSPHyperparams:
     pick_entropy_bump: float = 0.04        # added to base decayed pick entropy
     pick_entropy_bump_duration: int = 50000  # episodes
 
-    # PASS-floor epsilon controller (ensures minimum PASS probability on pick steps)
+    # PASS-floor epsilon controller
+    # Ensures minimum PASS probability on pick steps if picker average score is low.
+    high_pick_rate_ceiling: float = 80.0  # Alter distribution to force PASS after this threshold
     pass_floor_eps_base: float = 0.0
     pass_floor_eps_target: float = 0.08
     pass_floor_eps_step_up: float = 0.02
@@ -68,7 +70,9 @@ class PFSPHyperparams:
     partner_entropy_bump: float = 0.04       # added to base decayed partner entropy
     partner_entropy_bump_duration: int = 50000  # episodes
 
-    # Partner CALL mixture epsilon controller (probability floor over CALL actions)
+    # Partner CALL mixture epsilon controller
+    # Probability floor over CALL actions when picker average score is low.
+    high_alone_rate_ceiling: float = 60.0  # Alter distribution to force partner calls after this threshold
     partner_call_eps_base: float = 0.0
     partner_call_eps_max_mid: float = 0.05   # when picker avg <= mid_picker_avg_threshold
     partner_call_eps_mid_picker_avg_threshold: float = -0.75
@@ -904,10 +908,10 @@ def train_pfsp(num_episodes: int = 500000,
 
             # --- Partner CALL mixture epsilon controller ---
             # Gradually increase ε when ALONE rate is high and picker avg is poor.
-            # Tiered caps: <= -0.5 -> mid cap; <= -1.0 -> high cap. Otherwise, decay toward base.
+            # Tiered caps: <= mid_picker_avg -> mid cap; <= high_picker_avg -> high cap. Otherwise, decay toward base.
             desired_partner_eps_max = hyperparams.partner_call_eps_base
             # Gate epsilon scheduling on training-agent-only ALONE rate
-            if current_training_alone_rate > hyperparams.high_alone_rate_threshold:
+            if current_training_alone_rate > hyperparams.high_alone_rate_ceiling:
                 if current_avg_picker_score <= hyperparams.partner_call_eps_high_picker_avg_threshold:
                     desired_partner_eps_max = hyperparams.partner_call_eps_max_high
                 elif current_avg_picker_score <= hyperparams.partner_call_eps_mid_picker_avg_threshold:
@@ -952,7 +956,7 @@ def train_pfsp(num_episodes: int = 500000,
 
             # --- PASS-floor epsilon controller (activate when pick rate high and picker avg negative) ---
             desired_pass_eps_max = hyperparams.pass_floor_eps_base
-            if (overall_pick_rate > hyperparams.high_pick_rate_threshold) and (current_avg_picker_score < hyperparams.pass_floor_eps_picker_avg_threshold):
+            if (overall_pick_rate > hyperparams.high_pick_rate_ceiling) and (current_avg_picker_score < hyperparams.pass_floor_eps_picker_avg_threshold):
                 desired_pass_eps_max = hyperparams.pass_floor_eps_target
 
             desired_pass_eps = current_pass_floor_eps
