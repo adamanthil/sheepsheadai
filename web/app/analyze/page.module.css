@@ -296,6 +296,51 @@
   white-space: nowrap;
 }
 
+/* Metric strip for compact display of five values */
+.metricsBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.metricChip {
+  --chip-bg: hsl(var(--value-hue, 0), 60%, 97%);
+  border: 1px solid color-mix(in oklab, hsl(var(--value-hue, 0), 85%, 50%) 30%, rgba(0,0,0,0.06));
+  background: var(--chip-bg);
+  border-radius: 8px;
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Neutral chip (no hue tint) */
+.metricChipNeutral {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.metricLabel {
+  font-size: 0.65rem;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+
+.metricValue {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .metricsBar {
+    flex-wrap: wrap;
+  }
+}
+
 .expandIcon {
   color: #9ca3af;
   transition: transform 0.2s ease;

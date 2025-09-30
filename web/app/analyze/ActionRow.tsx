@@ -47,6 +47,94 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
     return { '--value-hue': `${hue}deg` } as React.CSSProperties;
   };
 
+  const formatSigned = (value: number, digits = 3) => {
+    return value >= 0 ? `+${value.toFixed(digits)}` : value.toFixed(digits);
+  };
+
+  function MetricChip({
+    label,
+    value,
+    colorStyle,
+    tooltip,
+    suffix = ''
+  }: {
+    label: React.ReactNode;
+    value: string;
+    colorStyle?: React.CSSProperties;
+    tooltip?: string;
+    suffix?: string;
+  }) {
+    return (
+      <div className={styles.metricChip} title={tooltip} style={colorStyle}>
+        <span className={styles.metricLabel}>{label}</span>
+        <span className={styles.metricValue}>{value}{suffix}</span>
+      </div>
+    );
+  }
+
+  function MetricsBar({
+    value,
+    valueHue,
+    discounted,
+    discountedHue,
+    step,
+    stepHue,
+    winPct,
+    expectedFinal
+  }: {
+    value: number;
+    valueHue: number;
+    discounted?: number;
+    discountedHue?: number;
+    step?: number;
+    stepHue?: number;
+    winPct?: number;
+    expectedFinal?: number;
+  }) {
+    return (
+      <div className={styles.metricsBar}>
+        <MetricChip
+          label={<>V</>}
+          value={formatSigned(value)}
+          colorStyle={getHueStyle(valueHue)}
+          tooltip="Value estimate (critic)"
+        />
+
+        {typeof discounted === 'number' && (
+          <MetricChip
+            label={<>G<sub>t</sub></>}
+            value={formatSigned(discounted)}
+            colorStyle={getHueStyle(typeof discountedHue === 'number' ? discountedHue : 0.5)}
+            tooltip="Discounted return"
+          />
+        )}
+
+        {typeof step === 'number' && (
+          <MetricChip
+            label={<>r</>}
+            value={formatSigned(step)}
+            colorStyle={getHueStyle(typeof stepHue === 'number' ? stepHue : 0.5)}
+            tooltip="Immediate step reward"
+          />
+        )}
+
+        {typeof winPct === 'number' && (
+          <div className={`${styles.metricChip} ${styles.metricChipNeutral}`} title="Win probability">
+            <span className={styles.metricLabel}>Win</span>
+            <span className={styles.metricValue}>{`${Math.round(winPct)}%`}</span>
+          </div>
+        )}
+
+        {typeof expectedFinal === 'number' && (
+          <div className={`${styles.metricChip} ${styles.metricChipNeutral}`} title="Expected final return (undiscounted)">
+            <span className={styles.metricLabel}>E[Ret]</span>
+            <span className={styles.metricValue}>{expectedFinal.toFixed(2)}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={styles.actionRow}>
       <div
@@ -73,34 +161,18 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div
-            className={styles.valueEstimate}
-            style={getHueStyle(normalizedValue)}
-          >
-            Value Estimate: {formatValue(action.valueEstimate)}
-          </div>
+          <MetricsBar
+            value={action.valueEstimate}
+            valueHue={normalizedValue}
+            discounted={typeof action.discountedReturn === 'number' ? action.discountedReturn : undefined}
+            discountedHue={normalizedReward}
+            step={typeof action.stepReward === 'number' ? action.stepReward : undefined}
+            stepHue={typeof normalizedStepReward === 'number' ? normalizedStepReward : undefined}
+            winPct={typeof (action as any).winProb === 'number' ? ((action as any).winProb * 100) : undefined}
+            expectedFinal={typeof (action as any).expectedFinalReturn === 'number' ? (action as any).expectedFinalReturn : undefined}
+          />
 
-          {typeof action.discountedReturn === 'number' && (
-            <div
-              className={styles.valueEstimate}
-              style={getHueStyle(normalizedReward)}
-            >
-              Return: {formatValue(action.discountedReturn)}
-            </div>
-          )}
-
-          {typeof action.stepReward === 'number' && (
-            <div
-              className={styles.valueEstimate}
-              style={getHueStyle(typeof normalizedStepReward === 'number' ? normalizedStepReward : 0.5)}
-            >
-              Step Reward: {formatValue(action.stepReward)}
-            </div>
-          )}
-
-          <div className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>
-            ▼
-          </div>
+          <div className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>▼</div>
         </div>
       </div>
 

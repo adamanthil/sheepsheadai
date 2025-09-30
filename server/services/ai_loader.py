@@ -25,13 +25,13 @@ def load_agent(global_model_path: Optional[str] = None, candidate_paths: Optiona
 
     try:
         if global_model_path and os.path.exists(global_model_path):
-            agent.load(global_model_path)
+            agent.load(global_model_path, load_optimizers=False)
             logging.info("Loaded AI model from %s", global_model_path)
         else:
             paths = list(candidate_paths or [])
             for path in paths:
                 if os.path.exists(path):
-                    agent.load(path)
+                    agent.load(path, load_optimizers=False)
                     logging.info("Loaded AI model from %s", path)
                     break
         agent.reset_recurrent_state()

@@ -1084,7 +1084,7 @@ class PFSPPopulation:
                     # Create agent with appropriate parameters
                     from sheepshead import STATE_SIZE, ACTIONS
                     agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation=metadata.activation)
-                    agent.load(str(model_path))
+                    agent.load(str(model_path), load_optimizers=False)
 
                     # Create population agent
                     pop_agent = PopulationAgent(agent, metadata, rating, strategic_profile)
@@ -1260,7 +1260,7 @@ def create_initial_population_from_checkpoints(population: PFSPPopulation,
             try:
                 # Load checkpoint
                 agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation=activation)
-                agent.load(checkpoint_path)
+                agent.load(checkpoint_path, load_optimizers=False)
 
                 # Add to population
                 population.add_agent(

@@ -364,7 +364,7 @@ def train_pfsp(num_episodes: int = 500000,
     start_episode = 0
     if resume_model:
         try:
-            training_agent.load(resume_model)
+            training_agent.load(resume_model, load_optimizers=True)
             print(f"✅ Loaded training agent from {resume_model}")
             if 'checkpoint_' in resume_model:
                 start_episode = int(resume_model.split('_')[-1].split('.')[0])
@@ -539,6 +539,9 @@ def train_pfsp(num_episodes: int = 500000,
             game.is_leaster
         ):
             transition = reward_data['transition']
+            seat_pos = transition['player'].position
+            win_label = 1.0 if final_scores[seat_pos - 1] > 0 else 0.0
+            final_return_label = float(final_scores[seat_pos - 1])
             training_agent.store_transition(
                 transition['state'],
                 transition['action'],
@@ -547,7 +550,9 @@ def train_pfsp(num_episodes: int = 500000,
                 transition['log_prob'],
                 reward_data['done'],
                 transition['valid_actions'],
-                player_id=transition['player'].position,
+                player_id=seat_pos,
+                win_label=win_label,
+                final_return_label=final_return_label,
             )
             transitions_since_update += 1
 

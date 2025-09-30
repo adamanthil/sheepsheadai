@@ -124,6 +124,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
             value = agent.critic(state_tensor, hidden_in=prev_hidden)
 
+            # Auxiliary critic heads via accessor
+            win_prob_val, expected_final_val = agent.critic.aux_predictions(state_tensor, hidden_in=prev_hidden)
+
         # Choose action
         if req.deterministic:
             action_id = torch.argmax(action_probs, dim=1).item() + 1  # Convert to 1-indexed
@@ -168,7 +171,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             validActionIds=valid_actions,
             probabilities=probabilities,
             view=player_state["view"],
-            state=player_state["state"]  # Always include state vectors
+            state=player_state["state"],  # Always include state vectors
+            winProb=float(win_prob_val),
+            expectedFinalReturn=expected_final_val
         )
 
         trace.append(action_detail)

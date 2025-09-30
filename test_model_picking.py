@@ -48,7 +48,7 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
     agent = PPOAgent(STATE_SIZE, len(ACTIONS), lr_actor=1e-3, lr_critic=1e-3)
 
     try:
-        agent.load(model_path)
+        agent.load(model_path, load_optimizers=False)
         print(f"✅ Loaded {model_path}")
     except FileNotFoundError:
         print("❌ No trained model found")

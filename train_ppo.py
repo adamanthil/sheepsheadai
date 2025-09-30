@@ -141,7 +141,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     start_episode = 0
     if resume_model:
         try:
-            agent.load(resume_model)
+            agent.load(resume_model, load_optimizers=True)
             print(f"✅ Loaded {resume_model} for continuation")
             # Try to extract episode number from filename
             if 'checkpoint_' in resume_model:
@@ -320,6 +320,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     done_flag,
                     ev['valid_actions'],
                     player_id=ev['player'].position,
+                    win_label=1.0 if episode_scores[ev['player'].position - 1] > 0 else 0.0,
+                    final_return_label=float(episode_scores[ev['player'].position - 1]),
                 )
                 transitions_since_update += 1
 

@@ -134,7 +134,7 @@ class ModelComparisonSimulator:
         for config in self.model_configs:
             try:
                 agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation=config.activation)
-                agent.load(config.path)
+                agent.load(config.path, load_optimizers=False)
                 self.models[config.name] = agent
                 print(f"✅ Loaded {config.name} from {config.path}")
             except Exception as e:

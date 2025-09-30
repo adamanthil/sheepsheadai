@@ -319,9 +319,12 @@ class RecurrentCriticNetwork(nn.Module):
         self.critic_adapter = nn.Sequential(
             nn.LayerNorm(256),
             nn.Linear(256, 256),
-            nn.ReLU() if activation == 'relu' else nn.Identity()
+            nn.ReLU() if activation == 'relu' else nn.SiLU()
         )
         self.value_head = nn.Linear(256, 1)
+        # Auxiliary heads (trained on detached critic adapter features)
+        self.win_head = nn.Linear(256, 1)
+        self.return_head = nn.Linear(256, 1)
 
         self.apply(self._init_weights)
 
@@ -337,6 +340,38 @@ class RecurrentCriticNetwork(nn.Module):
         if return_hidden:
             return value, new_hidden
         return value
+
+    def aux_predictions(self, state, hidden_in=None, return_hidden: bool = False):
+        """Return auxiliary predictions as scalars: (win_prob, expected_final_return).
+
+        Parameters
+        ----------
+        state : Tensor
+            Shape (state_size,) or (1, state_size)
+        hidden_in : tuple(h, c) | None
+            Optional LSTM hidden state to use for recurrent context
+        return_hidden : bool
+            If True, also return the new hidden state from the backbone
+
+        Returns
+        -------
+        win_prob : float
+            Sigmoid of win logits
+        expected_final_return : float
+            Linear head output for expected final return
+        (optionally) new_hidden : tuple(h, c)
+        """
+        with torch.no_grad():
+            feat, new_hidden = self._backbone(state, hidden_in=hidden_in, return_hidden=True)
+            aux_feat = self.critic_adapter(feat)
+            win_logit = self.win_head(aux_feat).squeeze(-1)
+            expected_return = self.return_head(aux_feat).squeeze(-1)
+        win_prob_t = torch.sigmoid(win_logit)
+        win_prob = float(win_prob_t.item())
+        expected_final = float(expected_return.item())
+        if return_hidden:
+            return win_prob, expected_final, new_hidden
+        return win_prob, expected_final
 
 class PPOAgent:
     def __init__(self, state_size, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='swish'):
@@ -403,6 +438,10 @@ class PPOAgent:
         self.target_kl = None
         # KL regularization coefficient (added to actor loss)
         self.kl_coef = 0.2
+
+        # Auxiliary loss coefficients (aux heads are detached from trunk)
+        self.win_loss_coeff = 0.1
+        self.return_loss_coeff = 0.1
 
         # Storage for trajectory data
         self.reset_storage()
@@ -557,7 +596,7 @@ class PPOAgent:
             _ = self.actor(state_t, action_mask_t, player_id)
             _ = self.critic(state_t)
 
-    def store_transition(self, state, action, reward, value, log_prob, done, valid_actions, player_id=None):
+    def store_transition(self, state, action, reward, value, log_prob, done, valid_actions, player_id=None, win_label=None, final_return_label=None):
         """Store transition data"""
         action_mask = self.get_action_mask(valid_actions, self.action_size)
         self.events.append({
@@ -570,6 +609,8 @@ class PPOAgent:
             'log_prob': log_prob,
             'done': done,
             'player_id': player_id,
+            'win': float(win_label) if win_label is not None else 0.0,
+            'final_return': float(final_return_label) if final_return_label is not None else 0.0,
         })
 
     def store_observation(self, state, valid_actions=None, player_id=None):
@@ -694,6 +735,8 @@ class PPOAgent:
         old_lp_list = []
         returns_list = []
         adv_list = []
+        win_list_all = []
+        final_ret_list_all = []
 
         for pid, seg_start, seg_end in batch:
             ev_range = list(range(seg_start, seg_end + 1))
@@ -708,21 +751,30 @@ class PPOAgent:
             is_action_list.append(is_act)
 
             act_bt, olp_bt, ret_bt, adv_bt = [], [], [], []
+            win_bt, final_ret_bt = [], []
             for i in ev_range:
                 if kinds[i] == 'action' and pids[i] == pid:
                     act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(self.events[i]['log_prob'], dtype=torch.float32, device=device))
                     ret_bt.append(torch.tensor(self.events[i]['return'], dtype=torch.float32, device=device))
                     adv_bt.append(torch.tensor(self.events[i]['advantage'], dtype=torch.float32, device=device))
+                    win_lbl = self.events[i].get('win', 0.0) or 0.0
+                    final_return_lbl = self.events[i].get('final_return', 0.0) or 0.0
+                    win_bt.append(torch.tensor(float(win_lbl), dtype=torch.float32, device=device))
+                    final_ret_bt.append(torch.tensor(float(final_return_lbl), dtype=torch.float32, device=device))
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    win_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    final_ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
             adv_list.append(torch.stack(adv_bt, dim=0))
+            win_list_all.append(torch.stack(win_bt, dim=0))
+            final_ret_list_all.append(torch.stack(final_ret_bt, dim=0))
 
         states_bt, _ = self._pad_to_bt(states_list, lengths, 0.0)
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
@@ -731,9 +783,11 @@ class PPOAgent:
         old_lp_bt, _ = self._pad_to_bt(old_lp_list, lengths, 0.0)
         returns_bt, _ = self._pad_to_bt(returns_list, lengths, 0.0)
         adv_bt, _ = self._pad_to_bt(adv_list, lengths, 0.0)
+        win_bt, _ = self._pad_to_bt(win_list_all, lengths, 0.0)
+        final_ret_bt, _ = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
-        return states_bt, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt
+        return states_bt, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt
 
     def _forward_vectorized(self, states_bt, masks_bt, lengths_bt):
         feat_bt = self.backbone.forward_sequence(states_bt, lengths_bt)
@@ -786,10 +840,14 @@ class PPOAgent:
 
         critic_feat_bt = self.critic.critic_adapter(feat_bt)
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
-        return probs_bt, values_bt
+        # Auxiliary preds use critic_adapter on detached backbone features (no grad into backbone)
+        aux_feat_bt = self.critic.critic_adapter(feat_bt.detach())
+        win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
+        ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
+        return probs_bt, values_bt, win_logits_bt, ret_pred_bt
 
     @staticmethod
-    def _flatten_action_steps(is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt):
+    def _flatten_action_steps(is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, win_logits_bt, ret_pred_bt, win_bt, final_ret_bt):
         flat_mask = is_action_bt.view(-1)
         if flat_mask.sum() == 0:
             return None
@@ -800,6 +858,10 @@ class PPOAgent:
             old_lp_bt.view(-1)[flat_mask],
             returns_bt.view(-1)[flat_mask],
             adv_bt.view(-1)[flat_mask],
+            win_logits_bt.view(-1)[flat_mask],
+            ret_pred_bt.view(-1)[flat_mask],
+            win_bt.view(-1)[flat_mask],
+            final_ret_bt.view(-1)[flat_mask],
         )
 
     @staticmethod
@@ -1004,19 +1066,33 @@ class PPOAgent:
                     returns_bt,
                     adv_bt,
                     lengths_bt,
+                    win_bt,
+                    final_ret_bt,
                 ) = self._build_minibatch_tensors(batch, states, masks_t, kinds, pids)
 
                 # Vectorized forward
                 t_fwd = time.time()
-                probs_bt, values_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
+                probs_bt, values_bt, win_logits_bt, ret_pred_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
                 forward_time += time.time() - t_fwd
 
                 flat = self._flatten_action_steps(
-                    is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt
+                    is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt,
+                    win_logits_bt, ret_pred_bt, win_bt, final_ret_bt
                 )
                 if flat is None:
                     continue
-                probs_flat, values_flat, actions_flat, old_lp_flat, returns_flat, adv_flat = flat
+                (
+                    probs_flat,
+                    values_flat,
+                    actions_flat,
+                    old_lp_flat,
+                    returns_flat,
+                    adv_flat,
+                    win_logits_flat,
+                    ret_pred_flat,
+                    win_labels_flat,
+                    final_ret_labels_flat,
+                ) = flat
 
                 # Record PICK/PASS advantages across minibatches
                 with torch.no_grad():
@@ -1056,9 +1132,13 @@ class PPOAgent:
                 ent_play_sum += play_entropy.detach().item()
                 ent_batches += 1
 
+                # Auxiliary losses (detached features used upstream)
+                bce_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
+                return_loss = F.smooth_l1_loss(ret_pred_flat, final_ret_labels_flat)
+
                 # Backward + step per minibatch
                 t_bwd = time.time()
-                total_loss = actor_loss + self.value_loss_coeff * critic_loss
+                total_loss = actor_loss + self.value_loss_coeff * critic_loss + self.win_loss_coeff * bce_loss + self.return_loss_coeff * return_loss
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
                 total_loss.backward()
@@ -1125,10 +1205,28 @@ class PPOAgent:
             'critic_optimizer': self.critic_optimizer.state_dict(),
         }, filepath)
 
-    def load(self, filepath):
-        """Load model parameters"""
+    def load(self, filepath, load_optimizers: bool = True):
+        """Load model parameters.
+
+        Parameters
+        ----------
+        filepath : str
+            Path to checkpoint file
+        load_optimizers : bool
+            If True, also loads optimizer states. For population/inference agents,
+            pass False to skip optimizer loading entirely.
+        """
         checkpoint = torch.load(filepath, map_location=device)
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        self.critic.load_state_dict(checkpoint['critic_state_dict'])
-        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        # Allow missing keys for new auxiliary heads on critic
+        self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
+
+        if load_optimizers:
+            # Load actor optimizer strictly (actor param groups unchanged)
+            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+            # Load critic optimizer best-effort (param groups may differ due to new heads)
+            try:
+                self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+            except (ValueError, KeyError, RuntimeError):
+                # Keep freshly initialized critic optimizer on mismatch
+                pass
