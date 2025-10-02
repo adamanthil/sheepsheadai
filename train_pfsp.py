@@ -12,6 +12,7 @@ import random
 import time
 import os
 import csv
+import sys
 from collections import deque
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
@@ -20,7 +21,7 @@ from dataclasses import dataclass, field
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
-from pfsp import PFSPPopulation, create_initial_population_from_checkpoints
+from pfsp import PFSPPopulation, create_initial_population_from_checkpoints, profile_pop_agent_action
 from training_utils import estimate_hand_strength_category
 from sheepshead import (
     Game,
@@ -29,12 +30,7 @@ from sheepshead import (
     ACTION_IDS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
-    TRUMP,
-    ACTION_LOOKUP,
-    UNDER_TOKEN,
-    get_card_points,
     get_partner_mode_name,
-    filter_by_suit,
 )
 
 from train_ppo import analyze_strategic_decisions
@@ -151,21 +147,13 @@ def play_population_game(training_agent: PPOAgent,
     for opponent in opponents:
         opponent.agent.reset_recurrent_state()
 
-    # Create position-to-agent mapping
+    # Create position-to-agent mapping; all five seats must be populated by training + 4 opponents
     agents = [None] * 5
     agents[training_agent_position - 1] = training_agent
 
     opponent_positions = [i for i in range(5) if i != training_agent_position - 1]
-    for i, opponent in enumerate(opponents[:4]):  # Take up to 4 opponents
-        if i < len(opponent_positions):
-            agents[opponent_positions[i]] = opponent.agent
-
-    # Fill any remaining positions with **independent copies** of the training agent
-    # so they do not share recurrent state. These filler seats are ignored in rating updates.
-    for i in range(5):
-        if agents[i] is None:
-            agents[i] = copy.deepcopy(training_agent)
-            agents[i].reset_recurrent_state()
+    for i, opponent in enumerate(opponents[:4]):
+        agents[opponent_positions[i]] = opponent.agent
 
     # Store transitions only for the training agent
     episode_transitions = []
@@ -237,59 +225,19 @@ def play_population_game(training_agent: PPOAgent,
                             training_agent.store_observation(seat.get_last_trick_state_vector(), player_id=seat.position)
                         else:
                             seat_agent.observe(seat.get_last_trick_state_vector(), seat.position)
+                    # Update trick-level EWMAs for population agents
+                    pos_to_pop_agent_local = {}
+                    for i, opp in enumerate(opponents[:len(opp_positions)]):
+                        pos_to_pop_agent_local[opp_positions[i]] = opp
+                    from pfsp import profile_trick_completion
+                    profile_trick_completion(game, pos_to_pop_agent_local)
 
                 valid_actions = player.get_valid_action_ids()
 
                 # --- Strategic profile updates for opponents only ---
                 pop_agent = pos_to_pop_agent.get(player.position)
                 if pop_agent:
-                    action_name = ACTION_LOOKUP[action]
-                    role = 'picker' if (player.is_picker or player.is_partner) else 'defender'
-
-                    # Pick/pass profiling (only valid during picking phase)
-                    if action_name in ("PICK", "PASS"):
-                        pop_agent.update_strategic_profile_from_game({
-                            'pick_decision': (action_name == "PICK"),
-                            'hand_strength_category': hand_strength_by_pos[player.position],
-                            'position': player.position,
-                        })
-
-                    # Bury profiling
-                    if action_name.startswith("BURY "):
-                        card = action_name.split()[-1]
-                        pop_agent.update_strategic_profile_from_game({
-                            'bury_decision': card,
-                            'card_points': get_card_points(card),
-                        })
-
-                    # ALONE vs partner call profiling
-                    if action_name == "ALONE":
-                        pop_agent.update_strategic_profile_from_game({'alone_call': True})
-                    elif action_name.startswith("CALL "):
-                        pop_agent.update_strategic_profile_from_game({'alone_call': False, 'called_card': action_name.split()[1]})
-
-                    # Lead trump (overall and early) and void behavior
-                    if action_name.startswith("PLAY "):
-                        card = action_name.split()[-1]
-                        is_lead = (game.cards_played == 0)
-                        is_early = is_lead and (game.current_trick <= 1)
-                        if is_lead:
-                            pop_agent.update_strategic_profile_from_game({
-                                'trump_lead': (card in TRUMP or card == UNDER_TOKEN),
-                                'role': role,
-                                'is_early_lead': is_early,
-                            })
-
-                        # Void logic: only when following and can't follow suit
-                        if not is_lead and game.current_suit:
-                            can_follow = len(filter_by_suit(player.hand, game.current_suit)) > 0
-                            if not can_follow:
-                                played_trump = (card in TRUMP or card == UNDER_TOKEN)
-                                pop_agent.update_strategic_profile_from_game({
-                                    'void_event': True,
-                                    'void_played_trump': played_trump,
-                                    'schmeared_points': 0 if played_trump else get_card_points(card),
-                                })
+                    profile_pop_agent_action(game, player, action, pop_agent, hand_strength_by_pos)
 
     final_scores = [player.get_score() for player in game.players]
 
@@ -346,8 +294,8 @@ def train_pfsp(num_episodes: int = 500000,
 
     # Create population
     population = PFSPPopulation(
-        max_population_jd=25,
-        max_population_called_ace=25,
+        max_population_jd=75,
+        max_population_called_ace=75,
         population_dir="pfsp_population"
     )
 
@@ -499,10 +447,10 @@ def train_pfsp(num_episodes: int = 500000,
             uniform_mix=0.15,
         )
 
-        # If no opponents available, use self-play as fallback
-        if len(opponents) == 0:
-            print(f"⚠️  No opponents available for {get_partner_mode_name(partner_mode)}, using self-play")
-            opponents = []
+        # Require 4 opponents in population; exit script if not available
+        if len(opponents) < 4:
+            print(f"❌ Insufficient PFSP opponents for {get_partner_mode_name(partner_mode)} (need 4, got {len(opponents)}). Provide --initial-checkpoints or pre-populate pfsp_population.")
+            sys.exit(1)
 
         # Randomly select training agent position (1-5)
         training_position = random.randint(1, 5)
@@ -579,13 +527,8 @@ def train_pfsp(num_episodes: int = 500000,
                 agents_in_order.append(None)
             else:
                 opp_agent = position_to_agent.get(pos)
-                if opp_agent:
-                    teams.append([opp_agent.rating])
-                    agents_in_order.append(opp_agent)
-                else:
-                    # Self-play filler seat – share the training rating object so rating update is well-posed
-                    teams.append([training_rating])
-                    agents_in_order.append(None)
+                teams.append([opp_agent.rating])
+                agents_in_order.append(opp_agent)
 
         scores_for_rank = final_scores
         score_rank_pairs = sorted(enumerate(scores_for_rank), key=lambda x: x[1], reverse=True)
@@ -600,6 +543,19 @@ def train_pfsp(num_episodes: int = 500000,
 
         new_teams = rating_model.rate(teams, ranks=ranks)
 
+        # Compute rank positions (0 is best) for final scores to derive head-to-head result vs training
+        score_rank_pairs_local = sorted(enumerate(scores_for_rank), key=lambda x: x[1], reverse=True)
+        rank_by_index = [0]*len(scores_for_rank)
+        last_sc_local = None
+        current_rank_local = 0
+        for i, (idx2, sc2) in enumerate(score_rank_pairs_local):
+            if last_sc_local is None or sc2 != last_sc_local:
+                current_rank_local = i
+            rank_by_index[idx2] = current_rank_local
+            last_sc_local = sc2
+
+        training_rank = rank_by_index[training_position - 1]
+
         for idx, pos in enumerate(positions_order):
             if pos == training_position:
                 training_rating = new_teams[idx][0]
@@ -609,8 +565,27 @@ def train_pfsp(num_episodes: int = 500000,
                     opp_agent.update_rating(new_teams[idx][0])
                     was_picker_role = (game.picker == pos)
                     opp_agent.add_game_result(final_scores[pos-1], was_picker_role)
-                    if final_scores[pos-1] > training_data_single['score']:
-                        opp_agent.add_victory_against(training_agent_id)
+                    # Rank-based result vs training agent: 1 if better rank, 0 if worse, 0.5 if tie
+                    opp_rank = rank_by_index[pos - 1]
+                    if opp_rank < training_rank:
+                        result_vs_training = 1.0
+                    elif opp_rank > training_rank:
+                        result_vs_training = 0.0
+                    else:
+                        result_vs_training = 0.5
+                    opp_agent.record_vs_training_outcome(result_vs_training)
+                    # Final performance profiling per role for diversity/clustering
+                    if game.is_leaster:
+                        opp_agent.update_strategic_profile_from_game({
+                            'final_score': final_scores[pos - 1],
+                            'role': 'leaster',
+                        })
+                    else:
+                        role_final = 'picker' if (game.picker == pos) else ('partner' if getattr(game, 'is_partner_seat', lambda _pos: False)(pos) or getattr(game.players[pos-1], 'is_partner', False) else 'defender')
+                        opp_agent.update_strategic_profile_from_game({
+                            'final_score': final_scores[pos - 1],
+                            'role': role_final,
+                        })
 
         # Track team point differences
         if game.picker and not game.is_leaster:
@@ -620,6 +595,32 @@ def train_pfsp(num_episodes: int = 500000,
         else:
             team_point_diff = 0
         team_point_differences.append(team_point_diff)
+
+        # --- Cooperative synergy updates (population opponents only) ---
+        # Only defined for non-leaster hands with picker/defender teams
+        if game.picker and not game.is_leaster:
+            # Determine if training seat is on picker team (picker or partner)
+            is_partner_seat_fn = getattr(game, 'is_partner_seat', None)
+            if callable(is_partner_seat_fn):
+                training_is_partner = bool(is_partner_seat_fn(training_position))
+            else:
+                training_is_partner = bool(getattr(game.players[training_position - 1], 'is_partner', False))
+
+            training_on_picker_team = (training_position == game.picker) or training_is_partner
+            training_team_won = (picker_team_points > defender_team_points) if training_on_picker_team else (defender_team_points > picker_team_points)
+
+            # Emit synergy updates to each population opponent
+            for pos in opponent_positions:
+                opp_agent = position_to_agent.get(pos)
+                if not opp_agent:
+                    continue
+                if callable(is_partner_seat_fn):
+                    opp_is_partner = bool(is_partner_seat_fn(pos))
+                else:
+                    opp_is_partner = bool(getattr(game.players[pos - 1], 'is_partner', False))
+                opp_on_picker_team = (pos == game.picker) or opp_is_partner
+                same_team = (training_on_picker_team == opp_on_picker_team)
+                opp_agent.record_team_interaction(same_team=same_team, team_result=1.0 if training_team_won else 0.0)
 
         # Track other statistics (similar to train_ppo.py)
         is_leaster_ep = 1 if game.is_leaster else 0
@@ -754,10 +755,13 @@ def train_pfsp(num_episodes: int = 500000,
         if episode % cross_eval_interval == 0:
             print(f"🏆 Running cross-evaluation tournaments... (Episode {episode:,})")
             for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
-                eval_stats = population.run_cross_evaluation(mode, num_games=100, max_agents=25)
+                eval_stats = population.run_cross_evaluation(mode, num_games=40, max_agents=75)
                 print(f"   {get_partner_mode_name(mode)}: {eval_stats['games_played']} games, "
                         f"avg skill: {eval_stats['avg_skill_after']:.1f}")
-
+            # Rebuild clusters post-tournament to refresh anchors/sampling policies
+            # Clustering is computed lazily when sampling; this call just forces recomputation for visibility
+            for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
+                _ = population._cluster_population(mode)
             print(population.get_population_summary())
             print("-" * 80)
 
