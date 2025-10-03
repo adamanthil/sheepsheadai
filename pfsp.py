@@ -479,11 +479,6 @@ class PopulationAgent:
         self.exploitation_win_rate_ema: float = 0.5
         self.exploitation_samples: int = 0
 
-        # Cooperative synergy EMA when on the same team as the training agent
-        # Tracks team win indicator (1 win, 0 loss) conditioned on same-team games
-        self.coop_synergy_ema: float = 0.5
-        self.coop_samples: int = 0
-
     def update_rating(self, new_rating):
         """Update the agent's rating."""
         self.rating = new_rating
@@ -746,24 +741,6 @@ class PopulationAgent:
         """Return decayed win-rate vs training agent for exploitation sampling."""
         return float(self.exploitation_win_rate_ema)
 
-    def record_team_interaction(self, same_team: bool, team_result: float, alpha: float = 0.05) -> None:
-        """Update EMA of team synergy when this agent is on the same team as the training agent.
-
-        Args:
-            same_team: True if this population agent was on the same team as the training agent
-            team_result: 1.0 if the training team won, 0.0 if lost (ignored when not same_team)
-            alpha: smoothing factor for EMA
-        """
-        if not same_team:
-            return
-        # Clamp to [0,1]
-        if team_result < 0.0:
-            team_result = 0.0
-        elif team_result > 1.0:
-            team_result = 1.0
-        self.coop_synergy_ema = (1.0 - alpha) * self.coop_synergy_ema + alpha * float(team_result)
-        self.coop_samples += 1
-
 
 class PFSPPopulation:
     """Manages the population of agents for PFSP training."""
@@ -797,7 +774,7 @@ class PFSPPopulation:
         }
 
         # Selection category sampling counters (ephemeral, not persisted)
-        # Keys per mode: 'hardest', 'rarest', 'anchor', 'synergy', 'pressure', 'weighted'
+        # Keys per mode: 'hardest', 'rarest', 'anchor', 'pressure', 'weighted'
         self._selection_sampling_counts = {
             PARTNER_BY_JD: defaultdict(int),
             PARTNER_BY_CALLED_ACE: defaultdict(int),
@@ -1102,8 +1079,6 @@ class PFSPPopulation:
                         p_anchor: float = 0.3,
                         min_anchor_percentile: float = 0.4,
                         sigma_ceiling: float = 12.0,
-                        # Coordination pressure/assistance slots
-                        include_synergy_slot: bool = True,
                         include_pressure_slot: bool = True) -> List[PopulationAgent]:
         """Sample opponents using multi-objective selection (skill + diversity + exploitation + curriculum),
         with optional inclusion of a cluster-based anchor to prevent forgetting.
@@ -1203,27 +1178,7 @@ class PFSPPopulation:
                             self._selection_sampling_totals[partner_mode] += 1
                             reserved_used += 1
 
-        # Dedicated coordination slots: one synergy (good partner), one pressure (hard opponent)
-        if include_synergy_slot and len(selected_agents) < n_opponents and remaining_population:
-            # Prefer agents with high coop synergy EMA and enough samples
-            def synergy_key(a: PopulationAgent) -> float:
-                val = float(getattr(a, 'coop_synergy_ema', 0.5))
-                n = int(getattr(a, 'coop_samples', 0))
-                # Downweight low-sample estimates
-                return val * (1.0 - np.exp(-max(0, n) / 5.0))
-            candidates = sorted(remaining_population, key=synergy_key, reverse=True)
-            for cand in candidates:
-                if is_competent(cand):
-                    selected_agents.append(cand)
-                    remaining_population.remove(cand)
-                    lb = agent_to_label.get(id(cand))
-                    if lb is not None:
-                        self._cluster_sampling_counts[partner_mode][int(lb)] += 1
-                        self._cluster_sampling_totals[partner_mode] += 1
-                    self._selection_sampling_counts[partner_mode]['synergy'] += 1
-                    self._selection_sampling_totals[partner_mode] += 1
-                    break
-
+        # Dedicated pressure slot (hard opponent)
         if include_pressure_slot and len(selected_agents) < n_opponents and remaining_population:
             # Prefer agents that recently beat the training agent
             def threat_key(a: PopulationAgent) -> float:
@@ -1694,11 +1649,9 @@ class PFSPPopulation:
         if hasattr(pop_agent, 'strategic_profile'):
             metadata_dict['strategic_profile'] = pop_agent.strategic_profile.to_dict()
 
-        # Persist exploitation and synergy stats
+        # Persist exploitation stats
         metadata_dict['exploitation_win_rate_ema'] = float(getattr(pop_agent, 'exploitation_win_rate_ema', 0.5))
         metadata_dict['exploitation_samples'] = int(getattr(pop_agent, 'exploitation_samples', 0))
-        metadata_dict['coop_synergy_ema'] = float(getattr(pop_agent, 'coop_synergy_ema', 0.5))
-        metadata_dict['coop_samples'] = int(getattr(pop_agent, 'coop_samples', 0))
 
         with open(metadata_path, 'w') as f:
             json.dump(metadata_dict, f, indent=2)
@@ -1730,8 +1683,6 @@ class PFSPPopulation:
                     # Extract persisted non-AgentMetadata fields to restore later
                     persisted_exploitation_ema = metadata_dict.get('exploitation_win_rate_ema', None)
                     persisted_exploitation_n = metadata_dict.get('exploitation_samples', None)
-                    persisted_coop_ema = metadata_dict.get('coop_synergy_ema', None)
-                    persisted_coop_n = metadata_dict.get('coop_samples', None)
 
                     # Extract strategic profile if available
                     strategic_profile_data = metadata_dict.pop('strategic_profile', None)
@@ -1749,6 +1700,7 @@ class PFSPPopulation:
                     # Remove non-AgentMetadata keys that we persist alongside metadata
                     metadata_dict.pop('exploitation_win_rate_ema', None)
                     metadata_dict.pop('exploitation_samples', None)
+                    # Remove deprecated synergy keys if present
                     metadata_dict.pop('coop_synergy_ema', None)
                     metadata_dict.pop('coop_samples', None)
                     # Remove legacy strategic mirrors at top level if present
@@ -1781,17 +1733,6 @@ class PFSPPopulation:
                     if exp_n is not None:
                         try:
                             pop_agent.exploitation_samples = int(exp_n)
-                        except (TypeError, ValueError):
-                            pass
-                    # Restore cooperative synergy stats if present
-                    if persisted_coop_ema is not None:
-                        try:
-                            pop_agent.coop_synergy_ema = float(persisted_coop_ema)
-                        except (TypeError, ValueError):
-                            pass
-                    if persisted_coop_n is not None:
-                        try:
-                            pop_agent.coop_samples = int(persisted_coop_n)
                         except (TypeError, ValueError):
                             pass
                     population.append(pop_agent)
@@ -1956,7 +1897,7 @@ class PFSPPopulation:
                 parts.append(f"{label}:{share:.1f}%")
             return "  🎯 Cluster sampling: " + ", ".join(parts) + "\n"
 
-        # Selection category sampling share (synergy/pressure/anchor/...)
+        # Selection category sampling share (pressure/anchor/rarest/hardest/weighted)
         def selection_sampling_str(mode: int) -> str:
             total = self._selection_sampling_totals[mode]
             if total == 0:
@@ -1989,8 +1930,7 @@ class PFSPPopulation:
             f"  🧩 Noise share: {jd_diversity.get('noise_share',0)*100:.1f}%  Largest cluster: {jd_diversity.get('largest_cluster_size',0)}\n"
             f"  σ (avg/p90): {jd_diversity.get('sigma_avg',0):.2f} / {jd_diversity.get('sigma_p90',0):.2f}\n\n"
         )
-        # JD: Coop synergy average and selection sampling shares
-        summary += f"  🤝 Coop synergy EMA (avg): {float(np.mean([getattr(a,'coop_synergy_ema',0.5) for a in self._get_population(PARTNER_BY_JD)]) if self._get_population(PARTNER_BY_JD) else 0.5):.3f}\n"
+        # JD: Selection sampling shares
         sel_jd = selection_sampling_str(PARTNER_BY_JD)
         if sel_jd:
             summary += sel_jd
@@ -2013,8 +1953,7 @@ class PFSPPopulation:
             f"  🧩 Noise share: {ca_diversity.get('noise_share',0)*100:.1f}%  Largest cluster: {ca_diversity.get('largest_cluster_size',0)}\n"
             f"  σ (avg/p90): {ca_diversity.get('sigma_avg',0):.2f} / {ca_diversity.get('sigma_p90',0):.2f}\n"
         )
-        # CA: Coop synergy average and selection sampling shares
-        summary += f"  🤝 Coop synergy EMA (avg): {float(np.mean([getattr(a,'coop_synergy_ema',0.5) for a in self._get_population(PARTNER_BY_CALLED_ACE)]) if self._get_population(PARTNER_BY_CALLED_ACE) else 0.5):.3f}\n"
+        # CA: Selection sampling shares
         sel_ca = selection_sampling_str(PARTNER_BY_CALLED_ACE)
         if sel_ca:
             summary += sel_ca

@@ -539,32 +539,6 @@ def train_pfsp(num_episodes: int = 500000,
             team_point_diff = 0
         team_point_differences.append(team_point_diff)
 
-        # --- Cooperative synergy updates (population opponents only) ---
-        # Only defined for non-leaster hands with picker/defender teams
-        if game.picker and not game.is_leaster:
-            # Determine if training seat is on picker team (picker or partner)
-            is_partner_seat_fn = getattr(game, 'is_partner_seat', None)
-            if callable(is_partner_seat_fn):
-                training_is_partner = bool(is_partner_seat_fn(training_position))
-            else:
-                training_is_partner = bool(getattr(game.players[training_position - 1], 'is_partner', False))
-
-            training_on_picker_team = (training_position == game.picker) or training_is_partner
-            training_team_won = (picker_team_points > defender_team_points) if training_on_picker_team else (defender_team_points > picker_team_points)
-
-            # Emit synergy updates to each population opponent
-            for pos in opponent_positions:
-                opp_agent = position_to_agent.get(pos)
-                if not opp_agent:
-                    continue
-                if callable(is_partner_seat_fn):
-                    opp_is_partner = bool(is_partner_seat_fn(pos))
-                else:
-                    opp_is_partner = bool(getattr(game.players[pos - 1], 'is_partner', False))
-                opp_on_picker_team = (pos == game.picker) or opp_is_partner
-                same_team = (training_on_picker_team == opp_on_picker_team)
-                opp_agent.record_team_interaction(same_team=same_team, team_result=1.0 if training_team_won else 0.0)
-
         # Final performance profiling per role for diversity/clustering
         for pos in opponent_positions:
             opp_agent = position_to_agent.get(pos)
