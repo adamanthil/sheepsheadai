@@ -21,7 +21,12 @@ from dataclasses import dataclass, field
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
-from pfsp import PFSPPopulation, create_initial_population_from_checkpoints, profile_pop_agent_action
+from pfsp import (
+    PFSPPopulation,
+    create_initial_population_from_checkpoints,
+    profile_pop_agent_action,
+    profile_trick_completion,
+)
 from training_utils import estimate_hand_strength_category
 from sheepshead import (
     Game,
@@ -229,7 +234,6 @@ def play_population_game(training_agent: PPOAgent,
                     pos_to_pop_agent_local = {}
                     for i, opp in enumerate(opponents[:len(opp_positions)]):
                         pos_to_pop_agent_local[opp_positions[i]] = opp
-                    from pfsp import profile_trick_completion
                     profile_trick_completion(game, pos_to_pop_agent_local)
 
                 valid_actions = player.get_valid_action_ids()
@@ -512,80 +516,19 @@ def train_pfsp(num_episodes: int = 500000,
         # Track how often the training agent is the picker (unconditional)
         picker_window.append(1 if training_data_single['was_picker'] else 0)
 
-        # ---------- OpenSkill rating update ----------
-        position_to_agent = {}
+        # ---------- OpenSkill rating update (centralized in PFSPPopulation) ----------
         opponent_positions = [pos for pos in range(1, 6) if pos != training_position]
+        position_to_agent = {}
         for idx, opp in enumerate(opponents[:len(opponent_positions)]):
             position_to_agent[opponent_positions[idx]] = opp
 
-        teams = []
-        positions_order = list(range(1, 6))
-        agents_in_order = []
-        for pos in positions_order:
-            if pos == training_position:
-                teams.append([training_rating])
-                agents_in_order.append(None)
-            else:
-                opp_agent = position_to_agent.get(pos)
-                teams.append([opp_agent.rating])
-                agents_in_order.append(opp_agent)
-
-        scores_for_rank = final_scores
-        score_rank_pairs = sorted(enumerate(scores_for_rank), key=lambda x: x[1], reverse=True)
-        ranks = [0]*len(scores_for_rank)
-        last_score = None
-        current_rank = 0
-        for i, (idx, sc) in enumerate(score_rank_pairs):
-            if last_score is None or sc != last_score:
-                current_rank = i
-            ranks[idx] = current_rank
-            last_score = sc
-
-        new_teams = rating_model.rate(teams, ranks=ranks)
-
-        # Compute rank positions (0 is best) for final scores to derive head-to-head result vs training
-        score_rank_pairs_local = sorted(enumerate(scores_for_rank), key=lambda x: x[1], reverse=True)
-        rank_by_index = [0]*len(scores_for_rank)
-        last_sc_local = None
-        current_rank_local = 0
-        for i, (idx2, sc2) in enumerate(score_rank_pairs_local):
-            if last_sc_local is None or sc2 != last_sc_local:
-                current_rank_local = i
-            rank_by_index[idx2] = current_rank_local
-            last_sc_local = sc2
-
-        training_rank = rank_by_index[training_position - 1]
-
-        for idx, pos in enumerate(positions_order):
-            if pos == training_position:
-                training_rating = new_teams[idx][0]
-            else:
-                opp_agent = position_to_agent.get(pos)
-                if opp_agent:
-                    opp_agent.update_rating(new_teams[idx][0])
-                    was_picker_role = (game.picker == pos)
-                    opp_agent.add_game_result(final_scores[pos-1], was_picker_role)
-                    # Rank-based result vs training agent: 1 if better rank, 0 if worse, 0.5 if tie
-                    opp_rank = rank_by_index[pos - 1]
-                    if opp_rank < training_rank:
-                        result_vs_training = 1.0
-                    elif opp_rank > training_rank:
-                        result_vs_training = 0.0
-                    else:
-                        result_vs_training = 0.5
-                    opp_agent.record_vs_training_outcome(result_vs_training)
-                    # Final performance profiling per role for diversity/clustering
-                    if game.is_leaster:
-                        opp_agent.update_strategic_profile_from_game({
-                            'final_score': final_scores[pos - 1],
-                            'role': 'leaster',
-                        })
-                    else:
-                        role_final = 'picker' if (game.picker == pos) else ('partner' if getattr(game, 'is_partner_seat', lambda _pos: False)(pos) or getattr(game.players[pos-1], 'is_partner', False) else 'defender')
-                        opp_agent.update_strategic_profile_from_game({
-                            'final_score': final_scores[pos - 1],
-                            'role': role_final,
-                        })
+        training_rating = population.update_ratings_with_training(
+            training_rating=training_rating,
+            final_scores=final_scores,
+            training_position=training_position,
+            opponents_by_position=position_to_agent,
+            picker_seat=game.picker,
+        )
 
         # Track team point differences
         if game.picker and not game.is_leaster:
@@ -621,6 +564,25 @@ def train_pfsp(num_episodes: int = 500000,
                 opp_on_picker_team = (pos == game.picker) or opp_is_partner
                 same_team = (training_on_picker_team == opp_on_picker_team)
                 opp_agent.record_team_interaction(same_team=same_team, team_result=1.0 if training_team_won else 0.0)
+
+        # Final performance profiling per role for diversity/clustering
+        for pos in opponent_positions:
+            opp_agent = position_to_agent.get(pos)
+            if opp_agent:
+                if game.is_leaster:
+                    opp_agent.update_strategic_profile_from_game({
+                        'final_score': final_scores[pos - 1],
+                        'role': 'leaster',
+                    })
+                else:
+                    role_final = 'picker' if (game.picker == pos) else (
+                        'partner' if getattr(game, 'is_partner_seat', lambda _pos: False)(pos) or getattr(game.players[pos-1], 'is_partner', False)
+                        else 'defender'
+                    )
+                    opp_agent.update_strategic_profile_from_game({
+                        'final_score': final_scores[pos - 1],
+                        'role': role_final,
+                    })
 
         # Track other statistics (similar to train_ppo.py)
         is_leaster_ep = 1 if game.is_leaster else 0

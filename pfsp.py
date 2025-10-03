@@ -1355,6 +1355,102 @@ class PFSPPopulation:
             'oldest_agent_days': max(ages) if ages else 0.0
         }
 
+    def renormalize_all_mus(self, training_rating, max_abs_mu: float = 350.0) -> tuple[float, float]:
+        """Clamp all rating μ magnitudes to a ceiling to avoid numerical overflow.
+
+        Returns (extreme_mu_before, shift_applied).
+        """
+        all_ratings = [training_rating] + [ag.rating for ag in self.jd_population] + [ag.rating for ag in self.called_ace_population]
+        extreme_mu = max(abs(r.mu) for r in all_ratings) if all_ratings else 0.0
+        shift = 0.0
+        if extreme_mu > max_abs_mu:
+            shift = float(extreme_mu - max_abs_mu)
+            for r in all_ratings:
+                # Reduce magnitude while preserving sign
+                r.mu -= np.sign(r.mu) * shift
+        return float(extreme_mu), float(shift)
+
+    @staticmethod
+    def compute_ranks_from_scores(scores: List[float]) -> List[int]:
+        """Compute OpenSkill ranks from score list (higher score ⇒ better rank).
+
+        Ties receive the same rank index as implemented in existing logic.
+        """
+        score_rank_pairs = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+        ranks = [0] * len(scores)
+        current_rank = 0
+        last_score = None
+        for i, (idx, sc) in enumerate(score_rank_pairs):
+            if last_score is None or sc != last_score:
+                current_rank = i
+            ranks[idx] = current_rank
+            last_score = sc
+        return ranks
+
+    def update_ratings_with_training(self,
+                                     training_rating,
+                                     final_scores: List[float],
+                                     training_position: int,
+                                     opponents_by_position: Dict[int, PopulationAgent],
+                                     picker_seat: Optional[int]) -> object:
+        """Update ratings for a single 5-seat game that includes the training agent.
+
+        - Uses this population's rating model
+        - Updates population opponents' ratings and game stats
+        - Records decayed exploitation results vs the training agent
+        - Returns the updated training agent rating object
+        """
+        if not final_scores or len(final_scores) != 5:
+            return training_rating
+
+        positions_order = [1, 2, 3, 4, 5]
+        # Build teams list: training agent is a single-member team; each population opponent as its own team
+        teams = []
+        for pos in positions_order:
+            if pos == training_position:
+                teams.append([training_rating])
+            else:
+                opp = opponents_by_position.get(pos)
+                # In rare cases a seat may be unassigned; skip rating update gracefully
+                teams.append([opp.rating] if opp else [PlackettLuce().rating()])
+
+        ranks = PFSPPopulation.compute_ranks_from_scores(final_scores)
+
+        try:
+            new_teams = self.rating_model.rate(teams, ranks=ranks)
+        except ValueError as err:
+            logging.warning("Failed to update ratings (train match)", extra={
+                "error": str(err),
+                "teams": len(teams),
+                "ranks_len": len(ranks)
+            })
+            return training_rating
+
+        # Apply updated ratings and exploitation results
+        training_rank = ranks[training_position - 1]
+        for idx, pos in enumerate(positions_order):
+            if pos == training_position:
+                training_rating = new_teams[idx][0]
+            else:
+                opp_agent = opponents_by_position.get(pos)
+                if not opp_agent:
+                    continue
+                opp_agent.update_rating(new_teams[idx][0])
+                was_picker = (picker_seat == pos)
+                opp_agent.add_game_result(final_scores[pos - 1], was_picker)
+
+                # Rank-based exploitation outcome vs training agent
+                opp_rank = ranks[pos - 1]
+                if opp_rank < training_rank:
+                    result_vs_training = 1.0
+                elif opp_rank > training_rank:
+                    result_vs_training = 0.0
+                else:
+                    result_vs_training = 0.5
+                opp_agent.record_vs_training_outcome(result_vs_training)
+
+        return training_rating
+
     def update_ratings(self,
                       game_results: List[Tuple[PopulationAgent, int, float, int]],
                       partner_mode: int):
@@ -1371,20 +1467,9 @@ class PFSPPopulation:
         # Create teams (each player is their own team)
         teams = [[agent.rating] for agent, _, _, _ in game_results]
 
-        # Convert scores to rankings (lower rank = better performance)
+        # Convert scores to OpenSkill ranks (lower rank index = better performance)
         scores = [result[2] for result in game_results]
-
-        # Sort by score (descending) and assign ranks
-        score_rank_pairs = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-        ranks = [0] * len(scores)
-        current_rank = 0
-        last_score = None
-
-        for i, (original_idx, score) in enumerate(score_rank_pairs):
-            if last_score is None or score != last_score:
-                current_rank = i
-            ranks[original_idx] = current_rank
-            last_score = score
+        ranks = PFSPPopulation.compute_ranks_from_scores(scores)
 
         # Update ratings using OpenSkill
         try:
