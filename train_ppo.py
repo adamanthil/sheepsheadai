@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 
 from ppo import PPOAgent
-from sheepshead import Game, ACTIONS, STATE_SIZE, ACTION_LOOKUP, ACTION_IDS, TRUMP, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead import Game, ACTIONS, ACTION_LOOKUP, ACTION_IDS, TRUMP, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from training_utils import (
     process_episode_rewards,
     get_partner_selection_mode,
@@ -43,7 +43,8 @@ def analyze_strategic_decisions(agent, num_samples=100):
         initial_player = game.players[0]
         hand_strength = sum(3 if c[0] == 'Q' else 2 if c[0] == 'J' else 1 if c in TRUMP else 0 for c in initial_player.hand)
 
-        state = torch.FloatTensor(initial_player.get_state_vector()).unsqueeze(0)
+        state = initial_player.get_state_dict()
+        state = agent.state_encoder.encode_batch([state], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         # Build action mask for the current decision so probabilities reflect only valid actions
         initial_actions = initial_player.get_valid_action_ids()
         action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
@@ -62,7 +63,8 @@ def analyze_strategic_decisions(agent, num_samples=100):
                 actions = player.get_valid_action_ids()
 
                 if actions:
-                    state = torch.FloatTensor(player.get_state_vector()).unsqueeze(0)
+                    sdict = player.get_state_dict()
+                    state = agent.state_encoder.encode_batch([sdict], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
                     action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
                     for valid_action in actions:
                         action_mask[valid_action - 1] = True
@@ -132,7 +134,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
     print("="*60)
 
     # Create agent with optimized hyperparameters
-    agent = PPOAgent(STATE_SIZE, len(ACTIONS),
+    agent = PPOAgent(len(ACTIONS),
                     lr_actor=5.0e-5,
                     lr_critic=1.5e-4,
                     activation=activation)
@@ -219,7 +221,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                 valid_actions = player.get_valid_action_ids()
 
                 while valid_actions:
-                    state = player.get_state_vector()
+                    state = player.get_state_dict()
                     action, log_prob, value = agent.act(state, valid_actions, player.position)
 
                     transition = {
@@ -265,12 +267,12 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         # ------------------------------------------------
                         for seat in game.players:
                             # Update online recurrent state
-                            agent.observe(seat.get_last_trick_state_vector(), player_id=seat.position)
+                            agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
                             # Store for training-time unroll
                             episode_transitions[seat.position].append({
                                 'kind': 'obs',
                                 'player': seat,
-                                'state': seat.get_state_vector(),
+                                'state': seat.get_state_dict(),
                             })
 
                     valid_actions = player.get_valid_action_ids()

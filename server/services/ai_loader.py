@@ -5,7 +5,7 @@ import logging
 from typing import Optional, Sequence
 
 from ppo import PPOAgent
-from sheepshead import STATE_SIZE, ACTION_IDS
+from sheepshead import ACTION_IDS
 
 
 ACTION_SIZE = len(ACTION_IDS)
@@ -18,7 +18,7 @@ def load_agent(global_model_path: Optional[str] = None, candidate_paths: Optiona
     try each of `candidate_paths` in order. Returns None if loading fails.
     """
     try:
-        agent = PPOAgent(state_size=STATE_SIZE, action_size=ACTION_SIZE)
+        agent = PPOAgent(action_size=ACTION_SIZE)
     except Exception:
         logging.exception("failed to construct PPOAgent")
         return None

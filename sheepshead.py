@@ -67,15 +67,6 @@ DECK_IDS = {k: v + 1 for v, k in enumerate(DECK)}
 TRUMP_POWER = {k: len(TRUMP) - v for v, k in enumerate(TRUMP)}
 FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 
-# Observation layout:
-#  Header (16)                        : partner_mode, player_pos, last_passed, picker, partner, alone, called_AC, called_AS, called_AH, called_10C, called_10S, called_10H, is_called_under, is_leaster, play_started, current_trick
-#  Hand                               : 32 one-hot
-#  Blind (picker only, else zeros)    : 32 one-hot
-#  Bury  (picker only, else zeros)    : 32 one-hot
-#  Current trick (seat-attributed)    : 5 × (34 card one-hot + 2 role bits) = 180
-#  Total                              : 16 + 32 + 32 + 32 + 180 = 292
-STATE_SIZE = 292
-
 
 # Human-readable name for partner-selection modes
 def get_partner_mode_name(partner_mode: int) -> str:
@@ -160,113 +151,6 @@ def get_trick_points(trick):
     for card in trick:
         points += get_card_points(card)
     return points
-
-def get_deck_vector(cards):
-    """Returns a vector of 32 booleans in DECK order
-    indicating whether the passed list contains each card."""
-
-    vector = np.zeros(len(DECK), dtype=np.uint8)
-    for card in cards:
-        vector[DECK_IDS[card] - 1] = 1
-
-    return vector
-
-def get_cards_from_vector(vector):
-    """Reverses deck vector to retrieve list of human readable cards."""
-    return [DECK[i] for i, exists in enumerate(vector) if exists]
-
-
-def get_state_str(state):
-    """Return a human readable state string.
-    Values in order:
-        [0] partner selection mode
-        [1] player position
-        [2] last position to pass on picking blind (or 6 if leaster mode)
-        [3] position of picker
-        [4] position of partner (if known)
-        [5] alone called (bool)
-        [6-11] called card one-hot (AC, AS, AH, 10C, 10S, 10H)
-        [12] is_called_under flag
-        [13] is_leaster flag
-        [14] play_started flag
-        [15] current trick
-        [16-47]     boolean values for cards in current hand in DECK order
-                (e.g. if hand has QC, index 6 will have value 1 otherwise 0)
-        [48-79]    boolean values for cards in blind (if known)
-        [80-111] boolean values for cards buried (if known)
-        [112-] one-hot vectors for cards played this trick
-    """
-    out = ""
-    out += f"Player #: {int(state[1])}\n"
-    if int(state[0]) == PARTNER_BY_CALLED_ACE:
-        called_idx = state[6:12].tolist() if hasattr(state, 'tolist') else state[6:12]
-        called_map = CALLED_PARTNER_CARDS
-        called_card = None
-        for idx, v in enumerate(called_idx):
-            if int(v):
-                called_card = called_map[idx]
-                break
-
-        if called_card:
-            out_str = f"Called card: {called_card}"
-            if int(state[12]):
-                out_str += " (under)"
-            out += out_str + "\n"
-
-    # Check if this is leaster mode
-    is_leaster = int(state[13]) == 1
-
-    if (state[14]):
-        if is_leaster:
-            out += "Game Phase: Play (Leaster)\n"
-        else:
-            out += "Game Phase: Play\n"
-            out += f"Picker: {int(state[3])}\n"
-            out += f"Partner: {int(state[4])}\n"
-            out += f"Alone: {int(state[5])}\n"
-
-        state_start = 112  # 16 header + 96
-        tricks = ""
-        trick = ""
-        trick_number = int(state[15]) + 1
-        for i in range(30):
-            if i % 5 == 0 and i != 0:
-                tricks += f"Trick {trick_number}: {trick}\n"
-                trick = ""
-                trick_number -= 1
-                if trick_number < 1:
-                    break
-
-            card_index = state_start + i
-            card_id = int(state[card_index])
-            if card_id == UNDER_CARD_ID:
-                trick += "?? "
-            elif card_id:
-                trick += f"{DECK[card_id - 1]} "
-            else:
-                trick += "__ "
-
-
-        # Include first trick if needed (end of the loop)
-        if trick:
-            tricks += f"Trick 1: {trick}\n"
-
-        out += tricks
-
-    else:
-        if is_leaster:
-            out += "Game Phase: Leaster (all players passed)\n"
-        else:
-            out += "Game Phase: Picking\n"
-        blind = " ".join(get_cards_from_vector(state[48:80]))
-        if blind:
-            out += f"Blind: {blind}\n"
-
-    hand = " ".join(get_cards_from_vector(state[16:48]))
-
-    out += f"Hand: {hand}\n"
-
-    return out
 
 
 def colorize_card(card):
@@ -577,138 +461,88 @@ class Player:
         # Called-Ace variant
         return self.game.called_card in self.hand if self.game.called_card else False
 
-    def get_state_vector(self, trick_index=None):
-        """Return the integer observation vector for the *acting* player.
+    def get_state_dict(self, trick_index=None):
+        """Return a structured observation dict for the acting player.
 
-        Layout (indices in ascending order):
+        All values are integers (np.uint8) or small fixed-size integer arrays.
+        Card ids: 0 = PAD/none, 1..32 = real cards, 33 = UNDER.
 
-        Header (16 values)
-        ----------------
-        [0]   partner selection mode           (0 = JD, 1 = Called Ace)
-        [1]   player position                  (1-5)
-        [2]   last position to *pass* during blind picking (5 ⇒ all passed → leaster)
-        [3]   picker position (0 if not yet picked)
-        [4]   partner position *if known* (0 if unknown)
-        [5]   alone called                     (0/1)
-        [6]   called_AC (0/1)
-        [7]   called_AS (0/1)
-        [8]   called_AH (0/1)
-        [9]   called_10C (0/1)
-        [10]  called_10S (0/1)
-        [11]  called_10H (0/1)
-        [12]  is_called_under               (0/1)
-        [13]  is_leaster flag               (0/1)
-        [14]  play_started flag             (0/1)
-        [15]  current trick index           (0-5)
-
-        Private zones (boolean one-hots)
-        ---------------------------------
-        [16-47]   hand cards   — 32 bits in DECK order
-        [48-79]   blind cards  — 32 bits (picker only, else zeros)
-        [80-111]  bury cards   — 32 bits (picker only, else zeros)
-
-        Current trick block  (5 seats × 36 = 180 values)
-        -------------------------------------------------
-        For each *relative* seat starting with self (index 0) and proceeding
-        clockwise (LHO, partner seat, RHO, across):
-
-            34-way one-hot for the card that seat has played this trick (index 33 = UNDER)
-                • index 0  ⇒ "empty"  (seat has not yet played)
-                • index 1-32 map to DECK order
-
-            2 role flags appended:
-                • is_picker         (0/1)
-                • is_known_partner  (0/1)
-
-        This yields 5 × (34 + 2) = 180 elements.
-
-        Total length = 16 + 32 + 32 + 32 + 180 = 292 (see STATE_SIZE).
+        Relative seats are with respect to this player: 1=self, 2=LHO, 3=+2, 4=+3, 5=+4.
+        Also includes absolute picker position (1..5, 0 if unknown) for pick-strength context.
         """
 
-        # Partner-selection mode flag: 0 = JD, 1 = Called Ace
-        state = [self.game.partner_mode_flag]
-        state.append(self.position)
-        state.append(self.last_passed) # 5 if leaster mode. Everyone passed.
-        state.append(self.picker)
-        partner = self.partner if self.partner else (1 if self.is_secret_partner else 0)
-        state.append(partner)
-        state.append(self.alone_called)
+        def rel(seat: int | None) -> int:
+            if not seat:
+                return 0
+            return ((seat - self.position) % 5) + 1
 
-        # Called card one-hot vector
-        called_card_one_hot = [0] * 6
-        if self.game.called_card:
-            if self.game.called_card == "AC":
-                called_card_one_hot[0] = 1
-            elif self.game.called_card == "AS":
-                called_card_one_hot[1] = 1
-            elif self.game.called_card == "AH":
-                called_card_one_hot[2] = 1
-            elif self.game.called_card == "10C":
-                called_card_one_hot[3] = 1
-            elif self.game.called_card == "10S":
-                called_card_one_hot[4] = 1
-            elif self.game.called_card == "10H":
-                called_card_one_hot[5] = 1
-        state.extend(called_card_one_hot)
+        def to_ids(cards, length):
+            ids = [DECK_IDS[c] for c in cards]
+            ids += [0] * (length - len(ids))
+            return np.array(ids[:length], dtype=np.uint8)
 
-        # Under-call flag
-        state.append(1 if getattr(self.game, "is_called_under", False) else 0)
-
-        # is_leaster flag
-        state.append(1 if self.game.is_leaster else 0)
-
-        # play_started flag
-        state.append(1 if self.game.play_started else 0)
-
-        # current trick index (allow override for last-trick observations)
+        # Header scalars
+        partner_mode = np.uint8(self.game.partner_mode_flag)
+        is_leaster = np.uint8(1 if self.game.is_leaster else 0)
+        play_started = np.uint8(1 if self.game.play_started else 0)
         cur_trick_idx = self.game.current_trick if trick_index is None else trick_index
-        state.append(cur_trick_idx)
+        current_trick = np.uint8(cur_trick_idx)
+        alone_called = np.uint8(1 if self.game.alone_called else 0)
+        called_card_id = np.uint8(DECK_IDS[self.game.called_card]) if self.game.called_card else np.uint8(0)
+        called_under = np.uint8(1 if getattr(self.game, 'is_called_under', False) else 0)
+        picker_rel = np.uint8(rel(self.game.picker))
+        partner_rel = np.uint8(rel(self.game.partner) if self.game.partner else 0)
+        leader_rel = np.uint8(rel(self.game.leader) if self.game.play_started else 0)
+        picker_position = np.uint8(self.game.picker if self.game.picker else 0)
 
-        # One-hot vectors for hand / blind / bury
-        state.extend(get_deck_vector(self.hand))
-        state.extend(get_deck_vector(self.blind if self.is_picker else []))
-        state.extend(get_deck_vector(self.bury if self.is_picker else []))
+        # Sets (fixed sizes)
+        hand_ids = to_ids(self.hand, 8)
+        blind_ids = to_ids(self.blind if self.is_picker else [], 2)
+        bury_ids = to_ids(self.bury if self.is_picker else [], 2)
 
-        # --- Current trick seat-attributed one-hot + role bits ---
-        # Helper to build 34-length one-hot for a card id (0 means empty, 33 = UNDER)
-        def one_hot_34(card_id):
-            vec = [0] * 34
-            if 0 <= card_id <= UNDER_CARD_ID:
-                vec[card_id] = 1
-            return vec
-
-        # Build for self (rel_seat = 0) then clockwise order
-        trick = self.game.history[cur_trick_idx] if cur_trick_idx < len(self.game.history) else ["" for _ in range(5)]
-
-        for rel_seat in range(5):
-            abs_seat = ((self.position + rel_seat - 1) % 5) + 1  # 1-5
+        # Trick arrays in relative seat order 1..5
+        idx = cur_trick_idx
+        trick = self.game.history[idx] if idx < len(self.game.history) else ["" for _ in range(5)]
+        trick_card_ids = []
+        trick_is_picker = []
+        trick_is_partner_known = []
+        for r in range(1, 6):
+            abs_seat = ((self.position + r - 2) % 5) + 1
             card_str = trick[abs_seat - 1]
             if card_str == UNDER_TOKEN:
-                card_id = UNDER_CARD_ID
+                cid = UNDER_CARD_ID
+            elif card_str:
+                cid = DECK_IDS[card_str]
             else:
-                card_id = DECK_IDS.get(card_str, 0) if card_str else 0
+                cid = 0
+            trick_card_ids.append(cid)
+            trick_is_picker.append(1 if abs_seat == self.game.picker else 0)
+            trick_is_partner_known.append(1 if self.game.partner and abs_seat == self.game.partner else 0)
 
-            # Card one-hot
-            state.extend(one_hot_34(card_id))
+        obs = {
+            'partner_mode': partner_mode,
+            'is_leaster': is_leaster,
+            'play_started': play_started,
+            'current_trick': current_trick,
+            'alone_called': alone_called,
+            'called_card_id': called_card_id,
+            'called_under': called_under,
+            'picker_rel': picker_rel,
+            'partner_rel': partner_rel,
+            'leader_rel': leader_rel,
+            'picker_position': picker_position,
+            'hand_ids': np.array(hand_ids, dtype=np.uint8),
+            'blind_ids': np.array(blind_ids, dtype=np.uint8),
+            'bury_ids': np.array(bury_ids, dtype=np.uint8),
+            'trick_card_ids': np.array(trick_card_ids, dtype=np.uint8),
+            'trick_is_picker': np.array(trick_is_picker, dtype=np.uint8),
+            'trick_is_partner_known': np.array(trick_is_partner_known, dtype=np.uint8),
+        }
+        return obs
 
-            # Role bits
-            is_picker = 1 if abs_seat == self.game.picker else 0
-            is_partner_known = 1 if self.game.partner and abs_seat == self.game.partner else 0
-            state.append(is_picker)
-            state.append(is_partner_known)
-
-
-
-        return np.array(state, dtype=np.uint8)
-
-    def get_last_trick_state_vector(self):
-        """Return the observation vector for the just-completed trick.
-
-        Uses the same logic as `get_state_vector`, but forces the trick index to
-        the last completed trick. If no trick has completed yet, falls back to 0.
-        """
+    def get_last_trick_state_dict(self):
         last_idx = max(0, self.game.current_trick - 1)
-        return self.get_state_vector(trick_index=last_idx)
+        return self.get_state_dict(trick_index=last_idx)
 
     def get_valid_actions(self):
         """Get set of valid actions."""
@@ -793,7 +627,7 @@ class Player:
         if action_id not in self.get_valid_action_ids():
             return False
 
-        self.start_states.append(self.get_state_vector())
+        self.start_states.append(self.get_state_dict())
         self.actions.append(action_id)
 
         action = ACTION_LOOKUP[action_id]

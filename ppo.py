@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import time
 from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS
+from state_encoder import StateEncoder
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -86,7 +87,7 @@ class SharedRecurrentBackbone(nn.Module):
         if state.dim() == 1:
             state = state.unsqueeze(0)
 
-        # Encoder
+        # Encoder (expects width=state_size; we set state_size=256 for pre-encoded features)
         x = self.activation(self.enc_proj(state))
         x = self.enc_block1(x)
         x = self.enc_block2(x)
@@ -119,7 +120,8 @@ class SharedRecurrentBackbone(nn.Module):
         feat_bt : Tensor (B, T, 256)
         (optionally) (h, c) final LSTM state
         """
-        # Encoder over (B, T, state_size)
+        # Encoder over (B, T, state_size). If inputs are pre-encoded features of width 256,
+        # enc_proj will learn a light adapter.
         x = self.activation(self.enc_proj(states_bt))
         x = self.enc_block1(x)
         x = self.enc_block2(x)
@@ -374,8 +376,9 @@ class RecurrentCriticNetwork(nn.Module):
         return win_prob, expected_final
 
 class PPOAgent:
-    def __init__(self, state_size, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='swish'):
-        self.state_size = state_size
+    def __init__(self, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='swish'):
+        # Dict-based encoder → fixed 256-d features
+        self.state_size = 256
         self.action_size = action_size
 
         # --------------------------------------------------
@@ -404,7 +407,8 @@ class PPOAgent:
         self.pass_action_index = ACTION_IDS["PASS"] - 1
 
         # Shared backbone and networks
-        self.backbone = SharedRecurrentBackbone(state_size, activation=activation).to(device)
+        self.state_encoder = StateEncoder().to(device)
+        self.backbone = SharedRecurrentBackbone(self.state_size, activation=activation).to(device)
         self.actor = MultiHeadRecurrentActorNetwork(
             self.backbone,
             action_size,
@@ -414,8 +418,9 @@ class PPOAgent:
 
         self.critic = RecurrentCriticNetwork(self.backbone, activation=activation).to(device)
 
-        # Optimizers (single optimizer owns backbone via actor; critic excludes backbone)
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=lr_actor)
+        # Optimizers (actor owns backbone; include state encoder params)
+        actor_params = list(self.actor.parameters()) + list(self.state_encoder.parameters())
+        self.actor_optimizer = optim.Adam(actor_params, lr=lr_actor)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
 
         # Hyperparameters
@@ -503,12 +508,13 @@ class PPOAgent:
             self.actor.reset_hidden()
 
     def get_action_probs_with_logits(self, state, valid_actions, player_id=None):
-        """Return post-mixture action probabilities and pre-mix logits for a single state.
+        """Return post-mixture action probabilities and pre-mix logits for a single dict state.
 
         Applies partner CALL-uniform mixture if enabled. Keeps PPO on-policy by
         exposing the same transformed distribution that sampling uses.
         """
-        state_t = torch.FloatTensor(state).unsqueeze(0).to(device)
+        # Encode dict state → (1, 256) features
+        state_t = self.state_encoder.encode_batch([state], device=device)
         action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
 
         with torch.no_grad():
@@ -548,7 +554,7 @@ class PPOAgent:
             if player_id is not None:
                 prev_hidden = self.actor._hidden_states.get(player_id, None)
             action_probs, _ = self.get_action_probs_with_logits(state, valid_actions, player_id)
-            state_t = torch.FloatTensor(state).unsqueeze(0).to(device)
+            state_t = self.state_encoder.encode_batch([state], device=device)
             value = self.critic(state_t, hidden_in=prev_hidden)
 
         # Create distribution for consistent log probability calculation
@@ -575,8 +581,8 @@ class PPOAgent:
 
         Parameters
         ----------
-        state : numpy array or Tensor
-            Current observation for the player.
+        state : dict
+            Structured observation for the player.
         player_id : int | None
             Identifier to associate a persistent hidden state (1-5 in game).
         valid_actions : set[int] | None
@@ -589,7 +595,7 @@ class PPOAgent:
         else:
             action_mask = torch.ones(self.action_size, dtype=torch.bool)
 
-        state_t = torch.FloatTensor(state).unsqueeze(0).to(device)
+        state_t = self.state_encoder.encode_batch([state], device=device)
         action_mask_t = action_mask.unsqueeze(0).to(device)
 
         with torch.no_grad():
@@ -670,7 +676,8 @@ class PPOAgent:
     # Internal helpers for PPO update
     # ------------------------------------------------------------------
     def _prepare_training_views(self):
-        states = [torch.FloatTensor(e['state']).to(device) for e in self.events]
+        # Keep raw states (dicts) to encode inside the update for gradient flow
+        states = [e['state'] for e in self.events]
         masks_t = [
             (e['mask'].to(device) if isinstance(e['mask'], torch.Tensor) else torch.as_tensor(e['mask'], dtype=torch.bool, device=device))
             for e in self.events
@@ -728,7 +735,7 @@ class PPOAgent:
 
     def _build_minibatch_tensors(self, batch, states, masks_t, kinds, pids):
         lengths = []
-        states_list = []
+        states_seqs = []
         masks_list = []
         is_action_list = []
         actions_list = []
@@ -741,7 +748,7 @@ class PPOAgent:
         for pid, seg_start, seg_end in batch:
             ev_range = list(range(seg_start, seg_end + 1))
             lengths.append(len(ev_range))
-            states_list.append(torch.stack([states[i] for i in ev_range], dim=0))
+            states_seqs.append([states[i] for i in ev_range])
             masks_list.append(torch.stack([masks_t[i] for i in ev_range], dim=0))
             is_act = torch.tensor(
                 [1 if (kinds[i] == 'action' and pids[i] == pid) else 0 for i in ev_range],
@@ -776,7 +783,6 @@ class PPOAgent:
             win_list_all.append(torch.stack(win_bt, dim=0))
             final_ret_list_all.append(torch.stack(final_ret_bt, dim=0))
 
-        states_bt, _ = self._pad_to_bt(states_list, lengths, 0.0)
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
         actions_bt, _ = self._pad_to_bt(actions_list, lengths, -1)
@@ -787,13 +793,15 @@ class PPOAgent:
         final_ret_bt, _ = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
-        return states_bt, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt
+        return states_seqs, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt
 
-    def _forward_vectorized(self, states_bt, masks_bt, lengths_bt):
-        feat_bt = self.backbone.forward_sequence(states_bt, lengths_bt)
+    def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
+        # states_input is a list of sequences (new dict API). Encode to (B,T,256), then run shared backbone.
+        encoded_bt = self.state_encoder.encode_sequences(states_input, device=device)
+        feat_bt = self.backbone.forward_sequence(encoded_bt, lengths_bt)
         actor_feat_bt = self.actor.actor_adapter(feat_bt)
-        B, T = states_bt.size(0), states_bt.size(1)
-        logits_bt = torch.full((B, T, self.action_size), -1e8, device=states_bt.device)
+        B, T = masks_bt.size(0), masks_bt.size(1)
+        logits_bt = torch.full((B, T, self.action_size), -1e8, device=feat_bt.device)
         # Apply per-head temperatures (divide logits by τ)
         logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt) / max(self.actor.temperature_pick, 1e-6)
         logits_bt[:, :, self.action_groups['partner']] = self.actor.partner_head(actor_feat_bt) / max(self.actor.temperature_partner, 1e-6)
@@ -1146,6 +1154,7 @@ class PPOAgent:
 
                 t_step = time.time()
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(self.state_encoder.parameters(), self.max_grad_norm)
                 torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
@@ -1199,6 +1208,7 @@ class PPOAgent:
     def save(self, filepath):
         """Save model parameters"""
         torch.save({
+            'state_encoder_state_dict': self.state_encoder.state_dict(),
             'actor_state_dict': self.actor.state_dict(),
             'critic_state_dict': self.critic.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
@@ -1217,16 +1227,11 @@ class PPOAgent:
             pass False to skip optimizer loading entirely.
         """
         checkpoint = torch.load(filepath, map_location=device)
+
+        self.state_encoder.load_state_dict(checkpoint['state_encoder_state_dict'])
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        # Allow missing keys for new auxiliary heads on critic
-        self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
+        self.critic.load_state_dict(checkpoint['critic_state_dict'])
 
         if load_optimizers:
-            # Load actor optimizer strictly (actor param groups unchanged)
             self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-            # Load critic optimizer best-effort (param groups may differ due to new heads)
-            try:
-                self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
-            except (ValueError, KeyError, RuntimeError):
-                # Keep freshly initialized critic optimizer on mismatch
-                pass
+            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])

@@ -12,7 +12,6 @@ from sheepshead import (
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     get_card_suit,
-    get_cards_from_vector,
 )
 
 
@@ -103,12 +102,10 @@ def update_intermediate_rewards_for_action(
     Uses game engine state to detect leads and trick phase; no counter needed.
     """
     action_name = ACTIONS[action - 1]
-    state_vec = transition.get('state')
 
     # Hand-conditioned PICK/PASS shaping (small human-like nudges)
     if action_name in ("PICK", "PASS"):
-        hand_cards = get_cards_from_vector(state_vec[16:48])
-        score = estimate_hand_strength_score(hand_cards)
+        score = estimate_hand_strength_score(player.hand)
         if score <= 4:
             pick_bonus, pass_bonus = -0.15, +0.15
         elif score <= 6:
@@ -122,8 +119,7 @@ def update_intermediate_rewards_for_action(
 
     # ALONE shaping: discourage going alone with weak hands
     elif action_name == "ALONE":
-        hand_cards = get_cards_from_vector(state_vec[16:48])
-        score = estimate_hand_strength_score(hand_cards)
+        score = estimate_hand_strength_score(player.hand)
         if score <= 8:
             transition['intermediate_reward'] += -0.2
         transition['intermediate_reward'] *= partner_weight
@@ -152,7 +148,6 @@ def update_intermediate_rewards_for_action(
 
     elif "PLAY" in action_name:
         is_lead = (game.cards_played == 0) and (game.leader == player.position)
-        trick_index = state_vec[15]
         if is_lead:
             valid_actions = transition.get('valid_actions', set())
             allowed_play_cards = [ACTIONS[id - 1][5:] for id in valid_actions]
@@ -177,7 +172,7 @@ def update_intermediate_rewards_for_action(
                 and game.called_suit == get_card_suit(card)
             ):
                 # Encourage defenders to lead called suit (early)
-                transition['intermediate_reward'] += 0.12 - (0.02 * trick_index)
+                transition['intermediate_reward'] += 0.12 - (0.02 * game.current_trick)
             elif (
                 not game.is_leaster
                 and not player.is_picker

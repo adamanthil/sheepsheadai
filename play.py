@@ -4,7 +4,7 @@ import torch
 from argparse import ArgumentParser
 
 from ppo import PPOAgent
-from sheepshead import Game, Player, ACTIONS, STATE_SIZE, ACTION_IDS, PLAY_ACTIONS, colorize_card, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
+from sheepshead import Game, Player, ACTIONS, ACTION_IDS, PLAY_ACTIONS, colorize_card, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
 
 
 parser = ArgumentParser(
@@ -58,7 +58,7 @@ def play(agent):
 
             # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
             while valid_actions:
-                state = player.get_state_vector()
+                state = player.get_state_dict()
                 action, _, _ = agent.act(state, valid_actions, player.position, deterministic=True)
                 action_str = ACTIONS[action - 1]
 
@@ -83,7 +83,7 @@ def play(agent):
                 # At end of trick, propagate observation frames so the LSTM sees the completed trick
                 if player.game.was_trick_just_completed:
                     for seat in player.game.players:
-                        agent.observe(seat.get_last_trick_state_vector(), player_id=seat.position)
+                        agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
                 # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
 
     print(f"{'-'*40}")
@@ -101,11 +101,11 @@ def pick_evaluator(agent):
         player = Player(game, position, hand)
         game.last_passed = position - 1
 
-        state = player.get_state_vector()
+        state = player.get_state_dict()
         valid_actions = player.get_valid_action_ids()
 
         # Get action probabilities from PPO actor network
-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        state_tensor = agent.state_encoder.encode_batch([state], device=torch.device('cpu'))
         action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
         for action in valid_actions:
             action_mask[action - 1] = True
@@ -130,11 +130,11 @@ def pick_evaluator(agent):
 
 if __name__ == "__main__":
 
-    agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation='swish')
+    agent = PPOAgent(len(ACTIONS), activation='swish')
     agent.load(args.model, load_optimizers=False)
     param_count = sum(p.numel() for p in agent.actor.parameters())
     print(f"Loaded model: {args.model} with {param_count:,} parameters")
-    print(f"State size: {STATE_SIZE}")
+    # State now encoded via dict encoder (256-d internal)
     print(f"Action size: {len(ACTIONS)}")
     print(instructions)
 

@@ -33,7 +33,7 @@ def set_seed(seed: int) -> None:
 
 
 def build_player_state_for_analyze(player: Player) -> Dict[str, any]:
-    """Build the per-seat state payload: vector and a readable view (simplified for analyze)."""
+    """Build the per-seat state payload: dict state and a readable view (simplified for analyze)."""
     from server.main import build_player_state
     return build_player_state(player)
 
@@ -111,11 +111,11 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             break
 
         # Get state and valid actions
-        state = actor_player.get_state_vector()
+        state = actor_player.get_state_dict()
         valid_actions = actor_player.get_valid_action_ids()
 
-        # Get action mask and compute logits + probabilities
-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        # Encode dict state to 256-d features for critic/auxiliary
+        state_tensor = agent.state_encoder.encode_batch([state], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
         with torch.no_grad():
             # Use the actor's previous hidden state so the critic's value reflects recurrent context
@@ -208,7 +208,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         if trick_completed:
             # Propagate an observation for the just-completed trick to all seats
             for seat in game.players:
-                agent.observe(seat.get_last_trick_state_vector(), player_id=seat.position)
+                agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
 
         step_index += 1
 

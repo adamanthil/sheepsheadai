@@ -33,7 +33,6 @@ from sheepshead import (
     get_card_points,
     get_partner_mode_name,
     filter_by_suit,
-    STATE_SIZE,
     ACTIONS,
 )
 from training_utils import estimate_hand_strength_category
@@ -1531,7 +1530,7 @@ class PFSPPopulation:
                 valid_actions = player.get_valid_action_ids()
 
                 while valid_actions:
-                    state = player.get_state_vector()
+                    state = player.get_state_dict()
                     action, _, _ = agent.agent.act(state, valid_actions, player.position, deterministic=True)
                     player.act(action)
                     valid_actions = player.get_valid_action_ids()
@@ -1541,7 +1540,7 @@ class PFSPPopulation:
                         for seat in game.players:
                             seat_agent = pos_to_agent[seat.position]
                             seat_agent.agent.observe(
-                                seat.get_last_trick_state_vector(),
+                                seat.get_last_trick_state_dict(),
                                 player_id=seat.position,
                             )
                         # Update trick-level EWMAs for population agents
@@ -1717,7 +1716,7 @@ class PFSPPopulation:
                         continue
 
                     # Create agent with appropriate parameters
-                    agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation=metadata.activation)
+                    agent = PPOAgent(len(ACTIONS), activation=metadata.activation)
                     agent.load(str(model_path), load_optimizers=False)
 
                     # Create population agent
@@ -2019,7 +2018,7 @@ class PFSPPopulation:
         counts = {"jd_added": 0, "called_ace_added": 0}
         for path in selected_paths:
             try:
-                agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation=activation)
+                agent = PPOAgent(len(ACTIONS), activation=activation)
                 agent.load(path, load_optimizers=False)
             except (OSError, RuntimeError, ValueError) as err:
                 logging.error("Failed to load checkpoint", extra={"error": str(err), "path": path})
@@ -2133,7 +2132,7 @@ def create_initial_population_from_checkpoints(population: PFSPPopulation,
 
             try:
                 # Load checkpoint
-                agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation=activation)
+                agent = PPOAgent(len(ACTIONS), activation=activation)
                 agent.load(checkpoint_path, load_optimizers=False)
 
                 # Add to population

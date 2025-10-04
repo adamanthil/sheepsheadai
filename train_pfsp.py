@@ -31,7 +31,6 @@ from training_utils import estimate_hand_strength_category
 from sheepshead import (
     Game,
     ACTIONS,
-    STATE_SIZE,
     ACTION_IDS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
@@ -179,7 +178,7 @@ def play_population_game(training_agent: PPOAgent,
             valid_actions = player.get_valid_action_ids()
 
             while valid_actions:
-                state = player.get_state_vector()
+                state = player.get_state_dict()
 
                 # Get action from appropriate agent
                 if current_agent == training_agent:
@@ -226,10 +225,10 @@ def play_population_game(training_agent: PPOAgent,
                         seat_agent = agents[seat.position - 1]
                         if seat_agent == training_agent:
                             # Update training agent's recurrent hidden state and also store for unroll
-                            training_agent.observe(seat.get_last_trick_state_vector(), player_id=seat.position)
-                            training_agent.store_observation(seat.get_last_trick_state_vector(), player_id=seat.position)
+                            training_agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                            training_agent.store_observation(seat.get_last_trick_state_dict(), player_id=seat.position)
                         else:
-                            seat_agent.observe(seat.get_last_trick_state_vector(), seat.position)
+                            seat_agent.observe(seat.get_last_trick_state_dict(), seat.position)
                     # Update trick-level EWMAs for population agents
                     pos_to_pop_agent_local = {}
                     for i, opp in enumerate(opponents[:len(opp_positions)]):
@@ -286,7 +285,7 @@ def train_pfsp(num_episodes: int = 500000,
     print("="*80)
 
     # Create training agent
-    training_agent = PPOAgent(STATE_SIZE, len(ACTIONS),
+    training_agent = PPOAgent(len(ACTIONS),
                             lr_actor=5.0e-5,
                             lr_critic=1.5e-4,
                             activation=activation)

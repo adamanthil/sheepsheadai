@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 
 from ppo import PPOAgent
-from sheepshead import Game, ACTIONS, STATE_SIZE
+from sheepshead import Game, ACTIONS
 
 
 @dataclass
@@ -133,7 +133,7 @@ class ModelComparisonSimulator:
         print("Loading models...")
         for config in self.model_configs:
             try:
-                agent = PPOAgent(STATE_SIZE, len(ACTIONS), activation=config.activation)
+                agent = PPOAgent(len(ACTIONS), activation=config.activation)
                 agent.load(config.path, load_optimizers=False)
                 self.models[config.name] = agent
                 print(f"✅ Loaded {config.name} from {config.path}")
@@ -200,7 +200,7 @@ class ModelComparisonSimulator:
                     model = position_to_model[player.position]
 
                     # Get deterministic action from model
-                    state = player.get_state_vector()
+                    state = player.get_state_dict()
                     action, _, _ = model.act(state, valid_actions, deterministic=True)
 
                     player.act(action)

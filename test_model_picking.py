@@ -15,7 +15,6 @@ from sheepshead import (
     Player,
     ACTIONS,
     DECK,
-    STATE_SIZE,
     ACTION_IDS,
     PARTNER_BY_JD,
     PARTNER_BY_CALLED_ACE,
@@ -45,7 +44,7 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
     print("="*50)
 
     # Create agent and load final model
-    agent = PPOAgent(STATE_SIZE, len(ACTIONS), lr_actor=1e-3, lr_critic=1e-3)
+    agent = PPOAgent(len(ACTIONS), lr_actor=1e-3, lr_critic=1e-3)
 
     try:
         agent.load(model_path, load_optimizers=False)
@@ -90,11 +89,11 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
         game.last_passed = position - 1
 
         # Get state and valid actions
-        state = player.get_state_vector()
+        state = player.get_state_dict()
         valid_actions = player.get_valid_action_ids()
 
         # Get action probabilities
-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        state_tensor = agent.state_encoder.encode_batch([state], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
         action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
         for action in valid_actions:
             action_mask[action - 1] = True

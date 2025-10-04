@@ -17,10 +17,8 @@ from sheepshead import (
     ACTION_LOOKUP,
     Game,
     Player,
-    get_cards_from_vector,
 )
 from ppo import PPOAgent
-import numpy as np
 from server.api.schemas import (
     CreateTableRequest,
     JoinTableRequest,
@@ -220,12 +218,12 @@ app.add_middleware(CORSMiddleware, **cors_config)
 
 
 def build_player_state(player: Player) -> Dict[str, Any]:
-    """Build the per-seat state payload: vector and a small, readable view."""
-    state_vec = player.get_state_vector()
-    # Hand slice 16..47 (inclusive)
-    hand_cards = get_cards_from_vector(state_vec[16:48])
-    blind_cards = get_cards_from_vector(state_vec[48:80])
-    bury_cards = get_cards_from_vector(state_vec[80:112])
+    """Build the per-seat state payload: dict state and a small, readable view."""
+    state_dict = player.get_state_dict()
+    # Derive human-readable hand/blind/bury directly from player (dict state is already structured)
+    hand_cards = list(player.hand)
+    blind_cards = list(player.blind) if hasattr(player, 'blind') else []
+    bury_cards = list(player.bury) if hasattr(player, 'bury') else []
 
     game = player.game
 
@@ -293,7 +291,7 @@ def build_player_state(player: Player) -> Dict[str, Any]:
     }
 
     return {
-        "state": state_vec.astype(np.float32).tolist(),
+        "state": state_dict,
         "view": view,
     }
 
@@ -357,7 +355,7 @@ async def ai_observe_all(table: Table, except_seat: Optional[int] = None):
         if seat == except_seat:
             continue
         player = table.game.players[seat - 1]
-        state = player.get_state_vector()
+        state = player.get_state_dict()
         valid = player.get_valid_action_ids()
         table.ai_agent.observe(state, player_id=seat, valid_actions=valid)
 
@@ -384,7 +382,7 @@ async def ai_take_turns(table: Table):
                 # Human's turn
                 break
             player = table.game.players[actor - 1]
-            state = player.get_state_vector()
+            state = player.get_state_dict()
             valid = player.get_valid_action_ids()
             if not valid:
                 break
