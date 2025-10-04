@@ -486,6 +486,53 @@ class PPOAgent:
             eps = 0.2
         self.pass_floor_epsilon = eps
 
+    def _apply_epsilon_mixing(self, probs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """
+        Apply partner-call ε mixture and PASS-floor ε mixture to probability
+        distributions in a batched way without in-place ops.
+
+        Parameters
+        ----------
+        probs : Tensor
+            Shape (B, A) probabilities over actions
+        mask : Bool Tensor
+            Shape (B, A) of valid actions
+        """
+        mixed = probs
+        if self.partner_call_epsilon > 0.0:
+            B, A = mixed.size(0), mixed.size(1)
+            call_vec = torch.zeros(A, dtype=torch.bool, device=mixed.device)
+            call_idx = torch.tensor(self.partner_call_subindices, dtype=torch.long, device=mixed.device)
+            call_vec[call_idx] = True
+            valid_call = mask & call_vec.view(1, A).expand(B, A)
+            count = valid_call.float().sum(dim=-1, keepdim=True)
+            has = count > 0.5
+            ucall = torch.where(
+                has,
+                valid_call.float() / count.clamp_min(1.0),
+                torch.zeros_like(mixed),
+            )
+            eps = torch.where(
+                has,
+                torch.full_like(count, self.partner_call_epsilon),
+                torch.zeros_like(count),
+            )
+            mixed = (1.0 - eps) * mixed + eps * ucall
+
+        if self.pass_floor_epsilon > 0.0:
+            B, A = mixed.size(0), mixed.size(1)
+            one_hot_pass = torch.zeros(A, dtype=mixed.dtype, device=mixed.device)
+            one_hot_pass[self.pass_action_index] = 1.0
+            one_hot_pass = one_hot_pass.view(1, A).expand(B, A)
+            valid_pass = mask[:, self.pass_action_index].unsqueeze(-1)
+            mixed = torch.where(
+                valid_pass,
+                (1.0 - self.pass_floor_epsilon) * mixed + self.pass_floor_epsilon * one_hot_pass,
+                mixed,
+            )
+
+        return mixed
+
     def reset_storage(self):
         # Ordered list of events: each is a dict with keys:
         # kind: 'action' | 'obs'
@@ -519,30 +566,8 @@ class PPOAgent:
 
         with torch.no_grad():
             probs, logits = self.actor.forward_with_logits(state_t, action_mask_t, player_id)
-
-        # PASS-floor mixing on pick/pass steps
-        if self.pass_floor_epsilon > 0.0:
-            mask = action_mask_t.squeeze(0)
-            probs_1 = probs.squeeze(0)
-            pass_idx = self.pass_action_index
-            if mask[pass_idx]:
-                u = torch.zeros_like(probs_1)
-                u[pass_idx] = 1.0
-                probs_1 = (1.0 - self.pass_floor_epsilon) * probs_1 + self.pass_floor_epsilon * u
-                probs = probs_1.unsqueeze(0)
-
-        if self.partner_call_epsilon > 0.0:
-            mask = action_mask_t.squeeze(0)
-            probs_1 = probs.squeeze(0)
-            call_mask = torch.zeros_like(mask, dtype=torch.bool)
-            call_idx = torch.tensor(self.partner_call_subindices, dtype=torch.long, device=mask.device)
-            call_mask[call_idx] = True
-            valid_call_mask = call_mask & mask
-            if valid_call_mask.any():
-                u = valid_call_mask.float()
-                u = u / u.sum()
-                probs_1 = (1.0 - self.partner_call_epsilon) * probs_1 + self.partner_call_epsilon * u
-                probs = probs_1.unsqueeze(0)
+            if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0:
+                probs = self._apply_epsilon_mixing(probs, action_mask_t)
 
         return probs, logits
 
@@ -808,43 +833,6 @@ class PPOAgent:
         logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt) / max(self.actor.temperature_bury, 1e-6)
         logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt) / max(self.actor.temperature_play, 1e-6)
         logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
-        probs_bt = F.softmax(logits_bt, dim=-1)
-
-        # Apply CALL-uniform mixture for partner-decision timesteps (vectorized)
-        if self.partner_call_epsilon > 0.0:
-            A = probs_bt.size(-1)
-            call_mask_template = torch.zeros(A, dtype=torch.bool, device=probs_bt.device)
-            call_mask_template[self.partner_call_subindices] = True
-            call_mask_bt = call_mask_template.view(1, 1, A) & masks_bt
-
-            call_count = call_mask_bt.float().sum(dim=-1, keepdim=True)   # (B, T, 1)
-            has_calls = (call_count > 0.5)
-
-            # Ucall: uniform over valid calls; zeros otherwise
-            ucall = torch.where(
-                has_calls,
-                call_mask_bt.float() / call_count.clamp_min(1.0),
-                torch.zeros_like(probs_bt)
-            )
-            eps_bt = torch.where(
-                has_calls,
-                torch.full_like(call_count, self.partner_call_epsilon),
-                torch.zeros_like(call_count)
-            )
-            probs_bt = (1.0 - eps_bt) * probs_bt + eps_bt * ucall
-
-        # Apply PASS-floor mixing for pick/pass decision timesteps (vectorized)
-        if self.pass_floor_epsilon > 0.0:
-            A = probs_bt.size(-1)
-            one_hot_pass = torch.zeros(A, dtype=probs_bt.dtype, device=probs_bt.device)
-            one_hot_pass[self.pass_action_index] = 1.0
-            one_hot_pass = one_hot_pass.view(1, 1, A)
-            valid_pass_bt = masks_bt[:, :, self.pass_action_index].unsqueeze(-1)
-            probs_bt = torch.where(
-                valid_pass_bt,
-                (1.0 - self.pass_floor_epsilon) * probs_bt + self.pass_floor_epsilon * one_hot_pass,
-                probs_bt,
-            )
 
         critic_feat_bt = self.critic.critic_adapter(feat_bt)
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
@@ -852,15 +840,15 @@ class PPOAgent:
         aux_feat_bt = self.critic.critic_adapter(feat_bt.detach())
         win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
-        return probs_bt, values_bt, win_logits_bt, ret_pred_bt
+        return logits_bt, values_bt, win_logits_bt, ret_pred_bt
 
     @staticmethod
-    def _flatten_action_steps(is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, win_logits_bt, ret_pred_bt, win_bt, final_ret_bt):
+    def _flatten_action_steps(is_action_bt, logits_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, win_logits_bt, ret_pred_bt, win_bt, final_ret_bt, masks_bt):
         flat_mask = is_action_bt.view(-1)
         if flat_mask.sum() == 0:
             return None
         return (
-            probs_bt.view(-1, probs_bt.size(-1))[flat_mask],
+            logits_bt.view(-1, logits_bt.size(-1))[flat_mask],
             values_bt.view(-1)[flat_mask],
             actions_bt.view(-1)[flat_mask],
             old_lp_bt.view(-1)[flat_mask],
@@ -870,6 +858,7 @@ class PPOAgent:
             ret_pred_bt.view(-1)[flat_mask],
             win_bt.view(-1)[flat_mask],
             final_ret_bt.view(-1)[flat_mask],
+            masks_bt.view(-1, masks_bt.size(-1))[flat_mask],
         )
 
     @staticmethod
@@ -934,7 +923,8 @@ class PPOAgent:
 
     def _actor_critic_losses(
         self,
-        probs_flat,
+        logits_flat,
+        mask_flat,
         actions_flat,
         old_lp_flat,
         values_flat,
@@ -945,13 +935,40 @@ class PPOAgent:
         bury_idx_t,
         play_idx_t,
     ):
-        dist = torch.distributions.Categorical(probs_flat)
+        # Build probabilities fresh from logits to avoid in-place softmax conflicts
+        probs_all = F.softmax(logits_flat, dim=-1)
+        # Partner-call mixture on-the-fly
+        if self.partner_call_epsilon > 0.0:
+            A = probs_all.size(-1)
+            call_mask = torch.zeros(A, dtype=torch.bool, device=probs_all.device)
+            call_mask[self.partner_call_subindices] = True
+            valid_call = call_mask.view(1, A).expand_as(mask_flat) & mask_flat
+            count = valid_call.float().sum(dim=-1, keepdim=True)
+            has = count > 0.5
+            ucall = torch.where(has, valid_call.float() / count.clamp_min(1.0), torch.zeros_like(probs_all))
+            eps = torch.where(has, torch.full_like(count, self.partner_call_epsilon), torch.zeros_like(count))
+            probs_all = (1.0 - eps) * probs_all + eps * ucall
+
+        # PASS-floor mixing on-the-fly
+        if self.pass_floor_epsilon > 0.0:
+            A = probs_all.size(-1)
+            one_hot_pass = torch.zeros(A, dtype=probs_all.dtype, device=probs_all.device)
+            one_hot_pass[self.pass_action_index] = 1.0
+            one_hot_pass = one_hot_pass.view(1, A).expand_as(probs_all)
+            valid_pass = mask_flat[:, self.pass_action_index].unsqueeze(-1)
+            probs_all = torch.where(
+                valid_pass,
+                (1.0 - self.pass_floor_epsilon) * probs_all + self.pass_floor_epsilon * one_hot_pass,
+                probs_all,
+            )
+
+        dist = torch.distributions.Categorical(probs_all.clamp(min=1e-12))
         new_lp_flat = dist.log_prob(actions_flat)
         log_ratio = new_lp_flat - old_lp_flat
         approx_kl_t = (torch.exp(log_ratio) - 1 - log_ratio).mean()
 
         pick_entropy, partner_entropy, bury_entropy, play_entropy = self._head_entropies(
-            probs_flat, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
+            probs_all, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
         )
         entropy_term = (
             self.entropy_coeff_pick * pick_entropy
@@ -1080,17 +1097,17 @@ class PPOAgent:
 
                 # Vectorized forward
                 t_fwd = time.time()
-                probs_bt, values_bt, win_logits_bt, ret_pred_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
+                logits_bt, values_bt, win_logits_bt, ret_pred_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
                 forward_time += time.time() - t_fwd
 
                 flat = self._flatten_action_steps(
-                    is_action_bt, probs_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt,
-                    win_logits_bt, ret_pred_bt, win_bt, final_ret_bt
+                    is_action_bt, logits_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt,
+                    win_logits_bt, ret_pred_bt, win_bt, final_ret_bt, masks_bt
                 )
                 if flat is None:
                     continue
                 (
-                    probs_flat,
+                    logits_flat,
                     values_flat,
                     actions_flat,
                     old_lp_flat,
@@ -1100,6 +1117,7 @@ class PPOAgent:
                     ret_pred_flat,
                     win_labels_flat,
                     final_ret_labels_flat,
+                    mask_flat,
                 ) = flat
 
                 # Record PICK/PASS advantages across minibatches
@@ -1120,7 +1138,8 @@ class PPOAgent:
                     approx_kl_t,
                     (pick_entropy, partner_entropy, bury_entropy, play_entropy),
                 ) = self._actor_critic_losses(
-                    probs_flat,
+                    logits_flat,
+                    mask_flat,
                     actions_flat,
                     old_lp_flat,
                     values_flat,
