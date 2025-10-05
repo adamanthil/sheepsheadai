@@ -31,7 +31,7 @@ partner_mode = PARTNER_BY_CALLED_ACE if args.partner_mode == "called-ace" else P
 
 mode_name = "Called Ace" if partner_mode == PARTNER_BY_CALLED_ACE else "Jack of Diamonds"
 instructions = f"""
-{'-'*40}
+{'-'*60}
 Welcome to the interactive Sheepshead AI player and evaluator.
 Partner Mode: {mode_name}
 
@@ -41,7 +41,7 @@ Commands:
   h    - Help
   q    - Quit
 
-{'-'*40}
+{'-'*60}
 """
 
 def play(agent):
@@ -49,7 +49,7 @@ def play(agent):
 
     players = ['Dan', 'Kyle', 'Trevor', 'John', 'Andrew']
     game.print_player_hands(players)
-    print(f"{'-'*40}")
+    print(f"{'-'*60}")
 
     card_count = 0
     while not game.is_done():
@@ -75,7 +75,7 @@ def play(agent):
 
                 # Print a new line between tricks
                 if card_count == 5 or action_str in ("ALONE", "JD PARTNER"):
-                    print(f"{'-'*40}")
+                    print(f"{'-'*60}")
                     card_count = 0
 
                 player.act(action)
@@ -86,7 +86,7 @@ def play(agent):
                         agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
                 # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
 
-    print(f"{'-'*40}")
+    print(f"{'-'*60}")
     print(game)
 
 
@@ -132,8 +132,19 @@ if __name__ == "__main__":
 
     agent = PPOAgent(len(ACTIONS), activation='swish')
     agent.load(args.model, load_optimizers=False)
-    param_count = sum(p.numel() for p in agent.actor.parameters())
-    print(f"Loaded model: {args.model} with {param_count:,} parameters")
+    backbone_param_count = sum(p.numel() for p in agent.backbone.parameters())
+    actor_param_count = sum(p.numel() for p in agent.actor.parameters())
+    critic_param_count = sum(p.numel() for p in agent.critic.parameters())
+    state_encoder_param_count = sum(p.numel() for p in agent.state_encoder.parameters())
+    param_count = actor_param_count + critic_param_count + state_encoder_param_count
+    print(f"Loaded model: {args.model}")
+    print(f"{'-'*60}")
+    print(f"{param_count:,} total parameters")
+    print(f"Backbone: {backbone_param_count:,} parameters")
+    print(f"Actor: {actor_param_count:,} total ({actor_param_count - backbone_param_count:,} in actor adapter)")
+    print(f"Critic: {critic_param_count + backbone_param_count:,} total ({critic_param_count:,} in critic adapter)")
+    print(f"State encoder: {state_encoder_param_count:,} parameters")
+    print(f"{'-'*60}")
     # State now encoded via dict encoder (256-d internal)
     print(f"Action size: {len(ACTIONS)}")
     print(instructions)
