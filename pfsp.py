@@ -2164,11 +2164,15 @@ def create_initial_population_from_checkpoints(population: PFSPPopulation,
                 print(f"   ✅ Added {os.path.basename(checkpoint_path)} as {mode_name} agent")
 
             except (OSError, RuntimeError, ValueError) as err:
-                logging.error("Failed to load or add checkpoint during initial population", extra={
-                    "error": str(err),
-                    "checkpoint": checkpoint_path,
-                    "mode": get_partner_mode_name(partner_mode)
-                })
+                # Emit a clear console message and a diagnostic log entry, then continue.
+                try:
+                    basename = os.path.basename(checkpoint_path)
+                except Exception:
+                    basename = str(checkpoint_path)
+                print(f"   ❌ Skipped {basename} as {get_partner_mode_name(partner_mode)} agent: {err}")
+                logging.warning(
+                    f"Failed to load checkpoint '{checkpoint_path}' for mode '{get_partner_mode_name(partner_mode)}': {err}"
+                )
                 continue
 
     print("🎉 Successfully created initial population:")
