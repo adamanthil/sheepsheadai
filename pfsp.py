@@ -1779,10 +1779,24 @@ class PFSPPopulation:
 
     def _cluster_population(self, partner_mode: int) -> tuple[np.ndarray, dict[int, list[PopulationAgent]]]:
         population = self._get_population(partner_mode)
-        if not population:
+        n = len(population)
+        if n == 0:
             return np.array([]), {}
+
+        # Fallback for tiny populations: skip clustering to avoid errors like
+        # "n_samples=1 while HDBSCAN requires more than one sample" or
+        # "min_samples (k) must be at most the number of samples in X (n)".
+        if n < 3:
+            labels = np.full((n,), -1, dtype=int)
+            clusters: dict[int, list[PopulationAgent]] = defaultdict(list)
+            for agent in population:
+                clusters[-1].append(agent)
+            return labels, clusters
+
         signatures = self._compute_scaled_signatures(population)
-        clustering = HDBSCAN(min_cluster_size=3, cluster_selection_epsilon=0.0).fit(signatures)
+        # Ensure parameters respect sample count to prevent small-n errors
+        min_param = max(2, min(3, signatures.shape[0]))
+        clustering = HDBSCAN(min_cluster_size=min_param, min_samples=min_param, cluster_selection_epsilon=0.0).fit(signatures)
         labels = clustering.labels_
         clusters: dict[int, list[PopulationAgent]] = defaultdict(list)
         for agent, label in zip(population, labels):
@@ -1838,7 +1852,8 @@ class PFSPPopulation:
 
         # Estimate strategic clusters using standardized/clipped strategic signatures
         signatures = self._compute_scaled_signatures(population)
-        clustering = HDBSCAN(min_cluster_size=3, cluster_selection_epsilon=0.0).fit(signatures)
+        min_param = max(2, min(3, signatures.shape[0]))
+        clustering = HDBSCAN(min_cluster_size=min_param, min_samples=min_param, cluster_selection_epsilon=0.0).fit(signatures)
         labels = clustering.labels_
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         # Cluster composition
