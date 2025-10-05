@@ -171,7 +171,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             validActionIds=valid_actions,
             probabilities=probabilities,
             view=player_state["view"],
-            state=player_state["state"],  # Always include state vectors
+            # Provide encoded 256-d feature vector as a plain float list for schema compatibility
+            # TODO: Update annotations to match new state and/or drop this in favor of state dict
+            state=state_tensor.squeeze(0).detach().cpu().tolist(),
             winProb=float(win_prob_val),
             expectedFinalReturn=expected_final_val
         )
