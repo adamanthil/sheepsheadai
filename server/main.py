@@ -15,6 +15,7 @@ import logging
 from sheepshead import (
     ACTION_IDS,
     ACTION_LOOKUP,
+    DECK,
     Game,
     Player,
 )
@@ -224,6 +225,10 @@ def build_player_state(player: Player) -> Dict[str, Any]:
     hand_cards = list(player.hand)
     blind_cards = list(player.blind) if hasattr(player, 'blind') else []
     bury_cards = list(player.bury) if hasattr(player, 'bury') else []
+
+    hand_cards.sort(key=lambda card: DECK.index(card))
+    blind_cards.sort(key=lambda card: DECK.index(card))
+    bury_cards.sort(key=lambda card: DECK.index(card))
 
     game = player.game
 
