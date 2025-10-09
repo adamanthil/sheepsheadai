@@ -64,6 +64,14 @@ class PFSPHyperparams:
     pass_floor_eps_step_down: float = 0.02
     pass_floor_eps_picker_avg_threshold: float = -0.75
 
+    # PICK-floor epsilon controller
+    # Ensures minimum PICK probability on pick steps if overall pick rate is low.
+    low_pick_rate_floor: float = 8.0  # percent
+    pick_floor_eps_base: float = 0.0
+    pick_floor_eps_target: float = 0.05
+    pick_floor_eps_step_up: float = 0.02
+    pick_floor_eps_step_down: float = 0.02
+
     # Adaptive exploration for partner head (ALONE decision; bump scheduling)
     low_alone_rate_threshold: float = 2.5    # percent
     high_alone_rate_threshold: float = 30.0  # percent
@@ -413,6 +421,10 @@ def train_pfsp(num_episodes: int = 500000,
     current_pass_floor_eps = hyperparams.pass_floor_eps_base
     training_agent.set_pass_floor_epsilon(current_pass_floor_eps)
 
+    # PICK-floor epsilon controller state
+    current_pick_floor_eps = hyperparams.pick_floor_eps_base
+    training_agent.set_pick_floor_epsilon(current_pick_floor_eps)
+
     print(f"\n🎮 Beginning PFSP training... (target: {num_episodes:,} episodes)")
     print(population.get_population_summary())
     print("-" * 80)
@@ -662,6 +674,8 @@ def train_pfsp(num_episodes: int = 500000,
                 agent_snapshot.set_partner_call_epsilon(hyperparams.partner_call_eps_base)
                 # Disable PASS-floor mixing for population agents
                 agent_snapshot.set_pass_floor_epsilon(hyperparams.pass_floor_eps_base)
+                # Disable PICK-floor mixing for population agents
+                agent_snapshot.set_pick_floor_epsilon(hyperparams.pick_floor_eps_base)
 
                 agent_id = population.add_agent(
                     agent=agent_snapshot,
@@ -913,6 +927,22 @@ def train_pfsp(num_episodes: int = 500000,
                 current_pass_floor_eps = desired_pass_eps
                 training_agent.set_pass_floor_epsilon(current_pass_floor_eps)
                 print(f"   ⚠️  PASS floor epsilon ε_pass adjusted to: {current_pass_floor_eps:.3f}")
+
+            # --- PICK-floor epsilon controller (activate when overall pick rate is very low) ---
+            desired_pick_eps_max = hyperparams.pick_floor_eps_base
+            if overall_pick_rate < hyperparams.low_pick_rate_floor:
+                desired_pick_eps_max = hyperparams.pick_floor_eps_target
+
+            desired_pick_eps = current_pick_floor_eps
+            if desired_pick_eps_max > current_pick_floor_eps:
+                desired_pick_eps = min(current_pick_floor_eps + hyperparams.pick_floor_eps_step_up, desired_pick_eps_max)
+            elif desired_pick_eps_max < current_pick_floor_eps:
+                desired_pick_eps = max(current_pick_floor_eps - hyperparams.pick_floor_eps_step_down, desired_pick_eps_max)
+
+            if abs(desired_pick_eps - current_pick_floor_eps) > 1e-6:
+                current_pick_floor_eps = desired_pick_eps
+                training_agent.set_pick_floor_epsilon(current_pick_floor_eps)
+                print(f"   ⚠️  PICK floor epsilon ε_pick adjusted to: {current_pick_floor_eps:.3f}")
 
 
         # Save checkpoints

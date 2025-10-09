@@ -463,6 +463,8 @@ class PPOAgent:
 
         # PASS-floor mixing epsilon (applies on PICK/PASS decision steps)
         self.pass_floor_epsilon = 0.0
+        # PICK-floor mixing epsilon (applies on PICK/PASS decision steps)
+        self.pick_floor_epsilon = 0.0
 
     def set_head_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
         """Convenience proxy to set per-head temperatures on the actor."""
@@ -485,6 +487,15 @@ class PPOAgent:
         if eps > 0.2:
             eps = 0.2
         self.pass_floor_epsilon = eps
+
+    def set_pick_floor_epsilon(self, eps: float):
+        """Set ε for PICK-floor mixing on pick/pass steps (0.0 disables)."""
+        eps = float(eps)
+        if eps < 0.0:
+            eps = 0.0
+        if eps > 0.2:
+            eps = 0.2
+        self.pick_floor_epsilon = eps
 
     def _apply_epsilon_mixing(self, probs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """
@@ -518,6 +529,18 @@ class PPOAgent:
                 torch.zeros_like(count),
             )
             mixed = (1.0 - eps) * mixed + eps * ucall
+
+        if self.pick_floor_epsilon > 0.0:
+            B, A = mixed.size(0), mixed.size(1)
+            one_hot_pick = torch.zeros(A, dtype=mixed.dtype, device=mixed.device)
+            one_hot_pick[self.pick_action_index] = 1.0
+            one_hot_pick = one_hot_pick.view(1, A).expand(B, A)
+            valid_pick = mask[:, self.pick_action_index].unsqueeze(-1)
+            mixed = torch.where(
+                valid_pick,
+                (1.0 - self.pick_floor_epsilon) * mixed + self.pick_floor_epsilon * one_hot_pick,
+                mixed,
+            )
 
         if self.pass_floor_epsilon > 0.0:
             B, A = mixed.size(0), mixed.size(1)
@@ -566,7 +589,7 @@ class PPOAgent:
 
         with torch.no_grad():
             probs, logits = self.actor.forward_with_logits(state_t, action_mask_t, player_id)
-            if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0:
+            if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0 or self.pick_floor_epsilon > 0.0:
                 probs = self._apply_epsilon_mixing(probs, action_mask_t)
 
         return probs, logits
@@ -948,6 +971,19 @@ class PPOAgent:
             ucall = torch.where(has, valid_call.float() / count.clamp_min(1.0), torch.zeros_like(probs_all))
             eps = torch.where(has, torch.full_like(count, self.partner_call_epsilon), torch.zeros_like(count))
             probs_all = (1.0 - eps) * probs_all + eps * ucall
+
+        # PICK-floor mixing on-the-fly
+        if self.pick_floor_epsilon > 0.0:
+            A = probs_all.size(-1)
+            one_hot_pick = torch.zeros(A, dtype=probs_all.dtype, device=probs_all.device)
+            one_hot_pick[self.pick_action_index] = 1.0
+            one_hot_pick = one_hot_pick.view(1, A).expand_as(probs_all)
+            valid_pick = mask_flat[:, self.pick_action_index].unsqueeze(-1)
+            probs_all = torch.where(
+                valid_pick,
+                (1.0 - self.pick_floor_epsilon) * probs_all + self.pick_floor_epsilon * one_hot_pick,
+                probs_all,
+            )
 
         # PASS-floor mixing on-the-fly
         if self.pass_floor_epsilon > 0.0:
