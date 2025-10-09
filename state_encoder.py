@@ -2,10 +2,21 @@ import torch
 import torch.nn as nn
 from typing import List, Dict, Any
 import math
+import itertools
+from dataclasses import dataclass
+from sheepshead import DECK_IDS, TRUMP
 
 
 PAD_CARD_ID = 0
 UNDER_CARD_ID = 33
+
+
+@dataclass
+class CardEmbeddingConfig:
+    use_informed_init: bool = True
+    d_card: int = 12  # requires >= 7 for informed initialization
+    max_points: float = 11.0
+    fill_excess_dims_with_zeros: bool = True
 
 
 class AttentionPool(nn.Module):
@@ -56,12 +67,27 @@ class StateEncoder(nn.Module):
       - trick_card_ids (5,), trick_is_picker (5,), trick_is_partner_known (5,)
     """
 
-    def __init__(self, d_card: int = 8, d_seat: int = 4, d_role: int = 4, d_token: int = 32):
+    def __init__(self, d_card: int = 8, d_seat: int = 4, d_role: int = 4, d_token: int = 32,
+                 card_config: CardEmbeddingConfig | None = None):
         super().__init__()
+        # Allow config to override d_card and control init
+        if card_config is not None:
+            d_card = card_config.d_card
+
         # Embeddings
         self.card = nn.Embedding(34, d_card)  # 0..33
         self.seat = nn.Embedding(6, d_seat)   # 0..5 (0 unused in trick)
         self.role = nn.Embedding(4, d_role)   # 0 none, 1 picker, 2 partner, 3 both
+
+        # Optional informed initialization for card embeddings
+        if card_config and card_config.use_informed_init:
+            init_table = self._build_informed_card_init(
+                d_card=d_card,
+                max_points=card_config.max_points,
+                fill_extra=card_config.fill_excess_dims_with_zeros,
+            )
+            with torch.no_grad():
+                self.card.weight.data.copy_(init_table)
 
         # Token projections
         self.token_mlp_trick = nn.Sequential(
@@ -85,6 +111,93 @@ class StateEncoder(nn.Module):
             nn.Linear(10 + d_card, 64),
             nn.SiLU(),
         )
+
+    def _build_informed_card_init(self, d_card: int, max_points: float, fill_extra: bool) -> torch.Tensor:
+        """
+        Build an informed (34, d_card) init matrix with layout (requires d_card >= 7):
+          [0] Trump,
+          [1] Clubs,
+          [2] Spades,
+          [3] Hearts,
+          [4] rank_strength (0..1),
+          [5] points_norm (0..1),
+          [6] under_flag (1.0 for UNDER, else 0.0),
+          [7..] zeros (reserved for learning offsets)
+        """
+        if d_card < 7:
+            raise ValueError(f"d_card must be >= 7 encode initialization priors. Got {d_card}")
+
+        init = torch.zeros((34, d_card), dtype=torch.float32)
+
+        # Suit channels
+        SUIT_T, SUIT_C, SUIT_S, SUIT_H = 0, 1, 2, 3
+        DIM_RANK = 4
+        DIM_POINTS = 5
+        DIM_UNDER_FLAG = 6
+
+        FAIL_ORDER = ["A", "10", "K", "9", "8", "7"]
+        trump_strength = {card: (len(TRUMP) - i) / len(TRUMP) for i, card in enumerate(TRUMP)}
+        points_map = {'Q': 3, 'J': 2, 'A': 11, '10': 10, 'K': 4, '9': 0, '8': 0, '7': 0}
+
+        # Real cards: 1..32
+        for card, cid in DECK_IDS.items():
+            row = torch.zeros(d_card, dtype=torch.float32)
+            is_trump = card in TRUMP
+            rank = card[:-1]
+            suit = card[-1]
+
+            # Suit one-hot (Trump isolated)
+            if is_trump:
+                row[SUIT_T] = 1.0
+            else:
+                if suit == 'C':
+                    row[SUIT_C] = 1.0
+                elif suit == 'S':
+                    row[SUIT_S] = 1.0
+                elif suit == 'H':
+                    row[SUIT_H] = 1.0
+
+            # Rank strength
+            if is_trump:
+                row[DIM_RANK] = float(trump_strength[card])
+            else:
+                pos = FAIL_ORDER.index(rank) if rank in FAIL_ORDER else len(FAIL_ORDER) - 1
+                row[DIM_RANK] = float((len(FAIL_ORDER) - 1 - pos) / (len(FAIL_ORDER) - 1))
+
+            # Points normalized
+            row[DIM_POINTS] = float(points_map.get(rank, 0) / max_points)
+
+            init[cid] = row
+
+        # PAD remains zeros at index 0
+        # UNDER (33): distinct via under_flag, weak fail
+        under_row = torch.zeros(d_card, dtype=torch.float32)
+        under_row[DIM_UNDER_FLAG] = 1.0
+        init[UNDER_CARD_ID] = under_row
+
+        return init
+
+    def param_groups(self, base_lr: float, card_lr_scale: float = 0.1):
+        """
+        Return optimizer parameter groups for the encoder:
+          - card embedding at scaled LR (e.g., 0.1x)
+          - all other encoder params at base LR
+        """
+        other_params = itertools.chain(
+            self.seat.parameters(),
+            self.role.parameters(),
+            self.token_mlp_trick.parameters(),
+            self.token_mlp_simple.parameters(),
+            self.pool_hand.parameters(),
+            self.pool_trick.parameters(),
+            self.pool_blind.parameters(),
+            self.pool_bury.parameters(),
+            self.header_mlp.parameters(),
+        )
+        return [
+            {'params': self.card.parameters(), 'lr': base_lr * card_lr_scale},
+            {'params': other_params, 'lr': base_lr},
+        ]
 
     @staticmethod
     def _stack_uint8(batch: List[Any], key: str, length: int) -> torch.Tensor:

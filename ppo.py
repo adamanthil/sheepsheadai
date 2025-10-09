@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import time
 from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS
-from state_encoder import StateEncoder
+from state_encoder import StateEncoder, CardEmbeddingConfig
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -407,7 +407,7 @@ class PPOAgent:
         self.pass_action_index = ACTION_IDS["PASS"] - 1
 
         # Shared backbone and networks
-        self.state_encoder = StateEncoder().to(device)
+        self.state_encoder = StateEncoder(card_config=CardEmbeddingConfig()).to(device)
         self.backbone = SharedRecurrentBackbone(self.state_size, activation=activation).to(device)
         self.actor = MultiHeadRecurrentActorNetwork(
             self.backbone,
@@ -419,8 +419,13 @@ class PPOAgent:
         self.critic = RecurrentCriticNetwork(self.backbone, activation=activation).to(device)
 
         # Optimizers (actor owns backbone; include state encoder params)
-        actor_params = list(self.actor.parameters()) + list(self.state_encoder.parameters())
-        self.actor_optimizer = optim.Adam(actor_params, lr=lr_actor)
+        # Use encoder param groups to reduce LR for card embeddings to 0.1x
+        encoder_groups = self.state_encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.1)
+        actor_groups = [
+            {'params': self.actor.parameters(), 'lr': lr_actor},
+            *encoder_groups,
+        ]
+        self.actor_optimizer = optim.Adam(actor_groups)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
 
         # Hyperparameters
