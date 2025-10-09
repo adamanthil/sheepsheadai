@@ -134,6 +134,12 @@ class StateEncoder(nn.Module):
         header_cols = [self._stack_scalar(batch, k) for k in header_fields]
         header_scalar = torch.cat(header_cols, dim=1)
         header_scalar = to_device(header_scalar)
+        # Normalize header scalars to comparable ranges
+        # partner_mode,is_leaster,play_started (0/1); current_trick (0..6);
+        # alone_called,called_under (0/1); picker_rel,partner_rel,leader_rel, picker_position (0..5)
+        norm = torch.tensor([1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
+                            dtype=header_scalar.dtype, device=header_scalar.device)
+        header_scalar = header_scalar / norm
 
         # Called card embedding (B, d_card). Value 0 means unknown/no call → treat as PAD and embed 0.
         called_ids = torch.as_tensor([int(s['called_card_id']) for s in batch], dtype=torch.long)
