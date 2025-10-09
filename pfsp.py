@@ -1736,7 +1736,7 @@ class PFSPPopulation:
                             pass
                     population.append(pop_agent)
 
-                except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as err:
+                except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError, RuntimeError) as err:
                     logging.error("Failed to load agent metadata", extra={
                         "error": str(err),
                         "metadata_file": str(metadata_file)
