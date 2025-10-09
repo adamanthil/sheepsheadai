@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import List, Dict, Any
+import math
 
 
 PAD_CARD_ID = 0
@@ -23,6 +24,8 @@ class AttentionPool(nn.Module):
         v = self.v(tokens)
         q = self.q.view(1, 1, -1).expand(tokens.size(0), 1, -1)  # (B,1,d_in)
         att = torch.einsum('bnd,bqd->bnq', k, q).squeeze(-1)     # (B,N)
+        # Scaled dot-product attention (stabilizes logits)
+        att = att / math.sqrt(k.size(-1))
 
         # Safe masking (avoid all -inf causing NaNs)
         masked_att = att.masked_fill(~mask, -1e9)
