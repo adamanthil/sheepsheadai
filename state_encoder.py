@@ -75,7 +75,7 @@ class StateEncoder(nn.Module):
             d_card = card_config.d_card
 
         # Embeddings
-        self.card = nn.Embedding(34, d_card)  # 0..33
+        self.card = nn.Embedding(34, d_card, padding_idx=PAD_CARD_ID)  # 0..33
         self.seat = nn.Embedding(6, d_seat)   # 0..5 (0 unused in trick)
         self.role = nn.Embedding(4, d_role)   # 0 none, 1 picker, 2 partner, 3 both
 
