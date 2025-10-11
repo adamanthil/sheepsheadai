@@ -52,8 +52,8 @@ class PFSPHyperparams:
     # Adaptive exploration for pick head (rate-based bump scheduling)
     low_pick_rate_threshold: float = 20.0  # percent
     high_pick_rate_threshold: float = 50.0  # percent
-    pick_entropy_bump: float = 0.04        # added to base decayed pick entropy
-    pick_entropy_bump_duration: int = 50000  # episodes
+    pick_entropy_bump: float = 0.03        # added to base decayed pick entropy
+    pick_entropy_bump_duration: int = 25000  # episodes
 
     # PASS-floor epsilon controller
     # Ensures minimum PASS probability on pick steps if picker average score is low.
@@ -75,8 +75,8 @@ class PFSPHyperparams:
     # Adaptive exploration for partner head (ALONE decision; bump scheduling)
     low_alone_rate_threshold: float = 2.5    # percent
     high_alone_rate_threshold: float = 30.0  # percent
-    partner_entropy_bump: float = 0.04       # added to base decayed partner entropy
-    partner_entropy_bump_duration: int = 50000  # episodes
+    partner_entropy_bump: float = 0.03       # added to base decayed partner entropy
+    partner_entropy_bump_duration: int = 25000  # episodes
 
     # Partner CALL mixture epsilon controller
     # Probability floor over CALL actions when picker average score is low.
@@ -92,7 +92,7 @@ class PFSPHyperparams:
     # Adaptive exploration for bury head (bury decisions quality)
     # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
     low_bury_quality_threshold: float = 85.0  # percent
-    bury_entropy_bump: float = 0.04          # added to base decayed bury entropy
+    bury_entropy_bump: float = 0.03          # added to base decayed bury entropy
     bury_entropy_bump_duration: int = 19000  # episodes
 
     # Entropy schedules (start -> end)
@@ -294,8 +294,8 @@ def train_pfsp(num_episodes: int = 500000,
 
     # Create training agent
     training_agent = PPOAgent(len(ACTIONS),
-                            lr_actor=5.0e-5,
-                            lr_critic=1.5e-4,
+                            lr_actor=1.0e-4,
+                            lr_critic=1.0e-4,
                             activation=activation)
 
     # OpenSkill rating for the training agent

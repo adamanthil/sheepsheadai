@@ -135,8 +135,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
     # Create agent with optimized hyperparameters
     agent = PPOAgent(len(ACTIONS),
-                    lr_actor=5.0e-5,
-                    lr_critic=1.5e-4,
+                    lr_actor=1.0e-4,
+                    lr_critic=1.0e-4,
                     activation=activation)
 
     # Resume from specified model or try to load best existing

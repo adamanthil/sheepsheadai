@@ -436,7 +436,7 @@ class PPOAgent:
         self.entropy_coeff_partner = 0.02
         self.entropy_coeff_bury = 0.02
         self.entropy_coeff_play = 0.01
-        self.value_loss_coeff = 0.5
+        self.value_loss_coeff = 0.25
         self.max_grad_norm = 0.3
         self.clip_epsilon_pick = 0.15
         self.clip_epsilon_partner = 0.2
@@ -447,7 +447,7 @@ class PPOAgent:
         # PPO early stopping target for approximate KL (per update)
         self.target_kl = None
         # KL regularization coefficient (added to actor loss)
-        self.kl_coef = 0.2
+        self.kl_coef = 0.1
 
         # Auxiliary loss coefficients (aux heads are detached from trunk)
         self.win_loss_coeff = 0.1
