@@ -223,8 +223,8 @@ def build_player_state(player: Player) -> Dict[str, Any]:
     state_dict = player.get_state_dict()
     # Derive human-readable hand/blind/bury directly from player (dict state is already structured)
     hand_cards = list(player.hand)
-    blind_cards = list(player.blind) if hasattr(player, 'blind') else []
-    bury_cards = list(player.bury) if hasattr(player, 'bury') else []
+    blind_cards = [DECK[card_id - 1] for card_id in state_dict['blind_ids'] if card_id > 0]
+    bury_cards = [DECK[card_id - 1] for card_id in state_dict['bury_ids'] if card_id > 0]
 
     hand_cards.sort(key=lambda card: DECK.index(card))
     blind_cards.sort(key=lambda card: DECK.index(card))

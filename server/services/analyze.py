@@ -84,9 +84,6 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     for player in game.players:
         initial_hands[players[player.position - 1]] = sorted(list(player.hand), key=lambda card: DECK.index(card))
 
-    # Capture blind for summary
-    initial_blind = list(game.blind) if hasattr(game, 'blind') else []
-
     # Trace storage
     trace = []
     step_index = 0
@@ -253,7 +250,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
         game_summary = AnalyzeGameSummary(
             hands=initial_hands,
-            blind=initial_blind,
+            blind=game.blind,
             picker=players[picker_seat - 1] if picker_seat > 0 else None,
             partner=players[partner_seat - 1] if partner_seat > 0 else None,
             bury=bury_cards,
