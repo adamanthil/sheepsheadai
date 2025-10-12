@@ -884,7 +884,8 @@ class PFSPPopulation:
                   parent_id: Optional[str] = None,
                   activation: str = 'swish',
                   save: bool = True,
-                  prune: bool = True) -> str:
+                  prune: bool = True,
+                  initial_rating=None) -> str:
         """Add a new agent to the population."""
 
         # Generate unique ID
@@ -901,11 +902,13 @@ class PFSPPopulation:
         )
 
         # Create population agent
-        pop_agent = PopulationAgent(agent, metadata)
+        pop_agent = PopulationAgent(agent, metadata, rating=initial_rating)
 
         # Add to appropriate population
         population = self._get_population(partner_mode)
         population.append(pop_agent)
+
+        print(f"✅ Added agent {agent_id} to {get_partner_mode_name(partner_mode)} population")
 
         # Manage population size (optional for bulk operations)
         if prune:
@@ -915,7 +918,6 @@ class PFSPPopulation:
         if save:
             self._save_agent(pop_agent)
 
-        print(f"✅ Added agent {agent_id} to {get_partner_mode_name(partner_mode)} population")
         print(f"   Population size: {len(population)}/{self._get_max_population(partner_mode)}")
 
         return agent_id

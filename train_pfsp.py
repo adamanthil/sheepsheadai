@@ -682,7 +682,12 @@ def train_pfsp(num_episodes: int = 500000,
                     partner_mode=mode,
                     training_episodes=episode,
                     parent_id=None,
-                    activation=activation
+                    activation=activation,
+                    # Seed snapshot rating with current training agent's rating (same μ/σ)
+                    initial_rating=population.rating_model.rating(
+                        mu=training_rating.mu,
+                        sigma=training_rating.sigma,
+                    )
                 )
                 print(f"👥 Added training agent snapshot to {get_partner_mode_name(mode)} population (ID: {agent_id})")
 
