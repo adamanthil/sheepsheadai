@@ -2203,8 +2203,8 @@ def _pfsp_cli_main():
                      help="Max Called-Ace population size (default: 75)")
     rep.add_argument("--anchor-quota-per-cluster", type=int, default=2,
                      help="Anchors per cluster to retain (default: 2)")
-    rep.add_argument("--profile-games-per-agent", type=int, default=10,
-                     help="Minimum deterministic profiling games per agent to seed strategic metrics (default: 10)")
+    rep.add_argument("--profile-games-per-agent", type=int, default=20,
+                     help="Minimum deterministic profiling games per agent to seed strategic metrics (default: 20)")
     rep.add_argument("--max-checkpoints", type=int, default=None,
                      help="Cap the number of checkpoints to load (newest first). Default: no cap")
 
