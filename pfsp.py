@@ -661,6 +661,11 @@ class PopulationAgent:
                     if led_trump:
                         self.strategic_profile.early_lead_trump_counts_defender += 1
 
+        if 'early_trump_play' in game_data:
+            s = 1.0 if bool(game_data['early_trump_play']) else 0.0
+            sp = self.strategic_profile
+            sp.early_trump_play_rate = (1.0 - EMA_ALPHA_PLAY) * sp.early_trump_play_rate + EMA_ALPHA_PLAY * s
+
         if game_data.get('void_event', False):
             self.strategic_profile.void_events += 1
             if game_data.get('void_played_trump', False):
