@@ -10,6 +10,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 # from fastapi.responses import JSONResponse
 import logging
+import numpy as np
 
 # Import game and agent from existing project
 from sheepshead import (
@@ -44,6 +45,23 @@ def _try_int(v: Any, default: int = 0) -> int:
         return int(v)
     except (ValueError, TypeError):
         return default
+
+
+def _json_default(obj: Any):
+    """JSON serializer for numpy types used in observation dicts.
+
+    Converts np.integer → int, np.floating → float, np.ndarray → list.
+    """
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    # Let json raise for unknown types to avoid silent serialization surprises
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
 ACTION_SIZE = len(ACTION_IDS)
@@ -341,7 +359,7 @@ async def broadcast_table_state(table: Table):
             "valid_actions": valid_actions if conn.seat == actor_seat else [],
         }
         try:
-            await conn.websocket.send_text(json.dumps(msg))
+            await conn.websocket.send_text(json.dumps(msg, default=_json_default))
         except WebSocketDisconnect:
             conn.websocket = None
         except Exception as exc:
@@ -827,7 +845,7 @@ def analyze_simulate(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
 async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:
     """Broadcast any table-related event payload to all connected clients."""
-    msg_txt = json.dumps(payload)
+    msg_txt = json.dumps(payload, default=_json_default)
     for cid, conn in list(table.clients.items()):
         ws = conn.websocket
         if not ws:
