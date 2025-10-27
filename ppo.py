@@ -41,7 +41,7 @@ class SharedRecurrentBackbone(nn.Module):
 
     Layout:
       - enc_proj: Linear(state_size -> 256)
-      - enc_blocks: 3 × PreNormResidual(256)
+      - enc_blocks: 2 × PreNormResidual(256)
       - lstm: LSTM(256 -> 256)
       - trunk_blocks: 2 × PreNormResidual(256)
     """
@@ -61,7 +61,6 @@ class SharedRecurrentBackbone(nn.Module):
         self.enc_proj = nn.Linear(state_size, 256)
         self.enc_block1 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
         self.enc_block2 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
-        self.enc_block3 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
 
         # Recurrent core
         self.lstm = nn.LSTM(256, 256, batch_first=True)
@@ -91,7 +90,6 @@ class SharedRecurrentBackbone(nn.Module):
         x = self.activation(self.enc_proj(state))
         x = self.enc_block1(x)
         x = self.enc_block2(x)
-        x = self.enc_block3(x)
 
         # LSTM expects time dimension
         x = x.unsqueeze(1)
@@ -125,7 +123,6 @@ class SharedRecurrentBackbone(nn.Module):
         x = self.activation(self.enc_proj(states_bt))
         x = self.enc_block1(x)
         x = self.enc_block2(x)
-        x = self.enc_block3(x)
 
         # Pack and run LSTM
         packed = torch.nn.utils.rnn.pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
