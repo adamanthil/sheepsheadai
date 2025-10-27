@@ -155,8 +155,11 @@ def plot_dimension_importance(importance_dict: Dict[str, np.ndarray], filename: 
 
     dim_labels = [f"D{i}" for i in range(len(importance_dict['mean_abs_change']))]
 
-    # Known dimension names for first 7
-    known_dims = ['Trump', 'Clubs', 'Spades', 'Hearts', 'Rank', 'Points', 'Under']
+    known_dims = [
+        'Suit:Trump', 'Suit:Clubs', 'Suit:Spades', 'Suit:Hearts',
+        'Rank:Trump', 'Rank:Clubs', 'Rank:Spades', 'Rank:Hearts',
+        'Points', 'Under',
+    ]
     for i, label in enumerate(known_dims):
         if i < len(dim_labels):
             dim_labels[i] = f"D{i}\n{label}"
@@ -251,7 +254,11 @@ def plot_trump_vs_fail_analysis(initial: torch.Tensor, trained: torch.Tensor,
     fig, axes = plt.subplots(3, 2, figsize=(14, 14))
 
     dim_labels = [f"D{i}" for i in range(len(trump_init))]
-    known_dims = ['Trump', 'Clubs', 'Spades', 'Hearts', 'Rank', 'Points', 'Under']
+    known_dims = [
+        'Suit:Trump', 'Suit:Clubs', 'Suit:Spades', 'Suit:Hearts',
+        'Rank:Trump', 'Rank:Clubs', 'Rank:Spades', 'Rank:Hearts',
+        'Points', 'Under',
+    ]
     for i, label in enumerate(known_dims):
         if i < len(dim_labels):
             dim_labels[i] = f"{label}"

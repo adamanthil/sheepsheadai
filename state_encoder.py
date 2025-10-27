@@ -14,7 +14,7 @@ UNDER_CARD_ID = 33
 @dataclass
 class CardEmbeddingConfig:
     use_informed_init: bool = True
-    d_card: int = 12  # requires >= 7 for informed initialization
+    d_card: int = 16  # requires >= 10 for informed initialization
     max_points: float = 11.0
     fill_excess_dims_with_zeros: bool = True
 
@@ -118,26 +118,29 @@ class StateEncoder(nn.Module):
 
     def _build_informed_card_init(self, d_card: int, max_points: float, fill_extra: bool) -> torch.Tensor:
         """
-        Build an informed (34, d_card) init matrix with layout (requires d_card >= 7):
-          [0] Trump,
-          [1] Clubs,
-          [2] Spades,
-          [3] Hearts,
-          [4] rank_strength (0..1),
-          [5] points_norm (0..1),
-          [6] under_flag (1.0 for UNDER, else 0.0),
-          [7..] zeros (reserved for learning offsets)
+        Build an informed (34, d_card) init matrix with layout (requires d_card >= 10):
+          [0]  suit_trump (1.0 if trump),
+          [1]  suit_clubs,
+          [2]  suit_spades,
+          [3]  suit_hearts,
+          [4]  rank_trump (0..1),
+          [5]  rank_clubs (0..1),
+          [6]  rank_spades (0..1),
+          [7]  rank_hearts (0..1),
+          [8]  points_norm (0..1),
+          [9]  under_flag (1.0 for UNDER, else 0.0),
+          [10..] zeros (reserved for learning offsets)
         """
-        if d_card < 7:
-            raise ValueError(f"d_card must be >= 7 encode initialization priors. Got {d_card}")
+        if d_card < 10:
+            raise ValueError(f"d_card must be >= 10 to encode initialization priors. Got {d_card}")
 
         init = torch.zeros((34, d_card), dtype=torch.float32)
 
         # Suit channels
         SUIT_T, SUIT_C, SUIT_S, SUIT_H = 0, 1, 2, 3
-        DIM_RANK = 4
-        DIM_POINTS = 5
-        DIM_UNDER_FLAG = 6
+        RANK_T, RANK_C, RANK_S, RANK_H = 4, 5, 6, 7
+        DIM_POINTS = 8
+        DIM_UNDER_FLAG = 9
 
         FAIL_ORDER = ["A", "10", "K", "9", "8", "7"]
         trump_strength = {card: (len(TRUMP) - i) / len(TRUMP) for i, card in enumerate(TRUMP)}
@@ -161,12 +164,18 @@ class StateEncoder(nn.Module):
                 elif suit == 'H':
                     row[SUIT_H] = 1.0
 
-            # Rank strength
+            # Rank strength (per-suit channel; trump rank separate from fail ranks)
             if is_trump:
-                row[DIM_RANK] = float(trump_strength[card])
+                row[RANK_T] = float(trump_strength[card])
             else:
                 pos = FAIL_ORDER.index(rank) if rank in FAIL_ORDER else len(FAIL_ORDER) - 1
-                row[DIM_RANK] = float((len(FAIL_ORDER) - 1 - pos) / (len(FAIL_ORDER) - 1))
+                norm = float((len(FAIL_ORDER) - 1 - pos) / (len(FAIL_ORDER) - 1))
+                if suit == 'C':
+                    row[RANK_C] = norm
+                elif suit == 'S':
+                    row[RANK_S] = norm
+                elif suit == 'H':
+                    row[RANK_H] = norm
 
             # Points normalized
             row[DIM_POINTS] = float(points_map.get(rank, 0) / max_points)
@@ -174,7 +183,7 @@ class StateEncoder(nn.Module):
             init[cid] = row
 
         # PAD remains zeros at index 0
-        # UNDER (33): distinct via under_flag, weak fail
+        # UNDER (33): distinct via under_flag only
         under_row = torch.zeros(d_card, dtype=torch.float32)
         under_row[DIM_UNDER_FLAG] = 1.0
         init[UNDER_CARD_ID] = under_row
