@@ -70,7 +70,7 @@ def analyze_strategic_decisions(agent, num_samples=100):
                     if "PLAY" in action_name and game.play_started and game.cards_played == 0:
                         card = action_name.split()[-1]
                         is_trump_lead = card in TRUMP
-                        is_picker_team = (player.is_picker or player.is_partner)
+                        is_picker_team = (player.is_picker or player.is_partner or player.is_secret_partner)
 
                         if is_picker_team:
                             trump_leads['picker_total'] += 1
