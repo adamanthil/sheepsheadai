@@ -639,7 +639,7 @@ class PPOAgent:
         # PPO early stopping target for approximate KL (per update)
         self.target_kl = None
         # KL regularization coefficient (added to actor loss)
-        self.kl_coef = 0.2
+        self.kl_coef = 0.0
 
         # Auxiliary loss coefficients (aux heads are detached from trunk)
         self.win_loss_coeff = 0.1
