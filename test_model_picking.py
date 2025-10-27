@@ -93,17 +93,12 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
         valid_actions = player.get_valid_action_ids()
 
         # Get action probabilities
-        state_tensor = agent.state_encoder.encode_batch([state], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-        action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
-        for action in valid_actions:
-            action_mask[action - 1] = True
-
         with torch.no_grad():
-            action_probs = agent.actor(state_tensor, action_mask.unsqueeze(0))
+            probs, _ = agent.get_action_probs_with_logits(state, valid_actions)
 
         # Extract pick/pass probabilities
-        pick_prob = action_probs[0][ACTION_IDS["PICK"] - 1].item()
-        pass_prob = action_probs[0][ACTION_IDS["PASS"] - 1].item()
+        pick_prob = probs[0][ACTION_IDS["PICK"] - 1].item()
+        pass_prob = probs[0][ACTION_IDS["PASS"] - 1].item()
         pick_percentage = pick_prob / (pick_prob + pass_prob) * 100
 
         if pick_percentage > 50:

@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import time
-from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS
+from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS, DECK_IDS, UNDER_TOKEN
 from state_encoder import StateEncoder, CardEmbeddingConfig
 
 
@@ -148,7 +148,20 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     logic continues to work unchanged.
     """
 
-    def __init__(self, backbone: SharedRecurrentBackbone, action_size, action_groups, activation='swish'):
+    def __init__(self,
+                 backbone: SharedRecurrentBackbone,
+                 action_size,
+                 action_groups,
+                 activation='swish',
+                 *,
+                 d_card: int,
+                 d_token: int,
+                 map_cid_to_play_action_index: torch.Tensor,
+                 map_cid_to_bury_action_index: torch.Tensor,
+                 map_cid_to_under_action_index: torch.Tensor,
+                 call_action_global_indices: torch.Tensor,
+                 call_card_ids: torch.Tensor,
+                 play_under_action_index: int):
         super(MultiHeadRecurrentActorNetwork, self).__init__()
         self.backbone = backbone  # registered; owns shared params
         self.action_size = action_size
@@ -171,9 +184,13 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # === Heads ===
         self.pick_head = nn.Linear(256, len(action_groups['pick']))
-        self.partner_head = nn.Linear(256, len(action_groups['partner']))
-        self.bury_head = nn.Linear(256, len(action_groups['bury']))
-        self.play_head = nn.Linear(256, len(action_groups['play']))
+
+        # Partner head is split: basic (ALONE, JD PARTNER) + CALL actions via two-tower
+        self.partner_basic_head = nn.Linear(256, 2)
+
+        # Bury and Play are produced via pointer over hand tokens; keep a dedicated
+        # scalar for PLAY UNDER which is not a hand-slot action
+        self.play_under_head = nn.Linear(256, 1)
 
         # Buffer to hold hidden states for each player id (1-5).  Populated on the fly.
         self._hidden_states = {}
@@ -185,13 +202,143 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self.temperature_bury = 1.0
         self.temperature_play = 1.0
 
-        # Init
+        # Init (generic weights)
         self.apply(self._init_weights)
+
+        # ---- Card-conditioned configuration (dims + mappings) ----
+        self._d_card = int(d_card)
+        self._d_token = int(d_token)
+        # Pointer scorer (Bahdanau style)
+        self.pointer_hidden = 64
+        self.pointer_Wg = nn.Linear(256, self.pointer_hidden)
+        self.pointer_Wt = nn.Linear(self._d_token, self.pointer_hidden)
+        self.pointer_v = nn.Linear(self.pointer_hidden, 1, bias=False)
+        # Two-tower (card CALL scoring)
+        self.tw_latent = 64
+        self.tw_Wg = nn.Linear(256, self.tw_latent)
+        self.tw_We = nn.Linear(self._d_card, self.tw_latent)
+
+        # Action index mappings
+        self._map_cid_to_play_action_index = map_cid_to_play_action_index.clone().long()
+        self._map_cid_to_bury_action_index = map_cid_to_bury_action_index.clone().long()
+        self._map_cid_to_under_action_index = map_cid_to_under_action_index.clone().long()
+        self._call_action_global_indices = call_action_global_indices.clone().long()
+        self._call_card_ids = call_card_ids.clone().long()
+        self._play_under_action_index = int(play_under_action_index)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.orthogonal_(m.weight, gain=1.0)
             nn.init.constant_(m.bias, 0.0)
+
+    # ------------------------ internal helpers ------------------------
+    def _score_cards_two_tower(self, feat: torch.Tensor, card_embedding: nn.Embedding) -> torch.Tensor:
+        """Return per-card scores S for all 34 card ids using two-tower scorer.
+        feat: (B, 256)
+        Returns: (B, 34)
+        """
+        q = self.tw_Wg(feat)                      # (B, k)        <- tower 1 (actor features)
+        table = card_embedding.weight             # (34, d_card)
+        K = self.tw_We(table)                     # (34, k)       <- tower 2 (card embeddings)
+        S = torch.matmul(q, K.t())    # (B, 34)       <- similarity scores
+        return S
+
+    def _score_hand_pointer(self, feat: torch.Tensor, hand_ids: torch.Tensor,
+                            card_embedding: nn.Embedding,
+                            token_mlp_simple: nn.Module) -> torch.Tensor:
+        """Score each hand slot using pointer scorer.
+        feat: (B, 256); hand_ids: (B, N)
+        Returns: s_slots (B, N)
+        """
+        B, N = hand_ids.size(0), hand_ids.size(1)
+        emb = card_embedding(hand_ids)                          # (B, N, d_card)
+        tok = token_mlp_simple(emb)                             # (B, N, d_token)
+        g = self.pointer_Wg(feat).unsqueeze(1).expand(B, N, -1) # (B, N, h)
+        t = self.pointer_Wt(tok)                                # (B, N, h)
+        e = torch.tanh(g + t)                             # (B, N, h)
+        s = self.pointer_v(e).squeeze(-1)                       # (B, N)
+        return s
+
+    def _build_logits_from_features(
+        self,
+        actor_features: torch.Tensor,
+        hand_ids: torch.Tensor,
+        card_embedding: nn.Embedding,
+        token_mlp_simple: nn.Module,
+        action_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Assemble full action logits from actor features and hand ids.
+
+        Parameters
+        ----------
+        actor_features : Tensor (K, 256)
+        hand_ids : LongTensor (K, N)
+        card_embedding : nn.Embedding
+        token_mlp_simple : nn.Module
+        action_mask : BoolTensor (K, A) | None
+
+        Returns
+        -------
+        logits : Tensor (K, A)
+        """
+        device = actor_features.device
+        K = actor_features.size(0)
+        logits = torch.full((K, self.action_size), -1e8, device=device)
+
+        # PICK / PASS
+        pick_logits = self.pick_head(actor_features) / max(self.temperature_pick, 1e-6)
+        logits[:, self.action_groups['pick']] = pick_logits
+
+        # PARTNER: basic (ALONE, JD PARTNER)
+        partner_basic = self.partner_basic_head(actor_features) / max(self.temperature_partner, 1e-6)
+        idx_alone = ACTION_IDS["ALONE"] - 1
+        idx_jd = ACTION_IDS["JD PARTNER"] - 1
+        logits[:, idx_alone] = partner_basic[:, 0]
+        logits[:, idx_jd] = partner_basic[:, 1]
+
+        # PARTNER: CALL actions via two-tower card scoring
+        card_scores = self._score_cards_two_tower(actor_features, card_embedding)  # (K, 34)
+        call_scores = card_scores[:, self._call_card_ids.to(device)] / max(self.temperature_partner, 1e-6)
+        logits[:, self._call_action_global_indices.to(device)] = call_scores
+
+        # Pointer scores over hand tokens (compute once, reuse for bury/under/play)
+        slot_scores = self._score_hand_pointer(actor_features, hand_ids, card_embedding, token_mlp_simple)  # (K, N)
+        K_, N = slot_scores.size(0), slot_scores.size(1)
+        cids = hand_ids.long()
+
+        # BURY and UNDER scatter
+        idx_bury = self._map_cid_to_bury_action_index.to(device)[cids]   # (K, N)
+        idx_under = self._map_cid_to_under_action_index.to(device)[cids] # (K, N)
+        for i in range(N):
+            b_idx = idx_bury[:, i]
+            u_idx = idx_under[:, i]
+            valid_b = b_idx.ge(0)
+            valid_u = u_idx.ge(0)
+            if valid_b.any():
+                logits.view(K_, -1)[valid_b, b_idx[valid_b]] = slot_scores[valid_b, i] / max(self.temperature_bury, 1e-6)
+            if valid_u.any():
+                logits.view(K_, -1)[valid_u, u_idx[valid_u]] = slot_scores[valid_u, i] / max(self.temperature_bury, 1e-6)
+
+        # PLAY scatter
+        idx_play = self._map_cid_to_play_action_index.to(device)[cids]  # (K, N)
+        for i in range(N):
+            p_idx = idx_play[:, i]
+            valid_p = p_idx.ge(0)
+            if valid_p.any():
+                logits.view(K_, -1)[valid_p, p_idx[valid_p]] = slot_scores[valid_p, i] / max(self.temperature_play, 1e-6)
+
+        # PLAY UNDER scalar
+        if self._play_under_action_index is not None:
+            play_under_logit = self.play_under_head(actor_features).squeeze(-1) / max(self.temperature_play, 1e-6)
+            logits[:, self._play_under_action_index] = play_under_logit
+
+        # Apply action mask if provided
+        if action_mask is not None:
+            if action_mask.dim() == 1:
+                action_mask = action_mask.unsqueeze(0)
+            logits = logits.masked_fill(~action_mask, -1e8)
+
+        return logits
 
     # ------------------------------------------------------------
     # Public helpers
@@ -222,7 +369,17 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     # ------------------------------------------------------------
     # Forward
     # ------------------------------------------------------------
-    def forward(self, state, action_mask=None, player_id=None, hidden_in=None, return_hidden=False):
+    def forward(
+        self,
+        state,
+        action_mask=None,
+        player_id=None,
+        hidden_in=None,
+        return_hidden=False,
+        hand_ids: torch.Tensor = None,
+        card_embedding: nn.Embedding = None,
+        token_mlp_simple: nn.Module = None
+    ):
         """Unified forward pass supporting both cached and explicit hidden states.
 
         Parameters
@@ -236,13 +393,26 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         return_hidden : bool – if True, also return the new hidden state.
         """
 
-        logits, new_hidden = self._compute_logits_and_hidden(state, action_mask, player_id, hidden_in)
+        logits, new_hidden = self._compute_logits_and_hidden(state, action_mask, player_id, hidden_in,
+                                                             hand_ids=hand_ids,
+                                                             card_embedding=card_embedding,
+                                                             token_mlp_simple=token_mlp_simple)
         probs = F.softmax(logits, dim=-1)
         if return_hidden:
             return probs, new_hidden
         return probs
 
-    def forward_with_logits(self, state, action_mask=None, player_id=None, hidden_in=None, return_hidden=False):
+    def forward_with_logits(
+        self,
+        state,
+        action_mask=None,
+        player_id=None,
+        hidden_in=None,
+        return_hidden=False,
+        hand_ids: torch.Tensor = None,
+        card_embedding: nn.Embedding = None,
+        token_mlp_simple: nn.Module = None
+    ):
         """Forward pass that also returns pre-softmax logits.
 
         Returns
@@ -251,13 +421,30 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         logits : Tensor
         (optionally) new_hidden : tuple(h, c)
         """
-        logits, new_hidden = self._compute_logits_and_hidden(state, action_mask, player_id, hidden_in)
+        logits, new_hidden = self._compute_logits_and_hidden(
+            state,
+            action_mask,
+            player_id,
+            hidden_in,
+            hand_ids=hand_ids,
+            card_embedding=card_embedding,
+            token_mlp_simple=token_mlp_simple
+        )
         probs = F.softmax(logits, dim=-1)
         if return_hidden:
             return probs, logits, new_hidden
         return probs, logits
 
-    def _compute_logits_and_hidden(self, state, action_mask=None, player_id=None, hidden_in=None):
+    def _compute_logits_and_hidden(
+        self,
+        state,
+        action_mask=None,
+        player_id=None,
+        hidden_in=None,
+        hand_ids: torch.Tensor = None,
+        card_embedding: nn.Embedding = None,
+        token_mlp_simple: nn.Module = None
+    ):
         """Core helper to compute masked logits and manage hidden state updates."""
         # Ensure 2-D tensor (batch_first)
         if state.dim() == 1:
@@ -266,38 +453,28 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         batch_size = state.size(0)
 
         # Choose hidden state source (for shared LSTM)
-        hidden = hidden_in
-        if hidden is None and player_id is not None and batch_size == 1:
-            hidden = self._hidden_states.get(player_id, None)
+        chosen_hidden = hidden_in
+        if chosen_hidden is None and player_id is not None and batch_size == 1:
+            chosen_hidden = self._hidden_states.get(player_id, None)
 
         # Shared backbone → features (256) + new hidden
-        feat, new_hidden = self.backbone(state, hidden_in=hidden, return_hidden=True)
+        backbone_features, new_hidden = self.backbone(state, hidden_in=chosen_hidden, return_hidden=True)
 
-        # Actor adapter
-        feat = self.actor_adapter(feat)
+        # Actor adapter to produce actor-specific features
+        actor_features = self.actor_adapter(backbone_features)
 
         # Persist hidden state for this player (only if single sample and not using explicit hidden)
         if hidden_in is None and player_id is not None and batch_size == 1:
             self._hidden_states[player_id] = (new_hidden[0].detach(), new_hidden[1].detach())
 
-        # ---- Heads ----
-        logits = torch.full((batch_size, self.action_size), -1e8, device=state.device)
-
-        pick_logits = self.pick_head(feat) / self.temperature_pick
-        partner_logits = self.partner_head(feat) / self.temperature_partner
-        bury_logits = self.bury_head(feat) / self.temperature_bury
-        play_logits = self.play_head(feat) / self.temperature_play
-
-        logits[:, self.action_groups['pick']] = pick_logits
-        logits[:, self.action_groups['partner']] = partner_logits
-        logits[:, self.action_groups['bury']] = bury_logits
-        logits[:, self.action_groups['play']] = play_logits
-
-        # Apply external action mask (invalid actions → large negative value)
-        if action_mask is not None:
-            if action_mask.dim() == 1:
-                action_mask = action_mask.unsqueeze(0)
-            logits = logits.masked_fill(~action_mask, -1e8)
+        # Build logits using shared helper
+        logits = self._build_logits_from_features(
+            actor_features=actor_features,
+            hand_ids=hand_ids,
+            card_embedding=card_embedding,
+            token_mlp_simple=token_mlp_simple,
+            action_mask=action_mask,
+        )
 
         return logits, new_hidden
 
@@ -409,11 +586,29 @@ class PPOAgent:
         # Shared backbone and networks
         self.state_encoder = StateEncoder(card_config=CardEmbeddingConfig()).to(device)
         self.backbone = SharedRecurrentBackbone(self.state_size, activation=activation).to(device)
+        # Build mappings before constructing actor
+        (
+            map_cid_to_play_action_index,
+            map_cid_to_bury_action_index,
+            map_cid_to_under_action_index,
+            call_action_global_indices,
+            call_card_ids,
+            play_under_action_index,
+        ) = self._build_action_index_mappings()
+
         self.actor = MultiHeadRecurrentActorNetwork(
             self.backbone,
             action_size,
             self.action_groups,
             activation=activation,
+            d_card=self.state_encoder.d_card_dim,
+            d_token=self.state_encoder.d_token_dim,
+            map_cid_to_play_action_index=map_cid_to_play_action_index,
+            map_cid_to_bury_action_index=map_cid_to_bury_action_index,
+            map_cid_to_under_action_index=map_cid_to_under_action_index,
+            call_action_global_indices=call_action_global_indices,
+            call_card_ids=call_card_ids,
+            play_under_action_index=play_under_action_index,
         ).to(device)
 
         self.critic = RecurrentCriticNetwork(self.backbone, activation=activation).to(device)
@@ -470,6 +665,57 @@ class PPOAgent:
         self.pass_floor_epsilon = 0.0
         # PICK-floor mixing epsilon (applies on PICK/PASS decision steps)
         self.pick_floor_epsilon = 0.0
+
+    def _build_action_index_mappings(self):
+        """Precompute global action index mappings for card-specific actions."""
+        map_cid_to_play_action_index = torch.full((34,), -1, dtype=torch.long)
+        map_cid_to_bury_action_index = torch.full((34,), -1, dtype=torch.long)
+        map_cid_to_under_action_index = torch.full((34,), -1, dtype=torch.long)
+
+        # PLAY actions
+        play_under_index = None
+        for a in PLAY_ACTIONS:
+            a_idx = ACTION_IDS[a] - 1
+            if a == f"PLAY {UNDER_TOKEN}":
+                play_under_index = a_idx
+                continue
+            card = a.split()[1]
+            cid = DECK_IDS[card]
+            map_cid_to_play_action_index[cid] = a_idx
+
+        # BURY actions
+        for a in BURY_ACTIONS:
+            a_idx = ACTION_IDS[a] - 1
+            card = a.split()[1]
+            cid = DECK_IDS[card]
+            map_cid_to_bury_action_index[cid] = a_idx
+
+        # UNDER actions (choose card from hand to set as under)
+        for a in UNDER_ACTIONS:
+            a_idx = ACTION_IDS[a] - 1
+            card = a.split()[1]
+            cid = DECK_IDS[card]
+            map_cid_to_under_action_index[cid] = a_idx
+
+        # CALL actions
+        idx_call_global_list = []
+        call_card_ids_list = []
+        for a in CALL_ACTIONS:
+            a_idx = ACTION_IDS[a] - 1
+            parts = a.split()
+            # a is either "CALL X" or "CALL X UNDER"
+            card = parts[1]
+            cid = DECK_IDS[card]
+            idx_call_global_list.append(a_idx)
+            call_card_ids_list.append(cid)
+
+        idx_call_global = torch.tensor(sorted(idx_call_global_list), dtype=torch.long)
+        # Align cid list to the sorted order of indices
+        # Build mapping from index to cid then reorder
+        idx_to_cid = {idx: cid for idx, cid in zip(idx_call_global_list, call_card_ids_list)}
+        call_card_ids = torch.tensor([idx_to_cid[int(x)] for x in idx_call_global.tolist()], dtype=torch.long)
+
+        return map_cid_to_play_action_index, map_cid_to_bury_action_index, map_cid_to_under_action_index, idx_call_global, call_card_ids, play_under_index
 
     def set_head_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
         """Convenience proxy to set per-head temperatures on the actor."""
@@ -592,8 +838,19 @@ class PPOAgent:
         state_t = self.state_encoder.encode_batch([state], device=device)
         action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
 
+        # Extract hand_ids for pointer and pass encoder modules explicitly
+        hand_ids_np = state['hand_ids']
+        hand_ids_t = torch.as_tensor(hand_ids_np, dtype=torch.long, device=device).view(1, -1)
+
         with torch.no_grad():
-            probs, logits = self.actor.forward_with_logits(state_t, action_mask_t, player_id)
+            probs, logits = self.actor.forward_with_logits(
+                state_t,
+                action_mask_t,
+                player_id,
+                hand_ids=hand_ids_t,
+                card_embedding=self.state_encoder.card,
+                token_mlp_simple=self.state_encoder.token_mlp_simple,
+            )
             if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0 or self.pick_floor_epsilon > 0.0:
                 probs = self._apply_epsilon_mixing(probs, action_mask_t)
 
@@ -649,10 +906,20 @@ class PPOAgent:
             action_mask = torch.ones(self.action_size, dtype=torch.bool)
 
         state_t = self.state_encoder.encode_batch([state], device=device)
+        # Provide hand_ids for pointer path and pass encoder modules explicitly
+        hand_ids_np = state['hand_ids']
+        hand_ids_t = torch.as_tensor(hand_ids_np, dtype=torch.long, device=device).view(1, -1)
         action_mask_t = action_mask.unsqueeze(0).to(device)
 
         with torch.no_grad():
-            _ = self.actor(state_t, action_mask_t, player_id)
+            _ = self.actor(
+                state_t,
+                action_mask_t,
+                player_id,
+                hand_ids=hand_ids_t,
+                card_embedding=self.state_encoder.card,
+                token_mlp_simple=self.state_encoder.token_mlp_simple,
+            )
             _ = self.critic(state_t)
 
     def store_transition(self, state, action, reward, value, log_prob, done, valid_actions, player_id=None, win_label=None, final_return_label=None):
@@ -854,13 +1121,32 @@ class PPOAgent:
         feat_bt = self.backbone.forward_sequence(encoded_bt, lengths_bt)
         actor_feat_bt = self.actor.actor_adapter(feat_bt)
         B, T = masks_bt.size(0), masks_bt.size(1)
-        logits_bt = torch.full((B, T, self.action_size), -1e8, device=feat_bt.device)
-        # Apply per-head temperatures (divide logits by τ)
-        logits_bt[:, :, self.action_groups['pick']] = self.actor.pick_head(actor_feat_bt) / max(self.actor.temperature_pick, 1e-6)
-        logits_bt[:, :, self.action_groups['partner']] = self.actor.partner_head(actor_feat_bt) / max(self.actor.temperature_partner, 1e-6)
-        logits_bt[:, :, self.action_groups['bury']] = self.actor.bury_head(actor_feat_bt) / max(self.actor.temperature_bury, 1e-6)
-        logits_bt[:, :, self.action_groups['play']] = self.actor.play_head(actor_feat_bt) / max(self.actor.temperature_play, 1e-6)
-        logits_bt = logits_bt.masked_fill(~masks_bt, -1e8)
+
+        # Build hand_ids_bt (B,T,N) from dict states
+        N = 8 # Maximum hand size
+        hand_ids_bt = torch.zeros((B, T, N), dtype=torch.long, device=device)
+        for b, seq in enumerate(states_input):
+            for t, s in enumerate(seq):
+                if t >= T:
+                    break
+                arr = torch.as_tensor(s['hand_ids'], dtype=torch.long, device=device)
+                if arr.dim() == 1:
+                    arr = arr.view(-1)
+                hand_ids_bt[b, t, :min(N, arr.numel())] = arr[:N]
+
+        # Flatten time dimension to reuse single helper, then reshape back
+        flat_feat = actor_feat_bt.reshape(B * T, -1)
+        flat_hand = hand_ids_bt.reshape(B * T, N)
+        flat_mask = masks_bt.view(B * T, -1)
+
+        logits_flat = self.actor._build_logits_from_features(
+            actor_features=flat_feat,
+            hand_ids=flat_hand,
+            card_embedding=self.state_encoder.card,
+            token_mlp_simple=self.state_encoder.token_mlp_simple,
+            action_mask=flat_mask,
+        )
+        logits_bt = logits_flat.view(B, T, -1)
 
         critic_feat_bt = self.critic.critic_adapter(feat_bt)
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)

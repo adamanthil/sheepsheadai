@@ -38,20 +38,17 @@ def analyze_strategic_decisions(agent, num_samples=100):
 
     for episode in range(num_samples):
         game = Game(partner_selection_mode=get_partner_selection_mode(episode))
+        # Ensure recurrent state is fresh for analysis episode
+        agent.reset_recurrent_state()
 
         # Analyze pick decisions
         initial_player = game.players[0]
         hand_strength = sum(3 if c[0] == 'Q' else 2 if c[0] == 'J' else 1 if c in TRUMP else 0 for c in initial_player.hand)
 
-        state = initial_player.get_state_dict()
-        state = agent.state_encoder.encode_batch([state], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-        # Build action mask for the current decision so probabilities reflect only valid actions
+        sdict = initial_player.get_state_dict()
         initial_actions = initial_player.get_valid_action_ids()
-        action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
-        for valid_action in initial_actions:
-            action_mask[valid_action - 1] = True
         with torch.no_grad():
-            action_probs = agent.actor(state, action_mask.unsqueeze(0))
+            action_probs, _ = agent.get_action_probs_with_logits(sdict, initial_actions, player_id=initial_player.position)
 
         pick_prob = action_probs[0, ACTION_IDS["PICK"] - 1].item()
         pick_decisions.append(pick_prob)
@@ -64,15 +61,9 @@ def analyze_strategic_decisions(agent, num_samples=100):
 
                 if actions:
                     sdict = player.get_state_dict()
-                    state = agent.state_encoder.encode_batch([sdict], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-                    action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
-                    for valid_action in actions:
-                        action_mask[valid_action - 1] = True
-
                     with torch.no_grad():
-                        action_probs = agent.actor(state, action_mask.unsqueeze(0))
-
-                    action = torch.multinomial(action_probs, 1).item() + 1
+                        action_probs, _ = agent.get_action_probs_with_logits(sdict, actions, player_id=player.position)
+                    action = torch.distributions.Categorical(action_probs).sample().item() + 1
                     action_name = ACTION_LOOKUP[action]
 
                     # Analyze trump leading

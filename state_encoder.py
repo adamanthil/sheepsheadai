@@ -74,6 +74,10 @@ class StateEncoder(nn.Module):
         if card_config is not None:
             d_card = card_config.d_card
 
+        # Expose configured dimensions for downstream modules
+        self.d_card_dim = int(d_card)
+        self.d_token_dim = int(d_token)
+
         # Embeddings
         self.card = nn.Embedding(34, d_card, padding_idx=PAD_CARD_ID)  # 0..33
         self.seat = nn.Embedding(6, d_seat)   # 0..5 (0 unused in trick)
