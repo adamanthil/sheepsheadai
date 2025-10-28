@@ -19,6 +19,72 @@ class CardEmbeddingConfig:
     fill_excess_dims_with_zeros: bool = True
 
 
+class TransformerCardReasoning(nn.Module):
+    """Allows cards to reason about each other through self-attention before pooling."""
+
+    def __init__(self, d_token: int, n_heads: int = 4, n_layers: int = 2):
+        super().__init__()
+        self.d_token = d_token
+
+        # Multi-head self-attention layers
+        self.attn_layers = nn.ModuleList([
+            nn.MultiheadAttention(
+                embed_dim=d_token,
+                num_heads=n_heads,
+                batch_first=True,
+                dropout=0.0
+            )
+            for _ in range(n_layers)
+        ])
+
+        # Feed-forward networks after each attention layer
+        self.ffn_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(d_token, d_token * 2),
+                nn.SiLU(),
+                nn.Linear(d_token * 2, d_token),
+            )
+            for _ in range(n_layers)
+        ])
+
+        # Layer norms
+        self.ln_attn = nn.ModuleList([
+            nn.LayerNorm(d_token) for _ in range(n_layers)
+        ])
+        self.ln_ffn = nn.ModuleList([
+            nn.LayerNorm(d_token) for _ in range(n_layers)
+        ])
+
+    def forward(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            tokens: (B, N, d_token) where N is total cards
+            mask: (B, N) boolean, True = valid card
+
+        Returns:
+            tokens: (B, N, d_token) after cross-card reasoning
+        """
+        # Convert mask to attention mask format (True = ignore)
+        attn_mask = ~mask  # (B, N)
+
+        for attn, ffn, ln1, ln2 in zip(
+            self.attn_layers, self.ffn_layers, self.ln_attn, self.ln_ffn
+        ):
+            # Self-attention with residual
+            attn_out, _ = attn(
+                tokens, tokens, tokens,
+                key_padding_mask=attn_mask,
+                need_weights=False
+            )
+            tokens = ln1(tokens + attn_out)
+
+            # FFN with residual
+            ffn_out = ffn(tokens)
+            tokens = ln2(tokens + ffn_out)
+
+        return tokens
+
+
 class AttentionPool(nn.Module):
     def __init__(self, d_in: int, d_out: int):
         super().__init__()
@@ -68,7 +134,8 @@ class StateEncoder(nn.Module):
     """
 
     def __init__(self, d_card: int = 8, d_seat: int = 4, d_role: int = 4, d_token: int = 32,
-                 card_config: CardEmbeddingConfig | None = None):
+                 card_config: CardEmbeddingConfig | None = None,
+                 n_reasoning_heads: int = 4, n_reasoning_layers: int = 2):
         super().__init__()
         # Allow config to override d_card and control init
         if card_config is not None:
@@ -82,6 +149,7 @@ class StateEncoder(nn.Module):
         self.card = nn.Embedding(34, d_card, padding_idx=PAD_CARD_ID)  # 0..33
         self.seat = nn.Embedding(6, d_seat)   # 0..5 (0 unused in trick)
         self.role = nn.Embedding(4, d_role)   # 0 none, 1 picker, 2 partner, 3 both
+        self.card_type = nn.Embedding(4, d_token)  # 0 hand, 1 trick, 2 blind, 3 bury
 
         # Optional informed initialization for card embeddings
         if card_config and card_config.use_informed_init:
@@ -101,6 +169,13 @@ class StateEncoder(nn.Module):
         self.token_mlp_simple = nn.Sequential(
             nn.Linear(d_card, d_token),
             nn.SiLU(),
+        )
+
+        # Card reasoning via transformer
+        self.card_reasoner = TransformerCardReasoning(
+            d_token=d_token,
+            n_heads=n_reasoning_heads,
+            n_layers=n_reasoning_layers
         )
 
         # Pools per bag
@@ -199,8 +274,10 @@ class StateEncoder(nn.Module):
         other_params = itertools.chain(
             self.seat.parameters(),
             self.role.parameters(),
+            self.card_type.parameters(),
             self.token_mlp_trick.parameters(),
             self.token_mlp_simple.parameters(),
+            self.card_reasoner.parameters(),
             self.pool_hand.parameters(),
             self.pool_trick.parameters(),
             self.pool_blind.parameters(),
@@ -281,12 +358,40 @@ class StateEncoder(nn.Module):
         trick_is_picker = to_device(self._stack_uint8(batch, 'trick_is_picker', 5)).bool()
         trick_is_partner_known = to_device(self._stack_uint8(batch, 'trick_is_partner_known', 5)).bool()
 
-        # Embedding + pooling
+        # Embed all cards
         hand_tok, hand_mask = self._embed_simple_bag(hand_ids)
         blind_tok, blind_mask = self._embed_simple_bag(blind_ids)
         bury_tok, bury_mask = self._embed_simple_bag(bury_ids)
         trick_tok, trick_mask = self._embed_trick(trick_card_ids, trick_is_picker, trick_is_partner_known)
 
+        # Add card type embeddings to distinguish card sources
+        B = hand_tok.size(0)
+        device_actual = hand_tok.device
+
+        type_ids = torch.cat([
+            torch.zeros((B, 8), dtype=torch.long, device=device_actual),  # hand = 0
+            torch.ones((B, 5), dtype=torch.long, device=device_actual),   # trick = 1
+            torch.full((B, 2), 2, dtype=torch.long, device=device_actual),  # blind = 2
+            torch.full((B, 2), 3, dtype=torch.long, device=device_actual),  # bury = 3
+        ], dim=1)  # (B, 17)
+
+        # Concatenate all card tokens
+        all_tokens = torch.cat([hand_tok, trick_tok, blind_tok, bury_tok], dim=1)  # (B, 17, d_token)
+        all_mask = torch.cat([hand_mask, trick_mask, blind_mask, bury_mask], dim=1)  # (B, 17)
+
+        # Add type embeddings
+        all_tokens = all_tokens + self.card_type(type_ids)
+
+        # Apply transformer reasoning - cards attend to each other
+        all_tokens = self.card_reasoner(all_tokens, all_mask)
+
+        # Split back into separate bags
+        hand_tok = all_tokens[:, :8, :]
+        trick_tok = all_tokens[:, 8:13, :]
+        blind_tok = all_tokens[:, 13:15, :]
+        bury_tok = all_tokens[:, 15:17, :]
+
+        # Pool reasoning-enhanced tokens
         hand_vec = self.pool_hand(hand_tok, hand_mask)
         trick_vec = self.pool_trick(trick_tok, trick_mask)
         blind_vec = self.pool_blind(blind_tok, blind_mask)
