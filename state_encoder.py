@@ -16,7 +16,6 @@ class CardEmbeddingConfig:
     use_informed_init: bool = True
     d_card: int = 16  # requires >= 10 for informed initialization
     max_points: float = 11.0
-    fill_excess_dims_with_zeros: bool = True
 
 
 class TransformerCardReasoning(nn.Module):
@@ -156,7 +155,6 @@ class StateEncoder(nn.Module):
             init_table = self._build_informed_card_init(
                 d_card=d_card,
                 max_points=card_config.max_points,
-                fill_extra=card_config.fill_excess_dims_with_zeros,
             )
             with torch.no_grad():
                 self.card.weight.data.copy_(init_table)
@@ -191,7 +189,7 @@ class StateEncoder(nn.Module):
             nn.SiLU(),
         )
 
-    def _build_informed_card_init(self, d_card: int, max_points: float, fill_extra: bool) -> torch.Tensor:
+    def _build_informed_card_init(self, d_card: int, max_points: float) -> torch.Tensor:
         """
         Build an informed (34, d_card) init matrix with layout (requires d_card >= 10):
           [0]  suit_trump (1.0 if trump),
