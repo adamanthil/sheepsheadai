@@ -41,7 +41,7 @@ class SharedRecurrentBackbone(nn.Module):
 
     Layout:
       - enc_proj: Linear(state_size -> 256)
-      - enc_blocks: 2 × PreNormResidual(256)
+      - pre_lstm_norm: LayerNorm(256)
       - lstm: LSTM(256 -> 256)
       - trunk_blocks: 2 × PreNormResidual(256)
     """
@@ -59,8 +59,7 @@ class SharedRecurrentBackbone(nn.Module):
 
         # Encoder projection and residual blocks (256 width)
         self.enc_proj = nn.Linear(state_size, 256)
-        self.enc_block1 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
-        self.enc_block2 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
+        self.pre_lstm_norm = nn.LayerNorm(256)
 
         # Recurrent core
         self.lstm = nn.LSTM(256, 256, batch_first=True)
@@ -87,9 +86,8 @@ class SharedRecurrentBackbone(nn.Module):
             state = state.unsqueeze(0)
 
         # Encoder (expects width=state_size; we set state_size=256 for pre-encoded features)
-        x = self.activation(self.enc_proj(state))
-        x = self.enc_block1(x)
-        x = self.enc_block2(x)
+        x = self.enc_proj(state)
+        x = self.pre_lstm_norm(x)
 
         # LSTM expects time dimension
         x = x.unsqueeze(1)
@@ -120,9 +118,8 @@ class SharedRecurrentBackbone(nn.Module):
         """
         # Encoder over (B, T, state_size). If inputs are pre-encoded features of width 256,
         # enc_proj will learn a light adapter.
-        x = self.activation(self.enc_proj(states_bt))
-        x = self.enc_block1(x)
-        x = self.enc_block2(x)
+        x = self.enc_proj(states_bt)
+        x = self.pre_lstm_norm(x)
 
         # Pack and run LSTM
         packed = torch.nn.utils.rnn.pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
