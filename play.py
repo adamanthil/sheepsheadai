@@ -105,13 +105,12 @@ def pick_evaluator(agent):
         valid_actions = player.get_valid_action_ids()
 
         # Get action probabilities from PPO actor network
-        state_tensor = agent.state_encoder.encode_batch([state], device=torch.device('cpu'))
         action_mask = torch.zeros(len(ACTIONS), dtype=torch.bool)
         for action in valid_actions:
             action_mask[action - 1] = True
 
         with torch.no_grad():
-            action_probs = agent.actor(state_tensor, action_mask.unsqueeze(0))
+            action_probs, _ = agent.get_action_probs_with_logits(state, valid_actions)
 
         # Extract pick/pass probabilities
         pick_prob = action_probs[0][ACTION_IDS["PICK"] - 1].item()
