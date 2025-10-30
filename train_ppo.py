@@ -361,10 +361,10 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
             print(f"🔄 Updating model after {transitions_since_update} transitions... (Episode {episode:,})")
 
             # Separate entropy decay schedules
-            entropy_play_start, entropy_play_end = 0.05, 0.03
-            entropy_pick_start, entropy_pick_end = 0.05, 0.03
-            entropy_partner_start, entropy_partner_end = 0.05, 0.03
-            entropy_bury_start, entropy_bury_end = 0.04, 0.02
+            entropy_play_start, entropy_play_end = 0.05, 0.05
+            entropy_pick_start, entropy_pick_end = 0.1, 0.05
+            entropy_partner_start, entropy_partner_end = 0.05, 0.04
+            entropy_bury_start, entropy_bury_end = 0.04, 0.03
             decay_fraction = min(episode / num_episodes, 1.0)
             agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
             agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
