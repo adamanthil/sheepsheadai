@@ -131,18 +131,16 @@ if __name__ == "__main__":
 
     agent = PPOAgent(len(ACTIONS), activation='swish')
     agent.load(args.model, load_optimizers=False)
-    backbone_param_count = sum(p.numel() for p in agent.backbone.parameters())
+    encoder_param_count = sum(p.numel() for p in agent.encoder.parameters())
     actor_param_count = sum(p.numel() for p in agent.actor.parameters())
     critic_param_count = sum(p.numel() for p in agent.critic.parameters())
-    state_encoder_param_count = sum(p.numel() for p in agent.state_encoder.parameters())
-    param_count = actor_param_count + critic_param_count + state_encoder_param_count
+    param_count = actor_param_count + critic_param_count + encoder_param_count
     print(f"Loaded model: {args.model}")
     print(f"{'-'*60}")
     print(f"{param_count:,} total parameters")
-    print(f"Backbone: {backbone_param_count:,} parameters")
-    print(f"Actor: {actor_param_count:,} total ({actor_param_count - backbone_param_count:,} in actor adapter)")
-    print(f"Critic: {critic_param_count + backbone_param_count:,} total ({critic_param_count:,} in critic adapter)")
-    print(f"State encoder: {state_encoder_param_count:,} parameters")
+    print(f"Encoder: {encoder_param_count:,} parameters")
+    print(f"Actor: {actor_param_count:,} parameters")
+    print(f"Critic: {critic_param_count:,} parameters")
     print(f"{'-'*60}")
     # State now encoded via dict encoder (256-d internal)
     print(f"Action size: {len(ACTIONS)}")

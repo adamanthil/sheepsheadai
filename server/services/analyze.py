@@ -111,18 +111,33 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         state = actor_player.get_state_dict()
         valid_actions = actor_player.get_valid_action_ids()
 
-        # Encode dict state to 256-d features for critic/auxiliary
-        state_tensor = agent.state_encoder.encode_batch([state], device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        # Get or init memory for this player
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        memory_in = agent.get_recurrent_memory(actor_player.position, device=device)
+
+        # Encode dict state with memory
+        encoder_out = agent.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+
+        # Store updated memory
+        agent.set_recurrent_memory(actor_player.position, encoder_out['memory_out'][0])
 
         with torch.no_grad():
-            # Use the actor's previous hidden state so the critic's value reflects recurrent context
-            prev_hidden = agent.actor._hidden_states.get(actor_player.position, None)
-            action_probs, logits = agent.get_action_probs_with_logits(state, valid_actions, actor_player.position)
+            # Build mask and hand ids for actor
+            action_mask_t = agent.get_action_mask(valid_actions, agent.action_size).unsqueeze(0).to(device)
+            hand_ids_t = torch.as_tensor(state['hand_ids'], dtype=torch.long, device=device).view(1, -1)
 
-            value = agent.critic(state_tensor, hidden_in=prev_hidden)
+            # Use existing encoder_out for logits and probabilities
+            action_probs, logits = agent.actor.forward_with_logits(
+                encoder_out,
+                action_mask_t,
+                hand_ids_t,
+                agent.encoder.card,
+            )
+
+            value = agent.critic(encoder_out)
 
             # Auxiliary critic heads via accessor
-            win_prob_val, expected_final_val = agent.critic.aux_predictions(state_tensor, hidden_in=prev_hidden)
+            win_prob_val, expected_final_val = agent.critic.aux_predictions(encoder_out)
 
         # Choose action
         if req.deterministic:
@@ -170,7 +185,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             view=player_state["view"],
             # Provide encoded 256-d feature vector as a plain float list for schema compatibility
             # TODO: Update annotations to match new state and/or drop this in favor of state dict
-            state=state_tensor.squeeze(0).detach().cpu().tolist(),
+            state=encoder_out['features'].squeeze(0).detach().cpu().tolist(),
             winProb=float(win_prob_val),
             expectedFinalReturn=expected_final_val
         )

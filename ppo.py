@@ -4,146 +4,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import time
+from typing import Dict
 from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS, DECK_IDS, UNDER_TOKEN
-from state_encoder import StateEncoder, CardEmbeddingConfig
+from encoder import CardReasoningEncoder, CardEmbeddingConfig
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class PreNormResidual(nn.Module):
-    """Pre-norm residual MLP block: y = x + Linear(LN(x) -> hidden -> act -> dropout -> dim)."""
-    def __init__(self, dim: int, hidden_dim: int | None = None, dropout: float = 0.1, activation=F.silu):
-        super().__init__()
-        hidden_dim = hidden_dim or dim
-        self.norm = nn.LayerNorm(dim)
-        self.fc1 = nn.Linear(dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, dim)
-        self.dropout = nn.Dropout(dropout)
-        self.activation = activation
-
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.orthogonal_(m.weight, gain=1.0)
-            nn.init.constant_(m.bias, 0.0)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        y = self.norm(x)
-        y = self.activation(self.fc1(y))
-        y = self.dropout(self.fc2(y))
-        return x + y
-
-
-class SharedRecurrentBackbone(nn.Module):
-    """Shared encoder + LSTM + post-LSTM trunk used by both actor and critic.
-
-    Layout:
-      - enc_proj: Linear(state_size -> 256)
-      - pre_lstm_norm: LayerNorm(256)
-      - lstm: LSTM(256 -> 256)
-      - trunk_blocks: 2 × PreNormResidual(256)
-    """
-
-    def __init__(self, state_size: int, activation: str = 'swish'):
-        super().__init__()
-        self.state_size = state_size
-
-        if activation == 'swish':
-            self.activation = F.silu
-        elif activation == 'relu':
-            self.activation = F.relu
-        else:
-            raise ValueError(f"Unsupported activation function: {activation}")
-
-        # Encoder projection and residual blocks (256 width)
-        self.enc_proj = nn.Linear(state_size, 256)
-        self.pre_lstm_norm = nn.LayerNorm(256)
-
-        # Recurrent core
-        self.lstm = nn.LSTM(256, 256, batch_first=True)
-
-        # Shared post-LSTM trunk (256 width)
-        self.trunk_block1 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
-        self.trunk_block2 = PreNormResidual(256, 256, dropout=0.1, activation=self.activation)
-
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.orthogonal_(m.weight, gain=1.0)
-            nn.init.constant_(m.bias, 0.0)
-        elif isinstance(m, nn.LSTM):
-            for name, param in m.named_parameters():
-                if 'weight' in name:
-                    nn.init.orthogonal_(param.data, gain=1.0)
-                elif 'bias' in name:
-                    nn.init.constant_(param.data, 0.0)
-
-    def forward(self, state: torch.Tensor, hidden_in=None, return_hidden: bool = False):
-        if state.dim() == 1:
-            state = state.unsqueeze(0)
-
-        # Encoder (expects width=state_size; we set state_size=256 for pre-encoded features)
-        x = self.enc_proj(state)
-        x = self.pre_lstm_norm(x)
-
-        # LSTM expects time dimension
-        x = x.unsqueeze(1)
-        lstm_out, new_hidden = self.lstm(x, hidden_in)
-        feat = lstm_out.squeeze(1)
-
-        # Shared trunk
-        feat = self.trunk_block1(feat)
-        feat = self.trunk_block2(feat)
-
-        if return_hidden:
-            return feat, new_hidden
-        return feat
-
-    def forward_sequence(self, states_bt: torch.Tensor, lengths: torch.Tensor, return_hidden: bool = False):
-        """Vectorized forward over a batch of sequences.
-
-        Parameters
-        ----------
-        states_bt : Tensor (B, T, state_size)
-        lengths : LongTensor (B,) true sequence lengths
-        return_hidden : bool
-
-        Returns
-        -------
-        feat_bt : Tensor (B, T, 256)
-        (optionally) (h, c) final LSTM state
-        """
-        # Encoder over (B, T, state_size). If inputs are pre-encoded features of width 256,
-        # enc_proj will learn a light adapter.
-        x = self.enc_proj(states_bt)
-        x = self.pre_lstm_norm(x)
-
-        # Pack and run LSTM
-        packed = torch.nn.utils.rnn.pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
-        packed_out, hidden = self.lstm(packed)
-        lstm_out_bt, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_out, batch_first=True)
-
-        # Shared trunk on (B, T, 256)
-        feat_bt = self.trunk_block1(lstm_out_bt)
-        feat_bt = self.trunk_block2(feat_bt)
-
-        if return_hidden:
-            return feat_bt, hidden
-        return feat_bt
-
-
 class MultiHeadRecurrentActorNetwork(nn.Module):
-    """Actor network with an LSTM core and separate linear heads for the
+    """Actor network consuming encoder features, with separate heads for
     pick / partner-selection / bury / play phases. The four heads' logits are
     concatenated back into the full action space order so existing masking
     logic continues to work unchanged.
     """
 
     def __init__(self,
-                 backbone: SharedRecurrentBackbone,
                  action_size,
                  action_groups,
                  activation='swish',
@@ -157,7 +33,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
                  call_card_ids: torch.Tensor,
                  play_under_action_index: int):
         super(MultiHeadRecurrentActorNetwork, self).__init__()
-        self.backbone = backbone  # registered; owns shared params
         self.action_size = action_size
         self.action_groups = action_groups  # dict with keys 'pick', 'partner', 'bury', 'play'
 
@@ -169,13 +44,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         else:
             raise ValueError(f"Unsupported activation function: {activation}")
 
-        # === Actor-specific adapter after shared trunk ===
-        self.actor_adapter = nn.Sequential(
-            nn.LayerNorm(256),
-            nn.Linear(256, 256),
-            nn.ReLU() if activation == 'relu' else nn.Identity()
-        )
-
         # === Heads ===
         self.pick_head = nn.Linear(256, len(action_groups['pick']))
 
@@ -185,9 +53,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         # Bury and Play are produced via pointer over hand tokens; keep a dedicated
         # scalar for PLAY UNDER which is not a hand-slot action
         self.play_under_head = nn.Linear(256, 1)
-
-        # Buffer to hold hidden states for each player id (1-5).  Populated on the fly.
-        self._hidden_states = {}
 
         # Per-head temperatures (τ): logits will be divided by τ before softmax
         # τ > 1.0 softens (higher entropy), τ < 1.0 sharpens. Defaults to 1.0.
@@ -237,20 +102,21 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         S = torch.matmul(q, K.t())    # (B, 34)       <- similarity scores
         return S
 
-    def _score_hand_pointer(self, feat: torch.Tensor, hand_ids: torch.Tensor,
-                            card_embedding: nn.Embedding,
-                            token_mlp_simple: nn.Module) -> torch.Tensor:
+    def _score_hand_pointer(
+        self,
+        feat: torch.Tensor,
+        hand_tokens: torch.Tensor,
+    ) -> torch.Tensor:
         """Score each hand slot using pointer scorer.
-        feat: (B, 256); hand_ids: (B, N)
+        feat: (B, 256); hand_tokens: (B, N, d_token)
         Returns: s_slots (B, N)
         """
-        B, N = hand_ids.size(0), hand_ids.size(1)
-        emb = card_embedding(hand_ids)                          # (B, N, d_card)
-        tok = token_mlp_simple(emb)                             # (B, N, d_token)
-        g = self.pointer_Wg(feat).unsqueeze(1).expand(B, N, -1) # (B, N, h)
-        t = self.pointer_Wt(tok)                                # (B, N, h)
-        e = torch.tanh(g + t)                             # (B, N, h)
-        s = self.pointer_v(e).squeeze(-1)                       # (B, N)
+        tok = hand_tokens
+        B, N = tok.size(0), tok.size(1)
+        g = self.pointer_Wg(feat).unsqueeze(1).expand(B, N, -1)  # (B, N, h)
+        t = self.pointer_Wt(tok)                                   # (B, N, h)
+        e = torch.tanh(g + t)                                      # (B, N, h)
+        s = self.pointer_v(e).squeeze(-1)                          # (B, N)
         return s
 
     def _build_logits_from_features(
@@ -258,7 +124,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         actor_features: torch.Tensor,
         hand_ids: torch.Tensor,
         card_embedding: nn.Embedding,
-        token_mlp_simple: nn.Module,
+        hand_tokens: torch.Tensor,
         action_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Assemble full action logits from actor features and hand ids.
@@ -268,7 +134,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         actor_features : Tensor (K, 256)
         hand_ids : LongTensor (K, N)
         card_embedding : nn.Embedding
-        token_mlp_simple : nn.Module
+        hand_tokens : Tensor (K, N, d_token)
         action_mask : BoolTensor (K, A) | None
 
         Returns
@@ -296,7 +162,10 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         logits[:, self._call_action_global_indices.to(device)] = call_scores
 
         # Pointer scores over hand tokens (compute once, reuse for bury/under/play)
-        slot_scores = self._score_hand_pointer(actor_features, hand_ids, card_embedding, token_mlp_simple)  # (K, N)
+        slot_scores = self._score_hand_pointer(
+            actor_features,
+            hand_tokens,
+        )  # (K, N)
         K_, N = slot_scores.size(0), slot_scores.size(1)
         cids = hand_ids.long()
 
@@ -337,10 +206,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     # ------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------
-    def reset_hidden(self):
-        """Erase all stored hidden states (call at the start of every new game)."""
-        self._hidden_states = {}
-
     def set_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
         """Set per-head softmax temperatures.
 
@@ -365,47 +230,41 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     # ------------------------------------------------------------
     def forward(
         self,
-        state,
-        action_mask=None,
-        player_id=None,
-        hidden_in=None,
-        return_hidden=False,
-        hand_ids: torch.Tensor = None,
-        card_embedding: nn.Embedding = None,
-        token_mlp_simple: nn.Module = None
+        encoder_out: Dict[str, torch.Tensor],
+        action_mask: torch.Tensor,
+        hand_ids: torch.Tensor,
+        card_embedding: nn.Embedding,
     ):
-        """Unified forward pass supporting both cached and explicit hidden states.
+        """Forward pass using encoder output.
 
         Parameters
         ----------
-        state : Tensor  (batch, state_size)  OR (state_size,) for single sample
-        action_mask : Bool Tensor broadcastable to (batch, action_size) or None
-        player_id : int | None  – if provided for single-sample inference and
-            hidden_in is None, uses and updates an internal hidden cache.
-        hidden_in : tuple(h, c) | None – explicit LSTM state for training-time
-            sequence unrolling. When provided, the internal cache is ignored.
-        return_hidden : bool – if True, also return the new hidden state.
-        """
+        encoder_out : dict
+            Output from CardReasoningEncoder with 'features' and 'hand_tokens'
+        action_mask : Bool Tensor (batch, action_size)
+        hand_ids : Tensor (batch, 8)
+        card_embedding : nn.Embedding
 
-        logits, new_hidden = self._compute_logits_and_hidden(state, action_mask, player_id, hidden_in,
-                                                             hand_ids=hand_ids,
-                                                             card_embedding=card_embedding,
-                                                             token_mlp_simple=token_mlp_simple)
+        Returns
+        -------
+        probs : Tensor (batch, action_size)
+        """
+        logits = self._build_logits_from_features(
+            actor_features=encoder_out['features'],
+            hand_ids=hand_ids,
+            card_embedding=card_embedding,
+            hand_tokens=encoder_out['hand_tokens'],
+            action_mask=action_mask,
+        )
         probs = F.softmax(logits, dim=-1)
-        if return_hidden:
-            return probs, new_hidden
         return probs
 
     def forward_with_logits(
         self,
-        state,
-        action_mask=None,
-        player_id=None,
-        hidden_in=None,
-        return_hidden=False,
-        hand_ids: torch.Tensor = None,
-        card_embedding: nn.Embedding = None,
-        token_mlp_simple: nn.Module = None
+        encoder_out: Dict[str, torch.Tensor],
+        action_mask: torch.Tensor,
+        hand_ids: torch.Tensor,
+        card_embedding: nn.Embedding,
     ):
         """Forward pass that also returns pre-softmax logits.
 
@@ -413,74 +272,24 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         -------
         probs : Tensor
         logits : Tensor
-        (optionally) new_hidden : tuple(h, c)
         """
-        logits, new_hidden = self._compute_logits_and_hidden(
-            state,
-            action_mask,
-            player_id,
-            hidden_in,
-            hand_ids=hand_ids,
-            card_embedding=card_embedding,
-            token_mlp_simple=token_mlp_simple
-        )
-        probs = F.softmax(logits, dim=-1)
-        if return_hidden:
-            return probs, logits, new_hidden
-        return probs, logits
-
-    def _compute_logits_and_hidden(
-        self,
-        state,
-        action_mask=None,
-        player_id=None,
-        hidden_in=None,
-        hand_ids: torch.Tensor = None,
-        card_embedding: nn.Embedding = None,
-        token_mlp_simple: nn.Module = None
-    ):
-        """Core helper to compute masked logits and manage hidden state updates."""
-        # Ensure 2-D tensor (batch_first)
-        if state.dim() == 1:
-            state = state.unsqueeze(0)  # (1, state_size)
-
-        batch_size = state.size(0)
-
-        # Choose hidden state source (for shared LSTM)
-        chosen_hidden = hidden_in
-        if chosen_hidden is None and player_id is not None and batch_size == 1:
-            chosen_hidden = self._hidden_states.get(player_id, None)
-
-        # Shared backbone → features (256) + new hidden
-        backbone_features, new_hidden = self.backbone(state, hidden_in=chosen_hidden, return_hidden=True)
-
-        # Actor adapter to produce actor-specific features
-        actor_features = self.actor_adapter(backbone_features)
-
-        # Persist hidden state for this player (only if single sample and not using explicit hidden)
-        if hidden_in is None and player_id is not None and batch_size == 1:
-            self._hidden_states[player_id] = (new_hidden[0].detach(), new_hidden[1].detach())
-
-        # Build logits using shared helper
         logits = self._build_logits_from_features(
-            actor_features=actor_features,
+            actor_features=encoder_out['features'],
             hand_ids=hand_ids,
             card_embedding=card_embedding,
-            token_mlp_simple=token_mlp_simple,
+            hand_tokens=encoder_out['hand_tokens'],
             action_mask=action_mask,
         )
+        probs = F.softmax(logits, dim=-1)
+        return probs, logits
 
-        return logits, new_hidden
 
 
 class RecurrentCriticNetwork(nn.Module):
-    """Critic head using the shared backbone with a critic-specific adapter layer."""
+    """Critic head using encoder features directly."""
 
-    def __init__(self, backbone: SharedRecurrentBackbone, activation='swish'):
+    def __init__(self, activation='swish'):
         super().__init__()
-        # Store a non-registered reference to the shared backbone to avoid
-        # duplicating parameters in the critic and to keep optimizer ownership
-        object.__setattr__(self, "_backbone", backbone)
 
         if activation == 'swish':
             self.activation = F.silu
@@ -506,25 +315,29 @@ class RecurrentCriticNetwork(nn.Module):
             nn.init.orthogonal_(m.weight, gain=1.0)
             nn.init.constant_(m.bias, 0.0)
 
-    def forward(self, state, hidden_in=None, return_hidden=False):
-        feat, new_hidden = self._backbone(state, hidden_in=hidden_in, return_hidden=True)
-        feat = self.critic_adapter(feat)
+    def forward(self, encoder_out: Dict[str, torch.Tensor]):
+        """Forward pass using encoder output.
+
+        Parameters
+        ----------
+        encoder_out : dict
+            Output from CardReasoningEncoder with 'features'
+
+        Returns
+        -------
+        value : Tensor (batch, 1)
+        """
+        feat = self.critic_adapter(encoder_out['features'])
         value = self.value_head(feat)
-        if return_hidden:
-            return value, new_hidden
         return value
 
-    def aux_predictions(self, state, hidden_in=None, return_hidden: bool = False):
+    def aux_predictions(self, encoder_out: Dict[str, torch.Tensor]):
         """Return auxiliary predictions as scalars: (win_prob, expected_final_return).
 
         Parameters
         ----------
-        state : Tensor
-            Shape (state_size,) or (1, state_size)
-        hidden_in : tuple(h, c) | None
-            Optional LSTM hidden state to use for recurrent context
-        return_hidden : bool
-            If True, also return the new hidden state from the backbone
+        encoder_out : dict
+            Output from CardReasoningEncoder with 'features'
 
         Returns
         -------
@@ -532,19 +345,16 @@ class RecurrentCriticNetwork(nn.Module):
             Sigmoid of win logits
         expected_final_return : float
             Linear head output for expected final return
-        (optionally) new_hidden : tuple(h, c)
         """
         with torch.no_grad():
-            feat, new_hidden = self._backbone(state, hidden_in=hidden_in, return_hidden=True)
-            aux_feat = self.critic_adapter(feat)
+            aux_feat = self.critic_adapter(encoder_out['features'])
             win_logit = self.win_head(aux_feat).squeeze(-1)
             expected_return = self.return_head(aux_feat).squeeze(-1)
         win_prob_t = torch.sigmoid(win_logit)
         win_prob = float(win_prob_t.item())
         expected_final = float(expected_return.item())
-        if return_hidden:
-            return win_prob, expected_final, new_hidden
         return win_prob, expected_final
+
 
 class PPOAgent:
     def __init__(self, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='swish'):
@@ -577,9 +387,12 @@ class PPOAgent:
         self.pick_action_index = ACTION_IDS["PICK"] - 1
         self.pass_action_index = ACTION_IDS["PASS"] - 1
 
-        # Shared backbone and networks
-        self.state_encoder = StateEncoder(card_config=CardEmbeddingConfig()).to(device)
-        self.backbone = SharedRecurrentBackbone(self.state_size, activation=activation).to(device)
+        # Encoder with memory
+        self.encoder = CardReasoningEncoder(card_config=CardEmbeddingConfig()).to(device)
+
+        # Per-player memory tracking
+        self._player_memories = {}
+
         # Build mappings before constructing actor
         (
             map_cid_to_play_action_index,
@@ -591,12 +404,11 @@ class PPOAgent:
         ) = self._build_action_index_mappings()
 
         self.actor = MultiHeadRecurrentActorNetwork(
-            self.backbone,
             action_size,
             self.action_groups,
             activation=activation,
-            d_card=self.state_encoder.d_card_dim,
-            d_token=self.state_encoder.d_token_dim,
+            d_card=self.encoder.d_card_dim,
+            d_token=self.encoder.d_token_dim,
             map_cid_to_play_action_index=map_cid_to_play_action_index,
             map_cid_to_bury_action_index=map_cid_to_bury_action_index,
             map_cid_to_under_action_index=map_cid_to_under_action_index,
@@ -605,11 +417,10 @@ class PPOAgent:
             play_under_action_index=play_under_action_index,
         ).to(device)
 
-        self.critic = RecurrentCriticNetwork(self.backbone, activation=activation).to(device)
+        self.critic = RecurrentCriticNetwork(activation=activation).to(device)
 
-        # Optimizers (actor owns backbone; include state encoder params)
-        # Use encoder param groups to reduce LR for card embeddings to 0.1x
-        encoder_groups = self.state_encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.1)
+        # Optimizers (include encoder params with scaled LR for card embeddings)
+        encoder_groups = self.encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.1)
         actor_groups = [
             {'params': self.actor.parameters(), 'lr': lr_actor},
             *encoder_groups,
@@ -659,6 +470,23 @@ class PPOAgent:
         self.pass_floor_epsilon = 0.0
         # PICK-floor mixing epsilon (applies on PICK/PASS decision steps)
         self.pick_floor_epsilon = 0.0
+
+    def get_recurrent_memory(self, player_id: int | None, device: torch.device | None = None) -> torch.Tensor:
+        """Return the recurrent memory vector for a player, or a zero vector if unset.
+
+        The returned tensor is (256,) on the requested device.
+        """
+        target_device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        mem = self._player_memories.get(player_id) if player_id is not None else None
+        if mem is None:
+            return torch.zeros(256, device=target_device)
+        return mem.to(target_device) if mem.device != target_device else mem
+
+    def set_recurrent_memory(self, player_id: int | None, memory_vector: torch.Tensor) -> None:
+        """Set the recurrent memory vector for a player. No-op if player_id is None."""
+        if player_id is None:
+            return
+        self._player_memories[player_id] = memory_vector
 
     def _build_action_index_mappings(self):
         """Precompute global action index mappings for card-specific actions."""
@@ -818,9 +646,8 @@ class PPOAgent:
         return mask
 
     def reset_recurrent_state(self):
-        """Clear hidden states in the actor (call at the start of every new game)."""
-        if hasattr(self.actor, 'reset_hidden'):
-            self.actor.reset_hidden()
+        """Clear memory states (call at the start of every new game)."""
+        self._player_memories = {}
 
     def get_action_probs_with_logits(self, state, valid_actions, player_id=None):
         """Return post-mixture action probabilities and pre-mix logits for a single dict state.
@@ -828,22 +655,25 @@ class PPOAgent:
         Applies partner CALL-uniform mixture if enabled. Keeps PPO on-policy by
         exposing the same transformed distribution that sampling uses.
         """
-        # Encode dict state → (1, 256) features
-        state_t = self.state_encoder.encode_batch([state], device=device)
-        action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
+        # Get or init memory for this player
+        memory_in = self.get_recurrent_memory(player_id, device=device)
 
-        # Extract hand_ids for pointer and pass encoder modules explicitly
-        hand_ids_np = state['hand_ids']
-        hand_ids_t = torch.as_tensor(hand_ids_np, dtype=torch.long, device=device).view(1, -1)
+        # Encode dict state with memory
+        encoder_out = self.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+
+        # Store updated memory
+        if player_id is not None:
+            self.set_recurrent_memory(player_id, encoder_out['memory_out'][0])
+
+        action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
+        hand_ids_t = torch.as_tensor(state['hand_ids'], dtype=torch.long, device=device).view(1, -1)
 
         with torch.no_grad():
             probs, logits = self.actor.forward_with_logits(
-                state_t,
+                encoder_out,
                 action_mask_t,
-                player_id,
-                hand_ids=hand_ids_t,
-                card_embedding=self.state_encoder.card,
-                token_mlp_simple=self.state_encoder.token_mlp_simple,
+                hand_ids_t,
+                self.encoder.card,
             )
             if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0 or self.pick_floor_epsilon > 0.0:
                 probs = self._apply_epsilon_mixing(probs, action_mask_t)
@@ -853,13 +683,32 @@ class PPOAgent:
     def act(self, state, valid_actions, player_id=None, deterministic=False):
         """Select action given state and valid actions"""
         with torch.no_grad():
-            # Use the actor's previous hidden state for the critic so value matches recurrent context
-            prev_hidden = None
+            # Get or init memory for this player
+            memory_in = self.get_recurrent_memory(player_id, device=device)
+
+            # Encode with memory
+            encoder_out = self.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+
+            # Store updated memory
             if player_id is not None:
-                prev_hidden = self.actor._hidden_states.get(player_id, None)
-            action_probs, _ = self.get_action_probs_with_logits(state, valid_actions, player_id)
-            state_t = self.state_encoder.encode_batch([state], device=device)
-            value = self.critic(state_t, hidden_in=prev_hidden)
+                self.set_recurrent_memory(player_id, encoder_out['memory_out'][0])
+
+            # Get action probabilities
+            action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
+            hand_ids_t = torch.as_tensor(state['hand_ids'], dtype=torch.long, device=device).view(1, -1)
+
+            action_probs = self.actor(
+                encoder_out,
+                action_mask_t,
+                hand_ids_t,
+                self.encoder.card,
+            )
+
+            if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0 or self.pick_floor_epsilon > 0.0:
+                action_probs = self._apply_epsilon_mixing(action_probs, action_mask_t)
+
+            # Get value
+            value = self.critic(encoder_out)
 
         # Create distribution for consistent log probability calculation
         dist = torch.distributions.Categorical(action_probs)
@@ -877,44 +726,28 @@ class PPOAgent:
     # ------------------------------------------------------------------
     # Observation-only step (no action sampled / no transition stored)
     # ------------------------------------------------------------------
-    def observe(self, state, player_id=None, valid_actions=None):
-        """Propagate an observation through the actor/critic to update
-        the recurrent hidden state *without* sampling an action or storing any
-        transition.  Useful for non-decision environment ticks such as the end
-        of a trick.
+    def observe(self, state, player_id=None):
+        """Propagate an observation through the encoder to update memory
+        *without* sampling an action or storing any transition.  Useful for
+        non-decision environment ticks such as the end of a trick.
 
         Parameters
         ----------
         state : dict
             Structured observation for the player.
         player_id : int | None
-            Identifier to associate a persistent hidden state (1-5 in game).
-        valid_actions : set[int] | None
-            Optional set of currently valid action IDs – used only for masking
-            so the hidden state sees the same inputs as `act()` would.
+            Identifier to associate a persistent memory state (1-5 in game).
         """
-
-        if valid_actions is not None:
-            action_mask = self.get_action_mask(valid_actions, self.action_size)
-        else:
-            action_mask = torch.ones(self.action_size, dtype=torch.bool)
-
-        state_t = self.state_encoder.encode_batch([state], device=device)
-        # Provide hand_ids for pointer path and pass encoder modules explicitly
-        hand_ids_np = state['hand_ids']
-        hand_ids_t = torch.as_tensor(hand_ids_np, dtype=torch.long, device=device).view(1, -1)
-        action_mask_t = action_mask.unsqueeze(0).to(device)
+        # Get or init memory for this player
+        memory_in = self.get_recurrent_memory(player_id, device=device)
 
         with torch.no_grad():
-            _ = self.actor(
-                state_t,
-                action_mask_t,
-                player_id,
-                hand_ids=hand_ids_t,
-                card_embedding=self.state_encoder.card,
-                token_mlp_simple=self.state_encoder.token_mlp_simple,
-            )
-            _ = self.critic(state_t)
+            # Encode with memory to update memory state
+            encoder_out = self.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+
+            # Store updated memory
+            if player_id is not None:
+                self.set_recurrent_memory(player_id, encoder_out['memory_out'][0])
 
     def store_transition(self, state, action, reward, value, log_prob, done, valid_actions, player_id=None, win_label=None, final_return_label=None):
         """Store transition data"""
@@ -1110,14 +943,34 @@ class PPOAgent:
         return states_seqs, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt
 
     def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
-        # states_input is a list of sequences (new dict API). Encode to (B,T,256), then run shared backbone.
-        encoded_bt = self.state_encoder.encode_sequences(states_input, device=device)
-        feat_bt = self.backbone.forward_sequence(encoded_bt, lengths_bt)
-        actor_feat_bt = self.actor.actor_adapter(feat_bt)
-        B, T = masks_bt.size(0), masks_bt.size(1)
+        """Vectorized forward pass for training with recurrent memory.
 
-        # Build hand_ids_bt (B,T,N) from dict states
-        N = 8 # Maximum hand size
+        Args:
+            states_input: List of B sequences, each a list of observation dicts
+            masks_bt: (B, T, action_size) action masks
+            lengths_bt: (B,) sequence lengths
+
+        Returns:
+            logits_bt, values_bt, win_logits_bt, ret_pred_bt
+        """
+        B = len(states_input)
+        T = masks_bt.size(1)
+
+        # Initialize memory to zeros for each segment
+        memory_init = torch.zeros((B, 256), device=device)
+
+        # Encode sequences with memory
+        encoder_out_seq = self.encoder.encode_sequences(
+            states_input,
+            memory_in=memory_init,
+            device=device
+        )
+
+        # Extract features (B, T, 256)
+        features_bt = encoder_out_seq['features']
+
+        # Build hand_ids_bt (B, T, N) from dict states
+        N = 8  # Maximum hand size
         hand_ids_bt = torch.zeros((B, T, N), dtype=torch.long, device=device)
         for b, seq in enumerate(states_input):
             for t, s in enumerate(seq):
@@ -1129,25 +982,30 @@ class PPOAgent:
                 hand_ids_bt[b, t, :min(N, arr.numel())] = arr[:N]
 
         # Flatten time dimension to reuse single helper, then reshape back
-        flat_feat = actor_feat_bt.reshape(B * T, -1)
+        flat_feat = features_bt.reshape(B * T, -1)
         flat_hand = hand_ids_bt.reshape(B * T, N)
         flat_mask = masks_bt.view(B * T, -1)
+        hand_tokens_bt = encoder_out_seq['hand_tokens']  # (B, T, N, d_token)
+        flat_tokens = hand_tokens_bt.reshape(B * T, N, -1)
 
         logits_flat = self.actor._build_logits_from_features(
             actor_features=flat_feat,
             hand_ids=flat_hand,
-            card_embedding=self.state_encoder.card,
-            token_mlp_simple=self.state_encoder.token_mlp_simple,
+            card_embedding=self.encoder.card,
+            hand_tokens=flat_tokens,
             action_mask=flat_mask,
         )
         logits_bt = logits_flat.view(B, T, -1)
 
-        critic_feat_bt = self.critic.critic_adapter(feat_bt)
+        # Critic values
+        critic_feat_bt = self.critic.critic_adapter(features_bt)
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
-        # Auxiliary preds use critic_adapter on detached backbone features (no grad into backbone)
-        aux_feat_bt = self.critic.critic_adapter(feat_bt.detach())
+
+        # Auxiliary preds use critic_adapter on detached features
+        aux_feat_bt = self.critic.critic_adapter(features_bt.detach())
         win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
+
         return logits_bt, values_bt, win_logits_bt, ret_pred_bt
 
     @staticmethod
@@ -1494,7 +1352,7 @@ class PPOAgent:
 
                 t_step = time.time()
                 torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
-                torch.nn.utils.clip_grad_norm_(self.state_encoder.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(self.encoder.parameters(), self.max_grad_norm)
                 torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
@@ -1548,7 +1406,7 @@ class PPOAgent:
     def save(self, filepath):
         """Save model parameters"""
         torch.save({
-            'state_encoder_state_dict': self.state_encoder.state_dict(),
+            'encoder_state_dict': self.encoder.state_dict(),
             'actor_state_dict': self.actor.state_dict(),
             'critic_state_dict': self.critic.state_dict(),
             'actor_optimizer': self.actor_optimizer.state_dict(),
@@ -1568,10 +1426,13 @@ class PPOAgent:
         """
         checkpoint = torch.load(filepath, map_location=device)
 
-        self.state_encoder.load_state_dict(checkpoint['state_encoder_state_dict'])
+        self.encoder.load_state_dict(checkpoint['encoder_state_dict'])
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
         self.critic.load_state_dict(checkpoint['critic_state_dict'])
 
         if load_optimizers:
             self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
             self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+
+        # Reset memory states after loading
+        self._player_memories = {}

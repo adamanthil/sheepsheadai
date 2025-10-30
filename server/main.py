@@ -379,8 +379,7 @@ async def ai_observe_all(table: Table, except_seat: Optional[int] = None):
             continue
         player = table.game.players[seat - 1]
         state = player.get_state_dict()
-        valid = player.get_valid_action_ids()
-        table.ai_agent.observe(state, player_id=seat, valid_actions=valid)
+        table.ai_agent.observe(state, player_id=seat)
 
 
 async def ai_take_turns(table: Table):

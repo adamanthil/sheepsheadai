@@ -121,8 +121,15 @@ class AttentionPool(nn.Module):
         return (w * v).sum(dim=1)
 
 
-class StateEncoder(nn.Module):
-    """Encodes dict-based Sheepshead observations into a fixed 256-d feature.
+class CardReasoningEncoder(nn.Module):
+    """Token-centric encoder with transformer reasoning and memory.
+
+    Input: dict observation (from get_state_dict)
+    Output: dict with:
+      - 'features': (B, 256) fused feature vector (for heads)
+      - 'hand_tokens': (B, 8, d_token) reasoning-enhanced (post-attention) hand tokens
+      - 'context_token': (B, d_token) post-attention context
+      - 'memory_out': (B, 256) updated memory state
 
     Observation dict fields expected per sample:
       - partner_mode, is_leaster, play_started, current_trick,
@@ -132,11 +139,11 @@ class StateEncoder(nn.Module):
       - trick_card_ids (5,), trick_is_picker (5,), trick_is_partner_known (5,)
     """
 
-    def __init__(self, d_card: int = 8, d_seat: int = 4, d_role: int = 4, d_token: int = 32,
+    def __init__(self, d_card: int = 16, d_token: int = 64,
                  card_config: CardEmbeddingConfig | None = None,
-                 n_reasoning_heads: int = 4, n_reasoning_layers: int = 2):
+                 n_reasoning_heads: int = 4, n_reasoning_layers: int = 3):
         super().__init__()
-        # Allow config to override d_card and control init
+        # Allow config to override d_card
         if card_config is not None:
             d_card = card_config.d_card
 
@@ -146,9 +153,9 @@ class StateEncoder(nn.Module):
 
         # Embeddings
         self.card = nn.Embedding(34, d_card, padding_idx=PAD_CARD_ID)  # 0..33
-        self.seat = nn.Embedding(6, d_seat)   # 0..5 (0 unused in trick)
-        self.role = nn.Embedding(4, d_role)   # 0 none, 1 picker, 2 partner, 3 both
-        self.card_type = nn.Embedding(4, d_token)  # 0 hand, 1 trick, 2 blind, 3 bury
+        self.seat = nn.Embedding(6, 4)  # 0=unknown, 1-5=relative positions
+        self.role = nn.Embedding(4, 4)  # 0=none, 1=picker, 2=partner, 3=both
+        self.card_type = nn.Embedding(6, d_token)  # 0=context, 1=memory, 2=hand, 3=trick, 4=blind, 5=bury
 
         # Optional informed initialization for card embeddings
         if card_config and card_config.use_informed_init:
@@ -160,12 +167,21 @@ class StateEncoder(nn.Module):
                 self.card.weight.data.copy_(init_table)
 
         # Token projections
+        self.context_mlp = nn.Sequential(
+            nn.Linear(10 + d_card, d_token),  # header scalars + called_card_emb
+            nn.SiLU(),
+        )
+        self.memory_in_proj = nn.Linear(256, d_token)
+        self.token_mlp_hand = nn.Sequential(
+            nn.Linear(d_card + 4, d_token),  # card + actor_role
+            nn.SiLU(),
+        )
         self.token_mlp_trick = nn.Sequential(
-            nn.Linear(d_card + d_seat + d_role, d_token),
+            nn.Linear(d_card + 4 + 4, d_token),  # card + seat + role
             nn.SiLU(),
         )
         self.token_mlp_simple = nn.Sequential(
-            nn.Linear(d_card, d_token),
+            nn.Linear(d_card, d_token),  # blind/bury
             nn.SiLU(),
         )
 
@@ -182,11 +198,13 @@ class StateEncoder(nn.Module):
         self.pool_blind = AttentionPool(d_token, 32)
         self.pool_bury = AttentionPool(d_token, 32)
 
-        # Header → 64
-        # Header inputs: 10 scalars (excluding called_card_id) + called_card embedding (d_card)
-        self.header_mlp = nn.Sequential(
-            nn.Linear(10 + d_card, 64),
-            nn.SiLU(),
+        # Memory update (GRU cell)
+        self.memory_gru = nn.GRUCell(d_token, 256)
+
+        # Fused feature projection
+        self.feature_proj = nn.Sequential(
+            nn.Linear(64 + 64 + 32 + 32 + d_token, 256),  # pools + context
+            nn.LayerNorm(256)
         )
 
     def _build_informed_card_init(self, d_card: int, max_points: float) -> torch.Tensor:
@@ -273,6 +291,9 @@ class StateEncoder(nn.Module):
             self.seat.parameters(),
             self.role.parameters(),
             self.card_type.parameters(),
+            self.context_mlp.parameters(),
+            self.memory_in_proj.parameters(),
+            self.token_mlp_hand.parameters(),
             self.token_mlp_trick.parameters(),
             self.token_mlp_simple.parameters(),
             self.card_reasoner.parameters(),
@@ -280,7 +301,8 @@ class StateEncoder(nn.Module):
             self.pool_trick.parameters(),
             self.pool_blind.parameters(),
             self.pool_bury.parameters(),
-            self.header_mlp.parameters(),
+            self.memory_gru.parameters(),
+            self.feature_proj.parameters(),
         )
         return [
             {'params': self.card.parameters(), 'lr': base_lr * card_lr_scale},
@@ -301,15 +323,35 @@ class StateEncoder(nn.Module):
         vals = [int(batch[i][key]) for i in range(len(batch))]
         return torch.as_tensor(vals, dtype=torch.float32).view(-1, 1)
 
+    def _embed_hand(self, ids: torch.Tensor, actor_role_id: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Embed hand cards with actor role conditioning.
+
+        Args:
+            ids: (B, 8) card IDs
+            actor_role_id: (B,) role ID for the acting player (0=none, 1=picker, 2=partner, 3=both)
+
+        Returns:
+            tokens: (B, 8, d_token)
+            mask: (B, 8) boolean
+        """
+        mask = ids.ne(PAD_CARD_ID)
+        c = self.card(ids)  # (B, 8, d_card)
+        B, N = ids.size(0), ids.size(1)
+        role_idx = actor_role_id.view(B, 1).expand(B, N)  # (B, 8)
+        r = self.role(role_idx)  # (B, 8, 4)
+        tok = torch.cat([c, r], dim=-1)
+        tok = self.token_mlp_hand(tok)
+        return tok, mask
+
     def _embed_simple_bag(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # ids: (B,N) longs
+        """Embed blind/bury cards (no role conditioning)."""
         mask = ids.ne(PAD_CARD_ID)
         tok = self.card(ids)
         tok = self.token_mlp_simple(tok)
         return tok, mask
 
     def _embed_trick(self, card_ids: torch.Tensor, picker_bits: torch.Tensor, partner_bits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # shapes: (B,5)
+        """Embed trick cards with seat and role information."""
         B = card_ids.size(0)
         seat_rel = torch.arange(1, 6, device=card_ids.device, dtype=torch.long).view(1, 5).expand(B, 5)
         role_ids = (picker_bits.long() * 1 + partner_bits.long() * 2)
@@ -321,12 +363,35 @@ class StateEncoder(nn.Module):
         tok = self.token_mlp_trick(tok)
         return tok, mask
 
-    def encode_batch(self, batch: List[Dict[str, Any]], device: torch.device | None = None) -> torch.Tensor:
+    def encode_batch(self, batch: List[Dict[str, Any]], memory_in: torch.Tensor | None = None,
+                     device: torch.device | None = None) -> Dict[str, torch.Tensor]:
+        """Encode a batch of observations with memory.
+
+        Args:
+            batch: List of observation dicts from get_state_dict
+            memory_in: (B, 256) previous memory state, or None to use zeros
+            device: Target device
+
+        Returns:
+            dict with:
+                'features': (B, 256) fused feature vector
+                'hand_tokens': (B, 8, d_token) reasoning-enhanced hand tokens
+                'context_token': (B, d_token) post-attention context
+                'memory_out': (B, 256) updated memory state
+        """
         # Move to device lazily
         def to_device(x: torch.Tensor) -> torch.Tensor:
             return x.to(device) if device is not None else x
 
-        # Header scalars (B, 10) — exclude called_card_id here, embedded separately
+        B = len(batch)
+
+        # Initialize memory if not provided
+        if memory_in is None:
+            memory_in = torch.zeros((B, 256), dtype=torch.float32, device=device)
+        else:
+            memory_in = to_device(memory_in)
+
+        # 1. Build header scalar + called_card_emb → context_token
         header_fields = [
             'partner_mode', 'is_leaster', 'play_started', 'current_trick',
             'alone_called', 'called_under',
@@ -335,81 +400,158 @@ class StateEncoder(nn.Module):
         header_cols = [self._stack_scalar(batch, k) for k in header_fields]
         header_scalar = torch.cat(header_cols, dim=1)
         header_scalar = to_device(header_scalar)
-        # Normalize header scalars to comparable ranges
-        # partner_mode,is_leaster,play_started (0/1); current_trick (0..6);
-        # alone_called,called_under (0/1); picker_rel,partner_rel,leader_rel, picker_position (0..5)
+        # Normalize header scalars
         norm = torch.tensor([1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
                             dtype=header_scalar.dtype, device=header_scalar.device)
         header_scalar = header_scalar / norm
 
-        # Called card embedding (B, d_card). Value 0 means unknown/no call → treat as PAD and embed 0.
+        # Called card embedding
         called_ids = torch.as_tensor([int(s['called_card_id']) for s in batch], dtype=torch.long)
         called_ids = to_device(called_ids)
         called_emb = self.card(called_ids)  # (B, d_card)
 
-        # Bags
+        # Build context token from header + called card
+        context_tok = self.context_mlp(torch.cat([header_scalar, called_emb], dim=1))  # (B, d_token)
+
+        # 2. Project memory_in → memory_token
+        memory_tok = self.memory_in_proj(memory_in)  # (B, d_token)
+
+        # 3. Derive actor role from picker_rel and partner_rel
+        picker_rel_raw = torch.as_tensor([int(s['picker_rel']) for s in batch], dtype=torch.long)
+        partner_rel_raw = torch.as_tensor([int(s['partner_rel']) for s in batch], dtype=torch.long)
+        picker_rel_raw = to_device(picker_rel_raw)
+        partner_rel_raw = to_device(partner_rel_raw)
+        actor_role_id = (picker_rel_raw.eq(1).long() * 1 + partner_rel_raw.eq(1).long() * 2)  # 0=none, 1=picker, 2=partner, 3=both
+
+        # 4. Build card tokens
         hand_ids = to_device(self._stack_uint8(batch, 'hand_ids', 8))
         blind_ids = to_device(self._stack_uint8(batch, 'blind_ids', 2))
         bury_ids = to_device(self._stack_uint8(batch, 'bury_ids', 2))
-
         trick_card_ids = to_device(self._stack_uint8(batch, 'trick_card_ids', 5))
         trick_is_picker = to_device(self._stack_uint8(batch, 'trick_is_picker', 5)).bool()
         trick_is_partner_known = to_device(self._stack_uint8(batch, 'trick_is_partner_known', 5)).bool()
 
-        # Embed all cards
-        hand_tok, hand_mask = self._embed_simple_bag(hand_ids)
+        hand_tok, hand_mask = self._embed_hand(hand_ids, actor_role_id)
         blind_tok, blind_mask = self._embed_simple_bag(blind_ids)
         bury_tok, bury_mask = self._embed_simple_bag(bury_ids)
         trick_tok, trick_mask = self._embed_trick(trick_card_ids, trick_is_picker, trick_is_partner_known)
 
-        # Add card type embeddings to distinguish card sources
-        B = hand_tok.size(0)
+        # 5. Concatenate: [context, memory, hand×8, trick×5, blind×2, bury×2] = 19 tokens
         device_actual = hand_tok.device
+        all_tokens = torch.cat([
+            context_tok.unsqueeze(1),  # (B, 1, d_token)
+            memory_tok.unsqueeze(1),   # (B, 1, d_token)
+            hand_tok,                   # (B, 8, d_token)
+            trick_tok,                  # (B, 5, d_token)
+            blind_tok,                  # (B, 2, d_token)
+            bury_tok,                   # (B, 2, d_token)
+        ], dim=1)  # (B, 19, d_token)
 
+        all_mask = torch.cat([
+            torch.ones((B, 1), dtype=torch.bool, device=device_actual),  # context always valid
+            torch.ones((B, 1), dtype=torch.bool, device=device_actual),  # memory always valid
+            hand_mask,
+            trick_mask,
+            blind_mask,
+            bury_mask,
+        ], dim=1)  # (B, 19)
+
+        # 6. Add card_type embeddings
         type_ids = torch.cat([
-            torch.zeros((B, 8), dtype=torch.long, device=device_actual),  # hand = 0
-            torch.ones((B, 5), dtype=torch.long, device=device_actual),   # trick = 1
-            torch.full((B, 2), 2, dtype=torch.long, device=device_actual),  # blind = 2
-            torch.full((B, 2), 3, dtype=torch.long, device=device_actual),  # bury = 3
-        ], dim=1)  # (B, 17)
-
-        # Concatenate all card tokens
-        all_tokens = torch.cat([hand_tok, trick_tok, blind_tok, bury_tok], dim=1)  # (B, 17, d_token)
-        all_mask = torch.cat([hand_mask, trick_mask, blind_mask, bury_mask], dim=1)  # (B, 17)
-
-        # Add type embeddings
+            torch.zeros((B, 1), dtype=torch.long, device=device_actual),  # context = 0
+            torch.ones((B, 1), dtype=torch.long, device=device_actual),   # memory = 1
+            torch.full((B, 8), 2, dtype=torch.long, device=device_actual),  # hand = 2
+            torch.full((B, 5), 3, dtype=torch.long, device=device_actual),  # trick = 3
+            torch.full((B, 2), 4, dtype=torch.long, device=device_actual),  # blind = 4
+            torch.full((B, 2), 5, dtype=torch.long, device=device_actual),  # bury = 5
+        ], dim=1)  # (B, 19)
         all_tokens = all_tokens + self.card_type(type_ids)
 
-        # Apply transformer reasoning - cards attend to each other
+        # 7. Run transformer
         all_tokens = self.card_reasoner(all_tokens, all_mask)
 
-        # Split back into separate bags
-        hand_tok = all_tokens[:, :8, :]
-        trick_tok = all_tokens[:, 8:13, :]
-        blind_tok = all_tokens[:, 13:15, :]
-        bury_tok = all_tokens[:, 15:17, :]
+        # 8. Extract post-attention tokens
+        context_out = all_tokens[:, 0, :]  # (B, d_token)
+        hand_tok_out = all_tokens[:, 2:10, :]  # (B, 8, d_token)
+        trick_tok_out = all_tokens[:, 10:15, :]
+        blind_tok_out = all_tokens[:, 15:17, :]
+        bury_tok_out = all_tokens[:, 17:19, :]
 
-        # Pool reasoning-enhanced tokens
-        hand_vec = self.pool_hand(hand_tok, hand_mask)
-        trick_vec = self.pool_trick(trick_tok, trick_mask)
-        blind_vec = self.pool_blind(blind_tok, blind_mask)
-        bury_vec = self.pool_bury(bury_tok, bury_mask)
+        # 9. Pool bags
+        hand_vec = self.pool_hand(hand_tok_out, hand_mask)
+        trick_vec = self.pool_trick(trick_tok_out, trick_mask)
+        blind_vec = self.pool_blind(blind_tok_out, blind_mask)
+        bury_vec = self.pool_bury(bury_tok_out, bury_mask)
 
-        header_vec = self.header_mlp(torch.cat([header_scalar, called_emb], dim=1))
+        # 10. Update memory: memory_out = GRU(context_token_out, memory_in)
+        memory_out = self.memory_gru(context_out, memory_in)  # (B, 256)
 
-        fused = torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, header_vec], dim=-1)
-        return fused
+        # 11. Fuse features
+        features = self.feature_proj(torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, context_out], dim=1))
 
-    def encode_sequences(self, sequences: List[List[Dict[str, Any]]], device: torch.device | None = None) -> torch.Tensor:
-        # Determine max T
+        return {
+            'features': features,
+            'hand_tokens': hand_tok_out,
+            'context_token': context_out,
+            'memory_out': memory_out,
+        }
+
+    def encode_sequences(self, sequences: List[List[Dict[str, Any]]], memory_in: torch.Tensor | None = None,
+                         device: torch.device | None = None) -> Dict[str, torch.Tensor]:
+        """Encode sequences of observations with recurrent memory.
+
+        Args:
+            sequences: List of B sequences, each a list of observation dicts
+            memory_in: (B, 256) initial memory state, or None for zeros
+            device: Target device
+
+        Returns:
+            dict with:
+                'features': (B, T, 256)
+                'hand_tokens': (B, T, 8, d_token)
+                'memory_out': (B, 256) final memory state after processing all timesteps
+        """
         B = len(sequences)
         T = max((len(seq) for seq in sequences), default=1)
-        out = torch.zeros((B, T, 256), dtype=torch.float32, device=device)
-        for b, seq in enumerate(sequences):
-            if not seq:
+
+        # Initialize outputs
+        features_out = torch.zeros((B, T, 256), dtype=torch.float32, device=device)
+        hand_tokens_out = torch.zeros((B, T, 8, self.d_token_dim), dtype=torch.float32, device=device)
+
+        # Initialize memory
+        if memory_in is None:
+            memory_state = torch.zeros((B, 256), dtype=torch.float32, device=device)
+        else:
+            memory_state = memory_in.to(device) if device is not None else memory_in
+
+        # Process each timestep sequentially (memory updates across time)
+        for t in range(T):
+            # Gather batch for this timestep
+            batch_t = []
+            for b in range(B):
+                if t < len(sequences[b]):
+                    batch_t.append(sequences[b][t])
+                else:
+                    # Pad with empty observation (will be masked out)
+                    batch_t.append(sequences[b][-1] if sequences[b] else {})
+
+            if not batch_t:
                 continue
-            feats = self.encode_batch(seq, device=device)  # (t,256)
-            out[b, :feats.size(0), :] = feats
-        return out
+
+            # Encode this timestep
+            encoder_out = self.encode_batch(batch_t, memory_in=memory_state, device=device)
+
+            # Store outputs
+            features_out[:, t, :] = encoder_out['features']
+            hand_tokens_out[:, t, :, :] = encoder_out['hand_tokens']
+
+            # Update memory for next timestep
+            memory_state = encoder_out['memory_out']
+
+        return {
+            'features': features_out,
+            'hand_tokens': hand_tokens_out,
+            'memory_out': memory_state,
+        }
 
 

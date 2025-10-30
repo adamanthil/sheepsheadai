@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Analyze trained card embeddings from a PPOAgent's StateEncoder.
+Analyze trained card embeddings from a PPOAgent's CardReasoningEncoder.
 
 Compares learned embeddings against initialized values and produces
 detailed visualizations of how the model has refined its card representations.
@@ -14,21 +14,21 @@ import argparse
 from typing import Dict, Tuple
 import csv
 
-from state_encoder import StateEncoder, CardEmbeddingConfig, PAD_CARD_ID, UNDER_CARD_ID
+from encoder import CardReasoningEncoder, CardEmbeddingConfig, PAD_CARD_ID, UNDER_CARD_ID
 from sheepshead import DECK_IDS, TRUMP
 
 
-def get_initial_embeddings(d_card: int = 12) -> torch.Tensor:
+def get_initial_embeddings(d_card: int = 16) -> torch.Tensor:
     """Get initialized card embeddings (before any training)."""
     config = CardEmbeddingConfig(use_informed_init=True, d_card=d_card)
-    encoder = StateEncoder(card_config=config)
+    encoder = CardReasoningEncoder(card_config=config)
     return encoder.card.weight.data.clone()
 
 
 def load_trained_embeddings(checkpoint_path: str) -> Tuple[torch.Tensor, int]:
     """Load card embeddings from a trained model checkpoint."""
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
-    state_dict = checkpoint['state_encoder_state_dict']
+    state_dict = checkpoint['encoder_state_dict']
 
     # Extract card embedding weights
     card_weights = state_dict['card.weight']
