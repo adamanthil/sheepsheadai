@@ -194,6 +194,7 @@ def play_population_game(training_agent: PPOAgent,
 
                     # Store transition for training agent
                     transition = {
+                        'kind': 'action',
                         'player': player,
                         'state': state,
                         'action': action,
@@ -227,14 +228,18 @@ def play_population_game(training_agent: PPOAgent,
                 trick_completed = handle_trick_completion(
                     game, current_trick_transitions
                 )
-                if trick_completed:
+                if trick_completed and not game.is_done():
                     # Emit observations for the completed trick using dedicated accessor
                     for seat in game.players:
                         seat_agent = agents[seat.position - 1]
                         if seat_agent == training_agent:
                             # Update training agent's recurrent hidden state and also store for unroll
                             training_agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
-                            training_agent.store_observation(seat.get_last_trick_state_dict(), player_id=seat.position)
+                            episode_transitions.append({
+                                'kind': 'observation',
+                                'player': seat,
+                                'state': seat.get_state_dict(),
+                            })
                         else:
                             seat_agent.observe(seat.get_last_trick_state_dict(), seat.position)
                     # Update trick-level EWMAs for population agents
@@ -262,7 +267,40 @@ def play_population_game(training_agent: PPOAgent,
         'position': training_agent_position
     }
 
-    return game, episode_transitions, final_scores, training_agent_data
+    # Compute rewards for training agent actions
+    reward_map = {}
+    for reward_data in process_episode_rewards(
+        [t for t in episode_transitions if t['kind'] == 'action'],
+        final_scores,
+        game.is_leaster
+    ):
+        reward_map[id(reward_data['transition'])] = reward_data['reward']
+
+    # Build final episode event stream for storage
+    episode_events = []
+    for ev in episode_transitions:
+        if ev['kind'] == 'observation':
+            episode_events.append({
+                'kind': 'observation',
+                'state': ev['state'],
+                'player_id': ev['player'].position,
+            })
+        else:
+            seat_pos = ev['player'].position
+            episode_events.append({
+                'kind': 'action',
+                'state': ev['state'],
+                'action': ev['action'],
+                'log_prob': ev['log_prob'],
+                'value': ev['value'],
+                'valid_actions': ev['valid_actions'],
+                'reward': reward_map[id(ev)],
+                'player_id': seat_pos,
+                'win_label': 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
+                'final_return_label': float(final_scores[seat_pos - 1]),
+            })
+
+    return game, episode_events, final_scores, training_agent_data
 
 
 def train_pfsp(num_episodes: int = 500000,
@@ -480,7 +518,7 @@ def train_pfsp(num_episodes: int = 500000,
         }
 
         # Play game
-        game, episode_transitions, final_scores, training_data_single = play_population_game(
+        game, episode_events, final_scores, training_data_single = play_population_game(
             training_agent=training_agent,
             opponents=opponents,
             partner_mode=partner_mode,
@@ -488,36 +526,8 @@ def train_pfsp(num_episodes: int = 500000,
             shaping_weights=shaping_weights
         )
 
-        # Process rewards and store transitions
-        # Build last_transition_per_player dictionary based on actual transitions
-        last_transition_per_player = {}
-        for i, transition in enumerate(episode_transitions):
-            player_pos = transition['player'].position
-            last_transition_per_player[player_pos] = i
-
-        for reward_data in process_episode_rewards(
-            episode_transitions,
-            final_scores,
-            last_transition_per_player,
-            game.is_leaster
-        ):
-            transition = reward_data['transition']
-            seat_pos = transition['player'].position
-            win_label = 1.0 if final_scores[seat_pos - 1] > 0 else 0.0
-            final_return_label = float(final_scores[seat_pos - 1])
-            training_agent.store_transition(
-                transition['state'],
-                transition['action'],
-                reward_data['reward'],
-                transition['value'],
-                transition['log_prob'],
-                reward_data['done'],
-                transition['valid_actions'],
-                player_id=seat_pos,
-                win_label=win_label,
-                final_return_label=final_return_label,
-            )
-            transitions_since_update += 1
+        training_agent.store_episode_events(episode_events)
+        transitions_since_update += sum(1 for ev in episode_events if ev['kind'] == 'action')
 
         # Update statistics
         picker_score = training_data_single['score'] if training_data_single['was_picker'] else 0
@@ -592,8 +602,14 @@ def train_pfsp(num_episodes: int = 500000,
                 training_alone_window.append(1 if game.alone_called else 0)
 
         # Count pick/pass decisions from transitions
-        episode_picks = sum(1 for t in episode_transitions if t['action'] == ACTION_IDS["PICK"])
-        episode_passes = sum(1 for t in episode_transitions if t['action'] == ACTION_IDS["PASS"])
+        episode_picks = sum(
+            1 for ev in episode_events
+            if ev['kind'] == 'action' and ev['action'] == ACTION_IDS["PICK"]
+        )
+        episode_passes = sum(
+            1 for ev in episode_events
+            if ev['kind'] == 'action' and ev['action'] == ACTION_IDS["PASS"]
+        )
 
         pick_decisions[partner_mode].append(episode_picks)
         pass_decisions[partner_mode].append(episode_passes)

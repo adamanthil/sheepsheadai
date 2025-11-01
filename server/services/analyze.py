@@ -277,26 +277,28 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # Compute discounted returns per action if we have any transitions
     if episode_transitions:
         final_scores = [p.get_score() for p in game.players]
-        last_transition_per_player: Dict[int, int] = {}
-        for i, tr in enumerate(episode_transitions):
-            last_transition_per_player[tr['player'].position] = i
 
-        # Collect per-step rewards and done flags in order
-        rewards = [0.0] * len(episode_transitions)
-        dones = [False] * len(episode_transitions)
-        for i, reward_data in enumerate(process_episode_rewards(
-            episode_transitions,
-            final_scores,
-            last_transition_per_player,
-            game.is_leaster,
-        )):
-            rewards[i] = float(reward_data['reward'])
-            dones[i] = bool(reward_data['done'])
-
-        # Group indices by player
+        # Group indices by player (to compute rewards per player sequence)
         idxs_by_player: Dict[int, List[int]] = {}
         for i, tr in enumerate(episode_transitions):
             idxs_by_player.setdefault(tr['player'].position, []).append(i)
+
+        # Fill rewards aligned to original order by calling per-player
+        rewards = [0.0] * len(episode_transitions)
+        dones = [False] * len(episode_transitions)
+        for idxs in idxs_by_player.values():
+            acts = [episode_transitions[i] for i in idxs]
+            # Per-player rewards (last item is terminal)
+            for offset, reward_data in enumerate(
+                process_episode_rewards(
+                    acts,
+                    final_scores,
+                    game.is_leaster,
+                )
+            ):
+                rewards[idxs[offset]] = float(reward_data['reward'])
+            if idxs:
+                dones[idxs[-1]] = True
 
         gamma = getattr(agent, 'gamma', 0.95)
         discounted_by_index: Dict[int, float] = {}

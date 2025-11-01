@@ -749,37 +749,68 @@ class PPOAgent:
             if player_id is not None:
                 self.set_recurrent_memory(player_id, encoder_out['memory_out'][0])
 
-    def store_transition(self, state, action, reward, value, log_prob, done, valid_actions, player_id=None, win_label=None, final_return_label=None):
-        """Store transition data"""
-        action_mask = self.get_action_mask(valid_actions, self.action_size)
-        self.events.append({
-            'kind': 'action',
-            'state': state,
-            'mask': action_mask,
-            'action': action - 1,  # store 0-indexed
-            'reward': reward,
-            'value': value,
-            'log_prob': log_prob,
-            'done': done,
-            'player_id': player_id,
-            'win': float(win_label) if win_label is not None else 0.0,
-            'final_return': float(final_return_label) if final_return_label is not None else 0.0,
-        })
+    # ------------------------------------------------------------------
+    # Episode-level ingestion API
+    # ------------------------------------------------------------------
+    def store_episode_events(self, events: list, player_id_default: int | None = None) -> None:
+        """Store a single player's episode as a chronological list of events.
 
-    def store_observation(self, state, valid_actions=None, player_id=None):
-        """Store an observation-only frame to be used for recurrent unrolling during training.
-        Does not contribute to GAE or PPO loss.
+        Each event must be one of:
+          - Observation:
+              {
+                'kind': 'observation',
+                'state': dict,
+                'player_id': int (optional if player_id_default provided)
+              }
+          - Action:
+              {
+                'kind': 'action',
+                'state': dict,
+                'action': int (1-indexed),
+                'log_prob': float,
+                'value': float,
+                'valid_actions': set[int],
+                'reward': float,
+                'player_id': int (optional if player_id_default provided),
+                'win_label': float (optional),
+                'final_return_label': float (optional),
+              }
+
         """
-        if valid_actions is not None:
-            mask = self.get_action_mask(valid_actions, self.action_size)
-        else:
-            mask = torch.ones(self.action_size, dtype=torch.bool)
-        self.events.append({
-            'kind': 'obs',
-            'state': state,
-            'mask': mask,
-            'player_id': player_id,
-        })
+        # Identify last action index to set done flag
+        last_action_idx = -1
+        for idx, ev in enumerate(events):
+            if ev.get('kind') == 'action':
+                last_action_idx = idx
+
+        for idx, ev in enumerate(events):
+            pid = ev.get('player_id', player_id_default)
+            if pid is None:
+                pid = 0
+            if ev.get('kind') == 'action':
+                mask = self.get_action_mask(ev['valid_actions'], self.action_size)
+                self.events.append({
+                    'kind': 'action',
+                    'state': ev['state'],
+                    'mask': mask,
+                    'action': int(ev['action']) - 1,
+                    'reward': float(ev['reward']),
+                    'value': float(ev['value']),
+                    'log_prob': float(ev['log_prob']),
+                    'done': (idx == last_action_idx),
+                    'player_id': pid,
+                    'win': float(ev.get('win_label', 0.0) or 0.0),
+                    'final_return': float(ev.get('final_return_label', 0.0) or 0.0),
+                })
+            else:
+                # Observation: mask = all ones by default
+                mask = torch.ones(self.action_size, dtype=torch.bool)
+                self.events.append({
+                    'kind': 'observation',
+                    'state': ev['state'],
+                    'mask': mask,
+                    'player_id': pid,
+                })
 
     def compute_gae(self, next_value=0):
         """Compute GAE per player over action events; write results back into events."""
@@ -893,7 +924,10 @@ class PPOAgent:
         final_ret_list_all = []
 
         for pid, seg_start, seg_end in batch:
-            ev_range = list(range(seg_start, seg_end + 1))
+            # Restrict sequence strictly to this player's own events (actions + obs)
+            # rather than a contiguous global slice. This ensures each agent learns
+            # only from its direct experience without global context bleed-through.
+            ev_range = [i for i in range(seg_start, seg_end + 1) if pids[i] == pid]
             lengths.append(len(ev_range))
             states_seqs.append([states[i] for i in ev_range])
             masks_list.append(torch.stack([masks_t[i] for i in ev_range], dim=0))

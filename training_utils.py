@@ -216,13 +216,19 @@ def handle_trick_completion(game, current_trick_transitions):
     return False
 
 
-def process_episode_rewards(episode_transitions, final_scores, last_transition_per_player, is_leaster):
-    """Process and assign rewards to all transitions in the episode."""
+def process_episode_rewards(episode_transitions, final_scores, is_leaster):
+    """Compute per-action rewards for a single player's episode.
+
+    The input must be a chronological list of action transitions for one player only.
+    The final action in the list is considered the terminal step for assigning
+    the episode-level final reward.
+    """
+    last_index = len(episode_transitions) - 1
     for i, transition in enumerate(episode_transitions):
         player = transition['player']
         player_pos = player.position
         final_score = final_scores[player_pos - 1]
-        is_episode_done = (i == last_transition_per_player[player_pos])
+        is_episode_done = (i == last_index)
 
         if is_leaster:
             # Increase final reward for leasters to compensate for negative trick rewards.
@@ -237,7 +243,6 @@ def process_episode_rewards(episode_transitions, final_scores, last_transition_p
         yield {
             'transition': transition,
             'reward': total_reward,
-            'done': is_episode_done
         }
 
 

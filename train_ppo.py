@@ -216,6 +216,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     action, log_prob, value = agent.act(state, valid_actions, player.position)
 
                     transition = {
+                        'kind': 'action',
                         'player': player,
                         'state': state,
                         'action': action,
@@ -250,7 +251,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                     trick_completed = handle_trick_completion(
                         game, current_trick_transitions
                     )
-                    if trick_completed:
+                    if trick_completed and not game.is_done():
                         # ------------------------------------------------
                         # Add post-trick observation frames for all seats
                         # (stored for training-time recurrent unroll)
@@ -261,7 +262,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                             agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
                             # Store for training-time unroll
                             episode_transitions[seat.position].append({
-                                'kind': 'obs',
+                                'kind': 'observation',
                                 'player': seat,
                                 'state': seat.get_state_dict(),
                             })
@@ -272,51 +273,51 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
         episode_scores = final_scores[:]
 
         # ---------------------------------------------
-        # Flatten per-player trajectories; compute rewards
+        # Compute rewards per player and store via episode API
         # ---------------------------------------------
-        flat_all = []
-        for pos in episode_transitions:
-            flat_all.extend(episode_transitions[pos])
+        # Build per-player action lists
+        actions_by_player = {pos: [t for t in episode_transitions[pos] if t['kind'] == 'action'] for pos in episode_transitions}
 
-        # Build action-only list preserving per-player order
-        flat_actions = [t for t in flat_all if t.get('kind', 'action') == 'action']
+        # Compute rewards per player
+        reward_maps_by_player = {}
+        for pos, acts in actions_by_player.items():
+            reward_map = {}
+            for reward_data in process_episode_rewards(
+                acts,
+                final_scores,
+                game.is_leaster
+            ):
+                tr = reward_data['transition']
+                reward_map[id(tr)] = reward_data['reward']
+            reward_maps_by_player[pos] = reward_map
 
-        # Compute last action index per player within action-only list
-        last_transition_per_player = {}
-        for idx, t in enumerate(flat_actions):
-            ppos = t['player'].position
-            last_transition_per_player[ppos] = idx
-
-        # Compute rewards/done for action transitions
-        reward_map = {}
-        for reward_data in process_episode_rewards(
-            flat_actions,
-            final_scores,
-            last_transition_per_player,
-            game.is_leaster
-        ):
-            tr = reward_data['transition']
-            reward_map[id(tr)] = (reward_data['reward'], reward_data['done'])
-
-        # Store events in chronological per-player order (obs and actions interleaved)
-        for ev in flat_all:
-            if ev.get('kind') == 'obs':
-                agent.store_observation(ev['state'], player_id=ev['player'].position)
-            else:
-                reward, done_flag = reward_map[id(ev)]
-                agent.store_transition(
-                    ev['state'],
-                    ev['action'],
-                    reward,
-                    ev['value'],
-                    ev['log_prob'],
-                    done_flag,
-                    ev['valid_actions'],
-                    player_id=ev['player'].position,
-                    win_label=1.0 if episode_scores[ev['player'].position - 1] > 0 else 0.0,
-                    final_return_label=float(episode_scores[ev['player'].position - 1]),
-                )
-                transitions_since_update += 1
+        # Build annotated event streams and ingest per player
+        for pos, seq in episode_transitions.items():
+            events = []
+            rmap = reward_maps_by_player.get(pos, {})
+            for ev in seq:
+                if ev.get('kind') == 'observation':
+                    events.append({
+                        'kind': 'observation',
+                        'state': ev['state'],
+                        'player_id': pos,
+                    })
+                else:
+                    reward = rmap.get(id(ev), 0.0)
+                    events.append({
+                        'kind': 'action',
+                        'state': ev['state'],
+                        'action': ev['action'],
+                        'log_prob': ev['log_prob'],
+                        'value': ev['value'],
+                        'valid_actions': ev['valid_actions'],
+                        'reward': reward,
+                        'player_id': pos,
+                        'win_label': 1.0 if episode_scores[pos - 1] > 0 else 0.0,
+                        'final_return_label': float(episode_scores[pos - 1]),
+                    })
+            agent.store_episode_events(events)
+            transitions_since_update += sum(1 for e in events if e['kind'] == 'action')
 
         # Track statistics
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
