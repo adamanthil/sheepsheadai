@@ -44,6 +44,13 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         else:
             raise ValueError(f"Unsupported activation function: {activation}")
 
+        # Shared actor adapter to add nonlinearity and specialization before heads
+        self.actor_adapter = nn.Sequential(
+            nn.LayerNorm(256),
+            nn.Linear(256, 256),
+            nn.ReLU() if activation == 'relu' else nn.SiLU(),
+        )
+
         # === Heads ===
         self.pick_head = nn.Linear(256, len(action_groups['pick']))
 
@@ -145,25 +152,28 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         K = actor_features.size(0)
         logits = torch.full((K, self.action_size), -1e8, device=device)
 
+        # Adapt features
+        feat = self.actor_adapter(actor_features)
+
         # PICK / PASS
-        pick_logits = self.pick_head(actor_features) / max(self.temperature_pick, 1e-6)
+        pick_logits = self.pick_head(feat) / max(self.temperature_pick, 1e-6)
         logits[:, self.action_groups['pick']] = pick_logits
 
         # PARTNER: basic (ALONE, JD PARTNER)
-        partner_basic = self.partner_basic_head(actor_features) / max(self.temperature_partner, 1e-6)
+        partner_basic = self.partner_basic_head(feat) / max(self.temperature_partner, 1e-6)
         idx_alone = ACTION_IDS["ALONE"] - 1
         idx_jd = ACTION_IDS["JD PARTNER"] - 1
         logits[:, idx_alone] = partner_basic[:, 0]
         logits[:, idx_jd] = partner_basic[:, 1]
 
         # PARTNER: CALL actions via two-tower card scoring
-        card_scores = self._score_cards_two_tower(actor_features, card_embedding)  # (K, 34)
+        card_scores = self._score_cards_two_tower(feat, card_embedding)  # (K, 34)
         call_scores = card_scores[:, self._call_card_ids.to(device)] / max(self.temperature_partner, 1e-6)
         logits[:, self._call_action_global_indices.to(device)] = call_scores
 
         # Pointer scores over hand tokens (compute once, reuse for bury/under/play)
         slot_scores = self._score_hand_pointer(
-            actor_features,
+            feat,
             hand_tokens,
         )  # (K, N)
         K_, N = slot_scores.size(0), slot_scores.size(1)
@@ -192,7 +202,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # PLAY UNDER scalar
         if self._play_under_action_index is not None:
-            play_under_logit = self.play_under_head(actor_features).squeeze(-1) / max(self.temperature_play, 1e-6)
+            play_under_logit = self.play_under_head(feat).squeeze(-1) / max(self.temperature_play, 1e-6)
             logits[:, self._play_under_action_index] = play_under_logit
 
         # Apply action mask if provided
