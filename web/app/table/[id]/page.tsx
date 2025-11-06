@@ -267,7 +267,7 @@ export default function TablePage() {
     return (
       <div className={styles.actionButtons}>
         {lastState.valid_actions.map((aid: number) => {
-          if (!actionLookup[String(aid)]?.startsWith("PLAY") && !actionLookup[String(aid)]?.startsWith("BURY")) {
+          if (!actionLookup[String(aid)]?.startsWith("PLAY") && !actionLookup[String(aid)]?.startsWith("BURY") || actionLookup[String(aid)] === "PLAY UNDER") {
             return (
               <button
                 key={aid}
