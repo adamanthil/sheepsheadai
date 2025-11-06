@@ -36,14 +36,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self.action_size = action_size
         self.action_groups = action_groups  # dict with keys 'pick', 'partner', 'bury', 'play'
 
-        # Activation selector
-        if activation == 'swish':
-            self.activation = F.silu
-        elif activation == 'relu':
-            self.activation = F.relu
-        else:
-            raise ValueError(f"Unsupported activation function: {activation}")
-
         # Shared actor adapter to add nonlinearity and specialization before heads
         self.actor_adapter = nn.Sequential(
             nn.LayerNorm(256),
@@ -300,13 +292,6 @@ class RecurrentCriticNetwork(nn.Module):
 
     def __init__(self, activation='swish'):
         super().__init__()
-
-        if activation == 'swish':
-            self.activation = F.silu
-        elif activation == 'relu':
-            self.activation = F.relu
-        else:
-            raise ValueError(f"Unsupported activation function: {activation}")
 
         self.critic_adapter = nn.Sequential(
             nn.LayerNorm(256),
