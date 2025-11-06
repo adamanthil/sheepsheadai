@@ -420,7 +420,7 @@ class PPOAgent:
         self.critic = RecurrentCriticNetwork(activation=activation).to(device)
 
         # Optimizers (include encoder params with scaled LR for card embeddings)
-        encoder_groups = self.encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.1)
+        encoder_groups = self.encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.2)
         actor_groups = [
             {'params': self.actor.parameters(), 'lr': lr_actor},
             *encoder_groups,
