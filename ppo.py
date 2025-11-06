@@ -483,9 +483,7 @@ class PPOAgent:
         return mem.to(target_device) if mem.device != target_device else mem
 
     def set_recurrent_memory(self, player_id: int | None, memory_vector: torch.Tensor) -> None:
-        """Set the recurrent memory vector for a player. No-op if player_id is None."""
-        if player_id is None:
-            return
+        """Set the recurrent memory vector for a player."""
         self._player_memories[player_id] = memory_vector
 
     def _build_action_index_mappings(self):
