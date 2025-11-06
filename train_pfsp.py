@@ -1023,8 +1023,8 @@ def train_pfsp(num_episodes: int = 500000,
 
 def main():
     parser = ArgumentParser(description="PFSP population-based training for Sheepshead")
-    parser.add_argument("--episodes", type=int, default=500000,
-                       help="Number of training episodes (default: 500,000)")
+    parser.add_argument("--episodes", type=int, default=5000000,
+                       help="Number of training episodes (default: 5,000,000)")
     parser.add_argument("--update-interval", type=int, default=2048,
                        help="Number of transitions between model updates")
     parser.add_argument("--save-interval", type=int, default=5000,
