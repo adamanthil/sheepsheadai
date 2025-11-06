@@ -363,7 +363,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
 
             # Separate entropy decay schedules
             entropy_play_start, entropy_play_end = 0.05, 0.05
-            entropy_pick_start, entropy_pick_end = 0.1, 0.05
+            entropy_pick_start, entropy_pick_end = 0.08, 0.05
             entropy_partner_start, entropy_partner_end = 0.05, 0.04
             entropy_bury_start, entropy_bury_end = 0.04, 0.03
             decay_fraction = min(episode / num_episodes, 1.0)
