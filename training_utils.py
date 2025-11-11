@@ -184,10 +184,17 @@ def update_intermediate_rewards_for_action(
                 transition['intermediate_reward'] += 0.03
             elif (
                 not game.is_leaster
-                and (player.is_picker or player.is_partner or player.is_secret_partner)
+                and (player.is_partner or player.is_secret_partner)
                 and card in TRUMP
             ):
-                # Nudge picker and partner toward leading trump
+                # Encourage partners to lead trump (symmetrical to defenders)
+                transition['intermediate_reward'] += 0.06
+            elif (
+                not game.is_leaster
+                and player.is_picker
+                and card in TRUMP
+            ):
+                # Nudge picker toward leading trump
                 transition['intermediate_reward'] += 0.03
         transition['intermediate_reward'] *= play_weight
 
