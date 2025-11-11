@@ -182,7 +182,6 @@ class Game:
         double_on_the_bump=True,
         picking_player=None,
         picking_hand=None,
-        is_leaster=False,
         partner_selection_mode=PARTNER_BY_CALLED_ACE,
     ):
         self.partner_mode_flag = partner_selection_mode  # 0 = JD, 1 = Called Ace
