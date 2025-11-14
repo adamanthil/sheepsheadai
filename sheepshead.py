@@ -180,19 +180,23 @@ class Game:
     def __init__(
         self,
         double_on_the_bump=True,
+        partner_selection_mode=PARTNER_BY_CALLED_ACE,
         picking_player=None,
         picking_hand=None,
-        partner_selection_mode=PARTNER_BY_CALLED_ACE,
+        seed=None,
     ):
+        # Create local RNG instance for reproducible randomness
+        self.rng = random.Random(seed) if seed is not None else random.Random()
+
         self.partner_mode_flag = partner_selection_mode  # 0 = JD, 1 = Called Ace
         if picking_hand:
             # Remove picking_hand cards from DECK to form the deck
             self.deck = [card for card in DECK if card not in picking_hand]
             if picking_player is None:
-                picking_player = random.randint(1, 5)
+                picking_player = self.rng.randint(1, 5)
         else:
             self.deck = DECK[:]
-        random.shuffle(self.deck)
+        self.rng.shuffle(self.deck)
 
         self.last_passed = picking_player - 1 if picking_player else 0
         self.picker = picking_player if picking_player else 0
@@ -242,7 +246,7 @@ class Game:
                     hand = picking_hand[:]
                     hand.extend(self.blind)
                 else:
-                    hand = random.sample(deal_deck, 6)
+                    hand = self.rng.sample(deal_deck, 6)
                     deal_deck = [card for card in deal_deck if card not in hand]
                 self.players.append(Player(self, pos, hand))
         else:
@@ -264,7 +268,7 @@ class Game:
                 # print(f"PLAYER {player.position}")
                 # print([ACTION_LOOKUP[a] for a in actions])
                 while actions:
-                    action = random.sample(list(actions), 1)[0]
+                    action = self.rng.sample(list(actions), 1)[0]
 
                     action_str = ACTION_LOOKUP[action]
                     pretty_action_str = action_str
@@ -394,7 +398,7 @@ class Game:
             winners = [player_pos for player_pos, points in qualified_players if points == min_points]
 
             # Return winner if unique, otherwise draw randomly for tie
-            return winners[0] if len(winners) == 1 else random.choice(winners)
+            return winners[0] if len(winners) == 1 else self.rng.choice(winners)
         return False
 
 
