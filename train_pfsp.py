@@ -332,8 +332,8 @@ def train_pfsp(num_episodes: int = 500000,
 
     # Create training agent
     training_agent = PPOAgent(len(ACTIONS),
-                            lr_actor=1.0e-4,
-                            lr_critic=1.0e-4,
+                            lr_actor=1.5e-4,
+                            lr_critic=1.5e-4,
                             activation=activation)
 
     # OpenSkill rating for the training agent
