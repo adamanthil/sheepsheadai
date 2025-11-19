@@ -172,7 +172,7 @@ def update_intermediate_rewards_for_action(
                 and game.called_suit == get_card_suit(card)
             ):
                 # Encourage defenders to lead called suit (early)
-                transition['intermediate_reward'] += 0.08 - (0.02 * game.current_trick)
+                transition['intermediate_reward'] += 0.1 - (0.02 * game.current_trick)
             elif (
                 not game.is_leaster
                 and not player.is_picker
@@ -187,8 +187,8 @@ def update_intermediate_rewards_for_action(
                 and (player.is_partner or player.is_secret_partner)
                 and card in TRUMP
             ):
-                # Encourage partners to lead trump (symmetrical to defenders)
-                transition['intermediate_reward'] += 0.06
+                # Encourage partners to lead trump
+                transition['intermediate_reward'] += 0.08
             elif (
                 not game.is_leaster
                 and player.is_picker
