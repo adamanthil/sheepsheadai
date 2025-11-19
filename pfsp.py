@@ -1331,29 +1331,16 @@ class PFSPPopulation:
                 r.mu -= np.sign(r.mu) * shift
         return float(extreme_mu), float(shift)
 
-    @staticmethod
-    def compute_ranks_from_scores(scores: List[float]) -> List[int]:
-        """Compute OpenSkill ranks from score list (higher score ⇒ better rank).
-
-        Ties receive the same rank index as implemented in existing logic.
-        """
-        score_rank_pairs = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-        ranks = [0] * len(scores)
-        current_rank = 0
-        last_score = None
-        for i, (idx, sc) in enumerate(score_rank_pairs):
-            if last_score is None or sc != last_score:
-                current_rank = i
-            ranks[idx] = current_rank
-            last_score = sc
-        return ranks
-
-    def update_ratings_with_training(self,
-                                     training_rating,
-                                     final_scores: List[float],
-                                     training_position: int,
-                                     opponents_by_position: Dict[int, PopulationAgent],
-                                     picker_seat: Optional[int]) -> object:
+    def update_ratings_with_training(
+        self,
+        training_rating,
+        final_scores: List[float],
+        training_position: int,
+        opponents_by_position: Dict[int, PopulationAgent],
+        picker_seat: Optional[int],
+        partner_seat: Optional[int],
+        is_leaster: bool,
+    ) -> object:
         """Update ratings for a single 5-seat game that includes the training agent.
 
         - Uses this population's rating model
@@ -1365,56 +1352,119 @@ class PFSPPopulation:
             return training_rating
 
         positions_order = [1, 2, 3, 4, 5]
-        # Build teams list: training agent is a single-member team; each population opponent as its own team
-        teams = []
+        seat_scores = {pos: final_scores[pos - 1] for pos in positions_order}
+        seat_ratings: Dict[int, object] = {}
+        placeholders: Dict[int, bool] = {}
         for pos in positions_order:
             if pos == training_position:
-                teams.append([training_rating])
+                seat_ratings[pos] = training_rating
             else:
                 opp = opponents_by_position.get(pos)
-                # In rare cases a seat may be unassigned; skip rating update gracefully
-                teams.append([opp.rating] if opp else [PlackettLuce().rating()])
+                if opp:
+                    seat_ratings[pos] = opp.rating
+                else:
+                    seat_ratings[pos] = self.rating_model.rating()
+                    placeholders[pos] = True
 
-        ranks = PFSPPopulation.compute_ranks_from_scores(final_scores)
-
-        try:
-            new_teams = self.rating_model.rate(teams, ranks=ranks)
-        except ValueError as err:
-            logging.warning("Failed to update ratings (train match)", extra={
-                "error": str(err),
-                "teams": len(teams),
-                "ranks_len": len(ranks)
-            })
-            return training_rating
-
-        # Apply updated ratings and exploitation results
-        training_rank = ranks[training_position - 1]
-        for idx, pos in enumerate(positions_order):
-            if pos == training_position:
-                training_rating = new_teams[idx][0]
-            else:
-                opp_agent = opponents_by_position.get(pos)
-                if not opp_agent:
+        def update_opponent_stats() -> None:
+            training_score = seat_scores.get(training_position, 0.0)
+            for pos, opp in opponents_by_position.items():
+                score = seat_scores.get(pos)
+                if opp is None or score is None:
                     continue
-                opp_agent.update_rating(new_teams[idx][0])
-                was_picker = (picker_seat == pos)
-                opp_agent.add_game_result(final_scores[pos - 1], was_picker)
-
-                # Rank-based exploitation outcome vs training agent
-                opp_rank = ranks[pos - 1]
-                if opp_rank < training_rank:
+                opp.add_game_result(score, pos == picker_seat)
+                if training_score < score:
                     result_vs_training = 1.0
-                elif opp_rank > training_rank:
+                elif training_score > score:
                     result_vs_training = 0.0
                 else:
                     result_vs_training = 0.5
-                opp_agent.record_vs_training_outcome(result_vs_training)
+                opp.record_vs_training_outcome(result_vs_training)
 
+        # Leaster or no picker: treat each seat independently
+        if is_leaster or not picker_seat:
+            teams = [[seat_ratings[pos]] for pos in positions_order]
+            score_vector = [seat_scores[pos] for pos in positions_order]
+            try:
+                new_ratings = self.rating_model.rate(teams, scores=score_vector)
+            except ValueError as err:
+                logging.warning("Failed to update ratings (train solo)", extra={
+                    "error": str(err),
+                    "teams": len(teams),
+                })
+                return training_rating
+
+            for pos, updated in zip(positions_order, new_ratings):
+                new_rating = updated[0]
+                if pos == training_position:
+                    training_rating = new_rating
+                elif pos not in placeholders:
+                    opp = opponents_by_position.get(pos)
+                    if opp:
+                        opp.update_rating(new_rating)
+
+            update_opponent_stats()
+            return training_rating
+
+        picker_team_positions: List[int] = []
+        if picker_seat in seat_ratings:
+            picker_team_positions.append(picker_seat)
+        if (
+            partner_seat
+            and partner_seat != picker_seat
+            and partner_seat in seat_ratings
+        ):
+            picker_team_positions.append(partner_seat)
+        defender_positions = [pos for pos in positions_order if pos not in picker_team_positions]
+
+        if not picker_team_positions or not defender_positions:
+            raise ValueError("Invalid team composition while updating training ratings.")
+
+        team_picker = [seat_ratings[pos] for pos in picker_team_positions]
+        team_def = [seat_ratings[pos] for pos in defender_positions]
+        team_scores = [
+            sum(seat_scores[pos] for pos in picker_team_positions),
+            sum(seat_scores[pos] for pos in defender_positions),
+        ]
+
+        try:
+            new_team_ratings = self.rating_model.rate([team_picker, team_def], scores=team_scores)
+        except ValueError as err:
+            logging.warning("Failed to update ratings (train team)", extra={
+                "error": str(err),
+                "picker_team": len(picker_team_positions),
+                "defender_team": len(defender_positions),
+            })
+            return training_rating
+
+        picker_updates, defender_updates = new_team_ratings
+        for pos, new_rating in zip(picker_team_positions, picker_updates):
+            if pos == training_position:
+                training_rating = new_rating
+            elif pos not in placeholders:
+                opp = opponents_by_position.get(pos)
+                if opp:
+                    opp.update_rating(new_rating)
+
+        for pos, new_rating in zip(defender_positions, defender_updates):
+            if pos == training_position:
+                training_rating = new_rating
+            elif pos not in placeholders:
+                opp = opponents_by_position.get(pos)
+                if opp:
+                    opp.update_rating(new_rating)
+
+        update_opponent_stats()
         return training_rating
 
-    def update_ratings(self,
-                      game_results: List[Tuple[PopulationAgent, int, float, int]],
-                      partner_mode: int):
+    def update_ratings(
+        self,
+        game_results: List[Tuple[PopulationAgent, int, float]],
+        partner_mode: int,
+        picker_seat: Optional[int],
+        partner_seat: Optional[int],
+        is_leaster: bool,
+    ):
         """Update agent ratings based on game results.
 
         Args:
@@ -1424,31 +1474,78 @@ class PFSPPopulation:
         if len(game_results) < 2:
             return
 
-        # Convert to format expected by OpenSkill
-        # Create teams (each player is their own team)
-        teams = [[agent.rating] for agent, _, _, _ in game_results]
+        agents_by_pos = {position: agent for agent, position, _ in game_results}
+        scores_by_pos = {position: score for agent, position, score in game_results}
+        positions = sorted(agents_by_pos.keys())
+        if len(positions) < 2:
+            return
 
-        # Convert scores to OpenSkill ranks (lower rank index = better performance)
-        scores = [result[2] for result in game_results]
-        ranks = PFSPPopulation.compute_ranks_from_scores(scores)
+        # Leaster: rate each seat independently
+        if is_leaster:
+            teams = [[agents_by_pos[pos].rating] for pos in positions]
+            score_vector = [scores_by_pos[pos] for pos in positions]
+            try:
+                new_ratings = self.rating_model.rate(teams, scores=score_vector)
+            except ValueError as err:
+                logging.warning("Failed to update ratings (solo)", extra={
+                    "error": str(err),
+                    "mode": get_partner_mode_name(partner_mode),
+                    "teams": len(teams),
+                })
+                return
 
-        # Update ratings using OpenSkill
+            for (pos, agent), updated in zip(zip(positions, [agents_by_pos[p] for p in positions]), new_ratings):
+                agent.update_rating(updated[0])
+                agent.add_game_result(scores_by_pos[pos], pos == picker_seat)
+            return
+
+        picker_team_positions: List[int] = []
+        if picker_seat in agents_by_pos:
+            picker_team_positions.append(picker_seat)
+        if (
+            partner_seat
+            and partner_seat != picker_seat
+            and partner_seat in agents_by_pos
+        ):
+            picker_team_positions.append(partner_seat)
+
+        defender_positions = [pos for pos in positions if pos not in picker_team_positions]
+
+        if not picker_team_positions or not defender_positions:
+            raise ValueError("Invalid team composition while updating population ratings.")
+
+        team_picker = [agents_by_pos[pos].rating for pos in picker_team_positions]
+        team_def = [agents_by_pos[pos].rating for pos in defender_positions]
+        team_scores = [
+            sum(scores_by_pos[pos] for pos in picker_team_positions),
+            sum(scores_by_pos[pos] for pos in defender_positions),
+        ]
+
         try:
-            new_teams = self.rating_model.rate(teams, ranks=ranks)
-
-            # Update agent ratings
-            for i, (agent, position, score, picker_seat) in enumerate(game_results):
-                agent.update_rating(new_teams[i][0])
-                # Also update performance tracking
-                was_picker = (position == picker_seat)
-                agent.add_game_result(score, was_picker)
-
+            new_team_ratings = self.rating_model.rate([team_picker, team_def], scores=team_scores)
         except ValueError as err:
-            logging.warning("Failed to update ratings due to invalid inputs", extra={
+            logging.warning("Failed to update ratings (team)", extra={
                 "error": str(err),
-                "teams": len(teams),
-                "ranks_len": len(ranks)
+                "mode": get_partner_mode_name(partner_mode),
+                "picker_team": len(picker_team_positions),
+                "defender_team": len(defender_positions),
             })
+            return
+
+        picker_updates, defender_updates = new_team_ratings
+        for pos, new_rating in zip(picker_team_positions, picker_updates):
+            agent = agents_by_pos.get(pos)
+            if not agent:
+                continue
+            agent.update_rating(new_rating)
+            agent.add_game_result(scores_by_pos[pos], pos == picker_seat)
+
+        for pos, new_rating in zip(defender_positions, defender_updates):
+            agent = agents_by_pos.get(pos)
+            if not agent:
+                continue
+            agent.update_rating(new_rating)
+            agent.add_game_result(scores_by_pos[pos], False)
 
     def run_cross_evaluation(self, partner_mode: int, num_games: int, max_agents: int) -> Dict:
         """Run cross-evaluation tournament to update ratings."""
@@ -1471,7 +1568,7 @@ class PFSPPopulation:
         print(f"   Evaluating {len(population)} agents with {num_games} games")
 
         total_games = 0
-        game_results = []
+        game_results: List[Tuple[List[Tuple[PopulationAgent, int, float]], int, int, bool]] = []
 
         # Run round-robin style evaluation
         for game_idx in range(num_games):
@@ -1492,26 +1589,28 @@ class PFSPPopulation:
 
                 # Play game with population agents
                 agent_positions = list(range(1, 6))  # Positions 1-5
-                final_scores, picker_seat = self._play_evaluation_game(game, game_agents, agent_positions)
+                final_scores, picker_seat, partner_seat, is_leaster = self._play_evaluation_game(
+                    game, game_agents, agent_positions
+                )
 
                 # Store results
-                round_results = []
+                round_results: List[Tuple[PopulationAgent, int, float]] = []
                 for i, agent in enumerate(game_agents):
-                    round_results.append((agent, agent_positions[i], final_scores[i], picker_seat))
+                    round_results.append((agent, agent_positions[i], final_scores[i]))
 
-                game_results.extend(round_results)
+                game_results.append((round_results, picker_seat, partner_seat, is_leaster))
                 total_games += 1
 
         # Update ratings based on all games
         if game_results:
-            # Group results by game and update ratings
-            games_played = total_games
-            for game_idx in range(games_played):
-                start_idx = game_idx * 5
-                end_idx = start_idx + 5
-                if end_idx <= len(game_results):
-                    game_group = game_results[start_idx:end_idx]
-                    self.update_ratings(game_group, partner_mode)
+            for round_results, picker_seat, partner_seat, is_leaster in game_results:
+                self.update_ratings(
+                    round_results,
+                    partner_mode,
+                    picker_seat=picker_seat,
+                    partner_seat=partner_seat,
+                    is_leaster=is_leaster,
+                )
 
         print(f"   ✅ Completed {total_games} evaluation games")
 
@@ -1523,8 +1622,10 @@ class PFSPPopulation:
             'skill_spread': np.std([a.get_skill_estimate() for a in population])
         }
 
-    def _play_evaluation_game(self, game: Game, agents: List[PopulationAgent], positions: List[int]) -> Tuple[List[float], int]:
-        """Play a single evaluation game and return final scores."""
+    def _play_evaluation_game(
+        self, game: Game, agents: List[PopulationAgent], positions: List[int]
+    ) -> Tuple[List[float], int, int, bool]:
+        """Play a single evaluation game and return final scores plus picker info."""
         # Create position to agent mapping
         pos_to_agent = {pos: agent for pos, agent in zip(positions, agents)}
 
@@ -1574,8 +1675,13 @@ class PFSPPopulation:
                     'role': role,
                 })
 
-        # Return final scores and picker seat
-        return [player.get_score() for player in game.players], game.picker
+        # Return final scores and picker/partner seats plus mode
+        return (
+            [player.get_score() for player in game.players],
+            game.picker,
+            game.partner,
+            bool(game.is_leaster),
+        )
 
     def _warm_profile_agents(self, partner_mode: int, min_games_per_agent: int = 10) -> None:
         """Play a small number of deterministic evaluation games to seed strategic profiles
@@ -1595,12 +1701,20 @@ class PFSPPopulation:
         def run_game_for_group(group: List[PopulationAgent]):
             game = Game(partner_selection_mode=partner_mode)
             positions = [1, 2, 3, 4, 5]
-            final_scores, picker_seat = self._play_evaluation_game(game, group, positions)
-            game_group: List[Tuple[PopulationAgent, int, float, int]] = []
+            final_scores, picker_seat, partner_seat, is_leaster = self._play_evaluation_game(
+                game, group, positions
+            )
+            game_group: List[Tuple[PopulationAgent, int, float]] = []
             for idx, agent in enumerate(group):
-                game_group.append((agent, positions[idx], final_scores[idx], picker_seat))
+                game_group.append((agent, positions[idx], final_scores[idx]))
                 played_counts[agent.metadata.agent_id] += 1
-            self.update_ratings(game_group, partner_mode)
+            self.update_ratings(
+                game_group,
+                partner_mode,
+                picker_seat=picker_seat,
+                partner_seat=partner_seat,
+                is_leaster=is_leaster,
+            )
 
         # Scheduling strategy: sliding windows with staggered offset to cover all agents
         offset = 0

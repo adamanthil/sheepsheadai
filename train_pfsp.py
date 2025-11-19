@@ -549,6 +549,8 @@ def train_pfsp(num_episodes: int = 500000,
             training_position=training_position,
             opponents_by_position=position_to_agent,
             picker_seat=game.picker,
+            partner_seat=game.partner,
+            is_leaster=game.is_leaster,
         )
 
         # Track team point differences
