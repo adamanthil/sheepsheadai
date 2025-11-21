@@ -121,7 +121,7 @@ def update_intermediate_rewards_for_action(
     elif action_name == "ALONE":
         score = estimate_hand_strength_score(player.hand)
         if score <= 8:
-            transition['intermediate_reward'] += -0.2
+            transition['intermediate_reward'] += -0.1
         transition['intermediate_reward'] *= partner_weight
 
     # Bury penalty: discourage burying trump if not required
