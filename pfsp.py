@@ -44,16 +44,12 @@ EMA_ALPHA_RARE = 0.01     # rare events (e.g., bury)
 
 
 def standard_role_for_lead(player) -> str:
-    """Map a player's current status to the role bucket used by strategic lead counters.
-
-    Partner seats (including secret partners) are treated as 'picker' for lead counters
-    to merge picker+partner leads into a single bucket.
-    """
-    try:
-        is_partner = bool(getattr(player, 'is_partner', False)) or bool(getattr(player, 'is_secret_partner', False))
-    except Exception:
-        is_partner = False
-    return 'picker' if (getattr(player, 'is_picker', False) or is_partner) else 'defender'
+    """Map a player's current status to the role bucket used by strategic lead counters."""
+    if player.is_picker:
+        return 'picker'
+    if player.is_partner or player.is_secret_partner:
+        return 'partner'
+    return 'defender'
 
 
 def detailed_role_for_metrics(player) -> str:
@@ -212,10 +208,14 @@ class StrategicProfile:
     # Lead-trump counters (overall and early-trick)
     lead_counts_picker: int = 0
     lead_trump_counts_picker: int = 0
+    lead_counts_partner: int = 0
+    lead_trump_counts_partner: int = 0
     lead_counts_defender: int = 0
     lead_trump_counts_defender: int = 0
     early_lead_counts_picker: int = 0
     early_lead_trump_counts_picker: int = 0
+    early_lead_counts_partner: int = 0
+    early_lead_trump_counts_partner: int = 0
     early_lead_counts_defender: int = 0
     early_lead_trump_counts_defender: int = 0
 
@@ -279,6 +279,9 @@ class StrategicProfile:
         if role == 'picker':
             total = self.lead_counts_picker
             trump = self.lead_trump_counts_picker
+        elif role == 'partner':
+            total = self.lead_counts_partner
+            trump = self.lead_trump_counts_partner
         elif role == 'defender':
             total = self.lead_counts_defender
             trump = self.lead_trump_counts_defender
@@ -291,6 +294,9 @@ class StrategicProfile:
         if role == 'picker':
             total = self.early_lead_counts_picker
             trump = self.early_lead_trump_counts_picker
+        elif role == 'partner':
+            total = self.early_lead_counts_partner
+            trump = self.early_lead_trump_counts_partner
         elif role == 'defender':
             total = self.early_lead_counts_defender
             trump = self.early_lead_trump_counts_defender
@@ -340,10 +346,14 @@ class StrategicProfile:
             'pick_total_by_hand_strength': dict(self.pick_total_by_hand_strength),
             'lead_counts_picker': self.lead_counts_picker,
             'lead_trump_counts_picker': self.lead_trump_counts_picker,
+            'lead_counts_partner': self.lead_counts_partner,
+            'lead_trump_counts_partner': self.lead_trump_counts_partner,
             'lead_counts_defender': self.lead_counts_defender,
             'lead_trump_counts_defender': self.lead_trump_counts_defender,
             'early_lead_counts_picker': self.early_lead_counts_picker,
             'early_lead_trump_counts_picker': self.early_lead_trump_counts_picker,
+            'early_lead_counts_partner': self.early_lead_counts_partner,
+            'early_lead_trump_counts_partner': self.early_lead_trump_counts_partner,
             'early_lead_counts_defender': self.early_lead_counts_defender,
             'early_lead_trump_counts_defender': self.early_lead_trump_counts_defender,
             'void_events': self.void_events,
@@ -386,10 +396,14 @@ class StrategicProfile:
         # Lead/void counters
         profile.lead_counts_picker = data.get('lead_counts_picker', 0)
         profile.lead_trump_counts_picker = data.get('lead_trump_counts_picker', 0)
+        profile.lead_counts_partner = data.get('lead_counts_partner', 0)
+        profile.lead_trump_counts_partner = data.get('lead_trump_counts_partner', 0)
         profile.lead_counts_defender = data.get('lead_counts_defender', 0)
         profile.lead_trump_counts_defender = data.get('lead_trump_counts_defender', 0)
         profile.early_lead_counts_picker = data.get('early_lead_counts_picker', 0)
         profile.early_lead_trump_counts_picker = data.get('early_lead_trump_counts_picker', 0)
+        profile.early_lead_counts_partner = data.get('early_lead_counts_partner', 0)
+        profile.early_lead_trump_counts_partner = data.get('early_lead_trump_counts_partner', 0)
         profile.early_lead_counts_defender = data.get('early_lead_counts_defender', 0)
         profile.early_lead_trump_counts_defender = data.get('early_lead_trump_counts_defender', 0)
         profile.void_events = data.get('void_events', 0)
@@ -532,7 +546,7 @@ class PopulationAgent:
 
         # Lead-trump behavior diversity (overall and early-trick)
         lead_divs = []
-        for role in ['picker', 'defender']:
+        for role in ['picker', 'partner', 'defender']:
             rate1 = self.strategic_profile.get_trump_lead_rate(role)
             rate2 = other.strategic_profile.get_trump_lead_rate(role)
             early1 = self.strategic_profile.get_early_trump_lead_rate(role)
@@ -581,8 +595,10 @@ class PopulationAgent:
 
         # Trump leading rates (overall and early)
         signature.append(self.strategic_profile.get_trump_lead_rate('picker'))
+        signature.append(self.strategic_profile.get_trump_lead_rate('partner'))
         signature.append(self.strategic_profile.get_trump_lead_rate('defender'))
         signature.append(self.strategic_profile.get_early_trump_lead_rate('picker'))
+        signature.append(self.strategic_profile.get_early_trump_lead_rate('partner'))
         signature.append(self.strategic_profile.get_early_trump_lead_rate('defender'))
 
         # Void behavior
@@ -652,6 +668,14 @@ class PopulationAgent:
                     self.strategic_profile.early_lead_counts_picker += 1
                     if led_trump:
                         self.strategic_profile.early_lead_trump_counts_picker += 1
+            elif role == 'partner':
+                self.strategic_profile.lead_counts_partner += 1
+                if led_trump:
+                    self.strategic_profile.lead_trump_counts_partner += 1
+                if is_early:
+                    self.strategic_profile.early_lead_counts_partner += 1
+                    if led_trump:
+                        self.strategic_profile.early_lead_trump_counts_partner += 1
             elif role in ['defender']:
                 self.strategic_profile.lead_counts_defender += 1
                 if led_trump:
@@ -1964,7 +1988,14 @@ class PFSPPopulation:
         # Coverage: fraction of agents with sufficient early leads and void events
         EARLY_LEAD_MIN = 10
         VOID_MIN = 10
-        early_lead_counts = [ (a.strategic_profile.early_lead_counts_picker + a.strategic_profile.early_lead_counts_defender) for a in population ]
+        early_lead_counts = [
+            (
+                a.strategic_profile.early_lead_counts_picker
+                + a.strategic_profile.early_lead_counts_partner
+                + a.strategic_profile.early_lead_counts_defender
+            )
+            for a in population
+        ]
         void_counts = [ a.strategic_profile.void_events for a in population ]
         coverage = {
             'early_leads': float(np.mean([1.0 if c >= EARLY_LEAD_MIN else 0.0 for c in early_lead_counts])),
