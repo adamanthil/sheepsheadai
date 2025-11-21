@@ -41,6 +41,8 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             nn.LayerNorm(256),
             nn.Linear(256, 256),
             nn.ReLU() if activation == 'relu' else nn.SiLU(),
+            nn.Linear(256, 256),
+            nn.ReLU() if activation == 'relu' else nn.SiLU(),
         )
 
         # === Heads ===

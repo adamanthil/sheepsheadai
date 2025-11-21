@@ -141,7 +141,7 @@ class CardReasoningEncoder(nn.Module):
 
     def __init__(self, d_card: int = 16, d_token: int = 64,
                  card_config: CardEmbeddingConfig | None = None,
-                 n_reasoning_heads: int = 4, n_reasoning_layers: int = 3):
+                 n_reasoning_heads: int = 4, n_reasoning_layers: int = 4):
         super().__init__()
         # Allow config to override d_card
         if card_config is not None:
