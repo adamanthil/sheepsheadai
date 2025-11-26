@@ -14,7 +14,7 @@ import {
   ScoresOverlay,
 } from './components';
 
-type PickStatus = 'PASS' | 'PICK' | 'PENDING' | null;
+type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
 
 export default function TablePage() {
   const params = useParams<{ id: string }>();
@@ -105,14 +105,20 @@ export default function TablePage() {
     return m;
   }, [actionLookup]);
 
-  // Get pick status for a seat
-  const getPickStatus = useCallback(
-    (absSeat: number): PickStatus => {
+  // Get displayed status for a seat
+  const getPlayerStatus = useCallback(
+    (absSeat: number): PlayerStatus => {
       if (!lastState) return null;
-      if (playStarted) return null;
 
       const picker = lastState.view.picker || 0;
+      const partner = lastState.view.partner || 0;
       const actorSeat = lastState.actorSeat;
+
+      if (playStarted) {
+        if (absSeat === picker) return 'PICKER';
+        if (absSeat === partner) return 'PARTNER';
+        return null;
+      }
 
       if (picker > 0) {
         if (absSeat === picker) return 'PICK';
@@ -192,7 +198,7 @@ export default function TablePage() {
                 callout={callout}
                 centerSize={centerSize}
                 trickBoxRef={trickBoxRef}
-                getPickStatus={getPickStatus}
+                getPlayerStatus={getPlayerStatus}
               />
 
               <PlayerHand
@@ -203,7 +209,7 @@ export default function TablePage() {
                 isYourTurn={isYourTurn}
                 validActionStrings={validActionStrings}
                 onCardClick={handleCardClick}
-                userPickStatus={getPickStatus(lastState.yourSeat)}
+                userStatus={getPlayerStatus(lastState.yourSeat)}
               />
 
               <div className={`${styles.muted} ${styles.metaRow}`}>

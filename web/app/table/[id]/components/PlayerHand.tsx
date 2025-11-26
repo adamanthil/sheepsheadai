@@ -2,7 +2,7 @@ import React from 'react';
 import { PlayingCard } from '../../../../lib/components';
 import styles from '../page.module.css';
 
-type PickStatus = 'PASS' | 'PICK' | 'PENDING' | null;
+type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
 
 interface PlayerHandProps {
   hand: string[];
@@ -12,7 +12,7 @@ interface PlayerHandProps {
   isYourTurn: boolean;
   validActionStrings: Set<string>;
   onCardClick: (card: string) => void;
-  userPickStatus: PickStatus;
+  userStatus: PlayerStatus;
 }
 
 export default function PlayerHand({
@@ -23,7 +23,7 @@ export default function PlayerHand({
   isYourTurn,
   validActionStrings,
   onCardClick,
-  userPickStatus,
+  userStatus,
 }: PlayerHandProps) {
   const isCardClickable = (card: string): boolean => {
     if (!isYourTurn) return false;
@@ -42,18 +42,20 @@ export default function PlayerHand({
 
   // Render user pick status badge
   const renderStatusBadge = () => {
-    if (!userPickStatus) return null;
+    if (!userStatus) return null;
 
     const badgeClass =
-      userPickStatus === 'PICK'
+      userStatus === 'PICK' || userStatus === 'PICKER'
         ? styles.badgePick
-        : userPickStatus === 'PASS'
+        : userStatus === 'PASS'
           ? styles.badgePass
-          : styles.badgePending;
+          : userStatus === 'PENDING'
+            ? styles.badgePending
+            : styles.badgePartner;
 
     return (
       <span className={`${styles.badge} ${badgeClass} ${styles.ml8}`}>
-        {userPickStatus}
+        {userStatus}
       </span>
     );
   };

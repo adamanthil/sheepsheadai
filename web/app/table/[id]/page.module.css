@@ -728,6 +728,11 @@
   border: 1px solid rgba(234,179,8,0.45);
 }
 
+.badgePartner {
+  background: rgba(59,130,246,0.22);
+  border: 1px solid rgba(59,130,246,0.45);
+}
+
 .calloutTitle {
   font-size: 16px;
   font-weight: 800;

@@ -6,7 +6,7 @@ import type { AnimTrick } from '../hooks/useTrickAnimation';
 import type { Callout } from '../hooks/useCallout';
 import styles from '../page.module.css';
 
-type PickStatus = 'PASS' | 'PICK' | 'PENDING' | null;
+type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
 
 interface TrickAreaProps {
   cards: string[];
@@ -20,7 +20,7 @@ interface TrickAreaProps {
   callout: Callout | null;
   centerSize: { w: number; h: number };
   trickBoxRef: React.RefObject<HTMLDivElement>;
-  getPickStatus: (absSeat: number) => PickStatus;
+  getPlayerStatus: (absSeat: number) => PlayerStatus;
 }
 
 export default function TrickArea({
@@ -35,7 +35,7 @@ export default function TrickArea({
   callout,
   centerSize,
   trickBoxRef,
-  getPickStatus,
+  getPlayerStatus,
 }: TrickAreaProps) {
   const isPrev = !!showPrev;
   const displayCards: string[] = isPrev && lastTrick ? lastTrick : cards;
@@ -52,6 +52,7 @@ export default function TrickArea({
       style={{
         ['--trickH' as any]: `${trickHeight}px`,
         ['--cardW' as any]: `${centerSize.w}px`,
+        ['--cardH' as any]: `${centerSize.h}px`,
       }}
     >
       {displayCards.map((card, idx) => {
@@ -60,7 +61,7 @@ export default function TrickArea({
         const highlight = isPrev && winnerSeat === absSeat;
         const name = nameForSeat(absSeat, table);
         const isAi = isAiSeat(absSeat, table);
-        const pickStatus = getPickStatus(absSeat);
+        const playerStatus = getPlayerStatus(absSeat);
 
         return (
           <TrickCard
@@ -70,7 +71,7 @@ export default function TrickArea({
             name={name}
             isAi={isAi}
             highlight={highlight}
-            pickStatus={pickStatus}
+            playerStatus={playerStatus}
             centerSize={centerSize}
           />
         );

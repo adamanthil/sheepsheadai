@@ -3,7 +3,7 @@ import { PlayingCard } from '../../../../lib/components';
 import ui from '../../../styles/ui.module.css';
 import styles from '../page.module.css';
 
-type PickStatus = 'PASS' | 'PICK' | 'PENDING' | null;
+type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
 
 interface TrickCardProps {
   card: string;
@@ -11,7 +11,7 @@ interface TrickCardProps {
   name: string;
   isAi: boolean;
   highlight?: boolean;
-  pickStatus?: PickStatus;
+  playerStatus?: PlayerStatus;
   centerSize: { w: number; h: number };
 }
 
@@ -21,7 +21,7 @@ export default function TrickCard({
   name,
   isAi,
   highlight = false,
-  pickStatus,
+  playerStatus,
   centerSize,
 }: TrickCardProps) {
   // Map relSeat to CSS class for positioning
@@ -29,16 +29,18 @@ export default function TrickCard({
 
   // Render pick status badge (not shown for user's position r=0)
   const renderStatusBadge = () => {
-    if (!pickStatus || relSeat === 0) return null;
+    if (!playerStatus || relSeat === 0) return null;
 
     const badgeClass =
-      pickStatus === 'PICK'
+      playerStatus === 'PICK' || playerStatus === 'PICKER'
         ? styles.badgePick
-        : pickStatus === 'PASS'
+        : playerStatus === 'PASS'
           ? styles.badgePass
-          : styles.badgePending;
+          : playerStatus === 'PENDING'
+            ? styles.badgePending
+            : styles.badgePartner;
 
-    return <span className={`${styles.badge} ${badgeClass}`}>{pickStatus}</span>;
+    return <span className={`${styles.badge} ${badgeClass}`}>{playerStatus}</span>;
   };
 
   const renderMeta = () => {
