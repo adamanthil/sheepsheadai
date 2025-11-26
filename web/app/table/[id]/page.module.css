@@ -1,7 +1,15 @@
 .root {
+  /* CSS Custom Properties scoped to this component */
+  --color-bg-dark: #061106;
+  --color-bg-mid: #0b1d08;
+  --color-bg-light: #1f3b08;
+  --color-success: rgba(34,197,94,1);
+  --color-danger: rgba(239,68,68,1);
+  --color-warning: rgba(234,179,8,1);
+
   padding: 8px 8px 0 8px;
   min-height: 100vh;
-  background: radial-gradient(1200px 700px at 50% -200px, #1f3b08 0%, #0b1d08 60%, #061106 100%);
+  background: radial-gradient(1200px 700px at 50% -200px, var(--color-bg-light) 0%, var(--color-bg-mid) 60%, var(--color-bg-dark) 100%);
   color: white;
   overflow-x: hidden;
 }
@@ -927,4 +935,15 @@
 }
 .bottomBarInner .chevronToggle:hover {
   color: rgba(255,255,255,0.9);
+}
+
+/* Player info in bottom bar - hidden on mobile */
+.playerInfo {
+  display: none;
+}
+
+@media (min-width: 480px) {
+  .playerInfo {
+    display: block;
+  }
 }
