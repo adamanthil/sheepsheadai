@@ -126,7 +126,10 @@ export default function TablePage() {
           const curCalledUnder = !!(msg as any).view?.called_under;
           const prevAlone = !!prev?.view?.alone;
           const curAlone = !!(msg as any).view?.alone;
-          const playStarted = !!((msg as any).state?.[14] === 1);
+          // Check if play has started using multiple signals
+          const playStarted = !!(msg.state?.play_started === 1) ||
+            (msg.view?.current_trick_index > 0) ||
+            (msg.view?.current_trick?.some((c: string) => c !== ''));
           if (curPicker > 0 && prevPicker === 0) {
             const who = nameForSeat(curPicker, (msg as any).table);
             setCallout({ kind: 'PICK', message: `${who} picked` });
@@ -211,13 +214,6 @@ export default function TablePage() {
     return table?.seats?.[String(seat)] || `Seat ${seat}`;
   }
 
-  // Picking round helpers (visualize PASS/PICK/PENDING)
-  const lastPassed = useMemo(() => {
-    if (!lastState) return 0;
-    const v = lastState.state?.[2];
-    const n = typeof v === 'number' ? Math.floor(v) : 0;
-    return Number.isFinite(n) ? n : 0;
-  }, [lastState]);
 
   // Clear timers on unmount
   useEffect(() => {
@@ -239,26 +235,45 @@ export default function TablePage() {
   }, []);
 
   const inPickDecision = !!lastState && !lastState.view.is_leaster && (lastState.view.picker === 0);
+  // Play has started when there are cards in history or current_trick_index > 0
   const playStarted = useMemo(() => {
     if (!lastState) return false;
-    const v = lastState.state?.[14];
-    const n = typeof v === 'number' ? Math.floor(v) : 0;
-    return n === 1;
+    // Check state.play_started from the observation dict
+    if (lastState.state?.play_started === 1) return true;
+    // Fallback: check if current trick has cards or we're past trick 0 with a picker
+    if (lastState.view.current_trick_index > 0) return true;
+    const picker = lastState.view.picker || 0;
+    if (picker > 0) {
+      // If there's a picker and current_trick has any non-empty cards, play started
+      const ct = lastState.view.current_trick as string[] | undefined;
+      if (ct && ct.some((c: string) => c !== '')) return true;
+    }
+    return false;
   }, [lastState]);
 
   function pickStatusForSeat(absSeat: number): 'PASS' | 'PICK' | 'PENDING' | null {
     if (!lastState) return null;
     if (playStarted) return null; // persist badges only until play starts
     const picker = lastState.view.picker || 0;
+    const actorSeat = lastState.actorSeat;
+
     if (picker > 0) {
+      // Someone picked - show PICK for picker, PASS for those before picker
       if (absSeat === picker) return 'PICK';
-      if (absSeat <= lastPassed) return 'PASS';
+      // Seats 1 to (picker - 1) passed before the picker
+      if (absSeat < picker) return 'PASS';
       return null;
     }
+
+    // No one has picked yet - we're in picking phase
     if (!inPickDecision) return null;
-    if (absSeat <= lastPassed) return 'PASS';
-    const nextSeat = (lastPassed % 5) + 1;
-    if (absSeat === nextSeat) return 'PENDING';
+
+    // Use actorSeat from the server to determine who is pending
+    if (actorSeat && absSeat === actorSeat) return 'PENDING';
+
+    // Seats before the current actor have passed
+    if (actorSeat && absSeat < actorSeat) return 'PASS';
+
     return null;
   }
 

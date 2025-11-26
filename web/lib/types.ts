@@ -16,7 +16,14 @@ export type TableStateMsg = {
   table: any;
   yourSeat: number;
   actorSeat: number | null;
-  state: number[];
+  state: {
+    play_started?: number;
+    is_leaster?: number;
+    current_trick?: number;
+    picker_rel?: number;
+    partner_rel?: number;
+    [key: string]: unknown;
+  };
   view: any;
   valid_actions: number[];
 };
