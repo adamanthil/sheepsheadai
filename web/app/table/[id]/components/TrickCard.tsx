@@ -27,24 +27,6 @@ export default function TrickCard({
   // Map relSeat to CSS class for positioning
   const spotClass = `spotR${relSeat}` as 'spotR0' | 'spotR1' | 'spotR2' | 'spotR3' | 'spotR4';
 
-  // Determine name label position based on relative seat
-  const renderNameLabel = () => {
-    const nameContent = (
-      <span className={ui.nameInline}>
-        <span>{name}</span>
-        {isAi && <span className={ui.aiTag}>AI</span>}
-      </span>
-    );
-
-    if (relSeat === 2) {
-      return <div className={styles.nameLeftOfCard}>{nameContent}</div>;
-    } else if (relSeat === 3) {
-      return <div className={styles.nameRightOfCard}>{nameContent}</div>;
-    } else {
-      return <div className={styles.nameBelow}>{nameContent}</div>;
-    }
-  };
-
   // Render pick status badge (not shown for user's position r=0)
   const renderStatusBadge = () => {
     if (!pickStatus || relSeat === 0) return null;
@@ -56,15 +38,45 @@ export default function TrickCard({
           ? styles.badgePass
           : styles.badgePending;
 
-    // For positions 2 and 3, badge goes below the card (name is beside)
-    // For positions 1 and 4, badge goes in flow after the name
-    const positionClass = relSeat === 2 || relSeat === 3
-      ? styles.statusContainerTop
-      : styles.statusContainerSide;
+    return <span className={`${styles.badge} ${badgeClass}`}>{pickStatus}</span>;
+  };
+
+  const renderMeta = () => {
+    const nameContent = (
+      <span className={ui.nameInline}>
+        <span>{name}</span>
+        {isAi && <span className={ui.aiTag}>AI</span>}
+      </span>
+    );
+
+    const badgeContent = renderStatusBadge();
+    const badgeWrapper =
+      badgeContent && <div className={styles.statusContainer}>{badgeContent}</div>;
+
+    if (relSeat === 2) {
+      return (
+        <div className={styles.nameLeftOfCard}>
+          {nameContent}
+          {badgeWrapper}
+        </div>
+      );
+    }
+
+    if (relSeat === 3) {
+      return (
+        <div className={styles.nameRightOfCard}>
+          {nameContent}
+          {badgeWrapper}
+        </div>
+      );
+    }
+
+    const belowClass = relSeat === 0 ? styles.metaBelowSelf : styles.metaBelow;
 
     return (
-      <div className={`${styles.statusContainer} ${positionClass}`}>
-        <span className={`${styles.badge} ${badgeClass}`}>{pickStatus}</span>
+      <div className={belowClass}>
+        <div className={styles.nameBelow}>{nameContent}</div>
+        {badgeWrapper}
       </div>
     );
   };
@@ -77,8 +89,7 @@ export default function TrickCard({
         height={centerSize.h}
         highlight={highlight}
       />
-      {renderNameLabel()}
-      {renderStatusBadge()}
+      {renderMeta()}
     </div>
   );
 }

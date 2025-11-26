@@ -52,7 +52,6 @@ export default function TrickArea({
       style={{
         ['--trickH' as any]: `${trickHeight}px`,
         ['--cardW' as any]: `${centerSize.w}px`,
-        ['--cardH' as any]: `${centerSize.h}px`,
       }}
     >
       {displayCards.map((card, idx) => {

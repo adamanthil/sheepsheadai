@@ -151,28 +151,40 @@
   text-align: center;
   font-size: 10px;
   opacity: 0.85;
-  margin-top: 4px;
-  margin-bottom: 16px; /* Add bottom margin to prevent overlap with "Your hand" */
   white-space: nowrap;
-  max-width: 80px; /* Prevent overflow on mobile */
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-@media (min-width: 480px) {
-  .nameBelow {
-    margin-bottom: 20px; /* Slightly more space on larger screens */
-  }
 }
 
 @media (min-width: 768px) {
   .nameBelow {
     font-size: 11px;
-    max-width: none;
-    margin-bottom: 24px; /* Even more space on desktop */
+    max-width: 140px;
   }
+}
+
+.metaBelow,
+.metaBelowSelf {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: var(--cardW);
+  min-width: 80px;
+  max-width: 160px;
+  pointer-events: none;
+}
+
+.metaBelow {
+  top: calc(50% + var(--cardH) / 2 + 12px);
+}
+
+.metaBelowSelf {
+  top: calc(50% + var(--cardH) / 2 + 18px);
 }
 
 .nameLeftOfCard {
@@ -187,6 +199,10 @@
   width: 80px; /* Increased width for better text display */
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
 }
 
 @media (min-width: 480px) {
@@ -216,6 +232,10 @@
   width: 80px; /* Increased width for better text display */
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
 }
 
 
@@ -670,26 +690,19 @@
 .spotR4 { left: 80%; top: 66%; }
 
 .statusContainer {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  margin-top: 2px;
+  text-align: center;
   white-space: nowrap;
 }
 
-/* For positions 2 and 3 (top): badge below card, name is beside */
-.statusContainerTop {
-  top: calc(var(--cardH) + 22px);
+.nameLeftOfCard .statusContainer {
+  width: 100%;
+  text-align: right;
 }
 
-/* For positions 1 and 4 (sides): badge below card + name area */
-.statusContainerSide {
-  top: calc(var(--cardH) + 38px);
-}
-
-@media (min-width: 768px) {
-  .statusContainerSide {
-    top: calc(var(--cardH) + 46px);
-  }
+.nameRightOfCard .statusContainer {
+  width: 100%;
+  text-align: left;
 }
 
 .badge {
