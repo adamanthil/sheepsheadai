@@ -342,6 +342,22 @@
   display: block;
 }
 
+/* Status badge positioned at the end of the hand */
+.handStatusBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+  width: 100%;
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .handStatusBadge {
+    margin-top: 16px;
+  }
+}
+
 .finalBanner {
   margin-top: 16px;
   margin-bottom: 100px; /* Add bottom margin to prevent overlap with bottom bar on mobile */
@@ -744,33 +760,41 @@
   margin-top: var(--handTop);
 }
 
+@media (min-width: 768px) {
+  .handTopSpacer {
+    margin-top: calc(var(--handTop, 0px) + 32px);
+  }
+}
+
 .clickable {
   cursor: pointer;
 }
 
 .chatContainer {
-  position: absolute;
-  bottom: 12px;
+  position: fixed;
+  bottom: 100px; /* Above bottom action bar */
   left: 12px;
-  width: 280px;
-  height: 200px;
-  z-index: 10;
+  z-index: 50;
+  pointer-events: auto;
 }
 
 @media (min-width: 768px) {
   .chatContainer {
-    width: 320px;
-    height: 240px;
-    bottom: 16px;
+    bottom: 90px;
     left: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .chatContainer {
+    bottom: 90px;
+    left: 20px;
   }
 }
 
 @media (max-width: 480px) {
   .chatContainer {
-    width: 240px;
-    height: 180px;
-    bottom: 8px;
+    bottom: 90px;
     left: 8px;
   }
 }

@@ -1,0 +1,281 @@
+/* Collapsed state - minimal floating button */
+.collapsedToggle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.collapsedToggle:hover {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+.collapsedToggle:active {
+  transform: scale(0.98);
+}
+
+.chatIcon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.unreadDot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  background: #22c55e;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.6);
+  animation: pulse 2s infinite;
+}
+
+.hasUnread {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Expanded chat panel */
+.chatPanel {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  height: 220px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+@media (min-width: 768px) {
+  .chatPanel {
+    width: 280px;
+    height: 260px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .chatPanel {
+    width: 300px;
+    height: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chatPanel {
+    width: 240px;
+    height: 200px;
+  }
+}
+
+.chatHeader {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerTitle {
+  font-weight: 600;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.collapseButton {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 18px;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.collapseButton:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.messagesContainer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  /* Subtle scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.messagesContainer::-webkit-scrollbar {
+  width: 4px;
+}
+
+.messagesContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messagesContainer::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.messagesContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.emptyMessage {
+  padding: 12px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.systemMessage {
+  background: transparent;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.playerMessage {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.systemText {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.playerMessageContent {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.author {
+  color: rgba(34, 197, 94, 0.9);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.body {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.timestamp {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 1px;
+}
+
+.inputForm {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.input {
+  flex: 1;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+@media (max-width: 640px) {
+  .input {
+    font-size: 16px; /* Prevent iOS Safari zoom on focus */
+  }
+}
+
+.input:focus {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.sendButton {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  background: rgba(34, 197, 94, 0.8);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 1);
+  transform: scale(1.05);
+}
+
+.sendButton:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.sendButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.1);
+}

@@ -40,35 +40,11 @@ export default function PlayerHand({
     }
   };
 
-  // Render user pick status badge
-  const renderStatusBadge = () => {
-    if (!userStatus) return null;
-
-    const badgeClass =
-      userStatus === 'PICK' || userStatus === 'PICKER'
-        ? styles.badgePick
-        : userStatus === 'PASS'
-          ? styles.badgePass
-          : userStatus === 'PENDING'
-            ? styles.badgePending
-            : styles.badgePartner;
-
-    return (
-      <span className={`${styles.badge} ${badgeClass} ${styles.ml8}`}>
-        {userStatus}
-      </span>
-    );
-  };
-
   return (
     <div
       className={styles.handTopSpacer}
       style={{ ['--handTop' as any]: `${handTopMargin}px` }}
     >
-      <div className={styles.sectionTitle}>
-        Your hand
-        {renderStatusBadge()}
-      </div>
       <div ref={handRowRef} className={styles.handRow}>
         {hand.map((card, idx) => {
           const clickable = isCardClickable(card);
@@ -89,6 +65,23 @@ export default function PlayerHand({
           );
         })}
       </div>
+      {userStatus && (
+        <div className={styles.handStatusBadge}>
+          <span
+            className={`${styles.badge} ${
+              userStatus === 'PICK' || userStatus === 'PICKER'
+                ? styles.badgePick
+                : userStatus === 'PASS'
+                  ? styles.badgePass
+                  : userStatus === 'PENDING'
+                    ? styles.badgePending
+                    : styles.badgePartner
+            }`}
+          >
+            {userStatus}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

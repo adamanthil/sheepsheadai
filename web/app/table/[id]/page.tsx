@@ -194,10 +194,6 @@ export default function TablePage() {
                 userStatus={getPlayerStatus(lastState.yourSeat)}
               />
 
-              <div className={styles.chatContainer}>
-                <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
-              </div>
-
               {lastState.view.is_done && lastState.view.final && (
                 <GameOverBanner
                   final={lastState.view.final}
@@ -234,6 +230,10 @@ export default function TablePage() {
       {lastState && showScores && (
         <ScoresOverlay onClose={() => setShowScores(false)} table={lastState.table} />
       )}
+
+      <div className={styles.chatContainer}>
+        <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
+      </div>
     </div>
   );
 }

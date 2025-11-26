@@ -33,8 +33,6 @@ from server.api.schemas import (
     CloseTableRequest,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
-    ChatMessage,
-    ChatSendRequest,
 )
 
 
