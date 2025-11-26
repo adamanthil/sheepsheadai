@@ -663,12 +663,11 @@
   width: var(--cardW);
 }
 
-/* Fixed spots for relative seats */
 .spotR0 { left: 50%; top: 84%; }
-.spotR1 { left: 17%; top: 66%; }
-.spotR2 { left: 27%; top: 21%; }
-.spotR3 { left: 73%; top: 21%; }
-.spotR4 { left: 83%; top: 66%; }
+.spotR1 { left: 20%; top: 66%; }
+.spotR2 { left: 30%; top: 21%; }
+.spotR3 { left: 70%; top: 21%; }
+.spotR4 { left: 80%; top: 66%; }
 
 .statusContainer {
   margin-top: 4px;
