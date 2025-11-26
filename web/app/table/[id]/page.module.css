@@ -670,8 +670,26 @@
 .spotR4 { left: 80%; top: 66%; }
 
 .statusContainer {
-  margin-top: 4px;
-  text-align: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* For positions 2 and 3 (top): badge below card, name is beside */
+.statusContainerTop {
+  top: calc(var(--cardH) + 22px);
+}
+
+/* For positions 1 and 4 (sides): badge below card + name area */
+.statusContainerSide {
+  top: calc(var(--cardH) + 38px);
+}
+
+@media (min-width: 768px) {
+  .statusContainerSide {
+    top: calc(var(--cardH) + 46px);
+  }
 }
 
 .badge {

@@ -56,8 +56,14 @@ export default function TrickCard({
           ? styles.badgePass
           : styles.badgePending;
 
+    // For positions 2 and 3, badge goes below the card (name is beside)
+    // For positions 1 and 4, badge goes in flow after the name
+    const positionClass = relSeat === 2 || relSeat === 3
+      ? styles.statusContainerTop
+      : styles.statusContainerSide;
+
     return (
-      <div className={styles.statusContainer}>
+      <div className={`${styles.statusContainer} ${positionClass}`}>
         <span className={`${styles.badge} ${badgeClass}`}>{pickStatus}</span>
       </div>
     );
