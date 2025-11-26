@@ -3,6 +3,7 @@ import time
 import json
 import os
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
@@ -32,6 +33,8 @@ from server.api.schemas import (
     CloseTableRequest,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
+    ChatMessage,
+    ChatSendRequest,
 )
 
 
@@ -125,6 +128,8 @@ class Table:
     disconnect_tasks: Dict[str, asyncio.Task] = field(default_factory=dict)
     # Reserved AI occupant id to reclaim per human client id
     reserved_ai_by_human: Dict[str, str] = field(default_factory=dict)
+    # Chat log: bounded deque of chat messages (max 200 entries)
+    chat_log: deque = field(default_factory=lambda: deque(maxlen=200))
 
     def to_public_dict(self) -> Dict[str, Any]:
         def seat_name(occ_id: Optional[str]) -> Optional[str]:
@@ -390,6 +395,9 @@ async def ai_take_turns(table: Table):
         return
     while table.game and not table.game.is_done():
         # Determine if AI is the actor and select action under lock
+        actor = None
+        action_id = None
+        ai_occupant = None
         async with table.game_lock:
             if not table.game or not table.ai_agent:
                 break
@@ -414,11 +422,39 @@ async def ai_take_turns(table: Table):
                 raise RuntimeError(
                     f"AI produced invalid action_id {action_id} for seat {actor}; valid set: {sorted(list(valid))}"
                 )
+            # Store occupant for chat message outside lock
+            ai_occupant = occ
 
         # After applying, let other AIs observe and broadcast
+        if actor is None or action_id is None:
+            break
         await ai_observe_all(table, except_seat=actor)
 
         action_str = ACTION_LOOKUP.get(action_id, "")
+        # Emit system chat message for relevant AI actions
+        if action_str in ("PICK", "PASS", "ALONE", "JD PARTNER") or action_str.startswith("CALL "):
+            display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"
+            if action_str == "PICK":
+                msg_dict = await add_chat_message(table, "system", f"{display_name} picked")
+                await broadcast_chat_append(table, msg_dict)
+            elif action_str == "PASS":
+                msg_dict = await add_chat_message(table, "system", f"{display_name} passed")
+                await broadcast_chat_append(table, msg_dict)
+            elif action_str == "ALONE":
+                msg_dict = await add_chat_message(table, "system", f"{display_name} goes alone")
+                await broadcast_chat_append(table, msg_dict)
+            elif action_str == "JD PARTNER":
+                msg_dict = await add_chat_message(table, "system", f"{display_name} chose JD partner")
+                await broadcast_chat_append(table, msg_dict)
+            elif action_str.startswith("CALL "):
+                parts = action_str.split()
+                called_card = parts[1] if len(parts) > 1 else ""
+                under = "under" if len(parts) > 2 and parts[2] == "UNDER" else ""
+                call_msg = f"{display_name} calls {called_card}"
+                if under:
+                    call_msg += " under"
+                msg_dict = await add_chat_message(table, "system", call_msg)
+                await broadcast_chat_append(table, msg_dict)
         if isinstance(action_str, str) and action_str.startswith("PLAY "):
             await asyncio.sleep(0.5)
         await broadcast_table_state(table)
@@ -555,9 +591,12 @@ async def _replace_ai_with_human_and_reserve(table: Table, seat: int, client_id:
         else:
             table.reserved_ai_by_human[client_id] = prev_occ
     # Notify others
+    display_name = table.clients.get(client_id).display_name if client_id in table.clients else 'A player'
+    msg_dict = await add_chat_message(table, "system", f"{display_name} joined and took seat {seat}")
+    await broadcast_chat_append(table, msg_dict)
     await broadcast_table_event(table, {
         "type": "lobby_event",
-        "message": f"{table.clients.get(client_id).display_name if client_id in table.clients else 'A player'} joined and took seat {seat}",
+        "message": f"{display_name} joined and took seat {seat}",
         "table": table.to_public_dict(),
     })
     await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
@@ -613,6 +652,8 @@ def schedule_ai_replacement_for_disconnected_human(table: Table, client_id: str)
             # Detach seat from human conn
             conn.seat = None
             # Announce and update
+            msg_dict = await add_chat_message(table, "system", f"{conn.display_name} disconnected. Seat filled by AI.")
+            await broadcast_chat_append(table, msg_dict)
             await broadcast_table_event(table, {
                 "type": "lobby_event",
                 "message": f"{conn.display_name} disconnected. Seat filled by AI.",
@@ -704,6 +745,8 @@ async def join_table(table_id: str, req: JoinTableRequest):
                 # Empty seat: assign and broadcast
                 table.seats[seat_to_take] = client_id
                 conn.seat = seat_to_take
+                msg_dict = await add_chat_message(table, "system", f"{req.display_name} joined and took seat {seat_to_take}")
+                await broadcast_chat_append(table, msg_dict)
                 await broadcast_table_event(table, {
                     "type": "lobby_event",
                     "message": f"{req.display_name} joined and took seat {seat_to_take}",
@@ -712,6 +755,8 @@ async def join_table(table_id: str, req: JoinTableRequest):
                 await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
         else:
             # No seat available that is non-human; just announce join without seating
+            msg_dict = await add_chat_message(table, "system", f"{req.display_name} joined the table")
+            await broadcast_chat_append(table, msg_dict)
             await broadcast_table_event(table, {
                 "type": "lobby_event",
                 "message": f"{req.display_name} joined the table",
@@ -788,6 +833,10 @@ async def choose_seat(table_id: str, req: SeatRequest):
         else:
             table.reserved_ai_by_human[req.client_id] = prev_occ  # type: ignore[arg-type]
 
+    display_name = table.clients[req.client_id].display_name
+    msg_dict = await add_chat_message(table, "system", f"{display_name} took seat {req.seat}")
+    await broadcast_chat_append(table, msg_dict)
+
     await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
 
     return table.to_public_dict()
@@ -855,6 +904,38 @@ async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:
             conn.websocket = None
         except Exception:
             logging.exception("broadcast_table_event send failed for table %s client %s", table.id, cid)
+
+
+async def add_chat_message(table: Table, msg_type: str, body: str, author: Optional[str] = None) -> Dict[str, Any]:
+    """Add a chat message to the table's chat log and return the message dict."""
+    msg_id = str(uuid.uuid4())
+    msg_dict = {
+        "id": msg_id,
+        "table_id": table.id,
+        "type": msg_type,
+        "author": author,
+        "body": body,
+        "timestamp": time.time(),
+    }
+    table.chat_log.append(msg_dict)
+    return msg_dict
+
+
+async def broadcast_chat_append(table: Table, msg_dict: Dict[str, Any]) -> None:
+    """Broadcast a chat:append event to all connected clients."""
+    await broadcast_table_event(table, {
+        "type": "chat:append",
+        "message": msg_dict,
+    })
+
+
+async def send_chat_init(table: Table, websocket: WebSocket) -> None:
+    """Send the full chat history to a newly connected client."""
+    messages = list(table.chat_log)
+    await websocket.send_text(json.dumps({
+        "type": "chat:init",
+        "messages": messages,
+    }, default=_json_default))
 
 
 async def close_table(table: Table, reason: str = "closed") -> None:
@@ -1107,6 +1188,31 @@ async def post_action(table_id: str, req: ActionRequest):
         if not ok:
             raise HTTPException(status_code=400, detail="apply_failed")
 
+    # Emit system chat message for relevant actions
+    action_str = ACTION_LOOKUP.get(req.action_id, "")
+    display_name = conn.display_name
+    if action_str == "PICK":
+        msg_dict = await add_chat_message(table, "system", f"{display_name} picked")
+        await broadcast_chat_append(table, msg_dict)
+    elif action_str == "PASS":
+        msg_dict = await add_chat_message(table, "system", f"{display_name} passed")
+        await broadcast_chat_append(table, msg_dict)
+    elif action_str == "ALONE":
+        msg_dict = await add_chat_message(table, "system", f"{display_name} goes alone")
+        await broadcast_chat_append(table, msg_dict)
+    elif action_str == "JD PARTNER":
+        msg_dict = await add_chat_message(table, "system", f"{display_name} chose JD partner")
+        await broadcast_chat_append(table, msg_dict)
+    elif action_str.startswith("CALL "):
+        parts = action_str.split()
+        called_card = parts[1] if len(parts) > 1 else ""
+        under = "under" if len(parts) > 2 and parts[2] == "UNDER" else ""
+        call_msg = f"{display_name} calls {called_card}"
+        if under:
+            call_msg += " under"
+        msg_dict = await add_chat_message(table, "system", call_msg)
+        await broadcast_chat_append(table, msg_dict)
+
     await ai_observe_all(table, except_seat=conn.seat)
     await broadcast_table_state(table)
     schedule_ai_turns(table)
@@ -1189,11 +1295,24 @@ async def table_ws(websocket: WebSocket, table_id: str):
 
     # Initial state broadcast for connected client
     await broadcast_table_state(table)
+    # Send chat history to newly connected client
+    await send_chat_init(table, websocket)
 
     try:
         while True:
             try:
-                await websocket.receive_text()
+                raw_text = await websocket.receive_text()
+                try:
+                    data = json.loads(raw_text)
+                    if isinstance(data, dict) and data.get("type") == "chat:send":
+                        # Handle chat message from client
+                        message_text = data.get("message", "").strip()
+                        if message_text and len(message_text) <= 500:  # Limit message length
+                            msg_dict = await add_chat_message(table, "player", message_text, author=conn.display_name)
+                            await broadcast_chat_append(table, msg_dict)
+                except json.JSONDecodeError:
+                    # Not JSON, ignore
+                    pass
             except ValueError:
                 # Ignore malformed messages and continue waiting
                 logging.exception("Received malformed text over ws connection from client %s", client_id)

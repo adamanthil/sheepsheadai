@@ -18,13 +18,24 @@ export interface TableSocketCallbacks {
   onLobbyEvent?: (message: string) => void;
 }
 
+export interface ChatMessage {
+  id: string;
+  table_id: string;
+  type: 'player' | 'system';
+  author: string | null;
+  body: string;
+  timestamp: number;
+}
+
 export interface UseTableSocketReturn {
   connected: boolean;
   lastState: TableStateMsg | null;
   actionLookup: Record<string, string>;
+  chatMessages: ChatMessage[];
   takeAction: (actionId: number) => Promise<void>;
   closeTable: () => Promise<void>;
   redeal: () => Promise<void>;
+  sendChatMessage: (message: string) => void;
 }
 
 export function useTableSocket(
@@ -35,6 +46,7 @@ export function useTableSocket(
   const [connected, setConnected] = useState(false);
   const [lastState, setLastState] = useState<TableStateMsg | null>(null);
   const [actionLookup, setActionLookup] = useState<Record<string, string>>({});
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -128,6 +140,16 @@ export function useTableSocket(
             prev ? { ...prev, table: tbl } : prev
           );
         }
+      } else if (data?.type === 'chat:init') {
+        // Initialize chat with full history
+        const messages = (data.messages || []) as ChatMessage[];
+        setChatMessages(messages);
+      } else if (data?.type === 'chat:append') {
+        // Append new message to chat
+        const message = data.message as ChatMessage;
+        if (message) {
+          setChatMessages((prev) => [...prev, message]);
+        }
       }
     };
 
@@ -167,13 +189,27 @@ export function useTableSocket(
     }).catch(() => {});
   }, [tableId, clientId]);
 
+  const sendChatMessage = useCallback((message: string) => {
+    if (!wsRef.current || !message.trim()) return;
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: 'chat:send',
+        message: message.trim(),
+      }));
+    } catch (err) {
+      console.error('Failed to send chat message:', err);
+    }
+  }, []);
+
   return {
     connected,
     lastState,
     actionLookup,
+    chatMessages,
     takeAction,
     closeTable,
     redeal,
+    sendChatMessage,
   };
 }
 

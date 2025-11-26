@@ -115,3 +115,17 @@ class AnalyzeSimulateResponse(BaseModel):
     final: Optional[Dict[str, Any]] = None
 
 
+class ChatMessage(BaseModel):
+    id: str
+    table_id: str
+    type: str  # "player" | "system"
+    author: Optional[str] = None  # player display name for player messages
+    body: str
+    timestamp: float
+
+
+class ChatSendRequest(BaseModel):
+    client_id: str
+    message: str
+
+

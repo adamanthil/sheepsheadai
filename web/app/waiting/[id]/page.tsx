@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { TableSummary, TableClosedMsg } from '../../../lib/types';
 import styles from './page.module.css';
 import ui from '../../styles/ui.module.css';
+import { ChatPanel, type ChatMessage } from '../../components/chat';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
   if (typeof window === 'undefined') return 'http://localhost:9000';
@@ -33,6 +34,7 @@ export default function WaitingRoom() {
   const wsRef = useRef<WebSocket | null>(null);
   const [callout, setCallout] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   async function load() {
     setLoading(true);
@@ -93,6 +95,16 @@ export default function WaitingRoom() {
           // If we receive state while in waiting room, the game has started
           if (t?.status === 'playing') {
             router.push(`/table/${params.id}?client_id=${clientId}`);
+          }
+        } else if (data?.type === 'chat:init') {
+          // Initialize chat with full history
+          const messages = (data.messages || []) as ChatMessage[];
+          setChatMessages(messages);
+        } else if (data?.type === 'chat:append') {
+          // Append new message to chat
+          const message = data.message as ChatMessage;
+          if (message) {
+            setChatMessages((prev) => [...prev, message]);
           }
         }
       } catch (e) {
@@ -188,6 +200,18 @@ export default function WaitingRoom() {
     await fetch(`${API_BASE}/api/tables/${params?.id}/close`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId })
     });
+  }
+
+  function sendChatMessage(message: string) {
+    if (!wsRef.current || !message.trim()) return;
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: 'chat:send',
+        message: message.trim(),
+      }));
+    } catch (err) {
+      console.error('Failed to send chat message:', err);
+    }
   }
 
   const isHost = useMemo(() => {
@@ -293,6 +317,10 @@ export default function WaitingRoom() {
             )
           )}
           <div className={styles.muted} style={{ marginLeft: 'auto' }}>Players: {seatItems.filter(s => !!s.name && !s.isAI).length}/5</div>
+        </div>
+
+        <div className={styles.chatContainer}>
+          <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
         </div>
       </div>
     </div>

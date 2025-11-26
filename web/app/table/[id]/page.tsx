@@ -13,6 +13,7 @@ import {
   GameOverBanner,
   ScoresOverlay,
 } from './components';
+import { ChatPanel } from '../../components/chat';
 
 type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
 
@@ -25,7 +26,7 @@ export default function TablePage() {
   const { showPrev, animTrick, triggerCollect, setShowPrev } = useTrickAnimation();
   const { callout, showCallout } = useCallout();
 
-  const { connected, lastState, actionLookup, takeAction, closeTable, redeal } = useTableSocket(
+  const { connected, lastState, actionLookup, chatMessages, takeAction, closeTable, redeal, sendChatMessage } = useTableSocket(
     params?.id,
     clientId,
     {
@@ -152,25 +153,6 @@ export default function TablePage() {
     [isYourTurn, validActionStrings, actionIdByString, takeAction]
   );
 
-  // Render game mode info line
-  const renderModeInfo = () => {
-    if (!lastState) return null;
-    if (lastState.view.mode === 'leaster') {
-      return 'Leaster';
-    }
-    return (
-      <>
-        Picker: {nameForSeat(lastState.view.picker, lastState.table)} · Partner:{' '}
-        {lastState.view.alone
-          ? 'Alone'
-          : lastState.view.partner
-            ? nameForSeat(lastState.view.partner, lastState.table)
-            : '(unknown)'}{' '}
-        · Called: {lastState.view.called_card}
-        {lastState.view.called_under ? ' (under)' : ''}
-      </>
-    );
-  };
 
   return (
     <div className={styles.root}>
@@ -212,8 +194,8 @@ export default function TablePage() {
                 userStatus={getPlayerStatus(lastState.yourSeat)}
               />
 
-              <div className={`${styles.muted} ${styles.metaRow}`}>
-                {renderModeInfo()}
+              <div className={styles.chatContainer}>
+                <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
               </div>
 
               {lastState.view.is_done && lastState.view.final && (
