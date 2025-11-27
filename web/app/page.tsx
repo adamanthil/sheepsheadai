@@ -16,12 +16,43 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
   return `${protocol}//${hostname}:9000`;
 })();
 
+const SHIRE_TOWNS = [
+  'Bywater',
+  'Hobbiton',
+  'Overhill',
+  'Frogmorton',
+  'Michel Delving',
+  'Tuckborough',
+  'Bree',
+  'Bucklebury',
+  'Deephallow',
+  'Waymoot',
+  'Nobottle',
+  'Whitfurrows',
+] as const;
+
+const HOBBIT_NAMES = [
+  'Bilbo',
+  'Frodo',
+  'Samwise',
+  'Merry',
+  'Pippin',
+  'Otho',
+  'Smeagol',
+  'Deagol',
+  'Lobelia',
+  'Belladonna',
+] as const;
+
+const getRandomItem = <T,>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)];
+
 export default function HomePage() {
   const router = useRouter();
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState('Quick Table');
-  const [displayName, setDisplayName] = useState('Player');
+  const [name, setName] = useState<string>(() => getRandomItem(SHIRE_TOWNS));
+  const [displayName, setDisplayName] = useState<string>(() => getRandomItem(HOBBIT_NAMES));
+  const [hasCustomName, setHasCustomName] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [joinInfo, setJoinInfo] = useState<{ client_id: string; seat: number; table: TableSummary } | null>(null);
@@ -40,6 +71,22 @@ export default function HomePage() {
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (hasCustomName || tables.length === 0) return;
+    const usedNames = new Set(tables.map(t => t.name));
+    if (!usedNames.has(name)) return;
+    const available = SHIRE_TOWNS.filter(town => !usedNames.has(town));
+    if (!available.length) return;
+    setName(getRandomItem(available));
+  }, [tables, hasCustomName, name]);
+
+  const handleTableNameChange = (value: string) => {
+    if (!hasCustomName) {
+      setHasCustomName(true);
+    }
+    setName(value);
+  };
 
   // Mobile Safari compatible click handler
   const handleCreateClick = (e: React.MouseEvent) => {
@@ -165,7 +212,7 @@ export default function HomePage() {
         <div className={styles.controls}>
           <input
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => handleTableNameChange(e.target.value)}
             placeholder="Table name"
             disabled={creating}
           />
