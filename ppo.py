@@ -301,9 +301,10 @@ class RecurrentCriticNetwork(nn.Module):
             nn.ReLU() if activation == 'relu' else nn.SiLU()
         )
         self.value_head = nn.Linear(256, 1)
-        # Auxiliary heads (trained on detached critic adapter features)
+        # Auxiliary heads
         self.win_head = nn.Linear(256, 1)
         self.return_head = nn.Linear(256, 1)
+        self.secret_partner_head = nn.Linear(256, 1)
 
         self.apply(self._init_weights)
 
@@ -329,7 +330,7 @@ class RecurrentCriticNetwork(nn.Module):
         return value
 
     def aux_predictions(self, encoder_out: Dict[str, torch.Tensor]):
-        """Return auxiliary predictions as scalars: (win_prob, expected_final_return).
+        """Return auxiliary predictions as scalars: (win_prob, expected_final_return, secret_partner_prob).
 
         Parameters
         ----------
@@ -342,15 +343,19 @@ class RecurrentCriticNetwork(nn.Module):
             Sigmoid of win logits
         expected_final_return : float
             Linear head output for expected final return
+        secret_partner_prob : float
+            Sigmoid of secret partner logits
         """
         with torch.no_grad():
             aux_feat = self.critic_adapter(encoder_out['features'])
             win_logit = self.win_head(aux_feat).squeeze(-1)
             expected_return = self.return_head(aux_feat).squeeze(-1)
+            secret_logit = self.secret_partner_head(aux_feat).squeeze(-1)
         win_prob_t = torch.sigmoid(win_logit)
         win_prob = float(win_prob_t.item())
         expected_final = float(expected_return.item())
-        return win_prob, expected_final
+        secret_prob = float(torch.sigmoid(secret_logit).item())
+        return win_prob, expected_final, secret_prob
 
 
 class PPOAgent:
@@ -446,9 +451,10 @@ class PPOAgent:
         # KL regularization coefficient (added to actor loss)
         self.kl_coef = 0.0
 
-        # Auxiliary loss coefficients (aux heads are detached from trunk)
+        # Auxiliary loss coefficients
         self.win_loss_coeff = 0.1
         self.return_loss_coeff = 0.1
+        self.secret_loss_coeff = 0.07
 
         # Storage for trajectory data
         self.reset_storage()
@@ -796,6 +802,7 @@ class PPOAgent:
                     'player_id': pid,
                     'win': float(ev.get('win_label', 0.0) or 0.0),
                     'final_return': float(ev.get('final_return_label', 0.0) or 0.0),
+                    'secret_partner': float(ev.get('secret_partner_label', 0.0) or 0.0),
                 })
             else:
                 # Observation: mask = all ones by default
@@ -917,6 +924,7 @@ class PPOAgent:
         adv_list = []
         win_list_all = []
         final_ret_list_all = []
+        secret_list_all = []
 
         for pid, seg_start, seg_end in batch:
             # Restrict sequence strictly to this player's own events (actions + obs)
@@ -934,7 +942,7 @@ class PPOAgent:
             is_action_list.append(is_act)
 
             act_bt, olp_bt, ret_bt, adv_bt = [], [], [], []
-            win_bt, final_ret_bt = [], []
+            win_bt, final_ret_bt, secret_bt = [], [], []
             for i in ev_range:
                 if kinds[i] == 'action' and pids[i] == pid:
                     act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
@@ -943,8 +951,10 @@ class PPOAgent:
                     adv_bt.append(torch.tensor(self.events[i]['advantage'], dtype=torch.float32, device=device))
                     win_lbl = self.events[i].get('win', 0.0) or 0.0
                     final_return_lbl = self.events[i].get('final_return', 0.0) or 0.0
+                    secret_lbl = self.events[i].get('secret_partner', 0.0) or 0.0
                     win_bt.append(torch.tensor(float(win_lbl), dtype=torch.float32, device=device))
                     final_ret_bt.append(torch.tensor(float(final_return_lbl), dtype=torch.float32, device=device))
+                    secret_bt.append(torch.tensor(float(secret_lbl), dtype=torch.float32, device=device))
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
@@ -952,12 +962,14 @@ class PPOAgent:
                     adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     win_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     final_ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    secret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
             adv_list.append(torch.stack(adv_bt, dim=0))
             win_list_all.append(torch.stack(win_bt, dim=0))
             final_ret_list_all.append(torch.stack(final_ret_bt, dim=0))
+            secret_list_all.append(torch.stack(secret_bt, dim=0))
 
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
@@ -967,9 +979,10 @@ class PPOAgent:
         adv_bt, _ = self._pad_to_bt(adv_list, lengths, 0.0)
         win_bt, _ = self._pad_to_bt(win_list_all, lengths, 0.0)
         final_ret_bt, _ = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
+        secret_bt, _ = self._pad_to_bt(secret_list_all, lengths, 0.0)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
-        return states_seqs, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt
+        return states_seqs, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt, secret_bt
 
     def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
         """Vectorized forward pass for training with recurrent memory.
@@ -980,7 +993,7 @@ class PPOAgent:
             lengths_bt: (B,) sequence lengths
 
         Returns:
-            logits_bt, values_bt, win_logits_bt, ret_pred_bt
+            logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt
         """
         B = len(states_input)
         T = masks_bt.size(1)
@@ -1030,15 +1043,31 @@ class PPOAgent:
         critic_feat_bt = self.critic.critic_adapter(features_bt)
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
 
-        # Auxiliary preds use critic_adapter on detached features
-        aux_feat_bt = self.critic.critic_adapter(features_bt.detach())
+        # Auxiliary preds share critic_adapter features (gradients flow to encoder)
+        aux_feat_bt = self.critic.critic_adapter(features_bt)
         win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
+        secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
 
-        return logits_bt, values_bt, win_logits_bt, ret_pred_bt
+        return logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt
 
     @staticmethod
-    def _flatten_action_steps(is_action_bt, logits_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, win_logits_bt, ret_pred_bt, win_bt, final_ret_bt, masks_bt):
+    def _flatten_action_steps(
+        is_action_bt,
+        logits_bt,
+        values_bt,
+        actions_bt,
+        old_lp_bt,
+        returns_bt,
+        adv_bt,
+        win_logits_bt,
+        ret_pred_bt,
+        win_bt,
+        final_ret_bt,
+        secret_logits_bt,
+        secret_bt,
+        masks_bt,
+    ):
         flat_mask = is_action_bt.view(-1)
         if flat_mask.sum() == 0:
             return None
@@ -1053,6 +1082,8 @@ class PPOAgent:
             ret_pred_bt.view(-1)[flat_mask],
             win_bt.view(-1)[flat_mask],
             final_ret_bt.view(-1)[flat_mask],
+            secret_logits_bt.view(-1)[flat_mask],
+            secret_bt.view(-1)[flat_mask],
             masks_bt.view(-1, masks_bt.size(-1))[flat_mask],
         )
 
@@ -1301,16 +1332,29 @@ class PPOAgent:
                     lengths_bt,
                     win_bt,
                     final_ret_bt,
+                    secret_bt,
                 ) = self._build_minibatch_tensors(batch, states, masks_t, kinds, pids)
 
                 # Vectorized forward
                 t_fwd = time.time()
-                logits_bt, values_bt, win_logits_bt, ret_pred_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
+                logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
                 forward_time += time.time() - t_fwd
 
                 flat = self._flatten_action_steps(
-                    is_action_bt, logits_bt, values_bt, actions_bt, old_lp_bt, returns_bt, adv_bt,
-                    win_logits_bt, ret_pred_bt, win_bt, final_ret_bt, masks_bt
+                    is_action_bt,
+                    logits_bt,
+                    values_bt,
+                    actions_bt,
+                    old_lp_bt,
+                    returns_bt,
+                    adv_bt,
+                    win_logits_bt,
+                    ret_pred_bt,
+                    win_bt,
+                    final_ret_bt,
+                    secret_logits_bt,
+                    secret_bt,
+                    masks_bt,
                 )
                 if flat is None:
                     continue
@@ -1325,6 +1369,8 @@ class PPOAgent:
                     ret_pred_flat,
                     win_labels_flat,
                     final_ret_labels_flat,
+                    secret_logits_flat,
+                    secret_labels_flat,
                     mask_flat,
                 ) = flat
 
@@ -1367,13 +1413,20 @@ class PPOAgent:
                 ent_play_sum += play_entropy.detach().item()
                 ent_batches += 1
 
-                # Auxiliary losses (detached features used upstream)
+                # Auxiliary losses
                 bce_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
                 return_loss = F.smooth_l1_loss(ret_pred_flat, final_ret_labels_flat)
+                secret_loss = F.binary_cross_entropy_with_logits(secret_logits_flat, secret_labels_flat)
 
                 # Backward + step per minibatch
                 t_bwd = time.time()
-                total_loss = actor_loss + self.value_loss_coeff * critic_loss + self.win_loss_coeff * bce_loss + self.return_loss_coeff * return_loss
+                total_loss = (
+                    actor_loss
+                    + self.value_loss_coeff * critic_loss
+                    + self.win_loss_coeff * bce_loss
+                    + self.return_loss_coeff * return_loss
+                    + self.secret_loss_coeff * secret_loss
+                )
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
                 total_loss.backward()
@@ -1455,13 +1508,18 @@ class PPOAgent:
         """
         checkpoint = torch.load(filepath, map_location=device)
 
+        # Core networks: accept missing/new critic aux heads for backward compatibility
         self.encoder.load_state_dict(checkpoint['encoder_state_dict'])
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        self.critic.load_state_dict(checkpoint['critic_state_dict'])
+        self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
 
+        # Optimizers: best-effort restore; fall back to fresh states if shapes changed
         if load_optimizers:
-            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+            try:
+                self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+                self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+            except ValueError as e:
+                print(f"Warning: could not load optimizer state from {filepath}: {e}")
 
         # Reset memory states after loading
         self._player_memories = {}

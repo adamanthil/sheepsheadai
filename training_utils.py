@@ -188,7 +188,7 @@ def update_intermediate_rewards_for_action(
                 and card in TRUMP
             ):
                 # Encourage partners to lead trump
-                transition['intermediate_reward'] += 0.08
+                transition['intermediate_reward'] += 0.1
             elif (
                 not game.is_leaster
                 and player.is_picker

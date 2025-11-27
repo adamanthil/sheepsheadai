@@ -25,6 +25,9 @@ export interface AnalyzeActionDetail {
   valueEstimate: number;
   discountedReturn?: number;
   stepReward?: number;
+  winProb?: number;
+  expectedFinalReturn?: number;
+  secretPartnerProb?: number;
   validActionIds: number[];
   probabilities: AnalyzeProbability[];
   view: Record<string, any>;

@@ -80,7 +80,8 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
     step,
     stepHue,
     winPct,
-    expectedFinal
+    expectedFinal,
+    secretPartnerProb,
   }: {
     value: number;
     valueHue: number;
@@ -90,6 +91,7 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
     stepHue?: number;
     winPct?: number;
     expectedFinal?: number;
+    secretPartnerProb?: number;
   }) {
     return (
       <div className={styles.metricsBar}>
@@ -131,6 +133,13 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
             <span className={styles.metricValue}>{expectedFinal.toFixed(2)}</span>
           </div>
         )}
+
+        {typeof secretPartnerProb === 'number' && (
+          <div className={`${styles.metricChip} ${styles.metricChipNeutral}`} title="Secret partner probability">
+            <span className={styles.metricLabel}>Secret</span>
+            <span className={styles.metricValue}>{`${Math.round(secretPartnerProb * 100)}%`}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -168,8 +177,9 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
             discountedHue={normalizedReward}
             step={typeof action.stepReward === 'number' ? action.stepReward : undefined}
             stepHue={typeof normalizedStepReward === 'number' ? normalizedStepReward : undefined}
-            winPct={typeof (action as any).winProb === 'number' ? ((action as any).winProb * 100) : undefined}
-            expectedFinal={typeof (action as any).expectedFinalReturn === 'number' ? (action as any).expectedFinalReturn : undefined}
+            winPct={typeof action.winProb === 'number' ? (action.winProb * 100) : undefined}
+            expectedFinal={typeof action.expectedFinalReturn === 'number' ? action.expectedFinalReturn : undefined}
+            secretPartnerProb={typeof action.secretPartnerProb === 'number' ? action.secretPartnerProb : undefined}
           />
 
           <div className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>▼</div>

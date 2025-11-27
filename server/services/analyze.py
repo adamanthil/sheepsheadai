@@ -137,7 +137,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             value = agent.critic(encoder_out)
 
             # Auxiliary critic heads via accessor
-            win_prob_val, expected_final_val = agent.critic.aux_predictions(encoder_out)
+            win_prob_val, expected_final_val, secret_partner_prob = agent.critic.aux_predictions(encoder_out)
 
         # Choose action
         if req.deterministic:
@@ -187,7 +187,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             # TODO: Update annotations to match new state and/or drop this in favor of state dict
             state=encoder_out['features'].squeeze(0).detach().cpu().tolist(),
             winProb=float(win_prob_val),
-            expectedFinalReturn=expected_final_val
+            expectedFinalReturn=expected_final_val,
+            secretPartnerProb=float(secret_partner_prob)
         )
 
         trace.append(action_detail)

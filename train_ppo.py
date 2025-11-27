@@ -224,6 +224,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         'value': value,
                         'valid_actions': valid_actions.copy(),
                         'intermediate_reward': 0.0,
+                        'secret_partner_label': 1.0 if player.is_secret_partner else 0.0,
                     }
 
                     action_name = ACTIONS[action - 1]
@@ -315,6 +316,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         'player_id': pos,
                         'win_label': 1.0 if episode_scores[pos - 1] > 0 else 0.0,
                         'final_return_label': float(episode_scores[pos - 1]),
+                        'secret_partner_label': ev.get('secret_partner_label', 0.0),
                     })
             agent.store_episode_events(events)
             transitions_since_update += sum(1 for e in events if e['kind'] == 'action')

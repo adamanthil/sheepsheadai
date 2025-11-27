@@ -202,6 +202,7 @@ def play_population_game(training_agent: PPOAgent,
                         'value': value,
                         'valid_actions': valid_actions.copy(),
                         'intermediate_reward': 0.0,
+                        'secret_partner_label': 1.0 if player.is_secret_partner else 0.0,
                     }
                     episode_transitions.append(transition)
 
@@ -298,6 +299,7 @@ def play_population_game(training_agent: PPOAgent,
                 'player_id': seat_pos,
                 'win_label': 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
                 'final_return_label': float(final_scores[seat_pos - 1]),
+                'secret_partner_label': ev.get('secret_partner_label', 0.0),
             })
 
     return game, episode_events, final_scores, training_agent_data
