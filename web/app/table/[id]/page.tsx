@@ -212,6 +212,7 @@ export default function TablePage() {
           yourSeat={lastState.yourSeat}
           actorSeat={lastState.actorSeat}
           table={lastState.table}
+          isMobile={isMobile}
           isYourTurn={isYourTurn}
           validActions={lastState.valid_actions}
           actionLookup={actionLookup}

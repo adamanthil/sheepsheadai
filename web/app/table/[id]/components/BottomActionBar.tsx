@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CardText } from '../../../../lib/components';
 import { nameForSeat } from '../utils/seatMath';
 import styles from '../page.module.css';
@@ -7,6 +7,7 @@ interface BottomActionBarProps {
   yourSeat: number;
   actorSeat: number | null;
   table: any;
+  isMobile: boolean;
   isYourTurn: boolean;
   validActions: number[];
   actionLookup: Record<string, string>;
@@ -25,6 +26,7 @@ export default function BottomActionBar({
   yourSeat,
   actorSeat,
   table,
+  isMobile,
   isYourTurn,
   validActions,
   actionLookup,
@@ -40,6 +42,11 @@ export default function BottomActionBar({
 }: BottomActionBarProps) {
   const yourName = nameForSeat(yourSeat, table);
   const actorName = nameForSeat(actorSeat, table);
+  const [showUtilityButtons, setShowUtilityButtons] = useState(!isMobile);
+
+  useEffect(() => {
+    setShowUtilityButtons(!isMobile);
+  }, [isMobile]);
 
   // Filter action buttons - show non-PLAY/BURY actions, plus "PLAY UNDER"
   const actionButtons = useMemo(() => {
@@ -60,6 +67,9 @@ export default function BottomActionBar({
   }, [validActions, actionLookup]);
 
   const hasActions = actionButtons.length > 0;
+  const utilityButtonsId = 'bottomUtilityButtons';
+  const showUtilityToggle = isMobile;
+  const showUtilityRow = !isMobile || showUtilityButtons;
 
   return (
     <div className={styles.bottomBar}>
@@ -100,24 +110,44 @@ export default function BottomActionBar({
             </div>
           )}
 
-          {/* Utility buttons */}
-          <div className={styles.bottomButtonRow}>
-            <button onClick={onShowScores}>Scores</button>
-            {isHost && (
-              <>
-                {confirmClose ? (
-                  <span className={styles.confirmCloseRow}>
-                    <button className={styles.dangerButton} onClick={onCloseTable}>
-                      Confirm close
+          {showUtilityToggle && (
+            <button
+              type="button"
+              className={`${styles.noFlex} ${styles.chevronToggle} ${styles.rotate}`}
+              aria-label={showUtilityButtons ? 'Hide secondary actions' : 'Show secondary actions'}
+              aria-expanded={showUtilityButtons}
+              aria-controls={utilityButtonsId}
+              onClick={() => setShowUtilityButtons((prev) => !prev)}
+            >
+              <span style={{ transform: showUtilityButtons ? 'rotate(180deg)' : 'rotate(0deg)', display: 'inline-block', transition: 'transform 0.2s ease' }}> ⌃ </span>
+            </button>
+          )}
+
+          {showUtilityRow && (
+            <div id={utilityButtonsId} className={styles.utilityRow}>
+              <button type="button" onClick={onShowScores}>
+                Scores
+              </button>
+              {isHost && (
+                <>
+                  {confirmClose ? (
+                    <span className={styles.confirmCloseRow}>
+                      <button type="button" className={styles.dangerButton} onClick={onCloseTable}>
+                        Confirm close
+                      </button>
+                      <button type="button" onClick={() => onConfirmClose(false)}>
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" onClick={() => onConfirmClose(true)}>
+                      Close table
                     </button>
-                    <button onClick={() => onConfirmClose(false)}>Cancel</button>
-                  </span>
-                ) : (
-                  <button onClick={() => onConfirmClose(true)}>Close table</button>
-                )}
-              </>
-            )}
-          </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

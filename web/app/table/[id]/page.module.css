@@ -953,31 +953,51 @@
   align-items: center;
 }
 
-.bottomButtonRow {
+.utilityRow {
   display: flex;
   flex-direction: row;
   gap: 8px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
+  flex-basis: 100%; /* Force new row on mobile */
+  width: 100%; /* Full width on mobile for right alignment */
+}
+
+@media (min-width: 769px) {
+  .utilityRow {
+    flex-basis: auto; /* Allow staying on same row on desktop */
+    width: auto; /* Only take needed space on desktop */
+    margin-left: auto; /* Push to the right on desktop */
+  }
 }
 
 /* New: bottom bar rows and utilities */
-.bottomTopRow {
+.bottomBarInner > .bottomTopRow {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap !important; /* single row, override generic container */
+  flex-wrap: wrap; /* Allow wrapping so utilityRow can move to new row */
   overflow-x: auto; /* scroll if overflow */
   justify-content: flex-start;
+  width: 100%; /* Take full width to allow right alignment */
+  flex: 1 1 100%;
+  max-width: 100%;
 }
 
 @media (min-width: 480px) {
-  .bottomTopRow {
-    flex-wrap: wrap !important; /* allow wrapping on tablet/desktop */
+  .bottomBarInner > .bottomTopRow {
     overflow-x: visible;
     justify-content: center;
+  }
+}
+
+@media (min-width: 769px) {
+  .bottomBarInner > .bottomTopRow {
+    flex-wrap: nowrap; /* Keep everything on same row on desktop */
+    justify-content: flex-start; /* Reset to flex-start so margin-left: auto works on utilityRow */
+    flex: 1 1 100%;
   }
 }
 
@@ -985,14 +1005,6 @@
   flex: none; /* natural width in the single row */
 }
 
-.bottomMoreRow {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-}
 
 .noFlex {
   flex: none !important;
@@ -1014,6 +1026,7 @@
   border: none !important;
   box-shadow: none !important;
   color: rgba(255,255,255,0.7);
+  margin-left: auto; /* Align to the right */
 }
 .bottomBarInner .chevronToggle:hover {
   color: rgba(255,255,255,0.9);
