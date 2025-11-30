@@ -459,6 +459,8 @@ class Player:
     @property
     def is_secret_partner(self):
         """If this player is partner, regardless of whether it's been revealed"""
+        if self.game.alone_called or self.game.is_leaster:
+            return False
         if self.game.partner_mode_flag == PARTNER_BY_JD:
             return "JD" in self.hand
         # Called-Ace variant
