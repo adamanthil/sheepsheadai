@@ -51,7 +51,9 @@ export default function HomePage() {
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState<string>(() => getRandomItem(SHIRE_TOWNS));
-  const [displayName, setDisplayName] = useState<string>(() => getRandomItem(HOBBIT_NAMES));
+  const [displayPlaceholder, setDisplayPlaceholder] = useState<string | null>(null);
+  const [displayNameInput, setDisplayNameInput] = useState('');
+  const displayName = displayNameInput.trim() || displayPlaceholder || '';
   const [hasCustomName, setHasCustomName] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +75,12 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (!displayPlaceholder) {
+      setDisplayPlaceholder(getRandomItem(HOBBIT_NAMES));
+    }
+  }, [displayPlaceholder]);
+
+  useEffect(() => {
     if (hasCustomName || tables.length === 0) return;
     const usedNames = new Set(tables.map(t => t.name));
     if (!usedNames.has(name)) return;
@@ -92,17 +100,15 @@ export default function HomePage() {
   const handleCreateClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    create();
+    create(displayName);
   };
 
-  const create = async () => {
+  const create = async (resolvedDisplayName: string) => {
     // Clear any previous errors
     setError(null);
     setCreating(true);
 
     try {
-      console.log('Creating table...', { API_BASE, name, displayName }); // Debug log for mobile Safari
-
       // Create table
       const res = await fetch(`${API_BASE}/api/tables`, {
         method: 'POST',
@@ -121,7 +127,7 @@ export default function HomePage() {
       const res2 = await fetch(`${API_BASE}/api/tables/${t.id}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: displayName }),
+        body: JSON.stringify({ display_name: resolvedDisplayName }),
       });
 
       if (!res2.ok) {
@@ -149,6 +155,7 @@ export default function HomePage() {
   };
 
   const join = async (tableId: string) => {
+    const resolvedDisplayName = displayName;
     setError(null);
 
     try {
@@ -165,7 +172,7 @@ export default function HomePage() {
       const res = await fetch(`${API_BASE}/api/tables/${tableId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: displayName }),
+        body: JSON.stringify({ display_name: resolvedDisplayName }),
       });
 
       if (!res.ok) {
@@ -230,8 +237,9 @@ export default function HomePage() {
           </button>
           <span className={styles.nameRight}>
             Your name: <input
-              value={displayName}
-              onChange={e => setDisplayName(e.target.value)}
+              value={displayNameInput}
+              placeholder={displayPlaceholder ?? 'Your name'}
+              onChange={e => setDisplayNameInput(e.target.value)}
               disabled={creating}
             />
           </span>
