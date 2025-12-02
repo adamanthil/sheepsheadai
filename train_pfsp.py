@@ -27,7 +27,7 @@ from pfsp import (
     profile_pop_agent_action,
     profile_trick_completion,
 )
-from training_utils import estimate_hand_strength_category
+from training_utils import estimate_hand_strength_category, compute_known_points_rel
 from sheepshead import (
     Game,
     ACTIONS,
@@ -203,6 +203,7 @@ def play_population_game(training_agent: PPOAgent,
                         'valid_actions': valid_actions.copy(),
                         'intermediate_reward': 0.0,
                         'secret_partner_label': 1.0 if player.is_secret_partner else 0.0,
+                        'points_label': compute_known_points_rel(player),
                     }
                     episode_transitions.append(transition)
 
@@ -300,6 +301,7 @@ def play_population_game(training_agent: PPOAgent,
                 'win_label': 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
                 'final_return_label': float(final_scores[seat_pos - 1]),
                 'secret_partner_label': ev.get('secret_partner_label', 0.0),
+                'points_label': ev.get('points_label', None),
             })
 
     return game, episode_events, final_scores, training_agent_data

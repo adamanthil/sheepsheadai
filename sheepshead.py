@@ -3,6 +3,8 @@ import random
 from collections import deque
 
 
+TOTAL_DECK_POINTS = 120.0
+
 TRUMP = [
     "QC", "QS", "QH", "QD", "JC", "JS", "JH", "JD", "AD", "10D", "KD", "9D", "8D", "7D"
 ]

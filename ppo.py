@@ -305,6 +305,8 @@ class RecurrentCriticNetwork(nn.Module):
         self.win_head = nn.Linear(256, 1)
         self.return_head = nn.Linear(256, 1)
         self.secret_partner_head = nn.Linear(256, 1)
+        # Per-player point prediction head (relative seating order, length-5 vector)
+        self.points_head = nn.Linear(256, 5)
 
         self.apply(self._init_weights)
 
@@ -330,7 +332,7 @@ class RecurrentCriticNetwork(nn.Module):
         return value
 
     def aux_predictions(self, encoder_out: Dict[str, torch.Tensor]):
-        """Return auxiliary predictions as scalars: (win_prob, expected_final_return, secret_partner_prob).
+        """Return auxiliary predictions as scalars and per-seat point estimates.
 
         Parameters
         ----------
@@ -345,17 +347,21 @@ class RecurrentCriticNetwork(nn.Module):
             Linear head output for expected final return
         secret_partner_prob : float
             Sigmoid of secret partner logits
+        points_vector : list[float] | None
+            Normalized per-seat point predictions in relative seat order.
         """
         with torch.no_grad():
             aux_feat = self.critic_adapter(encoder_out['features'])
             win_logit = self.win_head(aux_feat).squeeze(-1)
             expected_return = self.return_head(aux_feat).squeeze(-1)
             secret_logit = self.secret_partner_head(aux_feat).squeeze(-1)
+            points_pred = torch.clamp(self.points_head(aux_feat), min=0.0, max=1.0)
         win_prob_t = torch.sigmoid(win_logit)
         win_prob = float(win_prob_t.item())
         expected_final = float(expected_return.item())
         secret_prob = float(torch.sigmoid(secret_logit).item())
-        return win_prob, expected_final, secret_prob
+        points_vector = [float(v) for v in points_pred[0].tolist()]
+        return win_prob, expected_final, secret_prob, points_vector
 
 
 class PPOAgent:
@@ -455,6 +461,7 @@ class PPOAgent:
         self.win_loss_coeff = 0.1
         self.return_loss_coeff = 0.1
         self.secret_loss_coeff = 0.07
+        self.points_loss_coeff = 0.1
 
         # Storage for trajectory data
         self.reset_storage()
@@ -803,6 +810,7 @@ class PPOAgent:
                     'win': float(ev.get('win_label', 0.0) or 0.0),
                     'final_return': float(ev.get('final_return_label', 0.0) or 0.0),
                     'secret_partner': float(ev.get('secret_partner_label', 0.0) or 0.0),
+                    'points_rel': [float(x) for x in (ev.get('points_label') or [0.0] * 5)],
                 })
             else:
                 # Observation: mask = all ones by default
@@ -925,6 +933,7 @@ class PPOAgent:
         win_list_all = []
         final_ret_list_all = []
         secret_list_all = []
+        points_list_all = []
 
         for pid, seg_start, seg_end in batch:
             # Restrict sequence strictly to this player's own events (actions + obs)
@@ -943,6 +952,7 @@ class PPOAgent:
 
             act_bt, olp_bt, ret_bt, adv_bt = [], [], [], []
             win_bt, final_ret_bt, secret_bt = [], [], []
+            points_bt = []
             for i in ev_range:
                 if kinds[i] == 'action' and pids[i] == pid:
                     act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
@@ -955,6 +965,8 @@ class PPOAgent:
                     win_bt.append(torch.tensor(float(win_lbl), dtype=torch.float32, device=device))
                     final_ret_bt.append(torch.tensor(float(final_return_lbl), dtype=torch.float32, device=device))
                     secret_bt.append(torch.tensor(float(secret_lbl), dtype=torch.float32, device=device))
+                    pts_lbl = self.events[i].get('points_rel', [0.0] * 5)
+                    points_bt.append(torch.tensor(pts_lbl, dtype=torch.float32, device=device))
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
@@ -963,6 +975,7 @@ class PPOAgent:
                     win_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     final_ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     secret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    points_bt.append(torch.zeros(5, dtype=torch.float32, device=device))
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
@@ -970,6 +983,7 @@ class PPOAgent:
             win_list_all.append(torch.stack(win_bt, dim=0))
             final_ret_list_all.append(torch.stack(final_ret_bt, dim=0))
             secret_list_all.append(torch.stack(secret_bt, dim=0))
+            points_list_all.append(torch.stack(points_bt, dim=0))
 
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
@@ -980,9 +994,10 @@ class PPOAgent:
         win_bt, _ = self._pad_to_bt(win_list_all, lengths, 0.0)
         final_ret_bt, _ = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
         secret_bt, _ = self._pad_to_bt(secret_list_all, lengths, 0.0)
+        points_bt, _ = self._pad_to_bt(points_list_all, lengths, 0.0)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
-        return states_seqs, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt, secret_bt
+        return states_seqs, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt, secret_bt, points_bt
 
     def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
         """Vectorized forward pass for training with recurrent memory.
@@ -993,7 +1008,7 @@ class PPOAgent:
             lengths_bt: (B,) sequence lengths
 
         Returns:
-            logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt
+            logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt, points_pred_bt
         """
         B = len(states_input)
         T = masks_bt.size(1)
@@ -1048,8 +1063,9 @@ class PPOAgent:
         win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
         secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
+        points_pred_bt = self.critic.points_head(aux_feat_bt)
 
-        return logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt
+        return logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt, points_pred_bt
 
     @staticmethod
     def _flatten_action_steps(
@@ -1333,11 +1349,12 @@ class PPOAgent:
                     win_bt,
                     final_ret_bt,
                     secret_bt,
+                    points_bt,
                 ) = self._build_minibatch_tensors(batch, states, masks_t, kinds, pids)
 
                 # Vectorized forward
                 t_fwd = time.time()
-                logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
+                logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt, points_pred_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
                 forward_time += time.time() - t_fwd
 
                 flat = self._flatten_action_steps(
@@ -1417,6 +1434,11 @@ class PPOAgent:
                 bce_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
                 return_loss = F.smooth_l1_loss(ret_pred_flat, final_ret_labels_flat)
                 secret_loss = F.binary_cross_entropy_with_logits(secret_logits_flat, secret_labels_flat)
+                # Per-player points auxiliary loss (regression on normalized per-seat totals)
+                # points_pred_flat and labels are (N, 5); smooth L1 stabilizes training.
+                points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[is_action_bt.view(-1)]
+                points_labels_flat = points_bt.view(-1, points_bt.size(-1))[is_action_bt.view(-1)]
+                points_loss = F.smooth_l1_loss(points_pred_flat, points_labels_flat)
 
                 # Backward + step per minibatch
                 t_bwd = time.time()
@@ -1426,6 +1448,7 @@ class PPOAgent:
                     + self.win_loss_coeff * bce_loss
                     + self.return_loss_coeff * return_loss
                     + self.secret_loss_coeff * secret_loss
+                    + self.points_loss_coeff * points_loss
                 )
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()

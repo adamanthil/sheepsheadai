@@ -15,6 +15,13 @@ export interface AnalyzeProbability {
   logit: number;
 }
 
+export interface AnalyzePointEstimate {
+  seat: number;
+  seatName: string;
+  points: number;
+  relativePosition: number;
+}
+
 export interface AnalyzeActionDetail {
   stepIndex: number;
   seat: number;
@@ -28,6 +35,7 @@ export interface AnalyzeActionDetail {
   winProb?: number;
   expectedFinalReturn?: number;
   secretPartnerProb?: number;
+  pointEstimates?: AnalyzePointEstimate[];
   validActionIds: number[];
   probabilities: AnalyzeProbability[];
   view: Record<string, any>;

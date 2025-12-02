@@ -357,6 +357,123 @@
   border-top: 1px solid #f1f5f9;
 }
 
+.actionInsightsSection {
+  padding: 0 2rem 1.5rem 2rem;
+  background: #f8fafc;
+  border-top: 1px solid #eef2ff;
+}
+
+.insightsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+}
+
+.insightCard {
+  background: white;
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.insightTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.secretMini {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: flex-start;
+}
+
+.secretMiniValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #333;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.secretMiniLabel {
+  font-size: 0.75rem;
+  color: #666;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pointsInsight {
+  background: linear-gradient(145deg, #eff6ff 0%, #f8fafc 100%);
+  border-color: #c7d2fe;
+}
+
+.pointsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pointRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pointSeat {
+  min-width: 110px;
+  font-weight: 600;
+  color: #1e3a8a;
+  font-size: 0.9rem;
+}
+
+.pointSeat span {
+  display: block;
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pointBarWrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pointBarTrack {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.pointBarFill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #1e3a8a 100%);
+  border-radius: 999px;
+  transition: width 200ms ease;
+}
+
+.pointValue {
+  min-width: 72px;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .detailsGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -368,6 +485,14 @@
   .detailsGrid {
     grid-template-columns: 1fr;
     gap: 1.5rem;
+  }
+
+  .actionInsightsSection {
+    padding: 0 1rem 1.25rem 1rem;
+  }
+
+  .insightsGrid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -467,7 +592,7 @@
 /* State Vector Section */
 .stateVectorSection {
   margin-top: 1.5rem;
-  padding-top: 1rem;
+  padding: 1.5rem;
   border-top: 1px solid #e5e7eb;
 }
 

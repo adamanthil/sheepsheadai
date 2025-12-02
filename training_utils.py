@@ -7,11 +7,13 @@ from typing import List, Dict
 import matplotlib.pyplot as plt
 
 from sheepshead import (
+    TOTAL_DECK_POINTS,
     TRUMP,
     ACTIONS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     get_card_suit,
+    get_trick_points,
 )
 
 
@@ -57,6 +59,33 @@ def estimate_hand_strength_category(cards: List[str]) -> str:
 
 def get_partner_selection_mode(episode: int) -> int:
     return PARTNER_BY_CALLED_ACE if (episode % 2 == 0) else PARTNER_BY_JD
+
+
+def compute_known_points_rel(player):
+    """Return normalized known point totals for all seats from the acting player's perspective.
+
+    Known points include:
+      - Public trick points in game.points_taken (including blind/UNDER handling).
+      - Bury card points, but only for the picker in non-leaster games once the bury is fixed.
+
+    The result is a length-5 list ordered by relative seat:
+      1 = self, 2 = left-hand opponent, ..., 5 = right-hand opponent.
+    Values are normalized by TOTAL_DECK_POINTS so they lie in [0, 1].
+    """
+    game = player.game
+    base_points = list(getattr(game, "points_taken", [0, 0, 0, 0, 0]))
+
+    # In standard games, the picker uniquely knows the bury card identities and their points.
+    # We expose those points only to the picker, and only once the bury is fixed.
+    if not game.is_leaster:
+        if player.is_picker:
+            base_points[player.position - 1] += get_trick_points(game.bury)
+
+    rel_points = []
+    for rel in range(1, 6):
+        abs_seat = ((player.position + rel - 2) % 5) + 1
+        rel_points.append(base_points[abs_seat - 1] / TOTAL_DECK_POINTS)
+    return rel_points
 
 
 def calculate_trick_reward(trick_points: int) -> float:

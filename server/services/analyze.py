@@ -19,6 +19,7 @@ from training_utils import (
     update_intermediate_rewards_for_action,
     handle_trick_completion,
     process_episode_rewards,
+    TOTAL_DECK_POINTS,
 )
 
 
@@ -137,7 +138,20 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             value = agent.critic(encoder_out)
 
             # Auxiliary critic heads via accessor
-            win_prob_val, expected_final_val, secret_partner_prob = agent.critic.aux_predictions(encoder_out)
+            win_prob_val, expected_final_val, secret_partner_prob, point_vector = agent.critic.aux_predictions(encoder_out)
+
+        point_estimates = []
+        if point_vector:
+            for rel_idx, rel_val in enumerate(point_vector, start=1):
+                abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
+                seat_label = players[abs_seat - 1] if 0 < abs_seat <= len(players) else f"Seat {abs_seat}"
+                points_real = float(max(0.0, rel_val) * TOTAL_DECK_POINTS)
+                point_estimates.append({
+                    "seat": abs_seat,
+                    "seatName": seat_label,
+                    "points": points_real,
+                    "relativePosition": rel_idx,
+                })
 
         # Choose action
         if req.deterministic:
@@ -188,7 +202,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             state=encoder_out['features'].squeeze(0).detach().cpu().tolist(),
             winProb=float(win_prob_val),
             expectedFinalReturn=expected_final_val,
-            secretPartnerProb=float(secret_partner_prob)
+            secretPartnerProb=float(secret_partner_prob) if secret_partner_prob is not None else None,
+            pointEstimates=point_estimates or None
         )
 
         trace.append(action_detail)

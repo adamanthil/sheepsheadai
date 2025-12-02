@@ -77,6 +77,13 @@ class AnalyzeProbability(BaseModel):
     logit: float
 
 
+class AnalyzePointEstimate(BaseModel):
+    seat: int
+    seatName: str
+    points: float
+    relativePosition: int
+
+
 class AnalyzeActionDetail(BaseModel):
     stepIndex: int
     seat: int
@@ -90,6 +97,7 @@ class AnalyzeActionDetail(BaseModel):
     winProb: Optional[float] = None  # [0,1]
     expectedFinalReturn: Optional[float] = None  # unscaled, undiscounted
     secretPartnerProb: Optional[float] = None  # [0,1]
+    pointEstimates: Optional[List[AnalyzePointEstimate]] = None
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]
