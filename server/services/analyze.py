@@ -19,6 +19,7 @@ from training_utils import (
     update_intermediate_rewards_for_action,
     handle_trick_completion,
     process_episode_rewards,
+    compute_known_points_rel,
     TOTAL_DECK_POINTS,
 )
 
@@ -153,6 +154,20 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
                     "relativePosition": rel_idx,
                 })
 
+        point_actuals = []
+        known_points_rel = compute_known_points_rel(actor_player)
+        if known_points_rel:
+            for rel_idx, rel_val in enumerate(known_points_rel, start=1):
+                abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
+                seat_label = players[abs_seat - 1] if 0 < abs_seat <= len(players) else f"Seat {abs_seat}"
+                points_real = float(max(0.0, rel_val) * TOTAL_DECK_POINTS)
+                point_actuals.append({
+                    "seat": abs_seat,
+                    "seatName": seat_label,
+                    "points": points_real,
+                    "relativePosition": rel_idx,
+                })
+
         # Choose action
         if req.deterministic:
             action_id = torch.argmax(action_probs, dim=1).item() + 1  # Convert to 1-indexed
@@ -203,7 +218,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             winProb=float(win_prob_val),
             expectedFinalReturn=expected_final_val,
             secretPartnerProb=float(secret_partner_prob) if secret_partner_prob is not None else None,
-            pointEstimates=point_estimates or None
+            pointEstimates=point_estimates or None,
+            pointActuals=point_actuals or None
         )
 
         trace.append(action_detail)

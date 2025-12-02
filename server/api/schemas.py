@@ -98,6 +98,7 @@ class AnalyzeActionDetail(BaseModel):
     expectedFinalReturn: Optional[float] = None  # unscaled, undiscounted
     secretPartnerProb: Optional[float] = None  # [0,1]
     pointEstimates: Optional[List[AnalyzePointEstimate]] = None
+    pointActuals: Optional[List[AnalyzePointEstimate]] = None
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]

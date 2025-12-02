@@ -36,6 +36,7 @@ export interface AnalyzeActionDetail {
   expectedFinalReturn?: number;
   secretPartnerProb?: number;
   pointEstimates?: AnalyzePointEstimate[];
+  pointActuals?: AnalyzePointEstimate[];
   validActionIds: number[];
   probabilities: AnalyzeProbability[];
   view: Record<string, any>;
