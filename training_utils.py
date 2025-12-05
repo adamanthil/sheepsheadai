@@ -17,7 +17,7 @@ from sheepshead import (
 )
 
 
-LEASTER_FINAL_REWARD_BONUS = 0.08
+LEASTER_FINAL_REWARD_BONUS = 0.1
 TRICK_POINT_RATIO = 360.0
 
 
@@ -265,7 +265,7 @@ def update_intermediate_rewards_for_action(
                 and card in TRUMP
             ):
                 # Encourage partners to lead trump
-                transition['intermediate_reward'] += 0.06
+                transition['intermediate_reward'] += 0.08
             elif (
                 not game.is_leaster
                 and player.is_picker
