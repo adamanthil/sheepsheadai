@@ -136,13 +136,13 @@ def update_intermediate_rewards_for_action(
     if action_name in ("PICK", "PASS"):
         score = estimate_hand_strength_score(player.hand)
         if score <= 4:
-            pick_bonus, pass_bonus = -0.15, +0.15
+            pick_bonus, pass_bonus = -0.1, +0.1
         elif score <= 6:
             pick_bonus, pass_bonus = 0, 0
         elif score <= 7:
             pick_bonus, pass_bonus = +0.02, -0.02
         elif score >= 8:
-            pick_bonus, pass_bonus = +0.2, -0.2
+            pick_bonus, pass_bonus = +0.15, -0.15
         transition['intermediate_reward'] += pick_bonus if action_name == "PICK" else pass_bonus
         transition['intermediate_reward'] *= pick_weight
 
@@ -217,7 +217,7 @@ def update_intermediate_rewards_for_action(
                 and card in TRUMP
             ):
                 # Encourage partners to lead trump
-                transition['intermediate_reward'] += 0.1
+                transition['intermediate_reward'] += 0.06
             elif (
                 not game.is_leaster
                 and player.is_picker
