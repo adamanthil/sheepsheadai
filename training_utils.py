@@ -88,6 +88,54 @@ def compute_known_points_rel(player):
     return rel_points
 
 
+def compute_highest_unseen_trump(player) -> int:
+    """Return index of the highest trump the player has not observed yet.
+
+    Observation sources:
+      - Cards currently in hand
+      - Cards already played to tricks (visible history)
+      - Blind / bury / under cards known only to the picker
+
+    Returns:
+        int: 0-based index into TRUMP ordering, or len(TRUMP) if every trump
+             card is already known/seen from the player's perspective.
+    """
+
+    def mark_seen(card: str, seen: set[str]) -> None:
+        if card in TRUMP:
+            seen.add(card)
+
+    seen_trumps: set[str] = set()
+
+    # Cards currently in hand are known
+    for card in player.hand:
+        mark_seen(card, seen_trumps)
+
+    # Picker-specific knowledge: blind, bury, and designated under card
+    if player.is_picker:
+        for card in player.blind:
+            mark_seen(card, seen_trumps)
+        for card in player.bury:
+            mark_seen(card, seen_trumps)
+        if player.game.under_card:
+            mark_seen(player.game.under_card, seen_trumps)
+
+    # Public knowledge: cards exposed in trick history
+    for trick in player.game.history:
+        for card in trick:
+            if card:
+                mark_seen(card, seen_trumps)
+
+    for idx, card in enumerate(TRUMP):
+        if card not in seen_trumps:
+            return idx
+
+    # All trump cards have been seen.
+    # Value corresponds to RecurrentCriticNetwork.highest_trump_logits.
+    # Final logit value indicates "all seen" sentinel.
+    return len(TRUMP)
+
+
 def calculate_trick_reward(trick_points: int) -> float:
     """Intermediate reward for trick points."""
     return trick_points / TRICK_POINT_RATIO

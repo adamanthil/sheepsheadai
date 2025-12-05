@@ -5,11 +5,47 @@ import torch.nn.functional as F
 import torch.optim as optim
 import time
 from typing import Dict
-from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS, DECK_IDS, UNDER_TOKEN
+from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS, DECK_IDS, UNDER_TOKEN, TRUMP
 from encoder import CardReasoningEncoder, CardEmbeddingConfig
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+class LossScaleTracker(nn.Module):
+    """Track running Root Mean Square (RMS) values so regression heads train on comparable scales."""
+
+    def __init__(
+        self,
+        num_features: int,
+        momentum: float = 0.05,
+        eps: float = 1e-6,
+        min_scale: float = 1e-2,
+    ):
+        super().__init__()
+        self.num_features = int(num_features)
+        self.momentum = float(momentum)
+        self.eps = float(eps)
+        self.min_scale = float(min_scale)
+        self.register_buffer('scale', torch.ones(self.num_features))
+        self.register_buffer('initialized', torch.tensor(False))
+
+    def update(self, values: torch.Tensor | None) -> None:
+        if values is None or values.numel() == 0:
+            return
+        target = values.detach().to(self.scale.device).float()
+        if target.dim() == 1 and self.num_features == 1:
+            target = target.unsqueeze(-1)
+        target = target.reshape(-1, self.num_features)
+        batch_rms = torch.sqrt((target ** 2).mean(dim=0) + self.eps)
+        if not bool(self.initialized.item()):
+            self.scale = batch_rms
+            self.initialized = torch.tensor(True, device=self.scale.device)
+        else:
+            self.scale = (1 - self.momentum) * self.scale + self.momentum * batch_rms
+
+    def current(self) -> torch.Tensor:
+        return self.scale.clamp_min(self.min_scale)
 
 
 class MultiHeadRecurrentActorNetwork(nn.Module):
@@ -292,8 +328,10 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 class RecurrentCriticNetwork(nn.Module):
     """Critic head using encoder features directly."""
 
-    def __init__(self, activation='swish'):
+    def __init__(self, activation='swish', d_card: int | None = None):
         super().__init__()
+        if d_card is None:
+            raise ValueError("RecurrentCriticNetwork requires card embedding dimension (d_card).")
 
         self.critic_adapter = nn.Sequential(
             nn.LayerNorm(256),
@@ -307,6 +345,25 @@ class RecurrentCriticNetwork(nn.Module):
         self.secret_partner_head = nn.Linear(256, 1)
         # Per-player point prediction head (relative seating order, length-5 vector)
         self.points_head = nn.Linear(256, 5)
+        # Adaptive scale trackers keep regression heads numerically balanced
+        self.win_loss_tracker = LossScaleTracker(1)
+        self.value_scale_tracker = LossScaleTracker(1)
+        self.return_scale_tracker = LossScaleTracker(1)
+        self.secret_loss_tracker = LossScaleTracker(1)
+        self.points_scale_tracker = LossScaleTracker(5)
+
+        # Highest unseen trump two-tower head
+        self.highest_trump_latent = 64
+        self.highest_trump_query = nn.Linear(256, self.highest_trump_latent)
+        self.highest_trump_key = nn.Linear(d_card, self.highest_trump_latent)
+        self.register_buffer(
+            'trump_card_ids',
+            torch.tensor([DECK_IDS[c] for c in TRUMP], dtype=torch.long),
+            persistent=False,
+        )
+        self.highest_trump_none_bias = nn.Parameter(torch.zeros(1))
+        self.num_highest_trump_classes = len(TRUMP) + 1
+        self._highest_trump_none_label = "ALL_SEEN"
 
         self.apply(self._init_weights)
 
@@ -362,6 +419,41 @@ class RecurrentCriticNetwork(nn.Module):
         secret_prob = float(torch.sigmoid(secret_logit).item())
         points_vector = [float(v) for v in points_pred[0].tolist()]
         return win_prob, expected_final, secret_prob, points_vector
+
+    def highest_trump_logits(self, feat: torch.Tensor, card_embedding: nn.Embedding) -> torch.Tensor:
+        """Return logits over (len(TRUMP) + 1) classes for highest unseen trump."""
+        flat = feat.reshape(-1, feat.size(-1))
+        q = self.highest_trump_query(flat)
+        table = card_embedding.weight.index_select(0, self.trump_card_ids.to(card_embedding.weight.device))
+        k = self.highest_trump_key(table)
+        logits = torch.matmul(q, k.t())
+        none_logit = self.highest_trump_none_bias.expand(logits.size(0), 1)
+        logits = torch.cat([logits, none_logit], dim=-1)
+        return logits.view(*feat.shape[:-1], self.num_highest_trump_classes)
+
+    def _index_to_trump_label(self, index: int) -> str:
+        if index < len(TRUMP):
+            return TRUMP[index]
+        return self._highest_trump_none_label
+
+    def highest_trump_distribution(
+        self,
+        encoder_out: Dict[str, torch.Tensor],
+        card_embedding: nn.Embedding,
+        top_k: int = 5,
+    ) -> list[dict]:
+        """Return top-k highest-trump probabilities as [{'card': str, 'probability': float}]."""
+        logits = self.highest_trump_logits(encoder_out['features'], card_embedding)
+        probs = torch.softmax(logits, dim=-1).squeeze(0)
+        k = min(top_k, probs.size(0))
+        values, indices = torch.topk(probs, k)
+        return [
+            {
+                'card': self._index_to_trump_label(int(idx.item())),
+                'probability': float(val.item()),
+            }
+            for idx, val in zip(indices, values)
+        ]
 
 
 class PPOAgent:
@@ -425,7 +517,7 @@ class PPOAgent:
             play_under_action_index=play_under_action_index,
         ).to(device)
 
-        self.critic = RecurrentCriticNetwork(activation=activation).to(device)
+        self.critic = RecurrentCriticNetwork(activation=activation, d_card=self.encoder.d_card_dim).to(device)
 
         # Optimizers (include encoder params with scaled LR for card embeddings)
         encoder_groups = self.encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.2)
@@ -460,8 +552,9 @@ class PPOAgent:
         # Auxiliary loss coefficients
         self.win_loss_coeff = 0.1
         self.return_loss_coeff = 0.1
-        self.secret_loss_coeff = 0.07
-        self.points_loss_coeff = 0.1
+        self.secret_loss_coeff = 0.1
+        self.points_loss_coeff = 0.3
+        self.trump_loss_coeff = 0.2
 
         # Storage for trajectory data
         self.reset_storage()
@@ -796,6 +889,8 @@ class PPOAgent:
             if pid is None:
                 pid = 0
             if ev.get('kind') == 'action':
+                highest_label = ev.get('highest_trump_label', None)
+                highest_idx = int(highest_label) if highest_label is not None else -1
                 mask = self.get_action_mask(ev['valid_actions'], self.action_size)
                 self.events.append({
                     'kind': 'action',
@@ -811,6 +906,7 @@ class PPOAgent:
                     'final_return': float(ev.get('final_return_label', 0.0) or 0.0),
                     'secret_partner': float(ev.get('secret_partner_label', 0.0) or 0.0),
                     'points_rel': [float(x) for x in (ev.get('points_label') or [0.0] * 5)],
+                    'highest_trump': highest_idx,
                 })
             else:
                 # Observation: mask = all ones by default
@@ -934,6 +1030,7 @@ class PPOAgent:
         final_ret_list_all = []
         secret_list_all = []
         points_list_all = []
+        highest_trump_list_all = []
 
         for pid, seg_start, seg_end in batch:
             # Restrict sequence strictly to this player's own events (actions + obs)
@@ -953,6 +1050,7 @@ class PPOAgent:
             act_bt, olp_bt, ret_bt, adv_bt = [], [], [], []
             win_bt, final_ret_bt, secret_bt = [], [], []
             points_bt = []
+            highest_trump_bt = []
             for i in ev_range:
                 if kinds[i] == 'action' and pids[i] == pid:
                     act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
@@ -967,6 +1065,8 @@ class PPOAgent:
                     secret_bt.append(torch.tensor(float(secret_lbl), dtype=torch.float32, device=device))
                     pts_lbl = self.events[i].get('points_rel', [0.0] * 5)
                     points_bt.append(torch.tensor(pts_lbl, dtype=torch.float32, device=device))
+                    highest_val = int(self.events[i].get('highest_trump', -1))
+                    highest_trump_bt.append(torch.tensor(highest_val, dtype=torch.long, device=device))
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
@@ -976,6 +1076,7 @@ class PPOAgent:
                     final_ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     secret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     points_bt.append(torch.zeros(5, dtype=torch.float32, device=device))
+                    highest_trump_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
@@ -984,6 +1085,7 @@ class PPOAgent:
             final_ret_list_all.append(torch.stack(final_ret_bt, dim=0))
             secret_list_all.append(torch.stack(secret_bt, dim=0))
             points_list_all.append(torch.stack(points_bt, dim=0))
+            highest_trump_list_all.append(torch.stack(highest_trump_bt, dim=0))
 
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
@@ -995,9 +1097,24 @@ class PPOAgent:
         final_ret_bt, _ = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
         secret_bt, _ = self._pad_to_bt(secret_list_all, lengths, 0.0)
         points_bt, _ = self._pad_to_bt(points_list_all, lengths, 0.0)
+        highest_trump_bt, _ = self._pad_to_bt(highest_trump_list_all, lengths, -1)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
-        return states_seqs, masks_bt, is_action_bt, actions_bt, old_lp_bt, returns_bt, adv_bt, lengths_bt, win_bt, final_ret_bt, secret_bt, points_bt
+        return (
+            states_seqs,
+            masks_bt,
+            is_action_bt,
+            actions_bt,
+            old_lp_bt,
+            returns_bt,
+            adv_bt,
+            lengths_bt,
+            win_bt,
+            final_ret_bt,
+            secret_bt,
+            points_bt,
+            highest_trump_bt,
+        )
 
     def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
         """Vectorized forward pass for training with recurrent memory.
@@ -1059,13 +1176,22 @@ class PPOAgent:
         values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
 
         # Auxiliary preds share critic_adapter features (gradients flow to encoder)
-        aux_feat_bt = self.critic.critic_adapter(features_bt)
+        aux_feat_bt = critic_feat_bt
         win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
         secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
         points_pred_bt = self.critic.points_head(aux_feat_bt)
+        highest_trump_logits_bt = self.critic.highest_trump_logits(aux_feat_bt, self.encoder.card)
 
-        return logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt, points_pred_bt
+        return (
+            logits_bt,
+            values_bt,
+            win_logits_bt,
+            ret_pred_bt,
+            secret_logits_bt,
+            points_pred_bt,
+            highest_trump_logits_bt,
+        )
 
     @staticmethod
     def _flatten_action_steps(
@@ -1083,6 +1209,8 @@ class PPOAgent:
         secret_logits_bt,
         secret_bt,
         masks_bt,
+        highest_trump_logits_bt,
+        highest_trump_bt,
     ):
         flat_mask = is_action_bt.view(-1)
         if flat_mask.sum() == 0:
@@ -1101,6 +1229,8 @@ class PPOAgent:
             secret_logits_bt.view(-1)[flat_mask],
             secret_bt.view(-1)[flat_mask],
             masks_bt.view(-1, masks_bt.size(-1))[flat_mask],
+            highest_trump_logits_bt.view(-1, highest_trump_logits_bt.size(-1))[flat_mask],
+            highest_trump_bt.view(-1)[flat_mask],
         )
 
     @staticmethod
@@ -1248,12 +1378,17 @@ class PPOAgent:
         policy_loss = (pg_loss_elements * head_weight).mean()
 
         returns_target = returns_flat.view(-1)
+        self.critic.value_scale_tracker.update(returns_target)
+        value_scale = self.critic.value_scale_tracker.current().view(1)
         values_old = values_flat.detach()
         v_clipped = values_old + torch.clamp(
             values_flat - values_old, -self.value_clip_epsilon, self.value_clip_epsilon
         )
-        critic_loss_unclipped = F.mse_loss(values_flat, returns_target)
-        critic_loss_clipped = F.mse_loss(v_clipped, returns_target)
+        values_scaled = values_flat / value_scale
+        returns_scaled = returns_target / value_scale
+        v_clipped_scaled = v_clipped / value_scale
+        critic_loss_unclipped = F.mse_loss(values_scaled, returns_scaled)
+        critic_loss_clipped = F.mse_loss(v_clipped_scaled, returns_scaled)
         critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped)
 
         actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
@@ -1326,6 +1461,16 @@ class PPOAgent:
         pick_adv_count = 0
         pass_adv_sum = 0.0
         pass_adv_count = 0
+        win_loss_sum = 0.0
+        win_loss_count = 0
+        return_loss_sum = 0.0
+        return_loss_count = 0
+        highest_trump_loss_sum = 0.0
+        highest_trump_loss_count = 0
+        points_loss_sum = 0.0
+        points_loss_count = 0
+        secret_loss_sum = 0.0
+        secret_loss_count = 0
 
         for _ in range(epochs):
             if not segments:
@@ -1350,11 +1495,20 @@ class PPOAgent:
                     final_ret_bt,
                     secret_bt,
                     points_bt,
+                    highest_trump_bt,
                 ) = self._build_minibatch_tensors(batch, states, masks_t, kinds, pids)
 
                 # Vectorized forward
                 t_fwd = time.time()
-                logits_bt, values_bt, win_logits_bt, ret_pred_bt, secret_logits_bt, points_pred_bt = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
+                (
+                    logits_bt,
+                    values_bt,
+                    win_logits_bt,
+                    ret_pred_bt,
+                    secret_logits_bt,
+                    points_pred_bt,
+                    highest_trump_logits_bt,
+                ) = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
                 forward_time += time.time() - t_fwd
 
                 flat = self._flatten_action_steps(
@@ -1372,6 +1526,8 @@ class PPOAgent:
                     secret_logits_bt,
                     secret_bt,
                     masks_bt,
+                    highest_trump_logits_bt,
+                    highest_trump_bt,
                 )
                 if flat is None:
                     continue
@@ -1389,6 +1545,8 @@ class PPOAgent:
                     secret_logits_flat,
                     secret_labels_flat,
                     mask_flat,
+                    highest_trump_logits_flat,
+                    highest_trump_labels_flat,
                 ) = flat
 
                 # Record PICK/PASS advantages across minibatches
@@ -1431,24 +1589,54 @@ class PPOAgent:
                 ent_batches += 1
 
                 # Auxiliary losses
-                bce_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
-                return_loss = F.smooth_l1_loss(ret_pred_flat, final_ret_labels_flat)
-                secret_loss = F.binary_cross_entropy_with_logits(secret_logits_flat, secret_labels_flat)
+                raw_win_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
+                self.critic.win_loss_tracker.update(raw_win_loss.view(1, 1))
+                win_scale = self.critic.win_loss_tracker.current().view(1)
+                win_loss = raw_win_loss / win_scale
+                self.critic.return_scale_tracker.update(final_ret_labels_flat)
+                return_scale = self.critic.return_scale_tracker.current().view(1)
+                return_loss = F.smooth_l1_loss(
+                    ret_pred_flat / return_scale,
+                    final_ret_labels_flat / return_scale,
+                )
+                raw_secret_loss = F.binary_cross_entropy_with_logits(secret_logits_flat, secret_labels_flat)
+                self.critic.secret_loss_tracker.update(raw_secret_loss.view(1, 1))
+                secret_scale = self.critic.secret_loss_tracker.current().view(1)
+                secret_loss = raw_secret_loss / secret_scale
                 # Per-player points auxiliary loss (regression on normalized per-seat totals)
                 # points_pred_flat and labels are (N, 5); smooth L1 stabilizes training.
                 points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[is_action_bt.view(-1)]
                 points_labels_flat = points_bt.view(-1, points_bt.size(-1))[is_action_bt.view(-1)]
-                points_loss = F.smooth_l1_loss(points_pred_flat, points_labels_flat)
+                self.critic.points_scale_tracker.update(points_labels_flat)
+                points_scale = self.critic.points_scale_tracker.current().view(1, -1)
+                points_loss = F.smooth_l1_loss(
+                    points_pred_flat / points_scale,
+                    points_labels_flat / points_scale,
+                )
+
+                highest_trump_loss = F.cross_entropy(
+                    highest_trump_logits_flat,
+                    highest_trump_labels_flat.long(),
+                )
+                win_loss_sum += win_loss.detach().item()
+                win_loss_count += 1
+                return_loss_sum += return_loss.detach().item()
+                return_loss_count += 1
+                secret_loss_sum += secret_loss.detach().item()
+                secret_loss_count += 1
+                points_loss_sum += points_loss.detach().item()
+                points_loss_count += 1
 
                 # Backward + step per minibatch
                 t_bwd = time.time()
                 total_loss = (
                     actor_loss
                     + self.value_loss_coeff * critic_loss
-                    + self.win_loss_coeff * bce_loss
+                    + self.win_loss_coeff * win_loss
                     + self.return_loss_coeff * return_loss
                     + self.secret_loss_coeff * secret_loss
                     + self.points_loss_coeff * points_loss
+                    + self.trump_loss_coeff * highest_trump_loss
                 )
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
@@ -1463,6 +1651,8 @@ class PPOAgent:
                 self.critic_optimizer.step()
                 step_time += time.time() - t_step
                 optimizer_steps += 1
+                highest_trump_loss_sum += highest_trump_loss.detach().item()
+                highest_trump_loss_count += 1
 
                 # Early stop further updates in this epoch if KL exceeds threshold
                 if self.target_kl is not None and last_approx_kl > self.target_kl:
@@ -1505,6 +1695,13 @@ class PPOAgent:
                 'pick_count': pick_adv_count,
                 'pass_mean': (pass_adv_sum / pass_adv_count) if pass_adv_count > 0 else 0.0,
                 'pass_count': pass_adv_count,
+            },
+            'aux_losses': {
+                'win': (win_loss_sum / max(win_loss_count, 1)),
+                'return': (return_loss_sum / max(return_loss_count, 1)),
+                'points': (points_loss_sum / max(points_loss_count, 1)),
+                'secret_partner': (secret_loss_sum / max(secret_loss_count, 1)),
+                'highest_trump': (highest_trump_loss_sum / max(highest_trump_loss_count, 1)),
             },
         }
 

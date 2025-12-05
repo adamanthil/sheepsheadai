@@ -22,6 +22,11 @@ export interface AnalyzePointEstimate {
   relativePosition: number;
 }
 
+export interface AnalyzeTrumpProbability {
+  card: string;
+  probability: number;
+}
+
 export interface AnalyzeActionDetail {
   stepIndex: number;
   seat: number;
@@ -37,6 +42,9 @@ export interface AnalyzeActionDetail {
   secretPartnerProb?: number;
   pointEstimates?: AnalyzePointEstimate[];
   pointActuals?: AnalyzePointEstimate[];
+  highestTrumpPrediction?: string | null;
+  highestTrumpActual?: string | null;
+  highestTrumpTopk?: AnalyzeTrumpProbability[];
   validActionIds: number[];
   probabilities: AnalyzeProbability[];
   view: Record<string, any>;

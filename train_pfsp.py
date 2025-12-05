@@ -27,7 +27,11 @@ from pfsp import (
     profile_pop_agent_action,
     profile_trick_completion,
 )
-from training_utils import estimate_hand_strength_category, compute_known_points_rel
+from training_utils import (
+    estimate_hand_strength_category,
+    compute_known_points_rel,
+    compute_highest_unseen_trump,
+)
 from sheepshead import (
     Game,
     ACTIONS,
@@ -204,6 +208,7 @@ def play_population_game(training_agent: PPOAgent,
                         'intermediate_reward': 0.0,
                         'secret_partner_label': 1.0 if player.is_secret_partner else 0.0,
                         'points_label': compute_known_points_rel(player),
+                        'highest_trump_label': compute_highest_unseen_trump(player),
                     }
                     episode_transitions.append(transition)
 
@@ -302,6 +307,7 @@ def play_population_game(training_agent: PPOAgent,
                 'final_return_label': float(final_scores[seat_pos - 1]),
                 'secret_partner_label': ev.get('secret_partner_label', 0.0),
                 'points_label': ev.get('points_label', None),
+                'highest_trump_label': ev.get('highest_trump_label', None),
             })
 
     return game, episode_events, final_scores, training_agent_data
@@ -657,6 +663,7 @@ def train_pfsp(num_episodes: int = 500000,
                 early_stop = update_stats.get('early_stop', False)
                 head_entropy = update_stats.get('head_entropy', {})
                 pick_pass_adv = update_stats.get('pick_pass_adv', {})
+                aux_losses = update_stats.get('aux_losses', {})
 
                 print(f"   Transitions: {num_transitions}")
                 print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
@@ -682,6 +689,15 @@ def train_pfsp(num_episodes: int = 500000,
                         f"   Timing - build: {t['build_s']:.3f}s, forward: {t['forward_s']:.3f}s, "
                         f"backward: {t['backward_s']:.3f}s, step: {t['step_s']:.3f}s, total: {t['total_update_s']:.3f}s, "
                         f"opt_steps: {t['optimizer_steps']}"
+                    )
+                if aux_losses:
+                    print(
+                        "   Aux losses - points: %.4f, partner: %.4f, highest trump: %.4f"
+                        % (
+                            aux_losses.get('points', 0.0),
+                            aux_losses.get('secret_partner', 0.0),
+                            aux_losses.get('highest_trump', 0.0),
+                        )
                     )
 
             game_count = 0

@@ -6,7 +6,7 @@ from typing import Dict, List
 import numpy as np
 import torch
 
-from sheepshead import Game, Player, ACTION_LOOKUP, DECK
+from sheepshead import Game, Player, ACTION_LOOKUP, DECK, TRUMP
 from server.api.schemas import (
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
@@ -21,6 +21,7 @@ from training_utils import (
     process_episode_rewards,
     compute_known_points_rel,
     TOTAL_DECK_POINTS,
+    compute_highest_unseen_trump,
 )
 
 
@@ -140,6 +141,15 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
             # Auxiliary critic heads via accessor
             win_prob_val, expected_final_val, secret_partner_prob, point_vector = agent.critic.aux_predictions(encoder_out)
+            highest_trump_topk = agent.critic.highest_trump_distribution(
+                encoder_out,
+                agent.encoder.card,
+                top_k=5,
+            )
+
+        highest_trump_prediction = highest_trump_topk[0]['card'] if highest_trump_topk else None
+        actual_trump_idx = compute_highest_unseen_trump(actor_player)
+        highest_trump_actual = TRUMP[actual_trump_idx] if actual_trump_idx < len(TRUMP) else "ALL_SEEN"
 
         point_estimates = []
         if point_vector:
@@ -219,7 +229,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             expectedFinalReturn=expected_final_val,
             secretPartnerProb=float(secret_partner_prob) if secret_partner_prob is not None else None,
             pointEstimates=point_estimates or None,
-            pointActuals=point_actuals or None
+            pointActuals=point_actuals or None,
+            highestTrumpPrediction=highest_trump_prediction,
+            highestTrumpActual=highest_trump_actual,
+            highestTrumpTopk=highest_trump_topk or None,
         )
 
         trace.append(action_detail)

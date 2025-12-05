@@ -7,7 +7,13 @@ interface ActionInsightsProps {
 }
 
 export default function ActionInsights({ action }: ActionInsightsProps) {
-  const { secretPartnerProb, pointEstimates, pointActuals } = action;
+  const {
+    secretPartnerProb,
+    pointEstimates,
+    pointActuals,
+    highestTrumpActual,
+    highestTrumpTopk,
+  } = action;
 
   const sortedPointEstimates = useMemo(() => {
     if (!pointEstimates) return [];
@@ -24,8 +30,17 @@ export default function ActionInsights({ action }: ActionInsightsProps) {
 
   const showSecret = typeof secretPartnerProb === 'number';
   const showPoints = sortedPointEstimates.length > 0;
+  const trumpDistribution = highestTrumpTopk ?? [];
+  const showTrump = trumpDistribution.length > 0 || typeof highestTrumpActual === 'string';
 
-  if (!showSecret && !showPoints) {
+  const formatTrumpLabel = (card?: string | null) => {
+    if (!card) return 'Unknown';
+    if (card === 'ALL_SEEN') return 'All Seen';
+    if (card.trim().length === 0) return 'Unknown';
+    return card;
+  };
+
+  if (!showSecret && !showPoints && !showTrump) {
     return null;
   }
 
@@ -98,17 +113,46 @@ export default function ActionInsights({ action }: ActionInsightsProps) {
             </div>
           </div>
         )}
-
-        {showSecret && (
-          <div className={styles.insightCard}>
+        {showTrump && (
+          <div className={`${styles.insightCard}`}>
+            <div className={styles.insightTitle}>Highest Remaining Trump (Top 5 Predictions)</div>
+            <div className={styles.trumpList}>
+              {trumpDistribution.length > 0 ? (
+                trumpDistribution.map((entry) => (
+                  <div key={`${entry.card}-${entry.probability}`} className={styles.trumpEntry}>
+                    <div className={styles.trumpCardLabel}>{formatTrumpLabel(entry.card)}</div>
+                    <div className={styles.trumpProbBar}>
+                      <div
+                        className={styles.trumpProbFill}
+                        style={{ width: `${Math.min(100, entry.probability * 100)}%` }}
+                      />
+                    </div>
+                    <div className={styles.trumpProbValue}>{(entry.probability * 100).toFixed(1)}%</div>
+                  </div>
+                ))
+              ) : (
+                <div className={styles.trumpEmpty}>No prediction available</div>
+              )}
+            </div>
+            {highestTrumpActual && (
+              <div className={styles.trumpActualRow}>
+                Actual highest: <span>{formatTrumpLabel(highestTrumpActual)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {showSecret && (
+        <div className={styles.secretRow}>
+          <div className={`${styles.insightCard} ${styles.secretRowCard}`}>
             <div className={styles.insightTitle}>Secret Partner</div>
             <div className={styles.secretMini}>
               <div className={styles.secretMiniValue}>{secretPct}%</div>
               <div className={styles.secretMiniLabel}>confidence</div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
