@@ -671,25 +671,27 @@ class PPOAgent:
             eps = 0.2
         self.pick_floor_epsilon = eps
 
-    def _apply_epsilon_mixing(self, probs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def _apply_head_epsilon_mix(self, probs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """
-        Apply partner-call ε mixture and PASS-floor ε mixture to probability
-        distributions in a batched way without in-place ops.
+        Shared epsilon mixing for partner-call uniform, pick floor, pass floor.
+        Expects probs already normalized; returns a new tensor (no in-place ops).
+        """
+        if (
+            self.partner_call_epsilon == 0.0
+            and self.pick_floor_epsilon == 0.0
+            and self.pass_floor_epsilon == 0.0
+        ):
+            return probs
 
-        Parameters
-        ----------
-        probs : Tensor
-            Shape (B, A) probabilities over actions
-        mask : Bool Tensor
-            Shape (B, A) of valid actions
-        """
         mixed = probs
+
+        # Partner-call uniform mixture over valid CALL actions
         if self.partner_call_epsilon > 0.0:
-            B, A = mixed.size(0), mixed.size(1)
+            A = mixed.size(1)
             call_vec = torch.zeros(A, dtype=torch.bool, device=mixed.device)
             call_idx = torch.tensor(self.partner_call_subindices, dtype=torch.long, device=mixed.device)
             call_vec[call_idx] = True
-            valid_call = mask & call_vec.view(1, A).expand(B, A)
+            valid_call = mask & call_vec.view(1, A).expand_as(mask)
             count = valid_call.float().sum(dim=-1, keepdim=True)
             has = count > 0.5
             ucall = torch.where(
@@ -704,26 +706,26 @@ class PPOAgent:
             )
             mixed = (1.0 - eps) * mixed + eps * ucall
 
+        # Pick floor
         if self.pick_floor_epsilon > 0.0:
-            B, A = mixed.size(0), mixed.size(1)
-            one_hot_pick = torch.zeros(A, dtype=mixed.dtype, device=mixed.device)
-            one_hot_pick[self.pick_action_index] = 1.0
-            one_hot_pick = one_hot_pick.view(1, A).expand(B, A)
-            valid_pick = mask[:, self.pick_action_index].unsqueeze(-1)
+            one_hot_pick = F.one_hot(
+                torch.tensor(self.pick_action_index, device=mixed.device),
+                mixed.size(-1),
+            ).float()
             mixed = torch.where(
-                valid_pick,
+                mask[:, self.pick_action_index].unsqueeze(-1),
                 (1.0 - self.pick_floor_epsilon) * mixed + self.pick_floor_epsilon * one_hot_pick,
                 mixed,
             )
 
+        # Pass floor
         if self.pass_floor_epsilon > 0.0:
-            B, A = mixed.size(0), mixed.size(1)
-            one_hot_pass = torch.zeros(A, dtype=mixed.dtype, device=mixed.device)
-            one_hot_pass[self.pass_action_index] = 1.0
-            one_hot_pass = one_hot_pass.view(1, A).expand(B, A)
-            valid_pass = mask[:, self.pass_action_index].unsqueeze(-1)
+            one_hot_pass = F.one_hot(
+                torch.tensor(self.pass_action_index, device=mixed.device),
+                mixed.size(-1),
+            ).float()
             mixed = torch.where(
-                valid_pass,
+                mask[:, self.pass_action_index].unsqueeze(-1),
                 (1.0 - self.pass_floor_epsilon) * mixed + self.pass_floor_epsilon * one_hot_pass,
                 mixed,
             )
@@ -776,8 +778,7 @@ class PPOAgent:
                 hand_ids_t,
                 self.encoder.card,
             )
-            if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0 or self.pick_floor_epsilon > 0.0:
-                probs = self._apply_epsilon_mixing(probs, action_mask_t)
+            probs = self._apply_head_epsilon_mix(probs, action_mask_t)
 
         return probs, logits
 
@@ -804,9 +805,7 @@ class PPOAgent:
                 hand_ids_t,
                 self.encoder.card,
             )
-
-            if self.pass_floor_epsilon > 0.0 or self.partner_call_epsilon > 0.0 or self.pick_floor_epsilon > 0.0:
-                action_probs = self._apply_epsilon_mixing(action_probs, action_mask_t)
+            action_probs = self._apply_head_epsilon_mix(action_probs, action_mask_t)
 
             # Get value
             value = self.critic(encoder_out)
@@ -1280,43 +1279,7 @@ class PPOAgent:
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
         probs_all = F.softmax(logits_flat, dim=-1)
-        # Partner-call mixture on-the-fly
-        if self.partner_call_epsilon > 0.0:
-            A = probs_all.size(-1)
-            call_mask = torch.zeros(A, dtype=torch.bool, device=probs_all.device)
-            call_mask[self.partner_call_subindices] = True
-            valid_call = call_mask.view(1, A).expand_as(mask_flat) & mask_flat
-            count = valid_call.float().sum(dim=-1, keepdim=True)
-            has = count > 0.5
-            ucall = torch.where(has, valid_call.float() / count.clamp_min(1.0), torch.zeros_like(probs_all))
-            eps = torch.where(has, torch.full_like(count, self.partner_call_epsilon), torch.zeros_like(count))
-            probs_all = (1.0 - eps) * probs_all + eps * ucall
-
-        # PICK-floor mixing on-the-fly
-        if self.pick_floor_epsilon > 0.0:
-            A = probs_all.size(-1)
-            one_hot_pick = torch.zeros(A, dtype=probs_all.dtype, device=probs_all.device)
-            one_hot_pick[self.pick_action_index] = 1.0
-            one_hot_pick = one_hot_pick.view(1, A).expand_as(probs_all)
-            valid_pick = mask_flat[:, self.pick_action_index].unsqueeze(-1)
-            probs_all = torch.where(
-                valid_pick,
-                (1.0 - self.pick_floor_epsilon) * probs_all + self.pick_floor_epsilon * one_hot_pick,
-                probs_all,
-            )
-
-        # PASS-floor mixing on-the-fly
-        if self.pass_floor_epsilon > 0.0:
-            A = probs_all.size(-1)
-            one_hot_pass = torch.zeros(A, dtype=probs_all.dtype, device=probs_all.device)
-            one_hot_pass[self.pass_action_index] = 1.0
-            one_hot_pass = one_hot_pass.view(1, A).expand_as(probs_all)
-            valid_pass = mask_flat[:, self.pass_action_index].unsqueeze(-1)
-            probs_all = torch.where(
-                valid_pass,
-                (1.0 - self.pass_floor_epsilon) * probs_all + self.pass_floor_epsilon * one_hot_pass,
-                probs_all,
-            )
+        probs_all = self._apply_head_epsilon_mix(probs_all, mask_flat)
 
         dist = torch.distributions.Categorical(probs_all.clamp(min=1e-12))
         new_lp_flat = dist.log_prob(actions_flat)
