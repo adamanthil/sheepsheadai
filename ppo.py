@@ -356,12 +356,12 @@ class RecurrentCriticNetwork(nn.Module):
         self.highest_trump_latent = 64
         self.highest_trump_query = nn.Linear(256, self.highest_trump_latent)
         self.highest_trump_key = nn.Linear(d_card, self.highest_trump_latent)
+        self.highest_trump_none_proj = nn.Linear(self.highest_trump_latent, 1)
         self.register_buffer(
             'trump_card_ids',
             torch.tensor([DECK_IDS[c] for c in TRUMP], dtype=torch.long),
             persistent=False,
         )
-        self.highest_trump_none_bias = nn.Parameter(torch.zeros(1))
         self.num_highest_trump_classes = len(TRUMP) + 1
         self._highest_trump_none_label = "ALL_SEEN"
 
@@ -427,7 +427,7 @@ class RecurrentCriticNetwork(nn.Module):
         table = card_embedding.weight.index_select(0, self.trump_card_ids.to(card_embedding.weight.device))
         k = self.highest_trump_key(table)
         logits = torch.matmul(q, k.t())
-        none_logit = self.highest_trump_none_bias.expand(logits.size(0), 1)
+        none_logit = self.highest_trump_none_proj(q)
         logits = torch.cat([logits, none_logit], dim=-1)
         return logits.view(*feat.shape[:-1], self.num_highest_trump_classes)
 
