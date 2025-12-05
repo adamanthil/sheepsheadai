@@ -853,15 +853,14 @@ class PPOAgent:
     # ------------------------------------------------------------------
     # Episode-level ingestion API
     # ------------------------------------------------------------------
-    def store_episode_events(self, events: list, player_id_default: int | None = None) -> None:
-        """Store a single player's episode as a chronological list of events.
+    def store_episode_events(self, events: list) -> None:
+        """Store a single episode as a chronological list of events.
 
         Each event must be one of:
           - Observation:
               {
                 'kind': 'observation',
                 'state': dict,
-                'player_id': int (optional if player_id_default provided)
               }
           - Action:
               {
@@ -872,7 +871,6 @@ class PPOAgent:
                 'value': float,
                 'valid_actions': set[int],
                 'reward': float,
-                'player_id': int (optional if player_id_default provided),
                 'win_label': float (optional),
                 'final_return_label': float (optional),
               }
@@ -885,9 +883,6 @@ class PPOAgent:
                 last_action_idx = idx
 
         for idx, ev in enumerate(events):
-            pid = ev.get('player_id', player_id_default)
-            if pid is None:
-                pid = 0
             if ev.get('kind') == 'action':
                 highest_label = ev.get('highest_trump_label', None)
                 highest_idx = int(highest_label) if highest_label is not None else -1
@@ -901,7 +896,6 @@ class PPOAgent:
                     'value': float(ev['value']),
                     'log_prob': float(ev['log_prob']),
                     'done': (idx == last_action_idx),
-                    'player_id': pid,
                     'win': float(ev.get('win_label', 0.0) or 0.0),
                     'final_return': float(ev.get('final_return_label', 0.0) or 0.0),
                     'secret_partner': float(ev.get('secret_partner_label', 0.0) or 0.0),
@@ -915,46 +909,31 @@ class PPOAgent:
                     'kind': 'observation',
                     'state': ev['state'],
                     'mask': mask,
-                    'player_id': pid,
                 })
 
-    def compute_gae(self, next_value=0):
-        """Compute GAE per player over action events; write results back into events."""
-        # Group action indices by player
-        actions_by_player: dict[int | None, list[int]] = {}
-        for i, e in enumerate(self.events):
-            if e['kind'] == 'action':
-                pid = e.get('player_id', None)
-                actions_by_player.setdefault(pid, []).append(i)
-
-        all_advantages = []
-        all_returns = []
-        for pid, idxs in actions_by_player.items():
-            if not idxs:
-                continue
-            rewards = np.array([self.events[i]['reward'] for i in idxs])
-            # Bootstrap next value as 0.0 per player sequence
-            values = np.array([self.events[i]['value'] for i in idxs] + [0.0])
-            dones = np.array([self.events[i]['done'] for i in idxs] + [False])
-
-            advantages = np.zeros_like(rewards)
-            gae = 0.0
-            for t in reversed(range(len(rewards))):
-                delta = rewards[t] + self.gamma * values[t + 1] * (1 - dones[t]) - values[t]
-                gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
-                advantages[t] = gae
-            returns = advantages + values[:-1]
-
-            for i, adv, ret in zip(idxs, advantages, returns):
-                self.events[i]['advantage'] = float(adv)
-                self.events[i]['return'] = float(ret)
-
-            all_advantages.append(advantages)
-            all_returns.append(returns)
-
-        if not all_advantages:
+    def compute_gae(self):
+        """Compute GAE over action events; write results back into events."""
+        action_idxs = [i for i, e in enumerate(self.events) if e['kind'] == 'action']
+        if not action_idxs:
             return np.array([]), np.array([])
-        return np.concatenate(all_advantages), np.concatenate(all_returns)
+
+        rewards = np.array([self.events[i]['reward'] for i in action_idxs])
+        values = np.array([self.events[i]['value'] for i in action_idxs] + [0.0])
+        dones = np.array([self.events[i]['done'] for i in action_idxs] + [False])
+
+        advantages = np.zeros_like(rewards)
+        gae = 0.0
+        for t in reversed(range(len(rewards))):
+            delta = rewards[t] + self.gamma * values[t + 1] * (1 - dones[t]) - values[t]
+            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
+            advantages[t] = gae
+        returns = advantages + values[:-1]
+
+        for i, adv, ret in zip(action_idxs, advantages, returns):
+            self.events[i]['advantage'] = float(adv)
+            self.events[i]['return'] = float(ret)
+
+        return advantages, returns
 
     # ------------------------------------------------------------------
     # Internal helpers for PPO update
@@ -967,34 +946,29 @@ class PPOAgent:
             for e in self.events
         ]
         kinds = [e['kind'] for e in self.events]
-        pids = [e.get('player_id', None) for e in self.events]
-        return states, masks_t, kinds, pids
+        return states, masks_t, kinds
 
-    @staticmethod
-    def _index_events_by_player(pids: list[int | None]) -> dict[int | None, list[int]]:
-        events_by_player: dict[int | None, list[int]] = {}
-        for idx, pid in enumerate(pids):
-            events_by_player.setdefault(pid, []).append(idx)
-        return events_by_player
+    def _segments_from_events(self, kinds: list[str]):
+        segments: list[tuple[int, int]] = []
+        ev_idxs = list(range(len(self.events)))
+        if not ev_idxs:
+            return segments
 
-    def _segments_from_events(self, events_by_player: dict[int | None, list[int]], kinds: list[str]):
-        segments: list[tuple[int | None, int, int]] = []
-        for pid, ev_idxs in events_by_player.items():
-            action_ev_idxs = [i for i in ev_idxs if kinds[i] == 'action']
-            if not action_ev_idxs:
-                continue
-            # Build done flags for this player's actions in order
-            dones_pid = [self.events[i]['done'] for i in action_ev_idxs]
-            start = ev_idxs[0]
-            a_ptr = 0
-            for i in ev_idxs:
-                if kinds[i] == 'action':
-                    if dones_pid[a_ptr]:
-                        segments.append((pid, start, i))
-                        start = i + 1
-                    a_ptr += 1
-            if start <= ev_idxs[-1]:
-                segments.append((pid, start, ev_idxs[-1]))
+        action_ev_idxs = [i for i in ev_idxs if kinds[i] == 'action']
+        if not action_ev_idxs:
+            return segments
+
+        dones = [self.events[i]['done'] for i in action_ev_idxs]
+        start = ev_idxs[0]
+        a_ptr = 0
+        for i in ev_idxs:
+            if kinds[i] == 'action':
+                if dones[a_ptr]:
+                    segments.append((start, i))
+                    start = i + 1
+                a_ptr += 1
+        if start <= ev_idxs[-1]:
+            segments.append((start, ev_idxs[-1]))
         return segments
 
     @staticmethod
@@ -1017,7 +991,7 @@ class PPOAgent:
                 out.append(lst[i])
         return torch.stack(out, dim=0), T
 
-    def _build_minibatch_tensors(self, batch, states, masks_t, kinds, pids):
+    def _build_minibatch_tensors(self, batch, states, masks_t, kinds):
         lengths = []
         states_seqs = []
         masks_list = []
@@ -1032,16 +1006,13 @@ class PPOAgent:
         points_list_all = []
         highest_trump_list_all = []
 
-        for pid, seg_start, seg_end in batch:
-            # Restrict sequence strictly to this player's own events (actions + obs)
-            # rather than a contiguous global slice. This ensures each agent learns
-            # only from its direct experience without global context bleed-through.
-            ev_range = [i for i in range(seg_start, seg_end + 1) if pids[i] == pid]
+        for seg_start, seg_end in batch:
+            ev_range = [i for i in range(seg_start, seg_end + 1)]
             lengths.append(len(ev_range))
             states_seqs.append([states[i] for i in ev_range])
             masks_list.append(torch.stack([masks_t[i] for i in ev_range], dim=0))
             is_act = torch.tensor(
-                [1 if (kinds[i] == 'action' and pids[i] == pid) else 0 for i in ev_range],
+                [1 if kinds[i] == 'action' else 0 for i in ev_range],
                 dtype=torch.bool,
                 device=device,
             )
@@ -1052,7 +1023,7 @@ class PPOAgent:
             points_bt = []
             highest_trump_bt = []
             for i in ev_range:
-                if kinds[i] == 'action' and pids[i] == pid:
+                if kinds[i] == 'action':
                     act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(self.events[i]['log_prob'], dtype=torch.float32, device=device))
                     ret_bt.append(torch.tensor(self.events[i]['return'], dtype=torch.float32, device=device))
@@ -1431,9 +1402,8 @@ class PPOAgent:
 
         # Build static views and segments
         t_build_start = time.time()
-        states, masks_t, kinds, pids = self._prepare_training_views()
-        events_by_player = self._index_events_by_player(pids)
-        segments = self._segments_from_events(events_by_player, kinds)
+        states, masks_t, kinds = self._prepare_training_views()
+        segments = self._segments_from_events(kinds)
 
         # Precompute static index tensors once
         pick_idx_tensor_static = torch.tensor(self.action_groups['pick'], device=device)
@@ -1496,7 +1466,7 @@ class PPOAgent:
                     secret_bt,
                     points_bt,
                     highest_trump_bt,
-                ) = self._build_minibatch_tensors(batch, states, masks_t, kinds, pids)
+                ) = self._build_minibatch_tensors(batch, states, masks_t, kinds)
 
                 # Vectorized forward
                 t_fwd = time.time()
