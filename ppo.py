@@ -11,41 +11,9 @@ from encoder import CardReasoningEncoder, CardEmbeddingConfig
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-class LossScaleTracker(nn.Module):
-    """Track running Root Mean Square (RMS) values so regression heads train on comparable scales."""
-
-    def __init__(
-        self,
-        num_features: int,
-        momentum: float = 0.05,
-        eps: float = 1e-6,
-        min_scale: float = 1e-2,
-    ):
-        super().__init__()
-        self.num_features = int(num_features)
-        self.momentum = float(momentum)
-        self.eps = float(eps)
-        self.min_scale = float(min_scale)
-        self.register_buffer('scale', torch.ones(self.num_features))
-        self.register_buffer('initialized', torch.tensor(False))
-
-    def update(self, values: torch.Tensor | None) -> None:
-        if values is None or values.numel() == 0:
-            return
-        target = values.detach().to(self.scale.device).float()
-        if target.dim() == 1 and self.num_features == 1:
-            target = target.unsqueeze(-1)
-        target = target.reshape(-1, self.num_features)
-        batch_rms = torch.sqrt((target ** 2).mean(dim=0) + self.eps)
-        if not bool(self.initialized.item()):
-            self.scale = batch_rms
-            self.initialized = torch.tensor(True, device=self.scale.device)
-        else:
-            self.scale = (1 - self.momentum) * self.scale + self.momentum * batch_rms
-
-    def current(self) -> torch.Tensor:
-        return self.scale.clamp_min(self.min_scale)
+# Manual scaling constants for critic heads
+RETURN_SCALE = 12.0       # Final score range ~[-12, 12]; normalize to align with value
+POINTS_SCALE = 10.0       # Bring 0–120 point regression into ~0–12 range
 
 
 class MultiHeadRecurrentActorNetwork(nn.Module):
@@ -345,12 +313,6 @@ class RecurrentCriticNetwork(nn.Module):
         self.secret_partner_head = nn.Linear(256, 1)
         # Per-player point prediction head (relative seating order, length-5 vector)
         self.points_head = nn.Linear(256, 5)
-        # Adaptive scale trackers keep regression heads numerically balanced
-        self.win_loss_tracker = LossScaleTracker(1)
-        self.value_scale_tracker = LossScaleTracker(1)
-        self.return_scale_tracker = LossScaleTracker(1)
-        self.secret_loss_tracker = LossScaleTracker(1)
-        self.points_scale_tracker = LossScaleTracker(5)
 
         # Highest unseen trump two-tower head
         self.highest_trump_latent = 64
@@ -405,14 +367,14 @@ class RecurrentCriticNetwork(nn.Module):
         secret_partner_prob : float
             Sigmoid of secret partner logits
         points_vector : list[float] | None
-            Normalized per-seat point predictions in relative seat order.
+            Per-seat point predictions (0–120) in relative seat order.
         """
         with torch.no_grad():
             aux_feat = self.critic_adapter(encoder_out['features'])
             win_logit = self.win_head(aux_feat).squeeze(-1)
             expected_return = self.return_head(aux_feat).squeeze(-1)
             secret_logit = self.secret_partner_head(aux_feat).squeeze(-1)
-            points_pred = torch.clamp(self.points_head(aux_feat), min=0.0, max=1.0)
+            points_pred = torch.clamp(self.points_head(aux_feat), min=0.0, max=120)
         win_prob_t = torch.sigmoid(win_logit)
         win_prob = float(win_prob_t.item())
         expected_final = float(expected_return.item())
@@ -550,10 +512,10 @@ class PPOAgent:
         self.kl_coef = 0.0
 
         # Auxiliary loss coefficients
-        self.win_loss_coeff = 0.1
+        self.win_loss_coeff = 0.05
         self.return_loss_coeff = 0.1
         self.secret_loss_coeff = 0.1
-        self.points_loss_coeff = 0.3
+        self.points_loss_coeff = 0.2
         self.trump_loss_coeff = 0.2
 
         # Storage for trajectory data
@@ -1312,17 +1274,12 @@ class PPOAgent:
         policy_loss = (pg_loss_elements * head_weight).mean()
 
         returns_target = returns_flat.view(-1)
-        self.critic.value_scale_tracker.update(returns_target)
-        value_scale = self.critic.value_scale_tracker.current().view(1)
         values_old = values_flat.detach()
         v_clipped = values_old + torch.clamp(
             values_flat - values_old, -self.value_clip_epsilon, self.value_clip_epsilon
         )
-        values_scaled = values_flat / value_scale
-        returns_scaled = returns_target / value_scale
-        v_clipped_scaled = v_clipped / value_scale
-        critic_loss_unclipped = F.mse_loss(values_scaled, returns_scaled)
-        critic_loss_clipped = F.mse_loss(v_clipped_scaled, returns_scaled)
+        critic_loss_unclipped = F.mse_loss(values_flat, returns_target)
+        critic_loss_clipped = F.mse_loss(v_clipped, returns_target)
         critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped)
 
         actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
@@ -1390,6 +1347,8 @@ class PPOAgent:
         ent_bury_sum = 0.0
         ent_play_sum = 0.0
         ent_batches = 0
+        value_loss_sum = 0.0
+        value_loss_count = 0
         pick_adv_sum = 0.0
         pick_adv_count = 0
         pass_adv_sum = 0.0
@@ -1514,6 +1473,9 @@ class PPOAgent:
                 )
                 last_approx_kl = float(approx_kl_t.item())
 
+                value_loss_sum += critic_loss.detach().item()
+                value_loss_count += 1
+
                 # Entropy accumulation
                 ent_pick_sum += pick_entropy.detach().item()
                 ent_partner_sum += partner_entropy.detach().item()
@@ -1522,29 +1484,19 @@ class PPOAgent:
                 ent_batches += 1
 
                 # Auxiliary losses
-                raw_win_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
-                self.critic.win_loss_tracker.update(raw_win_loss.view(1, 1))
-                win_scale = self.critic.win_loss_tracker.current().view(1)
-                win_loss = raw_win_loss / win_scale
-                self.critic.return_scale_tracker.update(final_ret_labels_flat)
-                return_scale = self.critic.return_scale_tracker.current().view(1)
+                win_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
                 return_loss = F.smooth_l1_loss(
-                    ret_pred_flat / return_scale,
-                    final_ret_labels_flat / return_scale,
+                    ret_pred_flat / RETURN_SCALE,
+                    final_ret_labels_flat / RETURN_SCALE,
                 )
-                raw_secret_loss = F.binary_cross_entropy_with_logits(secret_logits_flat, secret_labels_flat)
-                self.critic.secret_loss_tracker.update(raw_secret_loss.view(1, 1))
-                secret_scale = self.critic.secret_loss_tracker.current().view(1)
-                secret_loss = raw_secret_loss / secret_scale
-                # Per-player points auxiliary loss (regression on normalized per-seat totals)
+                secret_loss = F.binary_cross_entropy_with_logits(secret_logits_flat, secret_labels_flat)
+                # Per-player points auxiliary loss (regression on per-seat totals, 0–120)
                 # points_pred_flat and labels are (N, 5); smooth L1 stabilizes training.
                 points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[is_action_bt.view(-1)]
                 points_labels_flat = points_bt.view(-1, points_bt.size(-1))[is_action_bt.view(-1)]
-                self.critic.points_scale_tracker.update(points_labels_flat)
-                points_scale = self.critic.points_scale_tracker.current().view(1, -1)
                 points_loss = F.smooth_l1_loss(
-                    points_pred_flat / points_scale,
-                    points_labels_flat / points_scale,
+                    points_pred_flat / POINTS_SCALE,
+                    points_labels_flat / POINTS_SCALE,
                 )
 
                 highest_trump_loss = F.cross_entropy(
@@ -1629,12 +1581,13 @@ class PPOAgent:
                 'pass_mean': (pass_adv_sum / pass_adv_count) if pass_adv_count > 0 else 0.0,
                 'pass_count': pass_adv_count,
             },
-            'aux_losses': {
-                'win': (win_loss_sum / max(win_loss_count, 1)),
-                'return': (return_loss_sum / max(return_loss_count, 1)),
-                'points': (points_loss_sum / max(points_loss_count, 1)),
-                'secret_partner': (secret_loss_sum / max(secret_loss_count, 1)),
-                'highest_trump': (highest_trump_loss_sum / max(highest_trump_loss_count, 1)),
+            'critic_losses': {
+                'value': self.value_loss_coeff * (value_loss_sum / max(value_loss_count, 1)),
+                'win': self.win_loss_coeff * (win_loss_sum / max(win_loss_count, 1)),
+                'return': self.return_loss_coeff * (return_loss_sum / max(return_loss_count, 1)),
+                'points': self.points_loss_coeff * (points_loss_sum / max(points_loss_count, 1)),
+                'secret_partner': self.secret_loss_coeff * (secret_loss_sum / max(secret_loss_count, 1)),
+                'highest_trump': self.trump_loss_coeff * (highest_trump_loss_sum / max(highest_trump_loss_count, 1)),
             },
         }
 

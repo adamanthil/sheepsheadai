@@ -20,7 +20,6 @@ from training_utils import (
     handle_trick_completion,
     process_episode_rewards,
     compute_known_points_rel,
-    TOTAL_DECK_POINTS,
     compute_highest_unseen_trump,
 )
 
@@ -156,11 +155,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             for rel_idx, rel_val in enumerate(point_vector, start=1):
                 abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
                 seat_label = players[abs_seat - 1] if 0 < abs_seat <= len(players) else f"Seat {abs_seat}"
-                points_real = float(max(0.0, rel_val) * TOTAL_DECK_POINTS)
                 point_estimates.append({
                     "seat": abs_seat,
                     "seatName": seat_label,
-                    "points": points_real,
+                    "points": rel_val,
                     "relativePosition": rel_idx,
                 })
 
@@ -170,11 +168,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             for rel_idx, rel_val in enumerate(known_points_rel, start=1):
                 abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
                 seat_label = players[abs_seat - 1] if 0 < abs_seat <= len(players) else f"Seat {abs_seat}"
-                points_real = float(max(0.0, rel_val) * TOTAL_DECK_POINTS)
                 point_actuals.append({
                     "seat": abs_seat,
                     "seatName": seat_label,
-                    "points": points_real,
+                    "points": rel_val,
                     "relativePosition": rel_idx,
                 })
 

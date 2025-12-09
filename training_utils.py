@@ -7,7 +7,6 @@ from typing import List, Dict
 import matplotlib.pyplot as plt
 
 from sheepshead import (
-    TOTAL_DECK_POINTS,
     TRUMP,
     ACTIONS,
     PARTNER_BY_CALLED_ACE,
@@ -62,7 +61,7 @@ def get_partner_selection_mode(episode: int) -> int:
 
 
 def compute_known_points_rel(player):
-    """Return normalized known point totals for all seats from the acting player's perspective.
+    """Return known point totals (0–120) for all seats from the acting player's perspective.
 
     Known points include:
       - Public trick points in game.points_taken (including blind/UNDER handling).
@@ -70,7 +69,7 @@ def compute_known_points_rel(player):
 
     The result is a length-5 list ordered by relative seat:
       1 = self, 2 = left-hand opponent, ..., 5 = right-hand opponent.
-    Values are normalized by TOTAL_DECK_POINTS so they lie in [0, 1].
+    Values are raw point totals (0–120).
     """
     game = player.game
     base_points = list(getattr(game, "points_taken", [0, 0, 0, 0, 0]))
@@ -84,7 +83,7 @@ def compute_known_points_rel(player):
     rel_points = []
     for rel in range(1, 6):
         abs_seat = ((player.position + rel - 2) % 5) + 1
-        rel_points.append(base_points[abs_seat - 1] / TOTAL_DECK_POINTS)
+        rel_points.append(base_points[abs_seat - 1])
     return rel_points
 
 

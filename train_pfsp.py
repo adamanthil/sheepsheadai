@@ -663,7 +663,7 @@ def train_pfsp(num_episodes: int = 500000,
                 early_stop = update_stats.get('early_stop', False)
                 head_entropy = update_stats.get('head_entropy', {})
                 pick_pass_adv = update_stats.get('pick_pass_adv', {})
-                aux_losses = update_stats.get('aux_losses', {})
+                critic_losses = update_stats.get('critic_losses', {})
 
                 print(f"   Transitions: {num_transitions}")
                 print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
@@ -690,13 +690,16 @@ def train_pfsp(num_episodes: int = 500000,
                         f"backward: {t['backward_s']:.3f}s, step: {t['step_s']:.3f}s, total: {t['total_update_s']:.3f}s, "
                         f"opt_steps: {t['optimizer_steps']}"
                     )
-                if aux_losses:
+                if critic_losses:
                     print(
-                        "   Aux losses - points: %.4f, partner: %.4f, highest trump: %.4f"
+                        "   Scaled critic losses - value: %.4f, win: %.4f, return: %.4f, points: %.4f, secret partner: %.4f, highest trump: %.4f"
                         % (
-                            aux_losses.get('points', 0.0),
-                            aux_losses.get('secret_partner', 0.0),
-                            aux_losses.get('highest_trump', 0.0),
+                            critic_losses.get('value', 0.0),
+                            critic_losses.get('win', 0.0),
+                            critic_losses.get('return', 0.0),
+                            critic_losses.get('points', 0.0),
+                            critic_losses.get('secret_partner', 0.0),
+                            critic_losses.get('highest_trump', 0.0),
                         )
                     )
 
