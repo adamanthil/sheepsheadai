@@ -314,10 +314,20 @@ class RecurrentCriticNetwork(nn.Module):
         # Per-player point prediction head (relative seating order, length-5 vector)
         self.points_head = nn.Linear(256, 5)
 
-        # Highest unseen trump two-tower head
-        self.highest_trump_latent = 64
-        self.highest_trump_query = nn.Linear(256, self.highest_trump_latent)
-        self.highest_trump_key = nn.Linear(d_card, self.highest_trump_latent)
+        # Highest unseen trump two-tower head (slightly wider with nonlinearity)
+        self.highest_trump_latent = 128
+        self.highest_trump_query = nn.Sequential(
+            nn.LayerNorm(256),
+            nn.Linear(256, 256),
+            nn.SiLU(),
+            nn.Linear(256, self.highest_trump_latent),
+        )
+        self.highest_trump_key = nn.Sequential(
+            nn.Linear(d_card, 96),
+            nn.SiLU(),
+            nn.Linear(96, self.highest_trump_latent),
+        )
+        self.highest_trump_bilinear = nn.Parameter(torch.empty(self.highest_trump_latent, self.highest_trump_latent))
         self.highest_trump_none_proj = nn.Linear(self.highest_trump_latent, 1)
         self.register_buffer(
             'trump_card_ids',
@@ -328,6 +338,7 @@ class RecurrentCriticNetwork(nn.Module):
         self._highest_trump_none_label = "ALL_SEEN"
 
         self.apply(self._init_weights)
+        nn.init.orthogonal_(self.highest_trump_bilinear, gain=1.0)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -388,7 +399,7 @@ class RecurrentCriticNetwork(nn.Module):
         q = self.highest_trump_query(flat)
         table = card_embedding.weight.index_select(0, self.trump_card_ids.to(card_embedding.weight.device))
         k = self.highest_trump_key(table)
-        logits = torch.matmul(q, k.t())
+        logits = torch.matmul(torch.matmul(q, self.highest_trump_bilinear), k.t())
         none_logit = self.highest_trump_none_proj(q)
         logits = torch.cat([logits, none_logit], dim=-1)
         return logits.view(*feat.shape[:-1], self.num_highest_trump_classes)
@@ -517,6 +528,15 @@ class PPOAgent:
         self.secret_loss_coeff = 0.1
         self.points_loss_coeff = 0.2
         self.trump_loss_coeff = 0.2
+        # Static class weights for highest-trump auxiliary loss to counter QC bias.
+        # Simple linear ramp from 0.6 (QC) up to 0.6 + 0.05*(len(TRUMP)-1),
+        # plus a slightly higher weight for the ALL_SEEN sentinel.
+        # Weight "highest trump" losses inverse to card power.
+        base_w = 0.6
+        step_w = 0.05
+        trump_weights = [base_w + i * step_w for i in range(len(TRUMP))]
+        trump_weights.append(1.3)  # ALL_SEEN
+        self.trump_class_weights = torch.tensor(trump_weights, dtype=torch.float32)
 
         # Storage for trajectory data
         self.reset_storage()
@@ -1502,6 +1522,7 @@ class PPOAgent:
                 highest_trump_loss = F.cross_entropy(
                     highest_trump_logits_flat,
                     highest_trump_labels_flat.long(),
+                    weight=self.trump_class_weights.to(highest_trump_logits_flat.device),
                 )
                 win_loss_sum += win_loss.detach().item()
                 win_loss_count += 1
@@ -1617,7 +1638,20 @@ class PPOAgent:
         # Core networks: accept missing/new critic aux heads for backward compatibility
         self.encoder.load_state_dict(checkpoint['encoder_state_dict'])
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
+
+        # Filter critic keys that have shape mismatches (e.g., widened highest-trump head)
+        # TODO: Remove once we've trained new models with the widened head
+        # Replace with: self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
+        critic_sd = checkpoint.get('critic_state_dict', {})
+        current_critic_sd = self.critic.state_dict()
+        filtered_critic_sd = {}
+        for k, v in critic_sd.items():
+            cv = current_critic_sd.get(k)
+            if cv is not None and hasattr(cv, "shape") and hasattr(v, "shape") and cv.shape != v.shape:
+                # Skip mismatched tensors; they will be reinitialized
+                continue
+            filtered_critic_sd[k] = v
+        self.critic.load_state_dict(filtered_critic_sd, strict=False)
 
         # Optimizers: best-effort restore; fall back to fresh states if shapes changed
         if load_optimizers:
