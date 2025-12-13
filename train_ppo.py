@@ -269,7 +269,7 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                             episode_transitions[seat.position].append({
                                 'kind': 'observation',
                                 'player': seat,
-                                'state': seat.get_state_dict(),
+                                'state': seat.get_last_trick_state_dict(),
                             })
 
                     valid_actions = player.get_valid_action_ids()

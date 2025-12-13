@@ -245,7 +245,7 @@ def play_population_game(training_agent: PPOAgent,
                             episode_transitions.append({
                                 'kind': 'observation',
                                 'player': seat,
-                                'state': seat.get_state_dict(),
+                                'state': seat.get_last_trick_state_dict(),
                             })
                         else:
                             seat_agent.observe(seat.get_last_trick_state_dict(), seat.position)
