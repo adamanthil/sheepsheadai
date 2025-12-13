@@ -89,6 +89,12 @@ class AnalyzeTrumpProbability(BaseModel):
     probability: float
 
 
+class AnalyzeTrumpSeenMaskEntry(BaseModel):
+    card: str
+    probabilitySeen: float
+    actualSeen: bool
+
+
 class AnalyzeActionDetail(BaseModel):
     stepIndex: int
     seat: int
@@ -104,9 +110,9 @@ class AnalyzeActionDetail(BaseModel):
     secretPartnerProb: Optional[float] = None  # [0,1]
     pointEstimates: Optional[List[AnalyzePointEstimate]] = None
     pointActuals: Optional[List[AnalyzePointEstimate]] = None
-    highestTrumpPrediction: Optional[str] = None
-    highestTrumpActual: Optional[str] = None
-    highestTrumpTopk: Optional[List[AnalyzeTrumpProbability]] = None
+    trumpSeenMask: Optional[List[AnalyzeTrumpSeenMaskEntry]] = None
+    unseenTrumpHigherThanHandProb: Optional[float] = None  # [0,1]
+    unseenTrumpHigherThanHandActual: Optional[bool] = None
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]

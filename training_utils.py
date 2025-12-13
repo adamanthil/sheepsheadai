@@ -87,17 +87,13 @@ def compute_known_points_rel(player):
     return rel_points
 
 
-def compute_highest_unseen_trump(player) -> int:
-    """Return index of the highest trump the player has not observed yet.
+def compute_seen_trump_mask(player) -> List[int]:
+    """Return a length-len(TRUMP) 0/1 mask where 1 indicates the trump is seen/known.
 
-    Observation sources:
+    "Seen" is from the player's perspective:
       - Cards currently in hand
-      - Cards already played to tricks (visible history)
+      - Cards already played to tricks (public history)
       - Blind / bury / under cards known only to the picker
-
-    Returns:
-        int: 0-based index into TRUMP ordering, or len(TRUMP) if every trump
-             card is already known/seen from the player's perspective.
     """
 
     def mark_seen(card: str, seen: set[str]) -> None:
@@ -106,11 +102,9 @@ def compute_highest_unseen_trump(player) -> int:
 
     seen_trumps: set[str] = set()
 
-    # Cards currently in hand are known
     for card in player.hand:
         mark_seen(card, seen_trumps)
 
-    # Picker-specific knowledge: blind, bury, and designated under card
     if player.is_picker:
         for card in player.blind:
             mark_seen(card, seen_trumps)
@@ -119,20 +113,35 @@ def compute_highest_unseen_trump(player) -> int:
         if player.game.under_card:
             mark_seen(player.game.under_card, seen_trumps)
 
-    # Public knowledge: cards exposed in trick history
     for trick in player.game.history:
         for card in trick:
             if card:
                 mark_seen(card, seen_trumps)
 
-    for idx, card in enumerate(TRUMP):
-        if card not in seen_trumps:
-            return idx
+    return [1 if c in seen_trumps else 0 for c in TRUMP]
 
-    # All trump cards have been seen.
-    # Value corresponds to RecurrentCriticNetwork.highest_trump_logits.
-    # Final logit value indicates "all seen" sentinel.
-    return len(TRUMP)
+
+def compute_any_unseen_trump_higher_than_hand(player) -> int:
+    """Return 1 if there exists an *unseen* trump higher than the player's best trump in hand.
+
+    Interprets "highest card in my hand" as "highest trump in my hand" since trump-tracking
+    is the intended subtask. If the player has no trump in hand, this reduces to:
+      - 1 iff there exists any unseen trump.
+    """
+    seen_mask = compute_seen_trump_mask(player)
+
+    best_trump_idx_in_hand = len(TRUMP)
+    for card in player.hand:
+        if card in TRUMP:
+            best_trump_idx_in_hand = min(best_trump_idx_in_hand, TRUMP.index(card))
+
+    highest_unseen_idx = len(TRUMP)
+    for idx, seen in enumerate(seen_mask):
+        if not seen:
+            highest_unseen_idx = idx
+            break
+
+    return 1 if highest_unseen_idx < best_trump_idx_in_hand else 0
 
 
 def calculate_trick_reward(trick_points: int) -> float:

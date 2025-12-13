@@ -20,7 +20,8 @@ from training_utils import (
     handle_trick_completion,
     process_episode_rewards,
     compute_known_points_rel,
-    compute_highest_unseen_trump,
+    compute_seen_trump_mask,
+    compute_any_unseen_trump_higher_than_hand,
 )
 
 
@@ -140,15 +141,22 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
             # Auxiliary critic heads via accessor
             win_prob_val, expected_final_val, secret_partner_prob, point_vector = agent.critic.aux_predictions(encoder_out)
-            highest_trump_topk = agent.critic.highest_trump_distribution(
-                encoder_out,
-                agent.encoder.card,
-                top_k=5,
-            )
+            aux_feat = agent.critic.critic_adapter(encoder_out['features'])
+            seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(aux_feat, agent.encoder.card).squeeze(0)
+            seen_trump_mask_probs = torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
+            unseen_trump_higher_than_hand_logit = agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
+            unseen_trump_higher_than_hand_prob = float(torch.sigmoid(unseen_trump_higher_than_hand_logit).item())
 
-        highest_trump_prediction = highest_trump_topk[0]['card'] if highest_trump_topk else None
-        actual_trump_idx = compute_highest_unseen_trump(actor_player)
-        highest_trump_actual = TRUMP[actual_trump_idx] if actual_trump_idx < len(TRUMP) else "ALL_SEEN"
+        seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
+        unseen_trump_higher_than_hand_actual = bool(compute_any_unseen_trump_higher_than_hand(actor_player))
+        trump_seen_mask = [
+            {
+                "card": TRUMP[i],
+                "probabilitySeen": float(seen_trump_mask_probs[i]),
+                "actualSeen": bool(seen_trump_mask_actual[i]),
+            }
+            for i in range(len(TRUMP))
+        ]
 
         point_estimates = []
         if point_vector:
@@ -227,9 +235,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             secretPartnerProb=float(secret_partner_prob) if secret_partner_prob is not None else None,
             pointEstimates=point_estimates or None,
             pointActuals=point_actuals or None,
-            highestTrumpPrediction=highest_trump_prediction,
-            highestTrumpActual=highest_trump_actual,
-            highestTrumpTopk=highest_trump_topk or None,
+            trumpSeenMask=trump_seen_mask or None,
+            unseenTrumpHigherThanHandProb=unseen_trump_higher_than_hand_prob,
+            unseenTrumpHigherThanHandActual=unseen_trump_higher_than_hand_actual,
         )
 
         trace.append(action_detail)

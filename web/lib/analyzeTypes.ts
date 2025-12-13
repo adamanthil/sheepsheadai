@@ -27,6 +27,12 @@ export interface AnalyzeTrumpProbability {
   probability: number;
 }
 
+export interface AnalyzeTrumpSeenMaskEntry {
+  card: string;
+  probabilitySeen: number;
+  actualSeen: boolean;
+}
+
 export interface AnalyzeActionDetail {
   stepIndex: number;
   seat: number;
@@ -42,9 +48,9 @@ export interface AnalyzeActionDetail {
   secretPartnerProb?: number;
   pointEstimates?: AnalyzePointEstimate[];
   pointActuals?: AnalyzePointEstimate[];
-  highestTrumpPrediction?: string | null;
-  highestTrumpActual?: string | null;
-  highestTrumpTopk?: AnalyzeTrumpProbability[];
+  trumpSeenMask?: AnalyzeTrumpSeenMaskEntry[];
+  unseenTrumpHigherThanHandProb?: number;
+  unseenTrumpHigherThanHandActual?: boolean;
   validActionIds: number[];
   probabilities: AnalyzeProbability[];
   view: Record<string, any>;

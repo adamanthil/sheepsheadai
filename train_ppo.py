@@ -21,7 +21,8 @@ from training_utils import (
     update_intermediate_rewards_for_action,
     handle_trick_completion,
     compute_known_points_rel,
-    compute_highest_unseen_trump,
+    compute_seen_trump_mask,
+    compute_any_unseen_trump_higher_than_hand,
 )
 
 
@@ -228,7 +229,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         'intermediate_reward': 0.0,
                         'secret_partner_label': 1.0 if player.is_secret_partner else 0.0,
                         'points_label': compute_known_points_rel(player),
-                        'highest_trump_label': compute_highest_unseen_trump(player),
+                        'seen_trump_mask_label': compute_seen_trump_mask(player),
+                        'unseen_trump_higher_than_hand_label': compute_any_unseen_trump_higher_than_hand(player),
                     }
 
                     action_name = ACTIONS[action - 1]
@@ -322,7 +324,8 @@ def train_ppo(num_episodes=300000, update_interval=2048, save_interval=5000,
                         'final_return_label': float(episode_scores[pos - 1]),
                         'secret_partner_label': ev.get('secret_partner_label', 0.0),
                         'points_label': ev.get('points_label', None),
-                        'highest_trump_label': ev.get('highest_trump_label', None),
+                        'seen_trump_mask_label': ev.get('seen_trump_mask_label', None),
+                        'unseen_trump_higher_than_hand_label': ev.get('unseen_trump_higher_than_hand_label', None),
                     })
             agent.store_episode_events(events)
             transitions_since_update += sum(1 for e in events if e['kind'] == 'action')

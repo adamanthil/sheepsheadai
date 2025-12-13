@@ -30,7 +30,8 @@ from pfsp import (
 from training_utils import (
     estimate_hand_strength_category,
     compute_known_points_rel,
-    compute_highest_unseen_trump,
+    compute_seen_trump_mask,
+    compute_any_unseen_trump_higher_than_hand,
 )
 from sheepshead import (
     Game,
@@ -218,7 +219,8 @@ def play_population_game(training_agent: PPOAgent,
                         'intermediate_reward': 0.0,
                         'secret_partner_label': 1.0 if player.is_secret_partner else 0.0,
                         'points_label': compute_known_points_rel(player),
-                        'highest_trump_label': compute_highest_unseen_trump(player),
+                        'seen_trump_mask_label': compute_seen_trump_mask(player),
+                        'unseen_trump_higher_than_hand_label': compute_any_unseen_trump_higher_than_hand(player),
                     }
                     episode_transitions.append(transition)
 
@@ -317,7 +319,8 @@ def play_population_game(training_agent: PPOAgent,
                 'final_return_label': float(final_scores[seat_pos - 1]),
                 'secret_partner_label': ev.get('secret_partner_label', 0.0),
                 'points_label': ev.get('points_label', None),
-                'highest_trump_label': ev.get('highest_trump_label', None),
+                'seen_trump_mask_label': ev.get('seen_trump_mask_label', None),
+                'unseen_trump_higher_than_hand_label': ev.get('unseen_trump_higher_than_hand_label', None),
             })
 
     return game, episode_events, final_scores, training_agent_data, dict(pos_to_pop_agent)
@@ -722,14 +725,15 @@ def train_pfsp(num_episodes: int = 500000,
                     )
                 if critic_losses:
                     print(
-                        "   Scaled critic losses - value: %.4f, win: %.4f, return: %.4f, points: %.4f, secret partner: %.4f, highest trump: %.4f"
+                        "   Scaled critic losses - value: %.4f, win: %.4f, return: %.4f, points: %.4f, secret partner: %.4f, seen trump mask: %.4f, unseen higher than hand: %.4f"
                         % (
                             critic_losses.get('value', 0.0),
                             critic_losses.get('win', 0.0),
                             critic_losses.get('return', 0.0),
                             critic_losses.get('points', 0.0),
                             critic_losses.get('secret_partner', 0.0),
-                            critic_losses.get('highest_trump', 0.0),
+                            critic_losses.get('seen_trump_mask', 0.0),
+                            critic_losses.get('unseen_trump_higher_than_hand', 0.0),
                         )
                     )
 

@@ -314,36 +314,35 @@ class RecurrentCriticNetwork(nn.Module):
         # Per-player point prediction head (relative seating order, length-5 vector)
         self.points_head = nn.Linear(256, 5)
 
-        # Highest unseen trump two-tower head (slightly wider with nonlinearity)
-        self.highest_trump_latent = 128
-        self.highest_trump_query = nn.Sequential(
+        # Trump-tracking auxiliaries:
+        #  - seen_trump_mask: multi-label (len(TRUMP)) logits, 1 = seen/known
+        #  - unseen_trump_higher_than_hand: binary logit, 1 = exists unseen trump higher than best trump in hand
+        self.trump_aux = nn.Sequential(
             nn.LayerNorm(256),
-            nn.Linear(256, 256),
+            nn.Linear(256, 128),
             nn.SiLU(),
-            nn.Linear(256, self.highest_trump_latent),
         )
-        self.highest_trump_key = nn.Sequential(
-            nn.Linear(d_card, 96),
-            nn.SiLU(),
-            nn.Linear(96, self.highest_trump_latent),
-        )
-        self.highest_trump_bilinear = nn.Parameter(torch.empty(self.highest_trump_latent, self.highest_trump_latent))
-        self.highest_trump_none_proj = nn.Linear(self.highest_trump_latent, 1)
+        # Seen-mask head uses the shared card embedding table:
+        #   q = Wq(trump_aux(feat))  (B, d_key)
+        #   k_i = Wk(card_embedding[trump_i])  (14, d_key)
+        #   logit_i = q · k_i
+        self.seen_trump_key_dim = 64
+        self.seen_trump_query = nn.Linear(128, self.seen_trump_key_dim)
+        self.seen_trump_key = nn.Linear(d_card, self.seen_trump_key_dim, bias=False)
         self.register_buffer(
             'trump_card_ids',
             torch.tensor([DECK_IDS[c] for c in TRUMP], dtype=torch.long),
             persistent=False,
         )
-        self.num_highest_trump_classes = len(TRUMP) + 1
-        self._highest_trump_none_label = "ALL_SEEN"
+        self.unseen_trump_higher_than_hand_head = nn.Linear(128, 1)
 
         self.apply(self._init_weights)
-        nn.init.orthogonal_(self.highest_trump_bilinear, gain=1.0)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.orthogonal_(m.weight, gain=1.0)
-            nn.init.constant_(m.bias, 0.0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0.0)
 
     def forward(self, encoder_out: Dict[str, torch.Tensor]):
         """Forward pass using encoder output.
@@ -393,40 +392,21 @@ class RecurrentCriticNetwork(nn.Module):
         points_vector = [float(v) for v in points_pred[0].tolist()]
         return win_prob, expected_final, secret_prob, points_vector
 
-    def highest_trump_logits(self, feat: torch.Tensor, card_embedding: nn.Embedding) -> torch.Tensor:
-        """Return logits over (len(TRUMP) + 1) classes for highest unseen trump."""
-        flat = feat.reshape(-1, feat.size(-1))
-        q = self.highest_trump_query(flat)
-        table = card_embedding.weight.index_select(0, self.trump_card_ids.to(card_embedding.weight.device))
-        k = self.highest_trump_key(table)
-        logits = torch.matmul(torch.matmul(q, self.highest_trump_bilinear), k.t())
-        none_logit = self.highest_trump_none_proj(q)
-        logits = torch.cat([logits, none_logit], dim=-1)
-        return logits.view(*feat.shape[:-1], self.num_highest_trump_classes)
+    def seen_trump_mask_logits(self, feat: torch.Tensor, card_embedding: nn.Embedding) -> torch.Tensor:
+        """Return logits for a length-len(TRUMP) seen/known mask using card embeddings."""
+        h = self.trump_aux(feat)
+        q = self.seen_trump_query(h)  # (..., d_key)
+        flat_q = q.reshape(-1, q.size(-1))
+        trump_ids = self.trump_card_ids.to(card_embedding.weight.device)
+        table = card_embedding.weight.index_select(0, trump_ids)  # (14, d_card)
+        k = self.seen_trump_key(table)  # (14, d_key)
+        logits = torch.matmul(flat_q, k.t())  # (N, 14)
+        return logits.view(*q.shape[:-1], len(TRUMP))
 
-    def _index_to_trump_label(self, index: int) -> str:
-        if index < len(TRUMP):
-            return TRUMP[index]
-        return self._highest_trump_none_label
-
-    def highest_trump_distribution(
-        self,
-        encoder_out: Dict[str, torch.Tensor],
-        card_embedding: nn.Embedding,
-        top_k: int = 5,
-    ) -> list[dict]:
-        """Return top-k highest-trump probabilities as [{'card': str, 'probability': float}]."""
-        logits = self.highest_trump_logits(encoder_out['features'], card_embedding)
-        probs = torch.softmax(logits, dim=-1).squeeze(0)
-        k = min(top_k, probs.size(0))
-        values, indices = torch.topk(probs, k)
-        return [
-            {
-                'card': self._index_to_trump_label(int(idx.item())),
-                'probability': float(val.item()),
-            }
-            for idx, val in zip(indices, values)
-        ]
+    def unseen_trump_higher_than_hand_logits(self, feat: torch.Tensor) -> torch.Tensor:
+        """Return logits for 'exists unseen trump higher than best trump in hand'."""
+        h = self.trump_aux(feat)
+        return self.unseen_trump_higher_than_hand_head(h).squeeze(-1)
 
 
 class PPOAgent:
@@ -527,16 +507,8 @@ class PPOAgent:
         self.return_loss_coeff = 0.1
         self.secret_loss_coeff = 0.1
         self.points_loss_coeff = 0.2
-        self.trump_loss_coeff = 0.2
-        # Static class weights for highest-trump auxiliary loss to counter QC bias.
-        # Simple linear ramp from 0.6 (QC) up to 0.6 + 0.05*(len(TRUMP)-1),
-        # plus a slightly higher weight for the ALL_SEEN sentinel.
-        # Weight "highest trump" losses inverse to card power.
-        base_w = 0.6
-        step_w = 0.05
-        trump_weights = [base_w + i * step_w for i in range(len(TRUMP))]
-        trump_weights.append(1.3)  # ALL_SEEN
-        self.trump_class_weights = torch.tensor(trump_weights, dtype=torch.float32)
+        self.seen_trump_mask_loss_coeff = 0.2
+        self.unseen_trump_higher_than_hand_loss_coeff = 0.1
 
         # Storage for trajectory data
         self.reset_storage()
@@ -854,6 +826,8 @@ class PPOAgent:
                 'reward': float,
                 'win_label': float (optional),
                 'final_return_label': float (optional),
+                'seen_trump_mask_label': list[int] (optional; length len(TRUMP)),
+                'unseen_trump_higher_than_hand_label': float (optional; 0/1),
               }
 
         """
@@ -865,8 +839,8 @@ class PPOAgent:
 
         for idx, ev in enumerate(events):
             if ev.get('kind') == 'action':
-                highest_label = ev.get('highest_trump_label', None)
-                highest_idx = int(highest_label) if highest_label is not None else -1
+                seen_mask = ev.get('seen_trump_mask_label') or [0] * len(TRUMP)
+                unseen_higher = float(ev.get('unseen_trump_higher_than_hand_label', 0.0) or 0.0)
                 mask = self.get_action_mask(ev['valid_actions'], self.action_size)
                 self.events.append({
                     'kind': 'action',
@@ -881,7 +855,8 @@ class PPOAgent:
                     'final_return': float(ev.get('final_return_label', 0.0) or 0.0),
                     'secret_partner': float(ev.get('secret_partner_label', 0.0) or 0.0),
                     'points_rel': [float(x) for x in (ev.get('points_label') or [0.0] * 5)],
-                    'highest_trump': highest_idx,
+                    'seen_trump_mask': [float(x) for x in seen_mask],
+                    'unseen_trump_higher_than_hand': float(unseen_higher),
                 })
             else:
                 # Observation: mask = all ones by default
@@ -985,7 +960,8 @@ class PPOAgent:
         final_ret_list_all = []
         secret_list_all = []
         points_list_all = []
-        highest_trump_list_all = []
+        seen_trump_mask_list_all = []
+        unseen_trump_higher_than_hand_list_all = []
 
         for seg_start, seg_end in batch:
             ev_range = [i for i in range(seg_start, seg_end + 1)]
@@ -1002,7 +978,8 @@ class PPOAgent:
             act_bt, olp_bt, ret_bt, adv_bt = [], [], [], []
             win_bt, final_ret_bt, secret_bt = [], [], []
             points_bt = []
-            highest_trump_bt = []
+            seen_trump_mask_bt = []
+            unseen_trump_higher_than_hand_bt = []
             for i in ev_range:
                 if kinds[i] == 'action':
                     act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
@@ -1017,8 +994,10 @@ class PPOAgent:
                     secret_bt.append(torch.tensor(float(secret_lbl), dtype=torch.float32, device=device))
                     pts_lbl = self.events[i].get('points_rel', [0.0] * 5)
                     points_bt.append(torch.tensor(pts_lbl, dtype=torch.float32, device=device))
-                    highest_val = int(self.events[i].get('highest_trump', -1))
-                    highest_trump_bt.append(torch.tensor(highest_val, dtype=torch.long, device=device))
+                    seen_mask_lbl = self.events[i].get('seen_trump_mask') or [0.0] * len(TRUMP)
+                    seen_trump_mask_bt.append(torch.tensor(seen_mask_lbl, dtype=torch.float32, device=device))
+                    unseen_higher_lbl = float(self.events[i].get('unseen_trump_higher_than_hand', 0.0) or 0.0)
+                    unseen_trump_higher_than_hand_bt.append(torch.tensor(unseen_higher_lbl, dtype=torch.float32, device=device))
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
@@ -1028,7 +1007,8 @@ class PPOAgent:
                     final_ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     secret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     points_bt.append(torch.zeros(5, dtype=torch.float32, device=device))
-                    highest_trump_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
+                    seen_trump_mask_bt.append(torch.zeros(len(TRUMP), dtype=torch.float32, device=device))
+                    unseen_trump_higher_than_hand_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
@@ -1037,7 +1017,8 @@ class PPOAgent:
             final_ret_list_all.append(torch.stack(final_ret_bt, dim=0))
             secret_list_all.append(torch.stack(secret_bt, dim=0))
             points_list_all.append(torch.stack(points_bt, dim=0))
-            highest_trump_list_all.append(torch.stack(highest_trump_bt, dim=0))
+            seen_trump_mask_list_all.append(torch.stack(seen_trump_mask_bt, dim=0))
+            unseen_trump_higher_than_hand_list_all.append(torch.stack(unseen_trump_higher_than_hand_bt, dim=0))
 
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
@@ -1049,7 +1030,8 @@ class PPOAgent:
         final_ret_bt, _ = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
         secret_bt, _ = self._pad_to_bt(secret_list_all, lengths, 0.0)
         points_bt, _ = self._pad_to_bt(points_list_all, lengths, 0.0)
-        highest_trump_bt, _ = self._pad_to_bt(highest_trump_list_all, lengths, -1)
+        seen_trump_mask_bt, _ = self._pad_to_bt(seen_trump_mask_list_all, lengths, 0.0)
+        unseen_trump_higher_than_hand_bt, _ = self._pad_to_bt(unseen_trump_higher_than_hand_list_all, lengths, 0.0)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
         return (
@@ -1065,7 +1047,8 @@ class PPOAgent:
             final_ret_bt,
             secret_bt,
             points_bt,
-            highest_trump_bt,
+            seen_trump_mask_bt,
+            unseen_trump_higher_than_hand_bt,
         )
 
     def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
@@ -1133,7 +1116,8 @@ class PPOAgent:
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
         secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
         points_pred_bt = self.critic.points_head(aux_feat_bt)
-        highest_trump_logits_bt = self.critic.highest_trump_logits(aux_feat_bt, self.encoder.card)
+        seen_trump_mask_logits_bt = self.critic.seen_trump_mask_logits(aux_feat_bt, self.encoder.card)
+        unseen_trump_higher_than_hand_logits_bt = self.critic.unseen_trump_higher_than_hand_logits(aux_feat_bt)
 
         return (
             logits_bt,
@@ -1142,7 +1126,8 @@ class PPOAgent:
             ret_pred_bt,
             secret_logits_bt,
             points_pred_bt,
-            highest_trump_logits_bt,
+            seen_trump_mask_logits_bt,
+            unseen_trump_higher_than_hand_logits_bt,
         )
 
     @staticmethod
@@ -1161,8 +1146,10 @@ class PPOAgent:
         secret_logits_bt,
         secret_bt,
         masks_bt,
-        highest_trump_logits_bt,
-        highest_trump_bt,
+        seen_trump_mask_logits_bt,
+        seen_trump_mask_bt,
+        unseen_trump_higher_than_hand_logits_bt,
+        unseen_trump_higher_than_hand_bt,
     ):
         flat_mask = is_action_bt.view(-1)
         if flat_mask.sum() == 0:
@@ -1181,8 +1168,10 @@ class PPOAgent:
             secret_logits_bt.view(-1)[flat_mask],
             secret_bt.view(-1)[flat_mask],
             masks_bt.view(-1, masks_bt.size(-1))[flat_mask],
-            highest_trump_logits_bt.view(-1, highest_trump_logits_bt.size(-1))[flat_mask],
-            highest_trump_bt.view(-1)[flat_mask],
+            seen_trump_mask_logits_bt.view(-1, seen_trump_mask_logits_bt.size(-1))[flat_mask],
+            seen_trump_mask_bt.view(-1, seen_trump_mask_bt.size(-1))[flat_mask],
+            unseen_trump_higher_than_hand_logits_bt.view(-1)[flat_mask],
+            unseen_trump_higher_than_hand_bt.view(-1)[flat_mask],
         )
 
     @staticmethod
@@ -1377,8 +1366,10 @@ class PPOAgent:
         win_loss_count = 0
         return_loss_sum = 0.0
         return_loss_count = 0
-        highest_trump_loss_sum = 0.0
-        highest_trump_loss_count = 0
+        seen_trump_mask_loss_sum = 0.0
+        seen_trump_mask_loss_count = 0
+        unseen_trump_higher_than_hand_loss_sum = 0.0
+        unseen_trump_higher_than_hand_loss_count = 0
         points_loss_sum = 0.0
         points_loss_count = 0
         secret_loss_sum = 0.0
@@ -1407,7 +1398,8 @@ class PPOAgent:
                     final_ret_bt,
                     secret_bt,
                     points_bt,
-                    highest_trump_bt,
+                    seen_trump_mask_bt,
+                    unseen_trump_higher_than_hand_bt,
                 ) = self._build_minibatch_tensors(batch, states, masks_t, kinds)
 
                 # Vectorized forward
@@ -1419,7 +1411,8 @@ class PPOAgent:
                     ret_pred_bt,
                     secret_logits_bt,
                     points_pred_bt,
-                    highest_trump_logits_bt,
+                    seen_trump_mask_logits_bt,
+                    unseen_trump_higher_than_hand_logits_bt,
                 ) = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
                 forward_time += time.time() - t_fwd
 
@@ -1438,8 +1431,10 @@ class PPOAgent:
                     secret_logits_bt,
                     secret_bt,
                     masks_bt,
-                    highest_trump_logits_bt,
-                    highest_trump_bt,
+                    seen_trump_mask_logits_bt,
+                    seen_trump_mask_bt,
+                    unseen_trump_higher_than_hand_logits_bt,
+                    unseen_trump_higher_than_hand_bt,
                 )
                 if flat is None:
                     continue
@@ -1457,8 +1452,10 @@ class PPOAgent:
                     secret_logits_flat,
                     secret_labels_flat,
                     mask_flat,
-                    highest_trump_logits_flat,
-                    highest_trump_labels_flat,
+                    seen_trump_mask_logits_flat,
+                    seen_trump_mask_labels_flat,
+                    unseen_trump_higher_than_hand_logits_flat,
+                    unseen_trump_higher_than_hand_labels_flat,
                 ) = flat
 
                 # Record PICK/PASS advantages across minibatches
@@ -1519,10 +1516,13 @@ class PPOAgent:
                     points_labels_flat / POINTS_SCALE,
                 )
 
-                highest_trump_loss = F.cross_entropy(
-                    highest_trump_logits_flat,
-                    highest_trump_labels_flat.long(),
-                    weight=self.trump_class_weights.to(highest_trump_logits_flat.device),
+                seen_trump_mask_loss = F.binary_cross_entropy_with_logits(
+                    seen_trump_mask_logits_flat,
+                    seen_trump_mask_labels_flat,
+                )
+                unseen_trump_higher_than_hand_loss = F.binary_cross_entropy_with_logits(
+                    unseen_trump_higher_than_hand_logits_flat,
+                    unseen_trump_higher_than_hand_labels_flat,
                 )
                 win_loss_sum += win_loss.detach().item()
                 win_loss_count += 1
@@ -1532,6 +1532,10 @@ class PPOAgent:
                 secret_loss_count += 1
                 points_loss_sum += points_loss.detach().item()
                 points_loss_count += 1
+                seen_trump_mask_loss_sum += seen_trump_mask_loss.detach().item()
+                seen_trump_mask_loss_count += 1
+                unseen_trump_higher_than_hand_loss_sum += unseen_trump_higher_than_hand_loss.detach().item()
+                unseen_trump_higher_than_hand_loss_count += 1
 
                 # Backward + step per minibatch
                 t_bwd = time.time()
@@ -1542,7 +1546,8 @@ class PPOAgent:
                     + self.return_loss_coeff * return_loss
                     + self.secret_loss_coeff * secret_loss
                     + self.points_loss_coeff * points_loss
-                    + self.trump_loss_coeff * highest_trump_loss
+                    + self.seen_trump_mask_loss_coeff * seen_trump_mask_loss
+                    + self.unseen_trump_higher_than_hand_loss_coeff * unseen_trump_higher_than_hand_loss
                 )
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
@@ -1557,8 +1562,6 @@ class PPOAgent:
                 self.critic_optimizer.step()
                 step_time += time.time() - t_step
                 optimizer_steps += 1
-                highest_trump_loss_sum += highest_trump_loss.detach().item()
-                highest_trump_loss_count += 1
 
                 # Early stop further updates in this epoch if KL exceeds threshold
                 if self.target_kl is not None and last_approx_kl > self.target_kl:
@@ -1608,7 +1611,8 @@ class PPOAgent:
                 'return': self.return_loss_coeff * (return_loss_sum / max(return_loss_count, 1)),
                 'points': self.points_loss_coeff * (points_loss_sum / max(points_loss_count, 1)),
                 'secret_partner': self.secret_loss_coeff * (secret_loss_sum / max(secret_loss_count, 1)),
-                'highest_trump': self.trump_loss_coeff * (highest_trump_loss_sum / max(highest_trump_loss_count, 1)),
+                'seen_trump_mask': self.seen_trump_mask_loss_coeff * (seen_trump_mask_loss_sum / max(seen_trump_mask_loss_count, 1)),
+                'unseen_trump_higher_than_hand': self.unseen_trump_higher_than_hand_loss_coeff * (unseen_trump_higher_than_hand_loss_sum / max(unseen_trump_higher_than_hand_loss_count, 1)),
             },
         }
 
@@ -1639,7 +1643,7 @@ class PPOAgent:
         self.encoder.load_state_dict(checkpoint['encoder_state_dict'])
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
 
-        # Filter critic keys that have shape mismatches (e.g., widened highest-trump head)
+        # Filter critic keys that have shape mismatches (e.g., changed auxiliary heads)
         # TODO: Remove once we've trained new models with the widened head
         # Replace with: self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
         critic_sd = checkpoint.get('critic_state_dict', {})

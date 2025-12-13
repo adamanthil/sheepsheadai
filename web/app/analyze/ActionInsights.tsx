@@ -11,8 +11,9 @@ export default function ActionInsights({ action }: ActionInsightsProps) {
     secretPartnerProb,
     pointEstimates,
     pointActuals,
-    highestTrumpActual,
-    highestTrumpTopk,
+    trumpSeenMask,
+    unseenTrumpHigherThanHandProb,
+    unseenTrumpHigherThanHandActual,
   } = action;
 
   const sortedPointEstimates = useMemo(() => {
@@ -30,15 +31,8 @@ export default function ActionInsights({ action }: ActionInsightsProps) {
 
   const showSecret = typeof secretPartnerProb === 'number';
   const showPoints = sortedPointEstimates.length > 0;
-  const trumpDistribution = highestTrumpTopk ?? [];
-  const showTrump = trumpDistribution.length > 0 || typeof highestTrumpActual === 'string';
-
-  const formatTrumpLabel = (card?: string | null) => {
-    if (!card) return 'Unknown';
-    if (card === 'ALL_SEEN') return 'All Seen';
-    if (card.trim().length === 0) return 'Unknown';
-    return card;
-  };
+  const trumpMask = trumpSeenMask ?? [];
+  const showTrump = trumpMask.length > 0 || typeof unseenTrumpHigherThanHandProb === 'number' || typeof unseenTrumpHigherThanHandActual === 'boolean';
 
   if (!showSecret && !showPoints && !showTrump) {
     return null;
@@ -115,28 +109,38 @@ export default function ActionInsights({ action }: ActionInsightsProps) {
         )}
         {showTrump && (
           <div className={`${styles.insightCard}`}>
-            <div className={styles.insightTitle}>Highest Remaining Trump (Top 5 Predictions)</div>
+            <div className={styles.insightTitle}>Trump Tracking</div>
             <div className={styles.trumpList}>
-              {trumpDistribution.length > 0 ? (
-                trumpDistribution.map((entry) => (
-                  <div key={`${entry.card}-${entry.probability}`} className={styles.trumpEntry}>
-                    <div className={styles.trumpCardLabel}>{formatTrumpLabel(entry.card)}</div>
-                    <div className={styles.trumpProbBar}>
-                      <div
-                        className={styles.trumpProbFill}
-                        style={{ width: `${Math.min(100, entry.probability * 100)}%` }}
-                      />
-                    </div>
-                    <div className={styles.trumpProbValue}>{(entry.probability * 100).toFixed(1)}%</div>
+              {trumpMask.length > 0 ? trumpMask.map((entry) => (
+                <div key={`${entry.card}-${entry.probabilitySeen}`} className={styles.trumpEntry}>
+                  <div className={styles.trumpCardLabel}>{entry.card}</div>
+                  <div className={styles.trumpProbBar}>
+                    <div
+                      className={styles.trumpProbFill}
+                      style={{ width: `${Math.min(100, entry.probabilitySeen * 100)}%` }}
+                    />
                   </div>
-                ))
-              ) : (
+                  <div className={styles.trumpProbValue}>
+                    {(entry.probabilitySeen * 100).toFixed(1)}%{' '}
+                    <span
+                      aria-label={entry.actualSeen ? 'Actual: seen' : 'Actual: unseen'}
+                      title={entry.actualSeen ? 'Actual: seen' : 'Actual: unseen'}
+                    >
+                      {entry.actualSeen ? '☑' : '☐'}
+                    </span>
+                  </div>
+                </div>
+              )) : (
                 <div className={styles.trumpEmpty}>No prediction available</div>
               )}
             </div>
-            {highestTrumpActual && (
+            {(typeof unseenTrumpHigherThanHandProb === 'number' || typeof unseenTrumpHigherThanHandActual === 'boolean') && (
               <div className={styles.trumpActualRow}>
-                Actual highest: <span>{formatTrumpLabel(highestTrumpActual)}</span>
+                Have high card:{' '}
+                <span>
+                  {typeof unseenTrumpHigherThanHandProb === 'number' ? `${(100 - unseenTrumpHigherThanHandProb * 100).toFixed(1)}%` : '—'}
+                  {typeof unseenTrumpHigherThanHandActual === 'boolean' ? ` (actual: ${!unseenTrumpHigherThanHandActual ? 'yes' : 'no'})` : ''}
+                </span>
               </div>
             )}
           </div>
