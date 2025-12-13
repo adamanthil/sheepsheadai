@@ -492,6 +492,11 @@ class PopulationAgent:
         self.exploitation_win_rate_ema: float = 0.5
         self.exploitation_samples: int = 0
 
+        # Decayed teammate synergy vs training agent (when this agent is on the same team as training)
+        # Exponentially-smoothed estimate in [0,1], initialised to neutral 0.5
+        self.coop_synergy_ema: float = 0.5
+        self.coop_samples: int = 0
+
     def update_rating(self, new_rating):
         """Update the agent's rating."""
         self.rating = new_rating
@@ -769,6 +774,24 @@ class PopulationAgent:
         """Return decayed win-rate vs training agent for exploitation sampling."""
         return float(self.exploitation_win_rate_ema)
 
+    def record_with_training_teammate_outcome(self, result: float, alpha: float = 0.05) -> None:
+        """Update exponentially-smoothed teammate synergy vs the training agent.
+
+        Args:
+            result: 1.0 if the training team outscored the opposing team, 0.0 if behind, 0.5 for ties
+            alpha: smoothing factor for EMA (higher reacts faster)
+        """
+        if result < 0.0:
+            result = 0.0
+        elif result > 1.0:
+            result = 1.0
+        self.coop_synergy_ema = (1.0 - alpha) * self.coop_synergy_ema + alpha * float(result)
+        self.coop_samples += 1
+
+    def get_coop_synergy_score_with_training(self) -> float:
+        """Return decayed teammate synergy score with the training agent."""
+        return float(self.coop_synergy_ema)
+
 
 class PFSPPopulation:
     """Manages the population of agents for PFSP training."""
@@ -777,7 +800,8 @@ class PFSPPopulation:
                  max_population_jd: int = 75,
                  max_population_called_ace: int = 75,
                  population_dir: str = "pfsp_population",
-                 anchor_quota_per_cluster: int = 2):
+                 anchor_quota_per_cluster: int = 2,
+                 min_anchor_games: int = 50):
 
         self.max_population_jd = max_population_jd
         self.max_population_called_ace = max_population_called_ace
@@ -786,6 +810,7 @@ class PFSPPopulation:
 
         # Anchor quota per cluster (style-preserving anchors)
         self.anchor_quota_per_cluster = anchor_quota_per_cluster
+        self.min_anchor_games = int(min_anchor_games)
 
         # Separate populations for different partner modes
         self.jd_population: List[PopulationAgent] = []
@@ -861,7 +886,9 @@ class PFSPPopulation:
         anchors: List[PopulationAgent] = []
         for label, agents in clusters.items():
             # For noise cluster (-1), still select top-K by skill
-            top_k = sorted(agents, key=lambda a: a.get_skill_estimate(), reverse=True)[:self.anchor_quota_per_cluster]
+            eligible = [a for a in agents if int(getattr(a.metadata, 'games_played', 0)) >= self.min_anchor_games]
+            candidates = eligible if eligible else agents
+            top_k = sorted(candidates, key=lambda a: a.get_skill_estimate(), reverse=True)[:self.anchor_quota_per_cluster]
             anchors.extend(top_k)
 
         if len(anchors) > max_size:
@@ -874,13 +901,12 @@ class PFSPPopulation:
             return None
         return min(clusters.keys(), key=lambda label_key: len(clusters[label_key]))
 
-    def _select_hardest_cluster(self,
-                                clusters: dict[int, list[PopulationAgent]],
-                                training_agent_id: Optional[str]) -> Optional[int]:
+    def _select_hardest_cluster(
+        self,
+        clusters: dict[int, list[PopulationAgent]]
+    ) -> Optional[int]:
+        """Select the cluster with highest average exploitation score (hardest opponents)."""
         if not clusters:
-            return None
-        if not training_agent_id:
-            # If no training agent context, we cannot score hardness; return None
             return None
         cluster_difficulty: dict[int, float] = {}
         for label, members in clusters.items():
@@ -954,17 +980,24 @@ class PFSPPopulation:
     def _select_pruning_plan(self, partner_mode: int) -> tuple[list['PopulationAgent'], list['PopulationAgent']]:
         """Compute agents to keep and to remove without side effects.
 
+        Preserves PFSP-critical opponents:
+        - Anchors per cluster (style coverage)
+        - Hard-tail threats (high x with confidence)
+        - Learnable mid-band (high x(1-x) with confidence)
+        - Singleton clusters (diversity preservation)
+
         Returns:
             (agents_to_keep, agents_to_remove)
         """
         population = self._get_population(partner_mode)
         max_size = self._get_max_population(partner_mode)
 
-        anchors = self._get_hof_anchors(partner_mode)
-        anchor_set = set(anchors)
-
         if len(population) <= max_size:
             return population.copy(), []
+
+        # Compute mandatory keep sets
+        anchors = self._get_hof_anchors(partner_mode)
+        anchor_set = set(anchors)
 
         labels, clusters = self._cluster_population(partner_mode)
         mandatory_ids = set()
@@ -972,31 +1005,64 @@ class PFSPPopulation:
             if len(members) <= 1:
                 mandatory_ids.update(id(m) for m in members)
 
-        # Phase 1 pruning by simple priority while preserving anchors/singletons
-        working_population = population.copy()
-        if len(working_population) > max_size:
-            candidates = [a for a in working_population if a not in anchor_set and id(a) not in mandatory_ids]
-            # Blend skill (μ) with exploitation EMA (keep high exploitation agents longer)
-            # Lower blended score ⇒ removed earlier
-            exploitation_weight = 5.0
-            def removal_heuristic(agent: PopulationAgent) -> float:
-                return float(agent.get_skill_estimate()) + exploitation_weight * float(getattr(agent, 'exploitation_win_rate_ema', 0.5))
-            candidates.sort(key=removal_heuristic)
-            for agent in candidates:
-                if len(working_population) <= max_size:
-                    break
-                working_population.remove(agent)
+        # Compute PFSP-critical opponents from non-anchor candidates
+        conf_scale = 5.0
+        non_anchor_candidates = [a for a in population
+                                if a not in anchor_set and id(a) not in mandatory_ids]
 
-        if len(working_population) <= max_size:
-            agents_to_keep = working_population
-            agents_to_remove = [a for a in population if a not in agents_to_keep]
-            return agents_to_keep, agents_to_remove
+        if non_anchor_candidates:
+            # Score by threat (hard tail) and learnable (mid-band)
+            threat_scores = []
+            learnable_scores = []
+            coop_scores = []
 
-        # Phase 2 diversity-aware selection among non-anchors
-        non_anchor_population = [a for a in working_population if a not in anchor_set]
-        slots_for_non_anchors = max(0, max_size - len(anchor_set))
-        agents_to_keep_non_anchor = self._select_diverse_population_subset(non_anchor_population, slots_for_non_anchors)
-        agents_to_keep = anchors + agents_to_keep_non_anchor
+            for agent in non_anchor_candidates:
+                x = float(getattr(agent, 'exploitation_win_rate_ema', 0.5))
+                n = int(getattr(agent, 'exploitation_samples', 0))
+                conf = self._pfsp_confidence(n, conf_scale)
+
+                threat_scores.append((agent, x * conf))
+                learnable_scores.append((agent, self._pfsp_variable(x) * conf))
+                c = float(getattr(agent, 'coop_synergy_ema', 0.5))
+                cn = int(getattr(agent, 'coop_samples', 0))
+                cconf = self._pfsp_confidence(cn, conf_scale)
+                coop_scores.append((agent, c * cconf))
+
+            # Select top-K from each category (10-20% of max_size each)
+            threat_budget = max(1, int(max_size * 0.15))
+            learnable_budget = max(1, int(max_size * 0.15))
+            coop_budget = max(1, int(max_size * 0.10))
+
+            threat_scores.sort(key=lambda t: t[1], reverse=True)
+            learnable_scores.sort(key=lambda t: t[1], reverse=True)
+            coop_scores.sort(key=lambda t: t[1], reverse=True)
+
+            threat_keep = [agent for agent, _ in threat_scores[:threat_budget]]
+            learnable_keep = [agent for agent, _ in learnable_scores[:learnable_budget]]
+            coop_keep = [agent for agent, _ in coop_scores[:coop_budget]]
+        else:
+            threat_keep = []
+            learnable_keep = []
+            coop_keep = []
+
+        # Union of all must-keep sets
+        must_keep_set = anchor_set | set(threat_keep) | set(learnable_keep) | set(coop_keep) | \
+                       {a for a in population if id(a) in mandatory_ids}
+        must_keep = [a for a in population if a in must_keep_set]
+
+        # If must_keep exceeds capacity, downselect by diversity
+        if len(must_keep) > max_size:
+            agents_to_keep = self._select_diverse_population_subset(must_keep, max_size)
+        else:
+            # Fill remaining slots with diversity selection from remainder
+            remaining = [a for a in population if a not in must_keep_set]
+            slots_remaining = max_size - len(must_keep)
+            if slots_remaining > 0 and remaining:
+                additional = self._select_diverse_population_subset(remaining, slots_remaining)
+                agents_to_keep = must_keep + additional
+            else:
+                agents_to_keep = must_keep
+
         agents_to_remove = [agent for agent in population if agent not in agents_to_keep]
         return agents_to_keep, agents_to_remove
 
@@ -1090,28 +1156,42 @@ class PFSPPopulation:
             if file_path.exists():
                 file_path.unlink()
 
+    def _pfsp_confidence(self, n: int, conf_scale: float = 5.0) -> float:
+        """Confidence weight based on number of samples. Prevents untested agents from dominating."""
+        return 1.0 - np.exp(-max(0, n) / conf_scale)
+
+    def _pfsp_variable(self, x: float) -> float:
+        """PFSP variable/learnable weighting: peaks at x=0.5 (uncertain matchups)."""
+        return x * (1.0 - x)
+
+    def _pfsp_hard(self, x: float, p: float = 2.0) -> float:
+        """PFSP hard tail weighting: emphasizes opponents that beat training (high x)."""
+        return x ** p
+
     def sample_opponents(self,
                         partner_mode: int,
                         n_opponents: int = 4,
-                        training_agent_skill: float = 25.0,
-                        training_agent_id: str = None,
-                        skill_weight: float = 0.4,
-                        diversity_weight: float = 0.3,
-                        exploitation_weight: float = 0.2,
-                        curriculum_weight: float = 0.1,
+                        variable_weight: float = 0.7,
+                        hard_weight: float = 0.3,
+                        hard_power: float = 2.0,
+                        diversity_weight: float = 0.2,
+                        uniform_mix: float = 0.1,
+                        conf_scale: float = 5.0,
                         selected_opponents: List[PopulationAgent] = None,
-                        uniform_mix: float = 0.15,
-                        include_cluster_anchor: bool = True,
-                        # Reserved slot controls
-                        max_reserved_slots: int = 1,
-                        p_rarest: float = 0.3,
-                        p_hardest: float = 0.6,
-                        p_anchor: float = 0.3,
-                        min_anchor_percentile: float = 0.4,
-                        sigma_ceiling: float = 12.0,
-                        include_pressure_slot: bool = True) -> List[PopulationAgent]:
-        """Sample opponents using multi-objective selection (skill + diversity + exploitation + curriculum),
-        with optional inclusion of a cluster-based anchor to prevent forgetting.
+                        anchor_slots: int = 0,
+                        pressure_slots: int = 0,
+                        support_slots: int = 0) -> List[PopulationAgent]:
+        """Sample opponents using PFSP-style win-rate curriculum.
+
+        Uses a mixture of:
+        - Variable/learnable opponents (x(1-x), peaks at 50% win rate)
+        - Hard tail opponents (x^p, emphasizes strong opponents)
+        - Uniform coverage for exploration
+
+        Also includes optional special slots for:
+        - pressure (hardest reliable opponents)
+        - anchors (anti-forgetting; cluster-aware)
+        - support (high teammate-synergy opponents)
         """
         population = self._get_population(partner_mode)
 
@@ -1127,179 +1207,132 @@ class PFSPPopulation:
         selected_agents = []
         remaining_population = population.copy()
 
-        # Cluster-aware selection metadata
-        labels, clusters = self._cluster_population(partner_mode)
-        # Stable mapping from agent instance to its cluster label for telemetry during sampling
+        # Cluster-aware selection metadata for telemetry
+        labels, _ = self._cluster_population(partner_mode)
         agent_to_label = {id(agent): int(label) for agent, label in zip(population, labels)}
-        rarest_label = self._select_rarest_cluster(clusters)
-        hardest_label = self._select_hardest_cluster(clusters, training_agent_id)
 
-        # Competence floor for reserved/anchor picks (avoid forcing weak agents)
-        mu_values = [a.get_skill_estimate() for a in population]
-        mu_floor = float(np.percentile(mu_values, min(99.0, max(0.0, min_anchor_percentile * 100.0)))) if mu_values else -1e9
-        def is_competent(agent: PopulationAgent) -> bool:
-            try:
-                return (agent.get_skill_estimate() >= mu_floor) and (agent.get_skill_uncertainty() <= sigma_ceiling)
-            except Exception:
-                return False
-
-        # At most one reserved pick via probabilistic gating among {hardest, rarest, anchor}
-        reserved_used = 0
-        if max_reserved_slots > 0 and len(selected_agents) < n_opponents:
-            choices = []
-            probs = []
-            if hardest_label is not None:
-                choices.append('hardest')
-                probs.append(max(0.0, p_hardest))
-            if rarest_label is not None:
-                choices.append('rarest')
-                probs.append(max(0.0, p_rarest))
-            if include_cluster_anchor:
-                choices.append('anchor')
-                probs.append(max(0.0, p_anchor))
-            if choices and sum(probs) > 0:
-                probs = np.array(probs, dtype=np.float64)
-                probs = probs / probs.sum()
-                pick_order = list(np.random.choice(choices, size=len(choices), replace=False, p=probs))
-            else:
-                pick_order = []
-
-            for kind in pick_order:
-                if reserved_used >= max_reserved_slots or len(selected_agents) >= n_opponents:
-                    break
-                if kind == 'hardest' and hardest_label is not None:
-                    cluster_agents = [a for a in remaining_population if a in clusters.get(hardest_label, [])]
-                    if cluster_agents:
-                        candidate = max(cluster_agents, key=lambda a: a.get_skill_estimate())
-                        if is_competent(candidate):
-                            selected_agents.append(candidate)
-                            remaining_population.remove(candidate)
-                            self._cluster_sampling_counts[partner_mode][int(hardest_label)] += 1
-                            self._cluster_sampling_totals[partner_mode] += 1
-                            self._selection_sampling_counts[partner_mode]['hardest'] += 1
-                            self._selection_sampling_totals[partner_mode] += 1
-                            reserved_used += 1
-                elif kind == 'rarest' and rarest_label is not None:
-                    cluster_agents = [a for a in remaining_population if a in clusters.get(rarest_label, [])]
-                    if cluster_agents:
-                        candidate = max(cluster_agents, key=lambda a: a.get_skill_estimate())
-                        if is_competent(candidate):
-                            selected_agents.append(candidate)
-                            remaining_population.remove(candidate)
-                            self._cluster_sampling_counts[partner_mode][int(rarest_label)] += 1
-                            self._cluster_sampling_totals[partner_mode] += 1
-                            self._selection_sampling_counts[partner_mode]['rarest'] += 1
-                            self._selection_sampling_totals[partner_mode] += 1
-                            reserved_used += 1
-                elif kind == 'anchor':
-                    anchors = [a for a in self._get_hof_anchors(partner_mode) if a not in already_selected]
-                    if anchors:
-                        anchors_sorted = sorted(anchors, key=lambda a: abs(a.get_skill_estimate() - training_agent_skill), reverse=True)
-                        anchor_choice = next((a for a in anchors_sorted if a in remaining_population and a not in selected_agents and is_competent(a)), None)
-                        if anchor_choice is not None:
-                            selected_agents.append(anchor_choice)
-                            remaining_population.remove(anchor_choice)
-                            # Update cluster counters if known
-                            lb = agent_to_label.get(id(anchor_choice))
-                            if lb is not None:
-                                self._cluster_sampling_counts[partner_mode][int(lb)] += 1
-                                self._cluster_sampling_totals[partner_mode] += 1
-                            self._selection_sampling_counts[partner_mode]['anchor'] += 1
-                            self._selection_sampling_totals[partner_mode] += 1
-                            reserved_used += 1
-
-        # Dedicated pressure slot (hard opponent)
-        if include_pressure_slot and len(selected_agents) < n_opponents and remaining_population:
-            # Prefer agents that recently beat the training agent
+        # Pressure slots: select hardest reliable opponents
+        effective_pressure_slots = int(pressure_slots)
+        if effective_pressure_slots > 0 and remaining_population:
             def threat_key(a: PopulationAgent) -> float:
-                val = float(getattr(a, 'exploitation_win_rate_ema', 0.5))
+                x = float(getattr(a, 'exploitation_win_rate_ema', 0.5))
                 n = int(getattr(a, 'exploitation_samples', 0))
-                return val * (1.0 - np.exp(-max(0, n) / 5.0))
-            candidate = max(remaining_population, key=threat_key)
-            selected_agents.append(candidate)
-            remaining_population.remove(candidate)
-            lb = agent_to_label.get(id(candidate))
-            if lb is not None:
-                self._cluster_sampling_counts[partner_mode][int(lb)] += 1
-                self._cluster_sampling_totals[partner_mode] += 1
-            self._selection_sampling_counts[partner_mode]['pressure'] += 1
-            self._selection_sampling_totals[partner_mode] += 1
+                conf = self._pfsp_confidence(n, conf_scale)
+                return x * conf  # High x (beats training) with high confidence
+            for _ in range(min(effective_pressure_slots, n_opponents - len(selected_agents))):
+                if not remaining_population:
+                    break
+                candidate = max(remaining_population, key=threat_key)
+                selected_agents.append(candidate)
+                remaining_population.remove(candidate)
+                lb = agent_to_label.get(id(candidate))
+                if lb is not None:
+                    self._cluster_sampling_counts[partner_mode][int(lb)] += 1
+                    self._cluster_sampling_totals[partner_mode] += 1
+                self._selection_sampling_counts[partner_mode]['pressure'] += 1
+                self._selection_sampling_totals[partner_mode] += 1
 
+        # Support slots: select strongest reliable teammate-style opponents
+        effective_support_slots = int(support_slots)
+        if effective_support_slots > 0 and remaining_population:
+            def coop_key(a: PopulationAgent) -> float:
+                c = float(getattr(a, 'coop_synergy_ema', 0.5))
+                n = int(getattr(a, 'coop_samples', 0))
+                conf = self._pfsp_confidence(n, conf_scale)
+                return c * conf
+            for _ in range(min(effective_support_slots, n_opponents - len(selected_agents))):
+                if not remaining_population:
+                    break
+                candidate = max(remaining_population, key=coop_key)
+                if coop_key(candidate) <= 0.0:
+                    break
+                selected_agents.append(candidate)
+                remaining_population.remove(candidate)
+                lb = agent_to_label.get(id(candidate))
+                if lb is not None:
+                    self._cluster_sampling_counts[partner_mode][int(lb)] += 1
+                    self._cluster_sampling_totals[partner_mode] += 1
+                self._selection_sampling_counts[partner_mode]['support'] += 1
+                self._selection_sampling_totals[partner_mode] += 1
+
+        # Anchor slots: select from HOF anchors for anti-forgetting
+        effective_anchor_slots = int(anchor_slots)
+        if effective_anchor_slots > 0 and len(selected_agents) < n_opponents:
+            anchors_all = [a for a in self._get_hof_anchors(partner_mode)
+                          if a in remaining_population and a not in already_selected]
+            if anchors_all:
+                # Prefer strongest anchors not already selected
+                anchors_all.sort(key=lambda a: a.get_skill_estimate(), reverse=True)
+                for _ in range(min(effective_anchor_slots, n_opponents - len(selected_agents))):
+                    if not anchors_all:
+                        break
+                    anchor_choice = anchors_all.pop(0)
+                    if anchor_choice not in remaining_population:
+                        continue
+                    selected_agents.append(anchor_choice)
+                    remaining_population.remove(anchor_choice)
+                    lb = agent_to_label.get(id(anchor_choice))
+                    if lb is not None:
+                        self._cluster_sampling_counts[partner_mode][int(lb)] += 1
+                        self._cluster_sampling_totals[partner_mode] += 1
+                    self._selection_sampling_counts[partner_mode]['anchor'] += 1
+                    self._selection_sampling_totals[partner_mode] += 1
+
+        # Fill remaining slots using PFSP mixture
         for _ in range(n_opponents - len(selected_agents)):
             if not remaining_population:
                 break
 
             weights = []
             for pop_agent in remaining_population:
-                weight_components = {}
+                # Get win-rate estimate (x = P(opponent beats training))
+                x = float(getattr(pop_agent, 'exploitation_win_rate_ema', 0.5))
+                n = int(getattr(pop_agent, 'exploitation_samples', 0))
 
-                # 1. Skill-based weight (prefer similar skill levels) factoring in uncertainty
-                agent_mu = pop_agent.get_skill_estimate()
-                skill_diff = abs(agent_mu - training_agent_skill)
-                # Higher uncertainty reduces the weight
-                weight_components['skill'] = np.exp(-(skill_diff) / 10.0)
+                # Compute PFSP base weight: mixture of variable and hard
+                conf = self._pfsp_confidence(n, conf_scale)
+                var_score = self._pfsp_variable(x)
+                hard_score = self._pfsp_hard(x, hard_power)
 
-                # 2. Diversity weight (prefer agents different from already selected)
+                # Base weight with confidence scaling (prevents untested agents from dominating)
+                base = variable_weight * var_score + hard_weight * hard_score
+                base *= (0.25 + 0.75 * conf)  # Scale down untested agents
+
+                # Blend with uniform for exploration
+                uniform_val = 1.0 / len(remaining_population)
+                w = (1.0 - uniform_mix) * base + uniform_mix * uniform_val
+
+                # Apply diversity multiplier
                 diversity_scores = []
-
-                # Compare with already selected agents
                 for selected_agent in (already_selected + selected_agents):
                     if hasattr(selected_agent, 'strategic_profile'):
-                        diversity_score = pop_agent.calculate_strategic_diversity(selected_agent)
-                        diversity_scores.append(diversity_score)
+                        div = pop_agent.calculate_strategic_diversity(selected_agent)
+                        diversity_scores.append(div)
 
-                # High diversity = good (want different strategies)
                 if diversity_scores:
-                    weight_components['diversity'] = np.mean(diversity_scores)
-                else:
-                    weight_components['diversity'] = 1.0  # Max diversity if no comparison
+                    avg_div = np.mean(diversity_scores)
+                    # Multiply by (1 + diversity_weight * avg_div) to boost diverse agents
+                    w *= (1.0 + diversity_weight * avg_div)
 
-                # 3. Exploitation weight (prefer agents that recently beat training agent)
-                if training_agent_id:
-                    exploitation_score = pop_agent.get_exploitation_score_against()
-                    weight_components['exploitation'] = exploitation_score
-                else:
-                    weight_components['exploitation'] = 0.0
-
-                # 4. Curriculum weight (include some weaker agents for stable learning)
-                skill_gap = training_agent_skill - pop_agent.get_skill_estimate()
-                if skill_gap > 0:  # Agent is weaker than training agent
-                    # Prefer moderately weaker agents (not too weak)
-                    curriculum_score = np.exp(-abs(skill_gap - 5.0) / 5.0)  # Peak at 5 skill points weaker
-                else:
-                    curriculum_score = 0.1  # Small bonus for stronger agents
-                weight_components['curriculum'] = curriculum_score
-
-                # Combine weights
-                total_weight = (
-                    skill_weight * weight_components['skill'] +
-                    diversity_weight * weight_components['diversity'] +
-                    exploitation_weight * weight_components['exploitation'] +
-                    curriculum_weight * weight_components['curriculum']
-                )
-
-                weights.append(max(0.01, total_weight))  # Ensure minimum weight
+                weights.append(max(0.01, w))  # Ensure minimum weight
 
             # Sample one opponent
             if not weights:
                 break
 
-            # Normalise weights and blend with a small uniform mixture for exploration breadth
+            # Normalize weights
             weights = np.array(weights, dtype=np.float64)
             total = weights.sum()
             if total <= 0:
                 weights = np.ones_like(weights) / len(weights)
             else:
                 weights = weights / total
-            if uniform_mix > 0:
-                uniform = np.full_like(weights, 1.0 / len(weights))
-                weights = (1 - uniform_mix) * weights + uniform_mix * uniform
-                weights = weights / weights.sum()
 
             selected_idx = np.random.choice(len(remaining_population), p=weights)
             selected_agent = remaining_population.pop(selected_idx)
             selected_agents.append(selected_agent)
-            # Update sampling counters by cluster label when available
+
+            # Update telemetry
             label = agent_to_label.get(id(selected_agent))
             if label is not None:
                 self._cluster_sampling_counts[partner_mode][label] += 1
@@ -1309,8 +1342,7 @@ class PFSPPopulation:
                     "partner_mode": get_partner_mode_name(partner_mode),
                     "population_size": len(population)
                 })
-            # Selection category share for weighted sampling
-            self._selection_sampling_counts[partner_mode]['weighted'] += 1
+            self._selection_sampling_counts[partner_mode]['pfsp'] += 1
             self._selection_sampling_totals[partner_mode] += 1
 
         return selected_agents
@@ -1390,21 +1422,6 @@ class PFSPPopulation:
                     seat_ratings[pos] = self.rating_model.rating()
                     placeholders[pos] = True
 
-        def update_opponent_stats() -> None:
-            training_score = seat_scores.get(training_position, 0.0)
-            for pos, opp in opponents_by_position.items():
-                score = seat_scores.get(pos)
-                if opp is None or score is None:
-                    continue
-                opp.add_game_result(score, pos == picker_seat)
-                if training_score < score:
-                    result_vs_training = 1.0
-                elif training_score > score:
-                    result_vs_training = 0.0
-                else:
-                    result_vs_training = 0.5
-                opp.record_vs_training_outcome(result_vs_training)
-
         # Leaster or no picker: treat each seat independently
         if is_leaster or not picker_seat:
             teams = [[seat_ratings[pos]] for pos in positions_order]
@@ -1427,7 +1444,22 @@ class PFSPPopulation:
                     if opp:
                         opp.update_rating(new_rating)
 
-            update_opponent_stats()
+            # For leaster/free-for-all, each seat is its own team (team size 1).
+            # Update exploitation EMA with per-seat outcome vs training.
+            training_score = seat_scores.get(training_position, 0.0)
+            for pos, opp in opponents_by_position.items():
+                score = seat_scores.get(pos)
+                if opp is None or score is None:
+                    continue
+                opp.add_game_result(score, pos == picker_seat)
+                if score > training_score:
+                    result_vs_training = 1.0
+                elif score < training_score:
+                    result_vs_training = 0.0
+                else:
+                    result_vs_training = 0.5
+                opp.record_vs_training_outcome(result_vs_training)
+
             return training_rating
 
         picker_team_positions: List[int] = []
@@ -1443,6 +1475,69 @@ class PFSPPopulation:
 
         if not picker_team_positions or not defender_positions:
             raise ValueError("Invalid team composition while updating training ratings.")
+
+        def update_opponent_stats() -> None:
+            """Update opponent stats with team-based outcome comparison.
+
+            Only updates exploitation_win_rate_ema for agents on the opposite team
+            from the training agent, using team-average scores to handle 2v3 size mismatch.
+            """
+            # Determine team composition
+            training_team_positions = []
+            if training_position in picker_team_positions:
+                training_team_positions = picker_team_positions.copy()
+            else:
+                training_team_positions = defender_positions.copy()
+
+            # Compute training team average score
+            training_team_scores = [seat_scores[pos] for pos in training_team_positions]
+            training_team_score = np.mean(training_team_scores) if training_team_scores else 0.0
+
+            # Compute opposing team average score (for teammate synergy outcome)
+            if training_position in picker_team_positions:
+                opposing_positions = defender_positions.copy()
+            else:
+                opposing_positions = picker_team_positions.copy()
+            opposing_scores = [seat_scores[pos] for pos in opposing_positions]
+            opposing_team_score = np.mean(opposing_scores) if opposing_scores else 0.0
+            if training_team_score > opposing_team_score:
+                result_with_training = 1.0
+            elif training_team_score < opposing_team_score:
+                result_with_training = 0.0
+            else:
+                result_with_training = 0.5
+
+            for pos, opp in opponents_by_position.items():
+                score = seat_scores.get(pos)
+                if opp is None or score is None:
+                    continue
+                opp.add_game_result(score, pos == picker_seat)
+
+                # Only update EMA for opponents on the opposite team
+                if pos in training_team_positions:
+                    # Same team as training agent - update teammate synergy, skip exploitation EMA
+                    opp.record_with_training_teammate_outcome(result_with_training)
+                    continue
+
+                # Determine opponent's team
+                if pos in picker_team_positions:
+                    opp_team_positions = picker_team_positions.copy()
+                else:
+                    opp_team_positions = defender_positions.copy()
+
+                # Compute opponent team average score
+                opp_team_scores = [seat_scores[p] for p in opp_team_positions]
+                opp_team_score = np.mean(opp_team_scores) if opp_team_scores else 0.0
+
+                # Compare team averages
+                if opp_team_score > training_team_score:
+                    result_vs_training = 1.0
+                elif opp_team_score < training_team_score:
+                    result_vs_training = 0.0
+                else:
+                    result_vs_training = 0.5
+
+                opp.record_vs_training_outcome(result_vs_training)
 
         team_picker = [seat_ratings[pos] for pos in picker_team_positions]
         team_def = [seat_ratings[pos] for pos in defender_positions]
@@ -1664,6 +1759,9 @@ class PFSPPopulation:
                 while valid_actions:
                     state = player.get_state_dict()
                     action, _, _ = agent.agent.act(state, valid_actions, player.position, deterministic=True)
+                    # Centralized profiling for population agents (pre-action; uses pre-action hand + trick state)
+                    pop_agent = pos_to_agent[player.position]
+                    profile_pop_agent_action(game, player, action, pop_agent, hand_strength_by_pos)
                     player.act(action)
                     valid_actions = player.get_valid_action_ids()
 
@@ -1677,10 +1775,6 @@ class PFSPPopulation:
                             )
                         # Update trick-level EWMAs for population agents
                         profile_trick_completion(game, pos_to_agent)
-
-                    # Centralized profiling for population agents
-                    pop_agent = pos_to_agent[player.position]
-                    profile_pop_agent_action(game, player, action, pop_agent, hand_strength_by_pos)
 
         # Final per-role performance profiling for strategic metrics
         if game.is_leaster:
@@ -1796,6 +1890,9 @@ class PFSPPopulation:
         # Persist exploitation stats
         metadata_dict['exploitation_win_rate_ema'] = float(getattr(pop_agent, 'exploitation_win_rate_ema', 0.5))
         metadata_dict['exploitation_samples'] = int(getattr(pop_agent, 'exploitation_samples', 0))
+        # Persist teammate synergy stats
+        metadata_dict['coop_synergy_ema'] = float(getattr(pop_agent, 'coop_synergy_ema', 0.5))
+        metadata_dict['coop_samples'] = int(getattr(pop_agent, 'coop_samples', 0))
 
         with open(metadata_path, 'w') as f:
             json.dump(metadata_dict, f, indent=2)
@@ -1827,6 +1924,8 @@ class PFSPPopulation:
                     # Extract persisted non-AgentMetadata fields to restore later
                     persisted_exploitation_ema = metadata_dict.get('exploitation_win_rate_ema', None)
                     persisted_exploitation_n = metadata_dict.get('exploitation_samples', None)
+                    persisted_coop_ema = metadata_dict.get('coop_synergy_ema', None)
+                    persisted_coop_n = metadata_dict.get('coop_samples', None)
 
                     # Extract strategic profile if available
                     strategic_profile_data = metadata_dict.pop('strategic_profile', None)
@@ -1844,7 +1943,6 @@ class PFSPPopulation:
                     # Remove non-AgentMetadata keys that we persist alongside metadata
                     metadata_dict.pop('exploitation_win_rate_ema', None)
                     metadata_dict.pop('exploitation_samples', None)
-                    # Remove deprecated synergy keys if present
                     metadata_dict.pop('coop_synergy_ema', None)
                     metadata_dict.pop('coop_samples', None)
                     # Remove legacy strategic mirrors at top level if present
@@ -1877,6 +1975,19 @@ class PFSPPopulation:
                     if exp_n is not None:
                         try:
                             pop_agent.exploitation_samples = int(exp_n)
+                        except (TypeError, ValueError):
+                            pass
+                    # Restore teammate synergy stats if present
+                    coop_ema = persisted_coop_ema
+                    coop_n = persisted_coop_n
+                    if coop_ema is not None:
+                        try:
+                            pop_agent.coop_synergy_ema = float(coop_ema)
+                        except (TypeError, ValueError):
+                            pass
+                    if coop_n is not None:
+                        try:
+                            pop_agent.coop_samples = int(coop_n)
                         except (TypeError, ValueError):
                             pass
                     population.append(pop_agent)
@@ -2051,6 +2162,8 @@ class PFSPPopulation:
         ca_stats = self.get_population_stats(PARTNER_BY_CALLED_ACE)
         jd_diversity = self.get_diversity_stats(PARTNER_BY_JD)
         ca_diversity = self.get_diversity_stats(PARTNER_BY_CALLED_ACE)
+        jd_coop = [float(getattr(a, 'coop_synergy_ema', 0.5)) for a in self.jd_population] if self.jd_population else []
+        ca_coop = [float(getattr(a, 'coop_synergy_ema', 0.5)) for a in self.called_ace_population] if self.called_ace_population else []
 
         # Cluster sampling share (last run counters)
         def cluster_sampling_str(mode: int) -> str:
@@ -2094,6 +2207,7 @@ class PFSPPopulation:
             f"  ⚡ Early trump: {jd_e.get('early_trump_play',0):.3f}  🪦 Bury≥10: {jd_e.get('bury_high_points',0):.3f}  💠 Schmear@void: {jd_e.get('schmear_when_void',0):.3f}\n"
             f"  🤝 Pick-hand corr: μ={jd_e.get('pick_hand_corr_mean',0):+.3f}, σ={jd_e.get('pick_hand_corr_std',0):.3f}\n"
             f"  🧩 Noise share: {jd_diversity.get('noise_share',0)*100:.1f}%  Largest cluster: {jd_diversity.get('largest_cluster_size',0)}\n"
+            f"  🤝 Coop synergy vs training (mean/p90): {(float(np.mean(jd_coop)) if jd_coop else 0.0):.3f} / {(float(np.percentile(jd_coop, 90)) if jd_coop else 0.0):.3f}\n"
             f"  σ (avg/p90): {jd_diversity.get('sigma_avg',0):.2f} / {jd_diversity.get('sigma_p90',0):.2f}\n\n"
         )
         # JD: Selection sampling shares
@@ -2117,6 +2231,7 @@ class PFSPPopulation:
             f"  ⚡ Early trump: {ca_e.get('early_trump_play',0):.3f}  🪦 Bury≥10: {ca_e.get('bury_high_points',0):.3f}  💠 Schmear@void: {ca_e.get('schmear_when_void',0):.3f}\n"
             f"  🤝 Pick-hand corr: μ={ca_e.get('pick_hand_corr_mean',0):+.3f}, σ={ca_e.get('pick_hand_corr_std',0):.3f}\n"
             f"  🧩 Noise share: {ca_diversity.get('noise_share',0)*100:.1f}%  Largest cluster: {ca_diversity.get('largest_cluster_size',0)}\n"
+            f"  🤝 Coop synergy vs training (mean/p90): {(float(np.mean(ca_coop)) if ca_coop else 0.0):.3f} / {(float(np.percentile(ca_coop, 90)) if ca_coop else 0.0):.3f}\n"
             f"  σ (avg/p90): {ca_diversity.get('sigma_avg',0):.2f} / {ca_diversity.get('sigma_p90',0):.2f}\n"
         )
         # CA: Selection sampling shares

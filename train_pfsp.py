@@ -115,6 +115,14 @@ class PFSPHyperparams:
     shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0})
     shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0})
 
+    # Opponent scheduling (PFSP mixture vs anchor/pressure/support specials)
+    anchor_block_start_prob: float = 0.03
+    anchor_block_len_min: int = 6
+    anchor_block_len_max: int = 20
+    anchor_slots_in_block: int = 3
+    pressure_slot_prob: float = 0.12
+    support_slot_prob: float = 0.06
+
 
 DEFAULT_HYPERPARAMS = PFSPHyperparams()
 
@@ -153,7 +161,7 @@ def play_population_game(training_agent: PPOAgent,
     """Play a single game with the training agent and population opponents.
 
     Returns:
-        tuple: (game, episode_transitions, final_scores, training_agent_data)
+        tuple: (game, episode_transitions, final_scores, training_agent_data, opponents_by_position)
     """
     game = Game(partner_selection_mode=partner_mode)
     weights = shaping_weights or {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 1.0}
@@ -167,9 +175,11 @@ def play_population_game(training_agent: PPOAgent,
     agents = [None] * 5
     agents[training_agent_position - 1] = training_agent
 
-    opponent_positions = [i for i in range(5) if i != training_agent_position - 1]
-    for i, opponent in enumerate(opponents[:4]):
-        agents[opponent_positions[i]] = opponent.agent
+    # Randomize which opponent sits in which non-training seat to reduce seat-assignment bias
+    opponent_seat_positions = [pos for pos in range(1, 6) if pos != training_agent_position]
+    random.shuffle(opponent_seat_positions)
+    for opponent, seat_pos in zip(opponents[:4], opponent_seat_positions):
+        agents[seat_pos - 1] = opponent.agent
 
     # Store transitions only for the training agent
     episode_transitions = []
@@ -177,9 +187,9 @@ def play_population_game(training_agent: PPOAgent,
 
     # Map positions to population opponents for profile updates
     pos_to_pop_agent = {}
-    opp_positions = [i for i in range(1, 6) if i != training_agent_position]
-    for i, opp in enumerate(opponents[:len(opp_positions)]):
-        pos_to_pop_agent[opp_positions[i]] = opp
+    opp_positions = opponent_seat_positions.copy()
+    for opp, seat_pos in zip(opponents[:len(opp_positions)], opp_positions):
+        pos_to_pop_agent[seat_pos] = opp
 
     # Hand strength categories captured once at start
     hand_strength_by_pos = {p.position: estimate_hand_strength_category(p.hand) for p in game.players}
@@ -229,6 +239,11 @@ def play_population_game(training_agent: PPOAgent,
                     # Opponent action (stochastic for diversity)
                     action, _, _ = current_agent.act(state, valid_actions, player.position, deterministic=False)
 
+                # --- Strategic profile updates for opponents (pre-action; uses pre-action hand + trick state) ---
+                pop_agent = pos_to_pop_agent.get(player.position)
+                if pop_agent:
+                    profile_pop_agent_action(game, player, action, pop_agent, hand_strength_by_pos)
+
                 player.act(action)
 
                 # Handle trick completion; PFSP-specific observation propagation
@@ -256,11 +271,6 @@ def play_population_game(training_agent: PPOAgent,
                     profile_trick_completion(game, pos_to_pop_agent_local)
 
                 valid_actions = player.get_valid_action_ids()
-
-                # --- Strategic profile updates for opponents only ---
-                pop_agent = pos_to_pop_agent.get(player.position)
-                if pop_agent:
-                    profile_pop_agent_action(game, player, action, pop_agent, hand_strength_by_pos)
 
     final_scores = [player.get_score() for player in game.players]
 
@@ -310,7 +320,7 @@ def play_population_game(training_agent: PPOAgent,
                 'highest_trump_label': ev.get('highest_trump_label', None),
             })
 
-    return game, episode_events, final_scores, training_agent_data
+    return game, episode_events, final_scores, training_agent_data, dict(pos_to_pop_agent)
 
 
 def train_pfsp(num_episodes: int = 500000,
@@ -349,7 +359,6 @@ def train_pfsp(num_episodes: int = 500000,
     # OpenSkill rating for the training agent
     rating_model = PlackettLuce()
     training_rating = rating_model.rating()
-    training_agent_id = "training_agent"
 
     # Create population
     population = PFSPPopulation(
@@ -477,6 +486,9 @@ def train_pfsp(num_episodes: int = 500000,
     print(population.get_population_summary())
     print("-" * 80)
 
+    # Opponent sampling schedule state: occasional "anchor blocks" where most seats are anchors
+    anchor_block_remaining = 0
+
     for episode in range(start_episode + 1, num_episodes + 1):
         # ------------------------------------------------------------------
         # Prevent numerical overflow in OpenSkill ratings by renormalising μ
@@ -497,17 +509,38 @@ def train_pfsp(num_episodes: int = 500000,
 
         partner_mode = get_partner_selection_mode(episode)
 
-        # Sample opponents from population based on current OpenSkill rating
-        training_skill = training_rating.mu
+        # ---------------- Opponent scheduling ----------------
+        # Default: PFSP mixture most of the time. Occasionally run an "anchor block"
+        # where most seats are anchors to reduce forgetting without consuming throughput constantly.
+        anchor_slots = 0
+        pressure_slots = 0
+        support_slots = 0
+
+        if anchor_block_remaining > 0:
+            anchor_slots = hyperparams.anchor_slots_in_block
+            anchor_block_remaining -= 1
+        else:
+            if random.random() < hyperparams.anchor_block_start_prob:
+                anchor_block_remaining = random.randint(hyperparams.anchor_block_len_min, hyperparams.anchor_block_len_max) - 1
+                anchor_slots = hyperparams.anchor_slots_in_block
+            else:
+                # Low-prob inclusions during normal PFSP episodes
+                if random.random() < hyperparams.pressure_slot_prob:
+                    pressure_slots = 1
+                if random.random() < hyperparams.support_slot_prob:
+                    support_slots = 1
+
         opponents = population.sample_opponents(
             partner_mode=partner_mode,
             n_opponents=4,
-            training_agent_skill=training_skill,
-            training_agent_id=training_agent_id,
-            diversity_weight=0.35,
-            curriculum_weight=0.4,
-            exploitation_weight=0.1,
-            uniform_mix=0.15,
+            variable_weight=0.7,
+            hard_weight=0.3,
+            hard_power=2.0,
+            diversity_weight=0.2,
+            uniform_mix=0.1,
+            anchor_slots=anchor_slots,
+            pressure_slots=pressure_slots,
+            support_slots=support_slots,
         )
 
         # Require 4 opponents in population; exit script if not available
@@ -528,7 +561,7 @@ def train_pfsp(num_episodes: int = 500000,
         }
 
         # Play game
-        game, episode_events, final_scores, training_data_single = play_population_game(
+        game, episode_events, final_scores, training_data_single, position_to_agent = play_population_game(
             training_agent=training_agent,
             opponents=opponents,
             partner_mode=partner_mode,
@@ -549,9 +582,6 @@ def train_pfsp(num_episodes: int = 500000,
 
         # ---------- OpenSkill rating update (centralized in PFSPPopulation) ----------
         opponent_positions = [pos for pos in range(1, 6) if pos != training_position]
-        position_to_agent = {}
-        for idx, opp in enumerate(opponents[:len(opponent_positions)]):
-            position_to_agent[opponent_positions[idx]] = opp
 
         training_rating = population.update_ratings_with_training(
             training_rating=training_rating,
@@ -724,10 +754,10 @@ def train_pfsp(num_episodes: int = 500000,
                     training_episodes=episode,
                     parent_id=None,
                     activation=activation,
-                    # Seed snapshot rating with current training agent's rating (same μ/σ)
+                    # Seed snapshot rating with current training agent's rating (same μ, large σ)
                     initial_rating=population.rating_model.rating(
                         mu=training_rating.mu,
-                        sigma=training_rating.sigma,
+                        sigma=max(float(training_rating.sigma), 12.5),
                     )
                 )
                 print(f"👥 Added training agent snapshot to {get_partner_mode_name(mode)} population (ID: {agent_id})")
