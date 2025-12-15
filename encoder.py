@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from typing import List, Dict, Any
-import math
 import itertools
 from dataclasses import dataclass
 from sheepshead import DECK_IDS, TRUMP
@@ -87,38 +86,52 @@ class TransformerCardReasoning(nn.Module):
 class AttentionPool(nn.Module):
     def __init__(self, d_in: int, d_out: int):
         super().__init__()
-        self.q = nn.Parameter(torch.randn(d_in))
-        self.k = nn.Linear(d_in, d_in, bias=False)
-        self.v = nn.Linear(d_in, d_out, bias=False)
+        # Multi-query + multi-head attention pooling:
+        #   - Learn M query tokens (glimpses)
+        #   - Attend (with H heads) over the bag tokens
+        #   - Flatten the M outputs and project to d_out
+        #
+        # Keep the same public API as the original AttentionPool.
+        self.d_in = int(d_in)
+        self.d_out = int(d_out)
+        self.n_queries = 4
+        self.n_heads = 4
+        if self.d_in % self.n_heads != 0:
+            raise ValueError(f"AttentionPool: d_in={self.d_in} must be divisible by n_heads={self.n_heads}.")
+        self.query = nn.Parameter(torch.randn(self.n_queries, self.d_in))  # (M, d_in)
+        self.mha = nn.MultiheadAttention(self.d_in, self.n_heads, batch_first=True)
+        self.proj = nn.Linear(self.n_queries * self.d_in, self.d_out)
 
     def forward(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         # tokens: (B, N, d_in); mask: (B, N) True=keep
         if tokens.numel() == 0:
-            return torch.zeros((mask.size(0), self.v.out_features), device=mask.device, dtype=tokens.dtype)
+            return torch.zeros((mask.size(0), self.d_out), device=mask.device, dtype=tokens.dtype)
 
-        k = self.k(tokens)
-        v = self.v(tokens)
-        q = self.q.view(1, 1, -1).expand(tokens.size(0), 1, -1)  # (B,1,d_in)
-        att = torch.einsum('bnd,bqd->bnq', k, q).squeeze(-1)     # (B,N)
-        # Scaled dot-product attention (stabilizes logits)
-        att = att / math.sqrt(k.size(-1))
+        B = tokens.size(0)
 
-        # Safe masking (avoid all -inf causing NaNs)
-        masked_att = att.masked_fill(~mask, -1e9)
-        no_valid = ~mask.any(dim=1)
-        masked_att = torch.where(
-            no_valid.unsqueeze(-1),
-            torch.zeros_like(masked_att),
-            masked_att,
-        )
-        w = torch.softmax(masked_att, dim=-1)
-        w = torch.where(
-            no_valid.unsqueeze(-1),
-            torch.zeros_like(w),
-            w,
-        )
-        w = w.unsqueeze(-1)
-        return (w * v).sum(dim=1)
+        # nn.MultiheadAttention expects key_padding_mask True = ignore.
+        # Guard against rows where all tokens are masked (can produce NaNs).
+        no_valid = ~mask.any(dim=1)  # (B,)
+        if no_valid.any():
+            tokens = tokens.clone()
+            mask = mask.clone()
+            tokens[no_valid, 0, :] = 0.0
+            mask[no_valid, 0] = True
+
+        q = self.query.unsqueeze(0).expand(B, -1, -1)  # (B, M, d_in)
+        attn_out, _ = self.mha(
+            q, tokens, tokens,
+            key_padding_mask=~mask,
+            need_weights=False,
+        )  # (B, M, d_in)
+        pooled = self.proj(attn_out.reshape(B, self.n_queries * self.d_in))  # (B, d_out)
+        if no_valid.any():
+            pooled = torch.where(
+                no_valid.view(B, 1),
+                torch.zeros_like(pooled),
+                pooled,
+            )
+        return pooled
 
 
 class CardReasoningEncoder(nn.Module):

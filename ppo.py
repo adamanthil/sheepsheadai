@@ -1639,23 +1639,9 @@ class PPOAgent:
         """
         checkpoint = torch.load(filepath, map_location=device)
 
-        # Core networks: accept missing/new critic aux heads for backward compatibility
         self.encoder.load_state_dict(checkpoint['encoder_state_dict'])
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
-
-        # Filter critic keys that have shape mismatches (e.g., changed auxiliary heads)
-        # TODO: Remove once we've trained new models with the widened head
-        # Replace with: self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
-        critic_sd = checkpoint.get('critic_state_dict', {})
-        current_critic_sd = self.critic.state_dict()
-        filtered_critic_sd = {}
-        for k, v in critic_sd.items():
-            cv = current_critic_sd.get(k)
-            if cv is not None and hasattr(cv, "shape") and hasattr(v, "shape") and cv.shape != v.shape:
-                # Skip mismatched tensors; they will be reinitialized
-                continue
-            filtered_critic_sd[k] = v
-        self.critic.load_state_dict(filtered_critic_sd, strict=False)
+        self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
 
         # Optimizers: best-effort restore; fall back to fresh states if shapes changed
         if load_optimizers:
