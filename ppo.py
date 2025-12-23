@@ -329,6 +329,8 @@ class RecurrentCriticNetwork(nn.Module):
         self.seen_trump_key_dim = 64
         self.seen_trump_query = nn.Linear(128, self.seen_trump_key_dim)
         self.seen_trump_key = nn.Linear(d_card, self.seen_trump_key_dim, bias=False)
+        # Per-trump key offsets for better separation of trump cards with very similar embeddings.
+        self.seen_trump_key_delta = nn.Parameter(torch.zeros(len(TRUMP), self.seen_trump_key_dim))
         self.register_buffer(
             'trump_card_ids',
             torch.tensor([DECK_IDS[c] for c in TRUMP], dtype=torch.long),
@@ -400,6 +402,7 @@ class RecurrentCriticNetwork(nn.Module):
         trump_ids = self.trump_card_ids.to(card_embedding.weight.device)
         table = card_embedding.weight.index_select(0, trump_ids)  # (14, d_card)
         k = self.seen_trump_key(table)  # (14, d_key)
+        k = k + self.seen_trump_key_delta
         logits = torch.matmul(flat_q, k.t())  # (N, 14)
         return logits.view(*q.shape[:-1], len(TRUMP))
 
