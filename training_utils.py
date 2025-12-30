@@ -237,6 +237,12 @@ def update_intermediate_rewards_for_action(
             valid_actions = transition.get('valid_actions', set())
             allowed_play_cards = [ACTIONS[id - 1][5:] for id in valid_actions]
             has_allowed_fail_play = any(get_card_suit(c) != "T" for c in allowed_play_cards)
+
+            if game.called_card:
+                has_called_suit = any(get_card_suit(c) == get_card_suit(game.called_card) for c in allowed_play_cards)
+            else:
+                has_called_suit = False
+
             card = action_name[5:]
             if (
                 not game.is_leaster
@@ -258,6 +264,17 @@ def update_intermediate_rewards_for_action(
             ):
                 # Encourage defenders to lead called suit (early)
                 transition['intermediate_reward'] += 0.1 - (0.02 * game.current_trick)
+            elif (
+                game.called_card
+                and not player.is_picker
+                and not player.is_partner
+                and not player.is_secret_partner
+                and not game.was_called_suit_played
+                and has_called_suit
+                and game.called_suit != get_card_suit(card)
+            ):
+                # Discourage defenders from not leading called suit if they can
+                transition['intermediate_reward'] += -0.01
             elif (
                 not game.is_leaster
                 and not player.is_picker
