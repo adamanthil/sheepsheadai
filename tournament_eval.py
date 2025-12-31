@@ -385,6 +385,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--input-dir", type=str, required=True, help="Directory containing snapshot .pt files")
     parser.add_argument("--partner-mode", type=str, default="called", choices=["jd", "called", "0", "1"],
                         help="Partner selection mode for games: 'jd'(0) or 'called'(1)")
+    parser.add_argument(
+        "--episode-divisor",
+        type=int,
+        default=100_000,
+        help="Only include snapshots whose episode marker is divisible by this value",
+    )
     parser.add_argument("--rounds", type=int, default=100, help="Number of tournament rounds (each partitions agents into 5-player games)")
     parser.add_argument("--deals-per-round", type=int, default=10, help="Number of unique deals per 5-agent group (same deal reused across all 5 seat rotations)")
     parser.add_argument("--activation", type=str, default="swish", help="Activation used by agents (for model init)")
@@ -415,8 +421,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     all_paths = discover_snapshots(input_dir)
     print(f"Found {len(all_paths)} *.pt files")
 
-    print("Filtering to episode markers divisible by 100,000 ...")
-    filtered = filter_snapshots_by_episode(all_paths, divisible_by=100_000)
+    print(f"Filtering to episode markers divisible by {args.episode_divisor:,} ...")
+    filtered = filter_snapshots_by_episode(all_paths, divisible_by=args.episode_divisor)
     print(f"Eligible snapshots: {len(filtered)}")
     if len(filtered) < 5:
         print("Need at least 5 eligible snapshots to run a tournament. Exiting.")
