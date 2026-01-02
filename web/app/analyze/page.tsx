@@ -85,8 +85,7 @@ export default function AnalyzePage() {
       <div className={styles.header}>
         <h1 className={styles.title}>🧠 AI Model Analysis</h1>
         <p className={styles.subtitle}>
-          Simulate a complete Sheepshead game and explore the AI's decision-making process.
-          See action probabilities, value estimates, and game state at every step.
+          Simulate a Sheepshead game and explore the AI's decisions.
         </p>
       </div>
 
