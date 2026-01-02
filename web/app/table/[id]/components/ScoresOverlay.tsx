@@ -48,8 +48,6 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
     });
   });
 
-  const overallSum = Object.values(totalById).reduce((a, b) => a + (b || 0), 0);
-
   return (
     <div className={styles.scoresOverlay}>
       <div className={styles.scoresBox}>
@@ -72,7 +70,6 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
                       {c.label}
                     </th>
                   ))}
-                  <th className={styles.thRight}>Sum</th>
                 </tr>
               </thead>
               <tbody>
@@ -84,7 +81,6 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
                         {scoreFor(r, c.id)}
                       </td>
                     ))}
-                    <td className={styles.tdRightBold}>{r.sum}</td>
                   </tr>
                 ))}
                 <tr>
@@ -94,7 +90,6 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
                       {totalById[c.id]}
                     </td>
                   ))}
-                  <td className={styles.tdRightTotal}>{overallSum}</td>
                 </tr>
               </tbody>
             </table>
