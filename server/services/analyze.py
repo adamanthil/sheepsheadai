@@ -63,10 +63,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # Load agent
     global_model_path = os.environ.get("SHEEPSHEAD_MODEL_PATH")
     model_path = req.modelPath or global_model_path
+    if not model_path:
+        raise ValueError("SHEEPSHEAD_MODEL_PATH must be set (or provide modelPath)")
 
     agent = load_agent(model_path)
-    if agent is None:
-        raise ValueError("Failed to load AI model")
 
     # agent.set_head_temperatures(partner=3.0)
 

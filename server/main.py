@@ -22,6 +22,7 @@ from sheepshead import (
     Player,
 )
 from ppo import PPOAgent
+from server.services.ai_loader import load_agent
 from server.api.schemas import (
     CreateTableRequest,
     JoinTableRequest,
@@ -210,8 +211,13 @@ tables = TableManager()
 app = FastAPI(title="Sheepshead Realtime API")
 logging.basicConfig(level=logging.INFO)
 
-# Optional global model path via env var SHEEPSHEAD_MODEL_PATH (set by run_server.sh)
-GLOBAL_MODEL_PATH: Optional[str] = os.environ.get("SHEEPSHEAD_MODEL_PATH")
+# Require AI model config at server startup so misconfiguration is caught immediately.
+SHEEPSHEAD_MODEL_PATH = os.environ.get("SHEEPSHEAD_MODEL_PATH")
+if not SHEEPSHEAD_MODEL_PATH:
+    raise RuntimeError("SHEEPSHEAD_MODEL_PATH must be set")
+if not os.path.exists(SHEEPSHEAD_MODEL_PATH):
+    raise FileNotFoundError(f"SHEEPSHEAD_MODEL_PATH points to a missing file: {SHEEPSHEAD_MODEL_PATH}")
+load_agent(SHEEPSHEAD_MODEL_PATH)
 
 # CORS configuration
 if os.environ.get("ENV") == "production":
@@ -1100,17 +1106,12 @@ async def start_game(table_id: str, req: StartGameRequest):
                 table.initial_names[str(occ)] = pub["seats"][i]
 
     # Create AI agent for this table if any AI players exist
-    has_ai = any((table.occupants.get(occ_id).is_ai if occ_id and table.occupants.get(occ_id) else False) for occ_id in table.seats.values())
+    has_ai = any(
+        (occ_id and (occ := table.occupants.get(occ_id)) and occ.is_ai)
+        for occ_id in table.seats.values()
+    )
     if has_ai:
-        from server.services.ai_loader import load_agent
-        candidate_paths = [
-            "pfsp_checkpoints_swish/pfsp_swish_checkpoint_200000.pt",
-            "final_pfsp_swish_ppo.pt",
-            "best_pfsp_swish_ppo.pt",
-            "final_swish_ppo.pt",
-            "best_swish_ppo.pt",
-        ]
-        table.ai_agent = load_agent(os.environ.get("SHEEPSHEAD_MODEL_PATH"), candidate_paths)
+        table.ai_agent = load_agent(SHEEPSHEAD_MODEL_PATH)
 
     # Notify lobby clients that the game has started
     await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
