@@ -203,6 +203,10 @@ export default function TablePage() {
                 />
               )}
             </div>
+
+            <div className={styles.chatSection}>
+              <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
+            </div>
           </div>
         )}
       </div>
@@ -231,10 +235,6 @@ export default function TablePage() {
       {lastState && showScores && (
         <ScoresOverlay onClose={() => setShowScores(false)} table={lastState.table} />
       )}
-
-      <div className={styles.chatContainer}>
-        <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
-      </div>
     </div>
   );
 }

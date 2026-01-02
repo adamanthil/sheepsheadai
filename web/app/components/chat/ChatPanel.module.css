@@ -1,140 +1,79 @@
-/* Collapsed state - minimal floating button */
-.collapsedToggle {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
-}
-
-.collapsedToggle:hover {
-  background: rgba(0, 0, 0, 0.75);
-  border-color: rgba(255, 255, 255, 0.25);
-  transform: scale(1.05);
-}
-
-.collapsedToggle:active {
-  transform: scale(0.98);
-}
-
-.chatIcon {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.unreadDot {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 10px;
-  height: 10px;
-  background: #22c55e;
-  border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.6);
-  animation: pulse 2s infinite;
-}
-
-.hasUnread {
-  border-color: rgba(34, 197, 94, 0.5);
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-/* Expanded chat panel */
+/* Always-visible chat panel */
 .chatPanel {
   display: flex;
   flex-direction: column;
-  width: 280px;
-  height: 260px;
-  background: rgba(0, 0, 0, 0.75);
+  width: 100%;
+  max-width: 100%;
+  height: 280px;
+  background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-@media (min-width: 768px) {
+/* Tablet size */
+@media (min-width: 640px) {
   .chatPanel {
-    width: 280px;
-    height: 260px;
+    height: 320px;
   }
 }
 
+/* Desktop size */
 @media (min-width: 1024px) {
   .chatPanel {
-    width: 300px;
-    height: 300px;
+    height: 360px;
   }
 }
 
 .chatHeader {
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.3);
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.35);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .headerTitle {
   font-weight: 600;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
-.collapseButton {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 18px;
-  font-weight: 300;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transition: all 0.15s ease;
-}
-
-.collapseButton:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.9);
+@media (min-width: 768px) {
+  .headerTitle {
+    font-size: 15px;
+  }
 }
 
 .messagesContainer {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 10px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-height: 0;
-  /* Subtle scrollbar styling */
+  /* Smooth scrollbar styling */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+@media (min-width: 768px) {
+  .messagesContainer {
+    padding: 14px 16px;
+    gap: 10px;
+  }
 }
 
 .messagesContainer::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
 }
 
 .messagesContainer::-webkit-scrollbar-track {
@@ -142,30 +81,57 @@
 }
 
 .messagesContainer::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
 }
 
 .messagesContainer::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .emptyMessage {
-  padding: 12px;
+  padding: 20px 16px;
   text-align: center;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
   font-style: italic;
+  line-height: 1.5;
+}
+
+@media (min-width: 768px) {
+  .emptyMessage {
+    font-size: 14px;
+    padding: 24px 20px;
+  }
 }
 
 .message {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 1.4;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  animation: slideIn 0.2s ease-out;
+}
+
+@media (min-width: 768px) {
+  .message {
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .systemMessage {
@@ -175,92 +141,135 @@
 }
 
 .playerMessage {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .systemText {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
   font-style: italic;
+}
+
+@media (min-width: 768px) {
+  .systemText {
+    font-size: 13px;
+  }
 }
 
 .playerMessageContent {
   display: flex;
-  gap: 5px;
+  gap: 6px;
   flex-wrap: wrap;
+  align-items: baseline;
 }
 
 .author {
-  color: rgba(34, 197, 94, 0.9);
+  color: rgba(34, 197, 94, 0.95);
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 768px) {
+  .author {
+    font-size: 13px;
+  }
 }
 
 .body {
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.9);
+  word-break: break-word;
 }
 
 .timestamp {
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.3);
-  margin-top: 1px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+  .timestamp {
+    font-size: 11px;
+  }
 }
 
 .inputForm {
   display: flex;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 8px;
+  padding: 12px 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
+}
+
+@media (min-width: 768px) {
+  .inputForm {
+    padding: 14px 16px;
+    gap: 10px;
+  }
 }
 
 .input {
   flex: 1;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
   color: white;
-  font-size: 13px;
+  font-size: 14px;
   outline: none;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
+  min-width: 0;
 }
 
+/* Prevent iOS Safari zoom on focus */
 @media (max-width: 640px) {
   .input {
-    font-size: 16px; /* Prevent iOS Safari zoom on focus */
+    font-size: 16px;
   }
 }
 
 .input:focus {
-  border-color: rgba(34, 197, 94, 0.4);
-  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1);
 }
 
 .input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .sendButton {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
-  background: rgba(34, 197, 94, 0.8);
+  background: rgba(34, 197, 94, 0.85);
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   color: white;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 18px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+@media (min-width: 768px) {
+  .sendButton {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+}
+
 .sendButton:hover:not(:disabled) {
   background: rgba(34, 197, 94, 1);
   transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
 }
 
 .sendButton:active:not(:disabled) {
@@ -270,5 +279,5 @@
 .sendButton:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
 }

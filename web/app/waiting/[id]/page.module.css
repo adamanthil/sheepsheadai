@@ -324,32 +324,14 @@
   }
 }
 
-.chatContainer {
-  position: fixed;
-  bottom: 20px;
-  left: 12px;
-  z-index: 50;
-  pointer-events: auto;
+.chatSection {
+  margin-top: 24px;
+  width: 100%;
 }
 
 @media (min-width: 768px) {
-  .chatContainer {
-    bottom: 24px;
-    left: 16px;
-  }
-}
-
-@media (min-width: 1024px) {
-  .chatContainer {
-    bottom: 24px;
-    left: 20px;
-  }
-}
-
-@media (max-width: 480px) {
-  .chatContainer {
-    bottom: 16px;
-    left: 8px;
+  .chatSection {
+    margin-top: 32px;
   }
 }
 

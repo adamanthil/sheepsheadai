@@ -770,32 +770,17 @@
   cursor: pointer;
 }
 
-.chatContainer {
-  position: fixed;
-  bottom: 100px; /* Above bottom action bar */
-  left: 12px;
-  z-index: 50;
-  pointer-events: auto;
+.chatSection {
+  margin-top: 16px;
+  width: 100%;
+  max-width: min(1600px, 96vw);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 @media (min-width: 768px) {
-  .chatContainer {
-    bottom: 90px;
-    left: 16px;
-  }
-}
-
-@media (min-width: 1024px) {
-  .chatContainer {
-    bottom: 90px;
-    left: 20px;
-  }
-}
-
-@media (max-width: 480px) {
-  .chatContainer {
-    bottom: 90px;
-    left: 8px;
+  .chatSection {
+    margin-top: 24px;
   }
 }
 

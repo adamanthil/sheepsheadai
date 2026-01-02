@@ -319,7 +319,7 @@ export default function WaitingRoom() {
           <div className={styles.muted} style={{ marginLeft: 'auto' }}>Players: {seatItems.filter(s => !!s.name && !s.isAI).length}/5</div>
         </div>
 
-        <div className={styles.chatContainer}>
+        <div className={styles.chatSection}>
           <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
         </div>
       </div>

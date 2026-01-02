@@ -19,44 +19,12 @@ interface ChatPanelProps {
 
 export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState('');
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [collapseInitialized, setCollapseInitialized] = useState(false);
-  const [hasUnread, setHasUnread] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevMessageCount = useRef(messages.length);
 
-  // On first mount, auto-collapse on narrow/mobile screens
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (collapseInitialized) return;
-    if (typeof window === 'undefined') return;
-    const prefersCollapsed = window.matchMedia('(max-width: 640px)').matches;
-    if (prefersCollapsed) {
-      setIsCollapsed(true);
-    }
-    setCollapseInitialized(true);
-  }, [collapseInitialized]);
-
-  // Auto-scroll to bottom when new messages arrive (if not collapsed)
-  useEffect(() => {
-    if (!isCollapsed) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      setHasUnread(false);
-    } else if (messages.length > prevMessageCount.current) {
-      setHasUnread(true);
-    }
-    prevMessageCount.current = messages.length;
-  }, [messages, isCollapsed]);
-
-  // Clear unread when expanding
-  useEffect(() => {
-    if (!isCollapsed) {
-      setHasUnread(false);
-      // Scroll to bottom when expanding
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-      }, 50);
-    }
-  }, [isCollapsed]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,30 +39,10 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  if (isCollapsed) {
-    return (
-      <button
-        className={`${styles.collapsedToggle} ${hasUnread ? styles.hasUnread : ''}`}
-        onClick={() => setIsCollapsed(false)}
-        aria-label="Open chat"
-      >
-        <span className={styles.chatIcon}>💬</span>
-        {hasUnread && <span className={styles.unreadDot} />}
-      </button>
-    );
-  }
-
   return (
     <div className={styles.chatPanel}>
       <div className={styles.chatHeader}>
         <span className={styles.headerTitle}>Chat</span>
-        <button
-          className={styles.collapseButton}
-          onClick={() => setIsCollapsed(true)}
-          aria-label="Minimize chat"
-        >
-          −
-        </button>
       </div>
       <div className={styles.messagesContainer}>
         {messages.length === 0 ? (
