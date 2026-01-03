@@ -13,7 +13,7 @@ export interface TableSocketCallbacks {
   onPickerAnnounced?: (pickerName: string) => void;
   onLeaster?: () => void;
   onAlone?: (pickerName: string) => void;
-  onCall?: (pickerName: string, card: string, under: boolean) => void;
+  onCall?: (pickerName: string, cardDisplay: string, under: boolean) => void;
   onTableClosed?: () => void;
   onLobbyEvent?: (message: string) => void;
 }
@@ -99,6 +99,7 @@ export function useTableSocket(
           const curLeaster = !!msg.view?.is_leaster;
           const prevCalled = prev?.view?.called_card || null;
           const curCalled = msg.view?.called_card || null;
+          const curCalledDisplay = msg.view?.called_card_display || curCalled;
           const curCalledUnder = !!msg.view?.called_under;
           const prevAlone = !!prev?.view?.alone;
           const curAlone = !!msg.view?.alone;
@@ -119,7 +120,7 @@ export function useTableSocket(
           } else if (curPicker > 0 && !playStarted && !prevAlone && curAlone && cbs?.onAlone) {
             cbs.onAlone(getPickerName());
           } else if (curPicker > 0 && !playStarted && curCalled && prevCalled !== curCalled && cbs?.onCall) {
-            cbs.onCall(getPickerName(), curCalled, curCalledUnder);
+            cbs.onCall(getPickerName(), curCalledDisplay, curCalledUnder);
           }
 
           return msg;

@@ -17,6 +17,7 @@ import numpy as np
 from sheepshead import (
     ACTION_IDS,
     ACTION_LOOKUP,
+    CARD_FULL_NAMES,
     DECK,
     Game,
     Player,
@@ -302,6 +303,7 @@ def build_player_state(player: Player) -> Dict[str, Any]:
         "partner": game.partner,
         "alone": bool(game.alone_called),
         "called_card": game.called_card,
+        "called_card_display": (CARD_FULL_NAMES.get(game.called_card, game.called_card) if game.called_card else None),
         "called_under": bool(getattr(game, "is_called_under", False)),
         "is_leaster": bool(game.is_leaster),
         "current_trick_index": int(game.current_trick),
@@ -454,7 +456,8 @@ async def ai_take_turns(table: Table):
                 parts = action_str.split()
                 called_card = parts[1] if len(parts) > 1 else ""
                 under = "under" if len(parts) > 2 and parts[2] == "UNDER" else ""
-                call_msg = f"{display_name} calls {called_card}"
+                card_display = CARD_FULL_NAMES.get(called_card, called_card)
+                call_msg = f"{display_name} calls {card_display}"
                 if under:
                     call_msg += " under"
                 msg_dict = await add_chat_message(table, "system", call_msg)
@@ -1206,7 +1209,8 @@ async def post_action(table_id: str, req: ActionRequest):
         parts = action_str.split()
         called_card = parts[1] if len(parts) > 1 else ""
         under = "under" if len(parts) > 2 and parts[2] == "UNDER" else ""
-        call_msg = f"{display_name} calls {called_card}"
+        card_display = CARD_FULL_NAMES.get(called_card, called_card)
+        call_msg = f"{display_name} calls {card_display}"
         if under:
             call_msg += " under"
         msg_dict = await add_chat_message(table, "system", call_msg)

@@ -13,6 +13,33 @@ FAIL = [
 ]
 DECK = TRUMP + FAIL
 
+# Full display names for cards (code -> full name)
+# Used for player-facing messages in chat and callouts
+RANK_NAMES = {
+    "A": "Ace",
+    "K": "King",
+    "Q": "Queen",
+    "J": "Jack",
+    "10": "Ten",
+    "9": "Nine",
+    "8": "Eight",
+    "7": "Seven",
+}
+SUIT_NAMES = {
+    "C": "Clubs",
+    "S": "Spades",
+    "H": "Hearts",
+    "D": "Diamonds",
+}
+
+CARD_FULL_NAMES = {}
+for card in DECK:
+    rank = card[:-1]  # Everything except last character
+    suit = card[-1]   # Last character
+    rank_name = RANK_NAMES.get(rank, rank)
+    suit_name = SUIT_NAMES.get(suit, suit)
+    CARD_FULL_NAMES[card] = f"{rank_name} of {suit_name}"
+
 # ---------------------------------------------------------------------------
 # Partner-selection modes
 #   0 → Standard Jack-of-Diamonds partner

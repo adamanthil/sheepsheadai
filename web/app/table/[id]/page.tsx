@@ -34,8 +34,8 @@ export default function TablePage() {
       onPickerAnnounced: (name) => showCallout('PICK', `${name} picked`),
       onLeaster: () => showCallout('LEASTER', 'All passed · Leaster'),
       onAlone: (name) => showCallout('ALONE', `${name} goes alone`),
-      onCall: (name, card, under) =>
-        showCallout('CALL', `${name} calls ${card}${under ? ' under' : ''}`),
+      onCall: (name, cardDisplay, under) =>
+        showCallout('CALL', `${name} calls ${cardDisplay}${under ? ' under' : ''}`),
       onTableClosed: () => showCallout('PICK', 'Table closed', 1200),
       onLobbyEvent: (msg) => showCallout('PICK', msg),
     }
