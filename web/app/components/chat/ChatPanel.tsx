@@ -19,11 +19,13 @@ interface ChatPanelProps {
 
 export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom within the messages container (not the page)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [messages]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -44,9 +46,9 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
       <div className={styles.chatHeader}>
         <span className={styles.headerTitle}>Chat</span>
       </div>
-      <div className={styles.messagesContainer}>
+      <div ref={messagesContainerRef} className={styles.messagesContainer}>
         {messages.length === 0 ? (
-          <div className={styles.emptyMessage}>No messages yet</div>
+          <div className={styles.emptyMessage}>No messages yet. Say hello! 👋</div>
         ) : (
           messages.map((msg) => (
             <div
@@ -65,7 +67,6 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
             </div>
           ))
         )}
-        <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSubmit} className={styles.inputForm}>
         <input
