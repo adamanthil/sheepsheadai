@@ -116,6 +116,10 @@ class PFSPHyperparams:
     shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0})
     shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0})
 
+    # Learning rate schedules (percent -> learning rate).
+    lr_schedule_actor: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 6e-5})
+    lr_schedule_critic: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 6e-5})
+
     # Opponent scheduling (PFSP mixture vs anchor/pressure/support specials)
     anchor_block_start_prob: float = 0.03
     anchor_block_len_min: int = 6
@@ -353,10 +357,12 @@ def train_pfsp(num_episodes: int = 500000,
     print("  Population management: OpenSkill ratings + diversity")
     print("="*80)
 
-    # Create training agent
+    # Create training agent with initial LRs from schedule start (0% progress)
+    initial_actor_lr = interpolated_weight(hyperparams.lr_schedule_actor, 0.0)
+    initial_critic_lr = interpolated_weight(hyperparams.lr_schedule_critic, 0.0)
     training_agent = PPOAgent(len(ACTIONS),
-                            lr_actor=1.5e-4,
-                            lr_critic=1.5e-4,
+                            lr_actor=initial_actor_lr,
+                            lr_critic=initial_critic_lr,
                             activation=activation)
 
     # OpenSkill rating for the training agent
@@ -684,6 +690,12 @@ def train_pfsp(num_episodes: int = 500000,
                 training_agent.entropy_coeff_partner += hyperparams.partner_entropy_bump
             if episode <= pick_entropy_bump_until:
                 training_agent.entropy_coeff_pick += hyperparams.pick_entropy_bump
+
+            # Learning rate decay (apply scheduled LRs based on training progress)
+            progress_pct = min(100.0, max(0.0, (episode / num_episodes) * 100.0))
+            scheduled_actor_lr = interpolated_weight(hyperparams.lr_schedule_actor, progress_pct)
+            scheduled_critic_lr = interpolated_weight(hyperparams.lr_schedule_critic, progress_pct)
+            training_agent.set_learning_rates(actor_lr=scheduled_actor_lr, critic_lr=scheduled_critic_lr)
 
             # Update
             update_stats = training_agent.update(epochs=4, batch_size=256)

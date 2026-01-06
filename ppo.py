@@ -484,6 +484,10 @@ class PPOAgent:
         self.actor_optimizer = optim.Adam(actor_groups)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
 
+        # Track LR ratios for actor optimizer param groups (relative to group 0)
+        # Used to maintain correct relative scaling when updating learning rates
+        self._actor_lr_ratios = self._capture_actor_lr_ratios(base_lr=float(lr_actor))
+
         # Hyperparameters
         self.gamma = 0.95
         self.gae_lambda = 0.95
@@ -627,6 +631,51 @@ class PPOAgent:
         if eps > 0.2:
             eps = 0.2
         self.pick_floor_epsilon = eps
+
+    def _capture_actor_lr_ratios(self, base_lr: float | None = None) -> list[float]:
+        """Return per-param-group LR ratios for the actor optimizer.
+
+        Ratios are defined relative to the base LR (actor optimizer group 0).
+        This preserves the intended scaling between the actor params and encoder
+        param groups (e.g., card embeddings at a smaller LR).
+        """
+        if base_lr is None:
+            base_lr = float(self.actor_optimizer.param_groups[0]['lr'])
+        if base_lr <= 0.0:
+            existing = getattr(self, "_actor_lr_ratios", None)
+            if existing is not None:
+                return existing
+            return [1.0 for _ in self.actor_optimizer.param_groups]
+        return [float(group['lr']) / base_lr for group in self.actor_optimizer.param_groups]
+
+    def set_learning_rates(self, actor_lr: float | None = None, critic_lr: float | None = None):
+        """Set learning rates for actor and/or critic optimizers.
+
+        For the actor optimizer, maintains correct relative scaling across param groups:
+        - Group 0: actor parameters at actor_lr
+        - Group 1: card embeddings at actor_lr * ratio[1] (typically 0.2)
+        - Group 2: other encoder params at actor_lr * ratio[2] (typically 1.0)
+
+        Parameters
+        ----------
+        actor_lr : float | None
+            Base learning rate for actor optimizer (applied to group 0).
+            If None, actor LR is not changed.
+        critic_lr : float | None
+            Learning rate for critic optimizer.
+            If None, critic LR is not changed.
+        """
+        if actor_lr is not None:
+            actor_lr = float(actor_lr)
+            # Refresh ratios in case optimizer state was loaded
+            self._actor_lr_ratios = self._capture_actor_lr_ratios()
+            # Apply actor LR to all param groups maintaining relative ratios
+            for i, group in enumerate(self.actor_optimizer.param_groups):
+                group['lr'] = actor_lr * self._actor_lr_ratios[i]
+
+        if critic_lr is not None:
+            critic_lr = float(critic_lr)
+            self.critic_optimizer.param_groups[0]['lr'] = critic_lr
 
     def _apply_head_epsilon_mix(self, probs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """
@@ -1651,6 +1700,8 @@ class PPOAgent:
             try:
                 self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
                 self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+                # Refresh LR ratios after loading optimizer state (ratios may have changed)
+                self._actor_lr_ratios = self._capture_actor_lr_ratios()
             except ValueError as e:
                 print(f"Warning: could not load optimizer state from {filepath}: {e}")
 
