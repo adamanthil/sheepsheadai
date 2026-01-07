@@ -102,23 +102,23 @@ class PFSPHyperparams:
 
     # Entropy schedules (start -> end)
     entropy_pick_start: float = 0.05
-    entropy_pick_end: float = 0.02
+    entropy_pick_end: float = 0.005
     entropy_partner_start: float = 0.05
-    entropy_partner_end: float = 0.02
+    entropy_partner_end: float = 0.005
     entropy_bury_start: float = 0.04
-    entropy_bury_end: float = 0.015
+    entropy_bury_end: float = 0.002
     entropy_play_start: float = 0.05
-    entropy_play_end: float = 0.02
+    entropy_play_end: float = 0.005
 
     # Shaped reward schedules (percent -> weight).
-    shaping_schedule_pick: dict[int, float] = field(default_factory=lambda: {0: 1.0})
-    shaping_schedule_partner: dict[int, float] = field(default_factory=lambda: {0: 1.0})
-    shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0})
-    shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0})
+    shaping_schedule_pick: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 60: 0})
+    shaping_schedule_partner: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0})
+    shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0})
+    shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 70: 0})
 
     # Learning rate schedules (percent -> learning rate).
-    lr_schedule_actor: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 6e-5})
-    lr_schedule_critic: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 6e-5})
+    lr_schedule_actor: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 5e-5})
+    lr_schedule_critic: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 5e-5})
 
     # Opponent scheduling (PFSP mixture vs anchor/pressure/support specials)
     anchor_block_start_prob: float = 0.03
@@ -1094,8 +1094,8 @@ def train_pfsp(num_episodes: int = 500000,
 
 def main():
     parser = ArgumentParser(description="PFSP population-based training for Sheepshead")
-    parser.add_argument("--episodes", type=int, default=5000000,
-                       help="Number of training episodes (default: 5,000,000)")
+    parser.add_argument("--episodes", type=int, default=20_000_000,
+                       help="Number of training episodes (default: 20,000,000)")
     parser.add_argument("--update-interval", type=int, default=2048,
                        help="Number of transitions between model updates")
     parser.add_argument("--save-interval", type=int, default=5000,
