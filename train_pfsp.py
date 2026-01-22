@@ -56,7 +56,7 @@ from training_utils import (
 class PFSPHyperparams:
     # Adaptive exploration for pick head (rate-based bump scheduling)
     low_pick_rate_threshold: float = 20.0  # percent
-    high_pick_rate_threshold: float = 50.0  # percent
+    high_pick_rate_threshold: float = 60.0  # percent
     pick_entropy_bump: float = 0.04        # added to base decayed pick entropy
     pick_entropy_bump_duration: int = 25000  # episodes
 
