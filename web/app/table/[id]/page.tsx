@@ -157,17 +157,25 @@ export default function TablePage() {
   return (
     <div className={styles.root}>
       <div className={styles.wrap}>
-        <div className={styles.topRow}>
-          <div className={styles.connectionStatus}>
-            Connection: {connected ? 'connected' : 'disconnected'}
-          </div>
-        </div>
-
         {!lastState ? (
           <div className={styles.waitingMessage}>Waiting for state…</div>
         ) : (
           <div className={styles.tableArea}>
             <div className={styles.tableFrame}>
+              <div
+                className={styles.connectionIndicator}
+                role="status"
+                aria-live="polite"
+                aria-label={connected ? 'Connected' : 'Disconnected'}
+              >
+                <span
+                  className={`${styles.connectionIndicatorDot} ${
+                    connected
+                      ? styles.connectionIndicatorDotConnected
+                      : styles.connectionIndicatorDotDisconnected
+                  }`}
+                />
+              </div>
               <TrickArea
                 cards={lastState.view.current_trick}
                 yourSeat={lastState.yourSeat}
