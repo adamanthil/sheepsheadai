@@ -8,9 +8,11 @@ interface ActionTimelineProps {
   trace: AnalyzeActionDetail[];
   picker?: string;
   partner?: string;
+  shapingWeightPercent?: number; // 0-100 (applies to pick/partner/bury/play shaping)
+  gamma?: number;
 }
 
-export default function ActionTimeline({ trace, picker, partner }: ActionTimelineProps) {
+export default function ActionTimeline({ trace, picker, partner, shapingWeightPercent = 100, gamma = 0.95 }: ActionTimelineProps) {
   if (trace.length === 0) {
     return (
       <div className={styles.emptyState}>
@@ -20,20 +22,56 @@ export default function ActionTimeline({ trace, picker, partner }: ActionTimelin
     );
   }
 
+  const shapingWeight = Math.max(0, Math.min(1, shapingWeightPercent / 100));
+
+  const displayedStepRewards = trace.map((action, i) => {
+    const base = action.stepRewardBase;
+    const head = action.stepRewardHeadShaping;
+    if (typeof base === 'number' && typeof head === 'number') return base + (shapingWeight * head);
+    if (typeof action.stepReward !== 'number') return action.stepReward;
+    const h = typeof head === 'number' ? head : 0;
+    return action.stepReward - h + (shapingWeight * h);
+  });
+
+  // Recompute discounted returns from the displayed step rewards using the same per-player reset logic.
+  const idxsBySeat: Record<number, number[]> = {};
+  trace.forEach((action, idx) => {
+    idxsBySeat[action.seat] = idxsBySeat[action.seat] || [];
+    idxsBySeat[action.seat].push(idx);
+  });
+  const discountedByIndex: Record<number, number> = {};
+  Object.values(idxsBySeat).forEach((idxs) => {
+    let ret = 0;
+    for (let k = idxs.length - 1; k >= 0; k--) {
+      const idx = idxs[k];
+      if (k === idxs.length - 1) ret = 0;
+      const step = displayedStepRewards[idx];
+      const r = typeof step === 'number' ? step : 0;
+      ret = r + gamma * ret;
+      discountedByIndex[idx] = ret;
+    }
+  });
+
+  const displayedTrace: AnalyzeActionDetail[] = trace.map((action, i) => ({
+    ...action,
+    stepReward: displayedStepRewards[i],
+    discountedReturn: typeof discountedByIndex[i] === 'number' ? discountedByIndex[i] : action.discountedReturn,
+  }));
+
   // Calculate min/max values for color normalization
-  const valueEstimates = trace.map(action => action.valueEstimate);
+  const valueEstimates = displayedTrace.map(action => action.valueEstimate);
   const minValue = Math.min(...valueEstimates);
   const maxValue = Math.max(...valueEstimates);
 
   // Calculate min/max for discounted returns (rewards), independent scale
-  const rewardValues = trace
+  const rewardValues = displayedTrace
     .map(action => (typeof action.discountedReturn === 'number' ? action.discountedReturn : null))
     .filter((v): v is number => v !== null);
   const minReward = rewardValues.length > 0 ? Math.min(...rewardValues) : 0;
   const maxReward = rewardValues.length > 0 ? Math.max(...rewardValues) : 0;
 
   // Calculate min/max for step rewards (immediate), independent scale
-  const stepRewardValues = trace
+  const stepRewardValues = displayedTrace
     .map(action => (typeof action.stepReward === 'number' ? action.stepReward : null))
     .filter((v): v is number => v !== null);
   const minStepReward = stepRewardValues.length > 0 ? Math.min(...stepRewardValues) : 0;
@@ -77,7 +115,7 @@ export default function ActionTimeline({ trace, picker, partner }: ActionTimelin
 
   return (
     <div>
-      {trace.map((action, index) => {
+      {displayedTrace.map((action, index) => {
         const dividerInfo = needsDivider(index);
         return (
           <React.Fragment key={index}>

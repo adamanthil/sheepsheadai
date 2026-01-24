@@ -105,6 +105,8 @@ class AnalyzeActionDetail(BaseModel):
     valueEstimate: float
     discountedReturn: Optional[float] = None
     stepReward: Optional[float] = None
+    stepRewardBase: Optional[float] = None
+    stepRewardHeadShaping: Optional[float] = None
     winProb: Optional[float] = None  # [0,1]
     expectedFinalReturn: Optional[float] = None  # unscaled, undiscounted
     secretPartnerProb: Optional[float] = None  # [0,1]

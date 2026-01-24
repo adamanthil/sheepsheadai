@@ -43,6 +43,8 @@ export interface AnalyzeActionDetail {
   valueEstimate: number;
   discountedReturn?: number;
   stepReward?: number;
+  stepRewardBase?: number;
+  stepRewardHeadShaping?: number;
   winProb?: number;
   expectedFinalReturn?: number;
   secretPartnerProb?: number;
@@ -74,6 +76,7 @@ export interface AnalyzeSimulateResponse {
     deterministic: boolean;
     seed?: number;
     modelPath?: string;
+    gamma?: number;
   };
   actionLookup: Record<number, string>;
   players: string[];

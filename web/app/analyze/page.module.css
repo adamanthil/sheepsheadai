@@ -70,6 +70,18 @@
   gap: 0.5rem;
 }
 
+.rangeValue {
+  margin-left: auto;
+  font-weight: 700;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+}
+
+.range {
+  width: 100%;
+  accent-color: #3b82f6;
+}
+
 .select, .input, .checkbox {
   padding: 0.75rem;
   border: 1px solid #d1d5db;

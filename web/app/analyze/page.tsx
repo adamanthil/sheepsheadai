@@ -20,6 +20,7 @@ export default function AnalyzePage() {
   const [partnerMode, setPartnerMode] = useState<number>(1);
   const [deterministic, setDeterministic] = useState<boolean>(true);
   const [seed, setSeed] = useState<string>('');
+  const [shapingWeightPercent, setShapingWeightPercent] = useState<number>(100);
 
   // Results state
   const [response, setResponse] = useState<AnalyzeSimulateResponse | null>(null);
@@ -150,6 +151,22 @@ export default function AnalyzePage() {
             </div>
           </div>
 
+          <div className={styles.controlGroup}>
+            <label htmlFor="shapingWeight" className={styles.label}>
+              ⚖️ Shaping weight
+              <span className={styles.rangeValue}>{shapingWeightPercent}%</span>
+            </label>
+            <input
+              id="shapingWeight"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={shapingWeightPercent}
+              onChange={(e) => setShapingWeightPercent(parseInt(e.target.value, 10))}
+              className={styles.range}
+            />
+          </div>
 
         </div>
 
@@ -216,6 +233,8 @@ export default function AnalyzePage() {
                 trace={response.trace}
                 picker={response.summary?.picker}
                 partner={response.summary?.partner}
+                shapingWeightPercent={shapingWeightPercent}
+                gamma={response.meta.gamma}
               />
             </>
           ) : null}

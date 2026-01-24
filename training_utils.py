@@ -302,6 +302,8 @@ def update_intermediate_rewards_for_action(
 
         current_trick_transitions.append(transition)
 
+    transition['head_shaping_reward'] = transition['intermediate_reward']
+
 
 def handle_trick_completion(game, current_trick_transitions):
     """If a trick has completed, apply trick-based rewards and reset tracking.

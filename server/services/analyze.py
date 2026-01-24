@@ -327,6 +327,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # Compute discounted returns per action if we have any transitions
     if episode_transitions:
         final_scores = [p.get_score() for p in game.players]
+        head_shaping = [tr['head_shaping_reward'] for tr in episode_transitions]
 
         # Group indices by player (to compute rewards per player sequence)
         idxs_by_player: Dict[int, List[int]] = {}
@@ -350,14 +351,13 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             if idxs:
                 dones[idxs[-1]] = True
 
-        gamma = getattr(agent, 'gamma', 0.95)
         discounted_by_index: Dict[int, float] = {}
         for _, idxs in idxs_by_player.items():
             ret = 0.0
             for idx in reversed(idxs):
                 if dones[idx]:
                     ret = 0.0
-                ret = rewards[idx] + gamma * ret
+                ret = rewards[idx] + agent.gamma * ret
                 discounted_by_index[idx] = ret
 
         # Attach discounted returns and per-step rewards back to trace elements (aligned by order)
@@ -367,6 +367,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             # Always provide the raw per-step reward value for this action
             if i < len(rewards):
                 action_detail.stepReward = float(rewards[i])
+                action_detail.stepRewardHeadShaping = float(head_shaping[i])
+                action_detail.stepRewardBase = float(rewards[i]) - float(action_detail.stepRewardHeadShaping)
 
     # Build response
     response = AnalyzeSimulateResponse(
@@ -374,7 +376,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             "partnerMode": req.partnerMode,
             "deterministic": req.deterministic,
             "seed": req.seed,
-            "modelPath": model_path or "auto-selected"
+            "modelPath": model_path or "auto-selected",
+            "gamma": float(agent.gamma),
         },
         actionLookup={k: v for k, v in ACTION_LOOKUP.items()},
         players=players,
