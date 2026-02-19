@@ -339,10 +339,19 @@ def train_pfsp(num_episodes: int = 500000,
                resume_model: str = None,
                activation: str = 'swish',
                initial_checkpoints: list = None,
+               schedule_horizon_episodes: int | None = None,
                hyperparams: PFSPHyperparams = DEFAULT_HYPERPARAMS):
     """
     PFSP training with population-based opponents.
     """
+    schedule_horizon = num_episodes if schedule_horizon_episodes is None else schedule_horizon_episodes
+    if schedule_horizon <= 0:
+        raise ValueError("schedule_horizon_episodes must be > 0")
+
+    def get_schedule_progress_pct(episode: int) -> float:
+        clamped_episode = min(episode, schedule_horizon)
+        return min(100.0, max(0.0, (clamped_episode / schedule_horizon) * 100.0))
+
     print("🚀 Starting PFSP (Population-Based) Training...")
     print("="*80)
     print("TRAINING CONFIGURATION:")
@@ -352,6 +361,7 @@ def train_pfsp(num_episodes: int = 500000,
     print(f"  Strategic evaluation interval: {strategic_eval_interval}")
     print(f"  Population add interval: {population_add_interval}")
     print(f"  Cross-evaluation interval: {cross_eval_interval}")
+    print(f"  Schedule horizon episodes: {schedule_horizon:,}")
     print(f"  Activation function: {activation.upper()}")
     print("  Opponent strategy: POPULATION-BASED (PFSP)")
     print("  Population management: OpenSkill ratings + diversity")
@@ -561,7 +571,7 @@ def train_pfsp(num_episodes: int = 500000,
         training_position = random.randint(1, 5)
 
         # Compute per-episode shaping weights from schedules
-        progress_pct = min(100.0, max(0.0, (episode / num_episodes) * 100.0))
+        progress_pct = get_schedule_progress_pct(episode)
         shaping_weights = {
             "pick": interpolated_weight(hyperparams.shaping_schedule_pick, progress_pct),
             "partner": interpolated_weight(hyperparams.shaping_schedule_partner, progress_pct),
@@ -676,7 +686,7 @@ def train_pfsp(num_episodes: int = 500000,
             entropy_pick_start, entropy_pick_end = hyperparams.entropy_pick_start, hyperparams.entropy_pick_end
             entropy_partner_start, entropy_partner_end = hyperparams.entropy_partner_start, hyperparams.entropy_partner_end
             entropy_bury_start, entropy_bury_end = hyperparams.entropy_bury_start, hyperparams.entropy_bury_end
-            decay_fraction = min(episode / num_episodes, 1.0)
+            decay_fraction = get_schedule_progress_pct(episode) / 100.0
             training_agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
             training_agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
             training_agent.entropy_coeff_partner = entropy_partner_start + (entropy_partner_end - entropy_partner_start) * decay_fraction
@@ -1112,6 +1122,8 @@ def main():
                        help="Activation function to use (default: swish)")
     parser.add_argument("--initial-checkpoints", nargs='+', default=None,
                        help="Checkpoint patterns to initialize population from")
+    parser.add_argument("--schedule-horizon-episodes", type=int, default=None,
+                       help="Episode horizon used for entropy/reward-shaping schedules (defaults to --episodes)")
 
     args = parser.parse_args()
 
@@ -1132,7 +1144,8 @@ def main():
         cross_eval_interval=args.cross_eval_interval,
         resume_model=args.resume,
         activation=args.activation,
-        initial_checkpoints=args.initial_checkpoints
+        initial_checkpoints=args.initial_checkpoints,
+        schedule_horizon_episodes=args.schedule_horizon_episodes
     )
 
 
