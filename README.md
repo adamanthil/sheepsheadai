@@ -27,7 +27,7 @@ Running the web server backend:
 ./server/run_server.sh --model [path/to/model/file.pt]
 ```
 
-Running the web server frontend:
+Running the web server frontend (from the /web directory):
 ```
 npm run dev
 ```
