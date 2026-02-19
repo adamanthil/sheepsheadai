@@ -31,3 +31,13 @@ Running the web server frontend:
 ```
 npm run dev
 ```
+
+# Upgrading Dependencies
+
+Only required for future development. This will update the pinned dependencies in pyproject.toml and uv.lock to the latest versions.
+
+Install uv-upx: https://pypi.org/project/uv-upx/
+
+```
+uv-upgrade
+```
