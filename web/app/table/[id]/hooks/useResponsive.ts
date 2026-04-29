@@ -14,8 +14,8 @@ export interface UseResponsiveReturn {
   centerSize: CardSize;
   trickSize: CardSize;
   handTopMargin: number;
-  handRowRef: React.RefObject<HTMLDivElement>;
-  trickBoxRef: React.RefObject<HTMLDivElement>;
+  handRowRef: React.RefObject<HTMLDivElement | null>;
+  trickBoxRef: React.RefObject<HTMLDivElement | null>;
 }
 
 // Get initial viewport safely (SSR-compatible)

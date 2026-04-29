@@ -111,10 +111,16 @@ export default function WaitingRoom() {
         console.error('WS message parse error', e);
       }
     };
-    ws.onerror = (e) => {
-      console.error('WS error', e);
+    ws.onerror = () => {
+      console.error('WS error', { url: wsUrl, readyState: ws.readyState });
+    };
+    ws.onclose = (e) => {
+      if (!e.wasClean) {
+        console.warn('WS closed uncleanly', { code: e.code, reason: e.reason || '(none)', url: wsUrl });
+      }
     };
     return () => {
+      ws.onclose = null;
       try { ws.close(); } catch {}
       wsRef.current = null;
     };

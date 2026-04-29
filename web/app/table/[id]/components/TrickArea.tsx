@@ -19,7 +19,7 @@ interface TrickAreaProps {
   animTrick: AnimTrick | null;
   callout: Callout | null;
   centerSize: { w: number; h: number };
-  trickBoxRef: React.RefObject<HTMLDivElement>;
+  trickBoxRef: React.RefObject<HTMLDivElement | null>;
   getPlayerStatus: (absSeat: number) => PlayerStatus;
 }
 

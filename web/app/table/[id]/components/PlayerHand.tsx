@@ -8,7 +8,7 @@ interface PlayerHandProps {
   hand: string[];
   handSize: { w: number; h: number };
   handTopMargin: number;
-  handRowRef: React.RefObject<HTMLDivElement>;
+  handRowRef: React.RefObject<HTMLDivElement | null>;
   isYourTurn: boolean;
   validActionStrings: Set<string>;
   onCardClick: (card: string) => void;
