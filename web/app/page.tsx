@@ -50,7 +50,7 @@ export default function HomePage() {
   const router = useRouter();
   const [tables, setTables] = useState<TableSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState<string>(() => getRandomItem(SHIRE_TOWNS));
+  const [name, setName] = useState<string>('');
   const [displayPlaceholder, setDisplayPlaceholder] = useState<string | null>(null);
   const [displayNameInput, setDisplayNameInput] = useState('');
   const displayName = displayNameInput.trim() || displayPlaceholder || '';
@@ -72,6 +72,10 @@ export default function HomePage() {
 
   useEffect(() => {
     refresh();
+  }, []);
+
+  useEffect(() => {
+    setName(getRandomItem(SHIRE_TOWNS));
   }, []);
 
   useEffect(() => {
