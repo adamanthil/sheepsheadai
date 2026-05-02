@@ -1,21 +1,11 @@
 import React from 'react';
 import { nameForSeat } from '../utils/seatMath';
+import type { FinalState, TableView } from '../../../../lib/types';
 import styles from '../page.module.css';
-
-interface FinalState {
-  mode?: 'leaster' | 'normal';
-  winner?: number;
-  picker?: number;
-  partner?: number;
-  picker_score?: number;
-  defender_score?: number;
-  scores?: number[];
-  points_taken?: number[];
-}
 
 interface GameOverBannerProps {
   final: FinalState;
-  table: any;
+  table: TableView;
   onRedeal: () => void;
   onShowScores: () => void;
 }

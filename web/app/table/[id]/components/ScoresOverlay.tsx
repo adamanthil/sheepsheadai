@@ -1,13 +1,14 @@
 import React from 'react';
+import type { TableView, HandResult } from '../../../../lib/types';
 import styles from '../page.module.css';
 
 interface ScoresOverlayProps {
   onClose: () => void;
-  table: any;
+  table: TableView;
 }
 
 export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
-  const history: Array<any> = table?.resultsHistory || [];
+  const history: HandResult[] = table?.resultsHistory || [];
   const seats = table?.seats || {};
 
   const rows = history.map((h, idx) => ({
@@ -16,7 +17,7 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
     sum: h.sum || 0,
   }));
 
-  const initialOrder: string[] = (table?.initialSeatOrder || []).map((x: any) => String(x));
+  const initialOrder: string[] = (table?.initialSeatOrder || []).map((x) => String(x));
   const ids = table?.seatOccupants || {};
 
   const labelsById: Record<string, string> = {};
@@ -29,7 +30,7 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
     initialOrder.length === 5 ? initialOrder : Object.keys(labelsById)
   ).map((id: string) => ({ id, label: labelsById[id] || id }));
 
-  const scoreFor = (row: any, id: string) => {
+  const scoreFor = (row: { bySeat?: Record<string, { id: string; score: number }> }, id: string) => {
     const entries = row.bySeat || {};
     for (const key of Object.keys(entries)) {
       const v = entries[key];

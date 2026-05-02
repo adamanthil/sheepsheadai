@@ -4,6 +4,7 @@ import CollectOverlay from './CollectOverlay';
 import { relSeat, nameForSeat, isAiSeat } from '../utils/seatMath';
 import type { AnimTrick } from '../hooks/useTrickAnimation';
 import type { Callout } from '../hooks/useCallout';
+import type { TableView } from '../../../../lib/types';
 import styles from '../page.module.css';
 
 type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
@@ -11,7 +12,7 @@ type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
 interface TrickAreaProps {
   cards: string[];
   yourSeat: number;
-  table: any;
+  table: TableView;
   showPrev: boolean;
   lastTrick: string[] | null;
   lastTrickWinner: number | null;

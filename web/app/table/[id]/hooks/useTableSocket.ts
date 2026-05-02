@@ -1,12 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { TableStateMsg } from '../../../../lib/types';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
-  if (typeof window === 'undefined') return 'http://localhost:9000';
-  const hostname = window.location.hostname;
-  const protocol = window.location.protocol;
-  return `${protocol}//${hostname}:9000`;
-})();
+import { API_BASE } from '../../../../lib/apiBase';
 
 export interface TableSocketCallbacks {
   onTrickComplete?: (cards: string[], winner: number) => void;
@@ -120,7 +114,7 @@ export function useTableSocket(
           } else if (curPicker > 0 && !playStarted && !prevAlone && curAlone && cbs?.onAlone) {
             cbs.onAlone(getPickerName());
           } else if (curPicker > 0 && !playStarted && curCalled && prevCalled !== curCalled && cbs?.onCall) {
-            cbs.onCall(getPickerName(), curCalledDisplay, curCalledUnder);
+            cbs.onCall(getPickerName(), curCalledDisplay ?? curCalled ?? '', curCalledUnder);
           }
 
           return msg;

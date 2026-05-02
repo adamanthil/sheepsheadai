@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CardText } from '../../../../lib/components';
 import { nameForSeat } from '../utils/seatMath';
+import type { TableView } from '../../../../lib/types';
 import styles from '../page.module.css';
 
 interface BottomActionBarProps {
   yourSeat: number;
   actorSeat: number | null;
-  table: any;
+  table: TableView;
   isMobile: boolean;
   isYourTurn: boolean;
   validActions: number[];

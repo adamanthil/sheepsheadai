@@ -3,18 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TableSummary } from '../lib/types';
+import { API_BASE } from '../lib/apiBase';
+import { STORAGE_KEYS } from '../lib/storage';
 import styles from './page.module.css';
-
-// Using shared type from web/lib/types
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
-  if (typeof window === 'undefined') return 'http://localhost:9000';
-
-  // Use the same hostname as the frontend, but with backend port
-  const hostname = window.location.hostname;
-  const protocol = window.location.protocol;
-  return `${protocol}//${hostname}:9000`;
-})();
 
 const SHIRE_TOWNS = [
   'Bywater',
@@ -57,7 +48,6 @@ export default function HomePage() {
   const [hasCustomName, setHasCustomName] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [joinInfo, setJoinInfo] = useState<{ client_id: string; seat: number; table: TableSummary } | null>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -125,7 +115,6 @@ export default function HomePage() {
       }
 
       const t = await res.json();
-      console.log('Table created:', t.id); // Debug log
 
       // Auto-join the table
       const res2 = await fetch(`${API_BASE}/api/tables/${t.id}/join`, {
@@ -140,9 +129,8 @@ export default function HomePage() {
 
       const joined = await res2.json();
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`sheepshead_client_id_${t.id}`, joined.client_id);
+        window.localStorage.setItem(STORAGE_KEYS.clientId(t.id), joined.client_id);
       }
-      console.log('Joined table, navigating...'); // Debug log
 
       // Use setTimeout to ensure state updates complete before navigation
       setTimeout(() => {
@@ -150,7 +138,6 @@ export default function HomePage() {
       }, 100);
 
     } catch (err) {
-      console.error('Create table error:', err); // Debug log
       const errorMessage = err instanceof Error ? err.message : 'Failed to create table. Please try again.';
       setError(errorMessage);
     } finally {
@@ -163,10 +150,9 @@ export default function HomePage() {
     setError(null);
 
     try {
-      console.log('Joining table:', tableId); // Debug log
       // If we have a stored client id for this table, reuse it
       if (typeof window !== 'undefined') {
-        const existing = window.localStorage.getItem(`sheepshead_client_id_${tableId}`);
+        const existing = window.localStorage.getItem(STORAGE_KEYS.clientId(tableId));
         if (existing) {
           router.push(`/waiting/${tableId}?client_id=${existing}`);
           return;
@@ -185,11 +171,8 @@ export default function HomePage() {
 
       const data = await res.json();
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`sheepshead_client_id_${tableId}`, data.client_id);
+        window.localStorage.setItem(STORAGE_KEYS.clientId(tableId), data.client_id);
       }
-      setJoinInfo(data);
-
-      console.log('Joined table, navigating...'); // Debug log
 
       // Use setTimeout for consistent navigation behavior
       setTimeout(() => {
@@ -197,7 +180,6 @@ export default function HomePage() {
       }, 100);
 
     } catch (err) {
-      console.error('Join table error:', err); // Debug log
       const errorMessage = err instanceof Error ? err.message : 'Failed to join table. Please try again.';
       setError(errorMessage);
     }

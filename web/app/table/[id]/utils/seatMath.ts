@@ -1,4 +1,5 @@
 import type React from 'react';
+import type { TableView } from '../../../../lib/types';
 
 // Convert absolute seat (1-5) to relative seat (0-4) from viewer's perspective
 export function relSeat(absSeat: number, mySeat: number): number {
@@ -22,13 +23,13 @@ export function spotStyle(rel: number): React.CSSProperties {
 }
 
 // Get player name for a seat from table data
-export function nameForSeat(seat: number | null, table: any): string {
+export function nameForSeat(seat: number | null | undefined, table: TableView | null | undefined): string {
   if (!seat) return '';
   return table?.seats?.[String(seat)] || `Seat ${seat}`;
 }
 
 // Check if a seat is AI-controlled
-export function isAiSeat(seat: number, table: any): boolean {
+export function isAiSeat(seat: number, table: TableView | null | undefined): boolean {
   return Boolean(table?.seatIsAI?.[String(seat)]);
 }
 

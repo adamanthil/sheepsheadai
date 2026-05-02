@@ -3,18 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { TableSummary, TableClosedMsg } from '../../../lib/types';
+import { API_BASE } from '../../../lib/apiBase';
 import styles from './page.module.css';
 import ui from '../../styles/ui.module.css';
 import { ChatPanel, type ChatMessage } from '../../components/chat';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
-  if (typeof window === 'undefined') return 'http://localhost:9000';
-
-  // Use the same hostname as the frontend, but with backend port
-  const hostname = window.location.hostname;
-  const protocol = window.location.protocol;
-  return `${protocol}//${hostname}:9000`;
-})();
 
 type TableInfo = TableSummary & {
   seats: Record<string, string | null>;
