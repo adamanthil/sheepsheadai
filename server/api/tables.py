@@ -9,7 +9,6 @@ from server.api.schemas import (
     CloseTableRequest,
     CreateTableRequest,
     JoinTableRequest,
-    RedealRequest,
     SeatRequest,
     UpdateTableRulesRequest,
 )

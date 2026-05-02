@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import WebSocket

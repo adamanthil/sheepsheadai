@@ -8,9 +8,9 @@ CARD_FULL_NAMES so the seed stays in sync with the game engine:
 
 The output is committed.
 """
+
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
