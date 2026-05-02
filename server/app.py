@@ -1,23 +1,47 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from server.config import get_settings
-from server.services.ai_loader import load_agent
 from server.api import actions as actions_router
 from server.api import analyze as analyze_router
 from server.api import games as games_router
 from server.api import players as players_router
 from server.api import tables as tables_router
+from server.config import get_settings
 from server.realtime import websocket as websocket_router
+from server.services.ai_loader import load_agent
+
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        data: dict = {
+            "ts": self.formatTime(record),
+            "level": record.levelname,
+            "name": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            data["exc"] = self.formatException(record.exc_info)
+        return json.dumps(data)
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+
+    # Configure logging before anything else.
+    if settings.log_format == "json":
+        handler = logging.StreamHandler()
+        handler.setFormatter(_JsonFormatter())
+        root = logging.getLogger()
+        root.handlers = [handler]
+        root.setLevel(logging.INFO)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
     # Validate model at startup so misconfiguration is caught immediately.
     if not settings.sheepshead_model_path:
@@ -28,13 +52,18 @@ def create_app() -> FastAPI:
         )
     load_agent(settings.sheepshead_model_path)
 
-    logging.basicConfig(level=logging.INFO)
-
     app = FastAPI(title="Sheepshead Realtime API")
 
     if settings.env == "production":
+        origins = [
+            o.strip() for o in settings.sheepshead_cors_origins.split(",") if o.strip()
+        ]
+        if not origins:
+            raise RuntimeError(
+                "SHEEPSHEAD_CORS_ORIGINS must be set in production (comma-separated list of allowed origins)"
+            )
         cors_config = {
-            "allow_origins": [o.strip() for o in settings.sheepshead_cors_origins.split(",") if o.strip()] or ["https://yourdomain.com"],
+            "allow_origins": origins,
             "allow_credentials": True,
             "allow_methods": ["*"],
             "allow_headers": ["*"],

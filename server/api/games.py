@@ -14,7 +14,7 @@ from server.api.schemas import (
     StartGameRequest,
 )
 from server.config import get_settings
-from server.realtime.broadcast import broadcast_table_event, broadcast_table_state
+from server.realtime.broadcast import broadcast_table_event, broadcast_table_state, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import ai_observe_all, schedule_ai_turns
 from server.runtime.seating import _is_ai_occupant
@@ -49,7 +49,7 @@ async def fill_ai(table_id: str, req: RedealRequest | None = None):
             table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
             table.seats[i] = occ_id
 
-    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+    await broadcast_table_update(table)
     return table.to_public_dict()
 
 
@@ -72,7 +72,7 @@ async def start_waiting(table_id: str, req: RedealRequest | None = None):
             table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
             table.seats[i] = occ_id
 
-    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+    await broadcast_table_update(table)
     return table.to_public_dict()
 
 
@@ -130,7 +130,7 @@ async def start_game(table_id: str, req: StartGameRequest):
         settings = get_settings()
         table.ai_agent = load_agent(settings.sheepshead_model_path)
 
-    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+    await broadcast_table_update(table)
     await broadcast_table_state(table)
     schedule_ai_turns(table, initial_delay=2.0)
 
@@ -247,7 +247,7 @@ async def post_action(table_id: str, req: ActionRequest):
                     entry["sum"] += score
                 table.results_history.append(entry)
             except Exception:
-                pass
+                logging.exception("failed to record results history for table %s", table_id)
         await broadcast_table_state(table)
 
     return {"ok": True}

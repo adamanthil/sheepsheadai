@@ -7,7 +7,6 @@ export type TableSummary = {
   seats: Record<string, string | null>;
   seatIsAI?: Record<string, boolean>;
   host: string | null;
-  hostId?: string | null;
   runningBySeat?: Record<string, number>;
 };
 
@@ -16,6 +15,7 @@ export type TableStateMsg = {
   table: any;
   yourSeat: number;
   actorSeat: number | null;
+  isHost: boolean;
   state: {
     play_started?: number;
     is_leaster?: number;

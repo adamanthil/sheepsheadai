@@ -7,7 +7,7 @@ import uuid
 from typing import Optional, Set
 
 from server.runtime.tables import Table, Occupant
-from server.realtime.broadcast import broadcast_table_event
+from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import schedule_ai_turns
 
@@ -94,7 +94,7 @@ async def _replace_ai_with_human_and_reserve(table: Table, seat: int, client_id:
         "message": f"{display_name} joined and took seat {seat}",
         "table": table.to_public_dict(),
     })
-    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+    await broadcast_table_update(table)
     schedule_ai_turns(table)
 
 
@@ -143,7 +143,7 @@ def schedule_ai_replacement_for_disconnected_human(table: Table, client_id: str)
                 "message": f"{conn.display_name} disconnected. Seat filled by AI.",
                 "table": table.to_public_dict(),
             })
-            await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+            await broadcast_table_update(table)
             schedule_ai_turns(table)
         except asyncio.CancelledError:
             return

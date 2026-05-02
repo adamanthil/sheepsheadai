@@ -30,6 +30,26 @@ async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:
             logging.exception("broadcast_table_event send failed for table %s client %s", table.id, cid)
 
 
+async def broadcast_table_update(table: Table) -> None:
+    """Send per-client table_update events, each including the client's isHost status."""
+    table_dict = table.to_public_dict()
+    for cid, conn in list(table.clients.items()):
+        ws = conn.websocket
+        if not ws:
+            continue
+        payload = {
+            "type": "table_update",
+            "table": table_dict,
+            "isHost": cid == table.host_client_id,
+        }
+        try:
+            await ws.send_text(json.dumps(payload, default=_json_default))
+        except WebSocketDisconnect:
+            conn.websocket = None
+        except Exception:
+            logging.exception("broadcast_table_update send failed for table %s client %s", table.id, cid)
+
+
 async def broadcast_table_state(table: Table) -> None:
     """Send each connected human client their own masked state + valid actions."""
     if not table.game:
@@ -48,6 +68,7 @@ async def broadcast_table_state(table: Table) -> None:
             "table": table.to_public_dict(),
             "yourSeat": conn.seat,
             "actorSeat": actor_seat,
+            "isHost": cid == table.host_client_id,
             "state": payload["state"],
             "view": payload["view"],
             "valid_actions": valid_actions if conn.seat == actor_seat else [],

@@ -40,11 +40,16 @@ Start the backend (pass the path to your trained model checkpoint):
 
 The server listens on `http://localhost:9000` by default.
 
-**Required environment variables:**
+**Environment variables:**
 
-| Variable | Description | Example |
-|---|---|---|
-| `SHEEPSHEAD_MODEL_PATH` | Path to the `.pt` model file | `./final_pfsp_swish_ppo.pt` |
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `SHEEPSHEAD_MODEL_PATH` | Yes | Path to the trained `.pt` model file. Must point to a file owned and reviewed by you — never load untrusted checkpoints. | `./final_pfsp_swish_ppo.pt` |
+| `SHEEPSHEAD_CORS_ORIGINS` | In production | Comma-separated list of allowed CORS origins. Required when `ENV=production`; omit in dev (localhost:3000 is allowed automatically). | `https://example.com` |
+| `ENV` | No | Set to `production` to enable production-mode CORS and logging defaults. | `development` |
+| `LOG_FORMAT` | No | Set to `json` for structured JSON logs (recommended in production). Defaults to `text`. | `json` |
+
+Copy `.env.example` to `.env` and fill in your values. `.env` is never committed.
 
 > `SHEEPSHEAD_MODEL_PATH` can be set via the `--model` flag in `run_server.sh` or as an env var directly.
 

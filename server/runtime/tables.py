@@ -49,6 +49,7 @@ class ClientConn:
     display_name: str
     seat: Optional[int] = None
     websocket: Optional[WebSocket] = None
+    chat_timestamps: deque = field(default_factory=deque)
 
 
 @dataclass
@@ -134,7 +135,6 @@ class Table:
             "seatOccupants": seats_ids,
             "seatIsAI": seat_is_ai,
             "host": (self.clients[self.host_client_id].display_name if self.host_client_id and self.host_client_id in self.clients else None),
-            "hostId": self.host_client_id,
             "resultsHistory": self.results_history,
             "initialSeatOrder": self.initial_seat_order,
             "initialNames": self.initial_names,

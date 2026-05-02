@@ -13,7 +13,7 @@ from server.api.schemas import (
     SeatRequest,
     UpdateTableRulesRequest,
 )
-from server.realtime.broadcast import broadcast_table_event
+from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.lifecycle import close_table
 from server.runtime.seating import (
@@ -41,7 +41,7 @@ def list_tables():
 
 @router.post("/api/tables")
 async def create_table(req: CreateTableRequest):
-    table = await tables.create_table(req.name, req.fillWithAI, req.rules or {})
+    table = await tables.create_table(req.name, req.fillWithAI, req.rules.model_dump())
     return table.to_public_dict()
 
 
@@ -66,7 +66,7 @@ async def join_table(table_id: str, req: JoinTableRequest):
         if ai_seat is None:
             try:
                 del table.clients[client_id]
-            except Exception:
+            except KeyError:
                 pass
             raise HTTPException(status_code=400, detail="no_ai_seat_available")
         await _replace_ai_with_human_and_reserve(table, ai_seat, client_id)
@@ -92,7 +92,7 @@ async def join_table(table_id: str, req: JoinTableRequest):
                     "message": f"{req.display_name} joined and took seat {seat_to_take}",
                     "table": table.to_public_dict(),
                 })
-                await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+                await broadcast_table_update(table)
         else:
             msg_dict = await add_chat_message(table, "system", f"{req.display_name} joined the table")
             await broadcast_chat_append(table, msg_dict)
@@ -104,6 +104,7 @@ async def join_table(table_id: str, req: JoinTableRequest):
 
     return {
         "client_id": client_id,
+        "is_host": client_id == table.host_client_id,
         "table": table.to_public_dict(),
     }
 
@@ -142,7 +143,7 @@ async def choose_seat(table_id: str, req: SeatRequest):
     display_name = table.clients[req.client_id].display_name
     msg_dict = await add_chat_message(table, "system", f"{display_name} took seat {req.seat}")
     await broadcast_chat_append(table, msg_dict)
-    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+    await broadcast_table_update(table)
 
     return table.to_public_dict()
 
@@ -162,8 +163,8 @@ async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
 
     if not table.rules:
         table.rules = {}
-    table.rules.update(req.rules)
-    await broadcast_table_event(table, {"type": "table_update", "table": table.to_public_dict()})
+    table.rules.update(req.rules.model_dump(exclude_none=True))
+    await broadcast_table_update(table)
 
     return {"status": "success", "rules": table.rules}
 

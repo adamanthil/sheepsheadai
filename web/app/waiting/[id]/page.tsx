@@ -27,6 +27,7 @@ export default function WaitingRoom() {
   const clientId = search.get('client_id') || '';
 
   const [table, setTable] = useState<TableInfo | null>(null);
+  const [isHost, setIsHost] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [partnerMode, setPartnerMode] = useState<number>(1); // 1 = Called Ace (default), 0 = Jack of Diamonds
@@ -75,6 +76,7 @@ export default function WaitingRoom() {
         if (data?.type === 'table_update') {
           const t = data.table as TableInfo;
           setTable(t);
+          if (typeof data.isHost === 'boolean') setIsHost(data.isHost);
           const rules = (t as any).rules || {};
           if (rules.partnerMode !== undefined) setPartnerMode(rules.partnerMode);
           if (rules.doubleOnTheBump !== undefined) setScoringMode(rules.doubleOnTheBump ? 1 : 0);
@@ -220,10 +222,6 @@ export default function WaitingRoom() {
     }
   }
 
-  const isHost = useMemo(() => {
-    if (!table || !clientId) return false;
-    return (table as any).hostId === clientId;
-  }, [table, clientId]);
 
   const seatItems = useMemo(() => {
     if (!table) return [] as Array<{ seat: number; name: string | null; isAI: boolean }>;

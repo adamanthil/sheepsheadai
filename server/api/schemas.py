@@ -1,24 +1,58 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class RulesInput(BaseModel):
+    """Full rules specification; unknown keys rejected."""
+    model_config = ConfigDict(extra="forbid")
+    partnerMode: Literal[0, 1] = 1
+    doubleOnTheBump: bool = True
+
+
+class RulesUpdate(BaseModel):
+    """Partial rules patch; only provided keys are merged."""
+    model_config = ConfigDict(extra="forbid")
+    partnerMode: Optional[Literal[0, 1]] = None
+    doubleOnTheBump: Optional[bool] = None
 
 
 class CreateTableRequest(BaseModel):
     name: str
     fillWithAI: bool = True
-    rules: Dict[str, Any] = {}
+    rules: RulesInput = Field(default_factory=RulesInput)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be empty")
+        if len(v) > 48:
+            raise ValueError("name must be at most 48 characters")
+        return v
 
 
 class JoinTableRequest(BaseModel):
     display_name: str
     seat: Optional[int] = None
 
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("display_name must not be empty")
+        if len(v) > 32:
+            raise ValueError("display_name must be at most 32 characters")
+        return v
+
 
 class UpdateTableRulesRequest(BaseModel):
     client_id: str
-    rules: Dict[str, Any]
+    rules: RulesUpdate
 
 
 class StartGameRequest(BaseModel):
@@ -54,8 +88,8 @@ class TablePublic(BaseModel):
     seats: Dict[int, Optional[str]] | Dict[str, Optional[str]]
     runningBySeat: Dict[int, int] | Dict[str, int]
     seatOccupants: Dict[int, Optional[str]] | Dict[str, Optional[str]]
+    seatIsAI: Dict[int, bool] | Dict[str, bool]
     host: Optional[str]
-    hostId: Optional[str]
     resultsHistory: List[Dict[str, Any]]
     initialSeatOrder: List[str]
     initialNames: Dict[str, str]

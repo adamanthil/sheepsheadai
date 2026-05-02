@@ -62,11 +62,7 @@ export default function TablePage() {
     [lastState?.actorSeat, lastState?.yourSeat]
   );
 
-  const isHost = useMemo(() => {
-    if (!lastState || !clientId) return false;
-    const hostId = lastState.table?.hostId || lastState.table?.host_id;
-    return !!hostId && String(hostId) === String(clientId);
-  }, [lastState, clientId]);
+  const isHost = lastState?.isHost ?? false;
 
   const inPickDecision = useMemo(
     () => !!lastState && !lastState.view.is_leaster && lastState.view.picker === 0,

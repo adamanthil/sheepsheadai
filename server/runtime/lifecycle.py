@@ -19,14 +19,14 @@ async def close_table(table: Table, reason: str = "closed") -> None:
             if task and not task.done():
                 task.cancel()
         except Exception:
-            pass
+            logging.debug("failed to cancel disconnect task for client %s on table %s", cid, table.id)
         finally:
             table.disconnect_tasks.pop(cid, None)
     table.status = "finished"
     try:
         await broadcast_table_event(table, {"type": "table_closed", "reason": reason, "tableId": table.id})
     except Exception:
-        pass
+        logging.debug("failed to broadcast table_closed for table %s", table.id)
     for cid, conn in list(table.clients.items()):
         ws = conn.websocket
         if not ws:
@@ -35,6 +35,7 @@ async def close_table(table: Table, reason: str = "closed") -> None:
             await ws.send_text(json.dumps({"type": "table_closed", "reason": reason, "tableId": table.id}))
             await ws.close()
         except Exception:
+            logging.debug("failed to close websocket for client %s on table %s", cid, table.id)
             conn.websocket = None
     try:
         tables.delete_table(table.id)
