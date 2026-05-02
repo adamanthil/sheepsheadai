@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -38,6 +39,7 @@ class CreateTableRequest(BaseModel):
 class JoinTableRequest(BaseModel):
     display_name: str
     seat: Optional[int] = None
+    player_id: Optional[UUID] = None
 
     @field_validator("display_name")
     @classmethod
@@ -47,6 +49,23 @@ class JoinTableRequest(BaseModel):
             raise ValueError("display_name must not be empty")
         if len(v) > 32:
             raise ValueError("display_name must be at most 32 characters")
+        return v
+
+
+class UpdatePlayerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be empty (use null to clear)")
+        if len(v) > 32:
+            raise ValueError("name must be at most 32 characters")
         return v
 
 

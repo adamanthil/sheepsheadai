@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from server.api.schemas import (
     CloseTableRequest,
@@ -25,6 +25,7 @@ from server.runtime.seating import (
     _reserved_ai_ids,
 )
 from server.runtime.tables import ClientConn, tables
+from server.services.persistence import players as players_db
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def create_table(req: CreateTableRequest):
 
 
 @router.post("/api/tables/{table_id}/join")
-async def join_table(table_id: str, req: JoinTableRequest):
+async def join_table(table_id: str, req: JoinTableRequest, request: Request):
     try:
         table = tables.get_table(table_id)
     except KeyError as e:
@@ -55,8 +56,23 @@ async def join_table(table_id: str, req: JoinTableRequest):
     if table.status == "finished":
         raise HTTPException(status_code=400, detail="table_finished")
 
+    pool = request.app.state.db_pool
+    if req.player_id is None:
+        player_uuid = uuid.uuid4()
+        await players_db.create_player(pool, player_uuid)
+    else:
+        player_uuid = req.player_id
+        # Defensively upsert in case the DB has been reset since the client
+        # last persisted its id (Phase 4 §4.3).
+        await players_db.ensure_player(pool, player_uuid)
+
     client_id = str(uuid.uuid4())
-    conn = ClientConn(client_id=client_id, display_name=req.display_name, seat=None)
+    conn = ClientConn(
+        client_id=client_id,
+        display_name=req.display_name,
+        seat=None,
+        player_id=str(player_uuid),
+    )
     table.clients[client_id] = conn
     if not table.host_client_id:
         table.host_client_id = client_id
@@ -104,6 +120,7 @@ async def join_table(table_id: str, req: JoinTableRequest):
 
     return {
         "client_id": client_id,
+        "player_id": str(player_uuid),
         "is_host": client_id == table.host_client_id,
         "table": table.to_public_dict(),
     }

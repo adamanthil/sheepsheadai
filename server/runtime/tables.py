@@ -50,6 +50,8 @@ class ClientConn:
     seat: Optional[int] = None
     websocket: Optional[WebSocket] = None
     chat_timestamps: deque = field(default_factory=deque)
+    # Long-lived cross-table identity (Phase 4). Set on /join.
+    player_id: Optional[str] = None
 
 
 @dataclass

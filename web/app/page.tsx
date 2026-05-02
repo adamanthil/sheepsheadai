@@ -48,6 +48,7 @@ export default function HomePage() {
   const [hasCustomName, setHasCustomName] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [playerId, setPlayerId] = useState<string | null>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -75,6 +76,41 @@ export default function HomePage() {
   }, [displayPlaceholder]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    const storedId = window.localStorage.getItem(STORAGE_KEYS.playerId);
+    const storedName = window.localStorage.getItem(STORAGE_KEYS.displayName) ?? '';
+    if (storedName) {
+      setDisplayNameInput(storedName);
+    }
+    if (!storedId) {
+      setPlayerId(null);
+      return;
+    }
+    setPlayerId(storedId);
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/players/${storedId}`);
+        if (cancelled) return;
+        if (res.status === 404) {
+          window.localStorage.removeItem(STORAGE_KEYS.playerId);
+          setPlayerId(null);
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.name) {
+          window.localStorage.setItem(STORAGE_KEYS.displayName, data.name);
+          setDisplayNameInput(prev => prev || data.name);
+        }
+      } catch {
+        // Network failure — keep the stored id; the user can still play.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (hasCustomName || tables.length === 0) return;
     const usedNames = new Set(tables.map(t => t.name));
     if (!usedNames.has(name)) return;
@@ -95,6 +131,37 @@ export default function HomePage() {
     e.preventDefault();
     e.stopPropagation();
     create(displayName);
+  };
+
+  const persistTypedName = async (id: string | null, typedName: string) => {
+    if (typeof window === 'undefined' || !id || !typedName) return;
+    const previous = window.localStorage.getItem(STORAGE_KEYS.displayName);
+    if (previous === typedName) return;
+    try {
+      await fetch(`${API_BASE}/api/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: typedName }),
+      });
+      window.localStorage.setItem(STORAGE_KEYS.displayName, typedName);
+    } catch {
+      // best-effort; live display name still works via display_name field
+    }
+  };
+
+  const persistIdentityFromJoin = async (
+    joined: { player_id?: string },
+    typedName: string,
+  ): Promise<string | null> => {
+    if (typeof window === 'undefined') return playerId;
+    let resultId = playerId;
+    if (joined.player_id && joined.player_id !== playerId) {
+      window.localStorage.setItem(STORAGE_KEYS.playerId, joined.player_id);
+      setPlayerId(joined.player_id);
+      resultId = joined.player_id;
+    }
+    await persistTypedName(resultId, typedName);
+    return resultId;
   };
 
   const create = async (resolvedDisplayName: string) => {
@@ -120,7 +187,7 @@ export default function HomePage() {
       const res2 = await fetch(`${API_BASE}/api/tables/${t.id}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: resolvedDisplayName }),
+        body: JSON.stringify({ display_name: resolvedDisplayName, player_id: playerId }),
       });
 
       if (!res2.ok) {
@@ -131,6 +198,8 @@ export default function HomePage() {
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(STORAGE_KEYS.clientId(t.id), joined.client_id);
       }
+      const typedName = displayNameInput.trim();
+      await persistIdentityFromJoin(joined, typedName);
 
       // Use setTimeout to ensure state updates complete before navigation
       setTimeout(() => {
@@ -154,6 +223,7 @@ export default function HomePage() {
       if (typeof window !== 'undefined') {
         const existing = window.localStorage.getItem(STORAGE_KEYS.clientId(tableId));
         if (existing) {
+          await persistTypedName(playerId, displayNameInput.trim());
           router.push(`/waiting/${tableId}?client_id=${existing}`);
           return;
         }
@@ -162,7 +232,7 @@ export default function HomePage() {
       const res = await fetch(`${API_BASE}/api/tables/${tableId}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: resolvedDisplayName }),
+        body: JSON.stringify({ display_name: resolvedDisplayName, player_id: playerId }),
       });
 
       if (!res.ok) {
@@ -173,6 +243,8 @@ export default function HomePage() {
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(STORAGE_KEYS.clientId(tableId), data.client_id);
       }
+      const typedName = displayNameInput.trim();
+      await persistIdentityFromJoin(data, typedName);
 
       // Use setTimeout for consistent navigation behavior
       setTimeout(() => {
