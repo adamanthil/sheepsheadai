@@ -24,7 +24,53 @@ uv run play.py
 
 The web UI consists of a FastAPI backend server and a Next.js frontend.
 
-### 1. Backend server
+### 1. Database
+
+The server requires Postgres at runtime. A local dev instance is provided
+via Docker Compose:
+
+```bash
+docker compose up -d postgres
+```
+
+This boots Postgres 18 on `localhost:5433` (host port chosen to avoid colliding
+with a local Postgres on 5432) with both the `sheepshead` database and a
+`sheepshead_shadow` database (used by graphile-migrate). Credentials match
+`.env.example`.
+
+All database commands run from the `db/` directory (or use `npm --prefix db`
+from the repo root). Apply the schema with
+[graphile-migrate](https://github.com/graphile/migrate):
+
+```bash
+# First time only — install graphile-migrate locally:
+npm --prefix db install
+
+# Make sure DATABASE_URL / SHADOW_DATABASE_URL / ROOT_DATABASE_URL are exported
+# in the current shell (graphile-migrate reads them directly):
+set -a && source .env && set +a
+
+# Apply committed migrations to the DB pointed at by DATABASE_URL:
+npm --prefix db run migrate
+
+# During schema iteration:
+npm --prefix db run watch                 # re-apply current.sql on save (shadow + dev)
+npm --prefix db run commit -- -m "msg"    # freeze current.sql as a committed migration
+npm --prefix db run reset                 # drop & recreate, re-run migrations + afterReset.sql
+```
+
+Equivalently, `cd db && npm run migrate` etc.
+
+See [docs/database-migrations.md](docs/database-migrations.md) for the full
+migration workflow (writing new migrations, deploying to production, common
+pitfalls).
+
+Reference seed data (`suit`, `card`) is generated from `sheepshead.py` by
+`scripts/gen_card_seed.py` and lives in `db/fixtures/afterReset.sql`. Re-run
+the script after any change to `DECK` / `SUIT_NAMES` and commit the result.
+
+### 2. Backend server
+
 
 Install the server dependencies (includes FastAPI, uvicorn, asyncpg, etc.):
 
@@ -45,6 +91,9 @@ The server listens on `http://localhost:9000` by default.
 | Variable | Required | Description | Example |
 |---|---|---|---|
 | `SHEEPSHEAD_MODEL_PATH` | Yes | Path to the trained `.pt` model file. Must point to a file owned and reviewed by you — never load untrusted checkpoints. | `./final_pfsp_swish_ppo.pt` |
+| `DATABASE_URL` | Yes | Postgres connection string. Server fails fast at startup if missing. | `postgres://sheepshead:sheepshead@localhost:5433/sheepshead` |
+| `SHADOW_DATABASE_URL` | Dev/CI | Shadow DB used by graphile-migrate `watch` / `reset`. Never set in production. | `postgres://...:5433/sheepshead_shadow` |
+| `ROOT_DATABASE_URL` | Dev/CI | Superuser DB used by graphile-migrate to create/drop the shadow. | `postgres://...:5433/postgres` |
 | `SHEEPSHEAD_CORS_ORIGINS` | In production | Comma-separated list of allowed CORS origins. Required when `ENV=production`; omit in dev (localhost:3000 is allowed automatically). | `https://example.com` |
 | `ENV` | No | Set to `production` to enable production-mode CORS and logging defaults. | `development` |
 | `LOG_FORMAT` | No | Set to `json` for structured JSON logs (recommended in production). Defaults to `text`. | `json` |
@@ -53,7 +102,7 @@ Copy `.env.example` to `.env` and fill in your values. `.env` is never committed
 
 > `SHEEPSHEAD_MODEL_PATH` can be set via the `--model` flag in `run_server.sh` or as an env var directly.
 
-### 2. Frontend
+### 3. Frontend
 
 Install Node dependencies (first time only, or after dependency changes):
 

@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: sheepshead_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sheepshead
+      POSTGRES_PASSWORD: sheepshead
+      POSTGRES_DB: sheepshead
+    ports:
+      # Host port 5433 to avoid colliding with a host Postgres on 5432.
+      - "5433:5432"
+    volumes:
+      # Postgres 18 stores data under a major-version subdir; mount at
+      # /var/lib/postgresql so upgrades can use pg_upgrade --link.
+      - sheepshead_pgdata:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  sheepshead_pgdata:

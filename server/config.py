@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     sheepshead_model_path: str
+    database_url: str
     sheepshead_cors_origins: str = ""
     env: str = "development"
     log_format: str = "text"

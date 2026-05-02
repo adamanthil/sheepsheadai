@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from server.api import tables as tables_router
 from server.config import get_settings
 from server.realtime import websocket as websocket_router
 from server.services.ai_loader import load_agent
+from server.services.persistence.pool import close_pool, open_pool
 
 
 class _JsonFormatter(logging.Formatter):
@@ -50,9 +52,19 @@ def create_app() -> FastAPI:
         raise FileNotFoundError(
             f"SHEEPSHEAD_MODEL_PATH points to a missing file: {settings.sheepshead_model_path}"
         )
+    if not settings.database_url:
+        raise RuntimeError("DATABASE_URL must be set")
     load_agent(settings.sheepshead_model_path)
 
-    app = FastAPI(title="Sheepshead Realtime API")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await open_pool(app, settings.database_url)
+        try:
+            yield
+        finally:
+            await close_pool(app)
+
+    app = FastAPI(title="Sheepshead Realtime API", lifespan=lifespan)
 
     if settings.env == "production":
         origins = [

@@ -1,0 +1,16 @@
+{
+  "name": "sheepshead-db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Database migrations for sheepsheadai (graphile-migrate).",
+  "scripts": {
+    "migrate": "graphile-migrate migrate",
+    "watch": "graphile-migrate watch",
+    "commit": "graphile-migrate commit",
+    "reset": "graphile-migrate reset --erase",
+    "uncommit": "graphile-migrate uncommit"
+  },
+  "devDependencies": {
+    "graphile-migrate": "^1.4.1"
+  }
+}
