@@ -230,6 +230,7 @@ export default function HomePage() {
           <button
             onClick={handleCreateClick}
             disabled={creating || !name.trim() || !displayName.trim()}
+            suppressHydrationWarning
             style={{
               opacity: creating ? 0.7 : 1,
               cursor: creating ? 'not-allowed' : 'pointer',
