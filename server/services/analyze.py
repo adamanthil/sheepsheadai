@@ -37,7 +37,7 @@ def set_seed(seed: int) -> None:
 
 def build_player_state_for_analyze(player: Player) -> Dict[str, any]:
     """Build the per-seat state payload: dict state and a readable view (simplified for analyze)."""
-    from server.main import build_player_state
+    from server.runtime.tables import build_player_state
     return build_player_state(player)
 
 
