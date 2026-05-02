@@ -14,7 +14,11 @@ from server.api.schemas import (
     StartGameRequest,
 )
 from server.config import get_settings
-from server.realtime.broadcast import broadcast_table_event, broadcast_table_state, broadcast_table_update
+from server.realtime.broadcast import (
+    broadcast_table_event,
+    broadcast_table_state,
+    broadcast_table_update,
+)
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import ai_observe_all, schedule_ai_turns
 from server.runtime.seating import _is_ai_occupant
@@ -46,7 +50,9 @@ async def fill_ai(table_id: str, req: RedealRequest | None = None):
         if not table.seats[i]:
             occ_id = str(uuid.uuid4())
             display_name = ai_name_pool[(i - 1) % len(ai_name_pool)]
-            table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
+            table.occupants[occ_id] = Occupant(
+                id=occ_id, display_name=display_name, is_ai=True
+            )
             table.seats[i] = occ_id
 
     await broadcast_table_update(table)
@@ -69,7 +75,9 @@ async def start_waiting(table_id: str, req: RedealRequest | None = None):
         if not table.seats[i]:
             occ_id = str(uuid.uuid4())
             display_name = ai_name_pool[(i - 1) % len(ai_name_pool)]
-            table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
+            table.occupants[occ_id] = Occupant(
+                id=occ_id, display_name=display_name, is_ai=True
+            )
             table.seats[i] = occ_id
 
     await broadcast_table_update(table)
@@ -86,21 +94,31 @@ async def start_game(table_id: str, req: StartGameRequest):
     if table.status != "open":
         raise HTTPException(status_code=400, detail="already_started")
 
-    if not req.client_id or not table.host_client_id or req.client_id != table.host_client_id:
+    if (
+        not req.client_id
+        or not table.host_client_id
+        or req.client_id != table.host_client_id
+    ):
         raise HTTPException(status_code=403, detail="only_host_can_start")
 
     if table.fill_with_ai:
         for i in range(1, 6):
             if not table.seats[i]:
                 occ_id = str(uuid.uuid4())
-                display_name = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"][(i - 1) % 6]
-                table.occupants[occ_id] = Occupant(id=occ_id, display_name=display_name, is_ai=True)
+                display_name = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"][
+                    (i - 1) % 6
+                ]
+                table.occupants[occ_id] = Occupant(
+                    id=occ_id, display_name=display_name, is_ai=True
+                )
                 table.seats[i] = occ_id
 
     if not all(table.seats[i] for i in range(1, 6)):
         raise HTTPException(status_code=400, detail="not_enough_players")
 
-    if not table.host_client_id or all(table.seats[i] != table.host_client_id for i in range(1, 6)):
+    if not table.host_client_id or all(
+        table.seats[i] != table.host_client_id for i in range(1, 6)
+    ):
         raise HTTPException(status_code=400, detail="host_not_seated")
 
     rules = table.rules or {}
@@ -209,7 +227,9 @@ async def post_action(table_id: str, req: ActionRequest):
         msg_dict = await add_chat_message(table, "system", f"{display_name} goes alone")
         await broadcast_chat_append(table, msg_dict)
     elif action_str == "JD PARTNER":
-        msg_dict = await add_chat_message(table, "system", f"{display_name} chose JD partner")
+        msg_dict = await add_chat_message(
+            table, "system", f"{display_name} chose JD partner"
+        )
         await broadcast_chat_append(table, msg_dict)
     elif action_str.startswith("CALL "):
         parts = action_str.split()
@@ -234,10 +254,17 @@ async def post_action(table_id: str, req: ActionRequest):
                 if not occ:
                     continue
                 pscore = table.game.players[i - 1].get_score()
-                table.running_scores[occ] = table.running_scores.get(occ, 0) + int(pscore)
+                table.running_scores[occ] = table.running_scores.get(occ, 0) + int(
+                    pscore
+                )
             table.results_counted = True
             try:
-                entry: Dict[str, Any] = {"hand": len(table.results_history) + 1, "timestamp": time.time(), "bySeat": {}, "sum": 0}
+                entry: Dict[str, Any] = {
+                    "hand": len(table.results_history) + 1,
+                    "timestamp": time.time(),
+                    "bySeat": {},
+                    "sum": 0,
+                }
                 pub = table.to_public_dict()
                 for i in range(1, 6):
                     name = pub["seats"][i]
@@ -247,7 +274,9 @@ async def post_action(table_id: str, req: ActionRequest):
                     entry["sum"] += score
                 table.results_history.append(entry)
             except Exception:
-                logging.exception("failed to record results history for table %s", table_id)
+                logging.exception(
+                    "failed to record results history for table %s", table_id
+                )
         await broadcast_table_state(table)
 
     return {"ok": True}

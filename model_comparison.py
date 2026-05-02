@@ -33,15 +33,17 @@ from sheepshead import Game, ACTIONS
 @dataclass
 class ModelConfig:
     """Configuration for a model in the simulation."""
+
     path: str
     name: str
     num_positions: int  # How many player positions this model controls
-    activation: str = 'swish'
+    activation: str = "swish"
 
 
 @dataclass
 class GameResult:
     """Result of a single game."""
+
     game_id: int
     scores: List[int]  # Scores for positions 1-5
     picker_position: int
@@ -53,7 +55,9 @@ class GameResult:
 class ModelComparisonSimulator:
     """Simulator for comparing different Sheepshead models."""
 
-    def __init__(self, model_configs: List[ModelConfig], num_games: int, seed: int = 42):
+    def __init__(
+        self, model_configs: List[ModelConfig], num_games: int, seed: int = 42
+    ):
         """
         Initialize the simulator.
 
@@ -85,9 +89,13 @@ class ModelComparisonSimulator:
         self.model_scores: Dict[str, List[int]] = defaultdict(list)
 
         # Position rotation tracking for tracked agents
-        self.position_rotation_cycle = 5  # Tracked agents rotate through all 5 positions
+        self.position_rotation_cycle = (
+            5  # Tracked agents rotate through all 5 positions
+        )
 
-    def get_rotated_positions(self, game_id: int) -> Tuple[Dict[str, List[int]], Dict[str, int]]:
+    def get_rotated_positions(
+        self, game_id: int
+    ) -> Tuple[Dict[str, List[int]], Dict[str, int]]:
         """Get rotated position assignments and tracked positions for a given game.
 
         Returns:
@@ -96,7 +104,7 @@ class ModelComparisonSimulator:
         """
         rotation_offset = game_id % 5  # 5-game rotation cycle for tracked agents
 
-                # Assign tracked positions - these rotate through all 5 positions
+        # Assign tracked positions - these rotate through all 5 positions
         tracked_positions = {}
         for i, config in enumerate(self.model_configs):
             tracked_positions[config.name] = ((rotation_offset + i) % 5) + 1
@@ -147,9 +155,13 @@ class ModelComparisonSimulator:
         print("=" * 60)
 
         # Print model assignment info
-        print("Model assignments (ONLY tracked agent statistics are recorded for fair comparison):")
+        print(
+            "Model assignments (ONLY tracked agent statistics are recorded for fair comparison):"
+        )
         for config in self.model_configs:
-            print(f"  {config.name}: Controls {config.num_positions} position(s), tracks 1 agent")
+            print(
+                f"  {config.name}: Controls {config.num_positions} position(s), tracks 1 agent"
+            )
         print("  • Each model's tracked agent rotates through all 5 positions equally")
         print("  • Non-tracked agents still play but don't contribute to statistics")
         print()
@@ -162,11 +174,15 @@ class ModelComparisonSimulator:
                 games_per_sec = (game_id + 1) / elapsed
                 remaining_games = self.num_games - (game_id + 1)
                 eta = remaining_games / games_per_sec
-                print(f"Game {game_id + 1:,}/{self.num_games:,} ({(game_id + 1)/self.num_games*100:.1f}%) "
-                      f"- {games_per_sec:.1f} games/sec - ETA: {eta:.0f}s")
+                print(
+                    f"Game {game_id + 1:,}/{self.num_games:,} ({(game_id + 1) / self.num_games * 100:.1f}%) "
+                    f"- {games_per_sec:.1f} games/sec - ETA: {eta:.0f}s"
+                )
 
             # Get rotated positions for this game
-            position_assignments, tracked_positions = self.get_rotated_positions(game_id)
+            position_assignments, tracked_positions = self.get_rotated_positions(
+                game_id
+            )
 
             result = self.play_game(game_id, position_assignments)
             self.results.append(result)
@@ -177,9 +193,13 @@ class ModelComparisonSimulator:
                 self.model_scores[config.name].append(result.scores[tracked_pos - 1])
 
         elapsed = time.time() - start_time
-        print(f"\n✅ Simulation completed in {elapsed:.1f}s ({self.num_games/elapsed:.1f} games/sec)")
+        print(
+            f"\n✅ Simulation completed in {elapsed:.1f}s ({self.num_games / elapsed:.1f} games/sec)"
+        )
 
-    def play_game(self, game_id: int, position_assignments: Dict[str, List[int]]) -> GameResult:
+    def play_game(
+        self, game_id: int, position_assignments: Dict[str, List[int]]
+    ) -> GameResult:
         """Play a single game and return the result."""
         game = Game()
 
@@ -219,7 +239,7 @@ class ModelComparisonSimulator:
             picker_position=picker_position,
             is_leaster=is_leaster,
             picker_points=picker_points or 0,
-            defender_points=defender_points or 0
+            defender_points=defender_points or 0,
         )
 
     def analyze_results(self):
@@ -227,7 +247,7 @@ class ModelComparisonSimulator:
         print("\n📊 STATISTICAL ANALYSIS")
         print("=" * 60)
 
-                # Basic statistics for each model
+        # Basic statistics for each model
         summary_stats = {}
         for config in self.model_configs:
             scores = self.model_scores[config.name]
@@ -245,18 +265,18 @@ class ModelComparisonSimulator:
             percentiles = np.percentile(scores, [10, 25, 75, 90])
 
             summary_stats[config.name] = {
-                'mean': mean_score,
-                'median': median_score,
-                'mode': mode_score,
-                'mode_frequency': mode_frequency,
-                'std': std_score,
-                'min': min(scores),
-                'max': max(scores),
-                'p10': percentiles[0],
-                'p25': percentiles[1],
-                'p75': percentiles[2],
-                'p90': percentiles[3],
-                'num_games': len(scores)  # Games played by tracked agent
+                "mean": mean_score,
+                "median": median_score,
+                "mode": mode_score,
+                "mode_frequency": mode_frequency,
+                "std": std_score,
+                "min": min(scores),
+                "max": max(scores),
+                "p10": percentiles[0],
+                "p25": percentiles[1],
+                "p75": percentiles[2],
+                "p90": percentiles[3],
+                "num_games": len(scores),  # Games played by tracked agent
             }
 
         # Print summary statistics
@@ -266,7 +286,9 @@ class ModelComparisonSimulator:
             print(f"\n{model_name}:")
             print(f"  Mean Score:       {model_stats['mean']:+.3f}")
             print(f"  Median Score:     {model_stats['median']:+.3f}")
-            print(f"  Mode Score:       {model_stats['mode']:+.0f} (appeared {model_stats['mode_frequency']} times)")
+            print(
+                f"  Mode Score:       {model_stats['mode']:+.0f} (appeared {model_stats['mode_frequency']} times)"
+            )
             print(f"  Std Deviation:    {model_stats['std']:.3f}")
             print(f"  Min Score:        {model_stats['min']:+.0f}")
             print(f"  Max Score:        {model_stats['max']:+.0f}")
@@ -294,17 +316,29 @@ class ModelComparisonSimulator:
                     t_stat, t_p_value = stats.ttest_ind(scores1, scores2)
 
                     # Perform Mann-Whitney U test (non-parametric)
-                    u_stat, u_p_value = stats.mannwhitneyu(scores1, scores2, alternative='two-sided')
+                    u_stat, u_p_value = stats.mannwhitneyu(
+                        scores1, scores2, alternative="two-sided"
+                    )
 
                     # Effect size (Cohen's d)
-                    pooled_std = np.sqrt(((np.std(scores1) ** 2) + (np.std(scores2) ** 2)) / 2)
+                    pooled_std = np.sqrt(
+                        ((np.std(scores1) ** 2) + (np.std(scores2) ** 2)) / 2
+                    )
                     cohens_d = (np.mean(scores1) - np.mean(scores2)) / pooled_std
 
                     print(f"\n{model1} vs {model2}:")
-                    print(f"  Mean Difference:  {np.mean(scores1) - np.mean(scores2):+.3f}")
-                    print(f"  T-test p-value:   {t_p_value:.6f} {'***' if t_p_value < 0.001 else '**' if t_p_value < 0.01 else '*' if t_p_value < 0.05 else ''}")
-                    print(f"  Mann-Whitney p:   {u_p_value:.6f} {'***' if u_p_value < 0.001 else '**' if u_p_value < 0.01 else '*' if u_p_value < 0.05 else ''}")
-                    print(f"  Effect Size (d):  {cohens_d:.3f} ({'large' if abs(cohens_d) > 0.8 else 'medium' if abs(cohens_d) > 0.5 else 'small' if abs(cohens_d) > 0.2 else 'negligible'})")
+                    print(
+                        f"  Mean Difference:  {np.mean(scores1) - np.mean(scores2):+.3f}"
+                    )
+                    print(
+                        f"  T-test p-value:   {t_p_value:.6f} {'***' if t_p_value < 0.001 else '**' if t_p_value < 0.01 else '*' if t_p_value < 0.05 else ''}"
+                    )
+                    print(
+                        f"  Mann-Whitney p:   {u_p_value:.6f} {'***' if u_p_value < 0.001 else '**' if u_p_value < 0.01 else '*' if u_p_value < 0.05 else ''}"
+                    )
+                    print(
+                        f"  Effect Size (d):  {cohens_d:.3f} ({'large' if abs(cohens_d) > 0.8 else 'medium' if abs(cohens_d) > 0.5 else 'small' if abs(cohens_d) > 0.2 else 'negligible'})"
+                    )
 
                     # Interpretation
                     if t_p_value < 0.001:
@@ -316,8 +350,12 @@ class ModelComparisonSimulator:
                     else:
                         significance = "not significant"
 
-                    better_model = model1 if np.mean(scores1) > np.mean(scores2) else model2
-                    print(f"  Result: {significance} difference (p < 0.05), {better_model} performs better")
+                    better_model = (
+                        model1 if np.mean(scores1) > np.mean(scores2) else model2
+                    )
+                    print(
+                        f"  Result: {significance} difference (p < 0.05), {better_model} performs better"
+                    )
 
         return summary_stats
 
@@ -326,7 +364,7 @@ class ModelComparisonSimulator:
         print(f"\n📈 Generating plots in {output_dir}/...")
 
         # Set up matplotlib for non-interactive use
-        plt.switch_backend('Agg')
+        plt.switch_backend("Agg")
 
         # 1. Score distribution plot
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
@@ -336,8 +374,8 @@ class ModelComparisonSimulator:
         model_names = [config.name for config in self.model_configs]
 
         ax1.boxplot(score_data, tick_labels=model_names)
-        ax1.set_title('Score Distribution by Model')
-        ax1.set_ylabel('Score')
+        ax1.set_title("Score Distribution by Model")
+        ax1.set_ylabel("Score")
         ax1.grid(True, alpha=0.3)
 
         # Histogram
@@ -345,14 +383,16 @@ class ModelComparisonSimulator:
             scores = self.model_scores[config.name]
             ax2.hist(scores, bins=30, alpha=0.7, label=config.name)
 
-        ax2.set_title('Score Distribution Histogram')
-        ax2.set_xlabel('Score')
-        ax2.set_ylabel('Frequency')
+        ax2.set_title("Score Distribution Histogram")
+        ax2.set_xlabel("Score")
+        ax2.set_ylabel("Frequency")
         ax2.legend()
         ax2.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(f'{output_dir}/score_distributions.png', dpi=150, bbox_inches='tight')
+        plt.savefig(
+            f"{output_dir}/score_distributions.png", dpi=150, bbox_inches="tight"
+        )
         plt.close()
 
         # 2. Performance over time plot
@@ -366,18 +406,20 @@ class ModelComparisonSimulator:
             rolling_avg = []
             for i in range(len(scores)):
                 start_idx = max(0, i - window_size + 1)
-                rolling_avg.append(np.mean(scores[start_idx:i+1]))
+                rolling_avg.append(np.mean(scores[start_idx : i + 1]))
 
             ax.plot(rolling_avg, label=config.name, alpha=0.8)
 
-        ax.set_title(f'Performance Over Time (Rolling Average, Window={window_size})')
-        ax.set_xlabel('Game Number')
-        ax.set_ylabel('Average Score')
+        ax.set_title(f"Performance Over Time (Rolling Average, Window={window_size})")
+        ax.set_xlabel("Game Number")
+        ax.set_ylabel("Average Score")
         ax.legend()
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(f'{output_dir}/performance_over_time.png', dpi=150, bbox_inches='tight')
+        plt.savefig(
+            f"{output_dir}/performance_over_time.png", dpi=150, bbox_inches="tight"
+        )
         plt.close()
 
         print("✅ Plots saved successfully")
@@ -388,39 +430,41 @@ class ModelComparisonSimulator:
 
         # Prepare data for JSON serialization
         results_data = {
-            'simulation_config': {
-                'num_games': self.num_games,
-                'seed': self.seed,
-                'position_rotation_cycle': self.position_rotation_cycle,
-                'models': [
+            "simulation_config": {
+                "num_games": self.num_games,
+                "seed": self.seed,
+                "position_rotation_cycle": self.position_rotation_cycle,
+                "models": [
                     {
-                        'name': config.name,
-                        'path': config.path,
-                        'num_positions': config.num_positions,
-                        'activation': config.activation
+                        "name": config.name,
+                        "path": config.path,
+                        "num_positions": config.num_positions,
+                        "activation": config.activation,
                     }
                     for config in self.model_configs
-                ]
+                ],
             },
-            'game_results': [
+            "game_results": [
                 {
-                    'game_id': result.game_id,
-                    'scores': result.scores,
-                    'picker_position': result.picker_position,
-                    'is_leaster': result.is_leaster,
-                    'picker_points': result.picker_points,
-                    'defender_points': result.defender_points,
-                    'position_assignments': self.get_rotated_positions(result.game_id)[0],
-                    'tracked_positions': self.get_rotated_positions(result.game_id)[1]
+                    "game_id": result.game_id,
+                    "scores": result.scores,
+                    "picker_position": result.picker_position,
+                    "is_leaster": result.is_leaster,
+                    "picker_points": result.picker_points,
+                    "defender_points": result.defender_points,
+                    "position_assignments": self.get_rotated_positions(result.game_id)[
+                        0
+                    ],
+                    "tracked_positions": self.get_rotated_positions(result.game_id)[1],
                 }
                 for result in self.results
             ],
-            'model_scores': {
+            "model_scores": {
                 name: scores for name, scores in self.model_scores.items()
-            }
+            },
         }
 
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             json.dump(results_data, f, indent=2)
 
         print(f"✅ Results saved to {filename}")
@@ -443,42 +487,84 @@ Examples:
   python model_comparison.py --games 5000 \\
     --model1-path final_swish_ppo.pt --model1-name "Final Model" --model1-positions 3 \\
     --model2-path best_swish_ppo.pt --model2-name "Best Model" --model2-positions 2
-        """
+        """,
     )
 
     # General arguments
-    parser.add_argument('--games', type=int, default=10000,
-                       help='Number of games to simulate (default: 10000)')
-    parser.add_argument('--seed', type=int, default=42,
-                       help='Random seed for reproducibility (default: 42)')
-    parser.add_argument('--output-dir', type=str, default='.',
-                       help='Output directory for plots and results (default: current directory)')
+    parser.add_argument(
+        "--games",
+        type=int,
+        default=10000,
+        help="Number of games to simulate (default: 10000)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=".",
+        help="Output directory for plots and results (default: current directory)",
+    )
 
     # Model 1 arguments
-    parser.add_argument('--model1-path', type=str, required=True,
-                       help='Path to first model checkpoint')
-    parser.add_argument('--model1-name', type=str, default='Model 1',
-                       help='Name for first model (default: Model 1)')
-    parser.add_argument('--model1-positions', type=int, required=True,
-                       help='Number of positions for first model (1-4)')
-    parser.add_argument('--model1-activation', type=str, default='swish', choices=['relu', 'swish'],
-                       help='Activation function for first model (default: swish)')
+    parser.add_argument(
+        "--model1-path", type=str, required=True, help="Path to first model checkpoint"
+    )
+    parser.add_argument(
+        "--model1-name",
+        type=str,
+        default="Model 1",
+        help="Name for first model (default: Model 1)",
+    )
+    parser.add_argument(
+        "--model1-positions",
+        type=int,
+        required=True,
+        help="Number of positions for first model (1-4)",
+    )
+    parser.add_argument(
+        "--model1-activation",
+        type=str,
+        default="swish",
+        choices=["relu", "swish"],
+        help="Activation function for first model (default: swish)",
+    )
 
     # Model 2 arguments
-    parser.add_argument('--model2-path', type=str, required=True,
-                       help='Path to second model checkpoint')
-    parser.add_argument('--model2-name', type=str, default='Model 2',
-                       help='Name for second model (default: Model 2)')
-    parser.add_argument('--model2-positions', type=int, required=True,
-                       help='Number of positions for second model (1-4)')
-    parser.add_argument('--model2-activation', type=str, default='swish', choices=['relu', 'swish'],
-                       help='Activation function for second model (default: swish)')
+    parser.add_argument(
+        "--model2-path", type=str, required=True, help="Path to second model checkpoint"
+    )
+    parser.add_argument(
+        "--model2-name",
+        type=str,
+        default="Model 2",
+        help="Name for second model (default: Model 2)",
+    )
+    parser.add_argument(
+        "--model2-positions",
+        type=int,
+        required=True,
+        help="Number of positions for second model (1-4)",
+    )
+    parser.add_argument(
+        "--model2-activation",
+        type=str,
+        default="swish",
+        choices=["relu", "swish"],
+        help="Activation function for second model (default: swish)",
+    )
 
     args = parser.parse_args()
 
     # Validate position arguments
     if args.model1_positions + args.model2_positions != 5:
-        parser.error(f"Total positions must equal 5, got {args.model1_positions + args.model2_positions}")
+        parser.error(
+            f"Total positions must equal 5, got {args.model1_positions + args.model2_positions}"
+        )
 
     if args.model1_positions < 1 or args.model1_positions > 4:
         parser.error("Model 1 positions must be between 1 and 4")
@@ -492,14 +578,14 @@ Examples:
             path=args.model1_path,
             name=args.model1_name,
             num_positions=args.model1_positions,
-            activation=args.model1_activation
+            activation=args.model1_activation,
         ),
         ModelConfig(
             path=args.model2_path,
             name=args.model2_name,
             num_positions=args.model2_positions,
-            activation=args.model2_activation
-        )
+            activation=args.model2_activation,
+        ),
     ]
 
     # Run simulation

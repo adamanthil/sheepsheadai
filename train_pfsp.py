@@ -57,12 +57,14 @@ class PFSPHyperparams:
     # Adaptive exploration for pick head (rate-based bump scheduling)
     low_pick_rate_threshold: float = 20.0  # percent
     high_pick_rate_threshold: float = 60.0  # percent
-    pick_entropy_bump: float = 0.04        # added to base decayed pick entropy
+    pick_entropy_bump: float = 0.04  # added to base decayed pick entropy
     pick_entropy_bump_duration: int = 25000  # episodes
 
     # PASS-floor epsilon controller
     # Ensures minimum PASS probability on pick steps if picker average score is low.
-    high_pick_rate_ceiling: float = 80.0  # Alter distribution to force PASS after this threshold
+    high_pick_rate_ceiling: float = (
+        80.0  # Alter distribution to force PASS after this threshold
+    )
     pass_floor_eps_base: float = 0.0
     pass_floor_eps_target: float = 0.08
     pass_floor_eps_step_up: float = 0.02
@@ -78,18 +80,24 @@ class PFSPHyperparams:
     pick_floor_eps_step_down: float = 0.02
 
     # Adaptive exploration for partner head (ALONE decision; bump scheduling)
-    low_alone_rate_threshold: float = 2.5    # percent
+    low_alone_rate_threshold: float = 2.5  # percent
     high_alone_rate_threshold: float = 30.0  # percent
-    partner_entropy_bump: float = 0.04       # added to base decayed partner entropy
+    partner_entropy_bump: float = 0.04  # added to base decayed partner entropy
     partner_entropy_bump_duration: int = 25000  # episodes
 
     # Partner CALL mixture epsilon controller
     # Probability floor over CALL actions when picker average score is low.
-    high_alone_rate_ceiling: float = 60.0  # Alter distribution to force partner calls after this threshold
+    high_alone_rate_ceiling: float = (
+        60.0  # Alter distribution to force partner calls after this threshold
+    )
     partner_call_eps_base: float = 0.0
-    partner_call_eps_max_mid: float = 0.05   # when picker avg <= mid_picker_avg_threshold
+    partner_call_eps_max_mid: float = (
+        0.05  # when picker avg <= mid_picker_avg_threshold
+    )
     partner_call_eps_mid_picker_avg_threshold: float = -0.75
-    partner_call_eps_max_high: float = 0.10  # when picker avg <= high_picker_avg_threshold
+    partner_call_eps_max_high: float = (
+        0.10  # when picker avg <= high_picker_avg_threshold
+    )
     partner_call_eps_high_picker_avg_threshold: float = -2
     partner_call_eps_step_up: float = 0.02
     partner_call_eps_step_down: float = 0.02
@@ -97,7 +105,7 @@ class PFSPHyperparams:
     # Adaptive exploration for bury head (bury decisions quality)
     # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
     low_bury_quality_threshold: float = 85.0  # percent
-    bury_entropy_bump: float = 0.04          # added to base decayed bury entropy
+    bury_entropy_bump: float = 0.04  # added to base decayed bury entropy
     bury_entropy_bump_duration: int = 19000  # episodes
 
     # Entropy schedules (start -> end)
@@ -111,14 +119,26 @@ class PFSPHyperparams:
     entropy_play_end: float = 0.005
 
     # Shaped reward schedules (percent -> weight).
-    shaping_schedule_pick: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 60: 0})
-    shaping_schedule_partner: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0})
-    shaping_schedule_bury: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0})
-    shaping_schedule_play: dict[int, float] = field(default_factory=lambda: {0: 1.0, 50: 1.0, 70: 0})
+    shaping_schedule_pick: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 60: 0}
+    )
+    shaping_schedule_partner: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
+    )
+    shaping_schedule_bury: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
+    )
+    shaping_schedule_play: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 70: 0}
+    )
 
     # Learning rate schedules (percent -> learning rate).
-    lr_schedule_actor: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 5e-5})
-    lr_schedule_critic: dict[int, float] = field(default_factory=lambda: {0: 1.5e-4, 100: 5e-5})
+    lr_schedule_actor: dict[int, float] = field(
+        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
+    )
+    lr_schedule_critic: dict[int, float] = field(
+        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
+    )
 
     # Opponent scheduling (PFSP mixture vs anchor/pressure/support specials)
     anchor_block_start_prob: float = 0.03
@@ -158,11 +178,13 @@ def interpolated_weight(schedule: dict, progress_pct: float) -> float:
     return points[-1][1]
 
 
-def play_population_game(training_agent: PPOAgent,
-                        opponents: list,
-                        partner_mode: int,
-                        training_agent_position: int = 1,
-                        shaping_weights: dict | None = None) -> tuple:
+def play_population_game(
+    training_agent: PPOAgent,
+    opponents: list,
+    partner_mode: int,
+    training_agent_position: int = 1,
+    shaping_weights: dict | None = None,
+) -> tuple:
     """Play a single game with the training agent and population opponents.
 
     Returns:
@@ -181,7 +203,9 @@ def play_population_game(training_agent: PPOAgent,
     agents[training_agent_position - 1] = training_agent
 
     # Randomize which opponent sits in which non-training seat to reduce seat-assignment bias
-    opponent_seat_positions = [pos for pos in range(1, 6) if pos != training_agent_position]
+    opponent_seat_positions = [
+        pos for pos in range(1, 6) if pos != training_agent_position
+    ]
     random.shuffle(opponent_seat_positions)
     for opponent, seat_pos in zip(opponents[:4], opponent_seat_positions):
         agents[seat_pos - 1] = opponent.agent
@@ -193,11 +217,13 @@ def play_population_game(training_agent: PPOAgent,
     # Map positions to population opponents for profile updates
     pos_to_pop_agent = {}
     opp_positions = opponent_seat_positions.copy()
-    for opp, seat_pos in zip(opponents[:len(opp_positions)], opp_positions):
+    for opp, seat_pos in zip(opponents[: len(opp_positions)], opp_positions):
         pos_to_pop_agent[seat_pos] = opp
 
     # Hand strength categories captured once at start
-    hand_strength_by_pos = {p.position: estimate_hand_strength_category(p.hand) for p in game.players}
+    hand_strength_by_pos = {
+        p.position: estimate_hand_strength_category(p.hand) for p in game.players
+    }
 
     while not game.is_done():
         for player in game.players:
@@ -209,22 +235,28 @@ def play_population_game(training_agent: PPOAgent,
 
                 # Get action from appropriate agent
                 if current_agent == training_agent:
-                    action, log_prob, value = current_agent.act(state, valid_actions, player.position)
+                    action, log_prob, value = current_agent.act(
+                        state, valid_actions, player.position
+                    )
 
                     # Store transition for training agent
                     transition = {
-                        'kind': 'action',
-                        'player': player,
-                        'state': state,
-                        'action': action,
-                        'log_prob': log_prob,
-                        'value': value,
-                        'valid_actions': valid_actions.copy(),
-                        'intermediate_reward': 0.0,
-                        'secret_partner_label': 1.0 if player.is_secret_partner else 0.0,
-                        'points_label': compute_known_points_rel(player),
-                        'seen_trump_mask_label': compute_seen_trump_mask(player),
-                        'unseen_trump_higher_than_hand_label': compute_any_unseen_trump_higher_than_hand(player),
+                        "kind": "action",
+                        "player": player,
+                        "state": state,
+                        "action": action,
+                        "log_prob": log_prob,
+                        "value": value,
+                        "valid_actions": valid_actions.copy(),
+                        "intermediate_reward": 0.0,
+                        "secret_partner_label": 1.0
+                        if player.is_secret_partner
+                        else 0.0,
+                        "points_label": compute_known_points_rel(player),
+                        "seen_trump_mask_label": compute_seen_trump_mask(player),
+                        "unseen_trump_higher_than_hand_label": compute_any_unseen_trump_higher_than_hand(
+                            player
+                        ),
                     }
                     episode_transitions.append(transition)
 
@@ -243,12 +275,16 @@ def play_population_game(training_agent: PPOAgent,
 
                 else:
                     # Opponent action (stochastic for diversity)
-                    action, _, _ = current_agent.act(state, valid_actions, player.position, deterministic=False)
+                    action, _, _ = current_agent.act(
+                        state, valid_actions, player.position, deterministic=False
+                    )
 
                 # --- Strategic profile updates for opponents (pre-action; uses pre-action hand + trick state) ---
                 pop_agent = pos_to_pop_agent.get(player.position)
                 if pop_agent:
-                    profile_pop_agent_action(game, player, action, pop_agent, hand_strength_by_pos)
+                    profile_pop_agent_action(
+                        game, player, action, pop_agent, hand_strength_by_pos
+                    )
 
                 player.act(action)
 
@@ -262,17 +298,24 @@ def play_population_game(training_agent: PPOAgent,
                         seat_agent = agents[seat.position - 1]
                         if seat_agent == training_agent:
                             # Update training agent's recurrent hidden state and also store for unroll
-                            training_agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
-                            episode_transitions.append({
-                                'kind': 'observation',
-                                'player': seat,
-                                'state': seat.get_last_trick_state_dict(),
-                            })
+                            training_agent.observe(
+                                seat.get_last_trick_state_dict(),
+                                player_id=seat.position,
+                            )
+                            episode_transitions.append(
+                                {
+                                    "kind": "observation",
+                                    "player": seat,
+                                    "state": seat.get_last_trick_state_dict(),
+                                }
+                            )
                         else:
-                            seat_agent.observe(seat.get_last_trick_state_dict(), seat.position)
+                            seat_agent.observe(
+                                seat.get_last_trick_state_dict(), seat.position
+                            )
                     # Update trick-level EWMAs for population agents
                     pos_to_pop_agent_local = {}
-                    for i, opp in enumerate(opponents[:len(opp_positions)]):
+                    for i, opp in enumerate(opponents[: len(opp_positions)]):
                         pos_to_pop_agent_local[opp_positions[i]] = opp
                     profile_trick_completion(game, pos_to_pop_agent_local)
 
@@ -282,69 +325,85 @@ def play_population_game(training_agent: PPOAgent,
 
     # Return training agent specific data
     training_agent_score = final_scores[training_agent_position - 1]
-    was_picker = (game.picker == training_agent_position)
+    was_picker = game.picker == training_agent_position
 
     training_agent_data = {
-        'score': training_agent_score,
-        'was_picker': was_picker,
-        'position': training_agent_position
+        "score": training_agent_score,
+        "was_picker": was_picker,
+        "position": training_agent_position,
     }
 
     # Compute rewards for training agent actions
     reward_map = {}
     for reward_data in process_episode_rewards(
-        [t for t in episode_transitions if t['kind'] == 'action'],
+        [t for t in episode_transitions if t["kind"] == "action"],
         final_scores,
-        game.is_leaster
+        game.is_leaster,
     ):
-        reward_map[id(reward_data['transition'])] = reward_data['reward']
+        reward_map[id(reward_data["transition"])] = reward_data["reward"]
 
     # Build final episode event stream for storage
     episode_events = []
     for ev in episode_transitions:
-        if ev['kind'] == 'observation':
-            episode_events.append({
-                'kind': 'observation',
-                'state': ev['state'],
-                'player_id': ev['player'].position,
-            })
+        if ev["kind"] == "observation":
+            episode_events.append(
+                {
+                    "kind": "observation",
+                    "state": ev["state"],
+                    "player_id": ev["player"].position,
+                }
+            )
         else:
-            seat_pos = ev['player'].position
-            episode_events.append({
-                'kind': 'action',
-                'state': ev['state'],
-                'action': ev['action'],
-                'log_prob': ev['log_prob'],
-                'value': ev['value'],
-                'valid_actions': ev['valid_actions'],
-                'reward': reward_map[id(ev)],
-                'player_id': seat_pos,
-                'win_label': 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
-                'final_return_label': float(final_scores[seat_pos - 1]),
-                'secret_partner_label': ev.get('secret_partner_label', 0.0),
-                'points_label': ev.get('points_label', None),
-                'seen_trump_mask_label': ev.get('seen_trump_mask_label', None),
-                'unseen_trump_higher_than_hand_label': ev.get('unseen_trump_higher_than_hand_label', None),
-            })
+            seat_pos = ev["player"].position
+            episode_events.append(
+                {
+                    "kind": "action",
+                    "state": ev["state"],
+                    "action": ev["action"],
+                    "log_prob": ev["log_prob"],
+                    "value": ev["value"],
+                    "valid_actions": ev["valid_actions"],
+                    "reward": reward_map[id(ev)],
+                    "player_id": seat_pos,
+                    "win_label": 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
+                    "final_return_label": float(final_scores[seat_pos - 1]),
+                    "secret_partner_label": ev.get("secret_partner_label", 0.0),
+                    "points_label": ev.get("points_label", None),
+                    "seen_trump_mask_label": ev.get("seen_trump_mask_label", None),
+                    "unseen_trump_higher_than_hand_label": ev.get(
+                        "unseen_trump_higher_than_hand_label", None
+                    ),
+                }
+            )
 
-    return game, episode_events, final_scores, training_agent_data, dict(pos_to_pop_agent)
+    return (
+        game,
+        episode_events,
+        final_scores,
+        training_agent_data,
+        dict(pos_to_pop_agent),
+    )
 
 
-def train_pfsp(num_episodes: int = 500000,
-               update_interval: int = 2048,
-               save_interval: int = 5000,
-               strategic_eval_interval: int = 10000,
-               population_add_interval: int = 5000,
-               cross_eval_interval: int = 20000,
-               resume_model: str = None,
-               activation: str = 'swish',
-               initial_checkpoints: list = None,
-               schedule_horizon_episodes: int | None = None,
-               hyperparams: PFSPHyperparams = DEFAULT_HYPERPARAMS):
+def train_pfsp(
+    num_episodes: int = 500000,
+    update_interval: int = 2048,
+    save_interval: int = 5000,
+    strategic_eval_interval: int = 10000,
+    population_add_interval: int = 5000,
+    cross_eval_interval: int = 20000,
+    resume_model: str = None,
+    activation: str = "swish",
+    initial_checkpoints: list = None,
+    schedule_horizon_episodes: int | None = None,
+    hyperparams: PFSPHyperparams = DEFAULT_HYPERPARAMS,
+):
     """
     PFSP training with population-based opponents.
     """
-    schedule_horizon = num_episodes if schedule_horizon_episodes is None else schedule_horizon_episodes
+    schedule_horizon = (
+        num_episodes if schedule_horizon_episodes is None else schedule_horizon_episodes
+    )
     if schedule_horizon <= 0:
         raise ValueError("schedule_horizon_episodes must be > 0")
 
@@ -353,7 +412,7 @@ def train_pfsp(num_episodes: int = 500000,
         return min(100.0, max(0.0, (clamped_episode / schedule_horizon) * 100.0))
 
     print("🚀 Starting PFSP (Population-Based) Training...")
-    print("="*80)
+    print("=" * 80)
     print("TRAINING CONFIGURATION:")
     print(f"  Episodes: {num_episodes:,}")
     print(f"  Update interval: {update_interval}")
@@ -365,15 +424,17 @@ def train_pfsp(num_episodes: int = 500000,
     print(f"  Activation function: {activation.upper()}")
     print("  Opponent strategy: POPULATION-BASED (PFSP)")
     print("  Population management: OpenSkill ratings + diversity")
-    print("="*80)
+    print("=" * 80)
 
     # Create training agent with initial LRs from schedule start (0% progress)
     initial_actor_lr = interpolated_weight(hyperparams.lr_schedule_actor, 0.0)
     initial_critic_lr = interpolated_weight(hyperparams.lr_schedule_critic, 0.0)
-    training_agent = PPOAgent(len(ACTIONS),
-                            lr_actor=initial_actor_lr,
-                            lr_critic=initial_critic_lr,
-                            activation=activation)
+    training_agent = PPOAgent(
+        len(ACTIONS),
+        lr_actor=initial_actor_lr,
+        lr_critic=initial_critic_lr,
+        activation=activation,
+    )
 
     # OpenSkill rating for the training agent
     rating_model = PlackettLuce()
@@ -383,7 +444,7 @@ def train_pfsp(num_episodes: int = 500000,
     population = PFSPPopulation(
         max_population_jd=75,
         max_population_called_ace=75,
-        population_dir="pfsp_population"
+        population_dir="pfsp_population",
     )
 
     # Initialize population from checkpoints if provided
@@ -392,7 +453,7 @@ def train_pfsp(num_episodes: int = 500000,
             population,
             initial_checkpoints,
             activation=activation,
-            max_agents_per_mode=10
+            max_agents_per_mode=10,
         )
 
     # Load or create initial training agent
@@ -401,8 +462,8 @@ def train_pfsp(num_episodes: int = 500000,
         try:
             training_agent.load(resume_model, load_optimizers=True)
             print(f"✅ Loaded training agent from {resume_model}")
-            if 'checkpoint_' in resume_model:
-                start_episode = int(resume_model.split('_')[-1].split('.')[0])
+            if "checkpoint_" in resume_model:
+                start_episode = int(resume_model.split("_")[-1].split(".")[0])
                 print(f"📍 Resuming from episode {start_episode:,}")
         except Exception as e:
             print(f"❌ Could not load {resume_model}: {e}")
@@ -423,60 +484,68 @@ def train_pfsp(num_episodes: int = 500000,
     picker_window = deque(maxlen=3000)
 
     training_data = {
-        'episodes': [],
-        'picker_avg': [],
-        'called_pick_rate': [],
-        'jd_pick_rate': [],
-        'learning_rate': [],
-        'time_elapsed': [],
-        'pick_hand_correlation': [],
-        'picker_trump_rate': [],
-        'defender_trump_rate': [],
-        'bury_quality_rate': [],
-        'team_point_diff': [],
-        'alone_rate': [],
-        'leaster_rate': [],
-        'strategic_episodes': [],
-        'population_stats': []
+        "episodes": [],
+        "picker_avg": [],
+        "called_pick_rate": [],
+        "jd_pick_rate": [],
+        "learning_rate": [],
+        "time_elapsed": [],
+        "pick_hand_correlation": [],
+        "picker_trump_rate": [],
+        "defender_trump_rate": [],
+        "bury_quality_rate": [],
+        "team_point_diff": [],
+        "alone_rate": [],
+        "leaster_rate": [],
+        "strategic_episodes": [],
+        "population_stats": [],
     }
 
     # Create checkpoint directory
-    checkpoint_dir = f'pfsp_checkpoints_{activation}'
+    checkpoint_dir = f"pfsp_checkpoints_{activation}"
     os.makedirs(checkpoint_dir, exist_ok=True)
     # CSV log files for ongoing progress/metrics
-    progress_csv = os.path.join(checkpoint_dir, 'pfsp_training_progress.csv')
-    strategic_csv = os.path.join(checkpoint_dir, 'pfsp_strategic_metrics.csv')
+    progress_csv = os.path.join(checkpoint_dir, "pfsp_training_progress.csv")
+    strategic_csv = os.path.join(checkpoint_dir, "pfsp_strategic_metrics.csv")
 
     # If CSVs exist, preload them so training_data is continuous across resumes
     start_time_offset = 0.0
     if os.path.exists(progress_csv):
-        with open(progress_csv, 'r', newline='') as f:
+        with open(progress_csv, "r", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                training_data['episodes'].append(int(row['episode']))
-                training_data['picker_avg'].append(float(row['picker_avg']))
-                training_data['called_pick_rate'].append(float(row['called_pick_rate']))
-                training_data['jd_pick_rate'].append(float(row['jd_pick_rate']))
-                training_data['learning_rate'].append(float(row['learning_rate']))
-                training_data['time_elapsed'].append(float(row['time_elapsed']))
-                training_data['team_point_diff'].append(float(row['team_point_diff']))
+                training_data["episodes"].append(int(row["episode"]))
+                training_data["picker_avg"].append(float(row["picker_avg"]))
+                training_data["called_pick_rate"].append(float(row["called_pick_rate"]))
+                training_data["jd_pick_rate"].append(float(row["jd_pick_rate"]))
+                training_data["learning_rate"].append(float(row["learning_rate"]))
+                training_data["time_elapsed"].append(float(row["time_elapsed"]))
+                training_data["team_point_diff"].append(float(row["team_point_diff"]))
                 # Optional historical series (may be missing in early CSVs)
-                if 'alone_rate' in row and row['alone_rate'] != '':
-                    training_data['alone_rate'].append(float(row['alone_rate']))
-                if 'leaster_rate' in row and row['leaster_rate'] != '':
-                    training_data['leaster_rate'].append(float(row['leaster_rate']))
-        if training_data['time_elapsed']:
-            start_time_offset = training_data['time_elapsed'][-1]
+                if "alone_rate" in row and row["alone_rate"] != "":
+                    training_data["alone_rate"].append(float(row["alone_rate"]))
+                if "leaster_rate" in row and row["leaster_rate"] != "":
+                    training_data["leaster_rate"].append(float(row["leaster_rate"]))
+        if training_data["time_elapsed"]:
+            start_time_offset = training_data["time_elapsed"][-1]
 
     if os.path.exists(strategic_csv):
-        with open(strategic_csv, 'r', newline='') as f:
+        with open(strategic_csv, "r", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                training_data['strategic_episodes'].append(int(row['episode']))
-                training_data['pick_hand_correlation'].append(float(row['pick_hand_correlation']))
-                training_data['picker_trump_rate'].append(float(row['picker_trump_rate']))
-                training_data['defender_trump_rate'].append(float(row['defender_trump_rate']))
-                training_data['bury_quality_rate'].append(float(row['bury_quality_rate']))
+                training_data["strategic_episodes"].append(int(row["episode"]))
+                training_data["pick_hand_correlation"].append(
+                    float(row["pick_hand_correlation"])
+                )
+                training_data["picker_trump_rate"].append(
+                    float(row["picker_trump_rate"])
+                )
+                training_data["defender_trump_rate"].append(
+                    float(row["defender_trump_rate"])
+                )
+                training_data["bury_quality_rate"].append(
+                    float(row["bury_quality_rate"])
+                )
 
     start_time = time.time()
     game_count = 0
@@ -513,7 +582,11 @@ def train_pfsp(num_episodes: int = 500000,
         # Prevent numerical overflow in OpenSkill ratings by renormalising μ
         # ------------------------------------------------------------------
         MAX_ABS_MU = 350.0
-        all_ratings = [training_rating] + [ag.rating for ag in population.jd_population] + [ag.rating for ag in population.called_ace_population]
+        all_ratings = (
+            [training_rating]
+            + [ag.rating for ag in population.jd_population]
+            + [ag.rating for ag in population.called_ace_population]
+        )
         extreme_mu = max(abs(r.mu) for r in all_ratings) if all_ratings else 0
         if extreme_mu > MAX_ABS_MU:
             shift = extreme_mu - MAX_ABS_MU
@@ -523,7 +596,9 @@ def train_pfsp(num_episodes: int = 500000,
 
         # Throttle log noise – print cumulative shift once every 2 000 episodes
         if episode % 2000 == 1:
-            print(f"⚖️  Cumulative rating μ renorm Δ over last 2k eps: {cumulative_renorm:+.1f}  (|μ|max={extreme_mu:.1f})")
+            print(
+                f"⚖️  Cumulative rating μ renorm Δ over last 2k eps: {cumulative_renorm:+.1f}  (|μ|max={extreme_mu:.1f})"
+            )
             cumulative_renorm = 0.0
 
         partner_mode = get_partner_selection_mode(episode)
@@ -540,7 +615,13 @@ def train_pfsp(num_episodes: int = 500000,
             anchor_block_remaining -= 1
         else:
             if random.random() < hyperparams.anchor_block_start_prob:
-                anchor_block_remaining = random.randint(hyperparams.anchor_block_len_min, hyperparams.anchor_block_len_max) - 1
+                anchor_block_remaining = (
+                    random.randint(
+                        hyperparams.anchor_block_len_min,
+                        hyperparams.anchor_block_len_max,
+                    )
+                    - 1
+                )
                 anchor_slots = hyperparams.anchor_slots_in_block
             else:
                 # Low-prob inclusions during normal PFSP episodes
@@ -564,7 +645,9 @@ def train_pfsp(num_episodes: int = 500000,
 
         # Require 4 opponents in population; exit script if not available
         if len(opponents) < 4:
-            print(f"❌ Insufficient PFSP opponents for {get_partner_mode_name(partner_mode)} (need 4, got {len(opponents)}). Provide --initial-checkpoints or pre-populate pfsp_population.")
+            print(
+                f"❌ Insufficient PFSP opponents for {get_partner_mode_name(partner_mode)} (need 4, got {len(opponents)}). Provide --initial-checkpoints or pre-populate pfsp_population."
+            )
             sys.exit(1)
 
         # Randomly select training agent position (1-5)
@@ -573,31 +656,45 @@ def train_pfsp(num_episodes: int = 500000,
         # Compute per-episode shaping weights from schedules
         progress_pct = get_schedule_progress_pct(episode)
         shaping_weights = {
-            "pick": interpolated_weight(hyperparams.shaping_schedule_pick, progress_pct),
-            "partner": interpolated_weight(hyperparams.shaping_schedule_partner, progress_pct),
-            "bury": interpolated_weight(hyperparams.shaping_schedule_bury, progress_pct),
-            "play": interpolated_weight(hyperparams.shaping_schedule_play, progress_pct),
+            "pick": interpolated_weight(
+                hyperparams.shaping_schedule_pick, progress_pct
+            ),
+            "partner": interpolated_weight(
+                hyperparams.shaping_schedule_partner, progress_pct
+            ),
+            "bury": interpolated_weight(
+                hyperparams.shaping_schedule_bury, progress_pct
+            ),
+            "play": interpolated_weight(
+                hyperparams.shaping_schedule_play, progress_pct
+            ),
         }
 
         # Play game
-        game, episode_events, final_scores, training_data_single, position_to_agent = play_population_game(
-            training_agent=training_agent,
-            opponents=opponents,
-            partner_mode=partner_mode,
-            training_agent_position=training_position,
-            shaping_weights=shaping_weights
+        game, episode_events, final_scores, training_data_single, position_to_agent = (
+            play_population_game(
+                training_agent=training_agent,
+                opponents=opponents,
+                partner_mode=partner_mode,
+                training_agent_position=training_position,
+                shaping_weights=shaping_weights,
+            )
         )
 
         training_agent.store_episode_events(episode_events)
-        transitions_since_update += sum(1 for ev in episode_events if ev['kind'] == 'action')
+        transitions_since_update += sum(
+            1 for ev in episode_events if ev["kind"] == "action"
+        )
 
         # Update statistics
-        picker_score = training_data_single['score'] if training_data_single['was_picker'] else 0
-        if training_data_single['was_picker']:
+        picker_score = (
+            training_data_single["score"] if training_data_single["was_picker"] else 0
+        )
+        if training_data_single["was_picker"]:
             picker_scores.append(picker_score)
 
         # Track how often the training agent is the picker (unconditional)
-        picker_window.append(1 if training_data_single['was_picker'] else 0)
+        picker_window.append(1 if training_data_single["was_picker"] else 0)
 
         # ---------- OpenSkill rating update (centralized in PFSPPopulation) ----------
         opponent_positions = [pos for pos in range(1, 6) if pos != training_position]
@@ -626,19 +723,29 @@ def train_pfsp(num_episodes: int = 500000,
             opp_agent = position_to_agent.get(pos)
             if opp_agent:
                 if game.is_leaster:
-                    opp_agent.update_strategic_profile_from_game({
-                        'final_score': final_scores[pos - 1],
-                        'role': 'leaster',
-                    })
-                else:
-                    role_final = 'picker' if (game.picker == pos) else (
-                        'partner' if getattr(game, 'is_partner_seat', lambda _pos: False)(pos) or getattr(game.players[pos-1], 'is_partner', False)
-                        else 'defender'
+                    opp_agent.update_strategic_profile_from_game(
+                        {
+                            "final_score": final_scores[pos - 1],
+                            "role": "leaster",
+                        }
                     )
-                    opp_agent.update_strategic_profile_from_game({
-                        'final_score': final_scores[pos - 1],
-                        'role': role_final,
-                    })
+                else:
+                    role_final = (
+                        "picker"
+                        if (game.picker == pos)
+                        else (
+                            "partner"
+                            if getattr(game, "is_partner_seat", lambda _pos: False)(pos)
+                            or getattr(game.players[pos - 1], "is_partner", False)
+                            else "defender"
+                        )
+                    )
+                    opp_agent.update_strategic_profile_from_game(
+                        {
+                            "final_score": final_scores[pos - 1],
+                            "role": role_final,
+                        }
+                    )
 
         # Track other statistics (similar to train_ppo.py)
         is_leaster_ep = 1 if game.is_leaster else 0
@@ -649,7 +756,9 @@ def train_pfsp(num_episodes: int = 500000,
 
         if is_called_ace_ep and not is_leaster_ep:
             called_under_window.append(1 if game.is_called_under else 0)
-            called_10_window.append(1 if (game.called_card and game.called_card.startswith("10")) else 0)
+            called_10_window.append(
+                1 if (game.called_card and game.called_card.startswith("10")) else 0
+            )
         elif is_called_ace_ep:
             called_under_window.append(0)
             called_10_window.append(0)
@@ -659,17 +768,19 @@ def train_pfsp(num_episodes: int = 500000,
             # Global population ALONE indicator (any picker)
             alone_call_window.append(1 if game.alone_called else 0)
             # Training-agent-only ALONE indicator (only when training agent is picker)
-            if training_data_single['was_picker']:
+            if training_data_single["was_picker"]:
                 training_alone_window.append(1 if game.alone_called else 0)
 
         # Count pick/pass decisions from transitions
         episode_picks = sum(
-            1 for ev in episode_events
-            if ev['kind'] == 'action' and ev['action'] == ACTION_IDS["PICK"]
+            1
+            for ev in episode_events
+            if ev["kind"] == "action" and ev["action"] == ACTION_IDS["PICK"]
         )
         episode_passes = sum(
-            1 for ev in episode_events
-            if ev['kind'] == 'action' and ev['action'] == ACTION_IDS["PASS"]
+            1
+            for ev in episode_events
+            if ev["kind"] == "action" and ev["action"] == ACTION_IDS["PASS"]
         )
 
         pick_decisions[partner_mode].append(episode_picks)
@@ -679,19 +790,44 @@ def train_pfsp(num_episodes: int = 500000,
 
         # Update model periodically
         if transitions_since_update >= update_interval:
-            print(f"🔄 Updating model after {game_count} games... (Episode {episode:,})")
+            print(
+                f"🔄 Updating model after {game_count} games... (Episode {episode:,})"
+            )
 
             # Entropy decay
-            entropy_play_start, entropy_play_end = hyperparams.entropy_play_start, hyperparams.entropy_play_end
-            entropy_pick_start, entropy_pick_end = hyperparams.entropy_pick_start, hyperparams.entropy_pick_end
-            entropy_partner_start, entropy_partner_end = hyperparams.entropy_partner_start, hyperparams.entropy_partner_end
-            entropy_bury_start, entropy_bury_end = hyperparams.entropy_bury_start, hyperparams.entropy_bury_end
+            entropy_play_start, entropy_play_end = (
+                hyperparams.entropy_play_start,
+                hyperparams.entropy_play_end,
+            )
+            entropy_pick_start, entropy_pick_end = (
+                hyperparams.entropy_pick_start,
+                hyperparams.entropy_pick_end,
+            )
+            entropy_partner_start, entropy_partner_end = (
+                hyperparams.entropy_partner_start,
+                hyperparams.entropy_partner_end,
+            )
+            entropy_bury_start, entropy_bury_end = (
+                hyperparams.entropy_bury_start,
+                hyperparams.entropy_bury_end,
+            )
             decay_fraction = get_schedule_progress_pct(episode) / 100.0
-            training_agent.entropy_coeff_play = entropy_play_start + (entropy_play_end - entropy_play_start) * decay_fraction
-            training_agent.entropy_coeff_pick = entropy_pick_start + (entropy_pick_end - entropy_pick_start) * decay_fraction
-            training_agent.entropy_coeff_partner = entropy_partner_start + (entropy_partner_end - entropy_partner_start) * decay_fraction
-            training_agent.entropy_coeff_bury = entropy_bury_start + (entropy_bury_end - entropy_bury_start) * decay_fraction
-
+            training_agent.entropy_coeff_play = (
+                entropy_play_start
+                + (entropy_play_end - entropy_play_start) * decay_fraction
+            )
+            training_agent.entropy_coeff_pick = (
+                entropy_pick_start
+                + (entropy_pick_end - entropy_pick_start) * decay_fraction
+            )
+            training_agent.entropy_coeff_partner = (
+                entropy_partner_start
+                + (entropy_partner_end - entropy_partner_start) * decay_fraction
+            )
+            training_agent.entropy_coeff_bury = (
+                entropy_bury_start
+                + (entropy_bury_end - entropy_bury_start) * decay_fraction
+            )
 
             # Apply temporary bumps to entropies
             if episode <= bury_entropy_bump_until:
@@ -703,26 +839,36 @@ def train_pfsp(num_episodes: int = 500000,
 
             # Learning rate decay (apply scheduled LRs based on training progress)
             progress_pct = min(100.0, max(0.0, (episode / num_episodes) * 100.0))
-            scheduled_actor_lr = interpolated_weight(hyperparams.lr_schedule_actor, progress_pct)
-            scheduled_critic_lr = interpolated_weight(hyperparams.lr_schedule_critic, progress_pct)
-            training_agent.set_learning_rates(actor_lr=scheduled_actor_lr, critic_lr=scheduled_critic_lr)
+            scheduled_actor_lr = interpolated_weight(
+                hyperparams.lr_schedule_actor, progress_pct
+            )
+            scheduled_critic_lr = interpolated_weight(
+                hyperparams.lr_schedule_critic, progress_pct
+            )
+            training_agent.set_learning_rates(
+                actor_lr=scheduled_actor_lr, critic_lr=scheduled_critic_lr
+            )
 
             # Update
             update_stats = training_agent.update(epochs=4, batch_size=256)
 
             if update_stats:
-                adv_stats = update_stats['advantage_stats']
-                val_stats = update_stats['value_target_stats']
-                num_transitions = update_stats['num_transitions']
-                approx_kl = update_stats.get('approx_kl', None)
-                early_stop = update_stats.get('early_stop', False)
-                head_entropy = update_stats.get('head_entropy', {})
-                pick_pass_adv = update_stats.get('pick_pass_adv', {})
-                critic_losses = update_stats.get('critic_losses', {})
+                adv_stats = update_stats["advantage_stats"]
+                val_stats = update_stats["value_target_stats"]
+                num_transitions = update_stats["num_transitions"]
+                approx_kl = update_stats.get("approx_kl", None)
+                early_stop = update_stats.get("early_stop", False)
+                head_entropy = update_stats.get("head_entropy", {})
+                pick_pass_adv = update_stats.get("pick_pass_adv", {})
+                critic_losses = update_stats.get("critic_losses", {})
 
                 print(f"   Transitions: {num_transitions}")
-                print(f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
-                print(f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
+                print(
+                    f"   Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]"
+                )
+                print(
+                    f"   Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]"
+                )
                 if approx_kl is not None:
                     print(f"   PPO KL: {approx_kl:.4f}  Early stop: {early_stop}")
                 # Instrumentation logs: head entropy and PICK/PASS advantages
@@ -738,8 +884,8 @@ def train_pfsp(num_episodes: int = 500000,
                         f"   Adv(PICK): {pick_pass_adv.get('pick_mean', 0.0):+.3f} (n={pick_pass_adv.get('pick_count', 0)}), "
                         f"Adv(PASS): {pick_pass_adv.get('pass_mean', 0.0):+.3f} (n={pick_pass_adv.get('pass_count', 0)})"
                     )
-                if 'timing' in update_stats:
-                    t = update_stats['timing']
+                if "timing" in update_stats:
+                    t = update_stats["timing"]
                     print(
                         f"   Timing - build: {t['build_s']:.3f}s, forward: {t['forward_s']:.3f}s, "
                         f"backward: {t['backward_s']:.3f}s, step: {t['step_s']:.3f}s, total: {t['total_update_s']:.3f}s, "
@@ -749,13 +895,13 @@ def train_pfsp(num_episodes: int = 500000,
                     print(
                         "   Scaled critic losses - value: %.4f, win: %.4f, return: %.4f, points: %.4f, secret partner: %.4f, seen trump mask: %.4f, unseen higher than hand: %.4f"
                         % (
-                            critic_losses.get('value', 0.0),
-                            critic_losses.get('win', 0.0),
-                            critic_losses.get('return', 0.0),
-                            critic_losses.get('points', 0.0),
-                            critic_losses.get('secret_partner', 0.0),
-                            critic_losses.get('seen_trump_mask', 0.0),
-                            critic_losses.get('unseen_trump_higher_than_hand', 0.0),
+                            critic_losses.get("value", 0.0),
+                            critic_losses.get("win", 0.0),
+                            critic_losses.get("return", 0.0),
+                            critic_losses.get("points", 0.0),
+                            critic_losses.get("secret_partner", 0.0),
+                            critic_losses.get("seen_trump_mask", 0.0),
+                            critic_losses.get("unseen_trump_higher_than_hand", 0.0),
                         )
                     )
 
@@ -768,7 +914,9 @@ def train_pfsp(num_episodes: int = 500000,
                 # Snapshot training agent for population opponents
                 agent_snapshot = copy.deepcopy(training_agent)
                 # Disable CALL-uniform mixing for population agents
-                agent_snapshot.set_partner_call_epsilon(hyperparams.partner_call_eps_base)
+                agent_snapshot.set_partner_call_epsilon(
+                    hyperparams.partner_call_eps_base
+                )
                 # Disable PASS-floor mixing for population agents
                 agent_snapshot.set_pass_floor_epsilon(hyperparams.pass_floor_eps_base)
                 # Disable PICK-floor mixing for population agents
@@ -784,31 +932,57 @@ def train_pfsp(num_episodes: int = 500000,
                     initial_rating=population.rating_model.rating(
                         mu=training_rating.mu,
                         sigma=max(float(training_rating.sigma), 12.5),
-                    )
+                    ),
                 )
-                print(f"👥 Added training agent snapshot to {get_partner_mode_name(mode)} population (ID: {agent_id})")
+                print(
+                    f"👥 Added training agent snapshot to {get_partner_mode_name(mode)} population (ID: {agent_id})"
+                )
 
             # Log updated diversity stats after population change
             jd_div = population.get_diversity_stats(PARTNER_BY_JD)
             ca_div = population.get_diversity_stats(PARTNER_BY_CALLED_ACE)
-            print("   Diversity (JD): avg=%.3f, spread=%.3f, clusters=%d, alone_rate_range=(%.2f, %.2f), pick_cv={weak: %.2f, med: %.2f, strong: %.2f}, coverage={early: %.2f, void: %.2f}" % (
-                jd_div['avg_pairwise_diversity'], jd_div['diversity_spread'], jd_div['strategic_clusters'],
-                jd_div['alone_rate_range'][0], jd_div['alone_rate_range'][1],
-                jd_div['pick_rate_diversity']['weak'], jd_div['pick_rate_diversity']['medium'], jd_div['pick_rate_diversity']['strong'],
-                jd_div['coverage']['early_leads'], jd_div['coverage']['void_events']))
-            print("   Diversity (CA): avg=%.3f, spread=%.3f, clusters=%d, alone_rate_range=(%.2f, %.2f), pick_cv={weak: %.2f, med: %.2f, strong: %.2f}, coverage={early: %.2f, void: %.2f}" % (
-                ca_div['avg_pairwise_diversity'], ca_div['diversity_spread'], ca_div['strategic_clusters'],
-                ca_div['alone_rate_range'][0], ca_div['alone_rate_range'][1],
-                ca_div['pick_rate_diversity']['weak'], ca_div['pick_rate_diversity']['medium'], ca_div['pick_rate_diversity']['strong'],
-                ca_div['coverage']['early_leads'], ca_div['coverage']['void_events']))
+            print(
+                "   Diversity (JD): avg=%.3f, spread=%.3f, clusters=%d, alone_rate_range=(%.2f, %.2f), pick_cv={weak: %.2f, med: %.2f, strong: %.2f}, coverage={early: %.2f, void: %.2f}"
+                % (
+                    jd_div["avg_pairwise_diversity"],
+                    jd_div["diversity_spread"],
+                    jd_div["strategic_clusters"],
+                    jd_div["alone_rate_range"][0],
+                    jd_div["alone_rate_range"][1],
+                    jd_div["pick_rate_diversity"]["weak"],
+                    jd_div["pick_rate_diversity"]["medium"],
+                    jd_div["pick_rate_diversity"]["strong"],
+                    jd_div["coverage"]["early_leads"],
+                    jd_div["coverage"]["void_events"],
+                )
+            )
+            print(
+                "   Diversity (CA): avg=%.3f, spread=%.3f, clusters=%d, alone_rate_range=(%.2f, %.2f), pick_cv={weak: %.2f, med: %.2f, strong: %.2f}, coverage={early: %.2f, void: %.2f}"
+                % (
+                    ca_div["avg_pairwise_diversity"],
+                    ca_div["diversity_spread"],
+                    ca_div["strategic_clusters"],
+                    ca_div["alone_rate_range"][0],
+                    ca_div["alone_rate_range"][1],
+                    ca_div["pick_rate_diversity"]["weak"],
+                    ca_div["pick_rate_diversity"]["medium"],
+                    ca_div["pick_rate_diversity"]["strong"],
+                    ca_div["coverage"]["early_leads"],
+                    ca_div["coverage"]["void_events"],
+                )
+            )
 
         # Cross-evaluation periodically
         if episode % cross_eval_interval == 0:
             print(f"🏆 Running cross-evaluation tournaments... (Episode {episode:,})")
             for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
-                eval_stats = population.run_cross_evaluation(mode, num_games=40, max_agents=75)
-                print(f"   {get_partner_mode_name(mode)}: {eval_stats['games_played']} games, "
-                        f"avg skill: {eval_stats['avg_skill_after']:.1f}")
+                eval_stats = population.run_cross_evaluation(
+                    mode, num_games=40, max_agents=75
+                )
+                print(
+                    f"   {get_partner_mode_name(mode)}: {eval_stats['games_played']} games, "
+                    f"avg skill: {eval_stats['avg_skill_after']:.1f}"
+                )
             # Rebuild clusters post-tournament to refresh anchors/sampling policies
             # Clustering is computed lazily when sampling; this call just forces recomputation for visibility
             for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
@@ -819,44 +993,82 @@ def train_pfsp(num_episodes: int = 500000,
         # Strategic evaluation
         if episode % strategic_eval_interval == 0:
             print(f"🧠 Analyzing strategic decisions... (Episode {episode:,})")
-            strategic_metrics = analyze_strategic_decisions(training_agent, num_samples=200)
+            strategic_metrics = analyze_strategic_decisions(
+                training_agent, num_samples=200
+            )
 
-            training_data['strategic_episodes'].append(episode)
-            training_data['pick_hand_correlation'].append(strategic_metrics['pick_hand_correlation'])
-            training_data['picker_trump_rate'].append(strategic_metrics['picker_trump_rate'])
-            training_data['defender_trump_rate'].append(strategic_metrics['defender_trump_rate'])
-            training_data['bury_quality_rate'].append(strategic_metrics['bury_quality_rate'])
+            training_data["strategic_episodes"].append(episode)
+            training_data["pick_hand_correlation"].append(
+                strategic_metrics["pick_hand_correlation"]
+            )
+            training_data["picker_trump_rate"].append(
+                strategic_metrics["picker_trump_rate"]
+            )
+            training_data["defender_trump_rate"].append(
+                strategic_metrics["defender_trump_rate"]
+            )
+            training_data["bury_quality_rate"].append(
+                strategic_metrics["bury_quality_rate"]
+            )
 
             # Append strategic metrics row to CSV (episode-keyed)
-            write_header = (not os.path.exists(strategic_csv)) or (os.path.getsize(strategic_csv) == 0)
-            with open(strategic_csv, 'a', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['episode','pick_hand_correlation','picker_trump_rate','defender_trump_rate','bury_quality_rate'])
+            write_header = (not os.path.exists(strategic_csv)) or (
+                os.path.getsize(strategic_csv) == 0
+            )
+            with open(strategic_csv, "a", newline="") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "episode",
+                        "pick_hand_correlation",
+                        "picker_trump_rate",
+                        "defender_trump_rate",
+                        "bury_quality_rate",
+                    ],
+                )
                 if write_header:
                     writer.writeheader()
-                writer.writerow({
-                    'episode': episode,
-                    'pick_hand_correlation': strategic_metrics['pick_hand_correlation'],
-                    'picker_trump_rate': strategic_metrics['picker_trump_rate'],
-                    'defender_trump_rate': strategic_metrics['defender_trump_rate'],
-                    'bury_quality_rate': strategic_metrics['bury_quality_rate'],
-                })
+                writer.writerow(
+                    {
+                        "episode": episode,
+                        "pick_hand_correlation": strategic_metrics[
+                            "pick_hand_correlation"
+                        ],
+                        "picker_trump_rate": strategic_metrics["picker_trump_rate"],
+                        "defender_trump_rate": strategic_metrics["defender_trump_rate"],
+                        "bury_quality_rate": strategic_metrics["bury_quality_rate"],
+                    }
+                )
 
-            print(f"   Pick-Hand Correlation: {strategic_metrics['pick_hand_correlation']:.3f}")
-            print(f"   Picker Trump Rate: {strategic_metrics['picker_trump_rate']:.1f}%")
-            print(f"   Defender Trump Rate: {strategic_metrics['defender_trump_rate']:.1f}%")
-            print(f"   Bury Quality Rate: {strategic_metrics['bury_quality_rate']:.1f}%")
+            print(
+                f"   Pick-Hand Correlation: {strategic_metrics['pick_hand_correlation']:.3f}"
+            )
+            print(
+                f"   Picker Trump Rate: {strategic_metrics['picker_trump_rate']:.1f}%"
+            )
+            print(
+                f"   Defender Trump Rate: {strategic_metrics['defender_trump_rate']:.1f}%"
+            )
+            print(
+                f"   Bury Quality Rate: {strategic_metrics['bury_quality_rate']:.1f}%"
+            )
 
             # --- Check bury quality rate and schedule bury-head entropy bump if too low ---
-            current_bury_quality_rate = strategic_metrics['bury_quality_rate']
+            current_bury_quality_rate = strategic_metrics["bury_quality_rate"]
             if (
-                current_bury_quality_rate < hyperparams.low_bury_quality_threshold and episode > bury_entropy_bump_until
+                current_bury_quality_rate < hyperparams.low_bury_quality_threshold
+                and episode > bury_entropy_bump_until
             ):
-                bury_entropy_bump_until = episode + hyperparams.bury_entropy_bump_duration
-                print(f"   ⚠️  Low bury-quality rate detected ({current_bury_quality_rate:.1f}%). Increasing bury entropy by {hyperparams.bury_entropy_bump:.3f} for the next {hyperparams.bury_entropy_bump_duration:,} episodes.")
+                bury_entropy_bump_until = (
+                    episode + hyperparams.bury_entropy_bump_duration
+                )
+                print(
+                    f"   ⚠️  Low bury-quality rate detected ({current_bury_quality_rate:.1f}%). Increasing bury entropy by {hyperparams.bury_entropy_bump:.3f} for the next {hyperparams.bury_entropy_bump_duration:,} episodes."
+                )
             if (
-                current_bury_quality_rate >= hyperparams.low_bury_quality_threshold and
-                episode > bury_entropy_bump_until and
-                bury_entropy_bump_until != 0
+                current_bury_quality_rate >= hyperparams.low_bury_quality_threshold
+                and episode > bury_entropy_bump_until
+                and bury_entropy_bump_until != 0
             ):
                 # Reset any expired bump marker to reduce log noise later
                 bury_entropy_bump_until = 0
@@ -870,63 +1082,114 @@ def train_pfsp(num_episodes: int = 500000,
             total_called_passes = sum(pass_decisions[PARTNER_BY_CALLED_ACE])
             total_jd_picks = sum(pick_decisions[PARTNER_BY_JD])
             total_jd_passes = sum(pass_decisions[PARTNER_BY_JD])
-            current_called_pick_rate = (100 * total_called_picks / (total_called_picks + total_called_passes)) if (total_called_picks + total_called_passes) > 0 else 0
-            current_jd_pick_rate = (100 * total_jd_picks / (total_jd_picks + total_jd_passes)) if (total_jd_picks + total_jd_passes) > 0 else 0
-            current_team_diff = np.mean(team_point_differences) if team_point_differences else 0
+            current_called_pick_rate = (
+                (100 * total_called_picks / (total_called_picks + total_called_passes))
+                if (total_called_picks + total_called_passes) > 0
+                else 0
+            )
+            current_jd_pick_rate = (
+                (100 * total_jd_picks / (total_jd_picks + total_jd_passes))
+                if (total_jd_picks + total_jd_passes) > 0
+                else 0
+            )
+            current_team_diff = (
+                np.mean(team_point_differences) if team_point_differences else 0
+            )
 
             # Rolling window rates
-            current_leaster_rate = (sum(leaster_window) / len(leaster_window)) * 100 if leaster_window else 0
-            current_alone_rate = (sum(alone_call_window) / len(alone_call_window)) * 100 if alone_call_window else 0
-            current_training_alone_rate = (sum(training_alone_window) / len(training_alone_window)) * 100 if training_alone_window else 0
+            current_leaster_rate = (
+                (sum(leaster_window) / len(leaster_window)) * 100
+                if leaster_window
+                else 0
+            )
+            current_alone_rate = (
+                (sum(alone_call_window) / len(alone_call_window)) * 100
+                if alone_call_window
+                else 0
+            )
+            current_training_alone_rate = (
+                (sum(training_alone_window) / len(training_alone_window)) * 100
+                if training_alone_window
+                else 0
+            )
             ca_denominator = sum(called_ace_window) or 1
-            current_called_under_rate = (sum(called_under_window) / ca_denominator) * 100
+            current_called_under_rate = (
+                sum(called_under_window) / ca_denominator
+            ) * 100
             current_called_10s_rate = (sum(called_10_window) / ca_denominator) * 100
-            current_picker_frequency = (sum(picker_window) / len(picker_window)) * 100 if picker_window else 0
+            current_picker_frequency = (
+                (sum(picker_window) / len(picker_window)) * 100 if picker_window else 0
+            )
             elapsed = start_time_offset + (time.time() - start_time)
 
             # Collect data for plotting
-            training_data['episodes'].append(episode)
-            training_data['picker_avg'].append(current_avg_picker_score)
-            training_data['called_pick_rate'].append(current_called_pick_rate)
-            training_data['jd_pick_rate'].append(current_jd_pick_rate)
-            training_data['learning_rate'].append(training_agent.actor_optimizer.param_groups[0]['lr'])
-            training_data['time_elapsed'].append(elapsed)
-            training_data['team_point_diff'].append(current_team_diff)
-            training_data['alone_rate'].append(current_alone_rate)
-            training_data['leaster_rate'].append(current_leaster_rate)
+            training_data["episodes"].append(episode)
+            training_data["picker_avg"].append(current_avg_picker_score)
+            training_data["called_pick_rate"].append(current_called_pick_rate)
+            training_data["jd_pick_rate"].append(current_jd_pick_rate)
+            training_data["learning_rate"].append(
+                training_agent.actor_optimizer.param_groups[0]["lr"]
+            )
+            training_data["time_elapsed"].append(elapsed)
+            training_data["team_point_diff"].append(current_team_diff)
+            training_data["alone_rate"].append(current_alone_rate)
+            training_data["leaster_rate"].append(current_leaster_rate)
 
             # Append progress row to CSV (create with header if new)
-            write_header = (not os.path.exists(progress_csv)) or (os.path.getsize(progress_csv) == 0)
-            with open(progress_csv, 'a', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['episode','picker_avg','called_pick_rate','jd_pick_rate','learning_rate','time_elapsed','team_point_diff','alone_rate','leaster_rate'])
+            write_header = (not os.path.exists(progress_csv)) or (
+                os.path.getsize(progress_csv) == 0
+            )
+            with open(progress_csv, "a", newline="") as f:
+                writer = csv.DictWriter(
+                    f,
+                    fieldnames=[
+                        "episode",
+                        "picker_avg",
+                        "called_pick_rate",
+                        "jd_pick_rate",
+                        "learning_rate",
+                        "time_elapsed",
+                        "team_point_diff",
+                        "alone_rate",
+                        "leaster_rate",
+                    ],
+                )
                 if write_header:
                     writer.writeheader()
-                writer.writerow({
-                    'episode': episode,
-                    'picker_avg': current_avg_picker_score,
-                    'called_pick_rate': current_called_pick_rate,
-                    'jd_pick_rate': current_jd_pick_rate,
-                    'learning_rate': training_agent.actor_optimizer.param_groups[0]['lr'],
-                    'time_elapsed': elapsed,
-                    'team_point_diff': current_team_diff,
-                    'alone_rate': current_alone_rate,
-                    'leaster_rate': current_leaster_rate,
-                })
+                writer.writerow(
+                    {
+                        "episode": episode,
+                        "picker_avg": current_avg_picker_score,
+                        "called_pick_rate": current_called_pick_rate,
+                        "jd_pick_rate": current_jd_pick_rate,
+                        "learning_rate": training_agent.actor_optimizer.param_groups[0][
+                            "lr"
+                        ],
+                        "time_elapsed": elapsed,
+                        "team_point_diff": current_team_diff,
+                        "alone_rate": current_alone_rate,
+                        "leaster_rate": current_leaster_rate,
+                    }
+                )
 
             # Population statistics
             jd_stats = population.get_population_stats(PARTNER_BY_JD)
             ca_stats = population.get_population_stats(PARTNER_BY_CALLED_ACE)
-            training_data['population_stats'].append({
-                'episode': episode,
-                'jd_size': jd_stats['size'],
-                'jd_avg_skill': jd_stats['avg_skill'],
-                'ca_size': ca_stats['size'],
-                'ca_avg_skill': ca_stats['avg_skill']
-            })
+            training_data["population_stats"].append(
+                {
+                    "episode": episode,
+                    "jd_size": jd_stats["size"],
+                    "jd_avg_skill": jd_stats["avg_skill"],
+                    "ca_size": ca_stats["size"],
+                    "ca_avg_skill": ca_stats["avg_skill"],
+                }
+            )
 
             games_per_min = episode / (elapsed / 60) if elapsed > 0 else 0
 
-            print(f"📊 Episode {episode:,}/{num_episodes:,} ({episode/num_episodes*100:.1f}%)")
+            print(
+                f"📊 Episode {episode:,}/{num_episodes:,} ({episode / num_episodes * 100:.1f}%)"
+            )
             print("   " + "-" * 50)
             print(f"   Picker avg: {current_avg_picker_score:+.3f}")
             print(f"   Team point diff: {current_team_diff:+.1f}")
@@ -940,29 +1203,38 @@ def train_pfsp(num_episodes: int = 500000,
             print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
             print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
             print("   " + "-" * 25)
-            print(f"   Population JD: {jd_stats['size']} agents (avg skill: {jd_stats['avg_skill']:.1f})")
-            print(f"   Population CA: {ca_stats['size']} agents (avg skill: {ca_stats['avg_skill']:.1f})")
+            print(
+                f"   Population JD: {jd_stats['size']} agents (avg skill: {jd_stats['avg_skill']:.1f})"
+            )
+            print(
+                f"   Population CA: {ca_stats['size']} agents (avg skill: {ca_stats['avg_skill']:.1f})"
+            )
             print("   " + "-" * 50)
             print(f"   Training speed: {games_per_min:.1f} games/min")
-            print(f"   Time elapsed: {elapsed/60:.1f} min")
+            print(f"   Time elapsed: {elapsed / 60:.1f} min")
             print("   " + "-" * 50)
 
             # --- Adaptive partner-head entropy bump scheduling ---
             if (
-                (current_training_alone_rate > hyperparams.high_alone_rate_threshold or
-                 current_training_alone_rate < hyperparams.low_alone_rate_threshold) and
-                episode > partner_entropy_bump_until
-            ):
-                partner_entropy_bump_until = episode + hyperparams.partner_entropy_bump_duration
+                current_training_alone_rate > hyperparams.high_alone_rate_threshold
+                or current_training_alone_rate < hyperparams.low_alone_rate_threshold
+            ) and episode > partner_entropy_bump_until:
+                partner_entropy_bump_until = (
+                    episode + hyperparams.partner_entropy_bump_duration
+                )
                 print(
                     f"   ⚠️  ALONE rate out of band ({current_training_alone_rate:.2f}%). "
                     f"Increasing partner entropy by {hyperparams.partner_entropy_bump:.3f} for the next "
                     f"{hyperparams.partner_entropy_bump_duration:,} episodes."
                 )
             if (
-                (hyperparams.low_alone_rate_threshold <= current_training_alone_rate <= hyperparams.high_alone_rate_threshold) and
-                episode > partner_entropy_bump_until and
-                partner_entropy_bump_until != 0
+                (
+                    hyperparams.low_alone_rate_threshold
+                    <= current_training_alone_rate
+                    <= hyperparams.high_alone_rate_threshold
+                )
+                and episode > partner_entropy_bump_until
+                and partner_entropy_bump_until != 0
             ):
                 partner_entropy_bump_until = 0
 
@@ -972,9 +1244,15 @@ def train_pfsp(num_episodes: int = 500000,
             desired_partner_eps_max = hyperparams.partner_call_eps_base
             # Gate epsilon scheduling on training-agent-only ALONE rate
             if current_training_alone_rate > hyperparams.high_alone_rate_ceiling:
-                if current_avg_picker_score <= hyperparams.partner_call_eps_high_picker_avg_threshold:
+                if (
+                    current_avg_picker_score
+                    <= hyperparams.partner_call_eps_high_picker_avg_threshold
+                ):
                     desired_partner_eps_max = hyperparams.partner_call_eps_max_high
-                elif current_avg_picker_score <= hyperparams.partner_call_eps_mid_picker_avg_threshold:
+                elif (
+                    current_avg_picker_score
+                    <= hyperparams.partner_call_eps_mid_picker_avg_threshold
+                ):
                     desired_partner_eps_max = hyperparams.partner_call_eps_max_mid
                 else:
                     desired_partner_eps_max = hyperparams.partner_call_eps_base
@@ -983,52 +1261,81 @@ def train_pfsp(num_episodes: int = 500000,
 
             desired_partner_eps = current_partner_call_eps
             if desired_partner_eps_max > current_partner_call_eps:
-                desired_partner_eps = min(current_partner_call_eps + hyperparams.partner_call_eps_step_up, desired_partner_eps_max)
+                desired_partner_eps = min(
+                    current_partner_call_eps + hyperparams.partner_call_eps_step_up,
+                    desired_partner_eps_max,
+                )
             elif desired_partner_eps_max < current_partner_call_eps:
-                desired_partner_eps = max(current_partner_call_eps - hyperparams.partner_call_eps_step_down, desired_partner_eps_max)
+                desired_partner_eps = max(
+                    current_partner_call_eps - hyperparams.partner_call_eps_step_down,
+                    desired_partner_eps_max,
+                )
 
             if abs(desired_partner_eps - current_partner_call_eps) > 1e-6:
                 current_partner_call_eps = desired_partner_eps
                 training_agent.set_partner_call_epsilon(current_partner_call_eps)
-                print(f"   ⚠️  Partner CALL epsilon ε adjusted to: {current_partner_call_eps:.3f}")
+                print(
+                    f"   ⚠️  Partner CALL epsilon ε adjusted to: {current_partner_call_eps:.3f}"
+                )
 
             # --- Adaptive pick-head entropy bump scheduling ---
             overall_picks = total_called_picks + total_jd_picks
             overall_decisions = overall_picks + total_called_passes + total_jd_passes
-            overall_pick_rate = (100 * overall_picks / overall_decisions) if overall_decisions > 0 else 0.0
+            overall_pick_rate = (
+                (100 * overall_picks / overall_decisions)
+                if overall_decisions > 0
+                else 0.0
+            )
 
             if (
-                (overall_pick_rate > hyperparams.high_pick_rate_threshold or overall_pick_rate < hyperparams.low_pick_rate_threshold)
-                and episode > pick_entropy_bump_until
-            ):
-                pick_entropy_bump_until = episode + hyperparams.pick_entropy_bump_duration
+                overall_pick_rate > hyperparams.high_pick_rate_threshold
+                or overall_pick_rate < hyperparams.low_pick_rate_threshold
+            ) and episode > pick_entropy_bump_until:
+                pick_entropy_bump_until = (
+                    episode + hyperparams.pick_entropy_bump_duration
+                )
                 print(
                     f"   ⚠️  Pick rate out of band ({overall_pick_rate:.2f}%). "
                     f"Increasing pick entropy by {hyperparams.pick_entropy_bump:.3f} for the next "
                     f"{hyperparams.pick_entropy_bump_duration:,} episodes."
                 )
             if (
-                (hyperparams.low_pick_rate_threshold <= overall_pick_rate <= hyperparams.high_pick_rate_threshold) and
-                episode > pick_entropy_bump_until and
-                pick_entropy_bump_until != 0
+                (
+                    hyperparams.low_pick_rate_threshold
+                    <= overall_pick_rate
+                    <= hyperparams.high_pick_rate_threshold
+                )
+                and episode > pick_entropy_bump_until
+                and pick_entropy_bump_until != 0
             ):
                 pick_entropy_bump_until = 0
 
             # --- PASS-floor epsilon controller (activate when pick rate high and picker avg negative) ---
             desired_pass_eps_max = hyperparams.pass_floor_eps_base
-            if (overall_pick_rate > hyperparams.high_pick_rate_ceiling) and (current_avg_picker_score < hyperparams.pass_floor_eps_picker_avg_threshold):
+            if (overall_pick_rate > hyperparams.high_pick_rate_ceiling) and (
+                current_avg_picker_score
+                < hyperparams.pass_floor_eps_picker_avg_threshold
+            ):
                 desired_pass_eps_max = hyperparams.pass_floor_eps_target
 
             desired_pass_eps = current_pass_floor_eps
             if desired_pass_eps_max > current_pass_floor_eps:
-                desired_pass_eps = min(current_pass_floor_eps + hyperparams.pass_floor_eps_step_up, desired_pass_eps_max)
+                desired_pass_eps = min(
+                    current_pass_floor_eps + hyperparams.pass_floor_eps_step_up,
+                    desired_pass_eps_max,
+                )
             elif desired_pass_eps_max < current_pass_floor_eps:
-                desired_pass_eps = max(current_pass_floor_eps - hyperparams.pass_floor_eps_step_down, desired_pass_eps_max)
+                desired_pass_eps = max(
+                    current_pass_floor_eps - hyperparams.pass_floor_eps_step_down,
+                    desired_pass_eps_max,
+                )
 
             if abs(desired_pass_eps - current_pass_floor_eps) > 1e-6:
                 current_pass_floor_eps = desired_pass_eps
                 training_agent.set_pass_floor_epsilon(current_pass_floor_eps)
-                print(f"   ⚠️  PASS floor epsilon ε_pass adjusted to: {current_pass_floor_eps:.3f}")
+                print(
+                    f"   ⚠️  PASS floor epsilon ε_pass adjusted to: {current_pass_floor_eps:.3f}"
+                )
 
             # --- PICK-floor epsilon controller (activate when overall pick rate is very low) ---
             desired_pick_eps_max = hyperparams.pick_floor_eps_base
@@ -1037,27 +1344,36 @@ def train_pfsp(num_episodes: int = 500000,
 
             desired_pick_eps = current_pick_floor_eps
             if desired_pick_eps_max > current_pick_floor_eps:
-                desired_pick_eps = min(current_pick_floor_eps + hyperparams.pick_floor_eps_step_up, desired_pick_eps_max)
+                desired_pick_eps = min(
+                    current_pick_floor_eps + hyperparams.pick_floor_eps_step_up,
+                    desired_pick_eps_max,
+                )
             elif desired_pick_eps_max < current_pick_floor_eps:
-                desired_pick_eps = max(current_pick_floor_eps - hyperparams.pick_floor_eps_step_down, desired_pick_eps_max)
+                desired_pick_eps = max(
+                    current_pick_floor_eps - hyperparams.pick_floor_eps_step_down,
+                    desired_pick_eps_max,
+                )
 
             if abs(desired_pick_eps - current_pick_floor_eps) > 1e-6:
                 current_pick_floor_eps = desired_pick_eps
                 training_agent.set_pick_floor_epsilon(current_pick_floor_eps)
-                print(f"   ⚠️  PICK floor epsilon ε_pick adjusted to: {current_pick_floor_eps:.3f}")
-
+                print(
+                    f"   ⚠️  PICK floor epsilon ε_pick adjusted to: {current_pick_floor_eps:.3f}"
+                )
 
         # Save checkpoints
         if episode % save_interval == 0:
-            checkpoint_path = f'{checkpoint_dir}/pfsp_{activation}_checkpoint_{episode}.pt'
+            checkpoint_path = (
+                f"{checkpoint_dir}/pfsp_{activation}_checkpoint_{episode}.pt"
+            )
             training_agent.save(checkpoint_path)
 
             # Save population state
             population.save_population_state()
 
             # Save training plot
-            if len(training_data['episodes']) > 10:
-                plot_path = f'{checkpoint_dir}/pfsp_training_progress_{episode}.png'
+            if len(training_data["episodes"]) > 10:
+                plot_path = f"{checkpoint_dir}/pfsp_training_progress_{episode}.png"
                 save_training_plot(training_data, plot_path)  # Reuse plotting function
 
             checkpoint_time = time.time()
@@ -1065,10 +1381,14 @@ def train_pfsp(num_episodes: int = 500000,
             last_checkpoint_time = checkpoint_time
 
             print(f"💾 Checkpoint saved at episode {episode:,}")
-            print(f"   Time for last {save_interval:,} episodes: {time_since_last/60:.1f} min")
+            print(
+                f"   Time for last {save_interval:,} episodes: {time_since_last / 60:.1f} min"
+            )
             remaining_episodes = num_episodes - episode
             if remaining_episodes > 0:
-                estimated_time = remaining_episodes * (time_since_last / save_interval) / 60
+                estimated_time = (
+                    remaining_episodes * (time_since_last / save_interval) / 60
+                )
                 print(f"   Estimated time remaining: {estimated_time:.1f} min")
 
     # Final update and save
@@ -1077,26 +1397,36 @@ def train_pfsp(num_episodes: int = 500000,
         final_update_stats = training_agent.update()
 
         if final_update_stats:
-            adv_stats = final_update_stats['advantage_stats']
-            val_stats = final_update_stats['value_target_stats']
-            num_transitions = final_update_stats['num_transitions']
+            adv_stats = final_update_stats["advantage_stats"]
+            val_stats = final_update_stats["value_target_stats"]
+            num_transitions = final_update_stats["num_transitions"]
 
             print(f"   Final Transitions: {num_transitions}")
-            print(f"   Final Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]")
-            print(f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]")
+            print(
+                f"   Final Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]"
+            )
+            print(
+                f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]"
+            )
 
-    training_agent.save(f'final_pfsp_{activation}_ppo.pt')
+    training_agent.save(f"final_pfsp_{activation}_ppo.pt")
     population.save_population_state()
 
     # Save final training plot
-    if len(training_data['episodes']) > 0:
-        save_training_plot(training_data, f'final_pfsp_{activation}_training.png')
+    if len(training_data["episodes"]) > 0:
+        save_training_plot(training_data, f"final_pfsp_{activation}_training.png")
 
     total_time = time.time() - start_time
     print("\n🎉 PFSP Training completed!")
-    print(f"   Total time: {total_time/60:.1f} minutes ({total_time/3600:.1f} hours)")
-    print(f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}")
-    print(f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}")
+    print(
+        f"   Total time: {total_time / 60:.1f} minutes ({total_time / 3600:.1f} hours)"
+    )
+    print(
+        f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}"
+    )
+    print(
+        f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}"
+    )
 
     # Final population summary
     print("\n" + population.get_population_summary())
@@ -1104,26 +1434,64 @@ def train_pfsp(num_episodes: int = 500000,
 
 def main():
     parser = ArgumentParser(description="PFSP population-based training for Sheepshead")
-    parser.add_argument("--episodes", type=int, default=20_000_000,
-                       help="Number of training episodes (default: 20,000,000)")
-    parser.add_argument("--update-interval", type=int, default=2048,
-                       help="Number of transitions between model updates")
-    parser.add_argument("--save-interval", type=int, default=5000,
-                       help="Number of episodes between checkpoints")
-    parser.add_argument("--strategic-eval-interval", type=int, default=10000,
-                       help="Number of episodes between strategic evaluations")
-    parser.add_argument("--population-add-interval", type=int, default=5000,
-                       help="Number of episodes between adding agents to population")
-    parser.add_argument("--cross-eval-interval", type=int, default=20000,
-                       help="Number of episodes between cross-evaluation tournaments")
-    parser.add_argument("--resume", type=str, default=None,
-                       help="Model file to resume training from")
-    parser.add_argument("--activation", type=str, default='swish', choices=['relu', 'swish'],
-                       help="Activation function to use (default: swish)")
-    parser.add_argument("--initial-checkpoints", nargs='+', default=None,
-                       help="Checkpoint patterns to initialize population from")
-    parser.add_argument("--schedule-horizon-episodes", type=int, default=None,
-                       help="Episode horizon used for entropy/reward-shaping schedules (defaults to --episodes)")
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=20_000_000,
+        help="Number of training episodes (default: 20,000,000)",
+    )
+    parser.add_argument(
+        "--update-interval",
+        type=int,
+        default=2048,
+        help="Number of transitions between model updates",
+    )
+    parser.add_argument(
+        "--save-interval",
+        type=int,
+        default=5000,
+        help="Number of episodes between checkpoints",
+    )
+    parser.add_argument(
+        "--strategic-eval-interval",
+        type=int,
+        default=10000,
+        help="Number of episodes between strategic evaluations",
+    )
+    parser.add_argument(
+        "--population-add-interval",
+        type=int,
+        default=5000,
+        help="Number of episodes between adding agents to population",
+    )
+    parser.add_argument(
+        "--cross-eval-interval",
+        type=int,
+        default=20000,
+        help="Number of episodes between cross-evaluation tournaments",
+    )
+    parser.add_argument(
+        "--resume", type=str, default=None, help="Model file to resume training from"
+    )
+    parser.add_argument(
+        "--activation",
+        type=str,
+        default="swish",
+        choices=["relu", "swish"],
+        help="Activation function to use (default: swish)",
+    )
+    parser.add_argument(
+        "--initial-checkpoints",
+        nargs="+",
+        default=None,
+        help="Checkpoint patterns to initialize population from",
+    )
+    parser.add_argument(
+        "--schedule-horizon-episodes",
+        type=int,
+        default=None,
+        help="Episode horizon used for entropy/reward-shaping schedules (defaults to --episodes)",
+    )
 
     args = parser.parse_args()
 
@@ -1133,7 +1501,7 @@ def main():
     torch.manual_seed(42)
 
     # Ensure matplotlib uses a non-interactive backend
-    plt.switch_backend('Agg')
+    plt.switch_backend("Agg")
 
     train_pfsp(
         num_episodes=args.episodes,
@@ -1145,7 +1513,7 @@ def main():
         resume_model=args.resume,
         activation=args.activation,
         initial_checkpoints=args.initial_checkpoints,
-        schedule_horizon_episodes=args.schedule_horizon_episodes
+        schedule_horizon_episodes=args.schedule_horizon_episodes,
     )
 
 

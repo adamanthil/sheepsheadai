@@ -3,6 +3,7 @@
 The server fails fast at startup if `DATABASE_URL` is missing — persistence
 is a hard requirement (Phase 3 §3.5).
 """
+
 from __future__ import annotations
 
 import logging

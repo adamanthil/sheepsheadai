@@ -5,15 +5,24 @@ import torch.nn.functional as F
 import torch.optim as optim
 import time
 from typing import Dict
-from sheepshead import ACTION_IDS, BURY_ACTIONS, CALL_ACTIONS, UNDER_ACTIONS, PLAY_ACTIONS, DECK_IDS, UNDER_TOKEN, TRUMP
+from sheepshead import (
+    ACTION_IDS,
+    BURY_ACTIONS,
+    CALL_ACTIONS,
+    UNDER_ACTIONS,
+    PLAY_ACTIONS,
+    DECK_IDS,
+    UNDER_TOKEN,
+    TRUMP,
+)
 from encoder import CardReasoningEncoder, CardEmbeddingConfig
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Manual scaling constants for critic heads
-RETURN_SCALE = 12.0       # Final score range ~[-12, 12]; normalize to align with value
-POINTS_SCALE = 10.0       # Bring 0–120 point regression into ~0–12 range
+RETURN_SCALE = 12.0  # Final score range ~[-12, 12]; normalize to align with value
+POINTS_SCALE = 10.0  # Bring 0–120 point regression into ~0–12 range
 
 
 class MultiHeadRecurrentActorNetwork(nn.Module):
@@ -23,34 +32,38 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     logic continues to work unchanged.
     """
 
-    def __init__(self,
-                 action_size,
-                 action_groups,
-                 activation='swish',
-                 *,
-                 d_card: int,
-                 d_token: int,
-                 map_cid_to_play_action_index: torch.Tensor,
-                 map_cid_to_bury_action_index: torch.Tensor,
-                 map_cid_to_under_action_index: torch.Tensor,
-                 call_action_global_indices: torch.Tensor,
-                 call_card_ids: torch.Tensor,
-                 play_under_action_index: int):
+    def __init__(
+        self,
+        action_size,
+        action_groups,
+        activation="swish",
+        *,
+        d_card: int,
+        d_token: int,
+        map_cid_to_play_action_index: torch.Tensor,
+        map_cid_to_bury_action_index: torch.Tensor,
+        map_cid_to_under_action_index: torch.Tensor,
+        call_action_global_indices: torch.Tensor,
+        call_card_ids: torch.Tensor,
+        play_under_action_index: int,
+    ):
         super(MultiHeadRecurrentActorNetwork, self).__init__()
         self.action_size = action_size
-        self.action_groups = action_groups  # dict with keys 'pick', 'partner', 'bury', 'play'
+        self.action_groups = (
+            action_groups  # dict with keys 'pick', 'partner', 'bury', 'play'
+        )
 
         # Shared actor adapter to add nonlinearity and specialization before heads
         self.actor_adapter = nn.Sequential(
             nn.LayerNorm(256),
             nn.Linear(256, 256),
-            nn.ReLU() if activation == 'relu' else nn.SiLU(),
+            nn.ReLU() if activation == "relu" else nn.SiLU(),
             nn.Linear(256, 256),
-            nn.ReLU() if activation == 'relu' else nn.SiLU(),
+            nn.ReLU() if activation == "relu" else nn.SiLU(),
         )
 
         # === Heads ===
-        self.pick_head = nn.Linear(256, len(action_groups['pick']))
+        self.pick_head = nn.Linear(256, len(action_groups["pick"]))
 
         # Partner head is split: basic (ALONE, JD PARTNER) + CALL actions via two-tower
         self.partner_basic_head = nn.Linear(256, 2)
@@ -85,7 +98,9 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         # Action index mappings
         self._map_cid_to_play_action_index = map_cid_to_play_action_index.clone().long()
         self._map_cid_to_bury_action_index = map_cid_to_bury_action_index.clone().long()
-        self._map_cid_to_under_action_index = map_cid_to_under_action_index.clone().long()
+        self._map_cid_to_under_action_index = (
+            map_cid_to_under_action_index.clone().long()
+        )
         self._call_action_global_indices = call_action_global_indices.clone().long()
         self._call_card_ids = call_card_ids.clone().long()
         self._play_under_action_index = int(play_under_action_index)
@@ -96,15 +111,17 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             nn.init.constant_(m.bias, 0.0)
 
     # ------------------------ internal helpers ------------------------
-    def _score_cards_two_tower(self, feat: torch.Tensor, card_embedding: nn.Embedding) -> torch.Tensor:
+    def _score_cards_two_tower(
+        self, feat: torch.Tensor, card_embedding: nn.Embedding
+    ) -> torch.Tensor:
         """Return per-card scores S for all 34 card ids using two-tower scorer.
         feat: (B, 256)
         Returns: (B, 34)
         """
-        q = self.tw_Wg(feat)                      # (B, k)        <- tower 1 (actor features)
-        table = card_embedding.weight             # (34, d_card)
-        K = self.tw_We(table)                     # (34, k)       <- tower 2 (card embeddings)
-        S = torch.matmul(q, K.t())    # (B, 34)       <- similarity scores
+        q = self.tw_Wg(feat)  # (B, k)        <- tower 1 (actor features)
+        table = card_embedding.weight  # (34, d_card)
+        K = self.tw_We(table)  # (34, k)       <- tower 2 (card embeddings)
+        S = torch.matmul(q, K.t())  # (B, 34)       <- similarity scores
         return S
 
     def _score_hand_pointer(
@@ -119,9 +136,9 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         tok = hand_tokens
         B, N = tok.size(0), tok.size(1)
         g = self.pointer_Wg(feat).unsqueeze(1).expand(B, N, -1)  # (B, N, h)
-        t = self.pointer_Wt(tok)                                   # (B, N, h)
-        e = torch.tanh(g + t)                                      # (B, N, h)
-        s = self.pointer_v(e).squeeze(-1)                          # (B, N)
+        t = self.pointer_Wt(tok)  # (B, N, h)
+        e = torch.tanh(g + t)  # (B, N, h)
+        s = self.pointer_v(e).squeeze(-1)  # (B, N)
         return s
 
     def _build_logits_from_features(
@@ -155,10 +172,12 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # PICK / PASS
         pick_logits = self.pick_head(feat) / max(self.temperature_pick, 1e-6)
-        logits[:, self.action_groups['pick']] = pick_logits
+        logits[:, self.action_groups["pick"]] = pick_logits
 
         # PARTNER: basic (ALONE, JD PARTNER)
-        partner_basic = self.partner_basic_head(feat) / max(self.temperature_partner, 1e-6)
+        partner_basic = self.partner_basic_head(feat) / max(
+            self.temperature_partner, 1e-6
+        )
         idx_alone = ACTION_IDS["ALONE"] - 1
         idx_jd = ACTION_IDS["JD PARTNER"] - 1
         logits[:, idx_alone] = partner_basic[:, 0]
@@ -166,7 +185,9 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # PARTNER: CALL actions via two-tower card scoring
         card_scores = self._score_cards_two_tower(feat, card_embedding)  # (K, 34)
-        call_scores = card_scores[:, self._call_card_ids.to(device)] / max(self.temperature_partner, 1e-6)
+        call_scores = card_scores[:, self._call_card_ids.to(device)] / max(
+            self.temperature_partner, 1e-6
+        )
         logits[:, self._call_action_global_indices.to(device)] = call_scores
 
         # Pointer scores over hand tokens (compute once, reuse for bury/under/play)
@@ -178,17 +199,21 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         cids = hand_ids.long()
 
         # BURY and UNDER scatter
-        idx_bury = self._map_cid_to_bury_action_index.to(device)[cids]   # (K, N)
-        idx_under = self._map_cid_to_under_action_index.to(device)[cids] # (K, N)
+        idx_bury = self._map_cid_to_bury_action_index.to(device)[cids]  # (K, N)
+        idx_under = self._map_cid_to_under_action_index.to(device)[cids]  # (K, N)
         for i in range(N):
             b_idx = idx_bury[:, i]
             u_idx = idx_under[:, i]
             valid_b = b_idx.ge(0)
             valid_u = u_idx.ge(0)
             if valid_b.any():
-                logits.view(K_, -1)[valid_b, b_idx[valid_b]] = slot_scores[valid_b, i] / max(self.temperature_bury, 1e-6)
+                logits.view(K_, -1)[valid_b, b_idx[valid_b]] = slot_scores[
+                    valid_b, i
+                ] / max(self.temperature_bury, 1e-6)
             if valid_u.any():
-                logits.view(K_, -1)[valid_u, u_idx[valid_u]] = slot_scores[valid_u, i] / max(self.temperature_bury, 1e-6)
+                logits.view(K_, -1)[valid_u, u_idx[valid_u]] = slot_scores[
+                    valid_u, i
+                ] / max(self.temperature_bury, 1e-6)
 
         # PLAY scatter
         idx_play = self._map_cid_to_play_action_index.to(device)[cids]  # (K, N)
@@ -196,11 +221,15 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             p_idx = idx_play[:, i]
             valid_p = p_idx.ge(0)
             if valid_p.any():
-                logits.view(K_, -1)[valid_p, p_idx[valid_p]] = slot_scores[valid_p, i] / max(self.temperature_play, 1e-6)
+                logits.view(K_, -1)[valid_p, p_idx[valid_p]] = slot_scores[
+                    valid_p, i
+                ] / max(self.temperature_play, 1e-6)
 
         # PLAY UNDER scalar
         if self._play_under_action_index is not None:
-            play_under_logit = self.play_under_head(feat).squeeze(-1) / max(self.temperature_play, 1e-6)
+            play_under_logit = self.play_under_head(feat).squeeze(-1) / max(
+                self.temperature_play, 1e-6
+            )
             logits[:, self._play_under_action_index] = play_under_logit
 
         # Apply action mask if provided
@@ -214,7 +243,13 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     # ------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------
-    def set_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
+    def set_temperatures(
+        self,
+        pick: float | None = None,
+        partner: float | None = None,
+        bury: float | None = None,
+        play: float | None = None,
+    ):
         """Set per-head softmax temperatures.
 
         Parameters
@@ -258,10 +293,10 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         probs : Tensor (batch, action_size)
         """
         logits = self._build_logits_from_features(
-            actor_features=encoder_out['features'],
+            actor_features=encoder_out["features"],
             hand_ids=hand_ids,
             card_embedding=card_embedding,
-            hand_tokens=encoder_out['hand_tokens'],
+            hand_tokens=encoder_out["hand_tokens"],
             action_mask=action_mask,
         )
         probs = F.softmax(logits, dim=-1)
@@ -282,29 +317,30 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         logits : Tensor
         """
         logits = self._build_logits_from_features(
-            actor_features=encoder_out['features'],
+            actor_features=encoder_out["features"],
             hand_ids=hand_ids,
             card_embedding=card_embedding,
-            hand_tokens=encoder_out['hand_tokens'],
+            hand_tokens=encoder_out["hand_tokens"],
             action_mask=action_mask,
         )
         probs = F.softmax(logits, dim=-1)
         return probs, logits
 
 
-
 class RecurrentCriticNetwork(nn.Module):
     """Critic head using encoder features directly."""
 
-    def __init__(self, activation='swish', d_card: int | None = None):
+    def __init__(self, activation="swish", d_card: int | None = None):
         super().__init__()
         if d_card is None:
-            raise ValueError("RecurrentCriticNetwork requires card embedding dimension (d_card).")
+            raise ValueError(
+                "RecurrentCriticNetwork requires card embedding dimension (d_card)."
+            )
 
         self.critic_adapter = nn.Sequential(
             nn.LayerNorm(256),
             nn.Linear(256, 256),
-            nn.ReLU() if activation == 'relu' else nn.SiLU()
+            nn.ReLU() if activation == "relu" else nn.SiLU(),
         )
         self.value_head = nn.Linear(256, 1)
         # Auxiliary heads
@@ -330,9 +366,11 @@ class RecurrentCriticNetwork(nn.Module):
         self.seen_trump_query = nn.Linear(128, self.seen_trump_key_dim)
         self.seen_trump_key = nn.Linear(d_card, self.seen_trump_key_dim, bias=False)
         # Per-trump key offsets for better separation of trump cards with very similar embeddings.
-        self.seen_trump_key_delta = nn.Parameter(torch.zeros(len(TRUMP), self.seen_trump_key_dim))
+        self.seen_trump_key_delta = nn.Parameter(
+            torch.zeros(len(TRUMP), self.seen_trump_key_dim)
+        )
         self.register_buffer(
-            'trump_card_ids',
+            "trump_card_ids",
             torch.tensor([DECK_IDS[c] for c in TRUMP], dtype=torch.long),
             persistent=False,
         )
@@ -358,7 +396,7 @@ class RecurrentCriticNetwork(nn.Module):
         -------
         value : Tensor (batch, 1)
         """
-        feat = self.critic_adapter(encoder_out['features'])
+        feat = self.critic_adapter(encoder_out["features"])
         value = self.value_head(feat)
         return value
 
@@ -382,7 +420,7 @@ class RecurrentCriticNetwork(nn.Module):
             Per-seat point predictions (0–120) in relative seat order.
         """
         with torch.no_grad():
-            aux_feat = self.critic_adapter(encoder_out['features'])
+            aux_feat = self.critic_adapter(encoder_out["features"])
             win_logit = self.win_head(aux_feat).squeeze(-1)
             expected_return = self.return_head(aux_feat).squeeze(-1)
             secret_logit = self.secret_partner_head(aux_feat).squeeze(-1)
@@ -394,7 +432,9 @@ class RecurrentCriticNetwork(nn.Module):
         points_vector = [float(v) for v in points_pred[0].tolist()]
         return win_prob, expected_final, secret_prob, points_vector
 
-    def seen_trump_mask_logits(self, feat: torch.Tensor, card_embedding: nn.Embedding) -> torch.Tensor:
+    def seen_trump_mask_logits(
+        self, feat: torch.Tensor, card_embedding: nn.Embedding
+    ) -> torch.Tensor:
         """Return logits for a length-len(TRUMP) seen/known mask using card embeddings."""
         h = self.trump_aux(feat)
         q = self.seen_trump_query(h)  # (..., d_key)
@@ -413,7 +453,7 @@ class RecurrentCriticNetwork(nn.Module):
 
 
 class PPOAgent:
-    def __init__(self, action_size, lr_actor=3e-4, lr_critic=3e-4, activation='swish'):
+    def __init__(self, action_size, lr_actor=3e-4, lr_critic=3e-4, activation="swish"):
         # Dict-based encoder → fixed 256-d features
         self.state_size = 256
         self.action_size = action_size
@@ -428,15 +468,17 @@ class PPOAgent:
         partner_indices = sorted({ACTION_IDS[a] - 1 for a in partner_selection_actions})
 
         # Bury head: explicit bury actions and UNDER actions
-        bury_indices = sorted({ACTION_IDS[a] - 1 for a in (BURY_ACTIONS + UNDER_ACTIONS)})
+        bury_indices = sorted(
+            {ACTION_IDS[a] - 1 for a in (BURY_ACTIONS + UNDER_ACTIONS)}
+        )
 
         play_indices = sorted({ACTION_IDS[a] - 1 for a in PLAY_ACTIONS})
 
         self.action_groups = {
-            'pick': sorted(pick_indices),
-            'partner': sorted(partner_indices),
-            'bury': sorted(bury_indices),
-            'play': sorted(play_indices),
+            "pick": sorted(pick_indices),
+            "partner": sorted(partner_indices),
+            "bury": sorted(bury_indices),
+            "play": sorted(play_indices),
         }
 
         # Explicit indices for PICK and PASS actions (0-indexed)
@@ -444,7 +486,9 @@ class PPOAgent:
         self.pass_action_index = ACTION_IDS["PASS"] - 1
 
         # Encoder with memory
-        self.encoder = CardReasoningEncoder(card_config=CardEmbeddingConfig()).to(device)
+        self.encoder = CardReasoningEncoder(card_config=CardEmbeddingConfig()).to(
+            device
+        )
 
         # Per-player memory tracking
         self._player_memories = {}
@@ -473,12 +517,14 @@ class PPOAgent:
             play_under_action_index=play_under_action_index,
         ).to(device)
 
-        self.critic = RecurrentCriticNetwork(activation=activation, d_card=self.encoder.d_card_dim).to(device)
+        self.critic = RecurrentCriticNetwork(
+            activation=activation, d_card=self.encoder.d_card_dim
+        ).to(device)
 
         # Optimizers (include encoder params with scaled LR for card embeddings)
         encoder_groups = self.encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.2)
         actor_groups = [
-            {'params': self.actor.parameters(), 'lr': lr_actor},
+            {"params": self.actor.parameters(), "lr": lr_actor},
             *encoder_groups,
         ]
         self.actor_optimizer = optim.Adam(actor_groups)
@@ -535,18 +581,26 @@ class PPOAgent:
         # PICK-floor mixing epsilon (applies on PICK/PASS decision steps)
         self.pick_floor_epsilon = 0.0
 
-    def get_recurrent_memory(self, player_id: int | None, device: torch.device | None = None) -> torch.Tensor:
+    def get_recurrent_memory(
+        self, player_id: int | None, device: torch.device | None = None
+    ) -> torch.Tensor:
         """Return the recurrent memory vector for a player, or a zero vector if unset.
 
         The returned tensor is (256,) on the requested device.
         """
-        target_device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        target_device = (
+            device
+            if device is not None
+            else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )
         mem = self._player_memories.get(player_id) if player_id is not None else None
         if mem is None:
             return torch.zeros(256, device=target_device)
         return mem.to(target_device) if mem.device != target_device else mem
 
-    def set_recurrent_memory(self, player_id: int | None, memory_vector: torch.Tensor) -> None:
+    def set_recurrent_memory(
+        self, player_id: int | None, memory_vector: torch.Tensor
+    ) -> None:
         """Set the recurrent memory vector for a player."""
         self._player_memories[player_id] = memory_vector
 
@@ -596,12 +650,29 @@ class PPOAgent:
         idx_call_global = torch.tensor(sorted(idx_call_global_list), dtype=torch.long)
         # Align cid list to the sorted order of indices
         # Build mapping from index to cid then reorder
-        idx_to_cid = {idx: cid for idx, cid in zip(idx_call_global_list, call_card_ids_list)}
-        call_card_ids = torch.tensor([idx_to_cid[int(x)] for x in idx_call_global.tolist()], dtype=torch.long)
+        idx_to_cid = {
+            idx: cid for idx, cid in zip(idx_call_global_list, call_card_ids_list)
+        }
+        call_card_ids = torch.tensor(
+            [idx_to_cid[int(x)] for x in idx_call_global.tolist()], dtype=torch.long
+        )
 
-        return map_cid_to_play_action_index, map_cid_to_bury_action_index, map_cid_to_under_action_index, idx_call_global, call_card_ids, play_under_index
+        return (
+            map_cid_to_play_action_index,
+            map_cid_to_bury_action_index,
+            map_cid_to_under_action_index,
+            idx_call_global,
+            call_card_ids,
+            play_under_index,
+        )
 
-    def set_head_temperatures(self, pick: float | None = None, partner: float | None = None, bury: float | None = None, play: float | None = None):
+    def set_head_temperatures(
+        self,
+        pick: float | None = None,
+        partner: float | None = None,
+        bury: float | None = None,
+        play: float | None = None,
+    ):
         """Convenience proxy to set per-head temperatures on the actor."""
         self.actor.set_temperatures(pick=pick, partner=partner, bury=bury, play=play)
 
@@ -640,15 +711,19 @@ class PPOAgent:
         param groups (e.g., card embeddings at a smaller LR).
         """
         if base_lr is None:
-            base_lr = float(self.actor_optimizer.param_groups[0]['lr'])
+            base_lr = float(self.actor_optimizer.param_groups[0]["lr"])
         if base_lr <= 0.0:
             existing = getattr(self, "_actor_lr_ratios", None)
             if existing is not None:
                 return existing
             return [1.0 for _ in self.actor_optimizer.param_groups]
-        return [float(group['lr']) / base_lr for group in self.actor_optimizer.param_groups]
+        return [
+            float(group["lr"]) / base_lr for group in self.actor_optimizer.param_groups
+        ]
 
-    def set_learning_rates(self, actor_lr: float | None = None, critic_lr: float | None = None):
+    def set_learning_rates(
+        self, actor_lr: float | None = None, critic_lr: float | None = None
+    ):
         """Set learning rates for actor and/or critic optimizers.
 
         For the actor optimizer, maintains correct relative scaling across param groups:
@@ -671,13 +746,15 @@ class PPOAgent:
             self._actor_lr_ratios = self._capture_actor_lr_ratios()
             # Apply actor LR to all param groups maintaining relative ratios
             for i, group in enumerate(self.actor_optimizer.param_groups):
-                group['lr'] = actor_lr * self._actor_lr_ratios[i]
+                group["lr"] = actor_lr * self._actor_lr_ratios[i]
 
         if critic_lr is not None:
             critic_lr = float(critic_lr)
-            self.critic_optimizer.param_groups[0]['lr'] = critic_lr
+            self.critic_optimizer.param_groups[0]["lr"] = critic_lr
 
-    def _apply_head_epsilon_mix(self, probs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def _apply_head_epsilon_mix(
+        self, probs: torch.Tensor, mask: torch.Tensor
+    ) -> torch.Tensor:
         """
         Shared epsilon mixing for partner-call uniform, pick floor, pass floor.
         Expects probs already normalized; returns a new tensor (no in-place ops).
@@ -695,7 +772,9 @@ class PPOAgent:
         if self.partner_call_epsilon > 0.0:
             A = mixed.size(1)
             call_vec = torch.zeros(A, dtype=torch.bool, device=mixed.device)
-            call_idx = torch.tensor(self.partner_call_subindices, dtype=torch.long, device=mixed.device)
+            call_idx = torch.tensor(
+                self.partner_call_subindices, dtype=torch.long, device=mixed.device
+            )
             call_vec[call_idx] = True
             valid_call = mask & call_vec.view(1, A).expand_as(mask)
             count = valid_call.float().sum(dim=-1, keepdim=True)
@@ -720,7 +799,8 @@ class PPOAgent:
             ).float()
             mixed = torch.where(
                 mask[:, self.pick_action_index].unsqueeze(-1),
-                (1.0 - self.pick_floor_epsilon) * mixed + self.pick_floor_epsilon * one_hot_pick,
+                (1.0 - self.pick_floor_epsilon) * mixed
+                + self.pick_floor_epsilon * one_hot_pick,
                 mixed,
             )
 
@@ -732,7 +812,8 @@ class PPOAgent:
             ).float()
             mixed = torch.where(
                 mask[:, self.pass_action_index].unsqueeze(-1),
-                (1.0 - self.pass_floor_epsilon) * mixed + self.pass_floor_epsilon * one_hot_pass,
+                (1.0 - self.pass_floor_epsilon) * mixed
+                + self.pass_floor_epsilon * one_hot_pass,
                 mixed,
             )
 
@@ -768,14 +849,22 @@ class PPOAgent:
         memory_in = self.get_recurrent_memory(player_id, device=device)
 
         # Encode dict state with memory
-        encoder_out = self.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+        encoder_out = self.encoder.encode_batch(
+            [state], memory_in=memory_in.unsqueeze(0), device=device
+        )
 
         # Store updated memory
         if player_id is not None:
-            self.set_recurrent_memory(player_id, encoder_out['memory_out'][0])
+            self.set_recurrent_memory(player_id, encoder_out["memory_out"][0])
 
-        action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
-        hand_ids_t = torch.as_tensor(state['hand_ids'], dtype=torch.long, device=device).view(1, -1)
+        action_mask_t = (
+            self.get_action_mask(valid_actions, self.action_size)
+            .unsqueeze(0)
+            .to(device)
+        )
+        hand_ids_t = torch.as_tensor(
+            state["hand_ids"], dtype=torch.long, device=device
+        ).view(1, -1)
 
         with torch.no_grad():
             probs, logits = self.actor.forward_with_logits(
@@ -795,15 +884,23 @@ class PPOAgent:
             memory_in = self.get_recurrent_memory(player_id, device=device)
 
             # Encode with memory
-            encoder_out = self.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+            encoder_out = self.encoder.encode_batch(
+                [state], memory_in=memory_in.unsqueeze(0), device=device
+            )
 
             # Store updated memory
             if player_id is not None:
-                self.set_recurrent_memory(player_id, encoder_out['memory_out'][0])
+                self.set_recurrent_memory(player_id, encoder_out["memory_out"][0])
 
             # Get action probabilities
-            action_mask_t = self.get_action_mask(valid_actions, self.action_size).unsqueeze(0).to(device)
-            hand_ids_t = torch.as_tensor(state['hand_ids'], dtype=torch.long, device=device).view(1, -1)
+            action_mask_t = (
+                self.get_action_mask(valid_actions, self.action_size)
+                .unsqueeze(0)
+                .to(device)
+            )
+            hand_ids_t = torch.as_tensor(
+                state["hand_ids"], dtype=torch.long, device=device
+            ).view(1, -1)
 
             action_probs = self.actor(
                 encoder_out,
@@ -827,7 +924,11 @@ class PPOAgent:
         # Get log probability from the distribution for consistency
         log_prob = dist.log_prob(action)
 
-        return action.item() + 1, log_prob.item(), value.item()  # Convert back to 1-indexed
+        return (
+            action.item() + 1,
+            log_prob.item(),
+            value.item(),
+        )  # Convert back to 1-indexed
 
     # ------------------------------------------------------------------
     # Observation-only step (no action sampled / no transition stored)
@@ -849,11 +950,13 @@ class PPOAgent:
 
         with torch.no_grad():
             # Encode with memory to update memory state
-            encoder_out = self.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+            encoder_out = self.encoder.encode_batch(
+                [state], memory_in=memory_in.unsqueeze(0), device=device
+            )
 
             # Store updated memory
             if player_id is not None:
-                self.set_recurrent_memory(player_id, encoder_out['memory_out'][0])
+                self.set_recurrent_memory(player_id, encoder_out["memory_out"][0])
 
     # ------------------------------------------------------------------
     # Episode-level ingestion API
@@ -886,48 +989,58 @@ class PPOAgent:
         # Identify last action index to set done flag
         last_action_idx = -1
         for idx, ev in enumerate(events):
-            if ev.get('kind') == 'action':
+            if ev.get("kind") == "action":
                 last_action_idx = idx
 
         for idx, ev in enumerate(events):
-            if ev.get('kind') == 'action':
-                seen_mask = ev.get('seen_trump_mask_label') or [0] * len(TRUMP)
-                unseen_higher = float(ev.get('unseen_trump_higher_than_hand_label', 0.0) or 0.0)
-                mask = self.get_action_mask(ev['valid_actions'], self.action_size)
-                self.events.append({
-                    'kind': 'action',
-                    'state': ev['state'],
-                    'mask': mask,
-                    'action': int(ev['action']) - 1,
-                    'reward': float(ev['reward']),
-                    'value': float(ev['value']),
-                    'log_prob': float(ev['log_prob']),
-                    'done': (idx == last_action_idx),
-                    'win': float(ev.get('win_label', 0.0) or 0.0),
-                    'final_return': float(ev.get('final_return_label', 0.0) or 0.0),
-                    'secret_partner': float(ev.get('secret_partner_label', 0.0) or 0.0),
-                    'points_rel': [float(x) for x in (ev.get('points_label') or [0.0] * 5)],
-                    'seen_trump_mask': [float(x) for x in seen_mask],
-                    'unseen_trump_higher_than_hand': float(unseen_higher),
-                })
+            if ev.get("kind") == "action":
+                seen_mask = ev.get("seen_trump_mask_label") or [0] * len(TRUMP)
+                unseen_higher = float(
+                    ev.get("unseen_trump_higher_than_hand_label", 0.0) or 0.0
+                )
+                mask = self.get_action_mask(ev["valid_actions"], self.action_size)
+                self.events.append(
+                    {
+                        "kind": "action",
+                        "state": ev["state"],
+                        "mask": mask,
+                        "action": int(ev["action"]) - 1,
+                        "reward": float(ev["reward"]),
+                        "value": float(ev["value"]),
+                        "log_prob": float(ev["log_prob"]),
+                        "done": (idx == last_action_idx),
+                        "win": float(ev.get("win_label", 0.0) or 0.0),
+                        "final_return": float(ev.get("final_return_label", 0.0) or 0.0),
+                        "secret_partner": float(
+                            ev.get("secret_partner_label", 0.0) or 0.0
+                        ),
+                        "points_rel": [
+                            float(x) for x in (ev.get("points_label") or [0.0] * 5)
+                        ],
+                        "seen_trump_mask": [float(x) for x in seen_mask],
+                        "unseen_trump_higher_than_hand": float(unseen_higher),
+                    }
+                )
             else:
                 # Observation: mask = all ones by default
                 mask = torch.ones(self.action_size, dtype=torch.bool)
-                self.events.append({
-                    'kind': 'observation',
-                    'state': ev['state'],
-                    'mask': mask,
-                })
+                self.events.append(
+                    {
+                        "kind": "observation",
+                        "state": ev["state"],
+                        "mask": mask,
+                    }
+                )
 
     def compute_gae(self):
         """Compute GAE over action events; write results back into events."""
-        action_idxs = [i for i, e in enumerate(self.events) if e['kind'] == 'action']
+        action_idxs = [i for i, e in enumerate(self.events) if e["kind"] == "action"]
         if not action_idxs:
             return np.array([]), np.array([])
 
-        rewards = np.array([self.events[i]['reward'] for i in action_idxs])
-        values = np.array([self.events[i]['value'] for i in action_idxs] + [0.0])
-        dones = np.array([self.events[i]['done'] for i in action_idxs] + [False])
+        rewards = np.array([self.events[i]["reward"] for i in action_idxs])
+        values = np.array([self.events[i]["value"] for i in action_idxs] + [0.0])
+        dones = np.array([self.events[i]["done"] for i in action_idxs] + [False])
 
         advantages = np.zeros_like(rewards)
         gae = 0.0
@@ -938,8 +1051,8 @@ class PPOAgent:
         returns = advantages + values[:-1]
 
         for i, adv, ret in zip(action_idxs, advantages, returns):
-            self.events[i]['advantage'] = float(adv)
-            self.events[i]['return'] = float(ret)
+            self.events[i]["advantage"] = float(adv)
+            self.events[i]["return"] = float(ret)
 
         return advantages, returns
 
@@ -948,12 +1061,16 @@ class PPOAgent:
     # ------------------------------------------------------------------
     def _prepare_training_views(self):
         # Keep raw states (dicts) to encode inside the update for gradient flow
-        states = [e['state'] for e in self.events]
+        states = [e["state"] for e in self.events]
         masks_t = [
-            (e['mask'].to(device) if isinstance(e['mask'], torch.Tensor) else torch.as_tensor(e['mask'], dtype=torch.bool, device=device))
+            (
+                e["mask"].to(device)
+                if isinstance(e["mask"], torch.Tensor)
+                else torch.as_tensor(e["mask"], dtype=torch.bool, device=device)
+            )
             for e in self.events
         ]
-        kinds = [e['kind'] for e in self.events]
+        kinds = [e["kind"] for e in self.events]
         return states, masks_t, kinds
 
     def _segments_from_events(self, kinds: list[str]):
@@ -962,15 +1079,15 @@ class PPOAgent:
         if not ev_idxs:
             return segments
 
-        action_ev_idxs = [i for i in ev_idxs if kinds[i] == 'action']
+        action_ev_idxs = [i for i in ev_idxs if kinds[i] == "action"]
         if not action_ev_idxs:
             return segments
 
-        dones = [self.events[i]['done'] for i in action_ev_idxs]
+        dones = [self.events[i]["done"] for i in action_ev_idxs]
         start = ev_idxs[0]
         a_ptr = 0
         for i in ev_idxs:
-            if kinds[i] == 'action':
+            if kinds[i] == "action":
                 if dones[a_ptr]:
                     segments.append((start, i))
                     start = i + 1
@@ -1021,7 +1138,7 @@ class PPOAgent:
             states_seqs.append([states[i] for i in ev_range])
             masks_list.append(torch.stack([masks_t[i] for i in ev_range], dim=0))
             is_act = torch.tensor(
-                [1 if kinds[i] == 'action' else 0 for i in ev_range],
+                [1 if kinds[i] == "action" else 0 for i in ev_range],
                 dtype=torch.bool,
                 device=device,
             )
@@ -1033,34 +1150,84 @@ class PPOAgent:
             seen_trump_mask_bt = []
             unseen_trump_higher_than_hand_bt = []
             for i in ev_range:
-                if kinds[i] == 'action':
-                    act_bt.append(torch.tensor(self.events[i]['action'], dtype=torch.long, device=device))
-                    olp_bt.append(torch.tensor(self.events[i]['log_prob'], dtype=torch.float32, device=device))
-                    ret_bt.append(torch.tensor(self.events[i]['return'], dtype=torch.float32, device=device))
-                    adv_bt.append(torch.tensor(self.events[i]['advantage'], dtype=torch.float32, device=device))
-                    win_lbl = self.events[i].get('win', 0.0) or 0.0
-                    final_return_lbl = self.events[i].get('final_return', 0.0) or 0.0
-                    secret_lbl = self.events[i].get('secret_partner', 0.0) or 0.0
-                    win_bt.append(torch.tensor(float(win_lbl), dtype=torch.float32, device=device))
-                    final_ret_bt.append(torch.tensor(float(final_return_lbl), dtype=torch.float32, device=device))
-                    secret_bt.append(torch.tensor(float(secret_lbl), dtype=torch.float32, device=device))
-                    pts_lbl = self.events[i].get('points_rel', [0.0] * 5)
-                    points_bt.append(torch.tensor(pts_lbl, dtype=torch.float32, device=device))
-                    seen_mask_lbl = self.events[i].get('seen_trump_mask') or [0.0] * len(TRUMP)
-                    seen_trump_mask_bt.append(torch.tensor(seen_mask_lbl, dtype=torch.float32, device=device))
-                    unseen_higher_lbl = float(self.events[i].get('unseen_trump_higher_than_hand', 0.0) or 0.0)
-                    unseen_trump_higher_than_hand_bt.append(torch.tensor(unseen_higher_lbl, dtype=torch.float32, device=device))
+                if kinds[i] == "action":
+                    act_bt.append(
+                        torch.tensor(
+                            self.events[i]["action"], dtype=torch.long, device=device
+                        )
+                    )
+                    olp_bt.append(
+                        torch.tensor(
+                            self.events[i]["log_prob"],
+                            dtype=torch.float32,
+                            device=device,
+                        )
+                    )
+                    ret_bt.append(
+                        torch.tensor(
+                            self.events[i]["return"], dtype=torch.float32, device=device
+                        )
+                    )
+                    adv_bt.append(
+                        torch.tensor(
+                            self.events[i]["advantage"],
+                            dtype=torch.float32,
+                            device=device,
+                        )
+                    )
+                    win_lbl = self.events[i].get("win", 0.0) or 0.0
+                    final_return_lbl = self.events[i].get("final_return", 0.0) or 0.0
+                    secret_lbl = self.events[i].get("secret_partner", 0.0) or 0.0
+                    win_bt.append(
+                        torch.tensor(float(win_lbl), dtype=torch.float32, device=device)
+                    )
+                    final_ret_bt.append(
+                        torch.tensor(
+                            float(final_return_lbl), dtype=torch.float32, device=device
+                        )
+                    )
+                    secret_bt.append(
+                        torch.tensor(
+                            float(secret_lbl), dtype=torch.float32, device=device
+                        )
+                    )
+                    pts_lbl = self.events[i].get("points_rel", [0.0] * 5)
+                    points_bt.append(
+                        torch.tensor(pts_lbl, dtype=torch.float32, device=device)
+                    )
+                    seen_mask_lbl = self.events[i].get("seen_trump_mask") or [
+                        0.0
+                    ] * len(TRUMP)
+                    seen_trump_mask_bt.append(
+                        torch.tensor(seen_mask_lbl, dtype=torch.float32, device=device)
+                    )
+                    unseen_higher_lbl = float(
+                        self.events[i].get("unseen_trump_higher_than_hand", 0.0) or 0.0
+                    )
+                    unseen_trump_higher_than_hand_bt.append(
+                        torch.tensor(
+                            unseen_higher_lbl, dtype=torch.float32, device=device
+                        )
+                    )
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     win_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                    final_ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                    secret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    final_ret_bt.append(
+                        torch.tensor(0.0, dtype=torch.float32, device=device)
+                    )
+                    secret_bt.append(
+                        torch.tensor(0.0, dtype=torch.float32, device=device)
+                    )
                     points_bt.append(torch.zeros(5, dtype=torch.float32, device=device))
-                    seen_trump_mask_bt.append(torch.zeros(len(TRUMP), dtype=torch.float32, device=device))
-                    unseen_trump_higher_than_hand_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    seen_trump_mask_bt.append(
+                        torch.zeros(len(TRUMP), dtype=torch.float32, device=device)
+                    )
+                    unseen_trump_higher_than_hand_bt.append(
+                        torch.tensor(0.0, dtype=torch.float32, device=device)
+                    )
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
@@ -1070,7 +1237,9 @@ class PPOAgent:
             secret_list_all.append(torch.stack(secret_bt, dim=0))
             points_list_all.append(torch.stack(points_bt, dim=0))
             seen_trump_mask_list_all.append(torch.stack(seen_trump_mask_bt, dim=0))
-            unseen_trump_higher_than_hand_list_all.append(torch.stack(unseen_trump_higher_than_hand_bt, dim=0))
+            unseen_trump_higher_than_hand_list_all.append(
+                torch.stack(unseen_trump_higher_than_hand_bt, dim=0)
+            )
 
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
@@ -1083,7 +1252,9 @@ class PPOAgent:
         secret_bt, _ = self._pad_to_bt(secret_list_all, lengths, 0.0)
         points_bt, _ = self._pad_to_bt(points_list_all, lengths, 0.0)
         seen_trump_mask_bt, _ = self._pad_to_bt(seen_trump_mask_list_all, lengths, 0.0)
-        unseen_trump_higher_than_hand_bt, _ = self._pad_to_bt(unseen_trump_higher_than_hand_list_all, lengths, 0.0)
+        unseen_trump_higher_than_hand_bt, _ = self._pad_to_bt(
+            unseen_trump_higher_than_hand_list_all, lengths, 0.0
+        )
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
         return (
@@ -1122,13 +1293,11 @@ class PPOAgent:
 
         # Encode sequences with memory
         encoder_out_seq = self.encoder.encode_sequences(
-            states_input,
-            memory_in=memory_init,
-            device=device
+            states_input, memory_in=memory_init, device=device
         )
 
         # Extract features (B, T, 256)
-        features_bt = encoder_out_seq['features']
+        features_bt = encoder_out_seq["features"]
 
         # Build hand_ids_bt (B, T, N) from dict states
         N = 8  # Maximum hand size
@@ -1137,16 +1306,16 @@ class PPOAgent:
             for t, s in enumerate(seq):
                 if t >= T:
                     break
-                arr = torch.as_tensor(s['hand_ids'], dtype=torch.long, device=device)
+                arr = torch.as_tensor(s["hand_ids"], dtype=torch.long, device=device)
                 if arr.dim() == 1:
                     arr = arr.view(-1)
-                hand_ids_bt[b, t, :min(N, arr.numel())] = arr[:N]
+                hand_ids_bt[b, t, : min(N, arr.numel())] = arr[:N]
 
         # Flatten time dimension to reuse single helper, then reshape back
         flat_feat = features_bt.reshape(B * T, -1)
         flat_hand = hand_ids_bt.reshape(B * T, N)
         flat_mask = masks_bt.view(B * T, -1)
-        hand_tokens_bt = encoder_out_seq['hand_tokens']  # (B, T, N, d_token)
+        hand_tokens_bt = encoder_out_seq["hand_tokens"]  # (B, T, N, d_token)
         flat_tokens = hand_tokens_bt.reshape(B * T, N, -1)
 
         logits_flat = self.actor._build_logits_from_features(
@@ -1168,8 +1337,12 @@ class PPOAgent:
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
         secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
         points_pred_bt = self.critic.points_head(aux_feat_bt)
-        seen_trump_mask_logits_bt = self.critic.seen_trump_mask_logits(aux_feat_bt, self.encoder.card)
-        unseen_trump_higher_than_hand_logits_bt = self.critic.unseen_trump_higher_than_hand_logits(aux_feat_bt)
+        seen_trump_mask_logits_bt = self.critic.seen_trump_mask_logits(
+            aux_feat_bt, self.encoder.card
+        )
+        unseen_trump_higher_than_hand_logits_bt = (
+            self.critic.unseen_trump_higher_than_hand_logits(aux_feat_bt)
+        )
 
         return (
             logits_bt,
@@ -1220,7 +1393,9 @@ class PPOAgent:
             secret_logits_bt.view(-1)[flat_mask],
             secret_bt.view(-1)[flat_mask],
             masks_bt.view(-1, masks_bt.size(-1))[flat_mask],
-            seen_trump_mask_logits_bt.view(-1, seen_trump_mask_logits_bt.size(-1))[flat_mask],
+            seen_trump_mask_logits_bt.view(-1, seen_trump_mask_logits_bt.size(-1))[
+                flat_mask
+            ],
             seen_trump_mask_bt.view(-1, seen_trump_mask_bt.size(-1))[flat_mask],
             unseen_trump_higher_than_hand_logits_bt.view(-1)[flat_mask],
             unseen_trump_higher_than_hand_bt.view(-1)[flat_mask],
@@ -1231,7 +1406,9 @@ class PPOAgent:
         sub_norm = sub / (sub.sum(dim=1, keepdim=True) + 1e-8)
         return -(sub_norm * torch.log(sub_norm + 1e-8)).sum(dim=1).mean()
 
-    def _head_entropies(self, probs_flat, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t):
+    def _head_entropies(
+        self, probs_flat, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
+    ):
         probs_pick = probs_flat[:, pick_idx_t]
         probs_partner = probs_flat[:, partner_idx_t]
         probs_bury = probs_flat[:, bury_idx_t]
@@ -1243,7 +1420,9 @@ class PPOAgent:
             self._entropy_from_probs(probs_play),
         )
 
-    def _per_head_weights(self, actions_flat, pick_idx_t, partner_idx_t, bury_idx_t, template):
+    def _per_head_weights(
+        self, actions_flat, pick_idx_t, partner_idx_t, bury_idx_t, template
+    ):
         is_pick = torch.isin(actions_flat, pick_idx_t)
         is_partner = torch.isin(actions_flat, partner_idx_t)
         is_bury = torch.isin(actions_flat, bury_idx_t)
@@ -1254,7 +1433,9 @@ class PPOAgent:
         count_bury = is_bury.sum().item()
         count_play = is_play.sum().item()
         total_count = float(count_pick + count_partner + count_bury + count_play)
-        heads_present = int((count_pick > 0) + (count_partner > 0) + (count_bury > 0) + (count_play > 0))
+        heads_present = int(
+            (count_pick > 0) + (count_partner > 0) + (count_bury > 0) + (count_play > 0)
+        )
 
         def per_head_weight(count: int) -> float:
             if heads_present == 0 or count == 0:
@@ -1309,8 +1490,10 @@ class PPOAgent:
         log_ratio = new_lp_flat - old_lp_flat
         approx_kl_t = (torch.exp(log_ratio) - 1 - log_ratio).mean()
 
-        pick_entropy, partner_entropy, bury_entropy, play_entropy = self._head_entropies(
-            probs_all, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
+        pick_entropy, partner_entropy, bury_entropy, play_entropy = (
+            self._head_entropies(
+                probs_all, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
+            )
         )
         entropy_term = (
             self.entropy_coeff_pick * pick_entropy
@@ -1344,7 +1527,12 @@ class PPOAgent:
         critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped)
 
         actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
-        return actor_loss, critic_loss, approx_kl_t, (pick_entropy, partner_entropy, bury_entropy, play_entropy)
+        return (
+            actor_loss,
+            critic_loss,
+            approx_kl_t,
+            (pick_entropy, partner_entropy, bury_entropy, play_entropy),
+        )
 
     def update(self, epochs=6, batch_size=256):
         """Update actor and critic networks using PPO with recurrent unrolling.
@@ -1360,17 +1548,17 @@ class PPOAgent:
         # Store statistics before normalization
         raw_advantages = advantages.copy() if advantages.size else np.array([0.0])
         advantage_stats = {
-            'mean': float(np.mean(raw_advantages)),
-            'std': float(np.std(raw_advantages)),
-            'min': float(np.min(raw_advantages)),
-            'max': float(np.max(raw_advantages))
+            "mean": float(np.mean(raw_advantages)),
+            "std": float(np.std(raw_advantages)),
+            "min": float(np.min(raw_advantages)),
+            "max": float(np.max(raw_advantages)),
         }
 
         value_target_stats = {
-            'mean': float(np.mean(returns)) if advantages.size else 0.0,
-            'std': float(np.std(returns)) if advantages.size else 0.0,
-            'min': float(np.min(returns)) if advantages.size else 0.0,
-            'max': float(np.max(returns)) if advantages.size else 0.0,
+            "mean": float(np.mean(returns)) if advantages.size else 0.0,
+            "std": float(np.std(returns)) if advantages.size else 0.0,
+            "min": float(np.min(returns)) if advantages.size else 0.0,
+            "max": float(np.max(returns)) if advantages.size else 0.0,
         }
 
         # Normalize advantages and write back into events so the loss uses normalized values
@@ -1378,8 +1566,8 @@ class PPOAgent:
             adv_mean = advantages.mean()
             adv_std = advantages.std() + 1e-8
             for e in self.events:
-                if e.get('kind') == 'action':
-                    e['advantage'] = float((e['advantage'] - adv_mean) / adv_std)
+                if e.get("kind") == "action":
+                    e["advantage"] = float((e["advantage"] - adv_mean) / adv_std)
 
         # Build static views and segments
         t_build_start = time.time()
@@ -1387,10 +1575,12 @@ class PPOAgent:
         segments = self._segments_from_events(kinds)
 
         # Precompute static index tensors once
-        pick_idx_tensor_static = torch.tensor(self.action_groups['pick'], device=device)
-        partner_idx_tensor_static = torch.tensor(self.action_groups['partner'], device=device)
-        bury_idx_tensor_static = torch.tensor(self.action_groups['bury'], device=device)
-        play_idx_tensor_static = torch.tensor(self.action_groups['play'], device=device)
+        pick_idx_tensor_static = torch.tensor(self.action_groups["pick"], device=device)
+        partner_idx_tensor_static = torch.tensor(
+            self.action_groups["partner"], device=device
+        )
+        bury_idx_tensor_static = torch.tensor(self.action_groups["bury"], device=device)
+        play_idx_tensor_static = torch.tensor(self.action_groups["play"], device=device)
 
         t_build_end = time.time()
 
@@ -1432,7 +1622,7 @@ class PPOAgent:
                 break
             perm = torch.randperm(len(segments))
             for mb_start in range(0, len(segments), batch_size):
-                batch_idxs = perm[mb_start:mb_start + batch_size].tolist()
+                batch_idxs = perm[mb_start : mb_start + batch_size].tolist()
                 batch = [segments[i] for i in batch_idxs]
                 if len(batch) == 0:
                     continue
@@ -1512,11 +1702,11 @@ class PPOAgent:
 
                 # Record PICK/PASS advantages across minibatches
                 with torch.no_grad():
-                    pick_mask_specific = (actions_flat == self.pick_action_index)
+                    pick_mask_specific = actions_flat == self.pick_action_index
                     if pick_mask_specific.any():
                         pick_adv_sum += adv_flat[pick_mask_specific].sum().item()
                         pick_adv_count += int(pick_mask_specific.sum().item())
-                    pass_mask_specific = (actions_flat == self.pass_action_index)
+                    pass_mask_specific = actions_flat == self.pass_action_index
                     if pass_mask_specific.any():
                         pass_adv_sum += adv_flat[pass_mask_specific].sum().item()
                         pass_adv_count += int(pass_mask_specific.sum().item())
@@ -1553,16 +1743,24 @@ class PPOAgent:
                 ent_batches += 1
 
                 # Auxiliary losses
-                win_loss = F.binary_cross_entropy_with_logits(win_logits_flat, win_labels_flat)
+                win_loss = F.binary_cross_entropy_with_logits(
+                    win_logits_flat, win_labels_flat
+                )
                 return_loss = F.smooth_l1_loss(
                     ret_pred_flat / RETURN_SCALE,
                     final_ret_labels_flat / RETURN_SCALE,
                 )
-                secret_loss = F.binary_cross_entropy_with_logits(secret_logits_flat, secret_labels_flat)
+                secret_loss = F.binary_cross_entropy_with_logits(
+                    secret_logits_flat, secret_labels_flat
+                )
                 # Per-player points auxiliary loss (regression on per-seat totals, 0–120)
                 # points_pred_flat and labels are (N, 5); smooth L1 stabilizes training.
-                points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[is_action_bt.view(-1)]
-                points_labels_flat = points_bt.view(-1, points_bt.size(-1))[is_action_bt.view(-1)]
+                points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[
+                    is_action_bt.view(-1)
+                ]
+                points_labels_flat = points_bt.view(-1, points_bt.size(-1))[
+                    is_action_bt.view(-1)
+                ]
                 points_loss = F.smooth_l1_loss(
                     points_pred_flat / POINTS_SCALE,
                     points_labels_flat / POINTS_SCALE,
@@ -1586,7 +1784,9 @@ class PPOAgent:
                 points_loss_count += 1
                 seen_trump_mask_loss_sum += seen_trump_mask_loss.detach().item()
                 seen_trump_mask_loss_count += 1
-                unseen_trump_higher_than_hand_loss_sum += unseen_trump_higher_than_hand_loss.detach().item()
+                unseen_trump_higher_than_hand_loss_sum += (
+                    unseen_trump_higher_than_hand_loss.detach().item()
+                )
                 unseen_trump_higher_than_hand_loss_count += 1
 
                 # Backward + step per minibatch
@@ -1599,7 +1799,8 @@ class PPOAgent:
                     + self.secret_loss_coeff * secret_loss
                     + self.points_loss_coeff * points_loss
                     + self.seen_trump_mask_loss_coeff * seen_trump_mask_loss
-                    + self.unseen_trump_higher_than_hand_loss_coeff * unseen_trump_higher_than_hand_loss
+                    + self.unseen_trump_higher_than_hand_loss_coeff
+                    * unseen_trump_higher_than_hand_loss
                 )
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
@@ -1607,9 +1808,15 @@ class PPOAgent:
                 backward_time += time.time() - t_bwd
 
                 t_step = time.time()
-                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
-                torch.nn.utils.clip_grad_norm_(self.encoder.parameters(), self.max_grad_norm)
-                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    self.actor.parameters(), self.max_grad_norm
+                )
+                torch.nn.utils.clip_grad_norm_(
+                    self.encoder.parameters(), self.max_grad_norm
+                )
+                torch.nn.utils.clip_grad_norm_(
+                    self.critic.parameters(), self.max_grad_norm
+                )
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
                 step_time += time.time() - t_step
@@ -1623,7 +1830,7 @@ class PPOAgent:
             if early_stop_triggered:
                 break
 
-        transitions = sum(1 for e in self.events if e['kind'] == 'action')
+        transitions = sum(1 for e in self.events if e["kind"] == "action")
 
         # Clear storage
         self.reset_storage()
@@ -1631,52 +1838,68 @@ class PPOAgent:
         # Return training statistics
         t_end = time.time()
         timing = {
-            'build_s': t_build_end - t_build_start,
-            'forward_s': forward_time,
-            'backward_s': backward_time,
-            'step_s': step_time,
-            'total_update_s': t_end - t_update_start,
-            'optimizer_steps': optimizer_steps,
+            "build_s": t_build_end - t_build_start,
+            "forward_s": forward_time,
+            "backward_s": backward_time,
+            "step_s": step_time,
+            "total_update_s": t_end - t_update_start,
+            "optimizer_steps": optimizer_steps,
         }
         return {
-            'advantage_stats': advantage_stats,
-            'value_target_stats': value_target_stats,
-            'num_transitions': transitions,
-            'approx_kl': last_approx_kl,
-            'early_stop': early_stop_triggered,
-            'timing': timing,
-            'head_entropy': {
-                'pick': (ent_pick_sum / ent_batches) if ent_batches > 0 else 0.0,
-                'partner': (ent_partner_sum / ent_batches) if ent_batches > 0 else 0.0,
-                'bury': (ent_bury_sum / ent_batches) if ent_batches > 0 else 0.0,
-                'play': (ent_play_sum / ent_batches) if ent_batches > 0 else 0.0,
+            "advantage_stats": advantage_stats,
+            "value_target_stats": value_target_stats,
+            "num_transitions": transitions,
+            "approx_kl": last_approx_kl,
+            "early_stop": early_stop_triggered,
+            "timing": timing,
+            "head_entropy": {
+                "pick": (ent_pick_sum / ent_batches) if ent_batches > 0 else 0.0,
+                "partner": (ent_partner_sum / ent_batches) if ent_batches > 0 else 0.0,
+                "bury": (ent_bury_sum / ent_batches) if ent_batches > 0 else 0.0,
+                "play": (ent_play_sum / ent_batches) if ent_batches > 0 else 0.0,
             },
-            'pick_pass_adv': {
-                'pick_mean': (pick_adv_sum / pick_adv_count) if pick_adv_count > 0 else 0.0,
-                'pick_count': pick_adv_count,
-                'pass_mean': (pass_adv_sum / pass_adv_count) if pass_adv_count > 0 else 0.0,
-                'pass_count': pass_adv_count,
+            "pick_pass_adv": {
+                "pick_mean": (pick_adv_sum / pick_adv_count)
+                if pick_adv_count > 0
+                else 0.0,
+                "pick_count": pick_adv_count,
+                "pass_mean": (pass_adv_sum / pass_adv_count)
+                if pass_adv_count > 0
+                else 0.0,
+                "pass_count": pass_adv_count,
             },
-            'critic_losses': {
-                'value': self.value_loss_coeff * (value_loss_sum / max(value_loss_count, 1)),
-                'win': self.win_loss_coeff * (win_loss_sum / max(win_loss_count, 1)),
-                'return': self.return_loss_coeff * (return_loss_sum / max(return_loss_count, 1)),
-                'points': self.points_loss_coeff * (points_loss_sum / max(points_loss_count, 1)),
-                'secret_partner': self.secret_loss_coeff * (secret_loss_sum / max(secret_loss_count, 1)),
-                'seen_trump_mask': self.seen_trump_mask_loss_coeff * (seen_trump_mask_loss_sum / max(seen_trump_mask_loss_count, 1)),
-                'unseen_trump_higher_than_hand': self.unseen_trump_higher_than_hand_loss_coeff * (unseen_trump_higher_than_hand_loss_sum / max(unseen_trump_higher_than_hand_loss_count, 1)),
+            "critic_losses": {
+                "value": self.value_loss_coeff
+                * (value_loss_sum / max(value_loss_count, 1)),
+                "win": self.win_loss_coeff * (win_loss_sum / max(win_loss_count, 1)),
+                "return": self.return_loss_coeff
+                * (return_loss_sum / max(return_loss_count, 1)),
+                "points": self.points_loss_coeff
+                * (points_loss_sum / max(points_loss_count, 1)),
+                "secret_partner": self.secret_loss_coeff
+                * (secret_loss_sum / max(secret_loss_count, 1)),
+                "seen_trump_mask": self.seen_trump_mask_loss_coeff
+                * (seen_trump_mask_loss_sum / max(seen_trump_mask_loss_count, 1)),
+                "unseen_trump_higher_than_hand": self.unseen_trump_higher_than_hand_loss_coeff
+                * (
+                    unseen_trump_higher_than_hand_loss_sum
+                    / max(unseen_trump_higher_than_hand_loss_count, 1)
+                ),
             },
         }
 
     def save(self, filepath):
         """Save model parameters"""
-        torch.save({
-            'encoder_state_dict': self.encoder.state_dict(),
-            'actor_state_dict': self.actor.state_dict(),
-            'critic_state_dict': self.critic.state_dict(),
-            'actor_optimizer': self.actor_optimizer.state_dict(),
-            'critic_optimizer': self.critic_optimizer.state_dict(),
-        }, filepath)
+        torch.save(
+            {
+                "encoder_state_dict": self.encoder.state_dict(),
+                "actor_state_dict": self.actor.state_dict(),
+                "critic_state_dict": self.critic.state_dict(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_optimizer": self.critic_optimizer.state_dict(),
+            },
+            filepath,
+        )
 
     def load(self, filepath, load_optimizers: bool = True):
         """Load model parameters.
@@ -1691,15 +1914,15 @@ class PPOAgent:
         """
         checkpoint = torch.load(filepath, map_location=device)
 
-        self.encoder.load_state_dict(checkpoint['encoder_state_dict'])
-        self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        self.critic.load_state_dict(checkpoint['critic_state_dict'], strict=False)
+        self.encoder.load_state_dict(checkpoint["encoder_state_dict"])
+        self.actor.load_state_dict(checkpoint["actor_state_dict"])
+        self.critic.load_state_dict(checkpoint["critic_state_dict"], strict=False)
 
         # Optimizers: best-effort restore; fall back to fresh states if shapes changed
         if load_optimizers:
             try:
-                self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-                self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+                self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])
+                self.critic_optimizer.load_state_dict(checkpoint["critic_optimizer"])
                 # Refresh LR ratios after loading optimizer state (ratios may have changed)
                 self._actor_lr_ratios = self._capture_actor_lr_ratios()
             except ValueError as e:

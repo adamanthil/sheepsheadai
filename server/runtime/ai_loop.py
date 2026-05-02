@@ -56,7 +56,9 @@ async def ai_take_turns(table: Table) -> None:
             valid = player.get_valid_action_ids()
             if not valid:
                 break
-            action_id, _, _ = table.ai_agent.act(state, valid_actions=valid, player_id=actor, deterministic=True)
+            action_id, _, _ = table.ai_agent.act(
+                state, valid_actions=valid, player_id=actor, deterministic=True
+            )
             ok = player.act(int(action_id))
             if not ok:
                 raise RuntimeError(
@@ -69,19 +71,32 @@ async def ai_take_turns(table: Table) -> None:
         await ai_observe_all(table, except_seat=actor)
 
         action_str = ACTION_LOOKUP.get(action_id, "")
-        if action_str in ("PICK", "PASS", "ALONE", "JD PARTNER") or action_str.startswith("CALL "):
+        if action_str in (
+            "PICK",
+            "PASS",
+            "ALONE",
+            "JD PARTNER",
+        ) or action_str.startswith("CALL "):
             display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"
             if action_str == "PICK":
-                msg_dict = await add_chat_message(table, "system", f"{display_name} picked")
+                msg_dict = await add_chat_message(
+                    table, "system", f"{display_name} picked"
+                )
                 await broadcast_chat_append(table, msg_dict)
             elif action_str == "PASS":
-                msg_dict = await add_chat_message(table, "system", f"{display_name} passed")
+                msg_dict = await add_chat_message(
+                    table, "system", f"{display_name} passed"
+                )
                 await broadcast_chat_append(table, msg_dict)
             elif action_str == "ALONE":
-                msg_dict = await add_chat_message(table, "system", f"{display_name} goes alone")
+                msg_dict = await add_chat_message(
+                    table, "system", f"{display_name} goes alone"
+                )
                 await broadcast_chat_append(table, msg_dict)
             elif action_str == "JD PARTNER":
-                msg_dict = await add_chat_message(table, "system", f"{display_name} chose JD partner")
+                msg_dict = await add_chat_message(
+                    table, "system", f"{display_name} chose JD partner"
+                )
                 await broadcast_chat_append(table, msg_dict)
             elif action_str.startswith("CALL "):
                 parts = action_str.split()
@@ -111,10 +126,17 @@ async def ai_take_turns(table: Table) -> None:
                 if not occ:
                     continue
                 pscore = table.game.players[i - 1].get_score()
-                table.running_scores[occ] = table.running_scores.get(occ, 0) + int(pscore)
+                table.running_scores[occ] = table.running_scores.get(occ, 0) + int(
+                    pscore
+                )
             table.results_counted = True
             try:
-                entry: Dict[str, Any] = {"hand": len(table.results_history) + 1, "timestamp": time.time(), "bySeat": {}, "sum": 0}
+                entry: Dict[str, Any] = {
+                    "hand": len(table.results_history) + 1,
+                    "timestamp": time.time(),
+                    "bySeat": {},
+                    "sum": 0,
+                }
                 pub = table.to_public_dict()
                 for i in range(1, 6):
                     name = pub["seats"][i]
@@ -124,12 +146,15 @@ async def ai_take_turns(table: Table) -> None:
                     entry["sum"] += score
                 table.results_history.append(entry)
             except Exception:
-                logging.exception("failed to append results history for table %s", table.id)
+                logging.exception(
+                    "failed to append results history for table %s", table.id
+                )
         await broadcast_table_state(table)
 
 
 def schedule_ai_turns(table: Table, initial_delay: float = 0.0) -> None:
     """Schedule background AI turns for a table, cancelling any prior task."""
+
     async def _runner():
         if initial_delay > 0:
             await asyncio.sleep(initial_delay)

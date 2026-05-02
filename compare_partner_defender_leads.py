@@ -62,7 +62,9 @@ def _sample_layout(partner_mode: int, rng: random.Random) -> dict:
                 continue
             called_card = rng.choice(partner_candidates)
             replacement_pool = [
-                card for card in CALLED_ACES if card != called_card and card not in hands[0]
+                card
+                for card in CALLED_ACES
+                if card != called_card and card not in hands[0]
             ]
             if not replacement_pool:
                 continue
@@ -163,7 +165,9 @@ def evaluate_state(agent: PPOAgent, player: Player) -> Dict[str, Dict[str, float
     """Return per-action probability/logit data for the player's lead."""
     state = player.get_state_dict()
     valid_actions = player.get_valid_action_ids()
-    probs, logits = agent.get_action_probs_with_logits(state, valid_actions, player_id=None)
+    probs, logits = agent.get_action_probs_with_logits(
+        state, valid_actions, player_id=None
+    )
     probs_v = probs[0].detach().cpu().numpy()
     logits_v = logits[0].detach().cpu().numpy()
 
@@ -181,12 +185,16 @@ def format_hand(hand: Sequence[str]) -> str:
     return " ".join(hand)
 
 
-def print_comparison(index: int, scenario: Scenario, partner_stats, defender_stats) -> Dict[str, float]:
+def print_comparison(
+    index: int, scenario: Scenario, partner_stats, defender_stats
+) -> Dict[str, float]:
     """Pretty-print a single scenario comparison and return summary stats."""
     title = f"Scenario {index}: {'Jack-of-Diamonds' if scenario.called_card is None else f'Called Ace ({scenario.called_card})'}"
     print(f"\n{'=' * len(title)}\n{title}\n{'=' * len(title)}")
     print(f"Picker seat: {scenario.picker_pos}")
-    print(f"Partner card: {scenario.partner_card}  |  Defender swap: {scenario.defender_swap}")
+    print(
+        f"Partner card: {scenario.partner_card}  |  Defender swap: {scenario.defender_swap}"
+    )
     if scenario.called_card:
         print(f"Called card in play: {scenario.called_card}")
     print(f"Partner hand : {format_hand(scenario.partner_player.hand)}")
@@ -218,10 +226,14 @@ def print_comparison(index: int, scenario: Scenario, partner_stats, defender_sta
             return f"{value * scale:10.3f}"
 
         delta_prob = (
-            f"{(p_prob - d_prob) * 100:8.3f}" if p_prob is not None and d_prob is not None else " " * 8 + "--"
+            f"{(p_prob - d_prob) * 100:8.3f}"
+            if p_prob is not None and d_prob is not None
+            else " " * 8 + "--"
         )
         delta_logit = (
-            f"{(p_logit - d_logit):10.3f}" if p_logit is not None and d_logit is not None else " " * 10 + "--"
+            f"{(p_logit - d_logit):10.3f}"
+            if p_logit is not None and d_logit is not None
+            else " " * 10 + "--"
         )
 
         print(
@@ -309,4 +321,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

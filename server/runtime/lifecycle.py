@@ -19,12 +19,18 @@ async def close_table(table: Table, reason: str = "closed") -> None:
             if task and not task.done():
                 task.cancel()
         except Exception:
-            logging.debug("failed to cancel disconnect task for client %s on table %s", cid, table.id)
+            logging.debug(
+                "failed to cancel disconnect task for client %s on table %s",
+                cid,
+                table.id,
+            )
         finally:
             table.disconnect_tasks.pop(cid, None)
     table.status = "finished"
     try:
-        await broadcast_table_event(table, {"type": "table_closed", "reason": reason, "tableId": table.id})
+        await broadcast_table_event(
+            table, {"type": "table_closed", "reason": reason, "tableId": table.id}
+        )
     except Exception:
         logging.debug("failed to broadcast table_closed for table %s", table.id)
     for cid, conn in list(table.clients.items()):
@@ -32,10 +38,16 @@ async def close_table(table: Table, reason: str = "closed") -> None:
         if not ws:
             continue
         try:
-            await ws.send_text(json.dumps({"type": "table_closed", "reason": reason, "tableId": table.id}))
+            await ws.send_text(
+                json.dumps(
+                    {"type": "table_closed", "reason": reason, "tableId": table.id}
+                )
+            )
             await ws.close()
         except Exception:
-            logging.debug("failed to close websocket for client %s on table %s", cid, table.id)
+            logging.debug(
+                "failed to close websocket for client %s on table %s", cid, table.id
+            )
             conn.websocket = None
     try:
         tables.delete_table(table.id)
@@ -45,6 +57,7 @@ async def close_table(table: Table, reason: str = "closed") -> None:
 
 def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -> None:
     """If there are no human players connected, schedule an auto-close after delay."""
+
     def any_human_connected() -> bool:
         for cid, conn in table.clients.items():
             if conn.websocket is not None:

@@ -25,33 +25,30 @@ class TransformerCardReasoning(nn.Module):
         self.d_token = d_token
 
         # Multi-head self-attention layers
-        self.attn_layers = nn.ModuleList([
-            nn.MultiheadAttention(
-                embed_dim=d_token,
-                num_heads=n_heads,
-                batch_first=True,
-                dropout=0.0
-            )
-            for _ in range(n_layers)
-        ])
+        self.attn_layers = nn.ModuleList(
+            [
+                nn.MultiheadAttention(
+                    embed_dim=d_token, num_heads=n_heads, batch_first=True, dropout=0.0
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
         # Feed-forward networks after each attention layer
-        self.ffn_layers = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(d_token, d_token * 2),
-                nn.SiLU(),
-                nn.Linear(d_token * 2, d_token),
-            )
-            for _ in range(n_layers)
-        ])
+        self.ffn_layers = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(d_token, d_token * 2),
+                    nn.SiLU(),
+                    nn.Linear(d_token * 2, d_token),
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
         # Layer norms
-        self.ln_attn = nn.ModuleList([
-            nn.LayerNorm(d_token) for _ in range(n_layers)
-        ])
-        self.ln_ffn = nn.ModuleList([
-            nn.LayerNorm(d_token) for _ in range(n_layers)
-        ])
+        self.ln_attn = nn.ModuleList([nn.LayerNorm(d_token) for _ in range(n_layers)])
+        self.ln_ffn = nn.ModuleList([nn.LayerNorm(d_token) for _ in range(n_layers)])
 
     def forward(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """
@@ -70,9 +67,7 @@ class TransformerCardReasoning(nn.Module):
         ):
             # Self-attention with residual
             attn_out, _ = attn(
-                tokens, tokens, tokens,
-                key_padding_mask=attn_mask,
-                need_weights=False
+                tokens, tokens, tokens, key_padding_mask=attn_mask, need_weights=False
             )
             tokens = ln1(tokens + attn_out)
 
@@ -97,7 +92,9 @@ class AttentionPool(nn.Module):
         self.n_queries = 4
         self.n_heads = 4
         if self.d_in % self.n_heads != 0:
-            raise ValueError(f"AttentionPool: d_in={self.d_in} must be divisible by n_heads={self.n_heads}.")
+            raise ValueError(
+                f"AttentionPool: d_in={self.d_in} must be divisible by n_heads={self.n_heads}."
+            )
         self.query = nn.Parameter(torch.randn(self.n_queries, self.d_in))  # (M, d_in)
         self.mha = nn.MultiheadAttention(self.d_in, self.n_heads, batch_first=True)
         self.proj = nn.Linear(self.n_queries * self.d_in, self.d_out)
@@ -105,7 +102,9 @@ class AttentionPool(nn.Module):
     def forward(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         # tokens: (B, N, d_in); mask: (B, N) True=keep
         if tokens.numel() == 0:
-            return torch.zeros((mask.size(0), self.d_out), device=mask.device, dtype=tokens.dtype)
+            return torch.zeros(
+                (mask.size(0), self.d_out), device=mask.device, dtype=tokens.dtype
+            )
 
         B = tokens.size(0)
 
@@ -120,11 +119,15 @@ class AttentionPool(nn.Module):
 
         q = self.query.unsqueeze(0).expand(B, -1, -1)  # (B, M, d_in)
         attn_out, _ = self.mha(
-            q, tokens, tokens,
+            q,
+            tokens,
+            tokens,
             key_padding_mask=~mask,
             need_weights=False,
         )  # (B, M, d_in)
-        pooled = self.proj(attn_out.reshape(B, self.n_queries * self.d_in))  # (B, d_out)
+        pooled = self.proj(
+            attn_out.reshape(B, self.n_queries * self.d_in)
+        )  # (B, d_out)
         if no_valid.any():
             pooled = torch.where(
                 no_valid.view(B, 1),
@@ -152,9 +155,14 @@ class CardReasoningEncoder(nn.Module):
       - trick_card_ids (5,), trick_is_picker (5,), trick_is_partner_known (5,)
     """
 
-    def __init__(self, d_card: int = 16, d_token: int = 64,
-                 card_config: CardEmbeddingConfig | None = None,
-                 n_reasoning_heads: int = 4, n_reasoning_layers: int = 4):
+    def __init__(
+        self,
+        d_card: int = 16,
+        d_token: int = 64,
+        card_config: CardEmbeddingConfig | None = None,
+        n_reasoning_heads: int = 4,
+        n_reasoning_layers: int = 4,
+    ):
         super().__init__()
         # Allow config to override d_card
         if card_config is not None:
@@ -168,7 +176,9 @@ class CardReasoningEncoder(nn.Module):
         self.card = nn.Embedding(34, d_card, padding_idx=PAD_CARD_ID)  # 0..33
         self.seat = nn.Embedding(6, 4)  # 0=unknown, 1-5=relative positions
         self.role = nn.Embedding(4, 4)  # 0=none, 1=picker, 2=partner, 3=both
-        self.card_type = nn.Embedding(6, d_token)  # 0=context, 1=memory, 2=hand, 3=trick, 4=blind, 5=bury
+        self.card_type = nn.Embedding(
+            6, d_token
+        )  # 0=context, 1=memory, 2=hand, 3=trick, 4=blind, 5=bury
 
         # Optional informed initialization for card embeddings
         if card_config and card_config.use_informed_init:
@@ -200,9 +210,7 @@ class CardReasoningEncoder(nn.Module):
 
         # Card reasoning via transformer
         self.card_reasoner = TransformerCardReasoning(
-            d_token=d_token,
-            n_heads=n_reasoning_heads,
-            n_layers=n_reasoning_layers
+            d_token=d_token, n_heads=n_reasoning_heads, n_layers=n_reasoning_layers
         )
 
         # Pools per bag
@@ -217,7 +225,7 @@ class CardReasoningEncoder(nn.Module):
         # Fused feature projection
         self.feature_proj = nn.Sequential(
             nn.Linear(64 + 64 + 32 + 32 + d_token, 256),  # pools + context
-            nn.LayerNorm(256)
+            nn.LayerNorm(256),
         )
 
     def _build_informed_card_init(self, d_card: int, max_points: float) -> torch.Tensor:
@@ -236,7 +244,9 @@ class CardReasoningEncoder(nn.Module):
           [10..] zeros (reserved for learning offsets)
         """
         if d_card < 10:
-            raise ValueError(f"d_card must be >= 10 to encode initialization priors. Got {d_card}")
+            raise ValueError(
+                f"d_card must be >= 10 to encode initialization priors. Got {d_card}"
+            )
 
         init = torch.zeros((34, d_card), dtype=torch.float32)
 
@@ -247,8 +257,10 @@ class CardReasoningEncoder(nn.Module):
         DIM_UNDER_FLAG = 9
 
         FAIL_ORDER = ["A", "10", "K", "9", "8", "7"]
-        trump_strength = {card: (len(TRUMP) - i) / len(TRUMP) for i, card in enumerate(TRUMP)}
-        points_map = {'Q': 3, 'J': 2, 'A': 11, '10': 10, 'K': 4, '9': 0, '8': 0, '7': 0}
+        trump_strength = {
+            card: (len(TRUMP) - i) / len(TRUMP) for i, card in enumerate(TRUMP)
+        }
+        points_map = {"Q": 3, "J": 2, "A": 11, "10": 10, "K": 4, "9": 0, "8": 0, "7": 0}
 
         # Real cards: 1..32
         for card, cid in DECK_IDS.items():
@@ -261,24 +273,28 @@ class CardReasoningEncoder(nn.Module):
             if is_trump:
                 row[SUIT_T] = 1.0
             else:
-                if suit == 'C':
+                if suit == "C":
                     row[SUIT_C] = 1.0
-                elif suit == 'S':
+                elif suit == "S":
                     row[SUIT_S] = 1.0
-                elif suit == 'H':
+                elif suit == "H":
                     row[SUIT_H] = 1.0
 
             # Rank strength (per-suit channel; trump rank separate from fail ranks)
             if is_trump:
                 row[RANK_T] = float(trump_strength[card])
             else:
-                pos = FAIL_ORDER.index(rank) if rank in FAIL_ORDER else len(FAIL_ORDER) - 1
+                pos = (
+                    FAIL_ORDER.index(rank)
+                    if rank in FAIL_ORDER
+                    else len(FAIL_ORDER) - 1
+                )
                 norm = float((len(FAIL_ORDER) - 1 - pos) / (len(FAIL_ORDER) - 1))
-                if suit == 'C':
+                if suit == "C":
                     row[RANK_C] = norm
-                elif suit == 'S':
+                elif suit == "S":
                     row[RANK_S] = norm
-                elif suit == 'H':
+                elif suit == "H":
                     row[RANK_H] = norm
 
             # Points normalized
@@ -318,8 +334,8 @@ class CardReasoningEncoder(nn.Module):
             self.feature_proj.parameters(),
         )
         return [
-            {'params': self.card.parameters(), 'lr': base_lr * card_lr_scale},
-            {'params': other_params, 'lr': base_lr},
+            {"params": self.card.parameters(), "lr": base_lr * card_lr_scale},
+            {"params": other_params, "lr": base_lr},
         ]
 
     @staticmethod
@@ -336,7 +352,9 @@ class CardReasoningEncoder(nn.Module):
         vals = [int(batch[i][key]) for i in range(len(batch))]
         return torch.as_tensor(vals, dtype=torch.float32).view(-1, 1)
 
-    def _embed_hand(self, ids: torch.Tensor, actor_role_id: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _embed_hand(
+        self, ids: torch.Tensor, actor_role_id: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Embed hand cards with actor role conditioning.
 
         Args:
@@ -363,11 +381,20 @@ class CardReasoningEncoder(nn.Module):
         tok = self.token_mlp_simple(tok)
         return tok, mask
 
-    def _embed_trick(self, card_ids: torch.Tensor, picker_bits: torch.Tensor, partner_bits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _embed_trick(
+        self,
+        card_ids: torch.Tensor,
+        picker_bits: torch.Tensor,
+        partner_bits: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Embed trick cards with seat and role information."""
         B = card_ids.size(0)
-        seat_rel = torch.arange(1, 6, device=card_ids.device, dtype=torch.long).view(1, 5).expand(B, 5)
-        role_ids = (picker_bits.long() * 1 + partner_bits.long() * 2)
+        seat_rel = (
+            torch.arange(1, 6, device=card_ids.device, dtype=torch.long)
+            .view(1, 5)
+            .expand(B, 5)
+        )
+        role_ids = picker_bits.long() * 1 + partner_bits.long() * 2
         mask = card_ids.ne(PAD_CARD_ID)
         c = self.card(card_ids)
         s = self.seat(seat_rel)
@@ -376,8 +403,12 @@ class CardReasoningEncoder(nn.Module):
         tok = self.token_mlp_trick(tok)
         return tok, mask
 
-    def encode_batch(self, batch: List[Dict[str, Any]], memory_in: torch.Tensor | None = None,
-                     device: torch.device | None = None) -> Dict[str, torch.Tensor]:
+    def encode_batch(
+        self,
+        batch: List[Dict[str, Any]],
+        memory_in: torch.Tensor | None = None,
+        device: torch.device | None = None,
+    ) -> Dict[str, torch.Tensor]:
         """Encode a batch of observations with memory.
 
         Args:
@@ -392,6 +423,7 @@ class CardReasoningEncoder(nn.Module):
                 'context_token': (B, d_token) post-attention context
                 'memory_out': (B, 256) updated memory state
         """
+
         # Move to device lazily
         def to_device(x: torch.Tensor) -> torch.Tensor:
             return x.to(device) if device is not None else x
@@ -406,78 +438,129 @@ class CardReasoningEncoder(nn.Module):
 
         # 1. Build header scalar + called_card_emb → context_token
         header_fields = [
-            'partner_mode', 'is_leaster', 'play_started', 'current_trick',
-            'alone_called', 'called_under',
-            'picker_rel', 'partner_rel', 'leader_rel', 'picker_position',
+            "partner_mode",
+            "is_leaster",
+            "play_started",
+            "current_trick",
+            "alone_called",
+            "called_under",
+            "picker_rel",
+            "partner_rel",
+            "leader_rel",
+            "picker_position",
         ]
         header_cols = [self._stack_scalar(batch, k) for k in header_fields]
         header_scalar = torch.cat(header_cols, dim=1)
         header_scalar = to_device(header_scalar)
         # Normalize header scalars
-        norm = torch.tensor([1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
-                            dtype=header_scalar.dtype, device=header_scalar.device)
+        norm = torch.tensor(
+            [1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
+            dtype=header_scalar.dtype,
+            device=header_scalar.device,
+        )
         header_scalar = header_scalar / norm
 
         # Called card embedding
-        called_ids = torch.as_tensor([int(s['called_card_id']) for s in batch], dtype=torch.long)
+        called_ids = torch.as_tensor(
+            [int(s["called_card_id"]) for s in batch], dtype=torch.long
+        )
         called_ids = to_device(called_ids)
         called_emb = self.card(called_ids)  # (B, d_card)
 
         # Build context token from header + called card
-        context_tok = self.context_mlp(torch.cat([header_scalar, called_emb], dim=1))  # (B, d_token)
+        context_tok = self.context_mlp(
+            torch.cat([header_scalar, called_emb], dim=1)
+        )  # (B, d_token)
 
         # 2. Project memory_in → memory_token
         memory_tok = self.memory_in_proj(memory_in)  # (B, d_token)
 
         # 3. Derive actor role from picker_rel and partner_rel
-        picker_rel_raw = torch.as_tensor([int(s['picker_rel']) for s in batch], dtype=torch.long)
-        partner_rel_raw = torch.as_tensor([int(s['partner_rel']) for s in batch], dtype=torch.long)
+        picker_rel_raw = torch.as_tensor(
+            [int(s["picker_rel"]) for s in batch], dtype=torch.long
+        )
+        partner_rel_raw = torch.as_tensor(
+            [int(s["partner_rel"]) for s in batch], dtype=torch.long
+        )
         picker_rel_raw = to_device(picker_rel_raw)
         partner_rel_raw = to_device(partner_rel_raw)
-        actor_role_id = (picker_rel_raw.eq(1).long() * 1 + partner_rel_raw.eq(1).long() * 2)  # 0=none, 1=picker, 2=partner, 3=both
+        actor_role_id = (
+            picker_rel_raw.eq(1).long() * 1 + partner_rel_raw.eq(1).long() * 2
+        )  # 0=none, 1=picker, 2=partner, 3=both
 
         # 4. Build card tokens
-        hand_ids = to_device(self._stack_uint8(batch, 'hand_ids', 8))
-        blind_ids = to_device(self._stack_uint8(batch, 'blind_ids', 2))
-        bury_ids = to_device(self._stack_uint8(batch, 'bury_ids', 2))
-        trick_card_ids = to_device(self._stack_uint8(batch, 'trick_card_ids', 5))
-        trick_is_picker = to_device(self._stack_uint8(batch, 'trick_is_picker', 5)).bool()
-        trick_is_partner_known = to_device(self._stack_uint8(batch, 'trick_is_partner_known', 5)).bool()
+        hand_ids = to_device(self._stack_uint8(batch, "hand_ids", 8))
+        blind_ids = to_device(self._stack_uint8(batch, "blind_ids", 2))
+        bury_ids = to_device(self._stack_uint8(batch, "bury_ids", 2))
+        trick_card_ids = to_device(self._stack_uint8(batch, "trick_card_ids", 5))
+        trick_is_picker = to_device(
+            self._stack_uint8(batch, "trick_is_picker", 5)
+        ).bool()
+        trick_is_partner_known = to_device(
+            self._stack_uint8(batch, "trick_is_partner_known", 5)
+        ).bool()
 
         hand_tok, hand_mask = self._embed_hand(hand_ids, actor_role_id)
         blind_tok, blind_mask = self._embed_simple_bag(blind_ids)
         bury_tok, bury_mask = self._embed_simple_bag(bury_ids)
-        trick_tok, trick_mask = self._embed_trick(trick_card_ids, trick_is_picker, trick_is_partner_known)
+        trick_tok, trick_mask = self._embed_trick(
+            trick_card_ids, trick_is_picker, trick_is_partner_known
+        )
 
         # 5. Concatenate: [context, memory, hand×8, trick×5, blind×2, bury×2] = 19 tokens
         device_actual = hand_tok.device
-        all_tokens = torch.cat([
-            context_tok.unsqueeze(1),  # (B, 1, d_token)
-            memory_tok.unsqueeze(1),   # (B, 1, d_token)
-            hand_tok,                   # (B, 8, d_token)
-            trick_tok,                  # (B, 5, d_token)
-            blind_tok,                  # (B, 2, d_token)
-            bury_tok,                   # (B, 2, d_token)
-        ], dim=1)  # (B, 19, d_token)
+        all_tokens = torch.cat(
+            [
+                context_tok.unsqueeze(1),  # (B, 1, d_token)
+                memory_tok.unsqueeze(1),  # (B, 1, d_token)
+                hand_tok,  # (B, 8, d_token)
+                trick_tok,  # (B, 5, d_token)
+                blind_tok,  # (B, 2, d_token)
+                bury_tok,  # (B, 2, d_token)
+            ],
+            dim=1,
+        )  # (B, 19, d_token)
 
-        all_mask = torch.cat([
-            torch.ones((B, 1), dtype=torch.bool, device=device_actual),  # context always valid
-            torch.ones((B, 1), dtype=torch.bool, device=device_actual),  # memory always valid
-            hand_mask,
-            trick_mask,
-            blind_mask,
-            bury_mask,
-        ], dim=1)  # (B, 19)
+        all_mask = torch.cat(
+            [
+                torch.ones(
+                    (B, 1), dtype=torch.bool, device=device_actual
+                ),  # context always valid
+                torch.ones(
+                    (B, 1), dtype=torch.bool, device=device_actual
+                ),  # memory always valid
+                hand_mask,
+                trick_mask,
+                blind_mask,
+                bury_mask,
+            ],
+            dim=1,
+        )  # (B, 19)
 
         # 6. Add card_type embeddings
-        type_ids = torch.cat([
-            torch.zeros((B, 1), dtype=torch.long, device=device_actual),  # context = 0
-            torch.ones((B, 1), dtype=torch.long, device=device_actual),   # memory = 1
-            torch.full((B, 8), 2, dtype=torch.long, device=device_actual),  # hand = 2
-            torch.full((B, 5), 3, dtype=torch.long, device=device_actual),  # trick = 3
-            torch.full((B, 2), 4, dtype=torch.long, device=device_actual),  # blind = 4
-            torch.full((B, 2), 5, dtype=torch.long, device=device_actual),  # bury = 5
-        ], dim=1)  # (B, 19)
+        type_ids = torch.cat(
+            [
+                torch.zeros(
+                    (B, 1), dtype=torch.long, device=device_actual
+                ),  # context = 0
+                torch.ones(
+                    (B, 1), dtype=torch.long, device=device_actual
+                ),  # memory = 1
+                torch.full(
+                    (B, 8), 2, dtype=torch.long, device=device_actual
+                ),  # hand = 2
+                torch.full(
+                    (B, 5), 3, dtype=torch.long, device=device_actual
+                ),  # trick = 3
+                torch.full(
+                    (B, 2), 4, dtype=torch.long, device=device_actual
+                ),  # blind = 4
+                torch.full(
+                    (B, 2), 5, dtype=torch.long, device=device_actual
+                ),  # bury = 5
+            ],
+            dim=1,
+        )  # (B, 19)
         all_tokens = all_tokens + self.card_type(type_ids)
 
         # 7. Run transformer
@@ -500,17 +583,23 @@ class CardReasoningEncoder(nn.Module):
         memory_out = self.memory_gru(context_out, memory_in)  # (B, 256)
 
         # 11. Fuse features
-        features = self.feature_proj(torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, context_out], dim=1))
+        features = self.feature_proj(
+            torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, context_out], dim=1)
+        )
 
         return {
-            'features': features,
-            'hand_tokens': hand_tok_out,
-            'context_token': context_out,
-            'memory_out': memory_out,
+            "features": features,
+            "hand_tokens": hand_tok_out,
+            "context_token": context_out,
+            "memory_out": memory_out,
         }
 
-    def encode_sequences(self, sequences: List[List[Dict[str, Any]]], memory_in: torch.Tensor | None = None,
-                         device: torch.device | None = None) -> Dict[str, torch.Tensor]:
+    def encode_sequences(
+        self,
+        sequences: List[List[Dict[str, Any]]],
+        memory_in: torch.Tensor | None = None,
+        device: torch.device | None = None,
+    ) -> Dict[str, torch.Tensor]:
         """Encode sequences of observations with recurrent memory.
 
         Args:
@@ -529,7 +618,9 @@ class CardReasoningEncoder(nn.Module):
 
         # Initialize outputs
         features_out = torch.zeros((B, T, 256), dtype=torch.float32, device=device)
-        hand_tokens_out = torch.zeros((B, T, 8, self.d_token_dim), dtype=torch.float32, device=device)
+        hand_tokens_out = torch.zeros(
+            (B, T, 8, self.d_token_dim), dtype=torch.float32, device=device
+        )
 
         # Initialize memory
         if memory_in is None:
@@ -552,19 +643,19 @@ class CardReasoningEncoder(nn.Module):
                 continue
 
             # Encode this timestep
-            encoder_out = self.encode_batch(batch_t, memory_in=memory_state, device=device)
+            encoder_out = self.encode_batch(
+                batch_t, memory_in=memory_state, device=device
+            )
 
             # Store outputs
-            features_out[:, t, :] = encoder_out['features']
-            hand_tokens_out[:, t, :, :] = encoder_out['hand_tokens']
+            features_out[:, t, :] = encoder_out["features"]
+            hand_tokens_out[:, t, :, :] = encoder_out["hand_tokens"]
 
             # Update memory for next timestep
-            memory_state = encoder_out['memory_out']
+            memory_state = encoder_out["memory_out"]
 
         return {
-            'features': features_out,
-            'hand_tokens': hand_tokens_out,
-            'memory_out': memory_state,
+            "features": features_out,
+            "hand_tokens": hand_tokens_out,
+            "memory_out": memory_state,
         }
-
-

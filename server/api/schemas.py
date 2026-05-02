@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class RulesInput(BaseModel):
     """Full rules specification; unknown keys rejected."""
+
     model_config = ConfigDict(extra="forbid")
     partnerMode: Literal[0, 1] = 1
     doubleOnTheBump: bool = True
@@ -15,6 +16,7 @@ class RulesInput(BaseModel):
 
 class RulesUpdate(BaseModel):
     """Partial rules patch; only provided keys are merged."""
+
     model_config = ConfigDict(extra="forbid")
     partnerMode: Optional[Literal[0, 1]] = None
     doubleOnTheBump: Optional[bool] = None
@@ -206,5 +208,3 @@ class ChatMessage(BaseModel):
 class ChatSendRequest(BaseModel):
     client_id: str
     message: str
-
-

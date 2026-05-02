@@ -100,22 +100,34 @@ async def join_table(table_id: str, req: JoinTableRequest, request: Request):
             else:
                 table.seats[seat_to_take] = client_id
                 conn.seat = seat_to_take
-                msg_dict = await add_chat_message(table, "system", f"{req.display_name} joined and took seat {seat_to_take}")
+                msg_dict = await add_chat_message(
+                    table,
+                    "system",
+                    f"{req.display_name} joined and took seat {seat_to_take}",
+                )
                 await broadcast_chat_append(table, msg_dict)
-                await broadcast_table_event(table, {
-                    "type": "lobby_event",
-                    "message": f"{req.display_name} joined and took seat {seat_to_take}",
-                    "table": table.to_public_dict(),
-                })
+                await broadcast_table_event(
+                    table,
+                    {
+                        "type": "lobby_event",
+                        "message": f"{req.display_name} joined and took seat {seat_to_take}",
+                        "table": table.to_public_dict(),
+                    },
+                )
                 await broadcast_table_update(table)
         else:
-            msg_dict = await add_chat_message(table, "system", f"{req.display_name} joined the table")
+            msg_dict = await add_chat_message(
+                table, "system", f"{req.display_name} joined the table"
+            )
             await broadcast_chat_append(table, msg_dict)
-            await broadcast_table_event(table, {
-                "type": "lobby_event",
-                "message": f"{req.display_name} joined the table",
-                "table": table.to_public_dict(),
-            })
+            await broadcast_table_event(
+                table,
+                {
+                    "type": "lobby_event",
+                    "message": f"{req.display_name} joined the table",
+                    "table": table.to_public_dict(),
+                },
+            )
 
     return {
         "client_id": client_id,
@@ -135,7 +147,9 @@ async def choose_seat(table_id: str, req: SeatRequest):
     if req.seat not in {1, 2, 3, 4, 5}:
         raise HTTPException(status_code=400, detail="invalid_seat")
     current = table.seats.get(req.seat)
-    if current and not (table.occupants.get(current).is_ai if table.occupants.get(current) else False):
+    if current and not (
+        table.occupants.get(current).is_ai if table.occupants.get(current) else False
+    ):
         raise HTTPException(status_code=400, detail="seat_taken")
     if req.client_id not in table.clients:
         raise HTTPException(status_code=400, detail="client_not_joined")
@@ -157,7 +171,9 @@ async def choose_seat(table_id: str, req: SeatRequest):
             table.reserved_ai_by_human[req.client_id] = prev_occ  # type: ignore[assignment]
 
     display_name = table.clients[req.client_id].display_name
-    msg_dict = await add_chat_message(table, "system", f"{display_name} took seat {req.seat}")
+    msg_dict = await add_chat_message(
+        table, "system", f"{display_name} took seat {req.seat}"
+    )
     await broadcast_chat_append(table, msg_dict)
     await broadcast_table_update(table)
 
@@ -174,7 +190,11 @@ async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
     if table.status != "open":
         raise HTTPException(status_code=400, detail="game_already_started")
 
-    if not req.client_id or not table.host_client_id or req.client_id != table.host_client_id:
+    if (
+        not req.client_id
+        or not table.host_client_id
+        or req.client_id != table.host_client_id
+    ):
         raise HTTPException(status_code=403, detail="only_host_can_update_rules")
 
     if not table.rules:
@@ -192,7 +212,11 @@ async def api_close_table(table_id: str, req: CloseTableRequest):
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
-    if not req.client_id or not table.host_client_id or req.client_id != table.host_client_id:
+    if (
+        not req.client_id
+        or not table.host_client_id
+        or req.client_id != table.host_client_id
+    ):
         raise HTTPException(status_code=403, detail="only_host_can_close")
 
     await close_table(table, reason="host_closed")

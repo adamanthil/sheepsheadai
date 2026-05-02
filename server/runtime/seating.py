@@ -68,10 +68,16 @@ def _find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
 def _allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
     occ_id = str(uuid.uuid4())
     name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
-    return Occupant(id=occ_id, display_name=display_name or name_pool[int(time.time()) % len(name_pool)], is_ai=True)
+    return Occupant(
+        id=occ_id,
+        display_name=display_name or name_pool[int(time.time()) % len(name_pool)],
+        is_ai=True,
+    )
 
 
-async def _replace_ai_with_human_and_reserve(table: Table, seat: int, client_id: str) -> None:
+async def _replace_ai_with_human_and_reserve(
+    table: Table, seat: int, client_id: str
+) -> None:
     """Replace AI at seat with human client and remember the AI for future reclaim."""
     prev_occ = table.seats.get(seat)
     if not _is_ai_occupant(table, prev_occ):
@@ -86,14 +92,23 @@ async def _replace_ai_with_human_and_reserve(table: Table, seat: int, client_id:
             table.reserved_ai_by_human[client_id] = placeholder.id
         else:
             table.reserved_ai_by_human[client_id] = prev_occ
-    display_name = table.clients.get(client_id).display_name if client_id in table.clients else 'A player'
-    msg_dict = await add_chat_message(table, "system", f"{display_name} joined and took seat {seat}")
+    display_name = (
+        table.clients.get(client_id).display_name
+        if client_id in table.clients
+        else "A player"
+    )
+    msg_dict = await add_chat_message(
+        table, "system", f"{display_name} joined and took seat {seat}"
+    )
     await broadcast_chat_append(table, msg_dict)
-    await broadcast_table_event(table, {
-        "type": "lobby_event",
-        "message": f"{display_name} joined and took seat {seat}",
-        "table": table.to_public_dict(),
-    })
+    await broadcast_table_event(
+        table,
+        {
+            "type": "lobby_event",
+            "message": f"{display_name} joined and took seat {seat}",
+            "table": table.to_public_dict(),
+        },
+    )
     await broadcast_table_update(table)
     schedule_ai_turns(table)
 
@@ -105,8 +120,11 @@ def _cancel_disconnect_task(table: Table, client_id: str) -> None:
     table.disconnect_tasks.pop(client_id, None)
 
 
-def schedule_ai_replacement_for_disconnected_human(table: Table, client_id: str) -> None:
+def schedule_ai_replacement_for_disconnected_human(
+    table: Table, client_id: str
+) -> None:
     """After a grace period, replace the disconnected human's seat with AI and broadcast."""
+
     async def _runner():
         try:
             # In waiting room (open), fill immediately; during play, wait 10s
@@ -133,22 +151,33 @@ def schedule_ai_replacement_for_disconnected_human(table: Table, client_id: str)
                 table.reserved_ai_by_human[client_id] = ai_id
             else:
                 if ai_id not in table.occupants:
-                    table.occupants[ai_id] = Occupant(id=ai_id, display_name="AI", is_ai=True)
+                    table.occupants[ai_id] = Occupant(
+                        id=ai_id, display_name="AI", is_ai=True
+                    )
             table.seats[seat_idx] = ai_id
             conn.seat = None
-            msg_dict = await add_chat_message(table, "system", f"{conn.display_name} disconnected. Seat filled by AI.")
+            msg_dict = await add_chat_message(
+                table, "system", f"{conn.display_name} disconnected. Seat filled by AI."
+            )
             await broadcast_chat_append(table, msg_dict)
-            await broadcast_table_event(table, {
-                "type": "lobby_event",
-                "message": f"{conn.display_name} disconnected. Seat filled by AI.",
-                "table": table.to_public_dict(),
-            })
+            await broadcast_table_event(
+                table,
+                {
+                    "type": "lobby_event",
+                    "message": f"{conn.display_name} disconnected. Seat filled by AI.",
+                    "table": table.to_public_dict(),
+                },
+            )
             await broadcast_table_update(table)
             schedule_ai_turns(table)
         except asyncio.CancelledError:
             return
         except Exception:
-            logging.exception("disconnect replacement failed for table %s client %s", table.id, client_id)
+            logging.exception(
+                "disconnect replacement failed for table %s client %s",
+                table.id,
+                client_id,
+            )
         finally:
             table.disconnect_tasks.pop(client_id, None)
 

@@ -4,12 +4,40 @@ from collections import deque
 
 
 TRUMP = [
-    "QC", "QS", "QH", "QD", "JC", "JS", "JH", "JD", "AD", "10D", "KD", "9D", "8D", "7D"
+    "QC",
+    "QS",
+    "QH",
+    "QD",
+    "JC",
+    "JS",
+    "JH",
+    "JD",
+    "AD",
+    "10D",
+    "KD",
+    "9D",
+    "8D",
+    "7D",
 ]
 FAIL = [
-    "AC", "10C", "KC", "9C", "8C", "7C",
-    "AS", "10S", "KS", "9S", "8S", "7S",
-    "AH", "10H", "KH", "9H", "8H", "7H",
+    "AC",
+    "10C",
+    "KC",
+    "9C",
+    "8C",
+    "7C",
+    "AS",
+    "10S",
+    "KS",
+    "9S",
+    "8S",
+    "7S",
+    "AH",
+    "10H",
+    "KH",
+    "9H",
+    "8H",
+    "7H",
 ]
 DECK = TRUMP + FAIL
 
@@ -35,7 +63,7 @@ SUIT_NAMES = {
 CARD_FULL_NAMES = {}
 for card in DECK:
     rank = card[:-1]  # Everything except last character
-    suit = card[-1]   # Last character
+    suit = card[-1]  # Last character
     rank_name = RANK_NAMES.get(rank, rank)
     suit_name = SUIT_NAMES.get(suit, suit)
     CARD_FULL_NAMES[card] = f"{rank_name} of {suit_name}"
@@ -85,8 +113,8 @@ PLAY_ACTIONS.append(f"PLAY {UNDER_TOKEN}")
 ACTIONS.extend(PLAY_ACTIONS)
 
 # Define dics for quick action lookup
-ACTION_LOOKUP = { i + 1: a for i, a in enumerate(ACTIONS)}
-ACTION_IDS = { a: i + 1 for i, a in enumerate(ACTIONS)}
+ACTION_LOOKUP = {i + 1: a for i, a in enumerate(ACTIONS)}
+ACTION_IDS = {a: i + 1 for i, a in enumerate(ACTIONS)}
 
 # Define deck variables for quick lookup
 DECK_IDS = {k: v + 1 for v, k in enumerate(DECK)}
@@ -139,7 +167,11 @@ def filter_by_suit(hand, suit):
 
 def get_leadable_called_partner_cards(hand, called_card):
     # Filter out other cards in called suit besides the ace
-    return [c for c in hand if c == called_card or get_card_suit(c) != get_card_suit(called_card)]
+    return [
+        c
+        for c in hand
+        if c == called_card or get_card_suit(c) != get_card_suit(called_card)
+    ]
 
 
 def get_playable_called_picker_cards(hand, called_card):
@@ -228,18 +260,18 @@ class Game:
         self.last_passed = picking_player - 1 if picking_player else 0
         self.picker = picking_player if picking_player else 0
         self.partner = 0
-        self.blind = self.deck[(len(self.deck) - 2):]
+        self.blind = self.deck[(len(self.deck) - 2) :]
         self.bury = []
         self.picker_chose_partner = False
         self.was_called_suit_played = False
         self.alone_called = False
         self.called_card = None
         self.is_called_under = False  # Whether picker used an under call
-        self.under_card = None # The card that is to be played as an under
+        self.under_card = None  # The card that is to be played as an under
         self.play_started = False
         self.is_leaster = False
         self.players = []
-        self.points_taken = [0, 0, 0, 0, 0] # Sum of all points taken for each player
+        self.points_taken = [0, 0, 0, 0, 0]  # Sum of all points taken for each player
         # Nested list of all cards played in game so far
         self.history = [
             ["", "", "", "", ""],
@@ -249,15 +281,15 @@ class Game:
             ["", "", "", "", ""],
             ["", "", "", "", ""],
         ]
-        self.trick_points = [0, 0, 0, 0, 0, 0] # Points of each trick
-        self.trick_winners = [0, 0, 0, 0, 0, 0] # Player ID of each trick winner
-        self.leaders = [0, 0, 0, 0, 0, 0] # Player ID of each trick leader
+        self.trick_points = [0, 0, 0, 0, 0, 0]  # Points of each trick
+        self.trick_winners = [0, 0, 0, 0, 0, 0]  # Player ID of each trick winner
+        self.leaders = [0, 0, 0, 0, 0, 0]  # Player ID of each trick leader
         self.is_double_on_the_bump = double_on_the_bump
 
         # Internal state variables
-        self.last_player = 0 # Position of last player to play a card
-        self.leader = 0 # Position of leader this trick
-        self.cards_played = 0 # Number of cards played this trick
+        self.last_player = 0  # Position of last player to play a card
+        self.leader = 0  # Position of leader this trick
+        self.cards_played = 0  # Number of cards played this trick
         self.current_suit = ""
         self.current_trick = 0
         self.was_trick_just_completed = False
@@ -279,7 +311,7 @@ class Game:
         else:
             # Default: deal out first 30 cards in deck in order (last 2 are blind)
             for i in range(5):
-                hand = self.deck[i * 6: i * 6 + 6]
+                hand = self.deck[i * 6 : i * 6 + 6]
                 self.players.append(Player(self, i + 1, hand))
 
     def play_random(self, verbose=True):
@@ -304,8 +336,14 @@ class Game:
                         card_count += 1
 
                     # Colorize cards in action descriptions
-                    if verbose and ("BURY" in action_str or "PLAY" in action_str or "UNDER" in action_str):
-                        card = action_str.split()[-1]  # Get the card from "BURY QC" or "PLAY QC"
+                    if verbose and (
+                        "BURY" in action_str
+                        or "PLAY" in action_str
+                        or "UNDER" in action_str
+                    ):
+                        card = action_str.split()[
+                            -1
+                        ]  # Get the card from "BURY QC" or "PLAY QC"
                         colored_card = colorize_card(card)
                         pretty_action_str = action_str.replace(card, colored_card)
 
@@ -316,8 +354,12 @@ class Game:
                         print(f" -- Player {player.position}: {pretty_action_str}")
 
                     # Print a new line between tricks
-                    if verbose and (card_count == 5 or action_str in BURY_ACTIONS and bury_count == 2):
-                        print(f"{'-'*40}")
+                    if verbose and (
+                        card_count == 5
+                        or action_str in BURY_ACTIONS
+                        and bury_count == 2
+                    ):
+                        print(f"{'-' * 40}")
                         card_count = 0
 
                     player.act(action)
@@ -335,15 +377,21 @@ class Game:
             if verbose:
                 print("Bury: ", self.bury)
                 print("Points taken: ", self.points_taken)
-                print(f"Game done! Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}")
+                print(
+                    f"Game done! Picker score: {self.get_final_picker_points()}  Defenders score: {self.get_final_defender_points()}"
+                )
 
         if verbose:
             scores = [p.get_score() for p in self.players]
             print(f"Scores: {scores}")
 
-    def print_player_hands(self, player_names=["Player 1", "Player 2", "Player 3", "Player 4", "Player 5"]):
+    def print_player_hands(
+        self, player_names=["Player 1", "Player 2", "Player 3", "Player 4", "Player 5"]
+    ):
         for p in self.players:
-            print(f"{player_names[p.position - 1].ljust(8)}: {pretty_card_list(p.hand)}")
+            print(
+                f"{player_names[p.position - 1].ljust(8)}: {pretty_card_list(p.hand)}"
+            )
         print(f"Blind: {pretty_card_list(self.blind)}")
 
     def __str__(self):
@@ -366,7 +414,7 @@ class Game:
 
         if self.is_done():
             scores = [p.get_score() for p in self.players]
-            out += (f"Scores: {scores}\n")
+            out += f"Scores: {scores}\n"
 
         return out
 
@@ -422,7 +470,11 @@ class Game:
 
             # Find minimum points among qualified players
             min_points = min(points for _, points in qualified_players)
-            winners = [player_pos for player_pos, points in qualified_players if points == min_points]
+            winners = [
+                player_pos
+                for player_pos, points in qualified_players
+                if points == min_points
+            ]
 
             # Return winner if unique, otherwise draw randomly for tie
             return winners[0] if len(winners) == 1 else self.rng.choice(winners)
@@ -520,8 +572,14 @@ class Player:
         cur_trick_idx = self.game.current_trick if trick_index is None else trick_index
         current_trick = np.uint8(cur_trick_idx)
         alone_called = np.uint8(1 if self.game.alone_called else 0)
-        called_card_id = np.uint8(DECK_IDS[self.game.called_card]) if self.game.called_card else np.uint8(0)
-        called_under = np.uint8(1 if getattr(self.game, 'is_called_under', False) else 0)
+        called_card_id = (
+            np.uint8(DECK_IDS[self.game.called_card])
+            if self.game.called_card
+            else np.uint8(0)
+        )
+        called_under = np.uint8(
+            1 if getattr(self.game, "is_called_under", False) else 0
+        )
         picker_rel = np.uint8(rel(self.game.picker))
         partner_rel = np.uint8(rel(self.game.partner) if self.game.partner else 0)
         leader_rel = np.uint8(rel(self.game.leader) if self.game.play_started else 0)
@@ -534,7 +592,11 @@ class Player:
 
         # Trick arrays in relative seat order 1..5
         idx = cur_trick_idx
-        trick = self.game.history[idx] if idx < len(self.game.history) else ["" for _ in range(5)]
+        trick = (
+            self.game.history[idx]
+            if idx < len(self.game.history)
+            else ["" for _ in range(5)]
+        )
         trick_card_ids = []
         trick_is_picker = []
         trick_is_partner_known = []
@@ -549,26 +611,28 @@ class Player:
                 cid = 0
             trick_card_ids.append(cid)
             trick_is_picker.append(1 if abs_seat == self.game.picker else 0)
-            trick_is_partner_known.append(1 if self.game.partner and abs_seat == self.game.partner else 0)
+            trick_is_partner_known.append(
+                1 if self.game.partner and abs_seat == self.game.partner else 0
+            )
 
         obs = {
-            'partner_mode': partner_mode,
-            'is_leaster': is_leaster,
-            'play_started': play_started,
-            'current_trick': current_trick,
-            'alone_called': alone_called,
-            'called_card_id': called_card_id,
-            'called_under': called_under,
-            'picker_rel': picker_rel,
-            'partner_rel': partner_rel,
-            'leader_rel': leader_rel,
-            'picker_position': picker_position,
-            'hand_ids': np.array(hand_ids, dtype=np.uint8),
-            'blind_ids': np.array(blind_ids, dtype=np.uint8),
-            'bury_ids': np.array(bury_ids, dtype=np.uint8),
-            'trick_card_ids': np.array(trick_card_ids, dtype=np.uint8),
-            'trick_is_picker': np.array(trick_is_picker, dtype=np.uint8),
-            'trick_is_partner_known': np.array(trick_is_partner_known, dtype=np.uint8),
+            "partner_mode": partner_mode,
+            "is_leaster": is_leaster,
+            "play_started": play_started,
+            "current_trick": current_trick,
+            "alone_called": alone_called,
+            "called_card_id": called_card_id,
+            "called_under": called_under,
+            "picker_rel": picker_rel,
+            "partner_rel": partner_rel,
+            "leader_rel": leader_rel,
+            "picker_position": picker_position,
+            "hand_ids": np.array(hand_ids, dtype=np.uint8),
+            "blind_ids": np.array(blind_ids, dtype=np.uint8),
+            "bury_ids": np.array(bury_ids, dtype=np.uint8),
+            "trick_card_ids": np.array(trick_card_ids, dtype=np.uint8),
+            "trick_is_picker": np.array(trick_is_picker, dtype=np.uint8),
+            "trick_is_partner_known": np.array(trick_is_partner_known, dtype=np.uint8),
         }
         return obs
 
@@ -600,7 +664,14 @@ class Player:
 
             # Need to bury.
             if self.game.called_card:
-                return set([f"BURY {c}" for c in get_playable_called_picker_cards(self.hand, self.game.called_card)])
+                return set(
+                    [
+                        f"BURY {c}"
+                        for c in get_playable_called_picker_cards(
+                            self.hand, self.game.called_card
+                        )
+                    ]
+                )
             else:
                 return set([f"BURY {c}" for c in self.hand])
 
@@ -618,12 +689,27 @@ class Player:
         if self.play_started and self.last_player == self.position - 1:
             if not self.game.current_suit:
                 # Start of trick, generally we can play anything
-                if not self.is_partner and self.game.called_card and self.is_secret_partner:
-                    actions.update([f"PLAY {c}" for c in get_leadable_called_partner_cards(self.hand, self.game.called_card)])
+                if (
+                    not self.is_partner
+                    and self.game.called_card
+                    and self.is_secret_partner
+                ):
+                    actions.update(
+                        [
+                            f"PLAY {c}"
+                            for c in get_leadable_called_partner_cards(
+                                self.hand, self.game.called_card
+                            )
+                        ]
+                    )
                 else:
                     actions.update([f"PLAY {c}" for c in self.hand])
 
-                if self.game.is_called_under and self.is_picker and not self.game.was_called_suit_played:
+                if (
+                    self.game.is_called_under
+                    and self.is_picker
+                    and not self.game.was_called_suit_played
+                ):
                     actions.update([f"PLAY {UNDER_TOKEN}"])
             else:
                 # Follow suit if possible
@@ -633,19 +719,52 @@ class Player:
                     actions.update([f"PLAY {self.game.called_card}"])
                 elif cards_in_suit:
                     actions.update([f"PLAY {c}" for c in cards_in_suit])
-                elif self.game.is_called_under and self.is_picker and not self.game.was_called_suit_played and self.game.current_suit == self.game.called_suit:
+                elif (
+                    self.game.is_called_under
+                    and self.is_picker
+                    and not self.game.was_called_suit_played
+                    and self.game.current_suit == self.game.called_suit
+                ):
                     actions.update([f"PLAY {UNDER_TOKEN}"])
                 else:
                     # Can't follow suit
-                    if self.is_picker and self.game.called_card and not self.game.was_called_suit_played and self.game.current_trick < 5:
+                    if (
+                        self.is_picker
+                        and self.game.called_card
+                        and not self.game.was_called_suit_played
+                        and self.game.current_trick < 5
+                    ):
                         # Picker can't fail off called suit
-                        actions.update([f"PLAY {c}" for c in get_playable_called_picker_cards(self.hand, self.game.called_card)])
-                    elif self.game.called_card and not self.is_partner and self.is_secret_partner and self.game.current_trick < 5:
+                        actions.update(
+                            [
+                                f"PLAY {c}"
+                                for c in get_playable_called_picker_cards(
+                                    self.hand, self.game.called_card
+                                )
+                            ]
+                        )
+                    elif (
+                        self.game.called_card
+                        and not self.is_partner
+                        and self.is_secret_partner
+                        and self.game.current_trick < 5
+                    ):
                         # Partner can't fail off called card
-                        actions.update([f"PLAY {c}" for c in self.hand if c != self.game.called_card])
+                        actions.update(
+                            [
+                                f"PLAY {c}"
+                                for c in self.hand
+                                if c != self.game.called_card
+                            ]
+                        )
                     else:
                         actions.update([f"PLAY {c}" for c in self.hand])
-                        if self.is_picker and self.game.is_called_under and not self.game.was_called_suit_played and self.game.current_trick == 5:
+                        if (
+                            self.is_picker
+                            and self.game.is_called_under
+                            and not self.game.was_called_suit_played
+                            and self.game.current_trick == 5
+                        ):
                             # Allow playing under on final trick even if called suit isn't led
                             actions.update([f"PLAY {UNDER_TOKEN}"])
 
@@ -731,7 +850,10 @@ class Player:
             if not self.game.alone_called:
                 if self.game.partner_mode_flag == PARTNER_BY_JD and card == "JD":
                     self.game.partner = self.position
-                elif self.game.partner_mode_flag == PARTNER_BY_CALLED_ACE and card == self.game.called_card:
+                elif (
+                    self.game.partner_mode_flag == PARTNER_BY_CALLED_ACE
+                    and card == self.game.called_card
+                ):
                     self.game.partner = self.position
 
             if self.game.last_player == 5:
@@ -740,7 +862,10 @@ class Player:
             if self.game.cards_played == 5:
                 if self.current_trick == 5:
                     # Handle buried partner card on final play (JD only)
-                    if self.game.partner_mode_flag == PARTNER_BY_JD and "JD" in self.bury:
+                    if (
+                        self.game.partner_mode_flag == PARTNER_BY_JD
+                        and "JD" in self.bury
+                    ):
                         self.game.partner = self.game.picker
 
                 trick = self.game.history[self.current_trick]
@@ -752,9 +877,7 @@ class Player:
                     and self.game.current_suit == self.game.called_suit
                 )
                 winner = get_trick_winner(
-                    trick,
-                    self.game.current_suit,
-                    is_called_10_suit
+                    trick, self.game.current_suit, is_called_10_suit
                 )
                 winner_index = winner - 1
                 trick_points = get_trick_points(trick)
@@ -771,7 +894,11 @@ class Player:
                 self.game.trick_winners[self.current_trick] = winner
                 self.game.points_taken[winner_index] += trick_points
 
-                if self.game.called_card and not self.game.was_called_suit_played and self.game.called_suit == self.game.current_suit:
+                if (
+                    self.game.called_card
+                    and not self.game.was_called_suit_played
+                    and self.game.called_suit == self.game.current_suit
+                ):
                     self.game.was_called_suit_played = True
 
                 if self.current_trick < 5:
@@ -803,7 +930,9 @@ class Player:
                 picker_points = self.game.get_final_picker_points()
                 defender_points = self.game.get_final_defender_points()
                 if picker_points + defender_points != 120:
-                    raise Exception(f"Points don't add up to 120! Picker: {picker_points} Defenders: {defender_points}")
+                    raise Exception(
+                        f"Points don't add up to 120! Picker: {picker_points} Defenders: {defender_points}"
+                    )
                 multiplier = 1
                 if picker_points == 120:
                     multiplier = 3
@@ -829,6 +958,6 @@ class Player:
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     game = Game()
     game.play_random()

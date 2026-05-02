@@ -22,26 +22,29 @@ from sheepshead import (
 )
 from training_utils import estimate_hand_strength_score
 
+
 def calculate_display_width(text):
     """Calculate the visible width of text, excluding ANSI escape sequences."""
     # Remove ANSI escape sequences using regex
-    ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
-    clean_text = ansi_escape.sub('', text)
+    ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
+    clean_text = ansi_escape.sub("", text)
     return len(clean_text)
+
 
 def pad_text_with_ansi(text, width):
     """Pad text to a specific width, accounting for ANSI escape sequences."""
     display_width = calculate_display_width(text)
     padding_needed = width - display_width
     if padding_needed > 0:
-        return text + ' ' * padding_needed
+        return text + " " * padding_needed
     return text
+
 
 def test_final_model(model_path, position, random_hands, jack_of_diamonds=False):
     """Test if the final model learned proper hand strength correlations."""
 
     print("🎯 TESTING FINAL TRAINED MODEL")
-    print("="*50)
+    print("=" * 50)
 
     # Create agent and load final model
     agent = PPOAgent(len(ACTIONS), lr_actor=1e-3, lr_critic=1e-3)
@@ -54,26 +57,36 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
         return
 
     if random_hands:
-        test_hands = [
-            (random.sample(DECK, 6), None)
-            for _ in range(100)
-        ]
+        test_hands = [(random.sample(DECK, 6), None) for _ in range(100)]
     else:
         test_hands = [
             # Very weak hands (should almost never pick)
             (["7C", "8C", "9C", "10C", "KC", "AC"], "Very Weak - All fail clubs"),
             (["7S", "8S", "9S", "KS", "AS", "7H"], "Weak - Mostly fail"),
             (["8H", "9H", "10H", "KH", "AH", "7C"], "Weak - No trump"),
-
             # Medium hands (borderline picks)
-            (["JC", "8D", "9D", "KD", "AC", "10S"], "Tempting but no - Jack of Clubs + 3 other trump"),
-            (["QD", "JH", "10D", "9D", "7S", "8C"], "Red death - 1 queen + 2 Jack + 2 little trump"),
-            (["QS", "7D", "8D", "9D", "AS", "10H"], "Medium - Q spades + 3 little trump"),
-
+            (
+                ["JC", "8D", "9D", "KD", "AC", "10S"],
+                "Tempting but no - Jack of Clubs + 3 other trump",
+            ),
+            (
+                ["QD", "JH", "10D", "9D", "7S", "8C"],
+                "Red death - 1 queen + 2 Jack + 2 little trump",
+            ),
+            (
+                ["QS", "7D", "8D", "9D", "AS", "10H"],
+                "Medium - Q spades + 3 little trump",
+            ),
             # Strong hands (should often pick)
-            (["QC", "JD", "AD", "10D", "KD", "9H"], "Strong - Queen + jack + only 1 fail. Forced alone"),
+            (
+                ["QC", "JD", "AD", "10D", "KD", "9H"],
+                "Strong - Queen + jack + only 1 fail. Forced alone",
+            ),
             (["QS", "QH", "JC", "JS", "AC", "10S"], "Strong - 2 queens + 2 jacks"),
-            (["QC", "QS", "QH", "JD", "JC", "JS"], "Extremely Strong - 3 queens + 3 jacks"),
+            (
+                ["QC", "QS", "QH", "JD", "JC", "JS"],
+                "Extremely Strong - 3 queens + 3 jacks",
+            ),
         ]
 
     print("Testing hand strength vs pick probability:")
@@ -84,7 +97,11 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
 
     for hand, description in test_hands:
         # Setup game state for pick decision
-        game = Game(partner_selection_mode=PARTNER_BY_JD if jack_of_diamonds else PARTNER_BY_CALLED_ACE)
+        game = Game(
+            partner_selection_mode=PARTNER_BY_JD
+            if jack_of_diamonds
+            else PARTNER_BY_CALLED_ACE
+        )
         player = Player(game, position, hand)
         game.last_passed = position - 1
 
@@ -107,21 +124,36 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
         # Calculate objective hand strength
         strength = estimate_hand_strength_score(hand)
 
-        hand_data.append({
-            "hand": hand,
-            "description": description,
-            "strength": strength,
-            "pick_percentage": pick_percentage
-        })
+        hand_data.append(
+            {
+                "hand": hand,
+                "description": description,
+                "strength": strength,
+                "pick_percentage": pick_percentage,
+            }
+        )
 
     for hand in sorted(hand_data, key=lambda x: x["strength"]):
-        description = hand["description"] if hand["description"] else pretty_card_list(hand["hand"])
+        description = (
+            hand["description"]
+            if hand["description"]
+            else pretty_card_list(hand["hand"])
+        )
         padded_description = pad_text_with_ansi(description, 50)
         checkbox = "\033[92m✅\033[0m" if hand["pick_percentage"] > 50 else ""
-        print(f"{padded_description} | Strength: {hand['strength']:4.1f} | Model Pick: {hand['pick_percentage']:5.1f}% | {checkbox}")
+        print(
+            f"{padded_description} | Strength: {hand['strength']:4.1f} | Model Pick: {hand['pick_percentage']:5.1f}% | {checkbox}"
+        )
 
     # Calculate correlation
-    correlation = np.corrcoef([hand["strength"] for hand in hand_data], [hand["pick_percentage"] for hand in hand_data])[0, 1] if len(hand_data) > 1 else 0
+    correlation = (
+        np.corrcoef(
+            [hand["strength"] for hand in hand_data],
+            [hand["pick_percentage"] for hand in hand_data],
+        )[0, 1]
+        if len(hand_data) > 1
+        else 0
+    )
 
     print("-" * 80)
     print(f"POSITION: {position}")
@@ -152,7 +184,7 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
     print(f"Strongest hand pick rate: {strongest_hand_pick:.1f}%")
     print(f"Weakest hand pick rate: {weakest_hand_pick:.1f}%")
     print(f"Difference: {strongest_hand_pick - weakest_hand_pick:+.1f}%")
-    print(f"Pick rate: {(pick_counts/len(test_hands) * 100.0):.1f}%")
+    print(f"Pick rate: {(pick_counts / len(test_hands) * 100.0):.1f}%")
 
     if strongest_hand_pick > weakest_hand_pick:
         print("✅ GOOD: Prefers strong hands over weak hands")
@@ -161,16 +193,27 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
 
     return correlation > 0.2
 
+
 if __name__ == "__main__":
     parser = ArgumentParser(description="Test picking of trained model")
-    parser.add_argument("-m", "--model", type=str, default="final_swish_ppo.pt",
-                       help="Path to the trained model")
-    parser.add_argument("-p", "--position", type=int, default=1,
-                       help="Position of the player to test")
-    parser.add_argument("-r", "--random", action="store_true",
-                       help="Whether to use random hands")
-    parser.add_argument("--jack-of-diamonds", action="store_true",
-                       help="Whether to use jack of diamonds for partner selection")
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        default="final_swish_ppo.pt",
+        help="Path to the trained model",
+    )
+    parser.add_argument(
+        "-p", "--position", type=int, default=1, help="Position of the player to test"
+    )
+    parser.add_argument(
+        "-r", "--random", action="store_true", help="Whether to use random hands"
+    )
+    parser.add_argument(
+        "--jack-of-diamonds",
+        action="store_true",
+        help="Whether to use jack of diamonds for partner selection",
+    )
     args = parser.parse_args()
 
     test_final_model(args.model, args.position, args.random, args.jack_of_diamonds)

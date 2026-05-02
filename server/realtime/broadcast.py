@@ -27,7 +27,11 @@ async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:
         except WebSocketDisconnect:
             conn.websocket = None
         except Exception:
-            logging.exception("broadcast_table_event send failed for table %s client %s", table.id, cid)
+            logging.exception(
+                "broadcast_table_event send failed for table %s client %s",
+                table.id,
+                cid,
+            )
 
 
 async def broadcast_table_update(table: Table) -> None:
@@ -47,7 +51,11 @@ async def broadcast_table_update(table: Table) -> None:
         except WebSocketDisconnect:
             conn.websocket = None
         except Exception:
-            logging.exception("broadcast_table_update send failed for table %s client %s", table.id, cid)
+            logging.exception(
+                "broadcast_table_update send failed for table %s client %s",
+                table.id,
+                cid,
+            )
 
 
 async def broadcast_table_state(table: Table) -> None:
@@ -78,4 +86,6 @@ async def broadcast_table_state(table: Table) -> None:
         except WebSocketDisconnect:
             conn.websocket = None
         except Exception as exc:
-            logging.exception("broadcast send failed for table %s client %s: %s", table.id, cid, exc)
+            logging.exception(
+                "broadcast send failed for table %s client %s: %s", table.id, cid, exc
+            )

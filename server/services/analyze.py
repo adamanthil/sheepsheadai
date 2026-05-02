@@ -12,7 +12,7 @@ from server.api.schemas import (
     AnalyzeSimulateResponse,
     AnalyzeActionDetail,
     AnalyzeProbability,
-    AnalyzeGameSummary
+    AnalyzeGameSummary,
 )
 from server.services.ai_loader import load_agent
 from training_utils import (
@@ -38,10 +38,13 @@ def set_seed(seed: int) -> None:
 def build_player_state_for_analyze(player: Player) -> Dict[str, any]:
     """Build the per-seat state payload: dict state and a readable view (simplified for analyze)."""
     from server.runtime.tables import build_player_state
+
     return build_player_state(player)
 
 
-def infer_phase_from_action_id(action_id: int, action_groups: Dict[str, List[int]]) -> str:
+def infer_phase_from_action_id(
+    action_id: int, action_groups: Dict[str, List[int]]
+) -> str:
     """Infer the game phase from action ID using PPOAgent action groups."""
     # Convert to 0-indexed
     zero_indexed = action_id - 1
@@ -80,12 +83,14 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     )
 
     # Player display names
-    players = ['Dan', 'Kyle', 'Trevor', 'John', 'Andrew']
+    players = ["Dan", "Kyle", "Trevor", "John", "Andrew"]
 
     # Capture initial hands for summary
     initial_hands = {}
     for player in game.players:
-        initial_hands[players[player.position - 1]] = sorted(list(player.hand), key=lambda card: DECK.index(card))
+        initial_hands[players[player.position - 1]] = sorted(
+            list(player.hand), key=lambda card: DECK.index(card)
+        )
 
     # Trace storage
     trace = []
@@ -115,19 +120,27 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         valid_actions = actor_player.get_valid_action_ids()
 
         # Get or init memory for this player
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         memory_in = agent.get_recurrent_memory(actor_player.position, device=device)
 
         # Encode dict state with memory
-        encoder_out = agent.encoder.encode_batch([state], memory_in=memory_in.unsqueeze(0), device=device)
+        encoder_out = agent.encoder.encode_batch(
+            [state], memory_in=memory_in.unsqueeze(0), device=device
+        )
 
         # Store updated memory
-        agent.set_recurrent_memory(actor_player.position, encoder_out['memory_out'][0])
+        agent.set_recurrent_memory(actor_player.position, encoder_out["memory_out"][0])
 
         with torch.no_grad():
             # Build mask and hand ids for actor
-            action_mask_t = agent.get_action_mask(valid_actions, agent.action_size).unsqueeze(0).to(device)
-            hand_ids_t = torch.as_tensor(state['hand_ids'], dtype=torch.long, device=device).view(1, -1)
+            action_mask_t = (
+                agent.get_action_mask(valid_actions, agent.action_size)
+                .unsqueeze(0)
+                .to(device)
+            )
+            hand_ids_t = torch.as_tensor(
+                state["hand_ids"], dtype=torch.long, device=device
+            ).view(1, -1)
 
             # Use existing encoder_out for logits and probabilities
             action_probs, logits = agent.actor.forward_with_logits(
@@ -140,15 +153,27 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             value = agent.critic(encoder_out)
 
             # Auxiliary critic heads via accessor
-            win_prob_val, expected_final_val, secret_partner_prob, point_vector = agent.critic.aux_predictions(encoder_out)
-            aux_feat = agent.critic.critic_adapter(encoder_out['features'])
-            seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(aux_feat, agent.encoder.card).squeeze(0)
-            seen_trump_mask_probs = torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
-            unseen_trump_higher_than_hand_logit = agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
-            unseen_trump_higher_than_hand_prob = float(torch.sigmoid(unseen_trump_higher_than_hand_logit).item())
+            win_prob_val, expected_final_val, secret_partner_prob, point_vector = (
+                agent.critic.aux_predictions(encoder_out)
+            )
+            aux_feat = agent.critic.critic_adapter(encoder_out["features"])
+            seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(
+                aux_feat, agent.encoder.card
+            ).squeeze(0)
+            seen_trump_mask_probs = (
+                torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
+            )
+            unseen_trump_higher_than_hand_logit = (
+                agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
+            )
+            unseen_trump_higher_than_hand_prob = float(
+                torch.sigmoid(unseen_trump_higher_than_hand_logit).item()
+            )
 
         seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
-        unseen_trump_higher_than_hand_actual = bool(compute_any_unseen_trump_higher_than_hand(actor_player))
+        unseen_trump_higher_than_hand_actual = bool(
+            compute_any_unseen_trump_higher_than_hand(actor_player)
+        )
         trump_seen_mask = [
             {
                 "card": TRUMP[i],
@@ -162,30 +187,44 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         if point_vector:
             for rel_idx, rel_val in enumerate(point_vector, start=1):
                 abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-                seat_label = players[abs_seat - 1] if 0 < abs_seat <= len(players) else f"Seat {abs_seat}"
-                point_estimates.append({
-                    "seat": abs_seat,
-                    "seatName": seat_label,
-                    "points": rel_val,
-                    "relativePosition": rel_idx,
-                })
+                seat_label = (
+                    players[abs_seat - 1]
+                    if 0 < abs_seat <= len(players)
+                    else f"Seat {abs_seat}"
+                )
+                point_estimates.append(
+                    {
+                        "seat": abs_seat,
+                        "seatName": seat_label,
+                        "points": rel_val,
+                        "relativePosition": rel_idx,
+                    }
+                )
 
         point_actuals = []
         known_points_rel = compute_known_points_rel(actor_player)
         if known_points_rel:
             for rel_idx, rel_val in enumerate(known_points_rel, start=1):
                 abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-                seat_label = players[abs_seat - 1] if 0 < abs_seat <= len(players) else f"Seat {abs_seat}"
-                point_actuals.append({
-                    "seat": abs_seat,
-                    "seatName": seat_label,
-                    "points": rel_val,
-                    "relativePosition": rel_idx,
-                })
+                seat_label = (
+                    players[abs_seat - 1]
+                    if 0 < abs_seat <= len(players)
+                    else f"Seat {abs_seat}"
+                )
+                point_actuals.append(
+                    {
+                        "seat": abs_seat,
+                        "seatName": seat_label,
+                        "points": rel_val,
+                        "relativePosition": rel_idx,
+                    }
+                )
 
         # Choose action
         if req.deterministic:
-            action_id = torch.argmax(action_probs, dim=1).item() + 1  # Convert to 1-indexed
+            action_id = (
+                torch.argmax(action_probs, dim=1).item() + 1
+            )  # Convert to 1-indexed
         else:
             dist = torch.distributions.Categorical(action_probs)
             action_id = dist.sample().item() + 1  # Convert to 1-indexed
@@ -198,12 +237,14 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             zero_indexed = valid_action_id - 1
             prob = float(action_probs_np[zero_indexed])
             logit = float(logits_np[zero_indexed])
-            probabilities.append(AnalyzeProbability(
-                actionId=valid_action_id,
-                action=ACTION_LOOKUP[valid_action_id],
-                prob=prob,
-                logit=logit
-            ))
+            probabilities.append(
+                AnalyzeProbability(
+                    actionId=valid_action_id,
+                    action=ACTION_LOOKUP[valid_action_id],
+                    prob=prob,
+                    logit=logit,
+                )
+            )
 
         # Sort probabilities by probability descending
         probabilities.sort(key=lambda x: x.prob, reverse=True)
@@ -229,10 +270,12 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             view=player_state["view"],
             # Provide encoded 256-d feature vector as a plain float list for schema compatibility
             # TODO: Update annotations to match new state and/or drop this in favor of state dict
-            state=encoder_out['features'].squeeze(0).detach().cpu().tolist(),
+            state=encoder_out["features"].squeeze(0).detach().cpu().tolist(),
             winProb=float(win_prob_val),
             expectedFinalReturn=expected_final_val,
-            secretPartnerProb=float(secret_partner_prob) if secret_partner_prob is not None else None,
+            secretPartnerProb=float(secret_partner_prob)
+            if secret_partner_prob is not None
+            else None,
             pointEstimates=point_estimates or None,
             pointActuals=point_actuals or None,
             trumpSeenMask=trump_seen_mask or None,
@@ -244,13 +287,13 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
         # Build training-like transition for reward shaping
         transition = {
-            'player': actor_player,
-            'state': state,
-            'action': action_id,
-            'log_prob': 0.0,
-            'value': float(value.item()),
-            'valid_actions': set(valid_actions),
-            'intermediate_reward': 0.0,
+            "player": actor_player,
+            "state": state,
+            "action": action_id,
+            "log_prob": 0.0,
+            "value": float(value.item()),
+            "valid_actions": set(valid_actions),
+            "intermediate_reward": 0.0,
         }
 
         # Apply shared intermediate shaping and trick tracking
@@ -285,8 +328,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         final_payload = final_state["view"].get("final")
 
         # Build game summary
-        picker_seat = game.picker if hasattr(game, 'picker') and game.picker else 0
-        partner_seat = game.partner if hasattr(game, 'partner') and game.partner else 0
+        picker_seat = game.picker if hasattr(game, "picker") and game.picker else 0
+        partner_seat = game.partner if hasattr(game, "partner") and game.partner else 0
 
         # If partner not revealed yet, try to find the secret partner
         if partner_seat == 0 and picker_seat > 0 and not game.alone_called:
@@ -299,8 +342,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         bury_cards = []
         if picker_seat > 0:
             picker_player = game.players[picker_seat - 1]
-            bury_cards = list(picker_player.bury) if hasattr(picker_player, 'bury') else []
-        elif hasattr(game, 'bury'):
+            bury_cards = (
+                list(picker_player.bury) if hasattr(picker_player, "bury") else []
+            )
+        elif hasattr(game, "bury"):
             bury_cards = list(game.bury)
 
         # Get point totals
@@ -321,18 +366,18 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             bury=bury_cards,
             pickerPoints=picker_points,
             defenderPoints=defender_points,
-            scores=scores
+            scores=scores,
         )
 
     # Compute discounted returns per action if we have any transitions
     if episode_transitions:
         final_scores = [p.get_score() for p in game.players]
-        head_shaping = [tr['head_shaping_reward'] for tr in episode_transitions]
+        head_shaping = [tr["head_shaping_reward"] for tr in episode_transitions]
 
         # Group indices by player (to compute rewards per player sequence)
         idxs_by_player: Dict[int, List[int]] = {}
         for i, tr in enumerate(episode_transitions):
-            idxs_by_player.setdefault(tr['player'].position, []).append(i)
+            idxs_by_player.setdefault(tr["player"].position, []).append(i)
 
         # Fill rewards aligned to original order by calling per-player
         rewards = [0.0] * len(episode_transitions)
@@ -347,7 +392,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
                     game.is_leaster,
                 )
             ):
-                rewards[idxs[offset]] = float(reward_data['reward'])
+                rewards[idxs[offset]] = float(reward_data["reward"])
             if idxs:
                 dones[idxs[-1]] = True
 
@@ -368,7 +413,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             if i < len(rewards):
                 action_detail.stepReward = float(rewards[i])
                 action_detail.stepRewardHeadShaping = float(head_shaping[i])
-                action_detail.stepRewardBase = float(rewards[i]) - float(action_detail.stepRewardHeadShaping)
+                action_detail.stepRewardBase = float(rewards[i]) - float(
+                    action_detail.stepRewardHeadShaping
+                )
 
     # Build response
     response = AnalyzeSimulateResponse(
@@ -383,7 +430,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         players=players,
         summary=game_summary,
         trace=trace,
-        final=final_payload
+        final=final_payload,
     )
 
     return response

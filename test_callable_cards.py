@@ -4,16 +4,19 @@ import random
 import re
 from sheepshead import DECK, get_callable_cards, pretty_card_list
 
+
 def generate_random_hand(size=8):
     """Generate a random hand of specified size from the deck."""
     return random.sample(DECK, size)
 
+
 def get_display_width(text):
     """Get the display width of text, excluding ANSI color codes."""
     # Remove ANSI color codes for width calculation
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    clean_text = ansi_escape.sub('', text)
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    clean_text = ansi_escape.sub("", text)
     return len(clean_text)
+
 
 def test_callable_cards():
     """Test get_callable_cards function with 100 random hands."""
@@ -35,7 +38,8 @@ def test_callable_cards():
         # Use 30 as target width, but adjust based on actual display width
         padding = max(30 - hand_width, 1)
 
-        print(f"{i+1:3d}. {hand_str}{' ' * padding} -> {callable_str}")
+        print(f"{i + 1:3d}. {hand_str}{' ' * padding} -> {callable_str}")
+
 
 if __name__ == "__main__":
     test_callable_cards()

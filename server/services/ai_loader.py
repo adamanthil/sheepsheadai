@@ -21,5 +21,3 @@ def load_agent(model_path: str) -> PPOAgent:
     logging.info("Loaded AI model from %s", model_path)
     agent.reset_recurrent_state()
     return agent
-
-

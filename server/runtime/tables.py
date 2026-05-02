@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from fastapi import WebSocket
 
+from ppo import PPOAgent
 from sheepshead import (
     ACTION_IDS,
     CARD_FULL_NAMES,
@@ -16,8 +17,6 @@ from sheepshead import (
     Game,
     Player,
 )
-from ppo import PPOAgent
-
 
 ACTION_SIZE = len(ACTION_IDS)
 
@@ -25,7 +24,7 @@ ACTION_SIZE = len(ACTION_IDS)
 def _try_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return default
 
 
@@ -59,6 +58,7 @@ class Occupant:
 
     Humans use their client_id as occupant id; AIs are ephemeral UUIDs.
     """
+
     id: str
     display_name: str
     is_ai: bool = False
@@ -73,7 +73,9 @@ class Table:
     fill_with_ai: bool = True
     host_client_id: Optional[str] = None
     # seat index 1..5 → occupant_id (humans use client_id; AIs use ephemeral uuid)
-    seats: Dict[int, Optional[str]] = field(default_factory=lambda: {i: None for i in range(1, 6)})
+    seats: Dict[int, Optional[str]] = field(
+        default_factory=lambda: {i: None for i in range(1, 6)}
+    )
     # connected clients (client_id -> ClientConn)
     clients: Dict[str, ClientConn] = field(default_factory=dict)
     # all occupants by id (AI always present here; humans optional)
@@ -85,7 +87,9 @@ class Table:
     ai_task: Optional[asyncio.Task] = None
     # background task to auto-close the table when humans disconnect
     autoclose_task: Optional[asyncio.Task] = None
-    running_scores: Dict[str, int] = field(default_factory=dict)  # occupant_id -> cumulative score
+    running_scores: Dict[str, int] = field(
+        default_factory=dict
+    )  # occupant_id -> cumulative score
     results_counted: bool = False
     # History of completed hands at this table (in chronological order)
     results_history: List[Dict[str, Any]] = field(default_factory=list)
@@ -117,7 +121,9 @@ class Table:
         running_by_seat = {}
         for i in self.seats:
             occ = self.seats[i]
-            running_by_seat[i] = int(self.running_scores.get(occ or "", 0)) if occ else 0
+            running_by_seat[i] = (
+                int(self.running_scores.get(occ or "", 0)) if occ else 0
+            )
 
         seat_is_ai = {}
         for i in self.seats:
@@ -135,7 +141,11 @@ class Table:
             "runningBySeat": running_by_seat,
             "seatOccupants": seats_ids,
             "seatIsAI": seat_is_ai,
-            "host": (self.clients[self.host_client_id].display_name if self.host_client_id and self.host_client_id in self.clients else None),
+            "host": (
+                self.clients[self.host_client_id].display_name
+                if self.host_client_id and self.host_client_id in self.clients
+                else None
+            ),
             "resultsHistory": self.results_history,
             "initialSeatOrder": self.initial_seat_order,
             "initialNames": self.initial_names,
@@ -147,7 +157,9 @@ class TableManager:
         self.tables: Dict[str, Table] = {}
         self._lock = asyncio.Lock()
 
-    async def create_table(self, name: str, fill_with_ai: bool, rules: Dict[str, Any]) -> Table:
+    async def create_table(
+        self, name: str, fill_with_ai: bool, rules: Dict[str, Any]
+    ) -> Table:
         async with self._lock:
             tid = str(uuid.uuid4())
             table = Table(id=tid, name=name, fill_with_ai=fill_with_ai, rules=rules)
@@ -174,8 +186,12 @@ def build_player_state(player: Player) -> Dict[str, Any]:
     """Build the per-seat state payload: dict state and a small, readable view."""
     state_dict = player.get_state_dict()
     hand_cards = list(player.hand)
-    blind_cards = [DECK[card_id - 1] for card_id in state_dict['blind_ids'] if card_id > 0]
-    bury_cards = [DECK[card_id - 1] for card_id in state_dict['bury_ids'] if card_id > 0]
+    blind_cards = [
+        DECK[card_id - 1] for card_id in state_dict["blind_ids"] if card_id > 0
+    ]
+    bury_cards = [
+        DECK[card_id - 1] for card_id in state_dict["bury_ids"] if card_id > 0
+    ]
 
     hand_cards.sort(key=lambda card: DECK.index(card))
     blind_cards.sort(key=lambda card: DECK.index(card))
@@ -184,7 +200,11 @@ def build_player_state(player: Player) -> Dict[str, Any]:
     game = player.game
 
     current_trick = ["", "", "", "", ""]
-    if hasattr(game, 'play_started') and game.play_started and game.current_trick < len(game.history):
+    if (
+        hasattr(game, "play_started")
+        and game.play_started
+        and game.current_trick < len(game.history)
+    ):
         trick_cards = game.history[game.current_trick]
         for i, card in enumerate(trick_cards):
             if card != "":
@@ -192,8 +212,12 @@ def build_player_state(player: Player) -> Dict[str, Any]:
 
     last_trick_index = int(game.current_trick) - 1
     last_trick = game.history[last_trick_index] if last_trick_index >= 0 else None
-    last_trick_winner = game.trick_winners[last_trick_index] if last_trick_index >= 0 else 0
-    last_trick_points = game.trick_points[last_trick_index] if last_trick_index >= 0 else 0
+    last_trick_winner = (
+        game.trick_winners[last_trick_index] if last_trick_index >= 0 else 0
+    )
+    last_trick_points = (
+        game.trick_points[last_trick_index] if last_trick_index >= 0 else 0
+    )
 
     is_done = bool(game.is_done())
     final_payload = None
@@ -222,7 +246,11 @@ def build_player_state(player: Player) -> Dict[str, Any]:
         "partner": game.partner,
         "alone": bool(game.alone_called),
         "called_card": game.called_card,
-        "called_card_display": (CARD_FULL_NAMES.get(game.called_card, game.called_card) if game.called_card else None),
+        "called_card_display": (
+            CARD_FULL_NAMES.get(game.called_card, game.called_card)
+            if game.called_card
+            else None
+        ),
         "called_under": bool(getattr(game, "is_called_under", False)),
         "is_leaster": bool(game.is_leaster),
         "current_trick_index": int(game.current_trick),
@@ -231,7 +259,9 @@ def build_player_state(player: Player) -> Dict[str, Any]:
         "last_trick": last_trick,
         "last_trick_winner": last_trick_winner,
         "last_trick_points": last_trick_points,
-        "was_trick_just_completed": bool(getattr(game, "was_trick_just_completed", False)),
+        "was_trick_just_completed": bool(
+            getattr(game, "was_trick_just_completed", False)
+        ),
         "leaders": game.leaders,
         "trick_points": game.trick_points,
         "trick_winners": game.trick_winners,

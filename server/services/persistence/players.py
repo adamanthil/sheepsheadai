@@ -4,6 +4,7 @@
 `name` column is NULL until the user explicitly chooses a display name via
 `PATCH /api/players/:id`.
 """
+
 from __future__ import annotations
 
 from typing import Optional

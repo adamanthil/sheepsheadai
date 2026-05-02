@@ -51,6 +51,7 @@ from sheepshead import (
 @dataclass
 class EvalAgent:
     """Lightweight wrapper for a loaded snapshot and its rating/stats."""
+
     agent_id: str
     filepath: Path
     episodes: int
@@ -112,7 +113,9 @@ def discover_snapshots(input_dir: Path) -> List[Path]:
     return [p for p in input_dir.rglob("*.pt") if p.is_file()]
 
 
-def filter_snapshots_by_episode(paths: List[Path], divisible_by: int = 100_000) -> List[Tuple[Path, int]]:
+def filter_snapshots_by_episode(
+    paths: List[Path], divisible_by: int = 100_000
+) -> List[Tuple[Path, int]]:
     """Filter to snapshots whose extracted episode number is divisible by N.
 
     Returns a list of tuples: (path, episodes)
@@ -130,7 +133,9 @@ def filter_snapshots_by_episode(paths: List[Path], divisible_by: int = 100_000) 
     return filtered
 
 
-def load_eval_agents(paths_with_eps: List[Tuple[Path, int]], activation: str = "swish") -> List[EvalAgent]:
+def load_eval_agents(
+    paths_with_eps: List[Tuple[Path, int]], activation: str = "swish"
+) -> List[EvalAgent]:
     agents: List[EvalAgent] = []
     for path, episodes in paths_with_eps:
         try:
@@ -173,7 +178,9 @@ def update_ratings_pl(
     model = PlackettLuce()
 
     if is_leaster:
-        teams = [[model.rating(mu=a.rating_mu, sigma=a.rating_sigma)] for a in game_agents]
+        teams = [
+            [model.rating(mu=a.rating_mu, sigma=a.rating_sigma)] for a in game_agents
+        ]
         new_teams = model.rate(teams, scores=scores)
         for i, a in enumerate(game_agents):
             new_rating = new_teams[i][0]
@@ -188,8 +195,14 @@ def update_ratings_pl(
 
     defender_indices = [i for i in range(5) if i not in picker_team_indices]
 
-    team_picker = [model.rating(mu=game_agents[i].rating_mu, sigma=game_agents[i].rating_sigma) for i in picker_team_indices]
-    team_def = [model.rating(mu=game_agents[i].rating_mu, sigma=game_agents[i].rating_sigma) for i in defender_indices]
+    team_picker = [
+        model.rating(mu=game_agents[i].rating_mu, sigma=game_agents[i].rating_sigma)
+        for i in picker_team_indices
+    ]
+    team_def = [
+        model.rating(mu=game_agents[i].rating_mu, sigma=game_agents[i].rating_sigma)
+        for i in defender_indices
+    ]
 
     picker_score = sum(scores[i] for i in picker_team_indices)
     defender_score = sum(scores[i] for i in defender_indices)
@@ -199,12 +212,18 @@ def update_ratings_pl(
     new_picker_ratings, new_def_ratings = new_team_ratings
 
     for idx, new_rating in zip(picker_team_indices, new_picker_ratings):
-        game_agents[idx].update_rating(mu=float(new_rating.mu), sigma=float(new_rating.sigma))
+        game_agents[idx].update_rating(
+            mu=float(new_rating.mu), sigma=float(new_rating.sigma)
+        )
     for idx, new_rating in zip(defender_indices, new_def_ratings):
-        game_agents[idx].update_rating(mu=float(new_rating.mu), sigma=float(new_rating.sigma))
+        game_agents[idx].update_rating(
+            mu=float(new_rating.mu), sigma=float(new_rating.sigma)
+        )
 
 
-def play_evaluation_game(partner_mode: int, agents: List[EvalAgent], seed: int) -> Tuple[List[float], int, int, bool]:
+def play_evaluation_game(
+    partner_mode: int, agents: List[EvalAgent], seed: int
+) -> Tuple[List[float], int, int, bool]:
     """Play one evaluation game among the given 5 agents; return final scores and team info.
 
     Args:
@@ -218,7 +237,9 @@ def play_evaluation_game(partner_mode: int, agents: List[EvalAgent], seed: int) 
 
     # Initialize game and mapping
     game = Game(partner_selection_mode=partner_mode, seed=seed)
-    pos_to_agent: Dict[int, EvalAgent] = {pos: agent for pos, agent in enumerate(agents, start=1)}
+    pos_to_agent: Dict[int, EvalAgent] = {
+        pos: agent for pos, agent in enumerate(agents, start=1)
+    }
 
     # Reset recurrent states
     for ea in agents:
@@ -288,11 +309,13 @@ def run_tournament(
 
         games_this_round = 0
         for start_idx in range(0, len(shuffled) - 4, 5):
-            group = shuffled[start_idx:start_idx + 5]
+            group = shuffled[start_idx : start_idx + 5]
 
             # Generate deterministic seeds for this group's deals
             # Each deal seed will be reused for all 5 seat rotations
-            deal_seeds = [deal_rng.randint(0, 2**31 - 1) for _ in range(deals_per_round)]
+            deal_seeds = [
+                deal_rng.randint(0, 2**31 - 1) for _ in range(deals_per_round)
+            ]
 
             # For each deal, play all 5 seat rotations
             for deal_idx, deal_seed in enumerate(deal_seeds):
@@ -301,8 +324,10 @@ def run_tournament(
                     rotated_group = [group[idx] for idx in order]
 
                     # Use the same seed for all rotations of this deal
-                    scores, picker_seat, partner_seat, is_leaster = play_evaluation_game(
-                        partner_mode, rotated_group, seed=deal_seed
+                    scores, picker_seat, partner_seat, is_leaster = (
+                        play_evaluation_game(
+                            partner_mode, rotated_group, seed=deal_seed
+                        )
                     )
 
                     # Update ratings and stats for this game
@@ -318,7 +343,9 @@ def run_tournament(
 
                     games_this_round += 1
 
-        print(f"Round {rnd + 1}/{rounds}: completed {games_this_round} games ({deals_per_round} deals × 5 rotations per group)")
+        print(
+            f"Round {rnd + 1}/{rounds}: completed {games_this_round} games ({deals_per_round} deals × 5 rotations per group)"
+        )
 
 
 def write_csv(agents: List[EvalAgent], out_csv: Path) -> None:
@@ -335,19 +362,23 @@ def write_csv(agents: List[EvalAgent], out_csv: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for a in sorted(agents, key=lambda x: x.episodes):
-            writer.writerow({
-                "agent_id": a.agent_id,
-                "filepath": str(a.filepath),
-                "episodes": a.episodes,
-                "rating_mu": f"{a.rating_mu:.4f}",
-                "rating_sigma": f"{a.rating_sigma:.4f}",
-                "games_played": a.games_played,
-                "avg_score": f"{a.avg_score:.4f}",
-            })
+            writer.writerow(
+                {
+                    "agent_id": a.agent_id,
+                    "filepath": str(a.filepath),
+                    "episodes": a.episodes,
+                    "rating_mu": f"{a.rating_mu:.4f}",
+                    "rating_sigma": f"{a.rating_sigma:.4f}",
+                    "games_played": a.games_played,
+                    "avg_score": f"{a.avg_score:.4f}",
+                }
+            )
     print(f"Wrote CSV: {out_csv}")
 
 
-def plot_ratings(agents: List[EvalAgent], out_plot: Path, title: str = "OpenSkill Rating vs Episodes") -> None:
+def plot_ratings(
+    agents: List[EvalAgent], out_plot: Path, title: str = "OpenSkill Rating vs Episodes"
+) -> None:
     episodes = [a.episodes for a in agents]
     mus = [a.rating_mu for a in agents]
     sigmas = [a.rating_sigma for a in agents]
@@ -381,22 +412,58 @@ def plot_ratings(agents: List[EvalAgent], out_plot: Path, title: str = "OpenSkil
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Sheepshead snapshot tournament evaluator")
-    parser.add_argument("--input-dir", type=str, required=True, help="Directory containing snapshot .pt files")
-    parser.add_argument("--partner-mode", type=str, default="called", choices=["jd", "called", "0", "1"],
-                        help="Partner selection mode for games: 'jd'(0) or 'called'(1)")
+    parser = argparse.ArgumentParser(
+        description="Sheepshead snapshot tournament evaluator"
+    )
+    parser.add_argument(
+        "--input-dir",
+        type=str,
+        required=True,
+        help="Directory containing snapshot .pt files",
+    )
+    parser.add_argument(
+        "--partner-mode",
+        type=str,
+        default="called",
+        choices=["jd", "called", "0", "1"],
+        help="Partner selection mode for games: 'jd'(0) or 'called'(1)",
+    )
     parser.add_argument(
         "--episode-divisor",
         type=int,
         default=100_000,
         help="Only include snapshots whose episode marker is divisible by this value",
     )
-    parser.add_argument("--rounds", type=int, default=100, help="Number of tournament rounds (each partitions agents into 5-player games)")
-    parser.add_argument("--deals-per-round", type=int, default=10, help="Number of unique deals per 5-agent group (same deal reused across all 5 seat rotations)")
-    parser.add_argument("--activation", type=str, default="swish", help="Activation used by agents (for model init)")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--out-csv", type=str, default="tournament_results.csv", help="Output CSV path")
-    parser.add_argument("--out-plot", type=str, default="tournament_ratings.png", help="Output plot (PNG)")
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=100,
+        help="Number of tournament rounds (each partitions agents into 5-player games)",
+    )
+    parser.add_argument(
+        "--deals-per-round",
+        type=int,
+        default=10,
+        help="Number of unique deals per 5-agent group (same deal reused across all 5 seat rotations)",
+    )
+    parser.add_argument(
+        "--activation",
+        type=str,
+        default="swish",
+        help="Activation used by agents (for model init)",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducibility"
+    )
+    parser.add_argument(
+        "--out-csv", type=str, default="tournament_results.csv", help="Output CSV path"
+    )
+    parser.add_argument(
+        "--out-plot",
+        type=str,
+        default="tournament_ratings.png",
+        help="Output plot (PNG)",
+    )
     return parser.parse_args(argv)
 
 
@@ -435,9 +502,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Need at least 5 loaded agents to run a tournament. Exiting.")
         return 1
 
-    print(f"Running tournament: rounds={args.rounds}, partner_mode={args.partner_mode}, deals_per_round={args.deals_per_round}")
-    print("Using deterministic deals: each deal reused across all 5 seat rotations for fair comparison")
-    run_tournament(agents, partner_mode=partner_mode, rounds=args.rounds, seed=args.seed, deals_per_round=args.deals_per_round)
+    print(
+        f"Running tournament: rounds={args.rounds}, partner_mode={args.partner_mode}, deals_per_round={args.deals_per_round}"
+    )
+    print(
+        "Using deterministic deals: each deal reused across all 5 seat rotations for fair comparison"
+    )
+    run_tournament(
+        agents,
+        partner_mode=partner_mode,
+        rounds=args.rounds,
+        seed=args.seed,
+        deals_per_round=args.deals_per_round,
+    )
 
     print("Writing outputs ...")
     write_csv(agents, out_csv)

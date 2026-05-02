@@ -23,3 +23,6 @@ server = [
     "websockets>=16.0",
     "asyncpg>=0.30.0",
 ]
+dev = [
+    "ruff>=0.8.0",
+]

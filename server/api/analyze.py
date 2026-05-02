@@ -14,6 +14,7 @@ def analyze_simulate(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     """Simulate a full Sheepshead game and return detailed analysis trace."""
     try:
         from server.services.analyze import simulate_game
+
         return simulate_game(req)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
