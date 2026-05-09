@@ -4,8 +4,10 @@ import asyncio
 import json
 import logging
 
-from server.runtime.tables import Table, tables, _json_default
 from server.realtime.broadcast import broadcast_table_event
+from server.runtime.tables import Table, _json_default, tables
+from server.services.persistence.games import close_game_table
+from server.services.persistence.pool import get_db_pool
 
 
 async def close_table(table: Table, reason: str = "closed") -> None:
@@ -49,6 +51,9 @@ async def close_table(table: Table, reason: str = "closed") -> None:
                 "failed to close websocket for client %s on table %s", cid, table.id
             )
             conn.websocket = None
+    pool = get_db_pool()
+    if pool is not None:
+        await close_game_table(pool, table.id)
     try:
         tables.delete_table(table.id)
     except Exception:

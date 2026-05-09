@@ -30,6 +30,13 @@ from server.runtime.tables import (
     tables,
 )
 from server.services.ai_loader import load_agent
+from server.services.persistence.games import (
+    capture_pre_state,
+    ensure_game_table,
+    fire_game_hooks,
+    persist_started_game,
+)
+from server.services.persistence.pool import get_db_pool
 
 router = APIRouter()
 
@@ -152,6 +159,11 @@ async def start_game(table_id: str, req: StartGameRequest):
     await broadcast_table_state(table)
     schedule_ai_turns(table, initial_delay=2.0)
 
+    pool = get_db_pool()
+    if pool is not None:
+        await ensure_game_table(pool, table.id, table.name)
+        await persist_started_game(pool, table, game)
+
     return table.to_public_dict()
 
 
@@ -209,11 +221,16 @@ async def post_action(table_id: str, req: ActionRequest):
     if req.action_id not in valid:
         raise HTTPException(status_code=400, detail="invalid_action")
 
+    pre = None
     async with table.game_lock:
         player = table.game.players[conn.seat - 1]
+        pre = capture_pre_state(table.game)
         ok = player.act(int(req.action_id))
         if not ok:
             raise HTTPException(status_code=400, detail="apply_failed")
+
+    if table.game and pre is not None:
+        await fire_game_hooks(table, table.game, pre)
 
     action_str = ACTION_LOOKUP.get(req.action_id, "")
     display_name = conn.display_name

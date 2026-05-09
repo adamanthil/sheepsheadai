@@ -7,9 +7,10 @@ from typing import Any, Dict, Optional
 
 from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES
 
-from server.runtime.tables import Table, get_actor_seat, get_valid_action_ids_for_seat
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import add_chat_message, broadcast_chat_append
+from server.runtime.tables import Table, get_actor_seat, get_valid_action_ids_for_seat
+from server.services.persistence.games import capture_pre_state, fire_game_hooks
 
 
 async def ai_observe_all(table: Table, except_seat: Optional[int] = None) -> None:
@@ -38,6 +39,7 @@ async def ai_take_turns(table: Table) -> None:
         actor = None
         action_id = None
         ai_occupant = None
+        pre = None
         async with table.game_lock:
             if not table.game or not table.ai_agent:
                 break
@@ -56,6 +58,7 @@ async def ai_take_turns(table: Table) -> None:
             valid = player.get_valid_action_ids()
             if not valid:
                 break
+            pre = capture_pre_state(table.game)
             action_id, _, _ = table.ai_agent.act(
                 state, valid_actions=valid, player_id=actor, deterministic=True
             )
@@ -69,6 +72,9 @@ async def ai_take_turns(table: Table) -> None:
         if actor is None or action_id is None:
             break
         await ai_observe_all(table, except_seat=actor)
+
+        if table.game and pre is not None:
+            await fire_game_hooks(table, table.game, pre)
 
         action_str = ACTION_LOOKUP.get(action_id, "")
         if action_str in (

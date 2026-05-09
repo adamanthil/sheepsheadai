@@ -16,7 +16,7 @@ from server.api import tables as tables_router
 from server.config import get_settings
 from server.realtime import websocket as websocket_router
 from server.services.ai_loader import load_agent
-from server.services.persistence.pool import close_pool, open_pool
+from server.services.persistence.pool import close_pool, open_pool, set_db_state
 
 
 class _JsonFormatter(logging.Formatter):
@@ -45,20 +45,54 @@ def create_app() -> FastAPI:
     else:
         logging.basicConfig(level=logging.INFO)
 
-    # Validate model at startup so misconfiguration is caught immediately.
+    # Validate required config at startup so misconfiguration is caught immediately.
     if not settings.sheepshead_model_path:
         raise RuntimeError("SHEEPSHEAD_MODEL_PATH must be set")
     if not os.path.exists(settings.sheepshead_model_path):
         raise FileNotFoundError(
             f"SHEEPSHEAD_MODEL_PATH points to a missing file: {settings.sheepshead_model_path}"
         )
+    if not settings.sheepshead_model_label:
+        raise RuntimeError("SHEEPSHEAD_MODEL_LABEL must be set")
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL must be set")
     load_agent(settings.sheepshead_model_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        await open_pool(app, settings.database_url)
+        pool = await open_pool(app, settings.database_url)
+
+        # Upsert ai_model and ai_player rows; cache IDs on app.state and module state.
+        async with pool.acquire() as conn:
+            ai_model_id = await conn.fetchval(
+                """
+                INSERT INTO ai_model (label, time_created)
+                VALUES ($1, now())
+                ON CONFLICT (label) DO UPDATE SET label = EXCLUDED.label
+                RETURNING ai_model_id
+                """,
+                settings.sheepshead_model_label,
+            )
+            ai_player_id = await conn.fetchval(
+                """
+                INSERT INTO ai_player (ai_model_id, is_deterministic)
+                VALUES ($1, true)
+                ON CONFLICT (ai_model_id, is_deterministic)
+                DO UPDATE SET ai_model_id = EXCLUDED.ai_model_id
+                RETURNING ai_player_id
+                """,
+                ai_model_id,
+            )
+        app.state.ai_model_id = ai_model_id
+        app.state.ai_player_id = ai_player_id
+        set_db_state(pool, ai_player_id)
+        logging.getLogger(__name__).info(
+            "AI model '%s' id=%s player_id=%s",
+            settings.sheepshead_model_label,
+            ai_model_id,
+            ai_player_id,
+        )
+
         try:
             yield
         finally:

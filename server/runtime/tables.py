@@ -24,7 +24,7 @@ ACTION_SIZE = len(ACTION_IDS)
 def _try_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return default
 
 
@@ -103,6 +103,10 @@ class Table:
     reserved_ai_by_human: Dict[str, str] = field(default_factory=dict)
     # Chat log: bounded deque of chat messages (max 200 entries)
     chat_log: deque = field(default_factory=lambda: deque(maxlen=200))
+    # Phase 5 persistence: game_id of the hand currently being persisted
+    current_game_id: Optional[str] = None
+    # Phase 5 persistence: seat (1-5) -> game_player_id (DB bigint) for current hand
+    game_player_ids: Dict[int, int] = field(default_factory=dict)
 
     def to_public_dict(self) -> Dict[str, Any]:
         def seat_name(occ_id: Optional[str]) -> Optional[str]:
