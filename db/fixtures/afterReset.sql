@@ -3,16 +3,14 @@
 
 BEGIN;
 
--- Reference rows are static; clear and reinsert on every reset.
-DELETE FROM cardset_card;
-DELETE FROM card;
-DELETE FROM suit;
-
+-- Reference rows are static. ON CONFLICT DO NOTHING makes this safe to run
+-- multiple times (afterAllMigrations fires after every migrate, not just reset).
 INSERT INTO suit (suit_id, code, name) VALUES
     (1, 'C', 'Clubs'),
     (2, 'S', 'Spades'),
     (3, 'H', 'Hearts'),
-    (4, 'D', 'Diamonds');
+    (4, 'D', 'Diamonds')
+ON CONFLICT (suit_id) DO NOTHING;
 
 INSERT INTO card (card_id, suit_id, code, name) VALUES
     (1, 1, 'QC', 'Queen of Clubs'),
@@ -46,6 +44,7 @@ INSERT INTO card (card_id, suit_id, code, name) VALUES
     (29, 3, 'KH', 'King of Hearts'),
     (30, 3, '9H', 'Nine of Hearts'),
     (31, 3, '8H', 'Eight of Hearts'),
-    (32, 3, '7H', 'Seven of Hearts');
+    (32, 3, '7H', 'Seven of Hearts')
+ON CONFLICT (card_id) DO NOTHING;
 
 COMMIT;

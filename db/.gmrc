@@ -2,6 +2,6 @@
   "pgSettings": {
     "search_path": "public"
   },
-  "afterReset": ["!afterReset.sql"],
-  "afterAllMigrations": []
+  "afterReset": [],
+  "afterAllMigrations": ["../fixtures/afterReset.sql"]
 }
