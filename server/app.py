@@ -32,6 +32,37 @@ class _JsonFormatter(logging.Formatter):
         return json.dumps(data)
 
 
+async def _upsert_ai_model(conn, label: str) -> int:
+    """Return the ai_model_id for ``label``, inserting if novel."""
+    row = await conn.fetchrow(
+        "INSERT INTO ai_model (label, time_created) VALUES ($1, now()) "
+        "ON CONFLICT (label) DO NOTHING RETURNING ai_model_id",
+        label,
+    )
+    if row is not None:
+        return row["ai_model_id"]
+    return await conn.fetchval(
+        "SELECT ai_model_id FROM ai_model WHERE label = $1", label
+    )
+
+
+async def _upsert_ai_player(conn, ai_model_id: int) -> int:
+    """Return the ai_player_id for (model, deterministic=true), inserting if novel."""
+    row = await conn.fetchrow(
+        "INSERT INTO ai_player (ai_model_id, is_deterministic) VALUES ($1, true) "
+        "ON CONFLICT (ai_model_id, is_deterministic) DO NOTHING "
+        "RETURNING ai_player_id",
+        ai_model_id,
+    )
+    if row is not None:
+        return row["ai_player_id"]
+    return await conn.fetchval(
+        "SELECT ai_player_id FROM ai_player "
+        "WHERE ai_model_id = $1 AND is_deterministic = true",
+        ai_model_id,
+    )
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
@@ -60,31 +91,11 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        pool = await open_pool(app, settings.database_url)
+        pool = await open_pool(settings.database_url)
 
-        # Upsert ai_model and ai_player rows; cache IDs on app.state and module state.
         async with pool.acquire() as conn:
-            ai_model_id = await conn.fetchval(
-                """
-                INSERT INTO ai_model (label, time_created)
-                VALUES ($1, now())
-                ON CONFLICT (label) DO UPDATE SET label = EXCLUDED.label
-                RETURNING ai_model_id
-                """,
-                settings.sheepshead_model_label,
-            )
-            ai_player_id = await conn.fetchval(
-                """
-                INSERT INTO ai_player (ai_model_id, is_deterministic)
-                VALUES ($1, true)
-                ON CONFLICT (ai_model_id, is_deterministic)
-                DO UPDATE SET ai_model_id = EXCLUDED.ai_model_id
-                RETURNING ai_player_id
-                """,
-                ai_model_id,
-            )
-        app.state.ai_model_id = ai_model_id
-        app.state.ai_player_id = ai_player_id
+            ai_model_id = await _upsert_ai_model(conn, settings.sheepshead_model_label)
+            ai_player_id = await _upsert_ai_player(conn, ai_model_id)
         set_db_state(pool, ai_player_id)
         logging.getLogger(__name__).info(
             "AI model '%s' id=%s player_id=%s",
@@ -96,7 +107,7 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
-            await close_pool(app)
+            await close_pool()
 
     app = FastAPI(title="Sheepshead Realtime API", lifespan=lifespan)
 

@@ -147,7 +147,7 @@ export default function WaitingRoom() {
   }
 
   async function fillAI() {
-    const res = await fetch(`${API_BASE}/api/tables/${params?.id}/start_waiting`, {
+    const res = await fetch(`${API_BASE}/api/tables/${params?.id}/fill_ai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ client_id: clientId })

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from server.api.schemas import (
     CloseTableRequest,
@@ -25,6 +25,7 @@ from server.runtime.seating import (
 )
 from server.runtime.tables import ClientConn, Table, tables
 from server.services.persistence import players as players_db
+from server.services.persistence.pool import get_db_pool
 
 router = APIRouter()
 
@@ -54,7 +55,7 @@ async def create_table(req: CreateTableRequest):
 
 
 @router.post("/api/tables/{table_id}/join")
-async def join_table(table_id: str, req: JoinTableRequest, request: Request):
+async def join_table(table_id: str, req: JoinTableRequest):
     try:
         table = tables.get_table(table_id)
     except KeyError as e:
@@ -63,7 +64,7 @@ async def join_table(table_id: str, req: JoinTableRequest, request: Request):
     if table.status == "finished":
         raise HTTPException(status_code=400, detail="table_finished")
 
-    pool = request.app.state.db_pool
+    pool = get_db_pool()
     player_uuid = req.player_id if req.player_id is not None else uuid.uuid4()
     # Idempotent insert handles both the freshly-minted case and the
     # "client presented a stale id after a DB reset" case (Phase 4 §4.3).

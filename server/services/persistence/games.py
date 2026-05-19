@@ -90,11 +90,9 @@ async def fire_game_hooks(
     dereference the live ``Game`` here so that concurrent ``player.act()``
     cannot race with our DB I/O.
     """
-    pool = get_db_pool()
-    if pool is None:
-        return
     if table.current_game_id is None:
         return  # Hook 1 never ran; skip all subsequent hooks.
+    pool = get_db_pool()
 
     # Hook 2: pick resolved (picker set OR leaster declared)
     if not pre["picker"] and post["picker"]:

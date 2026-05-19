@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
@@ -297,3 +299,44 @@ def get_actor_seat(table: Table) -> Optional[int]:
         if get_valid_action_ids_for_seat(table, seat):
             return seat
     return None
+
+
+def record_hand_result(table: Table) -> None:
+    """Tally per-seat scores into running totals and append a results-history entry.
+
+    Idempotent: a second call for the same hand is a no-op because
+    ``results_counted`` is flipped on first call. Reset by ``start_game`` /
+    ``redeal`` for the next hand.
+    """
+    if not table.game or table.results_counted:
+        return
+
+    for i in range(1, 6):
+        occ = table.seats[i]
+        if not occ:
+            continue
+        pscore = int(table.game.players[i - 1].get_score())
+        table.running_scores[occ] = table.running_scores.get(occ, 0) + pscore
+    table.results_counted = True
+
+    try:
+        entry: Dict[str, Any] = {
+            "hand": len(table.results_history) + 1,
+            "timestamp": time.time(),
+            "bySeat": {},
+            "sum": 0,
+        }
+        pub = table.to_public_dict()
+        for i in range(1, 6):
+            score = int(table.game.players[i - 1].get_score())
+            entry["bySeat"][i] = {
+                "name": pub["seats"][i],
+                "id": pub["seatOccupants"][i],
+                "score": score,
+            }
+            entry["sum"] += score
+        table.results_history.append(entry)
+    except Exception:
+        logging.exception(
+            "failed to record results history for table %s", table.id
+        )

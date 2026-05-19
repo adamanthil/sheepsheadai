@@ -51,9 +51,7 @@ async def close_table(table: Table, reason: str = "closed") -> None:
                 "failed to close websocket for client %s on table %s", cid, table.id
             )
             conn.websocket = None
-    pool = get_db_pool()
-    if pool is not None:
-        await close_game_table(pool, table.id)
+    await close_game_table(get_db_pool(), table.id)
     try:
         tables.delete_table(table.id)
     except Exception:

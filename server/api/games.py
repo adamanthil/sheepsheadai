@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import logging
-import time
 import uuid
-from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
-from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES, Game
 from server.api.schemas import (
     ActionRequest,
     RedealRequest,
@@ -16,18 +12,17 @@ from server.api.schemas import (
 from server.api.tables import require_host
 from server.config import get_settings
 from server.realtime.broadcast import (
-    broadcast_table_event,
     broadcast_table_state,
     broadcast_table_update,
 )
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import ai_observe_all, schedule_ai_turns
-from server.runtime.seating import _is_ai_occupant
 from server.runtime.tables import (
     Occupant,
     _try_int,
     get_actor_seat,
     get_valid_action_ids_for_seat,
+    record_hand_result,
     tables,
 )
 from server.services.ai_loader import load_agent
@@ -39,8 +34,24 @@ from server.services.persistence.games import (
     persist_started_game,
 )
 from server.services.persistence.pool import get_db_pool
+from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES, Game
 
 router = APIRouter()
+
+
+_AI_NAME_POOL = ("Dan", "Kyle", "John", "Trevor", "Tim", "Tom")
+
+
+def _fill_empty_seats_with_ai(table) -> None:
+    """Populate every empty seat with a fresh AI occupant."""
+    for i in range(1, 6):
+        if not table.seats[i]:
+            occ_id = str(uuid.uuid4())
+            display_name = _AI_NAME_POOL[(i - 1) % len(_AI_NAME_POOL)]
+            table.occupants[occ_id] = Occupant(
+                id=occ_id, display_name=display_name, is_ai=True
+            )
+            table.seats[i] = occ_id
 
 
 @router.post("/api/tables/{table_id}/fill_ai")
@@ -51,39 +62,7 @@ async def fill_ai(table_id: str, req: RedealRequest | None = None):
         raise HTTPException(status_code=404, detail="table_not_found") from e
 
     require_host(table, req.client_id if req else None)
-
-    ai_name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
-    for i in range(1, 6):
-        if not table.seats[i]:
-            occ_id = str(uuid.uuid4())
-            display_name = ai_name_pool[(i - 1) % len(ai_name_pool)]
-            table.occupants[occ_id] = Occupant(
-                id=occ_id, display_name=display_name, is_ai=True
-            )
-            table.seats[i] = occ_id
-
-    await broadcast_table_update(table)
-    return table.to_public_dict()
-
-
-@router.post("/api/tables/{table_id}/start_waiting")
-async def start_waiting(table_id: str, req: RedealRequest | None = None):
-    try:
-        table = tables.get_table(table_id)
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail="table_not_found") from e
-
-    require_host(table, req.client_id if req else None)
-
-    ai_name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
-    for i in range(1, 6):
-        if not table.seats[i]:
-            occ_id = str(uuid.uuid4())
-            display_name = ai_name_pool[(i - 1) % len(ai_name_pool)]
-            table.occupants[occ_id] = Occupant(
-                id=occ_id, display_name=display_name, is_ai=True
-            )
-            table.seats[i] = occ_id
+    _fill_empty_seats_with_ai(table)
 
     await broadcast_table_update(table)
     return table.to_public_dict()
@@ -102,16 +81,7 @@ async def start_game(table_id: str, req: StartGameRequest):
     require_host(table, req.client_id)
 
     if table.fill_with_ai:
-        for i in range(1, 6):
-            if not table.seats[i]:
-                occ_id = str(uuid.uuid4())
-                display_name = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"][
-                    (i - 1) % 6
-                ]
-                table.occupants[occ_id] = Occupant(
-                    id=occ_id, display_name=display_name, is_ai=True
-                )
-                table.seats[i] = occ_id
+        _fill_empty_seats_with_ai(table)
 
     if not all(table.seats[i] for i in range(1, 6)):
         raise HTTPException(status_code=400, detail="not_enough_players")
@@ -153,9 +123,8 @@ async def start_game(table_id: str, req: StartGameRequest):
     schedule_ai_turns(table, initial_delay=2.0)
 
     pool = get_db_pool()
-    if pool is not None:
-        await ensure_game_table(pool, table.id, table.name)
-        await persist_started_game(pool, table, game)
+    await ensure_game_table(pool, table.id, table.name)
+    await persist_started_game(pool, table, game)
 
     return table.to_public_dict()
 
@@ -258,35 +227,7 @@ async def post_action(table_id: str, req: ActionRequest):
 
     if table.game and table.game.is_done():
         table.status = "finished"
-        if not table.results_counted:
-            for i in range(1, 6):
-                occ = table.seats[i]
-                if not occ:
-                    continue
-                pscore = table.game.players[i - 1].get_score()
-                table.running_scores[occ] = table.running_scores.get(occ, 0) + int(
-                    pscore
-                )
-            table.results_counted = True
-            try:
-                entry: Dict[str, Any] = {
-                    "hand": len(table.results_history) + 1,
-                    "timestamp": time.time(),
-                    "bySeat": {},
-                    "sum": 0,
-                }
-                pub = table.to_public_dict()
-                for i in range(1, 6):
-                    name = pub["seats"][i]
-                    occ_id = pub["seatOccupants"][i]
-                    score = int(table.game.players[i - 1].get_score())
-                    entry["bySeat"][i] = {"name": name, "id": occ_id, "score": score}
-                    entry["sum"] += score
-                table.results_history.append(entry)
-            except Exception:
-                logging.exception(
-                    "failed to record results history for table %s", table_id
-                )
+        record_hand_result(table)
         await broadcast_table_state(table)
 
     return {"ok": True}

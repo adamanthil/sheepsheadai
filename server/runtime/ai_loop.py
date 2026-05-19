@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-import time
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES
 
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import add_chat_message, broadcast_chat_append
-from server.runtime.tables import Table, get_actor_seat, get_valid_action_ids_for_seat
+from server.runtime.tables import (
+    Table,
+    get_actor_seat,
+    get_valid_action_ids_for_seat,
+    record_hand_result,
+)
 from server.services.persistence.games import (
     capture_post_state,
     capture_pre_state,
@@ -129,38 +132,10 @@ async def ai_take_turns(table: Table) -> None:
             if isinstance(action_str, str) and action_str == "PASS":
                 await asyncio.sleep(0.5)
 
-    # If game ended via AI actions, mark finished, tally results, record history, and broadcast
+    # If game ended via AI actions, mark finished, tally results, broadcast.
     if table.game and table.game.is_done():
         table.status = "finished"
-        if not table.results_counted:
-            for i in range(1, 6):
-                occ = table.seats[i]
-                if not occ:
-                    continue
-                pscore = table.game.players[i - 1].get_score()
-                table.running_scores[occ] = table.running_scores.get(occ, 0) + int(
-                    pscore
-                )
-            table.results_counted = True
-            try:
-                entry: Dict[str, Any] = {
-                    "hand": len(table.results_history) + 1,
-                    "timestamp": time.time(),
-                    "bySeat": {},
-                    "sum": 0,
-                }
-                pub = table.to_public_dict()
-                for i in range(1, 6):
-                    name = pub["seats"][i]
-                    occ_id = pub["seatOccupants"][i]
-                    score = int(table.game.players[i - 1].get_score())
-                    entry["bySeat"][i] = {"name": name, "id": occ_id, "score": score}
-                    entry["sum"] += score
-                table.results_history.append(entry)
-            except Exception:
-                logging.exception(
-                    "failed to append results history for table %s", table.id
-                )
+        record_hand_result(table)
         await broadcast_table_state(table)
 
 

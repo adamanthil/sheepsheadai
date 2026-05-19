@@ -40,7 +40,6 @@ class CreateTableRequest(BaseModel):
 
 class JoinTableRequest(BaseModel):
     display_name: str
-    seat: Optional[int] = None
     player_id: Optional[UUID] = None
 
     @field_validator("display_name")
