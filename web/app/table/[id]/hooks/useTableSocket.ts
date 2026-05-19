@@ -60,8 +60,10 @@ export function useTableSocket(
 
     const api = new URL(API_BASE);
     const wsProto = api.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProto}//${api.host}/ws/table/${tableId}?client_id=${encodeURIComponent(clientId)}`;
-    const socket = new WebSocket(wsUrl);
+    const wsUrl = `${wsProto}//${api.host}/ws/table/${tableId}`;
+    // client_id is carried in the Sec-WebSocket-Protocol header so it does
+    // not appear in URL access logs.
+    const socket = new WebSocket(wsUrl, [`sheepshead.client.${clientId}`]);
 
     socket.onopen = () => setConnected(true);
     socket.onclose = () => setConnected(false);

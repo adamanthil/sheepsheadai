@@ -10,7 +10,11 @@ from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.tables import Table, get_actor_seat, get_valid_action_ids_for_seat
-from server.services.persistence.games import capture_pre_state, fire_game_hooks
+from server.services.persistence.games import (
+    capture_post_state,
+    capture_pre_state,
+    fire_game_hooks,
+)
 
 
 async def ai_observe_all(table: Table, except_seat: Optional[int] = None) -> None:
@@ -40,6 +44,7 @@ async def ai_take_turns(table: Table) -> None:
         action_id = None
         ai_occupant = None
         pre = None
+        post = None
         async with table.game_lock:
             if not table.game or not table.ai_agent:
                 break
@@ -67,14 +72,15 @@ async def ai_take_turns(table: Table) -> None:
                 raise RuntimeError(
                     f"AI produced invalid action_id {action_id} for seat {actor}; valid set: {sorted(list(valid))}"
                 )
+            post = capture_post_state(table.game)
             ai_occupant = occ
 
         if actor is None or action_id is None:
             break
         await ai_observe_all(table, except_seat=actor)
 
-        if table.game and pre is not None:
-            await fire_game_hooks(table, table.game, pre)
+        if pre is not None and post is not None:
+            await fire_game_hooks(table, pre, post)
 
         action_str = ACTION_LOOKUP.get(action_id, "")
         if action_str in (

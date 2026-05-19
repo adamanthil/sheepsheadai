@@ -29,23 +29,39 @@ from server.runtime.tables import _json_default, tables
 router = APIRouter()
 
 
+_CLIENT_SUBPROTO_PREFIX = "sheepshead.client."
+
+
 @router.websocket("/ws/table/{table_id}")
 async def table_ws(websocket: WebSocket, table_id: str):
-    await websocket.accept()
-    params = websocket.query_params
-    client_id = params.get("client_id")
+    # client_id arrives via Sec-WebSocket-Protocol rather than the URL so it
+    # does not end up in proxy access logs / browser history.
+    offered = websocket.scope.get("subprotocols", []) or []
+    client_id: str | None = None
+    chosen_subproto: str | None = None
+    for sp in offered:
+        if isinstance(sp, str) and sp.startswith(_CLIENT_SUBPROTO_PREFIX):
+            client_id = sp[len(_CLIENT_SUBPROTO_PREFIX):]
+            chosen_subproto = sp
+            break
+
     if not client_id:
+        await websocket.accept()
         await websocket.close(code=4401)
         return
     try:
         table = tables.get_table(table_id)
     except KeyError:
+        await websocket.accept(subprotocol=chosen_subproto)
         await websocket.close(code=4404)
         return
 
     if client_id not in table.clients:
+        await websocket.accept(subprotocol=chosen_subproto)
         await websocket.close(code=4403)
         return
+
+    await websocket.accept(subprotocol=chosen_subproto)
 
     conn = table.clients[client_id]
     conn.websocket = websocket

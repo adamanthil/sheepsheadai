@@ -23,10 +23,18 @@ from server.runtime.seating import (
     _replace_ai_with_human_and_reserve,
     _reserved_ai_ids,
 )
-from server.runtime.tables import ClientConn, tables
+from server.runtime.tables import ClientConn, Table, tables
 from server.services.persistence import players as players_db
 
 router = APIRouter()
+
+
+def require_host(table: Table, client_id: Optional[str]) -> None:
+    """Raise the appropriate HTTPException unless ``client_id`` is the host."""
+    if not client_id or client_id not in table.clients:
+        raise HTTPException(status_code=400, detail="client_not_joined")
+    if not table.host_client_id or client_id != table.host_client_id:
+        raise HTTPException(status_code=403, detail="not_host")
 
 
 @router.get("/api/health")
@@ -56,14 +64,10 @@ async def join_table(table_id: str, req: JoinTableRequest, request: Request):
         raise HTTPException(status_code=400, detail="table_finished")
 
     pool = request.app.state.db_pool
-    if req.player_id is None:
-        player_uuid = uuid.uuid4()
-        await players_db.create_player(pool, player_uuid)
-    else:
-        player_uuid = req.player_id
-        # Defensively upsert in case the DB has been reset since the client
-        # last persisted its id (Phase 4 §4.3).
-        await players_db.ensure_player(pool, player_uuid)
+    player_uuid = req.player_id if req.player_id is not None else uuid.uuid4()
+    # Idempotent insert handles both the freshly-minted case and the
+    # "client presented a stale id after a DB reset" case (Phase 4 §4.3).
+    await players_db.ensure_player(pool, player_uuid)
 
     client_id = str(uuid.uuid4())
     conn = ClientConn(
@@ -190,12 +194,7 @@ async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
     if table.status != "open":
         raise HTTPException(status_code=400, detail="game_already_started")
 
-    if (
-        not req.client_id
-        or not table.host_client_id
-        or req.client_id != table.host_client_id
-    ):
-        raise HTTPException(status_code=403, detail="only_host_can_update_rules")
+    require_host(table, req.client_id)
 
     if not table.rules:
         table.rules = {}
@@ -212,12 +211,7 @@ async def api_close_table(table_id: str, req: CloseTableRequest):
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
-    if (
-        not req.client_id
-        or not table.host_client_id
-        or req.client_id != table.host_client_id
-    ):
-        raise HTTPException(status_code=403, detail="only_host_can_close")
+    require_host(table, req.client_id)
 
     await close_table(table, reason="host_closed")
     return {"ok": True}

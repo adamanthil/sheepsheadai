@@ -203,7 +203,7 @@ export default function HomePage() {
 
       // Use setTimeout to ensure state updates complete before navigation
       setTimeout(() => {
-        router.push(`/waiting/${t.id}?client_id=${joined.client_id}`);
+        router.push(`/waiting/${t.id}`);
       }, 100);
 
     } catch (err) {
@@ -224,7 +224,7 @@ export default function HomePage() {
         const existing = window.localStorage.getItem(STORAGE_KEYS.clientId(tableId));
         if (existing) {
           await persistTypedName(playerId, displayNameInput.trim());
-          router.push(`/waiting/${tableId}?client_id=${existing}`);
+          router.push(`/waiting/${tableId}`);
           return;
         }
       }
@@ -248,7 +248,7 @@ export default function HomePage() {
 
       // Use setTimeout for consistent navigation behavior
       setTimeout(() => {
-        router.push(`/waiting/${data.table.id}?client_id=${data.client_id}`);
+        router.push(`/waiting/${data.table.id}`);
       }, 100);
 
     } catch (err) {

@@ -39,17 +39,6 @@ async def ensure_player(pool: asyncpg.Pool, player_id: UUID) -> None:
     )
 
 
-async def create_player(pool: asyncpg.Pool, player_id: UUID) -> None:
-    """Insert a freshly-minted player row."""
-    await pool.execute(
-        """
-        INSERT INTO player (player_id, name, time_created, last_updated)
-        VALUES ($1, NULL, now(), now())
-        """,
-        player_id,
-    )
-
-
 async def set_player_name(
     pool: asyncpg.Pool, player_id: UUID, name: Optional[str]
 ) -> Optional[dict]:

@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Pre-state capture (call while holding game_lock, before player.act())
+# Pre/post-state capture (call while holding game_lock around player.act())
 # ---------------------------------------------------------------------------
 
 def capture_pre_state(game: Game) -> Dict[str, Any]:
@@ -50,12 +50,46 @@ def capture_pre_state(game: Game) -> Dict[str, Any]:
     }
 
 
+def capture_post_state(game: Game) -> Dict[str, Any]:
+    """Snapshot every field hooks 2-6 may read.
+
+    Taken inside ``game_lock`` immediately after ``player.act()`` so that
+    later DB I/O cannot observe state that has since been mutated by a
+    concurrent action handler.
+    """
+    is_done = game.is_done()
+    return {
+        "picker": game.picker,
+        "partner": game.partner,
+        "is_leaster": game.is_leaster,
+        "current_trick": game.current_trick,
+        "bury": list(game.bury),
+        "alone_called": game.alone_called,
+        "called_card": game.called_card,
+        "under_card": game.under_card,
+        "is_called_under": game.is_called_under,
+        "leaders": list(game.leaders),
+        "trick_winners": list(game.trick_winners),
+        "trick_points": list(game.trick_points),
+        "history": [list(row) for row in game.history],
+        "is_done": is_done,
+        "scores": [int(p.get_score()) for p in game.players] if is_done else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Hook dispatcher
 # ---------------------------------------------------------------------------
 
-async def fire_game_hooks(table: "Table", game: Game, pre: Dict[str, Any]) -> None:
-    """Check state transitions after player.act() and fire appropriate hooks."""
+async def fire_game_hooks(
+    table: "Table", pre: Dict[str, Any], post: Dict[str, Any]
+) -> None:
+    """Check state transitions and fire the appropriate hooks.
+
+    ``pre`` and ``post`` are snapshots taken inside ``game_lock``; we never
+    dereference the live ``Game`` here so that concurrent ``player.act()``
+    cannot race with our DB I/O.
+    """
     pool = get_db_pool()
     if pool is None:
         return
@@ -63,27 +97,29 @@ async def fire_game_hooks(table: "Table", game: Game, pre: Dict[str, Any]) -> No
         return  # Hook 1 never ran; skip all subsequent hooks.
 
     # Hook 2: pick resolved (picker set OR leaster declared)
-    if not pre["picker"] and game.picker:
-        await persist_pick_resolved(pool, table, game, is_leaster=False)
-    elif not pre["is_leaster"] and game.is_leaster:
-        await persist_pick_resolved(pool, table, game, is_leaster=True)
+    if not pre["picker"] and post["picker"]:
+        await persist_pick_resolved(
+            pool, table, picker=post["picker"], is_leaster=False
+        )
+    elif not pre["is_leaster"] and post["is_leaster"]:
+        await persist_pick_resolved(pool, table, picker=None, is_leaster=True)
 
     # Hook 3: bury complete (second BURY action lands)
-    if pre["bury_len"] < 2 and len(game.bury) == 2:
-        await persist_picker_decisions(pool, table, game)
+    if pre["bury_len"] < 2 and len(post["bury"]) == 2:
+        await persist_picker_decisions(pool, table, post)
 
     # Hook 4: partner revealed — not for alone hands (partner == picker)
-    if not pre["partner"] and game.partner and not game.alone_called:
-        await persist_partner_revealed(pool, table, game)
+    if not pre["partner"] and post["partner"] and not post["alone_called"]:
+        await persist_partner_revealed(pool, table, post["partner"])
 
     # Hook 5: trick completed
-    if game.current_trick > pre["current_trick"]:
-        trick_idx = game.current_trick - 1
-        await persist_trick_completed(pool, table, game, trick_idx)
+    if post["current_trick"] > pre["current_trick"]:
+        trick_idx = post["current_trick"] - 1
+        await persist_trick_completed(pool, table, post, trick_idx)
 
     # Hook 6: game done (fires on the same action as hook 5 for the last trick)
-    if game.is_done():
-        await persist_finalize_game(pool, table, game)
+    if post["is_done"]:
+        await persist_finalize_game(pool, table, post["scores"])
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +284,7 @@ async def persist_started_game(
 async def persist_pick_resolved(
     pool: asyncpg.Pool,
     table: "Table",
-    game: Game,
+    picker: Optional[int],
     is_leaster: bool,
 ) -> None:
     if not table.current_game_id:
@@ -268,7 +304,7 @@ async def persist_pick_resolved(
                         WHERE game_id = $1 AND position = $2
                         """,
                         UUID(table.current_game_id),
-                        game.picker,
+                        picker,
                     )
     except Exception:
         logger.exception(
@@ -285,7 +321,7 @@ async def persist_pick_resolved(
 async def persist_picker_decisions(
     pool: asyncpg.Pool,
     table: "Table",
-    game: Game,
+    post: Dict[str, Any],
 ) -> None:
     if not table.current_game_id:
         return
@@ -293,20 +329,20 @@ async def persist_picker_decisions(
         async with pool.acquire() as conn:
             async with conn.transaction():
                 bury_id: Optional[int] = None
-                if not game.is_leaster and game.bury:
-                    bury_card_ids = [DECK_IDS[c] for c in game.bury]
+                if not post["is_leaster"] and post["bury"]:
+                    bury_card_ids = [DECK_IDS[c] for c in post["bury"]]
                     bury_id = await upsert_cardset(conn, bury_card_ids)
 
                 called_card_id: Optional[int] = (
-                    DECK_IDS[game.called_card] if game.called_card else None
+                    DECK_IDS[post["called_card"]] if post["called_card"] else None
                 )
                 under_card_id: Optional[int] = (
-                    DECK_IDS[game.under_card]
-                    if game.is_called_under and game.under_card
+                    DECK_IDS[post["under_card"]]
+                    if post["is_called_under"] and post["under_card"]
                     else None
                 )
                 is_alone: Optional[bool] = (
-                    game.alone_called if not game.is_leaster else None
+                    post["alone_called"] if not post["is_leaster"] else None
                 )
 
                 await conn.execute(
@@ -339,7 +375,7 @@ async def persist_picker_decisions(
 async def persist_partner_revealed(
     pool: asyncpg.Pool,
     table: "Table",
-    game: Game,
+    partner: int,
 ) -> None:
     if not table.current_game_id:
         return
@@ -351,7 +387,7 @@ async def persist_partner_revealed(
                 WHERE game_id = $1 AND position = $2
                 """,
                 UUID(table.current_game_id),
-                game.partner,
+                partner,
             )
     except Exception:
         logger.exception(
@@ -368,17 +404,19 @@ async def persist_partner_revealed(
 async def persist_trick_completed(
     pool: asyncpg.Pool,
     table: "Table",
-    game: Game,
+    post: Dict[str, Any],
     trick_idx: int,
 ) -> None:
     if not table.current_game_id:
         return
     try:
-        leader = game.leaders[trick_idx]
-        winner = game.trick_winners[trick_idx]
-        points = game.trick_points[trick_idx]
+        leader = post["leaders"][trick_idx]
+        winner = post["trick_winners"][trick_idx]
+        points = post["trick_points"][trick_idx]
         lead_gp_id = table.game_player_ids[leader]
         winner_gp_id = table.game_player_ids[winner]
+        trick_history = post["history"][trick_idx]
+        under_card = post["under_card"]
 
         async with pool.acquire() as conn:
             async with conn.transaction():
@@ -399,9 +437,9 @@ async def persist_trick_completed(
                 for k in range(5):
                     seat = (leader - 1 + k) % 5 + 1  # 1-based seat
                     history_idx = (leader - 1 + k) % 5  # 0-based history index
-                    card_str = game.history[trick_idx][history_idx]
+                    card_str = trick_history[history_idx]
                     if card_str == UNDER_TOKEN:
-                        card_id = DECK_IDS[game.under_card]
+                        card_id = DECK_IDS[under_card]
                     else:
                         card_id = DECK_IDS[card_str]
                     gp_id = table.game_player_ids[seat]
@@ -433,7 +471,7 @@ async def persist_trick_completed(
 async def persist_finalize_game(
     pool: asyncpg.Pool,
     table: "Table",
-    game: Game,
+    scores: list,
 ) -> None:
     if not table.current_game_id:
         return
@@ -446,11 +484,10 @@ async def persist_finalize_game(
                     UUID(game_id),
                 )
                 for seat in range(1, 6):
-                    score = int(game.players[seat - 1].get_score())
                     gp_id = table.game_player_ids[seat]
                     await conn.execute(
                         "UPDATE game_player SET score = $1 WHERE game_player_id = $2",
-                        score,
+                        scores[seat - 1],
                         gp_id,
                     )
         # Clear so the next hand starts fresh.

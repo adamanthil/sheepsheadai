@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import type { TableSummary, TableClosedMsg } from '../../../lib/types';
 import { API_BASE } from '../../../lib/apiBase';
+import { STORAGE_KEYS } from '../../../lib/storage';
 import styles from './page.module.css';
 import ui from '../../styles/ui.module.css';
 import { ChatPanel, type ChatMessage } from '../../components/chat';
@@ -14,9 +15,20 @@ type TableInfo = TableSummary & {
 
 export default function WaitingRoom() {
   const params = useParams<{ id: string }>();
-  const search = useSearchParams();
   const router = useRouter();
-  const clientId = search.get('client_id') || '';
+  const [clientId, setClientId] = useState<string>('');
+
+  // Hydrate client_id from localStorage (Phase 2: no more ?client_id in URLs).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !params?.id) return;
+    const stored = window.localStorage.getItem(STORAGE_KEYS.clientId(params.id));
+    if (stored) {
+      setClientId(stored);
+    } else {
+      // No session for this table — send them back to the lobby.
+      router.replace('/');
+    }
+  }, [params?.id, router]);
 
   const [table, setTable] = useState<TableInfo | null>(null);
   const [isHost, setIsHost] = useState(false);
@@ -57,10 +69,10 @@ export default function WaitingRoom() {
   // Connect WS in waiting room to receive lobby updates and auto-navigate on start
   useEffect(() => {
     if (!params?.id || !clientId) return;
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const host = window.location.host.split(':')[0];
-    const wsUrl = `${proto}://${host}:9000/ws/table/${params.id}?client_id=${clientId}`;
-    const ws = new WebSocket(wsUrl);
+    const api = new URL(API_BASE);
+    const wsProto = api.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${api.host}/ws/table/${params.id}`;
+    const ws = new WebSocket(wsUrl, [`sheepshead.client.${clientId}`]);
     wsRef.current = ws;
     ws.onmessage = (evt) => {
       try {
@@ -73,7 +85,7 @@ export default function WaitingRoom() {
           if (rules.partnerMode !== undefined) setPartnerMode(rules.partnerMode);
           if (rules.doubleOnTheBump !== undefined) setScoringMode(rules.doubleOnTheBump ? 1 : 0);
           if (t.status === 'playing') {
-            router.push(`/table/${params.id}?client_id=${clientId}`);
+            router.push(`/table/${params.id}`);
           }
         } else if (data?.type === 'lobby_event') {
           setCallout(String(data.message || ''));
@@ -88,7 +100,7 @@ export default function WaitingRoom() {
           const t = data.table as TableInfo;
           // If we receive state while in waiting room, the game has started
           if (t?.status === 'playing') {
-            router.push(`/table/${params.id}?client_id=${clientId}`);
+            router.push(`/table/${params.id}`);
           }
         } else if (data?.type === 'chat:init') {
           // Initialize chat with full history
@@ -192,7 +204,7 @@ export default function WaitingRoom() {
       setError(j?.detail || 'Start failed');
       return;
     }
-    router.push(`/table/${params?.id}?client_id=${clientId}`);
+    router.push(`/table/${params?.id}`);
   }
 
   async function closeTable() {

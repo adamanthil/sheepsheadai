@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, useCallback } from 'react';
-import { useSearchParams, useParams } from 'next/navigation';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 
+import { STORAGE_KEYS } from '../../../lib/storage';
 import styles from './page.module.css';
 import { nameForSeat } from './utils';
 import { useTableSocket, useResponsive, useTrickAnimation, useCallout } from './hooks';
@@ -19,8 +20,19 @@ type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
 
 export default function TablePage() {
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const clientId = searchParams.get('client_id') || '';
+  const router = useRouter();
+  const [clientId, setClientId] = useState<string>('');
+
+  // Hydrate client_id from localStorage rather than the URL.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !params?.id) return;
+    const stored = window.localStorage.getItem(STORAGE_KEYS.clientId(params.id));
+    if (stored) {
+      setClientId(stored);
+    } else {
+      router.replace('/');
+    }
+  }, [params?.id, router]);
 
   // Custom hooks for grouped state management
   const { showPrev, animTrick, triggerCollect, setShowPrev } = useTrickAnimation();

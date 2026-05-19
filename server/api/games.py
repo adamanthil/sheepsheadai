@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
@@ -13,6 +13,7 @@ from server.api.schemas import (
     RedealRequest,
     StartGameRequest,
 )
+from server.api.tables import require_host
 from server.config import get_settings
 from server.realtime.broadcast import (
     broadcast_table_event,
@@ -31,6 +32,7 @@ from server.runtime.tables import (
 )
 from server.services.ai_loader import load_agent
 from server.services.persistence.games import (
+    capture_post_state,
     capture_pre_state,
     ensure_game_table,
     fire_game_hooks,
@@ -48,9 +50,7 @@ async def fill_ai(table_id: str, req: RedealRequest | None = None):
     except KeyError as e:
         raise HTTPException(status_code=404, detail="table_not_found") from e
 
-    client_id: Optional[str] = req.client_id if req else None
-    if not client_id or not table.host_client_id or client_id != table.host_client_id:
-        raise HTTPException(status_code=403, detail="only_host_can_fill_ai")
+    require_host(table, req.client_id if req else None)
 
     ai_name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
     for i in range(1, 6):
@@ -73,9 +73,7 @@ async def start_waiting(table_id: str, req: RedealRequest | None = None):
     except KeyError as e:
         raise HTTPException(status_code=404, detail="table_not_found") from e
 
-    client_id: Optional[str] = req.client_id if req else None
-    if not client_id or not table.host_client_id or client_id != table.host_client_id:
-        raise HTTPException(status_code=403, detail="only_host_can_fill_ai")
+    require_host(table, req.client_id if req else None)
 
     ai_name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
     for i in range(1, 6):
@@ -101,12 +99,7 @@ async def start_game(table_id: str, req: StartGameRequest):
     if table.status != "open":
         raise HTTPException(status_code=400, detail="already_started")
 
-    if (
-        not req.client_id
-        or not table.host_client_id
-        or req.client_id != table.host_client_id
-    ):
-        raise HTTPException(status_code=403, detail="only_host_can_start")
+    require_host(table, req.client_id)
 
     if table.fill_with_ai:
         for i in range(1, 6):
@@ -174,9 +167,7 @@ async def redeal(table_id: str, req: RedealRequest | None = None):
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
-    client_id: Optional[str] = req.client_id if req else None
-    if not client_id or not table.host_client_id or client_id != table.host_client_id:
-        raise HTTPException(status_code=403, detail="only_host_can_redeal")
+    require_host(table, req.client_id if req else None)
 
     old = {i: table.seats[i] for i in range(1, 6)}
     new_map = {
@@ -222,15 +213,17 @@ async def post_action(table_id: str, req: ActionRequest):
         raise HTTPException(status_code=400, detail="invalid_action")
 
     pre = None
+    post = None
     async with table.game_lock:
         player = table.game.players[conn.seat - 1]
         pre = capture_pre_state(table.game)
         ok = player.act(int(req.action_id))
         if not ok:
             raise HTTPException(status_code=400, detail="apply_failed")
+        post = capture_post_state(table.game)
 
-    if table.game and pre is not None:
-        await fire_game_hooks(table, table.game, pre)
+    if pre is not None and post is not None:
+        await fire_game_hooks(table, pre, post)
 
     action_str = ACTION_LOOKUP.get(req.action_id, "")
     display_name = conn.display_name
