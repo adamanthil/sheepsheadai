@@ -1,0 +1,1598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sheepshead PPO — 3D Architecture</title>
+<style>
+  :root {
+    --bg: #05070f;
+    --panel: rgba(15, 21, 48, 0.78);
+    --line: #2a3470;
+    --text: #e6ecff;
+    --muted: #8e9bd1;
+    --accent: #7cc4ff;
+    --accent-2: #b58bff;
+    --pulse: #fffa9e;
+    --good: #80ed99;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  canvas { display: block; }
+  #ui-top {
+    position: fixed; top: 14px; left: 14px; right: 14px;
+    z-index: 20;
+    display: flex; gap: 14px; align-items: center; pointer-events: none;
+  }
+  .panel {
+    background: var(--panel);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    pointer-events: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  }
+  #title { font-size: 15px; font-weight: 600; }
+  #title .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .controls button {
+    background: rgba(20,26,54,0.9);
+    border: 1px solid var(--line); color: var(--text);
+    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+    transition: border-color .15s, background .15s;
+  }
+  .controls button:hover { border-color: var(--accent); background: rgba(35,45,90,0.95); }
+  .controls button.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0b1020; font-weight: 600; border: none;
+  }
+  .controls label { color: var(--muted); font-size: 11px; display: flex; gap: 6px; align-items: center; }
+  .controls input[type=range] { accent-color: var(--accent); width: 90px; }
+
+  #ui-side {
+    position: fixed; top: 70px; right: 14px; width: 340px;
+    z-index: 20; pointer-events: none;
+  }
+  #info {
+    pointer-events: auto;
+    max-height: calc(100vh - 90px);
+    overflow: auto;
+  }
+  #info h2 { margin: 0 0 4px 0; font-size: 14px; }
+  #info .stage-num { color: var(--accent); font-weight: 600; font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; }
+  #info p { margin: 8px 0; color: var(--text); }
+  #info .meta { color: var(--muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 8px; }
+  #info code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+
+  #legend {
+    position: fixed; bottom: 14px; left: 14px;
+    z-index: 20; max-width: 320px;
+  }
+  #legend .row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin: 2px 0; }
+  #legend .swatch { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 6px currentColor; }
+
+  #status {
+    position: fixed; bottom: 14px; right: 14px;
+    z-index: 20;
+    min-width: 320px;
+  }
+  #status .step-line { display: flex; justify-content: space-between; align-items: center; }
+  #status .step-label { font-weight: 600; }
+  #status .step-counter { color: var(--muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #status .progress { height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+  #status .progress > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0%; transition: width 0.4s; }
+
+  #tooltip {
+    position: fixed; pointer-events: none;
+    background: rgba(10, 14, 32, 0.95);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 11px;
+    padding: 6px 9px;
+    border-radius: 6px;
+    transform: translate(12px, 12px);
+    z-index: 30;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre;
+    display: none;
+    max-width: 260px;
+  }
+  .badge {
+    display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 999px;
+    margin-right: 6px; vertical-align: middle;
+    border: 1px solid currentColor;
+  }
+  .b-input { color: #b58bff; }
+  .b-enc { color: #4cc9f0; }
+  .b-share { color: #f4a261; }
+  .b-actor { color: #80ed99; }
+  .b-critic { color: #ff9ec7; }
+  .b-aux { color: #ffd166; }
+  .b-output { color: #ff6b6b; }
+
+  .pill {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+    margin-left: 6px;
+  }
+  .kv { display: grid; grid-template-columns: 110px 1fr; row-gap: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; margin: 8px 0; }
+  .kv .k { color: var(--muted); }
+  .kv .v { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div id="ui-top">
+  <div class="panel" id="title">
+    Sheepshead PPO <span class="sub">3D · live forward pass · checkpoint 30M</span>
+  </div>
+  <div class="panel controls">
+    <button id="btn-play" class="primary">▶ Play tour</button>
+    <button id="btn-prev">◀ Prev</button>
+    <button id="btn-next">Next ▶</button>
+    <button id="btn-reset">↻ Reset</button>
+    <label>speed
+      <input type="range" id="speed" min="1200" max="6000" step="200" value="3000" />
+    </label>
+    <label><input type="checkbox" id="chk-rotate" /> auto-rotate</label>
+  </div>
+</div>
+
+<div id="ui-side">
+  <div class="panel" id="info">
+    <div class="stage-num" id="i-stage">0 / 13 · intro</div>
+    <h2 id="i-title">Sheepshead PPO — 3D architecture</h2>
+    <div id="i-body">
+      <p>This is a live forward pass through the trained PPO network (checkpoint <code>pfsp_swish_checkpoint_30000000.pt</code>) on a synthetic pick-decision state.</p>
+      <p>The agent's hand contains the <b>Queen of Clubs (QC)</b>, <b>Jack of Clubs (JC)</b>, and <b>Ace of Diamonds (AD)</b> — three trump — plus AS / KH / 7C. It's the agent's turn to <code>PICK</code> or <code>PASS</code>.</p>
+      <p>Drag to orbit · scroll to zoom · click anything in the scene for details. Press <b>▶ Play tour</b> to camera-tour through the architecture.</p>
+    </div>
+    <div class="meta" id="i-meta"></div>
+  </div>
+</div>
+
+<div class="panel" id="legend">
+  <div class="row"><span class="swatch" style="background:#b58bff;color:#b58bff"></span>Input / observation</div>
+  <div class="row"><span class="swatch" style="background:#4cc9f0;color:#4cc9f0"></span>Encoder · tokens · transformer</div>
+  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>Shared features · memory</div>
+  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor (policy)</div>
+  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic value</div>
+  <div class="row"><span class="swatch" style="background:#ffd166;color:#ffd166"></span>Auxiliary heads</div>
+  <div class="row"><span class="swatch" style="background:#fffa9e;color:#fffa9e"></span>Active flow / connection</div>
+</div>
+
+<div class="panel" id="status">
+  <div class="step-line">
+    <span class="step-label" id="s-label">Ready</span>
+    <span class="step-counter" id="s-counter">— / —</span>
+  </div>
+  <div class="progress"><div id="s-bar"></div></div>
+</div>
+
+<div id="tooltip"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const DATA = __DATA_JSON__;
+
+// ============================================================
+// Color palette
+// ============================================================
+const C = {
+  bgTop: 0x0b1020,
+  bgBot: 0x05070f,
+  input: 0xb58bff,
+  enc: 0x4cc9f0,
+  share: 0xf4a261,
+  actor: 0x80ed99,
+  critic: 0xff9ec7,
+  aux: 0xffd166,
+  output: 0xff6b6b,
+  pulse: 0xfffa9e,
+  dim: 0x223060,
+  text: 0xe6ecff,
+};
+
+// ============================================================
+// Scene setup
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(C.bgBot);
+scene.fog = new THREE.Fog(C.bgBot, 60, 220);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 600);
+camera.position.set(35, 38, 70);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.target.set(0, 5, 0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0x445588, 0.45));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+dirLight.position.set(20, 50, 40);
+scene.add(dirLight);
+const rim = new THREE.PointLight(0xb58bff, 0.6, 200);
+rim.position.set(-30, 20, -30);
+scene.add(rim);
+
+// Floor grid for spatial reference
+const grid = new THREE.GridHelper(220, 44, 0x1a2350, 0x121833);
+grid.position.y = -10;
+scene.add(grid);
+
+// ============================================================
+// Helpers
+// ============================================================
+function makeLabel(text, color = "#e6ecff", scale = 1) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  const px = 64 * scale;
+  ctx.font = `600 ${px}px ui-sans-serif, system-ui, -apple-system`;
+  const w = ctx.measureText(text).width + 32;
+  canvas.width = w;
+  canvas.height = px + 24;
+  ctx.font = `600 ${px}px ui-sans-serif, system-ui, -apple-system`;
+  ctx.fillStyle = color;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 16, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(mat);
+  const aspect = canvas.width / canvas.height;
+  const h = 1.4 * scale;
+  sprite.scale.set(h * aspect, h, 1);
+  return sprite;
+}
+
+function makeStageLabel(text, color = "#7cc4ff") {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 56px ui-sans-serif, system-ui";
+  const w = ctx.measureText(text).width + 60;
+  canvas.width = w; canvas.height = 80;
+  ctx.font = "bold 56px ui-sans-serif, system-ui";
+  ctx.fillStyle = color;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 30, 40);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  const sp = new THREE.Sprite(mat);
+  sp.scale.set((w / 80) * 4, 4, 1);
+  return sp;
+}
+
+function makeGlowLine(p0, p1, color, opacity = 0.4) {
+  const geom = new THREE.BufferGeometry().setFromPoints([p0, p1]);
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  return new THREE.Line(geom, mat);
+}
+
+function makeCurveLine(p0, p1, controlOffsetY = 6, color = C.pulse, opacity = 0.7) {
+  const mid = p0.clone().add(p1).multiplyScalar(0.5);
+  mid.y += controlOffsetY;
+  const curve = new THREE.QuadraticBezierCurve3(p0, mid, p1);
+  const points = curve.getPoints(40);
+  const geom = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  const line = new THREE.Line(geom, mat);
+  line.userData.curve = curve;
+  return line;
+}
+
+function vecMag(arr) {
+  let s = 0;
+  for (const v of arr) s += v * v;
+  return Math.sqrt(s);
+}
+function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+// ============================================================
+// Data prep
+// ============================================================
+const handCardCodes = DATA.sample.hand_cards;
+const handCardIds = DATA.sample.hand_ids; // length 8, with 0 padding
+const trumpCardCodes = DATA.constants.TRUMP;
+const trumpCardIds = DATA.constants.trump_card_ids;
+const deckIds = DATA.constants.DECK_IDS;
+const idToCode = {};
+for (const [code, id] of Object.entries(deckIds)) idToCode[id] = code;
+idToCode[0] = "PAD";
+idToCode[33] = "UNDER";
+
+// ============================================================
+// Stage layout (X positions)
+// ============================================================
+const XS = {
+  input: -56,
+  embed: -38,
+  tokensPre: -20,
+  attnRing: -2,
+  pools: 14,
+  gru: 24,
+  features: 34,
+  actor: 50,
+  critic: 50,
+  output: 62,
+};
+
+// Containers per stage (for highlight)
+const stageGroups = {};
+function group(name) {
+  if (!stageGroups[name]) {
+    stageGroups[name] = new THREE.Group();
+    stageGroups[name].name = name;
+    scene.add(stageGroups[name]);
+  }
+  return stageGroups[name];
+}
+
+// Hover/click registry
+const PICKABLES = []; // { mesh, info: { title, body, kv } }
+function registerPickable(mesh, info) {
+  mesh.userData.pickInfo = info;
+  PICKABLES.push(mesh);
+}
+
+// ============================================================
+// STAGE 1: INPUT CARDS (hand)
+// ============================================================
+function buildInputCards() {
+  const g = group("input");
+  const handLabel = makeStageLabel("1 · OBSERVATION", "#b58bff");
+  handLabel.position.set(XS.input, 18, 0);
+  g.add(handLabel);
+
+  const realCards = handCardCodes; // 6 cards
+  const cardObjs = [];
+  for (let i = 0; i < realCards.length; i++) {
+    const code = realCards[i];
+    const cardGeom = new THREE.BoxGeometry(3.6, 5, 0.3);
+    const isTrump = trumpCardCodes.includes(code);
+    const color = isTrump ? 0xd4af37 : 0x8aa0e0;
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.15,
+      metalness: 0.4,
+      roughness: 0.35,
+    });
+    const card = new THREE.Mesh(cardGeom, mat);
+    card.position.set(XS.input, 7 - i * 2.0, 0);
+    card.rotation.y = -0.25;
+    g.add(card);
+    cardObjs.push(card);
+
+    const lab = makeLabel(code, isTrump ? "#ffe89c" : "#cdd9ff", 0.7);
+    lab.position.set(XS.input + 2.6, 7 - i * 2.0, 0.5);
+    g.add(lab);
+
+    registerPickable(card, {
+      title: code,
+      badge: "input",
+      body: `<p>${isTrump ? "<b>Trump.</b> " : ""}Card id ${handCardIds[i]} (DECK_IDS). Will be looked up in the 34×16 embedding table on the right.</p>`,
+    });
+  }
+
+  // header chip + memory chip
+  const headerGeom = new THREE.BoxGeometry(3.6, 1.4, 0.3);
+  const headerMat = new THREE.MeshStandardMaterial({
+    color: 0x9d7bff, emissive: 0x9d7bff, emissiveIntensity: 0.2, roughness: 0.4
+  });
+  const headerChip = new THREE.Mesh(headerGeom, headerMat);
+  headerChip.position.set(XS.input, -6, 0);
+  headerChip.rotation.y = -0.25;
+  g.add(headerChip);
+  const headerLab = makeLabel("header (10)", "#e6ddff", 0.6);
+  headerLab.position.set(XS.input + 3, -6, 0.5);
+  g.add(headerLab);
+  registerPickable(headerChip, {
+    title: "Header scalars (10)",
+    badge: "input",
+    body: `<p>partner_mode, is_leaster, play_started, current_trick, alone_called, called_under, picker_rel, partner_rel, leader_rel, picker_position. All zeros here — clean pick-decision state.</p>`,
+  });
+
+  const memGeom = new THREE.BoxGeometry(3.6, 1.4, 0.3);
+  const memMat = new THREE.MeshStandardMaterial({
+    color: 0xf4a261, emissive: 0xf4a261, emissiveIntensity: 0.25, roughness: 0.4
+  });
+  const memChip = new THREE.Mesh(memGeom, memMat);
+  memChip.position.set(XS.input, -8.5, 0);
+  memChip.rotation.y = -0.25;
+  g.add(memChip);
+  const memLab = makeLabel("memory hₜ₋₁ (256)", "#ffd99c", 0.6);
+  memLab.position.set(XS.input + 3, -8.5, 0.5);
+  g.add(memLab);
+  registerPickable(memChip, {
+    title: "Prior memory hₜ₋₁",
+    badge: "input",
+    body: `<p>256-d recurrent state from this player's previous decision. Zeros here (game just started). Carried via a GRU cell — see stage 6.</p>`,
+  });
+
+  return { cardObjs };
+}
+const inputInfo = buildInputCards();
+
+// ============================================================
+// STAGE 2: CARD EMBEDDING TABLE (34 × 16) — instanced
+// ============================================================
+function buildEmbeddingTable() {
+  const g = group("embed");
+  const lab = makeStageLabel("2 · CARD EMBEDDINGS · (34 × 16)", "#4cc9f0");
+  lab.position.set(XS.embed, 18, 0);
+  g.add(lab);
+
+  const ROWS = 34, COLS = 16;
+  const cellW = 0.32, cellH = 0.42, gap = 0.04;
+  const totalW = COLS * (cellW + gap);
+  const totalH = ROWS * (cellH + gap);
+
+  // Build full 34x16 with neutral color, then color rows-used by actual embedding values
+  const geom = new THREE.BoxGeometry(cellW, cellH, 0.25);
+  const inst = new THREE.InstancedMesh(geom, new THREE.MeshStandardMaterial({
+    metalness: 0.2, roughness: 0.55, vertexColors: false,
+  }), ROWS * COLS);
+  inst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(ROWS * COLS * 3), 3);
+
+  const tempColor = new THREE.Color();
+  const dummy = new THREE.Object3D();
+
+  // Compute min/max for normalization
+  const embMin = DATA.card_embedding.min;
+  const embMax = DATA.card_embedding.max;
+  const embRange = Math.max(1e-6, embMax - embMin);
+
+  const rowsUsed = DATA.card_embedding.rows_used;
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const i = r * COLS + c;
+      const xLocal = (c - COLS / 2) * (cellW + gap) + cellW / 2;
+      const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
+      dummy.position.set(XS.embed, yLocal, xLocal); // table standing in YZ plane
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+
+      // Default dim color
+      tempColor.setHex(C.dim);
+      // If this row is "used", color it by value
+      if (rowsUsed[String(r)]) {
+        const v = rowsUsed[String(r)][c];
+        const norm = (v - embMin) / embRange; // 0..1
+        // diverging-ish: cool blue for low, white-ish mid, warm for high
+        tempColor.setHSL(0.6 - norm * 0.55, 0.9, 0.25 + norm * 0.45);
+      }
+      inst.setColorAt(i, tempColor);
+    }
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+
+  g.add(inst);
+
+  // Row labels (only used rows)
+  const usedRowYs = {};
+  for (const cidStr of Object.keys(rowsUsed)) {
+    const r = parseInt(cidStr, 10);
+    const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
+    const code = idToCode[r] || `id ${r}`;
+    const rowLab = makeLabel(`${code} (row ${r})`, "#ffe89c", 0.5);
+    rowLab.position.set(XS.embed, yLocal, totalW / 2 + 1.4);
+    g.add(rowLab);
+    usedRowYs[r] = yLocal;
+  }
+
+  // Connections: each input card → its row
+  const connections = [];
+  for (let i = 0; i < handCardCodes.length; i++) {
+    const cid = handCardIds[i];
+    if (!(cid in usedRowYs)) continue;
+    const start = new THREE.Vector3(XS.input + 2, 7 - i * 2.0, 0);
+    const end = new THREE.Vector3(XS.embed - 0.1, usedRowYs[cid], 0);
+    const line = makeGlowLine(start, end, C.input, 0.3);
+    g.add(line);
+    connections.push({ line, start, end });
+  }
+
+  // Click-target for the whole table
+  const tableProxy = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, totalH + 0.5, totalW + 0.5),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  tableProxy.position.set(XS.embed, 0, 0);
+  g.add(tableProxy);
+  registerPickable(tableProxy, {
+    title: "nn.Embedding(34, 16)",
+    badge: "enc",
+    body: `<p>The card embedding table. 34 rows (PAD, 32 real cards, UNDER token) × 16 dims. Dims 0–3 = suit one-hot · 4–7 = per-suit rank · 8 = points/11 · 9 = UNDER flag · 10–15 = free to learn.</p>
+      <p>The 6 highlighted rows are the cards in the hand — each one is the lookup result for one input card. The same table is reused by the actor's two-tower CALL scorer and the critic's seen-trump-mask head, so any update here propagates everywhere.</p>`,
+  });
+
+  return { connections, usedRowYs, totalW, totalH };
+}
+const embedInfo = buildEmbeddingTable();
+
+// ============================================================
+// STAGE 3: TOKEN BANK (19 tokens, 64-d each)
+// ============================================================
+// Order: context(1), memory(1), hand(8), trick(5), blind(2), bury(2)
+const TOKEN_INFO = [
+  { type: "context", color: 0xf4a261 },
+  { type: "memory", color: 0xf4a261 },
+];
+for (let i = 0; i < 8; i++) TOKEN_INFO.push({ type: "hand", color: 0x4cc9f0, idx: i });
+for (let i = 0; i < 5; i++) TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, idx: i });
+for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "blind", color: 0x88e0e8, idx: i });
+for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "bury", color: 0xa6f0c1, idx: i });
+
+function buildTokens() {
+  const g = group("tokens");
+  const lab = makeStageLabel("3 · TOKENIZE · (19 × 64)", "#4cc9f0");
+  lab.position.set(XS.tokensPre, 18, 0);
+  g.add(lab);
+
+  const preTok = DATA.tokens_pre_attn;
+  const mask = preTok.mask;
+  const tokenVecs = [
+    preTok.context,
+    preTok.memory,
+    ...preTok.hand,
+    ...preTok.trick,
+    ...preTok.blind,
+    ...preTok.bury,
+  ];
+
+  const tokenObjs = [];
+  // Lay out in a 19-tall vertical column at X=XS.tokensPre, varying Z slightly per type
+  const spacingY = 1.5;
+  const topY = (19 * spacingY) / 2 - 0.5;
+  for (let i = 0; i < 19; i++) {
+    const info = TOKEN_INFO[i];
+    const active = !!mask[i];
+    const mag = vecMag(tokenVecs[i]);
+    const height = 0.6 + clamp(mag / 5, 0, 1.0) * 2.2;
+    const tokGeom = new THREE.BoxGeometry(4.5, 0.6, 0.6);
+    const color = active ? info.color : C.dim;
+    const intensity = active ? 0.35 : 0.05;
+    const mat = new THREE.MeshStandardMaterial({
+      color, emissive: color, emissiveIntensity: intensity,
+      metalness: 0.3, roughness: 0.4,
+      transparent: !active, opacity: active ? 1 : 0.3,
+    });
+    const tok = new THREE.Mesh(tokGeom, mat);
+    const y = topY - i * spacingY;
+    tok.position.set(XS.tokensPre, y, 0);
+    g.add(tok);
+    tokenObjs.push({ mesh: tok, y, info, active, magnitude: mag, vec: tokenVecs[i] });
+
+    // small label
+    let labText = info.type;
+    if (info.type === "hand") labText = `hand[${info.idx}] ${idToCode[handCardIds[info.idx]] || "PAD"}`;
+    else if (info.type === "trick") labText = `trick[${info.idx}]`;
+    else if (info.type === "blind") labText = `blind[${info.idx}]`;
+    else if (info.type === "bury") labText = `bury[${info.idx}]`;
+    const tlab = makeLabel(labText + (active ? "" : "  · PAD"),
+      active ? "#cfe9ff" : "#5d6790", 0.45);
+    tlab.position.set(XS.tokensPre + 3.5, y, 0);
+    g.add(tlab);
+
+    registerPickable(tok, {
+      title: `Token ${i}: ${labText}`,
+      badge: "enc",
+      kv: { "type": info.type, "active": active ? "yes" : "PAD", "‖vec‖": mag.toFixed(2) },
+      body: `<p>One of 19 entity tokens. Built by the type-specific MLP, then has the <code>card_type</code> embedding added in (so attention can tell context vs memory vs hand-card etc.).</p>
+        <p>Goes through 4 transformer layers next.</p>`,
+    });
+  }
+
+  // Connections: embedding rows → relevant token positions
+  // context ← header + called_card → token 0 (gold connection from header chip)
+  const ctxStart = new THREE.Vector3(XS.input + 2, -6, 0);
+  const ctxEnd = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[0].y, 0);
+  g.add(makeGlowLine(ctxStart, ctxEnd, C.share, 0.4));
+  // memory chip → token 1
+  const memStart = new THREE.Vector3(XS.input + 2, -8.5, 0);
+  const memEnd = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[1].y, 0);
+  g.add(makeGlowLine(memStart, memEnd, C.share, 0.4));
+
+  // For each hand card, line from its embedding row → its hand token
+  const handTokenStart = 2;
+  for (let i = 0; i < handCardCodes.length; i++) {
+    const cid = handCardIds[i];
+    const rowY = embedInfo.usedRowYs[cid];
+    if (rowY === undefined) continue;
+    const start = new THREE.Vector3(XS.embed + 0.3, rowY, 0);
+    const end = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[handTokenStart + i].y, 0);
+    g.add(makeGlowLine(start, end, C.enc, 0.35));
+  }
+
+  return { tokenObjs };
+}
+const tokensInfo = buildTokens();
+
+// ============================================================
+// STAGE 4: ATTENTION RING (transformer cross-card reasoning)
+// ============================================================
+function buildAttentionRing() {
+  const g = group("attn");
+  const lab = makeStageLabel("4 · TRANSFORMER ATTENTION · 4 layers × 4 heads", "#4cc9f0");
+  lab.position.set(XS.attnRing, 18, 0);
+  g.add(lab);
+
+  // Place 19 tokens in a ring in the YZ plane (centered around X=XS.attnRing)
+  const N = 19;
+  const radius = 9;
+  const ringPos = [];
+  for (let i = 0; i < N; i++) {
+    const theta = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const y = Math.sin(theta) * radius + 4;
+    const z = Math.cos(theta) * radius;
+    ringPos.push(new THREE.Vector3(XS.attnRing, y, z));
+  }
+
+  // Token spheres on the ring (post-attention)
+  const postCtx = DATA.tokens_post_attn.context;
+  const postTok = [
+    postCtx,
+    null, // memory not exported post-attn (we have hand/trick/blind/bury only) — use null sentinel
+    ...DATA.tokens_post_attn.hand,
+    ...DATA.tokens_post_attn.trick,
+    ...DATA.tokens_post_attn.blind,
+    ...DATA.tokens_post_attn.bury,
+  ];
+  // memory post-attn isn't dumped; use a neutral magnitude
+  const ringObjs = [];
+  for (let i = 0; i < N; i++) {
+    const info = TOKEN_INFO[i];
+    const active = !!DATA.tokens_pre_attn.mask[i];
+    const v = postTok[i];
+    const mag = v ? vecMag(v) : 1.2;
+    const r = 0.5 + clamp(mag / 6, 0, 1) * 0.7;
+    const geom = new THREE.SphereGeometry(r, 18, 14);
+    const mat = new THREE.MeshStandardMaterial({
+      color: active ? info.color : C.dim,
+      emissive: active ? info.color : C.dim,
+      emissiveIntensity: active ? 0.45 : 0.05,
+      metalness: 0.3, roughness: 0.4,
+      transparent: !active, opacity: active ? 1 : 0.3,
+    });
+    const sph = new THREE.Mesh(geom, mat);
+    sph.position.copy(ringPos[i]);
+    g.add(sph);
+    ringObjs.push({ mesh: sph, info, active, pos: ringPos[i] });
+
+    registerPickable(sph, {
+      title: `Token ${i} after attention`,
+      badge: "enc",
+      kv: { "type": info.type, "‖post‖": mag.toFixed(2) },
+      body: `<p>After 4 transformer layers each token has been updated by attending to every other (valid) token. Lines connecting pairs here are weighted by the attention weight in the last layer.</p>`,
+    });
+  }
+
+  // Lines from token bank → ring
+  for (let i = 0; i < N; i++) {
+    if (!DATA.tokens_pre_attn.mask[i]) continue;
+    const start = new THREE.Vector3(XS.tokensPre + 2.3, tokensInfo.tokenObjs[i].y, 0);
+    const end = ringPos[i].clone();
+    g.add(makeGlowLine(start, end, C.enc, 0.18));
+  }
+
+  // Attention chords: pair every token with every other; opacity from attn weight
+  const attn = DATA.attention_weights_last_layer; // (19, 19)
+  // Get a global scale for visibility
+  let maxW = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (i !== j) maxW = Math.max(maxW, attn[i][j]);
+  const chordLines = [];
+  for (let i = 0; i < N; i++) {
+    if (!DATA.tokens_pre_attn.mask[i]) continue;
+    for (let j = i + 1; j < N; j++) {
+      if (!DATA.tokens_pre_attn.mask[j]) continue;
+      const wij = attn[i][j];
+      const wji = attn[j][i];
+      const w = (wij + wji) / 2;
+      const norm = w / maxW;
+      if (norm < 0.05) continue; // skip very weak
+      const start = ringPos[i];
+      const end = ringPos[j];
+      const mid = start.clone().add(end).multiplyScalar(0.5);
+      // pull toward the ring center
+      const ringCenter = new THREE.Vector3(XS.attnRing, 4, 0);
+      mid.lerp(ringCenter, 0.6);
+      const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+      const points = curve.getPoints(20);
+      const geom = new THREE.BufferGeometry().setFromPoints(points);
+      const color = new THREE.Color().lerpColors(
+        new THREE.Color(0x274080),
+        new THREE.Color(C.pulse),
+        norm,
+      );
+      const mat = new THREE.LineBasicMaterial({
+        color, transparent: true, opacity: 0.15 + norm * 0.55,
+      });
+      const line = new THREE.Line(geom, mat);
+      g.add(line);
+      chordLines.push({ line, norm });
+    }
+  }
+
+  return { ringObjs, ringPos, chordLines };
+}
+const attnInfo = buildAttentionRing();
+
+// ============================================================
+// STAGE 5: POOLS (4)
+// ============================================================
+function buildPools() {
+  const g = group("pools");
+  const lab = makeStageLabel("5 · ATTENTION POOLS", "#4cc9f0");
+  lab.position.set(XS.pools, 18, 0);
+  g.add(lab);
+
+  const POOLS = [
+    { name: "hand",  vec: DATA.pools.hand_vec,  color: 0x4cc9f0, ringIdxs: [2,3,4,5,6,7,8,9] },
+    { name: "trick", vec: DATA.pools.trick_vec, color: 0x6fb1ff, ringIdxs: [10,11,12,13,14] },
+    { name: "blind", vec: DATA.pools.blind_vec, color: 0x88e0e8, ringIdxs: [15,16] },
+    { name: "bury",  vec: DATA.pools.bury_vec,  color: 0xa6f0c1, ringIdxs: [17,18] },
+  ];
+  const poolObjs = [];
+  for (let i = 0; i < POOLS.length; i++) {
+    const p = POOLS[i];
+    const mag = vecMag(p.vec);
+    const w = 0.8 + clamp(mag / 5, 0, 1.5);
+    const y = 8 - i * 4.5;
+    const sizeY = p.vec.length === 64 ? 3.5 : 2.2;
+    const geom = new THREE.BoxGeometry(w, sizeY, w);
+    const mat = new THREE.MeshStandardMaterial({
+      color: p.color, emissive: p.color, emissiveIntensity: 0.35,
+      metalness: 0.35, roughness: 0.4,
+    });
+    const m = new THREE.Mesh(geom, mat);
+    m.position.set(XS.pools, y, 0);
+    g.add(m);
+    poolObjs.push({ mesh: m, pool: p, y });
+
+    const tlab = makeLabel(`pool_${p.name} → ${p.vec.length}d`, "#cfe9ff", 0.55);
+    tlab.position.set(XS.pools, y + sizeY / 2 + 0.6, 0);
+    g.add(tlab);
+
+    // Lines from corresponding ring tokens → this pool
+    for (const ri of p.ringIdxs) {
+      if (!DATA.tokens_pre_attn.mask[ri]) continue;
+      const start = attnInfo.ringPos[ri];
+      const end = new THREE.Vector3(XS.pools - w / 2, y, 0);
+      g.add(makeGlowLine(start, end, p.color, 0.25));
+    }
+
+    registerPickable(m, {
+      title: `pool_${p.name}`,
+      badge: "enc",
+      kv: { "out dim": p.vec.length, "‖vec‖": mag.toFixed(2) },
+      body: `<p>Multi-query (M=4) × multi-head (H=4) attention pool. Compresses the bag's post-attention tokens into a single vector.</p>`,
+    });
+  }
+  return { poolObjs };
+}
+const poolsInfo = buildPools();
+
+// ============================================================
+// STAGE 6: GRU + MEMORY FEEDBACK
+// ============================================================
+function buildMemory() {
+  const g = group("gru");
+  const lab = makeStageLabel("6 · GRU MEMORY UPDATE", "#f4a261");
+  lab.position.set(XS.gru, 18, 0);
+  g.add(lab);
+
+  // GRU cell as a hexagonal prism
+  const gruGeom = new THREE.CylinderGeometry(1.8, 1.8, 3, 6);
+  const gruMat = new THREE.MeshStandardMaterial({
+    color: 0xf4a261, emissive: 0xf4a261, emissiveIntensity: 0.4,
+    metalness: 0.4, roughness: 0.3,
+  });
+  const gru = new THREE.Mesh(gruGeom, gruMat);
+  gru.position.set(XS.gru, 6, 0);
+  g.add(gru);
+  const gruLab = makeLabel("GRUCell · 256", "#ffd99c", 0.55);
+  gruLab.position.set(XS.gru, 9, 0);
+  g.add(gruLab);
+
+  registerPickable(gru, {
+    title: "memory_gru (GRUCell)",
+    badge: "share",
+    body: `<p>The only true recurrence in the network. memory_out = GRU(context_token_after_attn, memory_in). Stored per-player and read back on the next decision step — the curved arc going back to the left is exactly that feedback.</p>`,
+  });
+
+  // Feedback arc: from gru position back to the memory chip at input
+  const start = new THREE.Vector3(XS.gru - 1.5, 6, 0);
+  const end = new THREE.Vector3(XS.input + 2, -8.5, 0);
+  const mid1 = new THREE.Vector3((start.x + end.x) / 2, 24, 0);
+  const curve = new THREE.CubicBezierCurve3(
+    start,
+    new THREE.Vector3(start.x - 5, 22, 0),
+    new THREE.Vector3(end.x + 5, 22, 0),
+    end,
+  );
+  const points = curve.getPoints(80);
+  const geom = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({ color: 0xf4a261, transparent: true, opacity: 0.55 });
+  const arc = new THREE.Line(geom, mat);
+  g.add(arc);
+
+  // Arrow head at the end
+  const arrowGeom = new THREE.ConeGeometry(0.4, 1.0, 12);
+  const arrowMat = new THREE.MeshStandardMaterial({
+    color: 0xf4a261, emissive: 0xf4a261, emissiveIntensity: 0.6,
+  });
+  const arrow = new THREE.Mesh(arrowGeom, arrowMat);
+  arrow.position.copy(end);
+  arrow.rotation.z = Math.PI / 2;
+  g.add(arrow);
+
+  const arcLab = makeLabel("memory_out → next-step memory_in", "#ffd99c", 0.5);
+  arcLab.position.set(0, 25, 0);
+  g.add(arcLab);
+
+  // context_out → GRU
+  const ctxToGru = makeGlowLine(
+    new THREE.Vector3(XS.attnRing, attnInfo.ringPos[0].y, attnInfo.ringPos[0].z),
+    new THREE.Vector3(XS.gru, 6, 0),
+    C.share, 0.6,
+  );
+  g.add(ctxToGru);
+
+  return { gru, curve };
+}
+const memInfo = buildMemory();
+
+// ============================================================
+// STAGE 7: FEATURES (256-d bar)
+// ============================================================
+function buildFeatures() {
+  const g = group("features");
+  const lab = makeStageLabel("7 · SHARED FEATURES (256)", "#f4a261");
+  lab.position.set(XS.features, 18, 0);
+  g.add(lab);
+
+  const features = DATA.features;
+  // Render as a vertical column of 16x16 small cubes to look like a "memory bank"
+  const COLS = 16, ROWS = 16;
+  const cellW = 0.45, cellH = 0.45, gap = 0.06;
+  const totalW = COLS * (cellW + gap);
+  const totalH = ROWS * (cellH + gap);
+
+  let fmin = features[0], fmax = features[0];
+  for (const v of features) { if (v < fmin) fmin = v; if (v > fmax) fmax = v; }
+  const frange = Math.max(1e-6, fmax - fmin);
+
+  const geom = new THREE.BoxGeometry(cellW, cellH, 0.3);
+  const inst = new THREE.InstancedMesh(geom, new THREE.MeshStandardMaterial({
+    metalness: 0.25, roughness: 0.5,
+  }), 256);
+  inst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(256 * 3), 3);
+
+  const dummy = new THREE.Object3D();
+  const color = new THREE.Color();
+  for (let i = 0; i < 256; i++) {
+    const r = Math.floor(i / COLS), c = i % COLS;
+    const xLocal = (c - COLS / 2) * (cellW + gap) + cellW / 2;
+    const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
+    dummy.position.set(XS.features, yLocal, xLocal);
+    dummy.updateMatrix();
+    inst.setMatrixAt(i, dummy.matrix);
+
+    const norm = clamp((features[i] - fmin) / frange, 0, 1);
+    color.setHSL(0.07 + norm * 0.04, 0.85, 0.2 + norm * 0.55);
+    inst.setColorAt(i, color);
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  g.add(inst);
+
+  // proxy for click
+  const proxy = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, totalH + 0.5, totalW + 0.5),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  proxy.position.set(XS.features, 0, 0);
+  g.add(proxy);
+  registerPickable(proxy, {
+    title: "Shared features (256)",
+    badge: "share",
+    kv: { "min": fmin.toFixed(3), "max": fmax.toFixed(3) },
+    body: `<p>The 256-d vector that summarizes the entire game state. Consumed by both the actor and critic adapters. After LayerNorm, the values are well-distributed — see the color spread.</p>`,
+  });
+
+  // Lines from each pool → features bar
+  for (const p of poolsInfo.poolObjs) {
+    const start = new THREE.Vector3(XS.pools, p.y, 0);
+    const end = new THREE.Vector3(XS.features - totalW / 2, 0, 0);
+    g.add(makeGlowLine(start, end, p.pool.color, 0.3));
+  }
+  // context_out → features (joined via feature_proj)
+  g.add(makeGlowLine(
+    new THREE.Vector3(XS.attnRing, attnInfo.ringPos[0].y, attnInfo.ringPos[0].z),
+    new THREE.Vector3(XS.features - totalW / 2, 4, 0),
+    C.share, 0.3,
+  ));
+
+  return { proxy, totalW, totalH };
+}
+const featInfo = buildFeatures();
+
+// ============================================================
+// STAGE 8: ACTOR
+// ============================================================
+function buildActor() {
+  const g = group("actor");
+  const lab = makeStageLabel("8 · ACTOR · policy heads", "#80ed99");
+  lab.position.set(XS.actor + 5, 22, 14);
+  g.add(lab);
+
+  const ACTOR_BASE_Y = 12;
+
+  // adapter cube
+  const adapterGeom = new THREE.BoxGeometry(1.6, 3.2, 1.6);
+  const adapterMat = new THREE.MeshStandardMaterial({
+    color: 0x80ed99, emissive: 0x80ed99, emissiveIntensity: 0.35,
+    metalness: 0.35, roughness: 0.4,
+  });
+  const adapter = new THREE.Mesh(adapterGeom, adapterMat);
+  adapter.position.set(XS.actor - 4, ACTOR_BASE_Y, 8);
+  g.add(adapter);
+  const adapterLab = makeLabel("actor_adapter (256→256)", "#cdf5d8", 0.5);
+  adapterLab.position.set(XS.actor - 4, ACTOR_BASE_Y + 2.6, 8);
+  g.add(adapterLab);
+  registerPickable(adapter, {
+    title: "actor_adapter",
+    badge: "actor",
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Adds nonlinearity before the 4 policy heads.</p>`,
+  });
+
+  // features bar → adapter
+  g.add(makeGlowLine(
+    new THREE.Vector3(XS.features, 0, 0),
+    adapter.position,
+    C.share, 0.5,
+  ));
+
+  // ----- Heads -----
+  // (a) pick head — 2 small balls
+  const pickGroup = new THREE.Group();
+  const pickProbs = (function() {
+    const logits = DATA.actor.pick_logits;
+    const m = Math.max(...logits);
+    const ex = logits.map(v => Math.exp(v - m));
+    const s = ex.reduce((a,b)=>a+b,0);
+    return ex.map(v => v / s);
+  })();
+  // PICK / PASS positions
+  const headX = XS.actor + 2;
+  const pickPositions = [
+    { name: "PICK", y: ACTOR_BASE_Y + 1.5, z: 13, prob: pickProbs[0] },
+    { name: "PASS", y: ACTOR_BASE_Y - 1.5, z: 13, prob: pickProbs[1] },
+  ];
+  for (const p of pickPositions) {
+    const r = 0.45 + p.prob * 1.6;
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 22, 16),
+      new THREE.MeshStandardMaterial({
+        color: 0x80ed99,
+        emissive: 0x80ed99, emissiveIntensity: 0.3 + p.prob * 0.7,
+        metalness: 0.4, roughness: 0.35,
+      }),
+    );
+    ball.position.set(headX, p.y, p.z);
+    g.add(ball);
+    const pl = makeLabel(`${p.name}: ${(p.prob*100).toFixed(2)}%`, "#dffbe6", 0.55);
+    pl.position.set(headX, p.y, p.z + r + 0.6);
+    g.add(pl);
+    registerPickable(ball, {
+      title: `${p.name} action`,
+      badge: "actor",
+      kv: { "logit": p.name === "PICK" ? DATA.actor.pick_logits[0].toFixed(3) : DATA.actor.pick_logits[1].toFixed(3), "prob": p.prob.toFixed(4) },
+      body: `<p>pick_head is a Linear(256→2). Logits get divided by <code>temperature_pick</code>, masked to legal actions, and softmaxed against the rest of the action space.</p>`,
+    });
+    g.add(makeGlowLine(adapter.position, ball.position, 0x80ed99, 0.5));
+  }
+
+  // (b) partner_basic + two-tower CALL — small ring of "call cards" with line intensities = score
+  // We are not in a partner-decision phase so these are illustrative. Show the 6 callable cards on a row.
+  const callableCodes = ["AC","AS","AH","10C","10S","10H"];
+  const callableIds = callableCodes.map(c => deckIds[c]);
+  const cardScores = DATA.actor.card_scores_all;
+
+  const callRow = new THREE.Group();
+  callRow.position.set(XS.actor + 6, ACTOR_BASE_Y + 5, 6);
+  const callLab = makeLabel("two-tower CALL scorer", "#cdf5d8", 0.5);
+  callLab.position.set(XS.actor + 6, ACTOR_BASE_Y + 8, 6);
+  g.add(callLab);
+
+  // q dot card_emb — visualize q as a small node then 6 lines to callable cards
+  const qNode = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 16, 12),
+    new THREE.MeshStandardMaterial({ color: 0x80ed99, emissive: 0x80ed99, emissiveIntensity: 0.6 }),
+  );
+  qNode.position.set(XS.actor + 1, ACTOR_BASE_Y + 5, 6);
+  g.add(qNode);
+  registerPickable(qNode, {
+    title: "two-tower query q = tw_Wg(feat)",
+    badge: "actor",
+    body: `<p>64-d query produced from the 256-d actor features. Dot-producted against the projection of every card embedding to score CALL actions.</p>`,
+  });
+
+  // Lines from q → each callable card (intensity = card score)
+  const minCS = Math.min(...callableIds.map(cid => cardScores[cid]));
+  const maxCS = Math.max(...callableIds.map(cid => cardScores[cid]));
+  for (let i = 0; i < callableCodes.length; i++) {
+    const cid = callableIds[i];
+    const s = cardScores[cid];
+    const norm = (s - minCS) / Math.max(1e-6, maxCS - minCS);
+    const x = XS.actor + 4 + i * 1.4;
+    const cardGeom = new THREE.BoxGeometry(1.0, 1.5, 0.18);
+    const ccolor = new THREE.Color().setHSL(0.33, 0.6, 0.3 + norm * 0.4);
+    const cardMat = new THREE.MeshStandardMaterial({
+      color: ccolor, emissive: ccolor,
+      emissiveIntensity: 0.2 + norm * 0.7, roughness: 0.4,
+    });
+    const card = new THREE.Mesh(cardGeom, cardMat);
+    card.position.set(x, ACTOR_BASE_Y + 5, 6);
+    g.add(card);
+    const lab2 = makeLabel(callableCodes[i], "#dffbe6", 0.4);
+    lab2.position.set(x, ACTOR_BASE_Y + 6.5, 6);
+    g.add(lab2);
+    const ll = makeGlowLine(qNode.position, card.position, 0x80ed99, 0.15 + norm * 0.55);
+    g.add(ll);
+    registerPickable(card, {
+      title: `CALL ${callableCodes[i]}`,
+      badge: "actor",
+      kv: { "score": s.toFixed(2), "rank": "" },
+      body: `<p>Score = q · tw_We(card_emb[${cid}])ᵀ. Reusing the shared card embedding means the actor inherits everything the embedding has learned elsewhere.</p>`,
+    });
+  }
+
+  // (c) pointer scorer over 8 hand slots
+  const pointerLab = makeLabel("pointer scorer · 8 hand slots", "#cdf5d8", 0.5);
+  pointerLab.position.set(XS.actor + 6, ACTOR_BASE_Y - 3, 6);
+  g.add(pointerLab);
+
+  const pNode = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 16, 12),
+    new THREE.MeshStandardMaterial({ color: 0xb8f0a2, emissive: 0xb8f0a2, emissiveIntensity: 0.6 }),
+  );
+  pNode.position.set(XS.actor + 1, ACTOR_BASE_Y - 5, 6);
+  g.add(pNode);
+  registerPickable(pNode, {
+    title: "pointer query (Bahdanau)",
+    badge: "actor",
+    body: `<p>For each hand slot: score = v · tanh( pointer_Wg(feat) + pointer_Wt(token) ). Same scorer drives bury / under / play.</p>`,
+  });
+
+  const slotScores = DATA.actor.slot_scores;
+  const minSlot = Math.min(...slotScores);
+  const maxSlot = Math.max(...slotScores);
+  for (let i = 0; i < 8; i++) {
+    const x = XS.actor + 4 + i * 1.1;
+    const cid = handCardIds[i];
+    const isPad = cid === 0;
+    const norm = isPad ? 0 : (slotScores[i] - minSlot) / Math.max(1e-6, maxSlot - minSlot);
+    const cardGeom = new THREE.BoxGeometry(0.9, 1.3, 0.16);
+    const ccolor = isPad ? new THREE.Color(0x223060)
+                         : new THREE.Color().setHSL(0.32, 0.7, 0.25 + norm * 0.45);
+    const cardMat = new THREE.MeshStandardMaterial({
+      color: ccolor, emissive: ccolor,
+      emissiveIntensity: isPad ? 0.05 : (0.15 + norm * 0.6),
+      transparent: isPad, opacity: isPad ? 0.35 : 1.0,
+      roughness: 0.45,
+    });
+    const card = new THREE.Mesh(cardGeom, cardMat);
+    card.position.set(x, ACTOR_BASE_Y - 5, 6);
+    g.add(card);
+    const code = isPad ? "PAD" : (idToCode[cid] || `id${cid}`);
+    const lab2 = makeLabel(code, isPad ? "#5d6790" : "#dffbe6", 0.4);
+    lab2.position.set(x, ACTOR_BASE_Y - 3.5, 6);
+    g.add(lab2);
+    if (!isPad) {
+      g.add(makeGlowLine(pNode.position, card.position, 0xb8f0a2, 0.15 + norm * 0.55));
+    }
+    registerPickable(card, {
+      title: isPad ? `slot ${i} · PAD` : `slot ${i} · ${code}`,
+      badge: "actor",
+      kv: { "score": isPad ? "—" : slotScores[i].toFixed(2) },
+      body: isPad
+        ? `<p>Empty hand slot. The pointer score is masked out before softmax.</p>`
+        : `<p>Pointer slot-score is scattered into BURY ${code}, UNDER ${code}, PLAY ${code} action logits via precomputed maps.</p>`,
+    });
+  }
+
+  // (d) Output bar: PICK vs PASS as final action distribution
+  const outLab = makeLabel("9 · π(a | s) · masked + softmax", "#ffd6d6", 0.7);
+  outLab.position.set(XS.output, 22, 6);
+  g.add(outLab);
+
+  // For our state only PICK and PASS are valid — display as two large bars
+  const pickProb = DATA.actor.full_probs[DATA.constants.PICK_index_0based];
+  const passProb = DATA.actor.full_probs[DATA.constants.PASS_index_0based];
+  const bars = [
+    { name: "PICK", prob: pickProb, color: 0x80ed99 },
+    { name: "PASS", prob: passProb, color: 0xff9ec7 },
+  ];
+  for (let i = 0; i < bars.length; i++) {
+    const b = bars[i];
+    const h = 0.5 + b.prob * 10;
+    const geom = new THREE.BoxGeometry(2.4, h, 2.4);
+    const mat = new THREE.MeshStandardMaterial({
+      color: b.color, emissive: b.color, emissiveIntensity: 0.4 + b.prob * 0.4,
+      metalness: 0.3, roughness: 0.4,
+    });
+    const m = new THREE.Mesh(geom, mat);
+    m.position.set(XS.output, 12 + h / 2, 6 + i * 3.5);
+    g.add(m);
+    const labOut = makeLabel(`${b.name}  ${(b.prob*100).toFixed(2)}%`, "#fff", 0.55);
+    labOut.position.set(XS.output, 12 + h + 0.6, 6 + i * 3.5);
+    g.add(labOut);
+    registerPickable(m, {
+      title: `π(${b.name})`,
+      badge: "output",
+      kv: { "prob": b.prob.toFixed(4) },
+      body: `<p>Final action probability after masking illegal actions and applying softmax. The trained network is <b>${pickProb > 0.5 ? "very confident this is a pick" : "leaning toward passing"}</b>.</p>`,
+    });
+  }
+
+  return { adapter };
+}
+const actorInfo = buildActor();
+
+// ============================================================
+// STAGE 9: CRITIC
+// ============================================================
+function buildCritic() {
+  const g = group("critic");
+  const lab = makeStageLabel("8 · CRITIC · value + aux", "#ff9ec7");
+  lab.position.set(XS.critic + 5, 22, -14);
+  g.add(lab);
+
+  const CY = -12;
+
+  const adapter = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 3.2, 1.6),
+    new THREE.MeshStandardMaterial({
+      color: 0xff9ec7, emissive: 0xff9ec7, emissiveIntensity: 0.35,
+      metalness: 0.35, roughness: 0.4,
+    }),
+  );
+  adapter.position.set(XS.critic - 4, CY, -8);
+  g.add(adapter);
+  const adapterLab = makeLabel("critic_adapter", "#ffd6e8", 0.5);
+  adapterLab.position.set(XS.critic - 4, CY + 2.6, -8);
+  g.add(adapterLab);
+  registerPickable(adapter, {
+    title: "critic_adapter",
+    badge: "critic",
+    body: `<p>LayerNorm → Linear(256→256) → SiLU. Feeds value + every auxiliary head — they all share gradients into the encoder.</p>`,
+  });
+  g.add(makeGlowLine(
+    new THREE.Vector3(XS.features, 0, 0),
+    adapter.position,
+    C.share, 0.5,
+  ));
+
+  // ----- heads -----
+  const heads = [
+    { name: "V(s)",   val: DATA.critic.value.toFixed(3), color: 0xff9ec7, badge: "critic",
+      body: `<p>State value used to compute advantages via GAE (γ=λ=0.95). PPO clipped value loss against returns.</p>` },
+    { name: "win",    val: DATA.critic.win_prob.toFixed(3), color: 0xffd166, badge: "aux",
+      body: `<p>P(this player wins). BCE loss · coefficient 0.05.</p>` },
+    { name: "return", val: DATA.critic.return_pred.toFixed(3), color: 0xffd166, badge: "aux",
+      body: `<p>Expected final scalar return (scale ≈ ±12). Smooth-L1 · coefficient 0.1.</p>` },
+    { name: "secret", val: DATA.critic.secret_prob.toFixed(3), color: 0xffd166, badge: "aux",
+      body: `<p>P(I am the secret partner). BCE · coefficient 0.1.</p>` },
+    { name: "points", val: DATA.critic.points_pred.map(v => v.toFixed(1)).join(" / "), color: 0xffd166, badge: "aux",
+      body: `<p>Per-seat final point totals (relative order). Smooth-L1 · coefficient 0.2.</p>` },
+  ];
+  for (let i = 0; i < heads.length; i++) {
+    const h = heads[i];
+    const xOff = i * 3.3;
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 22, 16),
+      new THREE.MeshStandardMaterial({
+        color: h.color, emissive: h.color, emissiveIntensity: 0.45,
+        metalness: 0.4, roughness: 0.35,
+      }),
+    );
+    ball.position.set(XS.critic + xOff, CY, -4);
+    g.add(ball);
+    const l = makeLabel(`${h.name}`, "#ffd6e8", 0.5);
+    l.position.set(XS.critic + xOff, CY + 1.6, -4);
+    g.add(l);
+    const v = makeLabel(`${h.val}`, "#fff", 0.5);
+    v.position.set(XS.critic + xOff, CY - 1.6, -4);
+    g.add(v);
+    g.add(makeGlowLine(adapter.position, ball.position, h.color, 0.4));
+    registerPickable(ball, {
+      title: `${h.name}_head`,
+      badge: h.badge,
+      kv: { "value": h.val },
+      body: h.body,
+    });
+  }
+
+  // Trump-aux block: seen_trump_mask as a row of 14 cards lit by sigmoid prob
+  const trumpLab = makeLabel("trump_aux · seen-mask (key–query over card embeddings)", "#ffe89c", 0.5);
+  trumpLab.position.set(XS.critic + 8, CY - 5, -8);
+  g.add(trumpLab);
+
+  const seenProbs = DATA.critic.seen_trump_mask_probs;
+  for (let i = 0; i < 14; i++) {
+    const p = seenProbs[i];
+    const x = XS.critic + i * 1.1;
+    const card = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 1.3, 0.18),
+      new THREE.MeshStandardMaterial({
+        color: 0xffd166, emissive: 0xffd166, emissiveIntensity: 0.1 + p * 0.7,
+        roughness: 0.4,
+      }),
+    );
+    card.position.set(x, CY - 7.5, -8);
+    g.add(card);
+    const lab2 = makeLabel(trumpCardCodes[i], "#ffe89c", 0.35);
+    lab2.position.set(x, CY - 6.3, -8);
+    g.add(lab2);
+    const lab3 = makeLabel(`${(p*100).toFixed(0)}%`, "#fff7e0", 0.3);
+    lab3.position.set(x, CY - 8.7, -8);
+    g.add(lab3);
+    registerPickable(card, {
+      title: `seen_trump[${trumpCardCodes[i]}]`,
+      badge: "aux",
+      kv: { "P(seen)": p.toFixed(3) },
+      body: `<p>Multi-label "have I seen / do I know this trump?" — built as q · (Wk(card_emb[trump]) + δ_per_trump)ᵀ. Reuses the shared card embedding.</p>`,
+    });
+  }
+
+  // unseen higher than hand
+  const unseenLab = makeLabel(`unseen trump higher than my hand: ${(DATA.critic.unseen_higher_prob*100).toFixed(0)}%`, "#ffe89c", 0.5);
+  unseenLab.position.set(XS.critic + 8, CY - 10.5, -8);
+  g.add(unseenLab);
+
+  return { adapter };
+}
+const criticInfo = buildCritic();
+
+// ============================================================
+// Subtle background nebula spheres
+// ============================================================
+for (let i = 0; i < 30; i++) {
+  const s = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 8, 6),
+    new THREE.MeshBasicMaterial({
+      color: i % 2 === 0 ? 0x7cc4ff : 0xb58bff, transparent: true, opacity: 0.4,
+    }),
+  );
+  s.position.set(
+    (Math.random() - 0.5) * 200,
+    (Math.random() - 0.3) * 60,
+    (Math.random() - 0.5) * 80,
+  );
+  scene.add(s);
+}
+
+// ============================================================
+// Stage definitions for tour
+// ============================================================
+const STAGES = [
+  {
+    title: "Sheepshead PPO — 3D forward pass",
+    label: "intro",
+    badge: "input",
+    cam: { pos: [35, 38, 70], target: [0, 5, 0] },
+    body: `<p>This is a live forward pass through checkpoint <code>pfsp_swish_checkpoint_30000000.pt</code> on a synthetic pick-decision state. Hand: <b>QC, JC, AD, AS, KH, 7C</b> — 3 trump including the Queen of Clubs. Press <b>Next ▶</b> or <b>▶ Play tour</b>.</p>`,
+  },
+  {
+    title: "1 · Observation",
+    label: "input",
+    badge: "input",
+    cam: { pos: [XS.input + 24, 8, 22], target: [XS.input, 0, 0] },
+    body: `<p>The 6 cards in the hand (gold = trump), the 10 header scalars, and the 256-d prior memory hₜ₋₁ from this player's previous decision. The lines on the right show each card being looked up in the embedding table.</p>`,
+  },
+  {
+    title: "2 · Card embedding lookup",
+    label: "embed",
+    badge: "enc",
+    cam: { pos: [XS.embed + 14, 4, 16], target: [XS.embed, 0, 0] },
+    body: `<p>The shared 34×16 table. The lit-up rows are the cards in our hand. With <code>use_informed_init=True</code>, the first 10 dims start as a hand-designed prior (suit / rank / points / UNDER flag); dims 10–15 are free for the network to use.</p>
+      <p>This same table is read by:</p>
+      <ul>
+        <li>the encoder (here)</li>
+        <li>the actor's two-tower CALL scorer (stage 8)</li>
+        <li>the critic's seen-trump mask (stage 8)</li>
+      </ul>`,
+  },
+  {
+    title: "3 · Tokenize · 19 tokens",
+    label: "tokens",
+    badge: "enc",
+    cam: { pos: [XS.tokensPre + 18, 4, 18], target: [XS.tokensPre, 0, 0] },
+    body: `<p>19 entity tokens are assembled, each 64-d:</p>
+      <ul>
+        <li><b>1 context</b> = header scalars + called-card embedding → MLP</li>
+        <li><b>1 memory</b> = prior 256-d projected to 64-d</li>
+        <li><b>8 hand</b> = card embedding ⊕ actor role → MLP</li>
+        <li><b>5 trick</b>, <b>2 blind</b>, <b>2 bury</b>, each via their MLP</li>
+      </ul>
+      <p>Two slots are PAD here (the hand only has 6 cards) — those tokens are dim and will be masked in attention.</p>`,
+  },
+  {
+    title: "4 · Cross-card attention",
+    label: "attn",
+    badge: "enc",
+    cam: { pos: [XS.attnRing + 14, 14, 28], target: [XS.attnRing, 4, 0] },
+    body: `<p>All 19 tokens are placed on a ring. Each curved chord shows attention strength between two tokens (averaged across the 4 heads in the last transformer layer). Brighter = stronger attention.</p>
+      <p>This is where cards reason about each other — the QC in our hand can attend to the called card, the trick, the bury pile, and the context token.</p>`,
+  },
+  {
+    title: "5 · Attention pools",
+    label: "pools",
+    badge: "enc",
+    cam: { pos: [XS.pools + 14, 4, 18], target: [XS.pools, 4, 0] },
+    body: `<p>4 multi-query attention pools compress each bag's post-attention tokens into a single vector: hand → 64, trick → 64, blind → 32, bury → 32.</p>`,
+  },
+  {
+    title: "6 · GRU memory · recurrence",
+    label: "gru",
+    badge: "share",
+    cam: { pos: [XS.gru + 6, 22, 28], target: [(XS.input + XS.gru)/2, 10, 0] },
+    body: `<p>The post-attention context token + the prior memory go into a GRU cell, producing the new 256-d memory state. That state is stored per player and read back on the next decision step — the orange arc going back to the left is exactly this feedback. It's the only true recurrence in the whole network.</p>`,
+  },
+  {
+    title: "7 · Shared features (256)",
+    label: "features",
+    badge: "share",
+    cam: { pos: [XS.features + 12, 4, 18], target: [XS.features, 0, 0] },
+    body: `<p>Concat of all 4 pool outputs + the post-attention context, then Linear(256→256) + LayerNorm. Bright cells = positive feature values, dim cells = negative. This 256-d block is what both actor and critic see.</p>`,
+  },
+  {
+    title: "8a · Actor heads",
+    label: "actor",
+    badge: "actor",
+    cam: { pos: [XS.actor + 14, 18, 28], target: [XS.actor + 4, 12, 6] },
+    body: `<p>The features flow through the actor adapter, then split into 4 heads:</p>
+      <ul>
+        <li><b>pick_head</b> · PICK vs PASS</li>
+        <li><b>partner_basic_head</b> · ALONE / JD PARTNER</li>
+        <li><b>two-tower CALL scorer</b> · query · card-embedding key per callable card (lines)</li>
+        <li><b>pointer scorer</b> · scalar per hand slot (for bury / under / play)</li>
+      </ul>
+      <p>The two-tower &amp; pointer scorers reuse the card embeddings, so any signal the encoder learns about cards immediately helps the policy too.</p>`,
+  },
+  {
+    title: "9 · π(a | s)",
+    label: "output",
+    badge: "output",
+    cam: { pos: [XS.output + 12, 18, 18], target: [XS.output, 14, 6] },
+    body: `<p>Only <code>PICK</code> and <code>PASS</code> are valid here, so they take all the probability mass. The trained network's answer:</p>
+      <p style="font-size:14px"><b>P(PICK) = ${(DATA.actor.full_probs[DATA.constants.PICK_index_0based]*100).toFixed(2)}%</b><br/>
+      <b>P(PASS) = ${(DATA.actor.full_probs[DATA.constants.PASS_index_0based]*100).toFixed(2)}%</b></p>
+      <p>With QC + 2 other trump including JC and AD, picking is overwhelmingly favored — and the network agrees.</p>`,
+  },
+  {
+    title: "8b · Critic value + aux heads",
+    label: "critic",
+    badge: "critic",
+    cam: { pos: [XS.critic + 18, 4, -28], target: [XS.critic + 4, -8, -6] },
+    body: `<p>The critic adapter feeds the value head and 4 auxiliary heads. The critic's value here is <b>${DATA.critic.value.toFixed(3)}</b>; win probability <b>${(DATA.critic.win_prob*100).toFixed(1)}%</b>; expected return <b>${DATA.critic.return_pred.toFixed(2)}</b>.</p>
+      <p>The auxiliary losses don't change the policy directly, but their gradients flow back through the shared critic adapter and all the way into the encoder, giving the network dense supervision beyond reward alone.</p>`,
+  },
+  {
+    title: "Trump tracker",
+    label: "trumpaux",
+    badge: "aux",
+    cam: { pos: [XS.critic + 12, -2, -22], target: [XS.critic + 8, -7, -8] },
+    body: `<p>The seen-trump mask uses a small query–key head built on top of the card embeddings: for each of the 14 trumps, the network predicts whether it has been seen or is otherwise known.</p>
+      <p>Since the game has barely started here, all 14 trumps are still unseen (low % everywhere). The "unseen higher than my hand" head reports <b>${(DATA.critic.unseen_higher_prob*100).toFixed(0)}%</b> — yes, there are bigger trumps still out there.</p>`,
+  },
+  {
+    title: "Full architecture",
+    label: "overview",
+    badge: "input",
+    cam: { pos: [35, 38, 70], target: [0, 5, 0] },
+    body: `<p>Zoomed out: observation → embedding table → tokens → transformer → pools → GRU + features → actor + critic. Drag the scene to explore. Click any object for details. Tour again with <b>▶ Play</b>.</p>`,
+  },
+];
+
+// ============================================================
+// Camera tween + tour controller
+// ============================================================
+const camState = {
+  curPos: camera.position.clone(),
+  curTarget: controls.target.clone(),
+  tgtPos: camera.position.clone(),
+  tgtTarget: controls.target.clone(),
+  t: 1, // interpolation (>=1 means done)
+  duration: 1500,
+};
+function tweenTo(pos, target, duration = 1500) {
+  camState.curPos = camera.position.clone();
+  camState.curTarget = controls.target.clone();
+  camState.tgtPos = new THREE.Vector3(...pos);
+  camState.tgtTarget = new THREE.Vector3(...target);
+  camState.t = 0;
+  camState.duration = duration;
+  camState.startTime = performance.now();
+}
+function updateCameraTween() {
+  if (camState.t >= 1) return;
+  const elapsed = performance.now() - camState.startTime;
+  let t = clamp(elapsed / camState.duration, 0, 1);
+  // ease in-out cubic
+  const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  camera.position.lerpVectors(camState.curPos, camState.tgtPos, e);
+  controls.target.lerpVectors(camState.curTarget, camState.tgtTarget, e);
+  camState.t = t;
+}
+
+let curStage = 0;
+const els = {
+  stage: document.getElementById("i-stage"),
+  title: document.getElementById("i-title"),
+  body: document.getElementById("i-body"),
+  meta: document.getElementById("i-meta"),
+  sLabel: document.getElementById("s-label"),
+  sCounter: document.getElementById("s-counter"),
+  sBar: document.getElementById("s-bar"),
+};
+function showStage(i) {
+  curStage = clamp(i, 0, STAGES.length - 1);
+  const s = STAGES[curStage];
+  els.stage.textContent = `${curStage + 1} / ${STAGES.length} · ${s.label}`;
+  els.title.innerHTML = `<span class="badge b-${s.badge}">${s.badge}</span> ${s.title}`;
+  els.body.innerHTML = s.body;
+  els.meta.textContent = "";
+  els.sLabel.textContent = s.title;
+  els.sCounter.textContent = `${curStage + 1} / ${STAGES.length}`;
+  els.sBar.style.width = `${((curStage + 1) / STAGES.length) * 100}%`;
+  tweenTo(s.cam.pos, s.cam.target);
+}
+showStage(0);
+
+// ============================================================
+// Tour playback
+// ============================================================
+let playing = false;
+let timer = null;
+const speed = document.getElementById("speed");
+function nextStage() {
+  if (curStage + 1 >= STAGES.length) return false;
+  showStage(curStage + 1);
+  return true;
+}
+function startTour() {
+  if (playing) return;
+  playing = true;
+  document.getElementById("btn-play").textContent = "⏸ Pause";
+  const tick = () => {
+    if (!playing) return;
+    if (!nextStage()) { stopTour(); return; }
+    timer = setTimeout(tick, parseInt(speed.value, 10));
+  };
+  timer = setTimeout(tick, parseInt(speed.value, 10));
+}
+function stopTour() {
+  playing = false;
+  if (timer) { clearTimeout(timer); timer = null; }
+  document.getElementById("btn-play").textContent = "▶ Play tour";
+}
+document.getElementById("btn-play").addEventListener("click", () => playing ? stopTour() : startTour());
+document.getElementById("btn-prev").addEventListener("click", () => { stopTour(); showStage(curStage - 1); });
+document.getElementById("btn-next").addEventListener("click", () => { stopTour(); showStage(curStage + 1); });
+document.getElementById("btn-reset").addEventListener("click", () => { stopTour(); showStage(0); });
+document.getElementById("chk-rotate").addEventListener("change", (e) => {
+  controls.autoRotate = e.target.checked;
+  controls.autoRotateSpeed = 0.6;
+});
+
+// ============================================================
+// Picking (click + hover tooltip)
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const tooltip = document.getElementById("tooltip");
+let hovered = null;
+
+function setHovered(obj) {
+  if (hovered === obj) return;
+  hovered = obj;
+  if (obj && obj.userData.pickInfo) {
+    const info = obj.userData.pickInfo;
+    let txt = info.title;
+    if (info.kv) {
+      for (const [k, v] of Object.entries(info.kv)) {
+        txt += `\n${k}: ${v}`;
+      }
+    }
+    tooltip.textContent = txt;
+    tooltip.style.display = "block";
+  } else {
+    tooltip.style.display = "none";
+  }
+}
+renderer.domElement.addEventListener("mousemove", (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  tooltip.style.left = e.clientX + "px";
+  tooltip.style.top = e.clientY + "px";
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(PICKABLES, false);
+  setHovered(hits.length ? hits[0].object : null);
+});
+renderer.domElement.addEventListener("click", (e) => {
+  if (!hovered) return;
+  const info = hovered.userData.pickInfo;
+  if (!info) return;
+  els.stage.textContent = "selection";
+  els.title.innerHTML = `<span class="badge b-${info.badge}">${info.badge}</span> ${info.title}`;
+  let kvHtml = "";
+  if (info.kv) {
+    kvHtml = `<div class="kv">${Object.entries(info.kv).map(([k,v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join("")}</div>`;
+  }
+  els.body.innerHTML = kvHtml + (info.body || "");
+});
+
+// ============================================================
+// Resize + render loop
+// ============================================================
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Pulse animation: subtle scale breathing on the "active" chord lines, etc.
+let pulseT = 0;
+function animate(now) {
+  requestAnimationFrame(animate);
+  controls.update();
+  updateCameraTween();
+  pulseT = (now || 0) * 0.001;
+  // Gentle emissive pulse on attention chords proportional to weight
+  const breath = 0.6 + Math.sin(pulseT * 1.3) * 0.4;
+  for (const c of attnInfo.chordLines) {
+    c.line.material.opacity = (0.15 + c.norm * 0.55) * (0.7 + breath * 0.4);
+  }
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+</script>
+
+</body>
+</html>

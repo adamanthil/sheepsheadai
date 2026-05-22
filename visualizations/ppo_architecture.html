@@ -1,0 +1,1190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sheepshead PPO — Network Architecture</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg-2: #0f1530;
+    --panel: #141a36;
+    --panel-2: #1a2350;
+    --line: #2a3470;
+    --text: #e6ecff;
+    --muted: #8e9bd1;
+    --accent: #7cc4ff;
+    --accent-2: #b58bff;
+    --enc: #4cc9f0;
+    --share: #f4a261;
+    --actor: #80ed99;
+    --critic: #ff9ec7;
+    --aux: #ffd166;
+    --warn: #ff6b6b;
+    --pulse: #fffa9e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: radial-gradient(ellipse at top, #1b2455 0%, var(--bg) 60%) fixed;
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  header.top {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(8px);
+    background: rgba(11,16,32,0.78);
+    border-bottom: 1px solid var(--line);
+    padding: 14px 22px;
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+  }
+  h1 {
+    margin: 0; font-size: 18px; font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  h1 .sub { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .controls button {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .controls button:hover { background: var(--panel-2); border-color: var(--accent); }
+  .controls button.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0b1020; font-weight: 600; border: none;
+  }
+  .controls label { color: var(--muted); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+  .controls input[type=range] { accent-color: var(--accent); }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 22px;
+    padding: 22px;
+  }
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 1fr; }
+    aside.detail { position: sticky; top: 70px; }
+  }
+
+  section.canvas {
+    display: flex; flex-direction: column; gap: 28px;
+  }
+  .stage {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 18px 22px;
+    position: relative;
+    transition: box-shadow 0.3s, border-color 0.3s;
+  }
+  .stage.active {
+    border-color: var(--pulse);
+    box-shadow: 0 0 0 1px var(--pulse), 0 0 40px rgba(255,250,158,0.18);
+  }
+  .stage h2 {
+    margin: 0 0 4px 0; font-size: 15px; letter-spacing: 0.4px;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+  }
+  .stage h2 .pill {
+    text-transform: none;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 8px;
+    background: var(--panel-2);
+    color: var(--muted);
+    letter-spacing: 0;
+  }
+  .stage p.lead { margin: 0 0 14px 0; color: var(--muted); font-size: 13px; max-width: 880px; }
+
+  /* Block primitives */
+  .row { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+  .grow { flex: 1 1 0; min-width: 0; }
+  .blk {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s, background 0.15s;
+    position: relative;
+    min-width: 0;
+  }
+  .blk:hover { transform: translateY(-1px); border-color: var(--accent); }
+  .blk.active {
+    border-color: var(--pulse);
+    background: linear-gradient(180deg, #2b2e60 0%, var(--panel-2) 100%);
+    box-shadow: 0 0 18px rgba(255,250,158,0.25);
+  }
+  .blk .name { font-weight: 600; font-size: 13px; }
+  .blk .meta { color: var(--muted); font-size: 11px; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .blk .tag {
+    position: absolute; top: -8px; right: 8px;
+    font-size: 10px; padding: 1px 7px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+  }
+
+  /* color variants */
+  .blk.enc { border-left: 3px solid var(--enc); }
+  .blk.share { border-left: 3px solid var(--share); }
+  .blk.actor { border-left: 3px solid var(--actor); }
+  .blk.critic { border-left: 3px solid var(--critic); }
+  .blk.aux { border-left: 3px solid var(--aux); }
+  .blk.input { border-left: 3px solid var(--accent-2); }
+  .blk.output { border-left: 3px solid var(--warn); }
+
+  /* Group label */
+  .group {
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    padding: 12px;
+    position: relative;
+    min-width: 0;
+  }
+  .group > .glabel {
+    position: absolute;
+    top: -10px; left: 14px;
+    background: var(--bg-2);
+    padding: 0 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+  }
+
+  /* Arrow / divider rows */
+  .arrow {
+    align-self: center;
+    color: var(--muted);
+    font-size: 18px;
+    padding: 0 6px;
+  }
+  .vstep {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 18px; margin: 2px 0;
+  }
+
+  /* Side detail panel */
+  aside.detail {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    position: sticky;
+    top: 76px;
+    height: fit-content;
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+  }
+  aside.detail h3 { margin: 0 0 10px 0; font-size: 16px; }
+  aside.detail .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  aside.detail .kv {
+    display: grid; grid-template-columns: 110px 1fr;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    row-gap: 4px;
+    margin: 8px 0 14px 0;
+  }
+  aside.detail .kv .k { color: var(--muted); }
+  aside.detail .kv .v { color: var(--text); word-break: break-word; }
+  aside.detail .body { color: var(--text); font-size: 13px; }
+  aside.detail .body p { margin: 6px 0 10px 0; }
+  aside.detail .body code { background: var(--bg-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  aside.detail .badge {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    margin-right: 6px; margin-bottom: 8px;
+  }
+  .badge.enc { background: rgba(76,201,240,0.15); color: var(--enc); border: 1px solid rgba(76,201,240,0.4); }
+  .badge.share { background: rgba(244,162,97,0.15); color: var(--share); border: 1px solid rgba(244,162,97,0.4); }
+  .badge.actor { background: rgba(128,237,153,0.15); color: var(--actor); border: 1px solid rgba(128,237,153,0.4); }
+  .badge.critic { background: rgba(255,158,199,0.15); color: var(--critic); border: 1px solid rgba(255,158,199,0.4); }
+  .badge.aux { background: rgba(255,209,102,0.15); color: var(--aux); border: 1px solid rgba(255,209,102,0.4); }
+  .badge.input { background: rgba(181,139,255,0.15); color: var(--accent-2); border: 1px solid rgba(181,139,255,0.4); }
+  .badge.output { background: rgba(255,107,107,0.15); color: var(--warn); border: 1px solid rgba(255,107,107,0.4); }
+
+  /* Two-pane in the actor stage */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+
+  /* Legend */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-top: 4px;
+  }
+  .legend .item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* Animated pulse glow on arrows */
+  .arrow.lit { color: var(--pulse); text-shadow: 0 0 8px var(--pulse); }
+
+  /* Status bar at bottom of canvas */
+  .statusbar {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--muted);
+    font-size: 12px;
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .statusbar .step-label { color: var(--text); font-weight: 600; }
+  .statusbar .progress {
+    flex: 1; height: 6px; background: var(--bg-2); border-radius: 3px; overflow: hidden;
+    min-width: 120px;
+  }
+  .statusbar .progress > div {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    width: 0%;
+    transition: width 0.3s;
+  }
+
+  /* Tiny tensor-shape decoration row */
+  .shape {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  /* Heads container */
+  .heads { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 700px) { .heads { grid-template-columns: 1fr; } }
+
+  /* Sample observation table */
+  .obs { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+  .obs .kv { display: grid; grid-template-columns: 140px 1fr; row-gap: 2px; }
+  .obs .kv .k { color: var(--muted); }
+  footer.foot { color: var(--muted); font-size: 12px; padding: 0 22px 30px; }
+  footer.foot a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Sheepshead PPO <span class="sub">actor + critic + encoder · interactive architecture</span></h1>
+  <div class="controls">
+    <button id="btn-play" class="primary">▶ Play forward pass</button>
+    <button id="btn-step">Step ▸</button>
+    <button id="btn-reset">↻ Reset</button>
+    <label>speed
+      <input type="range" id="speed" min="200" max="2000" step="100" value="900" />
+    </label>
+    <button id="btn-expandall">Expand all details</button>
+  </div>
+</header>
+
+<main>
+  <section class="canvas">
+
+    <!-- LEGEND -->
+    <div class="legend">
+      <div class="item"><span class="swatch" style="background:var(--accent-2)"></span>Input / observation</div>
+      <div class="item"><span class="swatch" style="background:var(--enc)"></span>Encoder</div>
+      <div class="item"><span class="swatch" style="background:var(--share)"></span>Shared features</div>
+      <div class="item"><span class="swatch" style="background:var(--actor)"></span>Actor (policy)</div>
+      <div class="item"><span class="swatch" style="background:var(--critic)"></span>Critic (value)</div>
+      <div class="item"><span class="swatch" style="background:var(--aux)"></span>Auxiliary heads</div>
+      <div class="item"><span class="swatch" style="background:var(--warn)"></span>Output</div>
+      <div class="item" style="margin-left:auto">Tip: click any block for details</div>
+    </div>
+
+    <!-- STAGE 1: INPUTS -->
+    <div class="stage" id="stage-inputs">
+      <h2>1 · Observation <span class="pill">dict state</span></h2>
+      <p class="lead">Every decision step, the agent sees a structured dict describing the game from this player's perspective — header scalars (whose turn, picker, partner mode, etc.), the current trick, the player's hand, the blind/bury piles, and the player's persistent 256-d memory from previous decisions.</p>
+      <div class="row">
+        <div class="blk input grow" data-id="in.header">
+          <span class="tag">10 scalars</span>
+          <div class="name">Header scalars</div>
+          <div class="meta">partner_mode, is_leaster, play_started, current_trick, alone_called, called_under, picker_rel, partner_rel, leader_rel, picker_position</div>
+        </div>
+        <div class="blk input grow" data-id="in.called">
+          <span class="tag">1 card id</span>
+          <div class="name">Called card</div>
+          <div class="meta">called_card_id ∈ [0..33]</div>
+        </div>
+        <div class="blk input grow" data-id="in.hand">
+          <span class="tag">8 card ids</span>
+          <div class="name">Hand</div>
+          <div class="meta">hand_ids — up to 8 cards; 0 = PAD</div>
+        </div>
+      </div>
+      <div class="vstep">▼</div>
+      <div class="row">
+        <div class="blk input grow" data-id="in.trick">
+          <span class="tag">5 card ids + bits</span>
+          <div class="name">Current trick</div>
+          <div class="meta">trick_card_ids, trick_is_picker, trick_is_partner_known</div>
+        </div>
+        <div class="blk input grow" data-id="in.blind">
+          <span class="tag">2 card ids</span>
+          <div class="name">Blind</div>
+          <div class="meta">blind_ids — only visible to picker after picking</div>
+        </div>
+        <div class="blk input grow" data-id="in.bury">
+          <span class="tag">2 card ids</span>
+          <div class="name">Bury</div>
+          <div class="meta">bury_ids — cards the picker buried</div>
+        </div>
+        <div class="blk input grow" data-id="in.mem">
+          <span class="tag">256-d</span>
+          <div class="name">Prior memory hₜ₋₁</div>
+          <div class="meta">per-player recurrent state from previous step (zeros on game start)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAGE 2: ENCODER -->
+    <div class="stage" id="stage-encoder">
+      <h2>2 · Encoder <span class="pill">CardReasoningEncoder</span></h2>
+      <p class="lead">Turns the dict into a single 256-d feature vector plus 8 per-hand-slot tokens. Every entity (a card, the trick, the memory, the header) is embedded as one 64-d token; a transformer lets all 19 tokens reason about each other; per-bag attention pooling and a GRU compose them into final features.</p>
+
+      <!-- 2a: card embedding -->
+      <div class="group">
+        <span class="glabel">2a · Card embedding table</span>
+        <div class="row">
+          <div class="blk enc grow" data-id="enc.cardEmb">
+            <span class="tag">shared</span>
+            <div class="name">nn.Embedding(34, 16)</div>
+            <div class="meta">"informed init": dims 0–3 suit one-hot · 4–7 rank-by-suit · 8 points/11 · 9 UNDER flag · 10–15 free to learn</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vstep">▼ each card-id is looked up here</div>
+
+      <!-- 2b: token construction -->
+      <div class="group">
+        <span class="glabel">2b · Build 19 tokens (one per entity)</span>
+        <div class="row">
+          <div class="blk enc grow" data-id="enc.ctxMLP">
+            <span class="tag">→ 64-d</span>
+            <div class="name">context_mlp</div>
+            <div class="meta">Linear(10+16 → 64) → SiLU<br/>fuses header scalars + called-card embedding into 1 context token</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.memProj">
+            <span class="tag">→ 64-d</span>
+            <div class="name">memory_in_proj</div>
+            <div class="meta">Linear(256 → 64) — projects prior memory into 1 token</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.handMLP">
+            <span class="tag">→ 8 × 64-d</span>
+            <div class="name">token_mlp_hand</div>
+            <div class="meta">Linear(card 16 + role 4 → 64) → SiLU<br/>tokens are conditioned on the actor's role (none / picker / partner / both)</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div class="blk enc grow" data-id="enc.trickMLP">
+            <span class="tag">→ 5 × 64-d</span>
+            <div class="name">token_mlp_trick</div>
+            <div class="meta">Linear(card 16 + seat 4 + role 4 → 64) → SiLU<br/>each trick slot carries who played it (relative seat) and whether they're picker / known partner</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.simpleMLP">
+            <span class="tag">→ 2+2 × 64-d</span>
+            <div class="name">token_mlp_simple</div>
+            <div class="meta">Linear(16 → 64) → SiLU · used for blind &amp; bury cards</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.typeEmb">
+            <span class="tag">+ added</span>
+            <div class="name">card_type embedding (6, 64)</div>
+            <div class="meta">one of {context, memory, hand, trick, blind, bury} added to its tokens so attention can tell them apart</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vstep">▼ concat into one (19, 64) sequence</div>
+
+      <!-- 2c: transformer -->
+      <div class="group">
+        <span class="glabel">2c · Cross-card reasoning</span>
+        <div class="row">
+          <div class="blk enc grow" data-id="enc.transformer">
+            <span class="tag">4 layers · 4 heads</span>
+            <div class="name">TransformerCardReasoning</div>
+            <div class="meta">For each layer: MultiheadAttention(d=64, h=4) + residual + LayerNorm, then FFN(64 → 128 → 64) + residual + LayerNorm. Padded slots are masked.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vstep">▼ extract post-attention tokens by slot</div>
+
+      <!-- 2d: pools -->
+      <div class="group">
+        <span class="glabel">2d · Attention pooling (one per bag)</span>
+        <div class="row">
+          <div class="blk enc grow" data-id="enc.poolHand">
+            <span class="tag">→ 64-d</span>
+            <div class="name">pool_hand</div>
+            <div class="meta">4 learned queries × 4-head MHA over 8 hand tokens → flatten → Linear → 64-d</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.poolTrick">
+            <span class="tag">→ 64-d</span>
+            <div class="name">pool_trick</div>
+            <div class="meta">same pattern over 5 trick tokens</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.poolBlind">
+            <span class="tag">→ 32-d</span>
+            <div class="name">pool_blind</div>
+            <div class="meta">over 2 blind tokens</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.poolBury">
+            <span class="tag">→ 32-d</span>
+            <div class="name">pool_bury</div>
+            <div class="meta">over 2 bury tokens</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vstep">▼</div>
+
+      <!-- 2e: memory update + fuse -->
+      <div class="group">
+        <span class="glabel">2e · Memory update &amp; feature fusion</span>
+        <div class="row">
+          <div class="blk enc grow" data-id="enc.gru">
+            <span class="tag">recurrent</span>
+            <div class="name">GRUCell(64 → 256)</div>
+            <div class="meta">memory_out = GRU(context_token_after_attn, memory_in)<br/>stored per player, carried to the next decision step</div>
+          </div>
+          <div class="blk enc grow" data-id="enc.fuse">
+            <span class="tag">→ 256-d</span>
+            <div class="name">feature_proj</div>
+            <div class="meta">Linear(64+64+32+32+64 → 256) → LayerNorm<br/>concat of all 4 pool vectors + post-attention context</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAGE 3: SHARED FEATURES -->
+    <div class="stage" id="stage-shared">
+      <h2>3 · Shared features <span class="pill">256-d + hand_tokens</span></h2>
+      <p class="lead">Two outputs feed everything downstream. The 256-d feature vector summarizes the entire game state; the 8 hand_tokens (64-d each) keep per-card detail so the policy can score each individual card for bury / play.</p>
+      <div class="row">
+        <div class="blk share grow" data-id="share.features">
+          <span class="tag">256-d</span>
+          <div class="name">features</div>
+          <div class="meta">consumed by actor_adapter and critic_adapter</div>
+        </div>
+        <div class="blk share grow" data-id="share.handTokens">
+          <span class="tag">8 × 64-d</span>
+          <div class="name">hand_tokens</div>
+          <div class="meta">post-attention hand-slot tokens; used by the pointer scorer for bury / under / play</div>
+        </div>
+        <div class="blk share grow" data-id="share.memoryOut">
+          <span class="tag">256-d</span>
+          <div class="name">memory_out</div>
+          <div class="meta">written back to per-player storage for the next decision step</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STAGE 4: ACTOR + CRITIC SPLIT -->
+    <div class="split">
+
+      <!-- ACTOR -->
+      <div class="stage" id="stage-actor">
+        <h2>4a · Actor <span class="pill">MultiHeadRecurrentActorNetwork</span></h2>
+        <p class="lead">Produces a probability over the full action space, but assembled head-by-head — pick/pass, partner choice, bury, play. Card-specific actions are scored via small attention-style modules so the policy reuses the card embeddings.</p>
+
+        <div class="row">
+          <div class="blk actor grow" data-id="actor.adapter">
+            <span class="tag">256 → 256</span>
+            <div class="name">actor_adapter</div>
+            <div class="meta">LayerNorm → Linear → SiLU → Linear → SiLU</div>
+          </div>
+        </div>
+        <div class="vstep">▼ feat (B, 256)</div>
+
+        <div class="heads">
+          <div class="blk actor" data-id="actor.pickHead">
+            <span class="tag">2 logits</span>
+            <div class="name">pick_head</div>
+            <div class="meta">Linear(256 → 2) — PICK / PASS</div>
+          </div>
+          <div class="blk actor" data-id="actor.partnerBasic">
+            <span class="tag">2 logits</span>
+            <div class="name">partner_basic_head</div>
+            <div class="meta">Linear(256 → 2) — ALONE / JD PARTNER</div>
+          </div>
+          <div class="blk actor" data-id="actor.twoTower">
+            <span class="tag">two-tower</span>
+            <div class="name">CALL scorer</div>
+            <div class="meta">q = tw_Wg(feat) ∈ ℝ⁶⁴ · K = tw_We(card_emb) ∈ ℝ³⁴ˣ⁶⁴ · score = q · Kᵀ → pick logits for each callable card</div>
+          </div>
+          <div class="blk actor" data-id="actor.pointer">
+            <span class="tag">Bahdanau pointer</span>
+            <div class="name">Hand-slot pointer scorer</div>
+            <div class="meta">v · tanh( pointer_Wg(feat) + pointer_Wt(hand_token) ) → one scalar per hand slot</div>
+          </div>
+          <div class="blk actor" data-id="actor.playUnder">
+            <span class="tag">1 logit</span>
+            <div class="name">play_under_head</div>
+            <div class="meta">Linear(256 → 1) — PLAY UNDER (not a hand-slot action, so scored separately)</div>
+          </div>
+          <div class="blk actor" data-id="actor.scatter">
+            <span class="tag">scatter</span>
+            <div class="name">Logit assembly</div>
+            <div class="meta">slot-scores are scattered into bury / under / play action indices via precomputed maps; per-head temperatures τ divide logits before softmax</div>
+          </div>
+        </div>
+
+        <div class="vstep">▼ assemble &amp; mask</div>
+        <div class="row">
+          <div class="blk actor grow" data-id="actor.softmax">
+            <span class="tag">softmax</span>
+            <div class="name">Mask + softmax</div>
+            <div class="meta">invalid actions → −1e8 logit · optional ε-mixing (PASS-floor, PICK-floor, partner-CALL uniform)</div>
+          </div>
+        </div>
+        <div class="vstep">▼</div>
+        <div class="row">
+          <div class="blk output grow" data-id="actor.out">
+            <span class="tag">distribution</span>
+            <div class="name">π(a | s) — action probabilities</div>
+            <div class="meta">Categorical sampled for exploration · argmax in deterministic / eval mode</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CRITIC -->
+      <div class="stage" id="stage-critic">
+        <h2>4b · Critic <span class="pill">RecurrentCriticNetwork</span></h2>
+        <p class="lead">Estimates state value V(s) for PPO advantages, plus a bank of auxiliary signals that give the encoder dense, well-shaped gradients during training.</p>
+
+        <div class="row">
+          <div class="blk critic grow" data-id="critic.adapter">
+            <span class="tag">256 → 256</span>
+            <div class="name">critic_adapter</div>
+            <div class="meta">LayerNorm → Linear → SiLU</div>
+          </div>
+        </div>
+
+        <div class="vstep">▼</div>
+        <div class="heads">
+          <div class="blk critic" data-id="critic.value">
+            <span class="tag">V(s)</span>
+            <div class="name">value_head</div>
+            <div class="meta">Linear(256 → 1) — used by PPO advantage + GAE</div>
+          </div>
+          <div class="blk aux" data-id="critic.win">
+            <span class="tag">aux</span>
+            <div class="name">win_head</div>
+            <div class="meta">Linear(256 → 1) + sigmoid → P(this player wins)</div>
+          </div>
+          <div class="blk aux" data-id="critic.return">
+            <span class="tag">aux</span>
+            <div class="name">return_head</div>
+            <div class="meta">Linear(256 → 1) — expected final score (scale ≈ ±12)</div>
+          </div>
+          <div class="blk aux" data-id="critic.secret">
+            <span class="tag">aux</span>
+            <div class="name">secret_partner_head</div>
+            <div class="meta">Linear(256 → 1) + sigmoid → P(I am secret partner)</div>
+          </div>
+          <div class="blk aux" data-id="critic.points">
+            <span class="tag">aux</span>
+            <div class="name">points_head</div>
+            <div class="meta">Linear(256 → 5) — per-seat final points (relative order)</div>
+          </div>
+          <div class="blk aux" data-id="critic.trumpAux">
+            <span class="tag">trump tracker</span>
+            <div class="name">trump_aux block</div>
+            <div class="meta">LN → Linear(256→128) → SiLU → two heads (see right panel)</div>
+          </div>
+        </div>
+
+        <div class="vstep">▼ from trump_aux</div>
+        <div class="row">
+          <div class="blk aux grow" data-id="critic.seenMask">
+            <span class="tag">14 logits</span>
+            <div class="name">seen_trump mask (key–query over card embeddings)</div>
+            <div class="meta">q = seen_trump_query(h) · k = seen_trump_key(card_emb[trump]) + δ_per_trump · logit_i = q · k_iᵀ — multi-label "has trump i been played / known"</div>
+          </div>
+          <div class="blk aux grow" data-id="critic.unseenHigher">
+            <span class="tag">1 logit</span>
+            <div class="name">unseen_trump_higher_than_hand_head</div>
+            <div class="meta">Linear(128 → 1) — does any unseen trump outrank my best trump?</div>
+          </div>
+        </div>
+
+        <div class="vstep">▼</div>
+        <div class="row">
+          <div class="blk output grow" data-id="critic.out">
+            <span class="tag">scalars</span>
+            <div class="name">V(s) + aux predictions</div>
+            <div class="meta">V drives PPO · aux losses (BCE / MSE) shape the encoder's representation</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status bar / animation progress -->
+    <div class="statusbar" id="statusbar">
+      <span class="step-label" id="step-label">Idle — press Play or click any block</span>
+      <div class="progress"><div id="progress-bar"></div></div>
+      <span id="step-counter">0 / 0</span>
+    </div>
+
+  </section>
+
+  <!-- Detail panel -->
+  <aside class="detail" id="detail">
+    <h3 id="d-title">Welcome</h3>
+    <div class="sub" id="d-sub">An interactive map of the PPO actor + critic in ppo.py.</div>
+    <div class="body" id="d-body">
+      <p>This network plays <b>Sheepshead</b>, a 5-player trick-taking card game. At every decision point it sees a structured snapshot of the game and produces a probability over legal actions (pick, partner choice, bury, play).</p>
+      <p><b>How to use:</b></p>
+      <p>• <b>Hover</b> any block to see its tensor shapes.<br/>
+         • <b>Click</b> a block to read what it does and why.<br/>
+         • Press <b>▶ Play</b> to animate a forward pass — each stage lights up as data flows.<br/>
+         • <b>Step</b> advances one stage at a time.</p>
+      <p>Color guide:</p>
+      <p>
+        <span class="badge input">input</span>
+        <span class="badge enc">encoder</span>
+        <span class="badge share">shared</span>
+        <span class="badge actor">actor</span>
+        <span class="badge critic">critic</span>
+        <span class="badge aux">auxiliary</span>
+        <span class="badge output">output</span>
+      </p>
+    </div>
+  </aside>
+</main>
+
+<footer class="foot">
+  Source: <code>ppo.py</code> · <code>encoder.py</code>. All shapes and modules in this diagram are taken directly from the live code (PyTorch). Data shown in the animation is illustrative — no real model weights are loaded.
+</footer>
+
+<script>
+/* ============================================================
+   Detail content for each block
+   ============================================================ */
+const DETAILS = {
+  // ----- inputs -----
+  "in.header": {
+    title: "Header scalars",
+    badge: "input",
+    sub: "10 normalized floats describing the global game state.",
+    shapes: { shape: "(B, 10)", source: "encoder.py · encode_batch" },
+    body: `<p>These small flags and counters tell the network <b>what phase the game is in</b> and <b>where everyone sits relative to me</b>:</p>
+      <ul>
+        <li><code>partner_mode</code> — JD vs. called-ace mode</li>
+        <li><code>is_leaster</code> — was the round passed out?</li>
+        <li><code>play_started</code> — has the play phase begun?</li>
+        <li><code>current_trick</code> — which of 6 tricks we're on</li>
+        <li><code>alone_called</code>, <code>called_under</code> — partner-call flags</li>
+        <li><code>picker_rel</code>, <code>partner_rel</code>, <code>leader_rel</code>, <code>picker_position</code> — relative seats</li>
+      </ul>
+      <p>They are divided by per-field normalizers before being concatenated with the called-card embedding.</p>`,
+  },
+  "in.called": {
+    title: "Called card",
+    badge: "input",
+    sub: "Card the picker called as partner (or none).",
+    shapes: { shape: "(B,) int64", source: "encoder.py · encode_batch" },
+    body: `<p>Looked up in the shared 34-card embedding table, then concatenated into the context token. If no card was called yet, this is the PAD id (0).</p>`,
+  },
+  "in.hand": {
+    title: "Hand",
+    badge: "input",
+    sub: "Up to 8 card ids in this player's hand.",
+    shapes: { shape: "(B, 8) int64", source: "encoder.py · _embed_hand" },
+    body: `<p>Each id is embedded via the shared card embedding, concatenated with the actor's role (none / picker / partner / both), and projected to a 64-d token. PAD slots (id=0) get masked everywhere downstream.</p>
+      <p>The post-attention hand tokens flow directly into the actor's <b>pointer scorer</b> so individual cards can be scored for bury / play.</p>`,
+  },
+  "in.trick": {
+    title: "Current trick",
+    badge: "input",
+    sub: "Up to 5 cards already played in the current trick + flags.",
+    shapes: { shape: "(B, 5)×3", source: "encoder.py · _embed_trick" },
+    body: `<p>Each trick slot becomes a token built from <i>card embedding + relative seat embedding + role embedding</i> (using <code>trick_is_picker</code> and <code>trick_is_partner_known</code> as the role bits).</p>`,
+  },
+  "in.blind": {
+    title: "Blind",
+    badge: "input",
+    sub: "The 2 face-down cards the picker chose to pick up.",
+    shapes: { shape: "(B, 2) int64", source: "encoder.py · _embed_simple_bag" },
+    body: `<p>Visible to the picker before burying. Embedded with the simple per-card MLP (no role / seat).</p>`,
+  },
+  "in.bury": {
+    title: "Bury",
+    badge: "input",
+    sub: "The 2 cards the picker buried.",
+    shapes: { shape: "(B, 2) int64", source: "encoder.py · _embed_simple_bag" },
+    body: `<p>Their point value goes to the picking team at the end of the hand. Same simple embedding as the blind.</p>`,
+  },
+  "in.mem": {
+    title: "Prior memory hₜ₋₁",
+    badge: "input",
+    sub: "256-d vector carried from this player's previous decision.",
+    shapes: { shape: "(B, 256)", source: "ppo.py · get_recurrent_memory" },
+    body: `<p>Stored <b>per player</b> in <code>PPOAgent._player_memories</code>. Zeros at the start of every game (see <code>reset_recurrent_state</code>). Inside the encoder it is projected to a 64-d token <i>and</i> used as the hidden state of the GRU cell that produces <code>memory_out</code>.</p>`,
+  },
+
+  // ----- encoder -----
+  "enc.cardEmb": {
+    title: "Card embedding table",
+    badge: "enc",
+    sub: "Shared by encoder, actor two-tower, and critic trump-mask head.",
+    shapes: { shape: "Embedding(34, 16)", source: "encoder.py · CardReasoningEncoder.card" },
+    body: `<p>34 ids: PAD (0), 32 real cards (1–32), UNDER token (33). With <code>use_informed_init=True</code> the first 10 dims of the matrix are set to a hand-designed prior so the network starts with useful structure:</p>
+      <ul>
+        <li>dims 0–3: suit one-hot (trump isolated)</li>
+        <li>dims 4–7: per-suit rank strength, trump ordered separately</li>
+        <li>dim 8: card points / 11</li>
+        <li>dim 9: UNDER flag</li>
+        <li>dims 10–15: zero-init, free to learn</li>
+      </ul>
+      <p>Trained at <b>0.2× the actor's base LR</b> to avoid washing out this prior too quickly.</p>`,
+  },
+  "enc.ctxMLP": {
+    title: "context_mlp",
+    badge: "enc",
+    sub: "Header scalars + called-card embedding → 1 context token.",
+    shapes: { shape: "Linear(26 → 64) + SiLU", source: "encoder.py" },
+    body: `<p>The single "context" token is the network's summary of the global game state. After the transformer it is also the input to the GRU that updates per-player memory.</p>`,
+  },
+  "enc.memProj": {
+    title: "memory_in_proj",
+    badge: "enc",
+    sub: "Projects the 256-d prior memory into a 64-d token.",
+    shapes: { shape: "Linear(256 → 64)", source: "encoder.py" },
+    body: `<p>Inserted as one of the 19 tokens so the transformer can attend to it, letting current cards and trick state be interpreted in light of what happened earlier in the game.</p>`,
+  },
+  "enc.handMLP": {
+    title: "token_mlp_hand",
+    badge: "enc",
+    sub: "Embeds each hand card with the actor's role.",
+    shapes: { shape: "Linear(20 → 64) + SiLU", source: "encoder.py · _embed_hand" },
+    body: `<p>Input = card embedding (16) ⊕ role embedding (4). Role is one of {none, picker, partner, both} so the same card means something different to the picker than to a defender.</p>`,
+  },
+  "enc.trickMLP": {
+    title: "token_mlp_trick",
+    badge: "enc",
+    sub: "Each trick slot = card + seat + role.",
+    shapes: { shape: "Linear(24 → 64) + SiLU", source: "encoder.py · _embed_trick" },
+    body: `<p>Lets the network reason about <i>who</i> played <i>what</i> in the current trick — critical for inferring secret-partner identity and reading the table.</p>`,
+  },
+  "enc.simpleMLP": {
+    title: "token_mlp_simple",
+    badge: "enc",
+    sub: "Bare card → 64-d token (blind & bury).",
+    shapes: { shape: "Linear(16 → 64) + SiLU", source: "encoder.py" },
+    body: `<p>No role or seat conditioning — these piles are ownership-static.</p>`,
+  },
+  "enc.typeEmb": {
+    title: "card_type embedding",
+    badge: "enc",
+    sub: "6-way type tag added to every token.",
+    shapes: { shape: "Embedding(6, 64)", source: "encoder.py" },
+    body: `<p>Lets the attention layers tell the context token apart from the memory token apart from a hand card apart from a trick card, etc. Added (not concatenated) right before the transformer.</p>`,
+  },
+  "enc.transformer": {
+    title: "TransformerCardReasoning",
+    badge: "enc",
+    sub: "4-layer, 4-head self-attention over 19 tokens.",
+    shapes: { shape: "(B, 19, 64) → (B, 19, 64)", source: "encoder.py · TransformerCardReasoning" },
+    body: `<p>For each of 4 layers:</p>
+      <ul>
+        <li>MultiheadAttention(d=64, h=4) with residual → LayerNorm</li>
+        <li>FFN: Linear(64 → 128) → SiLU → Linear(128 → 64) with residual → LayerNorm</li>
+      </ul>
+      <p>This is where cards can <i>look at each other</i>: the Queen of Clubs in my hand can attend to the Ace of Diamonds in the trick, the bury pile, and the called card — and update its own representation.</p>`,
+  },
+  "enc.poolHand": {
+    title: "pool_hand",
+    badge: "enc",
+    sub: "Multi-query attention pool over 8 hand tokens.",
+    shapes: { shape: "(B, 8, 64) → (B, 64)", source: "encoder.py · AttentionPool" },
+    body: `<p>4 learned "glimpse" queries × 4-head MHA → flatten → Linear(256 → 64). Equivalent to taking 4 different weighted summaries of the hand and combining them.</p>`,
+  },
+  "enc.poolTrick": {
+    title: "pool_trick", badge: "enc",
+    sub: "Same pooling pattern over the 5 trick slots.",
+    shapes: { shape: "(B, 5, 64) → (B, 64)", source: "encoder.py" },
+    body: `<p>Produces a 64-d summary of the current trick.</p>`,
+  },
+  "enc.poolBlind": {
+    title: "pool_blind", badge: "enc",
+    sub: "Attention pool over the 2 blind cards.",
+    shapes: { shape: "(B, 2, 64) → (B, 32)", source: "encoder.py" },
+    body: `<p>Smaller output (32-d) — there's less to summarize.</p>`,
+  },
+  "enc.poolBury": {
+    title: "pool_bury", badge: "enc",
+    sub: "Attention pool over the 2 bury cards.",
+    shapes: { shape: "(B, 2, 64) → (B, 32)", source: "encoder.py" },
+    body: `<p>Same shape as blind pool.</p>`,
+  },
+  "enc.gru": {
+    title: "memory_gru (GRUCell)",
+    badge: "enc",
+    sub: "Updates the 256-d per-player memory.",
+    shapes: { shape: "GRUCell(64 → 256)", source: "encoder.py" },
+    body: `<p><code>memory_out = GRUCell(context_after_attn, memory_in)</code>. After every decision step the agent stores <code>memory_out</code> back into <code>PPOAgent._player_memories[player_id]</code>; on the next step it's fed back in as <code>memory_in</code>.</p>
+      <p>This is the only true recurrence in the network — everything else is feed-forward within a single decision.</p>`,
+  },
+  "enc.fuse": {
+    title: "feature_proj",
+    badge: "enc",
+    sub: "Concatenate pools + context → 256-d shared features.",
+    shapes: { shape: "Linear(256 → 256) + LayerNorm", source: "encoder.py" },
+    body: `<p>Input = hand(64) ⊕ trick(64) ⊕ blind(32) ⊕ bury(32) ⊕ context(64) = 256. The LayerNorm at the end keeps the actor/critic inputs well-scaled across training.</p>`,
+  },
+
+  // ----- shared -----
+  "share.features": {
+    title: "Shared features",
+    badge: "share",
+    sub: "Single 256-d vector consumed by actor and critic.",
+    shapes: { shape: "(B, 256)", source: "encoder.py · feature_proj output" },
+    body: `<p>This is the network's compressed read of the entire game state. Both heads start from it, each through their own small adapter MLP.</p>`,
+  },
+  "share.handTokens": {
+    title: "hand_tokens",
+    badge: "share",
+    sub: "Per-hand-slot tokens after cross-card attention.",
+    shapes: { shape: "(B, 8, 64)", source: "encoder.py · all_tokens[:, 2:10]" },
+    body: `<p>The actor needs to score <i>each card</i> individually for bury / under / play, so the encoder hands back the post-attention hand tokens (not just the pooled summary). The pointer scorer uses these.</p>`,
+  },
+  "share.memoryOut": {
+    title: "memory_out",
+    badge: "share",
+    sub: "New per-player memory state for the next decision.",
+    shapes: { shape: "(B, 256)", source: "encoder.py · memory_gru output" },
+    body: `<p>Saved by <code>PPOAgent.set_recurrent_memory(player_id, memory_out)</code> and read back on the player's next step. Also updated on observation-only ticks via <code>PPOAgent.observe()</code>.</p>`,
+  },
+
+  // ----- actor -----
+  "actor.adapter": {
+    title: "actor_adapter",
+    badge: "actor",
+    sub: "Adds nonlinearity and specialization before the heads.",
+    shapes: { shape: "LayerNorm(256) → Linear(256→256) → SiLU → Linear(256→256) → SiLU", source: "ppo.py · MultiHeadRecurrentActorNetwork" },
+    body: `<p>Both linear layers are initialized orthogonal (gain=1), bias zero — a standard, well-behaved choice for PPO actors.</p>`,
+  },
+  "actor.pickHead": {
+    title: "pick_head",
+    badge: "actor",
+    sub: "PICK vs. PASS.",
+    shapes: { shape: "Linear(256 → 2)", source: "ppo.py" },
+    body: `<p>The 2 logits are scattered into the global action space at the indices for <code>PICK</code> and <code>PASS</code>. They are divided by <code>temperature_pick</code> before softmax.</p>
+      <p>At training time you can also apply <code>pick_floor_epsilon</code> / <code>pass_floor_epsilon</code> to force a minimum probability on each — useful for exploration of the picking decision.</p>`,
+  },
+  "actor.partnerBasic": {
+    title: "partner_basic_head",
+    badge: "actor",
+    sub: "Two non-card partner choices.",
+    shapes: { shape: "Linear(256 → 2)", source: "ppo.py" },
+    body: `<p>Outputs logits for <b>ALONE</b> (declare no partner) and <b>JD PARTNER</b> (Jack of Diamonds partner). All other partner choices (CALL X) are scored by the two-tower module instead.</p>`,
+  },
+  "actor.twoTower": {
+    title: "Two-tower CALL scorer",
+    badge: "actor",
+    sub: "Scores every callable card by feature × card-embedding similarity.",
+    shapes: { shape: "S = tw_Wg(feat) · tw_We(card_emb)ᵀ → (B, 34)", source: "ppo.py · _score_cards_two_tower" },
+    body: `<p>Tower 1: project the 256-d actor features down to a 64-d <i>query</i>.<br/>
+      Tower 2: project each of the 34 card embeddings (16-d) to the same 64-d <i>key</i>.<br/>
+      Score every card by dot product. Only the indices that correspond to legal CALL actions are read out.</p>
+      <p>Reusing the card embedding here means the actor benefits from <i>everything</i> the card representation has learned elsewhere — including the auxiliary trump-tracking signals from the critic.</p>`,
+  },
+  "actor.pointer": {
+    title: "Pointer scorer (Bahdanau)",
+    badge: "actor",
+    sub: "One scalar per hand slot — used for bury / under / play.",
+    shapes: { shape: "s = pointer_v · tanh( pointer_Wg(feat) + pointer_Wt(token) )", source: "ppo.py · _score_hand_pointer" },
+    body: `<p>For each of the 8 hand slots, combine the global feature vector with that slot's post-attention hand token, run through a tanh nonlinearity, and project to a single scalar. The resulting 8 scores are then <b>scattered</b> into:</p>
+      <ul>
+        <li><b>BURY</b> action indices (when burying after picking)</li>
+        <li><b>UNDER</b> action indices (when choosing a card to put under)</li>
+        <li><b>PLAY</b> action indices (when playing a trick)</li>
+      </ul>
+      <p>This is much more sample-efficient than having an independent logit for each card — every parameter update teaches the model about <i>scoring cards in general</i>, not about one particular hand-slot index.</p>`,
+  },
+  "actor.playUnder": {
+    title: "play_under_head",
+    badge: "actor",
+    sub: "Logit for PLAY UNDER (not a hand-slot action).",
+    shapes: { shape: "Linear(256 → 1)", source: "ppo.py" },
+    body: `<p>PLAY UNDER means playing the previously-set "under" card. Because it doesn't correspond to a slot in the hand, the pointer scorer can't produce it, so a dedicated scalar head exists.</p>`,
+  },
+  "actor.scatter": {
+    title: "Logit assembly",
+    badge: "actor",
+    sub: "Place every head's output at the right global action index.",
+    shapes: { shape: "logits ∈ ℝ^A initialized to −1e8, then filled", source: "ppo.py · _build_logits_from_features" },
+    body: `<p>The full action space has actions for PICK/PASS, ALONE, JD PARTNER, CALL X (per card), BURY X (per card), UNDER X (per card), PLAY X (per card), PLAY UNDER. Each head produces logits for the actions it owns, and they are scattered into a single flat tensor by precomputed index maps in <code>_build_action_index_mappings</code>.</p>
+      <p>Each head's logits are divided by its own temperature (<code>temperature_pick</code>, <code>temperature_partner</code>, <code>temperature_bury</code>, <code>temperature_play</code>) before softmax — independent sharpening per phase.</p>`,
+  },
+  "actor.softmax": {
+    title: "Mask + softmax (+ ε-mixing)",
+    badge: "actor",
+    sub: "Illegal actions become impossible; optional uniform mixing.",
+    shapes: { shape: "softmax over (B, A)", source: "ppo.py · forward / _apply_head_epsilon_mix" },
+    body: `<p>The action mask sets every illegal-action logit to <code>−1e8</code> so softmax gives them probability ≈ 0.</p>
+      <p>For exploration the trainer can blend in floors:</p>
+      <ul>
+        <li><code>partner_call_epsilon</code> — uniform over valid CALLs + JD</li>
+        <li><code>pick_floor_epsilon</code>, <code>pass_floor_epsilon</code> — minimum prob on PICK / PASS</li>
+      </ul>
+      <p>The mixed distribution is the one used for both sampling and PPO log-probs, keeping the update on-policy.</p>`,
+  },
+  "actor.out": {
+    title: "π(a | s)",
+    badge: "output",
+    sub: "Action probabilities.",
+    shapes: { shape: "(B, action_size)", source: "ppo.py · act()" },
+    body: `<p>During data collection an action is sampled from this distribution; the agent stores the chosen action's log-prob, the value estimate, and the reward, for later PPO updates with GAE.</p>
+      <p>In evaluation mode <code>argmax</code> is used instead.</p>`,
+  },
+
+  // ----- critic -----
+  "critic.adapter": {
+    title: "critic_adapter",
+    badge: "critic",
+    sub: "Small adapter before all critic heads.",
+    shapes: { shape: "LayerNorm(256) → Linear(256→256) → SiLU", source: "ppo.py · RecurrentCriticNetwork" },
+    body: `<p>One adapter feeds <i>every</i> critic head — value, win, return, secret-partner, points, and the trump-aux sub-network — so all of their gradients flow through the same shared representation back into the encoder.</p>`,
+  },
+  "critic.value": {
+    title: "value_head — V(s)",
+    badge: "critic",
+    sub: "PPO state value used in advantage computation.",
+    shapes: { shape: "Linear(256 → 1)", source: "ppo.py" },
+    body: `<p>Trained with the standard PPO clipped value loss against returns computed by Generalized Advantage Estimation (γ=0.95, λ=0.95).</p>`,
+  },
+  "critic.win": {
+    title: "win_head (aux)",
+    badge: "aux",
+    sub: "Predicts whether this player wins.",
+    shapes: { shape: "Linear(256 → 1) + sigmoid", source: "ppo.py" },
+    body: `<p>Trained with binary cross-entropy against the recorded win label. Loss coefficient: 0.05.</p>`,
+  },
+  "critic.return": {
+    title: "return_head (aux)",
+    badge: "aux",
+    sub: "Predicts the final scalar return.",
+    shapes: { shape: "Linear(256 → 1)", source: "ppo.py" },
+    body: `<p>MSE-trained against the actual end-of-game return (normalized by <code>RETURN_SCALE = 12</code>). Loss coefficient: 0.1.</p>`,
+  },
+  "critic.secret": {
+    title: "secret_partner_head (aux)",
+    badge: "aux",
+    sub: "Predicts whether this player is the secret partner.",
+    shapes: { shape: "Linear(256 → 1) + sigmoid", source: "ppo.py" },
+    body: `<p>In some Sheepshead variants the partner identity is hidden until the called card is played. This head forces the encoder to keep enough information to figure that out. Loss coefficient: 0.1.</p>`,
+  },
+  "critic.points": {
+    title: "points_head (aux)",
+    badge: "aux",
+    sub: "Per-seat final point totals.",
+    shapes: { shape: "Linear(256 → 5), clamped to [0, 120]", source: "ppo.py" },
+    body: `<p>5 scalars in relative seating order — predicts how many points each seat ends with (0–120). Strong dense signal for the encoder. Loss coefficient: 0.2 (normalized by <code>POINTS_SCALE = 10</code>).</p>`,
+  },
+  "critic.trumpAux": {
+    title: "trump_aux",
+    badge: "aux",
+    sub: "Small sub-network that feeds two trump-tracking heads.",
+    shapes: { shape: "LayerNorm → Linear(256 → 128) → SiLU", source: "ppo.py" },
+    body: `<p>Branches into:</p>
+      <ul>
+        <li>a <b>key–query</b> head that asks, for each of 14 trumps, "have I seen / do I know this one?"</li>
+        <li>a binary head that asks "does any unseen trump outrank my best one?"</li>
+      </ul>
+      <p>Both losses give the encoder a very direct training signal about reasoning over trump cards.</p>`,
+  },
+  "critic.seenMask": {
+    title: "seen_trump mask",
+    badge: "aux",
+    sub: "Multi-label: which of the 14 trumps have been seen / are known.",
+    shapes: { shape: "(B, 14) logits", source: "ppo.py · seen_trump_mask_logits" },
+    body: `<p>Built attention-style on the fly: a 64-d <i>query</i> from <code>trump_aux</code> features, dot-producted against per-trump <i>keys</i> derived from the shared card embedding (plus a learnable per-trump offset). This couples the critic head tightly to the card embedding table.</p>
+      <p>Loss coefficient: 0.2 (BCE-with-logits over the 14 labels).</p>`,
+  },
+  "critic.unseenHigher": {
+    title: "unseen_trump_higher_than_hand",
+    badge: "aux",
+    sub: "Binary: is there an unseen trump that beats my best trump?",
+    shapes: { shape: "Linear(128 → 1)", source: "ppo.py" },
+    body: `<p>A very high-leverage thing to know — directly informs whether to lead trump, schmear, or duck. Loss coefficient: 0.1.</p>`,
+  },
+  "critic.out": {
+    title: "V(s) + auxiliary outputs",
+    badge: "output",
+    sub: "Used in the PPO update and as auxiliary supervised tasks.",
+    shapes: { shape: "scalars + small vectors", source: "ppo.py · update / aux_predictions" },
+    body: `<p>The value head drives the PPO advantage; the auxiliary heads do <i>not</i> affect policy directly, but their losses flow gradients back through the critic adapter and into the encoder, giving the network a much richer shaping signal than reward alone.</p>`,
+  },
+};
+
+/* ============================================================
+   Detail panel
+   ============================================================ */
+const detail = {
+  title: document.getElementById("d-title"),
+  sub: document.getElementById("d-sub"),
+  body: document.getElementById("d-body"),
+};
+function showDetail(id) {
+  const d = DETAILS[id];
+  if (!d) return;
+  detail.title.textContent = d.title;
+  detail.sub.textContent = d.sub || "";
+  const badge = d.badge ? `<span class="badge ${d.badge}">${d.badge}</span>` : "";
+  const shapes = d.shapes
+    ? `<div class="kv">
+         <div class="k">shape</div><div class="v">${d.shapes.shape || "—"}</div>
+         <div class="k">source</div><div class="v">${d.shapes.source || "—"}</div>
+       </div>`
+    : "";
+  detail.body.innerHTML = badge + shapes + (d.body || "");
+}
+
+document.querySelectorAll(".blk").forEach((el) => {
+  el.addEventListener("click", () => {
+    document.querySelectorAll(".blk.active").forEach((b) => b.classList.remove("active"));
+    el.classList.add("active");
+    showDetail(el.dataset.id);
+  });
+  // Hover tooltip via title attribute (lightweight)
+  const id = el.dataset.id;
+  if (DETAILS[id] && DETAILS[id].shapes) {
+    el.title = DETAILS[id].shapes.shape || "";
+  }
+});
+
+/* ============================================================
+   Animated forward pass
+   ============================================================ */
+const STAGES = [
+  { stage: "stage-inputs", blocks: ["in.header", "in.called", "in.hand", "in.trick", "in.blind", "in.bury", "in.mem"], label: "1 · Read observation dict + load per-player memory" },
+  { stage: "stage-encoder", blocks: ["enc.cardEmb"], label: "2a · Look up card embeddings (informed init)" },
+  { stage: "stage-encoder", blocks: ["enc.ctxMLP", "enc.memProj", "enc.handMLP", "enc.trickMLP", "enc.simpleMLP", "enc.typeEmb"], label: "2b · Build 19 tokens (context, memory, hand×8, trick×5, blind×2, bury×2)" },
+  { stage: "stage-encoder", blocks: ["enc.transformer"], label: "2c · Cross-card reasoning (4-layer transformer over all tokens)" },
+  { stage: "stage-encoder", blocks: ["enc.poolHand", "enc.poolTrick", "enc.poolBlind", "enc.poolBury"], label: "2d · Pool each bag with multi-query attention" },
+  { stage: "stage-encoder", blocks: ["enc.gru", "enc.fuse"], label: "2e · Update GRU memory and fuse pools into 256-d features" },
+  { stage: "stage-shared", blocks: ["share.features", "share.handTokens", "share.memoryOut"], label: "3 · Hand the shared features (and hand_tokens, memory_out) downstream" },
+  { stage: "stage-actor", blocks: ["actor.adapter"], label: "4a · Actor adapter (LayerNorm + 2 × Linear+SiLU)" },
+  { stage: "stage-actor", blocks: ["actor.pickHead", "actor.partnerBasic", "actor.twoTower", "actor.pointer", "actor.playUnder"], label: "4a · Run each policy head in parallel" },
+  { stage: "stage-actor", blocks: ["actor.scatter", "actor.softmax", "actor.out"], label: "4a · Assemble, mask, softmax → π(a | s)" },
+  { stage: "stage-critic", blocks: ["critic.adapter"], label: "4b · Critic adapter" },
+  { stage: "stage-critic", blocks: ["critic.value", "critic.win", "critic.return", "critic.secret", "critic.points", "critic.trumpAux"], label: "4b · Value head + auxiliary heads" },
+  { stage: "stage-critic", blocks: ["critic.seenMask", "critic.unseenHigher"], label: "4b · Trump-aux: seen-mask + unseen-higher-than-hand" },
+  { stage: "stage-critic", blocks: ["critic.out"], label: "4b · V(s) drives PPO; aux losses shape the encoder" },
+];
+
+let curStep = -1;
+let playing = false;
+let timer = null;
+
+const statusLabel = document.getElementById("step-label");
+const stepCounter = document.getElementById("step-counter");
+const progressBar = document.getElementById("progress-bar");
+const speed = document.getElementById("speed");
+
+function clearActive() {
+  document.querySelectorAll(".stage.active").forEach((s) => s.classList.remove("active"));
+  document.querySelectorAll(".blk.active").forEach((b) => b.classList.remove("active"));
+}
+function applyStep(i) {
+  clearActive();
+  if (i < 0 || i >= STAGES.length) {
+    statusLabel.textContent = "Idle — press Play or click any block";
+    stepCounter.textContent = `0 / ${STAGES.length}`;
+    progressBar.style.width = "0%";
+    return;
+  }
+  const s = STAGES[i];
+  document.getElementById(s.stage).classList.add("active");
+  s.blocks.forEach((bid) => {
+    const el = document.querySelector(`.blk[data-id="${bid}"]`);
+    if (el) el.classList.add("active");
+  });
+  statusLabel.textContent = s.label;
+  stepCounter.textContent = `${i + 1} / ${STAGES.length}`;
+  progressBar.style.width = `${((i + 1) / STAGES.length) * 100}%`;
+  // Show detail for the first block of this step
+  if (s.blocks[0]) showDetail(s.blocks[0]);
+  // Scroll the active stage into view (smooth)
+  document.getElementById(s.stage).scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function nextStep() {
+  curStep = (curStep + 1);
+  if (curStep >= STAGES.length) {
+    curStep = STAGES.length - 1;
+    stopPlay();
+    return;
+  }
+  applyStep(curStep);
+}
+function startPlay() {
+  if (playing) return;
+  playing = true;
+  document.getElementById("btn-play").textContent = "⏸ Pause";
+  const tick = () => {
+    if (!playing) return;
+    if (curStep + 1 >= STAGES.length) {
+      stopPlay();
+      return;
+    }
+    nextStep();
+    timer = setTimeout(tick, parseInt(speed.value, 10));
+  };
+  // Kick off immediately
+  nextStep();
+  if (curStep + 1 < STAGES.length) {
+    timer = setTimeout(tick, parseInt(speed.value, 10));
+  } else {
+    stopPlay();
+  }
+}
+function stopPlay() {
+  playing = false;
+  if (timer) { clearTimeout(timer); timer = null; }
+  document.getElementById("btn-play").textContent = "▶ Play forward pass";
+}
+function reset() {
+  stopPlay();
+  curStep = -1;
+  applyStep(-1);
+}
+
+document.getElementById("btn-play").addEventListener("click", () => {
+  if (playing) stopPlay();
+  else startPlay();
+});
+document.getElementById("btn-step").addEventListener("click", () => {
+  stopPlay();
+  nextStep();
+});
+document.getElementById("btn-reset").addEventListener("click", reset);
+document.getElementById("btn-expandall").addEventListener("click", () => {
+  // Highlight every block briefly so the user sees the whole map
+  document.querySelectorAll(".blk").forEach((b) => {
+    b.classList.add("active");
+  });
+  setTimeout(() => {
+    document.querySelectorAll(".blk").forEach((b) => b.classList.remove("active"));
+  }, 1400);
+});
+
+stepCounter.textContent = `0 / ${STAGES.length}`;
+</script>
+</body>
+</html>
