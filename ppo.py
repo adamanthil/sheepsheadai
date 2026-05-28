@@ -1,22 +1,23 @@
+import time
+from typing import Dict
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import time
-from typing import Dict
+
+from encoder import CardEmbeddingConfig, CardReasoningEncoder
 from sheepshead import (
     ACTION_IDS,
     BURY_ACTIONS,
     CALL_ACTIONS,
-    UNDER_ACTIONS,
-    PLAY_ACTIONS,
     DECK_IDS,
-    UNDER_TOKEN,
+    PLAY_ACTIONS,
     TRUMP,
+    UNDER_ACTIONS,
+    UNDER_TOKEN,
 )
-from encoder import CardReasoningEncoder, CardEmbeddingConfig
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -337,10 +338,23 @@ class RecurrentCriticNetwork(nn.Module):
                 "RecurrentCriticNetwork requires card embedding dimension (d_card)."
             )
 
+        act = nn.ReLU if activation == "relu" else nn.SiLU
+        # Adapter feeding the auxiliary heads (win/return/points/trump). Kept
+        # shallow and shared so the aux tasks continue to shape the encoder.
         self.critic_adapter = nn.Sequential(
             nn.LayerNorm(256),
             nn.Linear(256, 256),
-            nn.ReLU() if activation == "relu" else nn.SiLU(),
+            act(),
+        )
+        # Dedicated, deep value trunk. Decoupled from the aux adapter so the
+        # value head has capacity to fit the spread of returns instead of
+        # regressing to the mean (addresses measured under-dispersion).
+        self.value_trunk = nn.Sequential(
+            nn.LayerNorm(256),
+            nn.Linear(256, 256),
+            act(),
+            nn.Linear(256, 256),
+            act(),
         )
         self.value_head = nn.Linear(256, 1)
         # Auxiliary heads
@@ -396,7 +410,7 @@ class RecurrentCriticNetwork(nn.Module):
         -------
         value : Tensor (batch, 1)
         """
-        feat = self.critic_adapter(encoder_out["features"])
+        feat = self.value_trunk(encoder_out["features"])
         value = self.value_head(feat)
         return value
 
@@ -535,14 +549,14 @@ class PPOAgent:
         self._actor_lr_ratios = self._capture_actor_lr_ratios(base_lr=float(lr_actor))
 
         # Hyperparameters
-        self.gamma = 0.95
+        self.gamma = 0.99
         self.gae_lambda = 0.95
         # Separate entropy coefficients per head
         self.entropy_coeff_pick = 0.02
         self.entropy_coeff_partner = 0.02
         self.entropy_coeff_bury = 0.02
         self.entropy_coeff_play = 0.01
-        self.value_loss_coeff = 0.5
+        self.value_loss_coeff = 1.0
         self.max_grad_norm = 0.3
         self.clip_epsilon_pick = 0.20
         self.clip_epsilon_partner = 0.25
@@ -1327,12 +1341,12 @@ class PPOAgent:
         )
         logits_bt = logits_flat.view(B, T, -1)
 
-        # Critic values
-        critic_feat_bt = self.critic.critic_adapter(features_bt)
-        values_bt = self.critic.value_head(critic_feat_bt).squeeze(-1)
+        # Critic values (dedicated deep trunk, decoupled from aux adapter)
+        value_feat_bt = self.critic.value_trunk(features_bt)
+        values_bt = self.critic.value_head(value_feat_bt).squeeze(-1)
 
-        # Auxiliary preds share critic_adapter features (gradients flow to encoder)
-        aux_feat_bt = critic_feat_bt
+        # Auxiliary preds share the shallow critic_adapter (gradients flow to encoder)
+        aux_feat_bt = self.critic.critic_adapter(features_bt)
         win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
         ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
         secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
