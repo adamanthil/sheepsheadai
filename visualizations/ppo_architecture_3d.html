@@ -91,6 +91,32 @@
   #status .progress { height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-top: 6px; }
   #status .progress > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0%; transition: width 0.4s; }
 
+  #stage-nav {
+    position: fixed; top: 70px; left: 14px;
+    z-index: 20; width: 232px;
+    max-height: calc(100vh - 250px);
+    overflow: auto;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  #stage-nav .nav-head {
+    font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  #stage-nav .nav-item {
+    display: flex; align-items: center; gap: 8px;
+    background: transparent; border: 1px solid transparent;
+    color: var(--text); text-align: left; width: 100%;
+    padding: 5px 8px; border-radius: 8px; cursor: pointer;
+    font-size: 11px; font-family: inherit; line-height: 1.3;
+    transition: background .12s, border-color .12s;
+  }
+  #stage-nav .nav-item:hover { background: rgba(35,45,90,0.6); }
+  #stage-nav .nav-item.active { background: rgba(35,45,90,0.95); border-color: var(--accent); }
+  #stage-nav .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: currentColor; box-shadow: 0 0 6px currentColor; flex: 0 0 auto;
+  }
+
   #tooltip {
     position: fixed; pointer-events: none;
     background: rgba(10, 14, 32, 0.95);
@@ -148,6 +174,7 @@
       <input type="range" id="speed" min="1200" max="6000" step="200" value="3000" />
     </label>
     <label><input type="checkbox" id="chk-rotate" /> auto-rotate</label>
+    <label><input type="checkbox" id="chk-emphasis" /> emphasize connections</label>
   </div>
 </div>
 
@@ -163,6 +190,8 @@
     <div class="meta" id="i-meta"></div>
   </div>
 </div>
+
+<div class="panel" id="stage-nav"></div>
 
 <div class="panel" id="legend">
   <div class="row"><span class="swatch" style="background:#b58bff;color:#b58bff"></span>Input / observation</div>
@@ -222,7 +251,7 @@ const C = {
 // ============================================================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(C.bgBot);
-scene.fog = new THREE.Fog(C.bgBot, 60, 220);
+scene.fog = new THREE.Fog(C.bgBot, 160, 560);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 600);
 camera.position.set(35, 38, 70);
@@ -277,27 +306,45 @@ function makeLabel(text, color = "#e6ecff", scale = 1) {
   return sprite;
 }
 
+// Stage labels are painted flat on the ground, reading along Z (perpendicular
+// to the +X data flow) so they never overlap each other or face the camera.
 function makeStageLabel(text, color = "#7cc4ff") {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   ctx.font = "bold 56px ui-sans-serif, system-ui";
   const w = ctx.measureText(text).width + 60;
   canvas.width = w; canvas.height = 80;
+  // faint backing strip so text stays legible against the floor grid
+  ctx.fillStyle = "rgba(8,11,28,0.5)";
+  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(4, 10, w - 8, 60, 12); ctx.fill(); }
   ctx.font = "bold 56px ui-sans-serif, system-ui";
   ctx.fillStyle = color;
   ctx.textBaseline = "middle";
-  ctx.fillText(text, 30, 40);
+  ctx.fillText(text, 30, 42);
   const tex = new THREE.CanvasTexture(canvas);
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
-  const sp = new THREE.Sprite(mat);
-  sp.scale.set((w / 80) * 4, 4, 1);
-  return sp;
+  tex.needsUpdate = true;
+  const ph = 3.4, pw = (w / 80) * ph;
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), mat);
+  mesh.rotateX(-Math.PI / 2); // lay flat on the ground
+  mesh.rotateZ(Math.PI / 2);  // turn text to run along Z, across the flow
+  return mesh;
+}
+
+// Registry of every connection line so the "emphasize connections" toggle can
+// boost them all at once. Each entry remembers its resting opacity.
+const connLines = [];
+function registerConn(obj, baseOpacity) {
+  connLines.push({ obj, base: baseOpacity });
+  return obj;
 }
 
 function makeGlowLine(p0, p1, color, opacity = 0.4) {
   const geom = new THREE.BufferGeometry().setFromPoints([p0, p1]);
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-  return new THREE.Line(geom, mat);
+  return registerConn(new THREE.Line(geom, mat), opacity);
 }
 
 function makeCurveLine(p0, p1, controlOffsetY = 6, color = C.pulse, opacity = 0.7) {
@@ -309,7 +356,7 @@ function makeCurveLine(p0, p1, controlOffsetY = 6, color = C.pulse, opacity = 0.
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
   const line = new THREE.Line(geom, mat);
   line.userData.curve = curve;
-  return line;
+  return registerConn(line, opacity);
 }
 
 function vecMag(arr) {
@@ -318,6 +365,40 @@ function vecMag(arr) {
   return Math.sqrt(s);
 }
 function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+// ---- Connection emphasis -------------------------------------------------
+// When ON, strong attention chords get thicker / brighter / more opaque and
+// the weakest ones drop out, so high-strength token→token links pop. All other
+// connection lines are boosted too.
+let emphasize = false;
+const CHORD_COLD = new THREE.Color(0x274080);
+const CHORD_HOT = new THREE.Color(C.pulse);
+function chordRadius(norm) {
+  return emphasize ? 0.06 + Math.pow(norm, 1.15) * 0.62 : 0.035 + norm * 0.18;
+}
+function chordBaseOpacity(norm) {
+  return emphasize ? clamp(0.4 + norm * 0.6, 0, 1) : 0.18 + norm * 0.5;
+}
+function chordVisible(norm) { return emphasize ? norm >= 0.18 : true; }
+function chordGeometry(curve, norm) {
+  return new THREE.TubeGeometry(curve, 18, chordRadius(norm), 6, false);
+}
+function styleChords() {
+  for (const c of attnInfo.chordLines) {
+    c.mesh.visible = chordVisible(c.norm);
+    c.mesh.geometry.dispose();
+    c.mesh.geometry = chordGeometry(c.curve, c.norm);
+    c.baseOpacity = chordBaseOpacity(c.norm);
+    const t = emphasize ? Math.pow(c.norm, 0.55) : c.norm;
+    c.mesh.material.color.copy(CHORD_COLD).lerp(CHORD_HOT, t);
+    c.mesh.material.opacity = c.baseOpacity;
+  }
+}
+function styleConn() {
+  for (const c of connLines) {
+    c.obj.material.opacity = Math.min(0.95, c.base * (emphasize ? 2.3 : 1));
+  }
+}
 
 // ============================================================
 // Data prep
@@ -372,7 +453,7 @@ function registerPickable(mesh, info) {
 function buildInputCards() {
   const g = group("input");
   const handLabel = makeStageLabel("1 · OBSERVATION", "#b58bff");
-  handLabel.position.set(XS.input, 18, 0);
+  handLabel.position.set(XS.input, -9.7, 0);
   g.add(handLabel);
 
   const realCards = handCardCodes; // 6 cards
@@ -451,7 +532,7 @@ const inputInfo = buildInputCards();
 function buildEmbeddingTable() {
   const g = group("embed");
   const lab = makeStageLabel("2 · CARD EMBEDDINGS · (34 × 16)", "#4cc9f0");
-  lab.position.set(XS.embed, 18, 0);
+  lab.position.set(XS.embed, -9.7, 0);
   g.add(lab);
 
   const ROWS = 34, COLS = 16;
@@ -557,10 +638,22 @@ for (let i = 0; i < 5; i++) TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, id
 for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "blind", color: 0x88e0e8, idx: i });
 for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "bury", color: 0xa6f0c1, idx: i });
 
+// Which actual card (if any) a token carries. context/memory are not cards;
+// hand tokens map to the dealt hand; trick/blind/bury are empty in this
+// pick-decision state (nothing played, blind not taken) so they stay PAD.
+function tokenCardCode(i) {
+  const info = TOKEN_INFO[i];
+  if (info.type === "hand") {
+    const code = idToCode[handCardIds[info.idx]];
+    return code && code !== "PAD" ? code : null;
+  }
+  return null;
+}
+
 function buildTokens() {
   const g = group("tokens");
   const lab = makeStageLabel("3 · TOKENIZE · (19 × 64)", "#4cc9f0");
-  lab.position.set(XS.tokensPre, 18, 0);
+  lab.position.set(XS.tokensPre, -9.7, 0);
   g.add(lab);
 
   const preTok = DATA.tokens_pre_attn;
@@ -648,7 +741,7 @@ const tokensInfo = buildTokens();
 function buildAttentionRing() {
   const g = group("attn");
   const lab = makeStageLabel("4 · TRANSFORMER ATTENTION · 4 layers × 4 heads", "#4cc9f0");
-  lab.position.set(XS.attnRing, 18, 0);
+  lab.position.set(XS.attnRing, -9.7, 0);
   g.add(lab);
 
   // Place 19 tokens in a ring in the YZ plane (centered around X=XS.attnRing)
@@ -693,11 +786,26 @@ function buildAttentionRing() {
     g.add(sph);
     ringObjs.push({ mesh: sph, info, active, pos: ringPos[i] });
 
+    // Card label: hand tokens show the card they represent (trump highlighted),
+    // context/memory show their role, empty bag slots show PAD.
+    const code = tokenCardCode(i);
+    const isTrump = code && trumpCardCodes.includes(code);
+    let labText, labColor;
+    if (code) { labText = code; labColor = isTrump ? "#ffe89c" : "#cfe9ff"; }
+    else if (info.type === "context" || info.type === "memory") { labText = info.type; labColor = "#ffd9a0"; }
+    else { labText = info.type + " · PAD"; labColor = "#5d6790"; }
+    const tlab = makeLabel(labText, labColor, code ? 0.6 : 0.45);
+    // push the label radially outward from the ring center so it clears the sphere
+    const outward = ringPos[i].clone().sub(new THREE.Vector3(XS.attnRing, 4, 0)).normalize();
+    tlab.position.copy(ringPos[i]).addScaledVector(outward, r + 1.4);
+    g.add(tlab);
+
     registerPickable(sph, {
-      title: `Token ${i} after attention`,
+      title: code ? `Token ${i} · ${code}${isTrump ? " (trump)" : ""}` : `Token ${i} · ${info.type}`,
       badge: "enc",
-      kv: { "type": info.type, "‖post‖": mag.toFixed(2) },
-      body: `<p>After 4 transformer layers each token has been updated by attending to every other (valid) token. Lines connecting pairs here are weighted by the attention weight in the last layer.</p>`,
+      kv: { "type": info.type, "card": code || (active ? "—" : "PAD"), "‖post‖": mag.toFixed(2) },
+      body: `<p>After 4 transformer layers each token has been updated by attending to every other (valid) token. Connections here are weighted by the last-layer attention weight.</p>
+             <p><b>Sphere size</b> = the L2 norm (magnitude) of this token's 64-d vector <i>after</i> attention — bigger means the transformer wrote a stronger, more activated representation into this slot.</p>`,
     });
   }
 
@@ -731,19 +839,14 @@ function buildAttentionRing() {
       const ringCenter = new THREE.Vector3(XS.attnRing, 4, 0);
       mid.lerp(ringCenter, 0.6);
       const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-      const points = curve.getPoints(20);
-      const geom = new THREE.BufferGeometry().setFromPoints(points);
-      const color = new THREE.Color().lerpColors(
-        new THREE.Color(0x274080),
-        new THREE.Color(C.pulse),
-        norm,
-      );
-      const mat = new THREE.LineBasicMaterial({
-        color, transparent: true, opacity: 0.15 + norm * 0.55,
+      // Tube (not a line) so relative attention strength shows up as thickness.
+      const color = new THREE.Color().copy(CHORD_COLD).lerp(CHORD_HOT, norm);
+      const mat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: chordBaseOpacity(norm), depthWrite: false,
       });
-      const line = new THREE.Line(geom, mat);
-      g.add(line);
-      chordLines.push({ line, norm });
+      const mesh = new THREE.Mesh(chordGeometry(curve, norm), mat);
+      g.add(mesh);
+      chordLines.push({ mesh, curve, norm, baseOpacity: chordBaseOpacity(norm) });
     }
   }
 
@@ -757,7 +860,7 @@ const attnInfo = buildAttentionRing();
 function buildPools() {
   const g = group("pools");
   const lab = makeStageLabel("5 · ATTENTION POOLS", "#4cc9f0");
-  lab.position.set(XS.pools, 18, 0);
+  lab.position.set(XS.pools, -9.7, 0);
   g.add(lab);
 
   const POOLS = [
@@ -812,7 +915,7 @@ const poolsInfo = buildPools();
 function buildMemory() {
   const g = group("gru");
   const lab = makeStageLabel("6 · GRU MEMORY UPDATE", "#f4a261");
-  lab.position.set(XS.gru, 18, 0);
+  lab.position.set(XS.gru, -9.7, 0);
   g.add(lab);
 
   // GRU cell as a hexagonal prism
@@ -882,7 +985,7 @@ const memInfo = buildMemory();
 function buildFeatures() {
   const g = group("features");
   const lab = makeStageLabel("7 · SHARED FEATURES (256)", "#f4a261");
-  lab.position.set(XS.features, 18, 0);
+  lab.position.set(XS.features, -9.7, 0);
   g.add(lab);
 
   const features = DATA.features;
@@ -957,7 +1060,7 @@ const featInfo = buildFeatures();
 function buildActor() {
   const g = group("actor");
   const lab = makeStageLabel("8 · ACTOR · policy heads", "#80ed99");
-  lab.position.set(XS.actor + 5, 22, 14);
+  lab.position.set(XS.actor, -9.7, 18);
   g.add(lab);
 
   const ACTOR_BASE_Y = 12;
@@ -1180,7 +1283,7 @@ const actorInfo = buildActor();
 function buildCritic() {
   const g = group("critic");
   const lab = makeStageLabel("8 · CRITIC · value + aux", "#ff9ec7");
-  lab.position.set(XS.critic + 5, 22, -14);
+  lab.position.set(XS.critic, -9.7, -18);
   g.add(lab);
 
   const CY = -12;
@@ -1462,6 +1565,7 @@ function updateCameraTween() {
 }
 
 let curStage = 0;
+const ZOOM_OUT = 1.6; // >1 frames more of each stage; 1 = original distances
 const els = {
   stage: document.getElementById("i-stage"),
   title: document.getElementById("i-title"),
@@ -1481,8 +1585,26 @@ function showStage(i) {
   els.sLabel.textContent = s.title;
   els.sCounter.textContent = `${curStage + 1} / ${STAGES.length}`;
   els.sBar.style.width = `${((curStage + 1) / STAGES.length) * 100}%`;
-  tweenTo(s.cam.pos, s.cam.target);
+  navItems.forEach((b, idx) => b.classList.toggle("active", idx === curStage));
+  if (navItems[curStage]) navItems[curStage].scrollIntoView({ block: "nearest" });
+  // Pull the camera back along its view direction so more of each stage fits.
+  const tgt = new THREE.Vector3(...s.cam.target);
+  const pos = new THREE.Vector3(...s.cam.pos).sub(tgt).multiplyScalar(ZOOM_OUT).add(tgt);
+  tweenTo([pos.x, pos.y, pos.z], s.cam.target);
 }
+
+// Clickable stage navigator — jump straight to any stage and read its description.
+const navEl = document.getElementById("stage-nav");
+navEl.innerHTML = '<div class="nav-head">Stages · click to jump</div>';
+const navItems = STAGES.map((s, i) => {
+  const b = document.createElement("button");
+  b.className = "nav-item";
+  b.innerHTML = `<span class="dot b-${s.badge}"></span><span>${s.title}</span>`;
+  b.addEventListener("click", () => { stopTour(); showStage(i); });
+  navEl.appendChild(b);
+  return b;
+});
+
 showStage(0);
 
 // ============================================================
@@ -1516,6 +1638,11 @@ document.getElementById("btn-play").addEventListener("click", () => playing ? st
 document.getElementById("btn-prev").addEventListener("click", () => { stopTour(); showStage(curStage - 1); });
 document.getElementById("btn-next").addEventListener("click", () => { stopTour(); showStage(curStage + 1); });
 document.getElementById("btn-reset").addEventListener("click", () => { stopTour(); showStage(0); });
+document.getElementById("chk-emphasis").addEventListener("change", (e) => {
+  emphasize = e.target.checked;
+  styleChords();
+  styleConn();
+});
 document.getElementById("chk-rotate").addEventListener("change", (e) => {
   controls.autoRotate = e.target.checked;
   controls.autoRotateSpeed = 0.6;
@@ -1584,10 +1711,11 @@ function animate(now) {
   controls.update();
   updateCameraTween();
   pulseT = (now || 0) * 0.001;
-  // Gentle emissive pulse on attention chords proportional to weight
+  // Gentle pulse on attention chords proportional to weight
   const breath = 0.6 + Math.sin(pulseT * 1.3) * 0.4;
   for (const c of attnInfo.chordLines) {
-    c.line.material.opacity = (0.15 + c.norm * 0.55) * (0.7 + breath * 0.4);
+    if (!c.mesh.visible) continue;
+    c.mesh.material.opacity = Math.min(1, c.baseOpacity * (0.7 + breath * 0.4));
   }
   renderer.render(scene, camera);
 }
