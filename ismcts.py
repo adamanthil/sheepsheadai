@@ -107,6 +107,15 @@ class ISMCTSConfig:
     fpu: float = 1.0
     iters: dict = field(default_factory=lambda: dict(_DEFAULT_ITERS))
     max_depth: dict = field(default_factory=lambda: dict(_DEFAULT_DEPTH))
+    # Leaf-parallel batching: run ``batch_size`` simulations concurrently so the
+    # transformer encoder runs on a batch of states per round instead of batch-1
+    # per ply (the dominant search cost; see throughput profiling). ``virtual_loss``
+    # is the pessimistic value (in critic units, ~[-1, 1]) charged to an in-flight
+    # selected edge so concurrent sims in a chunk diversify instead of all taking
+    # the PUCT-best path. ``batch_size <= 1`` falls back to the exact sequential
+    # search (``_simulate``), which the batched path is validated against.
+    batch_size: int = 32
+    virtual_loss: float = 1.0
 
 
 class _Node:
@@ -114,7 +123,7 @@ class _Node:
     observer's action sequence. All counts are *weighted* by the per-iteration
     determinization importance weight."""
 
-    __slots__ = ("children", "N", "W", "P", "avail", "visited")
+    __slots__ = ("children", "N", "W", "P", "avail", "visited", "vloss")
 
     def __init__(self):
         self.children: dict[int, _Node] = {}
@@ -123,6 +132,34 @@ class _Node:
         self.P: dict[int, float] = {}
         self.avail: dict[int, float] = {}
         self.visited: bool = False
+        # In-flight virtual-loss visit counts per action (leaf-parallel batching).
+        self.vloss: dict[int, int] = {}
+
+
+class _Sim:
+    """One in-flight simulation in a leaf-parallel batch. Carries its determinized
+    world, its per-seat recurrent memory (5, 256), its tree path (for backprop),
+    and a small state machine: ``tree`` (observer decision at ``node``) -> ``advance``
+    (opponents play to the observer's next turn) -> ``tree`` (child) ... -> ``rollout``
+    (all seats sampled to the depth cap) -> ``done``."""
+
+    __slots__ = (
+        "world", "mem", "phase", "node", "depth", "path", "obs_plays",
+        "pending_action", "value", "seat", "valid",
+    )
+
+    def __init__(self, world, mem, root):
+        self.world = world
+        self.mem = mem            # (5, 256) tensor; row s-1 is seat s's memory
+        self.phase = "tree"
+        self.node = root
+        self.depth = 0
+        self.path: list = []      # (node, action) edges to backprop
+        self.obs_plays = 0
+        self.pending_action = None
+        self.value = None
+        self.seat = None          # acting seat for the pending encode this round
+        self.valid = None
 
 
 class ISMCTSTeacher:
@@ -222,10 +259,13 @@ class ISMCTSTeacher:
         if pool:
             probs = self._pool_probs(pool)
             indices = self._rng.choices(range(len(pool)), weights=probs, k=m_iters)
-            for k in indices:
-                world = copy.deepcopy(pool[k][0])
-                self._restore_pool_memory(pool[k][1])
-                self._simulate(root, world, observer, 0)
+            if self.config.batch_size > 1:
+                self._run_batched(root, pool, indices, observer)
+            else:
+                for k in indices:
+                    world = copy.deepcopy(pool[k][0])
+                    self._restore_pool_memory(pool[k][1])
+                    self._simulate(root, world, observer, 0)
 
         return self._finalize(root, valid_real, head, len(pool), ess)
 
@@ -524,6 +564,251 @@ class ISMCTSTeacher:
             if u > best_u:
                 best_u, best_a = u, a
         return best_a
+
+    # ------------------------------------------------------------------
+    # Leaf-parallel batched search (Tier 2): run batch_size simulations
+    # concurrently and batch every encoder/actor/critic call across them, with
+    # virtual loss so concurrent sims in a chunk diversify. Algorithmically
+    # mirrors _simulate; validated against it (the sequential path is used when
+    # batch_size <= 1). Profiling: the tree descent + opponent advance + per-trick
+    # observes are ~84% of search encodes, so this is where the throughput is.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _next_actor(world):
+        """Seat (1-5) whose turn it is, or None if terminal (exactly one seat has
+        legal actions at any non-terminal point)."""
+        for p in world.players:
+            if p.get_valid_action_ids():
+                return p.position
+        return None
+
+    def _run_batched(self, root, pool, indices, observer):
+        B = self.config.batch_size
+        i = 0
+        while i < len(indices):
+            chunk = indices[i : i + B]
+            i += len(chunk)
+            sims = []
+            for k in chunk:
+                world = copy.deepcopy(pool[k][0])
+                snap = pool[k][1]
+                mem = torch.zeros((5, 256), device=DEV)
+                for s in range(1, 6):
+                    if s in snap:
+                        mem[s - 1] = snap[s]
+                sims.append(_Sim(world, mem, root))
+            self._run_chunk(sims, observer)
+
+    def _run_chunk(self, sims, observer):
+        guard = 0
+        while any(sim.phase != "done" for sim in sims):
+            guard += 1
+            if guard > 100000:
+                raise RuntimeError("batched chunk guard exceeded")
+
+            # 1. Resolve no-network transitions; collect this round's encode reqs.
+            reqs = []  # (sim, kind, is_tree)
+            for sim in sims:
+                if sim.phase == "done":
+                    continue
+                r = self._prepare(sim, observer)
+                if r is not None:
+                    reqs.append((sim, r[0], r[1]))
+            if not reqs:
+                continue
+
+            # 2. One batched encode over every requesting sim's acting-seat state.
+            states = [s.world.players[s.seat - 1].get_state_dict() for s, _, _ in reqs]
+            mem_in = torch.stack([s.mem[s.seat - 1] for s, _, _ in reqs])
+            enc = self.agent.encoder.encode_batch(states, memory_in=mem_in, device=DEV)
+            mem_out = enc["memory_out"].detach()
+            for j, (s, _, _) in enumerate(reqs):
+                s.mem[s.seat - 1] = mem_out[j]
+
+            # 3. Actor + critic heads over the full batch (critic on actor rows is
+            #    cheap and unused; avoids slicing the encoder output).
+            masks = torch.stack(
+                [self.agent.get_action_mask(s.valid, self.action_size) for s, _, _ in reqs]
+            ).to(DEV)
+            hand_ids = torch.as_tensor(
+                np.stack([st["hand_ids"] for st in states]), dtype=torch.long, device=DEV
+            )
+            with torch.no_grad():
+                probs_all, _ = self.agent.actor.forward_with_logits(
+                    enc, masks, hand_ids, self.agent.encoder.card
+                )
+                probs_all = self.agent._apply_head_epsilon_mix(probs_all, masks)
+                v_all = self.agent.critic(enc).detach().view(-1)
+            probs_np = probs_all.detach().cpu().numpy()
+
+            # 4. Apply each request; collect sims that completed a trick this round.
+            completers = []
+            for j, (sim, kind, is_tree) in enumerate(reqs):
+                if kind == "critic":
+                    self._finish_value(sim, float(v_all[j].item()))
+                else:
+                    self._apply_actor(sim, observer, probs_np[j], is_tree, completers)
+
+            # 5. End-of-trick observe for the completer subset, batched per seat.
+            self._observe_completers_batched(completers)
+
+    def _prepare(self, sim, observer):
+        """Run no-network state-machine transitions until ``sim`` needs an encode
+        (sets sim.seat/valid and returns (kind, is_tree)) or is done (returns None)."""
+        while True:
+            w = sim.world
+            if w.is_done():
+                self._finish_terminal(sim, observer)
+                return None
+            if sim.phase == "tree":
+                valid = sorted(w.players[observer - 1].get_valid_action_ids())
+                if not valid:
+                    sim.phase = "rollout"  # defensive; should not happen at a tree node
+                    continue
+                sim.seat, sim.valid = observer, valid
+                return ("actor", True)
+            if sim.phase == "advance":
+                nxt = self._next_actor(w)
+                if nxt is None:
+                    self._finish_terminal(sim, observer)
+                    return None
+                if nxt == observer:
+                    # Done advancing -> descend into the selected action's child.
+                    parent, a = sim.node, sim.pending_action
+                    child = parent.children.get(a)
+                    if child is None:
+                        child = _Node()
+                        parent.children[a] = child
+                        self._nodes.append(child)
+                    sim.node, sim.depth, sim.pending_action = child, sim.depth + 1, None
+                    sim.phase = "tree"
+                    continue
+                sim.seat = nxt
+                sim.valid = sorted(w.players[nxt - 1].get_valid_action_ids())
+                return ("actor", False)
+            # rollout
+            nxt = self._next_actor(w)
+            if nxt is None:
+                self._finish_terminal(sim, observer)
+                return None
+            sim.seat = nxt
+            sim.valid = sorted(w.players[nxt - 1].get_valid_action_ids())
+            d_roll = (
+                self._d_rollout_override
+                if self._d_rollout_override is not None
+                else self.config.d_rollout
+            )
+            if nxt == observer and _valid_has_play(sim.valid) and sim.obs_plays >= d_roll:
+                return ("critic", False)
+            return ("actor", False)
+
+    def _apply_actor(self, sim, observer, probs, is_tree, completers):
+        if is_tree:
+            node, valid = sim.node, sim.valid
+            is_root = sim.depth == 0
+            frac = self.config.root_explore_frac
+            n_legal = len(valid)
+            for a in valid:
+                p = float(probs[a - 1])
+                if is_root and frac > 0.0:
+                    p = (1.0 - frac) * p + frac / n_legal
+                node.P[a] = p
+                node.N.setdefault(a, 0.0)
+                node.W.setdefault(a, 0.0)
+                node.avail.setdefault(a, 0.0)
+                node.avail[a] += 1.0
+            leaf = (not node.visited) or (sim.depth >= self._max_depth)
+            node.visited = True
+            if leaf:
+                # Observer is rolled out starting next round (re-encoded there,
+                # matching the sequential leaf's discard-priors-then-rollout).
+                sim.phase = "rollout"
+                return
+            following = self._is_following(sim.world, observer)
+            a = self._select_vl(node, valid, following)
+            node.vloss[a] = node.vloss.get(a, 0) + 1
+            sim.path.append((node, a))
+            sim.pending_action = a
+            sim.world.players[observer - 1].act(a)
+            sim.phase = "advance"
+        else:
+            seat, valid = sim.seat, sim.valid
+            a = self._sample_action(probs, valid)
+            is_obs_play = seat == observer and _valid_has_play(valid)
+            sim.world.players[seat - 1].act(a)
+            if sim.phase == "rollout" and is_obs_play:
+                sim.obs_plays += 1
+        if sim.world.was_trick_just_completed:
+            completers.append(sim)
+        if sim.world.is_done():
+            self._finish_terminal(sim, observer)
+
+    def _select_vl(self, node, valid, following) -> int:
+        """PUCT selection with virtual loss: an in-flight selected edge is charged
+        ``virtual_loss`` extra (pessimistic) visits so concurrent sims diversify."""
+        c = self.config.c_puct
+        vl = self.config.virtual_loss
+        n_eff = {a: node.N[a] + node.vloss.get(a, 0) for a in valid}
+        sqrt_total = math.sqrt(sum(n_eff.values()) + 1.0)
+        qmin, qmax = self._qmin, self._qmax
+        has_span = qmax > qmin
+        span = (qmax - qmin) if has_span else 1.0
+        best_a, best_u = valid[0], -math.inf
+        for a in valid:
+            ne = n_eff[a]
+            if ne > 0:
+                w_eff = node.W[a] - node.vloss.get(a, 0) * vl
+                q_norm = (w_eff / ne - qmin) / span if has_span else 0.5
+            else:
+                q_norm = self.config.fpu
+            if following:
+                explore = c * node.P[a] * math.sqrt(node.avail[a]) / (1.0 + ne)
+            else:
+                explore = c * node.P[a] * sqrt_total / (1.0 + ne)
+            u = q_norm + explore
+            if u > best_u:
+                best_u, best_a = u, a
+        return best_a
+
+    def _sample_action(self, probs, valid) -> int:
+        """Sample an action id from the masked policy over ``valid`` (search RNG)."""
+        r = self._rng.random()
+        cum = 0.0
+        for a in valid:
+            cum += float(probs[a - 1])
+            if r <= cum:
+                return a
+        return valid[-1]
+
+    def _finish_terminal(self, sim, observer):
+        self._finish_value(sim, sim.world.players[observer - 1].get_score() / _RETURN_SCALE)
+
+    def _finish_value(self, sim, v):
+        for node, a in sim.path:
+            node.N[a] += 1.0
+            node.W[a] += v
+            node.vloss[a] = node.vloss.get(a, 0) - 1
+            q = node.W[a] / node.N[a]
+            if q < self._qmin:
+                self._qmin = q
+            if q > self._qmax:
+                self._qmax = q
+        sim.phase = "done"
+        sim.value = v
+
+    def _observe_completers_batched(self, completers):
+        """Batched end-of-trick observe (advance every seat's memory) across the
+        sims that just completed a trick — the per-trick 5-seat observe is a large
+        share of search encodes, so it is batched over the completer subset."""
+        if not completers:
+            return
+        for s in range(1, 6):
+            states = [sim.world.players[s - 1].get_last_trick_state_dict() for sim in completers]
+            mem_in = torch.stack([sim.mem[s - 1] for sim in completers])
+            enc = self.agent.encoder.encode_batch(states, memory_in=mem_in, device=DEV)
+            mo = enc["memory_out"].detach()
+            for i, sim in enumerate(completers):
+                sim.mem[s - 1] = mo[i]
 
     # ------------------------------------------------------------------
     # Rollout / leaf evaluation
