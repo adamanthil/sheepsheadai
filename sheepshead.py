@@ -1,6 +1,5 @@
 import numpy as np
 import random
-from collections import deque
 
 
 TRUMP = [
@@ -122,6 +121,25 @@ DECK_IDS = {k: v + 1 for v, k in enumerate(DECK)}
 TRUMP_POWER = {k: len(TRUMP) - v for v, k in enumerate(TRUMP)}
 FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 
+# O(1) card -> suit / card -> points lookups, built once from DECK. get_card_suit
+# and get_card_points run on every trick-winner eval, void check, legal-move scan,
+# and state encode; the old `card in TRUMP` list scan and substring-test chain
+# showed up directly in profiles. The functions fall back for non-deck tokens
+# (UNDER, "") so semantics are identical to the original definitions.
+_TRUMP_SET = set(TRUMP)
+CARD_SUIT = {c: ("T" if c in _TRUMP_SET else c[-1]) for c in DECK}
+CARD_POINTS = {
+    c: (
+        11 if "A" in c
+        else 10 if "10" in c
+        else 4 if "K" in c
+        else 3 if "Q" in c
+        else 2 if "J" in c
+        else 0
+    )
+    for c in DECK
+}
+
 
 # Human-readable name for partner-selection modes
 def get_partner_mode_name(partner_mode: int) -> str:
@@ -129,7 +147,9 @@ def get_partner_mode_name(partner_mode: int) -> str:
 
 
 def get_card_suit(card):
-    return "T" if card in TRUMP else card[-1]
+    suit = CARD_SUIT.get(card)
+    # Fallback preserves the original `card[-1]` for non-deck tokens (e.g. UNDER).
+    return suit if suit is not None else card[-1]
 
 
 def get_trick_winner(trick, suit, is_called_10_suit=False):
@@ -148,17 +168,8 @@ def get_trick_winner(trick, suit, is_called_10_suit=False):
 
 
 def get_card_points(card):
-    if "A" in card:
-        return 11
-    if "10" in card:
-        return 10
-    if "K" in card:
-        return 4
-    if "Q" in card:
-        return 3
-    if "J" in card:
-        return 2
-    return 0
+    # Fallback 0 preserves the original behavior for non-deck tokens (UNDER, "").
+    return CARD_POINTS.get(card, 0)
 
 
 def filter_by_suit(hand, suit):
@@ -874,8 +885,6 @@ class Player:
         self.position = position
         self.initial_hand = hand
         self.hand = hand[:]
-        self.start_states = deque()
-        self.actions = deque()
 
     @property
     def picker(self):
@@ -1164,9 +1173,6 @@ class Player:
     def act(self, action_id):
         if action_id not in self.get_valid_action_ids():
             return False
-
-        self.start_states.append(self.get_state_dict())
-        self.actions.append(action_id)
 
         action = ACTION_LOOKUP[action_id]
 
