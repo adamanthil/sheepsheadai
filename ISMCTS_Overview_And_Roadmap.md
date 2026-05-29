@@ -147,10 +147,15 @@ The frozen pure-PPO baseline lives in `pfsp_population_ppo` /
   `SearchConfig.fracs` defaults flipped to 1.0 (cheap shallow roots), play 0.10.
 
 **Cross-cutting items (do not skip):**
-- **Throughput is a prerequisite for a from-scratch run** (~8 s/episode at the
-  default search budget × millions of episodes is infeasible). Plan §5: batch
-  determinizations through the encoder, consider async/offline target generation,
-  and/or a smaller per-search budget. Tune before committing to a long run.
+- **Throughput** (prerequisite for a from-scratch run) — DONE. Profiling showed
+  ISMCTS search was ~95% transformer encoder at batch size 1. Fixes: Game hot-path
+  cleanup (`dfc481f`, ~2.9x on game logic; removed a dead per-action `get_state_dict`);
+  Tier 1 batched pool build (`7a991af`, ~16x on pool build); Tier 2 leaf-parallel
+  batched search (`ad1c9d8`, batched descent+advance+observe+rollout with virtual
+  loss). Net: play search ~14s -> ~1.5s/search (~9-10x), with the batched visit-count
+  target near-identical to sequential (pi' TVD ~0.04). MPS was measured *slower* than
+  CPU at batch-1 and ruled out. Remaining levers if needed: larger `batch_size`,
+  CUDA, fewer iters. See `project_throughput` memory.
 - **`t_full` critic-calibration probe** (`critic_calibration.py`): set the
   rollout-depth-schedule cutoff from measured per-trick critic R², not a guess.
 - **Validation protocol, defined up front:** trick-0 defender trump-lead rate
