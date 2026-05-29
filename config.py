@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Unified training hyperparameters for the PFSP trainers.
+
+All tunable knobs for the population-based trainers live here so the entry-point
+scripts (``train_pfsp_ppo.py`` shaped baseline, ``train_pfsp_exit.py`` ISMCTS
+hybrid) stay thin. ``PFSPHyperparams`` is shared by both; ``reward_mode`` and the
+nested optional ``search`` select the strategy:
+
+* shaped baseline:  reward_mode="shaped",  search=None   (uses shaping schedules +
+  entropy bumps)
+* ISMCTS hybrid:    reward_mode="terminal", search=SearchConfig(...)  (terminal-only
+  return + search-distillation; shaping schedules / entropy bumps inactive)
+"""
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class SearchConfig:
+    """ISMCTS soft-teacher search controls (used only by the ExIt hybrid trainer).
+
+    ``fracs`` is the per-head probability that a training-agent decision is
+    searched. The plan's target is pick/partner/bury = 1.0, play ≈ 0.10–0.15, but
+    the bidding heads are **gated off (0.0) by default**: ``Game.sample_determin-
+    ization`` only supports post-bidding states (it assumes a picker exists), so
+    searching pick/partner/bury needs a determinizer extension to pre-pick states
+    first (see ISMCTS_Overview_And_Roadmap.md §4 P4). Until then only the PLAY head
+    (the validated path, where the trick-0 leak the teacher corrects lives) is
+    searched. The leaster fix does NOT depend on bidding-head search: terminal-only
+    return already makes pass->leaster EV win-likelihood driven.
+
+    ``t_full`` / ``d_short`` set the trick-indexed rollout-depth schedule: roll to
+    (near) terminal for tricks ``0..t_full`` where the critic is blind to the
+    trick-0 leak, then bootstrap at depth ``d_short`` once the value head is
+    trustworthy. ``t_full`` should be gated on a per-trick critic-calibration
+    probe; the default is a conservative placeholder.
+    """
+
+    fracs: dict = field(
+        default_factory=lambda: {"pick": 0.0, "partner": 0.0, "bury": 0.0, "play": 0.10}
+    )
+    t_full: int = 1
+    d_short: int = 2
+    enabled: bool = True
+
+
+@dataclass
+class PFSPHyperparams:
+    # Strategy selectors (shared trainer; see module docstring)
+    reward_mode: str = "shaped"  # "shaped" | "terminal"
+    search: SearchConfig | None = None
+
+    # Adaptive exploration for pick head (rate-based bump scheduling)
+    low_pick_rate_threshold: float = 20.0  # percent
+    high_pick_rate_threshold: float = 60.0  # percent
+    pick_entropy_bump: float = 0.04  # added to base decayed pick entropy
+    pick_entropy_bump_duration: int = 25000  # episodes
+
+    # PASS-floor epsilon controller (shaped mode only).
+    # Ensures minimum PASS probability on pick steps if picker average score is low.
+    high_pick_rate_ceiling: float = (
+        80.0  # Alter distribution to force PASS after this threshold
+    )
+    pass_floor_eps_base: float = 0.0
+    pass_floor_eps_target: float = 0.08
+    pass_floor_eps_step_up: float = 0.02
+    pass_floor_eps_step_down: float = 0.02
+    pass_floor_eps_picker_avg_threshold: float = -0.75
+
+    # PICK-floor epsilon controller (shaped mode only).
+    # Ensures minimum PICK probability on pick steps if overall pick rate is low.
+    low_pick_rate_floor: float = 8.0  # percent
+    pick_floor_eps_base: float = 0.0
+    pick_floor_eps_target: float = 0.05
+    pick_floor_eps_step_up: float = 0.02
+    pick_floor_eps_step_down: float = 0.02
+
+    # Adaptive exploration for partner head (ALONE decision; bump scheduling)
+    low_alone_rate_threshold: float = 2.5  # percent
+    high_alone_rate_threshold: float = 30.0  # percent
+    partner_entropy_bump: float = 0.04  # added to base decayed partner entropy
+    partner_entropy_bump_duration: int = 25000  # episodes
+
+    # Partner CALL mixture epsilon controller (shaped mode only).
+    # Probability floor over CALL actions when picker average score is low.
+    high_alone_rate_ceiling: float = (
+        60.0  # Alter distribution to force partner calls after this threshold
+    )
+    partner_call_eps_base: float = 0.0
+    partner_call_eps_max_mid: float = (
+        0.05  # when picker avg <= mid_picker_avg_threshold
+    )
+    partner_call_eps_mid_picker_avg_threshold: float = -0.75
+    partner_call_eps_max_high: float = (
+        0.10  # when picker avg <= high_picker_avg_threshold
+    )
+    partner_call_eps_high_picker_avg_threshold: float = -2
+    partner_call_eps_step_up: float = 0.02
+    partner_call_eps_step_down: float = 0.02
+
+    # Adaptive exploration for bury head (bury decisions quality)
+    # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
+    low_bury_quality_threshold: float = 85.0  # percent
+    bury_entropy_bump: float = 0.04  # added to base decayed bury entropy
+    bury_entropy_bump_duration: int = 19000  # episodes
+
+    # Entropy schedules (start -> end)
+    entropy_pick_start: float = 0.05
+    entropy_pick_end: float = 0.005
+    entropy_partner_start: float = 0.05
+    entropy_partner_end: float = 0.005
+    entropy_bury_start: float = 0.04
+    entropy_bury_end: float = 0.002
+    entropy_play_start: float = 0.05
+    entropy_play_end: float = 0.005
+
+    # Shaped reward schedules (percent -> weight). Used only when reward_mode="shaped".
+    shaping_schedule_pick: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 60: 0}
+    )
+    shaping_schedule_partner: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
+    )
+    shaping_schedule_bury: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
+    )
+    shaping_schedule_play: dict[int, float] = field(
+        default_factory=lambda: {0: 1.0, 50: 1.0, 70: 0}
+    )
+
+    # Learning rate schedules (percent -> learning rate).
+    lr_schedule_actor: dict[int, float] = field(
+        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
+    )
+    lr_schedule_critic: dict[int, float] = field(
+        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
+    )
+
+    # Opponent scheduling (PFSP mixture vs anchor/pressure/support specials)
+    anchor_block_start_prob: float = 0.03
+    anchor_block_len_min: int = 6
+    anchor_block_len_max: int = 20
+    anchor_slots_in_block: int = 3
+    pressure_slot_prob: float = 0.12
+    support_slot_prob: float = 0.06
+
+
+DEFAULT_HYPERPARAMS = PFSPHyperparams()

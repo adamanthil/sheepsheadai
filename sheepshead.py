@@ -480,6 +480,285 @@ class Game:
             return winners[0] if len(winners) == 1 else self.rng.choice(winners)
         return False
 
+    def _play_revealed_voids(self):
+        """Infer, from the public play record, the suits each seat is known void
+        in: a seat that discarded off-suit when a suit was led must hold no card
+        of that suit. Suits are the follow-suit classes ``T`` (any trump) / ``C``
+        / ``S`` / ``H`` returned by ``get_card_suit``. UNDER plays are ignored
+        (the token is not a real card and represents the called suit)."""
+        voids = {s: set() for s in range(1, 6)}
+        for t in range(len(self.history)):
+            leader = self.leaders[t]
+            if not leader:
+                continue
+            led_card = self.history[t][leader - 1]
+            if not led_card:
+                continue
+            led_suit = (
+                self.called_suit if led_card == UNDER_TOKEN else get_card_suit(led_card)
+            )
+            if not led_suit:
+                continue
+            for s in range(1, 6):
+                c = self.history[t][s - 1]
+                if not c or c == UNDER_TOKEN or s == leader:
+                    continue
+                if get_card_suit(c) != led_suit:
+                    voids[s].add(led_suit)
+        return voids
+
+    def _cards_played_by_seat(self):
+        """Map each seat -> list of real cards it has already played (public).
+        UNDER tokens are not real cards and carry no seat-hand information."""
+        played_by = {s: [] for s in range(1, 6)}
+        for trick in self.history:
+            for s in range(1, 6):
+                c = trick[s - 1]
+                if c and c != UNDER_TOKEN:
+                    played_by[s].append(c)
+        return played_by
+
+    @staticmethod
+    def _draw_avoiding(pool, need, void_suits):
+        """Pull ``need`` cards from ``pool`` (in order) whose suit is not in
+        ``void_suits``. Returns (drawn, remaining), or (None, pool) if ``pool``
+        cannot supply enough void-respecting cards."""
+        drawn, rest = [], []
+        for c in pool:
+            if len(drawn) < need and get_card_suit(c) not in void_suits:
+                drawn.append(c)
+            else:
+                rest.append(c)
+        if len(drawn) < need:
+            return None, pool
+        return drawn, rest
+
+    def _picker_discards_legal(self, eight, under_card, bury):
+        """Whether the picker's pre-bury 8 can legally set this under + bury.
+        Mirrors the engine: under may be any card; each bury must be in
+        ``get_playable_called_picker_cards`` of the hand at that step (so the
+        picker never buries its last card of the called suit). Only meaningful in
+        called-ace mode; trivially true otherwise."""
+        if not self.called_card:
+            return True
+        hand = list(eight)
+        if under_card is not None:
+            if under_card not in hand:
+                return False
+            hand.remove(under_card)
+        for b in bury:
+            if b not in get_playable_called_picker_cards(hand, self.called_card):
+                return False
+            hand.remove(b)
+        return True
+
+    def _determinization_context(self, observer_position):
+        """Precompute the per-call invariants shared by every sampling attempt:
+        the hidden-card pool, per-seat void sets and target counts, the
+        still-hidden called card, and the number of leftover (bury/under) cards.
+        """
+        obs = observer_position
+        observer = self.players[obs - 1]
+        picker = self.picker
+        is_obs_picker = obs == picker
+        under_card = self.under_card if self.is_called_under else None
+        n_under = 1 if under_card is not None else 0
+
+        played_by = self._cards_played_by_seat()
+
+        known = set(observer.initial_hand) | {
+            c for cards in played_by.values() for c in cards
+        }
+        if is_obs_picker:
+            known |= set(self.blind) | set(self.bury)
+            if under_card is not None:
+                known |= {under_card}
+        unseen = [c for c in DECK if c not in known]
+
+        # A called card constrains placement only while still hidden from the
+        # observer (called-ace mode, not alone, partner unrevealed, not yet
+        # played, not held by the observer themselves).
+        called = None
+        if (
+            self.partner_mode_flag == PARTNER_BY_CALLED_ACE
+            and self.called_card
+            and not self.alone_called
+            and not self.partner
+            and self.called_card in unseen
+        ):
+            called = self.called_card
+
+        called_suit = get_card_suit(called) if called else None
+        # A seat cannot be the secret partner if it LED a called-suit card: a
+        # secret partner may only lead the (still-hidden) called card itself or
+        # an off-called-suit card, so such a lead would be illegal in any world
+        # where that seat held the called ace.
+        partner_forbidden = set()
+        if called is not None:
+            for t in range(len(self.history)):
+                ldr = self.leaders[t]
+                if not ldr:
+                    continue
+                lc = self.history[t][ldr - 1]
+                if lc and lc != UNDER_TOKEN and get_card_suit(lc) == called_suit:
+                    partner_forbidden.add(ldr)
+
+        fill_seats = [s for s in range(1, 6) if s != obs]
+        return {
+            "obs": obs,
+            "picker": picker,
+            "is_obs_picker": is_obs_picker,
+            "under_card": under_card,
+            "n_under": n_under,
+            "played_by": played_by,
+            "voids": self._play_revealed_voids(),
+            "unseen": unseen,
+            "called": called,
+            "called_suit": called_suit,
+            "partner_forbidden": partner_forbidden,
+            # The recorded CALL is replayed during bidding regardless of whether
+            # the ace is still hidden, so the picker's 8 must justify it (e.g. an
+            # under-call requires the picker be void in the called suit) whenever
+            # there is a called card.
+            "validate_call": (
+                self.partner_mode_flag == PARTNER_BY_CALLED_ACE
+                and bool(self.called_card)
+                and not self.alone_called
+            ),
+            "fill_seats": fill_seats,
+            "counts": {s: len(self.players[s - 1].hand) for s in fill_seats},
+            "leftover_needed": 0 if is_obs_picker else (2 + n_under),
+            "observer_initial": list(observer.initial_hand),
+        }
+
+    def _sample_deal_attempt(self, ctx, rng):
+        """One shuffle+partition attempt. Returns a deal dict or None if this
+        shuffle cannot be completed into a consistent, legal deal."""
+        picker, obs = ctx["picker"], ctx["obs"]
+        called, called_suit = ctx["called"], ctx["called_suit"]
+        voids, counts, played_by = ctx["voids"], ctx["counts"], ctx["played_by"]
+
+        pool = ctx["unseen"][:]
+        rng.shuffle(pool)
+
+        # Place the still-hidden called card with an eligible secret partner.
+        forced = {}
+        if called is not None:
+            cands = [
+                s
+                for s in ctx["fill_seats"]
+                if s != picker
+                and counts[s] >= 1
+                and called_suit not in voids[s]
+                and s not in ctx["partner_forbidden"]
+            ]
+            if not cands:
+                return None
+            forced[rng.choice(cands)] = called
+            pool.remove(called)
+
+        # Deal each hidden seat its current hand, respecting voids.
+        cur = {}
+        for s in ctx["fill_seats"]:
+            seed = [forced[s]] if s in forced else []
+            drawn, pool = self._draw_avoiding(pool, counts[s] - len(seed), voids[s])
+            if drawn is None:
+                return None
+            cur[s] = seed + drawn
+        if len(pool) != ctx["leftover_needed"]:
+            return None
+
+        # Resolve the picker's bury/under (known if the observer is the picker).
+        if ctx["is_obs_picker"]:
+            blind, bury, under = list(self.blind), list(self.bury), ctx["under_card"]
+        else:
+            under = pool[0] if ctx["n_under"] else None
+            bury = pool[ctx["n_under"] : ctx["n_under"] + 2]
+            eight = played_by[picker] + cur[picker] + bury
+            if under is not None:
+                eight = eight + [under]
+            if called is not None and called in eight:
+                return None  # the still-hidden ace cannot sit with the picker
+            if ctx["validate_call"] and not self._call_is_legal(
+                eight, self.called_card
+            ):
+                return None
+            if not self._picker_discards_legal(eight, under, bury):
+                return None
+            # Split the picker's 8 into a dealt-6 and the 2-card blind.
+            blind = rng.sample(eight, 2)
+
+        # Assemble the dealt (pre-pick) hands.
+        initial_hands = {}
+        for s in range(1, 6):
+            if s == obs:
+                initial_hands[s] = ctx["observer_initial"][:]
+            elif s == picker:
+                eight = played_by[picker] + cur[picker] + bury
+                if under is not None:
+                    eight = eight + [under]
+                initial_hands[s] = [c for c in eight if c not in blind]
+            else:
+                initial_hands[s] = played_by[s] + cur[s]
+
+        return {
+            "initial_hands": initial_hands,
+            "blind": blind,
+            "bury": bury,
+            "under_card": under,
+        }
+
+    def _call_is_legal(self, eight, called):
+        """Whether the picker's pre-bury 8 legally justifies calling ``called``."""
+        target = f"{called} UNDER" if self.is_called_under else called
+        return target in get_callable_cards(eight)
+
+    def sample_determinization(self, observer_position, rng, max_tries=2000):
+        """Sample a full deal consistent with an observer's information set at the
+        current decision point (any trick, bidding complete).
+
+        Returns a dict::
+
+            {"initial_hands": {seat: [6 cards]},   # the dealt hands (pre-pick)
+             "blind":      [2 cards],              # the 2 cards the picker took
+             "bury":       [2 cards],              # the 2 cards the picker buried
+             "under_card": str | None}             # the face-down under, if any
+
+        from which a fresh ``Game`` can replay the entire recorded action
+        sequence (bidding, the forced bury/under, and every play) to reach the
+        same node in a world where the hidden cards have been redealt subject to
+        the public record. The observer's own cards (and, if the observer is the
+        picker, the blind / bury / under) are kept as-is; every hidden card is
+        resampled honouring:
+
+          * **Forced plays** — every card already played by a seat is dealt back
+            into that seat's hand, so replaying the public plays stays legal.
+          * **Per-seat counts** — each hidden seat receives exactly its current
+            remaining-hand size; the leftover 2 (+1 under) form the picker's
+            hidden bury / under.
+          * **Play-revealed voids** — a seat known void in a suit is dealt no
+            card of that suit (see ``_play_revealed_voids``).
+          * **Called-ace constraints** — while the partner is still hidden, the
+            called card sits in exactly one non-picker, non-observer seat (that
+            world's secret partner), never with the picker or in the bury; the
+            picker's 8 must legally justify the call; and the picker's
+            under/bury must be a legal discard (never its last called-suit card).
+          * **JD / alone / revealed-partner** — no placement constraint; the
+            partner card is dealt freely from the unseen pool.
+
+        Subsumes the old trick-0-only sampler (no plays yet -> no voids, all
+        counts 6). Greedy void-aware fill with rejection over ``max_tries``
+        reshuffles; raises if no consistent deal is found.
+        """
+        ctx = self._determinization_context(observer_position)
+        for _ in range(max_tries):
+            deal = self._sample_deal_attempt(ctx, rng)
+            if deal is not None:
+                return deal
+        raise RuntimeError(
+            "Could not sample a consistent determinization within max_tries"
+        )
+
 
 class Player:
     def __init__(self, game, position, hand):

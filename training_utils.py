@@ -5,10 +5,15 @@ Training utilities shared across training scripts.
 
 from typing import List, Dict
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 
 from sheepshead import (
+    Game,
     TRUMP,
     ACTIONS,
+    ACTION_IDS,
+    ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     get_card_suit,
@@ -18,6 +23,11 @@ from sheepshead import (
 
 LEASTER_FINAL_REWARD_BONUS = 0.08
 TRICK_POINT_RATIO = 360.0
+
+# Episode-return scale shared across trainers: PPO trains the value head on
+# final_score / RETURN_SCALE (~[-1, 1]), and ismcts.py bootstraps terminal
+# scores by the same factor. Single source of truth (was duplicated inline).
+RETURN_SCALE = 12.0
 
 
 def estimate_hand_strength_score(cards: List[str]) -> int:
@@ -376,6 +386,152 @@ def process_episode_rewards(episode_transitions, final_scores, is_leaster):
             "transition": transition,
             "reward": total_reward,
         }
+
+
+def process_terminal_rewards(episode_transitions, final_scores, is_leaster=False):
+    """Terminal-only return for the ExIt/ISMCTS regime (mirrors the
+    ``process_episode_rewards`` interface so the PFSP runtime can swap them).
+
+    The full episode return ``final_score / RETURN_SCALE`` is placed on the
+    player's LAST action; every other step gets 0 and is bridged by GAE/critic.
+    No per-trick reward and no leaster bonus — ``get_score()`` already scores
+    leasters correctly, so pass->leaster EV is win-likelihood driven with zero
+    hand-tuning (``is_leaster`` is accepted for interface parity and ignored).
+    See ISMCTS_Teacher_Refactor_Plan.md §2.
+    """
+    last_index = len(episode_transitions) - 1
+    for i, transition in enumerate(episode_transitions):
+        player = transition["player"]
+        final_score = final_scores[player.position - 1]
+        reward = (final_score / RETURN_SCALE) if i == last_index else 0.0
+        yield {
+            "transition": transition,
+            "reward": reward,
+        }
+
+
+def analyze_strategic_decisions(agent, num_samples=100):
+    """Analyze strategic decision quality instead of random opponent evaluation.
+
+    Shared by all trainers (moved here from the self-play trainer so the PFSP
+    trainers no longer cross-import it).
+    """
+
+    # Trump leading analysis
+    trump_leads = {
+        "picker_team": 0,
+        "picker_total": 0,
+        "defender_team": 0,
+        "defender_total": 0,
+    }
+
+    # Bury quality analysis
+    bury_quality = {"good_burys": 0, "bad_burys": 0, "total_burys": 0}
+
+    # Pick decision correlation with hand strength
+    pick_decisions = []
+    hand_strengths = []
+
+    for episode in range(num_samples):
+        game = Game(partner_selection_mode=get_partner_selection_mode(episode))
+        # Ensure recurrent state is fresh for analysis episode
+        agent.reset_recurrent_state()
+
+        # Analyze pick decisions
+        initial_player = game.players[0]
+        hand_strength = sum(
+            3 if c[0] == "Q" else 2 if c[0] == "J" else 1 if c in TRUMP else 0
+            for c in initial_player.hand
+        )
+
+        sdict = initial_player.get_state_dict()
+        initial_actions = initial_player.get_valid_action_ids()
+        with torch.no_grad():
+            action_probs, _ = agent.get_action_probs_with_logits(
+                sdict, initial_actions, player_id=initial_player.position
+            )
+
+        pick_prob = action_probs[0, ACTION_IDS["PICK"] - 1].item()
+        pick_decisions.append(pick_prob)
+        hand_strengths.append(hand_strength)
+
+        # Play full game to analyze trump leading and bury decisions
+        while not game.is_done():
+            for player in game.players:
+                actions = player.get_valid_action_ids()
+
+                if actions:
+                    sdict = player.get_state_dict()
+                    with torch.no_grad():
+                        action_probs, _ = agent.get_action_probs_with_logits(
+                            sdict, actions, player_id=player.position
+                        )
+                    action = (
+                        torch.distributions.Categorical(action_probs).sample().item()
+                        + 1
+                    )
+                    action_name = ACTION_LOOKUP[action]
+
+                    # Analyze trump leading
+                    if (
+                        "PLAY" in action_name
+                        and game.play_started
+                        and game.cards_played == 0
+                    ):
+                        card = action_name.split()[-1]
+                        is_trump_lead = card in TRUMP
+                        is_picker_team = (
+                            player.is_picker
+                            or player.is_partner
+                            or player.is_secret_partner
+                        )
+
+                        if is_picker_team:
+                            trump_leads["picker_total"] += 1
+                            if is_trump_lead:
+                                trump_leads["picker_team"] += 1
+                        else:
+                            trump_leads["defender_total"] += 1
+                            if is_trump_lead:
+                                trump_leads["defender_team"] += 1
+
+                    # Analyze bury decisions
+                    if "BURY" in action_name:
+                        card = action_name.split()[-1]
+                        bury_quality["total_burys"] += 1
+
+                        # Good bury: fail
+                        if card not in TRUMP:
+                            bury_quality["good_burys"] += 1
+                        else:
+                            bury_quality["bad_burys"] += 1
+
+                    player.act(action)
+
+    # Calculate metrics
+    pick_hand_correlation = (
+        np.corrcoef(hand_strengths, pick_decisions)[0, 1]
+        if len(hand_strengths) > 1
+        else 0
+    )
+
+    picker_trump_rate = (
+        trump_leads["picker_team"] / max(trump_leads["picker_total"], 1) * 100
+    )
+    defender_trump_rate = (
+        trump_leads["defender_team"] / max(trump_leads["defender_total"], 1) * 100
+    )
+
+    bury_quality_rate = (
+        bury_quality["good_burys"] / max(bury_quality["total_burys"], 1) * 100
+    )
+
+    return {
+        "pick_hand_correlation": pick_hand_correlation,
+        "picker_trump_rate": picker_trump_rate,
+        "defender_trump_rate": defender_trump_rate,
+        "bury_quality_rate": bury_quality_rate,
+    }
 
 
 def save_training_plot(training_data, save_path="training_progress.png"):

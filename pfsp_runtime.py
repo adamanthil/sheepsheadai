@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Prioritized Fictitious Self-Play (PFSP) training for Sheepshead.
+Prioritized Fictitious Self-Play (PFSP) training runtime for Sheepshead.
 
-This script implements population-based training where a single agent trains against
-a diverse population of opponents, ranked using OpenSkill ratings.
+Shared population-based training machinery used by both PFSP entry points:
+``train_pfsp_ppo.py`` (shaped baseline) and ``train_pfsp_exit.py`` (ISMCTS
+hybrid). The strategy is selected by ``PFSPHyperparams.reward_mode`` /
+``.search`` (see config.py): shaped uses reward shaping + entropy bumps;
+terminal uses terminal-only return + ISMCTS search-distillation. The
+hyperparameters live in config.py; pure helper functions in training_utils.py.
 """
 
 import torch
@@ -14,10 +18,8 @@ import os
 import csv
 import sys
 from collections import deque
-from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 import copy
-from dataclasses import dataclass, field
 from openskill.models import PlackettLuce
 
 from ppo import PPOAgent
@@ -27,11 +29,14 @@ from pfsp import (
     profile_pop_agent_action,
     profile_trick_completion,
 )
+from config import PFSPHyperparams, SearchConfig, DEFAULT_HYPERPARAMS
+from ismcts import ISMCTSTeacher, ISMCTSConfig
 from training_utils import (
     estimate_hand_strength_category,
     compute_known_points_rel,
     compute_seen_trump_mask,
     compute_any_unseen_trump_higher_than_hand,
+    RETURN_SCALE,
 )
 from sheepshead import (
     Game,
@@ -42,114 +47,36 @@ from sheepshead import (
     get_partner_mode_name,
 )
 
-from train_ppo import analyze_strategic_decisions
 from training_utils import (
     process_episode_rewards,
+    process_terminal_rewards,
     get_partner_selection_mode,
     save_training_plot,
     update_intermediate_rewards_for_action,
     handle_trick_completion,
+    analyze_strategic_decisions,
 )
 
 
-@dataclass
-class PFSPHyperparams:
-    # Adaptive exploration for pick head (rate-based bump scheduling)
-    low_pick_rate_threshold: float = 20.0  # percent
-    high_pick_rate_threshold: float = 60.0  # percent
-    pick_entropy_bump: float = 0.04  # added to base decayed pick entropy
-    pick_entropy_bump_duration: int = 25000  # episodes
-
-    # PASS-floor epsilon controller
-    # Ensures minimum PASS probability on pick steps if picker average score is low.
-    high_pick_rate_ceiling: float = (
-        80.0  # Alter distribution to force PASS after this threshold
-    )
-    pass_floor_eps_base: float = 0.0
-    pass_floor_eps_target: float = 0.08
-    pass_floor_eps_step_up: float = 0.02
-    pass_floor_eps_step_down: float = 0.02
-    pass_floor_eps_picker_avg_threshold: float = -0.75
-
-    # PICK-floor epsilon controller
-    # Ensures minimum PICK probability on pick steps if overall pick rate is low.
-    low_pick_rate_floor: float = 8.0  # percent
-    pick_floor_eps_base: float = 0.0
-    pick_floor_eps_target: float = 0.05
-    pick_floor_eps_step_up: float = 0.02
-    pick_floor_eps_step_down: float = 0.02
-
-    # Adaptive exploration for partner head (ALONE decision; bump scheduling)
-    low_alone_rate_threshold: float = 2.5  # percent
-    high_alone_rate_threshold: float = 30.0  # percent
-    partner_entropy_bump: float = 0.04  # added to base decayed partner entropy
-    partner_entropy_bump_duration: int = 25000  # episodes
-
-    # Partner CALL mixture epsilon controller
-    # Probability floor over CALL actions when picker average score is low.
-    high_alone_rate_ceiling: float = (
-        60.0  # Alter distribution to force partner calls after this threshold
-    )
-    partner_call_eps_base: float = 0.0
-    partner_call_eps_max_mid: float = (
-        0.05  # when picker avg <= mid_picker_avg_threshold
-    )
-    partner_call_eps_mid_picker_avg_threshold: float = -0.75
-    partner_call_eps_max_high: float = (
-        0.10  # when picker avg <= high_picker_avg_threshold
-    )
-    partner_call_eps_high_picker_avg_threshold: float = -2
-    partner_call_eps_step_up: float = 0.02
-    partner_call_eps_step_down: float = 0.02
-
-    # Adaptive exploration for bury head (bury decisions quality)
-    # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
-    low_bury_quality_threshold: float = 85.0  # percent
-    bury_entropy_bump: float = 0.04  # added to base decayed bury entropy
-    bury_entropy_bump_duration: int = 19000  # episodes
-
-    # Entropy schedules (start -> end)
-    entropy_pick_start: float = 0.05
-    entropy_pick_end: float = 0.005
-    entropy_partner_start: float = 0.05
-    entropy_partner_end: float = 0.005
-    entropy_bury_start: float = 0.04
-    entropy_bury_end: float = 0.002
-    entropy_play_start: float = 0.05
-    entropy_play_end: float = 0.005
-
-    # Shaped reward schedules (percent -> weight).
-    shaping_schedule_pick: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 60: 0}
-    )
-    shaping_schedule_partner: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
-    )
-    shaping_schedule_bury: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
-    )
-    shaping_schedule_play: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 70: 0}
+def _is_private_decision(valid_actions) -> bool:
+    """True when the decision is a private bury/under (excluded from the public
+    record fed to the ISMCTS teacher's forced replay)."""
+    return any(
+        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
+        for a in valid_actions
     )
 
-    # Learning rate schedules (percent -> learning rate).
-    lr_schedule_actor: dict[int, float] = field(
-        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
-    )
-    lr_schedule_critic: dict[int, float] = field(
-        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
-    )
 
-    # Opponent scheduling (PFSP mixture vs anchor/pressure/support specials)
-    anchor_block_start_prob: float = 0.03
-    anchor_block_len_min: int = 6
-    anchor_block_len_max: int = 20
-    anchor_slots_in_block: int = 3
-    pressure_slot_prob: float = 0.12
-    support_slot_prob: float = 0.06
-
-
-DEFAULT_HYPERPARAMS = PFSPHyperparams()
+def _search_head(valid_actions) -> str:
+    """Classify a decision into a search head (mirrors ISMCTSTeacher._infer_head)."""
+    names = [ACTIONS[a - 1] for a in valid_actions]
+    if any(n in ("PICK", "PASS") for n in names):
+        return "pick"
+    if any(n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names):
+        return "partner"
+    if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
+        return "bury"
+    return "play"
 
 
 def interpolated_weight(schedule: dict, progress_pct: float) -> float:
@@ -184,14 +111,35 @@ def play_population_game(
     partner_mode: int,
     training_agent_position: int = 1,
     shaping_weights: dict | None = None,
+    reward_mode: str = "shaped",
+    teacher: "ISMCTSTeacher | None" = None,
+    det_rng: "random.Random | None" = None,
+    search_config: "SearchConfig | None" = None,
 ) -> tuple:
     """Play a single game with the training agent and population opponents.
 
+    ``reward_mode`` selects the return: ``"shaped"`` applies the intermediate
+    reward shaping + per-trick rewards and ``process_episode_rewards``;
+    ``"terminal"`` skips all shaping and uses ``process_terminal_rewards``
+    (final_score-only), optionally attaching ISMCTS soft-teacher targets to a
+    per-head fraction of the training agent's decisions (search is teacher-only;
+    the agent still acts on-policy).
+
     Returns:
-        tuple: (game, episode_transitions, final_scores, training_agent_data, opponents_by_position)
+        tuple: (game, episode_events, final_scores, training_agent_data, opponents_by_position)
     """
     game = Game(partner_selection_mode=partner_mode)
     weights = shaping_weights or {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 1.0}
+    shaped = reward_mode == "shaped"
+    search_on = (
+        reward_mode == "terminal"
+        and teacher is not None
+        and det_rng is not None
+        and search_config is not None
+        and search_config.enabled
+    )
+    # Public (seat, action_id) record for the teacher's forced replay (search only).
+    forced_public: list[tuple[int, int]] = []
 
     # Reset recurrent states for all agents
     training_agent.reset_recurrent_state()
@@ -232,6 +180,7 @@ def play_population_game(
 
             while valid_actions:
                 state = player.get_state_dict()
+                is_private = _is_private_decision(valid_actions)
 
                 # Get action from appropriate agent
                 if current_agent == training_agent:
@@ -257,27 +206,59 @@ def play_population_game(
                         "unseen_trump_higher_than_hand_label": compute_any_unseen_trump_higher_than_hand(
                             player
                         ),
+                        "search_target": None,
+                        "has_search_target": False,
                     }
                     episode_transitions.append(transition)
 
-                    # Shared intermediate reward shaping and trick tracking (for training agent only)
-                    update_intermediate_rewards_for_action(
-                        game,
-                        player,
-                        action,
-                        transition,
-                        current_trick_transitions,
-                        pick_weight=weights["pick"],
-                        partner_weight=weights["partner"],
-                        bury_weight=weights["bury"],
-                        play_weight=weights["play"],
-                    )
+                    if shaped:
+                        # Shared intermediate reward shaping and trick tracking
+                        update_intermediate_rewards_for_action(
+                            game,
+                            player,
+                            action,
+                            transition,
+                            current_trick_transitions,
+                            pick_weight=weights["pick"],
+                            partner_weight=weights["partner"],
+                            bury_weight=weights["bury"],
+                            play_weight=weights["play"],
+                        )
+                    elif search_on and not game.is_leaster:
+                        # ISMCTS soft-teacher target on a per-head fraction of
+                        # decisions (teacher-only; agent acted on-policy above).
+                        # Leasters are skipped: sample_determinization assumes a
+                        # picker exists, and leaster EV rides on the terminal
+                        # reward. search() is memory-neutral (snapshots/restores).
+                        head = _search_head(valid_actions)
+                        frac = search_config.fracs.get(head, 0.0)
+                        if frac > 0.0 and det_rng.random() < frac:
+                            ct = game.current_trick
+                            d_roll = (
+                                (6 - ct)
+                                if ct <= search_config.t_full
+                                else search_config.d_short
+                            )
+                            res = teacher.search(
+                                game,
+                                player.position,
+                                list(forced_public),
+                                det_rng,
+                                d_rollout=d_roll,
+                            )
+                            if res["ok"] and float(res["pi"].sum()) > 0.0:
+                                transition["search_target"] = res["pi"].tolist()
+                                transition["has_search_target"] = True
 
                 else:
                     # Opponent action (stochastic for diversity)
                     action, _, _ = current_agent.act(
                         state, valid_actions, player.position, deterministic=False
                     )
+
+                # Record this seat's public action for the teacher's forced replay.
+                if search_on and not is_private:
+                    forced_public.append((player.position, action))
 
                 # --- Strategic profile updates for opponents (pre-action; uses pre-action hand + trick state) ---
                 pop_agent = pos_to_pop_agent.get(player.position)
@@ -333,9 +314,12 @@ def play_population_game(
         "position": training_agent_position,
     }
 
-    # Compute rewards for training agent actions
+    # Compute rewards for training agent actions. Shaped: intermediate + final
+    # (+ leaster bonus). Terminal: final_score-only on the last action, no shaping
+    # and no leaster bonus (get_score scores leasters correctly).
+    reward_fn = process_episode_rewards if shaped else process_terminal_rewards
     reward_map = {}
-    for reward_data in process_episode_rewards(
+    for reward_data in reward_fn(
         [t for t in episode_transitions if t["kind"] == "action"],
         final_scores,
         game.is_leaster,
@@ -373,6 +357,8 @@ def play_population_game(
                     "unseen_trump_higher_than_hand_label": ev.get(
                         "unseen_trump_higher_than_hand_label", None
                     ),
+                    "search_target": ev.get("search_target"),
+                    "has_search_target": ev.get("has_search_target", False),
                 }
             )
 
@@ -385,7 +371,7 @@ def play_population_game(
     )
 
 
-def train_pfsp(
+def run_pfsp_training(
     num_episodes: int = 500000,
     update_interval: int = 2048,
     save_interval: int = 5000,
@@ -397,6 +383,8 @@ def train_pfsp(
     initial_checkpoints: list = None,
     schedule_horizon_episodes: int | None = None,
     hyperparams: PFSPHyperparams = DEFAULT_HYPERPARAMS,
+    run_name: str = "pfsp_run",
+    population_dir: str | None = None,
 ):
     """
     PFSP training with population-based opponents.
@@ -436,15 +424,31 @@ def train_pfsp(
         activation=activation,
     )
 
+    # ISMCTS soft-teacher (terminal/ExIt mode only). Training-time only; the
+    # agent acts on-policy and population opponents never search. det_rng drives
+    # determinization sampling.
+    use_search = hyperparams.reward_mode == "terminal" and hyperparams.search is not None
+    ismcts_teacher = ISMCTSTeacher(training_agent, ISMCTSConfig()) if use_search else None
+    det_rng = random.Random(20260529) if use_search else None
+
     # OpenSkill rating for the training agent
     rating_model = PlackettLuce()
     training_rating = rating_model.rating()
+
+    # All generated artifacts (checkpoints, final model, plots, CSVs, and the
+    # population) live under runs/<run_name>/ so nothing collides with committed
+    # or frozen files at the repo root. population_dir can be overridden (e.g. to
+    # point at a seeded pool); defaults under the run dir.
+    output_dir = os.path.join("runs", run_name)
+    os.makedirs(output_dir, exist_ok=True)
+    if population_dir is None:
+        population_dir = os.path.join(output_dir, "population")
 
     # Create population
     population = PFSPPopulation(
         max_population_jd=75,
         max_population_called_ace=75,
-        population_dir="pfsp_population",
+        population_dir=population_dir,
     )
 
     # Initialize population from checkpoints if provided
@@ -501,9 +505,8 @@ def train_pfsp(
         "population_stats": [],
     }
 
-    # Create checkpoint directory
-    checkpoint_dir = f"pfsp_checkpoints_{activation}"
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    # Checkpoints / CSVs / plots all live under the run dir.
+    checkpoint_dir = output_dir
     # CSV log files for ongoing progress/metrics
     progress_csv = os.path.join(checkpoint_dir, "pfsp_training_progress.csv")
     strategic_csv = os.path.join(checkpoint_dir, "pfsp_strategic_metrics.csv")
@@ -558,6 +561,9 @@ def train_pfsp(
     partner_entropy_bump_until = 0
     pick_entropy_bump_until = 0
 
+    # Epsilon-floor exploration controllers (shaped mode only; the adaptive
+    # blocks below are gated by reward_mode == "shaped"). Init is harmless in
+    # terminal mode — it sets epsilon to base (0.0), a no-op for the teacher.
     # Partner CALL mixture epsilon controller state
     current_partner_call_eps = hyperparams.partner_call_eps_base
     training_agent.set_partner_call_epsilon(current_partner_call_eps)
@@ -653,7 +659,8 @@ def train_pfsp(
         # Randomly select training agent position (1-5)
         training_position = random.randint(1, 5)
 
-        # Compute per-episode shaping weights from schedules
+        # Compute per-episode shaping weights from schedules (shaped mode only;
+        # ignored by play_population_game when reward_mode="terminal").
         progress_pct = get_schedule_progress_pct(episode)
         shaping_weights = {
             "pick": interpolated_weight(
@@ -678,6 +685,10 @@ def train_pfsp(
                 partner_mode=partner_mode,
                 training_agent_position=training_position,
                 shaping_weights=shaping_weights,
+                reward_mode=hyperparams.reward_mode,
+                teacher=ismcts_teacher,
+                det_rng=det_rng,
+                search_config=hyperparams.search,
             )
         )
 
@@ -829,13 +840,17 @@ def train_pfsp(
                 + (entropy_bury_end - entropy_bury_start) * decay_fraction
             )
 
-            # Apply temporary bumps to entropies
-            if episode <= bury_entropy_bump_until:
-                training_agent.entropy_coeff_bury += hyperparams.bury_entropy_bump
-            if episode <= partner_entropy_bump_until:
-                training_agent.entropy_coeff_partner += hyperparams.partner_entropy_bump
-            if episode <= pick_entropy_bump_until:
-                training_agent.entropy_coeff_pick += hyperparams.pick_entropy_bump
+            # Apply temporary bumps to entropies (shaped mode only; the ExIt
+            # hybrid keeps only the baseline entropy decay above).
+            if hyperparams.reward_mode == "shaped":
+                if episode <= bury_entropy_bump_until:
+                    training_agent.entropy_coeff_bury += hyperparams.bury_entropy_bump
+                if episode <= partner_entropy_bump_until:
+                    training_agent.entropy_coeff_partner += (
+                        hyperparams.partner_entropy_bump
+                    )
+                if episode <= pick_entropy_bump_until:
+                    training_agent.entropy_coeff_pick += hyperparams.pick_entropy_bump
 
             # Learning rate decay (apply scheduled LRs based on training progress)
             progress_pct = min(100.0, max(0.0, (episode / num_episodes) * 100.0))
@@ -913,13 +928,12 @@ def train_pfsp(
             for mode in [PARTNER_BY_JD, PARTNER_BY_CALLED_ACE]:
                 # Snapshot training agent for population opponents
                 agent_snapshot = copy.deepcopy(training_agent)
-                # Disable CALL-uniform mixing for population agents
+                # Disable epsilon-floor mixing for population agents (no-op in
+                # terminal mode, where epsilon is already 0).
                 agent_snapshot.set_partner_call_epsilon(
                     hyperparams.partner_call_eps_base
                 )
-                # Disable PASS-floor mixing for population agents
                 agent_snapshot.set_pass_floor_epsilon(hyperparams.pass_floor_eps_base)
-                # Disable PICK-floor mixing for population agents
                 agent_snapshot.set_pick_floor_epsilon(hyperparams.pick_floor_eps_base)
 
                 agent_id = population.add_agent(
@@ -1238,45 +1252,46 @@ def train_pfsp(
             ):
                 partner_entropy_bump_until = 0
 
-            # --- Partner CALL mixture epsilon controller ---
+            # --- Partner CALL mixture epsilon controller (shaped mode only) ---
             # Gradually increase ε when ALONE rate is high and picker avg is poor.
             # Tiered caps: <= mid_picker_avg -> mid cap; <= high_picker_avg -> high cap. Otherwise, decay toward base.
-            desired_partner_eps_max = hyperparams.partner_call_eps_base
-            # Gate epsilon scheduling on training-agent-only ALONE rate
-            if current_training_alone_rate > hyperparams.high_alone_rate_ceiling:
-                if (
-                    current_avg_picker_score
-                    <= hyperparams.partner_call_eps_high_picker_avg_threshold
-                ):
-                    desired_partner_eps_max = hyperparams.partner_call_eps_max_high
-                elif (
-                    current_avg_picker_score
-                    <= hyperparams.partner_call_eps_mid_picker_avg_threshold
-                ):
-                    desired_partner_eps_max = hyperparams.partner_call_eps_max_mid
+            if hyperparams.reward_mode == "shaped":
+                desired_partner_eps_max = hyperparams.partner_call_eps_base
+                # Gate epsilon scheduling on training-agent-only ALONE rate
+                if current_training_alone_rate > hyperparams.high_alone_rate_ceiling:
+                    if (
+                        current_avg_picker_score
+                        <= hyperparams.partner_call_eps_high_picker_avg_threshold
+                    ):
+                        desired_partner_eps_max = hyperparams.partner_call_eps_max_high
+                    elif (
+                        current_avg_picker_score
+                        <= hyperparams.partner_call_eps_mid_picker_avg_threshold
+                    ):
+                        desired_partner_eps_max = hyperparams.partner_call_eps_max_mid
+                    else:
+                        desired_partner_eps_max = hyperparams.partner_call_eps_base
                 else:
                     desired_partner_eps_max = hyperparams.partner_call_eps_base
-            else:
-                desired_partner_eps_max = hyperparams.partner_call_eps_base
 
-            desired_partner_eps = current_partner_call_eps
-            if desired_partner_eps_max > current_partner_call_eps:
-                desired_partner_eps = min(
-                    current_partner_call_eps + hyperparams.partner_call_eps_step_up,
-                    desired_partner_eps_max,
-                )
-            elif desired_partner_eps_max < current_partner_call_eps:
-                desired_partner_eps = max(
-                    current_partner_call_eps - hyperparams.partner_call_eps_step_down,
-                    desired_partner_eps_max,
-                )
+                desired_partner_eps = current_partner_call_eps
+                if desired_partner_eps_max > current_partner_call_eps:
+                    desired_partner_eps = min(
+                        current_partner_call_eps + hyperparams.partner_call_eps_step_up,
+                        desired_partner_eps_max,
+                    )
+                elif desired_partner_eps_max < current_partner_call_eps:
+                    desired_partner_eps = max(
+                        current_partner_call_eps - hyperparams.partner_call_eps_step_down,
+                        desired_partner_eps_max,
+                    )
 
-            if abs(desired_partner_eps - current_partner_call_eps) > 1e-6:
-                current_partner_call_eps = desired_partner_eps
-                training_agent.set_partner_call_epsilon(current_partner_call_eps)
-                print(
-                    f"   ⚠️  Partner CALL epsilon ε adjusted to: {current_partner_call_eps:.3f}"
-                )
+                if abs(desired_partner_eps - current_partner_call_eps) > 1e-6:
+                    current_partner_call_eps = desired_partner_eps
+                    training_agent.set_partner_call_epsilon(current_partner_call_eps)
+                    print(
+                        f"   ⚠️  Partner CALL epsilon ε adjusted to: {current_partner_call_eps:.3f}"
+                    )
 
             # --- Adaptive pick-head entropy bump scheduling ---
             overall_picks = total_called_picks + total_jd_picks
@@ -1310,56 +1325,60 @@ def train_pfsp(
             ):
                 pick_entropy_bump_until = 0
 
-            # --- PASS-floor epsilon controller (activate when pick rate high and picker avg negative) ---
-            desired_pass_eps_max = hyperparams.pass_floor_eps_base
-            if (overall_pick_rate > hyperparams.high_pick_rate_ceiling) and (
-                current_avg_picker_score
-                < hyperparams.pass_floor_eps_picker_avg_threshold
-            ):
-                desired_pass_eps_max = hyperparams.pass_floor_eps_target
+            # --- PASS-floor epsilon controller (shaped mode only) ---
+            # Activate when pick rate high and picker avg negative.
+            if hyperparams.reward_mode == "shaped":
+                desired_pass_eps_max = hyperparams.pass_floor_eps_base
+                if (overall_pick_rate > hyperparams.high_pick_rate_ceiling) and (
+                    current_avg_picker_score
+                    < hyperparams.pass_floor_eps_picker_avg_threshold
+                ):
+                    desired_pass_eps_max = hyperparams.pass_floor_eps_target
 
-            desired_pass_eps = current_pass_floor_eps
-            if desired_pass_eps_max > current_pass_floor_eps:
-                desired_pass_eps = min(
-                    current_pass_floor_eps + hyperparams.pass_floor_eps_step_up,
-                    desired_pass_eps_max,
-                )
-            elif desired_pass_eps_max < current_pass_floor_eps:
-                desired_pass_eps = max(
-                    current_pass_floor_eps - hyperparams.pass_floor_eps_step_down,
-                    desired_pass_eps_max,
-                )
+                desired_pass_eps = current_pass_floor_eps
+                if desired_pass_eps_max > current_pass_floor_eps:
+                    desired_pass_eps = min(
+                        current_pass_floor_eps + hyperparams.pass_floor_eps_step_up,
+                        desired_pass_eps_max,
+                    )
+                elif desired_pass_eps_max < current_pass_floor_eps:
+                    desired_pass_eps = max(
+                        current_pass_floor_eps - hyperparams.pass_floor_eps_step_down,
+                        desired_pass_eps_max,
+                    )
 
-            if abs(desired_pass_eps - current_pass_floor_eps) > 1e-6:
-                current_pass_floor_eps = desired_pass_eps
-                training_agent.set_pass_floor_epsilon(current_pass_floor_eps)
-                print(
-                    f"   ⚠️  PASS floor epsilon ε_pass adjusted to: {current_pass_floor_eps:.3f}"
-                )
+                if abs(desired_pass_eps - current_pass_floor_eps) > 1e-6:
+                    current_pass_floor_eps = desired_pass_eps
+                    training_agent.set_pass_floor_epsilon(current_pass_floor_eps)
+                    print(
+                        f"   ⚠️  PASS floor epsilon ε_pass adjusted to: {current_pass_floor_eps:.3f}"
+                    )
 
-            # --- PICK-floor epsilon controller (activate when overall pick rate is very low) ---
-            desired_pick_eps_max = hyperparams.pick_floor_eps_base
-            if overall_pick_rate < hyperparams.low_pick_rate_floor:
-                desired_pick_eps_max = hyperparams.pick_floor_eps_target
+            # --- PICK-floor epsilon controller (shaped mode only) ---
+            # Activate when overall pick rate is very low.
+            if hyperparams.reward_mode == "shaped":
+                desired_pick_eps_max = hyperparams.pick_floor_eps_base
+                if overall_pick_rate < hyperparams.low_pick_rate_floor:
+                    desired_pick_eps_max = hyperparams.pick_floor_eps_target
 
-            desired_pick_eps = current_pick_floor_eps
-            if desired_pick_eps_max > current_pick_floor_eps:
-                desired_pick_eps = min(
-                    current_pick_floor_eps + hyperparams.pick_floor_eps_step_up,
-                    desired_pick_eps_max,
-                )
-            elif desired_pick_eps_max < current_pick_floor_eps:
-                desired_pick_eps = max(
-                    current_pick_floor_eps - hyperparams.pick_floor_eps_step_down,
-                    desired_pick_eps_max,
-                )
+                desired_pick_eps = current_pick_floor_eps
+                if desired_pick_eps_max > current_pick_floor_eps:
+                    desired_pick_eps = min(
+                        current_pick_floor_eps + hyperparams.pick_floor_eps_step_up,
+                        desired_pick_eps_max,
+                    )
+                elif desired_pick_eps_max < current_pick_floor_eps:
+                    desired_pick_eps = max(
+                        current_pick_floor_eps - hyperparams.pick_floor_eps_step_down,
+                        desired_pick_eps_max,
+                    )
 
-            if abs(desired_pick_eps - current_pick_floor_eps) > 1e-6:
-                current_pick_floor_eps = desired_pick_eps
-                training_agent.set_pick_floor_epsilon(current_pick_floor_eps)
-                print(
-                    f"   ⚠️  PICK floor epsilon ε_pick adjusted to: {current_pick_floor_eps:.3f}"
-                )
+                if abs(desired_pick_eps - current_pick_floor_eps) > 1e-6:
+                    current_pick_floor_eps = desired_pick_eps
+                    training_agent.set_pick_floor_epsilon(current_pick_floor_eps)
+                    print(
+                        f"   ⚠️  PICK floor epsilon ε_pick adjusted to: {current_pick_floor_eps:.3f}"
+                    )
 
         # Save checkpoints
         if episode % save_interval == 0:
@@ -1409,12 +1428,14 @@ def train_pfsp(
                 f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]"
             )
 
-    training_agent.save(f"final_pfsp_{activation}_ppo.pt")
+    training_agent.save(os.path.join(output_dir, f"final_{activation}.pt"))
     population.save_population_state()
 
     # Save final training plot
     if len(training_data["episodes"]) > 0:
-        save_training_plot(training_data, f"final_pfsp_{activation}_training.png")
+        save_training_plot(
+            training_data, os.path.join(output_dir, f"final_{activation}_training.png")
+        )
 
     total_time = time.time() - start_time
     print("\n🎉 PFSP Training completed!")
@@ -1431,91 +1452,3 @@ def train_pfsp(
     # Final population summary
     print("\n" + population.get_population_summary())
 
-
-def main():
-    parser = ArgumentParser(description="PFSP population-based training for Sheepshead")
-    parser.add_argument(
-        "--episodes",
-        type=int,
-        default=20_000_000,
-        help="Number of training episodes (default: 20,000,000)",
-    )
-    parser.add_argument(
-        "--update-interval",
-        type=int,
-        default=2048,
-        help="Number of transitions between model updates",
-    )
-    parser.add_argument(
-        "--save-interval",
-        type=int,
-        default=5000,
-        help="Number of episodes between checkpoints",
-    )
-    parser.add_argument(
-        "--strategic-eval-interval",
-        type=int,
-        default=10000,
-        help="Number of episodes between strategic evaluations",
-    )
-    parser.add_argument(
-        "--population-add-interval",
-        type=int,
-        default=5000,
-        help="Number of episodes between adding agents to population",
-    )
-    parser.add_argument(
-        "--cross-eval-interval",
-        type=int,
-        default=20000,
-        help="Number of episodes between cross-evaluation tournaments",
-    )
-    parser.add_argument(
-        "--resume", type=str, default=None, help="Model file to resume training from"
-    )
-    parser.add_argument(
-        "--activation",
-        type=str,
-        default="swish",
-        choices=["relu", "swish"],
-        help="Activation function to use (default: swish)",
-    )
-    parser.add_argument(
-        "--initial-checkpoints",
-        nargs="+",
-        default=None,
-        help="Checkpoint patterns to initialize population from",
-    )
-    parser.add_argument(
-        "--schedule-horizon-episodes",
-        type=int,
-        default=None,
-        help="Episode horizon used for entropy/reward-shaping schedules (defaults to --episodes)",
-    )
-
-    args = parser.parse_args()
-
-    # Set random seed for reproducibility
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
-
-    # Ensure matplotlib uses a non-interactive backend
-    plt.switch_backend("Agg")
-
-    train_pfsp(
-        num_episodes=args.episodes,
-        update_interval=args.update_interval,
-        save_interval=args.save_interval,
-        strategic_eval_interval=args.strategic_eval_interval,
-        population_add_interval=args.population_add_interval,
-        cross_eval_interval=args.cross_eval_interval,
-        resume_model=args.resume,
-        activation=args.activation,
-        initial_checkpoints=args.initial_checkpoints,
-        schedule_horizon_episodes=args.schedule_horizon_episodes,
-    )
-
-
-if __name__ == "__main__":
-    main()

@@ -577,6 +577,13 @@ class PPOAgent:
         self.seen_trump_mask_loss_coeff = 0.2
         self.unseen_trump_higher_than_hand_loss_coeff = 0.1
 
+        # Stage C: ISMCTS soft-teacher distillation. On transitions carrying a
+        # confident search target (ESS >= floor) the PPO policy-gradient term is
+        # masked off and the policy is trained by forward-KL distillation toward
+        # pi'; the value loss still runs on every transition. w_distill scales the
+        # distillation term (plan §3: w_distill = 1.0).
+        self.distill_loss_coeff = 1.0
+
         # Storage for trajectory data
         self.reset_storage()
 
@@ -690,33 +697,6 @@ class PPOAgent:
         """Convenience proxy to set per-head temperatures on the actor."""
         self.actor.set_temperatures(pick=pick, partner=partner, bury=bury, play=play)
 
-    def set_partner_call_epsilon(self, eps: float):
-        """Set ε for uniform CALL mixture on partner steps (0.0 disables)."""
-        eps = float(eps)
-        if eps < 0.0:
-            eps = 0.0
-        if eps > 0.2:
-            eps = 0.2
-        self.partner_call_epsilon = eps
-
-    def set_pass_floor_epsilon(self, eps: float):
-        """Set ε for PASS-floor mixing on pick/pass steps (0.0 disables)."""
-        eps = float(eps)
-        if eps < 0.0:
-            eps = 0.0
-        if eps > 0.2:
-            eps = 0.2
-        self.pass_floor_epsilon = eps
-
-    def set_pick_floor_epsilon(self, eps: float):
-        """Set ε for PICK-floor mixing on pick/pass steps (0.0 disables)."""
-        eps = float(eps)
-        if eps < 0.0:
-            eps = 0.0
-        if eps > 0.2:
-            eps = 0.2
-        self.pick_floor_epsilon = eps
-
     def _capture_actor_lr_ratios(self, base_lr: float | None = None) -> list[float]:
         """Return per-param-group LR ratios for the actor optimizer.
 
@@ -765,6 +745,33 @@ class PPOAgent:
         if critic_lr is not None:
             critic_lr = float(critic_lr)
             self.critic_optimizer.param_groups[0]["lr"] = critic_lr
+
+    def set_partner_call_epsilon(self, eps: float):
+        """Set ε for uniform CALL mixture on partner steps (0.0 disables)."""
+        eps = float(eps)
+        if eps < 0.0:
+            eps = 0.0
+        if eps > 0.2:
+            eps = 0.2
+        self.partner_call_epsilon = eps
+
+    def set_pass_floor_epsilon(self, eps: float):
+        """Set ε for PASS-floor mixing on pick/pass steps (0.0 disables)."""
+        eps = float(eps)
+        if eps < 0.0:
+            eps = 0.0
+        if eps > 0.2:
+            eps = 0.2
+        self.pass_floor_epsilon = eps
+
+    def set_pick_floor_epsilon(self, eps: float):
+        """Set ε for PICK-floor mixing on pick/pass steps (0.0 disables)."""
+        eps = float(eps)
+        if eps < 0.0:
+            eps = 0.0
+        if eps > 0.2:
+            eps = 0.2
+        self.pick_floor_epsilon = eps
 
     def _apply_head_epsilon_mix(
         self, probs: torch.Tensor, mask: torch.Tensor
@@ -1013,6 +1020,16 @@ class PPOAgent:
                     ev.get("unseen_trump_higher_than_hand_label", 0.0) or 0.0
                 )
                 mask = self.get_action_mask(ev["valid_actions"], self.action_size)
+                # Stage C: optional ISMCTS soft-teacher target pi'(a) over the
+                # action set, plus whether the search produced a confident (ESS >=
+                # floor) target. When absent the transition trains via plain PG.
+                raw_target = ev.get("search_target")
+                has_search_target = bool(ev.get("has_search_target", False))
+                if has_search_target and raw_target is not None:
+                    search_target = [float(x) for x in raw_target]
+                else:
+                    search_target = [0.0] * self.action_size
+                    has_search_target = False
                 self.events.append(
                     {
                         "kind": "action",
@@ -1033,6 +1050,8 @@ class PPOAgent:
                         ],
                         "seen_trump_mask": [float(x) for x in seen_mask],
                         "unseen_trump_higher_than_hand": float(unseen_higher),
+                        "search_target": search_target,
+                        "has_search_target": has_search_target,
                     }
                 )
             else:
@@ -1145,6 +1164,8 @@ class PPOAgent:
         points_list_all = []
         seen_trump_mask_list_all = []
         unseen_trump_higher_than_hand_list_all = []
+        search_target_list_all = []
+        has_search_list_all = []
 
         for seg_start, seg_end in batch:
             ev_range = [i for i in range(seg_start, seg_end + 1)]
@@ -1163,6 +1184,8 @@ class PPOAgent:
             points_bt = []
             seen_trump_mask_bt = []
             unseen_trump_higher_than_hand_bt = []
+            search_target_bt = []
+            has_search_bt = []
             for i in ev_range:
                 if kinds[i] == "action":
                     act_bt.append(
@@ -1223,6 +1246,19 @@ class PPOAgent:
                             unseen_higher_lbl, dtype=torch.float32, device=device
                         )
                     )
+                    search_tgt_lbl = self.events[i].get("search_target") or [
+                        0.0
+                    ] * self.action_size
+                    search_target_bt.append(
+                        torch.tensor(search_tgt_lbl, dtype=torch.float32, device=device)
+                    )
+                    has_search_bt.append(
+                        torch.tensor(
+                            1.0 if self.events[i].get("has_search_target") else 0.0,
+                            dtype=torch.float32,
+                            device=device,
+                        )
+                    )
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
@@ -1242,6 +1278,12 @@ class PPOAgent:
                     unseen_trump_higher_than_hand_bt.append(
                         torch.tensor(0.0, dtype=torch.float32, device=device)
                     )
+                    search_target_bt.append(
+                        torch.zeros(self.action_size, dtype=torch.float32, device=device)
+                    )
+                    has_search_bt.append(
+                        torch.tensor(0.0, dtype=torch.float32, device=device)
+                    )
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
@@ -1254,6 +1296,8 @@ class PPOAgent:
             unseen_trump_higher_than_hand_list_all.append(
                 torch.stack(unseen_trump_higher_than_hand_bt, dim=0)
             )
+            search_target_list_all.append(torch.stack(search_target_bt, dim=0))
+            has_search_list_all.append(torch.stack(has_search_bt, dim=0))
 
         masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
@@ -1269,6 +1313,8 @@ class PPOAgent:
         unseen_trump_higher_than_hand_bt, _ = self._pad_to_bt(
             unseen_trump_higher_than_hand_list_all, lengths, 0.0
         )
+        search_target_bt, _ = self._pad_to_bt(search_target_list_all, lengths, 0.0)
+        has_search_bt, _ = self._pad_to_bt(has_search_list_all, lengths, 0.0)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
         return (
@@ -1286,6 +1332,8 @@ class PPOAgent:
             points_bt,
             seen_trump_mask_bt,
             unseen_trump_higher_than_hand_bt,
+            search_target_bt,
+            has_search_bt,
         )
 
     def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
@@ -1389,6 +1437,8 @@ class PPOAgent:
         seen_trump_mask_bt,
         unseen_trump_higher_than_hand_logits_bt,
         unseen_trump_higher_than_hand_bt,
+        search_target_bt,
+        has_search_bt,
     ):
         flat_mask = is_action_bt.view(-1)
         if flat_mask.sum() == 0:
@@ -1413,6 +1463,8 @@ class PPOAgent:
             seen_trump_mask_bt.view(-1, seen_trump_mask_bt.size(-1))[flat_mask],
             unseen_trump_higher_than_hand_logits_bt.view(-1)[flat_mask],
             unseen_trump_higher_than_hand_bt.view(-1)[flat_mask],
+            search_target_bt.view(-1, search_target_bt.size(-1))[flat_mask],
+            has_search_bt.view(-1)[flat_mask],
         )
 
     @staticmethod
@@ -1494,6 +1546,8 @@ class PPOAgent:
         partner_idx_t,
         bury_idx_t,
         play_idx_t,
+        search_target_flat,
+        has_search_flat,
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
         probs_all = F.softmax(logits_flat, dim=-1)
@@ -1529,7 +1583,36 @@ class PPOAgent:
         surr1 = ratios * adv_flat
         clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
         pg_loss_elements = -torch.min(surr1, clipped)
+
+        # Stage C policy-gradient mask: on transitions carrying a confident search
+        # target (has_search_flat) the PPO clip term is dropped and the policy is
+        # trained by distillation only (below). On those states PPO's advantage is
+        # dominated by hidden-hand variance and blind to the small EV gaps the
+        # teacher corrects, so the two objectives would fight; we hand each state
+        # to its better teacher (search where we paid for it, PG everywhere else).
+        searched = has_search_flat > 0.5
+        pg_keep = (~searched).to(pg_loss_elements.dtype)
+        pg_loss_elements = pg_loss_elements * pg_keep
         policy_loss = (pg_loss_elements * head_weight).mean()
+
+        # Forward-KL distillation toward pi' on the searched transitions:
+        #   L_distill = mean_searched( sum_a pi'(a) * (log pi'(a) - log pi_theta(a)) )
+        # Reported KL(pi' || pi_theta), pi' entropy and the masked fraction are
+        # detached for logging.
+        if searched.any():
+            pit = search_target_flat[searched]
+            logp_theta = torch.log(probs_all[searched].clamp(min=1e-12))
+            logp_it = torch.log(pit.clamp(min=1e-12))
+            distill_per = (pit * (logp_it - logp_theta)).sum(dim=1)
+            distill_loss = distill_per.mean()
+            with torch.no_grad():
+                teacher_kl = distill_per.mean()
+                pi_target_entropy = -(pit * logp_it).sum(dim=1).mean()
+        else:
+            distill_loss = logits_flat.new_zeros(())
+            teacher_kl = logits_flat.new_zeros(())
+            pi_target_entropy = logits_flat.new_zeros(())
+        masked_fraction = searched.to(torch.float32).mean()
 
         returns_target = returns_flat.view(-1)
         values_old = values_flat.detach()
@@ -1546,6 +1629,12 @@ class PPOAgent:
             critic_loss,
             approx_kl_t,
             (pick_entropy, partner_entropy, bury_entropy, play_entropy),
+            distill_loss,
+            {
+                "teacher_kl": teacher_kl,
+                "pi_target_entropy": pi_target_entropy,
+                "masked_fraction": masked_fraction,
+            },
         )
 
     def update(self, epochs=6, batch_size=256):
@@ -1630,6 +1719,11 @@ class PPOAgent:
         points_loss_count = 0
         secret_loss_sum = 0.0
         secret_loss_count = 0
+        distill_loss_sum = 0.0
+        teacher_kl_sum = 0.0
+        pi_target_entropy_sum = 0.0
+        masked_fraction_sum = 0.0
+        distill_batches = 0
 
         for _ in range(epochs):
             if not segments:
@@ -1656,6 +1750,8 @@ class PPOAgent:
                     points_bt,
                     seen_trump_mask_bt,
                     unseen_trump_higher_than_hand_bt,
+                    search_target_bt,
+                    has_search_bt,
                 ) = self._build_minibatch_tensors(batch, states, masks_t, kinds)
 
                 # Vectorized forward
@@ -1691,6 +1787,8 @@ class PPOAgent:
                     seen_trump_mask_bt,
                     unseen_trump_higher_than_hand_logits_bt,
                     unseen_trump_higher_than_hand_bt,
+                    search_target_bt,
+                    has_search_bt,
                 )
                 if flat is None:
                     continue
@@ -1712,6 +1810,8 @@ class PPOAgent:
                     seen_trump_mask_labels_flat,
                     unseen_trump_higher_than_hand_logits_flat,
                     unseen_trump_higher_than_hand_labels_flat,
+                    search_target_flat,
+                    has_search_flat,
                 ) = flat
 
                 # Record PICK/PASS advantages across minibatches
@@ -1731,6 +1831,8 @@ class PPOAgent:
                     critic_loss,
                     approx_kl_t,
                     (pick_entropy, partner_entropy, bury_entropy, play_entropy),
+                    distill_loss,
+                    distill_metrics,
                 ) = self._actor_critic_losses(
                     logits_flat,
                     mask_flat,
@@ -1743,11 +1845,20 @@ class PPOAgent:
                     partner_idx_tensor_static,
                     bury_idx_tensor_static,
                     play_idx_tensor_static,
+                    search_target_flat,
+                    has_search_flat,
                 )
                 last_approx_kl = float(approx_kl_t.item())
 
                 value_loss_sum += critic_loss.detach().item()
                 value_loss_count += 1
+
+                # Stage C distillation accumulation
+                distill_loss_sum += distill_loss.detach().item()
+                teacher_kl_sum += distill_metrics["teacher_kl"].item()
+                pi_target_entropy_sum += distill_metrics["pi_target_entropy"].item()
+                masked_fraction_sum += distill_metrics["masked_fraction"].item()
+                distill_batches += 1
 
                 # Entropy accumulation
                 ent_pick_sum += pick_entropy.detach().item()
@@ -1807,6 +1918,7 @@ class PPOAgent:
                 t_bwd = time.time()
                 total_loss = (
                     actor_loss
+                    + self.distill_loss_coeff * distill_loss
                     + self.value_loss_coeff * critic_loss
                     + self.win_loss_coeff * win_loss
                     + self.return_loss_coeff * return_loss
@@ -1881,6 +1993,13 @@ class PPOAgent:
                 if pass_adv_count > 0
                 else 0.0,
                 "pass_count": pass_adv_count,
+            },
+            "distill": {
+                "loss": self.distill_loss_coeff
+                * (distill_loss_sum / max(distill_batches, 1)),
+                "teacher_kl": teacher_kl_sum / max(distill_batches, 1),
+                "pi_target_entropy": pi_target_entropy_sum / max(distill_batches, 1),
+                "pg_masked_fraction": masked_fraction_sum / max(distill_batches, 1),
             },
             "critic_losses": {
                 "value": self.value_loss_coeff

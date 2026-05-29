@@ -31,127 +31,8 @@ from training_utils import (
     compute_known_points_rel,
     compute_seen_trump_mask,
     compute_any_unseen_trump_higher_than_hand,
+    analyze_strategic_decisions,
 )
-
-
-def analyze_strategic_decisions(agent, num_samples=100):
-    """Analyze strategic decision quality instead of random opponent evaluation."""
-
-    # Trump leading analysis
-    trump_leads = {
-        "picker_team": 0,
-        "picker_total": 0,
-        "defender_team": 0,
-        "defender_total": 0,
-    }
-
-    # Bury quality analysis
-    bury_quality = {"good_burys": 0, "bad_burys": 0, "total_burys": 0}
-
-    # Pick decision correlation with hand strength
-    pick_decisions = []
-    hand_strengths = []
-
-    for episode in range(num_samples):
-        game = Game(partner_selection_mode=get_partner_selection_mode(episode))
-        # Ensure recurrent state is fresh for analysis episode
-        agent.reset_recurrent_state()
-
-        # Analyze pick decisions
-        initial_player = game.players[0]
-        hand_strength = sum(
-            3 if c[0] == "Q" else 2 if c[0] == "J" else 1 if c in TRUMP else 0
-            for c in initial_player.hand
-        )
-
-        sdict = initial_player.get_state_dict()
-        initial_actions = initial_player.get_valid_action_ids()
-        with torch.no_grad():
-            action_probs, _ = agent.get_action_probs_with_logits(
-                sdict, initial_actions, player_id=initial_player.position
-            )
-
-        pick_prob = action_probs[0, ACTION_IDS["PICK"] - 1].item()
-        pick_decisions.append(pick_prob)
-        hand_strengths.append(hand_strength)
-
-        # Play full game to analyze trump leading and bury decisions
-        while not game.is_done():
-            for player in game.players:
-                actions = player.get_valid_action_ids()
-
-                if actions:
-                    sdict = player.get_state_dict()
-                    with torch.no_grad():
-                        action_probs, _ = agent.get_action_probs_with_logits(
-                            sdict, actions, player_id=player.position
-                        )
-                    action = (
-                        torch.distributions.Categorical(action_probs).sample().item()
-                        + 1
-                    )
-                    action_name = ACTION_LOOKUP[action]
-
-                    # Analyze trump leading
-                    if (
-                        "PLAY" in action_name
-                        and game.play_started
-                        and game.cards_played == 0
-                    ):
-                        card = action_name.split()[-1]
-                        is_trump_lead = card in TRUMP
-                        is_picker_team = (
-                            player.is_picker
-                            or player.is_partner
-                            or player.is_secret_partner
-                        )
-
-                        if is_picker_team:
-                            trump_leads["picker_total"] += 1
-                            if is_trump_lead:
-                                trump_leads["picker_team"] += 1
-                        else:
-                            trump_leads["defender_total"] += 1
-                            if is_trump_lead:
-                                trump_leads["defender_team"] += 1
-
-                    # Analyze bury decisions
-                    if "BURY" in action_name:
-                        card = action_name.split()[-1]
-                        bury_quality["total_burys"] += 1
-
-                        # Good bury: fail
-                        if card not in TRUMP:
-                            bury_quality["good_burys"] += 1
-                        else:
-                            bury_quality["bad_burys"] += 1
-
-                    player.act(action)
-
-    # Calculate metrics
-    pick_hand_correlation = (
-        np.corrcoef(hand_strengths, pick_decisions)[0, 1]
-        if len(hand_strengths) > 1
-        else 0
-    )
-
-    picker_trump_rate = (
-        trump_leads["picker_team"] / max(trump_leads["picker_total"], 1) * 100
-    )
-    defender_trump_rate = (
-        trump_leads["defender_team"] / max(trump_leads["defender_total"], 1) * 100
-    )
-
-    bury_quality_rate = (
-        bury_quality["good_burys"] / max(bury_quality["total_burys"], 1) * 100
-    )
-
-    return {
-        "pick_hand_correlation": pick_hand_correlation,
-        "picker_trump_rate": picker_trump_rate,
-        "defender_trump_rate": defender_trump_rate,
-        "bury_quality_rate": bury_quality_rate,
-    }
 
 
 def train_ppo(
@@ -161,9 +42,14 @@ def train_ppo(
     strategic_eval_interval=10000,
     resume_model=None,
     activation="swish",
+    run_name="selfplay_ppo",
 ):
     """
     PPO training with strategic evaluation metrics.
+
+    All artifacts (checkpoints, best/final model, plots) are written under
+    runs/<run_name>/ so nothing collides with committed/frozen files at the
+    repo root.
     """
     print("🚀 Starting PPO training...")
     print("=" * 60)
@@ -229,8 +115,8 @@ def train_ppo(
 
     # Running picker baseline for reward shaping
 
-    # Create checkpoint directory with activation function suffix
-    checkpoint_dir = f"checkpoints_{activation}"
+    # All artifacts live under the run dir (runs/<run_name>/).
+    checkpoint_dir = os.path.join("runs", run_name)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     start_time = time.time()
@@ -617,7 +503,7 @@ def train_ppo(
             # We want the absolute value to be as small as possible
             if current_team_diff < best_team_difference:
                 best_team_difference = current_team_diff
-                agent.save(f"best_{activation}_ppo.pt")
+                agent.save(os.path.join(checkpoint_dir, f"best_{activation}.pt"))
                 print(
                     f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved."
                 )
@@ -667,11 +553,14 @@ def train_ppo(
                 f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]"
             )
 
-    agent.save(f"final_{activation}_ppo.pt")
+    agent.save(os.path.join(checkpoint_dir, f"final_{activation}.pt"))
 
     # Save final enhanced training plot
     if len(training_data["episodes"]) > 0:
-        save_training_plot(training_data, f"final_{activation}_training.png")
+        save_training_plot(
+            training_data,
+            os.path.join(checkpoint_dir, f"final_{activation}_training.png"),
+        )
 
     total_time = time.time() - start_time
     print("\n🎉 Training completed!")
@@ -742,6 +631,12 @@ def main():
         choices=["relu", "swish"],
         help="Activation function to use (default: swish)",
     )
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        default="selfplay_ppo",
+        help="Run name; all artifacts go under runs/<run-name>/ (default: selfplay_ppo)",
+    )
 
     args = parser.parse_args()
 
@@ -760,6 +655,7 @@ def main():
         args.strategic_eval_interval,
         args.resume,
         args.activation,
+        args.run_name,
     )
 
 

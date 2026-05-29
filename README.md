@@ -129,6 +129,42 @@ npm run typecheck  # TypeScript type check (tsc --noEmit)
 
 ---
 
+## Training the AI
+
+The trainers share a common runtime (`pfsp_runtime.py`) and hyperparameters
+(`config.py`). All generated artifacts for a population run — checkpoints, the
+final model, plots, CSVs, and the per-run opponent population — are written under
+`runs/<run-name>/` (gitignored).
+
+### Step 1 — Self-play PPO (bootstrap)
+
+Train a single agent by self-play. This is the starting point; it needs no
+population. Defaults to 100k episodes and writes periodic snapshots under
+`runs/selfplay_ppo/`:
+
+```bash
+uv run train_selfplay_ppo.py --episodes 100000
+```
+
+### Step 2 — Population-based PFSP (shaped baseline)
+
+PFSP trains one agent against a diverse population of opponents ranked by
+OpenSkill. The usual practice is to **seed the initial population from the
+self-play snapshots** produced in step 1, via `--initial-checkpoints` (a glob of
+checkpoint files):
+
+```bash
+uv run train_pfsp_ppo.py \
+  --initial-checkpoints "runs/selfplay_ppo/swish_checkpoint_*.pt" \
+  --run-name pfsp_ppo
+```
+
+Artifacts (checkpoints, `final_swish.pt`, plots, CSVs, and the growing
+population) are written under `runs/pfsp_ppo/`. Pass `--population-dir` to reuse
+an existing seeded pool, or `--resume <model.pt>` to continue a run.
+
+---
+
 ## Upgrading Dependencies
 
 ### Python
