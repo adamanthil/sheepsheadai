@@ -230,28 +230,160 @@ class ISMCTSTeacher:
         return self._finalize(root, valid_real, head, len(pool), ess)
 
     def _build_pool(self, real_game, observer, forced_public, k):
-        """Sample up to ``k`` determinized worlds, each rebuilt to the root by
-        forced replay. Returns a list of ``(game_at_root, memory_snapshot,
-        log_w)``; ``log_w`` is the scheme-B bidding log-likelihood."""
+        """Sample up to ``k`` determinized worlds and rebuild all of them to the
+        root by a single LOCKSTEP forced replay. Returns a list of
+        ``(game_at_root, memory_snapshot, log_w)``; ``log_w`` is the scheme-B
+        bidding log-likelihood.
+
+        Every world replays the *identical* public action sequence
+        (``forced_public``) and the same per-decision structure (the private
+        bury/under count is fixed by the public record), differing only in the
+        hidden cards. So instead of replaying each world separately (k batch-1
+        encoder calls per decision — the dominant search cost; see profiling), we
+        step all worlds together and batch the encoder/actor over the k worlds at
+        each decision point. The per-world sequential path is kept as
+        ``_build_world`` (the reference the batched build is validated against)."""
         cfg = self.config
-        pool = []
+        deals = []
         for _ in range(k):
             try:
-                deal = real_game.sample_determinization(
-                    observer, self._rng, max_tries=cfg.det_max_tries
+                deals.append(
+                    real_game.sample_determinization(
+                        observer, self._rng, max_tries=cfg.det_max_tries
+                    )
                 )
             except RuntimeError:
                 self.fail["determinize"] += 1
-                continue
-            world, log_w = self._build_world(real_game, deal, forced_public, observer)
-            if world is None:
-                continue
-            mem = {
-                pid: t.detach().clone()
-                for pid, t in self.agent._player_memories.items()
-            }
-            pool.append((world, mem, log_w))
-        return pool
+        if not deals:
+            return []
+        return self._build_worlds_batched(real_game, deals, forced_public, observer)
+
+    def _fresh_world(self, real_game, deal):
+        """Fresh Game with the determinized hands + blind installed (pre-replay)."""
+        from sheepshead import Game
+
+        g = Game(partner_selection_mode=real_game.partner_mode_flag)
+        for s in range(1, 6):
+            h = deal["initial_hands"][s][:]
+            g.players[s - 1].hand = h
+            g.players[s - 1].initial_hand = h[:]
+        g.blind = deal["blind"][:]
+        return g
+
+    def _encode_seat_batched(self, games, seat, mems):
+        """Batch-encode ``seat``'s current state across all ``games`` and advance
+        that seat's (n, 256) recurrent memory. Returns (states, encoder_out)."""
+        states = [g.players[seat - 1].get_state_dict() for g in games]
+        enc = self.agent.encoder.encode_batch(states, memory_in=mems[seat], device=DEV)
+        mems[seat] = enc["memory_out"].detach()
+        return states, enc
+
+    def _actor_probs_batched(self, enc, states, valid_list):
+        """Post-mixture action probabilities (n, A) for a batched decision —
+        mirrors ``get_action_probs_with_logits`` but over n worlds at once."""
+        masks = torch.stack(
+            [self.agent.get_action_mask(v, self.action_size) for v in valid_list]
+        ).to(DEV)
+        hand_ids = torch.as_tensor(
+            np.stack([s["hand_ids"] for s in states]), dtype=torch.long, device=DEV
+        )
+        with torch.no_grad():
+            probs, _ = self.agent.actor.forward_with_logits(
+                enc, masks, hand_ids, self.agent.encoder.card
+            )
+            probs = self.agent._apply_head_epsilon_mix(probs, masks)
+        return probs
+
+    def _after_action_batched(self, games, mems):
+        """End-of-trick observe for every seat, batched over worlds (the plays are
+        forced identically, so trick completion is synchronized across worlds)."""
+        if not games[0].was_trick_just_completed:
+            return
+        for s in range(1, 6):
+            states = [g.players[s - 1].get_last_trick_state_dict() for g in games]
+            enc = self.agent.encoder.encode_batch(
+                states, memory_in=mems[s], device=DEV
+            )
+            mems[s] = enc["memory_out"].detach()
+
+    def _build_worlds_batched(self, real_game, deals, forced_public, observer):
+        """Lockstep batched analogue of ``_build_world`` over many worlds at once.
+
+        Drives control flow off world 0 (all worlds share the public/private
+        decision structure); the per-world legality/desync guards are kept as hard
+        errors because ``sample_determinization`` only returns consistent deals, so
+        a divergence would be a determinizer bug, not an expected miss."""
+        from collections import deque
+
+        n = len(deals)
+        games = [self._fresh_world(real_game, d) for d in deals]
+        det_buries = [deque(d["bury"]) for d in deals]
+        det_unders = [d["under_card"] for d in deals]
+        pub = deque(forced_public)
+        mems = {s: torch.zeros((n, 256), device=DEV) for s in range(1, 6)}
+        log_w = torch.zeros(n, device=DEV)
+
+        guard = 0
+        while True:
+            guard += 1
+            if guard > 6000:
+                self.fail["guard"] += 1
+                raise RuntimeError("batched pool build guard exceeded")
+            acted = False
+            for pos in range(1, 6):
+                ref = games[0].players[pos - 1]
+                valid0 = ref.get_valid_action_ids()
+                while valid0:
+                    # Root reached: public record exhausted and it is the
+                    # observer's turn. Snapshot per-world memory and return; the
+                    # observer's own root decision is left unencoded (the simulate
+                    # step encodes it).
+                    if not pub and pos == observer:
+                        pool = []
+                        for i, g in enumerate(games):
+                            if g.history != real_game.history:
+                                self.fail["hist_mismatch"] += 1
+                                continue
+                            mem_i = {s: mems[s][i].detach().clone() for s in range(1, 6)}
+                            pool.append((g, mem_i, float(log_w[i].item())))
+                        return pool
+
+                    if any(_is_private_action(a) for a in valid0):
+                        # Forced bury/under: encode (advance memory), then act each
+                        # world with its own determinized card. Not weighted.
+                        self._encode_seat_batched(games, pos, mems)
+                        for i, g in enumerate(games):
+                            vi = g.players[pos - 1].get_valid_action_ids()
+                            aid = self._forced_private(vi, det_buries[i], det_unders[i])
+                            if aid is None or aid not in vi:
+                                self.fail["bad_private"] += 1
+                                raise RuntimeError("batched replay: bad forced private action")
+                            g.players[pos - 1].act(aid)
+                    else:
+                        if not pub or pub[0][0] != pos:
+                            self.fail["pub_desync"] += 1
+                            raise RuntimeError("batched replay: public action desync")
+                        _, aid = pub.popleft()
+                        states, enc = self._encode_seat_batched(games, pos, mems)
+                        # Weight bidding actions only (scheme B); plays are forced
+                        # but never weighted. The actor head runs only here.
+                        if not _is_play_action(aid):
+                            valids = [g.players[pos - 1].get_valid_action_ids() for g in games]
+                            probs = self._actor_probs_batched(enc, states, valids)
+                            p_a = probs[:, aid - 1].clamp_min(1e-8)
+                            log_w = log_w + torch.log(p_a)
+                        for g in games:
+                            if aid not in g.players[pos - 1].get_valid_action_ids():
+                                self.fail["bad_public"] += 1
+                                raise RuntimeError("batched replay: bad forced public action")
+                            g.players[pos - 1].act(aid)
+
+                    acted = True
+                    self._after_action_batched(games, mems)
+                    valid0 = ref.get_valid_action_ids()
+            if not acted:
+                self.fail["no_acted"] += 1
+                raise RuntimeError("batched replay: no seat acted")
 
     def _restore_pool_memory(self, mem):
         self.agent._player_memories = {
