@@ -7,9 +7,11 @@ transitions; PPO owns the rest). No reward shaping or epsilon-floor controllers
 — the search teacher replaces hand-tuned exploration. All machinery lives in
 pfsp_runtime.py; hyperparameters in config.py.
 
-Bidding-head search is gated off by default (only the PLAY head is searched);
-see ISMCTS_Overview_And_Roadmap.md §4 (P4) for the pre-pick determinizer that
-enables PICK-head search.
+All heads are searchable (P4 added the pre-pick determinizer for PICK/PASS, plus
+a leaster determinizer); the bidding heads default to f=1.0 (cheap shallow roots;
+the collapse-prone decisions) and play to f=0.10. Leaster play decisions are
+searched at the play frac (the pass->leaster EV depends on good leaster play). See
+ISMCTS_Overview_And_Roadmap.md §4-5.
 """
 
 import random
@@ -96,8 +98,27 @@ def main():
         default=None,
         help="Population directory (default: runs/<run-name>/population). Point at a seeded pool to reuse it.",
     )
-    # Search knobs (see config.SearchConfig). Bidding heads gated off pending the
-    # pre-pick determinizer (P4); only the PLAY head is searched by default.
+    # Search knobs (see config.SearchConfig). All heads searchable as of P4 (the
+    # pre-pick determinizer). Bidding heads default to 1.0 (cheap, shallow roots;
+    # the collapse-prone decisions); play to 0.10.
+    parser.add_argument(
+        "--f-pick",
+        type=float,
+        default=1.0,
+        help="Per-decision probability of searching a PICK/PASS decision (default: 1.0)",
+    )
+    parser.add_argument(
+        "--f-partner",
+        type=float,
+        default=1.0,
+        help="Per-decision probability of searching a PARTNER decision (default: 1.0)",
+    )
+    parser.add_argument(
+        "--f-bury",
+        type=float,
+        default=1.0,
+        help="Per-decision probability of searching a BURY decision (default: 1.0)",
+    )
     parser.add_argument(
         "--f-play",
         type=float,
@@ -129,7 +150,12 @@ def main():
 
     # ExIt hybrid: terminal-only reward + ISMCTS distillation, no shaping/controllers.
     search = SearchConfig(
-        fracs={"pick": 0.0, "partner": 0.0, "bury": 0.0, "play": args.f_play},
+        fracs={
+            "pick": args.f_pick,
+            "partner": args.f_partner,
+            "bury": args.f_bury,
+            "play": args.f_play,
+        },
         t_full=args.t_full,
         d_short=args.d_short,
     )

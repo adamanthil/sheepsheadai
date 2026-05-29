@@ -128,16 +128,23 @@ The frozen pure-PPO baseline lives in `pfsp_population_ppo` /
   PFSP trainers work identically to today, but refactored for the future.
 
 **ExIt-specific work (after the commit):**
-- **P3** — create the hybrid ExIt entry point on the shared runtime
-  (`reward_mode = terminal`, teacher attached, no controllers). Re-run the Stage C
-  smoke + leaster tests.
-- **P4** — pre-pick **determinizer extension** (`sheepshead.py`): sample the 4
-  hidden hands + 2 blind with no picker/bury/voids, scheme-B-weighted by the
-  passes observed so far, so the **PICK head can be searched** — the structural
-  fix for the bidding-collapse risk. Verify PARTNER/BURY search already work (a
-  picker exists there, so only PICK and leasters hit `picker == 0`). Validate the
-  extended determinizer the Stage-A way (legality + replay). Then enable the
-  relevant `SearchConfig.fracs`.
+- **P3 (done)** — created the hybrid ExIt entry point on the shared runtime
+  (`reward_mode = terminal`, teacher attached, no controllers); committed
+  `15229d7`. Stage C smoke + leaster tests re-run green.
+- **P4 (done)** — pre-pick **determinizer extension** (`Game._sample_prepick_deal`):
+  with no picker, no plays (no voids), and no called card, a pre-pick info set is
+  an unconstrained partition of the unseen 26 cards into the 4 hidden 6-card hands
+  + the 2-card blind (passing is always legal, so passers carry no information) —
+  one shuffle, no rejection, `bury=[]`/`under=None`. `sample_determinization`
+  dispatches to it when `not picker and not is_leaster`; the existing forced-replay
+  (`_build_world`) already drained the recorded passes and stopped at the observer,
+  so the **PICK head is now searchable**. PARTNER/BURY were already covered by the
+  post-pick determinizer (a picker exists). Leasters are also determinizable
+  (`_sample_leaster_deal`) and now searched — see §5. Validated Stage-A-style
+  (`stage_c_bidding_search_check.py`): pre-pick redeals legal (full-deck partition,
+  counts, observer hand preserved, empty bury/under), and `teacher.search` returns
+  a valid `pi'` on all three bidding heads with no `picker == 0` failure. Bidding
+  `SearchConfig.fracs` defaults flipped to 1.0 (cheap shallow roots), play 0.10.
 
 **Cross-cutting items (do not skip):**
 - **Throughput is a prerequisite for a from-scratch run** (~8 s/episode at the
@@ -161,10 +168,15 @@ The frozen pure-PPO baseline lives in `pfsp_population_ppo` /
 
 ## 5. Known scope boundaries / future work
 
-- **Leaster *play-state* search stays out of scope** even after P4: a leaster has
-  no picker, so the determinizer cannot build it. The pick decision's rollout
-  still models the leaster *outcome*; we just don't search decisions *inside* a
-  leaster (acceptable — leasters are less strategically critical).
+- **Leaster play-state search IS in scope** (`Game._sample_leaster_deal`, P4
+  follow-up). It was briefly excluded, but with the per-trick reward + leaster
+  bonus gone the pass->leaster branch the bidding EV rides on is *only*
+  win-likelihood-driven if the agent plays leasters well — which needs a teacher
+  signal on leaster play decisions. A leaster has no picker / called card /
+  bury / under, so determinizing it is a void-aware partition of the unseen pool
+  into the 4 hidden hands + the 2-card face-down blind (forced plays + voids;
+  no importance weighting — there were no bidding choices to weight). The leaster
+  guard in the play loop was removed accordingly.
 - **Phase-2 (regress V toward the search root's backed-up value)** is deferred
   until the ExIt loop is validated — the AlphaZero-style virtuous loop and the
   first step toward dropping PPO entirely.

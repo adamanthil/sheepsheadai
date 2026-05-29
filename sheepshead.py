@@ -713,9 +713,100 @@ class Game:
         target = f"{called} UNDER" if self.is_called_under else called
         return target in get_callable_cards(eight)
 
+    def _sample_leaster_deal(self, observer_position, rng, max_tries):
+        """Determinize a leaster information set (everyone passed; no picker).
+
+        A leaster has no picker, no called card, and no bury / under: the 2-card
+        blind sits face down (its points go to the first-trick winner) and is
+        never played. So the only hidden state is the four non-observer seats'
+        remaining hands plus the blind, drawn from the unseen pool subject to the
+        same two play constraints as the post-pick sampler:
+
+          * **Forced plays** — every card a seat already played is dealt back into
+            that seat's reconstructed hand, so replaying the public plays stays
+            legal.
+          * **Play-revealed voids** — a seat known void in a suit is dealt no card
+            of that suit.
+
+        There is no picker reconstruction, no called-ace placement, and no
+        importance weighting (no bidding choices to weight — everyone passed), so
+        this is just a void-aware partition: greedy fill with rejection over
+        ``max_tries`` reshuffles (a void may make a given shuffle unsatisfiable).
+        Returns the same dict shape as ``sample_determinization`` with
+        ``bury=[]`` / ``under_card=None``; raises if no consistent deal is found.
+        """
+        obs = observer_position
+        observer = self.players[obs - 1]
+        played_by = self._cards_played_by_seat()
+        voids = self._play_revealed_voids()
+        known = set(observer.initial_hand) | {
+            c for cards in played_by.values() for c in cards
+        }
+        unseen = [c for c in DECK if c not in known]
+        fill_seats = [s for s in range(1, 6) if s != obs]
+        counts = {s: len(self.players[s - 1].hand) for s in fill_seats}
+
+        for _ in range(max_tries):
+            pool = unseen[:]
+            rng.shuffle(pool)
+            cur = {}
+            ok = True
+            for s in fill_seats:
+                drawn, pool = self._draw_avoiding(pool, counts[s], voids[s])
+                if drawn is None:
+                    ok = False
+                    break
+                cur[s] = drawn
+            # Leftover must be exactly the 2-card blind.
+            if not ok or len(pool) != 2:
+                continue
+            initial_hands = {}
+            for s in range(1, 6):
+                if s == obs:
+                    initial_hands[s] = list(observer.initial_hand)
+                else:
+                    initial_hands[s] = played_by[s] + cur[s]
+            return {
+                "initial_hands": initial_hands,
+                "blind": pool,
+                "bury": [],
+                "under_card": None,
+            }
+        raise RuntimeError(
+            "Could not sample a consistent leaster determinization within max_tries"
+        )
+
+    def _sample_prepick_deal(self, observer_position, rng):
+        """Determinize a pre-pick (PICK / PASS) information set, where no seat has
+        picked yet. Nothing has been played (no voids), no card has been called
+        (no called-ace placement), no picker exists (no bury / under), and
+        passing is always legal — so earlier passers' hands carry no information.
+        The only hidden state is how the unseen 26 cards partition into the four
+        non-observer 6-card hands and the 2-card blind. Every partition is
+        consistent, so one void-free shuffle always succeeds (no rejection)."""
+        obs = observer_position
+        observer = self.players[obs - 1]
+        unseen = [c for c in DECK if c not in set(observer.initial_hand)]
+        rng.shuffle(unseen)
+
+        initial_hands = {obs: list(observer.initial_hand)}
+        i = 0
+        for s in range(1, 6):
+            if s == obs:
+                continue
+            n = len(self.players[s - 1].hand)
+            initial_hands[s] = unseen[i : i + n]
+            i += n
+        return {
+            "initial_hands": initial_hands,
+            "blind": unseen[i : i + 2],
+            "bury": [],
+            "under_card": None,
+        }
+
     def sample_determinization(self, observer_position, rng, max_tries=2000):
         """Sample a full deal consistent with an observer's information set at the
-        current decision point (any trick, bidding complete).
+        current decision point (any trick, including the pre-pick bidding node).
 
         Returns a dict::
 
@@ -749,7 +840,24 @@ class Game:
         Subsumes the old trick-0-only sampler (no plays yet -> no voids, all
         counts 6). Greedy void-aware fill with rejection over ``max_tries``
         reshuffles; raises if no consistent deal is found.
+
+        The **pre-pick** node (no picker yet, ``not is_leaster``) is dispatched to
+        a dedicated unconstrained sampler: there is no picker, called card, or
+        play record to honour, so any partition of the unseen pool is consistent
+        and ``bury`` / ``under_card`` come back empty (the picker's 8 is only
+        resolved once someone picks during forward replay).
+
+        **Leasters** (everyone passed; no picker) are dispatched to a dedicated
+        sampler: with no picker there is no pre-bury 8 / bury / under to
+        reconstruct, just the four hidden hands + the face-down 2-card blind,
+        drawn subject to forced plays + voids. Searching leaster play decisions is
+        what keeps the pass->leaster branch the bidding EV relies on (terminal
+        reward only, no leaster bonus) well-supervised.
         """
+        if self.is_leaster:
+            return self._sample_leaster_deal(observer_position, rng, max_tries)
+        if not self.picker:
+            return self._sample_prepick_deal(observer_position, rng)
         ctx = self._determinization_context(observer_position)
         for _ in range(max_tries):
             deal = self._sample_deal_attempt(ctx, rng)

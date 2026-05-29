@@ -20,14 +20,20 @@ class SearchConfig:
     """ISMCTS soft-teacher search controls (used only by the ExIt hybrid trainer).
 
     ``fracs`` is the per-head probability that a training-agent decision is
-    searched. The plan's target is pick/partner/bury = 1.0, play ≈ 0.10–0.15, but
-    the bidding heads are **gated off (0.0) by default**: ``Game.sample_determin-
-    ization`` only supports post-bidding states (it assumes a picker exists), so
-    searching pick/partner/bury needs a determinizer extension to pre-pick states
-    first (see ISMCTS_Overview_And_Roadmap.md §4 P4). Until then only the PLAY head
-    (the validated path, where the trick-0 leak the teacher corrects lives) is
-    searched. The leaster fix does NOT depend on bidding-head search: terminal-only
-    return already makes pass->leaster EV win-likelihood driven.
+    searched. The bidding heads default to **1.0** and play to **0.10**: the
+    bidding decisions are the most collapse-prone (always-pick / always-pass /
+    always-call), so searching them every time is the principled replacement for
+    the stripped shaping + epsilon-floor crutches, and they are cheap — shallow
+    ``max_depth=1`` roots, at most a couple per game for the training agent —
+    relative to the deep (``max_depth=6``) play tree, which only needs a thin
+    correction for the trick-0 leak. Pre-pick (PICK / PASS) determinization is
+    supported via ``Game._sample_prepick_deal`` (P4); PARTNER / BURY ride the
+    post-pick determinizer (a picker exists); leasters via
+    ``Game._sample_leaster_deal`` (no picker / called card / bury). Leaster PLAY
+    decisions ARE searched (head "play", at the play frac): with the per-trick
+    reward + leaster bonus gone, the pass->leaster branch the bidding EV rides on
+    is only win-likelihood-driven if the agent plays leasters well, which needs a
+    teacher signal there.
 
     ``t_full`` / ``d_short`` set the trick-indexed rollout-depth schedule: roll to
     (near) terminal for tricks ``0..t_full`` where the critic is blind to the
@@ -37,7 +43,7 @@ class SearchConfig:
     """
 
     fracs: dict = field(
-        default_factory=lambda: {"pick": 0.0, "partner": 0.0, "bury": 0.0, "play": 0.10}
+        default_factory=lambda: {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.10}
     )
     t_full: int = 1
     d_short: int = 2

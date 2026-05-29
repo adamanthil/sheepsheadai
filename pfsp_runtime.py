@@ -224,12 +224,16 @@ def play_population_game(
                             bury_weight=weights["bury"],
                             play_weight=weights["play"],
                         )
-                    elif search_on and not game.is_leaster:
+                    elif search_on:
                         # ISMCTS soft-teacher target on a per-head fraction of
-                        # decisions (teacher-only; agent acted on-policy above).
-                        # Leasters are skipped: sample_determinization assumes a
-                        # picker exists, and leaster EV rides on the terminal
-                        # reward. search() is memory-neutral (snapshots/restores).
+                        # decisions (teacher-only; agent acted on-policy above;
+                        # search() is memory-neutral — snapshots/restores). Leaster
+                        # PLAY decisions ARE searched: with the per-trick reward +
+                        # leaster bonus gone, the pass->leaster branch the bidding
+                        # EV rides on is only well-valued if the agent plays
+                        # leasters well, which needs a teacher signal there.
+                        # sample_determinization handles the no-picker leaster
+                        # state (Game._sample_leaster_deal).
                         head = _search_head(valid_actions)
                         frac = search_config.fracs.get(head, 0.0)
                         if frac > 0.0 and det_rng.random() < frac:
