@@ -159,7 +159,9 @@ The frozen pure-PPO baseline lives in `pfsp_population_ppo` /
   diagnostics (teacher_kl, ESS-abort fraction, pg_masked_fraction, pi′ entropy);
   and the **PG-mask vs additive-form A/B**.
 - **A committed regression test** for the shared `pfsp_runtime` + distillation /
-  PG-mask path (the current smokes are one-off and uncommitted).
+  PG-mask path — DONE: `test_ismcts_exit_regression.py` (model-free, deterministic;
+  Game logic, determinizer legality+replay, batched-pool==sequential, search
+  contract, terminal reward, distill/PG-mask + dormant control).
 - **Decide the dormant epsilon plumbing's fate** in `ppo.py` (excise vs keep)
   during the maintainability pass.
 - **Periodic ExIt-vs-PPO cross-eval** so the comparison is actually measured.
