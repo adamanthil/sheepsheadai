@@ -140,6 +140,14 @@ def play_population_game(
     )
     # Public (seat, action_id) record for the teacher's forced replay (search only).
     forced_public: list[tuple[int, int]] = []
+    # Per-game ISMCTS search diagnostics (terminal/ExIt mode), aggregated by head:
+    # how many decisions were searched, how many cleared the ESS gate (ok), and the
+    # summed ESS / pi' entropy for averaging. Attached to training_agent_data so the
+    # driver can window + log them (ESS-abort fraction, target sharpness).
+    search_diag = {
+        h: {"n": 0, "ok": 0, "ess_sum": 0.0, "ent_sum": 0.0}
+        for h in ("pick", "partner", "bury", "play")
+    }
 
     # Reset recurrent states for all agents
     training_agent.reset_recurrent_state()
@@ -258,9 +266,19 @@ def play_population_game(
                                 det_rng,
                                 d_rollout=d_roll,
                             )
-                            if res["ok"] and float(res["pi"].sum()) > 0.0:
+                            used = res["ok"] and float(res["pi"].sum()) > 0.0
+                            if used:
                                 transition["search_target"] = res["pi"].tolist()
                                 transition["has_search_target"] = True
+                            # Diagnostics: ESS-abort fraction and pi' sharpness.
+                            d = search_diag[head]
+                            d["n"] += 1
+                            d["ess_sum"] += float(res["ess"])
+                            if used:
+                                d["ok"] += 1
+                                pi = res["pi"]
+                                nz = pi[pi > 0]
+                                d["ent_sum"] += float(-(nz * np.log(nz)).sum())
 
                 else:
                     # Opponent action (stochastic for diversity)
@@ -324,6 +342,7 @@ def play_population_game(
         "score": training_agent_score,
         "was_picker": was_picker,
         "position": training_agent_position,
+        "search_diag": search_diag,
     }
 
     # Compute rewards for training agent actions. Shaped: intermediate + final
@@ -568,6 +587,12 @@ def run_pfsp_training(
     cumulative_renorm = 0.0
     transitions_since_update = 0
     last_checkpoint_time = start_time
+    # ISMCTS search diagnostics accumulated over the games in an update window
+    # (terminal/ExIt mode); logged + reset at each update.
+    search_diag_window = {
+        h: {"n": 0, "ok": 0, "ess_sum": 0.0, "ent_sum": 0.0}
+        for h in ("pick", "partner", "bury", "play")
+    }
 
     bury_entropy_bump_until = 0
     partner_entropy_bump_until = 0
@@ -708,6 +733,16 @@ def run_pfsp_training(
         transitions_since_update += sum(
             1 for ev in episode_events if ev["kind"] == "action"
         )
+
+        # Accumulate ISMCTS search diagnostics for this update window.
+        game_diag = training_data_single.get("search_diag")
+        if game_diag:
+            for h, d in game_diag.items():
+                w = search_diag_window[h]
+                w["n"] += d["n"]
+                w["ok"] += d["ok"]
+                w["ess_sum"] += d["ess_sum"]
+                w["ent_sum"] += d["ent_sum"]
 
         # Update statistics
         picker_score = (
@@ -932,8 +967,40 @@ def run_pfsp_training(
                         )
                     )
 
+                # Stage C distillation diagnostics (only populated in terminal/ExIt
+                # mode; dormant under shaped PPO, so the block self-gates).
+                distill = update_stats.get("distill", {})
+                if distill.get("pg_masked_fraction", 0.0) > 0.0:
+                    print(
+                        "   Distill - loss: %.4f, teacher_kl: %.4f, pi' entropy: %.4f, masked frac: %.3f"
+                        % (
+                            distill.get("loss", 0.0),
+                            distill.get("teacher_kl", 0.0),
+                            distill.get("pi_target_entropy", 0.0),
+                            distill.get("pg_masked_fraction", 0.0),
+                        )
+                    )
+                # ISMCTS search diagnostics over this update window, per head:
+                # ESS-abort fraction (searches that missed the ESS floor), mean
+                # root ESS, and mean pi' entropy of the accepted targets.
+                if sum(w["n"] for w in search_diag_window.values()) > 0:
+                    parts = []
+                    for h in ("pick", "partner", "bury", "play"):
+                        w = search_diag_window[h]
+                        if w["n"] == 0:
+                            continue
+                        abort = 100.0 * (1.0 - w["ok"] / w["n"])
+                        ess = w["ess_sum"] / w["n"]
+                        ent = (w["ent_sum"] / w["ok"]) if w["ok"] else float("nan")
+                        parts.append(
+                            f"{h}: n={w['n']} abort={abort:.0f}% ess={ess:.1f} ent={ent:.2f}"
+                        )
+                    print("   Search - " + " | ".join(parts))
+
             game_count = 0
             transitions_since_update = 0
+            for w in search_diag_window.values():
+                w.update(n=0, ok=0, ess_sum=0.0, ent_sum=0.0)
 
         # Add agent to population periodically
         if episode % population_add_interval == 0:
