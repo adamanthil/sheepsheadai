@@ -1,0 +1,141 @@
+# Validation & probe scripts (ISMCTS ExIt refactor)
+
+One-off analysis / smoke-test / probe scripts written while building the
+SO-ISMCTS soft-teacher ExIt pipeline (the determinizer, the search engine, the
+training integration, the throughput work, and the validation protocol).
+Committed for reproducibility — they are NOT part of the production code path
+(`sheepshead.py`, `ppo.py`, `encoder.py`, `ismcts.py`, `pfsp_runtime.py`,
+`config.py`, `training_utils.py` are). The committed unit/regression test is
+`test_ismcts_exit_regression.py` at the repo root; these are the heavier,
+slower, evidence-gathering scripts behind the design decisions.
+
+## Running
+
+Run from the **repo root** with the repo root on `PYTHONPATH` (the scripts
+import repo modules like `sheepshead` and also cross-import each other):
+
+```bash
+PYTHONPATH=. .venv/bin/python validation/t_full_probe.py --games 3000
+```
+
+**Model arg:** several scripts default `-m` to
+`pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt`, which has been moved.
+Point `-m` at an available checkpoint, e.g. `final_pfsp_swish_ppo.pt` (repo root)
+or `runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_9995000.pt`.
+The Stage C scripts already default to `final_pfsp_swish_ppo.pt`.
+
+Findings for Gate 0 / Stage A / Stage B reflect the conclusions recorded in
+`ISMCTS_Teacher_Refactor_Plan.md` and the Stage B project notes; the Stage C,
+throughput, t_full and validation findings were measured in the May 2026 session
+that built them.
+
+---
+
+## Origin — the leak
+
+**`counterfactual_trump_leads.py`** — Why the project exists. Measures the
+counterfactual EV of a *defender* leading trump vs fail on the FIRST trick via
+paired rollouts on the TRUE deal. Finding: the 30M PPO agent leads trump as a
+trick-0 defender in spots where leading fail scores better — a partial-observability
+leak the critic cannot close (the trick-0 critic is blind). Also provides the
+`best_in_class` / `play_out` / `rollout` helpers reused by Stage A.
+
+## Gate 0 — the trick-0-only determinizer
+
+**`gate0_determinizer.py`** — Validate that a trick-0 determinized teacher
+(redeal the hidden cards consistent with the observer's info set, roll out under
+the policy) reproduces the true-deal oracle EV on the leak states. Finding:
+determinization **must be inference-weighted** — plain (uniform) determinization
+is biased because it includes worlds where the redealt picker would never have
+picked; weighting by the bidding likelihood (PICK + passes + call) lifted
+effective sample size (~7/60 → ~17/40) and recovered the oracle's sign/direction.
+
+**`gate0_inference_check.py`** — Focused companion (imports `gate0_determinizer`)
+isolating the inference-weighting contribution. Finding: confirms the weighting
+is what removes the EV bias.
+
+## Critic capacity & calibration probes
+
+**`critic_probe.py`** — Step 0: is the weak trick-0 critic a *head-capacity* problem
+(a deeper value trunk fixes it) or a *feature* problem (the frozen encoder doesn't
+represent the distinction)? Trains fresh SHALLOW vs DEEP heads on frozen 30M
+features. Finding: R² rises as cards are revealed and trick-0 stays low for both
+depths → it is **partial observability** (a hidden-information ceiling), not head
+capacity. Motivated the search-based correction over a bigger critic.
+
+**`t_full_probe.py`** — Sets the rollout-depth-schedule cutoff `t_full` on evidence.
+Same machinery as `critic_probe` but the target is the **ExIt terminal return**
+`get_score()/12` that the rollout bootstraps toward. Finding (3000 games): per-trick
+R² (fresh deep head) all-play **0.26→0.82**, defender-leads **0.04→0.61**, leasters
+**≤0.21**. → `t_full=1`/`d_short=2` validated (bootstraps land at trick≥4, R²≥0.73;
+trick-0 leak states always roll to terminal); leasters forced to terminal rollout.
+See `Validation_Baseline_Notes.md`.
+
+## Stage A — generalized inference-weighted determinizer
+
+**`stage_a_determinizer_check.py`** — Generalize Gate 0 to ANY decision point
+(`Game.sample_determinization`). Asserts legality (full-deck partition, per-seat
+counts, play-revealed voids, called-ace placement, bury rules) AND that forced
+replay reproduces the recorded public history exactly, then checks the
+inference-corrected EV vs the true-deal oracle at tricks 1–3. Finding: legality
+PASS; weighted determinized EV is **aggregate-unbiased but noisy** (single-deal
+oracle is high-variance, mid-game ESS is low). Established scheme-B (bidding-only
+importance weighting; plays as hard void constraints).
+
+## Stage B — SO-ISMCTS engine
+
+**`stage_b_ismcts_check.py`** — Validate the search engine (`ismcts.py`) on the
+leak states. Findings (Stage B notes): use **SIR** — sample worlds from the
+belief pool rather than weighting tree visit counts (keeps the visit budget from
+collapsing to the mid-game ESS); **FPU + min-max-Q normalization** are needed for
+calibrated PUCT at the score/12 value scale; and **deep rollouts early-game**
+recover the Gate-0 leak direction (dp ≈ −0.17, ~75%) where a shallow critic
+bootstrap is weak (dp ≈ −0.06, ~62%) — the basis for the trick-indexed depth
+schedule.
+
+## Stage C — training-loop integration
+
+**`stage_c_smoke.py`** — End-to-end Stage C path: `play_population_game`
+(terminal reward + ISMCTS teacher) → `store_episode_events` → `update()`. Finding:
+distillation + PG-mask fire on searched PLAY transitions (e.g. 44/51 searched,
+pg_masked_fraction ~0.86 at high play frac).
+
+**`stage_c_leaster_test.py`** — Leaster determinization + search (no picker).
+Finding: leaster redeals legal (96/96 — partition, counts, voids, empty bury/under,
+blind never played), `teacher.search` returns a valid pi' with ESS≥floor on
+in-leaster play nodes.
+
+**`stage_c_bidding_search_check.py`** — P4 bidding-head search. Finding: pre-pick
+redeals legal (96/96), and `teacher.search` returns a valid pi' on pick / partner /
+bury with no `picker==0` failure.
+
+**`stage_c_driver_bidding_check.py`** — Driver wiring: `play_population_game` with
+bidding fracs=1.0 lands search targets on every head (incl. leasters), distillation
++ PG-mask fire. Finding: PASS.
+
+**`stage_c_batched_pool_check.py`** — Tier 1 guard: batched pool build vs the
+sequential `_build_world` reference on identical deals. Finding: identical world
+states; log_w / per-seat memory match to ~3e-5 (batch vs batch-1 matmul); **~16×**
+faster pool build.
+
+## Throughput
+
+**`profile_throughput.py`** — cProfile of `[A]` pure game-play and `[B]` ISMCTS
+search. Finding: search is **~95% transformer encoder at batch size 1** (~14
+s/search pre-optimization), Game logic <5%; in a play search the rollout is only
+~16% of encodes (tree descent + opponent advance + per-trick observes are ~84%).
+Drove the Game hot-path cleanup (~2.9× game-play) and the Tier 1/2 batching
+(~9–10× on search overall).
+
+## Validation harness
+
+**`exit_validation.py`** — The model-evaluable half of the validation protocol,
+to compare a from-scratch ExIt agent vs the frozen PPO baseline: bidding-health
+bands (PICK / ALONE / leaster rates, held WITHOUT epsilon controllers), trick-0
+defender trump-lead rate (the leak), and head-to-head mean score. PPO baseline
+recorded: PICK 32.9%, ALONE 6.6%, leaster 9.2%, trick-0 trump-lead **4.8%**;
+self-h2h ≈0 (unbiased-harness sanity). Real use:
+`exit_validation.py -m <exit>.pt -b final_pfsp_swish_ppo.pt`. See
+`Validation_Baseline_Notes.md`. NOTE: do NOT route h2h through
+`play_population_game` (full training game ~2–3 s/game); this uses a bare
+mixed-agent loop (~150 ms/game self-play, which cannot batch).
