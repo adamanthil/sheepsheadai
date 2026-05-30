@@ -156,13 +156,19 @@ The frozen pure-PPO baseline lives in `pfsp_population_ppo` /
   target near-identical to sequential (pi' TVD ~0.04). MPS was measured *slower* than
   CPU at batch-1 and ruled out. Remaining levers if needed: larger `batch_size`,
   CUDA, fewer iters. See `project_throughput` memory.
-- **`t_full` critic-calibration probe** (`critic_calibration.py`): set the
-  rollout-depth-schedule cutoff from measured per-trick critic R², not a guess.
-- **Validation protocol, defined up front:** trick-0 defender trump-lead rate
-  (the original leak); head-to-head vs the frozen PPO baseline; bidding-health
-  bands (pick / ALONE / leaster rates) held *without* controllers; distillation
-  diagnostics (teacher_kl, ESS-abort fraction, pg_masked_fraction, pi′ entropy);
-  and the **PG-mask vs additive-form A/B**.
+- **`t_full` critic-calibration probe** — DONE (`t_full_probe.py`, committed
+  `0c57802`). Per-trick R² of a fresh deep head on the terminal target: all-play
+  0.26→0.82, defender-leads 0.04→0.61, leasters ≤0.21. `t_full=1`/`d_short=2`
+  validated (bootstraps land at trick≥4, R²≥0.73; trick-0 leak states always roll
+  to terminal). Leasters now forced to terminal rollout. See
+  `Validation_Baseline_Notes.md`.
+- **Validation protocol, defined up front** — harness DONE (`exit_validation.py`)
+  + PPO baseline recorded in `Validation_Baseline_Notes.md`: bidding-health
+  (PICK 32.9% / ALONE 6.6% / leaster 9.2%, held *without* controllers), trick-0
+  defender trump-lead rate (4.8%, the leak — already low post critic-fix),
+  head-to-head harness (baseline-vs-baseline ≈0 sanity). Still to track *during*
+  the run: distillation diagnostics (teacher_kl, ESS-abort, pg_masked_fraction,
+  pi′ entropy) and the **PG-mask vs additive-form A/B**.
 - **A committed regression test** for the shared `pfsp_runtime` + distillation /
   PG-mask path — DONE: `test_ismcts_exit_regression.py` (model-free, deterministic;
   Game logic, determinizer legality+replay, batched-pool==sequential, search
