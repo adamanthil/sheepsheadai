@@ -3,35 +3,33 @@
 Extended long-term PPO training for Sheepshead.
 """
 
-import torch
-import numpy as np
+import os
 import random
 import time
-import os
-from collections import deque
 from argparse import ArgumentParser
+from collections import deque
+
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 
 from ppo import PPOAgent
 from sheepshead import (
-    Game,
     ACTIONS,
-    ACTION_LOOKUP,
-    ACTION_IDS,
-    TRUMP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
+    Game,
 )
 from training_utils import (
-    process_episode_rewards,
-    get_partner_selection_mode,
-    save_training_plot,
-    update_intermediate_rewards_for_action,
-    handle_trick_completion,
+    analyze_strategic_decisions,
+    compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,
-    compute_any_unseen_trump_higher_than_hand,
-    analyze_strategic_decisions,
+    get_partner_selection_mode,
+    handle_trick_completion,
+    process_episode_rewards,
+    save_training_plot,
+    update_intermediate_rewards_for_action,
 )
 
 
