@@ -150,7 +150,7 @@ def main():
 
     # ExIt hybrid: terminal-only reward + ISMCTS distillation, no shaping/controllers.
     search = SearchConfig(
-        fracs={
+        head_search_fractions={
             "pick": args.f_pick,
             "partner": args.f_partner,
             "bury": args.f_bury,

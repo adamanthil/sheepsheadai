@@ -10,51 +10,46 @@ terminal uses terminal-only return + ISMCTS search-distillation. The
 hyperparameters live in config.py; pure helper functions in training_utils.py.
 """
 
-import torch
-import numpy as np
-import random
-import time
-import os
-import csv
-import sys
-from collections import deque
-import matplotlib.pyplot as plt
 import copy
+import csv
+import os
+import random
+import sys
+import time
+from collections import deque
+
+import numpy as np
 from openskill.models import PlackettLuce
 
-from ppo import PPOAgent
+from config import DEFAULT_HYPERPARAMS, PFSPHyperparams, SearchConfig
+from ismcts import ISMCTSConfig, ISMCTSTeacher
 from pfsp import (
     PFSPPopulation,
     create_initial_population_from_checkpoints,
     profile_pop_agent_action,
     profile_trick_completion,
 )
-from config import PFSPHyperparams, SearchConfig, DEFAULT_HYPERPARAMS
-from ismcts import ISMCTSTeacher, ISMCTSConfig
-from training_utils import (
-    estimate_hand_strength_category,
-    compute_known_points_rel,
-    compute_seen_trump_mask,
-    compute_any_unseen_trump_higher_than_hand,
-    RETURN_SCALE,
-)
+from ppo import PPOAgent
 from sheepshead import (
-    Game,
-    ACTIONS,
     ACTION_IDS,
+    ACTIONS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
+    Game,
     get_partner_mode_name,
 )
-
 from training_utils import (
+    analyze_strategic_decisions,
+    compute_any_unseen_trump_higher_than_hand,
+    compute_known_points_rel,
+    compute_seen_trump_mask,
+    estimate_hand_strength_category,
+    get_partner_selection_mode,
+    handle_trick_completion,
     process_episode_rewards,
     process_terminal_rewards,
-    get_partner_selection_mode,
     save_training_plot,
     update_intermediate_rewards_for_action,
-    handle_trick_completion,
-    analyze_strategic_decisions,
 )
 
 
@@ -113,7 +108,7 @@ def play_population_game(
     shaping_weights: dict | None = None,
     reward_mode: str = "shaped",
     teacher: "ISMCTSTeacher | None" = None,
-    det_rng: "random.Random | None" = None,
+    determinization_rng: "random.Random | None" = None,
     search_config: "SearchConfig | None" = None,
 ) -> tuple:
     """Play a single game with the training agent and population opponents.
@@ -131,22 +126,22 @@ def play_population_game(
     game = Game(partner_selection_mode=partner_mode)
     weights = shaping_weights or {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 1.0}
     shaped = reward_mode == "shaped"
-    search_on = (
+    search_enabled = (
         reward_mode == "terminal"
         and teacher is not None
-        and det_rng is not None
+        and determinization_rng is not None
         and search_config is not None
         and search_config.enabled
     )
     # Public (seat, action_id) record for the teacher's forced replay (search only).
     forced_public: list[tuple[int, int]] = []
     # Per-game ISMCTS search diagnostics (terminal/ExIt mode), aggregated by head:
-    # how many decisions were searched, how many cleared the ESS gate (ok), and the
-    # summed ESS / pi' entropy for averaging. Attached to training_agent_data so the
-    # driver can window + log them (ESS-abort fraction, target sharpness).
-    search_diag = {
-        h: {"n": 0, "ok": 0, "ess_sum": 0.0, "ent_sum": 0.0}
-        for h in ("pick", "partner", "bury", "play")
+    # how many decisions were searched, how many cleared the ESS gate (accepted),
+    # and the summed ESS / pi' entropy for averaging. Attached to training_agent_data
+    # so the driver can window + log them (ESS-abort fraction, target sharpness).
+    search_diagnostics = {
+        head: {"count": 0, "accepted": 0, "ess_sum": 0.0, "entropy_sum": 0.0}
+        for head in ("pick", "partner", "bury", "play")
     }
 
     # Reset recurrent states for all agents
@@ -232,7 +227,7 @@ def play_population_game(
                             bury_weight=weights["bury"],
                             play_weight=weights["play"],
                         )
-                    elif search_on:
+                    elif search_enabled:
                         # ISMCTS soft-teacher target on a per-head fraction of
                         # decisions (teacher-only; agent acted on-policy above;
                         # search() is memory-neutral — snapshots/restores). Leaster
@@ -243,9 +238,9 @@ def play_population_game(
                         # sample_determinization handles the no-picker leaster
                         # state (Game._sample_leaster_deal).
                         head = _search_head(valid_actions)
-                        frac = search_config.fracs.get(head, 0.0)
-                        if frac > 0.0 and det_rng.random() < frac:
-                            ct = game.current_trick
+                        head_fraction = search_config.head_search_fractions.get(head, 0.0)
+                        if head_fraction > 0.0 and determinization_rng.random() < head_fraction:
+                            current_trick = game.current_trick
                             # Trick-indexed rollout depth: roll (near) to terminal
                             # in the early tricks where the critic is blind, then
                             # bootstrap d_short plies later (validated by the t_full
@@ -255,30 +250,32 @@ def play_population_game(
                             # terminal: the critic never calibrates on leaster
                             # outcomes (R^2 <= 0.21 even at trick 5), so a bootstrap
                             # there is noise.
-                            if game.is_leaster or ct <= search_config.t_full:
-                                d_roll = 6 - ct
+                            if game.is_leaster or current_trick <= search_config.t_full:
+                                rollout_depth = 6 - current_trick
                             else:
-                                d_roll = search_config.d_short
+                                rollout_depth = search_config.d_short
                             res = teacher.search(
                                 game,
                                 player.position,
                                 list(forced_public),
-                                det_rng,
-                                d_rollout=d_roll,
+                                determinization_rng,
+                                d_rollout=rollout_depth,
                             )
-                            used = res["ok"] and float(res["pi"].sum()) > 0.0
-                            if used:
+                            target_accepted = res["ok"] and float(res["pi"].sum()) > 0.0
+                            if target_accepted:
                                 transition["search_target"] = res["pi"].tolist()
                                 transition["has_search_target"] = True
                             # Diagnostics: ESS-abort fraction and pi' sharpness.
-                            d = search_diag[head]
-                            d["n"] += 1
-                            d["ess_sum"] += float(res["ess"])
-                            if used:
-                                d["ok"] += 1
+                            head_diag = search_diagnostics[head]
+                            head_diag["count"] += 1
+                            head_diag["ess_sum"] += float(res["ess"])
+                            if target_accepted:
+                                head_diag["accepted"] += 1
                                 pi = res["pi"]
-                                nz = pi[pi > 0]
-                                d["ent_sum"] += float(-(nz * np.log(nz)).sum())
+                                nonzero = pi[pi > 0]
+                                head_diag["entropy_sum"] += float(
+                                    -(nonzero * np.log(nonzero)).sum()
+                                )
 
                 else:
                     # Opponent action (stochastic for diversity)
@@ -287,7 +284,7 @@ def play_population_game(
                     )
 
                 # Record this seat's public action for the teacher's forced replay.
-                if search_on and not is_private:
+                if search_enabled and not is_private:
                     forced_public.append((player.position, action))
 
                 # --- Strategic profile updates for opponents (pre-action; uses pre-action hand + trick state) ---
@@ -342,7 +339,7 @@ def play_population_game(
         "score": training_agent_score,
         "was_picker": was_picker,
         "position": training_agent_position,
-        "search_diag": search_diag,
+        "search_diagnostics": search_diagnostics,
     }
 
     # Compute rewards for training agent actions. Shaped: intermediate + final
@@ -456,11 +453,15 @@ def run_pfsp_training(
     )
 
     # ISMCTS soft-teacher (terminal/ExIt mode only). Training-time only; the
-    # agent acts on-policy and population opponents never search. det_rng drives
-    # determinization sampling.
-    use_search = hyperparams.reward_mode == "terminal" and hyperparams.search is not None
-    ismcts_teacher = ISMCTSTeacher(training_agent, ISMCTSConfig()) if use_search else None
-    det_rng = random.Random(20260529) if use_search else None
+    # agent acts on-policy and population opponents never search.
+    # determinization_rng drives determinization sampling.
+    use_search = (
+        hyperparams.reward_mode == "terminal" and hyperparams.search is not None
+    )
+    ismcts_teacher = (
+        ISMCTSTeacher(training_agent, ISMCTSConfig()) if use_search else None
+    )
+    determinization_rng = random.Random(20260529) if use_search else None
 
     # OpenSkill rating for the training agent
     rating_model = PlackettLuce()
@@ -589,9 +590,9 @@ def run_pfsp_training(
     last_checkpoint_time = start_time
     # ISMCTS search diagnostics accumulated over the games in an update window
     # (terminal/ExIt mode); logged + reset at each update.
-    search_diag_window = {
-        h: {"n": 0, "ok": 0, "ess_sum": 0.0, "ent_sum": 0.0}
-        for h in ("pick", "partner", "bury", "play")
+    search_diagnostics_window = {
+        head: {"count": 0, "accepted": 0, "ess_sum": 0.0, "entropy_sum": 0.0}
+        for head in ("pick", "partner", "bury", "play")
     }
 
     bury_entropy_bump_until = 0
@@ -724,7 +725,7 @@ def run_pfsp_training(
                 shaping_weights=shaping_weights,
                 reward_mode=hyperparams.reward_mode,
                 teacher=ismcts_teacher,
-                det_rng=det_rng,
+                determinization_rng=determinization_rng,
                 search_config=hyperparams.search,
             )
         )
@@ -735,14 +736,14 @@ def run_pfsp_training(
         )
 
         # Accumulate ISMCTS search diagnostics for this update window.
-        game_diag = training_data_single.get("search_diag")
-        if game_diag:
-            for h, d in game_diag.items():
-                w = search_diag_window[h]
-                w["n"] += d["n"]
-                w["ok"] += d["ok"]
-                w["ess_sum"] += d["ess_sum"]
-                w["ent_sum"] += d["ent_sum"]
+        game_search_diagnostics = training_data_single.get("search_diagnostics")
+        if game_search_diagnostics:
+            for head, head_diag in game_search_diagnostics.items():
+                window_stats = search_diagnostics_window[head]
+                window_stats["count"] += head_diag["count"]
+                window_stats["accepted"] += head_diag["accepted"]
+                window_stats["ess_sum"] += head_diag["ess_sum"]
+                window_stats["entropy_sum"] += head_diag["entropy_sum"]
 
         # Update statistics
         picker_score = (
@@ -983,24 +984,29 @@ def run_pfsp_training(
                 # ISMCTS search diagnostics over this update window, per head:
                 # ESS-abort fraction (searches that missed the ESS floor), mean
                 # root ESS, and mean pi' entropy of the accepted targets.
-                if sum(w["n"] for w in search_diag_window.values()) > 0:
+                if sum(s["count"] for s in search_diagnostics_window.values()) > 0:
                     parts = []
-                    for h in ("pick", "partner", "bury", "play"):
-                        w = search_diag_window[h]
-                        if w["n"] == 0:
+                    for head in ("pick", "partner", "bury", "play"):
+                        stats = search_diagnostics_window[head]
+                        if stats["count"] == 0:
                             continue
-                        abort = 100.0 * (1.0 - w["ok"] / w["n"])
-                        ess = w["ess_sum"] / w["n"]
-                        ent = (w["ent_sum"] / w["ok"]) if w["ok"] else float("nan")
+                        abort_pct = 100.0 * (1.0 - stats["accepted"] / stats["count"])
+                        mean_ess = stats["ess_sum"] / stats["count"]
+                        mean_entropy = (
+                            (stats["entropy_sum"] / stats["accepted"])
+                            if stats["accepted"]
+                            else float("nan")
+                        )
                         parts.append(
-                            f"{h}: n={w['n']} abort={abort:.0f}% ess={ess:.1f} ent={ent:.2f}"
+                            f"{head}: n={stats['count']} abort={abort_pct:.0f}% "
+                            f"ess={mean_ess:.1f} ent={mean_entropy:.2f}"
                         )
                     print("   Search - " + " | ".join(parts))
 
             game_count = 0
             transitions_since_update = 0
-            for w in search_diag_window.values():
-                w.update(n=0, ok=0, ess_sum=0.0, ent_sum=0.0)
+            for stats in search_diagnostics_window.values():
+                stats.update(count=0, accepted=0, ess_sum=0.0, entropy_sum=0.0)
 
         # Add agent to population periodically
         if episode % population_add_interval == 0:
@@ -1361,7 +1367,8 @@ def run_pfsp_training(
                     )
                 elif desired_partner_eps_max < current_partner_call_eps:
                     desired_partner_eps = max(
-                        current_partner_call_eps - hyperparams.partner_call_eps_step_down,
+                        current_partner_call_eps
+                        - hyperparams.partner_call_eps_step_down,
                         desired_partner_eps_max,
                     )
 
@@ -1530,4 +1537,3 @@ def run_pfsp_training(
 
     # Final population summary
     print("\n" + population.get_population_summary())
-

@@ -1,7 +1,7 @@
 """One-off P4 driver-wiring check (NOT committed).
 
 Confirms play_population_game dispatches bidding-head ISMCTS search end-to-end
-(not just the teacher in isolation): with SearchConfig.fracs = 1.0 on the bidding
+(not just the teacher in isolation): with SearchConfig.head_search_fractions = 1.0 on the bidding
 heads, search targets must actually land on PICK/PARTNER/BURY transitions, the
 update() must fire with distillation, and nothing may KeyError.
 """
@@ -41,9 +41,11 @@ def main():
         det_max_tries=300, ess_floor=1.0,
     )
     teacher = ISMCTSTeacher(agent, cfg)
-    det_rng = random.Random(7)
-    # All bidding heads at 1.0 (the new default); modest play frac.
-    search_config = SearchConfig(fracs={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.3})
+    determinization_rng = random.Random(7)
+    # All bidding heads at 1.0 (the new default); modest play fraction.
+    search_config = SearchConfig(
+        head_search_fractions={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.3}
+    )
 
     by_head = {"pick": [0, 0], "partner": [0, 0], "bury": [0, 0], "play": [0, 0]}  # [searched, total]
     n_games = 16
@@ -53,7 +55,8 @@ def main():
         game, events, final_scores, _, _ = play_population_game(
             training_agent=agent, opponents=opps, partner_mode=mode,
             training_agent_position=random.randint(1, 5),
-            reward_mode="terminal", teacher=teacher, det_rng=det_rng,
+            reward_mode="terminal", teacher=teacher,
+            determinization_rng=determinization_rng,
             search_config=search_config,
         )
         for ev in events:

@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 class SearchConfig:
     """ISMCTS soft-teacher search controls (used only by the ExIt hybrid trainer).
 
-    ``fracs`` is the per-head probability that a training-agent decision is
-    searched. The bidding heads default to **1.0** and play to **0.10**: the
+    ``head_search_fractions`` is the per-head probability that a training-agent
+    decision is searched. The bidding heads default to **1.0** and play to **0.10**: the
     bidding decisions are the most collapse-prone (always-pick / always-pass /
     always-call), so searching them every time is the principled replacement for
     the stripped shaping + epsilon-floor crutches, and they are cheap — shallow
@@ -47,7 +47,7 @@ class SearchConfig:
     R^2 <= 0.21).
     """
 
-    fracs: dict = field(
+    head_search_fractions: dict = field(
         default_factory=lambda: {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.10}
     )
     t_full: int = 1

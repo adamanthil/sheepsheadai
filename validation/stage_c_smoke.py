@@ -51,11 +51,11 @@ def main():
         ess_floor=1.0,  # low so targets actually pass and exercise distillation
     )
     teacher = ISMCTSTeacher(training_agent, cfg)
-    det_rng = random.Random(123)
-    # Play-head search only (bidding-head determinization is not yet supported).
-    # High play frac so the smoke reliably exercises distillation + PG-mask.
+    determinization_rng = random.Random(123)
+    # Play-head search only for this smoke. High play fraction so it reliably
+    # exercises distillation + PG-mask.
     search_config = SearchConfig(
-        fracs={"pick": 0.0, "partner": 0.0, "bury": 0.0, "play": 0.8}
+        head_search_fractions={"pick": 0.0, "partner": 0.0, "bury": 0.0, "play": 0.8}
     )
 
     n_games = 8
@@ -69,7 +69,7 @@ def main():
             training_agent_position=random.randint(1, 5),
             reward_mode="terminal",
             teacher=teacher,
-            det_rng=det_rng,
+            determinization_rng=determinization_rng,
             search_config=search_config,
         )
         for ev in events:

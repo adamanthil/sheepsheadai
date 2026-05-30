@@ -429,16 +429,19 @@ def test_distill_pgmask_and_dormant():
         agent, ISMCTSConfig(iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
                             det_max_tries=300, ess_floor=0.5)
     )
-    det_rng = random.Random(SEED)
+    determinization_rng = random.Random(SEED)
     # High coverage so distillation reliably fires.
-    sc = SearchConfig(fracs={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.9})
+    sc = SearchConfig(
+        head_search_fractions={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.9}
+    )
 
     searched = 0
     for gi in range(8):
         game, events, _, _, _ = play_population_game(
             training_agent=agent, opponents=opps, partner_mode=mode,
             training_agent_position=random.randint(1, 5),
-            reward_mode="terminal", teacher=teacher, det_rng=det_rng, search_config=sc,
+            reward_mode="terminal", teacher=teacher,
+            determinization_rng=determinization_rng, search_config=sc,
         )
         searched += sum(1 for e in events if e["kind"] == "action" and e.get("has_search_target"))
         agent.store_episode_events(events)
