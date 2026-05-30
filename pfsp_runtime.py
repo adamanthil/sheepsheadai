@@ -17,14 +17,21 @@ import random
 import sys
 import time
 from collections import deque
+from dataclasses import dataclass, field
 
 import numpy as np
+import torch
 from openskill.models import PlackettLuce
 
 from config import DEFAULT_HYPERPARAMS, PFSPHyperparams, SearchConfig
 from ismcts import ISMCTSConfig, ISMCTSTeacher
 from pfsp import (
+    AgentMetadata,
     PFSPPopulation,
+    PopulationAgent,
+    apply_trick_profile_sample,
+    compute_action_profile_events,
+    compute_trick_profile_samples,
     create_initial_population_from_checkpoints,
     profile_pop_agent_action,
     profile_trick_completion,
@@ -51,6 +58,164 @@ from training_utils import (
     save_training_plot,
     update_intermediate_rewards_for_action,
 )
+
+
+# ----------------------------------------------------------------------------
+# Parallel self-play (Lever 1): worker-process game generation.
+#
+# The learner owns the authoritative training agent + population + optimizer and
+# does the single gradient update; a pool of worker processes generates games
+# with frozen, versioned weights and returns plain-data GameResults. Opponents are
+# sampled in the learner (authoritative ratings/diversity); workers resolve them by
+# agent_id from a local lazy cache of the on-disk population. Opponent strategic
+# profiling is captured (not mutated) in the worker and replayed by the learner.
+# These objects/functions are module-level so they pickle under the spawn start
+# method. See ISMCTS_Overview_And_Roadmap.md §4 and Throughput_Profiling_Notes.md.
+# ----------------------------------------------------------------------------
+
+
+@dataclass
+class JobSpec:
+    """One game-generation job sent to a worker. ``opponent_specs`` are the sampled
+    (agent_id, partner_mode) pairs; ``weight_version`` tags which weights to play
+    with (the worker reloads from disk when this exceeds its local version)."""
+
+    episode: int
+    partner_mode: int
+    training_position: int
+    shaping_weights: dict
+    opponent_specs: list
+    weight_version: int
+
+
+@dataclass
+class GameResult:
+    """Plain, picklable result of a worker-generated game. ``training_data_single``
+    carries the search diagnostics and (under capture) the per-agent profile events;
+    ``game_summary`` is the normalized public record (see make_game_summary)."""
+
+    episode: int
+    partner_mode: int
+    training_position: int
+    episode_events: list
+    final_scores: list
+    training_data_single: dict
+    game_summary: dict
+    seat_to_agent_id: dict = field(default_factory=dict)
+
+
+# Per-worker global state (populated by _worker_init under the spawn start method).
+_WORKER: dict = {}
+
+
+def _worker_init(init_args: dict) -> None:
+    """Pool initializer: build this worker's training agent, ISMCTS teacher, lazy
+    population cache, and determinization RNG once. Single-thread the BLAS to avoid
+    oversubscription across workers."""
+    import torch as _torch
+
+    _torch.set_num_threads(1)
+
+    agent = PPOAgent(len(ACTIONS), activation=init_args["activation"])
+    use_search = init_args["use_search"]
+    teacher = None
+    if use_search:
+        agent.searched_pg_weight = init_args["searched_pg_weight"]
+        teacher = ISMCTSTeacher(agent, init_args["ismcts_config"])
+
+    seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
+    random.seed(seed)  # in-worker opponent-seat shuffles in play_population_game
+
+    _WORKER.clear()
+    _WORKER.update(
+        {
+            "agent": agent,
+            "teacher": teacher,
+            "use_search": use_search,
+            "reward_mode": init_args["reward_mode"],
+            "search_config": init_args["search_config"],
+            "activation": init_args["activation"],
+            "population_dir": init_args["population_dir"],
+            "weight_path_base": init_args["weight_path_base"],
+            "version": 0,
+            "cache": {},
+            "det_rng": random.Random(seed ^ 0x9E3779B9),
+        }
+    )
+
+
+def _worker_get_opponent(agent_id: str, partner_mode: int) -> PopulationAgent:
+    """Resolve an opponent from the worker's lazy cache, loading its weights from the
+    on-disk population on first use."""
+    cache = _WORKER["cache"]
+    opp = cache.get(agent_id)
+    if opp is not None:
+        return opp
+    subdir = "jd_agents" if partner_mode == PARTNER_BY_JD else "called_ace_agents"
+    path = os.path.join(_WORKER["population_dir"], subdir, f"{agent_id}.pt")
+    agent = PPOAgent(len(ACTIONS), activation=_WORKER["activation"])
+    agent.load(path, load_optimizers=False)
+    meta = AgentMetadata(
+        agent_id=agent_id,
+        creation_time=0.0,
+        parent_id=None,
+        training_episodes=0,
+        partner_mode=partner_mode,
+        activation=_WORKER["activation"],
+    )
+    opp = PopulationAgent(agent, meta)
+    cache[agent_id] = opp
+    return opp
+
+
+def _worker_play_game(job: JobSpec) -> GameResult:
+    """Play one game in the worker with frozen (versioned) weights, capturing opponent
+    profile events for the learner to replay."""
+    import torch as _torch
+
+    g = _WORKER
+    if job.weight_version > g["version"]:
+        weight_path = f"{g['weight_path_base']}_v{job.weight_version}.pt"
+        ckpt = _torch.load(weight_path, map_location="cpu")
+        agent = g["agent"]
+        agent.encoder.load_state_dict(ckpt["encoder_state_dict"])
+        agent.actor.load_state_dict(ckpt["actor_state_dict"])
+        agent.critic.load_state_dict(ckpt["critic_state_dict"], strict=False)
+        agent._player_memories = {}
+        g["version"] = job.weight_version
+
+    opponents = [
+        _worker_get_opponent(aid, pm) for (aid, pm) in job.opponent_specs
+    ]
+
+    game, episode_events, final_scores, training_data_single, pos_to_pop_agent = (
+        play_population_game(
+            training_agent=g["agent"],
+            opponents=opponents,
+            partner_mode=job.partner_mode,
+            training_agent_position=job.training_position,
+            shaping_weights=job.shaping_weights,
+            reward_mode=g["reward_mode"],
+            teacher=g["teacher"],
+            determinization_rng=g["det_rng"],
+            search_config=g["search_config"],
+            capture_profile_events=True,
+        )
+    )
+
+    seat_to_agent_id = {
+        seat: opp.metadata.agent_id for seat, opp in pos_to_pop_agent.items()
+    }
+    return GameResult(
+        episode=job.episode,
+        partner_mode=job.partner_mode,
+        training_position=job.training_position,
+        episode_events=episode_events,
+        final_scores=final_scores,
+        training_data_single=training_data_single,
+        game_summary=make_game_summary(game),
+        seat_to_agent_id=seat_to_agent_id,
+    )
 
 
 def _is_private_decision(valid_actions) -> bool:
@@ -110,6 +275,7 @@ def play_population_game(
     teacher: "ISMCTSTeacher | None" = None,
     determinization_rng: "random.Random | None" = None,
     search_config: "SearchConfig | None" = None,
+    capture_profile_events: bool = False,
 ) -> tuple:
     """Play a single game with the training agent and population opponents.
 
@@ -119,6 +285,13 @@ def play_population_game(
     (final_score-only), optionally attaching ISMCTS soft-teacher targets to a
     per-head fraction of the training agent's decisions (search is teacher-only;
     the agent still acts on-policy).
+
+    ``capture_profile_events``: parallel self-play workers cannot mutate the
+    learner's authoritative population, so when set the opponent strategic-profile
+    updates are *captured* (keyed by agent_id) into
+    ``training_agent_data["profile_events"]`` instead of mutating the opponent
+    objects in-place; the learner replays them. When False (sequential path) the
+    opponent profiles are mutated in-place exactly as before.
 
     Returns:
         tuple: (game, episode_events, final_scores, training_agent_data, opponents_by_position)
@@ -143,6 +316,12 @@ def play_population_game(
         head: {"count": 0, "accepted": 0, "ess_sum": 0.0, "entropy_sum": 0.0}
         for head in ("pick", "partner", "bury", "play")
     }
+    # Captured opponent strategic-profile events (parallel/worker mode only),
+    # keyed by agent_id, for the learner to replay onto the authoritative
+    # population. action_events: list of update_strategic_profile_from_game dicts;
+    # trick_samples: list of (role, trick_win, is_leader, lead_win) tuples.
+    captured_action_events: dict[str, list[dict]] = {}
+    captured_trick_samples: dict[str, list[tuple]] = {}
 
     # Reset recurrent states for all agents
     training_agent.reset_recurrent_state()
@@ -290,9 +469,18 @@ def play_population_game(
                 # --- Strategic profile updates for opponents (pre-action; uses pre-action hand + trick state) ---
                 pop_agent = pos_to_pop_agent.get(player.position)
                 if pop_agent:
-                    profile_pop_agent_action(
-                        game, player, action, pop_agent, hand_strength_by_pos
-                    )
+                    if capture_profile_events:
+                        events = compute_action_profile_events(
+                            game, player, action, hand_strength_by_pos
+                        )
+                        if events:
+                            captured_action_events.setdefault(
+                                pop_agent.metadata.agent_id, []
+                            ).extend(events)
+                    else:
+                        profile_pop_agent_action(
+                            game, player, action, pop_agent, hand_strength_by_pos
+                        )
 
                 player.act(action)
 
@@ -325,7 +513,21 @@ def play_population_game(
                     pos_to_pop_agent_local = {}
                     for i, opp in enumerate(opponents[: len(opp_positions)]):
                         pos_to_pop_agent_local[opp_positions[i]] = opp
-                    profile_trick_completion(game, pos_to_pop_agent_local)
+                    if capture_profile_events:
+                        for (
+                            seat_pos,
+                            role,
+                            trick_win,
+                            is_leader,
+                            lead_win,
+                        ) in compute_trick_profile_samples(game):
+                            sample_agent = pos_to_pop_agent_local.get(seat_pos)
+                            if sample_agent:
+                                captured_trick_samples.setdefault(
+                                    sample_agent.metadata.agent_id, []
+                                ).append((role, trick_win, is_leader, lead_win))
+                    else:
+                        profile_trick_completion(game, pos_to_pop_agent_local)
 
                 valid_actions = player.get_valid_action_ids()
 
@@ -341,6 +543,11 @@ def play_population_game(
         "position": training_agent_position,
         "search_diagnostics": search_diagnostics,
     }
+    if capture_profile_events:
+        training_agent_data["profile_events"] = {
+            "action": captured_action_events,
+            "trick": captured_trick_samples,
+        }
 
     # Compute rewards for training agent actions. Shaped: intermediate + final
     # (+ leaster bonus). Terminal: final_score-only on the last action, no shaping
@@ -397,6 +604,49 @@ def play_population_game(
         training_agent_data,
         dict(pos_to_pop_agent),
     )
+
+
+def make_game_summary(game) -> dict:
+    """Normalize the post-game public fields the training driver needs into a plain,
+    picklable dict, so the per-episode bookkeeping path is identical whether the game
+    was played in-process (sequential) or in a worker (parallel).
+
+    seat_roles maps every seat (1-5) to picker/partner/defender/leaster using the same
+    logic as the original role-perf loop.
+    """
+    is_leaster = bool(game.is_leaster)
+    is_partner_seat = getattr(game, "is_partner_seat", None)
+    seat_roles: dict[int, str] = {}
+    for pos in range(1, 6):
+        if is_leaster:
+            seat_roles[pos] = "leaster"
+        elif game.picker == pos:
+            seat_roles[pos] = "picker"
+        elif (is_partner_seat(pos) if callable(is_partner_seat) else False) or getattr(
+            game.players[pos - 1], "is_partner", False
+        ):
+            seat_roles[pos] = "partner"
+        else:
+            seat_roles[pos] = "defender"
+
+    if game.picker and not is_leaster:
+        final_picker_points = game.get_final_picker_points()
+        final_defender_points = game.get_final_defender_points()
+    else:
+        final_picker_points = None
+        final_defender_points = None
+
+    return {
+        "picker": game.picker,
+        "partner": game.partner,
+        "is_leaster": is_leaster,
+        "alone_called": bool(game.alone_called),
+        "is_called_under": bool(game.is_called_under),
+        "called_card": game.called_card,
+        "seat_roles": seat_roles,
+        "final_picker_points": final_picker_points,
+        "final_defender_points": final_defender_points,
+    }
 
 
 def run_pfsp_training(
@@ -458,13 +708,32 @@ def run_pfsp_training(
     use_search = (
         hyperparams.reward_mode == "terminal" and hyperparams.search is not None
     )
+    # Single ISMCTSConfig shared by the in-process teacher and the parallel workers.
+    ismcts_config = ISMCTSConfig()
     ismcts_teacher = (
-        ISMCTSTeacher(training_agent, ISMCTSConfig()) if use_search else None
+        ISMCTSTeacher(training_agent, ismcts_config) if use_search else None
     )
     determinization_rng = random.Random(20260529) if use_search else None
     if use_search:
         # PG-mask vs additive-form A/B for searched transitions (plan §4).
         training_agent.searched_pg_weight = hyperparams.search.searched_pg_weight
+
+    # Parallel game-generation worker count (Lever 1). None => auto: parallelize the
+    # expensive ISMCTS ExIt generation (terminal mode), keep the cheap shaped PPO
+    # baseline sequential. <=1 runs the original in-process sequential loop.
+    num_workers_cfg = getattr(hyperparams, "num_workers", None)
+    if num_workers_cfg is None:
+        num_workers = (
+            min((os.cpu_count() or 1) - 1, 8)
+            if hyperparams.reward_mode == "terminal"
+            else 1
+        )
+        num_workers = max(1, num_workers)
+    else:
+        num_workers = max(1, int(num_workers_cfg))
+    print(
+        f"  Game generation: {'PARALLEL (' + str(num_workers) + ' workers)' if num_workers > 1 else 'SEQUENTIAL'}"
+    )
 
     # OpenSkill rating for the training agent
     rating_model = PlackettLuce()
@@ -624,10 +893,14 @@ def run_pfsp_training(
     # Opponent sampling schedule state: occasional "anchor blocks" where most seats are anchors
     anchor_block_remaining = 0
 
-    for episode in range(start_episode + 1, num_episodes + 1):
-        # ------------------------------------------------------------------
+    def _setup_episode(episode: int):
+        """Per-episode setup shared by the sequential and parallel drivers: μ-renorm,
+        partner mode, opponent scheduling + sampling, training seat, shaping weights.
+        Mutates the renorm/anchor schedule state, preserving the sequential RNG order."""
+        nonlocal cumulative_renorm, anchor_block_remaining
+        # --------------------------------------------------------------
         # Prevent numerical overflow in OpenSkill ratings by renormalising μ
-        # ------------------------------------------------------------------
+        # --------------------------------------------------------------
         MAX_ABS_MU = 350.0
         all_ratings = (
             [training_rating]
@@ -704,23 +977,29 @@ def run_pfsp_training(
         # ignored by play_population_game when reward_mode="terminal").
         progress_pct = get_schedule_progress_pct(episode)
         shaping_weights = {
-            "pick": interpolated_weight(
-                hyperparams.shaping_schedule_pick, progress_pct
-            ),
+            "pick": interpolated_weight(hyperparams.shaping_schedule_pick, progress_pct),
             "partner": interpolated_weight(
                 hyperparams.shaping_schedule_partner, progress_pct
             ),
-            "bury": interpolated_weight(
-                hyperparams.shaping_schedule_bury, progress_pct
-            ),
-            "play": interpolated_weight(
-                hyperparams.shaping_schedule_play, progress_pct
-            ),
+            "bury": interpolated_weight(hyperparams.shaping_schedule_bury, progress_pct),
+            "play": interpolated_weight(hyperparams.shaping_schedule_play, progress_pct),
         }
+        return partner_mode, opponents, training_position, shaping_weights
 
-        # Play game
-        game, episode_events, final_scores, training_data_single, position_to_agent = (
-            play_population_game(
+    def _sequential_episode_stream():
+        """Generate one game at a time in-process (num_workers <= 1). Behavior-
+        identical to the original inline loop."""
+        for episode in range(start_episode + 1, num_episodes + 1):
+            partner_mode, opponents, training_position, shaping_weights = (
+                _setup_episode(episode)
+            )
+            (
+                game,
+                episode_events,
+                final_scores,
+                training_data_single,
+                position_to_agent,
+            ) = play_population_game(
                 training_agent=training_agent,
                 opponents=opponents,
                 partner_mode=partner_mode,
@@ -731,8 +1010,184 @@ def run_pfsp_training(
                 determinization_rng=determinization_rng,
                 search_config=hyperparams.search,
             )
-        )
+            yield (
+                episode,
+                partner_mode,
+                training_position,
+                episode_events,
+                final_scores,
+                training_data_single,
+                make_game_summary(game),
+                position_to_agent,
+            )
 
+    # Weight-sync coordination for parallel workers: the update block publishes the
+    # training agent's fresh weights (versioned) here; the parallel stream tags each
+    # dispatched job with the current version and workers reload on a bump. Defined
+    # even in sequential mode (a harmless no-op there).
+    weight_sync = {"version": 0, "base": os.path.join(output_dir, "_worker_weights")}
+
+    def _publish_weights():
+        """Write the training agent's current weights to a fresh, immutable per-version
+        file for workers and bump the version. Per-version files avoid any
+        read-during-replace race (a worker always loads the exact tagged version).
+        Called by the update block after a successful update (parallel only)."""
+        weight_sync["version"] += 1
+        version = weight_sync["version"]
+        path = f"{weight_sync['base']}_v{version}.pt"
+        tmp_path = path + ".tmp"
+        torch.save(
+            {
+                "encoder_state_dict": training_agent.encoder.state_dict(),
+                "actor_state_dict": training_agent.actor.state_dict(),
+                "critic_state_dict": training_agent.critic.state_dict(),
+            },
+            tmp_path,
+        )
+        os.replace(tmp_path, path)
+        # Keep current + previous version; drop older to bound disk use.
+        stale = f"{weight_sync['base']}_v{version - 2}.pt"
+        if os.path.exists(stale):
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
+
+    def _parallel_episode_stream(setup_episode, weight_sync, publish_weights):
+        """Windowed synchronous self-play across a worker pool (Lever 1).
+
+        Each window of episodes is sampled in the learner (authoritative population),
+        dispatched to workers with the current frozen weight version, and yielded in
+        episode order. Windows are sized *under* one update interval so the update
+        always fires at a window boundary on games generated with a single weight
+        version (strictly on-policy; the only lag is in opponent sampling, which is
+        sampled up to a window ahead). After each update the learner publishes fresh
+        weights and the next window picks up the new version.
+        """
+        import multiprocessing as mp
+
+        init_args = {
+            "activation": activation,
+            "use_search": use_search,
+            "searched_pg_weight": (
+                hyperparams.search.searched_pg_weight if use_search else 0.0
+            ),
+            "reward_mode": hyperparams.reward_mode,
+            "search_config": hyperparams.search,
+            "ismcts_config": ismcts_config,
+            "population_dir": population_dir,
+            "weight_path_base": weight_sync["base"],
+            "base_seed": 20260529,
+        }
+        # Publish v1 so the first jobs load the current training-agent weights.
+        publish_weights()
+
+        # Conservative transitions-per-game estimate used to size windows to the
+        # remaining budget before the next update. Overestimating keeps windows from
+        # overshooting the update threshold, which bounds any off-policy straddle to a
+        # small, batch-lag-tolerable amount (the user-accepted approximation): every
+        # game in a window uses one weight version; the update fires near the window
+        # boundary and the next window picks up fresh weights.
+        avg_tx_per_game = 12.0
+        max_window = 8 * num_workers
+
+        ctx = mp.get_context("spawn")
+        pool = ctx.Pool(
+            processes=num_workers,
+            initializer=_worker_init,
+            initargs=(init_args,),
+        )
+        try:
+            episode = start_episode + 1
+            while episode <= num_episodes:
+                # Size this window to ~the transitions remaining before the next update
+                # (reads the learner's live counter), floored for worker utilization.
+                remaining_tx = max(1, update_interval - transitions_since_update)
+                window_games = max(
+                    num_workers,
+                    min(max_window, int(remaining_tx / avg_tx_per_game) + 1),
+                )
+                end = min(num_episodes, episode + window_games - 1)
+                version = weight_sync["version"]
+                jobs = []
+                episode_opponents = {}
+                for ep in range(episode, end + 1):
+                    partner_mode, opponents, training_position, _shaping = (
+                        setup_episode(ep)
+                    )
+                    episode_opponents[ep] = {
+                        o.metadata.agent_id: o for o in opponents
+                    }
+                    jobs.append(
+                        JobSpec(
+                            episode=ep,
+                            partner_mode=partner_mode,
+                            training_position=training_position,
+                            shaping_weights=_shaping,
+                            opponent_specs=[
+                                (o.metadata.agent_id, o.metadata.partner_mode)
+                                for o in opponents
+                            ],
+                            weight_version=version,
+                        )
+                    )
+                for result in pool.imap(_worker_play_game, jobs):
+                    id_to_auth = episode_opponents.pop(result.episode, {})
+                    # Replay captured opponent profile events onto the authoritative
+                    # population (batch-lagged: applied at result time, not in-game).
+                    profile_events = result.training_data_single.pop(
+                        "profile_events", {}
+                    )
+                    for aid, events in profile_events.get("action", {}).items():
+                        auth = id_to_auth.get(aid)
+                        if auth is not None:
+                            for ev in events:
+                                auth.update_strategic_profile_from_game(ev)
+                    for aid, samples in profile_events.get("trick", {}).items():
+                        auth = id_to_auth.get(aid)
+                        if auth is not None:
+                            for role, trick_win, is_leader, lead_win in samples:
+                                apply_trick_profile_sample(
+                                    auth, role, trick_win, is_leader, lead_win
+                                )
+                    position_to_agent = {
+                        seat: id_to_auth.get(aid)
+                        for seat, aid in result.seat_to_agent_id.items()
+                    }
+                    yield (
+                        result.episode,
+                        result.partner_mode,
+                        result.training_position,
+                        result.episode_events,
+                        result.final_scores,
+                        result.training_data_single,
+                        result.game_summary,
+                        position_to_agent,
+                    )
+                episode = end + 1
+        finally:
+            pool.close()
+            pool.join()
+
+    if num_workers > 1:
+        episode_stream = _parallel_episode_stream(
+            setup_episode=_setup_episode,
+            weight_sync=weight_sync,
+            publish_weights=_publish_weights,
+        )
+    else:
+        episode_stream = _sequential_episode_stream()
+
+    for (
+        episode,
+        partner_mode,
+        training_position,
+        episode_events,
+        final_scores,
+        training_data_single,
+        summary,
+        position_to_agent,
+    ) in episode_stream:
         training_agent.store_episode_events(episode_events)
         transitions_since_update += sum(
             1 for ev in episode_events if ev["kind"] == "action"
@@ -766,15 +1221,15 @@ def run_pfsp_training(
             final_scores=final_scores,
             training_position=training_position,
             opponents_by_position=position_to_agent,
-            picker_seat=game.picker,
-            partner_seat=game.partner,
-            is_leaster=game.is_leaster,
+            picker_seat=summary["picker"],
+            partner_seat=summary["partner"],
+            is_leaster=summary["is_leaster"],
         )
 
         # Track team point differences
-        if game.picker and not game.is_leaster:
-            picker_team_points = game.get_final_picker_points()
-            defender_team_points = game.get_final_defender_points()
+        if summary["picker"] and not summary["is_leaster"]:
+            picker_team_points = summary["final_picker_points"]
+            defender_team_points = summary["final_defender_points"]
             team_point_diff = abs(picker_team_points - defender_team_points)
         else:
             team_point_diff = 0
@@ -784,54 +1239,38 @@ def run_pfsp_training(
         for pos in opponent_positions:
             opp_agent = position_to_agent.get(pos)
             if opp_agent:
-                if game.is_leaster:
-                    opp_agent.update_strategic_profile_from_game(
-                        {
-                            "final_score": final_scores[pos - 1],
-                            "role": "leaster",
-                        }
-                    )
-                else:
-                    role_final = (
-                        "picker"
-                        if (game.picker == pos)
-                        else (
-                            "partner"
-                            if getattr(game, "is_partner_seat", lambda _pos: False)(pos)
-                            or getattr(game.players[pos - 1], "is_partner", False)
-                            else "defender"
-                        )
-                    )
-                    opp_agent.update_strategic_profile_from_game(
-                        {
-                            "final_score": final_scores[pos - 1],
-                            "role": role_final,
-                        }
-                    )
+                opp_agent.update_strategic_profile_from_game(
+                    {
+                        "final_score": final_scores[pos - 1],
+                        "role": summary["seat_roles"].get(pos, "defender"),
+                    }
+                )
 
         # Track other statistics (similar to train_ppo.py)
-        is_leaster_ep = 1 if game.is_leaster else 0
+        is_leaster_ep = 1 if summary["is_leaster"] else 0
         leaster_window.append(is_leaster_ep)
 
         is_called_ace_ep = 1 if partner_mode == PARTNER_BY_CALLED_ACE else 0
         called_ace_window.append(is_called_ace_ep)
 
         if is_called_ace_ep and not is_leaster_ep:
-            called_under_window.append(1 if game.is_called_under else 0)
+            called_under_window.append(1 if summary["is_called_under"] else 0)
             called_10_window.append(
-                1 if (game.called_card and game.called_card.startswith("10")) else 0
+                1
+                if (summary["called_card"] and summary["called_card"].startswith("10"))
+                else 0
             )
         elif is_called_ace_ep:
             called_under_window.append(0)
             called_10_window.append(0)
 
         # Track ALONE calls only for games with a picker (exclude leaster)
-        if not game.is_leaster:
+        if not summary["is_leaster"]:
             # Global population ALONE indicator (any picker)
-            alone_call_window.append(1 if game.alone_called else 0)
+            alone_call_window.append(1 if summary["alone_called"] else 0)
             # Training-agent-only ALONE indicator (only when training agent is picker)
             if training_data_single["was_picker"]:
-                training_alone_window.append(1 if game.alone_called else 0)
+                training_alone_window.append(1 if summary["alone_called"] else 0)
 
         # Count pick/pass decisions from transitions
         episode_picks = sum(
@@ -1010,6 +1449,10 @@ def run_pfsp_training(
             transitions_since_update = 0
             for stats in search_diagnostics_window.values():
                 stats.update(count=0, accepted=0, ess_sum=0.0, entropy_sum=0.0)
+
+            # Publish fresh weights for parallel workers (no-op in sequential mode).
+            if num_workers > 1:
+                _publish_weights()
 
         # Add agent to population periodically
         if episode % population_add_interval == 0:

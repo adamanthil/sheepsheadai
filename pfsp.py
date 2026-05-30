@@ -63,23 +63,27 @@ def detailed_role_for_metrics(player) -> str:
     return "defender"
 
 
-def profile_pop_agent_action(
+def compute_action_profile_events(
     game: Game,
     player,
     action: int,
-    pop_agent: "PopulationAgent",
     hand_strength_by_pos: dict[int, str],
-) -> None:
-    """Apply strategic profiling updates for a population agent based on an action.
+) -> list[dict]:
+    """Compute the strategic-profile event dicts implied by a (pre-action) decision.
 
-    Centralizes pick/pass, bury, alone/call, lead/void profiling to keep training and
-    evaluation loops consistent.
+    Pure: returns the list of ``game_data`` dicts that would be fed to
+    ``PopulationAgent.update_strategic_profile_from_game`` (pick/pass, bury,
+    alone/call, lead/void/early-trump). Split out from the apply step so the
+    parallel self-play workers (pfsp_runtime.py) can capture the event stream and
+    the learner can replay it onto the authoritative population. Must be called
+    with the same pre-action hand + trick state as the original mutate-in-place path.
     """
     action_name = ACTION_LOOKUP[action]
+    events: list[dict] = []
 
     # Pick / Pass profiling
     if action_name in ("PICK", "PASS"):
-        pop_agent.update_strategic_profile_from_game(
+        events.append(
             {
                 "pick_decision": (action_name == "PICK"),
                 "hand_strength_category": hand_strength_by_pos.get(
@@ -92,20 +96,13 @@ def profile_pop_agent_action(
     # Bury profiling
     if action_name.startswith("BURY "):
         card = action_name.split()[-1]
-        pop_agent.update_strategic_profile_from_game(
-            {
-                "bury_decision": card,
-                "card_points": get_card_points(card),
-            }
-        )
+        events.append({"bury_decision": card, "card_points": get_card_points(card)})
 
     # ALONE vs partner call profiling
     if action_name == "ALONE":
-        pop_agent.update_strategic_profile_from_game({"alone_call": True})
+        events.append({"alone_call": True})
     elif action_name.startswith("CALL "):
-        pop_agent.update_strategic_profile_from_game(
-            {"alone_call": False, "called_card": action_name.split()[1]}
-        )
+        events.append({"alone_call": False, "called_card": action_name.split()[1]})
 
     # Lead/void profiling
     if action_name.startswith("PLAY "):
@@ -113,7 +110,7 @@ def profile_pop_agent_action(
         is_lead = game.cards_played == 0
         is_early = is_lead and (game.current_trick <= 1)
         if is_lead:
-            pop_agent.update_strategic_profile_from_game(
+            events.append(
                 {
                     "trump_lead": (card in TRUMP),
                     "role": standard_role_for_lead(player),
@@ -129,7 +126,7 @@ def profile_pop_agent_action(
                 # Schmear defined as throwing A/K/10 off-suit when void
                 pts = get_card_points(card)
                 is_schmear_card = (not played_trump) and (pts >= 4)
-                pop_agent.update_strategic_profile_from_game(
+                events.append(
                     {
                         "void_event": True,
                         "void_played_trump": played_trump,
@@ -143,9 +140,96 @@ def profile_pop_agent_action(
         # Early-trump play rate (first two tricks, any seat, any position)
         is_early_trick_play = game.current_trick <= 1
         if is_early_trick_play:
-            pop_agent.update_strategic_profile_from_game(
-                {"early_trump_play": bool(card in TRUMP)}
-            )
+            events.append({"early_trump_play": bool(card in TRUMP)})
+
+    return events
+
+
+def profile_pop_agent_action(
+    game: Game,
+    player,
+    action: int,
+    pop_agent: "PopulationAgent",
+    hand_strength_by_pos: dict[int, str],
+) -> None:
+    """Apply strategic profiling updates for a population agent based on an action.
+
+    Thin wrapper: ``compute_action_profile_events`` (pure) + apply. Centralizes
+    pick/pass, bury, alone/call, lead/void profiling to keep training and
+    evaluation loops consistent.
+    """
+    for event in compute_action_profile_events(
+        game, player, action, hand_strength_by_pos
+    ):
+        pop_agent.update_strategic_profile_from_game(event)
+
+
+def compute_trick_profile_samples(
+    game: Game,
+) -> list[tuple[int, str, float, bool, float]]:
+    """Compute per-seat trick/lead win samples after a completed trick.
+
+    Pure: returns ``[(seat_pos, role, trick_win_sample, is_leader, lead_win_sample)]``
+    for every seat (empty for leasters / no completed trick). ``lead_win_sample`` is
+    only meaningful when ``is_leader``. Split out from the apply step so parallel
+    self-play workers can capture the samples (tagged by agent_id in pfsp_runtime)
+    and the learner can replay them. Apply via ``apply_trick_profile_sample``.
+    """
+    samples: list[tuple[int, str, float, bool, float]] = []
+    if game.current_trick <= 0:
+        return samples
+    last_idx = game.current_trick - 1
+    # Guard index bounds
+    if last_idx < 0:
+        return samples
+    # Skip leaster since roles differ
+    if getattr(game, "is_leaster", False):
+        return samples
+
+    winner_pos = int(game.trick_winners[last_idx])
+    leader_pos = int(game.leaders[last_idx])
+
+    for seat in game.players:
+        role = detailed_role_for_metrics(seat)
+        trick_win = 1.0 if seat.position == winner_pos else 0.0
+        is_leader = seat.position == leader_pos
+        lead_win = (1.0 if leader_pos == winner_pos else 0.0) if is_leader else 0.0
+        samples.append((seat.position, role, trick_win, is_leader, lead_win))
+    return samples
+
+
+def apply_trick_profile_sample(
+    pop_agent: "PopulationAgent",
+    role: str,
+    trick_win_sample: float,
+    is_leader: bool,
+    lead_win_sample: float,
+) -> None:
+    """Apply one seat's trick/lead win EWMA update onto a population agent.
+
+    Order-independent across seats/agents (distinct fields), so replaying captured
+    samples in the learner is numerically identical to the in-game mutation.
+    """
+    sp = pop_agent.strategic_profile
+    a = EMA_ALPHA_TRICK
+    if role == "picker":
+        sp.trick_win_rate_picker = (1.0 - a) * sp.trick_win_rate_picker + a * trick_win_sample
+    elif role == "partner":
+        sp.trick_win_rate_partner = (1.0 - a) * sp.trick_win_rate_partner + a * trick_win_sample
+    else:
+        sp.trick_win_rate_defender = (
+            1.0 - a
+        ) * sp.trick_win_rate_defender + a * trick_win_sample
+
+    if is_leader:
+        if role == "picker":
+            sp.lead_win_rate_picker = (1.0 - a) * sp.lead_win_rate_picker + a * lead_win_sample
+        elif role == "partner":
+            sp.lead_win_rate_partner = (1.0 - a) * sp.lead_win_rate_partner + a * lead_win_sample
+        else:
+            sp.lead_win_rate_defender = (
+                1.0 - a
+            ) * sp.lead_win_rate_defender + a * lead_win_sample
 
 
 def profile_trick_completion(
@@ -153,81 +237,17 @@ def profile_trick_completion(
 ) -> None:
     """Update trick-level EWMAs for population agents after a trick completes.
 
+    Thin wrapper: ``compute_trick_profile_samples`` (pure) + apply per seat.
     - trick_win_rate_by_role: each agent gets a sample 1/0 based on win for their role
     - lead_win_rate_by_role: only leader gets a 1/0 sample for whether lead won
     """
-    if game.current_trick <= 0:
-        return
-    last_idx = game.current_trick - 1
-    # Guard index bounds
-    if last_idx < 0:
-        return
-
-    winner_raw = game.trick_winners[last_idx]
-    winner_pos = int(winner_raw)
-
-    leader_raw = game.leaders[last_idx]
-    leader_pos = int(leader_raw)
-
-    # Skip leaster since roles differ
-    if getattr(game, "is_leaster", False):
-        return
-
-    # Trick win rate by role (update all seats present in mapping)
-    for seat in game.players:
-        pop_agent = pos_to_agent.get(seat.position)
+    for seat_pos, role, trick_win, is_leader, lead_win in compute_trick_profile_samples(
+        game
+    ):
+        pop_agent = pos_to_agent.get(seat_pos)
         if not pop_agent:
             continue
-        role = detailed_role_for_metrics(seat)
-        sample = 1.0 if seat.position == winner_pos else 0.0
-        if role == "picker":
-            pop_agent.strategic_profile.trick_win_rate_picker = (
-                (1.0 - EMA_ALPHA_TRICK)
-                * pop_agent.strategic_profile.trick_win_rate_picker
-                + EMA_ALPHA_TRICK * sample
-            )
-        elif role == "partner":
-            pop_agent.strategic_profile.trick_win_rate_partner = (
-                (1.0 - EMA_ALPHA_TRICK)
-                * pop_agent.strategic_profile.trick_win_rate_partner
-                + EMA_ALPHA_TRICK * sample
-            )
-        else:
-            pop_agent.strategic_profile.trick_win_rate_defender = (
-                (1.0 - EMA_ALPHA_TRICK)
-                * pop_agent.strategic_profile.trick_win_rate_defender
-                + EMA_ALPHA_TRICK * sample
-            )
-
-    # Lead win rate by role (only for leader if present in mapping)
-    if leader_pos is not None:
-        leader_agent = pos_to_agent.get(leader_pos)
-        leader_seat = None
-        for seat in game.players:
-            if seat.position == leader_pos:
-                leader_seat = seat
-                break
-        if leader_agent and leader_seat:
-            role = detailed_role_for_metrics(leader_seat)
-            sample = 1.0 if leader_pos == winner_pos else 0.0
-            if role == "picker":
-                leader_agent.strategic_profile.lead_win_rate_picker = (
-                    (1.0 - EMA_ALPHA_TRICK)
-                    * leader_agent.strategic_profile.lead_win_rate_picker
-                    + EMA_ALPHA_TRICK * sample
-                )
-            elif role == "partner":
-                leader_agent.strategic_profile.lead_win_rate_partner = (
-                    (1.0 - EMA_ALPHA_TRICK)
-                    * leader_agent.strategic_profile.lead_win_rate_partner
-                    + EMA_ALPHA_TRICK * sample
-                )
-            else:
-                leader_agent.strategic_profile.lead_win_rate_defender = (
-                    (1.0 - EMA_ALPHA_TRICK)
-                    * leader_agent.strategic_profile.lead_win_rate_defender
-                    + EMA_ALPHA_TRICK * sample
-                )
+        apply_trick_profile_sample(pop_agent, role, trick_win, is_leader, lead_win)
 
 
 @dataclass

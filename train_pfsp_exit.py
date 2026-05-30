@@ -144,6 +144,13 @@ def main():
         help="PG-mask vs additive-form A/B: PPO-clip weight on searched transitions "
         "(0.0=hard mask/default, 1.0=additive, 0<w<1=residual PG)",
     )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=None,
+        help="Parallel game-generation workers (Lever 1). Default: auto "
+        "(min(cpu_count-1, 8) for ExIt). 1 forces the sequential loop.",
+    )
 
     args = parser.parse_args()
 
@@ -167,7 +174,9 @@ def main():
         d_short=args.d_short,
         searched_pg_weight=args.searched_pg_weight,
     )
-    hyperparams = PFSPHyperparams(reward_mode="terminal", search=search)
+    hyperparams = PFSPHyperparams(
+        reward_mode="terminal", search=search, num_workers=args.num_workers
+    )
 
     run_pfsp_training(
         num_episodes=args.episodes,

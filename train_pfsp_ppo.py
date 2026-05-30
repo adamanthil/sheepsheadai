@@ -91,6 +91,13 @@ def main():
         default=None,
         help="Population directory (default: runs/<run-name>/population). Point at a seeded pool to reuse it.",
     )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=None,
+        help="Parallel game-generation workers (Lever 1). Default: auto "
+        "(sequential for the shaped baseline). >1 parallelizes generation.",
+    )
 
     args = parser.parse_args()
 
@@ -103,7 +110,9 @@ def main():
     plt.switch_backend("Agg")
 
     # Shaped baseline: reward shaping + entropy bumps, no search.
-    hyperparams = PFSPHyperparams(reward_mode="shaped", search=None)
+    hyperparams = PFSPHyperparams(
+        reward_mode="shaped", search=None, num_workers=args.num_workers
+    )
 
     run_pfsp_training(
         num_episodes=args.episodes,

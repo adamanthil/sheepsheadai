@@ -641,6 +641,132 @@ def test_searched_pg_weight_ab():
 
 
 # ---------------------------------------------------------------------------
+# 9. Parallel self-play (Lever 1): profile capture/replay equivalence + pickle
+# ---------------------------------------------------------------------------
+def test_profile_capture_replay_equivalence():
+    """The parallel worker captures opponent profile events and the learner replays
+    them per agent (all action events, then all trick samples); the sequential path
+    instead mutates the profile in-game order (action and trick interleaved). These
+    must be numerically identical, because action-profile fields and trick/lead-rate
+    fields are disjoint — so per-agent order is preserved and the action/trick grouping
+    is irrelevant. Guard that invariant directly with a deterministic synthetic stream
+    (a two-run game comparison is unsuitable: the agent's act() is stochastic)."""
+    from pfsp_runtime import apply_trick_profile_sample
+
+    # A representative in-game-order stream of (kind, agent_id, payload), mixing both
+    # event kinds for the same agent and repeated EWMA-bearing events (order-sensitive
+    # within a field) so the test would fail if grouping reordered same-field updates.
+    stream = [
+        ("action", "p0", {"pick_decision": True, "hand_strength_category": "strong", "position": 1}),
+        ("trick", "p0", ("picker", 1.0, True, 1.0)),
+        ("action", "p1", {"trump_lead": True, "role": "defender", "is_early_lead": True}),
+        ("action", "p0", {"early_trump_play": True}),
+        ("trick", "p1", ("defender", 0.0, False, 0.0)),
+        ("action", "p1", {"void_event": True, "void_played_trump": False, "schmeared_points": 4, "void_schmear": True}),
+        ("action", "p0", {"early_trump_play": False}),
+        ("trick", "p0", ("picker", 0.0, True, 0.0)),
+        ("action", "p0", {"bury_decision": "AH", "card_points": 11}),
+        ("action", "p1", {"pick_decision": False, "hand_strength_category": "weak", "position": 3}),
+        ("trick", "p1", ("defender", 1.0, True, 1.0)),
+    ]
+    aids = ("p0", "p1")
+
+    # Sequential path: mutate in interleaved game order.
+    seq = {a: _make_pop_agent(_fresh_agent(), PARTNER_BY_JD, "s" + a) for a in aids}
+    for kind, aid, payload in stream:
+        if kind == "action":
+            seq[aid].update_strategic_profile_from_game(payload)
+        else:
+            role, trick_win, is_leader, lead_win = payload
+            apply_trick_profile_sample(seq[aid], role, trick_win, is_leader, lead_win)
+
+    # Parallel path: bucket per agent (preserving per-agent order), then replay all
+    # action events followed by all trick samples (the learner's replay order).
+    cap_action: dict[str, list] = {}
+    cap_trick: dict[str, list] = {}
+    for kind, aid, payload in stream:
+        (cap_action if kind == "action" else cap_trick).setdefault(aid, []).append(payload)
+    par = {a: _make_pop_agent(_fresh_agent(), PARTNER_BY_JD, "p" + a) for a in aids}
+    for aid, events in cap_action.items():
+        for ev in events:
+            par[aid].update_strategic_profile_from_game(ev)
+    for aid, samples in cap_trick.items():
+        for role, trick_win, is_leader, lead_win in samples:
+            apply_trick_profile_sample(par[aid], role, trick_win, is_leader, lead_win)
+
+    for aid in aids:
+        assert seq[aid].strategic_profile.to_dict() == par[aid].strategic_profile.to_dict(), (
+            f"capture/replay diverged from in-game mutation for {aid}"
+        )
+
+
+def test_gameresult_pickle_roundtrip():
+    """GameResult / JobSpec must round-trip through pickle (spawn worker boundary)."""
+    import pickle
+
+    from pfsp_runtime import GameResult, JobSpec, make_game_summary, play_population_game
+
+    ta = _fresh_agent()
+    opps = [_make_pop_agent(_fresh_agent(), PARTNER_BY_JD, i) for i in range(4)]
+    _seed()
+    game, events, final_scores, tdata, p2a = play_population_game(
+        ta, opps, PARTNER_BY_JD, training_agent_position=1,
+        reward_mode="shaped", capture_profile_events=True,
+    )
+    summary = make_game_summary(game)
+    result = GameResult(
+        episode=7,
+        partner_mode=PARTNER_BY_JD,
+        training_position=1,
+        episode_events=events,
+        final_scores=final_scores,
+        training_data_single=tdata,
+        game_summary=summary,
+        seat_to_agent_id={s: o.metadata.agent_id for s, o in p2a.items()},
+    )
+    back = pickle.loads(pickle.dumps(result))
+    assert back.episode == 7
+    assert back.final_scores == final_scores
+    assert back.game_summary == summary
+    assert len(back.episode_events) == len(events)
+    assert back.seat_to_agent_id == result.seat_to_agent_id
+
+    job = JobSpec(
+        episode=3,
+        partner_mode=PARTNER_BY_JD,
+        training_position=2,
+        shaping_weights={"pick": 1.0},
+        opponent_specs=[("opp0", PARTNER_BY_JD)],
+        weight_version=5,
+    )
+    assert pickle.loads(pickle.dumps(job)).weight_version == 5
+
+
+def test_make_game_summary_roles():
+    """make_game_summary must classify every seat and expose the public fields the
+    training driver reads, matching the live game state."""
+    from pfsp_runtime import make_game_summary
+
+    rng = random.Random(SEED)
+    for _ in range(20):
+        game = Game(partner_selection_mode=PARTNER_BY_JD)
+        while not game.is_done():
+            for player in game.players:
+                valid = player.get_valid_action_ids()
+                while valid:
+                    player.act(rng.choice(tuple(valid)))
+                    valid = player.get_valid_action_ids()
+        s = make_game_summary(game)
+        assert set(s["seat_roles"]) == {1, 2, 3, 4, 5}
+        if s["is_leaster"]:
+            assert all(r == "leaster" for r in s["seat_roles"].values())
+        else:
+            assert s["picker"] is not None
+            assert s["seat_roles"][game.picker] == "picker"
+        assert s["picker"] == game.picker and s["is_leaster"] == bool(game.is_leaster)
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 TESTS = [
@@ -653,6 +779,9 @@ TESTS = [
     test_terminal_reward_contract,
     test_distill_pgmask_and_dormant,
     test_searched_pg_weight_ab,
+    test_profile_capture_replay_equivalence,
+    test_gameresult_pickle_roundtrip,
+    test_make_game_summary_roles,
 ]
 
 

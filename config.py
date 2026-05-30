@@ -70,6 +70,12 @@ class PFSPHyperparams:
     reward_mode: str = "shaped"  # "shaped" | "terminal"
     search: SearchConfig | None = None
 
+    # Parallel game-generation workers (Lever 1). None => auto: parallelize the
+    # expensive ISMCTS ExIt generation (reward_mode="terminal") across
+    # min(cpu_count-1, 8) workers, keep the cheap shaped PPO baseline sequential.
+    # 1 (or <=1) forces the original in-process sequential loop.
+    num_workers: int | None = None
+
     # Adaptive exploration for pick head (rate-based bump scheduling)
     low_pick_rate_threshold: float = 20.0  # percent
     high_pick_rate_threshold: float = 60.0  # percent
