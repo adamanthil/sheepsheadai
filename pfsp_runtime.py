@@ -238,11 +238,19 @@ def play_population_game(
                         frac = search_config.fracs.get(head, 0.0)
                         if frac > 0.0 and det_rng.random() < frac:
                             ct = game.current_trick
-                            d_roll = (
-                                (6 - ct)
-                                if ct <= search_config.t_full
-                                else search_config.d_short
-                            )
+                            # Trick-indexed rollout depth: roll (near) to terminal
+                            # in the early tricks where the critic is blind, then
+                            # bootstrap d_short plies later (validated by the t_full
+                            # probe: a search at trick t bootstraps at ~t+d_short,
+                            # so t_full=1 + d_short=2 lands every bootstrap at
+                            # trick >= 4 where R^2 >= 0.73). Leasters ALWAYS roll to
+                            # terminal: the critic never calibrates on leaster
+                            # outcomes (R^2 <= 0.21 even at trick 5), so a bootstrap
+                            # there is noise.
+                            if game.is_leaster or ct <= search_config.t_full:
+                                d_roll = 6 - ct
+                            else:
+                                d_roll = search_config.d_short
                             res = teacher.search(
                                 game,
                                 player.position,

@@ -37,9 +37,14 @@ class SearchConfig:
 
     ``t_full`` / ``d_short`` set the trick-indexed rollout-depth schedule: roll to
     (near) terminal for tricks ``0..t_full`` where the critic is blind to the
-    trick-0 leak, then bootstrap at depth ``d_short`` once the value head is
-    trustworthy. ``t_full`` should be gated on a per-trick critic-calibration
-    probe; the default is a conservative placeholder.
+    trick-0 leak, then bootstrap ``d_short`` plies later once the value head is
+    trustworthy. ``t_full=1`` / ``d_short=2`` are validated by the critic-calibration
+    probe (``t_full_probe.py``): a search at trick ``t`` bootstraps at ~``t+d_short``,
+    so this lands every bootstrap at trick >= 4, where the best-possible value head
+    reaches R^2 ~0.73+ (vs ~0.26 at trick 0). The trick-0 defender-lead leak states
+    are always rolled to terminal (0 <= t_full). Leasters are forced to terminal
+    rollout in the runtime regardless of t_full (their outcomes barely calibrate,
+    R^2 <= 0.21).
     """
 
     fracs: dict = field(
