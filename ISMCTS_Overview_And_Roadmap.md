@@ -166,9 +166,12 @@ The frozen pure-PPO baseline lives in `pfsp_population_ppo` /
   + PPO baseline recorded in `Validation_Baseline_Notes.md`: bidding-health
   (PICK 32.9% / ALONE 6.6% / leaster 9.2%, held *without* controllers), trick-0
   defender trump-lead rate (4.8%, the leak — already low post critic-fix),
-  head-to-head harness (baseline-vs-baseline ≈0 sanity). Still to track *during*
-  the run: distillation diagnostics (teacher_kl, ESS-abort, pg_masked_fraction,
-  pi′ entropy) and the **PG-mask vs additive-form A/B**.
+  head-to-head harness (baseline-vs-baseline ≈0 sanity). Distillation + search
+  diagnostics now LOGGED in the ExIt trainer (`d94e744`): per-update Distill line
+  (loss / teacher_kl / pi′ entropy / masked fraction) + per-head Search line (n,
+  ESS-abort %, mean ESS, accepted-target entropy). Still open: the **PG-mask vs
+  additive-form A/B** (a two-config training experiment, run when the from-scratch
+  run starts).
 - **A committed regression test** for the shared `pfsp_runtime` + distillation /
   PG-mask path — DONE: `test_ismcts_exit_regression.py` (model-free, deterministic;
   Game logic, determinizer legality+replay, batched-pool==sequential, search
