@@ -169,9 +169,11 @@ The frozen pure-PPO baseline lives in `pfsp_population_ppo` /
   head-to-head harness (baseline-vs-baseline ≈0 sanity). Distillation + search
   diagnostics now LOGGED in the ExIt trainer (`d94e744`): per-update Distill line
   (loss / teacher_kl / pi′ entropy / masked fraction) + per-head Search line (n,
-  ESS-abort %, mean ESS, accepted-target entropy). Still open: the **PG-mask vs
-  additive-form A/B** (a two-config training experiment, run when the from-scratch
-  run starts).
+  ESS-abort %, mean ESS, accepted-target entropy). The **PG-mask vs additive-form
+  A/B** is now a config knob (`5f948db`): `SearchConfig.searched_pg_weight` /
+  `--searched-pg-weight` (0.0 mask / default, 1.0 additive, in-between residual PG)
+  — run the two configs once the from-scratch run starts and promote whichever
+  holds the guarded metrics better.
 - **A committed regression test** for the shared `pfsp_runtime` + distillation /
   PG-mask path — DONE: `test_ismcts_exit_regression.py` (model-free, deterministic;
   Game logic, determinizer legality+replay, batched-pool==sequential, search
