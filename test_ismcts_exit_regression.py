@@ -24,14 +24,14 @@ import numpy as np
 import torch
 
 from sheepshead import (
-    Game,
     ACTIONS,
     DECK,
-    UNDER_TOKEN,
-    PARTNER_BY_JD,
     PARTNER_BY_CALLED_ACE,
-    get_card_suit,
+    PARTNER_BY_JD,
+    UNDER_TOKEN,
+    Game,
     get_card_points,
+    get_card_suit,
 )
 
 SEED = 1234
@@ -130,11 +130,17 @@ def _drive_to_head(game, rng, want_head, force_pass_for_leaster=False):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                if not game.is_leaster and _head(valid) == want_head and want_head != "leaster":
+                if (
+                    not game.is_leaster
+                    and _head(valid) == want_head
+                    and want_head != "leaster"
+                ):
                     return player.position, list(fp)
                 if game.is_leaster and want_head == "leaster":
                     # First leaster play decision for seat 1.
-                    if player.position == 1 and any(A[a - 1].startswith("PLAY ") for a in valid):
+                    if player.position == 1 and any(
+                        A[a - 1].startswith("PLAY ") for a in valid
+                    ):
                         return player.position, list(fp)
                 if force_pass_for_leaster and pass_id in valid:
                     a = pass_id
@@ -162,11 +168,14 @@ def _played_by(game):
 
 def _assert_deal_legal(game, deal, observer, kind):
     ih, blind, bury, under = (
-        deal["initial_hands"], deal["blind"], deal["bury"], deal["under_card"]
+        deal["initial_hands"],
+        deal["blind"],
+        deal["bury"],
+        deal["under_card"],
     )
-    assert sorted([c for s in range(1, 6) for c in ih[s]] + list(blind)) == sorted(DECK), (
-        f"{kind}: partition != full deck"
-    )
+    assert sorted([c for s in range(1, 6) for c in ih[s]] + list(blind)) == sorted(
+        DECK
+    ), f"{kind}: partition != full deck"
     for s in range(1, 6):
         assert len(ih[s]) == 6, f"{kind}: seat {s} not dealt 6"
     assert sorted(ih[observer]) == sorted(game.players[observer - 1].initial_hand), (
@@ -188,11 +197,17 @@ def _assert_deal_legal(game, deal, observer, kind):
             if under:
                 cur.discard(under)
         for c in cur:
-            assert get_card_suit(c) not in voids[s], f"{kind}: seat {s} void violation {c}"
+            assert get_card_suit(c) not in voids[s], (
+                f"{kind}: seat {s} void violation {c}"
+            )
     if kind == "pick":
-        assert bury == [] and under is None, f"{kind}: pre-pick must have empty bury/under"
+        assert bury == [] and under is None, (
+            f"{kind}: pre-pick must have empty bury/under"
+        )
     if kind == "leaster":
-        assert bury == [] and under is None, f"{kind}: leaster must have empty bury/under"
+        assert bury == [] and under is None, (
+            f"{kind}: leaster must have empty bury/under"
+        )
         assert len(blind) == 2, f"{kind}: leaster blind != 2"
         all_played = {c for cards in pb.values() for c in cards}
         for c in blind:
@@ -204,6 +219,7 @@ def _replay_reproduces_history(real_game, deal, forced_public, observer):
     replaying forced_public + forced bury/under, must reach the same node and
     reproduce the public history exactly."""
     from collections import deque
+
     from sheepshead import ACTION_IDS
 
     g = Game(partner_selection_mode=real_game.partner_mode_flag)
@@ -254,7 +270,13 @@ def _replay_reproduces_history(real_game, deal, forced_public, observer):
 
 def test_determinizer_legality_and_replay():
     rng = random.Random(SEED)
-    specs = [("pick", False), ("partner", False), ("bury", False), ("play", False), ("leaster", True)]
+    specs = [
+        ("pick", False),
+        ("partner", False),
+        ("bury", False),
+        ("play", False),
+        ("leaster", True),
+    ]
     for head, force_pass in specs:
         found = 0
         g = 0
@@ -280,7 +302,7 @@ def test_determinizer_legality_and_replay():
 # 3. Batched pool build == sequential reference (the key Tier-2 guard)
 # ---------------------------------------------------------------------------
 def test_batched_pool_matches_sequential():
-    from ismcts import ISMCTSTeacher, ISMCTSConfig
+    from ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     agent = _fresh_agent()
@@ -313,7 +335,9 @@ def test_batched_pool_matches_sequential():
         assert len(seq) == len(bat) == K, "pool size mismatch"
         for (gs, ms, lws), (gb, mb, lwb) in zip(seq, bat):
             for s in range(1, 6):
-                assert sorted(gs.players[s - 1].initial_hand) == sorted(gb.players[s - 1].initial_hand)
+                assert sorted(gs.players[s - 1].initial_hand) == sorted(
+                    gb.players[s - 1].initial_hand
+                )
                 assert gs.players[s - 1].hand == gb.players[s - 1].hand
             assert gs.history == gb.history, "history mismatch batched vs sequential"
             assert abs(lws - lwb) < 1e-2, f"log_w mismatch {lws} vs {lwb}"
@@ -324,10 +348,55 @@ def test_batched_pool_matches_sequential():
             for s in range(1, 6):
                 ms_s = ms.get(s)
                 if ms_s is None:
-                    assert mb[s].abs().max().item() < 1e-6, f"seat {s} unset in seq but nonzero batched"
+                    assert mb[s].abs().max().item() < 1e-6, (
+                        f"seat {s} unset in seq but nonzero batched"
+                    )
                 else:
                     assert (ms_s - mb[s]).abs().max().item() < 1e-2, "memory mismatch"
     assert nodes > 0, "no play nodes collected"
+
+
+def test_batched_pool_fallback_on_inconsistency():
+    """When the batched lockstep raises _ReplayInconsistency (rare: a redeal makes
+    a recorded play illegal — void inference is not exhaustive), _build_worlds_batched
+    must fall back to the per-world sequential build and still return a valid pool,
+    not abort. Forced here by monkeypatching the lockstep to raise."""
+    from ismcts import ISMCTSConfig, ISMCTSTeacher, _ReplayInconsistency
+
+    _seed()
+    agent = _fresh_agent()
+    teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
+    rng = random.Random(SEED)
+    K = 12
+    g = 0
+    built = False
+    while not built and g < 200:
+        mode = PARTNER_BY_CALLED_ACE if g % 2 else PARTNER_BY_JD
+        game = Game(partner_selection_mode=mode)
+        agent.reset_recurrent_state()
+        out = _drive_to_head(game, rng, "play")
+        g += 1
+        if out is None:
+            continue
+        observer, fp = out
+        deals = [game.sample_determinization(observer, rng) for _ in range(K)]
+
+        def _raise(*a, **k):
+            raise _ReplayInconsistency("forced for test")
+
+        teacher._build_worlds_lockstep = _raise  # type: ignore[method-assign]
+        pool = teacher._build_worlds_batched(
+            copy.deepcopy(game), [copy.deepcopy(d) for d in deals], fp, observer
+        )
+        assert teacher.fail["batched_fallback"] >= 1, "fallback not taken"
+        assert len(pool) == K, f"fallback pool {len(pool)} != {K} (consistent deals)"
+        for world, mem, log_w in pool:
+            for s in range(1, 6):
+                assert len(world.players[s - 1].initial_hand) == 6
+            assert world.history == game.history, "fallback world history mismatch"
+            assert np.isfinite(log_w), "non-finite log_w"
+        built = True
+    assert built, "no play node collected for fallback test"
 
 
 # ---------------------------------------------------------------------------
@@ -351,18 +420,26 @@ ISMCTS_FLOOR = 1.0
 
 
 def test_search_output_contract():
-    from ismcts import ISMCTSTeacher, ISMCTSConfig
+    from ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     agent = _fresh_agent()
     teacher = ISMCTSTeacher(
         agent,
-        ISMCTSConfig(iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
-                     det_max_tries=400, ess_floor=ISMCTS_FLOOR),
+        ISMCTSConfig(
+            iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
+            det_max_tries=400,
+            ess_floor=ISMCTS_FLOOR,
+        ),
     )
     rng = random.Random(SEED)
-    for head, force_pass in [("pick", False), ("partner", False), ("bury", False),
-                             ("play", False), ("leaster", True)]:
+    for head, force_pass in [
+        ("pick", False),
+        ("partner", False),
+        ("bury", False),
+        ("play", False),
+        ("leaster", True),
+    ]:
         found = 0
         g = 0
         while found < 2 and g < 300:
@@ -377,7 +454,9 @@ def test_search_output_contract():
             found += 1
             res = teacher.search(game, observer, fp, rng, d_rollout=6)
             _assert_valid_pi(res)
-            assert res["valid"] == sorted(game.players[observer - 1].get_valid_action_ids())
+            assert res["valid"] == sorted(
+                game.players[observer - 1].get_valid_action_ids()
+            )
         assert found > 0, f"no {head} nodes for search contract"
 
 
@@ -385,7 +464,7 @@ def test_search_output_contract():
 # 5. Terminal reward contract (pure)
 # ---------------------------------------------------------------------------
 def test_terminal_reward_contract():
-    from training_utils import process_terminal_rewards, RETURN_SCALE
+    from training_utils import RETURN_SCALE, process_terminal_rewards
 
     class _P:
         def __init__(self, pos):
@@ -397,7 +476,9 @@ def test_terminal_reward_contract():
     out = list(process_terminal_rewards(trans, final_scores, is_leaster=False))
     rewards = [o["reward"] for o in out]
     assert rewards[:-1] == [0.0, 0.0, 0.0, 0.0], "non-terminal steps must be 0"
-    assert abs(rewards[-1] - 6.0 / RETURN_SCALE) < 1e-12, "terminal reward != final_score/RETURN_SCALE"
+    assert abs(rewards[-1] - 6.0 / RETURN_SCALE) < 1e-12, (
+        "terminal reward != final_score/RETURN_SCALE"
+    )
     # Leaster parity: is_leaster is accepted and ignored (same contract).
     out_l = list(process_terminal_rewards(trans, final_scores, is_leaster=True))
     assert [o["reward"] for o in out_l] == rewards, "leaster reward contract differs"
@@ -407,27 +488,35 @@ def test_terminal_reward_contract():
 # 6. Distillation + PG-mask path through play_population_game + update
 # ---------------------------------------------------------------------------
 def _make_pop_agent(agent, mode, i):
-    from pfsp import PopulationAgent, AgentMetadata
+    from pfsp import AgentMetadata, PopulationAgent
 
     meta = AgentMetadata(
-        agent_id=f"reg_opp_{i}", creation_time=time.time(), parent_id=None,
-        training_episodes=0, partner_mode=mode, activation="swish",
+        agent_id=f"reg_opp_{i}",
+        creation_time=time.time(),
+        parent_id=None,
+        training_episodes=0,
+        partner_mode=mode,
+        activation="swish",
     )
     return PopulationAgent(agent, meta)
 
 
 def test_distill_pgmask_and_dormant():
-    from ismcts import ISMCTSTeacher, ISMCTSConfig
-    from pfsp_runtime import play_population_game
     from config import SearchConfig
+    from ismcts import ISMCTSConfig, ISMCTSTeacher
+    from pfsp_runtime import play_population_game
 
     _seed()
     agent = _fresh_agent()
     mode = PARTNER_BY_JD
     opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
     teacher = ISMCTSTeacher(
-        agent, ISMCTSConfig(iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
-                            det_max_tries=300, ess_floor=0.5)
+        agent,
+        ISMCTSConfig(
+            iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
+            det_max_tries=300,
+            ess_floor=0.5,
+        ),
     )
     determinization_rng = random.Random(SEED)
     # High coverage so distillation reliably fires.
@@ -438,19 +527,27 @@ def test_distill_pgmask_and_dormant():
     searched = 0
     for gi in range(8):
         game, events, _, _, _ = play_population_game(
-            training_agent=agent, opponents=opps, partner_mode=mode,
+            training_agent=agent,
+            opponents=opps,
+            partner_mode=mode,
             training_agent_position=random.randint(1, 5),
-            reward_mode="terminal", teacher=teacher,
-            determinization_rng=determinization_rng, search_config=sc,
+            reward_mode="terminal",
+            teacher=teacher,
+            determinization_rng=determinization_rng,
+            search_config=sc,
         )
-        searched += sum(1 for e in events if e["kind"] == "action" and e.get("has_search_target"))
+        searched += sum(
+            1 for e in events if e["kind"] == "action" and e.get("has_search_target")
+        )
         agent.store_episode_events(events)
     assert searched > 0, "no search targets produced"
     stats = agent.update(epochs=2, batch_size=16)
     d = stats.get("distill", {})
     assert stats["num_transitions"] > 0
     assert d.get("teacher_kl", -1) >= 0.0, "teacher_kl must be >= 0"
-    assert 0.0 < d.get("pg_masked_fraction", 0.0) <= 1.0, "PG-mask fraction out of range"
+    assert 0.0 < d.get("pg_masked_fraction", 0.0) <= 1.0, (
+        "PG-mask fraction out of range"
+    )
     assert "value" in stats["critic_losses"], "value loss must be computed"
 
     # Dormant control: shaped mode with no teacher -> distillation inactive,
@@ -460,14 +557,21 @@ def test_distill_pgmask_and_dormant():
     opps2 = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
     for gi in range(6):
         _, events, _, _, _ = play_population_game(
-            training_agent=agent2, opponents=opps2, partner_mode=mode,
-            training_agent_position=random.randint(1, 5), reward_mode="shaped",
+            training_agent=agent2,
+            opponents=opps2,
+            partner_mode=mode,
+            training_agent_position=random.randint(1, 5),
+            reward_mode="shaped",
         )
         agent2.store_episode_events(events)
     stats2 = agent2.update(epochs=2, batch_size=16)
     d2 = stats2.get("distill", {})
-    assert d2.get("pg_masked_fraction", 0.0) == 0.0, "PG-mask must be dormant without search targets"
-    assert abs(d2.get("loss", 0.0)) < 1e-9, "distill loss must be 0 without search targets"
+    assert d2.get("pg_masked_fraction", 0.0) == 0.0, (
+        "PG-mask must be dormant without search targets"
+    )
+    assert abs(d2.get("loss", 0.0)) < 1e-9, (
+        "distill loss must be 0 without search targets"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +582,7 @@ TESTS = [
     test_point_conservation,
     test_determinizer_legality_and_replay,
     test_batched_pool_matches_sequential,
+    test_batched_pool_fallback_on_inconsistency,
     test_search_output_contract,
     test_terminal_reward_contract,
     test_distill_pgmask_and_dormant,

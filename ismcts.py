@@ -54,8 +54,8 @@ import torch
 
 import ppo
 from sheepshead import (
-    ACTIONS,
     ACTION_IDS,
+    ACTIONS,
 )
 
 DEV = ppo.device
@@ -80,6 +80,15 @@ def _is_private_action(action_id: int) -> bool:
 
 def _valid_has_play(valid) -> bool:
     return any(_is_play_action(a) for a in valid)
+
+
+class _ReplayInconsistency(Exception):
+    """A determinized world could not be forced-replayed against the public record
+    (a recorded action is illegal in that world, or the lockstep desynced). Rare:
+    ``sample_determinization`` is consistent by construction, but void inference is
+    not exhaustive, so an occasional redeal makes a recorded play illegal. The
+    batched lockstep cannot skip one world mid-flight, so it raises this and the
+    caller falls back to the per-world sequential build, which drops bad worlds."""
 
 
 @dataclass
@@ -144,21 +153,30 @@ class _Sim:
     (all seats sampled to the depth cap) -> ``done``."""
 
     __slots__ = (
-        "world", "mem", "phase", "node", "depth", "path", "obs_plays",
-        "pending_action", "value", "seat", "valid",
+        "world",
+        "mem",
+        "phase",
+        "node",
+        "depth",
+        "path",
+        "obs_plays",
+        "pending_action",
+        "value",
+        "seat",
+        "valid",
     )
 
     def __init__(self, world, mem, root):
         self.world = world
-        self.mem = mem            # (5, 256) tensor; row s-1 is seat s's memory
+        self.mem = mem  # (5, 256) tensor; row s-1 is seat s's memory
         self.phase = "tree"
         self.node = root
         self.depth = 0
-        self.path: list = []      # (node, action) edges to backprop
+        self.path: list = []  # (node, action) edges to backprop
         self.obs_plays = 0
         self.pending_action = None
         self.value = None
-        self.seat = None          # acting seat for the pending encode this round
+        self.seat = None  # acting seat for the pending encode this round
         self.valid = None
 
 
@@ -218,7 +236,9 @@ class ISMCTSTeacher:
         """
         self._rng = rng
         self._d_rollout_override = d_rollout
-        saved_mem = {pid: t.detach().clone() for pid, t in self.agent._player_memories.items()}
+        saved_mem = {
+            pid: t.detach().clone() for pid, t in self.agent._player_memories.items()
+        }
         try:
             return self._search_inner(real_game, observer, forced_public)
         finally:
@@ -341,18 +361,46 @@ class ISMCTSTeacher:
             return
         for s in range(1, 6):
             states = [g.players[s - 1].get_last_trick_state_dict() for g in games]
-            enc = self.agent.encoder.encode_batch(
-                states, memory_in=mems[s], device=DEV
-            )
+            enc = self.agent.encoder.encode_batch(states, memory_in=mems[s], device=DEV)
             mems[s] = enc["memory_out"].detach()
 
     def _build_worlds_batched(self, real_game, deals, forced_public, observer):
+        """Build the world pool, batched. Fast path is the lockstep replay; if any
+        world is inconsistent with the forced replay (rare — see
+        ``_ReplayInconsistency``), fall back to the per-world sequential build,
+        which drops bad worlds instead of aborting."""
+        try:
+            return self._build_worlds_lockstep(
+                real_game, deals, forced_public, observer
+            )
+        except _ReplayInconsistency:
+            self.fail["batched_fallback"] += 1
+            return self._build_pool_sequential(
+                real_game, deals, forced_public, observer
+            )
+
+    def _build_pool_sequential(self, real_game, deals, forced_public, observer):
+        """Per-world sequential build (the robust reference): replay each deal with
+        ``_build_world`` and skip the ones that fail (returns None)."""
+        pool = []
+        for deal in deals:
+            world, log_w = self._build_world(real_game, deal, forced_public, observer)
+            if world is None:
+                continue
+            mem = {
+                pid: t.detach().clone()
+                for pid, t in self.agent._player_memories.items()
+            }
+            pool.append((world, mem, log_w))
+        return pool
+
+    def _build_worlds_lockstep(self, real_game, deals, forced_public, observer):
         """Lockstep batched analogue of ``_build_world`` over many worlds at once.
 
         Drives control flow off world 0 (all worlds share the public/private
-        decision structure); the per-world legality/desync guards are kept as hard
-        errors because ``sample_determinization`` only returns consistent deals, so
-        a divergence would be a determinizer bug, not an expected miss."""
+        decision structure). Because the lockstep cannot drop a single inconsistent
+        world mid-flight, any legality/desync failure raises ``_ReplayInconsistency``
+        so the caller can fall back to the per-world build."""
         from collections import deque
 
         n = len(deals)
@@ -368,7 +416,7 @@ class ISMCTSTeacher:
             guard += 1
             if guard > 6000:
                 self.fail["guard"] += 1
-                raise RuntimeError("batched pool build guard exceeded")
+                raise _ReplayInconsistency("batched pool build guard exceeded")
             acted = False
             for pos in range(1, 6):
                 ref = games[0].players[pos - 1]
@@ -384,7 +432,9 @@ class ISMCTSTeacher:
                             if g.history != real_game.history:
                                 self.fail["hist_mismatch"] += 1
                                 continue
-                            mem_i = {s: mems[s][i].detach().clone() for s in range(1, 6)}
+                            mem_i = {
+                                s: mems[s][i].detach().clone() for s in range(1, 6)
+                            }
                             pool.append((g, mem_i, float(log_w[i].item())))
                         return pool
 
@@ -397,25 +447,33 @@ class ISMCTSTeacher:
                             aid = self._forced_private(vi, det_buries[i], det_unders[i])
                             if aid is None or aid not in vi:
                                 self.fail["bad_private"] += 1
-                                raise RuntimeError("batched replay: bad forced private action")
+                                raise _ReplayInconsistency(
+                                    "batched replay: bad forced private action"
+                                )
                             g.players[pos - 1].act(aid)
                     else:
                         if not pub or pub[0][0] != pos:
                             self.fail["pub_desync"] += 1
-                            raise RuntimeError("batched replay: public action desync")
+                            raise _ReplayInconsistency(
+                                "batched replay: public action desync"
+                            )
                         _, aid = pub.popleft()
                         states, enc = self._encode_seat_batched(games, pos, mems)
                         # Weight bidding actions only (scheme B); plays are forced
                         # but never weighted. The actor head runs only here.
                         if not _is_play_action(aid):
-                            valids = [g.players[pos - 1].get_valid_action_ids() for g in games]
+                            valids = [
+                                g.players[pos - 1].get_valid_action_ids() for g in games
+                            ]
                             probs = self._actor_probs_batched(enc, states, valids)
                             p_a = probs[:, aid - 1].clamp_min(1e-8)
                             log_w = log_w + torch.log(p_a)
                         for g in games:
                             if aid not in g.players[pos - 1].get_valid_action_ids():
                                 self.fail["bad_public"] += 1
-                                raise RuntimeError("batched replay: bad forced public action")
+                                raise _ReplayInconsistency(
+                                    "batched replay: bad forced public action"
+                                )
                             g.players[pos - 1].act(aid)
 
                     acted = True
@@ -423,7 +481,7 @@ class ISMCTSTeacher:
                     valid0 = ref.get_valid_action_ids()
             if not acted:
                 self.fail["no_acted"] += 1
-                raise RuntimeError("batched replay: no seat acted")
+                raise _ReplayInconsistency("batched replay: no seat acted")
 
     def _restore_pool_memory(self, mem):
         self.agent._player_memories = {
@@ -456,22 +514,40 @@ class ISMCTSTeacher:
             for a in valid_real
         }
         if counts.sum() <= 0.0:
-            return dict(pi=pi, ess=ess, ok=False, head=head, n_iter=n_used,
-                        valid=valid_real, root_n=root_n, root_q=root_q)
+            return dict(
+                pi=pi,
+                ess=ess,
+                ok=False,
+                head=head,
+                n_iter=n_used,
+                valid=valid_real,
+                root_n=root_n,
+                root_q=root_q,
+            )
         powered = np.power(counts, 1.0 / self.config.tau_target)
         powered /= powered.sum()
         for a, p in zip(valid_real, powered):
             pi[a - 1] = p
         ok = ess >= self.config.ess_floor
-        return dict(pi=pi, ess=ess, ok=ok, head=head, n_iter=n_used,
-                    valid=valid_real, root_n=root_n, root_q=root_q)
+        return dict(
+            pi=pi,
+            ess=ess,
+            ok=ok,
+            head=head,
+            n_iter=n_used,
+            valid=valid_real,
+            root_n=root_n,
+            root_q=root_q,
+        )
 
     @staticmethod
     def _infer_head(valid) -> str:
         names = [ACTIONS[a - 1] for a in valid]
         if any(n in ("PICK", "PASS") for n in names):
             return "pick"
-        if any(n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names):
+        if any(
+            n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names
+        ):
             return "partner"
         if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
             return "bury"
@@ -628,10 +704,15 @@ class ISMCTSTeacher:
             # 3. Actor + critic heads over the full batch (critic on actor rows is
             #    cheap and unused; avoids slicing the encoder output).
             masks = torch.stack(
-                [self.agent.get_action_mask(s.valid, self.action_size) for s, _, _ in reqs]
+                [
+                    self.agent.get_action_mask(s.valid, self.action_size)
+                    for s, _, _ in reqs
+                ]
             ).to(DEV)
             hand_ids = torch.as_tensor(
-                np.stack([st["hand_ids"] for st in states]), dtype=torch.long, device=DEV
+                np.stack([st["hand_ids"] for st in states]),
+                dtype=torch.long,
+                device=DEV,
             )
             with torch.no_grad():
                 probs_all, _ = self.agent.actor.forward_with_logits(
@@ -698,7 +779,11 @@ class ISMCTSTeacher:
                 if self._d_rollout_override is not None
                 else self.config.d_rollout
             )
-            if nxt == observer and _valid_has_play(sim.valid) and sim.obs_plays >= d_roll:
+            if (
+                nxt == observer
+                and _valid_has_play(sim.valid)
+                and sim.obs_plays >= d_roll
+            ):
                 return ("critic", False)
             return ("actor", False)
 
@@ -781,7 +866,9 @@ class ISMCTSTeacher:
         return valid[-1]
 
     def _finish_terminal(self, sim, observer):
-        self._finish_value(sim, sim.world.players[observer - 1].get_score() / _RETURN_SCALE)
+        self._finish_value(
+            sim, sim.world.players[observer - 1].get_score() / _RETURN_SCALE
+        )
 
     def _finish_value(self, sim, v):
         for node, a in sim.path:
@@ -803,7 +890,10 @@ class ISMCTSTeacher:
         if not completers:
             return
         for s in range(1, 6):
-            states = [sim.world.players[s - 1].get_last_trick_state_dict() for sim in completers]
+            states = [
+                sim.world.players[s - 1].get_last_trick_state_dict()
+                for sim in completers
+            ]
             mem_in = torch.stack([sim.mem[s - 1] for sim in completers])
             enc = self.agent.encoder.encode_batch(states, memory_in=mem_in, device=DEV)
             mo = enc["memory_out"].detach()
