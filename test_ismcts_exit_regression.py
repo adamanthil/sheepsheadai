@@ -574,6 +574,72 @@ def test_distill_pgmask_and_dormant():
     )
 
 
+def _generate_searched_events(n_games=5):
+    """Play terminal-mode games with a teacher and return the concatenated event
+    stream (with search targets on a fraction of transitions)."""
+    from config import SearchConfig
+    from ismcts import ISMCTSConfig, ISMCTSTeacher
+    from pfsp_runtime import play_population_game
+
+    _seed()
+    gen = _fresh_agent()
+    mode = PARTNER_BY_JD
+    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
+    teacher = ISMCTSTeacher(
+        gen,
+        ISMCTSConfig(
+            iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
+            det_max_tries=300,
+            ess_floor=0.5,
+        ),
+    )
+    det_rng = random.Random(SEED)
+    sc = SearchConfig(
+        head_search_fractions={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.9}
+    )
+    all_events, searched = [], 0
+    for _ in range(n_games):
+        _, events, _, _, _ = play_population_game(
+            training_agent=gen, opponents=opps, partner_mode=mode,
+            training_agent_position=random.randint(1, 5), reward_mode="terminal",
+            teacher=teacher, determinization_rng=det_rng, search_config=sc,
+        )
+        searched += sum(
+            1 for e in events if e["kind"] == "action" and e.get("has_search_target")
+        )
+        all_events.append(events)
+    assert searched > 0, "no search targets generated"
+    return all_events
+
+
+def test_searched_pg_weight_ab():
+    """The PG-mask vs additive-form A/B knob must reach the gradient: two agents
+    identical except for searched_pg_weight (0.0 mask vs 1.0 additive), fed the SAME
+    event stream, must diverge after one update (the additive PG term on searched
+    transitions changes the policy update). Also: the default is the hard mask."""
+    assert _fresh_agent().searched_pg_weight == 0.0, "default must be the hard mask (0.0)"
+
+    event_streams = _generate_searched_events(n_games=5)
+
+    def updated_agent(weight):
+        _seed()
+        a = _fresh_agent()  # identical init across the two calls (re-seeded)
+        a.searched_pg_weight = weight
+        for events in event_streams:
+            a.store_episode_events(copy.deepcopy(events))
+        a.update(epochs=1, batch_size=16)
+        return a
+
+    a_mask = updated_agent(0.0)
+    a_add = updated_agent(1.0)
+    max_diff = 0.0
+    for p_mask, p_add in zip(a_mask.actor.parameters(), a_add.actor.parameters()):
+        max_diff = max(max_diff, (p_mask - p_add).abs().max().item())
+    assert max_diff > 1e-9, (
+        f"searched_pg_weight had no effect on the actor update (max param diff {max_diff:.2e})"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -586,6 +652,7 @@ TESTS = [
     test_search_output_contract,
     test_terminal_reward_contract,
     test_distill_pgmask_and_dormant,
+    test_searched_pg_weight_ab,
 ]
 
 

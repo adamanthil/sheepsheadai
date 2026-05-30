@@ -137,6 +137,13 @@ def main():
         default=2,
         help="Bootstrap rollout depth for tricks > t_full (default: 2)",
     )
+    parser.add_argument(
+        "--searched-pg-weight",
+        type=float,
+        default=0.0,
+        help="PG-mask vs additive-form A/B: PPO-clip weight on searched transitions "
+        "(0.0=hard mask/default, 1.0=additive, 0<w<1=residual PG)",
+    )
 
     args = parser.parse_args()
 
@@ -158,6 +165,7 @@ def main():
         },
         t_full=args.t_full,
         d_short=args.d_short,
+        searched_pg_weight=args.searched_pg_weight,
     )
     hyperparams = PFSPHyperparams(reward_mode="terminal", search=search)
 

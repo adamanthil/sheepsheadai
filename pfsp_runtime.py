@@ -462,6 +462,9 @@ def run_pfsp_training(
         ISMCTSTeacher(training_agent, ISMCTSConfig()) if use_search else None
     )
     determinization_rng = random.Random(20260529) if use_search else None
+    if use_search:
+        # PG-mask vs additive-form A/B for searched transitions (plan §4).
+        training_agent.searched_pg_weight = hyperparams.search.searched_pg_weight
 
     # OpenSkill rating for the training agent
     rating_model = PlackettLuce()

@@ -578,11 +578,17 @@ class PPOAgent:
         self.unseen_trump_higher_than_hand_loss_coeff = 0.1
 
         # Stage C: ISMCTS soft-teacher distillation. On transitions carrying a
-        # confident search target (ESS >= floor) the PPO policy-gradient term is
-        # masked off and the policy is trained by forward-KL distillation toward
-        # pi'; the value loss still runs on every transition. w_distill scales the
-        # distillation term (plan §3: w_distill = 1.0).
+        # confident search target (ESS >= floor) the policy is trained by forward-KL
+        # distillation toward pi'; the value loss still runs on every transition.
+        # w_distill scales the distillation term (plan §3: w_distill = 1.0).
         self.distill_loss_coeff = 1.0
+        # A/B knob for the searched-transition policy loss (plan §4):
+        #   0.0 -> hard PG-mask (drop the PPO term on searched states; distillation
+        #          owns them) -- the default.
+        #   1.0 -> additive form (keep the PPO clip term AND add distillation).
+        #   0<w<1 -> residual PG weight (fallback if the hard mask is too noisy).
+        # Unsearched transitions always keep full PG. See _actor_critic_losses.
+        self.searched_pg_weight = 0.0
 
         # Storage for trajectory data
         self.reset_storage()
@@ -1584,14 +1590,21 @@ class PPOAgent:
         clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
         pg_loss_elements = -torch.min(surr1, clipped)
 
-        # Stage C policy-gradient mask: on transitions carrying a confident search
-        # target (has_search_flat) the PPO clip term is dropped and the policy is
-        # trained by distillation only (below). On those states PPO's advantage is
-        # dominated by hidden-hand variance and blind to the small EV gaps the
-        # teacher corrects, so the two objectives would fight; we hand each state
-        # to its better teacher (search where we paid for it, PG everywhere else).
+        # Stage C searched-transition policy loss (A/B knob ``searched_pg_weight``):
+        # on transitions carrying a confident search target the PPO clip term is
+        # scaled by ``searched_pg_weight`` and the policy is also trained by
+        # distillation toward pi' (below). At the default 0.0 this is the hard
+        # PG-mask (PPO dropped on searched, distillation owns them): there PPO's
+        # advantage is dominated by hidden-hand variance and blind to the small EV
+        # gaps the teacher corrects, so the two objectives would fight. At 1.0 it is
+        # the additive form (keep PPO AND add distillation); in between it leaves a
+        # residual PG signal. Unsearched transitions always keep full PG.
         searched = has_search_flat > 0.5
-        pg_keep = (~searched).to(pg_loss_elements.dtype)
+        pg_keep = torch.where(
+            searched,
+            torch.full_like(pg_loss_elements, float(self.searched_pg_weight)),
+            torch.ones_like(pg_loss_elements),
+        )
         pg_loss_elements = pg_loss_elements * pg_keep
         policy_loss = (pg_loss_elements * head_weight).mean()
 

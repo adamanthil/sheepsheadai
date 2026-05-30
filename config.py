@@ -45,6 +45,14 @@ class SearchConfig:
     are always rolled to terminal (0 <= t_full). Leasters are forced to terminal
     rollout in the runtime regardless of t_full (their outcomes barely calibrate,
     R^2 <= 0.21).
+
+    ``searched_pg_weight`` is the plan-§4 A/B knob for how searched transitions are
+    trained: 0.0 = hard PG-mask (drop the PPO clip term; distillation owns those
+    states) — the default; 1.0 = additive form (keep PPO AND add distillation);
+    0<w<1 = a residual PG weight (fallback if the hard mask proves too noisy at low
+    ESS). Distillation toward pi' is applied on searched transitions either way;
+    only the PPO term's weight on them changes. Unsearched transitions always keep
+    full PG.
     """
 
     head_search_fractions: dict = field(
@@ -52,6 +60,7 @@ class SearchConfig:
     )
     t_full: int = 1
     d_short: int = 2
+    searched_pg_weight: float = 0.0
     enabled: bool = True
 
 
