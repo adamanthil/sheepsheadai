@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PFSP ISMCTS ExIt trainer (hybrid) — thin entry point.
+"""PFSP ISMCTS Expert Iteration (ExIt) trainer hybrid — thin entry point.
 
 Population-based training with terminal-only reward and ISMCTS soft-teacher
 distillation (the PG-mask owns the policy update on confidently-searched
