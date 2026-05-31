@@ -15,10 +15,11 @@ ISMCTS_Overview_And_Roadmap.md §4-5.
 """
 
 import random
+from argparse import ArgumentParser
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
-from argparse import ArgumentParser
 
 from config import PFSPHyperparams, SearchConfig
 from pfsp_runtime import run_pfsp_training
