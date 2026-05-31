@@ -1162,6 +1162,7 @@ class PPOAgent:
         is_action_list = []
         actions_list = []
         old_lp_list = []
+        old_value_list = []
         returns_list = []
         adv_list = []
         win_list_all = []
@@ -1185,7 +1186,7 @@ class PPOAgent:
             )
             is_action_list.append(is_act)
 
-            act_bt, olp_bt, ret_bt, adv_bt = [], [], [], []
+            act_bt, olp_bt, old_value_bt, ret_bt, adv_bt = [], [], [], [], []
             win_bt, final_ret_bt, secret_bt = [], [], []
             points_bt = []
             seen_trump_mask_bt = []
@@ -1202,6 +1203,13 @@ class PPOAgent:
                     olp_bt.append(
                         torch.tensor(
                             self.events[i]["log_prob"],
+                            dtype=torch.float32,
+                            device=device,
+                        )
+                    )
+                    old_value_bt.append(
+                        torch.tensor(
+                            self.events[i]["value"],
                             dtype=torch.float32,
                             device=device,
                         )
@@ -1268,6 +1276,9 @@ class PPOAgent:
                 else:
                     act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
                     olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
+                    old_value_bt.append(
+                        torch.tensor(0.0, dtype=torch.float32, device=device)
+                    )
                     ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
                     win_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
@@ -1292,6 +1303,7 @@ class PPOAgent:
                     )
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
+            old_value_list.append(torch.stack(old_value_bt, dim=0))
             returns_list.append(torch.stack(ret_bt, dim=0))
             adv_list.append(torch.stack(adv_bt, dim=0))
             win_list_all.append(torch.stack(win_bt, dim=0))
@@ -1309,6 +1321,7 @@ class PPOAgent:
         is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
         actions_bt, _ = self._pad_to_bt(actions_list, lengths, -1)
         old_lp_bt, _ = self._pad_to_bt(old_lp_list, lengths, 0.0)
+        old_value_bt, _ = self._pad_to_bt(old_value_list, lengths, 0.0)
         returns_bt, _ = self._pad_to_bt(returns_list, lengths, 0.0)
         adv_bt, _ = self._pad_to_bt(adv_list, lengths, 0.0)
         win_bt, _ = self._pad_to_bt(win_list_all, lengths, 0.0)
@@ -1329,6 +1342,7 @@ class PPOAgent:
             is_action_bt,
             actions_bt,
             old_lp_bt,
+            old_value_bt,
             returns_bt,
             adv_bt,
             lengths_bt,
@@ -1430,6 +1444,7 @@ class PPOAgent:
         values_bt,
         actions_bt,
         old_lp_bt,
+        old_value_bt,
         returns_bt,
         adv_bt,
         win_logits_bt,
@@ -1454,6 +1469,7 @@ class PPOAgent:
             values_bt.view(-1)[flat_mask],
             actions_bt.view(-1)[flat_mask],
             old_lp_bt.view(-1)[flat_mask],
+            old_value_bt.view(-1)[flat_mask],
             returns_bt.view(-1)[flat_mask],
             adv_bt.view(-1)[flat_mask],
             win_logits_bt.view(-1)[flat_mask],
@@ -1545,6 +1561,7 @@ class PPOAgent:
         mask_flat,
         actions_flat,
         old_lp_flat,
+        old_value_flat,
         values_flat,
         returns_flat,
         adv_flat,
@@ -1628,13 +1645,15 @@ class PPOAgent:
         masked_fraction = searched.to(torch.float32).mean()
 
         returns_target = returns_flat.view(-1)
-        values_old = values_flat.detach()
+        values_old = old_value_flat.view(-1)
         v_clipped = values_old + torch.clamp(
             values_flat - values_old, -self.value_clip_epsilon, self.value_clip_epsilon
         )
-        critic_loss_unclipped = F.mse_loss(values_flat, returns_target)
-        critic_loss_clipped = F.mse_loss(v_clipped, returns_target)
-        critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped)
+        critic_loss_unclipped = F.mse_loss(
+            values_flat, returns_target, reduction="none"
+        )
+        critic_loss_clipped = F.mse_loss(v_clipped, returns_target, reduction="none")
+        critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped).mean()
 
         actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
         return (
@@ -1754,6 +1773,7 @@ class PPOAgent:
                     is_action_bt,
                     actions_bt,
                     old_lp_bt,
+                    old_value_bt,
                     returns_bt,
                     adv_bt,
                     lengths_bt,
@@ -1787,6 +1807,7 @@ class PPOAgent:
                     values_bt,
                     actions_bt,
                     old_lp_bt,
+                    old_value_bt,
                     returns_bt,
                     adv_bt,
                     win_logits_bt,
@@ -1810,6 +1831,7 @@ class PPOAgent:
                     values_flat,
                     actions_flat,
                     old_lp_flat,
+                    old_value_flat,
                     returns_flat,
                     adv_flat,
                     win_logits_flat,
@@ -1851,6 +1873,7 @@ class PPOAgent:
                     mask_flat,
                     actions_flat,
                     old_lp_flat,
+                    old_value_flat,
                     values_flat,
                     returns_flat,
                     adv_flat,
