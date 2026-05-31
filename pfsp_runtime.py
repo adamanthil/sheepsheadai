@@ -810,7 +810,7 @@ def run_pfsp_training(
     }
 
     # Checkpoints / CSVs / plots all live under the run dir.
-    checkpoint_dir = output_dir
+    checkpoint_dir = os.path.join(output_dir, "checkpoints")
     # CSV log files for ongoing progress/metrics
     progress_csv = os.path.join(checkpoint_dir, "pfsp_training_progress.csv")
     strategic_csv = os.path.join(checkpoint_dir, "pfsp_strategic_metrics.csv")
