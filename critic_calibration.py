@@ -6,7 +6,7 @@ prevents PPO from cleaning up the first-trick defender trump-lead leak, *before*
 committing to a retrain.
 
 The critic predicts the discounted return in the exact units it was trained on:
-    G = sum_t gamma^t * r_t  +  gamma^5 * (final_score / 12)
+    G = sum_t gamma^t * r_t  +  gamma^5 * (final_score / RETURN_SCALE)
     r_t = (trick_points_t / TRICK_POINT_RATIO) * (+1 if a defender won trick t
            else -1)              # seat-1 lead states are always defender states
 This script reconstructs that return from full Monte-Carlo rollouts and compares
@@ -41,7 +41,7 @@ import torch
 import ppo
 from ppo import PPOAgent
 from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
-from training_utils import TRICK_POINT_RATIO, get_partner_selection_mode
+from training_utils import RETURN_SCALE, TRICK_POINT_RATIO, get_partner_selection_mode
 
 DEV = ppo.device
 GAMMA = 0.95  # must match PPOAgent.gamma
@@ -112,7 +112,7 @@ def seat_return(game, seat_pos):
         sign = -1.0 if winner_picker_team else 1.0  # seat is a defender
         r = (pts / TRICK_POINT_RATIO) * sign
         if t == 5:
-            r += game.players[seat_pos - 1].get_score() / 12.0
+            r += game.players[seat_pos - 1].get_score() / RETURN_SCALE
         g += (GAMMA**t) * r
     return g
 

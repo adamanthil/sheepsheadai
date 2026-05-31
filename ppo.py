@@ -18,11 +18,11 @@ from sheepshead import (
     UNDER_ACTIONS,
     UNDER_TOKEN,
 )
+from training_utils import RETURN_SCALE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Manual scaling constants for critic heads
-RETURN_SCALE = 12.0  # Final score range ~[-12, 12]; normalize to align with value
 POINTS_SCALE = 10.0  # Bring 0–120 point regression into ~0–12 range
 
 

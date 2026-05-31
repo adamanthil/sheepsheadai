@@ -376,10 +376,10 @@ def process_episode_rewards(episode_transitions, final_scores, is_leaster):
             # Increase final reward for leasters to compensate for negative trick rewards.
             # Agent should dislike playing leasters most of the time (similar to human behavior)
             # but without this the bias is a bit too strong.
-            leaster_reward = final_score / 12 + LEASTER_FINAL_REWARD_BONUS
+            leaster_reward = final_score / RETURN_SCALE + LEASTER_FINAL_REWARD_BONUS
             final_reward = leaster_reward if is_episode_done else 0.0
         else:
-            final_reward = (final_score / 12) if is_episode_done else 0.0
+            final_reward = (final_score / RETURN_SCALE) if is_episode_done else 0.0
 
         total_reward = final_reward + transition["intermediate_reward"]
         yield {

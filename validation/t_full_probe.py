@@ -5,7 +5,7 @@ Sets the ISMCTS rollout-depth-schedule cutoff `t_full` on evidence. The schedule
 is d_rollout = (6 - trick) if trick <= t_full else d_short: roll (near) to
 terminal in the early tricks where the critic is blind to the partial-obs leak,
 then BOOTSTRAP the critic once it is trustworthy. So the question is: at trick t,
-how well can the value head predict the ExIt terminal return (get_score()/12)?
+how well can the value head predict the ExIt terminal return?
 
 Method (mirrors critic_probe.py but with the TERMINAL target the ExIt rollout
 bootstraps toward, not a discounted/shaped return): freeze the encoder, play
@@ -28,13 +28,13 @@ import ppo
 from critic_probe import encode_decide, r2, train_head
 from ppo import PPOAgent
 from sheepshead import ACTIONS, Game
-from training_utils import get_partner_selection_mode
+from training_utils import RETURN_SCALE, get_partner_selection_mode
 
 DEV = ppo.device
 
 
 def collect_terminal(agent, n_games, seed):
-    """Per play decision: (features, terminal return get_score()/12, trick, lead,
+    """Per play decision: (features, terminal return, trick, lead,
     defender, leaster, game id)."""
     random.seed(seed)
     np.random.seed(seed)
@@ -59,7 +59,7 @@ def collect_terminal(agent, n_games, seed):
                                 seat.get_last_trick_state_dict(),
                                 player_id=seat.position,
                             )
-        term = {p: game.players[p - 1].get_score() / 12.0 for p in range(1, 6)}
+        term = {p: game.players[p - 1].get_score() / RETURN_SCALE for p in range(1, 6)}
         is_l = game.is_leaster
         for pos, tk, fz, lead, dfn in caps:
             feats.append(fz)

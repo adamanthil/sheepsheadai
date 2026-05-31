@@ -57,16 +57,13 @@ from sheepshead import (
     ACTION_IDS,
     ACTIONS,
 )
+from training_utils import RETURN_SCALE
 
 DEV = ppo.device
 
 # Per-head iteration budgets and tree depths (plan §3).
 _DEFAULT_ITERS = {"pick": 48, "partner": 64, "bury": 96, "play": 96}
 _DEFAULT_DEPTH = {"pick": 1, "partner": 1, "bury": 1, "play": 6}
-
-# Critic / reward scale: PPO trains the value head on final_score / 12, so a
-# terminal game score is divided by the same factor to share the critic's units.
-_RETURN_SCALE = 12.0
 
 
 def _is_play_action(action_id: int) -> bool:
@@ -603,11 +600,11 @@ class ISMCTSTeacher:
         obs_player.act(a)
         self._after_action(world)
         if world.is_done():
-            v = obs_player.get_score() / _RETURN_SCALE
+            v = obs_player.get_score() / RETURN_SCALE
         else:
             self._advance_opponents(world, observer)
             if world.is_done():
-                v = obs_player.get_score() / _RETURN_SCALE
+                v = obs_player.get_score() / RETURN_SCALE
             else:
                 child = node.children.get(a)
                 if child is None:
@@ -878,7 +875,7 @@ class ISMCTSTeacher:
 
     def _finish_terminal(self, sim, observer):
         self._finish_value(
-            sim, sim.world.players[observer - 1].get_score() / _RETURN_SCALE
+            sim, sim.world.players[observer - 1].get_score() / RETURN_SCALE
         )
 
     def _finish_value(self, sim, v):
@@ -940,7 +937,7 @@ class ISMCTSTeacher:
                     player.act(a)
                     valid = player.get_valid_action_ids()
                     self._after_action(world)
-        return world.players[observer - 1].get_score() / _RETURN_SCALE
+        return world.players[observer - 1].get_score() / RETURN_SCALE
 
     def _critic_value(self, world, observer) -> float:
         player = world.players[observer - 1]

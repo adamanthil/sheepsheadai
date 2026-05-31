@@ -34,7 +34,7 @@ import torch.nn as nn
 import ppo
 from ppo import PPOAgent
 from sheepshead import ACTIONS, TRUMP, Game
-from training_utils import TRICK_POINT_RATIO, get_partner_selection_mode
+from training_utils import RETURN_SCALE, TRICK_POINT_RATIO, get_partner_selection_mode
 
 DEV = ppo.device
 
@@ -71,7 +71,7 @@ def player_play_returns(game, pos, gamma):
         winner_pick_team = winner in (picker, partner)
         sign = 1.0 if (winner_pick_team == player_pick_team) else -1.0
         r[t] = (game.trick_points[t] / TRICK_POINT_RATIO) * sign
-    r[5] += game.players[pos - 1].get_score() / 12.0
+    r[5] += game.players[pos - 1].get_score() / RETURN_SCALE
     g, acc = [0.0] * 6, 0.0
     for t in range(5, -1, -1):
         acc = r[t] + gamma * acc
