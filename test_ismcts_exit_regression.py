@@ -298,6 +298,64 @@ def test_determinizer_legality_and_replay():
         assert found > 0, f"no {head} nodes collected"
 
 
+def _drive_to_second_bury(game):
+    """Force a JD pick, partner choice, and one bury; return the second-bury root."""
+    fp = []
+    while not game.is_done():
+        for player in game.players:
+            valid = player.get_valid_action_ids()
+            while valid:
+                names = [ACTIONS[a - 1] for a in valid]
+                if _is_private(valid) and len(game.bury) == 1:
+                    return player.position, list(fp)
+                if "PICK" in names:
+                    a = ACTIONS.index("PICK") + 1
+                elif "JD PARTNER" in names:
+                    a = ACTIONS.index("JD PARTNER") + 1
+                elif _is_private(valid):
+                    a = sorted(valid)[0]
+                else:
+                    a = sorted(valid)[0]
+                if not _is_private(valid):
+                    fp.append((player.position, a))
+                player.act(a)
+                valid = player.get_valid_action_ids()
+    return None
+
+
+def test_private_root_replay_matches_completed_private_actions():
+    """A second BURY root must replay the first BURY before returning the root."""
+    from ismcts import ISMCTSConfig, ISMCTSTeacher
+
+    _seed()
+    game = Game(partner_selection_mode=PARTNER_BY_JD)
+    out = _drive_to_second_bury(game)
+    assert out is not None, "could not build a second-bury root"
+    observer, fp = out
+    assert len(game.bury) == 1, "test setup did not complete exactly one bury"
+
+    agent = _fresh_agent()
+    teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
+    rng = random.Random(SEED)
+    deal = game.sample_determinization(observer, rng)
+
+    world, log_w = teacher._build_world(game, copy.deepcopy(deal), fp, observer)
+    assert world is not None and np.isfinite(log_w), "private replay failed"
+    assert world.history == game.history, "history mismatch at private root"
+    assert world.bury == game.bury, "completed private actions were not replayed"
+    assert world.players[observer - 1].get_valid_action_ids() == game.players[
+        observer - 1
+    ].get_valid_action_ids(), "private root legal set mismatch"
+
+    batched = teacher._build_worlds_batched(
+        copy.deepcopy(game), [copy.deepcopy(deal)], fp, observer
+    )
+    assert len(batched) == 1, "batched private replay dropped the world"
+    batched_world, _, batched_log_w = batched[0]
+    assert np.isfinite(batched_log_w), "batched private replay log_w non-finite"
+    assert batched_world.bury == game.bury, "batched private replay skipped a bury"
+
+
 # ---------------------------------------------------------------------------
 # 3. Batched pool build == sequential reference (the key Tier-2 guard)
 # ---------------------------------------------------------------------------
@@ -773,6 +831,7 @@ TESTS = [
     test_card_lookup_equivalence,
     test_point_conservation,
     test_determinizer_legality_and_replay,
+    test_private_root_replay_matches_completed_private_actions,
     test_batched_pool_matches_sequential,
     test_batched_pool_fallback_on_inconsistency,
     test_search_output_contract,

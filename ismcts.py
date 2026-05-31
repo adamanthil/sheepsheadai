@@ -82,6 +82,15 @@ def _valid_has_play(valid) -> bool:
     return any(_is_play_action(a) for a in valid)
 
 
+def _private_root_ready(real_game, world, valid) -> bool:
+    if not any(_is_private_action(a) for a in valid):
+        return True
+    return (
+        list(world.bury) == list(real_game.bury)
+        and world.under_card == real_game.under_card
+    )
+
+
 class _ReplayInconsistency(Exception):
     """A determinized world could not be forced-replayed against the public record
     (a recorded action is illegal in that world, or the lockstep desynced). Rare:
@@ -423,10 +432,12 @@ class ISMCTSTeacher:
                 valid0 = ref.get_valid_action_ids()
                 while valid0:
                     # Root reached: public record exhausted and it is the
-                    # observer's turn. Snapshot per-world memory and return; the
-                    # observer's own root decision is left unencoded (the simulate
-                    # step encodes it).
-                    if not pub and pos == observer:
+                    # observer's turn. If this is a later private decision, first
+                    # force the already-taken private actions so the replay stops
+                    # at the same bury/under step as the live game.
+                    if not pub and pos == observer and _private_root_ready(
+                        real_game, games[0], valid0
+                    ):
                         pool = []
                         for i, g in enumerate(games):
                             if g.history != real_game.history:
@@ -1034,9 +1045,12 @@ class ISMCTSTeacher:
                 valid = player.get_valid_action_ids()
                 while valid:
                     # Root reached: all public actions forced and it is the
-                    # observer's turn. Leave its memory at the pre-decision state
-                    # (the simulate step encodes the root itself).
-                    if not pub and player.position == observer:
+                    # observer's turn. For later private roots, keep replaying the
+                    # determinized private actions until bury/under progress
+                    # matches the live root; the simulate step encodes the root.
+                    if not pub and player.position == observer and _private_root_ready(
+                        real_game, g, valid
+                    ):
                         if g.history != real_game.history:
                             self.fail["hist_mismatch"] += 1
                             return None, None
