@@ -59,7 +59,6 @@ from training_utils import (
     update_intermediate_rewards_for_action,
 )
 
-
 # ----------------------------------------------------------------------------
 # Parallel self-play (Lever 1): worker-process game generation.
 #
@@ -184,9 +183,7 @@ def _worker_play_game(job: JobSpec) -> GameResult:
         agent._player_memories = {}
         g["version"] = job.weight_version
 
-    opponents = [
-        _worker_get_opponent(aid, pm) for (aid, pm) in job.opponent_specs
-    ]
+    opponents = [_worker_get_opponent(aid, pm) for (aid, pm) in job.opponent_specs]
 
     game, episode_events, final_scores, training_data_single, pos_to_pop_agent = (
         play_population_game(
@@ -417,8 +414,13 @@ def play_population_game(
                         # sample_determinization handles the no-picker leaster
                         # state (Game._sample_leaster_deal).
                         head = _search_head(valid_actions)
-                        head_fraction = search_config.head_search_fractions.get(head, 0.0)
-                        if head_fraction > 0.0 and determinization_rng.random() < head_fraction:
+                        head_fraction = search_config.head_search_fractions.get(
+                            head, 0.0
+                        )
+                        if (
+                            head_fraction > 0.0
+                            and determinization_rng.random() < head_fraction
+                        ):
                             current_trick = game.current_trick
                             # Trick-indexed rollout depth: roll (near) to terminal
                             # in the early tricks where the critic is blind, then
@@ -977,12 +979,18 @@ def run_pfsp_training(
         # ignored by play_population_game when reward_mode="terminal").
         progress_pct = get_schedule_progress_pct(episode)
         shaping_weights = {
-            "pick": interpolated_weight(hyperparams.shaping_schedule_pick, progress_pct),
+            "pick": interpolated_weight(
+                hyperparams.shaping_schedule_pick, progress_pct
+            ),
             "partner": interpolated_weight(
                 hyperparams.shaping_schedule_partner, progress_pct
             ),
-            "bury": interpolated_weight(hyperparams.shaping_schedule_bury, progress_pct),
-            "play": interpolated_weight(hyperparams.shaping_schedule_play, progress_pct),
+            "bury": interpolated_weight(
+                hyperparams.shaping_schedule_bury, progress_pct
+            ),
+            "play": interpolated_weight(
+                hyperparams.shaping_schedule_play, progress_pct
+            ),
         }
         return partner_mode, opponents, training_position, shaping_weights
 
@@ -1115,9 +1123,7 @@ def run_pfsp_training(
                     partner_mode, opponents, training_position, _shaping = (
                         setup_episode(ep)
                     )
-                    episode_opponents[ep] = {
-                        o.metadata.agent_id: o for o in opponents
-                    }
+                    episode_opponents[ep] = {o.metadata.agent_id: o for o in opponents}
                     jobs.append(
                         JobSpec(
                             episode=ep,
@@ -1731,7 +1737,11 @@ def run_pfsp_training(
             )
 
             current_run_elapsed = time.time() - start_time
-            games_per_min = (episode - start_episode) / (current_run_elapsed / 60) if current_run_elapsed > 0 else 0
+            games_per_min = (
+                (episode - start_episode) / (current_run_elapsed / 60)
+                if current_run_elapsed > 0
+                else 0
+            )
 
             print(
                 f"📊 Episode {episode:,}/{num_episodes:,} ({episode / num_episodes * 100:.1f}%)"
