@@ -518,6 +518,34 @@ def test_search_output_contract():
         assert found > 0, f"no {head} nodes for search contract"
 
 
+def test_ismcts_backup_discount_uses_agent_gamma():
+    from ismcts import ISMCTSConfig, ISMCTSTeacher, _Node
+
+    agent = _fresh_agent()
+    agent.gamma = 0.5
+    teacher = ISMCTSTeacher(agent, ISMCTSConfig())
+    root, child = _Node(), _Node()
+    a0, a1 = ACTIONS.index("PASS") + 1, ACTIONS.index("PICK") + 1
+    for node, action in ((root, a0), (child, a1)):
+        node.N[action] = 0.0
+        node.W[action] = 0.0
+        node.vloss[action] = 1
+
+    class _Sim:
+        pass
+
+    sim = _Sim()
+    sim.path = [(root, a0), (child, a1)]
+    sim.phase = "advance"
+    teacher._finish_value(sim, 1.0)
+
+    assert abs(child.W[a1] - 1.0) < 1e-12, "last observer edge should be undiscounted"
+    assert abs(root.W[a0] - agent.gamma) < 1e-12, (
+        "prior observer edge should be discounted by agent.gamma"
+    )
+    assert sim.phase == "done"
+
+
 # ---------------------------------------------------------------------------
 # 5. Terminal reward contract (pure)
 # ---------------------------------------------------------------------------
@@ -835,6 +863,7 @@ TESTS = [
     test_batched_pool_matches_sequential,
     test_batched_pool_fallback_on_inconsistency,
     test_search_output_contract,
+    test_ismcts_backup_discount_uses_agent_gamma,
     test_terminal_reward_contract,
     test_distill_pgmask_and_dormant,
     test_searched_pg_weight_ab,

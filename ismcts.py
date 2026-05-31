@@ -26,9 +26,10 @@ Design (locked decisions, §3 of the plan)
   and plain PUCT everywhere else (the observer's own decision set is fixed).
 * **Leaf evaluation:** truncated rollout of ``d_rollout`` further observer *play*
   plies (all seats sampled from ``pi_theta``) then a ``value_trunk`` V-bootstrap;
-  a world that ends first contributes the observer's true terminal score. Values
-  are in the critic's units (game score / 12, i.e. ~[-1, 1]), so the AlphaZero
-  ``c_puct = 1.25`` is calibrated without extra Q-normalization.
+  a world that ends first contributes the observer's terminal score discounted on
+  the same observer-action clock as PPO. Values are in the critic's units (game
+  score / 12, i.e. ~[-1, 1]), so the AlphaZero ``c_puct = 1.25`` is calibrated
+  without extra Q-normalization.
 * **Heads via one engine:** pick / partner / bury are *shallow* roots (``max_depth
   = 1``) and degenerate to bidding-weighted determinized rollout evaluation of
   each option; play is the deep tree (``max_depth = 6`` observer decisions).
@@ -600,18 +601,18 @@ class ISMCTSTeacher:
         obs_player.act(a)
         self._after_action(world)
         if world.is_done():
-            v = obs_player.get_score() / RETURN_SCALE
+            v = self._terminal_value(world, observer)
         else:
             self._advance_opponents(world, observer)
             if world.is_done():
-                v = obs_player.get_score() / RETURN_SCALE
+                v = self._terminal_value(world, observer)
             else:
                 child = node.children.get(a)
                 if child is None:
                     child = _Node()
                     node.children[a] = child
                     self._nodes.append(child)
-                v = self._simulate(child, world, observer, depth + 1)
+                v = self._gamma() * self._simulate(child, world, observer, depth + 1)
 
         node.N[a] += 1.0
         node.W[a] += v
@@ -734,7 +735,9 @@ class ISMCTSTeacher:
             completers = []
             for j, (sim, kind, is_tree) in enumerate(reqs):
                 if kind == "critic":
-                    self._finish_value(sim, float(v_all[j].item()))
+                    self._finish_value(
+                        sim, self._discount(float(v_all[j].item()), sim.obs_plays)
+                    )
                 else:
                     self._apply_actor(sim, observer, probs_np[j], is_tree, completers)
 
@@ -873,21 +876,43 @@ class ISMCTSTeacher:
                 return a
         return valid[-1]
 
+    def _gamma(self) -> float:
+        return float(getattr(self.agent, "gamma", 1.0))
+
+    def _discount(self, v: float, observer_actions_elapsed: int) -> float:
+        if observer_actions_elapsed <= 0:
+            return float(v)
+        return float((self._gamma() ** observer_actions_elapsed) * v)
+
+    def _terminal_value(self, world, observer, observer_actions_elapsed: int = 0) -> float:
+        return self._discount(
+            world.players[observer - 1].get_score() / RETURN_SCALE,
+            observer_actions_elapsed,
+        )
+
     def _finish_terminal(self, sim, observer):
+        # During rollout, obs_plays includes the observer action that can carry the
+        # terminal reward, so that final action is not additionally discounted.
+        # Tree/advance terminal values are discounted across prior tree edges in
+        # _finish_value.
+        elapsed = max(sim.obs_plays - 1, 0) if sim.phase == "rollout" else 0
         self._finish_value(
-            sim, sim.world.players[observer - 1].get_score() / RETURN_SCALE
+            sim,
+            self._terminal_value(sim.world, observer, elapsed),
         )
 
     def _finish_value(self, sim, v):
-        for node, a in sim.path:
+        backed = float(v)
+        for node, a in reversed(sim.path):
             node.N[a] += 1.0
-            node.W[a] += v
+            node.W[a] += backed
             node.vloss[a] = node.vloss.get(a, 0) - 1
             q = node.W[a] / node.N[a]
             if q < self._qmin:
                 self._qmin = q
             if q > self._qmax:
                 self._qmax = q
+            backed *= self._gamma()
         sim.phase = "done"
         sim.value = v
 
@@ -928,7 +953,9 @@ class ISMCTSTeacher:
                     is_obs = player.position == observer
                     obs_play_here = is_obs and _valid_has_play(valid)
                     if obs_play_here and obs_plays >= d_rollout:
-                        return self._critic_value(world, observer)
+                        return self._discount(
+                            self._critic_value(world, observer), obs_plays
+                        )
                     a, _, _ = self.agent.act(
                         player.get_state_dict(), valid, player.position
                     )
@@ -937,7 +964,7 @@ class ISMCTSTeacher:
                     player.act(a)
                     valid = player.get_valid_action_ids()
                     self._after_action(world)
-        return world.players[observer - 1].get_score() / RETURN_SCALE
+        return self._terminal_value(world, observer, max(obs_plays - 1, 0))
 
     def _critic_value(self, world, observer) -> float:
         player = world.players[observer - 1]
