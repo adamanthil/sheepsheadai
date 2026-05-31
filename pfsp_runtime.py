@@ -1730,7 +1730,8 @@ def run_pfsp_training(
                 }
             )
 
-            games_per_min = episode / (elapsed / 60) if elapsed > 0 else 0
+            current_run_elapsed = time.time() - start_time
+            games_per_min = (episode - start_episode) / (current_run_elapsed / 60) if current_run_elapsed > 0 else 0
 
             print(
                 f"📊 Episode {episode:,}/{num_episodes:,} ({episode / num_episodes * 100:.1f}%)"
