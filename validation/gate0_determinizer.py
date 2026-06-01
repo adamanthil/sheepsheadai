@@ -71,9 +71,7 @@ def forced_encode(agent, player, pid):
     keeping memory identical to a normal `act`)."""
     state = player.get_state_dict()
     mem_in = agent.get_recurrent_memory(pid, device=DEV)
-    enc = agent.encoder.encode_batch(
-        [state], memory_in=mem_in.unsqueeze(0), device=DEV
-    )
+    enc = agent.encoder.encode_batch([state], memory_in=mem_in.unsqueeze(0), device=DEV)
     agent.set_recurrent_memory(pid, enc["memory_out"][0])
 
 
@@ -142,8 +140,8 @@ def build_determinized_world(real_game, deal, forced_public, agent, observer=1):
 
     agent.reset_recurrent_state()
     fq = deque(forced_public)
-    log_weight = 0.0   # full bidding log-likelihood under the policy
-    log_pick = 0.0     # picker's PICK log-prob alone (dominant inference term)
+    log_weight = 0.0  # full bidding log-likelihood under the policy
+    log_pick = 0.0  # picker's PICK log-prob alone (dominant inference term)
     guard = 0
     while not g.play_started and guard < 200:
         guard += 1
@@ -252,7 +250,9 @@ def evaluate(states, agent, K, r_inner, r_oracle, tau, seed):
     rows = []
     for i, st in enumerate(states):
         # Oracle Q on the true deal.
-        oq_t = rollout_score(st["game"], st["mem"], agent, st["trump_card"], 1, r_oracle)
+        oq_t = rollout_score(
+            st["game"], st["mem"], agent, st["trump_card"], 1, r_oracle
+        )
         oq_f = rollout_score(st["game"], st["mem"], agent, st["fail_card"], 1, r_oracle)
 
         # (a) UNIFORM baseline: K legal redeals, equal weight (biased: it ignores
@@ -288,7 +288,9 @@ def evaluate(states, agent, K, r_inner, r_oracle, tau, seed):
                 continue
             if rng.random() < float(np.exp(lpick)):  # accept ~ P(picker PICK|deal)
                 mem = snapshot_memory(agent)
-                pt.append(rollout_score(world, mem, agent, st["trump_card"], 1, r_inner))
+                pt.append(
+                    rollout_score(world, mem, agent, st["trump_card"], 1, r_inner)
+                )
                 pf.append(rollout_score(world, mem, agent, st["fail_card"], 1, r_inner))
                 lres.append(lwf - lpick)
         if len(pt) < max(5, K // 4):
@@ -298,7 +300,7 @@ def evaluate(states, agent, K, r_inner, r_oracle, tau, seed):
         w = w / w.sum()
         wt_qt, wt_qf = float((w * pt).sum()), float((w * pf).sum())
         det_d = wt_qt - wt_qf
-        ess = float(1.0 / np.sum(w ** 2))
+        ess = float(1.0 / np.sum(w**2))
         acc_rate = len(pt) / max(attempts, 1)
 
         oracle_d = oq_t - oq_f
@@ -354,11 +356,17 @@ def summarize(rows, tau):
 
     frac_dp_neg = float(np.mean(dp < 0))
     mean_dp = float(dp.mean())
-    print("\n-- Direction: does the teacher move mass off the trump lead? (per-state) --")
-    print(f"  pi' lowers trump-lead prob in {frac_dp_neg * 100:.0f}% of states "
-          f"(gate: >=70%)")
+    print(
+        "\n-- Direction: does the teacher move mass off the trump lead? (per-state) --"
+    )
+    print(
+        f"  pi' lowers trump-lead prob in {frac_dp_neg * 100:.0f}% of states "
+        f"(gate: >=70%)"
+    )
     print(f"  mean dp (p_teach_trump - p_net_trump) = {mean_dp:+.3f} (gate: <=-0.10)")
-    print(f"  teacher prefers fail (detD<0) in {np.mean(det_d < 0) * 100:.0f}% of states")
+    print(
+        f"  teacher prefers fail (detD<0) in {np.mean(det_d < 0) * 100:.0f}% of states"
+    )
 
     # Calibration is AGGREGATE, not per-state: the determinized Q is the mean
     # over all legal deals; the true-deal oracle is one draw from that same
@@ -369,33 +377,51 @@ def summarize(rows, tau):
     md, mo = float(det_d.mean()), float(oracle_d.mean())
     mu = float(uni_d.mean())
     sd, so = se(det_d), se(oracle_d)
-    comb = float(np.sqrt(sd ** 2 + so ** 2))
+    comb = float(np.sqrt(sd**2 + so**2))
     if n > 1 and det_d.std() > 0 and oracle_d.std() > 0:
         corr = float(np.corrcoef(det_d, oracle_d)[0, 1])
     else:
         corr = float("nan")
     print("\n-- Calibration: aggregate determinized EV vs true-deal oracle EV --")
-    print(f"  mean UNIFORM      detD = {mu:+.3f}  (SE {se(uni_d):.3f})  [biased: ignores bidding]")
+    print(
+        f"  mean UNIFORM      detD = {mu:+.3f}  (SE {se(uni_d):.3f})  [biased: ignores bidding]"
+    )
     print(f"  mean WEIGHTED     detD = {md:+.3f}  (SE {sd:.3f})  [inference-corrected]")
-    print(f"  mean oracle       detD = {mo:+.3f}  (SE {so:.3f})  [true-deal ground truth]")
-    print(f"  |weighted - oracle| = {abs(md - mo):.3f}  vs 2*combined SE = {2 * comb:.3f}")
+    print(
+        f"  mean oracle       detD = {mo:+.3f}  (SE {so:.3f})  [true-deal ground truth]"
+    )
+    print(
+        f"  |weighted - oracle| = {abs(md - mo):.3f}  vs 2*combined SE = {2 * comb:.3f}"
+    )
     acc = np.array([r["acc_rate"] for r in rows])
-    print(f"  residual-weight ESS: mean={ess.mean():.1f} / {int(np.mean([r['used'] for r in rows]))} "
-          f"posterior worlds (min={ess.min():.1f})")
-    print(f"  pick-rejection acceptance rate: mean={acc.mean():.2f} (min={acc.min():.2f})")
-    print(f"  Pearson r(weightedD, oracleD) per-state = {corr:+.3f} (informational; "
-          f"single-draw oracle is noisy)")
+    print(
+        f"  residual-weight ESS: mean={ess.mean():.1f} / {int(np.mean([r['used'] for r in rows]))} "
+        f"posterior worlds (min={ess.min():.1f})"
+    )
+    print(
+        f"  pick-rejection acceptance rate: mean={acc.mean():.2f} (min={acc.min():.2f})"
+    )
+    print(
+        f"  Pearson r(weightedD, oracleD) per-state = {corr:+.3f} (informational; "
+        f"single-draw oracle is noisy)"
+    )
 
     direction_pass = frac_dp_neg >= 0.70 and mean_dp <= -0.10
-    det_sig_neg = (md + 2 * sd) < 0.0           # teacher clearly says trump is worse
-    agree = abs(md - mo) <= 2 * comb            # determinized unbiased vs oracle
+    det_sig_neg = (md + 2 * sd) < 0.0  # teacher clearly says trump is worse
+    agree = abs(md - mo) <= 2 * comb  # determinized unbiased vs oracle
     calib_pass = det_sig_neg and agree
     print("\n-- Verdict --")
-    print(f"  Direction gate:   {'PASS' if direction_pass else 'FAIL'} "
-          f"(reduces trump lead)")
-    print(f"  Calibration gate: {'PASS' if calib_pass else 'FAIL'} "
-          f"(det EV significantly negative: {det_sig_neg}; agrees with oracle: {agree})")
-    print(f"  GATE 0: {'STRONG RESULT -> proceed to ISMCTS teacher' if (direction_pass and calib_pass) else 'mixed/negative -> reassess before refactor'}")
+    print(
+        f"  Direction gate:   {'PASS' if direction_pass else 'FAIL'} "
+        f"(reduces trump lead)"
+    )
+    print(
+        f"  Calibration gate: {'PASS' if calib_pass else 'FAIL'} "
+        f"(det EV significantly negative: {det_sig_neg}; agrees with oracle: {agree})"
+    )
+    print(
+        f"  GATE 0: {'STRONG RESULT -> proceed to ISMCTS teacher' if (direction_pass and calib_pass) else 'mixed/negative -> reassess before refactor'}"
+    )
 
     print("\n-- Examples (largest |detD|) --")
     for r in sorted(rows, key=lambda r: -abs(r["det_d"]))[:8]:
@@ -409,21 +435,47 @@ def summarize(rows, tau):
 def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt",
     )
-    ap.add_argument("--max-games", type=int, default=20000,
-                    help="Scan cap (only bidding played to find trick-0 leads).")
-    ap.add_argument("--states", type=int, default=60,
-                    help="Number of trump-pref lead states to evaluate.")
-    ap.add_argument("--determinizations", "-K", type=int, default=40,
-                    help="Legal redeals per state for the determinized teacher.")
-    ap.add_argument("--rollouts-inner", type=int, default=1,
-                    help="Sampled rollouts per branch per determinization.")
-    ap.add_argument("--rollouts-oracle", type=int, default=40,
-                    help="Sampled rollouts per branch on the true deal (oracle).")
-    ap.add_argument("--tau", type=float, default=0.5,
-                    help="Softmax temperature (game-score units) for pi'.")
+    ap.add_argument(
+        "--max-games",
+        type=int,
+        default=20000,
+        help="Scan cap (only bidding played to find trick-0 leads).",
+    )
+    ap.add_argument(
+        "--states",
+        type=int,
+        default=60,
+        help="Number of trump-pref lead states to evaluate.",
+    )
+    ap.add_argument(
+        "--determinizations",
+        "-K",
+        type=int,
+        default=40,
+        help="Legal redeals per state for the determinized teacher.",
+    )
+    ap.add_argument(
+        "--rollouts-inner",
+        type=int,
+        default=1,
+        help="Sampled rollouts per branch per determinization.",
+    )
+    ap.add_argument(
+        "--rollouts-oracle",
+        type=int,
+        default=40,
+        help="Sampled rollouts per branch on the true deal (oracle).",
+    )
+    ap.add_argument(
+        "--tau",
+        type=float,
+        default=0.5,
+        help="Softmax temperature (game-score units) for pi'.",
+    )
     ap.add_argument("--seed", type=int, default=0)
     return ap.parse_args()
 
@@ -440,14 +492,23 @@ def main():
 
     print(f"Scanning up to {args.max_games} games for trick-0 defender trump-leads ...")
     states, scanned = collect(agent, args.max_games, args.states, args.seed)
-    print(f"  reached {scanned} trick-0 leads; collected {len(states)} trump-pref defender states.")
-    print(f"Evaluating: K={args.determinizations} determinizations, "
-          f"{args.rollouts_inner} inner / {args.rollouts_oracle} oracle rollouts ...", flush=True)
+    print(
+        f"  reached {scanned} trick-0 leads; collected {len(states)} trump-pref defender states."
+    )
+    print(
+        f"Evaluating: K={args.determinizations} determinizations, "
+        f"{args.rollouts_inner} inner / {args.rollouts_oracle} oracle rollouts ...",
+        flush=True,
+    )
 
     rows = evaluate(
-        states, agent,
-        args.determinizations, args.rollouts_inner, args.rollouts_oracle,
-        args.tau, args.seed,
+        states,
+        agent,
+        args.determinizations,
+        args.rollouts_inner,
+        args.rollouts_oracle,
+        args.tau,
+        args.seed,
     )
     summarize(rows, args.tau)
 

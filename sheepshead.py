@@ -130,11 +130,16 @@ _TRUMP_SET = set(TRUMP)
 CARD_SUIT = {c: ("T" if c in _TRUMP_SET else c[-1]) for c in DECK}
 CARD_POINTS = {
     c: (
-        11 if "A" in c
-        else 10 if "10" in c
-        else 4 if "K" in c
-        else 3 if "Q" in c
-        else 2 if "J" in c
+        11
+        if "A" in c
+        else 10
+        if "10" in c
+        else 4
+        if "K" in c
+        else 3
+        if "Q" in c
+        else 2
+        if "J" in c
         else 0
     )
     for c in DECK

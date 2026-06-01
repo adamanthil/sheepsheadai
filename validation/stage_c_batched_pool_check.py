@@ -27,8 +27,12 @@ def collect_play_node(agent, game, observer):
             valid = player.get_valid_action_ids()
             while valid:
                 is_play = any(ACTIONS[a - 1].startswith("PLAY ") for a in valid)
-                if (player.position == observer and is_play and game.current_trick >= 1
-                        and not game.is_leaster):
+                if (
+                    player.position == observer
+                    and is_play
+                    and game.current_trick >= 1
+                    and not game.is_leaster
+                ):
                     return list(fp)
                 a, _, _ = agent.act(player.get_state_dict(), valid, player.position)
                 name = ACTIONS[a - 1]
@@ -38,7 +42,9 @@ def collect_play_node(agent, game, observer):
                 valid = player.get_valid_action_ids()
                 if game.was_trick_just_completed:
                     for seat in game.players:
-                        agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                        agent.observe(
+                            seat.get_last_trick_state_dict(), player_id=seat.position
+                        )
     return None
 
 
@@ -50,7 +56,9 @@ def sequential_pool(teacher, real_game, deals, fp, observer):
         if world is None:
             pool.append(None)
             continue
-        mem = {pid: t.detach().clone() for pid, t in teacher.agent._player_memories.items()}
+        mem = {
+            pid: t.detach().clone() for pid, t in teacher.agent._player_memories.items()
+        }
         pool.append((world, mem, log_w))
     return pool
 
@@ -87,12 +95,20 @@ def main():
 
         # Sequential reference.
         t0 = time.perf_counter()
-        seq = sequential_pool(teacher, copy.deepcopy(game), [copy.deepcopy(d) for d in deals], fp, observer)
+        seq = sequential_pool(
+            teacher,
+            copy.deepcopy(game),
+            [copy.deepcopy(d) for d in deals],
+            fp,
+            observer,
+        )
         seq_time += time.perf_counter() - t0
 
         # Batched.
         t0 = time.perf_counter()
-        bat = teacher._build_worlds_batched(copy.deepcopy(game), [copy.deepcopy(d) for d in deals], fp, observer)
+        bat = teacher._build_worlds_batched(
+            copy.deepcopy(game), [copy.deepcopy(d) for d in deals], fp, observer
+        )
         batch_time += time.perf_counter() - t0
 
         # Both should keep all K worlds (consistent deals).
@@ -102,8 +118,11 @@ def main():
         for (gw_s, mem_s, lw_s), (gw_b, mem_b, lw_b) in zip(seq, bat):
             # World states must be exactly equal.
             for s in range(1, 6):
-                if (sorted(gw_s.players[s - 1].initial_hand) != sorted(gw_b.players[s - 1].initial_hand)
-                        or gw_s.players[s - 1].hand != gw_b.players[s - 1].hand):
+                if (
+                    sorted(gw_s.players[s - 1].initial_hand)
+                    != sorted(gw_b.players[s - 1].initial_hand)
+                    or gw_s.players[s - 1].hand != gw_b.players[s - 1].hand
+                ):
                     state_mismatch += 1
             if gw_s.history != gw_b.history:
                 state_mismatch += 1
@@ -116,8 +135,10 @@ def main():
     print(f"world-state mismatches (hands/history): {state_mismatch}  (must be 0)")
     print(f"max |log_w_seq - log_w_batched|: {max_logw_diff:.2e}")
     print(f"max |memory_seq - memory_batched|: {max_state_diff:.2e}")
-    print(f"sequential: {seq_time:.3f}s   batched: {batch_time:.3f}s   "
-          f"speedup: {seq_time / max(batch_time, 1e-9):.2f}x")
+    print(
+        f"sequential: {seq_time:.3f}s   batched: {batch_time:.3f}s   "
+        f"speedup: {seq_time / max(batch_time, 1e-9):.2f}x"
+    )
     ok = state_mismatch == 0 and max_logw_diff < 1e-2 and max_state_diff < 1e-2
     print(f"\nBATCHED POOL == SEQUENTIAL: {'PASS' if ok else 'FAIL'}")
 

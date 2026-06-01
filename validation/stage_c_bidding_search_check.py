@@ -71,7 +71,9 @@ def collect_node(agent, game, want_head):
                     return player.position, list(forced_public), game
 
                 state = player.get_state_dict()
-                action, _, _ = agent.act(state, valid, player.position, deterministic=False)
+                action, _, _ = agent.act(
+                    state, valid, player.position, deterministic=False
+                )
                 if not _is_private(valid):
                     forced_public.append((player.position, action))
                 player.act(action)
@@ -91,7 +93,9 @@ def check_prepick_legality(game, deal, observer):
     # Counts: every seat 6 pre-pick.
     for s in range(1, 6):
         if len(ih[s]) != len(game.players[s - 1].hand):
-            bad.append(f"seat {s} dealt {len(ih[s])} != {len(game.players[s - 1].hand)}")
+            bad.append(
+                f"seat {s} dealt {len(ih[s])} != {len(game.players[s - 1].hand)}"
+            )
     # Partition: hands + blind == full deck, no dupes.
     allcards = [c for s in range(1, 6) for c in ih[s]] + list(deal["blind"])
     if sorted(allcards) != sorted(DECK):
@@ -165,14 +169,19 @@ def run_head(agent, teacher, head, n_games, seed):
         good, why = valid_pi(res)
         if not good:
             pi_fail += 1
-            print(f"  INVALID pi': {why}  (ess={res['ess']:.1f} ok={res['ok']})", flush=True)
+            print(
+                f"  INVALID pi': {why}  (ess={res['ess']:.1f} ok={res['ok']})",
+                flush=True,
+            )
         if res["ok"]:
             ok += 1
 
     print(f"  nodes found: {found}/{g} games scanned")
     if head == "pick":
-        print(f"  determinization legality: {legal_checks - legal_fail}/{legal_checks} legal "
-              f"({legal_fail} violations)")
+        print(
+            f"  determinization legality: {legal_checks - legal_fail}/{legal_checks} legal "
+            f"({legal_fail} violations)"
+        )
     print(f"  search ran: {searched}/{found} (no exception)")
     print(f"  valid pi': {searched - pi_fail}/{searched}")
     print(f"  ESS>=floor (ok=True): {ok}/{searched}")
@@ -204,18 +213,28 @@ def main():
 
     results = {}
     for head in ("pick", "partner", "bury"):
-        results[head] = run_head(agent, teacher, head, args.games, args.seed + hash(head) % 1000)
+        results[head] = run_head(
+            agent, teacher, head, args.games, args.seed + hash(head) % 1000
+        )
 
     print("\n" + "=" * 60)
     print("VERDICT")
     print("=" * 60)
     all_ok = True
     for head, (legal_fail, valid_ok, searched, found) in results.items():
-        ran = found > 0 and searched == found and (head != "pick" or legal_fail == 0) and valid_ok == searched
+        ran = (
+            found > 0
+            and searched == found
+            and (head != "pick" or legal_fail == 0)
+            and valid_ok == searched
+        )
         all_ok = all_ok and ran
-        print(f"  {head:8s}: {'PASS' if ran else 'FAIL'}  "
-              f"(found={found} searched={searched} valid_pi={valid_ok}"
-              + (f" legal_fail={legal_fail}" if head == "pick" else "") + ")")
+        print(
+            f"  {head:8s}: {'PASS' if ran else 'FAIL'}  "
+            f"(found={found} searched={searched} valid_pi={valid_ok}"
+            + (f" legal_fail={legal_fail}" if head == "pick" else "")
+            + ")"
+        )
     print(f"\n  P4 bidding-head search: {'PASS' if all_ok else 'FAIL'}")
 
 

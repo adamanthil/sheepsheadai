@@ -237,13 +237,15 @@ def summarize(label, rows):
         frac_pos = np.mean(vals > 0)
         scale = 100 if key == "d_win" else 1
         print(
-            f"  {name:<40} {mean*scale:+7.2f} {unit} "
-            f"(SE {stderr*scale:5.2f}, trump better in {frac_pos*100:.0f}% of states)"
+            f"  {name:<40} {mean * scale:+7.2f} {unit} "
+            f"(SE {stderr * scale:5.2f}, trump better in {frac_pos * 100:.0f}% of states)"
         )
     tp = np.mean([r["trump_points"] for r in rows])
     fp = np.mean([r["fail_points"] for r in rows])
-    print(f"  Absolute EV: trump-lead {tp:.1f} pts vs fail-lead {fp:.1f} pts "
-          f"(defenders need 60 to win)")
+    print(
+        f"  Absolute EV: trump-lead {tp:.1f} pts vs fail-lead {fp:.1f} pts "
+        f"(defenders need 60 to win)"
+    )
 
     # By trump-richness of the leading hand.
     print("  --- by trump count in hand ---")
@@ -251,7 +253,9 @@ def summarize(label, rows):
         sub = [r for r in rows if r["n_trump"] == nt]
         dp = np.mean([r["d_points"] for r in sub])
         ds = np.mean([r["d_score"] for r in sub])
-        print(f"    {nt} trump (n={len(sub):3d}): Δpoints {dp:+6.2f}, Δscore {ds:+6.3f}")
+        print(
+            f"    {nt} trump (n={len(sub):3d}): Δpoints {dp:+6.2f}, Δscore {ds:+6.3f}"
+        )
 
 
 def print_examples(rows, label, n=6):
@@ -268,17 +272,34 @@ def print_examples(rows, label, n=6):
 def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt",
     )
-    ap.add_argument("--max-games", type=int, default=15000,
-                    help="Scan cap (only pick/bury played to find trick-0 leads).")
-    ap.add_argument("--target-trump", type=int, default=120,
-                    help="Stop scanning after this many trump-pref states found.")
-    ap.add_argument("--control-per-trump", type=float, default=1.0,
-                    help="Collect up to target*this many fail-pref control states.")
-    ap.add_argument("--rollouts", type=int, default=50,
-                    help="Monte-Carlo rollouts per branch per state.")
+    ap.add_argument(
+        "--max-games",
+        type=int,
+        default=15000,
+        help="Scan cap (only pick/bury played to find trick-0 leads).",
+    )
+    ap.add_argument(
+        "--target-trump",
+        type=int,
+        default=120,
+        help="Stop scanning after this many trump-pref states found.",
+    )
+    ap.add_argument(
+        "--control-per-trump",
+        type=float,
+        default=1.0,
+        help="Collect up to target*this many fail-pref control states.",
+    )
+    ap.add_argument(
+        "--rollouts",
+        type=int,
+        default=50,
+        help="Monte-Carlo rollouts per branch per state.",
+    )
     ap.add_argument("--seed", type=int, default=0)
     return ap.parse_args()
 
@@ -297,9 +318,13 @@ def main():
     trump_pref, fail_pref, scanned, dleads = collect(
         agent, args.max_games, args.target_trump, args.control_per_trump, args.seed
     )
-    print(f"  Reached {scanned} non-leaster trick-0 leads; "
-          f"{dleads} were defender leads with both classes available.")
-    print(f"  Collected {len(trump_pref)} TRUMP-pref and {len(fail_pref)} FAIL-pref states.")
+    print(
+        f"  Reached {scanned} non-leaster trick-0 leads; "
+        f"{dleads} were defender leads with both classes available."
+    )
+    print(
+        f"  Collected {len(trump_pref)} TRUMP-pref and {len(fail_pref)} FAIL-pref states."
+    )
     print(f"Running {args.rollouts} rollouts/branch/state ...")
 
     trump_rows = evaluate(trump_pref, agent, args.rollouts)
@@ -309,9 +334,11 @@ def main():
     print_examples(trump_rows, "TRUMP-PREF")
     summarize("FAIL-PREF first-trick leads (control / method check)", fail_rows)
 
-    print("\nInterpretation: Δ is (trump lead) - (fail lead). For TRUMP-PREF states, "
-          "Δ>0 means the agent's first-trick trump lead really does win more; "
-          "Δ<0 means it is a mistake. FAIL-PREF Δ should be <=0 if the method is sound.")
+    print(
+        "\nInterpretation: Δ is (trump lead) - (fail lead). For TRUMP-PREF states, "
+        "Δ>0 means the agent's first-trick trump lead really does win more; "
+        "Δ<0 means it is a mistake. FAIL-PREF Δ should be <=0 if the method is sound."
+    )
 
 
 if __name__ == "__main__":

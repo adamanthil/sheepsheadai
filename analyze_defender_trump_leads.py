@@ -129,7 +129,9 @@ def _record_lead(game, player, valid, p, deterministic, rng):
         cards = list(play_cards)
         w = np.array([play_cards[c] for c in cards])
         w = w / w.sum() if w.sum() > 0 else None
-        chosen = rng.choices(cards, weights=w)[0] if w is not None else rng.choice(cards)
+        chosen = (
+            rng.choices(cards, weights=w)[0] if w is not None else rng.choice(cards)
+        )
 
     picker_pos = game.picker
     # Order in which picker plays this trick relative to leader (0=leads, 4=plays last).
@@ -154,7 +156,9 @@ def _record_lead(game, player, valid, p, deterministic, rng):
         "chosen": chosen,
         "chosen_is_trump": chosen in TRUMP,
         "chosen_trump_idx": trump_idx(chosen),
-        "unseen_higher": unseen_higher_trumps(player, chosen) if chosen in TRUMP else -1,
+        "unseen_higher": unseen_higher_trumps(player, chosen)
+        if chosen in TRUMP
+        else -1,
         "hand": list(hand),
         "play_probs": play_cards,
     }
@@ -180,40 +184,68 @@ def report(records):
     print("DEFENDER LEAD ANALYSIS")
     print("=" * 70)
     print(f"Total defender-lead decisions : {total}")
-    print(f"  Trump led (any)             : {len(trump_leads)} ({pct(len(trump_leads), total):.1f}%)")
-    print(f"  Forced (hand all trump)     : {len(forced)} ({pct(len(forced), total):.1f}%)")
-    print(f"  Had a fail option           : {len(voluntary)} ({pct(len(voluntary), total):.1f}%)")
-    print(f"    -> still led trump (vol.) : {len(vol_trump)} ({pct(len(vol_trump), len(voluntary)):.1f}% of voluntary)")
-    print(f"  Mean P(trump lead) overall  : {np.mean([r['p_trump_lead'] for r in records]):.3f}")
-    print(f"  Mean P(trump lead) | fail option avail: {np.mean([r['p_trump_lead'] for r in voluntary]) if voluntary else 0:.3f}")
+    print(
+        f"  Trump led (any)             : {len(trump_leads)} ({pct(len(trump_leads), total):.1f}%)"
+    )
+    print(
+        f"  Forced (hand all trump)     : {len(forced)} ({pct(len(forced), total):.1f}%)"
+    )
+    print(
+        f"  Had a fail option           : {len(voluntary)} ({pct(len(voluntary), total):.1f}%)"
+    )
+    print(
+        f"    -> still led trump (vol.) : {len(vol_trump)} ({pct(len(vol_trump), len(voluntary)):.1f}% of voluntary)"
+    )
+    print(
+        f"  Mean P(trump lead) overall  : {np.mean([r['p_trump_lead'] for r in records]):.3f}"
+    )
+    print(
+        f"  Mean P(trump lead) | fail option avail: {np.mean([r['p_trump_lead'] for r in voluntary]) if voluntary else 0:.3f}"
+    )
 
     # Boss vs bleed among voluntary trump leads.
     if vol_trump:
         boss = [r for r in vol_trump if r["unseen_higher"] == 0]
         bleed = [r for r in vol_trump if r["unseen_higher"] > 0]
         print("\n--- Voluntary trump leads: boss vs bleed ---")
-        print(f"  Boss (no unseen higher trump -> wins trick): {len(boss)} ({pct(len(boss), len(vol_trump)):.1f}%)")
-        print(f"  Bleed (a higher trump still out there)     : {len(bleed)} ({pct(len(bleed), len(vol_trump)):.1f}%)")
-        print(f"  Mean unseen-higher when leading trump      : {np.mean([r['unseen_higher'] for r in vol_trump]):.2f}")
+        print(
+            f"  Boss (no unseen higher trump -> wins trick): {len(boss)} ({pct(len(boss), len(vol_trump)):.1f}%)"
+        )
+        print(
+            f"  Bleed (a higher trump still out there)     : {len(bleed)} ({pct(len(bleed), len(vol_trump)):.1f}%)"
+        )
+        print(
+            f"  Mean unseen-higher when leading trump      : {np.mean([r['unseen_higher'] for r in vol_trump]):.2f}"
+        )
 
     # The genuinely-questionable bucket: early game, unforced, and a bleed
     # (a higher trump is still out there, so the lead can lose and burns a
     # defender's trump). Endgame boss leads are standard correct play.
-    early_bleed = [
-        r for r in vol_trump
-        if r["n_cards"] >= 4 and r["unseen_higher"] > 0
-    ]
-    print("\n--- 'Questionable' early bleed leads (>=4 cards in hand, higher trump still out) ---")
-    print(f"  Count: {len(early_bleed)} "
-          f"({pct(len(early_bleed), len(voluntary)):.2f}% of all voluntary defender leads)")
+    early_bleed = [r for r in vol_trump if r["n_cards"] >= 4 and r["unseen_higher"] > 0]
+    print(
+        "\n--- 'Questionable' early bleed leads (>=4 cards in hand, higher trump still out) ---"
+    )
+    print(
+        f"  Count: {len(early_bleed)} "
+        f"({pct(len(early_bleed), len(voluntary)):.2f}% of all voluntary defender leads)"
+    )
     if early_bleed:
         dist = Counter(r["n_trump"] for r in early_bleed)
-        print(f"  Mean trump in hand for these leads: {np.mean([r['n_trump'] for r in early_bleed]):.2f}")
-        print(f"  Mean fail in hand for these leads : {np.mean([r['n_fail'] for r in early_bleed]):.2f}")
-        print("  n_trump distribution: " + ", ".join(f"{k}t:{dist[k]}" for k in sorted(dist)))
+        print(
+            f"  Mean trump in hand for these leads: {np.mean([r['n_trump'] for r in early_bleed]):.2f}"
+        )
+        print(
+            f"  Mean fail in hand for these leads : {np.mean([r['n_fail'] for r in early_bleed]):.2f}"
+        )
+        print(
+            "  n_trump distribution: "
+            + ", ".join(f"{k}t:{dist[k]}" for k in sorted(dist))
+        )
         trump_rich = sum(1 for r in early_bleed if r["n_trump"] >= 3)
-        print(f"  From trump-rich hands (>=3 trump): {trump_rich}/{len(early_bleed)} "
-              f"({pct(trump_rich, len(early_bleed)):.0f}%)")
+        print(
+            f"  From trump-rich hands (>=3 trump): {trump_rich}/{len(early_bleed)} "
+            f"({pct(trump_rich, len(early_bleed)):.0f}%)"
+        )
 
     # By hand size (cards remaining) -- endgame vs midgame.
     print("\n--- Voluntary trump-lead rate by cards-in-hand ---")
@@ -239,8 +271,15 @@ def report(records):
 
     # Feature contrast: voluntary trump vs voluntary fail.
     print("\n--- Feature means: voluntary TRUMP-lead vs FAIL-lead ---")
-    feats = ["n_trump", "n_fail", "n_fail_suits", "hand_points", "best_trump_idx",
-             "picker_play_order", "trick"]
+    feats = [
+        "n_trump",
+        "n_fail",
+        "n_fail_suits",
+        "hand_points",
+        "best_trump_idx",
+        "picker_play_order",
+        "trick",
+    ]
     print(f"  {'feature':<18}{'trump-lead':>12}{'fail-lead':>12}")
     for f in feats:
         a = np.mean([r[f] for r in vol_trump]) if vol_trump else float("nan")
@@ -252,7 +291,9 @@ def report(records):
         print(f"  {f:<18}{a:>11.1f}%{b:>11.1f}%")
 
     # Picker play-order effect on voluntary trump leads.
-    print("\n--- Voluntary trump-lead rate by picker play-order (0=picker leads next to me ... 4=picker plays last) ---")
+    print(
+        "\n--- Voluntary trump-lead rate by picker play-order (0=picker leads next to me ... 4=picker plays last) ---"
+    )
     by_order = defaultdict(lambda: [0, 0])
     for r in voluntary:
         by_order[r["picker_play_order"]][1] += 1
@@ -274,16 +315,25 @@ def _print_examples(vol_trump, n=8):
         key=lambda r: (r["unseen_higher"] == 0, -r["p_trump_lead"]),
     )
     for r in ranked[:n]:
-        kind = "BOSS" if r["unseen_higher"] == 0 else f"BLEED(+{r['unseen_higher']} higher out)"
+        kind = (
+            "BOSS"
+            if r["unseen_higher"] == 0
+            else f"BLEED(+{r['unseen_higher']} higher out)"
+        )
         probs = ", ".join(
-            f"{c}:{p:.2f}" for c, p in sorted(r["play_probs"].items(), key=lambda x: -x[1])[:6]
+            f"{c}:{p:.2f}"
+            for c, p in sorted(r["play_probs"].items(), key=lambda x: -x[1])[:6]
         )
         print(
-            f"\nTrick {r['trick']} mode={'JD' if r['partner_mode']==0 else 'CA'} "
+            f"\nTrick {r['trick']} mode={'JD' if r['partner_mode'] == 0 else 'CA'} "
             f"[{kind}] led {r['chosen']} P(trump)={r['p_trump_lead']:.2f}"
         )
-        print(f"  hand: {' '.join(r['hand'])}  (trump={r['n_trump']} fail={r['n_fail']} pts={r['hand_points']})")
-        print(f"  picker_play_order={r['picker_play_order']} called_suit_played={r['called_suit_played']}")
+        print(
+            f"  hand: {' '.join(r['hand'])}  (trump={r['n_trump']} fail={r['n_fail']} pts={r['hand_points']})"
+        )
+        print(
+            f"  picker_play_order={r['picker_play_order']} called_suit_played={r['called_suit_played']}"
+        )
         print(f"  top play probs: {probs}")
 
 
@@ -308,8 +358,10 @@ def main():
     args = parse_args()
     print(f"Loading {args.model} ...")
     records = collect(args.model, args.num_games, args.seed, args.deterministic)
-    print(f"Played {args.num_games} games "
-          f"({'deterministic' if args.deterministic else 'sampled'}).\n")
+    print(
+        f"Played {args.num_games} games "
+        f"({'deterministic' if args.deterministic else 'sampled'}).\n"
+    )
     report(records)
 
 

@@ -121,9 +121,7 @@ def collect_trick0(agent, max_games, target, seed, min_raw_trump):
             for player in game.players:
                 valid = player.get_valid_action_ids()
                 while valid:
-                    a, _, _ = agent.act(
-                        player.get_state_dict(), valid, player.position
-                    )
+                    a, _, _ = agent.act(player.get_state_dict(), valid, player.position)
                     if not _is_private(valid):
                         forced_public.append((player.position, a))
                     player.act(a)
@@ -145,7 +143,11 @@ def collect_trick0(agent, max_games, target, seed, min_raw_trump):
         probs = probs_t[0].detach().cpu().numpy()
         _, trump_mass = best_in_class(probs, valid, True)
         _, fail_mass = best_in_class(probs, valid, False)
-        raw_cond = trump_mass / (trump_mass + fail_mass) if (trump_mass + fail_mass) > 0 else 0.5
+        raw_cond = (
+            trump_mass / (trump_mass + fail_mass)
+            if (trump_mass + fail_mass) > 0
+            else 0.5
+        )
         if raw_cond < min_raw_trump:
             continue
         states.append(
@@ -162,10 +164,13 @@ def collect_trick0(agent, max_games, target, seed, min_raw_trump):
 
 
 def run_trick0(agent, teacher, args):
-    print(f"Scanning up to {args.max_games} games for trick-0 seat-1 defender leads "
-          f"(min raw trump-cond {args.min_raw_trump:.2f}) ...")
-    states, scanned = collect_trick0(agent, args.max_games, args.states, args.seed,
-                                     args.min_raw_trump)
+    print(
+        f"Scanning up to {args.max_games} games for trick-0 seat-1 defender leads "
+        f"(min raw trump-cond {args.min_raw_trump:.2f}) ..."
+    )
+    states, scanned = collect_trick0(
+        agent, args.max_games, args.states, args.seed, args.min_raw_trump
+    )
     print(f"  collected {len(states)} states (scanned {scanned} games).")
     rng = random.Random(args.seed + 1)
     rows = []
@@ -175,12 +180,14 @@ def run_trick0(agent, teacher, args):
         pi = res["pi"]
         valid = st["game"].players[0].get_valid_action_ids()
         t_mass = sum(
-            pi[a - 1] for a in valid if ACTIONS[a - 1].startswith("PLAY ")
-            and ACTIONS[a - 1][5:] in TRUMP
+            pi[a - 1]
+            for a in valid
+            if ACTIONS[a - 1].startswith("PLAY ") and ACTIONS[a - 1][5:] in TRUMP
         )
         f_mass = sum(
-            pi[a - 1] for a in valid if ACTIONS[a - 1].startswith("PLAY ")
-            and ACTIONS[a - 1][5:] not in TRUMP
+            pi[a - 1]
+            for a in valid
+            if ACTIONS[a - 1].startswith("PLAY ") and ACTIONS[a - 1][5:] not in TRUMP
         )
         teach_cond = t_mass / (t_mass + f_mass) if (t_mass + f_mass) > 0 else 0.5
         dp = teach_cond - st["raw_cond"]
@@ -188,15 +195,30 @@ def run_trick0(agent, teacher, args):
         rn, rq = res["root_n"], res["root_q"]
         tn = {a: rn[a] for a in rn if ACTIONS[a - 1][5:] in TRUMP}
         fn = {a: rn[a] for a in rn if a not in tn}
-        qt = (sum(rq[a] * rn[a] for a in tn) / sum(tn.values())) if sum(tn.values()) > 0 else float("nan")
-        qf = (sum(rq[a] * rn[a] for a in fn) / sum(fn.values())) if sum(fn.values()) > 0 else float("nan")
+        qt = (
+            (sum(rq[a] * rn[a] for a in tn) / sum(tn.values()))
+            if sum(tn.values()) > 0
+            else float("nan")
+        )
+        qf = (
+            (sum(rq[a] * rn[a] for a in fn) / sum(fn.values()))
+            if sum(fn.values()) > 0
+            else float("nan")
+        )
         rows.append(
-            {"dp": dp, "raw": st["raw_cond"], "teach": teach_cond,
-             "ess": res["ess"], "ok": res["ok"], "n_trump": st["n_trump"],
-             "qt": qt, "qf": qf}
+            {
+                "dp": dp,
+                "raw": st["raw_cond"],
+                "teach": teach_cond,
+                "ess": res["ess"],
+                "ok": res["ok"],
+                "n_trump": st["n_trump"],
+                "qt": qt,
+                "qf": qf,
+            }
         )
         print(
-            f"  [{i+1}/{len(states)}] ESS={res['ess']:4.1f} ok={int(res['ok'])} "
+            f"  [{i + 1}/{len(states)}] ESS={res['ess']:4.1f} ok={int(res['ok'])} "
             f"n_iter={res['n_iter']:3d}  raw_trump={st['raw_cond']:.2f} "
             f"teach_trump={teach_cond:.2f}  dp={dp:+.2f}  "
             f"Qtrump={qt:+.3f} Qfail={qf:+.3f} Ntrump={sum(tn.values()):.1f} "
@@ -218,22 +240,27 @@ def _summarize_trick0(rows):
     usable = [r for r in rows if r["ok"]]
     se = dp.std(ddof=1) / np.sqrt(len(dp)) if len(dp) > 1 else float("nan")
     print(f"  mean dp (teacher trump-cond - raw) = {dp.mean():+.3f}  (SE {se:.3f})")
-    print(f"  teacher LOWERS trump-lead prob in {np.mean(dp < 0)*100:.0f}% of states")
-    print(f"  ESS: mean={ess.mean():.1f}  min={ess.min():.1f}  "
-          f"(>= floor in {np.mean([r['ok'] for r in rows])*100:.0f}% of states, "
-          f"{len(usable)} usable)")
+    print(f"  teacher LOWERS trump-lead prob in {np.mean(dp < 0) * 100:.0f}% of states")
+    print(
+        f"  ESS: mean={ess.mean():.1f}  min={ess.min():.1f}  "
+        f"(>= floor in {np.mean([r['ok'] for r in rows]) * 100:.0f}% of states, "
+        f"{len(usable)} usable)"
+    )
     print("\n-- Verdict --")
     lowered = np.mean(dp < 0)
-    print(f"  Direction (lowers trump lead, Gate-0 expected ~90%): "
-          f"{'PASS' if lowered >= 0.7 else 'WEAK' if lowered >= 0.55 else 'FAIL'} "
-          f"({lowered*100:.0f}%)")
+    print(
+        f"  Direction (lowers trump lead, Gate-0 expected ~90%): "
+        f"{'PASS' if lowered >= 0.7 else 'WEAK' if lowered >= 0.55 else 'FAIL'} "
+        f"({lowered * 100:.0f}%)"
+    )
 
 
 # ---------------------------------------------------------------------------
 # h2h mode -- head-to-head strength
 # ---------------------------------------------------------------------------
-def play_game(game, agent, teacher, focal_seat, det_rng, oracle_rows=None,
-              oracle_rollouts=0):
+def play_game(
+    game, agent, teacher, focal_seat, det_rng, oracle_rows=None, oracle_rollouts=0
+):
     """Play a full game. If ``teacher`` is not None, the focal seat acts by the
     ISMCTS teacher's argmax pi' on its PLAY decisions (raw policy for its
     bidding/bury and for every other seat). Returns the focal seat's score."""
@@ -257,8 +284,15 @@ def play_game(game, agent, teacher, focal_seat, det_rng, oracle_rows=None,
                     if res["ok"] and res["pi"].sum() > 0:
                         aid = int(np.argmax(res["pi"])) + 1
                         if oracle_rows is not None and oracle_rollouts > 0:
-                            _oracle_compare(game, agent, focal_seat, aid, valid,
-                                            oracle_rollouts, oracle_rows)
+                            _oracle_compare(
+                                game,
+                                agent,
+                                focal_seat,
+                                aid,
+                                valid,
+                                oracle_rollouts,
+                                oracle_rows,
+                            )
                         # Advance focal memory through this decision (a normal
                         # act would encode the same state).
                         agent.observe(player.get_state_dict(), player_id=focal_seat)
@@ -308,8 +342,10 @@ def _oracle_compare(game, agent, focal, teach_aid, valid, rollouts, rows):
 
 
 def run_h2h(agent, teacher, args):
-    print(f"Head-to-head: {args.games} deals, focal seats {args.focal_seats}, "
-          f"play-head search (M={teacher.config.iters['play']}) ...")
+    print(
+        f"Head-to-head: {args.games} deals, focal seats {args.focal_seats}, "
+        f"play-head search (M={teacher.config.iters['play']}) ..."
+    )
     det_rng = random.Random(args.seed + 7)
     deltas = []
     oracle_rows = []
@@ -321,9 +357,15 @@ def run_h2h(agent, teacher, args):
             game_s = Game(partner_selection_mode=mode, seed=seed)
             agent.reset_recurrent_state()
             torch.manual_seed(seed)
-            s_score = play_game(game_s, agent, teacher, focal, det_rng,
-                                oracle_rows if args.oracle_rollouts else None,
-                                args.oracle_rollouts)
+            s_score = play_game(
+                game_s,
+                agent,
+                teacher,
+                focal,
+                det_rng,
+                oracle_rows if args.oracle_rollouts else None,
+                args.oracle_rollouts,
+            )
             # Raw game on the same deal.
             game_r = Game(partner_selection_mode=mode, seed=seed)
             agent.reset_recurrent_state()
@@ -332,8 +374,11 @@ def run_h2h(agent, teacher, args):
             deltas.append(s_score - r_score)
         if (gi + 1) % max(1, args.games // 20) == 0:
             d = np.array(deltas)
-            print(f"  [{gi+1}/{args.games}] mean delta={d.mean():+.3f} "
-                  f"(n={len(d)})  failures={dict(teacher.fail)}", flush=True)
+            print(
+                f"  [{gi + 1}/{args.games}] mean delta={d.mean():+.3f} "
+                f"(n={len(d)})  failures={dict(teacher.fail)}",
+                flush=True,
+            )
     _summarize_h2h(deltas, oracle_rows)
 
 
@@ -344,55 +389,85 @@ def _summarize_h2h(deltas, oracle_rows):
     print("=" * 72)
     if len(d):
         se = d.std(ddof=1) / np.sqrt(len(d)) if len(d) > 1 else float("nan")
-        print(f"  focal-seat score delta (teacher - raw) = {d.mean():+.3f}  (SE {se:.3f})")
-        print(f"  teacher >= raw in {np.mean(d >= 0)*100:.0f}% of paired games")
+        print(
+            f"  focal-seat score delta (teacher - raw) = {d.mean():+.3f}  (SE {se:.3f})"
+        )
+        print(f"  teacher >= raw in {np.mean(d >= 0) * 100:.0f}% of paired games")
     if oracle_rows:
         od = np.array([r["d"] for r in oracle_rows])
         ose = od.std(ddof=1) / np.sqrt(len(od)) if len(od) > 1 else float("nan")
-        print(f"\n  oracle (true-deal) EV of teacher-argmax minus policy-argmax, "
-              f"on the {len(od)} nodes where they differ:")
-        print(f"    mean delta = {od.mean():+.3f}  (SE {ose:.3f})  "
-              f"teacher better in {np.mean(od > 0)*100:.0f}%")
+        print(
+            f"\n  oracle (true-deal) EV of teacher-argmax minus policy-argmax, "
+            f"on the {len(od)} nodes where they differ:"
+        )
+        print(
+            f"    mean delta = {od.mean():+.3f}  (SE {ose:.3f})  "
+            f"teacher better in {np.mean(od > 0) * 100:.0f}%"
+        )
     print("\n-- Verdict --")
     if len(d) > 1:
         se = d.std(ddof=1) / np.sqrt(len(d))
         z = d.mean() / se if se > 0 else 0.0
-        print(f"  Strength (teacher beats raw): "
-              f"{'PASS' if z > 1.0 else 'WEAK' if d.mean() >= 0 else 'FAIL'} "
-              f"(z={z:+.2f})")
+        print(
+            f"  Strength (teacher beats raw): "
+            f"{'PASS' if z > 1.0 else 'WEAK' if d.mean() >= 0 else 'FAIL'} "
+            f"(z={z:+.2f})"
+        )
 
 
 # ---------------------------------------------------------------------------
 def parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model",
-                    default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt")
+    ap.add_argument(
+        "-m",
+        "--model",
+        default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt",
+    )
     ap.add_argument("--mode", choices=["trick0", "h2h"], default="trick0")
     ap.add_argument("--seed", type=int, default=0)
     # trick0
     ap.add_argument("--max-games", type=int, default=20000)
     ap.add_argument("--states", type=int, default=40)
-    ap.add_argument("--min-raw-trump", type=float, default=0.5,
-                    help="Keep only trick-0 leads whose raw conditional trump-lead "
-                         "mass is >= this (0.5 focuses on the leak).")
+    ap.add_argument(
+        "--min-raw-trump",
+        type=float,
+        default=0.5,
+        help="Keep only trick-0 leads whose raw conditional trump-lead "
+        "mass is >= this (0.5 focuses on the leak).",
+    )
     # h2h
     ap.add_argument("--games", type=int, default=40)
     ap.add_argument("--focal-seats", type=int, nargs="+", default=[1, 2, 3, 4, 5])
-    ap.add_argument("--oracle-rollouts", type=int, default=0,
-                    help="If >0, paired true-deal rollouts comparing teacher vs "
-                         "policy argmax at each searched node.")
+    ap.add_argument(
+        "--oracle-rollouts",
+        type=int,
+        default=0,
+        help="If >0, paired true-deal rollouts comparing teacher vs "
+        "policy argmax at each searched node.",
+    )
     # engine knobs
-    ap.add_argument("--play-iters", type=int, default=None,
-                    help="Override play-head iterations M (default 96).")
+    ap.add_argument(
+        "--play-iters",
+        type=int,
+        default=None,
+        help="Override play-head iterations M (default 96).",
+    )
     ap.add_argument("--ess-floor", type=float, default=4.0)
     ap.add_argument("--d-rollout", type=int, default=2)
     ap.add_argument("--tau", type=float, default=1.0)
-    ap.add_argument("--root-explore", type=float, default=0.25,
-                    help="Uniform mix into the root prior (counteracts a collapsed "
-                         "policy starving the better action under PUCT).")
-    ap.add_argument("--fpu", type=float, default=1.0,
-                    help="First-play-urgency value (normalized Q space) for "
-                         "not-yet-tried actions.")
+    ap.add_argument(
+        "--root-explore",
+        type=float,
+        default=0.25,
+        help="Uniform mix into the root prior (counteracts a collapsed "
+        "policy starving the better action under PUCT).",
+    )
+    ap.add_argument(
+        "--fpu",
+        type=float,
+        default=1.0,
+        help="First-play-urgency value (normalized Q space) for not-yet-tried actions.",
+    )
     return ap.parse_args()
 
 
@@ -406,9 +481,13 @@ def main():
     agent = PPOAgent(len(ACTIONS), activation="swish")
     agent.load(args.model, load_optimizers=False)
 
-    cfg = ISMCTSConfig(ess_floor=args.ess_floor, d_rollout=args.d_rollout,
-                       tau_target=args.tau, root_explore_frac=args.root_explore,
-                       fpu=args.fpu)
+    cfg = ISMCTSConfig(
+        ess_floor=args.ess_floor,
+        d_rollout=args.d_rollout,
+        tau_target=args.tau,
+        root_explore_frac=args.root_explore,
+        fpu=args.fpu,
+    )
     if args.play_iters is not None:
         cfg.iters["play"] = args.play_iters
     teacher = ISMCTSTeacher(agent, cfg)

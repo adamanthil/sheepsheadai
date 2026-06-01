@@ -1260,9 +1260,9 @@ class PPOAgent:
                             unseen_higher_lbl, dtype=torch.float32, device=device
                         )
                     )
-                    search_tgt_lbl = self.events[i].get("search_target") or [
-                        0.0
-                    ] * self.action_size
+                    search_tgt_lbl = (
+                        self.events[i].get("search_target") or [0.0] * self.action_size
+                    )
                     search_target_bt.append(
                         torch.tensor(search_tgt_lbl, dtype=torch.float32, device=device)
                     )
@@ -1296,7 +1296,9 @@ class PPOAgent:
                         torch.tensor(0.0, dtype=torch.float32, device=device)
                     )
                     search_target_bt.append(
-                        torch.zeros(self.action_size, dtype=torch.float32, device=device)
+                        torch.zeros(
+                            self.action_size, dtype=torch.float32, device=device
+                        )
                     )
                     has_search_bt.append(
                         torch.tensor(0.0, dtype=torch.float32, device=device)
@@ -1892,7 +1894,9 @@ class PPOAgent:
                 # Stage C distillation accumulation
                 search_distill_loss_sum += search_distill_loss.detach().item()
                 teacher_kl_sum += search_distill_metrics["teacher_kl"].item()
-                pi_target_entropy_sum += search_distill_metrics["pi_target_entropy"].item()
+                pi_target_entropy_sum += search_distill_metrics[
+                    "pi_target_entropy"
+                ].item()
                 masked_fraction_sum += search_distill_metrics["masked_fraction"].item()
                 search_distill_batches += 1
 
@@ -2034,8 +2038,10 @@ class PPOAgent:
                 "loss": self.search_distill_coeff
                 * (search_distill_loss_sum / max(search_distill_batches, 1)),
                 "teacher_kl": teacher_kl_sum / max(search_distill_batches, 1),
-                "pi_target_entropy": pi_target_entropy_sum / max(search_distill_batches, 1),
-                "pg_masked_fraction": masked_fraction_sum / max(search_distill_batches, 1),
+                "pi_target_entropy": pi_target_entropy_sum
+                / max(search_distill_batches, 1),
+                "pg_masked_fraction": masked_fraction_sum
+                / max(search_distill_batches, 1),
             },
             "critic_losses": {
                 "value": self.value_loss_coeff

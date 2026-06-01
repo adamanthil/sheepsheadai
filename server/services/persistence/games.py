@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 # Pre/post-state capture (call while holding game_lock around player.act())
 # ---------------------------------------------------------------------------
 
+
 def capture_pre_state(game: Game) -> Dict[str, Any]:
     return {
         "picker": game.picker,
@@ -80,6 +81,7 @@ def capture_post_state(game: Game) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Hook dispatcher
 # ---------------------------------------------------------------------------
+
 
 async def fire_game_hooks(
     table: "Table", pre: Dict[str, Any], post: Dict[str, Any]
@@ -124,6 +126,7 @@ async def fire_game_hooks(
 # Hook 0 (auxiliary): game_table bookkeeping
 # ---------------------------------------------------------------------------
 
+
 async def ensure_game_table(pool: asyncpg.Pool, table_id: str, table_name: str) -> None:
     """Create game_table row on first start; no-op if the row already exists."""
     try:
@@ -139,7 +142,8 @@ async def ensure_game_table(pool: asyncpg.Pool, table_id: str, table_name: str) 
             )
     except Exception:
         logger.exception(
-            "ensure_game_table failed (table=%s)", table_id,
+            "ensure_game_table failed (table=%s)",
+            table_id,
             extra={"table_id": table_id},
         )
 
@@ -154,7 +158,8 @@ async def close_game_table(pool: asyncpg.Pool, table_id: str) -> None:
             )
     except Exception:
         logger.exception(
-            "close_game_table failed (table=%s)", table_id,
+            "close_game_table failed (table=%s)",
+            table_id,
             extra={"table_id": table_id},
         )
 
@@ -162,6 +167,7 @@ async def close_game_table(pool: asyncpg.Pool, table_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Hook 1: persist game + game_player rows after deal
 # ---------------------------------------------------------------------------
+
 
 async def persist_started_game(
     pool: asyncpg.Pool,
@@ -222,7 +228,9 @@ async def persist_started_game(
                             player_uuid = uuid.uuid4()
                             logger.warning(
                                 "seat %s has no player_id; minting %s (table=%s)",
-                                seat, player_uuid, table.id,
+                                seat,
+                                player_uuid,
+                                table.id,
                                 extra={"table_id": table.id},
                             )
                             await conn.execute(
@@ -270,7 +278,8 @@ async def persist_started_game(
 
     except Exception:
         logger.exception(
-            "persist_started_game failed (table=%s)", table.id,
+            "persist_started_game failed (table=%s)",
+            table.id,
             extra={"table_id": table.id, "game_id": game_id},
         )
 
@@ -278,6 +287,7 @@ async def persist_started_game(
 # ---------------------------------------------------------------------------
 # Hook 2: pick resolved
 # ---------------------------------------------------------------------------
+
 
 async def persist_pick_resolved(
     pool: asyncpg.Pool,
@@ -307,7 +317,8 @@ async def persist_pick_resolved(
     except Exception:
         logger.exception(
             "persist_pick_resolved failed (table=%s game=%s)",
-            table.id, table.current_game_id,
+            table.id,
+            table.current_game_id,
             extra={"table_id": table.id, "game_id": table.current_game_id},
         )
 
@@ -315,6 +326,7 @@ async def persist_pick_resolved(
 # ---------------------------------------------------------------------------
 # Hook 3: picker decisions locked in (bury complete)
 # ---------------------------------------------------------------------------
+
 
 async def persist_picker_decisions(
     pool: asyncpg.Pool,
@@ -361,7 +373,8 @@ async def persist_picker_decisions(
     except Exception:
         logger.exception(
             "persist_picker_decisions failed (table=%s game=%s)",
-            table.id, table.current_game_id,
+            table.id,
+            table.current_game_id,
             extra={"table_id": table.id, "game_id": table.current_game_id},
         )
 
@@ -369,6 +382,7 @@ async def persist_picker_decisions(
 # ---------------------------------------------------------------------------
 # Hook 4: partner revealed
 # ---------------------------------------------------------------------------
+
 
 async def persist_partner_revealed(
     pool: asyncpg.Pool,
@@ -390,7 +404,8 @@ async def persist_partner_revealed(
     except Exception:
         logger.exception(
             "persist_partner_revealed failed (table=%s game=%s)",
-            table.id, table.current_game_id,
+            table.id,
+            table.current_game_id,
             extra={"table_id": table.id, "game_id": table.current_game_id},
         )
 
@@ -398,6 +413,7 @@ async def persist_partner_revealed(
 # ---------------------------------------------------------------------------
 # Hook 5: trick completed
 # ---------------------------------------------------------------------------
+
 
 async def persist_trick_completed(
     pool: asyncpg.Pool,
@@ -453,7 +469,9 @@ async def persist_trick_completed(
     except Exception:
         logger.exception(
             "persist_trick_completed failed (table=%s game=%s trick=%s)",
-            table.id, table.current_game_id, trick_idx,
+            table.id,
+            table.current_game_id,
+            trick_idx,
             extra={
                 "table_id": table.id,
                 "game_id": table.current_game_id,
@@ -465,6 +483,7 @@ async def persist_trick_completed(
 # ---------------------------------------------------------------------------
 # Hook 6: finalize game
 # ---------------------------------------------------------------------------
+
 
 async def persist_finalize_game(
     pool: asyncpg.Pool,
@@ -494,6 +513,7 @@ async def persist_finalize_game(
     except Exception:
         logger.exception(
             "persist_finalize_game failed (table=%s game=%s)",
-            table.id, game_id,
+            table.id,
+            game_id,
             extra={"table_id": table.id, "game_id": game_id},
         )

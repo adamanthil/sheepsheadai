@@ -104,7 +104,9 @@ def _profiles_moved(popdir):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--throughput", action="store_true", help="also run ExIt timing")
+    parser.add_argument(
+        "--throughput", action="store_true", help="also run ExIt timing"
+    )
     parser.add_argument("--workers", type=int, default=6, help="parallel worker count")
     parser.add_argument("--episodes", type=int, default=40, help="correctness episodes")
     parser.add_argument("--throughput-episodes", type=int, default=24)
@@ -119,22 +121,44 @@ def main():
         #    authoritative population was updated via replayed worker events.
         print(f"[correctness] {args.episodes} shaped episodes, {args.workers} workers")
         _run(
-            popdir, tmp, reward_mode="shaped",
-            num_workers=args.workers, episodes=args.episodes, run_tag="correctness",
+            popdir,
+            tmp,
+            reward_mode="shaped",
+            num_workers=args.workers,
+            episodes=args.episodes,
+            run_tag="correctness",
         )
         moved, total = _profiles_moved(popdir)
-        assert moved == total, f"only {moved}/{total} population agents updated — replay dropped events"
+        assert moved == total, (
+            f"only {moved}/{total} population agents updated — replay dropped events"
+        )
         print(f"[correctness] OK — {moved}/{total} population agents updated\n")
 
         # 2. Throughput (optional): production ExIt search, 1 vs N workers.
         if args.throughput:
             n = args.throughput_episodes
             print(f"[throughput] {n} ExIt episodes (production search)")
-            seq = _run(popdir, tmp, reward_mode="terminal", num_workers=1, episodes=n, run_tag="thru1")
-            par = _run(popdir, tmp, reward_mode="terminal", num_workers=args.workers, episodes=n, run_tag="thruN")
-            print(f"[throughput] workers=1: {seq / n:.3f}s/ep | "
-                  f"workers={args.workers}: {par / n:.3f}s/ep | speedup {seq / par:.2f}x "
-                  f"(pool spawn amortizes away on real runs)")
+            seq = _run(
+                popdir,
+                tmp,
+                reward_mode="terminal",
+                num_workers=1,
+                episodes=n,
+                run_tag="thru1",
+            )
+            par = _run(
+                popdir,
+                tmp,
+                reward_mode="terminal",
+                num_workers=args.workers,
+                episodes=n,
+                run_tag="thruN",
+            )
+            print(
+                f"[throughput] workers=1: {seq / n:.3f}s/ep | "
+                f"workers={args.workers}: {par / n:.3f}s/ep | speedup {seq / par:.2f}x "
+                f"(pool spawn amortizes away on real runs)"
+            )
         print("PARALLEL SELF-PLAY CHECK OK")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

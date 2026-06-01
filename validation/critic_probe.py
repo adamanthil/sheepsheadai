@@ -48,7 +48,9 @@ def encode_decide(agent, game, player):
     enc = agent.encoder.encode_batch([state], memory_in=mem_in.unsqueeze(0), device=DEV)
     agent.set_recurrent_memory(player.position, enc["memory_out"][0])
     mask = agent.get_action_mask(valid, agent.action_size).unsqueeze(0).to(DEV)
-    hand_ids = torch.as_tensor(state["hand_ids"], dtype=torch.long, device=DEV).view(1, -1)
+    hand_ids = torch.as_tensor(state["hand_ids"], dtype=torch.long, device=DEV).view(
+        1, -1
+    )
     with torch.no_grad():
         probs = agent.actor(enc, mask, hand_ids, agent.encoder.card)
         probs = agent._apply_head_epsilon_mix(probs, mask)
@@ -56,7 +58,9 @@ def encode_decide(agent, game, player):
 
     is_play = any(ACTIONS[v - 1].startswith("PLAY ") for v in valid)
     is_lead = is_play and game.cards_played == 0 and game.leader == player.position
-    is_defender = not (player.is_picker or player.is_partner or player.is_secret_partner)
+    is_defender = not (
+        player.is_picker or player.is_partner or player.is_secret_partner
+    )
     feats = enc["features"][0].detach().cpu().numpy() if is_play else None
     return a, feats, is_play, is_lead, is_defender
 
@@ -91,12 +95,16 @@ def collect(agent, n_games, gamma, seed):
                 while player.get_valid_action_ids():
                     a, fz, is_play, lead, dfn = encode_decide(agent, game, player)
                     if is_play:
-                        caps.append((player.position, game.current_trick, fz, lead, dfn))
+                        caps.append(
+                            (player.position, game.current_trick, fz, lead, dfn)
+                        )
                     player.act(a)
                     if game.was_trick_just_completed:
                         for seat in game.players:
-                            agent.observe(seat.get_last_trick_state_dict(),
-                                          player_id=seat.position)
+                            agent.observe(
+                                seat.get_last_trick_state_dict(),
+                                player_id=seat.position,
+                            )
         if game.is_leaster:
             continue
         returns_by_pos = {p: player_play_returns(game, p, gamma) for p in range(1, 6)}
@@ -147,7 +155,7 @@ def train_head(depth, Xtr, ytr, Xval, epochs, lr, act):
     for _ in range(epochs):
         perm = torch.randperm(n, device=DEV)
         for i in range(0, n, bs):
-            idx = perm[i:i + bs]
+            idx = perm[i : i + bs]
             opt.zero_grad()
             loss = lossf(model(Xtr_t[idx]), ytr_t[idx])
             loss.backward()
@@ -165,14 +173,19 @@ def report_subset(name, mask, yval, preds):
     print(f"\n{name} (n={len(y)})  target std={y.std():.4f}")
     for label, p in preds.items():
         pm = p[mask]
-        print(f"  {label:<18} R^2={r2(pm, y):+.3f}  pred std={pm.std():.4f}  "
-              f"bias={pm.mean()-y.mean():+.4f}")
+        print(
+            f"  {label:<18} R^2={r2(pm, y):+.3f}  pred std={pm.std():.4f}  "
+            f"bias={pm.mean() - y.mean():+.4f}"
+        )
 
 
 def parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model",
-                    default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt")
+    ap.add_argument(
+        "-m",
+        "--model",
+        default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt",
+    )
     ap.add_argument("--games", type=int, default=2000)
     ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -195,11 +208,13 @@ def main():
     print(f"Collecting features from {args.games} games (gamma={args.gamma}) ...")
     data = collect(agent, args.games, args.gamma, args.seed)
     X, y = data["X"], data["y"]
-    print(f"  {len(y)} play-decision samples; "
-          f"{int(((data['trick']==0)&data['is_lead']&data['is_def']).sum())} trick-0 defender leads.")
+    print(
+        f"  {len(y)} play-decision samples; "
+        f"{int(((data['trick'] == 0) & data['is_lead'] & data['is_def']).sum())} trick-0 defender leads."
+    )
 
     # Split by game to avoid leakage.
-    val_mask = (data["gid"] % 5 == 0)
+    val_mask = data["gid"] % 5 == 0
     tr = ~val_mask
     Xtr, ytr, Xval, yval = X[tr], y[tr], X[val_mask], y[val_mask]
     print(f"  train {len(ytr)} / val {len(yval)}")
@@ -208,9 +223,12 @@ def main():
     # training target -> rough reference only).
     with torch.no_grad():
         fv = torch.as_tensor(Xval, device=DEV)
-        orig = agent.critic.value_head(
-            agent.critic.critic_adapter(fv)
-        ).squeeze(-1).cpu().numpy()
+        orig = (
+            agent.critic.value_head(agent.critic.critic_adapter(fv))
+            .squeeze(-1)
+            .cpu()
+            .numpy()
+        )
 
     print("Training fresh heads on frozen features ...")
     shallow = train_head(1, Xtr, ytr, Xval, args.epochs, args.lr, act)
@@ -221,13 +239,20 @@ def main():
     print("\n" + "=" * 72)
     print("FROZEN-ENCODER PROBE RESULTS (held-out by game)")
     print("=" * 72)
-    print(f"  Target: gamma={args.gamma} shaping-free return; val target std={yval.std():.4f}")
+    print(
+        f"  Target: gamma={args.gamma} shaping-free return; val target std={yval.std():.4f}"
+    )
     report_subset("ALL play decisions", np.ones(len(yval), bool), yval, preds)
-    report_subset("Lead decisions (cards_played==0)", data["is_lead"][val_mask], yval, preds)
+    report_subset(
+        "Lead decisions (cards_played==0)", data["is_lead"][val_mask], yval, preds
+    )
     report_subset(
         "Trick-0 DEFENDER leads (the leak states)",
-        (data["trick"][val_mask] == 0) & data["is_lead"][val_mask] & data["is_def"][val_mask],
-        yval, preds,
+        (data["trick"][val_mask] == 0)
+        & data["is_lead"][val_mask]
+        & data["is_def"][val_mask],
+        yval,
+        preds,
     )
 
     # By-trick R^2 curve (deep head) -- tests the partial-observability hypothesis:
@@ -239,21 +264,29 @@ def main():
     for t in range(6):
         m = (tv == t) & lv
         if m.sum() >= 20:
-            print(f"  trick {t} leads (n={int(m.sum()):5d}): R^2={r2(deep[m], yval[m]):+.3f}  "
-                  f"target std={yval[m].std():.3f}  pred std={deep[m].std():.3f}")
+            print(
+                f"  trick {t} leads (n={int(m.sum()):5d}): R^2={r2(deep[m], yval[m]):+.3f}  "
+                f"target std={yval[m].std():.3f}  pred std={deep[m].std():.3f}"
+            )
     print("--- Fresh DEEP head: R^2 by trick (all play decisions) ---")
     for t in range(6):
-        m = (tv == t)
+        m = tv == t
         if m.sum() >= 20:
-            print(f"  trick {t} (n={int(m.sum()):5d}): R^2={r2(deep[m], yval[m]):+.3f}  "
-                  f"target std={yval[m].std():.3f}")
+            print(
+                f"  trick {t} (n={int(m.sum()):5d}): R^2={r2(deep[m], yval[m]):+.3f}  "
+                f"target std={yval[m].std():.3f}"
+            )
 
     print("\n" + "=" * 72)
     print("READING IT")
     print("=" * 72)
     print("  Compare fresh SHALLOW vs fresh DEEP on the trick-0 subset:")
-    print("   - DEEP >> SHALLOW  -> head capacity was limiting; the value_trunk change helps.")
-    print("   - DEEP ~ SHALLOW, both decent -> features fine, head just needed retraining.")
+    print(
+        "   - DEEP >> SHALLOW  -> head capacity was limiting; the value_trunk change helps."
+    )
+    print(
+        "   - DEEP ~ SHALLOW, both decent -> features fine, head just needed retraining."
+    )
     print("   - both low (and < ALL-decisions R^2) -> encoder lacks the distinction;")
     print("     a deeper head won't help -> encoder changes needed.")
 

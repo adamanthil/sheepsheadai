@@ -439,8 +439,10 @@ def evaluate(states, agent, K, r_inner, r_oracle, tau, trick, seed, legality_onl
             qf_l.append(rollout_score(world, mem, agent, fc, obs, r_inner))
             lw.append(lwf)
         if len(qt_l) < max(5, K // 4):
-            print(f"  [{i + 1}/{len(states)}] only {len(qt_l)} legal worlds; skipping",
-                  flush=True)
+            print(
+                f"  [{i + 1}/{len(states)}] only {len(qt_l)} legal worlds; skipping",
+                flush=True,
+            )
             continue
         qt_a, qf_a, lw = np.array(qt_l), np.array(qf_l), np.array(lw)
         w = np.exp(lw - lw.max())
@@ -448,7 +450,7 @@ def evaluate(states, agent, K, r_inner, r_oracle, tau, trick, seed, legality_onl
         wt_qt, wt_qf = float((w * qt_a).sum()), float((w * qf_a).sum())
         det_d = wt_qt - wt_qf
         uni_d = float(qt_a.mean() - qf_a.mean())
-        ess = float(1.0 / np.sum(w ** 2))
+        ess = float(1.0 / np.sum(w**2))
         acc_rate = len(qt_l) / max(attempts, 1)
 
         logits = np.array([wt_qt, wt_qf]) / tau
@@ -485,12 +487,16 @@ def summarize(rows, diag, tau, trick):
     print("\n" + "=" * 72)
     print(f"STAGE A  (trick {trick} defender lead states, n={len(rows)}, tau={tau})")
     print("=" * 72)
-    print(f"  Legality: {legal_checks - legal_fail}/{legal_checks} sampled redeals legal "
-          f"({legal_fail} violations)")
+    print(
+        f"  Legality: {legal_checks - legal_fail}/{legal_checks} sampled redeals legal "
+        f"({legal_fail} violations)"
+    )
     if replay_attempts:
-        print(f"  Forced-replay reproduced node: "
-              f"{replay_attempts - replay_fail}/{replay_attempts} "
-              f"({replay_fail} replay/desync failures)")
+        print(
+            f"  Forced-replay reproduced node: "
+            f"{replay_attempts - replay_fail}/{replay_attempts} "
+            f"({replay_fail} replay/desync failures)"
+        )
         if _FAIL:
             print(f"  replay-failure reasons: {dict(_FAIL)}")
     if not rows:
@@ -509,20 +515,26 @@ def summarize(rows, diag, tau, trick):
 
     md, mo, mu = float(det_d.mean()), float(oracle_d.mean()), float(uni_d.mean())
     sd, so = se(det_d), se(oracle_d)
-    comb = float(np.sqrt(sd ** 2 + so ** 2))
+    comb = float(np.sqrt(sd**2 + so**2))
     if len(rows) > 1 and det_d.std() > 0 and oracle_d.std() > 0:
         corr = float(np.corrcoef(det_d, oracle_d)[0, 1])
     else:
         corr = float("nan")
 
     print("\n-- Calibration: determinized EV gap vs true-deal oracle (trump - fail) --")
-    print(f"  mean UNIFORM   detD = {mu:+.3f}  (SE {se(uni_d):.3f})  [ignores bidding+plays]")
+    print(
+        f"  mean UNIFORM   detD = {mu:+.3f}  (SE {se(uni_d):.3f})  [ignores bidding+plays]"
+    )
     print(f"  mean WEIGHTED  detD = {md:+.3f}  (SE {sd:.3f})  [inference-corrected]")
     print(f"  mean oracle    detD = {mo:+.3f}  (SE {so:.3f})  [true-deal ground truth]")
-    print(f"  |weighted - oracle| = {abs(md - mo):.3f}  vs 2*combined SE = {2 * comb:.3f}")
+    print(
+        f"  |weighted - oracle| = {abs(md - mo):.3f}  vs 2*combined SE = {2 * comb:.3f}"
+    )
     print(f"  per-state Pearson r(weightedD, oracleD) = {corr:+.3f}")
-    print(f"  inference ESS: mean={ess.mean():.1f}/{int(np.mean([r['used'] for r in rows]))} "
-          f"(min={ess.min():.1f})   legal-world rate: mean={acc.mean():.2f} (min={acc.min():.2f})")
+    print(
+        f"  inference ESS: mean={ess.mean():.1f}/{int(np.mean([r['used'] for r in rows]))} "
+        f"(min={ess.min():.1f})   legal-world rate: mean={acc.mean():.2f} (min={acc.min():.2f})"
+    )
     sign_agree = float(np.mean(np.sign(det_d) == np.sign(oracle_d)))
     print(f"  sign(detD)==sign(oracleD) on {sign_agree * 100:.0f}% of states")
 
@@ -534,8 +546,11 @@ def summarize(rows, diag, tau, trick):
 
 def parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model",
-                    default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt")
+    ap.add_argument(
+        "-m",
+        "--model",
+        default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt",
+    )
     ap.add_argument("--tricks", type=int, nargs="+", default=[1, 2, 3])
     ap.add_argument("--max-games", type=int, default=30000)
     ap.add_argument("--states", type=int, default=30)
@@ -544,8 +559,11 @@ def parse_args():
     ap.add_argument("--rollouts-oracle", type=int, default=40)
     ap.add_argument("--tau", type=float, default=0.5)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--legality-only", action="store_true",
-                    help="Only run the legality assertions (fast, no rollouts).")
+    ap.add_argument(
+        "--legality-only",
+        action="store_true",
+        help="Only run the legality assertions (fast, no rollouts).",
+    )
     return ap.parse_args()
 
 
@@ -561,12 +579,23 @@ def main():
 
     for trick in args.tricks:
         print(f"\n##### TRICK {trick} #####")
-        print(f"Scanning up to {args.max_games} games for trick-{trick} defender leads ...")
-        states, scanned, games = collect(agent, args.max_games, args.states, trick, args.seed)
+        print(
+            f"Scanning up to {args.max_games} games for trick-{trick} defender leads ..."
+        )
+        states, scanned, games = collect(
+            agent, args.max_games, args.states, trick, args.seed
+        )
         print(f"  collected {len(states)} states (scanned {games} games).")
         rows, diag = evaluate(
-            states, agent, args.determinizations, args.rollouts_inner,
-            args.rollouts_oracle, args.tau, trick, args.seed, args.legality_only,
+            states,
+            agent,
+            args.determinizations,
+            args.rollouts_inner,
+            args.rollouts_oracle,
+            args.tau,
+            trick,
+            args.seed,
+            args.legality_only,
         )
         summarize(rows, diag, args.tau, trick)
 

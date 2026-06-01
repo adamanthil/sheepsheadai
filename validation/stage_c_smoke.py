@@ -78,7 +78,9 @@ def main():
                 if ev.get("has_search_target"):
                     searched += 1
         training_agent.store_episode_events(events)
-        print(f"  game {g+1}/{n_games}: {len(events)} events, leaster={game.is_leaster}")
+        print(
+            f"  game {g + 1}/{n_games}: {len(events)} events, leaster={game.is_leaster}"
+        )
 
     print(f"\naction transitions={actions}, with search target={searched}")
     print("Running update() ...")
@@ -88,7 +90,9 @@ def main():
     print("approx_kl:", round(stats.get("approx_kl", 0.0), 5))
     print("distill:", {k: round(v, 5) for k, v in stats.get("distill", {}).items()})
     print("value loss:", round(stats["critic_losses"]["value"], 5))
-    assert searched > 0, "no search targets were produced — distillation never exercised"
+    assert searched > 0, (
+        "no search targets were produced — distillation never exercised"
+    )
     assert stats.get("distill", {}).get("pg_masked_fraction", 0.0) > 0.0, (
         "PG-mask fraction is zero — mask never applied"
     )

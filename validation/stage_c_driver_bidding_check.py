@@ -27,8 +27,12 @@ def make_agent():
 
 def make_opp(i, mode):
     meta = AgentMetadata(
-        agent_id=f"drv_opp_{i}", creation_time=time.time(), parent_id=None,
-        training_episodes=0, partner_mode=mode, activation="swish",
+        agent_id=f"drv_opp_{i}",
+        creation_time=time.time(),
+        parent_id=None,
+        training_episodes=0,
+        partner_mode=mode,
+        activation="swish",
     )
     return PopulationAgent(make_agent(), meta)
 
@@ -38,7 +42,8 @@ def main():
     agent = make_agent()
     cfg = ISMCTSConfig(
         iters={"pick": 8, "partner": 8, "bury": 8, "play": 8},
-        det_max_tries=300, ess_floor=1.0,
+        det_max_tries=300,
+        ess_floor=1.0,
     )
     teacher = ISMCTSTeacher(agent, cfg)
     determinization_rng = random.Random(7)
@@ -47,15 +52,23 @@ def main():
         head_search_fractions={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.3}
     )
 
-    by_head = {"pick": [0, 0], "partner": [0, 0], "bury": [0, 0], "play": [0, 0]}  # [searched, total]
+    by_head = {
+        "pick": [0, 0],
+        "partner": [0, 0],
+        "bury": [0, 0],
+        "play": [0, 0],
+    }  # [searched, total]
     n_games = 16
     for g in range(n_games):
         mode = PARTNER_BY_CALLED_ACE if g % 2 else PARTNER_BY_JD
         opps = [make_opp(i, mode) for i in range(4)]
         game, events, final_scores, _, _ = play_population_game(
-            training_agent=agent, opponents=opps, partner_mode=mode,
+            training_agent=agent,
+            opponents=opps,
+            partner_mode=mode,
             training_agent_position=random.randint(1, 5),
-            reward_mode="terminal", teacher=teacher,
+            reward_mode="terminal",
+            teacher=teacher,
             determinization_rng=determinization_rng,
             search_config=search_config,
         )
@@ -75,13 +88,22 @@ def main():
 
     stats = agent.update(epochs=2, batch_size=16)
     d = stats.get("distill", {})
-    print("\nupdate: num_transitions=", stats.get("num_transitions"),
-          " distill_loss=", round(d.get("loss", 0.0), 4),
-          " pg_masked_fraction=", round(d.get("pg_masked_fraction", 0.0), 4))
+    print(
+        "\nupdate: num_transitions=",
+        stats.get("num_transitions"),
+        " distill_loss=",
+        round(d.get("loss", 0.0), 4),
+        " pg_masked_fraction=",
+        round(d.get("pg_masked_fraction", 0.0), 4),
+    )
 
     # Bidding heads must have been searched (the whole point of P4).
-    ok = (by_head["pick"][0] > 0 and by_head["partner"][0] > 0 and by_head["bury"][0] > 0
-          and d.get("pg_masked_fraction", 0.0) > 0.0)
+    ok = (
+        by_head["pick"][0] > 0
+        and by_head["partner"][0] > 0
+        and by_head["bury"][0] > 0
+        and d.get("pg_masked_fraction", 0.0) > 0.0
+    )
     print("\nDRIVER BIDDING-SEARCH", "PASS" if ok else "FAIL")
 
 

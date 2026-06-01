@@ -343,9 +343,10 @@ def test_private_root_replay_matches_completed_private_actions():
     assert world is not None and np.isfinite(log_w), "private replay failed"
     assert world.history == game.history, "history mismatch at private root"
     assert world.bury == game.bury, "completed private actions were not replayed"
-    assert world.players[observer - 1].get_valid_action_ids() == game.players[
-        observer - 1
-    ].get_valid_action_ids(), "private root legal set mismatch"
+    assert (
+        world.players[observer - 1].get_valid_action_ids()
+        == game.players[observer - 1].get_valid_action_ids()
+    ), "private root legal set mismatch"
 
     batched = teacher._build_worlds_batched(
         copy.deepcopy(game), [copy.deepcopy(deal)], fp, observer
@@ -686,9 +687,14 @@ def _generate_searched_events(n_games=5):
     all_events, searched = [], 0
     for _ in range(n_games):
         _, events, _, _, _ = play_population_game(
-            training_agent=gen, opponents=opps, partner_mode=mode,
-            training_agent_position=random.randint(1, 5), reward_mode="terminal",
-            teacher=teacher, determinization_rng=det_rng, search_config=sc,
+            training_agent=gen,
+            opponents=opps,
+            partner_mode=mode,
+            training_agent_position=random.randint(1, 5),
+            reward_mode="terminal",
+            teacher=teacher,
+            determinization_rng=det_rng,
+            search_config=sc,
         )
         searched += sum(
             1 for e in events if e["kind"] == "action" and e.get("has_search_target")
@@ -703,7 +709,9 @@ def test_searched_ppo_weight_ab():
     identical except for searched_ppo_weight (0.0 mask vs 1.0 additive), fed the SAME
     event stream, must diverge after one update (the additive PG term on searched
     transitions changes the policy update). Also: the default is the hard mask."""
-    assert _fresh_agent().searched_ppo_weight == 0.0, "default must be the hard mask (0.0)"
+    assert _fresh_agent().searched_ppo_weight == 0.0, (
+        "default must be the hard mask (0.0)"
+    )
 
     event_streams = _generate_searched_events(n_games=5)
 
@@ -743,16 +751,37 @@ def test_profile_capture_replay_equivalence():
     # event kinds for the same agent and repeated EWMA-bearing events (order-sensitive
     # within a field) so the test would fail if grouping reordered same-field updates.
     stream = [
-        ("action", "p0", {"pick_decision": True, "hand_strength_category": "strong", "position": 1}),
+        (
+            "action",
+            "p0",
+            {"pick_decision": True, "hand_strength_category": "strong", "position": 1},
+        ),
         ("trick", "p0", ("picker", 1.0, True, 1.0)),
-        ("action", "p1", {"trump_lead": True, "role": "defender", "is_early_lead": True}),
+        (
+            "action",
+            "p1",
+            {"trump_lead": True, "role": "defender", "is_early_lead": True},
+        ),
         ("action", "p0", {"early_trump_play": True}),
         ("trick", "p1", ("defender", 0.0, False, 0.0)),
-        ("action", "p1", {"void_event": True, "void_played_trump": False, "schmeared_points": 4, "void_schmear": True}),
+        (
+            "action",
+            "p1",
+            {
+                "void_event": True,
+                "void_played_trump": False,
+                "schmeared_points": 4,
+                "void_schmear": True,
+            },
+        ),
         ("action", "p0", {"early_trump_play": False}),
         ("trick", "p0", ("picker", 0.0, True, 0.0)),
         ("action", "p0", {"bury_decision": "AH", "card_points": 11}),
-        ("action", "p1", {"pick_decision": False, "hand_strength_category": "weak", "position": 3}),
+        (
+            "action",
+            "p1",
+            {"pick_decision": False, "hand_strength_category": "weak", "position": 3},
+        ),
         ("trick", "p1", ("defender", 1.0, True, 1.0)),
     ]
     aids = ("p0", "p1")
@@ -771,7 +800,9 @@ def test_profile_capture_replay_equivalence():
     cap_action: dict[str, list] = {}
     cap_trick: dict[str, list] = {}
     for kind, aid, payload in stream:
-        (cap_action if kind == "action" else cap_trick).setdefault(aid, []).append(payload)
+        (cap_action if kind == "action" else cap_trick).setdefault(aid, []).append(
+            payload
+        )
     par = {a: _make_pop_agent(_fresh_agent(), PARTNER_BY_JD, "p" + a) for a in aids}
     for aid, events in cap_action.items():
         for ev in events:
@@ -781,23 +812,32 @@ def test_profile_capture_replay_equivalence():
             apply_trick_profile_sample(par[aid], role, trick_win, is_leader, lead_win)
 
     for aid in aids:
-        assert seq[aid].strategic_profile.to_dict() == par[aid].strategic_profile.to_dict(), (
-            f"capture/replay diverged from in-game mutation for {aid}"
-        )
+        assert (
+            seq[aid].strategic_profile.to_dict() == par[aid].strategic_profile.to_dict()
+        ), f"capture/replay diverged from in-game mutation for {aid}"
 
 
 def test_gameresult_pickle_roundtrip():
     """GameResult / JobSpec must round-trip through pickle (spawn worker boundary)."""
     import pickle
 
-    from pfsp_runtime import GameResult, JobSpec, make_game_summary, play_population_game
+    from pfsp_runtime import (
+        GameResult,
+        JobSpec,
+        make_game_summary,
+        play_population_game,
+    )
 
     ta = _fresh_agent()
     opps = [_make_pop_agent(_fresh_agent(), PARTNER_BY_JD, i) for i in range(4)]
     _seed()
     game, events, final_scores, tdata, p2a = play_population_game(
-        ta, opps, PARTNER_BY_JD, training_agent_position=1,
-        reward_mode="shaped", capture_profile_events=True,
+        ta,
+        opps,
+        PARTNER_BY_JD,
+        training_agent_position=1,
+        reward_mode="shaped",
+        capture_profile_events=True,
     )
     summary = make_game_summary(game)
     result = GameResult(

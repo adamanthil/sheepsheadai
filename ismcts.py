@@ -433,8 +433,10 @@ class ISMCTSTeacher:
                     # observer's turn. If this is a later private decision, first
                     # force the already-taken private actions so the replay stops
                     # at the same bury/under step as the live game.
-                    if not pub and pos == observer and _private_root_ready(
-                        real_game, games[0], valid0
+                    if (
+                        not pub
+                        and pos == observer
+                        and _private_root_ready(real_game, games[0], valid0)
                     ):
                         pool = []
                         for i, g in enumerate(games):
@@ -884,7 +886,9 @@ class ISMCTSTeacher:
             return float(v)
         return float((self._gamma() ** observer_actions_elapsed) * v)
 
-    def _terminal_value(self, world, observer, observer_actions_elapsed: int = 0) -> float:
+    def _terminal_value(
+        self, world, observer, observer_actions_elapsed: int = 0
+    ) -> float:
         return self._discount(
             world.players[observer - 1].get_score() / RETURN_SCALE,
             observer_actions_elapsed,
@@ -1072,8 +1076,10 @@ class ISMCTSTeacher:
                     # observer's turn. For later private roots, keep replaying the
                     # determinized private actions until bury/under progress
                     # matches the live root; the simulate step encodes the root.
-                    if not pub and player.position == observer and _private_root_ready(
-                        real_game, g, valid
+                    if (
+                        not pub
+                        and player.position == observer
+                        and _private_root_ready(real_game, g, valid)
                     ):
                         if g.history != real_game.history:
                             self.fail["hist_mismatch"] += 1

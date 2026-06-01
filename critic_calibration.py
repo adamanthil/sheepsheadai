@@ -61,9 +61,13 @@ def policy_and_value(agent, state, valid, pid):
     enc = agent.encoder.encode_batch([state], memory_in=mem_in.unsqueeze(0), device=DEV)
     agent.set_recurrent_memory(pid, enc["memory_out"][0])
     mask = agent.get_action_mask(valid, agent.action_size).unsqueeze(0).to(DEV)
-    hand_ids = torch.as_tensor(state["hand_ids"], dtype=torch.long, device=DEV).view(1, -1)
+    hand_ids = torch.as_tensor(state["hand_ids"], dtype=torch.long, device=DEV).view(
+        1, -1
+    )
     with torch.no_grad():
-        probs, _ = agent.actor.forward_with_logits(enc, mask, hand_ids, agent.encoder.card)
+        probs, _ = agent.actor.forward_with_logits(
+            enc, mask, hand_ids, agent.encoder.card
+        )
         probs = agent._apply_head_epsilon_mix(probs, mask)
         value = agent.critic(enc)
     return probs[0].detach().cpu().numpy(), float(value.item())
@@ -98,7 +102,9 @@ def play_out(game, agent):
                 valid = player.get_valid_action_ids()
                 if game.was_trick_just_completed:
                     for seat in game.players:
-                        agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                        agent.observe(
+                            seat.get_last_trick_state_dict(), player_id=seat.position
+                        )
 
 
 def seat_return(game, seat_pos):
@@ -216,9 +222,7 @@ def calibration(cal, agent, R, rng):
     rmse = np.sqrt((err**2).mean())
     mae = np.abs(err).mean()
     pear = np.corrcoef(V, G_mean)[0, 1]
-    sp = np.corrcoef(
-        np.argsort(np.argsort(V)), np.argsort(np.argsort(G_mean))
-    )[0, 1]
+    sp = np.corrcoef(np.argsort(np.argsort(V)), np.argsort(np.argsort(G_mean)))[0, 1]
     ss_res = np.sum((G_mean - V) ** 2)
     ss_tot = np.sum((G_mean - G_mean.mean()) ** 2)
     r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
@@ -230,7 +234,9 @@ def calibration(cal, agent, R, rng):
     print(f"(A) CRITIC CALIBRATION over first-trick defender leads (n={len(cal)})")
     print("=" * 72)
     print(f"  Return units: discounted (trick rewards + final_score/12), gamma={GAMMA}")
-    print(f"  Realized return  mean {G_mean.mean():+.4f}  std(across states) {G_mean.std():.4f}")
+    print(
+        f"  Realized return  mean {G_mean.mean():+.4f}  std(across states) {G_mean.std():.4f}"
+    )
     print(f"  Critic V(s)      mean {V.mean():+.4f}  std(across states) {V.std():.4f}")
     print(f"  Bias  E[V - G]          : {bias:+.4f}")
     print(f"  RMSE                    : {rmse:.4f}")
@@ -238,12 +244,20 @@ def calibration(cal, agent, R, rng):
     print(f"  Pearson  r(V, G)        : {pear:+.3f}")
     print(f"  Spearman rho            : {sp:+.3f}")
     print(f"  R^2 (V predicts G)      : {r2:+.3f}")
-    print(f"  Baseline variance cut   : {var_reduction*100:+.1f}%  "
-          f"(var advantage {var_adv:.4f} vs var return {var_G:.4f})")
-    print(f"  Mean within-state noise : {within_std.mean():.4f}  "
-          f"(per-rollout return std; irreducible sampling noise)")
-    return {"rmse": rmse, "r2": r2, "within_std": within_std.mean(),
-            "return_std": G_mean.std()}
+    print(
+        f"  Baseline variance cut   : {var_reduction * 100:+.1f}%  "
+        f"(var advantage {var_adv:.4f} vs var return {var_G:.4f})"
+    )
+    print(
+        f"  Mean within-state noise : {within_std.mean():.4f}  "
+        f"(per-rollout return std; irreducible sampling noise)"
+    )
+    return {
+        "rmse": rmse,
+        "r2": r2,
+        "within_std": within_std.mean(),
+        "return_std": G_mean.std(),
+    }
 
 
 def leak_signal(trump_pref, agent, R):
@@ -272,13 +286,17 @@ def leak_signal(trump_pref, agent, R):
     print(f"  Action-value gap  E[G_trump - G_fail] : {mean_gap:+.4f} reward units")
     print(f"    (negative => fail lead is better, matching the counterfactual)")
     print(f"  Per-sample return noise (pooled std)  : {mean_std:.4f}")
-    print(f"  Signal-to-noise per rollout           : {abs(mean_gap)/mean_std:.3f}")
+    print(f"  Signal-to-noise per rollout           : {abs(mean_gap) / mean_std:.3f}")
     print(f"  On-policy samples to resolve gap (2σ) : ~{n_needed:.0f} per action")
     print(f"  Mean advantage of TRUMP (chosen) a-V  : {adv_trump.mean():+.4f}")
     print(f"  Mean advantage of FAIL  (alt)   a-V   : {adv_fail.mean():+.4f}")
-    print(f"  Mean P(trump) the policy assigns      : {np.mean([c['p_trump'] for c in trump_pref]):.3f}")
-    print(f"  Mean P(best fail) approx              : "
-          f"{np.mean([max((p for cc,p in c['card_probs'].items() if cc not in TRUMP), default=0) for c in trump_pref]):.3f}")
+    print(
+        f"  Mean P(trump) the policy assigns      : {np.mean([c['p_trump'] for c in trump_pref]):.3f}"
+    )
+    print(
+        f"  Mean P(best fail) approx              : "
+        f"{np.mean([max((p for cc, p in c['card_probs'].items() if cc not in TRUMP), default=0) for c in trump_pref]):.3f}"
+    )
 
 
 def interpret(stats):
@@ -287,7 +305,12 @@ def interpret(stats):
     print("=" * 72)
     if stats is None:
         return
-    r2, rmse, wn, rstd = stats["r2"], stats["rmse"], stats["within_std"], stats["return_std"]
+    r2, rmse, wn, rstd = (
+        stats["r2"],
+        stats["rmse"],
+        stats["within_std"],
+        stats["return_std"],
+    )
     print(f"  Critic explains R^2={r2:+.2f} of return variance across these states.")
     if r2 >= 0.5:
         print("  -> Critic is a DECENT baseline here. The first-trick leak is then")
@@ -300,21 +323,38 @@ def interpret(stats):
         print("     search-based targets.")
     else:
         print("  -> Critic is NOT predictive in these states (advantages are mostly")
-        print("     noise). A retrain with critic improvements is well justified before")
-        print("     anything else; PPO currently cannot learn fine action distinctions here.")
-    print(f"  RMSE {rmse:.3f} vs cross-state return std {rstd:.3f}; "
-          f"per-rollout noise {wn:.3f}.")
+        print(
+            "     noise). A retrain with critic improvements is well justified before"
+        )
+        print(
+            "     anything else; PPO currently cannot learn fine action distinctions here."
+        )
+    print(
+        f"  RMSE {rmse:.3f} vs cross-state return std {rstd:.3f}; "
+        f"per-rollout noise {wn:.3f}."
+    )
 
 
 def parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model",
-                    default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt")
+    ap.add_argument(
+        "-m",
+        "--model",
+        default="pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt",
+    )
     ap.add_argument("--max-games", type=int, default=6000)
-    ap.add_argument("--cap-cal", type=int, default=250,
-                    help="Number of first-trick defender-lead states for calibration.")
-    ap.add_argument("--cap-trump", type=int, default=40,
-                    help="Number of trump-pref states for the leak-signal analysis.")
+    ap.add_argument(
+        "--cap-cal",
+        type=int,
+        default=250,
+        help="Number of first-trick defender-lead states for calibration.",
+    )
+    ap.add_argument(
+        "--cap-trump",
+        type=int,
+        default=40,
+        help="Number of trump-pref states for the leak-signal analysis.",
+    )
     ap.add_argument("--rollouts", type=int, default=40)
     ap.add_argument("--seed", type=int, default=0)
     return ap.parse_args()
@@ -330,10 +370,16 @@ def main():
     agent = PPOAgent(len(ACTIONS), activation="swish")
     agent.load(args.model, load_optimizers=False)
 
-    print(f"Scanning up to {args.max_games} games for first-trick defender leads "
-          f"(need {args.cap_cal} calibration + {args.cap_trump} trump-pref) ...")
-    cal, trump_pref = collect(agent, args.max_games, args.cap_cal, args.cap_trump, args.seed)
-    print(f"  Collected {len(cal)} calibration states, {len(trump_pref)} trump-pref states.")
+    print(
+        f"Scanning up to {args.max_games} games for first-trick defender leads "
+        f"(need {args.cap_cal} calibration + {args.cap_trump} trump-pref) ..."
+    )
+    cal, trump_pref = collect(
+        agent, args.max_games, args.cap_cal, args.cap_trump, args.seed
+    )
+    print(
+        f"  Collected {len(cal)} calibration states, {len(trump_pref)} trump-pref states."
+    )
     print(f"Running {args.rollouts} rollouts/state ...")
 
     stats = calibration(cal, agent, args.rollouts, rng)

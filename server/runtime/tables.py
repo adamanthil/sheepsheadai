@@ -26,7 +26,7 @@ ACTION_SIZE = len(ACTION_IDS)
 def _try_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return default
 
 
@@ -337,6 +337,4 @@ def record_hand_result(table: Table) -> None:
             entry["sum"] += score
         table.results_history.append(entry)
     except Exception:
-        logging.exception(
-            "failed to record results history for table %s", table.id
-        )
+        logging.exception("failed to record results history for table %s", table.id)

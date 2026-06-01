@@ -41,7 +41,7 @@ async def table_ws(websocket: WebSocket, table_id: str):
     chosen_subproto: str | None = None
     for sp in offered:
         if isinstance(sp, str) and sp.startswith(_CLIENT_SUBPROTO_PREFIX):
-            client_id = sp[len(_CLIENT_SUBPROTO_PREFIX):]
+            client_id = sp[len(_CLIENT_SUBPROTO_PREFIX) :]
             chosen_subproto = sp
             break
 

@@ -19,7 +19,15 @@ import random
 import numpy as np
 
 from ppo import PPOAgent
-from sheepshead import Game, ACTIONS, ACTION_IDS, DECK, UNDER_TOKEN, PARTNER_BY_JD, get_card_suit
+from sheepshead import (
+    Game,
+    ACTIONS,
+    ACTION_IDS,
+    DECK,
+    UNDER_TOKEN,
+    PARTNER_BY_JD,
+    get_card_suit,
+)
 from ismcts import ISMCTSTeacher, ISMCTSConfig
 
 CKPT = "final_pfsp_swish_ppo.pt"
@@ -67,7 +75,9 @@ def drive_to_leaster_play(game, agent, observer, plies_into_play):
                 valid = player.get_valid_action_ids()
                 if game.was_trick_just_completed:
                     for seat in game.players:
-                        agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                        agent.observe(
+                            seat.get_last_trick_state_dict(), player_id=seat.position
+                        )
     return None
 
 
@@ -111,7 +121,9 @@ def check_leaster_legality(game, deal, observer):
             if get_card_suit(c) in voids[s]:
                 bad.append(f"seat {s} holds {c} but is void in {get_card_suit(c)}")
         if len(cur) != len(game.players[s - 1].hand):
-            bad.append(f"seat {s} current size {len(cur)} != {len(game.players[s - 1].hand)}")
+            bad.append(
+                f"seat {s} current size {len(cur)} != {len(game.players[s - 1].hand)}"
+            )
     return bad
 
 
@@ -131,8 +143,12 @@ def main():
     random.seed(1)
     agent = make_agent()
     teacher = ISMCTSTeacher(
-        agent, ISMCTSConfig(iters={"pick": 8, "partner": 8, "bury": 8, "play": 8},
-                            det_max_tries=400, ess_floor=1.0)
+        agent,
+        ISMCTSConfig(
+            iters={"pick": 8, "partner": 8, "bury": 8, "play": 8},
+            det_max_tries=400,
+            ess_floor=1.0,
+        ),
     )
     rng = random.Random(7)
 
@@ -145,7 +161,9 @@ def main():
         game = Game(partner_selection_mode=PARTNER_BY_JD)
         agent.reset_recurrent_state()
         # Vary how deep into the leaster the searched node sits.
-        fp = drive_to_leaster_play(game, agent, observer, plies_into_play=(found % 4) + 1)
+        fp = drive_to_leaster_play(
+            game, agent, observer, plies_into_play=(found % 4) + 1
+        )
         g += 1
         if fp is None:
             continue
@@ -179,14 +197,20 @@ def main():
             ok += 1
         # n_iter > 0 confirms the determinizer actually built leaster worlds.
         if res["n_iter"] == 0:
-            print(f"  WARNING: 0 worlds built (determinizer produced nothing)", flush=True)
+            print(
+                f"  WARNING: 0 worlds built (determinizer produced nothing)", flush=True
+            )
 
     print(f"\nleaster play nodes found: {found}")
-    print(f"determinization legality: {legal_checks - legal_fail}/{legal_checks} legal "
-          f"({legal_fail} violations)")
-    print(f"search ran: {searched}/{found}   valid pi': {searched - pi_fail}/{searched}   "
-          f"ESS>=floor: {ok}/{searched}")
-    ok_all = (found > 0 and legal_fail == 0 and searched == found and pi_fail == 0)
+    print(
+        f"determinization legality: {legal_checks - legal_fail}/{legal_checks} legal "
+        f"({legal_fail} violations)"
+    )
+    print(
+        f"search ran: {searched}/{found}   valid pi': {searched - pi_fail}/{searched}   "
+        f"ESS>=floor: {ok}/{searched}"
+    )
+    ok_all = found > 0 and legal_fail == 0 and searched == found and pi_fail == 0
     print(f"\nLEASTER DETERMINIZATION + SEARCH {'PASS' if ok_all else 'FAIL'}")
 
 

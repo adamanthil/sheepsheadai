@@ -213,9 +213,13 @@ def apply_trick_profile_sample(
     sp = pop_agent.strategic_profile
     a = EMA_ALPHA_TRICK
     if role == "picker":
-        sp.trick_win_rate_picker = (1.0 - a) * sp.trick_win_rate_picker + a * trick_win_sample
+        sp.trick_win_rate_picker = (
+            1.0 - a
+        ) * sp.trick_win_rate_picker + a * trick_win_sample
     elif role == "partner":
-        sp.trick_win_rate_partner = (1.0 - a) * sp.trick_win_rate_partner + a * trick_win_sample
+        sp.trick_win_rate_partner = (
+            1.0 - a
+        ) * sp.trick_win_rate_partner + a * trick_win_sample
     else:
         sp.trick_win_rate_defender = (
             1.0 - a
@@ -223,9 +227,13 @@ def apply_trick_profile_sample(
 
     if is_leader:
         if role == "picker":
-            sp.lead_win_rate_picker = (1.0 - a) * sp.lead_win_rate_picker + a * lead_win_sample
+            sp.lead_win_rate_picker = (
+                1.0 - a
+            ) * sp.lead_win_rate_picker + a * lead_win_sample
         elif role == "partner":
-            sp.lead_win_rate_partner = (1.0 - a) * sp.lead_win_rate_partner + a * lead_win_sample
+            sp.lead_win_rate_partner = (
+                1.0 - a
+            ) * sp.lead_win_rate_partner + a * lead_win_sample
         else:
             sp.lead_win_rate_defender = (
                 1.0 - a
