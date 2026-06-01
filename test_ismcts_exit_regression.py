@@ -698,19 +698,19 @@ def _generate_searched_events(n_games=5):
     return all_events
 
 
-def test_searched_pg_weight_ab():
+def test_searched_ppo_weight_ab():
     """The PG-mask vs additive-form A/B knob must reach the gradient: two agents
-    identical except for searched_pg_weight (0.0 mask vs 1.0 additive), fed the SAME
+    identical except for searched_ppo_weight (0.0 mask vs 1.0 additive), fed the SAME
     event stream, must diverge after one update (the additive PG term on searched
     transitions changes the policy update). Also: the default is the hard mask."""
-    assert _fresh_agent().searched_pg_weight == 0.0, "default must be the hard mask (0.0)"
+    assert _fresh_agent().searched_ppo_weight == 0.0, "default must be the hard mask (0.0)"
 
     event_streams = _generate_searched_events(n_games=5)
 
     def updated_agent(weight):
         _seed()
         a = _fresh_agent()  # identical init across the two calls (re-seeded)
-        a.searched_pg_weight = weight
+        a.searched_ppo_weight = weight
         for events in event_streams:
             a.store_episode_events(copy.deepcopy(events))
         a.update(epochs=1, batch_size=16)
@@ -722,7 +722,7 @@ def test_searched_pg_weight_ab():
     for p_mask, p_add in zip(a_mask.actor.parameters(), a_add.actor.parameters()):
         max_diff = max(max_diff, (p_mask - p_add).abs().max().item())
     assert max_diff > 1e-9, (
-        f"searched_pg_weight had no effect on the actor update (max param diff {max_diff:.2e})"
+        f"searched_ppo_weight had no effect on the actor update (max param diff {max_diff:.2e})"
     )
 
 
@@ -866,7 +866,7 @@ TESTS = [
     test_ismcts_backup_discount_uses_agent_gamma,
     test_terminal_reward_contract,
     test_distill_pgmask_and_dormant,
-    test_searched_pg_weight_ab,
+    test_searched_ppo_weight_ab,
     test_profile_capture_replay_equivalence,
     test_gameresult_pickle_roundtrip,
     test_make_game_summary_roles,

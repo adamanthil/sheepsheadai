@@ -119,7 +119,7 @@ def _worker_init(init_args: dict) -> None:
     use_search = init_args["use_search"]
     teacher = None
     if use_search:
-        agent.searched_pg_weight = init_args["searched_pg_weight"]
+        agent.searched_ppo_weight = init_args["searched_ppo_weight"]
         teacher = ISMCTSTeacher(agent, init_args["ismcts_config"])
 
     seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
@@ -718,7 +718,7 @@ def run_pfsp_training(
     determinization_rng = random.Random(20260529) if use_search else None
     if use_search:
         # PG-mask vs additive-form A/B for searched transitions (plan §4).
-        training_agent.searched_pg_weight = hyperparams.search.searched_pg_weight
+        training_agent.searched_ppo_weight = hyperparams.search.searched_ppo_weight
 
     # Parallel game-generation worker count (Lever 1). None => auto: parallelize the
     # expensive ISMCTS ExIt generation (terminal mode), keep the cheap shaped PPO
@@ -1078,8 +1078,8 @@ def run_pfsp_training(
         init_args = {
             "activation": activation,
             "use_search": use_search,
-            "searched_pg_weight": (
-                hyperparams.search.searched_pg_weight if use_search else 0.0
+            "searched_ppo_weight": (
+                hyperparams.search.searched_ppo_weight if use_search else 0.0
             ),
             "reward_mode": hyperparams.reward_mode,
             "search_config": hyperparams.search,

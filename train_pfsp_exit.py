@@ -139,11 +139,12 @@ def main():
         help="Bootstrap rollout depth for tricks > t_full (default: 2)",
     )
     parser.add_argument(
-        "--searched-pg-weight",
+        "--searched-ppo-weight",
         type=float,
         default=0.0,
-        help="PG-mask vs additive-form A/B: PPO-clip weight on searched transitions "
-        "(0.0=hard mask/default, 1.0=additive, 0<w<1=residual PG)",
+        help="PG-mask vs additive-form A/B: weight on the PPO clip term for searched "
+        "transitions (0.0=hard mask/default, 1.0=additive, 0<w<1=residual PPO). "
+        "Distillation toward pi' is applied either way at search_distill_coeff.",
     )
     parser.add_argument(
         "--num-workers",
@@ -173,7 +174,7 @@ def main():
         },
         t_full=args.t_full,
         d_short=args.d_short,
-        searched_pg_weight=args.searched_pg_weight,
+        searched_ppo_weight=args.searched_ppo_weight,
     )
     hyperparams = PFSPHyperparams(
         reward_mode="terminal", search=search, num_workers=args.num_workers

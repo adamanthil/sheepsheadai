@@ -580,15 +580,15 @@ class PPOAgent:
         # Stage C: ISMCTS soft-teacher distillation. On transitions carrying a
         # confident search target (ESS >= floor) the policy is trained by forward-KL
         # distillation toward pi'; the value loss still runs on every transition.
-        # w_distill scales the distillation term (plan §3: w_distill = 1.0).
-        self.distill_loss_coeff = 1.0
+        # search_distill_coeff scales this KL(pi' || pi_theta) term (plan §3: 1.0).
+        self.search_distill_coeff = 1.0
         # A/B knob for the searched-transition policy loss (plan §4):
         #   0.0 -> hard PG-mask (drop the PPO term on searched states; distillation
         #          owns them) -- the default.
         #   1.0 -> additive form (keep the PPO clip term AND add distillation).
         #   0<w<1 -> residual PG weight (fallback if the hard mask is too noisy).
         # Unsearched transitions always keep full PG. See _actor_critic_losses.
-        self.searched_pg_weight = 0.0
+        self.searched_ppo_weight = 0.0
 
         # Storage for trajectory data
         self.reset_storage()
@@ -1607,9 +1607,9 @@ class PPOAgent:
         clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
         pg_loss_elements = -torch.min(surr1, clipped)
 
-        # Stage C searched-transition policy loss (A/B knob ``searched_pg_weight``):
+        # Stage C searched-transition policy loss (A/B knob ``searched_ppo_weight``):
         # on transitions carrying a confident search target the PPO clip term is
-        # scaled by ``searched_pg_weight`` and the policy is also trained by
+        # scaled by ``searched_ppo_weight`` and the policy is also trained by
         # distillation toward pi' (below). At the default 0.0 this is the hard
         # PG-mask (PPO dropped on searched, distillation owns them): there PPO's
         # advantage is dominated by hidden-hand variance and blind to the small EV
@@ -1619,7 +1619,7 @@ class PPOAgent:
         searched = has_search_flat > 0.5
         pg_keep = torch.where(
             searched,
-            torch.full_like(pg_loss_elements, float(self.searched_pg_weight)),
+            torch.full_like(pg_loss_elements, float(self.searched_ppo_weight)),
             torch.ones_like(pg_loss_elements),
         )
         pg_loss_elements = pg_loss_elements * pg_keep
@@ -1633,13 +1633,13 @@ class PPOAgent:
             pit = search_target_flat[searched]
             logp_theta = torch.log(probs_all[searched].clamp(min=1e-12))
             logp_it = torch.log(pit.clamp(min=1e-12))
-            distill_per = (pit * (logp_it - logp_theta)).sum(dim=1)
-            distill_loss = distill_per.mean()
+            search_distill_per = (pit * (logp_it - logp_theta)).sum(dim=1)
+            search_distill_loss = search_distill_per.mean()
             with torch.no_grad():
-                teacher_kl = distill_per.mean()
+                teacher_kl = search_distill_per.mean()
                 pi_target_entropy = -(pit * logp_it).sum(dim=1).mean()
         else:
-            distill_loss = logits_flat.new_zeros(())
+            search_distill_loss = logits_flat.new_zeros(())
             teacher_kl = logits_flat.new_zeros(())
             pi_target_entropy = logits_flat.new_zeros(())
         masked_fraction = searched.to(torch.float32).mean()
@@ -1661,7 +1661,7 @@ class PPOAgent:
             critic_loss,
             approx_kl_t,
             (pick_entropy, partner_entropy, bury_entropy, play_entropy),
-            distill_loss,
+            search_distill_loss,
             {
                 "teacher_kl": teacher_kl,
                 "pi_target_entropy": pi_target_entropy,
@@ -1751,11 +1751,11 @@ class PPOAgent:
         points_loss_count = 0
         secret_loss_sum = 0.0
         secret_loss_count = 0
-        distill_loss_sum = 0.0
+        search_distill_loss_sum = 0.0
         teacher_kl_sum = 0.0
         pi_target_entropy_sum = 0.0
         masked_fraction_sum = 0.0
-        distill_batches = 0
+        search_distill_batches = 0
 
         for _ in range(epochs):
             if not segments:
@@ -1866,8 +1866,8 @@ class PPOAgent:
                     critic_loss,
                     approx_kl_t,
                     (pick_entropy, partner_entropy, bury_entropy, play_entropy),
-                    distill_loss,
-                    distill_metrics,
+                    search_distill_loss,
+                    search_distill_metrics,
                 ) = self._actor_critic_losses(
                     logits_flat,
                     mask_flat,
@@ -1890,11 +1890,11 @@ class PPOAgent:
                 value_loss_count += 1
 
                 # Stage C distillation accumulation
-                distill_loss_sum += distill_loss.detach().item()
-                teacher_kl_sum += distill_metrics["teacher_kl"].item()
-                pi_target_entropy_sum += distill_metrics["pi_target_entropy"].item()
-                masked_fraction_sum += distill_metrics["masked_fraction"].item()
-                distill_batches += 1
+                search_distill_loss_sum += search_distill_loss.detach().item()
+                teacher_kl_sum += search_distill_metrics["teacher_kl"].item()
+                pi_target_entropy_sum += search_distill_metrics["pi_target_entropy"].item()
+                masked_fraction_sum += search_distill_metrics["masked_fraction"].item()
+                search_distill_batches += 1
 
                 # Entropy accumulation
                 ent_pick_sum += pick_entropy.detach().item()
@@ -1954,7 +1954,7 @@ class PPOAgent:
                 t_bwd = time.time()
                 total_loss = (
                     actor_loss
-                    + self.distill_loss_coeff * distill_loss
+                    + self.search_distill_coeff * search_distill_loss
                     + self.value_loss_coeff * critic_loss
                     + self.win_loss_coeff * win_loss
                     + self.return_loss_coeff * return_loss
@@ -2031,11 +2031,11 @@ class PPOAgent:
                 "pass_count": pass_adv_count,
             },
             "distill": {
-                "loss": self.distill_loss_coeff
-                * (distill_loss_sum / max(distill_batches, 1)),
-                "teacher_kl": teacher_kl_sum / max(distill_batches, 1),
-                "pi_target_entropy": pi_target_entropy_sum / max(distill_batches, 1),
-                "pg_masked_fraction": masked_fraction_sum / max(distill_batches, 1),
+                "loss": self.search_distill_coeff
+                * (search_distill_loss_sum / max(search_distill_batches, 1)),
+                "teacher_kl": teacher_kl_sum / max(search_distill_batches, 1),
+                "pi_target_entropy": pi_target_entropy_sum / max(search_distill_batches, 1),
+                "pg_masked_fraction": masked_fraction_sum / max(search_distill_batches, 1),
             },
             "critic_losses": {
                 "value": self.value_loss_coeff
