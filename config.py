@@ -57,11 +57,11 @@ class SearchConfig:
     """
 
     head_search_fractions: dict = field(
-        default_factory=lambda: {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.10}
+        default_factory=lambda: {"pick": 0, "partner": 0, "bury": 0, "play": 0.30}
     )
     t_full: int = 1
     d_short: int = 2
-    searched_ppo_weight: float = 0.0
+    searched_ppo_weight: float = 1.0
     enabled: bool = True
 
 
