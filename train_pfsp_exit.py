@@ -7,8 +7,11 @@ machinery lives in pfsp_runtime.py; hyperparameters in config.py.
 
 Search-knob CLI defaults are read from ``config.SearchConfig`` (single source of
 truth — the argparse defaults previously hardcoded stale values that silently
-overrode config.py). All heads are searchable (P4). See
-ISMCTS_Overview_And_Roadmap.md §4-5.
+overrode config.py). All heads are searchable (P4); per-head fractions, the
+searched-PPO weight, the distill ramp, the bidding-head KL anchor and the greedy
+health probe are exposed below. See ISMCTS_Overview_And_Roadmap.md §4-5 and the
+run-1/run-2 collapse post-mortems for why the anchor + ramp + greedy guard
+default ON for this trainer.
 """
 
 import random
@@ -152,6 +155,14 @@ def main():
         "Distillation toward pi' is applied either way at search_distill_coeff. "
         f"(default: {_SEARCH_DEFAULTS.searched_ppo_weight})",
     )
+    parser.add_argument(
+        "--distill-ramp",
+        type=int,
+        default=_SEARCH_DEFAULTS.distill_ramp_episodes,
+        help="Episodes over which search_distill_coeff ramps 0->configured value "
+        "after run start (onset-shock guard; 0 disables) "
+        f"(default: {_SEARCH_DEFAULTS.distill_ramp_episodes})",
+    )
     # Bidding-head KL anchor (warm-start collapse guard). Both collapse runs
     # (distill-owned and PG-owned bidding) flattened the bidding heads to
     # always-PASS/ALONE; the anchor pins pick/partner/bury to the frozen
@@ -169,6 +180,20 @@ def main():
         default="final_pfsp_swish_ppo.pt",
         help="Frozen reference model for the bidding-head KL anchor "
         "(default: final_pfsp_swish_ppo.pt)",
+    )
+    # Greedy self-play health probe (collapse guard): argmax rates expose a
+    # flattening collapse that stochastic training-time rates mask.
+    parser.add_argument(
+        "--greedy-eval-interval",
+        type=int,
+        default=5000,
+        help="Episodes between greedy health probes (0 disables; default: 5000)",
+    )
+    parser.add_argument(
+        "--greedy-eval-games",
+        type=int,
+        default=200,
+        help="Greedy self-play games per health probe (default: 200)",
     )
     parser.add_argument(
         "--num-workers",
@@ -199,6 +224,7 @@ def main():
         t_full=args.t_full,
         d_short=args.d_short,
         searched_ppo_weight=args.searched_ppo_weight,
+        distill_ramp_episodes=args.distill_ramp,
     )
     hyperparams = PFSPHyperparams(
         reward_mode="terminal",
@@ -206,6 +232,8 @@ def main():
         num_workers=args.num_workers,
         anchor_loss_coeff=args.anchor_coeff,
         anchor_ref_model=args.anchor_ref,
+        greedy_eval_interval=args.greedy_eval_interval,
+        greedy_eval_games=args.greedy_eval_games,
     )
 
     run_pfsp_training(

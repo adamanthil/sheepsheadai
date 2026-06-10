@@ -3,6 +3,7 @@
 Training utilities shared across training scripts.
 """
 
+import random
 from typing import List, Dict
 import matplotlib.pyplot as plt
 import numpy as np
@@ -686,3 +687,93 @@ def save_training_plot(training_data, save_path="training_progress.png"):
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close()
+
+
+def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
+    """Deterministic-greedy self-play health metrics for the collapse guard.
+
+    Stochastic training-time rates can mask a bidding collapse: a flattened
+    policy still *samples* ~30% PICK while its argmax is PASS (the run-2
+    failure mode went unseen for 586k episodes this way). This probe plays
+    ``n_games`` of greedy self-play with ``agent`` in all five seats and
+    reports the argmax-policy rates that collapse actually shows up in:
+    PICK rate, ALONE rate (of partner decisions), leaster rate, and the
+    trick-0 defender trump-lead rate (the original partial-obs leak).
+
+    Side-effect free with respect to training: the agent's recurrent memories
+    and the global ``random`` state are snapshotted and restored, and ``act``
+    does not write into the training buffer.
+    """
+    rng_state = random.getstate()
+    saved_mem = {
+        pid: t.detach().clone() for pid, t in agent._player_memories.items()
+    }
+    random.seed(seed)
+    picks = passes = 0
+    alone = partner_decisions = 0
+    leasters = 0
+    t0_def_leads = 0  # trick-0 defender leads holding both trump and fail
+    t0_def_trump = 0  # ...that led trump (greedy)
+    try:
+        for g in range(n_games):
+            game = Game(partner_selection_mode=get_partner_selection_mode(g))
+            agent.reset_recurrent_state()
+            while not game.is_done():
+                for player in game.players:
+                    valid = player.get_valid_action_ids()
+                    while valid:
+                        is_t0_def_lead = (
+                            game.play_started
+                            and not game.is_leaster
+                            and game.cards_played == 0
+                            and game.current_trick == 0
+                            and game.leader == player.position
+                            and not (
+                                player.is_picker
+                                or player.is_partner
+                                or player.is_secret_partner
+                            )
+                            and any(c in TRUMP for c in player.hand)
+                            and any(c not in TRUMP for c in player.hand)
+                        )
+                        a, _, _ = agent.act(
+                            player.get_state_dict(),
+                            valid,
+                            player.position,
+                            deterministic=True,
+                        )
+                        name = ACTIONS[a - 1]
+                        if name == "PICK":
+                            picks += 1
+                        elif name == "PASS":
+                            passes += 1
+                        elif name == "ALONE":
+                            alone += 1
+                            partner_decisions += 1
+                        elif name == "JD PARTNER" or name.startswith("CALL "):
+                            partner_decisions += 1
+                        if is_t0_def_lead:
+                            t0_def_leads += 1
+                            if name.startswith("PLAY ") and name[5:] in TRUMP:
+                                t0_def_trump += 1
+                        player.act(a)
+                        valid = player.get_valid_action_ids()
+                        if game.was_trick_just_completed:
+                            for seat in game.players:
+                                agent.observe(
+                                    seat.get_last_trick_state_dict(),
+                                    player_id=seat.position,
+                                )
+            if game.is_leaster:
+                leasters += 1
+    finally:
+        agent._player_memories = saved_mem
+        random.setstate(rng_state)
+    return {
+        "games": n_games,
+        "pick_rate": 100.0 * picks / max(picks + passes, 1),
+        "alone_rate": 100.0 * alone / max(partner_decisions, 1),
+        "leaster_rate": 100.0 * leasters / max(n_games, 1),
+        "t0_trump_lead_rate": 100.0 * t0_def_trump / max(t0_def_leads, 1),
+        "t0_def_leads": t0_def_leads,
+    }

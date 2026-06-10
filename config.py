@@ -54,6 +54,13 @@ class SearchConfig:
     ESS). Distillation toward pi' is applied on searched transitions either way at
     its own ``search_distill_coeff``; only the PPO term's weight on them changes here.
     Unsearched transitions always keep full PG.
+
+    ``distill_ramp_episodes`` eases the warm-start onset shock: the learner's
+    ``search_distill_coeff`` is scaled by min(1, episodes_since_run_start / ramp)
+    so full-strength distillation toward the (high-entropy) teacher pi' does not
+    yank a sharp warm-started policy while the critic is still re-fitting from
+    shaped to terminal returns — the trigger of the run-1/run-2 collapse ratchet.
+    0 disables the ramp.
     """
 
     head_search_fractions: dict = field(
@@ -62,6 +69,7 @@ class SearchConfig:
     t_full: int = 1
     d_short: int = 2
     searched_ppo_weight: float = 1.0
+    distill_ramp_episodes: int = 50_000
     enabled: bool = True
 
 
@@ -82,6 +90,19 @@ class PFSPHyperparams:
     # head is NOT anchored. 0.0 disables (shaped baseline unaffected).
     anchor_loss_coeff: float = 0.0
     anchor_ref_model: str = "final_pfsp_swish_ppo.pt"
+
+    # Periodic greedy self-play health probe (collapse guard). Stochastic
+    # training-time rates masked the run-2 collapse for 586k episodes: a
+    # flattened policy still *samples* ~30% PICK while its argmax is PASS. The
+    # probe plays greedy self-play games every greedy_eval_interval episodes and
+    # logs PICK/ALONE/leaster/trick-0-trump-lead rates to greedy_health.csv,
+    # warning when outside the gates below (percent units). 0 interval disables
+    # (the shaped PPO baseline trainer leaves this off).
+    greedy_eval_interval: int = 0
+    greedy_eval_games: int = 200
+    greedy_gate_min_pick: float = 25.0
+    greedy_gate_max_alone: float = 12.0
+    greedy_gate_max_trump_lead: float = 8.0
 
     # Parallel game-generation workers (Lever 1). None => auto: parallelize the
     # expensive ISMCTS ExIt generation (reward_mode="terminal") across

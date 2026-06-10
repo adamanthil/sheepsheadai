@@ -794,6 +794,30 @@ def test_bidding_anchor_kl():
     )
 
 
+def test_greedy_health_probe_side_effect_free():
+    """The greedy health probe must restore the global random state and the
+    agent's recurrent memories, and return rates in [0, 100]."""
+    from training_utils import greedy_health_probe
+
+    _seed()
+    a = _fresh_agent()
+    a.reset_recurrent_state()
+    rng_before = random.getstate()
+    mem_before = {
+        pid: t.detach().clone() for pid, t in a._player_memories.items()
+    }
+    probe = greedy_health_probe(a, n_games=2, seed=7)
+    assert random.getstate() == rng_before, "probe must restore the random state"
+    assert set(a._player_memories.keys()) == set(mem_before.keys())
+    for pid, t in mem_before.items():
+        assert torch.equal(a._player_memories[pid], t), (
+            "probe must restore recurrent memories"
+        )
+    for k in ("pick_rate", "alone_rate", "leaster_rate", "t0_trump_lead_rate"):
+        assert 0.0 <= probe[k] <= 100.0, f"{k} out of range: {probe[k]}"
+    assert probe["games"] == 2
+
+
 # ---------------------------------------------------------------------------
 # 9. Parallel self-play (Lever 1): profile capture/replay equivalence + pickle
 # ---------------------------------------------------------------------------
@@ -968,6 +992,7 @@ TESTS = [
     test_distill_pgmask_and_dormant,
     test_searched_ppo_weight_ab,
     test_bidding_anchor_kl,
+    test_greedy_health_probe_side_effect_free,
     test_profile_capture_replay_equivalence,
     test_gameresult_pickle_roundtrip,
     test_make_game_summary_roles,

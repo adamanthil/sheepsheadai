@@ -52,6 +52,7 @@ from training_utils import (
     compute_seen_trump_mask,
     estimate_hand_strength_category,
     get_partner_selection_mode,
+    greedy_health_probe,
     handle_trick_completion,
     process_episode_rewards,
     process_terminal_rewards,
@@ -792,6 +793,24 @@ def run_pfsp_training(
             f"ref={hyperparams.anchor_ref_model}"
         )
 
+    # Distill-coeff ramp (onset-shock guard): scale the learner's
+    # search_distill_coeff from 0 to its configured value over the first
+    # distill_ramp_episodes after run start, so warm-start distillation toward
+    # the high-entropy teacher pi' doesn't yank a sharp policy while the critic
+    # is still re-fitting to terminal returns.
+    base_search_distill_coeff = training_agent.search_distill_coeff
+    distill_ramp_episodes = (
+        int(getattr(hyperparams.search, "distill_ramp_episodes", 0) or 0)
+        if use_search
+        else 0
+    )
+    if distill_ramp_episodes > 0:
+        training_agent.search_distill_coeff = 0.0
+        print(
+            f"📈 Distill-coeff ramp ON: 0 -> {base_search_distill_coeff} over "
+            f"{distill_ramp_episodes:,} episodes"
+        )
+
     # Initialize tracking variables
     picker_scores = deque(maxlen=3000)
     pick_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
@@ -829,6 +848,7 @@ def run_pfsp_training(
     # CSV log files for ongoing progress/metrics
     progress_csv = os.path.join(checkpoint_dir, "pfsp_training_progress.csv")
     strategic_csv = os.path.join(checkpoint_dir, "pfsp_strategic_metrics.csv")
+    greedy_csv = os.path.join(checkpoint_dir, "greedy_health.csv")
 
     # If CSVs exist, preload them so training_data is continuous across resumes
     start_time_offset = 0.0
@@ -1374,6 +1394,16 @@ def run_pfsp_training(
             )
 
             # Update
+            # Distill-coeff ramp (onset-shock guard), relative to run start.
+            if distill_ramp_episodes > 0:
+                ramp_frac = min(
+                    1.0,
+                    max(0.0, (episode - start_episode) / float(distill_ramp_episodes)),
+                )
+                training_agent.search_distill_coeff = (
+                    base_search_distill_coeff * ramp_frac
+                )
+
             update_stats = training_agent.update(epochs=4, batch_size=256)
 
             if update_stats:
@@ -1948,6 +1978,75 @@ def run_pfsp_training(
                     print(
                         f"   ⚠️  PICK floor epsilon ε_pick adjusted to: {current_pick_floor_eps:.3f}"
                     )
+
+        # Greedy self-play health probe (collapse guard). Argmax rates expose a
+        # flattening bidding collapse that stochastic training-time rates mask
+        # (run 2: sampled PICK ~32% for 586k episodes while greedy PICK was 5.7%).
+        greedy_eval_interval = int(
+            getattr(hyperparams, "greedy_eval_interval", 0) or 0
+        )
+        if greedy_eval_interval > 0 and episode % greedy_eval_interval == 0:
+            probe = greedy_health_probe(
+                training_agent,
+                n_games=hyperparams.greedy_eval_games,
+                seed=episode,
+            )
+            gate_warnings = []
+            if probe["pick_rate"] < hyperparams.greedy_gate_min_pick:
+                gate_warnings.append(
+                    f"PICK {probe['pick_rate']:.1f}% < {hyperparams.greedy_gate_min_pick:.0f}%"
+                )
+            if probe["alone_rate"] > hyperparams.greedy_gate_max_alone:
+                gate_warnings.append(
+                    f"ALONE {probe['alone_rate']:.1f}% > {hyperparams.greedy_gate_max_alone:.0f}%"
+                )
+            if probe["t0_trump_lead_rate"] > hyperparams.greedy_gate_max_trump_lead:
+                gate_warnings.append(
+                    f"trump-lead {probe['t0_trump_lead_rate']:.1f}% > {hyperparams.greedy_gate_max_trump_lead:.0f}%"
+                )
+            print(
+                "🩺 Greedy health (%d games): PICK %.1f%%, ALONE %.1f%%, "
+                "leaster %.1f%%, t0 trump-lead %.1f%% (n=%d)"
+                % (
+                    probe["games"],
+                    probe["pick_rate"],
+                    probe["alone_rate"],
+                    probe["leaster_rate"],
+                    probe["t0_trump_lead_rate"],
+                    probe["t0_def_leads"],
+                )
+            )
+            if gate_warnings:
+                print(
+                    "   🚨 GREEDY GATE VIOLATION (collapse signature): "
+                    + "; ".join(gate_warnings)
+                )
+            write_header = not os.path.exists(greedy_csv)
+            with open(greedy_csv, "a", newline="") as f:
+                w = csv.writer(f)
+                if write_header:
+                    w.writerow(
+                        [
+                            "episode",
+                            "pick_rate",
+                            "alone_rate",
+                            "leaster_rate",
+                            "t0_trump_lead_rate",
+                            "t0_def_leads",
+                            "games",
+                        ]
+                    )
+                w.writerow(
+                    [
+                        episode,
+                        f"{probe['pick_rate']:.2f}",
+                        f"{probe['alone_rate']:.2f}",
+                        f"{probe['leaster_rate']:.2f}",
+                        f"{probe['t0_trump_lead_rate']:.2f}",
+                        probe["t0_def_leads"],
+                        probe["games"],
+                    ]
+                )
 
         # Save checkpoints
         if episode % save_interval == 0:
