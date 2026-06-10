@@ -219,4 +219,30 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   26.9% / ALONE 5.4% / leaster 16.0% / trump-lead 1.16%; 10k: PICK 35.4% /
   ALONE 8.1% / leaster 7.5% / **trump-lead 0.0%** (Arm B same points: 9.3% →
   29.2%). picker_avg ~+1.40. τ=0.5 is so far removing the distill-injected
-  floor exactly as the multi-tau audit predicted.
+  floor exactly as the multi-tau audit predicted. (15k: 6.52%, 25k: 5.21% —
+  in-gate but hovering above Arm A's 1-2%; watch the endpoint.)
+- 2026-06-10 (B′ 30k probe: **GATE BREACH, trump-lead 11.11%**, n=90, ~1 SE
+  over the 8% line). Trajectory 1.16 → 0.0 → 6.52 → 4.04 → 5.21 → 11.11:
+  noisy upward drift. Compared at 30k: Arm B 74.5%, B′ 11.1%, Arm A ~2% ⇒
+  **τ=0.5 slows the leak injection ~7x but does not stop it** — consistent
+  with the multi-tau audit (τ=0.5 removes ~85% of the floor, not 100%, and
+  the residual still compounds through the self-model loop). Single marginal
+  breach ≠ Arm B's every-probe failure, so B′ runs to its designed 50k
+  endpoint for the full trajectory + endpoint eval; but the working
+  conclusion is that target sharpening alone is mitigation, not cure, which
+  further motivates the exploiter-league pivot
+  (`Exploiter_League_Plan_202606.md`).
+- 2026-06-10 (TEACHER VALUE-ADD PROBE, run "before", 500 paired duplicate
+  deals, iters_play=96, `validation/teacher_value_add_probe.py`): **positive
+  but sparse.** Paired delta (search − raw) **+0.042 ± 0.020 pts/deal
+  (+2.1 SE)**. Search deviated from the raw argmax at only **39/3000 (1.3%)**
+  of searched PLAY decisions — but conditional on deviating, the deal gained
+  **+0.54 ± 0.25 points**. ESS-aborts 2.2%. Reading: at production budget the
+  teacher's argmax beats the policy exactly where they disagree (the
+  improvement operator EXISTS), but the signal is sparse — 1 corrected
+  decision per ~77 searched — which explains why distilling the full soft
+  target at τ=1.0 drowned it in floor mass (Arm B) while τ=0.5 might let it
+  through (B′). Also the first direct evidence for deploy-time search value
+  (+0.04 pts/game at 6 searches/game, 96 iters). A 384-iter arm (300 deals,
+  seed 7) is running to read the iteration-scaling of deviation rate and
+  conditional gain. Re-run after exploiter league = the "after" arm.
