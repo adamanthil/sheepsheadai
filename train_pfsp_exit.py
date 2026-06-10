@@ -163,6 +163,15 @@ def main():
         "after run start (onset-shock guard; 0 disables) "
         f"(default: {_SEARCH_DEFAULTS.distill_ramp_episodes})",
     )
+    parser.add_argument(
+        "--target-tau",
+        type=float,
+        default=_SEARCH_DEFAULTS.target_tau,
+        help="Distill-target temperature: pi' ∝ N^(1/tau). Lower = sharper target "
+        "with less exploration-floor mass (audit: tau=0.5 removes ~85%% of the "
+        "injected trump-lead mass; <=0.25 is near-argmax and teaches search "
+        f"noise). PUCT is unaffected. (default: {_SEARCH_DEFAULTS.target_tau})",
+    )
     # Bidding-head KL anchor (warm-start collapse guard). Both collapse runs
     # (distill-owned and PG-owned bidding) flattened the bidding heads to
     # always-PASS/ALONE; the anchor pins pick/partner/bury to the frozen
@@ -225,6 +234,7 @@ def main():
         d_short=args.d_short,
         searched_ppo_weight=args.searched_ppo_weight,
         distill_ramp_episodes=args.distill_ramp,
+        target_tau=args.target_tau,
     )
     hyperparams = PFSPHyperparams(
         reward_mode="terminal",

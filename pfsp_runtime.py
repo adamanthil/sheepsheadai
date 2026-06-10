@@ -712,7 +712,13 @@ def run_pfsp_training(
         hyperparams.reward_mode == "terminal" and hyperparams.search is not None
     )
     # Single ISMCTSConfig shared by the in-process teacher and the parallel workers.
-    ismcts_config = ISMCTSConfig()
+    # target_tau (distill-target temperature) is the only SearchConfig knob that
+    # maps into it; the rest of ISMCTSConfig stays at production defaults.
+    ismcts_config = (
+        ISMCTSConfig(tau_target=getattr(hyperparams.search, "target_tau", 1.0))
+        if use_search
+        else ISMCTSConfig()
+    )
     ismcts_teacher = (
         ISMCTSTeacher(training_agent, ismcts_config) if use_search else None
     )

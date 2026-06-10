@@ -61,6 +61,15 @@ class SearchConfig:
     yank a sharp warm-started policy while the critic is still re-fitting from
     shaped to terminal returns — the trigger of the run-1/run-2 collapse ratchet.
     0 disables the ramp.
+
+    ``target_tau`` is the temperature of the distillation target pi' ∝
+    N(a)^(1/tau) (ISMCTSConfig.tau_target; PUCT itself is unaffected). The
+    teacher trump-lead audit showed that at tau=1.0 the target carries ~8pp of
+    exploration-floor mass (FPU + root uniform mix) that the search's own Q
+    says is wrong — distilling it reinjected the trick-0 trump-lead leak
+    (Arm B: 9%→74.5% in 30k episodes). tau=0.5 removes ~85% of that floor on
+    the same visit counts while keeping the target soft; tau<=0.25 is
+    near-argmax and would confidently teach search noise at low ESS.
     """
 
     head_search_fractions: dict = field(
@@ -70,6 +79,7 @@ class SearchConfig:
     d_short: int = 2
     searched_ppo_weight: float = 1.0
     distill_ramp_episodes: int = 50_000
+    target_tau: float = 1.0
     enabled: bool = True
 
 
