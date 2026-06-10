@@ -25,11 +25,21 @@ Design (locked decisions, §3 of the plan)
   non-lead (follow-suit) play nodes — where the legal set varies across worlds —
   and plain PUCT everywhere else (the observer's own decision set is fixed).
 * **Leaf evaluation:** truncated rollout of ``d_rollout`` further observer *play*
-  plies (all seats sampled from ``pi_theta``) then a ``value_trunk`` V-bootstrap;
-  a world that ends first contributes the observer's terminal score discounted on
-  the same observer-action clock as PPO. Values are in the critic's units (game
-  score / 12, i.e. ~[-1, 1]), so the AlphaZero ``c_puct = 1.25`` is calibrated
-  without extra Q-normalization.
+  plies, then a ``value_trunk`` V-bootstrap; a world that ends first contributes
+  the observer's terminal score discounted on the same observer-action clock as
+  PPO. Values are in the critic's units (game score / 12, i.e. ~[-1, 1]), so the
+  AlphaZero ``c_puct = 1.25`` is calibrated without extra Q-normalization.
+* **Seat policies (population grounding):** ``search(..., seat_policies={seat:
+  PPOAgent})`` models each NON-observer seat — in the forced-replay pool build
+  (including the scheme-B bidding belief weights), the in-tree advance phase,
+  and rollouts — with the given controller, normally the agent actually sitting
+  there in the live training game. The observer's own decisions, rollout plies,
+  priors and critic bootstrap always use ``self.agent`` (self-modeling your own
+  future is correct, and Q/V stay in the training agent's units). ``None``
+  (default) reproduces pure self-play exactly. Rationale: a self-modeled
+  rollout field cannot punish information-revealing play, so the teacher
+  certifies leaks instead of correcting them (see the teacher trump-lead audit
+  / ``Population_Grounded_Teacher_Plan.md``).
 * **Heads via one engine:** pick / partner / bury are *shallow* roots (``max_depth
   = 1``) and degenerate to bidding-weighted determinized rollout evaluation of
   each option; play is the deep tree (``max_depth = 6`` observer decisions).
@@ -203,13 +213,29 @@ class ISMCTSTeacher:
         # critic is blind (§1.2 partial-obs ceiling), shallow + bootstrap once the
         # value head is calibrated mid-game.
         self._d_rollout_override: int | None = None
+        # Per-search non-observer seat controllers (population grounding); None
+        # or a missing seat -> self.agent (pure self-play).
+        self._seat_policies: dict | None = None
         self.fail = defaultdict(int)
+
+    def _controller(self, seat: int):
+        """The PPOAgent modeling ``seat`` for this search (observer and unmapped
+        seats -> ``self.agent``)."""
+        if self._seat_policies is None:
+            return self.agent
+        return self._seat_policies.get(seat, self.agent)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
     def search(
-        self, real_game, observer: int, forced_public, rng, d_rollout: int | None = None
+        self,
+        real_game,
+        observer: int,
+        forced_public,
+        rng,
+        d_rollout: int | None = None,
+        seat_policies: dict | None = None,
     ) -> dict:
         """Run the SO-ISMCTS teacher for ``observer``'s current decision in
         ``real_game``.
@@ -233,6 +259,12 @@ class ISMCTSTeacher:
             observer *play* plies rolled before the critic bootstraps). Used by the
             training loop's trick-indexed depth schedule; ``None`` falls back to the
             config value.
+        seat_policies : dict | None
+            Optional ``{seat: PPOAgent}`` modeling NON-observer seats in the
+            replay/advance/rollout (population grounding) — normally the agents
+            actually controlling those seats in the live game. The observer
+            entry, if present, is ignored (the observer is always
+            ``self.agent``). ``None`` = pure self-play (legacy behavior).
 
         Returns
         -------
@@ -243,16 +275,31 @@ class ISMCTSTeacher:
         """
         self._rng = rng
         self._d_rollout_override = d_rollout
+        self._seat_policies = (
+            {s: a for s, a in seat_policies.items() if s != observer and a is not None}
+            if seat_policies
+            else None
+        )
+        # The sequential paths route per-seat memory through each controller's
+        # _player_memories — including the LIVE game's opponent agents — so
+        # snapshot/restore every distinct agent involved, not just self.agent.
+        involved = {id(self.agent): self.agent}
+        if self._seat_policies:
+            for a in self._seat_policies.values():
+                involved[id(a)] = a
         saved_mem = {
-            pid: t.detach().clone() for pid, t in self.agent._player_memories.items()
+            key: {pid: t.detach().clone() for pid, t in a._player_memories.items()}
+            for key, a in involved.items()
         }
         try:
             return self._search_inner(real_game, observer, forced_public)
         finally:
-            self.agent._player_memories = {
-                pid: t.detach().clone() for pid, t in saved_mem.items()
-            }
+            for key, a in involved.items():
+                a._player_memories = {
+                    pid: t.detach().clone() for pid, t in saved_mem[key].items()
+                }
             self._d_rollout_override = None
+            self._seat_policies = None
 
     # ------------------------------------------------------------------
     # Search driver
@@ -338,37 +385,44 @@ class ISMCTSTeacher:
         return g
 
     def _encode_seat_batched(self, games, seat, mems):
-        """Batch-encode ``seat``'s current state across all ``games`` and advance
-        that seat's (n, 256) recurrent memory. Returns (states, encoder_out)."""
+        """Batch-encode ``seat``'s current state across all ``games`` with that
+        seat's controller and advance its (n, 256) recurrent memory. Returns
+        (states, encoder_out)."""
+        ctrl = self._controller(seat)
         states = [g.players[seat - 1].get_state_dict() for g in games]
-        enc = self.agent.encoder.encode_batch(states, memory_in=mems[seat], device=DEV)
+        enc = ctrl.encoder.encode_batch(states, memory_in=mems[seat], device=DEV)
         mems[seat] = enc["memory_out"].detach()
         return states, enc
 
-    def _actor_probs_batched(self, enc, states, valid_list):
-        """Post-mixture action probabilities (n, A) for a batched decision —
-        mirrors ``get_action_probs_with_logits`` but over n worlds at once."""
+    def _actor_probs_batched(self, enc, states, valid_list, seat):
+        """Post-mixture action probabilities (n, A) under ``seat``'s controller —
+        mirrors ``get_action_probs_with_logits`` but over n worlds at once.
+        ``enc`` must come from the same controller's encoder
+        (``_encode_seat_batched`` on the same seat)."""
+        ctrl = self._controller(seat)
         masks = torch.stack(
-            [self.agent.get_action_mask(v, self.action_size) for v in valid_list]
+            [ctrl.get_action_mask(v, self.action_size) for v in valid_list]
         ).to(DEV)
         hand_ids = torch.as_tensor(
             np.stack([s["hand_ids"] for s in states]), dtype=torch.long, device=DEV
         )
         with torch.no_grad():
-            probs, _ = self.agent.actor.forward_with_logits(
-                enc, masks, hand_ids, self.agent.encoder.card
+            probs, _ = ctrl.actor.forward_with_logits(
+                enc, masks, hand_ids, ctrl.encoder.card
             )
-            probs = self.agent._apply_head_epsilon_mix(probs, masks)
+            probs = ctrl._apply_head_epsilon_mix(probs, masks)
         return probs
 
     def _after_action_batched(self, games, mems):
-        """End-of-trick observe for every seat, batched over worlds (the plays are
-        forced identically, so trick completion is synchronized across worlds)."""
+        """End-of-trick observe for every seat (with its controller), batched over
+        worlds (the plays are forced identically, so trick completion is
+        synchronized across worlds)."""
         if not games[0].was_trick_just_completed:
             return
         for s in range(1, 6):
+            ctrl = self._controller(s)
             states = [g.players[s - 1].get_last_trick_state_dict() for g in games]
-            enc = self.agent.encoder.encode_batch(states, memory_in=mems[s], device=DEV)
+            enc = ctrl.encoder.encode_batch(states, memory_in=mems[s], device=DEV)
             mems[s] = enc["memory_out"].detach()
 
     def _build_worlds_batched(self, real_game, deals, forced_public, observer):
@@ -394,10 +448,12 @@ class ISMCTSTeacher:
             world, log_w = self._build_world(real_game, deal, forced_public, observer)
             if world is None:
                 continue
-            mem = {
-                pid: t.detach().clone()
-                for pid, t in self.agent._player_memories.items()
-            }
+            # Each seat's memory lives in its controller's dict after the replay.
+            mem = {}
+            for s in range(1, 6):
+                t = self._controller(s)._player_memories.get(s)
+                if t is not None:
+                    mem[s] = t.detach().clone()
             pool.append((world, mem, log_w))
         return pool
 
@@ -476,7 +532,7 @@ class ISMCTSTeacher:
                             valids = [
                                 g.players[pos - 1].get_valid_action_ids() for g in games
                             ]
-                            probs = self._actor_probs_batched(enc, states, valids)
+                            probs = self._actor_probs_batched(enc, states, valids, pos)
                             p_a = probs[:, aid - 1].clamp_min(1e-8)
                             log_w = log_w + torch.log(p_a)
                         for g in games:
@@ -495,9 +551,16 @@ class ISMCTSTeacher:
                 raise _ReplayInconsistency("batched replay: no seat acted")
 
     def _restore_pool_memory(self, mem):
-        self.agent._player_memories = {
-            pid: t.detach().clone() for pid, t in mem.items()
-        }
+        """Install a pool snapshot: reset every involved controller's memory dict,
+        then place each seat's memory with its controller."""
+        agents = {id(self.agent): self.agent}
+        if self._seat_policies:
+            for a in self._seat_policies.values():
+                agents[id(a)] = a
+        for a in agents.values():
+            a._player_memories = {}
+        for s, t in mem.items():
+            self._controller(s)._player_memories[s] = t.detach().clone()
 
     @staticmethod
     def _pool_probs(pool):
@@ -704,41 +767,55 @@ class ISMCTSTeacher:
             if not reqs:
                 continue
 
-            # 2. One batched encode over every requesting sim's acting-seat state.
+            # 2+3. Encode + actor/critic heads, grouped by the acting seat's
+            # controller (population grounding). The encode COUNT matches the
+            # ungrouped path exactly; only the batch grouping fragments when
+            # seat_policies are present (see Population_Grounded_Teacher_Plan.md).
+            # The critic now runs only on groups that contain a bootstrap request
+            # (it used to run on every row and be discarded).
             states = [s.world.players[s.seat - 1].get_state_dict() for s, _, _ in reqs]
-            mem_in = torch.stack([s.mem[s.seat - 1] for s, _, _ in reqs])
-            enc = self.agent.encoder.encode_batch(states, memory_in=mem_in, device=DEV)
-            mem_out = enc["memory_out"].detach()
+            groups: dict[int, tuple] = {}
             for j, (s, _, _) in enumerate(reqs):
-                s.mem[s.seat - 1] = mem_out[j]
+                ctrl = self._controller(s.seat)
+                groups.setdefault(id(ctrl), (ctrl, []))[1].append(j)
 
-            # 3. Actor + critic heads over the full batch (critic on actor rows is
-            #    cheap and unused; avoids slicing the encoder output).
-            masks = torch.stack(
-                [
-                    self.agent.get_action_mask(s.valid, self.action_size)
-                    for s, _, _ in reqs
-                ]
-            ).to(DEV)
-            hand_ids = torch.as_tensor(
-                np.stack([st["hand_ids"] for st in states]),
-                dtype=torch.long,
-                device=DEV,
-            )
-            with torch.no_grad():
-                probs_all, _ = self.agent.actor.forward_with_logits(
-                    enc, masks, hand_ids, self.agent.encoder.card
+            probs_np = np.zeros((len(reqs), self.action_size), dtype=np.float32)
+            v_np = np.zeros(len(reqs), dtype=np.float32)
+            for ctrl, idxs in groups.values():
+                g_states = [states[j] for j in idxs]
+                mem_in = torch.stack(
+                    [reqs[j][0].mem[reqs[j][0].seat - 1] for j in idxs]
                 )
-                probs_all = self.agent._apply_head_epsilon_mix(probs_all, masks)
-                v_all = self.agent.critic(enc).detach().view(-1)
-            probs_np = probs_all.detach().cpu().numpy()
+                enc = ctrl.encoder.encode_batch(g_states, memory_in=mem_in, device=DEV)
+                mem_out = enc["memory_out"].detach()
+                for row, j in enumerate(idxs):
+                    reqs[j][0].mem[reqs[j][0].seat - 1] = mem_out[row]
+                masks = torch.stack(
+                    [
+                        ctrl.get_action_mask(reqs[j][0].valid, self.action_size)
+                        for j in idxs
+                    ]
+                ).to(DEV)
+                hand_ids = torch.as_tensor(
+                    np.stack([states[j]["hand_ids"] for j in idxs]),
+                    dtype=torch.long,
+                    device=DEV,
+                )
+                with torch.no_grad():
+                    probs_g, _ = ctrl.actor.forward_with_logits(
+                        enc, masks, hand_ids, ctrl.encoder.card
+                    )
+                    probs_g = ctrl._apply_head_epsilon_mix(probs_g, masks)
+                    if any(reqs[j][1] == "critic" for j in idxs):
+                        v_np[idxs] = ctrl.critic(enc).detach().view(-1).cpu().numpy()
+                probs_np[idxs] = probs_g.detach().cpu().numpy()
 
             # 4. Apply each request; collect sims that completed a trick this round.
             completers = []
             for j, (sim, kind, is_tree) in enumerate(reqs):
                 if kind == "critic":
                     self._finish_value(
-                        sim, self._discount(float(v_all[j].item()), sim.obs_plays)
+                        sim, self._discount(float(v_np[j]), sim.obs_plays)
                     )
                 else:
                     self._apply_actor(sim, observer, probs_np[j], is_tree, completers)
@@ -927,12 +1004,13 @@ class ISMCTSTeacher:
         if not completers:
             return
         for s in range(1, 6):
+            ctrl = self._controller(s)
             states = [
                 sim.world.players[s - 1].get_last_trick_state_dict()
                 for sim in completers
             ]
             mem_in = torch.stack([sim.mem[s - 1] for sim in completers])
-            enc = self.agent.encoder.encode_batch(states, memory_in=mem_in, device=DEV)
+            enc = ctrl.encoder.encode_batch(states, memory_in=mem_in, device=DEV)
             mo = enc["memory_out"].detach()
             for i, sim in enumerate(completers):
                 sim.mem[s - 1] = mo[i]
@@ -941,9 +1019,10 @@ class ISMCTSTeacher:
     # Rollout / leaf evaluation
     # ------------------------------------------------------------------
     def _rollout(self, world, observer) -> float:
-        """Truncated rollout: sample all seats from pi_theta for ``d_rollout``
-        further observer *play* plies, then bootstrap with the critic. A world
-        that terminates first returns the observer's true score."""
+        """Truncated rollout: sample every seat from its controller (observer ->
+        pi_theta) for ``d_rollout`` further observer *play* plies, then bootstrap
+        with the observer's critic. A world that terminates first returns the
+        observer's true score."""
         d_rollout = (
             self._d_rollout_override
             if self._d_rollout_override is not None
@@ -960,7 +1039,7 @@ class ISMCTSTeacher:
                         return self._discount(
                             self._critic_value(world, observer), obs_plays
                         )
-                    a, _, _ = self.agent.act(
+                    a, _, _ = self._controller(player.position).act(
                         player.get_state_dict(), valid, player.position
                     )
                     if obs_play_here:
@@ -986,15 +1065,15 @@ class ISMCTSTeacher:
     # World advancement helpers
     # ------------------------------------------------------------------
     def _advance_opponents(self, world, observer):
-        """Sample non-observer seats from pi_theta until the observer is to act
-        again or the game ends."""
+        """Sample non-observer seats from their controllers until the observer is
+        to act again or the game ends."""
         while not world.is_done():
             for player in world.players:
                 valid = player.get_valid_action_ids()
                 while valid:
                     if player.position == observer:
                         return
-                    a, _, _ = self.agent.act(
+                    a, _, _ = self._controller(player.position).act(
                         player.get_state_dict(), valid, player.position
                     )
                     player.act(a)
@@ -1007,7 +1086,7 @@ class ISMCTSTeacher:
     def _after_action(self, world):
         if world.was_trick_just_completed:
             for seat in world.players:
-                self.agent.observe(
+                self._controller(seat.position).observe(
                     seat.get_last_trick_state_dict(), player_id=seat.position
                 )
 
@@ -1058,6 +1137,9 @@ class ISMCTSTeacher:
         g.blind = deal["blind"][:]
 
         self.agent.reset_recurrent_state()
+        if self._seat_policies:
+            for a in self._seat_policies.values():
+                a.reset_recurrent_state()
         pub = deque(forced_public)
         det_bury = deque(deal["bury"])
         det_under = deal["under_card"]
@@ -1092,7 +1174,7 @@ class ISMCTSTeacher:
                             self.fail["bad_private"] += 1
                             return None, None
                         # Advance this seat's memory through the forced decision.
-                        self.agent.get_action_probs_with_logits(
+                        self._controller(player.position).get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
                         player.act(aid)
@@ -1104,7 +1186,9 @@ class ISMCTSTeacher:
                         if aid not in valid:
                             self.fail["bad_public"] += 1
                             return None, None
-                        probs_t, _ = self.agent.get_action_probs_with_logits(
+                        probs_t, _ = self._controller(
+                            player.position
+                        ).get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
                         if not _is_play_action(aid):

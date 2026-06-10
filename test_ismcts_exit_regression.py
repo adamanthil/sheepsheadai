@@ -794,6 +794,109 @@ def test_bidding_anchor_kl():
     )
 
 
+def test_seat_policies_population_grounding():
+    """Population-grounded teacher rollouts (seat_policies): (1) controllers
+    must reach the search — identical root + RNG with vs without controllers
+    yields different root statistics; (2) every involved agent's live recurrent
+    memories must survive the search untouched (the real game continues after
+    it); (3) the lockstep batched pool build must keep matching the sequential
+    reference with controllers active."""
+    from ismcts import ISMCTSConfig, ISMCTSTeacher
+
+    _seed()
+    agent = _fresh_agent()
+    torch.manual_seed(4321)
+    opp = _fresh_agent()  # one distinct controller for all non-observer seats
+    teacher = ISMCTSTeacher(
+        agent,
+        ISMCTSConfig(
+            iters={"pick": 6, "partner": 6, "bury": 6, "play": 8},
+            det_max_tries=400,
+            ess_floor=0.5,
+        ),
+    )
+    rng = random.Random(SEED)
+    game = observer = fp = None
+    g = 0
+    while g < 300:
+        mode = PARTNER_BY_CALLED_ACE if g % 2 else PARTNER_BY_JD
+        cand = Game(partner_selection_mode=mode)
+        agent.reset_recurrent_state()
+        out = _drive_to_head(cand, rng, "play")
+        g += 1
+        if out is not None:
+            game, (observer, fp) = cand, out
+            break
+    assert game is not None, "no play node found"
+    seat_policies = {s: opp for s in range(1, 6) if s != observer}
+
+    # Seed non-trivial live memories on both agents so isolation is meaningful.
+    obs_state = game.players[observer - 1].get_state_dict()
+    obs_valid = game.players[observer - 1].get_valid_action_ids()
+    agent.get_action_probs_with_logits(obs_state, obs_valid, player_id=observer)
+    opp.get_action_probs_with_logits(obs_state, obs_valid, player_id=3)
+    mem_before = {
+        name: {pid: t.detach().clone() for pid, t in a._player_memories.items()}
+        for name, a in (("agent", agent), ("opp", opp))
+    }
+
+    res_self = teacher.search(game, observer, list(fp), random.Random(7), d_rollout=4)
+    res_pop = teacher.search(
+        game,
+        observer,
+        list(fp),
+        random.Random(7),
+        d_rollout=4,
+        seat_policies=seat_policies,
+    )
+
+    # (1) controllers reach the search.
+    assert res_pop["valid"] == res_self["valid"]
+    assert float(np.sum(res_pop["pi"])) > 0.0, "population-grounded search empty"
+    q_diff = max(
+        abs(res_self["root_q"][a] - res_pop["root_q"][a]) for a in res_self["root_q"]
+    )
+    assert q_diff > 1e-9, "seat_policies had no effect on root values"
+
+    # (2) live memories untouched (search must be side-effect free for ALL
+    # involved agents, not just self.agent).
+    for name, a in (("agent", agent), ("opp", opp)):
+        assert set(a._player_memories.keys()) == set(mem_before[name].keys()), (
+            f"{name} memory keys changed"
+        )
+        for pid, t in mem_before[name].items():
+            assert torch.equal(a._player_memories[pid], t), (
+                f"{name} seat-{pid} memory mutated by search"
+            )
+
+    # (3) lockstep == sequential with controllers active.
+    deals = [game.sample_determinization(observer, rng) for _ in range(8)]
+    teacher._seat_policies = dict(seat_policies)
+    try:
+        agent.reset_recurrent_state()
+        opp.reset_recurrent_state()
+        seq = teacher._build_pool_sequential(
+            game, [copy.deepcopy(d) for d in deals], fp, observer
+        )
+        bat = teacher._build_worlds_batched(
+            copy.deepcopy(game), [copy.deepcopy(d) for d in deals], fp, observer
+        )
+    finally:
+        teacher._seat_policies = None
+    assert len(seq) == len(bat) == 8, "pool size mismatch with controllers"
+    for (gs, ms, lws), (gb, mb, lwb) in zip(seq, bat):
+        assert gs.history == gb.history, "history mismatch with controllers"
+        assert abs(lws - lwb) < 1e-2, f"log_w mismatch {lws} vs {lwb}"
+        for s in range(1, 6):
+            ms_s = ms.get(s)
+            if ms_s is None:
+                assert mb[s].abs().max().item() < 1e-6
+            else:
+                assert (ms_s - mb[s]).abs().max().item() < 1e-2, (
+                    f"seat {s} memory mismatch with controllers"
+                )
+
+
 def test_greedy_health_probe_side_effect_free():
     """The greedy health probe must restore the global random state and the
     agent's recurrent memories, and return rates in [0, 100]."""
@@ -992,6 +1095,7 @@ TESTS = [
     test_distill_pgmask_and_dormant,
     test_searched_ppo_weight_ab,
     test_bidding_anchor_kl,
+    test_seat_policies_population_grounding,
     test_greedy_health_probe_side_effect_free,
     test_profile_capture_replay_equivalence,
     test_gameresult_pickle_roundtrip,

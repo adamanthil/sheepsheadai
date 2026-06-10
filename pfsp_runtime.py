@@ -338,6 +338,16 @@ def play_population_game(
     for opponent, seat_pos in zip(opponents[:4], opponent_seat_positions):
         agents[seat_pos - 1] = opponent.agent
 
+    # Population grounding for the teacher: model each non-training seat in the
+    # search with the agent ACTUALLY controlling it this game, so teacher Q is
+    # the EV against the real field (a self-modeled rollout field can't punish
+    # information-revealing play; see Population_Grounded_Teacher_Plan.md).
+    search_seat_policies = {
+        pos: agents[pos - 1]
+        for pos in range(1, 6)
+        if agents[pos - 1] is not None and agents[pos - 1] is not training_agent
+    }
+
     # Store transitions only for the training agent
     episode_transitions = []
     current_trick_transitions = []
@@ -442,6 +452,7 @@ def play_population_game(
                                 list(forced_public),
                                 determinization_rng,
                                 d_rollout=rollout_depth,
+                                seat_policies=search_seat_policies,
                             )
                             target_accepted = res["ok"] and float(res["pi"].sum()) > 0.0
                             if target_accepted:
