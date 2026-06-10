@@ -159,3 +159,13 @@ temperature ~0.5; (2) structural fix — population-grounded rollouts so the
 punishment for information-revealing leads is real; (3) pure self-play search
 is contraindicated (it amplifies the self-model blind spot the Q noise comes
 from).
+
+**Harness fix (2026-06-10):** `selfplay_metrics` previously called
+`get_action_probs_with_logits` (which advances the recurrent memory) before
+`act()` at trick-0 audit nodes, so the greedy action there was taken from a
+double-encoded memory. Greedy trump-lead RATES measured before the fix
+(baseline 4.8%, run-2 48.6%, Arm A 11.3%) carry that perturbation; the mass
+metric and h2h were always clean. Re-measured post-fix (n=300 games): baseline
+1.4% / mass 1.3%; Arm A@50k 2.3% / 2.1%; Arm B@30k 74.3% / 51.6% — now
+consistent with the trainer's greedy_health_probe (single-encode,
+deployment-faithful).

@@ -88,9 +88,25 @@ def selfplay_metrics(agent, n_games, seed, deterministic):
                         and has_fail
                     )
                     if t0_node:
+                        # get_action_probs_with_logits advances the recurrent
+                        # memory (it stores memory_out), and act() below encodes
+                        # the same state again — so without a snapshot/restore
+                        # the action at this node is taken from a double-encoded
+                        # memory and the greedy trump-lead RATE is measured
+                        # under perturbation (probe-vs-eval discrepancy found
+                        # 2026-06-10: 73% vs 7% on identical weights). The mass
+                        # metric was always clean (computed on the first,
+                        # correctly-advanced encode). Historical greedy-rate
+                        # numbers from this harness (baseline 4.8%, run-2
+                        # 48.6%) carry the perturbation; mass and h2h do not.
+                        saved_mem = {
+                            pid: t.detach().clone()
+                            for pid, t in agent._player_memories.items()
+                        }
                         probs, _ = agent.get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
+                        agent._player_memories = saved_mem
                         p = probs[0].detach().cpu().numpy()
                         tmass = sum(
                             float(p[a - 1])
