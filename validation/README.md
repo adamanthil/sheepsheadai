@@ -169,3 +169,26 @@ metric and h2h were always clean. Re-measured post-fix (n=300 games): baseline
 1.4% / mass 1.3%; Arm A@50k 2.3% / 2.1%; Arm B@30k 74.3% / 51.6% — now
 consistent with the trainer's greedy_health_probe (single-encode,
 deployment-faithful).
+
+## Run-1 collapse post-mortem diagnostics (May 2026)
+
+**`forced_pick_check.py`** — Diagnostic A: forced-pick EV vs a fixed field.
+Forces the agent under test to be picker every deal (others forced to PASS), so
+picker-play EV is measured with zero bidding-policy influence; paired vs the
+frozen 30M reference on identical deals/seed. Findings on the run-1 collapse:
+collapsed ckpt 30045000 delta −0.85±0.39 on pickable hands (str≥7) ⇒ play
+degraded too, not just bidding. Trajectory sweep across ckpts 5k–45k: play
+delta is WORST at 5k (−2.73, −6.2 SE) and self-heals to ~−0.85 ⇒ an immediate
+warm-start ONSET SHOCK (not disuse atrophy), and the bidding head is the only
+non-recovering failure.
+
+**`teacher_pick_audit.py`** — Diagnostic B: teacher PICK-target calibration by
+hand strength (pi'(PICK) and Q(PICK)−Q(PASS) at PICK/PASS roots, walking the
+pick phase forcing PASS). Findings: the REFERENCE (pristine 30M) teacher is
+well-calibrated — monotone pick gradient, Q-gap crosses 0 at strength ~7-8,
+strong hands 75-78% pick. The COLLAPSED teacher lost it — whole curve shifted
+down ~30-40pp pi' and ~0.2-0.3 Q; strong hands flipped to 36%/−0.13 ⇒ the
+collapse is a SELF-REINFORCING ratchet (policy drifts → self-play rollouts
+weaken → teacher follows), not a teacher that was wrong from episode 0. This
+is the result that motivated the bidding KL-anchor and, together with
+teacher_trump_lead_audit.py, the population-grounded-rollout decision.
