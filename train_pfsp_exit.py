@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """PFSP ISMCTS Expert Iteration (ExIt) trainer hybrid — thin entry point.
 
-Population-based training with terminal-only reward and ISMCTS soft-teacher
-distillation (the PG-mask owns the policy update on confidently-searched
-transitions; PPO owns the rest). No reward shaping or epsilon-floor controllers
-— the search teacher replaces hand-tuned exploration. All machinery lives in
-pfsp_runtime.py; hyperparameters in config.py.
+Population-based training with terminal-only reward and (optional) ISMCTS
+soft-teacher distillation. No reward shaping or epsilon-floor controllers. All
+machinery lives in pfsp_runtime.py; hyperparameters in config.py.
 
-All heads are searchable (P4 added the pre-pick determinizer for PICK/PASS, plus
-a leaster determinizer); the bidding heads default to f=1.0 (cheap shallow roots;
-the collapse-prone decisions) and play to f=0.10. Leaster play decisions are
-searched at the play frac (the pass->leaster EV depends on good leaster play). See
+Search-knob CLI defaults are read from ``config.SearchConfig`` (single source of
+truth — the argparse defaults previously hardcoded stale values that silently
+overrode config.py). All heads are searchable (P4). See
 ISMCTS_Overview_And_Roadmap.md §4-5.
 """
 
@@ -23,6 +20,9 @@ import torch
 
 from config import PFSPHyperparams, SearchConfig
 from pfsp_runtime import run_pfsp_training
+
+# Single source of truth for search-knob defaults (config.SearchConfig).
+_SEARCH_DEFAULTS = SearchConfig()
 
 
 def main():
@@ -99,52 +99,58 @@ def main():
         default=None,
         help="Population directory (default: runs/<run-name>/population). Point at a seeded pool to reuse it.",
     )
-    # Search knobs (see config.SearchConfig). All heads searchable as of P4 (the
-    # pre-pick determinizer). Bidding heads default to 1.0 (cheap, shallow roots;
-    # the collapse-prone decisions); play to 0.10.
+    # Search knobs — defaults come from config.SearchConfig (single source of
+    # truth). All heads searchable as of P4 (the pre-pick determinizer).
     parser.add_argument(
         "--f-pick",
         type=float,
-        default=1.0,
-        help="Per-decision probability of searching a PICK/PASS decision (default: 1.0)",
+        default=_SEARCH_DEFAULTS.head_search_fractions["pick"],
+        help="Per-decision probability of searching a PICK/PASS decision "
+        f"(default: {_SEARCH_DEFAULTS.head_search_fractions['pick']})",
     )
     parser.add_argument(
         "--f-partner",
         type=float,
-        default=1.0,
-        help="Per-decision probability of searching a PARTNER decision (default: 1.0)",
+        default=_SEARCH_DEFAULTS.head_search_fractions["partner"],
+        help="Per-decision probability of searching a PARTNER decision "
+        f"(default: {_SEARCH_DEFAULTS.head_search_fractions['partner']})",
     )
     parser.add_argument(
         "--f-bury",
         type=float,
-        default=1.0,
-        help="Per-decision probability of searching a BURY decision (default: 1.0)",
+        default=_SEARCH_DEFAULTS.head_search_fractions["bury"],
+        help="Per-decision probability of searching a BURY decision "
+        f"(default: {_SEARCH_DEFAULTS.head_search_fractions['bury']})",
     )
     parser.add_argument(
         "--f-play",
         type=float,
-        default=0.10,
-        help="Per-decision probability of searching a PLAY decision (default: 0.10)",
+        default=_SEARCH_DEFAULTS.head_search_fractions["play"],
+        help="Per-decision probability of searching a PLAY decision "
+        f"(default: {_SEARCH_DEFAULTS.head_search_fractions['play']})",
     )
     parser.add_argument(
         "--t-full",
         type=int,
-        default=1,
-        help="Trick-indexed rollout-depth cutoff: full rollout for tricks 0..t_full (default: 1)",
+        default=_SEARCH_DEFAULTS.t_full,
+        help="Trick-indexed rollout-depth cutoff: full rollout for tricks 0..t_full "
+        f"(default: {_SEARCH_DEFAULTS.t_full})",
     )
     parser.add_argument(
         "--d-short",
         type=int,
-        default=2,
-        help="Bootstrap rollout depth for tricks > t_full (default: 2)",
+        default=_SEARCH_DEFAULTS.d_short,
+        help="Bootstrap rollout depth for tricks > t_full "
+        f"(default: {_SEARCH_DEFAULTS.d_short})",
     )
     parser.add_argument(
         "--searched-ppo-weight",
         type=float,
-        default=0.0,
+        default=_SEARCH_DEFAULTS.searched_ppo_weight,
         help="PG-mask vs additive-form A/B: weight on the PPO clip term for searched "
-        "transitions (0.0=hard mask/default, 1.0=additive, 0<w<1=residual PPO). "
-        "Distillation toward pi' is applied either way at search_distill_coeff.",
+        "transitions (0.0=hard mask, 1.0=additive, 0<w<1=residual PPO). "
+        "Distillation toward pi' is applied either way at search_distill_coeff. "
+        f"(default: {_SEARCH_DEFAULTS.searched_ppo_weight})",
     )
     parser.add_argument(
         "--num-workers",
