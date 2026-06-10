@@ -1,0 +1,129 @@
+# ExIt stabilization arms (June 2026)
+
+Decision experiment: confirm what broke in the two collapsed warm-start runs and
+gather the evidence needed to choose between **(a) population-grounded teacher
+rollouts** (determinize/roll out opponent seats with frozen population policies)
+and **(b) pure self-play tree search** (AlphaZero-style; drop PFSP grading) for
+the next structural investment.
+
+## Background (one paragraph)
+
+Run 1 (May): bidding owned by distillation (f_bid=1.0, hard PG-mask) →
+always-PASS collapse in ~45k episodes via the self-referential-teacher ratchet.
+Run 2 (June 3–7): bidding owned by terminal PPO (f_bid=0, f_play=0.30,
+additive) → same collapse, slower and *flattened*: sampled PICK stayed ~32% for
+586k episodes while greedy PICK was 5.7%, ALONE 56%, leaster 74%, trick-0
+defender trump-lead 48.6% (baseline 4.8%), h2h −1.38 pts/game vs the 30M field.
+Both ownership regimes failed ⇒ the shared conditions are causal: (1) onset
+shock (critic re-fit shaped→terminal + distill yank) makes picker EV genuinely
+negative, (2) nothing guards the bidding heads through that window, (3) the
+teacher models all seats as pi_theta and cannot see the real (population)
+opponents, (4) the training population accretes degraded checkpoints. New
+guards now committed: bidding-head KL anchor, distill-coeff ramp, periodic
+greedy health probe (greedy_health.csv + gate warnings).
+
+## Falsifier: teacher trump-lead audit (runs first, gates Arm B's reading)
+
+`validation/teacher_trump_lead_audit.py` on the PRISTINE 30M model: at trick-0
+defender-lead nodes (trump+fail in hand), compare the policy prior's trump-lead
+mass vs the production teacher's pi' trump mass, plus root-Q (best trump vs best
+fail) to separate the exploration floor (FPU + 25% root uniform mix) from
+genuine teacher preference.
+
+- Prior trump mass is ~0.003 (healthy). If pi' mass is an order of magnitude
+  higher AND root-Q favors/ties trump, the self-play-rollout teacher *endorses*
+  the leak it was built to fix (rollout opponents can't punish an
+  information-revealing lead) → play distillation from this teacher is expected
+  to hurt, and the population-grounded rollout is the indicated fix.
+- If pi' mass elevation is explained by the exploration floor alone (root-Q
+  clearly favors fail leads), the teacher's *values* are fine and the run-2 leak
+  regression came from the degrading-policy feedback loop instead.
+
+Preliminary n=5: prior 0.001 → pi' 0.074 (+3.4 SE). Full n=150 running.
+
+## Arm A — can terminal PPO + anchor hold the baseline? (null hypothesis)
+
+- Resume pristine `pfsp_swish_checkpoint_30000000.pt`, fresh copy of the
+  reference population, run `exit_armA_anchor`, episodes 30.0M → 30.05M.
+- `--f-pick 0 --f-partner 0 --f-bury 0 --f-play 0` (NO search at all),
+  `--anchor-coeff 1.0` anchored to the exact resume checkpoint (KL=0 at start),
+  `--schedule-horizon-episodes 20000000` (end-of-schedule LR 5e-5 / entropies),
+  greedy probe every 5k episodes (200 games).
+- Note run 2 = this regime WITHOUT the anchor (f_play also 0.30); its greedy
+  PICK was certainly gone within ~20k episodes (picker_avg −3.4 by then).
+
+Gates at 25k and 50k (greedy_health.csv):
+- greedy PICK ≥ 25% (baseline 32.9%)
+- greedy ALONE ≤ 12% (baseline 6.6%)
+- greedy t0 trump-lead ≤ 8% (baseline 4.8%)
+- training picker_avg trending toward ≥ 0 (it will dip during critic re-fit;
+  the question is recovery, not the dip)
+- At 50k: h2h vs `final_pfsp_swish_ppo.pt` ≥ −0.2 pts/game (1000 games).
+
+PASS ⇒ terminal-mode PPO is viable with the anchor; the ExIt program continues
+on this base. FAIL ⇒ even anchored terminal PPO can't hold the warm start —
+the critic re-fit/onset shock needs its own fix (critic-only warmup phase)
+before any search question matters.
+
+## Arm B — does the current (self-referential) play teacher help or hurt?
+
+Arm A config PLUS `--f-play 0.30 --searched-ppo-weight 1.0` and the distill
+ramp (default 50k). Run `exit_armB_distill`, launched after Arm A's 25k gate
+and the falsifier read. Same gates; additionally compare against Arm A:
+greedy t0 trump-lead trajectory and 50k h2h.
+
+- B ≥ A on gates and h2h, trump-lead flat ⇒ current teacher is at least
+  neutral; population-grounding is an *upgrade*, not a precondition.
+- B < A, trump-lead rising (and falsifier shows teacher endorses trump leads)
+  ⇒ the self-play-rollout teacher is net harmful exactly as hypothesized.
+
+## Decision matrix (the question this experiment answers)
+
+| Falsifier | Arm A | Arm B | Conclusion |
+|---|---|---|---|
+| teacher endorses leak | holds | worse than A | **Population-grounded rollouts** are the precondition for any play distillation; build them. Pure self-play search is contraindicated (it doubles down on the self-model that's failing). |
+| teacher clean (floor-only) | holds | ≥ A | Teacher values fine; collapse was onset+guards. Continue hybrid, population-grounding optional upgrade. |
+| teacher endorses leak | holds | ≥ A | Mixed: leak bias real but dominated by PPO grading; population-grounding still right long-term, lower urgency. |
+| any | fails | — | Fix the terminal-critic warm-start first (critic-only warmup); search questions premature. |
+
+Pure self-play tree search (the AlphaZero alternative) is only attractive if
+the falsifier comes back clean AND we were willing to drop PFSP grading; a
+dirty falsifier is direct evidence that self-modeled opponents corrupt the
+search values in hidden-info multiplayer, which pure self-play would amplify
+(real games would *also* be graded by the self-model's blind spots).
+
+## Status log
+
+- 2026-06-10: guards implemented (anchor / ramp / greedy probe), 16/16
+  regression tests pass, falsifier preliminary n=5 dirty (+3.4 SE), Arm A
+  launched (`runs/exit_armA_anchor/train.log`).
+- 2026-06-10 (falsifier FULL, n=150, 358 games, ESS-aborts 18): prior trump
+  mass 0.0127 → pi' 0.0951 (paired +0.0824, **+26.3 SE**); root-Q gap (best
+  trump − best fail) −0.0268 ± 0.0064 with best-Q-is-trump at 36% of nodes;
+  **argmax(pi') leads trump 1.3% — identical to the prior's argmax**; mean root
+  ESS 17.7. Reading: the teacher's visit-count MODE is correct, but the soft
+  target carries ~8pp of trump mass from the exploration machinery (FPU +
+  root_explore_frac=0.25 + tau_target=1.0) that its own Q-values say is wrong
+  — and Q is too weak/noisy (−0.027 on a [−1,1] scale, 36% per-node
+  inversions) for PUCT to starve those visits. Forward-KL distillation
+  faithfully teaches the floor ⇒ the run-2 leak regression (4.8%→48.6%) is
+  explained as distill-injected mass compounding through the self-model loop.
+  TWO separable fixes implied: (1) sharpen/de-floor the play distill target
+  (cheap: lower tau_target for the target, or subtract forced-exploration
+  visits), (2) population-grounded rollouts (structural: makes the punishment
+  for information-revealing leads real, so Q sharpens and visits concentrate).
+  Note this also retro-explains part of run-2's bidding flattening: every
+  searched decision distilled a floor-smoothed target.
+- 2026-06-10 (multi-tau replication, n=150 fresh nodes): main numbers replicate
+  (prior 0.005 → pi' 0.085, +28 SE; Q-gap −0.025; argmax 0% both). Target
+  re-sharpening on the SAME visit counts: **tau=1.0 → 8.5% trump mass,
+  tau=0.5 → 1.2%, tau=0.25 → 0.03%** (prior 0.5%). So τ=0.5 removes ~85% of
+  the injected floor while staying soft; τ=0.25 is near-argmax (risky at ESS
+  ~18 / 96 iters — would confidently teach a noisy argmax). Cheap-fix
+  candidate: distill at tau=0.5 (keep tau=1.0 inside PUCT), i.e. a separate
+  target temperature, pending the Arm B read.
+- 2026-06-10 (Arm A early read, 10k eps): NO onset crash — picker_avg +1.25
+  flat through 9k (collapse runs were −2..−2.5 by here); greedy PICK 32.5%,
+  ALONE 10%, trump-lead ~1% at 10k. The critic re-fit alone does NOT cause the
+  onset shock; the play-distill yank was the driver. Anchor restraining force
+  engaged (KL grows from 0.004 at start).
