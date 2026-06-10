@@ -6,7 +6,7 @@ training integration, the throughput work, and the validation protocol).
 Committed for reproducibility — they are NOT part of the production code path
 (`sheepshead.py`, `ppo.py`, `encoder.py`, `ismcts.py`, `pfsp_runtime.py`,
 `config.py`, `training_utils.py` are). The committed unit/regression test is
-`test_ismcts_exit_regression.py` at the repo root; these are the heavier,
+`tests/test_ismcts_exit_regression.py`; these are the heavier,
 slower, evidence-gathering scripts behind the design decisions.
 
 ## Running
@@ -25,7 +25,7 @@ or `runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_9995000
 The Stage C scripts already default to `final_pfsp_swish_ppo.pt`.
 
 Findings for Gate 0 / Stage A / Stage B reflect the conclusions recorded in
-`ISMCTS_Teacher_Refactor_Plan.md` and the Stage B project notes; the Stage C,
+`notebooks/ISMCTS_Teacher_Refactor_Plan.md` and the Stage B project notes; the Stage C,
 throughput, t_full and validation findings were measured in the May 2026 session
 that built them.
 
@@ -69,7 +69,7 @@ Same machinery as `critic_probe` but the target is the **ExIt terminal return**
 R² (fresh deep head) all-play **0.26→0.82**, defender-leads **0.04→0.61**, leasters
 **≤0.21**. → `t_full=1`/`d_short=2` validated (bootstraps land at trick≥4, R²≥0.73;
 trick-0 leak states always roll to terminal); leasters forced to terminal rollout.
-See `Validation_Baseline_Notes.md`.
+See `notebooks/Validation_Baseline_Notes.md`.
 
 ## Stage A — generalized inference-weighted determinizer
 
@@ -136,7 +136,7 @@ defender trump-lead rate (the leak), and head-to-head mean score. PPO baseline
 recorded: PICK 32.9%, ALONE 6.6%, leaster 9.2%, trick-0 trump-lead **4.8%**;
 self-h2h ≈0 (unbiased-harness sanity). Real use:
 `exit_validation.py -m <exit>.pt -b final_pfsp_swish_ppo.pt`. See
-`Validation_Baseline_Notes.md`. NOTE: do NOT route h2h through
+`notebooks/Validation_Baseline_Notes.md`. NOTE: do NOT route h2h through
 `play_population_game` (full training game ~2–3 s/game); this uses a bare
 mixed-agent loop (~150 ms/game self-play, which cannot batch).
 

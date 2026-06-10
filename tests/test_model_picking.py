@@ -3,6 +3,12 @@
 Test the final trained model to see if it learned proper hand strength correlations.
 """
 
+import os
+import sys
+
+# Repo-root imports work whether run directly or via pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import numpy as np
 from argparse import ArgumentParser

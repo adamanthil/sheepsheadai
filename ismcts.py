@@ -4,7 +4,7 @@ A search-derived, per-state, outcome-grounded teacher that produces a soft targe
 ``pi'(a) ∝ N(a)^(1/tau_target)`` over the training agent's information set at any
 decision point (pick / partner / bury / play). It is the principled replacement
 for the hand-crafted exploration/shaping controllers (see
-``ISMCTS_Teacher_Refactor_Plan.md``).
+``notebooks/ISMCTS_Teacher_Refactor_Plan.md``).
 
 Design (locked decisions, §3 of the plan)
 -----------------------------------------
@@ -39,7 +39,7 @@ Design (locked decisions, §3 of the plan)
   (default) reproduces pure self-play exactly. Rationale: a self-modeled
   rollout field cannot punish information-revealing play, so the teacher
   certifies leaks instead of correcting them (see the teacher trump-lead audit
-  / ``Population_Grounded_Teacher_Plan.md``).
+  / ``notebooks/Population_Grounded_Teacher_Plan.md``).
 * **Heads via one engine:** pick / partner / bury are *shallow* roots (``max_depth
   = 1``) and degenerate to bidding-weighted determinized rollout evaluation of
   each option; play is the deep tree (``max_depth = 6`` observer decisions).
@@ -770,7 +770,7 @@ class ISMCTSTeacher:
             # 2+3. Encode + actor/critic heads, grouped by the acting seat's
             # controller (population grounding). The encode COUNT matches the
             # ungrouped path exactly; only the batch grouping fragments when
-            # seat_policies are present (see Population_Grounded_Teacher_Plan.md).
+            # seat_policies are present (see notebooks/Population_Grounded_Teacher_Plan.md).
             # The critic now runs only on groups that contain a bootstrap request
             # (it used to run on every row and be discarded).
             states = [s.world.players[s.seat - 1].get_state_dict() for s, _, _ in reqs]

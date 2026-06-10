@@ -398,7 +398,7 @@ def process_terminal_rewards(episode_transitions, final_scores, is_leaster=False
     No per-trick reward and no leaster bonus — ``get_score()`` already scores
     leasters correctly, so pass->leaster EV is win-likelihood driven with zero
     hand-tuning (``is_leaster`` is accepted for interface parity and ignored).
-    See ISMCTS_Teacher_Refactor_Plan.md §2.
+    See notebooks/ISMCTS_Teacher_Refactor_Plan.md §2.
     """
     last_index = len(episode_transitions) - 1
     for i, transition in enumerate(episode_transitions):

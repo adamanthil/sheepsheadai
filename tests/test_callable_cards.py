@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+import os
+import sys
+
+# Repo-root imports work whether run directly or via pytest.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import random
 import re
 from sheepshead import DECK, get_callable_cards, pretty_card_list

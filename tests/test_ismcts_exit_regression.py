@@ -9,16 +9,21 @@ batched-MCTS Tier-2 refactor (which reorders RNG/encodes): the batched pool buil
 must keep matching the sequential reference, the determinizer must stay legal, and
 search must keep returning a valid distribution on the legal set.
 
-Run directly (`python test_ismcts_exit_regression.py`) — prints PASS/FAIL per test
+Run directly (`python tests/test_ismcts_exit_regression.py`) — prints PASS/FAIL per test
 and exits non-zero on any failure. pytest-compatible (test_* functions) if added.
 """
 
 from __future__ import annotations
 
 import copy
+import os
 import random
 import sys
 import time
+
+# Repo-root imports work whether run directly (python tests/<file>.py) or via
+# pytest from any directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import torch

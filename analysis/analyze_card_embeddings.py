@@ -6,6 +6,12 @@ Compares learned embeddings against initialized values and produces
 detailed visualizations of how the model has refined its card representations.
 """
 
+import os
+import sys
+
+# Repo-root imports work regardless of invocation directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -507,8 +513,8 @@ def main():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="card_embedding_analysis",
-        help="Directory to save analysis outputs (default: card_embedding_analysis)",
+        default="analysis/card_embedding_analysis",
+        help="Directory to save analysis outputs (default: analysis/card_embedding_analysis)",
     )
 
     args = parser.parse_args()

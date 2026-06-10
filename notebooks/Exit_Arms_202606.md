@@ -92,6 +92,22 @@ dirty falsifier is direct evidence that self-modeled opponents corrupt the
 search values in hidden-info multiplayer, which pure self-play would amplify
 (real games would *also* be graded by the self-model's blind spots).
 
+## Follow-on (2026-06-10, after the decision)
+
+- **B′ (target_tau=0.5) RUNNING** (`runs/exit_armBprime_tau05/`): Arm B config
+  with the distill target sharpened to tau=0.5 — launched BEFORE the
+  population-grounding commit, so it isolates the cheap fix on the (dirty)
+  self-play teacher. Prediction from the audit: trump-lead drift mostly
+  suppressed (pi' floor mass 8.5% → 1.2% at tau=0.5) but Q noise remains;
+  watch the greedy probes vs Arm A's flat trajectory and Arm B's explosion.
+- **Population-grounded teacher IMPLEMENTED** (`15fbea7`,
+  `Population_Grounded_Teacher_Plan.md`): teacher models non-observer seats
+  with the agents actually controlling them this game (pool-build belief
+  weights + advance + rollouts); observer stays pi_theta. 17/17 regression;
+  lockstep pool build loses no batching; leaf-parallel rounds group by
+  controller. Acceptance audit (n=150, 4 strongest frozen population members)
+  pending below.
+
 ## Status log
 
 - 2026-06-10: guards implemented (anchor / ramp / greedy probe), 16/16

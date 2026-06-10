@@ -9,7 +9,7 @@ Search-knob CLI defaults are read from ``config.SearchConfig`` (single source of
 truth — the argparse defaults previously hardcoded stale values that silently
 overrode config.py). All heads are searchable (P4); per-head fractions, the
 searched-PPO weight, the distill ramp, the bidding-head KL anchor and the greedy
-health probe are exposed below. See ISMCTS_Overview_And_Roadmap.md §4-5 and the
+health probe are exposed below. See notebooks/ISMCTS_Overview_And_Roadmap.md §4-5 and the
 run-1/run-2 collapse post-mortems for why the anchor + ramp + greedy guard
 default ON for this trainer.
 """

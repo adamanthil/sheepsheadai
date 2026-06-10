@@ -14,3 +14,4 @@ db/node_modules/
 
 # Training run artifacts (checkpoints, final models, plots, CSVs, per-run population)
 runs/
+analysis/card_embedding_analysis/

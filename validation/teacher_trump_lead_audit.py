@@ -29,6 +29,9 @@ Usage: PYTHONPATH=. .venv/bin/python validation/teacher_trump_lead_audit.py \
 from __future__ import annotations
 
 import argparse
+import glob
+import json
+import os
 import random
 import time
 
@@ -58,12 +61,43 @@ def _trump_mass(p, valid) -> float:
     )
 
 
+def _load_population_opponents(pop_dir: str, k: int = 4):
+    """Load the ``k`` most-trained members of a PFSP population directory
+    (jd_agents / called_ace_agents subdirs, <id>.pt + <id>_metadata.json)."""
+    candidates = []
+    for sub in ("jd_agents", "called_ace_agents"):
+        for mf in glob.glob(os.path.join(pop_dir, sub, "*_metadata.json")):
+            with open(mf) as f:
+                meta = json.load(f)
+            candidates.append(
+                (int(meta.get("training_episodes", 0)), mf[: -len("_metadata.json")] + ".pt")
+            )
+    candidates.sort(reverse=True)
+    agents = []
+    for eps, path in candidates[:k]:
+        a = PPOAgent(len(ACTIONS), activation="swish")
+        a.load(path, load_optimizers=False)
+        agents.append(a)
+        print(f"  opponent: {os.path.basename(path)} (eps={eps:,})")
+    if len(agents) < k:
+        raise SystemExit(f"only {len(agents)} population members in {pop_dir}")
+    return agents
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-m", "--model", default="final_pfsp_swish_ppo.pt")
     ap.add_argument("--nodes", type=int, default=150, help="target audit nodes")
     ap.add_argument("--max-games", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--opponents-dir",
+        default=None,
+        help="PFSP population dir; loads the 4 most-trained members and "
+        "population-grounds the teacher's non-observer seats (the acceptance "
+        "test for notebooks/Population_Grounded_Teacher_Plan.md). Default: pure "
+        "self-play teacher (the dirty baseline).",
+    )
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -73,6 +107,11 @@ def main():
     print(f"Loading {args.model} ...")
     agent = PPOAgent(len(ACTIONS), activation="swish")
     agent.load(args.model, load_optimizers=False)
+
+    opponents = None
+    if args.opponents_dir:
+        print(f"Population-grounding teacher from {args.opponents_dir}:")
+        opponents = _load_population_opponents(args.opponents_dir, k=4)
 
     teacher = ISMCTSTeacher(agent, ISMCTSConfig())
     det_rng = random.Random(args.seed + 1)
@@ -120,12 +159,25 @@ def main():
                         prior_mass = _trump_mass(prior, valid)
                         # Production rollout depth at trick 0 (t_full=1 path):
                         # roll to terminal, as the training loop does.
+                        seat_policies = (
+                            {
+                                s: opponents[i]
+                                for i, s in enumerate(
+                                    x
+                                    for x in range(1, 6)
+                                    if x != player.position
+                                )
+                            }
+                            if opponents
+                            else None
+                        )
                         res = teacher.search(
                             game,
                             player.position,
                             list(forced_public),
                             det_rng,
                             d_rollout=6,
+                            seat_policies=seat_policies,
                         )
                         if res["ok"]:
                             pi = np.asarray(res["pi"], dtype=np.float64)

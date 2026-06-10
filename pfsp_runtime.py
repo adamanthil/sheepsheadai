@@ -70,7 +70,7 @@ from training_utils import (
 # agent_id from a local lazy cache of the on-disk population. Opponent strategic
 # profiling is captured (not mutated) in the worker and replayed by the learner.
 # These objects/functions are module-level so they pickle under the spawn start
-# method. See ISMCTS_Overview_And_Roadmap.md §4 and Throughput_Profiling_Notes.md.
+# method. See notebooks/ISMCTS_Overview_And_Roadmap.md §4 and notebooks/Throughput_Profiling_Notes.md.
 # ----------------------------------------------------------------------------
 
 
@@ -341,7 +341,7 @@ def play_population_game(
     # Population grounding for the teacher: model each non-training seat in the
     # search with the agent ACTUALLY controlling it this game, so teacher Q is
     # the EV against the real field (a self-modeled rollout field can't punish
-    # information-revealing play; see Population_Grounded_Teacher_Plan.md).
+    # information-revealing play; see notebooks/Population_Grounded_Teacher_Plan.md).
     search_seat_policies = {
         pos: agents[pos - 1]
         for pos in range(1, 6)

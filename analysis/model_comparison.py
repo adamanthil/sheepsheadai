@@ -14,6 +14,12 @@ Usage:
     python model_comparison.py --games 10000 --model1 path/to/model1.pt --model2 path/to/model2.pt
 """
 
+import os
+import sys
+
+# Repo-root imports work regardless of invocation directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import numpy as np
 import random

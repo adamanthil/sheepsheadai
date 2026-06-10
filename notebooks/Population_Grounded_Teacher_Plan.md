@@ -1,6 +1,6 @@
 # Population-grounded teacher rollouts — implementation plan
 
-Decision context: `Exit_Arms_202606.md`. The self-play teacher (all seats
+Decision context: `notebooks/Exit_Arms_202606.md`. The self-play teacher (all seats
 modeled as pi_theta) certifies information-revealing play (the trump-lead leak)
 because its rollout opponents never exploit it, and its Q is too weak/noisy to
 starve the exploration floor out of the distill target. Three independent lines
