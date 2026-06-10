@@ -71,6 +71,18 @@ class PFSPHyperparams:
     reward_mode: str = "shaped"  # "shaped" | "terminal"
     search: SearchConfig | None = None
 
+    # Bidding-head KL anchor (ExIt warm-start guard; learner-side only).
+    # When anchor_loss_coeff > 0 the actor loss gains
+    #   anchor_loss_coeff * KL(pi_ref || pi_theta)
+    # on pick/partner/bury transitions, toward the frozen reference model in
+    # anchor_ref_model. Both collapse runs (distill-owned AND PG-owned bidding)
+    # drifted the bidding heads to a flattened always-PASS/ALONE policy while the
+    # picker EV was depressed by the onset shock; the anchor pins the bidding
+    # heads to the known-calibrated 30M reference through that window. The play
+    # head is NOT anchored. 0.0 disables (shaped baseline unaffected).
+    anchor_loss_coeff: float = 0.0
+    anchor_ref_model: str = "final_pfsp_swish_ppo.pt"
+
     # Parallel game-generation workers (Lever 1). None => auto: parallelize the
     # expensive ISMCTS ExIt generation (reward_mode="terminal") across
     # min(cpu_count-1, 8) workers, keep the cheap shaped PPO baseline sequential.

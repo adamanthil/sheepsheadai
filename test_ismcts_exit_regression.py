@@ -734,6 +734,66 @@ def test_searched_ppo_weight_ab():
     )
 
 
+def _generate_terminal_events(n_games=5):
+    """Play plain terminal-mode games (no teacher/search) and return the
+    per-game event streams."""
+    from pfsp_runtime import play_population_game
+
+    _seed()
+    gen = _fresh_agent()
+    mode = PARTNER_BY_JD
+    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
+    all_events = []
+    for _ in range(n_games):
+        _, events, _, _, _ = play_population_game(
+            training_agent=gen,
+            opponents=opps,
+            partner_mode=mode,
+            training_agent_position=random.randint(1, 5),
+            reward_mode="terminal",
+        )
+        all_events.append(events)
+    return all_events
+
+
+def test_bidding_anchor_kl():
+    """The bidding-head KL anchor must be dormant by default, report a positive
+    KL(ref||theta) toward a differently-initialized reference, and reach the
+    actor gradient (anchored vs unanchored updates diverge on the SAME events
+    and the SAME update RNG stream)."""
+    assert _fresh_agent().anchor_coeff == 0.0, "anchor must be off by default"
+
+    event_streams = _generate_terminal_events(n_games=5)
+
+    def updated_agent(anchored):
+        _seed()
+        a = _fresh_agent()  # identical init across the two calls (re-seeded)
+        if anchored:
+            torch.manual_seed(999)  # different init => KL(ref||theta) > 0
+            ref = _fresh_agent()
+            a.set_anchor(ref, 1.0)
+        _seed()  # identical update RNG stream across the two branches
+        for events in event_streams:
+            a.store_episode_events(copy.deepcopy(events))
+        stats = a.update(epochs=1, batch_size=16)
+        return a, stats
+
+    a_plain, s_plain = updated_agent(False)
+    a_anch, s_anch = updated_agent(True)
+    assert s_plain["anchor"]["active"] is False, "anchor must report inactive"
+    assert abs(s_plain["anchor"]["loss"]) < 1e-12, "dormant anchor loss must be 0"
+    assert s_anch["anchor"]["active"] is True
+    assert s_anch["anchor"]["kl"] > 0.0, (
+        "anchor KL must be positive toward a different reference"
+    )
+    max_diff = 0.0
+    for p_plain, p_anch in zip(a_plain.actor.parameters(), a_anch.actor.parameters()):
+        max_diff = max(max_diff, (p_plain - p_anch).abs().max().item())
+    assert max_diff > 1e-9, (
+        f"anchor had no effect on the actor update (max param diff {max_diff:.2e})"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 9. Parallel self-play (Lever 1): profile capture/replay equivalence + pickle
 # ---------------------------------------------------------------------------
@@ -907,6 +967,7 @@ TESTS = [
     test_terminal_reward_contract,
     test_distill_pgmask_and_dormant,
     test_searched_ppo_weight_ab,
+    test_bidding_anchor_kl,
     test_profile_capture_replay_equivalence,
     test_gameresult_pickle_roundtrip,
     test_make_game_summary_roles,

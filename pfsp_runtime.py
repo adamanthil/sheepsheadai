@@ -780,6 +780,18 @@ def run_pfsp_training(
     else:
         print("🆕 Starting fresh training agent")
 
+    # Bidding-head KL anchor (ExIt warm-start guard; learner-side only). Loads
+    # the frozen reference once; population snapshots drop it (see below).
+    anchor_coeff = float(getattr(hyperparams, "anchor_loss_coeff", 0.0) or 0.0)
+    if anchor_coeff > 0.0:
+        anchor_ref = PPOAgent(len(ACTIONS), activation=activation)
+        anchor_ref.load(hyperparams.anchor_ref_model, load_optimizers=False)
+        training_agent.set_anchor(anchor_ref, anchor_coeff)
+        print(
+            f"⚓ Bidding-head KL anchor ON: coeff={anchor_coeff}, "
+            f"ref={hyperparams.anchor_ref_model}"
+        )
+
     # Initialize tracking variables
     picker_scores = deque(maxlen=3000)
     pick_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
@@ -1430,6 +1442,16 @@ def run_pfsp_training(
                             distill.get("pg_masked_fraction", 0.0),
                         )
                     )
+                # Bidding-head KL anchor diagnostics (self-gates when off).
+                anchor_stats = update_stats.get("anchor", {})
+                if anchor_stats.get("active"):
+                    print(
+                        "   Anchor - loss: %.4f, KL(ref||theta): %.4f"
+                        % (
+                            anchor_stats.get("loss", 0.0),
+                            anchor_stats.get("kl", 0.0),
+                        )
+                    )
                 # ISMCTS search diagnostics over this update window, per head:
                 # ESS-abort fraction (searches that missed the ESS floor), mean
                 # root ESS, and mean pi' entropy of the accepted targets.
@@ -1473,6 +1495,9 @@ def run_pfsp_training(
                 )
                 agent_snapshot.set_pass_floor_epsilon(hyperparams.pass_floor_eps_base)
                 agent_snapshot.set_pick_floor_epsilon(hyperparams.pick_floor_eps_base)
+                # Population members don't train, so they don't carry the
+                # (deepcopied) frozen anchor reference around in memory.
+                agent_snapshot.set_anchor(None, 0.0)
 
                 agent_id = population.add_agent(
                     agent=agent_snapshot,

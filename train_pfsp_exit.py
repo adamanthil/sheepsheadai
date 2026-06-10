@@ -152,6 +152,24 @@ def main():
         "Distillation toward pi' is applied either way at search_distill_coeff. "
         f"(default: {_SEARCH_DEFAULTS.searched_ppo_weight})",
     )
+    # Bidding-head KL anchor (warm-start collapse guard). Both collapse runs
+    # (distill-owned and PG-owned bidding) flattened the bidding heads to
+    # always-PASS/ALONE; the anchor pins pick/partner/bury to the frozen
+    # reference while the play head trains freely.
+    parser.add_argument(
+        "--anchor-coeff",
+        type=float,
+        default=1.0,
+        help="Weight on KL(pi_ref || pi_theta) over bidding-head transitions "
+        "(0 disables; default: 1.0)",
+    )
+    parser.add_argument(
+        "--anchor-ref",
+        type=str,
+        default="final_pfsp_swish_ppo.pt",
+        help="Frozen reference model for the bidding-head KL anchor "
+        "(default: final_pfsp_swish_ppo.pt)",
+    )
     parser.add_argument(
         "--num-workers",
         type=int,
@@ -183,7 +201,11 @@ def main():
         searched_ppo_weight=args.searched_ppo_weight,
     )
     hyperparams = PFSPHyperparams(
-        reward_mode="terminal", search=search, num_workers=args.num_workers
+        reward_mode="terminal",
+        search=search,
+        num_workers=args.num_workers,
+        anchor_loss_coeff=args.anchor_coeff,
+        anchor_ref_model=args.anchor_ref,
     )
 
     run_pfsp_training(

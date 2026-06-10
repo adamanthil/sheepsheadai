@@ -590,6 +590,15 @@ class PPOAgent:
         # Unsearched transitions always keep full PG. See _actor_critic_losses.
         self.searched_ppo_weight = 0.0
 
+        # Bidding-head KL anchor (ExIt warm-start guard): when enabled via
+        # set_anchor(), the actor loss gains
+        #   anchor_coeff * KL(pi_ref || pi_theta)
+        # on pick/partner/bury transitions, toward a frozen reference policy.
+        # Learner-side only (collection/workers untouched); the play head is not
+        # anchored. 0.0 / None disables.
+        self.anchor_coeff = 0.0
+        self._anchor_agent = None
+
         # Storage for trajectory data
         self.reset_storage()
 
@@ -778,6 +787,21 @@ class PPOAgent:
         if eps > 0.2:
             eps = 0.2
         self.pick_floor_epsilon = eps
+
+    def set_anchor(self, ref_agent, coeff: float):
+        """Enable (or disable) the bidding-head KL anchor toward a frozen
+        reference policy: actor loss gains coeff * KL(pi_ref || pi_theta) on
+        pick/partner/bury transitions. ``ref_agent`` is a loaded PPOAgent whose
+        encoder/actor produce the reference logits; it is frozen and put in eval
+        mode here. Pass (None, 0.0) to disable (population snapshots do this so
+        they don't carry the reference copy)."""
+        self._anchor_agent = ref_agent
+        self.anchor_coeff = float(coeff) if ref_agent is not None else 0.0
+        if ref_agent is not None:
+            for net in (ref_agent.encoder, ref_agent.actor, ref_agent.critic):
+                net.eval()
+                for p in net.parameters():
+                    p.requires_grad_(False)
 
     def _apply_head_epsilon_mix(
         self, probs: torch.Tensor, mask: torch.Tensor
@@ -1573,6 +1597,7 @@ class PPOAgent:
         play_idx_t,
         search_target_flat,
         has_search_flat,
+        anchor_logits_flat=None,
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
         probs_all = F.softmax(logits_flat, dim=-1)
@@ -1646,6 +1671,19 @@ class PPOAgent:
             pi_target_entropy = logits_flat.new_zeros(())
         masked_fraction = searched.to(torch.float32).mean()
 
+        # Bidding-head KL anchor: forward KL(pi_ref || pi_theta) on the
+        # pick/partner/bury rows toward the frozen reference logits (already
+        # action-masked by the reference actor). Gradient flows through
+        # log pi_theta only; the play head is untouched.
+        anchor_kl = logits_flat.new_zeros(())
+        if anchor_logits_flat is not None:
+            bidding_rows = is_pick | is_partner | is_bury
+            if bidding_rows.any():
+                p_ref = F.softmax(anchor_logits_flat[bidding_rows], dim=-1)
+                logp_ref = torch.log(p_ref.clamp(min=1e-12))
+                logp_cur = torch.log(probs_all[bidding_rows].clamp(min=1e-12))
+                anchor_kl = (p_ref * (logp_ref - logp_cur)).sum(dim=1).mean()
+
         returns_target = returns_flat.view(-1)
         values_old = old_value_flat.view(-1)
         v_clipped = values_old + torch.clamp(
@@ -1657,7 +1695,12 @@ class PPOAgent:
         critic_loss_clipped = F.mse_loss(v_clipped, returns_target, reduction="none")
         critic_loss = torch.max(critic_loss_unclipped, critic_loss_clipped).mean()
 
-        actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
+        actor_loss = (
+            policy_loss
+            - entropy_term
+            + self.kl_coef * approx_kl_t
+            + self.anchor_coeff * anchor_kl
+        )
         return (
             actor_loss,
             critic_loss,
@@ -1668,6 +1711,7 @@ class PPOAgent:
                 "teacher_kl": teacher_kl,
                 "pi_target_entropy": pi_target_entropy,
                 "masked_fraction": masked_fraction,
+                "anchor_kl": anchor_kl,
             },
         )
 
@@ -1758,6 +1802,9 @@ class PPOAgent:
         pi_target_entropy_sum = 0.0
         masked_fraction_sum = 0.0
         search_distill_batches = 0
+        anchor_kl_sum = 0.0
+        anchor_batches = 0
+        anchor_active = self._anchor_agent is not None and self.anchor_coeff > 0.0
 
         for _ in range(epochs):
             if not segments:
@@ -1851,6 +1898,19 @@ class PPOAgent:
                     has_search_flat,
                 ) = flat
 
+                # Bidding-head KL anchor: frozen-reference logits on the same
+                # minibatch (no grad), flattened to the action rows like the
+                # policy logits above.
+                anchor_logits_flat = None
+                if anchor_active:
+                    with torch.no_grad():
+                        ref_logits_bt = self._anchor_agent._forward_vectorized(
+                            states_bt, masks_bt, lengths_bt
+                        )[0]
+                    anchor_logits_flat = ref_logits_bt.view(
+                        -1, ref_logits_bt.size(-1)
+                    )[is_action_bt.view(-1)]
+
                 # Record PICK/PASS advantages across minibatches
                 with torch.no_grad():
                     pick_mask_specific = actions_flat == self.pick_action_index
@@ -1885,8 +1945,13 @@ class PPOAgent:
                     play_idx_tensor_static,
                     search_target_flat,
                     has_search_flat,
+                    anchor_logits_flat=anchor_logits_flat,
                 )
                 last_approx_kl = float(approx_kl_t.item())
+
+                if anchor_active:
+                    anchor_kl_sum += search_distill_metrics["anchor_kl"].item()
+                    anchor_batches += 1
 
                 value_loss_sum += critic_loss.detach().item()
                 value_loss_count += 1
@@ -2042,6 +2107,11 @@ class PPOAgent:
                 / max(search_distill_batches, 1),
                 "pg_masked_fraction": masked_fraction_sum
                 / max(search_distill_batches, 1),
+            },
+            "anchor": {
+                "active": anchor_active,
+                "kl": anchor_kl_sum / max(anchor_batches, 1),
+                "loss": self.anchor_coeff * (anchor_kl_sum / max(anchor_batches, 1)),
             },
             "critic_losses": {
                 "value": self.value_loss_coeff
