@@ -139,3 +139,23 @@ self-h2h ≈0 (unbiased-harness sanity). Real use:
 `Validation_Baseline_Notes.md`. NOTE: do NOT route h2h through
 `play_population_game` (full training game ~2–3 s/game); this uses a bare
 mixed-agent loop (~150 ms/game self-play, which cannot batch).
+
+## Teacher audit (June 2026, post run-2 collapse)
+
+**`teacher_trump_lead_audit.py`** — The Arm-B falsifier: at trick-0 defender-lead
+nodes (trump+fail in hand) on the PRISTINE 30M model, compare the policy prior's
+trump-lead mass vs the production teacher's pi' mass, plus root-Q (best trump vs
+best fail) and the same visit counts re-sharpened at tau ∈ {1.0, 0.5, 0.25}.
+Finding (n=150, two replications): prior mass ~0.005-0.013 → **pi' 0.085-0.095
+(+26 to +28 SE paired)** — yet argmax(pi') leads trump 0-1.3% (= the prior's
+argmax) and the root-Q gap is mildly CORRECT (best-fail > best-trump by ~0.025,
+though inverted at ~35% of nodes). So the injected mass is the exploration
+machinery (FPU=1.0 + root_explore_frac=0.25 + tau_target=1.0), which Q is too
+weak/noisy to starve; forward-KL distillation then teaches the floor — the
+mechanism behind the run-2 leak regression (4.8% → 48.6%). Re-sharpening the
+same counts: tau=0.5 → 1.2% mass, tau=0.25 → 0.03% (near-argmax; risky at root
+ESS ~18). Implications: (1) cheap fix — distill at a separate target
+temperature ~0.5; (2) structural fix — population-grounded rollouts so the
+punishment for information-revealing leads is real; (3) pure self-play search
+is contraindicated (it amplifies the self-model blind spot the Q noise comes
+from).
