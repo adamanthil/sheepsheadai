@@ -127,3 +127,36 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   ALONE 10%, trump-lead ~1% at 10k. The critic re-fit alone does NOT cause the
   onset shock; the play-distill yank was the driver. Anchor restraining force
   engaged (KL grows from 0.004 at start).
+- 2026-06-10 (Arm A COMPLETE, 50k eps): **ALL GATES PASSED.** Final eval
+  (`runs/exit_armA_anchor/final_eval.txt`, 800 games + 1000 h2h): h2h vs
+  frozen baseline **+0.061 ± 0.081 pts/game = statistical parity** (run-2
+  collapsed agent: −1.38 on the same harness). Greedy PICK 31.2% / ALONE 8.6%
+  / leaster 11.1%; per-position pick P1=25%→P5=50% (baseline shape).
+  Post-harness-fix re-measure (see 08dca0b): trick-0 trump-lead **2.3% greedy
+  / 2.1% mass vs baseline 1.4% / 1.3%** — essentially NO leak drift (the
+  11.3% first reported was the double-encode harness artifact). Conclusion:
+  terminal PPO + anchor fully HOLDS the warm start. picker_avg final ~+1.22.
+- 2026-06-10 (Arm B STOPPED at 30k — **GATE FAILED at every probe, hypothesis
+  confirmed**): with the ONLY delta from Arm A being play distillation toward
+  the current teacher (f_play=0.30 additive, ramp at ~60% strength by 30k),
+  greedy trick-0 trump-lead exploded monotonically 9.3% → 29.2% → 43.8% →
+  38.2% → 59.1% → **74.5%** across the six probes, while bidding stayed
+  healthy under the anchor (PICK 30–35%, ALONE 6–10%). Endpoint eval
+  (ckpt 30030000, `runs/exit_armB_distill/final_eval.txt`): h2h **−0.375 ±
+  0.103**, trump mass 51.6% (vs Arm A 2.1%, baseline 1.3%). Killed per the
+  pre-registered 25k no-go; remaining 20k episodes would only have burned
+  compute. NOTE: chasing the probe-vs-eval greedy-rate discrepancy here
+  uncovered the eval-harness double-encode bug (fixed in 08dca0b).
+- **DECISION (matrix row 1): falsifier dirty + Arm A holds + Arm B
+  catastrophically worse.** Population-grounded teacher rollouts are the
+  precondition for play distillation; τ≈0.5 distill-target sharpening is the
+  cheap complementary mitigation to test as B′; pure self-play tree search is
+  contraindicated. The anchor + ramp + greedy guard stay on for all future
+  warm-start runs.
+- 2026-06-10 (Arm A, 35k eps): **25k GATE PASSED.** Greedy probes 5k–35k all
+  in-gate (PICK 30.1–35.5%, ALONE 5.9–11.4%, leaster 7.5–13%, trump-lead
+  0–6.1%). picker_avg RISING: +1.28 → +1.41 → +1.35, above the +1.32
+  warm-start baseline — terminal PPO + anchor is mildly improving picker EV,
+  not just holding it. Anchor KL 0.036 → 0.11: real PG pressure against the
+  bidding anchor; constant coeff caps bidding-head movement (add decay later
+  if Arm A's h2h says bidding is the binding constraint).
