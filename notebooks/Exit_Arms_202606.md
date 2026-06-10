@@ -107,6 +107,24 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   lockstep pool build loses no batching; leaf-parallel rounds group by
   controller. Acceptance audit (n=150, 4 strongest frozen population members)
   pending below.
+- **Population-grounded acceptance audit (n=150, 4 strongest frozen members):
+  NULL RESULT on the pristine model.** pi' trump mass 9.1% (self-play 8.5–9.5%),
+  Q-gap −0.021±0.0073 (self-play −0.025/−0.027), best-Q-trump 41% (35–36%) —
+  statistically indistinguishable. In hindsight the criterion was weak: the
+  pristine pi_theta IS (essentially) a member of the population it was trained
+  with, so the two rollout fields are nearly the same policy and a static
+  audit on the healthy model cannot separate them. Two implications: (1) the
+  trick-0 target poison on the HEALTHY model is target construction (the
+  exploration floor at tau=1.0), not rollout-field identity — the tau=0.5 fix
+  carries that load (B′ tests it end-to-end); (2) population grounding's
+  claimed value is DYNAMIC — pinning the rollout field when pi_theta degrades
+  (the run-1/run-2 ratchet; Diagnostic B showed the collapsed model's teacher
+  follows its own degraded policy down). The sharper falsifier (running): the
+  SAME trump audit on the COLLAPSED run-2 checkpoint both ways. Prediction:
+  the self-play teacher (rollout field = collapsed, trump-leading policy)
+  shows a much weaker/positive Q-gap than the population-grounded teacher
+  (rollout field pinned at 30M strength) — i.e. grounding restores the
+  punishment signal exactly where the ratchet needs it.
 
 ## Status log
 
@@ -176,3 +194,29 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   not just holding it. Anchor KL 0.036 → 0.11: real PG pressure against the
   bidding anchor; constant coeff caps bidding-head movement (add decay later
   if Arm A's h2h says bidding is the binding constraint).
+- 2026-06-10 (RATCHET FALSIFIER, collapsed run-2 ckpt 30585000, n=100 each):
+  **prediction PARTIALLY failed — grounding neutralizes the ratchet push but
+  does NOT restore a strong punishment signal.** Self-play teacher: prior
+  trump mass 0.408 → pi' 0.414, paired delta **+0.0053 ± 0.0018 (+3.0 SE)**
+  — the teacher actively amplifies the collapsed model's leak; Q-gap
+  −0.0073 ± 0.0055 (n.s.), best-Q-trump 44%, ESS 67.7, 0 aborts.
+  Population-grounded teacher: paired delta **+0.0011 ± 0.0022 (+0.5 SE,
+  null)**; Q-gap −0.0105 ± 0.0059, best-Q-trump 39%, argmax correction
+  50%→35%; but **ESS 17.3 with 35/135 ESS-aborts** — the bidding importance
+  weights correctly reject determinizations inconsistent with population
+  behavior once the observer is off-population (an honest extra guard:
+  aborted searches don't distill; also a throughput tax exactly when pi_theta
+  drifts). The predicted Q-gap separation did NOT materialize: 96 iters of
+  search cannot strongly punish trump leads even with healthy rollout
+  opponents — pi' ≈ prior on a collapsed model either way. Reading:
+  **grounding is a stabilizer, not a rescue.** Its measured benefit is
+  removing the teacher's leak-direction push (+3.0 SE → null) on a degraded
+  model; the load-bearing fixes remain prevention (anchor + ramp + greedy
+  gates) and target sharpening (τ=0.5). Arm C (grounded + τ=0.5 + guards)
+  stays the belt-and-braces recipe but grounding should not be sold as able
+  to pull a drifted policy back.
+- 2026-06-10 (B′ early probes, τ=0.5 self-play teacher + guards): 5k: PICK
+  26.9% / ALONE 5.4% / leaster 16.0% / trump-lead 1.16%; 10k: PICK 35.4% /
+  ALONE 8.1% / leaster 7.5% / **trump-lead 0.0%** (Arm B same points: 9.3% →
+  29.2%). picker_avg ~+1.40. τ=0.5 is so far removing the distill-injected
+  floor exactly as the multi-tau audit predicted.
