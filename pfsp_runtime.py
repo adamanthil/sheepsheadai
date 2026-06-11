@@ -1398,8 +1398,13 @@ def run_pfsp_training(
                 if episode <= pick_entropy_bump_until:
                     training_agent.entropy_coeff_pick += hyperparams.pick_entropy_bump
 
-            # Learning rate decay (apply scheduled LRs based on training progress)
-            progress_pct = min(100.0, max(0.0, (episode / num_episodes) * 100.0))
+            # Learning rate decay on the same horizon-aware progress as the
+            # entropy schedules. (Previously episode/num_episodes, which
+            # silently pinned LR at end-stage for any run whose
+            # schedule_horizon_episodes >> num_episodes — caught when the
+            # gen-0 exploiter's "fresh schedule" ran at 5e-5 instead of
+            # 1.5e-4; masked in Arms A/B/B' where both formulas saturate.)
+            progress_pct = get_schedule_progress_pct(episode)
             scheduled_actor_lr = interpolated_weight(
                 hyperparams.lr_schedule_actor, progress_pct
             )
