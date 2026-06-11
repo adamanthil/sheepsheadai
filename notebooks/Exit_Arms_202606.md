@@ -291,3 +291,16 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   (it's an inference-time wrapper on whatever policy ships). The curve was
   still rising at 384; a 768+ arm is the obvious next read if deploy search
   becomes the strength path.
+- 2026-06-11 (VALUE-ADD PROBE, 768-iter arm, 300 paired deals): **the curve
+  saturates at ~384.** +0.107 ± 0.042 pts/deal — statistically identical to
+  384's +0.103 ± 0.050. Deviation rate kept rising (1.3% → 2.4% → 3.3%) but
+  the conditional gain fell (+0.54 → +0.74 → +0.58): the extra deviations
+  bought at 768 are lower-value, so doubling compute past 384 adds ~nothing.
+  (The +0.20 trend at n=100 regressed to the mean — early-sample noise.)
+  ESS-aborts 0.1%. DEPLOY RECOMMENDATION: **~384 iterations is the
+  operating point** — full plateau value (+0.10-0.11 pts/game) at half the
+  latency of 768 (~4-6s/decision uncontended). Full scaling table:
+  96 → +0.042±0.020 | 384 → +0.103±0.050 | 768 → +0.107±0.042. The
+  remaining lever for more deploy strength is search QUALITY (e.g.
+  population/exploiter-grounded rollout fields, better Q resolution), not
+  iteration count.
