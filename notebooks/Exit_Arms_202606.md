@@ -259,3 +259,16 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   (+0.04 pts/game at 6 searches/game, 96 iters). A 384-iter arm (300 deals,
   seed 7) is running to read the iteration-scaling of deviation rate and
   conditional gain. Re-run after exploiter league = the "after" arm.
+- 2026-06-10 (VALUE-ADD PROBE, 384-iter arm, 300 paired deals): **iteration
+  scaling is real and steep.** Paired delta **+0.103 ± 0.050 pts/deal**
+  (2.5x the 96-iter +0.042); deviation rate 2.4% (vs 1.3%); conditional gain
+  +0.74 ± 0.34 (vs +0.54 ± 0.25); ESS-aborts collapsed to 0.2% (vs 2.2% —
+  more iterations also stabilize the determinization weights). So 4x compute
+  bought ~2x deviations × ~1.4x per-deviation quality. Both arms are
+  independently +2.1 SE positive; jointly, decision-time search beating the
+  raw policy is now well-established on this model. Deploy framing: +0.10
+  pts/game at ~6 searched decisions/game, ~4-6s/search uncontended at 384 —
+  viable for human-paced play, and it COMPOSES with any training-side gain
+  (it's an inference-time wrapper on whatever policy ships). The curve was
+  still rising at 384; a 768+ arm is the obvious next read if deploy search
+  becomes the strength path.
