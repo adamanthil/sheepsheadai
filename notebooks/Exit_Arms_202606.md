@@ -304,3 +304,24 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   remaining lever for more deploy strength is search QUALITY (e.g.
   population/exploiter-grounded rollout fields, better Q resolution), not
   iteration count.
+- 2026-06-11 (LEAK-CORRECTION AUDIT at the 384-iter deploy budget,
+  n=150 nodes each; pre-registered: search rescues B′'s leak to ≤2.5%):
+  **prediction FAILED — deploy search does NOT scrub the trump-lead habit.**
+  B′ (the 7.6% leaker): prior argmax 6.0% → π′ argmax **6.7%** (unchanged).
+  Baseline: 0.7% → 0.7% (already at floor; search doesn't add). Q-gap is
+  clearly negative on both (−0.024 ± 0.0035 / −0.022 ± 0.0038, ~6 SE) but
+  best-Q-is-trump still inverts at 30-35% of nodes: the per-node cost of a
+  trump lead (~0.3 pts) sits below search's Q-resolution even at 384 iters,
+  so PUCT defers to the prior at exactly the nodes where the prior is the
+  problem. MECHANISM SUMMARY: deploy search fixes expensive blunders (the
+  +0.103/deal is real) but is structurally blind to cheap argmax habits —
+  search maximizes EV vs its field, and these leads barely cost EV vs this
+  field. Also: at 384 iters the τ=1.0 soft target STILL carries ~10pp
+  exploration-floor trump mass (floor is structural, iteration-independent).
+  PRACTICAL UPSHOT: the shipping candidate (baseline + 384 search) measures
+  **0.7% argmax leak** — no material tell to fix; the leak question is moot
+  unless a B′-style policy ships (it shouldn't: greedy-indistinguishable EV
+  with 10x the leak). If a future policy leaks and must be fixed, the
+  mechanisms are field-grounding-with-punishment (blocked by gen-0: cheap
+  exploiters can't learn the inference) or targeted fine-tuning — not more
+  search iterations.

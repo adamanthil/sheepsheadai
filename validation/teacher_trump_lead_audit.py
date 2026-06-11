@@ -98,6 +98,13 @@ def main():
         "test for notebooks/Population_Grounded_Teacher_Plan.md). Default: pure "
         "self-play teacher (the dirty baseline).",
     )
+    ap.add_argument(
+        "--iters-play",
+        type=int,
+        default=None,
+        help="override play-head search iterations (default: production 96; "
+        "384 = the measured deploy-search operating point)",
+    )
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -113,7 +120,11 @@ def main():
         print(f"Population-grounding teacher from {args.opponents_dir}:")
         opponents = _load_population_opponents(args.opponents_dir, k=4)
 
-    teacher = ISMCTSTeacher(agent, ISMCTSConfig())
+    cfg = ISMCTSConfig()
+    if args.iters_play:
+        cfg.iters = dict(cfg.iters, play=args.iters_play)
+        print(f"Play-head search iterations: {args.iters_play}")
+    teacher = ISMCTSTeacher(agent, cfg)
     det_rng = random.Random(args.seed + 1)
 
     rows = []  # (prior_mass, pi_mass, prior_argmax_trump, pi_argmax_trump, ess)
