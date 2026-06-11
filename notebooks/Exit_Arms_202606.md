@@ -325,3 +325,18 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   mechanisms are field-grounding-with-punishment (blocked by gen-0: cheap
   exploiters can't learn the inference) or targeted fine-tuning — not more
   search iterations.
+- 2026-06-11 (FLIP-RATE AUDIT, Gate-0-style: 50 nodes where B′'s greedy
+  policy LEADS TRUMP, 384 iters): **flip rate 0/50 — search never overrides
+  the bad lead.** π′ mass drops (0.77 → 0.67, −9.9 SE) but the mode holds at
+  100%, and τ-sharpening concentrates BACK onto the trump lead (τ=0.25:
+  0.94). The mechanism, now fully resolved: at the nodes the policy
+  self-selects for trump leads, the root Q-gap is **−0.006 ± 0.004 —
+  essentially zero** (vs −0.024 across all defender leads). The policy leaks
+  exactly where leaking is cheapest vs the field; search's own Q agrees it's
+  ~free (best-Q-is-trump at 44% of these nodes); there is nothing for search
+  to correct IN ITS OBJECTIVE. The residual leak is purely an
+  information-leak-vs-humans concern, invisible to any EV-vs-this-field
+  mechanism — confirming the final disposition: ACCEPT at baseline magnitude
+  (0.7% argmax under the shipped config); revisit only via opponent models
+  that monetize information (which gen-0 showed is not cheaply trainable) or
+  explicit fine-tuning if human play exposes it in practice.
