@@ -259,7 +259,26 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   (+0.04 pts/game at 6 searches/game, 96 iters). A 384-iter arm (300 deals,
   seed 7) is running to read the iteration-scaling of deviation rate and
   conditional gain. Re-run after exploiter league = the "after" arm.
-- 2026-06-10 (VALUE-ADD PROBE, 384-iter arm, 300 paired deals): **iteration
+- 2026-06-10 (PAIRED ENDPOINT COMPARISON, 1500 duplicate deals each, greedy,
+  baseline field — same harness as the value-add probe, so directly
+  comparable): **all three endpoints statistically indistinguishable.**
+  B′ vs Arm A +0.013 ± 0.036; B′ vs baseline +0.018 ± 0.034; Arm A vs
+  baseline +0.005 ± 0.036. B′'s h2h +0.137 (stochastic rotating-seat
+  harness) does NOT survive greedy paired measurement — if B′'s true greedy
+  edge were 0.137 it would have shown at ~4 SE here. Either the h2h gain was
+  noise, or it lives in the stochastic sampling distribution (plausible for
+  forward-KL distillation: it reshapes the soft distribution while moving
+  the argmax at only ~1% of decisions) — and deployment plays greedy or
+  search-wrapped, so the soft-distribution gain is not deployment strength.
+  CONSEQUENCE: **no training intervention has yet moved greedy strength**
+  (50k B′ distillation: +0.018 ± 0.034), while deploy search measured on the
+  SAME harness gives +0.042 (96 iters) and +0.103 (384 iters) per deal —
+  i.e. 384-iter decision-time search is worth ~5x B′'s entire training gain.
+  The "B′ recipe as engine" hypothesis loses its evidentiary support; the
+  decision matrix re-centers on gen-0d/e (league engine) and the 768 probe
+  (deploy-search ceiling). Harness note for all future strength claims:
+  stochastic h2h and greedy paired measurements answer different questions;
+  use the paired-greedy harness for deployment-strength claims.
   scaling is real and steep.** Paired delta **+0.103 ± 0.050 pts/deal**
   (2.5x the 96-iter +0.042); deviation rate 2.4% (vs 1.3%); conditional gain
   +0.74 ± 0.34 (vs +0.54 ± 0.25); ESS-aborts collapsed to 0.2% (vs 2.2% —
