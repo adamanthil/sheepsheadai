@@ -221,6 +221,19 @@ search values in hidden-info multiplayer, which pure self-play would amplify
   29.2%). picker_avg ~+1.40. τ=0.5 is so far removing the distill-injected
   floor exactly as the multi-tau audit predicted. (15k: 6.52%, 25k: 5.21% —
   in-gate but hovering above Arm A's 1-2%; watch the endpoint.)
+- 2026-06-10 (B′ COMPLETE, 50k eps + endpoint eval): **h2h +0.137 ± 0.077 —
+  the best endpoint of any arm** (Arm A +0.061 ± 0.081; both vs the frozen
+  baseline field). Bidding healthy: PICK 31.4%, ALONE 11.9% (at the gate
+  edge), leaster 10.5%, per-position P1=24%→P4=46%. Trump-lead **7.6% greedy /
+  7.5% mass** (baseline 1.4/1.3, Arm A 2.3/2.1): the leak drifted ~5x but
+  stayed bounded — final probe trajectory 2.4/3.3/6.5/4.5 after the single
+  11.1% outlier at 30k. Reading: τ=0.5 play distillation BUYS measurable
+  strength (+0.08 vs Arm A's point estimate, same harness) at the cost of a
+  contained leak. The leak's self-play EV cost appears small (B′ wins h2h
+  DESPITE it) — but it remains a tell a human expert would exploit, which
+  matters for the actual goal. If a future run wants B′'s recipe, pair it
+  with the leak tracer and consider τ between 0.5 and the floor-subtraction
+  variant.
 - 2026-06-10 (B′ 30k probe: **GATE BREACH, trump-lead 11.11%**, n=90, ~1 SE
   over the 8% line). Trajectory 1.16 → 0.0 → 6.52 → 4.04 → 5.21 → 11.11:
   noisy upward drift. Compared at 30k: Arm B 74.5%, B′ 11.1%, Arm A ~2% ⇒
