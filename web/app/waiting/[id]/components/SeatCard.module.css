@@ -1,0 +1,68 @@
+/* ---- Desktop card ---- */
+.card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 168px;
+  justify-content: space-between;
+}
+.cardEmpty {
+  border: 1px dashed var(--rule-strong);
+  border-radius: 4px;
+  background: transparent;
+}
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.name { font-family: var(--font-display); font-size: 20px; color: var(--ink); }
+.emptyLabel {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--muted);
+  font-size: 22px;
+  text-align: center;
+}
+.takeBtn { align-self: stretch; }
+
+/* ---- Mobile row ---- */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--bg-card);
+  width: 100%;
+  text-align: left;
+}
+.rowEmpty {
+  border: 1px dashed var(--rule-strong);
+  background: transparent;
+  cursor: pointer;
+}
+.rowPlus {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1px dashed var(--rule-strong);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 18px;
+  flex-shrink: 0;
+}
+.rowMain { flex: 1; min-width: 0; }
+.rowNameLine { display: flex; align-items: baseline; gap: 6px; }
+.rowName { font-family: var(--font-display); font-size: 19px; color: var(--ink); }
+.rowBadges { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.rowTake {
+  font-family: var(--font-display); font-style: italic;
+  font-size: 16px; color: var(--muted);
+}
+.rowArrow { font-family: var(--font-ui); font-size: 12px; color: var(--ink); letter-spacing: 0.1em; }
