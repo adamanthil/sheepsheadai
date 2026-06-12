@@ -1,0 +1,60 @@
+/* ============================================================
+   Sheepshead AI — global tokens + base
+   Broadsheet theme (newsprint white, ink + forest + single red).
+   Every token NAME is kept so a future theme could override them via a
+   wrapper class; only the broadsheet VALUES live here today.
+   Fonts come from next/font (see app/layout.tsx), exposed as
+   --font-display / --font-ui / --font-mono CSS variables on <html>.
+   ============================================================ */
+
+:root {
+  /* Font stacks fall back gracefully if a next/font variable is missing. */
+  --font-display: var(--font-instrument-serif), 'Times New Roman', serif;
+  --font-ui: var(--font-geist), 'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  --bg-page: #f3f1ea;
+  --bg-page-deep: #e7e4d8;
+  --bg-card: #ffffff;
+  --bg-sunk: #ecebe2;
+  --ink: #0e0d0a;
+  --ink-soft: #2c2b27;
+  --muted: #6e6c63;
+  --rule: #cfccc0;
+  --rule-strong: #a3a094;
+  --accent: #1f3b2f;        /* forest */
+  --accent-soft: #5d7f6c;
+  --accent-2: #b3331e;      /* single red */
+  --accent-2-soft: #d36c52;
+  --gold: #7b6a36;
+  --card-paper: #ffffff;
+  --card-edge: #d5d2c4;
+  --card-red: #b3331e;
+  --card-black: #0e0d0a;
+  --card-back: #1f3b2f;
+  --shadow-1: 0 1px 0 rgba(15,15,12,.04), 0 2px 4px rgba(15,15,12,.05);
+  --shadow-2: 0 2px 6px rgba(15,15,12,.06), 0 18px 36px rgba(15,15,12,.10);
+
+  --density: 1;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Shared pulse used by "your turn" / pending-decision affordances. */
+@keyframes ssPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}

@@ -1,0 +1,74 @@
+/* Playing card (classic style, broadsheet theme). Sized off --pc-w. */
+.pc {
+  position: relative;
+  width: var(--pc-w);
+  height: calc(var(--pc-w) * 1.45);
+  background: var(--card-paper);
+  border: 1px solid var(--card-edge);
+  border-radius: 3px;
+  box-shadow: var(--shadow-1);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  font-family: var(--font-display);
+  color: var(--card-black);
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.red { color: var(--card-red); }
+
+.corner {
+  font-size: calc(var(--pc-w) * 0.16);
+  line-height: 1;
+  padding: calc(var(--pc-w) * 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  font-weight: 500;
+}
+.cornerBr { transform: rotate(180deg); justify-self: end; align-self: end; }
+.rank { font-weight: 500; line-height: 0.9; }
+.suitSm { font-size: calc(var(--pc-w) * 0.12); line-height: 1; }
+.center {
+  align-self: center;
+  justify-self: center;
+  font-size: calc(var(--pc-w) * 0.5);
+  line-height: 1;
+  opacity: 0.92;
+}
+
+.playable {
+  box-shadow: 0 0 0 2px var(--accent-2), var(--shadow-2);
+  transform: translateY(-6px);
+}
+.dim { opacity: 0.45; }
+
+.back {
+  background:
+    repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,0.06) 4px 5px),
+    radial-gradient(ellipse at center, var(--card-back) 0%, color-mix(in oklab, var(--card-back) 70%, black) 100%);
+  border-color: color-mix(in oklab, var(--card-back) 70%, black);
+}
+.back::after {
+  content: '';
+  position: absolute;
+  inset: 8%;
+  border: 1px solid color-mix(in oklab, var(--card-paper) 35%, transparent);
+  border-radius: 4px;
+}
+
+/* "under" placeholder — an inset card with an italic label. */
+.inset {
+  background: var(--bg-sunk);
+  border: 1px dashed var(--rule-strong);
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--muted);
+}
+.insetLabel { font-size: calc(var(--pc-w) * 0.18); }
