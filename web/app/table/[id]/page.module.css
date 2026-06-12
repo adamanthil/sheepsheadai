@@ -22,7 +22,7 @@
 .deskMain {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr clamp(300px, 24vw, 440px);
   min-height: 0;
 }
 .deskPlay {
