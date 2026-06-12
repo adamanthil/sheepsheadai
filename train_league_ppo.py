@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """League trainer: interleaved main/exploiter generations (plan P3).
 
-The slim driver from notebooks/Exploiter_League_Plan_202606.md §3.4 — replaces
-run_pfsp_training for league-based training while reusing its proven game
-primitives (play_population_game, make_game_summary, the per-version weight
-publishing scheme). Per generation:
+The single training driver (notebooks/Exploiter_League_Plan_202606.md §3.4),
+built on the shared game primitives in pfsp_runtime.py (play_population_game,
+make_game_summary) plus its own versioned-weight worker pool. Per generation:
 
   MAIN PHASE:      train the main agent for --main-episodes vs tables drawn by
                    League.sample_table (PFSP past-mains / hot exploiters /
@@ -25,7 +24,7 @@ Bootstrap: point --league-dir at an existing league, or pass --migrate-from
 <old population dir> to ingest a legacy dual population on first run.
 
 Usage:
-  PYTHONPATH=. .venv/bin/python train_league.py \
+  PYTHONPATH=. .venv/bin/python train_league_ppo.py \
       --resume runs/exit_armA_anchor/checkpoints/pfsp_swish_checkpoint_30050000.pt \
       --league-dir runs/league --migrate-from runs/reference_pfsp_ppo/pfsp_population \
       --run-name league_run --generations 3
@@ -51,7 +50,7 @@ import numpy as np
 import torch
 
 from config import PFSPHyperparams
-from league import ROLE_PAST_MAIN, SELF_PLAY, League, LeagueConfig, LeagueMember
+from league import ROLE_PAST_MAIN, SELF_PLAY, League, LeagueConfig
 from pfsp_runtime import interpolated_weight, make_game_summary, play_population_game
 from ppo import PPOAgent
 from sheepshead import ACTIONS
@@ -63,9 +62,8 @@ _SCHED = PFSPHyperparams()  # entropy/LR schedule shapes (shared with legacy dri
 class _Seat:
     """Adapter giving a LeagueMember (or the training agent itself, for
     SELF_PLAY seats) the .agent / .metadata.agent_id surface that
-    play_population_game expects of population opponents. Profile updates are
-    run in capture mode and the captured events discarded — the league keeps
-    no strategic profiles."""
+    play_population_game expects of population opponents. The league keeps no
+    strategic profiles, so this is the whole opponent surface it needs."""
 
     def __init__(self, agent: PPOAgent, agent_id: str):
         self.agent = agent
@@ -149,10 +147,8 @@ def _lw_play(job: _Job) -> dict:
             partner_mode=job.partner_mode,
             training_agent_position=job.training_position,
             reward_mode="terminal",
-            capture_profile_events=True,
         )
     )
-    training_data_single.pop("profile_events", None)  # league keeps no profiles
     return {
         "episode": job.episode,
         "partner_mode": job.partner_mode,
@@ -238,9 +234,7 @@ def run_main_phase(
                 partner_mode=mode,
                 training_agent_position=position,
                 reward_mode="terminal",
-                capture_profile_events=True,
             )
-            tds.pop("profile_events", None)
             yield (
                 episode,
                 mode,

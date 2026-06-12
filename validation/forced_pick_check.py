@@ -27,9 +27,9 @@ is the diagnostic either way.
 Run from the repo root:
   PYTHONPATH=. .venv/bin/python validation/forced_pick_check.py \
       -m runs/pfsp_exit_warmstart/checkpoints/<collapsed>.pt
-  # optional: sample the field from the frozen reference population instead of one model
+  # restrict to hands a sane bidder would pick:
   PYTHONPATH=. .venv/bin/python validation/forced_pick_check.py -m <ckpt> \
-      --opponent-pool runs/reference_pfsp_ppo/pfsp_population --min-hand-strength 7
+      -f final_pfsp_swish_ppo.pt --min-hand-strength 7
 """
 
 from __future__ import annotations
@@ -151,26 +151,6 @@ def make_single_field(field_model, activation):
     return make_field, f"single model: {field_model}"
 
 
-def make_pool_field(pool_dir, activation):
-    """Sample four distinct opponents per deal from a population directory (the frozen
-    reference population). Reseeded identically per agent run, so the same deal draws
-    the same field for challenger and reference (paired)."""
-    from pfsp import PFSPPopulation
-
-    pop = PFSPPopulation(
-        max_population_jd=75, max_population_called_ace=75, population_dir=pool_dir
-    )
-
-    def make_field(mode, pos):
-        opps = [o.agent for o in pop.sample_opponents(partner_mode=mode, n_opponents=4)]
-        seats = [s for s in range(1, 6) if s != pos]
-        mapping = dict(zip(seats, opps))
-        return (lambda seat: mapping[seat]), opps
-
-    n = len(pop.jd_population) + len(pop.called_ace_population)
-    return make_field, f"population pool: {pool_dir} ({n} agents)"
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -190,12 +170,7 @@ def main():
         "-f",
         "--field",
         default="final_pfsp_swish_ppo.pt",
-        help="opponent field model (4 non-picker seats); ignored if --opponent-pool set",
-    )
-    ap.add_argument(
-        "--opponent-pool",
-        default=None,
-        help="population dir to sample the 4-seat field from instead of -f",
+        help="opponent field model (4 non-picker seats)",
     )
     ap.add_argument("--games", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
@@ -214,10 +189,7 @@ def main():
     args = ap.parse_args()
 
     deterministic = not args.stochastic
-    if args.opponent_pool:
-        make_field, field_desc = make_pool_field(args.opponent_pool, args.activation)
-    else:
-        make_field, field_desc = make_single_field(args.field, args.activation)
+    make_field, field_desc = make_single_field(args.field, args.activation)
 
     print("=" * 70)
     print("DIAGNOSTIC A — forced-pick EV (agent always becomes picker)")
