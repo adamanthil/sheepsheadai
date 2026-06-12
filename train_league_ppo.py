@@ -20,14 +20,18 @@ anchor is available (--anchor-coeff) for warm-start safety but defaults OFF:
 without a distillation yank there is nothing it is known to guard against, and
 it caps bidding improvement.
 
-Bootstrap: point --league-dir at an existing league, or pass --migrate-from
-<old population dir> to ingest a legacy dual population on first run.
+Bootstrap an empty league one of three ways: --seed-checkpoints <glob|dir> to
+seed past_mains from PPO checkpoints (e.g. the selfplay snapshots that seeded
+the original pfsp run), --migrate-from <old population dir> to ingest a legacy
+dual population, or neither to cold-start from pure self-play.
 
-Usage:
+Usage (from-scratch reproduction matching the 30M starting point — resume the
+selfplay-100k policy and seed the league from the selfplay snapshots):
   PYTHONPATH=. .venv/bin/python train_league_ppo.py \
-      --resume runs/exit_armA_anchor/checkpoints/pfsp_swish_checkpoint_30050000.pt \
-      --league-dir runs/league --migrate-from runs/reference_pfsp_ppo/pfsp_population \
-      --run-name league_run --generations 3
+      --resume runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt \
+      --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
+      --league-dir runs/repro_league/league --run-name repro_league \
+      --generations 6 --main-episodes 5000000 --schedule-horizon 20000000
 """
 
 from __future__ import annotations
