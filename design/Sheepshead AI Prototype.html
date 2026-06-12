@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sheepshead AI · Linked Prototype</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    html, body { margin: 0; padding: 0; background: #2b2820; height: 100%; overflow: hidden; }
+    *, *::before, *::after { box-sizing: border-box; }
+    #root { width: 100%; height: 100%; }
+    .stage {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .frame {
+      background: var(--bg-page);
+      box-shadow: 0 12px 40px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.20);
+      transform-origin: center center;
+      overflow: hidden;
+      transition: width .25s ease, height .25s ease;
+    }
+    .crumb {
+      position: fixed; top: 16px; left: 16px; z-index: 5;
+      font-family: 'Geist', sans-serif; font-size: 11px;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: #cfc8b8;
+      display: flex; gap: 14px; align-items: center;
+    }
+    .crumb a {
+      color: #aaa395; text-decoration: none;
+      padding: 4px 0; border-bottom: 1px solid transparent;
+    }
+    .crumb a.on { color: #fff; border-bottom-color: #fff; }
+    .crumb a:hover { color: #fff; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="components.jsx"></script>
+  <script type="text/babel" src="page-home.jsx"></script>
+  <script type="text/babel" src="page-waiting.jsx"></script>
+  <script type="text/babel" src="page-table-phases.jsx"></script>
+  <script type="text/babel" src="page-table.jsx"></script>
+  <script type="text/babel">
+    const DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "broadsheet",
+      "viewport": "desktop",
+      "cardStyle": "classic",
+      "density": "comfortable",
+      "phase": "under",
+      "mobileScreen": "table",
+      "handLayout": "fan"
+    }/*EDITMODE-END*/;
+
+    // URL params override the saved tweaks (handy for screenshots/sharing):
+    //   ?viewport=mobile&phase=pick&theme=heirloom ...
+    const URL_OVERRIDES = (() => {
+      const out = {};
+      for (const [k, v] of new URLSearchParams(location.search)) {
+        if (k in DEFAULTS) out[k] = v;
+      }
+      return out;
+    })();
+
+    function Proto() {
+      const [t, setTweak] = useTweaks({ ...DEFAULTS, ...URL_OVERRIDES });
+      const [page, setPage] = React.useState(() => location.hash.replace('#','') || 'home');
+      const [stageSize, setStageSize] = React.useState({ w: 0, h: 0 });
+
+      React.useEffect(() => {
+        const map = { compact: 0.78, comfortable: 1, spacious: 1.18 };
+        document.documentElement.style.setProperty('--density', map[t.density] || 1);
+      }, [t.density]);
+
+      React.useEffect(() => {
+        const onHash = () => setPage(location.hash.replace('#','') || 'home');
+        window.addEventListener('hashchange', onHash);
+        return () => window.removeEventListener('hashchange', onHash);
+      }, []);
+
+      const navigate = (k) => {
+        if (k === 'analyze' || k === 'howto') return;
+        location.hash = k;
+        setPage(k);
+      };
+
+      React.useEffect(() => {
+        const fit = () => setStageSize({ w: window.innerWidth, h: window.innerHeight });
+        fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
+      }, []);
+
+      const W = t.viewport === 'mobile' ? 390 : 1440;
+      const H = t.viewport === 'mobile' ? 780 : 900;
+      const scale = Math.min(1, (stageSize.w - 80) / W, (stageSize.h - 80) / H);
+
+      const isTable = page === 'table' || page === 'table-log';
+      const mobileScreen = page === 'table-log' ? 'log' : (t.mobileScreen || 'table');
+      const Cmp = page === 'waiting' ? WaitingPage : isTable ? TablePage : HomePage;
+
+      return (
+        <>
+          <div className="crumb">
+            <span style={{ color: '#ddd6c4' }}>Sheepshead AI · Prototype</span>
+            <span style={{ color: '#555' }}>·</span>
+            <a className={page === 'home' ? 'on' : ''} href="#home">Home</a>
+            <a className={page === 'waiting' ? 'on' : ''} href="#waiting">Waiting</a>
+            <a className={isTable ? 'on' : ''} href="#table">Table</a>
+          </div>
+          <div className="stage">
+            <div className="frame" style={{ width: W, height: H, transform: `scale(${scale})` }}>
+              <Cmp viewport={t.viewport} navigate={navigate} theme={t.theme} cardStyle={t.cardStyle} phase={t.phase} mobileScreen={mobileScreen} handLayout={t.handLayout} />
+            </div>
+          </div>
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection label="Direction">
+              <TweakRadio label="Theme" value={t.theme} onChange={(v) => setTweak('theme', v)}
+                options={[{value:'heirloom',label:'Heirloom'},{value:'broadsheet',label:'Broadsheet'}]} />
+            </TweakSection>
+            <TweakSection label="Viewport">
+              <TweakRadio label="Size" value={t.viewport} onChange={(v) => setTweak('viewport', v)}
+                options={[{value:'desktop',label:'Desktop'},{value:'mobile',label:'Mobile'}]} />
+            </TweakSection>
+            <TweakSection label="Cards">
+              <TweakRadio label="Style" value={t.cardStyle} onChange={(v) => setTweak('cardStyle', v)}
+                options={[{value:'classic',label:'Classic'},{value:'modern',label:'Modern'}]} />
+              {isTable && (
+                <TweakSelect label="Hand layout" value={t.handLayout} onChange={(v) => setTweak('handLayout', v)}
+                  options={[
+                    {value:'even',  label:'Even · no overlap'},
+                    {value:'fan',   label:'Fan · ~30% overlap'},
+                    {value:'tight', label:'Tight fan · ~55%'},
+                  ]} />
+              )}
+            </TweakSection>
+            {isTable && (
+              <TweakSection label="Table phase">
+                <TweakSelect label="Phase" value={t.phase} onChange={(v) => setTweak('phase', v)}
+                  options={[
+                    {value:'pick',  label:'Pick or pass'},
+                    {value:'bury',  label:'Bury 2 cards'},
+                    {value:'call',  label:'Call partner'},
+                    {value:'trick', label:'Play a trick'},
+                    {value:'under', label:'Play with under'},
+                  ]} />
+              </TweakSection>
+            )}
+            {isTable && t.viewport === 'mobile' && (
+              <TweakSection label="Mobile screen">
+                <TweakRadio label="Screen" value={mobileScreen} onChange={(v) => setTweak('mobileScreen', v)}
+                  options={[{value:'table',label:'Table'},{value:'log',label:'Log & Chat'}]} />
+              </TweakSection>
+            )}
+            <TweakSection label="Layout">
+              <TweakSelect label="Density" value={t.density} onChange={(v) => setTweak('density', v)}
+                options={[{value:'compact',label:'Compact'},{value:'comfortable',label:'Comfortable'},{value:'spacious',label:'Spacious'}]} />
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<Proto />);
+  </script>
+</body>
+</html>

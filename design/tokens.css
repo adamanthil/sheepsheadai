@@ -1,0 +1,286 @@
+/* ============================================================
+   Sheepshead AI — Editorial Light tokens
+   Two themes:
+     .theme-heirloom  → warm cream, paprika+sage, classic cards
+     .theme-broadsheet → newsprint white, ink+forest+single red, modernist cards
+   ============================================================ */
+
+:root {
+  --font-display: 'Instrument Serif', 'Newsreader', 'Times New Roman', serif;
+  --font-ui: 'Geist', 'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Default = heirloom */
+  --bg-page: #f4ecd8;
+  --bg-page-deep: #ede2c6;
+  --bg-card: #fbf5e6;
+  --bg-sunk: #ebe1c4;
+  --ink: #1c170d;
+  --ink-soft: #4d4530;
+  --muted: #8a7f63;
+  --rule: #d4c79e;
+  --rule-strong: #b6a373;
+  --accent: #9c3a1f;        /* paprika */
+  --accent-soft: #cf8a5f;
+  --accent-2: #5d6b3f;      /* sage */
+  --accent-2-soft: #a5b27d;
+  --gold: #b58a3a;
+  --card-paper: #fdf9ec;
+  --card-edge: #c8b988;
+  --card-red: #a93824;
+  --card-black: #1c170d;
+  --card-back: #6d2a1c;
+  --shadow-1: 0 1px 0 rgba(70,55,20,.05), 0 2px 4px rgba(70,55,20,.06);
+  --shadow-2: 0 2px 4px rgba(70,55,20,.08), 0 14px 28px rgba(70,55,20,.10);
+
+  --density: 1;     /* tweakable */
+}
+
+.theme-broadsheet {
+  --bg-page: #f3f1ea;
+  --bg-page-deep: #e7e4d8;
+  --bg-card: #ffffff;
+  --bg-sunk: #ecebe2;
+  --ink: #0e0d0a;
+  --ink-soft: #2c2b27;
+  --muted: #6e6c63;
+  --rule: #cfccc0;
+  --rule-strong: #a3a094;
+  --accent: #1f3b2f;        /* forest */
+  --accent-soft: #5d7f6c;
+  --accent-2: #b3331e;      /* single red */
+  --accent-2-soft: #d36c52;
+  --gold: #7b6a36;
+  --card-paper: #ffffff;
+  --card-edge: #d5d2c4;
+  --card-red: #b3331e;
+  --card-black: #0e0d0a;
+  --card-back: #1f3b2f;
+  --shadow-1: 0 1px 0 rgba(15,15,12,.04), 0 2px 4px rgba(15,15,12,.05);
+  --shadow-2: 0 2px 6px rgba(15,15,12,.06), 0 18px 36px rgba(15,15,12,.10);
+}
+
+/* ============================================================
+   Type primitives
+   ============================================================ */
+
+.ss-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+  color: var(--ink);
+}
+.ss-overline {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--muted);
+}
+.ss-eyebrow {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink-soft);
+}
+.ss-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.ss-body {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* ============================================================
+   Surfaces
+   ============================================================ */
+.ss-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: var(--shadow-1);
+}
+.theme-heirloom .ss-panel { border-radius: 6px; }
+.ss-panel--inset { background: var(--bg-sunk); border: 1px solid var(--rule); }
+.ss-divider { height: 1px; background: var(--rule); width: 100%; }
+.ss-divider-strong { height: 1px; background: var(--rule-strong); width: 100%; }
+
+/* Newspaper masthead rule — thick line over thin line. Put it at the top
+   of a section; pad the content below it. */
+.ss-head-rule { position: relative; border-top: 2px solid var(--ink); }
+.ss-head-rule::after {
+  content: '';
+  position: absolute; top: 3px; left: 0; right: 0;
+  height: 1px; background: var(--ink);
+}
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.ss-btn {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 10px 16px;
+  border-radius: 3px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--bg-page);
+  cursor: pointer;
+  transition: transform .08s ease;
+  white-space: nowrap;
+}
+.ss-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-1); }
+.ss-btn:active { transform: translateY(0); box-shadow: none; }
+.ss-btn:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.ss-btn--ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+}
+.ss-btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--card-paper);
+}
+.ss-btn--lg { padding: 14px 24px; font-size: 14px; }
+.ss-btn--sm { padding: 6px 10px; font-size: 12px; }
+.ss-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* ============================================================
+   Form
+   ============================================================ */
+.ss-input {
+  font-family: var(--font-display);
+  font-size: 22px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule-strong);
+  padding: 8px 2px;
+  color: var(--ink);
+  outline: none;
+  width: 100%;
+}
+.ss-input::placeholder { color: var(--muted); font-style: italic; }
+.ss-input:focus { border-bottom-color: var(--ink); }
+
+/* ============================================================
+   Badges
+   ============================================================ */
+.ss-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 7px 2px;
+  border-radius: 2px;
+  background: var(--bg-sunk);
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.ss-badge--ink { background: var(--ink); color: var(--bg-page); border-color: var(--ink); }
+.ss-badge--accent { background: var(--accent); color: var(--card-paper); border-color: var(--accent); }
+.ss-badge--accent2 { background: var(--accent-2); color: var(--card-paper); border-color: var(--accent-2); }
+.ss-badge--gold { background: var(--gold); color: var(--card-paper); border-color: var(--gold); }
+.ss-badge--quiet { background: transparent; color: var(--muted); border-color: var(--rule); }
+
+/* ============================================================
+   Playing card
+   ============================================================ */
+.pc {
+  position: relative;
+  background: var(--card-paper);
+  border: 1px solid var(--card-edge);
+  border-radius: 6px;
+  box-shadow: var(--shadow-1);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  font-family: var(--font-display);
+  color: var(--card-black);
+  user-select: none;
+  overflow: hidden;
+}
+.theme-broadsheet .pc { border-radius: 3px; font-family: var(--font-ui); }
+.pc--red { color: var(--card-red); }
+.pc__corner {
+  font-size: calc(var(--pc-w) * 0.16);
+  line-height: 1;
+  padding: calc(var(--pc-w) * 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  font-weight: 500;
+}
+.pc__corner--br { transform: rotate(180deg); justify-self: end; align-self: end; }
+.pc__rank { font-weight: 500; line-height: 0.9; }
+.pc__suit-sm { font-size: calc(var(--pc-w) * 0.12); line-height: 1; }
+.pc__center {
+  align-self: center;
+  justify-self: center;
+  font-size: calc(var(--pc-w) * 0.5);
+  line-height: 1;
+  opacity: 0.92;
+}
+.theme-broadsheet .pc__center { font-size: calc(var(--pc-w) * 0.42); }
+
+.pc--playable {
+  box-shadow: 0 0 0 2px var(--accent-2), var(--shadow-2);
+  transform: translateY(-6px);
+}
+.pc--dim { opacity: 0.45; }
+.pc--back {
+  background:
+    repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,0.06) 4px 5px),
+    radial-gradient(ellipse at center, var(--card-back) 0%, color-mix(in oklab, var(--card-back) 70%, black) 100%);
+  border-color: color-mix(in oklab, var(--card-back) 70%, black);
+}
+.pc--back::after {
+  content: '';
+  position: absolute;
+  inset: 8%;
+  border: 1px solid color-mix(in oklab, var(--card-paper) 35%, transparent);
+  border-radius: 4px;
+}
+
+/* Modern card style — single centered suit, sans rank, cleaner */
+.pc--modern { font-family: var(--font-ui); border-radius: 4px; }
+.pc--modern .pc__corner { font-size: calc(var(--pc-w) * 0.14); font-weight: 600; }
+.pc--modern .pc__rank { letter-spacing: -0.02em; }
+.pc--modern .pc__center { font-size: calc(var(--pc-w) * 0.42); }
+
+/* ============================================================
+   Misc layout helpers
+   ============================================================ */
+.ss-row { display: flex; align-items: center; gap: calc(12px * var(--density)); }
+.ss-col { display: flex; flex-direction: column; gap: calc(12px * var(--density)); }
+.ss-grid { display: grid; gap: calc(16px * var(--density)); }
+
+.ss-rule-h {
+  display: flex; align-items: center; gap: 12px;
+  color: var(--muted);
+}
+.ss-rule-h::before, .ss-rule-h::after {
+  content: ''; flex: 1; height: 1px; background: var(--rule);
+}
+
+/* No padding/margin reset for body — design canvas owns layout */
+
+/* Linking anchor styles */
+a.ss-link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+  font-family: var(--font-ui);
+}
+a.ss-link:hover { text-decoration-color: var(--accent); color: var(--accent); }
