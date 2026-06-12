@@ -275,7 +275,7 @@ function MobileStage(props: StageProps) {
                   <div className={styles.mobName}>{seat.name}</div>
                   {roleBadge(seat.role, true)}
                 </div>
-                <div>{seatCardContent(props, seat, 70)}</div>
+                <div>{seatCardContent(props, seat, 78)}</div>
               </div>
             </div>
           );

@@ -121,11 +121,15 @@
 }
 .mobEllipse { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); pointer-events: none; }
 .mobGrid { position: relative; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; height: 100%; }
+/* Each seat is pinned to its grid cell explicitly. CSS Grid otherwise
+   auto-places items in DOM order, but seats arrive in seat order — not
+   corner order — so without explicit placement the alignment (which is
+   keyed to the corner) lands on the wrong cell and the cards scatter. */
 .mobCell { display: flex; }
-.mobCellTL { justify-content: flex-end; align-items: flex-end; padding: 6px 22px 26px 6px; }
-.mobCellTR { justify-content: flex-start; align-items: flex-end; padding: 6px 6px 26px 22px; }
-.mobCellBL { justify-content: flex-end; align-items: flex-start; padding: 26px 22px 6px 6px; }
-.mobCellBR { justify-content: flex-start; align-items: flex-start; padding: 26px 6px 6px 22px; }
+.mobCellTL { grid-column: 1; grid-row: 1; justify-content: flex-end; align-items: flex-end; padding: 6px 22px 26px 6px; }
+.mobCellTR { grid-column: 2; grid-row: 1; justify-content: flex-start; align-items: flex-end; padding: 6px 6px 26px 22px; }
+.mobCellBL { grid-column: 1; grid-row: 2; justify-content: flex-end; align-items: flex-start; padding: 26px 22px 6px 6px; }
+.mobCellBR { grid-column: 2; grid-row: 2; justify-content: flex-start; align-items: flex-start; padding: 26px 6px 6px 22px; }
 .mobSeat { display: flex; align-items: center; gap: 8px; }
 .mobChip { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 48px; }
 .mobName { font-family: var(--font-display); font-size: 13px; line-height: 1; color: var(--ink); text-align: center; }
