@@ -26,13 +26,18 @@ export const metadata = {
   description: 'Play Sheepshead vs AI or friends',
 };
 
+// Disable pinch-zoom so card drag/tap gestures aren't hijacked on mobile.
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const fontVars = `${instrumentSerif.variable} ${geist.variable} ${jetbrainsMono.variable}`;
   return (
     <html lang="en" className={fontVars}>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-      </head>
       <body>{children}</body>
     </html>
   );

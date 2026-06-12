@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import type { TableSummary } from "../lib/types";
 import { API_BASE } from "../lib/apiBase";
 import { STORAGE_KEYS } from "../lib/storage";
+import { ds } from "../lib/ds";
+import MastheadBand from "./components/home/MastheadBand";
+import Strapline from "./components/home/Strapline";
 import styles from "./page.module.css";
 
 const SHIRE_TOWNS = [
@@ -59,6 +62,9 @@ export default function HomePage() {
       const res = await fetch(`${API_BASE}/api/tables`);
       const data = await res.json();
       setTables(data);
+    } catch {
+      // Backend unreachable — show an empty lobby rather than throwing.
+      setTables([]);
     } finally {
       setLoading(false);
     }
@@ -291,118 +297,143 @@ export default function HomePage() {
     }
   };
 
+  const botCount = (t: TableSummary) =>
+    Object.entries(t.seats || {}).reduce((acc, [k, seatName]) => {
+      const isAI = (t.seatIsAI as Record<string, boolean> | undefined)?.[k] ?? false;
+      return acc + (seatName && isAI ? 1 : 0);
+    }, 0);
+
+  const humanFilledCount = (t: TableSummary) =>
+    Object.entries(t.seats || {}).reduce((acc, [k, seatName]) => {
+      const isAI = (t.seatIsAI as Record<string, boolean> | undefined)?.[k] ?? false;
+      return acc + (seatName && !isAI ? 1 : 0);
+    }, 0);
+
   return (
     <div className={styles.page}>
-      <div className={styles.pageContent}>
-        <h1>Sheepshead AI</h1>
-        {error && (
-          <div
-            style={{
-              background: "rgba(255,50,50,0.1)",
-              border: "1px solid rgba(255,50,50,0.3)",
-              borderRadius: "8px",
-              padding: "12px",
-              marginBottom: "16px",
-              color: "white",
-              fontSize: "14px",
-            }}
-          >
-            {error}
+      <div className={styles.grid}>
+        {/* LEFT — hero + create */}
+        <div className={styles.hero}>
+          <MastheadBand />
+
+          <div className={styles.wordmark}>
+            <h1 className={styles.wordmarkTitle}>Sheepshead</h1>
+            <div className={styles.wordmarkRow}>
+              <em className={styles.wordmarkAI}>AI</em>
+              <span className={styles.wordmarkRule} aria-hidden="true" />
+              <Strapline />
+            </div>
           </div>
-        )}
-        <div className={styles.controls}>
-          <input
-            value={name}
-            onChange={(e) => handleTableNameChange(e.target.value)}
-            placeholder="Table name"
-            disabled={creating}
-          />
-          <button
-            onClick={handleCreateClick}
-            disabled={creating || !name.trim() || !displayName.trim()}
-            suppressHydrationWarning
-            style={{
-              opacity: creating ? 0.7 : 1,
-              cursor: creating ? "not-allowed" : "pointer",
-              WebkitTapHighlightColor: "transparent",
-              touchAction: "manipulation",
-            }}
-          >
-            {creating ? "Creating..." : "Create table"}
-          </button>
-          <span className={styles.nameRight}>
-            Your name:{" "}
-            <input
-              value={displayNameInput}
-              placeholder={displayPlaceholder ?? "Your name"}
-              onChange={(e) => setDisplayNameInput(e.target.value)}
-              disabled={creating}
-            />
-          </span>
-        </div>
-        <div className={styles.lobby}>
-          <h2>Lobby</h2>
-          {loading ? (
-            <div>Loading…</div>
-          ) : (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th className={styles.thLeft}>Name</th>
-                  <th>Status</th>
-                  <th>Players</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tables.map((t) => {
-                  const humanFilled = Object.entries(t.seats || {}).reduce(
-                    (acc, [k, name]) => {
-                      const isAI = (t.seatIsAI as any)?.[k] ?? false;
-                      return acc + (name && !isAI ? 1 : 0);
-                    },
-                    0,
-                  );
-                  const canJoin = humanFilled < 5;
-                  return (
-                    <tr key={t.id}>
-                      <td>{t.name}</td>
-                      <td>{t.status}</td>
-                      <td>{humanFilled}/5</td>
-                      <td>
-                        <button onClick={() => join(t.id)} disabled={!canJoin}>
-                          Join
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+
+          <p className={styles.lede}>
+            A five‑handed, trick‑taking game from Wisconsin — played here with
+            friends and an opinionated deep‑learning AI.
+          </p>
+
+          {error && <div className={styles.error}>{error}</div>}
+
+          <div className={styles.startBlock}>
+            <div className={`${ds.headRule} ${styles.startHead}`}>
+              <div className={ds.overline}>Start a Table</div>
+            </div>
+            <div className={styles.formRow}>
+              <div className={styles.field}>
+                <label className={`${ds.overline} ${styles.fieldLabel}`}>Your name</label>
+                <input
+                  className={ds.input}
+                  value={displayNameInput}
+                  placeholder={displayPlaceholder ?? "Your name"}
+                  onChange={(e) => setDisplayNameInput(e.target.value)}
+                  disabled={creating}
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={`${ds.overline} ${styles.fieldLabel}`}>Table name</label>
+                <input
+                  className={ds.input}
+                  value={name}
+                  placeholder="Table name"
+                  onChange={(e) => handleTableNameChange(e.target.value)}
+                  disabled={creating}
+                />
+              </div>
+            </div>
+            <div className={styles.createRow}>
+              <button
+                className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg}`}
+                onClick={handleCreateClick}
+                disabled={creating || !name.trim() || !displayName.trim()}
+                suppressHydrationWarning
+                style={{ touchAction: "manipulation" }}
+              >
+                {creating ? "Creating…" : "Create table →"}
+              </button>
+              <span className={styles.createHint}>or join an open table</span>
+            </div>
+          </div>
         </div>
 
-        <div
-          style={{
-            textAlign: "center",
-            marginTop: "3rem",
-            paddingTop: "2rem",
-            borderTop: "1px solid #e2e8f0",
-          }}
-        >
-          <a
-            href="/analyze"
-            style={{
-              color: "#64748b",
-              fontSize: "0.875rem",
-              textDecoration: "none",
-              transition: "color 0.2s ease",
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.color = "#3b82f6")}
-            onMouseOut={(e) => (e.currentTarget.style.color = "#64748b")}
-          >
-            🧠 Analyze AI model decisions
-          </a>
+        {/* RIGHT — lobby */}
+        <div className={styles.lobby}>
+          <div className={`${ds.headRule} ${styles.lobbyHead}`}>
+            <h2 className={styles.lobbyTitle}>The Lobby</h2>
+            <div className={ds.overline}>{tables.length} tables · live</div>
+          </div>
+
+          <div className={styles.colHead}>
+            <div className={ds.overline}>Name</div>
+            <div className={ds.overline}>Players</div>
+            <div className={`${ds.overline} ${styles.colHeadRight}`}>Action</div>
+          </div>
+
+          <div className={styles.rows}>
+            {loading ? (
+              <div className={styles.empty}>Loading…</div>
+            ) : tables.length === 0 ? (
+              <div className={styles.empty}>No open tables yet — start one.</div>
+            ) : (
+              tables.map((t) => {
+                const humanFilled = humanFilledCount(t);
+                const bots = botCount(t);
+                const canJoin = humanFilled < 5;
+                const playing = t.status === "playing";
+                return (
+                  <div key={t.id} className={styles.row}>
+                    <div>
+                      <div className={styles.tableName}>{t.name}</div>
+                      {(playing || bots > 0) && (
+                        <div className={styles.tableSub}>
+                          {[playing ? "in play" : null, bots > 0 ? `${bots} AI` : null]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                    <div className={styles.players}>
+                      {humanFilled}
+                      <span className={styles.playersOf}>/5</span>
+                    </div>
+                    <div className={styles.rowAction}>
+                      {canJoin ? (
+                        <button className={`${ds.btn} ${ds.btnSm}`} onClick={() => join(t.id)}>
+                          Join →
+                        </button>
+                      ) : (
+                        <span className={`${ds.badge} ${ds.badgeQuiet}`}>Full</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className={styles.lobbyFooter}>
+            <a className={ds.link} href="/analyze" style={{ fontSize: 13 }}>
+              Inspect AI model decisions ↗
+            </a>
+            <div className={styles.version}>v0.7 · Jun 2026</div>
+          </div>
         </div>
       </div>
     </div>
