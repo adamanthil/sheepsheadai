@@ -1,0 +1,17 @@
+.rail {
+  border-left: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.scores {
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--rule);
+  flex-shrink: 0;
+}
+.chat {
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  display: flex;
+}

@@ -1,8 +1,10 @@
-export { default as TrickArea } from './TrickArea';
-export { default as TrickCard } from './TrickCard';
+export { default as TableHeader } from './TableHeader';
+export { default as Stage } from './Stage';
 export { default as PlayerHand } from './PlayerHand';
-export { default as BottomActionBar } from './BottomActionBar';
+export { default as ActionBar } from './ActionBar';
+export { default as RightRail } from './RightRail';
+export { default as MobileLogScreen } from './MobileLogScreen';
+export { default as Scoreboard } from './Scoreboard';
 export { default as GameOverBanner } from './GameOverBanner';
 export { default as ScoresOverlay } from './ScoresOverlay';
 export { default as CollectOverlay } from './CollectOverlay';
-

@@ -1,0 +1,35 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+}
+.deskWrap { flex: 1; min-height: 0; justify-content: flex-end; padding-top: 12px; padding-bottom: 8px; }
+.mobWrap { padding: 10px 12px 8px; flex-shrink: 0; }
+
+.metaRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.metaText {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fan {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-top: 18px;
+  padding-bottom: 12px;
+}
+.cardSlot {
+  position: relative;
+}
+.clickable { cursor: pointer; }

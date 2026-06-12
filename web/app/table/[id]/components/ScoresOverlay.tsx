@@ -1,6 +1,7 @@
 import React from 'react';
 import type { TableView, HandResult } from '../../../../lib/types';
-import styles from '../page.module.css';
+import { ds } from '../../../../lib/ds';
+import styles from './ScoresOverlay.module.css';
 
 interface ScoresOverlayProps {
   onClose: () => void;
@@ -57,7 +58,7 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
             <strong>Running totals</strong>
           </div>
           <div className={styles.mlAuto}>
-            <button onClick={onClose}>Close</button>
+            <button className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`} onClick={onClose}>Close</button>
           </div>
         </div>
         <div className={styles.scoresBody}>

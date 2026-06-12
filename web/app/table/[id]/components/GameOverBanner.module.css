@@ -1,0 +1,42 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, var(--ink) 28%, transparent);
+  padding: 20px;
+}
+.banner {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: var(--shadow-2);
+  padding: 28px 32px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 90dvh;
+  overflow: auto;
+}
+.header { font-family: var(--font-display); font-size: 34px; margin-bottom: 6px; }
+.sub { font-family: var(--font-ui); font-size: 14px; color: var(--ink-soft); margin-bottom: 4px; }
+.sub strong { color: var(--ink); }
+
+.scoresGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin: 14px 0;
+}
+.scoreCell {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 8px 6px;
+  text-align: center;
+}
+.scoreName { font-family: var(--font-ui); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scoreValue { font-family: var(--font-mono); font-size: 20px; color: var(--ink); margin-top: 2px; }
+.gridLabel { font-family: var(--font-ui); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
+
+.buttons { display: flex; gap: 10px; margin-top: 18px; }

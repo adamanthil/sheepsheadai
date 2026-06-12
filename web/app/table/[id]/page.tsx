@@ -1,40 +1,88 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import { STORAGE_KEYS } from '../../../lib/storage';
+import { useIsMobile, parseCard } from '../../../lib/ds';
 import styles from './page.module.css';
-import { nameForSeat } from './utils';
-import { useTableSocket, useResponsive, useTrickAnimation, useCallout } from './hooks';
-import {
-  TrickArea,
-  PlayerHand,
-  BottomActionBar,
-  GameOverBanner,
-  ScoresOverlay,
-} from './components';
-import { ChatPanel } from '../../components/chat';
+import { nameForSeat, isAiSeat } from './utils/seatMath';
+import { relSeat } from './lib/seatLayout';
+import { derivePhase, getSeatRole, playStarted as playStartedFn, interludeMode } from './lib/phase';
+import { useTableSocket, useTrickAnimation, useCallout } from './hooks';
+import GameOverBanner from './components/GameOverBanner';
+import ScoresOverlay from './components/ScoresOverlay';
+import TableHeader from './components/TableHeader';
+import Stage, { type SeatView, type CallOption } from './components/Stage';
+import PlayerHand from './components/PlayerHand';
+import ActionBar from './components/ActionBar';
+import RightRail from './components/RightRail';
+import MobileLogScreen from './components/MobileLogScreen';
 
-type PlayerStatus = 'PASS' | 'PICK' | 'PICKER' | 'PENDING' | 'PARTNER' | null;
+const TOTAL_TRICKS = 6;
+
+const PHASE_LABEL = {
+  pick: 'Pick or pass',
+  bury: 'Bury 2 cards',
+  call: 'Call partner',
+  setup: 'Setting up',
+  play: 'Play a card',
+  done: 'Hand over',
+} as const;
+
+const HELPER = {
+  pick: 'Pick the blind, or pass the buck.',
+  bury: 'Tap two cards to bury.',
+  call: 'Choose your partner ace, or go alone.',
+  play: 'Tap a highlighted card to play.',
+  setup: 'Setting up the hand…',
+  done: 'Hand complete.',
+} as const;
+
+function rulesBadgeText(rules: Record<string, unknown> | undefined): string | null {
+  if (!rules) return null;
+  const partner = rules.partnerMode === 0 ? 'Jack of Diamonds' : 'Called Ace';
+  const scoring = rules.doubleOnTheBump ? 'Double on Bump' : 'Symmetric';
+  return `${partner} · ${scoring}`;
+}
+
+const SUIT_NAME: Record<string, string> = { C: 'Clubs', S: 'Spades', H: 'Hearts', D: 'Diamonds' };
+
+function buildCallOptions(validActions: number[], actionLookup: Record<string, string>): CallOption[] {
+  const out: CallOption[] = [];
+  for (const aid of validActions) {
+    const label = actionLookup[String(aid)];
+    if (!label) continue;
+    if (label.startsWith('CALL ')) {
+      const rest = label.slice(5); // e.g. "AC" or "AC UNDER"
+      const [code, ...mods] = rest.split(' ');
+      const { rank, suit } = parseCard(code);
+      const under = mods.includes('UNDER');
+      const display = suit ? `${rank === 'A' ? 'Ace' : rank} of ${SUIT_NAME[suit] ?? suit}${under ? ' (under)' : ''}` : label;
+      out.push({ actionId: aid, label, code, display });
+    } else if (label === 'ALONE') {
+      out.push({ actionId: aid, label, code: null, display: 'Go alone' });
+    } else if (label.startsWith('JD')) {
+      out.push({ actionId: aid, label, code: null, display: 'Jack of Diamonds' });
+    }
+  }
+  return out;
+}
 
 export default function TablePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const isMobile = useIsMobile();
+  const trickBoxRef = useRef<HTMLDivElement>(null);
   const [clientId, setClientId] = useState<string>('');
 
-  // Hydrate client_id from localStorage rather than the URL.
   useEffect(() => {
     if (typeof window === 'undefined' || !params?.id) return;
     const stored = window.localStorage.getItem(STORAGE_KEYS.clientId(params.id));
-    if (stored) {
-      setClientId(stored);
-    } else {
-      router.replace('/');
-    }
+    if (stored) setClientId(stored);
+    else router.replace('/');
   }, [params?.id, router]);
 
-  // Custom hooks for grouped state management
   const { showPrev, animTrick, triggerCollect, setShowPrev } = useTrickAnimation();
   const { callout, showCallout } = useCallout();
 
@@ -46,57 +94,22 @@ export default function TablePage() {
       onPickerAnnounced: (name) => showCallout('PICK', `${name} picked`),
       onLeaster: () => showCallout('LEASTER', 'All passed · Leaster'),
       onAlone: (name) => showCallout('ALONE', `${name} goes alone`),
-      onCall: (name, cardDisplay, under) =>
-        showCallout('CALL', `${name} calls ${cardDisplay}${under ? ' under' : ''}`),
+      onCall: (name, cardDisplay, under) => showCallout('CALL', `${name} calls ${cardDisplay}${under ? ' under' : ''}`),
       onTableClosed: () => showCallout('PICK', 'Table closed', 1200),
       onLobbyEvent: (msg) => showCallout('PICK', msg),
     }
   );
 
-  // Get hand card count for responsive sizing
-  const cardCount = lastState?.view?.hand?.length || 6;
-  const {
-    isMobile,
-    handSize,
-    centerSize,
-    handTopMargin,
-    handRowRef,
-    trickBoxRef,
-  } = useResponsive(cardCount);
-
-  // Local UI state (minimal)
   const [showScores, setShowScores] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [showMobileLog, setShowMobileLog] = useState(false);
 
-  // Derived state
-  const isYourTurn = useMemo(
-    () => lastState?.actorSeat === lastState?.yourSeat,
-    [lastState?.actorSeat, lastState?.yourSeat]
-  );
-
+  const isYourTurn = lastState?.actorSeat === lastState?.yourSeat;
   const isHost = lastState?.isHost ?? false;
 
-  const inPickDecision = useMemo(
-    () => !!lastState && !lastState.view.is_leaster && lastState.view.picker === 0,
-    [lastState]
-  );
-
-  const playStarted = useMemo(() => {
-    if (!lastState) return false;
-    if (lastState.state?.play_started === 1) return true;
-    if (lastState.view.current_trick_index > 0) return true;
-    const picker = lastState.view.picker || 0;
-    if (picker > 0) {
-      const ct = lastState.view.current_trick as string[] | undefined;
-      if (ct && ct.some((c: string) => c !== '')) return true;
-    }
-    return false;
-  }, [lastState]);
-
-  // Build set of valid action strings for card clicking
   const validActionStrings = useMemo(() => {
-    if (!lastState) return new Set<string>();
     const s = new Set<string>();
+    if (!lastState) return s;
     for (const id of lastState.valid_actions) {
       const label = actionLookup[String(id)];
       if (label) s.add(label);
@@ -104,7 +117,6 @@ export default function TablePage() {
     return s;
   }, [lastState, actionLookup]);
 
-  // Map action label to ID
   const actionIdByString = useMemo(() => {
     const m: Record<string, number> = {};
     Object.entries(actionLookup).forEach(([id, label]) => {
@@ -114,143 +126,199 @@ export default function TablePage() {
     return m;
   }, [actionLookup]);
 
-  // Get displayed status for a seat
-  const getPlayerStatus = useCallback(
-    (absSeat: number): PlayerStatus => {
-      if (!lastState) return null;
-
-      const picker = lastState.view.picker || 0;
-      const partner = lastState.view.partner || 0;
-      const actorSeat = lastState.actorSeat;
-
-      if (playStarted) {
-        if (absSeat === picker) return 'PICKER';
-        if (absSeat === partner) return 'PARTNER';
-        return null;
+  const handleCardClick = useCallback((card: string) => {
+    if (!isYourTurn || !card) return;
+    for (const lbl of [`PLAY ${card}`, `BURY ${card}`, `UNDER ${card}`]) {
+      if (validActionStrings.has(lbl)) {
+        const id = actionIdByString[lbl];
+        if (id !== undefined) { void takeAction(id); return; }
       }
+    }
+  }, [isYourTurn, validActionStrings, actionIdByString, takeAction]);
 
-      if (picker > 0) {
-        if (absSeat === picker) return 'PICK';
-        if (absSeat < picker) return 'PASS';
-        return null;
-      }
+  if (!lastState) {
+    return (
+      <div className={styles.root}>
+        <div className={styles.waiting}>Waiting for state…</div>
+      </div>
+    );
+  }
 
-      if (!inPickDecision) return null;
-      if (actorSeat && absSeat === actorSeat) return 'PENDING';
-      if (actorSeat && absSeat < actorSeat) return 'PASS';
-      return null;
-    },
-    [lastState, playStarted, inPickDecision]
+  const view = lastState.view;
+  const table = lastState.table;
+  const yourSeat = lastState.yourSeat;
+  const started = playStartedFn(lastState);
+  const { phase, isLeaster } = derivePhase(lastState);
+  const yourMode = interludeMode(validActionStrings);
+
+  // The "kind" used for labels/helper text.
+  const kind: keyof typeof PHASE_LABEL =
+    phase === 'pick' ? 'pick'
+    : phase === 'play' ? 'play'
+    : phase === 'done' ? 'done'
+    : yourMode === 'bury' ? 'bury'
+    : yourMode === 'call' ? 'call'
+    : 'setup';
+
+  const seats: SeatView[] = [1, 2, 3, 4, 5].map((absSeat) => ({
+    absSeat,
+    rel: relSeat(absSeat, yourSeat),
+    name: nameForSeat(absSeat, table),
+    isAI: isAiSeat(absSeat, table),
+    role: getSeatRole(lastState, absSeat, started),
+    you: absSeat === yourSeat,
+  }));
+
+  const displayCards = showPrev && view.last_trick ? view.last_trick : view.current_trick;
+  const winnerSeat = showPrev ? view.last_trick_winner : null;
+  const callOptions = buildCallOptions(lastState.valid_actions, actionLookup);
+  const handNumber = (table.resultsHistory?.length ?? 0) + 1;
+  const rulesBadge = rulesBadgeText(table.rules);
+  const hasLastTrick = view.last_trick?.length === 5;
+  const prevText = showPrev && hasLastTrick
+    ? `Trick to ${nameForSeat(view.last_trick_winner, table)} · ${view.last_trick_points ?? 0} pts`
+    : null;
+
+  const lastMessage = chatMessages.length ? chatMessages[chatMessages.length - 1].body : 'Hand in progress';
+
+  const stage = (
+    <Stage
+      seats={seats}
+      yourSeat={yourSeat}
+      phase={phase}
+      isLeaster={isLeaster}
+      yourMode={yourMode}
+      isYourTurn={isYourTurn}
+      handLen={view.hand.length}
+      trickIndex={view.current_trick_index}
+      totalTricks={TOTAL_TRICKS}
+      displayCards={displayCards}
+      winnerSeat={winnerSeat}
+      showPrev={showPrev}
+      prevText={prevText}
+      callOptions={callOptions}
+      selectedCall={null}
+      onAction={takeAction}
+      isMobile={isMobile}
+      trickBoxRef={trickBoxRef}
+      animTrick={animTrick}
+      callout={callout?.message ?? null}
+    />
   );
 
-  // Handle card click (play/bury/under)
-  const handleCardClick = useCallback(
-    (card: string) => {
-      if (!isYourTurn || !card) return;
-      const candidates = [`PLAY ${card}`, `BURY ${card}`, `UNDER ${card}`];
-      for (const lbl of candidates) {
-        if (validActionStrings.has(lbl)) {
-          const id = actionIdByString[lbl];
-          if (id !== undefined) {
-            void takeAction(id);
-            return;
-          }
-        }
-      }
-    },
-    [isYourTurn, validActionStrings, actionIdByString, takeAction]
+  const hand = (
+    <PlayerHand
+      hand={view.hand}
+      isYourTurn={isYourTurn}
+      phase={phase}
+      yourMode={yourMode}
+      validActionStrings={validActionStrings}
+      onCardClick={handleCardClick}
+      isMobile={isMobile}
+    />
   );
 
+  const actionBar = (
+    <ActionBar
+      yourName={nameForSeat(yourSeat, table)}
+      yourSeat={yourSeat}
+      isYourTurn={isYourTurn}
+      actorName={nameForSeat(lastState.actorSeat, table)}
+      helper={HELPER[kind]}
+      validActions={lastState.valid_actions}
+      actionLookup={actionLookup}
+      onTakeAction={takeAction}
+      hasLastTrick={hasLastTrick}
+      showPrev={showPrev}
+      onTogglePrev={() => setShowPrev(!showPrev)}
+      onShowScores={() => setShowScores(true)}
+      isHost={isHost}
+      confirmClose={confirmClose}
+      onConfirmClose={setConfirmClose}
+      onCloseTable={closeTable}
+      isMobile={isMobile}
+    />
+  );
 
+  const overlays = (
+    <>
+      {view.is_done && view.final && (
+        <GameOverBanner final={view.final} table={table} onRedeal={redeal} onShowScores={() => setShowScores(true)} />
+      )}
+      {showScores && <ScoresOverlay table={table} onClose={() => setShowScores(false)} />}
+    </>
+  );
+
+  // ---------- Mobile ----------
+  if (isMobile) {
+    if (showMobileLog) {
+      return (
+        <div className={styles.root}>
+          <MobileLogScreen
+            table={table}
+            yourSeat={yourSeat}
+            chatMessages={chatMessages}
+            onSendMessage={sendChatMessage}
+            onClose={() => setShowMobileLog(false)}
+          />
+          {overlays}
+        </div>
+      );
+    }
+    return (
+      <div className={styles.root}>
+        <TableHeader
+          roomName={table.name}
+          rulesBadge={rulesBadge}
+          handNumber={handNumber}
+          phaseLabel={PHASE_LABEL[kind]}
+          connected={connected}
+          isMobile
+          onLeave={() => router.push('/')}
+          onShowScores={() => setShowScores(true)}
+        />
+        <div className={styles.mobBody}>
+          {stage}
+          <div className={styles.ribbon} onClick={() => setShowMobileLog(true)}>
+            <span className={styles.ribbonTag}>Last</span>
+            <span className={styles.ribbonLast}>{lastMessage}</span>
+            <span className={styles.ribbonLink}>Log &amp; Chat ↗</span>
+          </div>
+          {hand}
+          {actionBar}
+        </div>
+        {overlays}
+      </div>
+    );
+  }
+
+  // ---------- Desktop ----------
   return (
     <div className={styles.root}>
-      <div className={styles.wrap}>
-        {!lastState ? (
-          <div className={styles.waitingMessage}>Waiting for state…</div>
-        ) : (
-          <div className={styles.tableArea}>
-            <div className={styles.tableFrame}>
-              <div
-                className={styles.connectionIndicator}
-                role="status"
-                aria-live="polite"
-                aria-label={connected ? 'Connected' : 'Disconnected'}
-              >
-                <span
-                  className={`${styles.connectionIndicatorDot} ${
-                    connected
-                      ? styles.connectionIndicatorDotConnected
-                      : styles.connectionIndicatorDotDisconnected
-                  }`}
-                />
-              </div>
-              <TrickArea
-                cards={lastState.view.current_trick}
-                yourSeat={lastState.yourSeat}
-                table={lastState.table}
-                showPrev={showPrev}
-                lastTrick={lastState.view.last_trick}
-                lastTrickWinner={lastState.view.last_trick_winner}
-                lastTrickPoints={lastState.view.last_trick_points}
-                animTrick={animTrick}
-                callout={callout}
-                centerSize={centerSize}
-                trickBoxRef={trickBoxRef}
-                getPlayerStatus={getPlayerStatus}
-              />
-
-              <PlayerHand
-                hand={lastState.view.hand}
-                handSize={handSize}
-                handTopMargin={handTopMargin}
-                handRowRef={handRowRef}
-                isYourTurn={isYourTurn}
-                validActionStrings={validActionStrings}
-                onCardClick={handleCardClick}
-                userStatus={getPlayerStatus(lastState.yourSeat)}
-              />
-
-              {lastState.view.is_done && lastState.view.final && (
-                <GameOverBanner
-                  final={lastState.view.final}
-                  table={lastState.table}
-                  onRedeal={redeal}
-                  onShowScores={() => setShowScores(true)}
-                />
-              )}
-            </div>
-
-            <div className={styles.chatSection}>
-              <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
-            </div>
-          </div>
-        )}
+      <TableHeader
+        roomName={table.name}
+        rulesBadge={rulesBadge}
+        handNumber={handNumber}
+        phaseLabel={PHASE_LABEL[kind]}
+        connected={connected}
+        isMobile={false}
+        onLeave={() => router.push('/')}
+        onShowScores={() => setShowScores(true)}
+      />
+      <div className={styles.deskMain}>
+        <div className={styles.deskPlay}>
+          <span
+            className={`${styles.connDot} ${connected ? styles.connOk : styles.connBad}`}
+            role="status"
+            aria-label={connected ? 'Connected' : 'Disconnected'}
+          />
+          {stage}
+          {hand}
+          {actionBar}
+        </div>
+        <RightRail table={table} yourSeat={yourSeat} chatMessages={chatMessages} onSendMessage={sendChatMessage} />
       </div>
-
-      {lastState && (
-        <BottomActionBar
-          yourSeat={lastState.yourSeat}
-          actorSeat={lastState.actorSeat}
-          table={lastState.table}
-          isMobile={isMobile}
-          isYourTurn={isYourTurn}
-          validActions={lastState.valid_actions}
-          actionLookup={actionLookup}
-          showPrev={showPrev}
-          hasLastTrick={!!(lastState.view.last_trick?.length === 5)}
-          isHost={isHost}
-          confirmClose={confirmClose}
-          onTogglePrev={() => setShowPrev(!showPrev)}
-          onShowScores={() => setShowScores(true)}
-          onCloseTable={closeTable}
-          onConfirmClose={setConfirmClose}
-          onTakeAction={takeAction}
-        />
-      )}
-
-      {lastState && showScores && (
-        <ScoresOverlay onClose={() => setShowScores(false)} table={lastState.table} />
-      )}
+      {overlays}
     </div>
   );
 }
