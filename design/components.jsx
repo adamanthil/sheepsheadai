@@ -51,27 +51,39 @@ function C(code, props = {}) {
   return <PlayingCard {...parseCard(code)} {...props} />;
 }
 
-// ─── Brand mark — a miniature Q♣ playing card ──────────────
-// (Queen of Clubs is the highest trump in Sheepshead — the crown of the
-// deck.) Rendering it as an actual tiny card, slightly tilted, keeps the
-// brand mark cohesive with the cards on the table.
-function MiniCardMark({ h = 24, rot = -8 }) {
+// ─── Brand mark — three fanned miniature cards ──────────────
+// Q♣ (highest trump) · J♦ (the partner card) · A♥ (a fail ace) — the
+// same trio as the home masthead, fanned like a held hand so the
+// collapsed headers stay cohesive with the hero and the table.
+function MiniCardMark({ h = 24 }) {
   const w = Math.max(12, Math.round(h / 1.45));
+  const overlap = Math.round(w * 0.55);
+  const cards = [
+    { rank: 'Q', sym: '♣', red: false, rot: -12 },
+    { rank: 'J', sym: '♦', red: true,  rot: 0 },
+    { rank: 'A', sym: '♥', red: true,  rot: 12 },
+  ];
   return (
-    <span aria-hidden="true" style={{
-      width: w, height: h, flexShrink: 0,
-      background: 'var(--card-paper)',
-      border: '1px solid var(--card-edge)',
-      borderRadius: Math.max(2, Math.round(h * 0.09)),
-      boxShadow: 'var(--shadow-1)',
-      transform: `rotate(${rot}deg)`,
-      display: 'inline-flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      lineHeight: 1, fontFamily: 'var(--font-display)',
-      color: 'var(--card-black)',
-    }}>
-      <span style={{ fontSize: Math.round(h * 0.34), lineHeight: 1 }}>Q</span>
-      <span style={{ fontSize: Math.round(h * 0.3), lineHeight: 1, marginTop: 1 }}>♣</span>
+    <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0 }}>
+      {cards.map((c, i) => (
+        <span key={c.sym} style={{
+          width: w, height: h,
+          marginLeft: i === 0 ? 0 : -overlap,
+          background: 'var(--card-paper)',
+          border: '1px solid var(--card-edge)',
+          borderRadius: Math.max(2, Math.round(h * 0.09)),
+          boxShadow: 'var(--shadow-1)',
+          transform: `rotate(${c.rot}deg)`,
+          transformOrigin: '50% 120%',
+          display: 'inline-flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1, fontFamily: 'var(--font-display)',
+          color: c.red ? 'var(--card-red)' : 'var(--card-black)',
+        }}>
+          <span style={{ fontSize: Math.round(h * 0.34), lineHeight: 1 }}>{c.rank}</span>
+          <span style={{ fontSize: Math.round(h * 0.3), lineHeight: 1, marginTop: 1 }}>{c.sym}</span>
+        </span>
+      ))}
     </span>
   );
 }
