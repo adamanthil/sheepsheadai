@@ -1,6 +1,13 @@
 # Broadsheet UI Migration — Implementation Plan
 
-Status: in progress · June 2026 · Owner: Andrew
+Status: implemented (branch `ui-broadsheet-migration`) · June 2026 · Owner: Andrew
+
+> Implemented June 2026 across 5 commits (Phase 0 foundation → Phase 4 cleanup).
+> Home, Waiting, and Table (desktop + mobile) rebuilt on the broadsheet design;
+> verified against the live server. Deferred items unchanged (see §7): the
+> hand-history timeline, per-seat ready state, "Led" marker, and How-to-play
+> page still need server work, and `/analyze` remains on the old card components
+> until it gets its own broadsheet pass.
 
 ## 1. Context
 
