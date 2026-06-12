@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import copy
 import csv
+import glob
 import json
 import os
 import random
@@ -524,11 +525,44 @@ def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
         return json.load(f)
 
 
+def _seed_league_from_checkpoints(league: League, spec: str, activation: str) -> None:
+    """Seed an empty league with PPO checkpoints as past_mains. ``spec`` is a
+    glob (``.../*.pt``) or a directory (all ``*.pt`` within). Mirrors how the
+    original pfsp run bootstrapped its population from the selfplay snapshots."""
+    paths = (
+        sorted(glob.glob(spec))
+        if any(c in spec for c in "*?[")
+        else sorted(glob.glob(os.path.join(spec, "*.pt")))
+    )
+    if not paths:
+        raise SystemExit(f"--seed-checkpoints matched no .pt files: {spec}")
+    for p in paths:
+        agent = PPOAgent(len(ACTIONS), activation=activation)
+        agent.load(p, load_optimizers=False)
+        episodes = 0
+        if "checkpoint_" in p:
+            try:
+                episodes = int(os.path.basename(p).split("_")[-1].split(".")[0])
+            except ValueError:
+                episodes = 0
+        league.add_member(
+            agent, ROLE_PAST_MAIN, training_episodes=episodes, activation=activation
+        )
+    print(f"🌱 Seeded league with {len(paths)} checkpoints as past_mains")
+
+
 def main():
     ap = argparse.ArgumentParser(description="League training (main/exploiter generations)")
     ap.add_argument("--resume", required=True, help="main agent checkpoint to start from")
     ap.add_argument("--league-dir", required=True)
     ap.add_argument("--migrate-from", default=None, help="legacy population dir (used once if league empty)")
+    ap.add_argument(
+        "--seed-checkpoints",
+        default=None,
+        help="glob or dir of PPO checkpoints to seed an empty league as "
+        "past_mains (e.g. the selfplay bootstrap snapshots that seeded the "
+        "original pfsp run: 'runs/reference_selfplay_ppo/checkpoints/*.pt')",
+    )
     ap.add_argument("--run-name", default="league_run")
     ap.add_argument("--generations", type=int, default=3)
     ap.add_argument("--main-episodes", type=int, default=100_000)
@@ -560,8 +594,13 @@ def main():
     if len(league) == 0 and args.migrate_from:
         print(f"🏗️  Empty league; migrating legacy population from {args.migrate_from}")
         league = League.migrate_legacy(args.migrate_from, args.league_dir)
+    if len(league) == 0 and args.seed_checkpoints:
+        _seed_league_from_checkpoints(league, args.seed_checkpoints, args.activation)
     if len(league) == 0:
-        raise SystemExit("league is empty: provide --migrate-from or pre-seed members")
+        print(
+            "⚠️  Empty league: bootstrapping from pure self-play until past_main "
+            f"snapshots accumulate (first at +{args.snapshot_interval:,} episodes)."
+        )
     print(league.summary())
 
     training_agent = PPOAgent(len(ACTIONS), activation=args.activation)
