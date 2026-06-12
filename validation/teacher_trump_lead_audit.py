@@ -105,6 +105,14 @@ def main():
         help="override play-head search iterations (default: production 96; "
         "384 = the measured deploy-search operating point)",
     )
+    ap.add_argument(
+        "--only-leak-nodes",
+        action="store_true",
+        help="audit ONLY nodes where the policy's greedy argmax is a trump "
+        "lead (Gate-0-style targeted sampling): measures the deploy-relevant "
+        "FLIP RATE — how often search overrides a bad lead — with full power, "
+        "instead of diluting leak nodes across all defender leads",
+    )
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -163,11 +171,22 @@ def main():
                         and any(c not in TRUMP for c in player.hand)
                     )
                     if is_t0_def_lead and len(rows) < args.nodes:
+                        saved_mem = {
+                            pid: t.detach().clone()
+                            for pid, t in agent._player_memories.items()
+                        }
                         probs, _ = agent.get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
+                        agent._player_memories = saved_mem
                         prior = probs[0].detach().cpu().numpy()
                         prior_mass = _trump_mass(prior, valid)
+                        if args.only_leak_nodes:
+                            pa = max(valid, key=lambda a: prior[a - 1])
+                            n_ = ACTIONS[pa - 1]
+                            if not (n_.startswith("PLAY ") and n_[5:] in TRUMP):
+                                is_t0_def_lead = False
+                    if is_t0_def_lead and len(rows) < args.nodes:
                         # Production rollout depth at trick 0 (t_full=1 path):
                         # roll to terminal, as the training loop does.
                         seat_policies = (
