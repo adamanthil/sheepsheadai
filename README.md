@@ -131,10 +131,11 @@ npm run typecheck  # TypeScript type check (tsc --noEmit)
 
 ## Training the AI
 
-The trainers share a common runtime (`pfsp_runtime.py`) and hyperparameters
-(`config.py`). All generated artifacts for a population run — checkpoints, the
-final model, plots, CSVs, and the per-run opponent population — are written under
-`runs/<run-name>/` (gitignored).
+Training has two stages — a self-play bootstrap followed by league-based PPO.
+Both build on the shared game primitives in `pfsp_runtime.py` and the
+hyperparameters in `config.py`. All artifacts for a run — checkpoints, the final
+model, plots, CSVs, and the league roster — are written under `runs/<run-name>/`
+(gitignored).
 
 ### Step 1 — Self-play PPO (bootstrap)
 
@@ -146,22 +147,31 @@ population. Defaults to 100k episodes and writes periodic snapshots under
 uv run train_selfplay_ppo.py --episodes 100000
 ```
 
-### Step 2 — Population-based PFSP (shaped baseline)
+### Step 2 — League PPO
 
-PFSP trains one agent against a diverse population of opponents ranked by
-OpenSkill. The usual practice is to **seed the initial population from the
-self-play snapshots** produced in step 1, via `--initial-checkpoints` (a glob of
-checkpoint files):
+`train_league_ppo.py` is the main trainer: one agent improves under a
+terminal-reward PPO objective against a **league** of its own past snapshots
+plus, optionally, best-response *exploiters*. The usual practice is to **resume
+the policy from the final self-play checkpoint and seed the initial league from
+the self-play snapshots** produced in step 1 (`--resume` for the weights,
+`--seed-checkpoints` for the opponent roster), matching that starting point:
 
 ```bash
-uv run train_pfsp_ppo.py \
-  --initial-checkpoints "runs/selfplay_ppo/swish_checkpoint_*.pt" \
-  --run-name pfsp_ppo
+uv run train_league_ppo.py \
+  --resume runs/selfplay_ppo/swish_checkpoint_100000.pt \
+  --seed-checkpoints "runs/selfplay_ppo/swish_checkpoint_*.pt" \
+  --league-dir runs/league_ppo/league --run-name league_ppo \
+  --generations 6 --main-episodes 5000000
 ```
 
-Artifacts (checkpoints, `final_swish.pt`, plots, CSVs, and the growing
-population) are written under `runs/pfsp_ppo/`. Pass `--population-dir` to reuse
-an existing seeded pool, or `--resume <model.pt>` to continue a run.
+Each generation trains the main agent against league tables (past-main
+snapshots, hot exploiters, and self-play seats), then trains and gates a
+best-response exploiter, appending its measured edge to `exploitability.csv` —
+the empirical-exploitability trend that certifies the run. Artifacts go under
+`runs/league_ppo/`. Instead of `--seed-checkpoints`, pass `--migrate-from
+<legacy population dir>` to ingest an old PFSP population, or neither to
+cold-start the league from pure self-play. Pass `--resume <checkpoint>` pointing
+at a later checkpoint to continue an interrupted run.
 
 ---
 
