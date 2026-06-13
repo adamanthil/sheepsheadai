@@ -221,7 +221,10 @@ class League:
         past_mains up to ``max_past_mains``."""
         current_gen = max((m.meta.generation for m in self.members), default=-1)
         for m in self.by_role(ROLE_MAIN_EXPLOITER):
-            old = current_gen - m.meta.generation >= self.config.exploiter_retire_generations
+            old = (
+                current_gen - m.meta.generation
+                >= self.config.exploiter_retire_generations
+            )
             cold = m.exploitation_win_rate_ema < self.config.exploiter_retire_ema
             if old and cold:
                 m.meta.role = ROLE_PAST_MAIN
@@ -398,7 +401,11 @@ class League:
                 continue
             opp_avg = team_avg[pos]
             result = (
-                1.0 if opp_avg > training_avg else 0.0 if opp_avg < training_avg else 0.5
+                1.0
+                if opp_avg > training_avg
+                else 0.0
+                if opp_avg < training_avg
+                else 0.5
             )
             member.record_vs_training_outcome(result)
         return training_rating
@@ -545,7 +552,9 @@ class League:
             skill = max(mu for mu, _ in e["ratings"].values())
             role = (
                 ROLE_HOF_ANCHOR
-                if hof_cutoff and skill >= hof_cutoff[-1] and len(league.by_role(ROLE_HOF_ANCHOR)) < config.hof_quota
+                if hof_cutoff
+                and skill >= hof_cutoff[-1]
+                and len(league.by_role(ROLE_HOF_ANCHOR)) < config.hof_quota
                 else ROLE_PAST_MAIN
             )
             member_id = f"legacy_{data.get('agent_id', 'unknown')}"

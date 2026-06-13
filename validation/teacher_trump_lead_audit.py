@@ -70,7 +70,10 @@ def _load_population_opponents(pop_dir: str, k: int = 4):
             with open(mf) as f:
                 meta = json.load(f)
             candidates.append(
-                (int(meta.get("training_episodes", 0)), mf[: -len("_metadata.json")] + ".pt")
+                (
+                    int(meta.get("training_episodes", 0)),
+                    mf[: -len("_metadata.json")] + ".pt",
+                )
             )
     candidates.sort(reverse=True)
     agents = []
@@ -193,9 +196,7 @@ def main():
                             {
                                 s: opponents[i]
                                 for i, s in enumerate(
-                                    x
-                                    for x in range(1, 6)
-                                    if x != player.position
+                                    x for x in range(1, 6) if x != player.position
                                 )
                             }
                             if opponents
@@ -213,9 +214,7 @@ def main():
                             pi = np.asarray(res["pi"], dtype=np.float64)
                             pi_mass = _trump_mass(pi, valid)
                             valid_arr = list(valid)
-                            prior_argmax = max(
-                                valid_arr, key=lambda a: prior[a - 1]
-                            )
+                            prior_argmax = max(valid_arr, key=lambda a: prior[a - 1])
                             pi_argmax = max(valid_arr, key=lambda a: pi[a - 1])
 
                             def _is_trump_action(a):
@@ -236,8 +235,7 @@ def main():
                                 for t in taus:
                                     w = np.array(
                                         [
-                                            max(root_n.get(a, 0.0), 0.0)
-                                            ** (1.0 / t)
+                                            max(root_n.get(a, 0.0), 0.0) ** (1.0 / t)
                                             for a in valid_arr
                                         ]
                                     )
@@ -266,9 +264,7 @@ def main():
                             ]
                             if tq and fq:
                                 q_gaps.append(max(tq) - max(fq))
-                                q_best_trump.append(
-                                    1.0 if max(tq) > max(fq) else 0.0
-                                )
+                                q_best_trump.append(1.0 if max(tq) > max(fq) else 0.0)
                             done = len(rows)
                             if done % 25 == 0:
                                 print(
@@ -313,13 +309,19 @@ def main():
         f"{games} games, ESS-aborts {aborted})"
     )
     print("=" * 72)
-    print(f"  policy prior trump mass:  {prior_m.mean():.4f} +/- {prior_m.std(ddof=1) / np.sqrt(n):.4f}")
-    print(f"  teacher pi'  trump mass:  {pi_m.mean():.4f} +/- {pi_m.std(ddof=1) / np.sqrt(n):.4f}")
+    print(
+        f"  policy prior trump mass:  {prior_m.mean():.4f} +/- {prior_m.std(ddof=1) / np.sqrt(n):.4f}"
+    )
+    print(
+        f"  teacher pi'  trump mass:  {pi_m.mean():.4f} +/- {pi_m.std(ddof=1) / np.sqrt(n):.4f}"
+    )
     print(
         f"  paired delta (pi'-prior): {delta.mean():+.4f} +/- {delta.std(ddof=1) / np.sqrt(n):.4f}"
         f"  ({delta.mean() / (delta.std(ddof=1) / np.sqrt(n)):+.1f} SE)"
     )
-    print(f"  argmax leads trump:       prior {100 * prior_argmax_trump.mean():.1f}%  ->  pi' {100 * pi_argmax_trump.mean():.1f}%")
+    print(
+        f"  argmax leads trump:       prior {100 * prior_argmax_trump.mean():.1f}%  ->  pi' {100 * pi_argmax_trump.mean():.1f}%"
+    )
     print(f"  mean root ESS:            {ess.mean():.1f}")
     if q_gaps:
         qg = np.array(q_gaps)

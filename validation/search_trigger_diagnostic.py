@@ -87,7 +87,9 @@ def _load(model: str) -> PPOAgent:
     return a
 
 
-def _policy_features(probs: np.ndarray, valid: list[int]) -> tuple[int, float, float, float]:
+def _policy_features(
+    probs: np.ndarray, valid: list[int]
+) -> tuple[int, float, float, float]:
     """(policy_argmax, margin=p1-p2, entropy over legal, top1 prob)."""
     ps = np.array([probs[a - 1] for a in valid], dtype=np.float64)
     order = np.argsort(ps)[::-1]
@@ -176,7 +178,9 @@ def _run_deal(deal_seed, mode, seat, agent, field, teacher, det_rng, rows, deal_
                 if game.was_trick_just_completed:
                     for p in game.players:
                         ctrl = agent if p.position == seat else field
-                        ctrl.observe(p.get_last_trick_state_dict(), player_id=p.position)
+                        ctrl.observe(
+                            p.get_last_trick_state_dict(), player_id=p.position
+                        )
 
     return float(game.players[seat - 1].get_score())
 
@@ -222,22 +226,24 @@ def analyze(rows, iters_play, elapsed=None):
     print(f"SELECTIVE-SEARCH TRIGGER DIAGNOSTIC  (iters_play={iters_play})")
     print("=" * 74)
     print(
-        f"  deals {n_deals} | PLAY decisions {n_play} ({n_play / max(n_deals,1):.1f}/deal)"
+        f"  deals {n_deals} | PLAY decisions {n_play} ({n_play / max(n_deals, 1):.1f}/deal)"
         + (f" | {elapsed:.0f}s" if elapsed else "")
     )
     print(
         f"  forced (1 legal, free skip): {len(forced)} "
-        f"({100 * len(forced) / max(n_play,1):.1f}%)  ->  "
-        f"searchable nodes: {len(unforced)} ({100 * len(unforced) / max(n_play,1):.1f}%)"
+        f"({100 * len(forced) / max(n_play, 1):.1f}%)  ->  "
+        f"searchable nodes: {len(unforced)} ({100 * len(unforced) / max(n_play, 1):.1f}%)"
     )
     print(
         f"  deviations: {len(dev)} "
-        f"({100 * len(dev) / max(len(searched),1):.1f}% of searched)  |  "
-        f"total q_gap EV: {total_q / max(n_deals,1):+.4f} pts/deal "
+        f"({100 * len(dev) / max(len(searched), 1):.1f}% of searched)  |  "
+        f"total q_gap EV: {total_q / max(n_deals, 1):+.4f} pts/deal "
         f"(search self-assessed)"
     )
     if total_q <= 0:
-        print("  total q_gap <= 0: no positive search EV to concentrate at this budget.")
+        print(
+            "  total q_gap <= 0: no positive search EV to concentrate at this budget."
+        )
         return
 
     budgets = [0.02, 0.05, 0.10, 0.15, 0.20, 0.30, 0.50, 1.00]

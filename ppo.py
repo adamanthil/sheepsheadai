@@ -1907,9 +1907,9 @@ class PPOAgent:
                         ref_logits_bt = self._anchor_agent._forward_vectorized(
                             states_bt, masks_bt, lengths_bt
                         )[0]
-                    anchor_logits_flat = ref_logits_bt.view(
-                        -1, ref_logits_bt.size(-1)
-                    )[is_action_bt.view(-1)]
+                    anchor_logits_flat = ref_logits_bt.view(-1, ref_logits_bt.size(-1))[
+                        is_action_bt.view(-1)
+                    ]
 
                 # Record PICK/PASS advantages across minibatches
                 with torch.no_grad():

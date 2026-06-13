@@ -167,8 +167,12 @@ def main() -> None:
     )
     ap.add_argument("-a", "--model-a", required=True, help="path to checkpoint A")
     ap.add_argument("-b", "--model-b", required=True, help="path to checkpoint B")
-    ap.add_argument("--games", type=int, default=400, help="number of games (default 400)")
-    ap.add_argument("--seed", type=int, default=1000, help="base RNG seed (default 1000)")
+    ap.add_argument(
+        "--games", type=int, default=400, help="number of games (default 400)"
+    )
+    ap.add_argument(
+        "--seed", type=int, default=1000, help="base RNG seed (default 1000)"
+    )
     ap.add_argument(
         "--activation",
         default="swish",
@@ -221,7 +225,11 @@ def main() -> None:
 
     if args.json:
         with open(args.json, "w") as f:
-            json.dump({"model_a": args.model_a, "model_b": args.model_b, **result}, f, indent=2)
+            json.dump(
+                {"model_a": args.model_a, "model_b": args.model_b, **result},
+                f,
+                indent=2,
+            )
         print(f"\nwrote summary -> {args.json}")
 
 

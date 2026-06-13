@@ -375,9 +375,7 @@ def run_main_phase(
                     publish_weights()
                 if stats:
                     eps_s = (episode - start_episode) / max(time.time() - t0, 1e-9)
-                    picker_avg = (
-                        float(np.mean(picker_scores)) if picker_scores else 0.0
-                    )
+                    picker_avg = float(np.mean(picker_scores)) if picker_scores else 0.0
                     anchor = stats.get("anchor", {})
                     anchor_str = (
                         f"  anchor_kl={anchor.get('kl', 0.0):.4f}"
@@ -556,10 +554,18 @@ def _seed_league_from_checkpoints(league: League, spec: str, activation: str) ->
 
 
 def main():
-    ap = argparse.ArgumentParser(description="League training (main/exploiter generations)")
-    ap.add_argument("--resume", required=True, help="main agent checkpoint to start from")
+    ap = argparse.ArgumentParser(
+        description="League training (main/exploiter generations)"
+    )
+    ap.add_argument(
+        "--resume", required=True, help="main agent checkpoint to start from"
+    )
     ap.add_argument("--league-dir", required=True)
-    ap.add_argument("--migrate-from", default=None, help="legacy population dir (used once if league empty)")
+    ap.add_argument(
+        "--migrate-from",
+        default=None,
+        help="legacy population dir (used once if league empty)",
+    )
     ap.add_argument(
         "--seed-checkpoints",
         default=None,
@@ -625,11 +631,18 @@ def main():
 
     episode = start_episode
     for g in range(args.start_generation, args.start_generation + args.generations):
-        print(f"\n{'=' * 70}\n🏁 GENERATION {g}: main phase "
-              f"({args.main_episodes:,} episodes from {episode:,})\n{'=' * 70}")
+        print(
+            f"\n{'=' * 70}\n🏁 GENERATION {g}: main phase "
+            f"({args.main_episodes:,} episodes from {episode:,})\n{'=' * 70}"
+        )
         episode = run_main_phase(
-            training_agent, league, training_ratings, args, episode,
-            args.main_episodes, checkpoint_dir,
+            training_agent,
+            league,
+            training_ratings,
+            args,
+            episode,
+            args.main_episodes,
+            checkpoint_dir,
         )
         main_ckpt = os.path.join(
             checkpoint_dir, f"pfsp_{args.activation}_checkpoint_{episode}.pt"
@@ -643,12 +656,26 @@ def main():
             w = csv.writer(f)
             if write_header:
                 w.writerow(
-                    ["generation", "main_episode", "edge", "se", "win_frac",
-                     "passed", "exploiter_ckpt"]
+                    [
+                        "generation",
+                        "main_episode",
+                        "edge",
+                        "se",
+                        "win_frac",
+                        "passed",
+                        "exploiter_ckpt",
+                    ]
                 )
             w.writerow(
-                [g, episode, f"{gate['edge']:.4f}", f"{gate['se']:.4f}",
-                 f"{gate['win_frac']:.3f}", gate["passed"], gate["exploiter_ckpt"]]
+                [
+                    g,
+                    episode,
+                    f"{gate['edge']:.4f}",
+                    f"{gate['se']:.4f}",
+                    f"{gate['win_frac']:.3f}",
+                    gate["passed"],
+                    gate["exploiter_ckpt"],
+                ]
             )
         print(
             f"📊 Exploitability gen {g}: edge {gate['edge']:+.3f} ± {gate['se']:.3f} "

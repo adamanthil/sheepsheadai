@@ -907,9 +907,7 @@ def test_greedy_health_probe_side_effect_free():
     a = _fresh_agent()
     a.reset_recurrent_state()
     rng_before = random.getstate()
-    mem_before = {
-        pid: t.detach().clone() for pid, t in a._player_memories.items()
-    }
+    mem_before = {pid: t.detach().clone() for pid, t in a._player_memories.items()}
     probe = greedy_health_probe(a, n_games=2, seed=7)
     assert random.getstate() == rng_before, "probe must restore the random state"
     assert set(a._player_memories.keys()) == set(mem_before.keys())

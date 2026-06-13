@@ -102,15 +102,24 @@ class TestLeagueRoster(unittest.TestCase):
         cfg = LeagueConfig(exploiter_retire_generations=2, exploiter_retire_ema=0.5)
         league = League(self.dir, cfg)
         old = league.add_member(
-            _agent(1), ROLE_MAIN_EXPLOITER, training_episodes=0, generation=1,
+            _agent(1),
+            ROLE_MAIN_EXPLOITER,
+            training_episodes=0,
+            generation=1,
             initial_ema=0.45,
         )
         hot = league.add_member(
-            _agent(2), ROLE_MAIN_EXPLOITER, training_episodes=0, generation=1,
+            _agent(2),
+            ROLE_MAIN_EXPLOITER,
+            training_episodes=0,
+            generation=1,
             initial_ema=0.70,
         )
         league.add_member(
-            _agent(3), ROLE_MAIN_EXPLOITER, training_episodes=0, generation=3,
+            _agent(3),
+            ROLE_MAIN_EXPLOITER,
+            training_episodes=0,
+            generation=3,
             initial_ema=0.60,
         )
         self.assertEqual(league.get(old).role, ROLE_PAST_MAIN)  # old AND cold
@@ -147,7 +156,10 @@ class TestSampling(unittest.TestCase):
     def test_mixture_shares_and_cap(self):
         # EMA 0.70 => (0.70-0.50)/0.20 = 1.0 => full cap
         self.league.add_member(
-            _agent(60), ROLE_MAIN_EXPLOITER, training_episodes=0, generation=1,
+            _agent(60),
+            ROLE_MAIN_EXPLOITER,
+            training_episodes=0,
+            generation=1,
             initial_ema=0.70,
         )
         self.assertAlmostEqual(self.league.exploiter_share(), 0.30, places=6)
@@ -215,9 +227,7 @@ class TestRatings(unittest.TestCase):
         )
         self.assertLess(new_tr.mu, tr.mu)  # training lost
         for pos in (3, 4, 5):  # defenders won
-            self.assertGreater(
-                self.opps[pos].rating(PARTNER_BY_JD).mu, mu_before[pos]
-            )
+            self.assertGreater(self.opps[pos].rating(PARTNER_BY_JD).mu, mu_before[pos])
             # ...and their exploitation EMA rose above neutral
             self.assertGreater(self.opps[pos].exploitation_win_rate_ema, 0.5)
         # The training agent's partner: rating moved with the picker team
@@ -303,12 +313,22 @@ class TestMigration(unittest.TestCase):
         for i in range(3):
             ag = _agent(i)
             self._write_legacy(
-                "jd_agents", f"0_{1000 + i}_{i}", ag, 0, (i + 1) * 1000,
-                mu=20.0 + i * 5, created=t0 + i,
+                "jd_agents",
+                f"0_{1000 + i}_{i}",
+                ag,
+                0,
+                (i + 1) * 1000,
+                mu=20.0 + i * 5,
+                created=t0 + i,
             )
             self._write_legacy(
-                "called_ace_agents", f"1_{1000 + i}_{i}", ag, 1, (i + 1) * 1000,
-                mu=22.0 + i * 5, created=t0 + i,
+                "called_ace_agents",
+                f"1_{1000 + i}_{i}",
+                ag,
+                1,
+                (i + 1) * 1000,
+                mu=22.0 + i * 5,
+                created=t0 + i,
             )
         cfg = LeagueConfig(hof_quota=1, protect_newest=1)
         league = League.migrate_legacy(self.old, self.new, cfg, keep_top_k=3)
@@ -333,8 +353,13 @@ class TestMigration(unittest.TestCase):
         for i in range(5):
             ag = _agent(i + 10)
             self._write_legacy(
-                "jd_agents", f"0_{2000 + i}_{i}", ag, 0, (i + 1) * 1000,
-                mu=40.0 - i * 5, created=t0 + i,
+                "jd_agents",
+                f"0_{2000 + i}_{i}",
+                ag,
+                0,
+                (i + 1) * 1000,
+                mu=40.0 - i * 5,
+                created=t0 + i,
             )
         cfg = LeagueConfig(hof_quota=1, protect_newest=1)
         league = League.migrate_legacy(self.old, self.new, cfg, keep_top_k=3)
