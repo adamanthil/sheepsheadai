@@ -1,3 +1,2 @@
-export { ChatPanel } from './ChatPanel';
-export type { ChatMessage } from './ChatPanel';
-
+export { ChatPanel } from "./ChatPanel";
+export type { ChatMessage } from "./ChatPanel";

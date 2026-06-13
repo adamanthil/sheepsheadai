@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from "react";
 
-export type CalloutKind = 'PICK' | 'CALL' | 'LEASTER' | 'ALONE';
+export type CalloutKind = "PICK" | "CALL" | "LEASTER" | "ALONE";
 
 export interface Callout {
   kind: CalloutKind;
@@ -25,20 +25,22 @@ export function useCallout(): UseCalloutReturn {
     setCallout(null);
   }, []);
 
-  const showCallout = useCallback((kind: CalloutKind, message: string, duration = 1800) => {
-    // Clear any existing timer
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
+  const showCallout = useCallback(
+    (kind: CalloutKind, message: string, duration = 1800) => {
+      // Clear any existing timer
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
 
-    setCallout({ kind, message });
+      setCallout({ kind, message });
 
-    timerRef.current = setTimeout(() => {
-      setCallout(null);
-      timerRef.current = null;
-    }, duration);
-  }, []);
+      timerRef.current = setTimeout(() => {
+        setCallout(null);
+        timerRef.current = null;
+      }, duration);
+    },
+    [],
+  );
 
   return { callout, showCallout, clearCallout };
 }
-

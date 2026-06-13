@@ -34,7 +34,9 @@
   border-radius: 16px;
   padding: 2rem;
   margin-bottom: 2rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid #e2e8f0;
 }
 
@@ -82,7 +84,9 @@
   accent-color: #3b82f6;
 }
 
-.select, .input, .checkbox {
+.select,
+.input,
+.checkbox {
   padding: 0.75rem;
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -90,7 +94,8 @@
   transition: all 0.2s ease;
 }
 
-.select:focus, .input:focus {
+.select:focus,
+.input:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
@@ -176,7 +181,9 @@
 .resultsPanel {
   background: white;
   border-radius: 16px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid #e2e8f0;
   overflow: hidden;
 }
@@ -318,7 +325,12 @@
 
 .metricChip {
   --chip-bg: hsl(var(--value-hue, 0), 60%, 97%);
-  border: 1px solid color-mix(in oklab, hsl(var(--value-hue, 0), 85%, 50%) 30%, rgba(0,0,0,0.06));
+  border: 1px solid
+    color-mix(
+      in oklab,
+      hsl(var(--value-hue, 0), 85%, 50%) 30%,
+      rgba(0, 0, 0, 0.06)
+    );
   background: var(--chip-bg);
   border-radius: 8px;
   padding: 4px 6px;
@@ -750,7 +762,9 @@
   font-size: 0.75rem;
   width: 60px;
   display: inline-block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   margin-left: 10px;
   transition: color 120ms ease;
   font-variant-numeric: tabular-nums;
@@ -817,7 +831,9 @@
   border-bottom: 1px solid #e5e7eb;
   border-right: 1px solid #e5e7eb;
 }
-.stateVectorHead th:last-child { border-right: none; }
+.stateVectorHead th:last-child {
+  border-right: none;
+}
 
 .stateVectorCell,
 .stateVectorIndex,
@@ -829,7 +845,9 @@
   border: 1px solid #e5e7eb;
   vertical-align: top;
 }
-.stateVectorTable td:last-child { border-right: none; }
+.stateVectorTable td:last-child {
+  border-right: none;
+}
 
 .stateVectorIndex {
   font-variant-numeric: tabular-nums;
@@ -840,7 +858,7 @@
 
 .stateVectorValue {
   font-variant-numeric: tabular-nums;
-  font-family: 'Monaco', 'Consolas', monospace;
+  font-family: "Monaco", "Consolas", monospace;
   color: #111827;
   min-width: 72px;
 }
@@ -890,8 +908,12 @@
 }
 
 /* Group separators */
-.subGroupStart td { border-top: 2px solid #cbd5e1; }
-.catGroupStart td { border-top: 3px solid #94a3b8; }
+.subGroupStart td {
+  border-top: 2px solid #cbd5e1;
+}
+.catGroupStart td {
+  border-top: 3px solid #94a3b8;
+}
 
 .subGroupDim td {
   color: #9ca3af;
@@ -917,8 +939,12 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Game Summary */
@@ -1062,7 +1088,12 @@
 .phaseDividerLine {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, #9ca3af 50%, transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #9ca3af 50%,
+    transparent 100%
+  );
 }
 
 .phaseDividerLabel {
@@ -1089,7 +1120,12 @@
 .trickDividerLine {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #e2e8f0 50%,
+    transparent 100%
+  );
 }
 
 .trickDividerLabel {

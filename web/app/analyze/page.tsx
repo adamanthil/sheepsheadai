@@ -1,29 +1,37 @@
 "use client";
 
-import React, { useState } from 'react';
-import { AnalyzeSimulateRequest, AnalyzeSimulateResponse, AnalyzeGameSummary } from '../../lib/analyzeTypes';
-import ActionTimeline from './ActionTimeline';
-import GameSummary from './GameSummary';
-import styles from './page.module.css';
+import React, { useState } from "react";
+import {
+  AnalyzeSimulateRequest,
+  AnalyzeSimulateResponse,
+  AnalyzeGameSummary,
+} from "../../lib/analyzeTypes";
+import ActionTimeline from "./ActionTimeline";
+import GameSummary from "./GameSummary";
+import styles from "./page.module.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || (() => {
-  if (typeof window === 'undefined') return 'http://localhost:9000';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ||
+  (() => {
+    if (typeof window === "undefined") return "http://localhost:9000";
 
-  // Use the same hostname as the frontend, but with backend port
-  const hostname = window.location.hostname;
-  const protocol = window.location.protocol;
-  return `${protocol}//${hostname}:9000`;
-})();
+    // Use the same hostname as the frontend, but with backend port
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    return `${protocol}//${hostname}:9000`;
+  })();
 
 export default function AnalyzePage() {
   // Form state
   const [partnerMode, setPartnerMode] = useState<number>(1);
   const [deterministic, setDeterministic] = useState<boolean>(true);
-  const [seed, setSeed] = useState<string>('');
+  const [seed, setSeed] = useState<string>("");
   const [shapingWeightPercent, setShapingWeightPercent] = useState<number>(100);
 
   // Results state
-  const [response, setResponse] = useState<AnalyzeSimulateResponse | null>(null);
+  const [response, setResponse] = useState<AnalyzeSimulateResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,15 +45,15 @@ export default function AnalyzePage() {
         partnerMode,
         deterministic,
         seed: seed ? parseInt(seed, 10) : undefined,
-        maxSteps: 200
+        maxSteps: 200,
       };
 
       const res = await fetch(`${API_BASE}/api/analyze/simulate`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       if (!res.ok) {
@@ -63,10 +71,12 @@ export default function AnalyzePage() {
 
       const data = await res.json();
       setResponse(data);
-
     } catch (err) {
-      console.error('Simulate error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to simulate game. Please try again.';
+      console.error("Simulate error:", err);
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to simulate game. Please try again.";
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -75,7 +85,7 @@ export default function AnalyzePage() {
 
   const handleSeedChange = (value: string) => {
     // Allow empty string or valid integers
-    if (value === '' || /^\d+$/.test(value)) {
+    if (value === "" || /^\d+$/.test(value)) {
       setSeed(value);
     }
   };
@@ -99,9 +109,7 @@ export default function AnalyzePage() {
 
       {/* Controls Panel */}
       <div className={styles.controlsPanel}>
-        <h2 className={styles.controlsTitle}>
-          ⚙️ Simulation Settings
-        </h2>
+        <h2 className={styles.controlsTitle}>⚙️ Simulation Settings</h2>
 
         <div className={styles.controlsGrid}>
           <div className={styles.controlGroup}>
@@ -134,9 +142,7 @@ export default function AnalyzePage() {
           </div>
 
           <div className={styles.controlGroup}>
-            <label className={styles.label}>
-              🎯 Decision Mode
-            </label>
+            <label className={styles.label}>🎯 Decision Mode</label>
             <div className={styles.checkboxWrapper}>
               <input
                 type="checkbox"
@@ -163,11 +169,12 @@ export default function AnalyzePage() {
               max={100}
               step={1}
               value={shapingWeightPercent}
-              onChange={(e) => setShapingWeightPercent(parseInt(e.target.value, 10))}
+              onChange={(e) =>
+                setShapingWeightPercent(parseInt(e.target.value, 10))
+              }
               className={styles.range}
             />
           </div>
-
         </div>
 
         <div className={styles.buttonRow}>
@@ -177,7 +184,7 @@ export default function AnalyzePage() {
             disabled={loading}
           >
             {loading && <div className={styles.spinner} />}
-            {loading ? 'Simulating...' : '🎮 Simulate Game'}
+            {loading ? "Simulating..." : "🎮 Simulate Game"}
           </button>
         </div>
       </div>
@@ -186,19 +193,27 @@ export default function AnalyzePage() {
       {(response || loading) && (
         <div className={styles.resultsPanel}>
           <div className={styles.resultsHeader}>
-            <h2 className={styles.resultsTitle}>
-              📈 Game Analysis
-            </h2>
+            <h2 className={styles.resultsTitle}>📈 Game Analysis</h2>
             {response && (
               <div className={styles.meta}>
                 <div className={styles.metaItem}>
                   <span>Steps: {response.trace.length}</span>
                 </div>
                 <div className={styles.metaItem}>
-                  <span>Partner: {response.meta.partnerMode === 1 ? 'Called Ace' : 'Jack of Diamonds'}</span>
+                  <span>
+                    Partner:{" "}
+                    {response.meta.partnerMode === 1
+                      ? "Called Ace"
+                      : "Jack of Diamonds"}
+                  </span>
                 </div>
                 <div className={styles.metaItem}>
-                  <span>Mode: {response.meta.deterministic ? 'Deterministic' : 'Stochastic'}</span>
+                  <span>
+                    Mode:{" "}
+                    {response.meta.deterministic
+                      ? "Deterministic"
+                      : "Stochastic"}
+                  </span>
                 </div>
                 {response.meta.seed && (
                   <div className={styles.metaItem}>
@@ -208,10 +223,9 @@ export default function AnalyzePage() {
                 {response.final && (
                   <div className={styles.metaItem}>
                     <span>
-                      {response.final.mode === 'leaster'
+                      {response.final.mode === "leaster"
                         ? `Leaster - Winner: Seat ${response.final.winner}`
-                        : `Picker: Seat ${response.final.picker}, Partner: Seat ${response.final.partner}`
-                      }
+                        : `Picker: Seat ${response.final.picker}, Partner: Seat ${response.final.partner}`}
                     </span>
                   </div>
                 )}
@@ -226,9 +240,7 @@ export default function AnalyzePage() {
             </div>
           ) : response ? (
             <>
-              {response.summary && (
-                <GameSummary summary={response.summary} />
-              )}
+              {response.summary && <GameSummary summary={response.summary} />}
               <ActionTimeline
                 trace={response.trace}
                 picker={response.summary?.picker}

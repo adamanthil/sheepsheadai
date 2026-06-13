@@ -1,1 +1,1 @@
-export { nameForSeat, isAiSeat } from './seatMath';
+export { nameForSeat, isAiSeat } from "./seatMath";

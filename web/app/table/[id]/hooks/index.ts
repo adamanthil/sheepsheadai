@@ -1,8 +1,11 @@
-export { useTableSocket } from './useTableSocket';
-export type { UseTableSocketReturn, TableSocketCallbacks } from './useTableSocket';
+export { useTableSocket } from "./useTableSocket";
+export type {
+  UseTableSocketReturn,
+  TableSocketCallbacks,
+} from "./useTableSocket";
 
-export { useTrickAnimation } from './useTrickAnimation';
-export type { UseTrickAnimationReturn, AnimTrick } from './useTrickAnimation';
+export { useTrickAnimation } from "./useTrickAnimation";
+export type { UseTrickAnimationReturn, AnimTrick } from "./useTrickAnimation";
 
-export { useCallout } from './useCallout';
-export type { UseCalloutReturn, Callout, CalloutKind } from './useCallout';
+export { useCallout } from "./useCallout";
+export type { UseCalloutReturn, Callout, CalloutKind } from "./useCallout";

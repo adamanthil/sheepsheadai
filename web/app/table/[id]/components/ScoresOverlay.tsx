@@ -1,7 +1,7 @@
-import React from 'react';
-import type { TableView, HandResult } from '../../../../lib/types';
-import { ds } from '../../../../lib/ds';
-import styles from './ScoresOverlay.module.css';
+import React from "react";
+import type { TableView, HandResult } from "../../../../lib/types";
+import { ds } from "../../../../lib/ds";
+import styles from "./ScoresOverlay.module.css";
 
 interface ScoresOverlayProps {
   onClose: () => void;
@@ -18,7 +18,9 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
     sum: h.sum || 0,
   }));
 
-  const initialOrder: string[] = (table?.initialSeatOrder || []).map((x) => String(x));
+  const initialOrder: string[] = (table?.initialSeatOrder || []).map((x) =>
+    String(x),
+  );
   const ids = table?.seatOccupants || {};
 
   const labelsById: Record<string, string> = {};
@@ -31,7 +33,10 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
     initialOrder.length === 5 ? initialOrder : Object.keys(labelsById)
   ).map((id: string) => ({ id, label: labelsById[id] || id }));
 
-  const scoreFor = (row: { bySeat?: Record<string, { id: string; score: number }> }, id: string) => {
+  const scoreFor = (
+    row: { bySeat?: Record<string, { id: string; score: number }> },
+    id: string,
+  ) => {
     const entries = row.bySeat || {};
     for (const key of Object.keys(entries)) {
       const v = entries[key];
@@ -58,7 +63,12 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
             <strong>Running totals</strong>
           </div>
           <div className={styles.mlAuto}>
-            <button className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`} onClick={onClose}>Close</button>
+            <button
+              className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+              onClick={onClose}
+            >
+              Close
+            </button>
           </div>
         </div>
         <div className={styles.scoresBody}>
@@ -101,4 +111,3 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
     </div>
   );
 }
-

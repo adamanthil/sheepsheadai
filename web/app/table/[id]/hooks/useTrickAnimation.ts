@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from "react";
 
 export interface AnimTrick {
   cards: string[];
@@ -48,4 +48,3 @@ export function useTrickAnimation(): UseTrickAnimationReturn {
 
   return { showPrev, animTrick, triggerCollect, setShowPrev };
 }
-

@@ -18,7 +18,9 @@
   margin: 0 auto;
 }
 @media (max-width: 1000px) {
-  .grid { grid-template-columns: 1fr; }
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---- Left: hero + create ---- */
@@ -30,10 +32,15 @@
   border-right: 1px solid var(--rule);
 }
 @media (max-width: 1000px) {
-  .hero { border-right: none; gap: 18px; }
+  .hero {
+    border-right: none;
+    gap: 18px;
+  }
 }
 
-.wordmark { margin: 0; }
+.wordmark {
+  margin: 0;
+}
 .wordmarkTitle {
   font-family: var(--font-display);
   font-size: clamp(64px, 10vw, 146px);
@@ -64,7 +71,9 @@
   transform: translateY(-14px);
 }
 @media (max-width: 560px) {
-  .wordmarkRule { display: none; }
+  .wordmarkRule {
+    display: none;
+  }
 }
 
 .lede {
@@ -94,9 +103,13 @@
   gap: 14px;
 }
 @media (max-width: 1000px) {
-  .startBlock { margin-top: 8px; }
+  .startBlock {
+    margin-top: 8px;
+  }
 }
-.startHead { padding-top: 12px; }
+.startHead {
+  padding-top: 12px;
+}
 .formRow {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -104,10 +117,19 @@
   max-width: 520px;
 }
 @media (max-width: 480px) {
-  .formRow { grid-template-columns: 1fr; gap: 16px; }
+  .formRow {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }
-.field { display: flex; flex-direction: column; gap: 4px; }
-.fieldLabel { font-size: 10px; }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fieldLabel {
+  font-size: 10px;
+}
 .createRow {
   display: flex;
   align-items: center;
@@ -131,7 +153,9 @@
   min-height: 0;
 }
 @media (max-width: 1000px) {
-  .lobby { border-top: 1px solid var(--rule); }
+  .lobby {
+    border-top: 1px solid var(--rule);
+  }
 }
 .lobbyHead {
   display: flex;
@@ -139,9 +163,16 @@
   justify-content: space-between;
   padding-top: 14px;
 }
-.lobbyTitle { font-family: var(--font-display); font-size: 40px; margin: 0; }
+.lobbyTitle {
+  font-family: var(--font-display);
+  font-size: 40px;
+  margin: 0;
+}
 
-.rows { display: flex; flex-direction: column; }
+.rows {
+  display: flex;
+  flex-direction: column;
+}
 .colHead {
   display: grid;
   grid-template-columns: 1.6fr 0.8fr auto;
@@ -149,7 +180,9 @@
   padding-bottom: 10px;
   border-bottom: 1px solid var(--rule);
 }
-.colHeadRight { text-align: right; }
+.colHeadRight {
+  text-align: right;
+}
 .row {
   display: grid;
   grid-template-columns: 1.6fr 0.8fr auto;
@@ -158,7 +191,11 @@
   padding: 16px 0;
   border-bottom: 1px solid var(--rule);
 }
-.tableName { font-family: var(--font-display); font-size: 22px; color: var(--ink); }
+.tableName {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink);
+}
 .tableSub {
   font-family: var(--font-display);
   font-style: italic;
@@ -166,10 +203,25 @@
   color: var(--muted);
   margin-top: 2px;
 }
-.players { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 18px; color: var(--ink); }
-.playersOf { color: var(--muted); }
-.rowAction { display: flex; justify-content: flex-end; }
-.empty { color: var(--muted); font-style: italic; font-family: var(--font-display); padding: 16px 0; }
+.players {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  color: var(--ink);
+}
+.playersOf {
+  color: var(--muted);
+}
+.rowAction {
+  display: flex;
+  justify-content: flex-end;
+}
+.empty {
+  color: var(--muted);
+  font-style: italic;
+  font-family: var(--font-display);
+  padding: 16px 0;
+}
 
 .lobbyFooter {
   margin-top: auto;

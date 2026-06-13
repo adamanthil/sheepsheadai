@@ -23,7 +23,11 @@
   align-items: center;
   gap: 8px;
 }
-.name { font-family: var(--font-display); font-size: 20px; color: var(--ink); }
+.name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--ink);
+}
 .emptyLabel {
   font-family: var(--font-display);
   font-style: italic;
@@ -31,7 +35,9 @@
   font-size: 22px;
   text-align: center;
 }
-.takeBtn { align-self: stretch; }
+.takeBtn {
+  align-self: stretch;
+}
 
 /* ---- Mobile row ---- */
 .row {
@@ -51,18 +57,46 @@
   cursor: pointer;
 }
 .rowPlus {
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   border: 1px dashed var(--rule-strong);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--muted); font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 18px;
   flex-shrink: 0;
 }
-.rowMain { flex: 1; min-width: 0; }
-.rowNameLine { display: flex; align-items: baseline; gap: 6px; }
-.rowName { font-family: var(--font-display); font-size: 19px; color: var(--ink); }
-.rowBadges { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.rowTake {
-  font-family: var(--font-display); font-style: italic;
-  font-size: 16px; color: var(--muted);
+.rowMain {
+  flex: 1;
+  min-width: 0;
 }
-.rowArrow { font-family: var(--font-ui); font-size: 12px; color: var(--ink); letter-spacing: 0.1em; }
+.rowNameLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.rowName {
+  font-family: var(--font-display);
+  font-size: 19px;
+  color: var(--ink);
+}
+.rowBadges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.rowTake {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--muted);
+}
+.rowArrow {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--ink);
+  letter-spacing: 0.1em;
+}

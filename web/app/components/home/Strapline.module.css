@@ -5,6 +5,12 @@
   color: var(--ink-soft);
   white-space: nowrap;
 }
-.club { color: var(--ink); }
-.diamond { color: var(--card-red); }
-.dot { color: var(--muted); }
+.club {
+  color: var(--ink);
+}
+.diamond {
+  color: var(--card-red);
+}
+.dot {
+  color: var(--muted);
+}

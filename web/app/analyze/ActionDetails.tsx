@@ -1,8 +1,8 @@
-import React from 'react';
-import { AnalyzeActionDetail } from '../../lib/analyzeTypes';
-import ProbabilityBar from './ProbabilityBar';
-import { PlayingCard } from '../../lib/components';
-import styles from './page.module.css';
+import React from "react";
+import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
+import ProbabilityBar from "./ProbabilityBar";
+import { PlayingCard } from "../../lib/components";
+import styles from "./page.module.css";
 
 interface ActionDetailsProps {
   action: AnalyzeActionDetail;
@@ -26,7 +26,14 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
 
           {hand.length > 0 && (
             <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: "500",
+                  color: "#6b7280",
+                  marginBottom: "0.5rem",
+                }}
+              >
                 Hand
               </div>
               <div className={styles.cardList}>
@@ -39,7 +46,14 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
 
           {blind.length > 0 && (
             <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: "500",
+                  color: "#6b7280",
+                  marginBottom: "0.5rem",
+                }}
+              >
                 Blind
               </div>
               <div className={styles.cardList}>
@@ -52,7 +66,14 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
 
           {bury.length > 0 && (
             <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: "500",
+                  color: "#6b7280",
+                  marginBottom: "0.5rem",
+                }}
+              >
                 Bury
               </div>
               <div className={styles.cardList}>
@@ -63,22 +84,37 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
             </div>
           )}
 
-          {currentTrick.some((card: string) => card !== '') && (
+          {currentTrick.some((card: string) => card !== "") && (
             <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: '500', color: '#6b7280', marginBottom: '0.5rem' }}>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: "500",
+                  color: "#6b7280",
+                  marginBottom: "0.5rem",
+                }}
+              >
                 Current Trick
               </div>
               <div className={styles.cardList}>
-                {currentTrick.filter((card: string) => card !== '').map((card: string, i: number) => (
-                  <PlayingCard key={i} label={card} small />
-                ))}
+                {currentTrick
+                  .filter((card: string) => card !== "")
+                  .map((card: string, i: number) => (
+                    <PlayingCard key={i} label={card} small />
+                  ))}
               </div>
             </div>
           )}
 
           {/* Additional game context */}
-          <div style={{ marginTop: '1rem' }}>
-            <div style={{ fontSize: '0.75rem', color: '#6b7280', lineHeight: '1.4' }}>
+          <div style={{ marginTop: "1rem" }}>
+            <div
+              style={{
+                fontSize: "0.75rem",
+                color: "#6b7280",
+                lineHeight: "1.4",
+              }}
+            >
               {view.picker && <div>Picker: Seat {view.picker}</div>}
               {view.partner && <div>Partner: Seat {view.partner}</div>}
               {view.called_card && <div>Called Card: {view.called_card}</div>}
@@ -95,11 +131,7 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
           <div className={styles.detailTitle}>Action Probabilities</div>
           <div className={styles.probabilitiesList}>
             {probabilities.map((prob, i) => (
-              <ProbabilityBar
-                key={i}
-                probability={prob}
-                maxProb={maxProb}
-              />
+              <ProbabilityBar key={i} probability={prob} maxProb={maxProb} />
             ))}
           </div>
         </div>

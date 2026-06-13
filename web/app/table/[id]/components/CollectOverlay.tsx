@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { PlayingCard } from '../../../../lib/ds';
-import { collectAnchorPct, relSeat } from '../lib/seatLayout';
-import styles from './Stage.module.css';
+import React, { useRef, useEffect } from "react";
+import { PlayingCard } from "../../../../lib/ds";
+import { collectAnchorPct, relSeat } from "../lib/seatLayout";
+import styles from "./Stage.module.css";
 
 interface CollectOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -15,7 +15,13 @@ interface CollectOverlayProps {
  * Animates the just-completed trick's cards flying to the winner's seat.
  * Seat anchors come from seatLayout.collectAnchorPct so they track the stage.
  */
-export default function CollectOverlay({ containerRef, yourSeat, winner, cards, cardW }: CollectOverlayProps) {
+export default function CollectOverlay({
+  containerRef,
+  yourSeat,
+  winner,
+  cards,
+  cardW,
+}: CollectOverlayProps) {
   const cw = containerRef.current?.clientWidth ?? 1000;
   const ch = containerRef.current?.clientHeight ?? 400;
   const refs = useRef<Array<HTMLDivElement | null>>([]);
@@ -31,13 +37,27 @@ export default function CollectOverlay({ containerRef, yourSeat, winner, cards, 
   useEffect(() => {
     const start = performance.now();
     const dur = 1100;
-    const bezier = (t: number, p0: number, c1: number, c2: number, p3: number) => {
+    const bezier = (
+      t: number,
+      p0: number,
+      c1: number,
+      c2: number,
+      p3: number,
+    ) => {
       const it = 1 - t;
-      return it * it * it * p0 + 3 * it * it * t * c1 + 3 * it * t * t * c2 + t * t * t * p3;
+      return (
+        it * it * it * p0 +
+        3 * it * it * t * c1 +
+        3 * it * t * t * c2 +
+        t * t * t * p3
+      );
     };
-    const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const easeInOut = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-    const fromPts = cards.map((_, idx) => pToPx(collectAnchorPct(relSeat(idx + 1, yourSeat))));
+    const fromPts = cards.map((_, idx) =>
+      pToPx(collectAnchorPct(relSeat(idx + 1, yourSeat))),
+    );
     const toPt = pToPx(collectAnchorPct(relSeat(winner, yourSeat)));
     const ctrl = fromPts.map((p0) => ({
       cx1: (p0.x + cw / 2) / 2,
@@ -71,8 +91,14 @@ export default function CollectOverlay({ containerRef, yourSeat, winner, cards, 
   return (
     <div className={styles.collectOverlay}>
       {cards.map((c, idx) => (
-        <div key={idx} ref={(el) => { refs.current[idx] = el; }} className={styles.collectCard}>
-          <PlayingCard code={c || '__'} w={cardW} />
+        <div
+          key={idx}
+          ref={(el) => {
+            refs.current[idx] = el;
+          }}
+          className={styles.collectCard}
+        >
+          <PlayingCard code={c || "__"} w={cardW} />
         </div>
       ))}
     </div>

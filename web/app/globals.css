@@ -9,8 +9,8 @@
 
 :root {
   /* Font stacks fall back gracefully if a next/font variable is missing. */
-  --font-display: var(--font-instrument-serif), 'Times New Roman', serif;
-  --font-ui: var(--font-geist), 'Helvetica Neue', system-ui, sans-serif;
+  --font-display: var(--font-instrument-serif), "Times New Roman", serif;
+  --font-ui: var(--font-geist), "Helvetica Neue", system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 
   --bg-page: #f3f1ea;
@@ -22,9 +22,9 @@
   --muted: #6e6c63;
   --rule: #cfccc0;
   --rule-strong: #a3a094;
-  --accent: #1f3b2f;        /* forest */
+  --accent: #1f3b2f; /* forest */
   --accent-soft: #5d7f6c;
-  --accent-2: #b3331e;      /* single red */
+  --accent-2: #b3331e; /* single red */
   --accent-2-soft: #d36c52;
   --gold: #7b6a36;
   --card-paper: #ffffff;
@@ -32,15 +32,21 @@
   --card-red: #b3331e;
   --card-black: #0e0d0a;
   --card-back: #1f3b2f;
-  --shadow-1: 0 1px 0 rgba(15,15,12,.04), 0 2px 4px rgba(15,15,12,.05);
-  --shadow-2: 0 2px 6px rgba(15,15,12,.06), 0 18px 36px rgba(15,15,12,.10);
+  --shadow-1: 0 1px 0 rgba(15, 15, 12, 0.04), 0 2px 4px rgba(15, 15, 12, 0.05);
+  --shadow-2:
+    0 2px 6px rgba(15, 15, 12, 0.06), 0 18px 36px rgba(15, 15, 12, 0.1);
 
   --density: 1;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
 }
@@ -55,6 +61,11 @@ body {
 
 /* Shared pulse used by "your turn" / pending-decision affordances. */
 @keyframes ssPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }

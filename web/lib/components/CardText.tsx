@@ -1,5 +1,5 @@
-import React from 'react';
-import { parseCard, suitSymbol } from './cardUtils';
+import React from "react";
+import { parseCard, suitSymbol } from "./cardUtils";
 
 interface CardTextProps {
   children: string;
@@ -32,18 +32,19 @@ export default function CardText({ children, className }: CardTextProps) {
     if (i < matches.length) {
       const cardStr = matches[i];
       const { rank, suit } = parseCard(cardStr);
-      const isRed = suit === 'H' || suit === 'D';
+      const isRed = suit === "H" || suit === "D";
 
       elements.push(
         <span
           key={`card-${i}`}
           style={{
-            color: isRed ? '#dc2626' : '#1f2937', // red for hearts/diamonds, dark gray for clubs/spades
-            fontWeight: '500'
+            color: isRed ? "#dc2626" : "#1f2937", // red for hearts/diamonds, dark gray for clubs/spades
+            fontWeight: "500",
           }}
         >
-          {rank}{suitSymbol(suit)}
-        </span>
+          {rank}
+          {suitSymbol(suit)}
+        </span>,
       );
     }
   }

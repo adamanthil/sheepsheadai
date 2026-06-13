@@ -1,5 +1,5 @@
-import React from 'react';
-import { parseCard, suitSymbol, isRedSuit } from './cardUtils';
+import React from "react";
+import { parseCard, suitSymbol, isRedSuit } from "./cardUtils";
 
 interface CardTextProps {
   children: string;
@@ -23,10 +23,14 @@ export default function CardText({ children, className }: CardTextProps) {
       elements.push(
         <span
           key={`card-${i}`}
-          style={{ color: isRedSuit(suit) ? 'var(--card-red)' : 'var(--ink)', fontWeight: 500 }}
+          style={{
+            color: isRedSuit(suit) ? "var(--card-red)" : "var(--ink)",
+            fontWeight: 500,
+          }}
         >
-          {rank}{suitSymbol(suit)}
-        </span>
+          {rank}
+          {suitSymbol(suit)}
+        </span>,
       );
     }
   }

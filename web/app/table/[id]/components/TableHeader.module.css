@@ -7,15 +7,53 @@
   background: var(--bg-page);
   flex-shrink: 0;
 }
-.deskLeft { display: flex; align-items: baseline; gap: 18px; min-width: 0; }
-.sep { width: 1px; height: 20px; background: var(--rule); align-self: center; }
-.room { font-family: var(--font-display); font-size: 22px; }
-.deskRight { display: flex; align-items: baseline; gap: 28px; }
-.stat { display: flex; align-items: baseline; gap: 6px; }
-.statNum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 18px; color: var(--ink); }
-.phase { font-family: var(--font-display); font-style: italic; font-size: 16px; color: var(--ink); }
-.links { display: flex; gap: 12px; align-items: baseline; }
-.leave { color: var(--accent-2); cursor: pointer; }
+.deskLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  min-width: 0;
+}
+.sep {
+  width: 1px;
+  height: 20px;
+  background: var(--rule);
+  align-self: center;
+}
+.room {
+  font-family: var(--font-display);
+  font-size: 22px;
+}
+.deskRight {
+  display: flex;
+  align-items: baseline;
+  gap: 28px;
+}
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.statNum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  color: var(--ink);
+}
+.phase {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink);
+}
+.links {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.leave {
+  color: var(--accent-2);
+  cursor: pointer;
+}
 
 /* Mobile */
 .mob {
@@ -26,13 +64,31 @@
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
 }
-.mobLeft { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.mobRoom { font-family: var(--font-display); font-size: 20px; line-height: 1; }
+.mobLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.mobRoom {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
+}
 .mobMeta {
-  font-family: var(--font-mono); font-size: 9px; color: var(--muted);
-  letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 .mobLeave {
-  font-family: var(--font-ui); font-size: 11px; color: var(--accent-2);
-  letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; text-decoration: none;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--accent-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
 }

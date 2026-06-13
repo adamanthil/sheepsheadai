@@ -1,7 +1,7 @@
-import React from 'react';
-import { AnalyzeGameSummary } from '../../lib/analyzeTypes';
-import { CardText } from '../../lib/components';
-import styles from './page.module.css';
+import React from "react";
+import { AnalyzeGameSummary } from "../../lib/analyzeTypes";
+import { CardText } from "../../lib/components";
+import styles from "./page.module.css";
 
 interface GameSummaryProps {
   summary: AnalyzeGameSummary;
@@ -94,8 +94,11 @@ export default function GameSummary({ summary }: GameSummaryProps) {
                 <span className={styles.scorePlayer}>
                   {Object.keys(summary.hands)[index]}
                 </span>
-                <span className={`${styles.scoreValue} ${score > 0 ? styles.positiveScore : score < 0 ? styles.negativeScore : ''}`}>
-                  {score > 0 ? '+' : ''}{score}
+                <span
+                  className={`${styles.scoreValue} ${score > 0 ? styles.positiveScore : score < 0 ? styles.negativeScore : ""}`}
+                >
+                  {score > 0 ? "+" : ""}
+                  {score}
                 </span>
               </div>
             ))}

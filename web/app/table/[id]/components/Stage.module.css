@@ -5,15 +5,34 @@
   flex-shrink: 0;
   display: flex;
   justify-content: center;
-  background: radial-gradient(ellipse 50% 60% at 50% 52%, color-mix(in oklab, var(--accent-2) 10%, transparent) 0%, transparent 65%);
+  background: radial-gradient(
+    ellipse 50% 60% at 50% 52%,
+    color-mix(in oklab, var(--accent-2) 10%, transparent) 0%,
+    transparent 65%
+  );
 }
-.deskInner { position: relative; width: 100%; max-width: 560px; height: 100%; }
-.ellipse { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.deskInner {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  height: 100%;
+}
+.ellipse {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
 
 .center {
-  position: absolute; left: 50%; top: 50%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
   transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   z-index: 2;
   max-width: 480px;
   text-align: center;
@@ -25,115 +44,343 @@
   align-items: center;
   gap: 14px;
 }
-.ringSeatCardRight { flex-direction: row; }
-.ringSeatCardLeft { flex-direction: row-reverse; }
+.ringSeatCardRight {
+  flex-direction: row;
+}
+.ringSeatCardLeft {
+  flex-direction: row-reverse;
+}
 
 /* Chip */
-.chip { display: flex; flex-direction: column; gap: 6px; min-width: 110px; }
-.chipRow { display: flex; align-items: center; gap: 10px; }
-.chipRowLeft { flex-direction: row-reverse; }
-.chipText { display: flex; flex-direction: column; gap: 3px; }
-.chipTextRight { text-align: left; }
-.chipTextLeft { text-align: right; }
-.chipName { font-family: var(--font-display); font-size: 19px; line-height: 1; color: var(--ink); }
-.chipBadges { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 110px;
+}
+.chipRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chipRowLeft {
+  flex-direction: row-reverse;
+}
+.chipText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chipTextRight {
+  text-align: left;
+}
+.chipTextLeft {
+  text-align: right;
+}
+.chipName {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1;
+  color: var(--ink);
+}
+.chipBadges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
 
 /* Your played card slot, bottom-center inside the ring */
 .youSlot {
   position: absolute;
-  left: 50%; bottom: 0;
+  left: 50%;
+  bottom: 0;
   transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
-.youSlotLabel { font-family: var(--font-ui); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+.youSlotLabel {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 /* Center pieces */
 .turnPill {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--bg-page); padding: 6px 14px;
-  border: 1px solid var(--accent-2); border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-page);
+  padding: 6px 14px;
+  border: 1px solid var(--accent-2);
+  border-radius: 999px;
 }
-.turnDot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); animation: ssPulse 1.6s ease-in-out infinite; }
-.turnText { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); }
-.centerSub { font-family: var(--font-display); font-style: italic; font-size: 14px; color: var(--muted); margin-top: 4px; }
+.turnDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  animation: ssPulse 1.6s ease-in-out infinite;
+}
+.turnText {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.centerSub {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 4px;
+}
 
-.blindStack { position: relative; display: flex; justify-content: center; }
-.blindCard { position: absolute; }
+.blindStack {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.blindCard {
+  position: absolute;
+}
 
-.slotRow { display: flex; gap: 14px; }
+.slotRow {
+  display: flex;
+  gap: 14px;
+}
 .slot {
-  border: 1px dashed var(--accent); border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: color-mix(in oklab, var(--accent) 6%, transparent);
 }
-.slotLabel { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); }
+.slotLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
 
-.callRow { display: flex; gap: 14px; align-items: flex-end; justify-content: center; flex-wrap: wrap; }
-.callOption { display: flex; flex-direction: column; align-items: center; gap: 8px; background: none; border: none; cursor: pointer; }
-.callLabel { font-family: var(--font-display); font-style: italic; font-size: 12px; color: var(--muted); }
-.callLabelSel { color: var(--ink); }
+.callRow {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.callOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.callLabel {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--muted);
+}
+.callLabelSel {
+  color: var(--ink);
+}
 .alonePanel {
   border: 1px solid var(--rule-strong);
   background: var(--bg-card);
   border-radius: 3px;
   box-shadow: var(--shadow-1);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 8px; text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  text-align: center;
 }
-.aloneTitle { font-family: var(--font-display); font-size: 26px; line-height: 1; }
-.aloneSub { font-family: var(--font-display); font-style: italic; font-size: 11px; color: var(--muted); margin-top: 6px; }
+.aloneTitle {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+}
+.aloneSub {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
 
 /* Chits */
 .chit {
-  border: 1px dashed var(--rule-strong); border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: color-mix(in oklab, var(--bg-page) 60%, transparent);
 }
-.chitText { font-family: var(--font-mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
-.emptyCard { border: 1px dashed var(--rule); border-radius: 4px; }
+.chitText {
+  font-family: var(--font-mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.emptyCard {
+  border: 1px dashed var(--rule);
+  border-radius: 4px;
+}
 
 /* Prev-trick banner */
 .prevBanner {
-  position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%);
-  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
-  color: var(--muted); background: var(--bg-page); padding: 4px 10px;
-  border: 1px solid var(--rule); border-radius: 3px; white-space: nowrap; z-index: 4;
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  background: var(--bg-page);
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  white-space: nowrap;
+  z-index: 4;
 }
 
 /* Callout bulletin */
 .callout {
-  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
-  z-index: 6; background: var(--ink); color: var(--bg-page);
-  font-family: var(--font-ui); font-size: 13px; letter-spacing: 0.04em;
-  padding: 8px 16px; border-radius: 3px; box-shadow: var(--shadow-2);
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  background: var(--ink);
+  color: var(--bg-page);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  padding: 8px 16px;
+  border-radius: 3px;
+  box-shadow: var(--shadow-2);
 }
 
-.winnerCard { box-shadow: 0 0 0 2px var(--accent-2), var(--shadow-2); border-radius: 3px; }
+.winnerCard {
+  box-shadow:
+    0 0 0 2px var(--accent-2),
+    var(--shadow-2);
+  border-radius: 3px;
+}
 
 /* Collect overlay */
-.collectOverlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
-.collectCard { position: absolute; transform: translate(-50%, -50%); }
+.collectOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.collectCard {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
 
 /* ===== Mobile 2x2 grid ===== */
 .mobStage {
-  flex: 1; min-height: 0; position: relative; padding: 14px 10px;
-  background: radial-gradient(ellipse 55% 65% at 50% 50%, color-mix(in oklab, var(--accent-2) 10%, transparent), transparent 70%);
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  padding: 14px 10px;
+  background: radial-gradient(
+    ellipse 55% 65% at 50% 50%,
+    color-mix(in oklab, var(--accent-2) 10%, transparent),
+    transparent 70%
+  );
 }
-.mobEllipse { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); pointer-events: none; }
-.mobGrid { position: relative; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; height: 100%; }
+.mobEllipse {
+  position: absolute;
+  inset: 14px;
+  width: calc(100% - 28px);
+  height: calc(100% - 28px);
+  pointer-events: none;
+}
+.mobGrid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  height: 100%;
+}
 /* Each seat is pinned to its grid cell explicitly. CSS Grid otherwise
    auto-places items in DOM order, but seats arrive in seat order — not
    corner order — so without explicit placement the alignment (which is
    keyed to the corner) lands on the wrong cell and the cards scatter. */
-.mobCell { display: flex; }
-.mobCellTL { grid-column: 1; grid-row: 1; justify-content: flex-end; align-items: flex-end; padding: 6px 22px 26px 6px; }
-.mobCellTR { grid-column: 2; grid-row: 1; justify-content: flex-start; align-items: flex-end; padding: 6px 6px 26px 22px; }
-.mobCellBL { grid-column: 1; grid-row: 2; justify-content: flex-end; align-items: flex-start; padding: 26px 22px 6px 6px; }
-.mobCellBR { grid-column: 2; grid-row: 2; justify-content: flex-start; align-items: flex-start; padding: 26px 6px 6px 22px; }
-.mobSeat { display: flex; align-items: center; gap: 8px; }
-.mobChip { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 48px; }
-.mobName { font-family: var(--font-display); font-size: 13px; line-height: 1; color: var(--ink); text-align: center; }
+.mobCell {
+  display: flex;
+}
+.mobCellTL {
+  grid-column: 1;
+  grid-row: 1;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 6px 22px 26px 6px;
+}
+.mobCellTR {
+  grid-column: 2;
+  grid-row: 1;
+  justify-content: flex-start;
+  align-items: flex-end;
+  padding: 6px 6px 26px 22px;
+}
+.mobCellBL {
+  grid-column: 1;
+  grid-row: 2;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 26px 22px 6px 6px;
+}
+.mobCellBR {
+  grid-column: 2;
+  grid-row: 2;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 26px 6px 6px 22px;
+}
+.mobSeat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mobChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 48px;
+}
+.mobName {
+  font-family: var(--font-display);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink);
+  text-align: center;
+}
 .mobCenter {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  z-index: 3; display: flex; flex-direction: column; align-items: center; pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
 }

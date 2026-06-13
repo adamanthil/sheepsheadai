@@ -1,6 +1,6 @@
-import React from 'react';
-import { Wordmark, MiniCardMark, ds } from '../../../../lib/ds';
-import styles from './TableHeader.module.css';
+import React from "react";
+import { Wordmark, MiniCardMark, ds } from "../../../../lib/ds";
+import styles from "./TableHeader.module.css";
 
 interface TableHeaderProps {
   roomName: string;
@@ -15,7 +15,15 @@ interface TableHeaderProps {
 }
 
 export default function TableHeader({
-  roomName, rulesBadge, handNumber, phaseLabel, connected, isMobile, onLeave, onShowScores, onShowLog,
+  roomName,
+  rulesBadge,
+  handNumber,
+  phaseLabel,
+  connected,
+  isMobile,
+  onLeave,
+  onShowScores,
+  onShowLog,
 }: TableHeaderProps) {
   if (isMobile) {
     return (
@@ -23,9 +31,13 @@ export default function TableHeader({
         <div className={styles.mobLeft}>
           <MiniCardMark h={20} />
           <div className={styles.mobRoom}>{roomName}</div>
-          <div className={styles.mobMeta}>H{handNumber} · {phaseLabel}</div>
+          <div className={styles.mobMeta}>
+            H{handNumber} · {phaseLabel}
+          </div>
         </div>
-        <a className={styles.mobLeave} onClick={onLeave}>Leave</a>
+        <a className={styles.mobLeave} onClick={onLeave}>
+          Leave
+        </a>
       </div>
     );
   }
@@ -36,7 +48,9 @@ export default function TableHeader({
         <Wordmark size="sm" />
         <div className={styles.sep} />
         <div className={styles.room}>{roomName}</div>
-        {rulesBadge && <span className={`${ds.badge} ${ds.badgeQuiet}`}>{rulesBadge}</span>}
+        {rulesBadge && (
+          <span className={`${ds.badge} ${ds.badgeQuiet}`}>{rulesBadge}</span>
+        )}
       </div>
       <div className={styles.deskRight}>
         <div className={styles.stat}>
@@ -48,9 +62,25 @@ export default function TableHeader({
           <span className={styles.phase}>{phaseLabel}</span>
         </div>
         <div className={styles.links}>
-          <a className={ds.link} style={{ fontSize: 12 }} onClick={onShowScores}>Scores</a>
-          {onShowLog && <a className={ds.link} style={{ fontSize: 12 }} onClick={onShowLog}>Chat</a>}
-          <a className={`${ds.link} ${styles.leave}`} style={{ fontSize: 12 }} onClick={onLeave}>Leave</a>
+          <a
+            className={ds.link}
+            style={{ fontSize: 12 }}
+            onClick={onShowScores}
+          >
+            Scores
+          </a>
+          {onShowLog && (
+            <a className={ds.link} style={{ fontSize: 12 }} onClick={onShowLog}>
+              Chat
+            </a>
+          )}
+          <a
+            className={`${ds.link} ${styles.leave}`}
+            style={{ fontSize: 12 }}
+            onClick={onLeave}
+          >
+            Leave
+          </a>
         </div>
       </div>
     </div>

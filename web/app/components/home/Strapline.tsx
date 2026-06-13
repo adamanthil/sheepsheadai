@@ -1,5 +1,5 @@
-import React from 'react';
-import styles from './Strapline.module.css';
+import React from "react";
+import styles from "./Strapline.module.css";
 
 /** The rules of the game in one italic line. Font scales with viewport so it
  *  stays on a single line from mobile to desktop. */

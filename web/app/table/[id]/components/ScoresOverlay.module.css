@@ -27,14 +27,62 @@
   font-family: var(--font-display);
   font-size: 20px;
 }
-.mlAuto { margin-left: auto; }
-.scoresBody { overflow: auto; padding: 8px 20px 20px; }
+.mlAuto {
+  margin-left: auto;
+}
+.scoresBody {
+  overflow: auto;
+  padding: 8px 20px 20px;
+}
 
-.scoresTable { width: 100%; border-collapse: collapse; font-family: var(--font-ui); font-size: 14px; }
-.scoresTable th, .scoresTable td { padding: 8px 10px; border-bottom: 1px solid var(--rule); }
-.thLeft { text-align: left; font-family: var(--font-ui); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
-.thRight { text-align: right; font-family: var(--font-ui); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
-.tdHand { font-family: var(--font-mono); color: var(--muted); }
-.tdRight { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); }
-.tdTotalLabel { font-family: var(--font-ui); font-weight: 600; color: var(--ink); }
-.tdRightTotal { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
+.scoresTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+.scoresTable th,
+.scoresTable td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.thLeft {
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+.thRight {
+  text-align: right;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+.tdHand {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+.tdRight {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+.tdTotalLabel {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  color: var(--ink);
+}
+.tdRightTotal {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}

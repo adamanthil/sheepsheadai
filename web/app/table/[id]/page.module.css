@@ -36,13 +36,19 @@
 /* Connection indicator */
 .connDot {
   position: absolute;
-  top: 12px; right: 14px;
-  width: 8px; height: 8px;
+  top: 12px;
+  right: 14px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   z-index: 4;
 }
-.connOk { background: var(--accent); }
-.connBad { background: var(--accent-2); }
+.connOk {
+  background: var(--accent);
+}
+.connBad {
+  background: var(--accent-2);
+}
 
 /* Mobile */
 .mobBody {
@@ -64,15 +70,28 @@
   cursor: pointer;
 }
 .ribbonLast {
-  font-family: var(--font-display); font-style: italic; font-size: 13px;
-  color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   min-width: 0;
 }
 .ribbonLink {
-  font-family: var(--font-ui); font-size: 11px; color: var(--accent-2);
-  letter-spacing: 0.06em; white-space: nowrap; flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--accent-2);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .ribbonTag {
-  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--muted); flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex-shrink: 0;
 }

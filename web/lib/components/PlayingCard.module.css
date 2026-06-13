@@ -7,8 +7,8 @@
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: var(--pad, 6px); /* Smaller default padding for mobile */
-  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
-  border: 1px solid rgba(0,0,0,0.25);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(0, 0, 0, 0.25);
   user-select: none; /* Prevent text selection on cards */
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent; /* Remove tap highlight on iOS */
@@ -31,7 +31,7 @@
 }
 
 .blank {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .redText {
@@ -40,14 +40,14 @@
 
 .highlight {
   border: 2px solid #4ade80;
-  box-shadow: 0 8px 20px rgba(74,222,128,0.3);
+  box-shadow: 0 8px 20px rgba(74, 222, 128, 0.3);
   transform: scale(1.02); /* Subtle scale effect for mobile feedback */
   transition: transform 0.15s ease;
 }
 
 @media (min-width: 768px) {
   .highlight {
-    box-shadow: 0 12px 24px rgba(74,222,128,0.25);
+    box-shadow: 0 12px 24px rgba(74, 222, 128, 0.25);
   }
 }
 
@@ -104,22 +104,48 @@
 }
 
 /* Mobile-first suit sizing - make top-left suit slightly smaller than rank, center larger */
-.suitTopLeft.small { font-size: 9px; }
-.suitTopLeft.normal { font-size: 12px; }
-.suitTopLeft.big { font-size: 14px; }
-
-.suitCenter.small { font-size: 14px; }
-.suitCenter.normal { font-size: 20px; }
-.suitCenter.big { font-size: 24px; }
-
-@media (min-width: 768px) {
-  .suitTopLeft.small { font-size: 10px; }
-  .suitTopLeft.normal { font-size: 14px; }
-  .suitTopLeft.big { font-size: 16px; }
-
-  .suitCenter.small { font-size: 16px; }
-  .suitCenter.normal { font-size: 24px; }
-  .suitCenter.big { font-size: 28px; }
+.suitTopLeft.small {
+  font-size: 9px;
+}
+.suitTopLeft.normal {
+  font-size: 12px;
+}
+.suitTopLeft.big {
+  font-size: 14px;
 }
 
-.rankBottom { text-align: right; }
+.suitCenter.small {
+  font-size: 14px;
+}
+.suitCenter.normal {
+  font-size: 20px;
+}
+.suitCenter.big {
+  font-size: 24px;
+}
+
+@media (min-width: 768px) {
+  .suitTopLeft.small {
+    font-size: 10px;
+  }
+  .suitTopLeft.normal {
+    font-size: 14px;
+  }
+  .suitTopLeft.big {
+    font-size: 16px;
+  }
+
+  .suitCenter.small {
+    font-size: 16px;
+  }
+  .suitCenter.normal {
+    font-size: 24px;
+  }
+  .suitCenter.big {
+    font-size: 28px;
+  }
+}
+
+.rankBottom {
+  text-align: right;
+}

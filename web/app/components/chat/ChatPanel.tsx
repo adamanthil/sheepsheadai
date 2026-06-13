@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
-import styles from './ChatPanel.module.css';
+import { useState, useRef, useEffect } from "react";
+import styles from "./ChatPanel.module.css";
 
 export interface ChatMessage {
   id: string;
   table_id: string;
-  type: 'player' | 'system';
+  type: "player" | "system";
   author: string | null;
   body: string;
   timestamp: number;
@@ -18,13 +18,14 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom within the messages container (not the page)
   useEffect(() => {
     if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
@@ -32,13 +33,13 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
     e.preventDefault();
     if (inputValue.trim()) {
       onSendMessage(inputValue.trim());
-      setInputValue('');
+      setInputValue("");
     }
   };
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   return (
@@ -48,14 +49,16 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
       </div>
       <div ref={messagesContainerRef} className={styles.messagesContainer}>
         {messages.length === 0 ? (
-          <div className={styles.emptyMessage}>No messages yet. Say hello! 👋</div>
+          <div className={styles.emptyMessage}>
+            No messages yet. Say hello! 👋
+          </div>
         ) : (
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`${styles.message} ${msg.type === 'system' ? styles.systemMessage : styles.playerMessage}`}
+              className={`${styles.message} ${msg.type === "system" ? styles.systemMessage : styles.playerMessage}`}
             >
-              {msg.type === 'system' ? (
+              {msg.type === "system" ? (
                 <div className={styles.systemText}>{msg.body}</div>
               ) : (
                 <div className={styles.playerMessageContent}>
@@ -63,7 +66,9 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
                   <span className={styles.body}>{msg.body}</span>
                 </div>
               )}
-              <div className={styles.timestamp}>{formatTime(msg.timestamp)}</div>
+              <div className={styles.timestamp}>
+                {formatTime(msg.timestamp)}
+              </div>
             </div>
           ))
         )}
@@ -77,7 +82,11 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
           className={styles.input}
           maxLength={500}
         />
-        <button type="submit" className={styles.sendButton} disabled={!inputValue.trim()}>
+        <button
+          type="submit"
+          className={styles.sendButton}
+          disabled={!inputValue.trim()}
+        >
           ↑
         </button>
       </form>

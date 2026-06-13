@@ -16,7 +16,9 @@
   overflow: hidden;
   flex-shrink: 0;
 }
-.red { color: var(--card-red); }
+.red {
+  color: var(--card-red);
+}
 
 .corner {
   font-size: calc(var(--pc-w) * 0.16);
@@ -28,9 +30,19 @@
   gap: 1px;
   font-weight: 500;
 }
-.cornerBr { transform: rotate(180deg); justify-self: end; align-self: end; }
-.rank { font-weight: 500; line-height: 0.9; }
-.suitSm { font-size: calc(var(--pc-w) * 0.12); line-height: 1; }
+.cornerBr {
+  transform: rotate(180deg);
+  justify-self: end;
+  align-self: end;
+}
+.rank {
+  font-weight: 500;
+  line-height: 0.9;
+}
+.suitSm {
+  font-size: calc(var(--pc-w) * 0.12);
+  line-height: 1;
+}
 .center {
   align-self: center;
   justify-self: center;
@@ -40,19 +52,31 @@
 }
 
 .playable {
-  box-shadow: 0 0 0 2px var(--accent-2), var(--shadow-2);
+  box-shadow:
+    0 0 0 2px var(--accent-2),
+    var(--shadow-2);
   transform: translateY(-6px);
 }
-.dim { opacity: 0.45; }
+.dim {
+  opacity: 0.45;
+}
 
 .back {
   background:
-    repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,0.06) 4px 5px),
-    radial-gradient(ellipse at center, var(--card-back) 0%, color-mix(in oklab, var(--card-back) 70%, black) 100%);
+    repeating-linear-gradient(
+      45deg,
+      transparent 0 4px,
+      rgba(255, 255, 255, 0.06) 4px 5px
+    ),
+    radial-gradient(
+      ellipse at center,
+      var(--card-back) 0%,
+      color-mix(in oklab, var(--card-back) 70%, black) 100%
+    );
   border-color: color-mix(in oklab, var(--card-back) 70%, black);
 }
 .back::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 8%;
   border: 1px solid color-mix(in oklab, var(--card-paper) 35%, transparent);
@@ -71,4 +95,6 @@
   font-style: italic;
   color: var(--muted);
 }
-.insetLabel { font-size: calc(var(--pc-w) * 0.18); }
+.insetLabel {
+  font-size: calc(var(--pc-w) * 0.18);
+}

@@ -48,15 +48,30 @@
   background: var(--bg-sunk);
   border: 1px solid var(--rule);
 }
-.divider { height: 1px; background: var(--rule); width: 100%; }
-.dividerStrong { height: 1px; background: var(--rule-strong); width: 100%; }
+.divider {
+  height: 1px;
+  background: var(--rule);
+  width: 100%;
+}
+.dividerStrong {
+  height: 1px;
+  background: var(--rule-strong);
+  width: 100%;
+}
 
 /* Newspaper masthead rule — thick line over thin line. */
-.headRule { position: relative; border-top: 2px solid var(--ink); }
+.headRule {
+  position: relative;
+  border-top: 2px solid var(--ink);
+}
 .headRule::after {
-  content: '';
-  position: absolute; top: 3px; left: 0; right: 0;
-  height: 1px; background: var(--ink);
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--ink);
 }
 
 /* ---- Buttons ---- */
@@ -71,13 +86,26 @@
   background: var(--ink);
   color: var(--bg-page);
   cursor: pointer;
-  transition: transform .08s ease;
+  transition: transform 0.08s ease;
   white-space: nowrap;
 }
-.btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-1); }
-.btn:active { transform: translateY(0); box-shadow: none; }
-.btn:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+.btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
 .btnGhost {
   background: transparent;
   color: var(--ink);
@@ -88,8 +116,14 @@
   border-color: var(--accent);
   color: var(--card-paper);
 }
-.btnLg { padding: 14px 24px; font-size: 14px; }
-.btnSm { padding: 6px 10px; font-size: 12px; }
+.btnLg {
+  padding: 14px 24px;
+  font-size: 14px;
+}
+.btnSm {
+  padding: 6px 10px;
+  font-size: 12px;
+}
 
 /* ---- Form ---- */
 .input {
@@ -103,8 +137,13 @@
   outline: none;
   width: 100%;
 }
-.input::placeholder { color: var(--muted); font-style: italic; }
-.input:focus { border-bottom-color: var(--ink); }
+.input::placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+.input:focus {
+  border-bottom-color: var(--ink);
+}
 
 /* ---- Badges ---- */
 .badge {
@@ -123,11 +162,31 @@
   border: 1px solid var(--rule);
   white-space: nowrap;
 }
-.badgeInk { background: var(--ink); color: var(--bg-page); border-color: var(--ink); }
-.badgeAccent { background: var(--accent); color: var(--card-paper); border-color: var(--accent); }
-.badgeAccent2 { background: var(--accent-2); color: var(--card-paper); border-color: var(--accent-2); }
-.badgeGold { background: var(--gold); color: var(--card-paper); border-color: var(--gold); }
-.badgeQuiet { background: transparent; color: var(--muted); border-color: var(--rule); }
+.badgeInk {
+  background: var(--ink);
+  color: var(--bg-page);
+  border-color: var(--ink);
+}
+.badgeAccent {
+  background: var(--accent);
+  color: var(--card-paper);
+  border-color: var(--accent);
+}
+.badgeAccent2 {
+  background: var(--accent-2);
+  color: var(--card-paper);
+  border-color: var(--accent-2);
+}
+.badgeGold {
+  background: var(--gold);
+  color: var(--card-paper);
+  border-color: var(--gold);
+}
+.badgeQuiet {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--rule);
+}
 
 /* ---- Link ---- */
 .link {
@@ -138,4 +197,7 @@
   font-family: var(--font-ui);
   cursor: pointer;
 }
-.link:hover { text-decoration-color: var(--accent); color: var(--accent); }
+.link:hover {
+  text-decoration-color: var(--accent);
+  color: var(--accent);
+}

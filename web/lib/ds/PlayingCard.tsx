@@ -1,6 +1,6 @@
-import React from 'react';
-import { parseCard, suitSymbol, isRedSuit } from './cardUtils';
-import styles from './PlayingCard.module.css';
+import React from "react";
+import { parseCard, suitSymbol, isRedSuit } from "./cardUtils";
+import styles from "./PlayingCard.module.css";
 
 export interface PlayingCardProps {
   /** Card code: "QC", "10H", "AD", "__" (face down), "UNDER" (buried-under placeholder). */
@@ -22,12 +22,12 @@ export default function PlayingCard({
   className,
 }: PlayingCardProps) {
   const { rank, suit, faceDown, special } = parseCard(code);
-  const cssVars = { ['--pc-w' as string]: `${w}px` } as React.CSSProperties;
+  const cssVars = { ["--pc-w" as string]: `${w}px` } as React.CSSProperties;
 
-  if (special === 'UNDER') {
+  if (special === "UNDER") {
     return (
       <div
-        className={`${styles.pc} ${styles.inset} ${className ?? ''}`}
+        className={`${styles.pc} ${styles.inset} ${className ?? ""}`}
         style={cssVars}
         aria-hidden={ariaHidden}
       >
@@ -39,7 +39,7 @@ export default function PlayingCard({
   if (faceDown) {
     return (
       <div
-        className={`${styles.pc} ${styles.back} ${dim ? styles.dim : ''} ${className ?? ''}`}
+        className={`${styles.pc} ${styles.back} ${dim ? styles.dim : ""} ${className ?? ""}`}
         style={cssVars}
         aria-hidden={ariaHidden}
       />
@@ -49,11 +49,13 @@ export default function PlayingCard({
   const sym = suitSymbol(suit);
   const classNames = [
     styles.pc,
-    isRedSuit(suit) ? styles.red : '',
-    playable ? styles.playable : '',
-    dim ? styles.dim : '',
-    className ?? '',
-  ].filter(Boolean).join(' ');
+    isRedSuit(suit) ? styles.red : "",
+    playable ? styles.playable : "",
+    dim ? styles.dim : "",
+    className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={classNames} style={cssVars} aria-hidden={ariaHidden}>

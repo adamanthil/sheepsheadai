@@ -1,6 +1,6 @@
-import React from 'react';
-import { SeatAvatar, ds } from '../../../../lib/ds';
-import styles from './SeatCard.module.css';
+import React from "react";
+import { SeatAvatar, ds } from "../../../../lib/ds";
+import styles from "./SeatCard.module.css";
 
 export interface SeatInfo {
   seat: number;
@@ -10,7 +10,7 @@ export interface SeatInfo {
 
 interface SeatCardProps {
   seat: SeatInfo;
-  variant: 'card' | 'row';
+  variant: "card" | "row";
   onTake: (seat: number) => void;
 }
 
@@ -23,13 +23,18 @@ export default function SeatCard({ seat, variant, onTake }: SeatCardProps) {
   const empty = !seat.name;
   const takeable = empty || seat.isAI;
 
-  if (variant === 'row') {
+  if (variant === "row") {
     if (empty) {
       return (
-        <button className={`${styles.row} ${styles.rowEmpty}`} onClick={() => onTake(seat.seat)}>
+        <button
+          className={`${styles.row} ${styles.rowEmpty}`}
+          onClick={() => onTake(seat.seat)}
+        >
           <div className={styles.rowPlus}>+</div>
           <div className={styles.rowMain}>
-            <div className={ds.overline} style={{ fontSize: 9 }}>Seat {seat.seat}</div>
+            <div className={ds.overline} style={{ fontSize: 9 }}>
+              Seat {seat.seat}
+            </div>
             <div className={styles.rowTake}>Take this seat</div>
           </div>
           <div className={styles.rowArrow}>→</div>
@@ -42,14 +47,26 @@ export default function SeatCard({ seat, variant, onTake }: SeatCardProps) {
         <div className={styles.rowMain}>
           <div className={styles.rowNameLine}>
             <div className={styles.rowName}>{seat.name}</div>
-            <div className={ds.overline} style={{ fontSize: 9 }}>seat {seat.seat}</div>
+            <div className={ds.overline} style={{ fontSize: 9 }}>
+              seat {seat.seat}
+            </div>
           </div>
           <div className={styles.rowBadges}>
-            {seat.isAI && <span className={`${ds.badge} ${ds.badgeQuiet}`} style={{ fontSize: 9 }}>AI bot</span>}
+            {seat.isAI && (
+              <span
+                className={`${ds.badge} ${ds.badgeQuiet}`}
+                style={{ fontSize: 9 }}
+              >
+                AI bot
+              </span>
+            )}
           </div>
         </div>
         {seat.isAI && (
-          <button className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`} onClick={() => onTake(seat.seat)}>
+          <button
+            className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+            onClick={() => onTake(seat.seat)}
+          >
             Take →
           </button>
         )}
@@ -61,9 +78,14 @@ export default function SeatCard({ seat, variant, onTake }: SeatCardProps) {
   if (empty) {
     return (
       <div className={`${styles.card} ${styles.cardEmpty}`}>
-        <div className={ds.overline} style={{ alignSelf: 'flex-start' }}>Seat {seat.seat}</div>
+        <div className={ds.overline} style={{ alignSelf: "flex-start" }}>
+          Seat {seat.seat}
+        </div>
         <div className={styles.emptyLabel}>Empty</div>
-        <button className={`${ds.btn} ${ds.btnSm} ${styles.takeBtn}`} onClick={() => onTake(seat.seat)}>
+        <button
+          className={`${ds.btn} ${ds.btnSm} ${styles.takeBtn}`}
+          onClick={() => onTake(seat.seat)}
+        >
           Take this seat →
         </button>
       </div>
@@ -77,10 +99,15 @@ export default function SeatCard({ seat, variant, onTake }: SeatCardProps) {
       <div className={styles.cardBody}>
         <SeatAvatar name={seat.name ?? undefined} isAI={seat.isAI} size={44} />
         <div className={styles.name}>{seat.name}</div>
-        {seat.isAI && <span className={`${ds.badge} ${ds.badgeQuiet}`}>AI Bot</span>}
+        {seat.isAI && (
+          <span className={`${ds.badge} ${ds.badgeQuiet}`}>AI Bot</span>
+        )}
       </div>
       {takeable ? (
-        <button className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm} ${styles.takeBtn}`} onClick={() => onTake(seat.seat)}>
+        <button
+          className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm} ${styles.takeBtn}`}
+          onClick={() => onTake(seat.seat)}
+        >
           Take over →
         </button>
       ) : (

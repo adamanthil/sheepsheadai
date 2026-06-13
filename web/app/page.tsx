@@ -299,13 +299,15 @@ export default function HomePage() {
 
   const botCount = (t: TableSummary) =>
     Object.entries(t.seats || {}).reduce((acc, [k, seatName]) => {
-      const isAI = (t.seatIsAI as Record<string, boolean> | undefined)?.[k] ?? false;
+      const isAI =
+        (t.seatIsAI as Record<string, boolean> | undefined)?.[k] ?? false;
       return acc + (seatName && isAI ? 1 : 0);
     }, 0);
 
   const humanFilledCount = (t: TableSummary) =>
     Object.entries(t.seats || {}).reduce((acc, [k, seatName]) => {
-      const isAI = (t.seatIsAI as Record<string, boolean> | undefined)?.[k] ?? false;
+      const isAI =
+        (t.seatIsAI as Record<string, boolean> | undefined)?.[k] ?? false;
       return acc + (seatName && !isAI ? 1 : 0);
     }, 0);
 
@@ -327,7 +329,7 @@ export default function HomePage() {
 
           <p className={styles.lede}>
             A five‑handed, trick‑taking game from Wisconsin — played here with
-            friends and an opinionated deep‑learning AI.
+            friends and a deep‑learning AI.
           </p>
 
           {error && <div className={styles.error}>{error}</div>}
@@ -338,7 +340,9 @@ export default function HomePage() {
             </div>
             <div className={styles.formRow}>
               <div className={styles.field}>
-                <label className={`${ds.overline} ${styles.fieldLabel}`}>Your name</label>
+                <label className={`${ds.overline} ${styles.fieldLabel}`}>
+                  Your name
+                </label>
                 <input
                   className={ds.input}
                   value={displayNameInput}
@@ -348,7 +352,9 @@ export default function HomePage() {
                 />
               </div>
               <div className={styles.field}>
-                <label className={`${ds.overline} ${styles.fieldLabel}`}>Table name</label>
+                <label className={`${ds.overline} ${styles.fieldLabel}`}>
+                  Table name
+                </label>
                 <input
                   className={ds.input}
                   value={name}
@@ -383,14 +389,18 @@ export default function HomePage() {
           <div className={styles.colHead}>
             <div className={ds.overline}>Name</div>
             <div className={ds.overline}>Players</div>
-            <div className={`${ds.overline} ${styles.colHeadRight}`}>Action</div>
+            <div className={`${ds.overline} ${styles.colHeadRight}`}>
+              Action
+            </div>
           </div>
 
           <div className={styles.rows}>
             {loading ? (
               <div className={styles.empty}>Loading…</div>
             ) : tables.length === 0 ? (
-              <div className={styles.empty}>No open tables yet — start one.</div>
+              <div className={styles.empty}>
+                No open tables yet — start one.
+              </div>
             ) : (
               tables.map((t) => {
                 const humanFilled = humanFilledCount(t);
@@ -403,7 +413,10 @@ export default function HomePage() {
                       <div className={styles.tableName}>{t.name}</div>
                       {(playing || bots > 0) && (
                         <div className={styles.tableSub}>
-                          {[playing ? "in play" : null, bots > 0 ? `${bots} AI` : null]
+                          {[
+                            playing ? "in play" : null,
+                            bots > 0 ? `${bots} AI` : null,
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </div>
@@ -415,11 +428,16 @@ export default function HomePage() {
                     </div>
                     <div className={styles.rowAction}>
                       {canJoin ? (
-                        <button className={`${ds.btn} ${ds.btnSm}`} onClick={() => join(t.id)}>
+                        <button
+                          className={`${ds.btn} ${ds.btnSm}`}
+                          onClick={() => join(t.id)}
+                        >
                           Join →
                         </button>
                       ) : (
-                        <span className={`${ds.badge} ${ds.badgeQuiet}`}>Full</span>
+                        <span className={`${ds.badge} ${ds.badgeQuiet}`}>
+                          Full
+                        </span>
                       )}
                     </div>
                   </div>

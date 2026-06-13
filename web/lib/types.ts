@@ -1,7 +1,7 @@
 export type TableSummary = {
   id: string;
   name: string;
-  status: 'open' | 'playing' | 'finished';
+  status: "open" | "playing" | "finished";
   rules: Record<string, unknown>;
   fillWithAI: boolean;
   seats: Record<string, string | null>;
@@ -20,7 +20,7 @@ export type HandResult = {
 export type TableView = {
   id: string;
   name: string;
-  status: 'open' | 'playing' | 'finished';
+  status: "open" | "playing" | "finished";
   seats: Record<string, string | null>;
   seatIsAI?: Record<string, boolean>;
   seatOccupants?: Record<string, string>;
@@ -32,7 +32,7 @@ export type TableView = {
 };
 
 export type FinalState = {
-  mode?: 'leaster' | 'normal';
+  mode?: "leaster" | "normal";
   winner?: number;
   picker?: number;
   partner?: number;
@@ -63,7 +63,7 @@ export type GameView = {
 };
 
 export type TableStateMsg = {
-  type: 'state';
+  type: "state";
   table: TableView;
   yourSeat: number;
   actorSeat: number | null;
@@ -80,6 +80,10 @@ export type TableStateMsg = {
   valid_actions: number[];
 };
 
-export type GameOverMsg = { type: 'game_over'; table: TableView };
+export type GameOverMsg = { type: "game_over"; table: TableView };
 
-export type TableClosedMsg = { type: 'table_closed'; reason?: string; tableId?: string };
+export type TableClosedMsg = {
+  type: "table_closed";
+  reason?: string;
+  tableId?: string;
+};

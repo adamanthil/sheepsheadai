@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { AnalyzeActionDetail } from '../../lib/analyzeTypes';
-import ActionDetails from './ActionDetails';
-import ActionInsights from './ActionInsights';
-import ActionStateVector from './ActionStateVector';
-import { CardText } from '../../lib/components';
-import styles from './page.module.css';
+import React, { useState } from "react";
+import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
+import ActionDetails from "./ActionDetails";
+import ActionInsights from "./ActionInsights";
+import ActionStateVector from "./ActionStateVector";
+import { CardText } from "../../lib/components";
+import styles from "./page.module.css";
 
 interface ActionRowProps {
   action: AnalyzeActionDetail;
@@ -15,7 +15,14 @@ interface ActionRowProps {
   normalizedStepReward?: number; // 0-1 scale for color gradient (immediate step reward)
 }
 
-export default function ActionRow({ action, picker, partner, normalizedValue, normalizedReward, normalizedStepReward }: ActionRowProps) {
+export default function ActionRow({
+  action,
+  picker,
+  partner,
+  normalizedValue,
+  normalizedReward,
+  normalizedStepReward,
+}: ActionRowProps) {
   const [expanded, setExpanded] = useState(false);
 
   const handleClick = () => {
@@ -27,17 +34,17 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
   };
 
   const getPlayerRole = () => {
-    if (action.seatName === picker) return 'picker';
-    if (action.seatName === partner) return 'partner';
-    return 'other';
+    if (action.seatName === picker) return "picker";
+    if (action.seatName === partner) return "partner";
+    return "other";
   };
 
   const getSeatBadgeClass = () => {
     const role = getPlayerRole();
     switch (role) {
-      case 'picker':
+      case "picker":
         return `${styles.seatBadge} ${styles.seatBadgePicker}`;
-      case 'partner':
+      case "partner":
         return `${styles.seatBadge} ${styles.seatBadgePartner}`;
       default:
         return `${styles.seatBadge} ${styles.seatBadgeOther}`;
@@ -46,7 +53,7 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
 
   const getHueStyle = (normalized: number) => {
     const hue = normalized * 120; // 0 (red) .. 120 (green)
-    return { '--value-hue': `${hue}deg` } as React.CSSProperties;
+    return { "--value-hue": `${hue}deg` } as React.CSSProperties;
   };
 
   const formatSigned = (value: number, digits = 3) => {
@@ -58,7 +65,7 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
     value,
     colorStyle,
     tooltip,
-    suffix = ''
+    suffix = "",
   }: {
     label: React.ReactNode;
     value: string;
@@ -69,7 +76,10 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
     return (
       <div className={styles.metricChip} title={tooltip} style={colorStyle}>
         <span className={styles.metricLabel}>{label}</span>
-        <span className={styles.metricValue}>{value}{suffix}</span>
+        <span className={styles.metricValue}>
+          {value}
+          {suffix}
+        </span>
       </div>
     );
   }
@@ -102,80 +112,112 @@ export default function ActionRow({ action, picker, partner, normalizedValue, no
           tooltip="Value estimate (critic)"
         />
 
-        {typeof discounted === 'number' && (
+        {typeof discounted === "number" && (
           <MetricChip
-            label={<>G<sub>t</sub></>}
+            label={
+              <>
+                G<sub>t</sub>
+              </>
+            }
             value={formatSigned(discounted)}
-            colorStyle={getHueStyle(typeof discountedHue === 'number' ? discountedHue : 0.5)}
+            colorStyle={getHueStyle(
+              typeof discountedHue === "number" ? discountedHue : 0.5,
+            )}
             tooltip="Discounted return"
           />
         )}
 
-        {typeof step === 'number' && (
+        {typeof step === "number" && (
           <MetricChip
             label={<>r</>}
             value={formatSigned(step)}
-            colorStyle={getHueStyle(typeof stepHue === 'number' ? stepHue : 0.5)}
+            colorStyle={getHueStyle(
+              typeof stepHue === "number" ? stepHue : 0.5,
+            )}
             tooltip="Immediate step reward"
           />
         )}
 
-        {typeof winPct === 'number' && (
-          <div className={`${styles.metricChip} ${styles.metricChipNeutral}`} title="Win probability">
+        {typeof winPct === "number" && (
+          <div
+            className={`${styles.metricChip} ${styles.metricChipNeutral}`}
+            title="Win probability"
+          >
             <span className={styles.metricLabel}>Win</span>
-            <span className={styles.metricValue}>{`${Math.round(winPct)}%`}</span>
+            <span
+              className={styles.metricValue}
+            >{`${Math.round(winPct)}%`}</span>
           </div>
         )}
 
-        {typeof expectedFinal === 'number' && (
-          <div className={`${styles.metricChip} ${styles.metricChipNeutral}`} title="Expected final return (undiscounted)">
+        {typeof expectedFinal === "number" && (
+          <div
+            className={`${styles.metricChip} ${styles.metricChipNeutral}`}
+            title="Expected final return (undiscounted)"
+          >
             <span className={styles.metricLabel}>E[Ret]</span>
-            <span className={styles.metricValue}>{expectedFinal.toFixed(2)}</span>
+            <span className={styles.metricValue}>
+              {expectedFinal.toFixed(2)}
+            </span>
           </div>
         )}
-
       </div>
     );
   }
 
   return (
     <div className={styles.actionRow}>
-      <div
-        className={styles.actionSummary}
-        onClick={handleClick}
-      >
+      <div className={styles.actionSummary} onClick={handleClick}>
         <div className={styles.actionBasic}>
-          <div className={styles.stepIndex}>
-            {action.stepIndex + 1}
-          </div>
+          <div className={styles.stepIndex}>{action.stepIndex + 1}</div>
 
-          <div className={getSeatBadgeClass()}>
-            {action.seatName}
-          </div>
+          <div className={getSeatBadgeClass()}>{action.seatName}</div>
 
           <div className={styles.actionInfo}>
             <div className={styles.actionText}>
               <CardText>{action.action}</CardText>
             </div>
-            <div className={styles.phaseText}>
-              {action.phase} Head
-            </div>
+            <div className={styles.phaseText}>{action.phase} Head</div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <MetricsBar
             value={action.valueEstimate}
             valueHue={normalizedValue}
-            discounted={typeof action.discountedReturn === 'number' ? action.discountedReturn : undefined}
+            discounted={
+              typeof action.discountedReturn === "number"
+                ? action.discountedReturn
+                : undefined
+            }
             discountedHue={normalizedReward}
-            step={typeof action.stepReward === 'number' ? action.stepReward : undefined}
-            stepHue={typeof normalizedStepReward === 'number' ? normalizedStepReward : undefined}
-            winPct={typeof action.winProb === 'number' ? (action.winProb * 100) : undefined}
-            expectedFinal={typeof action.expectedFinalReturn === 'number' ? action.expectedFinalReturn : undefined}
+            step={
+              typeof action.stepReward === "number"
+                ? action.stepReward
+                : undefined
+            }
+            stepHue={
+              typeof normalizedStepReward === "number"
+                ? normalizedStepReward
+                : undefined
+            }
+            winPct={
+              typeof action.winProb === "number"
+                ? action.winProb * 100
+                : undefined
+            }
+            expectedFinal={
+              typeof action.expectedFinalReturn === "number"
+                ? action.expectedFinalReturn
+                : undefined
+            }
           />
 
-          <div className={`${styles.expandIcon} ${expanded ? styles.expanded : ''}`}>▼</div>
+          <div
+            className={`${styles.expandIcon} ${expanded ? styles.expanded : ""}`}
+          >
+            ▼
+          </div>
         </div>
       </div>
 
