@@ -1,10 +1,6 @@
 import React from "react";
 import { PlayingCard, SeatAvatar, ds } from "../../../../lib/ds";
-import {
-  RING_COORDS,
-  ringPosForRel,
-  gridCornerForRel,
-} from "../lib/seatLayout";
+import { RING_ANCHORS, MOBILE_RING_ANCHORS } from "../lib/seatLayout";
 import type { TablePhase, SeatRole, InterludeMode } from "../lib/phase";
 import CollectOverlay from "./CollectOverlay";
 import type { AnimTrick } from "../hooks/useTrickAnimation";
@@ -354,26 +350,30 @@ function DesktopStage(props: StageProps) {
         {seats
           .filter((s) => !s.you)
           .map((seat) => {
-            const pos = ringPosForRel(seat.rel);
-            if (!pos) return null;
-            const coords = RING_COORDS[pos];
-            const cardRight = coords.cardSide === "right";
+            const anchor = RING_ANCHORS[seat.rel];
+            if (!anchor) return null;
             return (
               <div
                 key={seat.absSeat}
-                className={`${styles.ringSeat} ${cardRight ? styles.ringSeatCardRight : styles.ringSeatCardLeft}`}
-                style={coords.style}
+                className={styles.ringSeat}
+                style={{ left: `${anchor.cardX}%`, top: `${anchor.cardY}%` }}
               >
-                <DesktopChip seat={seat} cardRight={cardRight} />
+                <RingChip seat={seat} plate={anchor.plate} />
                 <div>{seatCardContent(props, seat, 104)}</div>
               </div>
             );
           })}
 
         {youPlayed && (
-          <div className={styles.youSlot}>
+          <div
+            className={styles.ringSeat}
+            style={{
+              left: `${RING_ANCHORS[0].cardX}%`,
+              top: `${RING_ANCHORS[0].cardY}%`,
+            }}
+          >
             <PlayingCard code={youPlayed} w={104} />
-            <span className={styles.youSlotLabel}>You</span>
+            <span className={styles.youPlate}>You</span>
           </div>
         )}
 
@@ -395,43 +395,42 @@ function DesktopStage(props: StageProps) {
   );
 }
 
-function DesktopChip({
+// Compact name-plate that floats off a seat's played card, toward the table
+// rim: mid seats sit above their card, top seats below. `compact` trims it for
+// the tighter mobile ring (smaller avatar, no seat number).
+function RingChip({
   seat,
-  cardRight,
+  plate,
+  compact,
 }: {
   seat: SeatView;
-  cardRight: boolean;
+  plate: "above" | "below";
+  compact?: boolean;
 }) {
+  const plateClass = plate === "above" ? styles.chipAbove : styles.chipBelow;
   return (
-    <div className={styles.chip}>
-      <div
-        className={`${styles.chipRow} ${cardRight ? "" : styles.chipRowLeft}`}
-      >
-        <SeatAvatar
-          name={seat.name}
-          isAI={seat.isAI}
-          tone={tone(seat.role)}
-          size={36}
-        />
+    <div className={`${styles.chip} ${plateClass}`}>
+      <SeatAvatar
+        name={seat.name}
+        isAI={seat.isAI}
+        tone={tone(seat.role)}
+        size={compact ? 26 : 32}
+      />
+      <div className={styles.chipText}>
         <div
-          className={`${styles.chipText} ${cardRight ? styles.chipTextRight : styles.chipTextLeft}`}
+          className={`${styles.chipName} ${compact ? styles.chipNameSm : ""}`}
         >
-          <div
-            className={`${styles.chipRow} ${cardRight ? "" : styles.chipRowLeft}`}
-          >
-            <div className={styles.chipName}>{seat.name}</div>
-          </div>
+          {seat.name}
+        </div>
+        {!compact && (
           <div className={ds.overline} style={{ fontSize: 9 }}>
             Seat {seat.absSeat}
           </div>
-        </div>
+        )}
       </div>
-      <div
-        className={styles.chipBadges}
-        style={{ justifyContent: cardRight ? "flex-start" : "flex-end" }}
-      >
-        {roleBadge(seat.role)}
-      </div>
+      {roleBadge(seat.role, compact) && (
+        <div className={styles.chipBadges}>{roleBadge(seat.role, compact)}</div>
+      )}
     </div>
   );
 }
@@ -439,12 +438,12 @@ function DesktopChip({
 // ---------- Mobile ----------
 function MobileStage(props: StageProps) {
   const { seats } = props;
-  const cornerClass: Record<string, string> = {
-    tl: styles.mobCellTL,
-    tr: styles.mobCellTR,
-    bl: styles.mobCellBL,
-    br: styles.mobCellBR,
-  };
+  const MOB_CARD = 66;
+  const you = seats.find((s) => s.you);
+  const youPlayed =
+    (props.phase === "play" || props.phase === "done") && you
+      ? props.displayCards[you.absSeat - 1] || ""
+      : "";
   return (
     <div
       className={styles.mobStage}
@@ -468,41 +467,41 @@ function MobileStage(props: StageProps) {
           vectorEffect="non-scaling-stroke"
         />
       </svg>
-      <div className={styles.mobGrid}>
-        {seats
-          .filter((s) => !s.you)
-          .map((seat) => {
-            const corner = gridCornerForRel(seat.rel);
-            if (!corner) return null;
-            const isLeft = corner === "tl" || corner === "bl";
-            return (
-              <div
-                key={seat.absSeat}
-                className={`${styles.mobCell} ${cornerClass[corner]}`}
-              >
-                <div
-                  className={styles.mobSeat}
-                  style={{ flexDirection: isLeft ? "row" : "row-reverse" }}
-                >
-                  <div className={styles.mobChip}>
-                    <SeatAvatar
-                      name={seat.name}
-                      isAI={seat.isAI}
-                      tone={tone(seat.role)}
-                      size={28}
-                    />
-                    <div className={styles.mobName}>{seat.name}</div>
-                    {roleBadge(seat.role, true)}
-                  </div>
-                  <div>{seatCardContent(props, seat, 78)}</div>
-                </div>
-              </div>
-            );
-          })}
-      </div>
+
       <div className={styles.mobCenter}>
         <CenterContent props={props} mobile />
       </div>
+
+      {seats
+        .filter((s) => !s.you)
+        .map((seat) => {
+          const anchor = MOBILE_RING_ANCHORS[seat.rel];
+          if (!anchor) return null;
+          return (
+            <div
+              key={seat.absSeat}
+              className={styles.ringSeat}
+              style={{ left: `${anchor.cardX}%`, top: `${anchor.cardY}%` }}
+            >
+              <RingChip seat={seat} plate={anchor.plate} compact />
+              <div>{seatCardContent(props, seat, MOB_CARD)}</div>
+            </div>
+          );
+        })}
+
+      {youPlayed && (
+        <div
+          className={styles.ringSeat}
+          style={{
+            left: `${MOBILE_RING_ANCHORS[0].cardX}%`,
+            top: `${MOBILE_RING_ANCHORS[0].cardY}%`,
+          }}
+        >
+          <PlayingCard code={youPlayed} w={MOB_CARD} />
+          <span className={styles.youPlate}>You</span>
+        </div>
+      )}
+
       {props.callout && <div className={styles.callout}>{props.callout}</div>}
     </div>
   );

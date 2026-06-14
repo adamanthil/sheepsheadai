@@ -38,74 +38,68 @@
   text-align: center;
 }
 
+/* Each seat anchors its played card's CENTER at the ring point; the name-plate
+   floats above/below toward the table rim (positioned absolutely so it never
+   shifts the card off its anchor). */
 .ringSeat {
   position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.ringSeatCardRight {
-  flex-direction: row;
-}
-.ringSeatCardLeft {
-  flex-direction: row-reverse;
+  transform: translate(-50%, -50%);
 }
 
-/* Chip */
+/* Name-plate: a compact vertical chip that hovers off the card. */
 .chip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 110px;
-}
-.chipRow {
-  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 2px;
+  width: max-content;
+  max-width: 104px;
 }
-.chipRowLeft {
-  flex-direction: row-reverse;
+.chipAbove {
+  bottom: calc(100% + 8px);
+}
+.chipBelow {
+  top: calc(100% + 8px);
 }
 .chipText {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-}
-.chipTextRight {
-  text-align: left;
-}
-.chipTextLeft {
-  text-align: right;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
 }
 .chipName {
   font-family: var(--font-display);
-  font-size: 19px;
+  font-size: 15px;
   line-height: 1;
   color: var(--ink);
+  white-space: nowrap;
+}
+.chipNameSm {
+  font-size: 13px;
 }
 .chipBadges {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
-/* Your played card slot, bottom-center inside the ring */
-.youSlot {
+/* "You" label under your played card */
+.youPlate {
   position: absolute;
+  top: calc(100% + 6px);
   left: 50%;
-  bottom: 0;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.youSlotLabel {
   font-family: var(--font-ui);
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 /* Center pieces */
@@ -311,67 +305,6 @@
   width: calc(100% - 28px);
   height: calc(100% - 28px);
   pointer-events: none;
-}
-.mobGrid {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  height: 100%;
-}
-/* Each seat is pinned to its grid cell explicitly. CSS Grid otherwise
-   auto-places items in DOM order, but seats arrive in seat order — not
-   corner order — so without explicit placement the alignment (which is
-   keyed to the corner) lands on the wrong cell and the cards scatter. */
-.mobCell {
-  display: flex;
-}
-.mobCellTL {
-  grid-column: 1;
-  grid-row: 1;
-  justify-content: flex-end;
-  align-items: flex-end;
-  padding: 6px 22px 26px 6px;
-}
-.mobCellTR {
-  grid-column: 2;
-  grid-row: 1;
-  justify-content: flex-start;
-  align-items: flex-end;
-  padding: 6px 6px 26px 22px;
-}
-.mobCellBL {
-  grid-column: 1;
-  grid-row: 2;
-  justify-content: flex-end;
-  align-items: flex-start;
-  padding: 26px 22px 6px 6px;
-}
-.mobCellBR {
-  grid-column: 2;
-  grid-row: 2;
-  justify-content: flex-start;
-  align-items: flex-start;
-  padding: 26px 6px 6px 22px;
-}
-.mobSeat {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.mobChip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  min-width: 48px;
-}
-.mobName {
-  font-family: var(--font-display);
-  font-size: 13px;
-  line-height: 1;
-  color: var(--ink);
-  text-align: center;
 }
 .mobCenter {
   position: absolute;
