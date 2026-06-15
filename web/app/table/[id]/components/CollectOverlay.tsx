@@ -1,42 +1,47 @@
 import React, { useRef, useEffect } from "react";
 import { PlayingCard } from "../../../../lib/ds";
-import { collectAnchorPct, relSeat } from "../lib/seatLayout";
+import { relSeat, type RingAnchor } from "../lib/seatLayout";
 import styles from "./Stage.module.css";
 
 interface CollectOverlayProps {
-  containerRef: React.RefObject<HTMLDivElement | null>;
   yourSeat: number;
   winner: number;
   cards: string[];
   cardW: number;
+  // The ring anchors for the active layout (desktop vs mobile). Cards fly from
+  // each seat's anchor to the winner's, so these must match the rendered ring.
+  anchors: Record<number, RingAnchor>;
 }
 
 /**
- * Animates the just-completed trick's cards flying to the winner's seat.
- * Seat anchors come from seatLayout.collectAnchorPct so they track the stage.
+ * Animates the just-completed trick's cards flying to the winner's seat. The
+ * overlay measures its own box (which fills the same positioned ancestor the
+ * ring seats are placed in), so the percentage anchors convert against the
+ * exact coordinate space the cards were rendered in.
  */
 export default function CollectOverlay({
-  containerRef,
   yourSeat,
   winner,
   cards,
   cardW,
+  anchors,
 }: CollectOverlayProps) {
-  const cw = containerRef.current?.clientWidth ?? 1000;
-  const ch = containerRef.current?.clientHeight ?? 400;
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const refs = useRef<Array<HTMLDivElement | null>>([]);
   if (refs.current.length !== cards.length) {
     refs.current = Array(cards.length).fill(null);
   }
 
-  const pToPx = (pct: { left: number; top: number }) => ({
-    x: (pct.left / 100) * cw,
-    y: (pct.top / 100) * ch,
-  });
-
   useEffect(() => {
-    const start = performance.now();
-    const dur = 1100;
+    const root = rootRef.current;
+    if (!root) return;
+    const cw = root.clientWidth || 1;
+    const ch = root.clientHeight || 1;
+    const pToPx = (rel: number) => {
+      const a = anchors[rel] ?? { cardX: 50, cardY: 50 };
+      return { x: (a.cardX / 100) * cw, y: (a.cardY / 100) * ch };
+    };
+
     const bezier = (
       t: number,
       p0: number,
@@ -55,10 +60,8 @@ export default function CollectOverlay({
     const easeInOut = (t: number) =>
       t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-    const fromPts = cards.map((_, idx) =>
-      pToPx(collectAnchorPct(relSeat(idx + 1, yourSeat))),
-    );
-    const toPt = pToPx(collectAnchorPct(relSeat(winner, yourSeat)));
+    const fromPts = cards.map((_, idx) => pToPx(relSeat(idx + 1, yourSeat)));
+    const toPt = pToPx(relSeat(winner, yourSeat));
     const ctrl = fromPts.map((p0) => ({
       cx1: (p0.x + cw / 2) / 2,
       cy1: Math.min(p0.y, toPt.y) - 0.15 * ch,
@@ -66,6 +69,18 @@ export default function CollectOverlay({
       cy2: Math.min(p0.y, toPt.y) - 0.15 * ch,
     }));
 
+    // Seat the cards at their start points before the first frame to avoid a
+    // top-left flash.
+    cards.forEach((_, idx) => {
+      const el = refs.current[idx];
+      if (!el) return;
+      el.style.left = `${Math.round(fromPts[idx].x)}px`;
+      el.style.top = `${Math.round(fromPts[idx].y)}px`;
+      el.style.transform = "translate(-50%, -50%)";
+    });
+
+    const start = performance.now();
+    const dur = 1100;
     let raf = 0;
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / dur);
@@ -86,10 +101,10 @@ export default function CollectOverlay({
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [cards, yourSeat, winner, cw, ch]);
+  }, [cards, yourSeat, winner, cardW, anchors]);
 
   return (
-    <div className={styles.collectOverlay}>
+    <div className={styles.collectOverlay} ref={rootRef}>
       {cards.map((c, idx) => (
         <div
           key={idx}

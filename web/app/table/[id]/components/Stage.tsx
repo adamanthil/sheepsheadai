@@ -382,11 +382,11 @@ function DesktopStage(props: StageProps) {
         )}
         {props.animTrick && (
           <CollectOverlay
-            containerRef={props.trickBoxRef}
             yourSeat={yourSeat}
             winner={props.animTrick.winner}
             cards={props.animTrick.cards}
             cardW={104}
+            anchors={RING_ANCHORS}
           />
         )}
         {props.callout && <div className={styles.callout}>{props.callout}</div>}
@@ -500,6 +500,16 @@ function MobileStage(props: StageProps) {
           <PlayingCard code={youPlayed} w={MOB_CARD} />
           <span className={styles.youPlate}>You</span>
         </div>
+      )}
+
+      {props.animTrick && (
+        <CollectOverlay
+          yourSeat={props.yourSeat}
+          winner={props.animTrick.winner}
+          cards={props.animTrick.cards}
+          cardW={MOB_CARD}
+          anchors={MOBILE_RING_ANCHORS}
+        />
       )}
 
       {props.callout && <div className={styles.callout}>{props.callout}</div>}

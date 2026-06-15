@@ -42,15 +42,3 @@ export const MOBILE_RING_ANCHORS: Record<number, RingAnchor> = {
   3: { cardX: 70, cardY: 29, plate: "above" }, // tr (upper-right)
   4: { cardX: 84, cardY: 53, plate: "below" }, // mr (mid-right)
 };
-
-/**
- * Percentage anchors (of the trick container) for the collect animation, by
- * relative seat. These mirror the played-card centers in RING_ANCHORS so the
- * cards fly to the winner from exactly where they sat. Kept beside the ring so
- * the stage and the animation never drift apart.
- */
-export function collectAnchorPct(rel: number): { left: number; top: number } {
-  const a = RING_ANCHORS[rel];
-  if (!a) return { left: 50, top: 50 };
-  return { left: a.cardX, top: a.cardY };
-}
