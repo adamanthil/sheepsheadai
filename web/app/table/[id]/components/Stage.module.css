@@ -64,6 +64,21 @@
 .chipBelow {
   top: calc(100% + 8px);
 }
+/* Side plates for the inner top seats: hug the outer edge of the card,
+   vertically centered, so the name details read toward the table rim. */
+.chipLeft {
+  left: auto;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: flex-end;
+}
+.chipRight {
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: flex-start;
+}
 .chipText {
   display: flex;
   flex-direction: column;
@@ -86,6 +101,21 @@
   gap: 4px;
   flex-wrap: wrap;
   justify-content: center;
+}
+/* Badge floated to the side of the name block (inner mobile seats): taken out
+   of the column flow so it never shifts the name's vertical position. */
+.chipBadgesLeft,
+.chipBadgesRight {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-wrap: nowrap;
+}
+.chipBadgesLeft {
+  right: calc(100% + 5px);
+}
+.chipBadgesRight {
+  left: calc(100% + 5px);
 }
 
 /* "You" label under your played card */

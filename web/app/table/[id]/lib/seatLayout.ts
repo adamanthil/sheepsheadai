@@ -12,21 +12,27 @@ export function relSeat(absSeat: number, mySeat: number): number {
  * crowd the center (relSeat 0 = you, bottom). `cardX`/`cardY` are the card's
  * CENTER as a percentage of the stage box; `side` is which way the name-plate
  * reads (and, for mid seats, which edge it hugs). The plate sits above each
- * card, toward the table rim. Values are tuned (see pentagon overlap check)
+ * card; plates always read on the outside of the ellipse (outer seats below,
+ * inner seats to the side) so they never crowd the center UI. Values are tuned
+ * (see pentagon overlap check)
  * for a clean ~17px gap at full width.
  */
 export interface RingAnchor {
   cardX: number;
   cardY: number;
-  plate: "above" | "below"; // where the name-plate floats vs the card
+  // Where the name-plate floats relative to the card. Plates always read on the
+  // OUTSIDE of the ellipse so they never crowd the interior or the center UI:
+  // the outer mid seats drop below their card, the inner top seats fan out to
+  // the side (left/right toward the rim).
+  plate: "above" | "below" | "left" | "right";
 }
 
 export const RING_ANCHORS: Record<number, RingAnchor> = {
   0: { cardX: 50, cardY: 83, plate: "below" }, // you (bottom center)
-  1: { cardX: 16, cardY: 55, plate: "above" }, // ml (mid-left)
-  2: { cardX: 31, cardY: 20, plate: "below" }, // tl (upper-left)
-  3: { cardX: 69, cardY: 20, plate: "below" }, // tr (upper-right)
-  4: { cardX: 84, cardY: 55, plate: "above" }, // mr (mid-right)
+  1: { cardX: 16, cardY: 55, plate: "below" }, // ml (mid-left, outer)
+  2: { cardX: 31, cardY: 20, plate: "left" }, // tl (upper-left, inner)
+  3: { cardX: 69, cardY: 20, plate: "right" }, // tr (upper-right, inner)
+  4: { cardX: 84, cardY: 55, plate: "below" }, // mr (mid-right, outer)
 };
 
 /**

@@ -395,19 +395,38 @@ function DesktopStage(props: StageProps) {
   );
 }
 
-// Compact name-plate that floats off a seat's played card, toward the table
-// rim: mid seats sit above their card, top seats below. `compact` trims it for
-// the tighter mobile ring (smaller avatar, no seat number).
+// Compact name-plate that floats off a seat's played card toward the table rim,
+// always reading on the outside of the ellipse: outer seats below their card,
+// inner top seats out to the side. `compact` trims it for the tighter mobile
+// ring (smaller avatar, no seat number).
 function RingChip({
   seat,
   plate,
   compact,
+  badgeSide,
 }: {
   seat: SeatView;
-  plate: "above" | "below";
+  plate: "above" | "below" | "left" | "right";
   compact?: boolean;
+  // When set, the role badge floats to this side of the name block (absolutely
+  // positioned) instead of stacking below it, so its presence never shifts the
+  // name's vertical position. Used for the inner mobile seats.
+  badgeSide?: "left" | "right";
 }) {
-  const plateClass = plate === "above" ? styles.chipAbove : styles.chipBelow;
+  const plateClass =
+    plate === "above"
+      ? styles.chipAbove
+      : plate === "left"
+        ? styles.chipLeft
+        : plate === "right"
+          ? styles.chipRight
+          : styles.chipBelow;
+  const badge = roleBadge(seat.role, compact);
+  const badgeSideClass = badgeSide
+    ? badgeSide === "left"
+      ? styles.chipBadgesLeft
+      : styles.chipBadgesRight
+    : "";
   return (
     <div className={`${styles.chip} ${plateClass}`}>
       <SeatAvatar
@@ -428,8 +447,8 @@ function RingChip({
           </div>
         )}
       </div>
-      {roleBadge(seat.role, compact) && (
-        <div className={styles.chipBadges}>{roleBadge(seat.role, compact)}</div>
+      {badge && (
+        <div className={`${styles.chipBadges} ${badgeSideClass}`}>{badge}</div>
       )}
     </div>
   );
@@ -477,13 +496,26 @@ function MobileStage(props: StageProps) {
         .map((seat) => {
           const anchor = MOBILE_RING_ANCHORS[seat.rel];
           if (!anchor) return null;
+          // Inner top seats (plate above) float their badge to the outer side
+          // so it never pushes the name up out of alignment.
+          const badgeSide =
+            anchor.plate === "above"
+              ? anchor.cardX < 50
+                ? "left"
+                : "right"
+              : undefined;
           return (
             <div
               key={seat.absSeat}
               className={styles.ringSeat}
               style={{ left: `${anchor.cardX}%`, top: `${anchor.cardY}%` }}
             >
-              <RingChip seat={seat} plate={anchor.plate} compact />
+              <RingChip
+                seat={seat}
+                plate={anchor.plate}
+                compact
+                badgeSide={badgeSide}
+              />
               <div>{seatCardContent(props, seat, MOB_CARD)}</div>
             </div>
           );
