@@ -11,11 +11,37 @@
     transparent 65%
   );
 }
+/* Grow the ring on large desktops in step with the card uiScale (page.tsx), so
+   the play area fills the space instead of leaving a gap above the hand. The
+   card anchors are percentage-based, so they track the taller stage. */
+@media (min-width: 1600px) and (min-height: 900px) {
+  .deskStage {
+    height: min(544px, 54vh);
+  }
+}
+@media (min-width: 1920px) and (min-height: 1024px) {
+  .deskStage {
+    height: min(620px, 56vh);
+  }
+}
 .deskInner {
   position: relative;
   width: 100%;
   max-width: 560px;
   height: 100%;
+}
+/* Widen the ring in step with the taller stage + bigger cards on large
+   desktops, so the pentagon scales up as a whole and the seats keep their
+   spacing instead of crowding the wider cards. */
+@media (min-width: 1600px) and (min-height: 900px) {
+  .deskInner {
+    max-width: 624px;
+  }
+}
+@media (min-width: 1920px) and (min-height: 1024px) {
+  .deskInner {
+    max-width: 700px;
+  }
 }
 .ellipse {
   position: absolute;
@@ -48,6 +74,9 @@
 
 /* Name-plate: a compact vertical chip that hovers off the card. */
 .chip {
+  /* Gap between the name-plate and its card. Desktop gets extra breathing room;
+     the compact mobile ring stays tight (see .chipCompact). */
+  --chip-gap: 14px;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -58,23 +87,26 @@
   width: max-content;
   max-width: 104px;
 }
+.chipCompact {
+  --chip-gap: 8px;
+}
 .chipAbove {
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + var(--chip-gap));
 }
 .chipBelow {
-  top: calc(100% + 8px);
+  top: calc(100% + var(--chip-gap));
 }
 /* Side plates for the inner top seats: hug the outer edge of the card,
    vertically centered, so the name details read toward the table rim. */
 .chipLeft {
   left: auto;
-  right: calc(100% + 8px);
+  right: calc(100% + var(--chip-gap));
   top: 50%;
   transform: translateY(-50%);
   align-items: flex-end;
 }
 .chipRight {
-  left: calc(100% + 8px);
+  left: calc(100% + var(--chip-gap));
   top: 50%;
   transform: translateY(-50%);
   align-items: flex-start;
@@ -121,7 +153,7 @@
 /* "You" label under your played card */
 .youPlate {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 9px);
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--font-ui);

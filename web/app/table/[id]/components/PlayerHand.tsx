@@ -11,6 +11,7 @@ interface PlayerHandProps {
   validActionStrings: Set<string>;
   onCardClick: (card: string) => void;
   isMobile: boolean;
+  uiScale?: number;
 }
 
 const META: Record<string, string> = {
@@ -29,8 +30,9 @@ export default function PlayerHand({
   validActionStrings,
   onCardClick,
   isMobile,
+  uiScale = 1,
 }: PlayerHandProps) {
-  const w = isMobile ? 60 : 96;
+  const w = isMobile ? 60 : Math.round(96 * uiScale);
   const overlap = Math.round(w * 0.32);
 
   const isClickable = (card: string) =>

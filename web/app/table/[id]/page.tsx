@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { STORAGE_KEYS } from "../../../lib/storage";
-import { useIsMobile, parseCard } from "../../../lib/ds";
+import { useIsMobile, useMediaQuery, parseCard } from "../../../lib/ds";
 import styles from "./page.module.css";
 import { nameForSeat, isAiSeat } from "./utils/seatMath";
 import { relSeat } from "./lib/seatLayout";
@@ -95,6 +95,17 @@ export default function TablePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const isMobile = useIsMobile();
+  // Scale table + hand cards up on large desktops so the play area fills the
+  // extra space instead of leaving a big gap above the hand. Gated on height
+  // too, so short/wide screens (where vertical room is the constraint) stay at
+  // the base size. Matches the .deskStage height breakpoints in Stage.module.css.
+  const isWideDesk = useMediaQuery(
+    "(min-width: 1600px) and (min-height: 900px)",
+  );
+  const isXWideDesk = useMediaQuery(
+    "(min-width: 1920px) and (min-height: 1024px)",
+  );
+  const uiScale = isXWideDesk ? 1.3 : isWideDesk ? 1.15 : 1;
   const trickBoxRef = useRef<HTMLDivElement>(null);
   const [clientId, setClientId] = useState<string>("");
 
@@ -249,6 +260,7 @@ export default function TablePage() {
       selectedCall={null}
       onAction={takeAction}
       isMobile={isMobile}
+      uiScale={uiScale}
       trickBoxRef={trickBoxRef}
       animTrick={animTrick}
       callout={callout?.message ?? null}
@@ -264,6 +276,7 @@ export default function TablePage() {
       validActionStrings={validActionStrings}
       onCardClick={handleCardClick}
       isMobile={isMobile}
+      uiScale={uiScale}
     />
   );
 

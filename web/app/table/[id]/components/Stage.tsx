@@ -40,6 +40,9 @@ interface StageProps {
   selectedCall: string | null;
   onAction: (actionId: number) => void;
   isMobile: boolean;
+  // Desktop card/size multiplier (1 = base, >1 on large desktops). Ignored on
+  // mobile, which has its own fixed compact sizing.
+  uiScale?: number;
   trickBoxRef: React.RefObject<HTMLDivElement | null>;
   animTrick: AnimTrick | null;
   callout: string | null;
@@ -143,9 +146,10 @@ function CenterContent({
 }) {
   const { phase, isYourTurn, yourMode, handLen, trickIndex, totalTricks } =
     props;
+  const scale = mobile ? 1 : (props.uiScale ?? 1);
 
   if (phase === "pick") {
-    const w = mobile ? 56 : 104;
+    const w = mobile ? 56 : Math.round(104 * scale);
     return (
       <>
         <div
@@ -178,7 +182,7 @@ function CenterContent({
 
   if (phase === "interlude" && yourMode === "bury") {
     const chosen = Math.max(0, 8 - handLen);
-    const w = mobile ? 48 : 104;
+    const w = mobile ? 48 : Math.round(104 * scale);
     return (
       <>
         <div className={styles.slotRow} style={{ gap: mobile ? 6 : 14 }}>
@@ -217,7 +221,7 @@ function CenterContent({
   }
 
   if (phase === "interlude" && yourMode === "call") {
-    const w = mobile ? 60 : 96;
+    const w = mobile ? 60 : Math.round(96 * scale);
     return (
       <>
         {!mobile && (
@@ -313,6 +317,7 @@ function CenterContent({
 // ---------- Desktop ----------
 function DesktopStage(props: StageProps) {
   const { seats, yourSeat } = props;
+  const cardW = Math.round(104 * (props.uiScale ?? 1));
   const you = seats.find((s) => s.you);
   const youPlayed =
     (props.phase === "play" || props.phase === "done") && you
@@ -359,7 +364,7 @@ function DesktopStage(props: StageProps) {
                 style={{ left: `${anchor.cardX}%`, top: `${anchor.cardY}%` }}
               >
                 <RingChip seat={seat} plate={anchor.plate} />
-                <div>{seatCardContent(props, seat, 104)}</div>
+                <div>{seatCardContent(props, seat, cardW)}</div>
               </div>
             );
           })}
@@ -372,7 +377,7 @@ function DesktopStage(props: StageProps) {
               top: `${RING_ANCHORS[0].cardY}%`,
             }}
           >
-            <PlayingCard code={youPlayed} w={104} />
+            <PlayingCard code={youPlayed} w={cardW} />
             <span className={styles.youPlate}>You</span>
           </div>
         )}
@@ -385,7 +390,7 @@ function DesktopStage(props: StageProps) {
             yourSeat={yourSeat}
             winner={props.animTrick.winner}
             cards={props.animTrick.cards}
-            cardW={104}
+            cardW={cardW}
             anchors={RING_ANCHORS}
           />
         )}
@@ -428,7 +433,9 @@ function RingChip({
       : styles.chipBadgesRight
     : "";
   return (
-    <div className={`${styles.chip} ${plateClass}`}>
+    <div
+      className={`${styles.chip} ${plateClass} ${compact ? styles.chipCompact : ""}`}
+    >
       <SeatAvatar
         name={seat.name}
         isAI={seat.isAI}
