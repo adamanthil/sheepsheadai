@@ -39,6 +39,11 @@ interface StageProps {
   callOptions: CallOption[];
   selectedCall: string | null;
   onAction: (actionId: number) => void;
+  // Pick-phase decision: action ids for the centered Pick (the blind) / Pass
+  // buttons, or null when it isn't your decision (the blind then shows as
+  // context only, not as a button).
+  pickActionId?: number | null;
+  passActionId?: number | null;
   isMobile: boolean;
   // Desktop card/size multiplier (1 = base, >1 on large desktops). Ignored on
   // mobile, which has its own fixed compact sizing.
@@ -149,6 +154,82 @@ function CenterContent({
   const scale = mobile ? 1 : (props.uiScale ?? 1);
 
   if (phase === "pick") {
+    // Your decision → the blind itself is the Pick button, with a Pass card
+    // beside it (mirrors the call-decision layout). Otherwise the blind shows
+    // as non-interactive context while others decide.
+    const decide = props.pickActionId != null || props.passActionId != null;
+    if (decide) {
+      const w = mobile ? 60 : Math.round(96 * scale);
+      const h = Math.round(w * 1.45);
+      return (
+        <>
+          {!mobile && (
+            <div
+              className={ds.overline}
+              style={{ fontSize: 10, marginBottom: 12 }}
+            >
+              Pick or pass
+            </div>
+          )}
+          <div className={styles.callRow}>
+            {props.pickActionId != null && (
+              <button
+                className={styles.callOption}
+                onClick={() => props.onAction(props.pickActionId!)}
+                style={{ pointerEvents: "auto" }}
+              >
+                <div
+                  className={styles.blindStack}
+                  style={{ width: Math.round(w * 1.55), height: h }}
+                >
+                  <div
+                    className={styles.blindCard}
+                    style={{ left: 0, transform: "rotate(-4deg)" }}
+                  >
+                    <PlayingCard code="__" w={w} />
+                  </div>
+                  <div
+                    className={styles.blindCard}
+                    style={{
+                      left: Math.round(w * 0.55),
+                      transform: "rotate(3deg)",
+                    }}
+                  >
+                    <PlayingCard code="__" w={w} />
+                  </div>
+                </div>
+                <div className={styles.callLabel}>Pick the blind</div>
+              </button>
+            )}
+            {props.passActionId != null && (
+              <button
+                className={styles.callOption}
+                onClick={() => props.onAction(props.passActionId!)}
+                style={{ pointerEvents: "auto" }}
+              >
+                <div
+                  className={styles.alonePanel}
+                  style={{ width: w, height: h }}
+                >
+                  <div
+                    className={styles.aloneTitle}
+                    style={{ fontSize: Math.round(w * 0.28) }}
+                  >
+                    Pass
+                  </div>
+                </div>
+                <div className={styles.callLabel}>Pass the buck</div>
+              </button>
+            )}
+          </div>
+          {mobile && (
+            <div className={ds.overline} style={{ fontSize: 8, marginTop: 8 }}>
+              Pick or pass
+            </div>
+          )}
+        </>
+      );
+    }
     const w = mobile ? 56 : Math.round(104 * scale);
     return (
       <>

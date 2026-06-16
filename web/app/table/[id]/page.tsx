@@ -259,6 +259,12 @@ export default function TablePage() {
       callOptions={callOptions}
       selectedCall={null}
       onAction={takeAction}
+      pickActionId={
+        validActionStrings.has("PICK") ? actionIdByString["PICK"] : null
+      }
+      passActionId={
+        validActionStrings.has("PASS") ? actionIdByString["PASS"] : null
+      }
       isMobile={isMobile}
       uiScale={uiScale}
       trickBoxRef={trickBoxRef}
