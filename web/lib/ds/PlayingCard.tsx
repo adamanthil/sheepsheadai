@@ -63,7 +63,11 @@ export default function PlayingCard({
         <div className={styles.rank}>{rank}</div>
         <div className={styles.suitSm}>{sym}</div>
       </div>
-      <div className={styles.center}>{sym}</div>
+      <div
+        className={`${styles.center} ${suit === "H" ? styles.centerHeart : suit === "D" ? styles.centerDiamond : ""}`}
+      >
+        {sym}
+      </div>
       <div className={`${styles.corner} ${styles.cornerBr}`}>
         <div className={styles.rank}>{rank}</div>
         <div className={styles.suitSm}>{sym}</div>

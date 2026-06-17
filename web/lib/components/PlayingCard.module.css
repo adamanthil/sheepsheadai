@@ -1,4 +1,5 @@
 .card {
+  position: relative;
   width: var(--w);
   height: var(--h);
   border-radius: 8px; /* Slightly smaller radius for mobile */
@@ -96,7 +97,12 @@
   line-height: 1;
 }
 
+/* Centered on the whole card (absolute), not the grid's middle row: the top
+   section (rank + suit) is taller than the bottom (rank only), which would push
+   a row-centered glyph below the card's true center — most visible when small. */
 .suitCenter {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -147,5 +153,8 @@
 }
 
 .rankBottom {
+  /* Pin to the last row: the absolutely-positioned center suit is out of grid
+     flow, so without this the bottom rank auto-places into the empty middle row. */
+  grid-row: 3;
   text-align: right;
 }

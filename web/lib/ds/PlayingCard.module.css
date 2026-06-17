@@ -21,12 +21,18 @@
 }
 
 .corner {
-  font-size: calc(var(--pc-w) * 0.16);
+  /* Scales with the card, with a px floor so the rank stays legible on the
+     very small table/hand cards. */
+  font-size: max(12px, calc(var(--pc-w) * 0.18));
   line-height: 1;
   padding: calc(var(--pc-w) * 0.06);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  /* Shrink to content and sit in the top-left corner (the grid cell would
+     otherwise stretch full width); then center the small suit under the rank,
+     since box-edge alignment looked off given their different side bearings. */
+  justify-self: start;
+  align-items: center;
   gap: 1px;
   font-weight: 500;
 }
@@ -40,7 +46,7 @@
   line-height: 0.9;
 }
 .suitSm {
-  font-size: calc(var(--pc-w) * 0.12);
+  font-size: max(10px, calc(var(--pc-w) * 0.14));
   line-height: 1;
 }
 .center {
@@ -49,6 +55,18 @@
   font-size: calc(var(--pc-w) * 0.5);
   line-height: 1;
   opacity: 0.92;
+  /* The suit glyphs' ink sits below their line-box center, and their pointed
+     bottoms make them read lower still; nudge up to optically center them. */
+  transform: translateY(-0.12em);
+}
+/* The heart and diamond glyphs are drawn higher in their em-box than the spade
+   and club, so the shared nudge overshoots them and they read too high; give
+   them less lift. */
+.centerHeart {
+  transform: translateY(-0.03em);
+}
+.centerDiamond {
+  transform: translateY(-0.05em);
 }
 
 .playable {
