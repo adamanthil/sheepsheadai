@@ -181,8 +181,8 @@ class PFSPHyperparams:
     entropy_partner_end: float = 0.005
     entropy_bury_start: float = 0.04
     entropy_bury_end: float = 0.002
-    entropy_play_start: float = 0.05
-    entropy_play_end: float = 0.005
+    entropy_play_start: float = 0.015
+    entropy_play_end: float = 0.001
 
     # Shaped reward schedules (percent -> weight). Used only when reward_mode="shaped".
     shaping_schedule_pick: dict[int, float] = field(

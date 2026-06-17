@@ -712,6 +712,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     leasters = 0
     t0_def_leads = 0  # trick-0 defender leads holding both trump and fail
     t0_def_trump = 0  # ...that led trump (greedy)
+    play_spreads = []  # legal-play logit spread (max-min) at multi-legal nodes
     try:
         for g in range(n_games):
             game = Game(partner_selection_mode=get_partner_selection_mode(g))
@@ -734,12 +735,28 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                             and any(c in TRUMP for c in player.hand)
                             and any(c not in TRUMP for c in player.hand)
                         )
-                        a, _, _ = agent.act(
-                            player.get_state_dict(),
-                            valid,
-                            player.position,
-                            deterministic=True,
+                        state = player.get_state_dict()
+                        is_play = game.play_started and all(
+                            ACTIONS[x - 1].startswith("PLAY ") for x in valid
                         )
+                        if is_play and len(valid) >= 2:
+                            # One forward yields both the greedy action and the
+                            # legal-play logit spread. Do NOT also call act():
+                            # that would advance recurrent memory a second time.
+                            # argmax over post-mix probs == act(deterministic).
+                            probs_t, logits_t = agent.get_action_probs_with_logits(
+                                state, valid, player_id=player.position
+                            )
+                            a = int(torch.argmax(probs_t, dim=1).item()) + 1
+                            lv = logits_t[0][[x - 1 for x in valid]]
+                            play_spreads.append(float(lv.max() - lv.min()))
+                        else:
+                            a, _, _ = agent.act(
+                                state,
+                                valid,
+                                player.position,
+                                deterministic=True,
+                            )
                         name = ACTIONS[a - 1]
                         if name == "PICK":
                             picks += 1
@@ -774,4 +791,11 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         "leaster_rate": 100.0 * leasters / max(n_games, 1),
         "t0_trump_lead_rate": 100.0 * t0_def_trump / max(t0_def_leads, 1),
         "t0_def_leads": t0_def_leads,
+        # Median legal-play logit spread (max-min). A healthy play head is well
+        # separated (baseline ~6.5); a collapsed/uniform head reads ~0. This is
+        # the cheap canary for the terminal-only play-head collapse.
+        "play_logit_spread_med": (
+            float(np.median(play_spreads)) if play_spreads else 0.0
+        ),
+        "play_nodes": len(play_spreads),
     }

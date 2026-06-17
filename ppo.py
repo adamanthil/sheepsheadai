@@ -1734,6 +1734,26 @@ class PPOAgent:
             "min": float(np.min(raw_advantages)),
             "max": float(np.max(raw_advantages)),
         }
+        # Per-head RAW advantage std (diagnostic only; not used for
+        # normalization). Advantages are normalized globally, so a head whose
+        # raw std is small relative to the global std contributes a
+        # correspondingly small policy-gradient after normalization -- the play
+        # head's std vs pick's tells how far below the play-PG scale the play
+        # entropy coefficient must sit to avoid an entropy-driven collapse to
+        # uniform. ``advantages`` aligns 1:1 with the in-order action events.
+        if advantages.size:
+            groups = {k: set(v) for k, v in self.action_groups.items()}
+            head_advs: dict[str, list] = {k: [] for k in groups}
+            action_events = (e for e in self.events if e.get("kind") == "action")
+            for e, adv in zip(action_events, raw_advantages):
+                for k, s in groups.items():
+                    if e["action"] in s:
+                        head_advs[k].append(adv)
+                        break
+            advantage_stats["head_std"] = {
+                k: (float(np.std(v)) if v else 0.0) for k, v in head_advs.items()
+            }
+            advantage_stats["head_n"] = {k: len(v) for k, v in head_advs.items()}
 
         value_target_stats = {
             "mean": float(np.mean(returns)) if advantages.size else 0.0,

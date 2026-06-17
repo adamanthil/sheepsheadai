@@ -382,11 +382,18 @@ def run_main_phase(
                         if anchor.get("active")
                         else ""
                     )
+                    astats = stats.get("advantage_stats", {})
+                    hstd = astats.get("head_std", {})
+                    adv_std_all = astats.get("std", 0.0)
+                    adv_std_play = hstd.get("play", 0.0)
+                    adv_std_pick = hstd.get("pick", 0.0)
                     print(
                         f"Ep {episode:,} | picker_avg {picker_avg:+.2f} | "
                         f"pick {100 * np.mean(pick_window):.0f}% | "
                         f"leaster {100 * np.mean(leaster_window):.1f}% | "
                         f"x-share {league.exploiter_share():.2f} | "
+                        f"advσ all/pick/play "
+                        f"{adv_std_all:.3f}/{adv_std_pick:.3f}/{adv_std_play:.3f} | "
                         f"{eps_s:.1f} eps/s{anchor_str}",
                         flush=True,
                     )
@@ -403,6 +410,9 @@ def run_main_phase(
                                     "exploiter_share",
                                     "mu_jd",
                                     "mu_ca",
+                                    "adv_std_all",
+                                    "adv_std_pick",
+                                    "adv_std_play",
                                 ]
                             )
                         w.writerow(
@@ -414,6 +424,9 @@ def run_main_phase(
                                 f"{league.exploiter_share():.3f}",
                                 f"{training_ratings[0].mu:.2f}",
                                 f"{training_ratings[1].mu:.2f}",
+                                f"{adv_std_all:.4f}",
+                                f"{adv_std_pick:.4f}",
+                                f"{adv_std_play:.4f}",
                             ]
                         )
 
@@ -442,7 +455,8 @@ def run_main_phase(
                     f"PICK {probe['pick_rate']:.1f}%, ALONE {probe['alone_rate']:.1f}%, "
                     f"leaster {probe['leaster_rate']:.1f}%, "
                     f"t0 trump-lead {probe['t0_trump_lead_rate']:.1f}% "
-                    f"(n={probe['t0_def_leads']})",
+                    f"(n={probe['t0_def_leads']}), "
+                    f"play-spread {probe['play_logit_spread_med']:.2f}",
                     flush=True,
                 )
                 if probe["pick_rate"] < 25.0:
@@ -451,6 +465,11 @@ def run_main_phase(
                     print("🚨 GREEDY GATE VIOLATION: ALONE rate > 12%")
                 if probe["t0_trump_lead_rate"] > 8.0:
                     print("🚨 GREEDY GATE VIOLATION: trump-lead > 8%")
+                if probe["play_logit_spread_med"] < 0.5:
+                    print(
+                        "🚨 GREEDY GATE VIOLATION: play-head logit spread < 0.5 "
+                        "(play head collapsing toward uniform)"
+                    )
                 write_header = not os.path.exists(greedy_csv)
                 with open(greedy_csv, "a", newline="") as f:
                     w = csv.writer(f)
@@ -463,6 +482,8 @@ def run_main_phase(
                                 "leaster_rate",
                                 "t0_trump_lead_rate",
                                 "t0_def_leads",
+                                "play_logit_spread_med",
+                                "play_nodes",
                                 "games",
                             ]
                         )
@@ -474,6 +495,8 @@ def run_main_phase(
                             f"{probe['leaster_rate']:.2f}",
                             f"{probe['t0_trump_lead_rate']:.2f}",
                             probe["t0_def_leads"],
+                            f"{probe['play_logit_spread_med']:.3f}",
+                            probe["play_nodes"],
                             probe["games"],
                         ]
                     )
