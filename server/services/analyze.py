@@ -3,25 +3,26 @@ from __future__ import annotations
 import os
 import random
 from typing import Dict, List
+
 import numpy as np
 import torch
 
-from sheepshead import Game, Player, ACTION_LOOKUP, DECK, TRUMP
 from server.api.schemas import (
+    AnalyzeActionDetail,
+    AnalyzeGameSummary,
+    AnalyzeProbability,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
-    AnalyzeActionDetail,
-    AnalyzeProbability,
-    AnalyzeGameSummary,
 )
 from server.services.ai_loader import load_agent
+from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game, Player
 from training_utils import (
-    update_intermediate_rewards_for_action,
-    handle_trick_completion,
-    process_episode_rewards,
+    compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,
-    compute_any_unseen_trump_higher_than_hand,
+    handle_trick_completion,
+    process_episode_rewards,
+    update_intermediate_rewards_for_action,
 )
 
 
@@ -78,8 +79,13 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
     # Initialize game with default double_on_the_bump=True (model doesn't consider this anyway)
     partner_mode = 1 if req.partnerMode == 1 else 0  # Convert to Game's expected format
+    # Pass the seed through to the Game so the deal itself is reproducible:
+    # Game uses its own local RNG instance, which ignores the global seeds that
+    # set_seed() configures. Without this, the same seed reshuffles a new deal
+    # on every run.
     game = Game(
         partner_selection_mode=partner_mode,
+        seed=req.seed,
     )
 
     # Player display names
