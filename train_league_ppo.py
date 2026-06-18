@@ -14,6 +14,12 @@ make_game_summary) plus its own versioned-weight worker pool. Per generation:
                    exploitability.csv — the empirical-exploitability headline
                    metric (success = the trend declines across generations).
 
+Generation boundaries are keyed to the ABSOLUTE episode count: generation g
+ends at g * --main-episodes episodes and the exploiter is numbered g. Stopping
+and resuming from a mid-run checkpoint therefore keeps the same cadence and
+generation indices rather than resetting them to the resume point — a resume
+partway through a phase trains only the episodes remaining to the next boundary.
+
 Terminal reward only; no search/shaping/controllers (ISMCTS is a deploy-time
 amplifier + audit tool per the June 2026 value-add probe). The bidding-head KL
 anchor is available (--anchor-coeff) for warm-start safety but defaults OFF:
@@ -597,11 +603,17 @@ def main():
         "original pfsp run: 'runs/reference_selfplay_ppo/checkpoints/*.pt')",
     )
     ap.add_argument("--run-name", default="league_run")
-    ap.add_argument("--generations", type=int, default=3)
+    ap.add_argument(
+        "--generations",
+        type=int,
+        default=3,
+        help="Number of exploiter generations to run from the resume point. "
+        "Boundaries are keyed to absolute episode (gen g ends at g*main-episodes), "
+        "so the starting generation index is derived from the resumed episode.",
+    )
     ap.add_argument("--main-episodes", type=int, default=100_000)
     ap.add_argument("--exploiter-episodes", type=int, default=50_000)
     ap.add_argument("--gate-deals", type=int, default=1000)
-    ap.add_argument("--start-generation", type=int, default=0)
     ap.add_argument("--update-interval", type=int, default=2048)
     ap.add_argument("--save-interval", type=int, default=5000)
     ap.add_argument("--snapshot-interval", type=int, default=5000)
@@ -653,10 +665,18 @@ def main():
     exploitability_csv = os.path.join(checkpoint_dir, "exploitability.csv")
 
     episode = start_episode
-    for g in range(args.start_generation, args.start_generation + args.generations):
+    main_ep = args.main_episodes
+    # Generation index and phase boundary are derived from the ABSOLUTE episode
+    # count: gen g ends at g * main_ep. The first generation to run is the one
+    # whose boundary lies past the resumed episode, so a mid-run restart picks up
+    # the same cadence/numbering and only trains the remainder to the next
+    # boundary (rather than resetting the counter to the resume point).
+    first_gen = episode // main_ep + 1
+    for g in range(first_gen, first_gen + args.generations):
+        boundary = g * main_ep
         print(
             f"\n{'=' * 70}\n🏁 GENERATION {g}: main phase "
-            f"({args.main_episodes:,} episodes from {episode:,})\n{'=' * 70}"
+            f"({episode:,} -> {boundary:,})\n{'=' * 70}"
         )
         episode = run_main_phase(
             training_agent,
@@ -664,7 +684,7 @@ def main():
             training_ratings,
             args,
             episode,
-            args.main_episodes,
+            boundary - episode,
             checkpoint_dir,
         )
         main_ckpt = os.path.join(
