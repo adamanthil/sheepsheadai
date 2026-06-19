@@ -3,8 +3,8 @@ import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
 import ActionDetails from "./ActionDetails";
 import ActionInsights from "./ActionInsights";
 import ActionStateVector from "./ActionStateVector";
-import { CardText } from "../../lib/components";
-import styles from "./page.module.css";
+import { CardText } from "../../lib/ds";
+import styles from "./ActionRow.module.css";
 
 interface ActionRowProps {
   action: AnalyzeActionDetail;

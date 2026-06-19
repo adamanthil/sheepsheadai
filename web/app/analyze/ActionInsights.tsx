@@ -3,7 +3,7 @@ import {
   AnalyzeActionDetail,
   AnalyzePointEstimate,
 } from "../../lib/analyzeTypes";
-import styles from "./page.module.css";
+import styles from "./ActionInsights.module.css";
 
 interface ActionInsightsProps {
   action: AnalyzeActionDetail;
@@ -156,15 +156,15 @@ export default function ActionInsights({ action }: ActionInsightsProps) {
                     <div className={styles.trumpProbValue}>
                       {(entry.probabilitySeen * 100).toFixed(1)}%{" "}
                       <span
+                        className={`${styles.trumpCheck} ${entry.actualSeen ? styles.trumpCheckOn : ""}`}
+                        role="img"
                         aria-label={
                           entry.actualSeen ? "Actual: seen" : "Actual: unseen"
                         }
                         title={
                           entry.actualSeen ? "Actual: seen" : "Actual: unseen"
                         }
-                      >
-                        {entry.actualSeen ? "☑" : "☐"}
-                      </span>
+                      />
                     </div>
                   </div>
                 ))

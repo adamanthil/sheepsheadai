@@ -1,0 +1,141 @@
+/* ActionStateVector: collapsible 292-element state-vector inspector table.
+   Palette tokens (--an-*) are inherited from page.module.css .container. */
+
+.stateVectorSection {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border-top: 1px solid var(--an-rule);
+}
+
+.toggleButton {
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule-strong);
+  color: var(--an-ink-soft);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggleButton:hover {
+  background: var(--an-sunk);
+  border-color: var(--an-accent);
+  color: var(--an-accent);
+}
+
+.stateVectorTableWrapper {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--an-rule);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--an-panel);
+}
+
+.stateVectorTableContainer {
+  overflow: auto;
+}
+
+.stateVectorTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+}
+
+.stateVectorHead th {
+  position: sticky;
+  top: 0;
+  background: var(--an-sunk);
+  z-index: 1;
+  text-align: left;
+  font-weight: 600;
+  color: var(--an-ink-soft);
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--an-rule);
+  border-right: 1px solid var(--an-rule);
+}
+
+.stateVectorHead th:last-child {
+  border-right: none;
+}
+
+.stateVectorIndex,
+.stateVectorValue,
+.stateVectorMicroCat,
+.stateVectorSubCat,
+.stateVectorCategory {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--an-rule);
+  vertical-align: top;
+}
+
+.stateVectorTable td:last-child {
+  border-right: none;
+}
+
+.stateVectorIndex {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--an-muted);
+  background: var(--an-sunk);
+  min-width: 64px;
+}
+
+.stateVectorValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--an-ink);
+  min-width: 72px;
+}
+
+.valueHighlighted {
+  background: var(--an-highlight);
+  font-weight: 700;
+}
+
+.cellHighlighted {
+  background: var(--an-highlight);
+}
+
+.stateVectorMicroCat {
+  color: var(--an-ink-soft);
+}
+
+.stateVectorSubCat {
+  color: var(--an-ink-soft);
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.stateVectorCategory {
+  color: var(--an-ink);
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.rowHeader {
+  background: var(--an-sunk);
+}
+
+.rowPrivate {
+  background: color-mix(in oklab, var(--an-sunk) 55%, var(--an-panel));
+}
+
+.rowTrick {
+  background: color-mix(in oklab, var(--an-sunk) 35%, var(--an-panel));
+}
+
+/* Group separators */
+.subGroupStart td {
+  border-top: 2px solid var(--an-rule-strong);
+}
+
+.catGroupStart td {
+  border-top: 3px solid var(--an-accent-soft);
+}
+
+.subGroupDim td {
+  color: var(--an-muted);
+}

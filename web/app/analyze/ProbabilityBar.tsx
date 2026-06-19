@@ -1,7 +1,7 @@
 import React from "react";
 import { AnalyzeProbability } from "../../lib/analyzeTypes";
-import { CardText } from "../../lib/components";
-import styles from "./page.module.css";
+import { CardText } from "../../lib/ds";
+import styles from "./ProbabilityBar.module.css";
 
 interface ProbabilityBarProps {
   probability: AnalyzeProbability;

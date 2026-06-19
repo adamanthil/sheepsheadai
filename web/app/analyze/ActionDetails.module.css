@@ -1,0 +1,68 @@
+/* ActionDetails: expanded game state (cards) + action probability list.
+   Palette tokens (--an-*) are inherited from page.module.css .container. */
+
+.actionDetails {
+  padding: 0 2rem 1.5rem 2rem;
+  background: var(--an-sunk);
+  border-top: 1px solid var(--an-rule);
+}
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 1rem;
+}
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.detailTitle {
+  font-weight: 600;
+  color: var(--an-muted);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Sub-label above a row of cards (Hand / Blind / Bury / Current Trick). */
+.cardGroupLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--an-muted);
+  margin-bottom: 0.5rem;
+}
+
+.cardList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Picker / partner / called-card / leaster context block. */
+.gameContext {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--an-muted);
+  line-height: 1.4;
+}
+
+.probabilitiesList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .detailsGrid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .actionDetails {
+    padding: 1rem;
+  }
+}

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
-import styles from "./page.module.css";
+import styles from "./ActionStateVector.module.css";
 
 const TRUMP = [
   "QC",

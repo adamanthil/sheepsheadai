@@ -1,0 +1,13 @@
+/* ActionTimeline: empty-state placeholder when no trace is available.
+   Palette tokens (--an-*) are inherited from page.module.css .container. */
+
+.emptyState {
+  text-align: center;
+  padding: 3rem;
+  color: var(--an-muted);
+}
+
+.emptyState h3 {
+  color: var(--an-ink-soft);
+  margin-bottom: 0.5rem;
+}

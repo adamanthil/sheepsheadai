@@ -8,18 +8,8 @@ import {
 } from "../../lib/analyzeTypes";
 import ActionTimeline from "./ActionTimeline";
 import GameSummary from "./GameSummary";
+import { API_BASE } from "../../lib/apiBase";
 import styles from "./page.module.css";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ||
-  (() => {
-    if (typeof window === "undefined") return "http://localhost:9000";
-
-    // Use the same hostname as the frontend, but with backend port
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-    return `${protocol}//${hostname}:9000`;
-  })();
 
 export default function AnalyzePage() {
   // Form state
@@ -94,7 +84,7 @@ export default function AnalyzePage() {
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header}>
-        <h1 className={styles.title}>🧠 AI Model Analysis</h1>
+        <h1 className={styles.title}>AI Model Analysis</h1>
         <p className={styles.subtitle}>
           Simulate a Sheepshead game and explore the AI's decisions.
         </p>
@@ -109,12 +99,12 @@ export default function AnalyzePage() {
 
       {/* Controls Panel */}
       <div className={styles.controlsPanel}>
-        <h2 className={styles.controlsTitle}>⚙️ Simulation Settings</h2>
+        <h2 className={styles.controlsTitle}>Simulation Settings</h2>
 
         <div className={styles.controlsGrid}>
           <div className={styles.controlGroup}>
             <label htmlFor="partnerMode" className={styles.label}>
-              👥 Partner Mode
+              Partner Mode
             </label>
             <select
               id="partnerMode"
@@ -129,7 +119,7 @@ export default function AnalyzePage() {
 
           <div className={styles.controlGroup}>
             <label htmlFor="seed" className={styles.label}>
-              🎲 Random Seed (optional)
+              Random Seed (optional)
             </label>
             <input
               id="seed"
@@ -142,7 +132,7 @@ export default function AnalyzePage() {
           </div>
 
           <div className={styles.controlGroup}>
-            <label className={styles.label}>🎯 Decision Mode</label>
+            <label className={styles.label}>Decision Mode</label>
             <div className={styles.checkboxWrapper}>
               <input
                 type="checkbox"
@@ -159,7 +149,7 @@ export default function AnalyzePage() {
 
           <div className={styles.controlGroup}>
             <label htmlFor="shapingWeight" className={styles.label}>
-              ⚖️ Shaping weight
+              Shaping weight
               <span className={styles.rangeValue}>{shapingWeightPercent}%</span>
             </label>
             <input
@@ -184,7 +174,7 @@ export default function AnalyzePage() {
             disabled={loading}
           >
             {loading && <div className={styles.spinner} />}
-            {loading ? "Simulating..." : "🎮 Simulate Game"}
+            {loading ? "Simulating..." : "Simulate Game"}
           </button>
         </div>
       </div>
@@ -193,7 +183,7 @@ export default function AnalyzePage() {
       {(response || loading) && (
         <div className={styles.resultsPanel}>
           <div className={styles.resultsHeader}>
-            <h2 className={styles.resultsTitle}>📈 Game Analysis</h2>
+            <h2 className={styles.resultsTitle}>Game Analysis</h2>
             {response && (
               <div className={styles.meta}>
                 <div className={styles.metaItem}>

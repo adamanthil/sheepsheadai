@@ -1,0 +1,149 @@
+/* GameSummary: hands, blind, game result, final scores.
+   Palette tokens (--an-*) are inherited from page.module.css .container. */
+
+.gameSummary {
+  background: var(--an-sunk);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--an-rule);
+}
+
+.summarySection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.summaryTitle {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: var(--an-ink);
+  margin: 0;
+}
+
+.summarySubsection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.summarySubtitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--an-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.handsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.handRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--an-panel);
+  border-radius: 10px;
+  border: 1px solid var(--an-rule);
+}
+
+.playerName {
+  font-weight: 600;
+  color: var(--an-ink-soft);
+  min-width: 4rem;
+  text-align: left;
+}
+
+.cardList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.card {
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--an-ink-soft);
+}
+
+.gameInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.gameInfoItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--an-panel);
+  border-radius: 8px;
+  border: 1px solid var(--an-rule);
+}
+
+.infoLabel {
+  font-weight: 500;
+  color: var(--an-muted);
+  font-size: 0.875rem;
+}
+
+.infoValue {
+  font-weight: 600;
+  color: var(--an-ink-soft);
+  font-size: 0.875rem;
+}
+
+.scoresGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.scoreItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--an-panel);
+  border-radius: 8px;
+  border: 1px solid var(--an-rule);
+}
+
+.scorePlayer {
+  font-weight: 500;
+  color: var(--an-ink-soft);
+  font-size: 0.875rem;
+}
+
+.scoreValue {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: var(--an-track);
+  color: var(--an-muted);
+}
+
+.positiveScore {
+  background: #e7f6ec;
+  color: var(--an-pos);
+}
+
+.negativeScore {
+  background: #fdecec;
+  color: var(--an-neg);
+}

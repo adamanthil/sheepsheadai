@@ -1,0 +1,166 @@
+/* ActionRow: one decision row — seat badge, action, compact metric chips.
+   Palette tokens (--an-*) are inherited from page.module.css .container. */
+
+.actionRow {
+  border-bottom: 1px solid var(--an-rule);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--an-panel);
+}
+
+.actionRow:hover {
+  background: var(--an-sunk);
+}
+
+.actionRow:last-child {
+  border-bottom: none;
+}
+
+.actionSummary {
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.actionBasic {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+.stepIndex {
+  background: var(--an-track);
+  color: var(--an-ink-soft);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.seatBadge {
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  min-width: 4rem;
+  text-align: center;
+  color: #ffffff;
+}
+
+.seatBadgePicker {
+  background: linear-gradient(
+    135deg,
+    var(--an-accent) 0%,
+    var(--an-accent-strong) 100%
+  );
+}
+
+.seatBadgePartner {
+  background: linear-gradient(
+    135deg,
+    var(--an-accent-soft) 0%,
+    var(--an-accent) 100%
+  );
+}
+
+.seatBadgeOther {
+  background: linear-gradient(135deg, #9aa4b2 0%, #6b7685 100%);
+}
+
+.actionInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.actionText {
+  font-weight: 600;
+  color: var(--an-ink);
+  font-size: 0.875rem;
+}
+
+.phaseText {
+  font-size: 0.75rem;
+  color: var(--an-muted);
+  text-transform: capitalize;
+}
+
+/* Metric strip: compact display of V / G_t / r / Win% / E[Ret].
+   --value-hue is set inline (0deg red .. 120deg green) to encode quality. */
+.metricsBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.metricChip {
+  --chip-bg: hsl(var(--value-hue, 0), 60%, 96%);
+  border: 1px solid
+    color-mix(
+      in oklab,
+      hsl(var(--value-hue, 0), 60%, 45%) 24%,
+      rgba(16, 24, 40, 0.05)
+    );
+  background: var(--chip-bg);
+  border-radius: 8px;
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Neutral chip (no hue tint) */
+.metricChipNeutral {
+  background: var(--an-sunk);
+  border: 1px solid var(--an-rule);
+}
+
+.metricLabel {
+  font-size: 0.65rem;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+
+.metricValue {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.expandIcon {
+  color: var(--an-muted);
+  transition: transform 0.2s ease;
+}
+
+.expandIcon.expanded {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 768px) {
+  .metricsBar {
+    flex-wrap: wrap;
+  }
+
+  .actionSummary {
+    padding: 1rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .actionBasic {
+    justify-content: space-between;
+  }
+}

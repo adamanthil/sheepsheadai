@@ -1,0 +1,330 @@
+/* ActionInsights: point prediction-vs-actual, trump tracking, secret partner.
+   Palette tokens (--an-*) are inherited from page.module.css .container.
+   Data language: blue = model/prediction, orange = actual. */
+
+.actionInsightsSection {
+  padding: 0 2rem 1.5rem 2rem;
+  background: var(--an-sunk);
+  border-top: 1px solid var(--an-rule);
+}
+
+.insightsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+}
+
+.insightCard {
+  background: var(--an-panel);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--an-rule);
+  box-shadow: var(--an-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.insightTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+}
+
+.pointsInsight {
+  background: linear-gradient(145deg, #eef4ff 0%, #f8fbff 100%);
+  border-color: #d8e3fb;
+}
+
+/* Secret-partner card */
+.secretMini {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: flex-start;
+}
+
+.secretMiniValue {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--an-ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.secretMiniLabel {
+  font-size: 0.75rem;
+  color: var(--an-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.secretRow {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.secretRowCard {
+  max-width: 320px;
+  width: 100%;
+}
+
+/* Trump tracking */
+.trumpList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.trumpEntry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.trumpCardLabel {
+  min-width: 90px;
+  font-weight: 600;
+  color: var(--an-ink-soft);
+}
+
+.trumpProbBar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--an-track);
+  overflow: hidden;
+}
+
+.trumpProbFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fb923c 0%, var(--an-actual) 100%);
+}
+
+/* Small CSS-drawn checkbox for "actual seen" — crisper than the unicode
+   ballot-box glyph, and orange-filled to match the "actual" data color. */
+.trumpCheck {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--an-rule-strong);
+  border-radius: 3px;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.trumpCheckOn {
+  background: var(--an-actual);
+  border-color: var(--an-actual);
+}
+
+.trumpCheckOn::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 4px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.trumpProbValue {
+  width: 86px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--an-ink);
+  line-height: 1.1;
+}
+
+.trumpActualRow {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--an-ink-soft);
+  font-weight: 600;
+}
+
+.trumpActualRow span {
+  margin-left: 0.35rem;
+  color: var(--an-actual);
+}
+
+.trumpEmpty {
+  font-size: 0.8rem;
+  color: var(--an-muted);
+}
+
+/* Points: prediction vs actual */
+.legendContainer {
+  display: flex;
+  justify-content: space-between;
+}
+
+.pointsLegend {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--an-muted);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.predictionSwatch {
+  width: 16px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--an-accent);
+}
+
+.actualSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--an-actual);
+  background: var(--an-panel);
+}
+
+.valueLegend {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--an-muted);
+  margin-bottom: 0.5rem;
+  text-align: right;
+}
+
+.pointsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pointRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pointSeat {
+  min-width: 110px;
+  font-weight: 600;
+  color: var(--an-ink-soft);
+  font-size: 0.9rem;
+}
+
+.pointSeat span {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--an-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pointBarWrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pointBarTrack {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--an-track);
+  overflow: hidden;
+  position: relative;
+}
+
+.pointBarFill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--an-accent-soft) 0%,
+    var(--an-accent) 100%
+  );
+  border-radius: 999px;
+  transition: width 200ms ease;
+}
+
+.pointActualIndicator {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 18px;
+  background: var(--an-actual);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--an-actual) 45%, transparent);
+}
+
+.pointValueStack {
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 0.2rem;
+}
+
+.pointValue {
+  min-width: 72px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--an-ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pointValuePositive {
+  color: var(--an-pos);
+}
+
+.pointValueNegative {
+  color: var(--an-neg);
+}
+
+.pointValueNeutral {
+  color: var(--an-ink);
+}
+
+.pointActualValue {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--an-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .actionInsightsSection {
+    padding: 0 1rem 1.25rem 1rem;
+  }
+
+  .insightsGrid {
+    grid-template-columns: 1fr;
+  }
+}

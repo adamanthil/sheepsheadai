@@ -2,7 +2,7 @@ import React from "react";
 import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
 import ActionRow from "./ActionRow";
 import Divider from "./Divider";
-import styles from "./page.module.css";
+import styles from "./ActionTimeline.module.css";
 
 interface ActionTimelineProps {
   trace: AnalyzeActionDetail[];

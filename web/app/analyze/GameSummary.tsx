@@ -1,7 +1,7 @@
 import React from "react";
 import { AnalyzeGameSummary } from "../../lib/analyzeTypes";
-import { CardText } from "../../lib/components";
-import styles from "./page.module.css";
+import { CardText } from "../../lib/ds";
+import styles from "./GameSummary.module.css";
 
 interface GameSummaryProps {
   summary: AnalyzeGameSummary;
@@ -11,7 +11,7 @@ export default function GameSummary({ summary }: GameSummaryProps) {
   return (
     <div className={styles.gameSummary}>
       <div className={styles.summarySection}>
-        <h3 className={styles.summaryTitle}>🎯 Game Summary</h3>
+        <h3 className={styles.summaryTitle}>Game Summary</h3>
 
         {/* Hands */}
         <div className={styles.summarySubsection}>
