@@ -2181,7 +2181,32 @@ class PPOAgent:
 
         self.encoder.load_state_dict(checkpoint["encoder_state_dict"])
         self.actor.load_state_dict(checkpoint["actor_state_dict"])
-        self.critic.load_state_dict(checkpoint["critic_state_dict"], strict=False)
+        # The critic load is non-strict because older checkpoints (e.g. the
+        # pfsp-ppo-30M-baseline tag, final_pfsp_swish_ppo.pt) predate the
+        # dedicated deep ``value_trunk`` and trained the value head off
+        # ``critic_adapter`` directly. A naive strict=False load leaves the new
+        # ``value_trunk.*`` at random init, so ``forward`` bootstraps the value
+        # off noise (~uncorrelated with the trained value fn) -- silently
+        # corrupting any ISMCTS critic bootstrap. Detect that case and re-point
+        # the value path at the trained ``critic_adapter`` so legacy checkpoints
+        # evaluate exactly as they were trained (inference-compatibility shim).
+        missing, unexpected = self.critic.load_state_dict(
+            checkpoint["critic_state_dict"], strict=False
+        )
+        ckpt_has_value_trunk = any(
+            k.startswith("value_trunk") for k in checkpoint["critic_state_dict"]
+        )
+        if any(k.startswith("value_trunk") for k in missing) and not ckpt_has_value_trunk:
+            self.critic.value_trunk = self.critic.critic_adapter
+            print(
+                f"Note: {filepath} predates value_trunk; routing the value head "
+                f"through the trained critic_adapter (legacy critic compatibility)."
+            )
+        elif missing or unexpected:
+            print(
+                f"Warning: critic load mismatch for {filepath}: "
+                f"missing={list(missing)} unexpected={list(unexpected)}"
+            )
 
         # Optimizers: best-effort restore; fall back to fresh states if shapes changed
         if load_optimizers:

@@ -1,6 +1,6 @@
 # Defender Trump-Lead Investigation (final_pfsp_swish_ppo.pt)
 
-Date: 2026-06-17 · Baseline commit: `64e2b36` · Author: analysis session log
+Date: 2026-06-17 (leak EV) · 2026-06-18/19 (deploy-time search, §8) · Baseline commit: `64e2b36` · Author: analysis session log
 
 ## 0. Summary
 
@@ -254,10 +254,127 @@ The control behaves as required: all rungs Δ≤0 and the search keeps a fail le
   remains improving the policy (the ExIt/search-teacher path), with deploy-time
   search as a complement.
 
-## 8. Artifacts
+## 8. Deploy-time search: does it fix the leak in *realized play*? (June 18–19 2026)
+
+§6.4 claimed deploy-time search "would recover most of it" — but that was an
+**EV-ranking over belief worlds** (corrected ISMCTS top@Q prefers fail in 22/30).
+It never measured whether *forcing the search's lead and playing the hand out*
+improves the defender's **realized game score**. This section tests that directly,
+and the answer is more nuanced than §6.4 implied.
+
+### 8.1 Prerequisite: a silent critic-load bug (had to be fixed first)
+
+`final_pfsp_swish_ppo.pt` (the `pfsp-ppo-30M-baseline` arch) **predates the deep
+`value_trunk`** in the current `ppo.py`; it trained the value head as
+`value = value_head(critic_adapter(x))` with no `value_trunk`. `PPOAgent.load`
+loads the critic with `strict=False`, so the new `value_trunk.*` params stay at
+**random init** and `forward` bootstraps the ISMCTS leaf on noise. Verified on real
+states: the random-trunk value is biased negative, under-dispersed (std 0.105 vs
+0.165), and **r = 0.13 — essentially uncorrelated** with the trained value. Only the
+critic is affected (the actor loads strict), so policy play is fine; it corrupts only
+the ISMCTS critic-bootstrap. The §5 audit dodged it by rolling to terminal early-game
+(minimal critic use); a deploy search at `d_rollout=2` would have walked into it.
+
+**Fix (`ppo.py`):** on detecting a checkpoint with no `value_trunk` keys, re-point the
+value path through the trained `critic_adapter` (reconstructs the original pathway
+exactly) and print a note; warn on any other critic mismatch instead of swallowing it.
+**All of §8 uses the corrected critic.**
+
+### 8.2 New tooling
+
+- `analysis/tune_deploy_search.py` — **paired A/B tournament**: a hero seat plays
+  search vs the *identical raw policy* on the *same deal* (other seats raw policy in
+  both); Δscore = realized strength gain. Sweeps head-set × frac × iters × d_rollout ×
+  c_puct × max_depth; selector top@Q or top@visits.
+- `analysis/targeted_trump_lead_search.py` — conditions on the §5 leak nodes; per spot,
+  paired realized Δ = defender score(search lead) − score(policy lead), deterministic
+  argmax continuation on the **true deal**; + FAIL-PREF control. (Measurement is
+  bias-free — the search is determinized, but the continuation/scoring is the real deal.)
+
+### 8.3 All-deals pilot (play head) — search is score-neutral on random deals
+
+16 seeds × 5 seats, iters 256, top@Q, frac∈{0,0.1,0.25,0.5} × d_rollout∈{2,6}: **every
+config within ~1σ of 0** (best +0.14 ± 0.20). The strong policy + rare/cheap leak
+dilute into the noise. Two soft signals: **`d_rollout=2` ≥ `d_rollout=6`** (cheap depth
+is fine once the critic is correct) and **frac wants low**.
+
+### 8.4 Targeted at the deploy budget (iters 384) — neutral-to-harmful early
+
+Δ = defender score(search lead) − score(policy lead); paired, true deal. Selector top@Q.
+
+| group | frac | d_rollout | fix% | Δscore (all) | Δscore \| changed |
+|---|---|---|---|---|---|
+| TRUMP-PREF | 0.1 | 2 | 65 | −0.29 ± 0.28 | −0.45 |
+| TRUMP-PREF | 0.1 | term | 97 | +0.03 ± 0.32 | +0.03 |
+| TRUMP-PREF | 1.0 | term | 87 | +0.06 ± 0.35 | +0.07 |
+| **FAIL-PREF** (control) | 1.0 | 2 | 68 | **−0.52 ± 0.20 (−2.6σ)** | −0.76 |
+| **FAIL-PREF** (control) | 0.5 | term | 74 | **−0.68 ± 0.24 (−2.8σ)** | −0.91 |
+
+**No config gives a significant positive Δ on the leak**, and the control is
+**significantly negative** — search overrides *correct* fail leads 35–74% of the time
+and that costs up to −0.68 (−2.8σ). At the deploy budget, search at trick 0–1 is
+neutral-to-harmful: the trained prior is the best estimator at the partial-observability
+ceiling, and top@Q overrides it with a noisier signal.
+
+### 8.5 Compute-ceiling + selection-rule test (iters 4096, rolled to terminal) — the edge appears
+
+| group | select | frac | fix% | Δscore (all) | Δscore \| changed |
+|---|---|---|---|---|---|
+| TRUMP-PREF | q | 1.0 | 87 | +0.32 ± 0.26 (+1.2σ) | +0.37 |
+| **TRUMP-PREF** | **visits** | **0.1** | **35** | **+0.23 ± 0.14 (+1.6σ)** | **+0.64** |
+| TRUMP-PREF | visits | 1.0 | 84 | +0.32 ± 0.26 (+1.2σ) | +0.38 |
+| FAIL-PREF (control) | q | 0.1 | 65 | +0.00 ± 0.26 | +0.00 |
+| **FAIL-PREF** (control) | **visits** | **0.1** | **3** | **+0.00 ± 0.00** | +0.00 |
+| FAIL-PREF (control) | q | 1.0 | 68 | −0.29 ± 0.24 | −0.43 |
+
+At ~11× the deploy iters rolled to terminal, the **leak Δ turns positive across all four
+TRUMP configs** (+0.23…+0.32, ≈1.2–1.6σ) where at 384 it was ~0 — so it was **partly
+compute/anchor-limited, not pure determinization bias** (terminal rollouts supply a
+low-variance, critic-free value exactly where the critic is blind). The standout is
+**`visits` + `frac 0.1`**: it overrides only the **most-confident 35%** of leak nodes
+(Δ|chg +0.64; +0.23 overall, tightest SE) and touches just **3%** of correct leads
+→ **zero collateral harm**. The control harm at high frac/top@Q (−2.4…−2.8σ at 384)
+flips to ~0 — confirming the damage was the **top@Q/high-frac override of a strong
+prior**, not search itself.
+
+### 8.6 Synthesis (refines §6.4)
+
+1. **§6.4's "search recovers it" was an EV-ranking, not realized play.** Fail *is*
+   marginally better in expectation over belief worlds, but at deploy budgets, forcing
+   the search's lead does **not** improve realized score — and overriding correct leads
+   actively hurts.
+2. **The leak is compute-and-selection-gated, not a no-search ceiling.** Cheap deploy
+   (384 iters, `d_rollout=2`, top@Q) = neutral-to-harmful early; **expensive** (4096
+   iters, to terminal, `visits` + low frac) = a real, harmless edge (+0.23, 1.6σ) — but
+   ~70 s/decision, i.e. **offline/analysis-grade, not real-time**.
+3. **Why cheap search hurts (and SOTA doesn't):** AlphaZero's "search improves the
+   policy" is a *perfect-information* theorem; ISMCTS/PIMC carries strategy-fusion and
+   non-locality bias and helps only when the per-world value signal is strong and policy
+   headroom is large. At trick 0–1 (max hidden info, near-ceiling policy) those
+   conditions fail until you pay for terminal rollouts and defer to the prior via
+   visit-count selection.
+4. **Deploy posture:** trust the policy at trick 0–1; if a search wrapper is used, prefer
+   **visit-count selection + low root-explore-frac** (neutral early, helpful at later
+   tricks where the prior work shows +0.103/deal on tactical blunders).
+5. **Caveat:** n=31, so the +1.6σ/+1.2σ wins are *suggestive, not significant*; the
+   confidence comes from the consistent sign across all four TRUMP configs and the clean
+   control flip. Confirm with more seeds at the single best config
+   (`visits`, `frac 0.1`, 4096 iters, terminal). That config is also a candidate **clean
+   teacher signal** (corrects confident leak cases without the floor-mass damage that
+   sank the ExIt Arm B), if the mild leak ever justifies the cost.
+
+---
+
+## 9. Artifacts
 
 - `analysis/scan_defender_trump_leads.py` — case finder (reproducible to `/analyze`).
 - `analysis/counterfactual_trump_leads.py` — 3-rung ladder + ISMCTS audit + `--explore-sweep`.
-- `runs/counterfactual_trump_leads_3200_pm1.json` — full per-case detail for the run above.
+- `analysis/tune_deploy_search.py` — paired deploy-search strength tournament (§8.2).
+- `analysis/targeted_trump_lead_search.py` — realized-play leak assessment + control (§8.2).
+- `runs/counterfactual_trump_leads_3200_pm1.json` — full per-case detail (§5 run).
 - `runs/defender_trump_leads_pm1.json` — raw trump-lead scan (800-seed, all tricks).
-- Fix: `server/services/analyze.py` now threads `req.seed` into `Game` (deal reproducibility).
+- `runs/targeted_trump_lead_search.json` — §8.4 deploy-budget run (384 iters).
+- `runs/targeted_compute_ceiling.json` — §8.5 compute-ceiling + selection run (4096 iters).
+- Fix: `server/services/analyze.py` threads `req.seed` into `Game` (deal reproducibility).
+- Fix: `ppo.py` `PPOAgent.load` — legacy critic compatibility shim (§8.1); required for any
+  ISMCTS work on `final_pfsp_swish_ppo.pt`.
