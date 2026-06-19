@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { ds } from "../../../../lib/ds";
 import { nameForSeat } from "../utils/seatMath";
 import type { FinalState, TableView } from "../../../../lib/types";
@@ -9,6 +9,9 @@ interface GameOverBannerProps {
   table: TableView;
   onRedeal: () => void;
   onShowScores: () => void;
+  isHost: boolean;
+  onCloseTable: () => void;
+  onLeave: () => void;
 }
 
 export default function GameOverBanner({
@@ -16,8 +19,12 @@ export default function GameOverBanner({
   table,
   onRedeal,
   onShowScores,
+  isHost,
+  onCloseTable,
+  onLeave,
 }: GameOverBannerProps) {
   const seats = [1, 2, 3, 4, 5];
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const scoresGrid = (scores: number[] | undefined, label?: string) => (
     <>
@@ -68,6 +75,32 @@ export default function GameOverBanner({
           <button className={`${ds.btn} ${ds.btnGhost}`} onClick={onShowScores}>
             Show scores
           </button>
+          {isHost ? (
+            confirmClose ? (
+              <>
+                <button className={ds.btn} onClick={onCloseTable}>
+                  Confirm close
+                </button>
+                <button
+                  className={`${ds.btn} ${ds.btnGhost}`}
+                  onClick={() => setConfirmClose(false)}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                className={`${ds.btn} ${ds.btnGhost}`}
+                onClick={() => setConfirmClose(true)}
+              >
+                Close table
+              </button>
+            )
+          ) : (
+            <button className={`${ds.btn} ${ds.btnGhost}`} onClick={onLeave}>
+              Leave
+            </button>
+          )}
         </div>
       </div>
     </div>

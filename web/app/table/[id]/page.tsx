@@ -316,6 +316,9 @@ export default function TablePage() {
           table={table}
           onRedeal={redeal}
           onShowScores={() => setShowScores(true)}
+          isHost={isHost}
+          onCloseTable={closeTable}
+          onLeave={() => router.push("/")}
         />
       )}
       {showScores && (
