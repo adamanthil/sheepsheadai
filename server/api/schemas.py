@@ -161,6 +161,9 @@ class AnalyzeActionDetail(BaseModel):
     stepReward: Optional[float] = None
     stepRewardBase: Optional[float] = None
     stepRewardHeadShaping: Optional[float] = None
+    # Terminal-only per-step reward (no shaping / trick rewards / leaster bonus),
+    # matching reward_mode="terminal" in the league trainer.
+    stepRewardTerminal: Optional[float] = None
     winProb: Optional[float] = None  # [0,1]
     expectedFinalReturn: Optional[float] = None  # unscaled, undiscounted
     secretPartnerProb: Optional[float] = None  # [0,1]

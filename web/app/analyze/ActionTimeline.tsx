@@ -9,6 +9,7 @@ interface ActionTimelineProps {
   picker?: string;
   partner?: string;
   shapingWeightPercent?: number; // 0-100 (applies to pick/partner/bury/play shaping)
+  terminalRewards?: boolean; // terminal-only schedule (overrides shaping)
   gamma?: number;
 }
 
@@ -17,6 +18,7 @@ export default function ActionTimeline({
   picker,
   partner,
   shapingWeightPercent = 100,
+  terminalRewards = false,
   gamma = 0.95,
 }: ActionTimelineProps) {
   if (trace.length === 0) {
@@ -30,7 +32,14 @@ export default function ActionTimeline({
 
   const shapingWeight = Math.max(0, Math.min(1, shapingWeightPercent / 100));
 
-  const displayedStepRewards = trace.map((action, i) => {
+  const displayedStepRewards = trace.map((action) => {
+    if (terminalRewards) {
+      // Terminal-only schedule (reward_mode="terminal"): full return on the
+      // player's last action, 0 elsewhere — no shaping/trick/leaster bonus.
+      return typeof action.stepRewardTerminal === "number"
+        ? action.stepRewardTerminal
+        : 0;
+    }
     const base = action.stepRewardBase;
     const head = action.stepRewardHeadShaping;
     if (typeof base === "number" && typeof head === "number")

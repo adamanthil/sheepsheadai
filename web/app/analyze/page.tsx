@@ -17,6 +17,7 @@ export default function AnalyzePage() {
   const [deterministic, setDeterministic] = useState<boolean>(true);
   const [seed, setSeed] = useState<string>("");
   const [shapingWeightPercent, setShapingWeightPercent] = useState<number>(100);
+  const [terminalRewards, setTerminalRewards] = useState<boolean>(true);
 
   // Results state
   const [response, setResponse] = useState<AnalyzeSimulateResponse | null>(
@@ -131,26 +132,41 @@ export default function AnalyzePage() {
             />
           </div>
 
-          <div className={styles.controlGroup}>
-            <label className={styles.label}>Decision Mode</label>
-            <div className={styles.checkboxWrapper}>
-              <input
-                type="checkbox"
-                id="deterministic"
-                className={styles.checkbox}
-                checked={deterministic}
-                onChange={(e) => setDeterministic(e.target.checked)}
-              />
-              <label htmlFor="deterministic" className={styles.checkboxLabel}>
-                Deterministic (greedy)
-              </label>
-            </div>
+        </div>
+
+        <div className={styles.rewardControls}>
+          <div className={styles.checkboxWrapper}>
+            <input
+              type="checkbox"
+              id="deterministic"
+              className={styles.checkbox}
+              checked={deterministic}
+              onChange={(e) => setDeterministic(e.target.checked)}
+            />
+            <label htmlFor="deterministic" className={styles.checkboxLabel}>
+              Deterministic (greedy)
+            </label>
           </div>
 
-          <div className={styles.controlGroup}>
-            <label htmlFor="shapingWeight" className={styles.label}>
+          <div className={styles.checkboxWrapper}>
+            <input
+              type="checkbox"
+              id="terminalRewards"
+              className={styles.checkbox}
+              checked={terminalRewards}
+              onChange={(e) => setTerminalRewards(e.target.checked)}
+            />
+            <label htmlFor="terminalRewards" className={styles.checkboxLabel}>
+              Terminal-only (no shaping)
+            </label>
+          </div>
+
+          <div
+            className={styles.shapingControl}
+            style={{ opacity: terminalRewards ? 0.45 : 1 }}
+          >
+            <label htmlFor="shapingWeight" className={styles.shapingLabel}>
               Shaping weight
-              <span className={styles.rangeValue}>{shapingWeightPercent}%</span>
             </label>
             <input
               id="shapingWeight"
@@ -163,7 +179,11 @@ export default function AnalyzePage() {
                 setShapingWeightPercent(parseInt(e.target.value, 10))
               }
               className={styles.range}
+              disabled={terminalRewards}
             />
+            <span className={styles.rangeValue}>
+              {terminalRewards ? "—" : `${shapingWeightPercent}%`}
+            </span>
           </div>
         </div>
 
@@ -205,6 +225,14 @@ export default function AnalyzePage() {
                       : "Stochastic"}
                   </span>
                 </div>
+                <div className={styles.metaItem}>
+                  <span>
+                    Rewards:{" "}
+                    {terminalRewards
+                      ? "Terminal-only"
+                      : `Shaped (${shapingWeightPercent}%)`}
+                  </span>
+                </div>
                 {response.meta.seed && (
                   <div className={styles.metaItem}>
                     <span>Seed: {response.meta.seed}</span>
@@ -236,6 +264,7 @@ export default function AnalyzePage() {
                 picker={response.summary?.picker}
                 partner={response.summary?.partner}
                 shapingWeightPercent={shapingWeightPercent}
+                terminalRewards={terminalRewards}
                 gamma={response.meta.gamma}
               />
             </>

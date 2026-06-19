@@ -22,6 +22,7 @@ from training_utils import (
     compute_seen_trump_mask,
     handle_trick_completion,
     process_episode_rewards,
+    process_terminal_rewards,
     update_intermediate_rewards_for_action,
 )
 
@@ -385,8 +386,13 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         for i, tr in enumerate(episode_transitions):
             idxs_by_player.setdefault(tr["player"].position, []).append(i)
 
-        # Fill rewards aligned to original order by calling per-player
+        # Fill rewards aligned to original order by calling per-player. We
+        # compute both schedules from the SAME training_utils reward functions
+        # the trainers use: the shaped baseline (process_episode_rewards) and
+        # the terminal-only return (process_terminal_rewards, i.e. the league
+        # trainer's reward_mode="terminal"). The client toggles between them.
         rewards = [0.0] * len(episode_transitions)
+        terminal_rewards = [0.0] * len(episode_transitions)
         dones = [False] * len(episode_transitions)
         for idxs in idxs_by_player.values():
             acts = [episode_transitions[i] for i in idxs]
@@ -399,6 +405,14 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
                 )
             ):
                 rewards[idxs[offset]] = float(reward_data["reward"])
+            for offset, reward_data in enumerate(
+                process_terminal_rewards(
+                    acts,
+                    final_scores,
+                    game.is_leaster,
+                )
+            ):
+                terminal_rewards[idxs[offset]] = float(reward_data["reward"])
             if idxs:
                 dones[idxs[-1]] = True
 
@@ -422,6 +436,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
                 action_detail.stepRewardBase = float(rewards[i]) - float(
                     action_detail.stepRewardHeadShaping
                 )
+                action_detail.stepRewardTerminal = float(terminal_rewards[i])
 
     # Build response
     response = AnalyzeSimulateResponse(

@@ -45,6 +45,9 @@ export interface AnalyzeActionDetail {
   stepReward?: number;
   stepRewardBase?: number;
   stepRewardHeadShaping?: number;
+  /** Terminal-only per-step reward (reward_mode="terminal"): full return on the
+   *  player's last action, 0 elsewhere; no shaping/trick/leaster bonus. */
+  stepRewardTerminal?: number;
   winProb?: number;
   expectedFinalReturn?: number;
   secretPartnerProb?: number;
