@@ -337,7 +337,27 @@ low-variance, critic-free value exactly where the critic is blind). The standout
 flips to ~0 — confirming the damage was the **top@Q/high-frac override of a strong
 prior**, not search itself.
 
-### 8.6 Synthesis (refines §6.4)
+### 8.6 Confirmation at scale (n = 101, single best config)
+
+The §8.5 wins were n=31 / ~1.6σ — suggestive. Re-run at **9600 seeds** (→ 101
+TRUMP-PREF + 101 FAIL-PREF control) at the single best config (`visits`,
+`frac 0.1`, 4096 iters, terminal):
+
+| group | fix% | →fail% | Δscore (all) | Δscore \| changed | Δpts | Δwin |
+|---|---|---|---|---|---|---|
+| **TRUMP-PREF** (leak) | 32 | 25 | **+0.16 ± 0.07 (+2.4σ)** | +0.50 (n=32) | +1.5 | +5% |
+| FAIL-PREF (control) | 12 | 12 | −0.01 ± 0.05 | −0.08 (n=12) | −0.2 | 0% |
+
+The leak edge **confirms and is now significant** (+0.16, +2.4σ). The point
+estimate regressed from +0.23 (n=31) to +0.16 — textbook regression-to-the-mean
+off a small sample — but the tighter SE makes it real. The control is **dead flat**
+(−0.01 ± 0.05): the conservative `visits`+low-frac selector overrides only 12% of
+*correct* leads and does them no harm. So at scale both halves hold: a real +0.16
+game-score/occurrence gain on the leak (+0.50 on the 32% it actually overrides),
+with **zero collateral damage**. This is what makes the config a *trustworthy*
+signal — the anti-Arm-B — rather than churn.
+
+### 8.7 Synthesis (refines §6.4)
 
 1. **§6.4's "search recovers it" was an EV-ranking, not realized play.** Fail *is*
    marginally better in expectation over belief worlds, but at deploy budgets, forcing
@@ -345,8 +365,8 @@ prior**, not search itself.
    actively hurts.
 2. **The leak is compute-and-selection-gated, not a no-search ceiling.** Cheap deploy
    (384 iters, `d_rollout=2`, top@Q) = neutral-to-harmful early; **expensive** (4096
-   iters, to terminal, `visits` + low frac) = a real, harmless edge (+0.23, 1.6σ) — but
-   ~70 s/decision, i.e. **offline/analysis-grade, not real-time**.
+   iters, to terminal, `visits` + low frac) = a real, harmless edge (**+0.16, +2.4σ at
+   n=101**, §8.6) — but ~70 s/decision, i.e. **offline/analysis-grade, not real-time**.
 3. **Why cheap search hurts (and SOTA doesn't):** AlphaZero's "search improves the
    policy" is a *perfect-information* theorem; ISMCTS/PIMC carries strategy-fusion and
    non-locality bias and helps only when the per-world value signal is strong and policy
@@ -356,12 +376,47 @@ prior**, not search itself.
 4. **Deploy posture:** trust the policy at trick 0–1; if a search wrapper is used, prefer
    **visit-count selection + low root-explore-frac** (neutral early, helpful at later
    tricks where the prior work shows +0.103/deal on tactical blunders).
-5. **Caveat:** n=31, so the +1.6σ/+1.2σ wins are *suggestive, not significant*; the
-   confidence comes from the consistent sign across all four TRUMP configs and the clean
-   control flip. Confirm with more seeds at the single best config
-   (`visits`, `frac 0.1`, 4096 iters, terminal). That config is also a candidate **clean
-   teacher signal** (corrects confident leak cases without the floor-mass damage that
-   sank the ExIt Arm B), if the mild leak ever justifies the cost.
+5. **Significance:** the §8.5 grid was n=31 (suggestive); §8.6 confirms the best config
+   at n=101 (**+0.16, +2.4σ**, control flat). That config is also a validated candidate
+   **clean teacher signal** (real gain on the leak, zero collateral on correct leads — the
+   property the ExIt Arm B target lacked).
+
+### 8.8 Implications for the training-time teacher
+
+This investigation **revises the original ISMCTS-soft-target-everywhere plan** (which
+Arm B already falsified) and points at a lighter design. Three constraints surfaced:
+cheap determinized search is *noisier than the policy* at the trick-0/1 ceiling
+(distilling it everywhere injects error); the binding constraint is the early-game
+**value** signal, not search width; and conservative confidence-gated selection is what
+made search safe.
+
+- **Leading candidate — privileged (oracle) value as the GAE baseline.** Train a value
+  `V_oracle(s)` on the *full* state (all hands + blind) and use it as the advantage
+  baseline, `A_t = G_t − V_oracle(s_t)`. This is an **unbiased** state baseline (it is
+  action-independent given the observation — distinct from action-dependent baselines,
+  Tucker et al. 2018) and it **removes the hidden-card variance** from the advantage —
+  exactly the variance that, per this project's standing finding, blocks PPO from
+  resolving small early-game EV gaps like this leak (Arm A: 50k episodes, leak flat,
+  because SNR at the node ≈ 0). Precedent: AlphaStar's value used privileged opponent
+  information; asymmetric actor-critic (Pinto et al. 2017); CTDE/centralized-critic MARL.
+  Cleanest form is the λ=1 control-variate (high λ to avoid bootstrapping through
+  privileged values). **This may fix the leak with no search teacher at all** — it
+  attacks the named mechanism directly. *Note:* the point is not to improve `V_obs` (it
+  is unused at deploy); it is to use the privileged value as the training baseline.
+- **Fallback — cheap oracle-leaf ISMCTS teacher + confidence-gated distillation.** If
+  variance reduction alone can't move the *mode*, evaluate ISMCTS leaves with
+  `V_oracle` on the determinized (full-info) world — which makes shallow search reliable,
+  so the teacher no longer needs the 4096-to-terminal budget — and distill **only where
+  the search is confident** (the §8.6 config is the trusted signal). This avoids the
+  Arm B floor-mass reinjection.
+- **Why it's worth doing despite the tiny EV:** a defender leading trump is a human
+  *convention* signalling "I am the partner." A non-partner doing it for −EV emits a
+  **false signal** an expert immediately reads — a legibility/credibility failure, not
+  just −0.2 score.
+
+Experiment order: **privileged baseline first** (cheapest, most grounded), escalate to
+the search teacher only if needed. Validate any retrain with the rigorous-eval gauntlet
+(no overall-strength regression) **and** a leak-rate re-scan.
 
 ---
 
@@ -375,6 +430,7 @@ prior**, not search itself.
 - `runs/defender_trump_leads_pm1.json` — raw trump-lead scan (800-seed, all tricks).
 - `runs/targeted_trump_lead_search.json` — §8.4 deploy-budget run (384 iters).
 - `runs/targeted_compute_ceiling.json` — §8.5 compute-ceiling + selection run (4096 iters).
+- `runs/targeted_confirm_visits_f01.json` — §8.6 confirmation (n=101, best config, 9600 seeds).
 - Fix: `server/services/analyze.py` threads `req.seed` into `Game` (deal reproducibility).
 - Fix: `ppo.py` `PPOAgent.load` — legacy critic compatibility shim (§8.1); required for any
   ISMCTS work on `final_pfsp_swish_ppo.pt`.
