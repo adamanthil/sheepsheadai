@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+from config import SelfPlayHyperparams
 from ppo import PPOAgent
 from sheepshead import (
     ACTIONS,
@@ -31,6 +32,8 @@ from training_utils import (
     save_training_plot,
     update_intermediate_rewards_for_action,
 )
+
+_HP = SelfPlayHyperparams()  # fixed LRs + entropy decay schedule (bootstrap run)
 
 
 def train_ppo(
@@ -61,7 +64,10 @@ def train_ppo(
 
     # Create agent with optimized hyperparameters
     agent = PPOAgent(
-        len(ACTIONS), lr_actor=1.0e-4, lr_critic=1.0e-4, activation=activation
+        len(ACTIONS),
+        lr_actor=_HP.lr_actor,
+        lr_critic=_HP.lr_critic,
+        activation=activation,
     )
 
     # Resume from specified model or try to load best existing
@@ -326,27 +332,23 @@ def train_ppo(
                 f"🔄 Updating model after {transitions_since_update} transitions... (Episode {episode:,})"
             )
 
-            # Separate entropy decay schedules
-            entropy_play_start, entropy_play_end = 0.05, 0.05
-            entropy_pick_start, entropy_pick_end = 0.08, 0.05
-            entropy_partner_start, entropy_partner_end = 0.05, 0.04
-            entropy_bury_start, entropy_bury_end = 0.04, 0.03
+            # Separate entropy decay schedules (config.SelfPlayHyperparams).
             decay_fraction = min(episode / num_episodes, 1.0)
             agent.entropy_coeff_play = (
-                entropy_play_start
-                + (entropy_play_end - entropy_play_start) * decay_fraction
+                _HP.entropy_play_start
+                + (_HP.entropy_play_end - _HP.entropy_play_start) * decay_fraction
             )
             agent.entropy_coeff_pick = (
-                entropy_pick_start
-                + (entropy_pick_end - entropy_pick_start) * decay_fraction
+                _HP.entropy_pick_start
+                + (_HP.entropy_pick_end - _HP.entropy_pick_start) * decay_fraction
             )
             agent.entropy_coeff_partner = (
-                entropy_partner_start
-                + (entropy_partner_end - entropy_partner_start) * decay_fraction
+                _HP.entropy_partner_start
+                + (_HP.entropy_partner_end - _HP.entropy_partner_start) * decay_fraction
             )
             agent.entropy_coeff_bury = (
-                entropy_bury_start
-                + (entropy_bury_end - entropy_bury_start) * decay_fraction
+                _HP.entropy_bury_start
+                + (_HP.entropy_bury_end - _HP.entropy_bury_start) * decay_fraction
             )
 
             update_stats = agent.update(epochs=4, batch_size=256)

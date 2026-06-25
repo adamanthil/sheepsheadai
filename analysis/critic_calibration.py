@@ -75,7 +75,6 @@ def policy_and_value(agent, state, valid, pid):
         probs, _ = agent.actor.forward_with_logits(
             enc, mask, hand_ids, agent.encoder.card
         )
-        probs = agent._apply_head_epsilon_mix(probs, mask)
         value = agent.critic(enc)
     return probs[0].detach().cpu().numpy(), float(value.item())
 

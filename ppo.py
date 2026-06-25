@@ -602,21 +602,6 @@ class PPOAgent:
         # Storage for trajectory data
         self.reset_storage()
 
-        # --------------------------------------------------
-        # Partner-call mixture: epsilon floor over CALL actions
-        # --------------------------------------------------
-        # Subset of partner head actions eligible for CALL-uniform mixing
-        self.partner_call_subindices = sorted(
-            {ACTION_IDS["JD PARTNER"] - 1} | {ACTION_IDS[a] - 1 for a in CALL_ACTIONS}
-        )
-        # Blending coefficient ε (0 disables; typical 0.02–0.10)
-        self.partner_call_epsilon = 0.0
-
-        # PASS-floor mixing epsilon (applies on PICK/PASS decision steps)
-        self.pass_floor_epsilon = 0.0
-        # PICK-floor mixing epsilon (applies on PICK/PASS decision steps)
-        self.pick_floor_epsilon = 0.0
-
     def get_recurrent_memory(
         self, player_id: int | None, device: torch.device | None = None
     ) -> torch.Tensor:
@@ -761,33 +746,6 @@ class PPOAgent:
             critic_lr = float(critic_lr)
             self.critic_optimizer.param_groups[0]["lr"] = critic_lr
 
-    def set_partner_call_epsilon(self, eps: float):
-        """Set ε for uniform CALL mixture on partner steps (0.0 disables)."""
-        eps = float(eps)
-        if eps < 0.0:
-            eps = 0.0
-        if eps > 0.2:
-            eps = 0.2
-        self.partner_call_epsilon = eps
-
-    def set_pass_floor_epsilon(self, eps: float):
-        """Set ε for PASS-floor mixing on pick/pass steps (0.0 disables)."""
-        eps = float(eps)
-        if eps < 0.0:
-            eps = 0.0
-        if eps > 0.2:
-            eps = 0.2
-        self.pass_floor_epsilon = eps
-
-    def set_pick_floor_epsilon(self, eps: float):
-        """Set ε for PICK-floor mixing on pick/pass steps (0.0 disables)."""
-        eps = float(eps)
-        if eps < 0.0:
-            eps = 0.0
-        if eps > 0.2:
-            eps = 0.2
-        self.pick_floor_epsilon = eps
-
     def set_anchor(self, ref_agent, coeff: float):
         """Enable (or disable) the bidding-head KL anchor toward a frozen
         reference policy: actor loss gains coeff * KL(pi_ref || pi_theta) on
@@ -802,73 +760,6 @@ class PPOAgent:
                 net.eval()
                 for p in net.parameters():
                     p.requires_grad_(False)
-
-    def _apply_head_epsilon_mix(
-        self, probs: torch.Tensor, mask: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Shared epsilon mixing for partner-call uniform, pick floor, pass floor.
-        Expects probs already normalized; returns a new tensor (no in-place ops).
-        """
-        if (
-            self.partner_call_epsilon == 0.0
-            and self.pick_floor_epsilon == 0.0
-            and self.pass_floor_epsilon == 0.0
-        ):
-            return probs
-
-        mixed = probs
-
-        # Partner-call uniform mixture over valid CALL actions
-        if self.partner_call_epsilon > 0.0:
-            A = mixed.size(1)
-            call_vec = torch.zeros(A, dtype=torch.bool, device=mixed.device)
-            call_idx = torch.tensor(
-                self.partner_call_subindices, dtype=torch.long, device=mixed.device
-            )
-            call_vec[call_idx] = True
-            valid_call = mask & call_vec.view(1, A).expand_as(mask)
-            count = valid_call.float().sum(dim=-1, keepdim=True)
-            has = count > 0.5
-            ucall = torch.where(
-                has,
-                valid_call.float() / count.clamp_min(1.0),
-                torch.zeros_like(mixed),
-            )
-            eps = torch.where(
-                has,
-                torch.full_like(count, self.partner_call_epsilon),
-                torch.zeros_like(count),
-            )
-            mixed = (1.0 - eps) * mixed + eps * ucall
-
-        # Pick floor
-        if self.pick_floor_epsilon > 0.0:
-            one_hot_pick = F.one_hot(
-                torch.tensor(self.pick_action_index, device=mixed.device),
-                mixed.size(-1),
-            ).float()
-            mixed = torch.where(
-                mask[:, self.pick_action_index].unsqueeze(-1),
-                (1.0 - self.pick_floor_epsilon) * mixed
-                + self.pick_floor_epsilon * one_hot_pick,
-                mixed,
-            )
-
-        # Pass floor
-        if self.pass_floor_epsilon > 0.0:
-            one_hot_pass = F.one_hot(
-                torch.tensor(self.pass_action_index, device=mixed.device),
-                mixed.size(-1),
-            ).float()
-            mixed = torch.where(
-                mask[:, self.pass_action_index].unsqueeze(-1),
-                (1.0 - self.pass_floor_epsilon) * mixed
-                + self.pass_floor_epsilon * one_hot_pass,
-                mixed,
-            )
-
-        return mixed
 
     def reset_storage(self):
         # Ordered list of events: each is a dict with keys:
@@ -924,7 +815,6 @@ class PPOAgent:
                 hand_ids_t,
                 self.encoder.card,
             )
-            probs = self._apply_head_epsilon_mix(probs, action_mask_t)
 
         return probs, logits
 
@@ -959,7 +849,6 @@ class PPOAgent:
                 hand_ids_t,
                 self.encoder.card,
             )
-            action_probs = self._apply_head_epsilon_mix(action_probs, action_mask_t)
 
             # Get value
             value = self.critic(encoder_out)
@@ -1601,7 +1490,6 @@ class PPOAgent:
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
         probs_all = F.softmax(logits_flat, dim=-1)
-        probs_all = self._apply_head_epsilon_mix(probs_all, mask_flat)
 
         dist = torch.distributions.Categorical(probs_all.clamp(min=1e-12))
         new_lp_flat = dist.log_prob(actions_flat)

@@ -67,7 +67,7 @@ from ppo import PPOAgent
 from sheepshead import ACTIONS
 from training_utils import get_partner_selection_mode, greedy_health_probe
 
-_SCHED = PFSPHyperparams()  # entropy/LR schedule shapes (shared with legacy driver)
+_PARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
 
 
 class _Seat:
@@ -209,24 +209,24 @@ def run_main_phase(
         pct = min(100.0, 100.0 * episode / max(args.schedule_horizon, 1))
         decay = 1.0 - pct / 100.0
         training_agent.entropy_coeff_pick = (
-            _SCHED.entropy_pick_end
-            + (_SCHED.entropy_pick_start - _SCHED.entropy_pick_end) * decay
+            _PARAMS.entropy_pick_end
+            + (_PARAMS.entropy_pick_start - _PARAMS.entropy_pick_end) * decay
         )
         training_agent.entropy_coeff_partner = (
-            _SCHED.entropy_partner_end
-            + (_SCHED.entropy_partner_start - _SCHED.entropy_partner_end) * decay
+            _PARAMS.entropy_partner_end
+            + (_PARAMS.entropy_partner_start - _PARAMS.entropy_partner_end) * decay
         )
         training_agent.entropy_coeff_bury = (
-            _SCHED.entropy_bury_end
-            + (_SCHED.entropy_bury_start - _SCHED.entropy_bury_end) * decay
+            _PARAMS.entropy_bury_end
+            + (_PARAMS.entropy_bury_start - _PARAMS.entropy_bury_end) * decay
         )
         training_agent.entropy_coeff_play = (
-            _SCHED.entropy_play_end
-            + (_SCHED.entropy_play_start - _SCHED.entropy_play_end) * decay
+            _PARAMS.entropy_play_end
+            + (_PARAMS.entropy_play_start - _PARAMS.entropy_play_end) * decay
         )
         training_agent.set_learning_rates(
-            interpolated_weight(_SCHED.lr_schedule_actor, pct),
-            interpolated_weight(_SCHED.lr_schedule_critic, pct),
+            interpolated_weight(_PARAMS.lr_schedule_actor, pct),
+            interpolated_weight(_PARAMS.lr_schedule_critic, pct),
         )
 
     # -------------------- episode streams --------------------
@@ -465,15 +465,25 @@ def run_main_phase(
                     f"play-spread {probe['play_logit_spread_med']:.2f}",
                     flush=True,
                 )
-                if probe["pick_rate"] < 25.0:
-                    print("🚨 GREEDY GATE VIOLATION: PICK rate < 25%")
-                if probe["alone_rate"] > 12.0:
-                    print("🚨 GREEDY GATE VIOLATION: ALONE rate > 12%")
-                if probe["t0_trump_lead_rate"] > 8.0:
-                    print("🚨 GREEDY GATE VIOLATION: trump-lead > 8%")
-                if probe["play_logit_spread_med"] < 0.5:
+                if probe["pick_rate"] < _PARAMS.greedy_gate_min_pick:
                     print(
-                        "🚨 GREEDY GATE VIOLATION: play-head logit spread < 0.5 "
+                        f"🚨 GREEDY GATE VIOLATION: PICK rate < "
+                        f"{_PARAMS.greedy_gate_min_pick:.0f}%"
+                    )
+                if probe["alone_rate"] > _PARAMS.greedy_gate_max_alone:
+                    print(
+                        f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
+                        f"{_PARAMS.greedy_gate_max_alone:.0f}%"
+                    )
+                if probe["t0_trump_lead_rate"] > _PARAMS.greedy_gate_max_trump_lead:
+                    print(
+                        f"🚨 GREEDY GATE VIOLATION: trump-lead > "
+                        f"{_PARAMS.greedy_gate_max_trump_lead:.0f}%"
+                    )
+                if probe["play_logit_spread_med"] < _PARAMS.greedy_gate_min_play_spread:
+                    print(
+                        "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
+                        f"{_PARAMS.greedy_gate_min_play_spread} "
                         "(play head collapsing toward uniform)"
                     )
                 write_header = not os.path.exists(greedy_csv)

@@ -51,22 +51,6 @@ def estimate_hand_strength_score(cards: List[str]) -> int:
     return score
 
 
-def estimate_hand_strength_category(cards: List[str]) -> str:
-    """Categorize hand strength into 'weak' | 'medium' | 'strong'.
-
-    Bins:
-      - weak   ≤ 4
-      - medium 5–7
-      - strong ≥ 8
-    """
-    score = estimate_hand_strength_score(cards)
-    if score <= 4:
-        return "weak"
-    if score <= 7:
-        return "medium"
-    return "strong"
-
-
 def get_partner_selection_mode(episode: int) -> int:
     return PARTNER_BY_CALLED_ACE if (episode % 2 == 0) else PARTNER_BY_JD
 

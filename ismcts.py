@@ -410,7 +410,6 @@ class ISMCTSTeacher:
             probs, _ = ctrl.actor.forward_with_logits(
                 enc, masks, hand_ids, ctrl.encoder.card
             )
-            probs = ctrl._apply_head_epsilon_mix(probs, masks)
         return probs
 
     def _after_action_batched(self, games, mems):
@@ -805,7 +804,6 @@ class ISMCTSTeacher:
                     probs_g, _ = ctrl.actor.forward_with_logits(
                         enc, masks, hand_ids, ctrl.encoder.card
                     )
-                    probs_g = ctrl._apply_head_epsilon_mix(probs_g, masks)
                     if any(reqs[j][1] == "critic" for j in idxs):
                         v_np[idxs] = ctrl.critic(enc).detach().view(-1).cpu().numpy()
                 probs_np[idxs] = probs_g.detach().cpu().numpy()

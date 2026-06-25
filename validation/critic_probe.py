@@ -53,7 +53,6 @@ def encode_decide(agent, game, player):
     )
     with torch.no_grad():
         probs = agent.actor(enc, mask, hand_ids, agent.encoder.card)
-        probs = agent._apply_head_epsilon_mix(probs, mask)
         a = torch.distributions.Categorical(probs).sample().item() + 1
 
     is_play = any(ACTIONS[v - 1].startswith("PLAY ") for v in valid)

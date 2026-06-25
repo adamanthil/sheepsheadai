@@ -1,23 +1,92 @@
 #!/usr/bin/env python3
-"""Unified training hyperparameters for the PFSP trainers.
+"""Central training hyperparameters.
 
-All tunable knobs for the population-based trainers live here so the entry-point
-scripts (``train_pfsp_ppo.py`` shaped baseline, ``train_pfsp_exit.py`` ISMCTS
-hybrid) stay thin. ``PFSPHyperparams`` is shared by both; ``reward_mode`` and the
-nested optional ``search`` select the strategy:
+Consumers:
 
-* shaped baseline:  reward_mode="shaped",  search=None   (uses shaping schedules +
-  entropy bumps)
-* ISMCTS hybrid:    reward_mode="terminal", search=SearchConfig(...)  (terminal-only
-  return + search-distillation; shaping schedules / entropy bumps inactive)
+* ``train_league_ppo.py`` reads ``PFSPHyperparams`` (instantiated once as
+  ``_SCHED``) for the entropy + learning-rate decay schedules and the
+  greedy-health collapse gates. Everything else the league trainer needs is a
+  per-run CLI flag (workers, anchor, eval cadence), not a tuning constant.
+* ``train_selfplay_ppo.py`` reads ``SelfPlayHyperparams`` (instantiated once as
+  ``_HP``) for the bootstrap run's fixed learning rates and entropy schedule.
+  Its values intentionally differ from the league trainer's, hence a separate
+  dataclass.
+* The deploy/audit ISMCTS search path (``pfsp_runtime.play_population_game`` +
+  ``ismcts.py``) reads ``SearchConfig`` for the per-head search coverage and the
+  rollout-depth schedule. The league/exploiter trainers run terminal-reward only
+  with no teacher, so the search path is reachable only from the probes and the
+  regression tests.
+
+The shaped-reward controllers, opponent-block scheduling, and the standalone
+ExIt trainer that this module used to configure were removed in the June 2026
+league consolidation.
 """
 
 from dataclasses import dataclass, field
 
 
 @dataclass
+class PFSPHyperparams:
+    """League-trainer schedules and collapse gates (see module docstring)."""
+
+    # Entropy schedules (start -> end), decayed linearly over the schedule horizon.
+    entropy_pick_start: float = 0.05
+    entropy_pick_end: float = 0.005
+    entropy_partner_start: float = 0.05
+    entropy_partner_end: float = 0.005
+    entropy_bury_start: float = 0.04
+    entropy_bury_end: float = 0.002
+    entropy_play_start: float = 0.015
+    entropy_play_end: float = 0.001
+
+    # Learning rate schedules (percent progress -> learning rate).
+    lr_schedule_actor: dict[int, float] = field(
+        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
+    )
+    lr_schedule_critic: dict[int, float] = field(
+        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
+    )
+
+    # Greedy self-play health gates (collapse guard; percent units except the
+    # play-head logit spread). Stochastic training-time rates masked the run-2
+    # collapse for 586k episodes: a flattened policy still *samples* ~30% PICK
+    # while its argmax is PASS. The greedy probe (training_utils.greedy_health_probe)
+    # plays argmax self-play and warns when any rate crosses these gates.
+    greedy_gate_min_pick: float = 25.0
+    greedy_gate_max_alone: float = 12.0
+    greedy_gate_max_trump_lead: float = 8.0
+    greedy_gate_min_play_spread: float = 0.5
+
+
+@dataclass
+class SelfPlayHyperparams:
+    """Bootstrap self-play trainer (``train_selfplay_ppo.py``) schedule.
+
+    This trainer produces the ~100k-episode seed model that warm-starts league
+    training so the league need not bootstrap from scratch. Its fixed learning
+    rates and entropy schedule intentionally differ from the league trainer's
+    ``PFSPHyperparams`` (higher / flatter exploration suited to a from-scratch
+    run), so the two are kept as separate dataclasses rather than shared values.
+    """
+
+    # Fixed learning rates (constant over the bootstrap run; no schedule).
+    lr_actor: float = 1.0e-4
+    lr_critic: float = 1.0e-4
+
+    # Entropy schedules (start -> end), decayed linearly over the run length.
+    entropy_pick_start: float = 0.08
+    entropy_pick_end: float = 0.05
+    entropy_partner_start: float = 0.05
+    entropy_partner_end: float = 0.04
+    entropy_bury_start: float = 0.04
+    entropy_bury_end: float = 0.03
+    entropy_play_start: float = 0.05
+    entropy_play_end: float = 0.05
+
+
+@dataclass
 class SearchConfig:
-    """ISMCTS soft-teacher search controls (used only by the ExIt hybrid trainer).
+    """ISMCTS soft-teacher search controls (deploy/audit search path).
 
     ``head_search_fractions`` is the per-head probability that a training-agent
     decision is searched. The bidding heads default to **1.0** and play to **0.10**: the
@@ -45,31 +114,6 @@ class SearchConfig:
     are always rolled to terminal (0 <= t_full). Leasters are forced to terminal
     rollout in the runtime regardless of t_full (their outcomes barely calibrate,
     R^2 <= 0.21).
-
-    ``searched_ppo_weight`` is the plan-§4 A/B knob for how searched transitions are
-    trained: it is the weight on the PPO clip term for searched transitions (NOT a
-    teacher weight). 0.0 = hard PG-mask (drop the PPO clip term; distillation owns
-    those states) — the default; 1.0 = additive form (keep PPO AND add distillation);
-    0<w<1 = a residual PPO weight (fallback if the hard mask proves too noisy at low
-    ESS). Distillation toward pi' is applied on searched transitions either way at
-    its own ``search_distill_coeff``; only the PPO term's weight on them changes here.
-    Unsearched transitions always keep full PG.
-
-    ``distill_ramp_episodes`` eases the warm-start onset shock: the learner's
-    ``search_distill_coeff`` is scaled by min(1, episodes_since_run_start / ramp)
-    so full-strength distillation toward the (high-entropy) teacher pi' does not
-    yank a sharp warm-started policy while the critic is still re-fitting from
-    shaped to terminal returns — the trigger of the run-1/run-2 collapse ratchet.
-    0 disables the ramp.
-
-    ``target_tau`` is the temperature of the distillation target pi' ∝
-    N(a)^(1/tau) (ISMCTSConfig.tau_target; PUCT itself is unaffected). The
-    teacher trump-lead audit showed that at tau=1.0 the target carries ~8pp of
-    exploration-floor mass (FPU + root uniform mix) that the search's own Q
-    says is wrong — distilling it reinjected the trick-0 trump-lead leak
-    (Arm B: 9%→74.5% in 30k episodes). tau=0.5 removes ~85% of that floor on
-    the same visit counts while keeping the target soft; tau<=0.25 is
-    near-argmax and would confidently teach search noise at low ESS.
     """
 
     head_search_fractions: dict = field(
@@ -77,142 +121,4 @@ class SearchConfig:
     )
     t_full: int = 1
     d_short: int = 2
-    searched_ppo_weight: float = 1.0
-    distill_ramp_episodes: int = 50_000
-    target_tau: float = 1.0
     enabled: bool = True
-
-
-@dataclass
-class PFSPHyperparams:
-    # Strategy selectors (shared trainer; see module docstring)
-    reward_mode: str = "shaped"  # "shaped" | "terminal"
-    search: SearchConfig | None = None
-
-    # Bidding-head KL anchor (ExIt warm-start guard; learner-side only).
-    # When anchor_loss_coeff > 0 the actor loss gains
-    #   anchor_loss_coeff * KL(pi_ref || pi_theta)
-    # on pick/partner/bury transitions, toward the frozen reference model in
-    # anchor_ref_model. Both collapse runs (distill-owned AND PG-owned bidding)
-    # drifted the bidding heads to a flattened always-PASS/ALONE policy while the
-    # picker EV was depressed by the onset shock; the anchor pins the bidding
-    # heads to the known-calibrated 30M reference through that window. The play
-    # head is NOT anchored. 0.0 disables (shaped baseline unaffected).
-    anchor_loss_coeff: float = 0.0
-    anchor_ref_model: str = "final_pfsp_swish_ppo.pt"
-
-    # Periodic greedy self-play health probe (collapse guard). Stochastic
-    # training-time rates masked the run-2 collapse for 586k episodes: a
-    # flattened policy still *samples* ~30% PICK while its argmax is PASS. The
-    # probe plays greedy self-play games every greedy_eval_interval episodes and
-    # logs PICK/ALONE/leaster/trick-0-trump-lead rates to greedy_health.csv,
-    # warning when outside the gates below (percent units). 0 interval disables
-    # (the shaped PPO baseline trainer leaves this off).
-    greedy_eval_interval: int = 0
-    greedy_eval_games: int = 200
-    greedy_gate_min_pick: float = 25.0
-    greedy_gate_max_alone: float = 12.0
-    greedy_gate_max_trump_lead: float = 8.0
-
-    # Parallel game-generation workers (Lever 1). None => auto: parallelize the
-    # expensive ISMCTS ExIt generation (reward_mode="terminal") across
-    # min(cpu_count-1, 8) workers, keep the cheap shaped PPO baseline sequential.
-    # 1 (or <=1) forces the original in-process sequential loop.
-    num_workers: int | None = None
-
-    # Adaptive exploration for pick head (rate-based bump scheduling)
-    low_pick_rate_threshold: float = 20.0  # percent
-    high_pick_rate_threshold: float = 60.0  # percent
-    pick_entropy_bump: float = 0.04  # added to base decayed pick entropy
-    pick_entropy_bump_duration: int = 25000  # episodes
-
-    # PASS-floor epsilon controller (shaped mode only).
-    # Ensures minimum PASS probability on pick steps if picker average score is low.
-    high_pick_rate_ceiling: float = (
-        80.0  # Alter distribution to force PASS after this threshold
-    )
-    pass_floor_eps_base: float = 0.0
-    pass_floor_eps_target: float = 0.08
-    pass_floor_eps_step_up: float = 0.02
-    pass_floor_eps_step_down: float = 0.02
-    pass_floor_eps_picker_avg_threshold: float = -0.75
-
-    # PICK-floor epsilon controller (shaped mode only).
-    # Ensures minimum PICK probability on pick steps if overall pick rate is low.
-    low_pick_rate_floor: float = 8.0  # percent
-    pick_floor_eps_base: float = 0.0
-    pick_floor_eps_target: float = 0.05
-    pick_floor_eps_step_up: float = 0.02
-    pick_floor_eps_step_down: float = 0.02
-
-    # Adaptive exploration for partner head (ALONE decision; bump scheduling)
-    low_alone_rate_threshold: float = 2.5  # percent
-    high_alone_rate_threshold: float = 30.0  # percent
-    partner_entropy_bump: float = 0.04  # added to base decayed partner entropy
-    partner_entropy_bump_duration: int = 25000  # episodes
-
-    # Partner CALL mixture epsilon controller (shaped mode only).
-    # Probability floor over CALL actions when picker average score is low.
-    high_alone_rate_ceiling: float = (
-        60.0  # Alter distribution to force partner calls after this threshold
-    )
-    partner_call_eps_base: float = 0.0
-    partner_call_eps_max_mid: float = (
-        0.05  # when picker avg <= mid_picker_avg_threshold
-    )
-    partner_call_eps_mid_picker_avg_threshold: float = -0.75
-    partner_call_eps_max_high: float = (
-        0.10  # when picker avg <= high_picker_avg_threshold
-    )
-    partner_call_eps_high_picker_avg_threshold: float = -2
-    partner_call_eps_step_up: float = 0.02
-    partner_call_eps_step_down: float = 0.02
-
-    # Adaptive exploration for bury head (bury decisions quality)
-    # If bury_quality_rate drops below a threshold, temporarily bump bury entropy.
-    low_bury_quality_threshold: float = 85.0  # percent
-    bury_entropy_bump: float = 0.04  # added to base decayed bury entropy
-    bury_entropy_bump_duration: int = 19000  # episodes
-
-    # Entropy schedules (start -> end)
-    entropy_pick_start: float = 0.05
-    entropy_pick_end: float = 0.005
-    entropy_partner_start: float = 0.05
-    entropy_partner_end: float = 0.005
-    entropy_bury_start: float = 0.04
-    entropy_bury_end: float = 0.002
-    entropy_play_start: float = 0.015
-    entropy_play_end: float = 0.001
-
-    # Shaped reward schedules (percent -> weight). Used only when reward_mode="shaped".
-    shaping_schedule_pick: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 60: 0}
-    )
-    shaping_schedule_partner: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
-    )
-    shaping_schedule_bury: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 55: 0}
-    )
-    shaping_schedule_play: dict[int, float] = field(
-        default_factory=lambda: {0: 1.0, 50: 1.0, 70: 0}
-    )
-
-    # Learning rate schedules (percent -> learning rate).
-    lr_schedule_actor: dict[int, float] = field(
-        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
-    )
-    lr_schedule_critic: dict[int, float] = field(
-        default_factory=lambda: {0: 1.5e-4, 100: 5e-5}
-    )
-
-    # Opponent scheduling (PFSP mixture vs anchor/pressure/support specials)
-    anchor_block_start_prob: float = 0.03
-    anchor_block_len_min: int = 6
-    anchor_block_len_max: int = 20
-    anchor_slots_in_block: int = 3
-    pressure_slot_prob: float = 0.12
-    support_slot_prob: float = 0.06
-
-
-DEFAULT_HYPERPARAMS = PFSPHyperparams()
