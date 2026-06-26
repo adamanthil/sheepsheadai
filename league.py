@@ -61,8 +61,8 @@ class MemberMeta:
     activation: str = "swish"
     parent_id: Optional[str] = None
     # Exploiter lineage: which league generation spawned it (-1 for past mains)
-    # and the paired-deal edge (pts/game vs the frozen main) measured at its
-    # gate — the league's empirical-exploitability record.
+    # and the paired-deal edge (settlement score/deal vs the frozen main) measured
+    # at its gate — the league's empirical-exploitability record.
     generation: int = -1
     gate_edge: Optional[float] = None
     games_played: int = 0
@@ -122,11 +122,11 @@ class LeagueConfig:
     max_past_mains: int = 30
     hof_quota: int = 6
     protect_newest: int = 5  # newest past_mains immune to skill pruning
-    # Exploiter seat share: cap * clip((max_active_ema - 0.5) / gain, 0, 1).
-    # An exploiter at EMA 0.5 (neutral) contributes nothing; at 0.5 + gain the
-    # exploiter component reaches the full cap.
+    # Exploiter seat share: cap * clip(max_active_gate_edge / edge_full, 0, 1).
+    # Driven by the FROZEN gate edge (settlement score/deal), not the live binary
+    # EMA, so it can't ratchet to zero when the table EMA dips below neutral.
     exploiter_seat_cap: float = 0.30
-    exploiter_share_gain: float = 0.20
+    exploiter_edge_full: float = 0.30  # settlement score/deal that earns the full cap
     self_play_share: float = 0.15
     hof_floor_prob: float = 0.05  # chance a PFSP seat is forced to a HOF anchor
     # PFSP win-rate curriculum over past mains (kept from the old design —
@@ -136,13 +136,13 @@ class LeagueConfig:
     pfsp_hard_power: float = 2.0
     pfsp_uniform_mix: float = 0.1
     pfsp_conf_scale: float = 5.0
-    # Exploiter retirement: demote to past_main once cold and old.
-    exploiter_retire_ema: float = 0.5
+    # Exploiter retirement: demote to past_main purely on age. Guarantees every
+    # inserted exploiter exploiter_retire_generations of seat time (the floor).
     exploiter_retire_generations: int = 3
     # Generation schedule + gate (used by exploiter.py / the driver).
     main_phase_episodes: int = 100_000
     exploiter_phase_episodes: int = 50_000
-    gate_min_edge: float = 0.10  # pts/game vs frozen main
+    gate_min_edge: float = 0.10  # settlement score/deal vs frozen main
     gate_min_se_mult: float = 2.0
     gate_games: int = 1000
 
@@ -225,8 +225,7 @@ class League:
                 current_gen - m.meta.generation
                 >= self.config.exploiter_retire_generations
             )
-            cold = m.exploitation_win_rate_ema < self.config.exploiter_retire_ema
-            if old and cold:
+            if old:
                 m.meta.role = ROLE_PAST_MAIN
                 self._save_member(m)
 
@@ -253,13 +252,13 @@ class League:
     # Table sampling (plan §3.3)
     # ------------------------------------------------------------------
     def exploiter_share(self) -> float:
-        """Current exploiter seat probability: cap-scaled by the hottest
-        active exploiter's EMA edge above neutral."""
-        exploiters = self.by_role(ROLE_MAIN_EXPLOITER)
-        if not exploiters:
+        """Seat probability from the hottest active exploiter's FROZEN gate edge
+        (settlement score/deal). Fixed at insertion, so this can't ratchet to zero
+        when the binary table EMA dips below neutral."""
+        edges = [m.meta.gate_edge or 0.0 for m in self.by_role(ROLE_MAIN_EXPLOITER)]
+        if not edges:
             return 0.0
-        max_ema = max(m.exploitation_win_rate_ema for m in exploiters)
-        heat = (max_ema - 0.5) / max(self.config.exploiter_share_gain, 1e-9)
+        heat = max(edges) / max(self.config.exploiter_edge_full, 1e-9)
         return self.config.exploiter_seat_cap * float(np.clip(heat, 0.0, 1.0))
 
     def sample_table(self, partner_mode: int, rng, n_seats: int = 4) -> list:
@@ -293,7 +292,7 @@ class League:
         avail = [m for m in pool if m.member_id not in used]
         if not avail:
             return None
-        weights = [max(m.exploitation_win_rate_ema - 0.5, 0.01) for m in avail]
+        weights = [max(m.meta.gate_edge or 0.0, 1e-3) for m in avail]
         return avail[rng.choices(range(len(avail)), weights=weights)[0]]
 
     def _sample_pfsp(self, pool, used, rng) -> Optional[LeagueMember]:

@@ -99,38 +99,33 @@ class TestLeagueRoster(unittest.TestCase):
         self.assertEqual(len(league.by_role(ROLE_HOF_ANCHOR)), 1)  # untouched
 
     def test_exploiter_retirement(self):
-        cfg = LeagueConfig(exploiter_retire_generations=2, exploiter_retire_ema=0.5)
+        # Retirement is purely age-based: a high EMA no longer saves an old
+        # exploiter (that EMA-driven reprieve was the ratchet we removed).
+        cfg = LeagueConfig(exploiter_retire_generations=2)
         league = League(self.dir, cfg)
-        old = league.add_member(
+        old_hot = league.add_member(
             _agent(1),
-            ROLE_MAIN_EXPLOITER,
-            training_episodes=0,
-            generation=1,
-            initial_ema=0.45,
-        )
-        hot = league.add_member(
-            _agent(2),
             ROLE_MAIN_EXPLOITER,
             training_episodes=0,
             generation=1,
             initial_ema=0.70,
         )
-        league.add_member(
+        young = league.add_member(
             _agent(3),
             ROLE_MAIN_EXPLOITER,
             training_episodes=0,
             generation=3,
-            initial_ema=0.60,
+            initial_ema=0.45,
         )
-        self.assertEqual(league.get(old).role, ROLE_PAST_MAIN)  # old AND cold
-        self.assertEqual(league.get(hot).role, ROLE_MAIN_EXPLOITER)  # old but hot
+        self.assertEqual(league.get(old_hot).role, ROLE_PAST_MAIN)  # old -> retired
+        self.assertEqual(league.get(young).role, ROLE_MAIN_EXPLOITER)  # still young
 
 
 class TestSampling(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="league_test_")
         cfg = LeagueConfig(
-            exploiter_seat_cap=0.30, exploiter_share_gain=0.20, self_play_share=0.15
+            exploiter_seat_cap=0.30, exploiter_edge_full=0.30, self_play_share=0.15
         )
         self.league = League(self.dir, cfg)
         for i in range(6):
@@ -154,13 +149,13 @@ class TestSampling(unittest.TestCase):
         )
 
     def test_mixture_shares_and_cap(self):
-        # EMA 0.70 => (0.70-0.50)/0.20 = 1.0 => full cap
+        # gate_edge 0.30 => 0.30/0.30 = 1.0 => full cap
         self.league.add_member(
             _agent(60),
             ROLE_MAIN_EXPLOITER,
             training_episodes=0,
             generation=1,
-            initial_ema=0.70,
+            gate_edge=0.30,
         )
         self.assertAlmostEqual(self.league.exploiter_share(), 0.30, places=6)
         rng = random.Random(1)
@@ -186,6 +181,21 @@ class TestSampling(unittest.TestCase):
         self.assertGreater(exp_frac, 0.10)
         self.assertLessEqual(exp_frac, 0.25 + 0.02)
         self.assertAlmostEqual(self_frac, 0.15, delta=0.03)
+
+    def test_seat_share_survives_ema_collapse(self):
+        # Regression: a passing exploiter whose binary table EMA decays below
+        # neutral must keep its seat share, which is driven by the frozen
+        # gate_edge, not the EMA (the ratchet that previously zeroed it out).
+        mid = self.league.add_member(
+            _agent(61),
+            ROLE_MAIN_EXPLOITER,
+            training_episodes=0,
+            generation=1,
+            gate_edge=0.15,
+        )
+        self.assertAlmostEqual(self.league.exploiter_share(), 0.15, places=6)
+        self.league.get(mid).exploitation_win_rate_ema = 0.40  # tanked below neutral
+        self.assertAlmostEqual(self.league.exploiter_share(), 0.15, places=6)
 
     def test_table_has_no_duplicate_members(self):
         rng = random.Random(2)
