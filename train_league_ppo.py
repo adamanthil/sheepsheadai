@@ -621,13 +621,13 @@ def main():
         "Boundaries are keyed to absolute episode (gen g ends at g*main-episodes), "
         "so the starting generation index is derived from the resumed episode.",
     )
-    ap.add_argument("--main-episodes", type=int, default=100_000)
+    ap.add_argument("--main-episodes", type=int, default=1_000_000)
     ap.add_argument("--exploiter-episodes", type=int, default=50_000)
     ap.add_argument("--gate-deals", type=int, default=1000)
     ap.add_argument("--update-interval", type=int, default=2048)
-    ap.add_argument("--save-interval", type=int, default=5000)
-    ap.add_argument("--snapshot-interval", type=int, default=5000)
-    ap.add_argument("--greedy-eval-interval", type=int, default=5000)
+    ap.add_argument("--save-interval", type=int, default=50_000)
+    ap.add_argument("--snapshot-interval", type=int, default=50_000)
+    ap.add_argument("--greedy-eval-interval", type=int, default=50_000)
     ap.add_argument("--greedy-eval-games", type=int, default=200)
     ap.add_argument("--schedule-horizon", type=int, default=20_000_000)
     ap.add_argument("--anchor-coeff", type=float, default=0.0)
