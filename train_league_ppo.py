@@ -60,8 +60,8 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from config import PFSPHyperparams
-from league import ROLE_PAST_MAIN, SELF_PLAY, League, LeagueConfig
+from config import LeagueConfig, PFSPHyperparams
+from league import ROLE_PAST_MAIN, SELF_PLAY, League
 from pfsp_runtime import interpolated_weight, make_game_summary, play_population_game
 from ppo import PPOAgent
 from sheepshead import ACTIONS

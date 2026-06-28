@@ -122,3 +122,39 @@ class SearchConfig:
     t_full: int = 1
     d_short: int = 2
     enabled: bool = True
+
+
+@dataclass
+class LeagueConfig:
+    """Knobs for roster management and table sampling (plan §3.3/§8).
+
+    Consumed by ``league.League`` (roster management + table sampling),
+    ``exploiter.py`` (gate + generation schedule), and ``train_league_ppo.py``.
+    """
+
+    max_past_mains: int = 30
+    hof_quota: int = 6
+    protect_newest: int = 5  # newest past_mains immune to skill pruning
+    # Exploiter seat share: cap * clip(max_active_gate_edge / edge_full, 0, 1).
+    # Driven by the FROZEN gate edge (settlement score/deal), not the live binary
+    # EMA, so it can't ratchet to zero when the table EMA dips below neutral.
+    exploiter_seat_cap: float = 0.30
+    exploiter_edge_full: float = 0.30  # settlement score/deal that earns the full cap
+    self_play_share: float = 0.15
+    hof_floor_prob: float = 0.05  # chance a PFSP seat is forced to a HOF anchor
+    # PFSP win-rate curriculum over past mains (kept from the old design —
+    # the principled part). x = exploitation EMA.
+    pfsp_variable_weight: float = 0.7
+    pfsp_hard_weight: float = 0.3
+    pfsp_hard_power: float = 2.0
+    pfsp_uniform_mix: float = 0.1
+    pfsp_conf_scale: float = 5.0
+    # Exploiter retirement: demote to past_main purely on age. Guarantees every
+    # inserted exploiter exploiter_retire_generations of seat time (the floor).
+    exploiter_retire_generations: int = 3
+    # Generation schedule + gate (used by exploiter.py / the driver).
+    main_phase_episodes: int = 100_000
+    exploiter_phase_episodes: int = 50_000
+    gate_min_edge: float = 0.10  # settlement score/deal vs frozen main
+    gate_min_se_mult: float = 2.0
+    gate_games: int = 1000

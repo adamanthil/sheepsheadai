@@ -15,13 +15,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import torch
 
+from config import LeagueConfig
 from league import (
     ROLE_HOF_ANCHOR,
     ROLE_MAIN_EXPLOITER,
     ROLE_PAST_MAIN,
     SELF_PLAY,
     League,
-    LeagueConfig,
     LeagueMember,
 )
 from ppo import PPOAgent
