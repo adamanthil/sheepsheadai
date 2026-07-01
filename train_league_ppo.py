@@ -761,6 +761,9 @@ def main():
         )
         # Reload league to pick up the subprocess insertion
         league = League(args.league_dir, league.config)
+        # Advance the generation clock (pass or fail) so exploiter
+        # retirement runs on elapsed generations, not on insertions.
+        league.note_generation(g)
         if not gate["passed"]:
             # Certified robust: no best response cleared the gate against this
             # main, so its boundary snapshot becomes a HOF anchor (the

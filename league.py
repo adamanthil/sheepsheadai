@@ -129,6 +129,11 @@ class League:
         self.members_dir.mkdir(parents=True, exist_ok=True)
         self.rating_model = PlackettLuce()
         self.members: list[LeagueMember] = []
+        # The driver's generation clock (note_generation). Retirement ages
+        # exploiters against this, not against the newest INSERTED generation,
+        # which only advances on a successful gate and so gave beaten
+        # exploiters unbounded seat time while gates kept failing (F5).
+        self.current_generation: int = -1
         self._load()
 
     # ------------------------------------------------------------------
@@ -182,6 +187,16 @@ class League:
         self._manage_size()
         return member_id
 
+    def note_generation(self, generation: int) -> None:
+        """Advance the generation clock (persisted) and apply age-based
+        retirement. The driver calls this at every generation boundary,
+        pass or fail, so exploiter seat time is bounded by elapsed
+        generations rather than by subsequent successful insertions."""
+        self.current_generation = max(self.current_generation, int(generation))
+        with open(self.league_dir / "league_state.json", "w") as f:
+            json.dump({"current_generation": self.current_generation}, f)
+        self._manage_size()
+
     def promote_to_hof(self, member_id: str) -> None:
         """Promote a member to HOF anchor (anti-forgetting floor), enforcing
         ``hof_quota`` by demoting the lowest-skill anchor back to past_main.
@@ -208,7 +223,9 @@ class League:
         Pruning keeps: all HOF anchors, all active exploiters, the
         ``protect_newest`` most recent past_mains, then the highest-skill
         past_mains up to ``max_past_mains``."""
-        current_gen = max((m.meta.generation for m in self.members), default=-1)
+        current_gen = max(
+            [self.current_generation] + [m.meta.generation for m in self.members]
+        )
         for m in self.by_role(ROLE_MAIN_EXPLOITER):
             old = (
                 current_gen - m.meta.generation
@@ -431,6 +448,15 @@ class League:
         self.members.remove(member)
 
     def _load(self) -> None:
+        state = self.league_dir / "league_state.json"
+        if state.exists():
+            try:
+                with open(state) as f:
+                    self.current_generation = int(
+                        json.load(f).get("current_generation", -1)
+                    )
+            except (OSError, ValueError) as err:
+                logging.warning("failed to load league state: %s", err)
         for js in sorted(self.members_dir.glob("*.json")):
             try:
                 with open(js) as f:

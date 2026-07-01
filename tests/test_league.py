@@ -182,6 +182,25 @@ class TestLeagueRoster(unittest.TestCase):
         self.assertEqual(league.get(old_hot).role, ROLE_PAST_MAIN)  # old -> retired
         self.assertEqual(league.get(young).role, ROLE_MAIN_EXPLOITER)  # still young
 
+    def test_exploiter_retirement_by_generation_clock(self):
+        # F5: the clock advances at every boundary (note_generation), so a
+        # beaten exploiter retires after N elapsed generations even when no
+        # later exploiter ever passes its gate (no insertion required).
+        cfg = LeagueConfig(exploiter_retire_generations=2)
+        league = League(self.dir, cfg)
+        xid = league.add_member(
+            _agent(1), ROLE_MAIN_EXPLOITER, training_episodes=0, generation=1
+        )
+        league.note_generation(2)
+        self.assertEqual(league.get(xid).role, ROLE_MAIN_EXPLOITER)  # age 1
+        league.note_generation(3)
+        self.assertEqual(league.get(xid).role, ROLE_PAST_MAIN)  # age 2 -> retired
+        # The clock persists across reloads and never runs backward.
+        reloaded = League(self.dir, cfg)
+        self.assertEqual(reloaded.current_generation, 3)
+        reloaded.note_generation(1)
+        self.assertEqual(reloaded.current_generation, 3)
+
 
 class TestSampling(unittest.TestCase):
     def setUp(self):
