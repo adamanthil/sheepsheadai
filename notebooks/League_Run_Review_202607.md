@@ -149,7 +149,18 @@ root is a placeholder stub, so this is a build-from-scratch decision.)
 
 ## 6. Work plan (one at a time, before any new run)
 
-**Status 2026-07-01:** step 1 running (`runs/rigorous_baseline_202607/`);
+**Step-1 RESULT (2026-07-01, runs/rigorous_baseline_202607/):** the run IS
+climbing on the PANEL-A scale — score/hand CA: 1M −0.304 → 7M −0.238 →
+13.65M −0.120; JD: 1M −0.165 → 7M −0.200 (ns dip, failed-exploiter era) →
+13.65M +0.038. All 13.65M paired diffs significant (+0.12..+0.24, p<0.001).
+Verdict: bidding oscillation = heat not sickness; endpoint ≈ panel average
+(clearly above selfplay seed, not yet clearly above the 30M lineage's mid
+rungs). Since exploiter pressure was inert for gens 1–11 (F2), this curve is
+effectively the PFSP-only control trajectory the fixed league must beat.
+Matched-episode comparison (pfsp 5M/15M as heroes, same deals) run separately
+in reference_lineage_*.csv.
+
+**Status 2026-07-01:** step 1 done (results above);
 step 2 done (76599a6); step 3 done (acffc1e); step 4 done (d88b7bb); step 5
 done (e67306c); step 6 agent done (1facce1, exploit probe pending baseline);
 step 7 pending. Bonus: the scripted agent's self-play smoke exposed a
