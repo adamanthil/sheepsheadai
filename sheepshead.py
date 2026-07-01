@@ -286,6 +286,7 @@ class Game:
         self.under_card = None  # The card that is to be played as an under
         self.play_started = False
         self.is_leaster = False
+        self._leaster_winner = None  # cached by get_leaster_winner
         self.players = []
         self.points_taken = [0, 0, 0, 0, 0]  # Sum of all points taken for each player
         # Nested list of all cards played in game so far
@@ -476,24 +477,32 @@ class Game:
     def get_leaster_winner(self):
         """Returns the player position (1-5) of the winner of a leaster."""
         if self.is_done() and self.is_leaster:
-            # Find players who took at least one trick
-            qualified_players = []
-            for i in range(5):
-                player_pos = i + 1
-                took_trick = any(self.trick_winners[j] == player_pos for j in range(6))
-                if took_trick:
-                    qualified_players.append((player_pos, self.points_taken[i]))
+            if self._leaster_winner is None:
+                # Find players who took at least one trick
+                qualified_players = []
+                for i in range(5):
+                    player_pos = i + 1
+                    took_trick = any(
+                        self.trick_winners[j] == player_pos for j in range(6)
+                    )
+                    if took_trick:
+                        qualified_players.append((player_pos, self.points_taken[i]))
 
-            # Find minimum points among qualified players
-            min_points = min(points for _, points in qualified_players)
-            winners = [
-                player_pos
-                for player_pos, points in qualified_players
-                if points == min_points
-            ]
+                # Find minimum points among qualified players
+                min_points = min(points for _, points in qualified_players)
+                winners = [
+                    player_pos
+                    for player_pos, points in qualified_players
+                    if points == min_points
+                ]
 
-            # Return winner if unique, otherwise draw randomly for tie
-            return winners[0] if len(winners) == 1 else self.rng.choice(winners)
+                # Ties draw randomly ONCE and cache: every caller (each seat's
+                # get_score, __str__, repeated calls) must agree on the same
+                # winner or leaster scores stop summing to zero.
+                self._leaster_winner = (
+                    winners[0] if len(winners) == 1 else self.rng.choice(winners)
+                )
+            return self._leaster_winner
         return False
 
     def _play_revealed_voids(self):
