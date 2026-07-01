@@ -14,11 +14,50 @@ It is deliberately kept OUT of the frozen PANEL-A reference field so the
 anchored strength scale never changes; if a panel wants it later, define a
 new named panel alongside PANEL-A.
 
-Scope is "solid conventions, no card counting": pick on trump density, call
-the thinnest suit, bury fail points toward voids, picker leads trump /
-defenders never lead trump, schmear the winning teammate, win cheap, duck
-leasters. Stateless across tricks (observe() is a no-op), so one instance can
-fill any number of seats.
+Scope is "solid conventions, no card counting". The heuristics:
+
+BIDDING
+  * Pick on trump density: hand_strength() = +3/queen, +2/jack, +1/other
+    trump; pick at >= pick_threshold (default 7 ~= a queen plus two
+    supporting trump, the top ~25% of hands). ALONE at >= alone_threshold.
+
+PARTNER CALL / BURY
+  * CA mode: call the ace of the THINNEST callable suit (fewest of our fail
+    cards blocking it — the closest thing to a future void); plain calls
+    preferred over UNDER variants. JD mode: JD PARTNER unless alone-strong.
+  * Bury/under: dump fail points first (highest points, then from the
+    shortest suit, working toward voids); trump only when forced,
+    weakest-last.
+
+PLAY — LEADING
+  * Picker team (picker, revealed partner, or self-inferred secret partner):
+    ALWAYS lead trump while holding any, highest first; out of trump, cash
+    the biggest fail (aces first by points).
+  * Defender: NEVER lead trump while holding fail (the exact tell the 30M
+    RL lineage leaks); trick 0 in CA mode lead the called suit through if
+    held; otherwise fail aces, then highest fail; all-trump hand -> lowest
+    trump.
+  * Team membership is self-inferred from public info plus own hand: on the
+    picker's team iff picker, revealed partner, or holding the called card /
+    the JD in JD mode — void when ALONE was declared (no partner exists;
+    the JD holder is then an ordinary defender).
+
+PLAY — FOLLOWING (legality enforced upstream; choose among legal cards)
+  * Teammate winning: schmear (highest-point card) if last to act or the
+    winner is JD-height-or-better trump; otherwise take over cheaply when
+    >= 10 points are on the table, else duck.
+  * Opponent winning: win with the CHEAPEST winning card when the trick is
+    worth it (>= 10 points, last to act, or a fail lead); otherwise duck
+    with the lowest-point, lowest-power card.
+  * Leaster: lead the cheapest card; when following, duck with the BIGGEST
+    card that still loses (banking low escapes); if forced to win, win with
+    minimum points.
+
+Convention audit (2026-07-01, 1500 games, both modes, hand-based secret-
+partner detection): picker / revealed partner / secret partner led trump on
+100% of leads while holding any; true defenders with fail in hand on 0%
+(all-trump hands excepted, forced). Stateless across tricks (observe() is a
+no-op), so one instance can fill any number of seats.
 
 Interface-compatible with PPOAgent for the greedy eval drivers:
 ``act(state_dict, valid_action_ids, player_id, deterministic) -> (id, 0, 0)``,
