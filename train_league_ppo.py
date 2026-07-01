@@ -564,6 +564,8 @@ def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
         str(args.exploiter_episodes),
         "--gate-deals",
         str(args.gate_deals),
+        "--screen-deals",
+        str(args.screen_deals),
         "--generation",
         str(generation),
         "--league-dir",
@@ -639,7 +641,14 @@ def main():
     )
     ap.add_argument("--main-episodes", type=int, default=1_000_000)
     ap.add_argument("--exploiter-episodes", type=int, default=50_000)
-    ap.add_argument("--gate-deals", type=int, default=1000)
+    ap.add_argument("--gate-deals", type=int, default=3000)
+    ap.add_argument(
+        "--screen-deals",
+        type=int,
+        default=200,
+        help="paired deals per exploiter checkpoint for best-of-checkpoints "
+        "selection before the full gate (0 = gate the final save only)",
+    )
     ap.add_argument("--update-interval", type=int, default=2048)
     ap.add_argument("--save-interval", type=int, default=50_000)
     ap.add_argument("--snapshot-interval", type=int, default=50_000)

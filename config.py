@@ -128,8 +128,9 @@ class SearchConfig:
 class LeagueConfig:
     """Knobs for roster management and table sampling (plan §3.3/§8).
 
-    Consumed by ``league.League`` (roster management + table sampling),
-    ``exploiter.py`` (gate + generation schedule), and ``train_league_ppo.py``.
+    Consumed by ``league.League`` (roster management + table sampling) and
+    ``exploiter.py`` (frozen-main league construction). The generation
+    schedule and gate thresholds are per-run CLI flags on the trainers.
     """
 
     max_past_mains: int = 30
@@ -152,9 +153,3 @@ class LeagueConfig:
     # Exploiter retirement: demote to past_main purely on age. Guarantees every
     # inserted exploiter exploiter_retire_generations of seat time (the floor).
     exploiter_retire_generations: int = 3
-    # Generation schedule + gate (used by exploiter.py / the driver).
-    main_phase_episodes: int = 100_000
-    exploiter_phase_episodes: int = 50_000
-    gate_min_edge: float = 0.10  # settlement score/deal vs frozen main
-    gate_min_se_mult: float = 2.0
-    gate_games: int = 1000
