@@ -1,12 +1,27 @@
-"""Run a forward pass through the trained PPO network on a synthetic
-pick-decision state and dump all intermediate activations to JSON for
-the 3D architecture visualization."""
+"""Play one deterministic hand with the trained PPO agent and dump the
+forward-pass activations at several decision points to JSON for the 3D
+architecture visualization.
 
+The hand is played in called-ace mode with the same agent in all five seats
+(recurrent memory keyed per seat), so every captured scenario has a genuine
+GRU memory state and trick context. Captured decision types:
+
+  pick    - the eventual picker's PICK/PASS decision
+  call    - the picker's partner-call decision (two-tower head live)
+  bury    - the picker's first bury decision (pointer head live)
+  lead    - the opening lead of trick 0
+  follow  - a late-trick follow with cards on the table (trump tracker live)
+
+A seed is scanned so the hand contains all five decision types (someone
+picks, calls a partner card, and the hand plays out to completion).
+"""
+
+import copy
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
-import numpy as np
 import torch
 
 HERE = Path(__file__).resolve().parent
@@ -19,39 +34,26 @@ from sheepshead import (  # noqa: E402
     ACTION_LOOKUP,
     ACTIONS,
     DECK_IDS,
+    PARTNER_BY_CALLED_ACE,
     TRUMP,
+    Game,
 )
 
-CHECKPOINT = ROOT / "pfsp_checkpoints_swish" / "pfsp_swish_checkpoint_30000000.pt"
+CHECKPOINT = ROOT / "final_pfsp_swish_ppo.pt"
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
+ID_TO_CODE = {v: k for k, v in DECK_IDS.items()}
+ID_TO_CODE[0] = "PAD"
+ID_TO_CODE[33] = "UNDER"
 
-def build_sample_state():
-    """Pick-decision moment: not picker, hand has QC + 2 other trump."""
-    hand_cards = ["QC", "JC", "AD", "AS", "KH", "7C"]  # 6 cards, 3 trump
-    hand_ids = [DECK_IDS[c] for c in hand_cards] + [0, 0]  # pad to 8
-
-    state = {
-        "partner_mode": np.uint8(0),  # JD partner
-        "is_leaster": np.uint8(0),
-        "play_started": np.uint8(0),
-        "current_trick": np.uint8(0),
-        "alone_called": np.uint8(0),
-        "called_card_id": np.uint8(0),
-        "called_under": np.uint8(0),
-        "picker_rel": np.uint8(0),
-        "partner_rel": np.uint8(0),
-        "leader_rel": np.uint8(0),
-        "picker_position": np.uint8(0),
-        "hand_ids": np.array(hand_ids, dtype=np.uint8),
-        "blind_ids": np.array([0, 0], dtype=np.uint8),
-        "bury_ids": np.array([0, 0], dtype=np.uint8),
-        "trick_card_ids": np.array([0, 0, 0, 0, 0], dtype=np.uint8),
-        "trick_is_picker": np.array([0, 0, 0, 0, 0], dtype=np.uint8),
-        "trick_is_partner_known": np.array([0, 0, 0, 0, 0], dtype=np.uint8),
-    }
-    valid_actions = {ACTION_IDS["PICK"], ACTION_IDS["PASS"]}
-    return state, valid_actions, hand_cards
+SCENARIO_ORDER = ["pick", "call", "bury", "lead", "follow"]
+SCENARIO_LABELS = {
+    "pick": "Pick or pass",
+    "call": "Call a partner",
+    "bury": "Bury two cards",
+    "lead": "Lead trick 1",
+    "follow": "Follow late in the hand",
+}
 
 
 def tensor_to_py(t: torch.Tensor):
@@ -60,25 +62,120 @@ def tensor_to_py(t: torch.Tensor):
     return t.detach().cpu().tolist()
 
 
-def main():
-    print(f"Loading checkpoint: {CHECKPOINT}")
-    agent = PPOAgent(action_size=len(ACTIONS))
-    agent.load(str(CHECKPOINT), load_optimizers=False)
-    agent.encoder.eval()
-    agent.actor.eval()
-    agent.critic.eval()
+def classify_decision(action_names, state):
+    """Map a decision point to a scenario kind (or None to skip)."""
+    if "PICK" in action_names:
+        return "pick"
+    if any(n.startswith("CALL ") or n in ("ALONE", "JD PARTNER") for n in action_names):
+        return "call"
+    if any(n.startswith("BURY ") for n in action_names):
+        return "bury"
+    if any(n.startswith("PLAY ") for n in action_names):
+        cards_on_table = sum(1 for c in state["trick_card_ids"] if int(c) != 0)
+        if cards_on_table == 0 and int(state["current_trick"]) == 0:
+            return "lead"
+        if cards_on_table >= 2 and int(state["current_trick"]) >= 2:
+            return "follow"
+    return None
 
-    state, valid_actions, hand_cards = build_sample_state()
-    device = next(agent.encoder.parameters()).device
 
-    # ---- Manual forward through encoder so we can capture intermediates ----
+def play_hand(agent, seed):
+    """Play one full deterministic hand, snapshotting candidate decisions.
+
+    Returns (game, snapshots) where snapshots maps kind -> list of dicts with
+    the state, valid actions, pre-decision memory, and chosen action.
+    """
+    game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=seed)
+    agent.reset_recurrent_state()
+    snapshots = {k: [] for k in SCENARIO_ORDER}
+
+    while not game.is_done():
+        for player in game.players:
+            valid_actions = player.get_valid_action_ids()
+            while valid_actions:
+                state = player.get_state_dict()
+                names = [ACTION_LOOKUP[a] for a in sorted(valid_actions)]
+                kind = classify_decision(names, state)
+                snap = None
+                if kind is not None and len(valid_actions) >= 2:
+                    snap = {
+                        "kind": kind,
+                        "seat": player.position,
+                        "trick": int(game.current_trick),
+                        "state": copy.deepcopy(state),
+                        "valid_actions": set(valid_actions),
+                        "memory_in": agent.get_recurrent_memory(
+                            player.position
+                        ).clone(),
+                    }
+
+                action, _, _ = agent.act(
+                    state, valid_actions, player.position, deterministic=True
+                )
+                player.act(action)
+                if snap is not None:
+                    snap["chosen_action"] = ACTION_LOOKUP[action]
+                    snapshots[kind].append(snap)
+                valid_actions = player.get_valid_action_ids()
+
+                # Propagate end-of-trick observation to every seat's memory.
+                if game.was_trick_just_completed:
+                    for seat in game.players:
+                        agent.observe(
+                            seat.get_last_trick_state_dict(),
+                            player_id=seat.position,
+                        )
+    return game, snapshots
+
+
+def select_snapshots(game, snapshots):
+    """Pick one snapshot per scenario kind, or None if the hand lacks one."""
+    if game.is_leaster or not game.picker or game.called_card is None:
+        return None
+    picked = {}
+    # The eventual picker's own PICK/PASS moment.
+    picked["pick"] = next(
+        (s for s in snapshots["pick"] if s["seat"] == game.picker), None
+    )
+    picked["call"] = snapshots["call"][0] if snapshots["call"] else None
+    picked["bury"] = snapshots["bury"][0] if snapshots["bury"] else None
+    picked["lead"] = snapshots["lead"][0] if snapshots["lead"] else None
+    # Prefer a defender follow (interesting tracker) with the most live
+    # tokens on screen; tie-break toward later tricks (more trumps seen).
+    def follow_richness(s):
+        hand_n = sum(1 for c in s["state"]["hand_ids"] if int(c) != 0)
+        table_n = sum(1 for c in s["state"]["trick_card_ids"] if int(c) != 0)
+        return (hand_n + table_n, s["trick"])
+
+    follows = snapshots["follow"]
+    defender_follows = [
+        s for s in follows if s["seat"] not in (game.picker, game.partner)
+    ]
+    pool = defender_follows or follows
+    picked["follow"] = max(pool, key=follow_richness) if pool else None
+    if any(picked[k] is None for k in SCENARIO_ORDER):
+        return None
+    return picked
+
+
+def find_hand(agent, max_seeds=500):
+    for seed in range(max_seeds):
+        game, snapshots = play_hand(agent, seed)
+        picked = select_snapshots(game, snapshots)
+        if picked is not None:
+            return seed, game, picked
+    raise RuntimeError(f"No seed in [0, {max_seeds}) produced all scenario kinds")
+
+
+def capture_forward(agent, state, valid_actions, memory_in):
+    """Manually replicate encoder.encode_batch (mirrors encoder.py) so every
+    intermediate — including last-layer attention weights — can be captured,
+    then run the actor and critic heads. Returns the per-scenario payload."""
     enc = agent.encoder
+    device = next(enc.parameters()).device
 
     with torch.no_grad():
-        # zero memory
-        memory_in = torch.zeros((1, 256), device=device)
-
-        # Replicate encoder.encode_batch with intermediate captures
+        memory_in = memory_in.view(1, 256).to(device)
         batch = [state]
 
         header_fields = [
@@ -215,6 +312,7 @@ def main():
 
         all_tokens_post = tokens
         context_out = all_tokens_post[:, 0, :]
+        memory_tok_out = all_tokens_post[:, 1, :]
         hand_tok_out = all_tokens_post[:, 2:10, :]
         trick_tok_out = all_tokens_post[:, 10:15, :]
         blind_tok_out = all_tokens_post[:, 15:17, :]
@@ -234,7 +332,6 @@ def main():
         actor = agent.actor
         feat = actor.actor_adapter(features)
 
-        # pick / pass
         pick_logits = actor.pick_head(feat)  # (1, 2)
         partner_basic = actor.partner_basic_head(feat)  # (1, 2)
         play_under_logit = actor.play_under_head(feat).squeeze(-1)  # (1,)
@@ -271,29 +368,7 @@ def main():
         seen_trump_mask_logits = critic.seen_trump_mask_logits(crit_feat, enc.card)
         unseen_higher_logits = critic.unseen_trump_higher_than_hand_logits(crit_feat)
 
-    # ---------- Extract & format ----------
-    # Card embedding rows used
-    used_card_ids = sorted(set([cid for cid in hand_ids[0].tolist() if cid != 0]))
-    trump_card_ids = [DECK_IDS[c] for c in TRUMP]
-
-    out = {
-        "checkpoint": str(CHECKPOINT.relative_to(ROOT)),
-        "sample": {
-            "hand_cards": hand_cards,
-            "hand_ids": hand_ids[0].tolist(),
-            "valid_actions": [ACTION_LOOKUP[a] for a in sorted(valid_actions)],
-            "phase": "pick-decision (no one has picked yet)",
-        },
-        "card_embedding": {
-            "shape": list(enc.card.weight.shape),
-            "rows_used": {
-                str(cid): enc.card.weight[cid].detach().cpu().tolist()
-                for cid in used_card_ids
-            },
-            # Also expose a couple of stats so JS can normalize displays
-            "min": float(enc.card.weight.min().item()),
-            "max": float(enc.card.weight.max().item()),
-        },
+    return {
         "tokens_pre_attn": {
             "context": tensor_to_py(context_tok[0]),
             "memory": tensor_to_py(memory_tok[0]),
@@ -305,12 +380,13 @@ def main():
         },
         "tokens_post_attn": {
             "context": tensor_to_py(context_out[0]),
+            "memory": tensor_to_py(memory_tok_out[0]),
             "hand": tensor_to_py(hand_tok_out[0]),
             "trick": tensor_to_py(trick_tok_out[0]),
             "blind": tensor_to_py(blind_tok_out[0]),
             "bury": tensor_to_py(bury_tok_out[0]),
         },
-        "attention_weights_last_layer": tensor_to_py(attn_weights_last[0]),  # (19, 19)
+        "attention_weights_last_layer": tensor_to_py(attn_weights_last[0]),  # (19,19)
         "pools": {
             "hand_vec": tensor_to_py(hand_vec[0]),
             "trick_vec": tensor_to_py(trick_vec[0]),
@@ -318,16 +394,14 @@ def main():
             "bury_vec": tensor_to_py(bury_vec[0]),
         },
         "memory": {
-            "memory_in": memory_in[0].tolist(),
-            "memory_out": memory_out[0].tolist(),
+            "memory_in": tensor_to_py(memory_in[0]),
+            "memory_out": tensor_to_py(memory_out[0]),
         },
         "features": tensor_to_py(features[0]),
         "actor": {
             "adapter_out": tensor_to_py(feat[0]),
             "pick_logits": tensor_to_py(pick_logits[0]),  # [PICK, PASS]
-            "partner_basic_logits": tensor_to_py(
-                partner_basic[0]
-            ),  # [ALONE, JD PARTNER]
+            "partner_basic_logits": tensor_to_py(partner_basic[0]),
             "play_under_logit": float(play_under_logit.item()),
             "two_tower_q": tensor_to_py(q_tw[0]),
             "card_scores_all": tensor_to_py(card_scores[0]),  # (34,)
@@ -349,6 +423,132 @@ def main():
             "unseen_higher_logit": float(unseen_higher_logits.item()),
             "unseen_higher_prob": float(torch.sigmoid(unseen_higher_logits).item()),
         },
+    }
+
+
+def describe_scenario(kind, snap, game):
+    seat = snap["seat"]
+    role = (
+        "the picker"
+        if seat == game.picker
+        else ("the partner" if seat == game.partner else "a defender")
+    )
+    hand_codes = [
+        ID_TO_CODE[int(c)] for c in snap["state"]["hand_ids"] if int(c) != 0
+    ]
+    hand_str = ", ".join(hand_codes)
+    if kind == "pick":
+        return (
+            f"Seat {seat} holds {hand_str} and must PICK or PASS. "
+            f"(This seat goes on to pick.)"
+        )
+    if kind == "call":
+        return (
+            f"Seat {seat} picked and now holds {hand_str} (8 cards after the "
+            f"blind). It must choose a partner card — the two-tower CALL "
+            f"scorer is the live head here."
+        )
+    if kind == "bury":
+        return (
+            f"Seat {seat} (the picker) holds {hand_str} and must bury its "
+            f"first card — the pointer head scores every hand slot."
+        )
+    if kind == "lead":
+        return (
+            f"Seat {seat} ({role}) leads trick 1 with {hand_str}. The trick "
+            f"is empty; memory now carries the pick phase."
+        )
+    return (
+        f"Trick {snap['trick'] + 1}: seat {seat} ({role}) follows with "
+        f"{hand_str} after several cards hit the table. Trick tokens and the "
+        f"trump tracker are live."
+    )
+
+
+def build_sample_block(kind, snap, game):
+    state = snap["state"]
+    valid_sorted = sorted(snap["valid_actions"])
+    hand_ids = [int(c) for c in state["hand_ids"]]
+    callable_cards = [
+        {"code": n[len("CALL "):].replace(" UNDER", ""), "under": n.endswith(" UNDER")}
+        for n in (ACTION_LOOKUP[a] for a in valid_sorted)
+        if n.startswith("CALL ")
+    ]
+    return {
+        "kind": kind,
+        "seat": snap["seat"],
+        "trick": snap["trick"],
+        "hand_cards": [ID_TO_CODE[c] for c in hand_ids if c != 0],
+        "hand_ids": hand_ids,
+        "trick_card_codes": [
+            ID_TO_CODE[int(c)] for c in state["trick_card_ids"]
+        ],
+        "valid_actions": [ACTION_LOOKUP[a] for a in valid_sorted],
+        "chosen_action": snap["chosen_action"],
+        "callable_cards": callable_cards,
+        "is_picker": snap["seat"] == game.picker,
+        "is_partner": snap["seat"] == game.partner,
+        "called_card": game.called_card,
+        "phase": SCENARIO_LABELS[kind],
+    }
+
+
+def main():
+    print(f"Loading checkpoint: {CHECKPOINT}")
+    agent = PPOAgent(action_size=len(ACTIONS))
+    agent.load(str(CHECKPOINT), load_optimizers=False)
+    agent.encoder.eval()
+    agent.actor.eval()
+    agent.critic.eval()
+
+    print("Scanning seeds for a hand with all five decision types...")
+    seed, game, picked = find_hand(agent)
+    print(
+        f"  seed={seed} picker=seat {game.picker} partner=seat {game.partner} "
+        f"called={game.called_card}"
+    )
+
+    trump_card_ids = [DECK_IDS[c] for c in TRUMP]
+    scenarios = []
+    for kind in SCENARIO_ORDER:
+        snap = picked[kind]
+        payload = capture_forward(
+            agent, snap["state"], snap["valid_actions"], snap["memory_in"]
+        )
+        payload["id"] = kind
+        payload["label"] = SCENARIO_LABELS[kind]
+        payload["description"] = describe_scenario(kind, snap, game)
+        payload["sample"] = build_sample_block(kind, snap, game)
+        scenarios.append(payload)
+        probs = payload["actor"]["full_probs"]
+        top_idx = max(
+            payload["actor"]["valid_action_indices"], key=lambda i: probs[i]
+        )
+        print(
+            f"  [{kind:6s}] seat {snap['seat']} chose {snap['chosen_action']:12s} "
+            f"argmax={ACTIONS[top_idx]} ({probs[top_idx]:.3f}) "
+            f"V={payload['critic']['value']:+.3f}"
+        )
+
+    enc = agent.encoder
+    out = {
+        "checkpoint": str(CHECKPOINT.relative_to(ROOT)),
+        "generated": date.today().isoformat(),
+        "seed": seed,
+        "hand_summary": {
+            "picker": int(game.picker),
+            "partner": int(game.partner),
+            "called_card": game.called_card,
+            "picker_points": int(game.get_final_picker_points()),
+            "defender_points": int(game.get_final_defender_points()),
+        },
+        "card_embedding": {
+            "shape": list(enc.card.weight.shape),
+            "table": tensor_to_py(enc.card.weight),  # full 34 x 16
+            "min": float(enc.card.weight.min().item()),
+            "max": float(enc.card.weight.max().item()),
+        },
+        "scenarios": scenarios,
         "constants": {
             "TRUMP": TRUMP,
             "trump_card_ids": trump_card_ids,
@@ -362,16 +562,7 @@ def main():
     with open(OUT_JSON, "w") as f:
         json.dump(out, f)
     size_mb = OUT_JSON.stat().st_size / (1024 * 1024)
-    print(f"Wrote {OUT_JSON.name} ({size_mb:.2f} MB)")
-
-    # Quick console summary
-    pick_idx = ACTION_IDS["PICK"] - 1
-    pass_idx = ACTION_IDS["PASS"] - 1
-    print(f"  P(PICK) = {out['actor']['full_probs'][pick_idx]:.4f}")
-    print(f"  P(PASS) = {out['actor']['full_probs'][pass_idx]:.4f}")
-    print(f"  V(s)    = {out['critic']['value']:.3f}")
-    print(f"  win     = {out['critic']['win_prob']:.3f}")
-    print(f"  return  = {out['critic']['return_pred']:.3f}")
+    print(f"Wrote {OUT_JSON.name} ({size_mb:.2f} MB, {len(scenarios)} scenarios)")
 
 
 if __name__ == "__main__":
