@@ -160,6 +160,19 @@ effectively the PFSP-only control trajectory the fixed league must beat.
 Matched-episode comparison (pfsp 5M/15M as heroes, same deals) run separately
 in reference_lineage_*.csv.
 
+**Step-6b RESULT (2026-07-01, analysis/trump_lead_probe.py, frozen seed
+20260702, 2000 deals × 5 seats, scripted field):** the diagnosed trump-lead
+hole is still open in both lineages, concentrated in trump-rich hands as
+documented. 30M reference: JD 1.89% of defender-lead opportunities (6.74%
+trump-rich), CA 0.80% (1.61%). League 13.65M: JD 1.21% (3.70%) — better —
+but CA 2.88% (6.28%) — ~3.6x WORSE than the reference. Implied EV −0.25..
+−0.99 score/1000 hands: real but ~100x smaller than the strength-curve
+moves, i.e. a canary/regression marker, not a strength lever. 13.65M
+episodes of league PPO did not close it (consistent with the documented
+PPO-can't-learn-small-early-gaps mechanism); track per-checkpoint in the
+next run via this probe's fixed units. JSONs:
+runs/rigorous_baseline_202607/trump_lead_probe_{30M,league13650k}.json.
+
 **Status 2026-07-01:** step 1 done (results above);
 step 2 done (76599a6); step 3 done (acffc1e); step 4 done (d88b7bb); step 5
 done (e67306c); step 6 agent done (1facce1, exploit probe pending baseline);
