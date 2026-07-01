@@ -291,10 +291,15 @@ class ScriptedAgent:
         partner_rel = int(state["partner_rel"])
         hand = [c for c in (_card(cid) for cid in state["hand_ids"]) if c]
         called = _card(int(state["called_card_id"]))
-        i_am_partner = (
-            partner_rel == 1
-            or (called is not None and called in hand)
-            or (int(state["partner_mode"]) == 0 and "JD" in hand)
+        # Holding the called card / the JD makes me the (maybe secret)
+        # partner — unless the picker declared ALONE, in which case there is
+        # no partner and the JD holder is an ordinary defender.
+        i_am_partner = partner_rel == 1 or (
+            not int(state["alone_called"])
+            and (
+                (called is not None and called in hand)
+                or (int(state["partner_mode"]) == 0 and "JD" in hand)
+            )
         )
         on_picker_team = picker_rel == 1 or i_am_partner
         if leading:

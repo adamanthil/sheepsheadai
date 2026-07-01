@@ -86,5 +86,45 @@ class TestScriptedAgent(unittest.TestCase):
         self.assertGreater(checked, 50)  # the probe actually exercised leads
 
 
+class TestTeamInference(unittest.TestCase):
+    def _lead_state(self, partner_mode, alone, hand_ids):
+        import numpy as np
+
+        return {
+            "partner_mode": np.uint8(partner_mode),
+            "is_leaster": np.uint8(0),
+            "play_started": np.uint8(1),
+            "current_trick": np.uint8(1),
+            "alone_called": np.uint8(alone),
+            "called_card_id": np.uint8(0),
+            "called_under": np.uint8(0),
+            "picker_rel": np.uint8(3),
+            "partner_rel": np.uint8(0),
+            "leader_rel": np.uint8(1),
+            "picker_position": np.uint8(3),
+            "hand_ids": np.array(hand_ids + [0] * (8 - len(hand_ids)), dtype=np.uint8),
+            "blind_ids": np.zeros(2, dtype=np.uint8),
+            "bury_ids": np.zeros(2, dtype=np.uint8),
+            "trick_card_ids": np.zeros(5, dtype=np.uint8),
+            "trick_is_picker": np.zeros(5, dtype=np.uint8),
+            "trick_is_partner_known": np.zeros(5, dtype=np.uint8),
+        }
+
+    def test_jd_holder_is_defender_when_picker_goes_alone(self):
+        # JD-mode: holding the JD marks the secret partner — but not when
+        # ALONE was declared; then the JD holder is an ordinary defender and
+        # must not lead trump (the exact tell the conventions forbid).
+        from sheepshead import DECK_IDS
+
+        ag = ScriptedAgent()
+        jd_hand = [DECK_IDS["JD"], DECK_IDS["7C"], DECK_IDS["8S"]]
+        state_partner = self._lead_state(0, alone=0, hand_ids=jd_hand)
+        state_defender = self._lead_state(0, alone=1, hand_ids=jd_hand)
+        self.assertTrue(ag._same_team(state_partner, 0, leading=True))
+        self.assertFalse(ag._same_team(state_defender, 0, leading=True))
+        self.assertEqual(ag._lead(state_partner, ["JD", "7C", "8S"]), "JD")
+        self.assertNotEqual(ag._lead(state_defender, ["JD", "7C", "8S"]), "JD")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
