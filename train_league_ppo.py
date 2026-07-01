@@ -65,9 +65,14 @@ from league import ROLE_PAST_MAIN, SELF_PLAY, League
 from pfsp_runtime import interpolated_weight, make_game_summary, play_population_game
 from ppo import PPOAgent
 from sheepshead import ACTIONS
-from training_utils import get_partner_selection_mode, greedy_health_probe
+from training_utils import get_partner_selection_mode, greedy_health_probe, paired_edge
 
 _PARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
+
+# Fixed deal-set seed for the anchored strength probe: every probe replays the
+# SAME deals, so consecutive probe values are paired and the trend line is
+# policy movement, not deal luck.
+ANCHOR_EVAL_SEED = 20260701
 
 
 class _Seat:
@@ -200,9 +205,16 @@ def run_main_phase(
     start_episode: int,
     n_episodes: int,
     checkpoint_dir: str,
+    anchor_eval: dict | None = None,
 ) -> int:
     """Train the main agent for ``n_episodes`` vs league tables; returns the
-    final episode index. Mutates league ratings/EMAs and training_ratings."""
+    final episode index. Mutates league ratings/EMAs and training_ratings.
+
+    ``anchor_eval`` (optional): {"agent", "label", "interval", "deals"} — a
+    frozen reference for the periodic paired CRN greedy probe, the run's only
+    absolute-strength signal (run-review F7). The deal set is fixed across
+    probes, so successive probe values are paired with each other and the
+    trend is policy-driven, not deal-luck."""
     rng = random.Random(args.seed + start_episode)
     end_episode = start_episode + n_episodes
     transitions_since_update = 0
@@ -213,6 +225,7 @@ def run_main_phase(
 
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
     greedy_csv = os.path.join(checkpoint_dir, "greedy_health.csv")
+    anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
 
     def setup_episode(episode: int):
         mode = get_partner_selection_mode(episode)
@@ -533,6 +546,43 @@ def run_main_phase(
                         ]
                     )
 
+            # Anchored strength probe: paired CRN greedy edge vs the frozen
+            # reference (fixed deal set => probe-to-probe diffs are paired).
+            if anchor_eval is not None and episode % anchor_eval["interval"] == 0:
+                saved_mem = {
+                    pid: t.detach().clone()
+                    for pid, t in training_agent._player_memories.items()
+                }
+                probe = paired_edge(
+                    training_agent,
+                    anchor_eval["agent"],
+                    anchor_eval["agent"],
+                    n_deals=anchor_eval["deals"],
+                    seed=ANCHOR_EVAL_SEED,
+                    log_every=0,
+                )
+                training_agent._player_memories = saved_mem
+                print(
+                    f"⚓ Anchored eval vs {anchor_eval['label']}: "
+                    f"{probe['edge']:+.3f} ± {probe['se']:.3f} score/deal "
+                    f"(win {probe['win_frac']:.3f}, n={probe['n_deals']})",
+                    flush=True,
+                )
+                write_header = not os.path.exists(anchored_csv)
+                with open(anchored_csv, "a", newline="") as f:
+                    w = csv.writer(f)
+                    if write_header:
+                        w.writerow(["episode", "edge", "se", "win_frac", "n_deals"])
+                    w.writerow(
+                        [
+                            episode,
+                            f"{probe['edge']:.4f}",
+                            f"{probe['se']:.4f}",
+                            f"{probe['win_frac']:.4f}",
+                            probe["n_deals"],
+                        ]
+                    )
+
             if episode % args.save_interval == 0:
                 training_agent.save(
                     os.path.join(
@@ -657,6 +707,14 @@ def main():
     ap.add_argument("--schedule-horizon", type=int, default=20_000_000)
     ap.add_argument("--anchor-coeff", type=float, default=0.0)
     ap.add_argument("--anchor-ref", default=None)
+    ap.add_argument(
+        "--anchor-eval-ckpt",
+        default="final_pfsp_swish_ppo.pt",
+        help="frozen reference for the periodic anchored strength probe, the "
+        "run's absolute-strength trend line ('' disables)",
+    )
+    ap.add_argument("--anchor-eval-interval", type=int, default=100_000)
+    ap.add_argument("--anchor-eval-deals", type=int, default=300)
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument("--activation", default="swish")
     ap.add_argument("--seed", type=int, default=42)
@@ -696,6 +754,28 @@ def main():
         training_agent.set_anchor(ref, args.anchor_coeff)
         print(f"⚓ Bidding anchor ON (coeff={args.anchor_coeff})")
 
+    anchor_eval = None
+    if args.anchor_eval_ckpt and args.anchor_eval_interval > 0:
+        if os.path.exists(args.anchor_eval_ckpt):
+            ref_agent = PPOAgent(len(ACTIONS), activation=args.activation)
+            ref_agent.load(args.anchor_eval_ckpt, load_optimizers=False)
+            anchor_eval = {
+                "agent": ref_agent,
+                "label": os.path.basename(args.anchor_eval_ckpt),
+                "interval": args.anchor_eval_interval,
+                "deals": args.anchor_eval_deals,
+            }
+            print(
+                f"⚓ Anchored strength probe vs {args.anchor_eval_ckpt} every "
+                f"{args.anchor_eval_interval:,} eps "
+                f"({args.anchor_eval_deals} paired deals)"
+            )
+        else:
+            print(
+                f"⚠️  --anchor-eval-ckpt not found ({args.anchor_eval_ckpt}); "
+                "anchored probe disabled"
+            )
+
     training_ratings = {mode: league.rating_model.rating() for mode in (0, 1)}
     exploitability_csv = os.path.join(checkpoint_dir, "exploitability.csv")
 
@@ -721,6 +801,7 @@ def main():
             episode,
             boundary - episode,
             checkpoint_dir,
+            anchor_eval=anchor_eval,
         )
         main_ckpt = os.path.join(
             checkpoint_dir, f"pfsp_{args.activation}_checkpoint_{episode}.pt"
