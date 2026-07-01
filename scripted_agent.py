@@ -63,8 +63,8 @@ Interface-compatible with PPOAgent for the greedy eval drivers:
 ``act(state_dict, valid_action_ids, player_id, deterministic) -> (id, 0, 0)``,
 plus no-op ``observe`` / ``reset_recurrent_state``. Decisions are pure
 functions of the structured observation dict (sheepshead.Player.get_state_dict)
-and the valid-action set; any unexpected state falls back to the lowest legal
-action id rather than raising mid-game.
+and the valid-action set, and fail fast: a decision bug raises rather than
+silently degrading the instrument.
 """
 
 from __future__ import annotations
@@ -76,6 +76,7 @@ from sheepshead import (
     TRUMP,
     TRUMP_POWER,
     UNDER_CARD_ID,
+    UNDER_TOKEN,
 )
 
 # Card points (standard Schafkopf/Sheepshead values).
@@ -92,7 +93,12 @@ def _card(card_id: int) -> str | None:
 
 
 def _points(card: str | None) -> int:
-    return _RANK_POINTS[card[:-1]] if card else 0
+    """Decision-time card points. The UNDER token (the picker's face-down
+    called-suit play, action "PLAY UNDER") counts 0: its real points are
+    buried value, not trick equity to spend."""
+    if not card or card == UNDER_TOKEN:
+        return 0
+    return _RANK_POINTS[card[:-1]]
 
 
 def _is_trump(card: str) -> bool:
@@ -104,12 +110,17 @@ def _fail_suit(card: str) -> str | None:
     return None if _is_trump(card) else card[-1]
 
 
+def _fail_power(card: str) -> int:
+    """Within-suit fail rank; the suitless UNDER token ranks below any card."""
+    return -1 if card == UNDER_TOKEN else FAIL_POWER[card]
+
+
 def _power(card: str | None, led_suit: str | None) -> int:
     """Trick-taking power of a card given the led suit ('T' = trump led).
 
     Trump always outranks fail; a fail card only competes when it follows the
     led fail suit. UNDER / unknown cards can never win."""
-    if card is None:
+    if card is None or card == UNDER_TOKEN:
         return -1
     if _is_trump(card):
         return 100 + TRUMP_POWER[card]
@@ -146,12 +157,11 @@ class ScriptedAgent:
         pass
 
     def act(self, state, valid_actions, player_id=None, deterministic=True):
-        ids = sorted(valid_actions)
-        try:
-            action = self._decide(state, ids)
-        except Exception:  # noqa: BLE001 - never crash a game; play legally
-            action = ids[0]
-        return action, 0.0, 0.0
+        # Deliberately no exception guard: a decision bug must raise, not
+        # silently fall back (the cheapest legal fallback is action id 1 =
+        # PICK, which would quietly bias every measurement this instrument
+        # exists to keep honest).
+        return self._decide(state, sorted(valid_actions)), 0.0, 0.0
 
     # -------------------------------------------------------------- decision
     def _decide(self, state, ids: list[int]) -> int:
@@ -284,7 +294,7 @@ class ScriptedAgent:
             # Draw trump from the top; out of trump, cash fail aces.
             if trumps:
                 return max(trumps, key=lambda c: TRUMP_POWER[c])
-            return max(fails, key=lambda c: (_points(c), FAIL_POWER[c]))
+            return max(fails, key=lambda c: (_points(c), _fail_power(c)))
         # Defender: NEVER lead trump while holding fail (the exact tell the
         # 30M lineage leaks). Called suit through first, then fail aces.
         if fails:
@@ -292,11 +302,11 @@ class ScriptedAgent:
             if called and int(state["current_trick"]) == 0:
                 through = [c for c in fails if c[-1] == called[-1]]
                 if through:
-                    return max(through, key=lambda c: FAIL_POWER[c])
+                    return max(through, key=lambda c: _fail_power(c))
             aces = [c for c in fails if c.startswith("A")]
             if aces:
                 return aces[0]
-            return max(fails, key=lambda c: FAIL_POWER[c])
+            return max(fails, key=lambda c: _fail_power(c))
         return min(trumps, key=lambda c: TRUMP_POWER[c])
 
     @staticmethod
