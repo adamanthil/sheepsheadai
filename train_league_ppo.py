@@ -174,6 +174,21 @@ def _lw_play(job: _Job) -> dict:
     }
 
 
+def _inherited_ratings(league: League, training_ratings: dict) -> dict:
+    """Per-mode ratings for a new snapshot, seeded from the training agent's
+    current rating rather than the mu=25 prior. The population's mu scale
+    drifts over a long run, so a fresh prior outranks every rated member and
+    turns skill-based pruning into newest-wins (the run-review F1 failure:
+    the roster degenerated to a sliding window of recent snapshots). Sigma is
+    floored at half the prior so the copy can still be re-rated as the field
+    evolves around it."""
+    min_sigma = league.rating_model.rating().sigma / 2.0
+    return {
+        mode: league.rating_model.rating(mu=r.mu, sigma=max(r.sigma, min_sigma))
+        for mode, r in training_ratings.items()
+    }
+
+
 # ----------------------------------------------------------------------------
 # Main phase
 # ----------------------------------------------------------------------------
@@ -445,6 +460,7 @@ def run_main_phase(
                     ROLE_PAST_MAIN,
                     training_episodes=episode,
                     activation=args.activation,
+                    initial_ratings=_inherited_ratings(league, training_ratings),
                 )
                 print(f"👥 League snapshot at ep {episode:,}; {league.summary()}")
 
@@ -736,6 +752,21 @@ def main():
         )
         # Reload league to pick up the subprocess insertion
         league = League(args.league_dir, league.config)
+        if not gate["passed"]:
+            # Certified robust: no best response cleared the gate against this
+            # main, so its boundary snapshot becomes a HOF anchor (the
+            # anti-forgetting floor; quota enforced by promote_to_hof).
+            snaps = [
+                m
+                for m in league.by_role(ROLE_PAST_MAIN)
+                if m.meta.training_episodes == episode
+            ]
+            if snaps:
+                league.promote_to_hof(snaps[-1].member_id)
+                print(
+                    f"🏛️  Gen {g} main survived its exploiter gate; "
+                    f"{snaps[-1].member_id} promoted to HOF anchor"
+                )
 
     training_agent.save(os.path.join(run_dir, f"final_{args.activation}.pt"))
     print(f"\n✅ League run complete at episode {episode:,}")

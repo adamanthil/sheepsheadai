@@ -98,6 +98,68 @@ class TestLeagueRoster(unittest.TestCase):
         self.assertIn(ids[0], surviving)  # highest skill
         self.assertEqual(len(league.by_role(ROLE_HOF_ANCHOR)), 1)  # untouched
 
+    def test_initial_ratings_respected(self):
+        # Snapshot rating inheritance (run-review F1): entries must be able to
+        # join on the drifted population scale, not the mu=25 prior.
+        league = League(self.dir)
+        ratings = {
+            PARTNER_BY_JD: league.rating_model.rating(mu=-3.0, sigma=4.0),
+            PARTNER_BY_CALLED_ACE: league.rating_model.rating(mu=-5.0, sigma=4.0),
+        }
+        mid = league.add_member(
+            _agent(7), ROLE_PAST_MAIN, training_episodes=500, initial_ratings=ratings
+        )
+        reloaded = League(self.dir)
+        m = reloaded.get(mid)
+        self.assertAlmostEqual(m.ratings[PARTNER_BY_JD].mu, -3.0, places=5)
+        self.assertAlmostEqual(m.ratings[PARTNER_BY_CALLED_ACE].mu, -5.0, places=5)
+        self.assertAlmostEqual(m.ratings[PARTNER_BY_CALLED_ACE].sigma, 4.0, places=5)
+
+    def test_inherited_ratings_scale_and_sigma_floor(self):
+        from train_league_ppo import _inherited_ratings
+
+        league = League(self.dir)
+        training_ratings = {
+            PARTNER_BY_JD: league.rating_model.rating(mu=-3.2, sigma=0.4),
+            PARTNER_BY_CALLED_ACE: league.rating_model.rating(mu=-4.8, sigma=9.0),
+        }
+        inherited = _inherited_ratings(league, training_ratings)
+        default_sigma = league.rating_model.rating().sigma
+        # mu carries over; a collapsed sigma is floored at half the prior so
+        # the snapshot can still be re-rated as the field evolves.
+        self.assertAlmostEqual(inherited[PARTNER_BY_JD].mu, -3.2, places=5)
+        self.assertAlmostEqual(
+            inherited[PARTNER_BY_JD].sigma, default_sigma / 2.0, places=5
+        )
+        self.assertAlmostEqual(inherited[PARTNER_BY_CALLED_ACE].sigma, 9.0, places=5)
+        # Fresh objects, not aliases of the live training ratings.
+        self.assertIsNot(inherited[PARTNER_BY_JD], training_ratings[PARTNER_BY_JD])
+
+    def test_promote_to_hof_quota_and_persistence(self):
+        cfg = LeagueConfig(hof_quota=2, max_past_mains=10)
+        league = League(self.dir, cfg)
+        ids = []
+        for i in range(3):
+            mid = league.add_member(
+                _agent(20 + i), ROLE_PAST_MAIN, training_episodes=(i + 1) * 100
+            )
+            league.get(mid).ratings[PARTNER_BY_JD] = league.rating_model.rating(
+                mu=10.0 * i, sigma=1.0
+            )
+            ids.append(mid)
+        for mid in ids:
+            league.promote_to_hof(mid)
+        # Quota enforced by demoting the lowest-skill anchor back to past_main.
+        self.assertEqual(len(league.by_role(ROLE_HOF_ANCHOR)), 2)
+        self.assertEqual(league.get(ids[0]).role, ROLE_PAST_MAIN)
+        self.assertEqual(league.get(ids[1]).role, ROLE_HOF_ANCHOR)
+        self.assertEqual(league.get(ids[2]).role, ROLE_HOF_ANCHOR)
+        with self.assertRaises(ValueError):
+            league.promote_to_hof("nonexistent_member")
+        reloaded = League(self.dir, cfg)
+        self.assertEqual(len(reloaded.by_role(ROLE_HOF_ANCHOR)), 2)
+        self.assertEqual(reloaded.get(ids[0]).role, ROLE_PAST_MAIN)
+
     def test_exploiter_retirement(self):
         # Retirement is purely age-based: a high EMA no longer saves an old
         # exploiter (that EMA-driven reprieve was the ratchet we removed).

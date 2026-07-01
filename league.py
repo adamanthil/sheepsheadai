@@ -182,6 +182,26 @@ class League:
         self._manage_size()
         return member_id
 
+    def promote_to_hof(self, member_id: str) -> None:
+        """Promote a member to HOF anchor (anti-forgetting floor), enforcing
+        ``hof_quota`` by demoting the lowest-skill anchor back to past_main.
+
+        HOF anchors are immune to skill pruning and get the ``hof_floor_prob``
+        seat floor in ``_sample_pfsp``. Skill-based demotion is sound because
+        anchors keep playing (they sit in the PFSP pool), so their ratings
+        stay live on the current scale rather than frozen at entry.
+        """
+        member = self.get(member_id)
+        if member is None:
+            raise ValueError(f"unknown league member: {member_id}")
+        member.meta.role = ROLE_HOF_ANCHOR
+        self._save_member(member)
+        while len(self.by_role(ROLE_HOF_ANCHOR)) > self.config.hof_quota:
+            weakest = min(self.by_role(ROLE_HOF_ANCHOR), key=lambda m: m.skill())
+            weakest.meta.role = ROLE_PAST_MAIN
+            self._save_member(weakest)
+        self._manage_size()  # a demotion may push past_mains over the cap
+
     def _manage_size(self) -> None:
         """Retire cold exploiters; prune past_mains over the cap.
 
