@@ -31,6 +31,7 @@
     position: fixed; top: 14px; left: 14px; right: 14px;
     z-index: 20;
     display: flex; gap: 14px; align-items: center; pointer-events: none;
+    flex-wrap: wrap;
   }
   .panel {
     background: var(--panel);
@@ -44,19 +45,29 @@
   #title { font-size: 15px; font-weight: 600; }
   #title .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
   .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .controls button {
+  .controls button, #scenario-bar button {
     background: rgba(20,26,54,0.9);
     border: 1px solid var(--line); color: var(--text);
     padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
     transition: border-color .15s, background .15s;
   }
-  .controls button:hover { border-color: var(--accent); background: rgba(35,45,90,0.95); }
+  .controls button:hover, #scenario-bar button:hover { border-color: var(--accent); background: rgba(35,45,90,0.95); }
   .controls button.primary {
     background: linear-gradient(135deg, var(--accent), var(--accent-2));
     color: #0b1020; font-weight: 600; border: none;
   }
   .controls label { color: var(--muted); font-size: 11px; display: flex; gap: 6px; align-items: center; }
   .controls input[type=range] { accent-color: var(--accent); width: 90px; }
+
+  #scenario-bar { display: flex; gap: 8px; align-items: center; }
+  #scenario-bar .scen-head {
+    font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
+    color: var(--muted); margin-right: 4px;
+  }
+  #scenario-bar button.active {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0b1020; font-weight: 600; border-color: transparent;
+  }
 
   #ui-side {
     position: fixed; top: 70px; right: 14px; width: 340px;
@@ -92,9 +103,9 @@
   #status .progress > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0%; transition: width 0.4s; }
 
   #stage-nav {
-    position: fixed; top: 70px; left: 14px;
+    position: fixed; top: 126px; left: 14px;
     z-index: 20; width: 232px;
-    max-height: calc(100vh - 250px);
+    max-height: calc(100vh - 300px);
     overflow: auto;
     display: flex; flex-direction: column; gap: 2px;
   }
@@ -163,7 +174,7 @@
 
 <div id="ui-top">
   <div class="panel" id="title">
-    Sheepshead PPO <span class="sub">3D · live forward pass · checkpoint 30M</span>
+    Sheepshead PPO <span class="sub">3D · live forward pass · final PFSP model</span>
   </div>
   <div class="panel controls">
     <button id="btn-play" class="primary">▶ Play tour</button>
@@ -176,17 +187,14 @@
     <label><input type="checkbox" id="chk-rotate" /> auto-rotate</label>
     <label><input type="checkbox" id="chk-emphasis" /> emphasize connections</label>
   </div>
+  <div class="panel" id="scenario-bar"></div>
 </div>
 
 <div id="ui-side">
   <div class="panel" id="info">
-    <div class="stage-num" id="i-stage">0 / 13 · intro</div>
+    <div class="stage-num" id="i-stage"></div>
     <h2 id="i-title">Sheepshead PPO — 3D architecture</h2>
-    <div id="i-body">
-      <p>This is a live forward pass through the trained PPO network (checkpoint <code>pfsp_swish_checkpoint_30000000.pt</code>) on a synthetic pick-decision state.</p>
-      <p>The agent's hand contains the <b>Queen of Clubs (QC)</b>, <b>Jack of Clubs (JC)</b>, and <b>Ace of Diamonds (AD)</b> — three trump — plus AS / KH / 7C. It's the agent's turn to <code>PICK</code> or <code>PASS</code>.</p>
-      <p>Drag to orbit · scroll to zoom · click anything in the scene for details. Press <b>▶ Play tour</b> to camera-tour through the architecture.</p>
-    </div>
+    <div id="i-body"><p>Loading…</p></div>
     <div class="meta" id="i-meta"></div>
   </div>
 </div>
@@ -281,6 +289,22 @@ const grid = new THREE.GridHelper(220, 44, 0x1a2350, 0x121833);
 grid.position.y = -10;
 scene.add(grid);
 
+// Subtle background nebula spheres (static; survives scenario rebuilds)
+for (let i = 0; i < 30; i++) {
+  const s = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 8, 6),
+    new THREE.MeshBasicMaterial({
+      color: i % 2 === 0 ? 0x7cc4ff : 0xb58bff, transparent: true, opacity: 0.4,
+    }),
+  );
+  s.position.set(
+    (Math.random() - 0.5) * 200,
+    (Math.random() - 0.3) * 60,
+    (Math.random() - 0.5) * 80,
+  );
+  scene.add(s);
+}
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -333,9 +357,119 @@ function makeStageLabel(text, color = "#7cc4ff") {
   return mesh;
 }
 
-// Registry of every connection line so the "emphasize connections" toggle can
-// boost them all at once. Each entry remembers its resting opacity.
-const connLines = [];
+function vecMag(arr) {
+  let s = 0;
+  for (const v of arr) s += v * v;
+  return Math.sqrt(s);
+}
+function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+function softmax(logits) {
+  const m = Math.max(...logits);
+  const ex = logits.map(v => Math.exp(v - m));
+  const s = ex.reduce((a, b) => a + b, 0);
+  return ex.map(v => v / s);
+}
+
+// ============================================================
+// Static data prep (scenario-independent)
+// ============================================================
+const trumpCardCodes = DATA.constants.TRUMP;
+const trumpCardIds = DATA.constants.trump_card_ids;
+const deckIds = DATA.constants.DECK_IDS;
+const ACTIONS = DATA.constants.ACTIONS;
+const idToCode = {};
+for (const [code, id] of Object.entries(deckIds)) idToCode[id] = code;
+idToCode[0] = "PAD";
+idToCode[33] = "UNDER";
+
+// Token bank order: context(1), memory(1), hand(8), trick(5), blind(2), bury(2)
+const TOKEN_INFO = [
+  { type: "context", color: 0xf4a261 },
+  { type: "memory", color: 0xf4a261 },
+];
+for (let i = 0; i < 8; i++) TOKEN_INFO.push({ type: "hand", color: 0x4cc9f0, idx: i });
+for (let i = 0; i < 5; i++) TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, idx: i });
+for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "blind", color: 0x88e0e8, idx: i });
+for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "bury", color: 0xa6f0c1, idx: i });
+
+// ============================================================
+// Scenario state
+// ============================================================
+let scenIdx = 0;
+let S = DATA.scenarios[0];
+let handCardIds = [];   // length 8 with 0 padding
+let handCardCodes = []; // real cards only
+
+function setScenarioData(i) {
+  scenIdx = i;
+  S = DATA.scenarios[i];
+  handCardIds = S.sample.hand_ids;
+  handCardCodes = S.sample.hand_cards;
+}
+setScenarioData(0);
+
+// Which actual card (if any) a token carries.
+function tokenCardCode(i) {
+  const info = TOKEN_INFO[i];
+  if (info.type === "hand") {
+    const code = idToCode[handCardIds[info.idx]];
+    return code && code !== "PAD" ? code : null;
+  }
+  if (info.type === "trick") {
+    const code = S.sample.trick_card_codes[info.idx];
+    return code && code !== "PAD" ? code : null;
+  }
+  return null;
+}
+
+// Which policy head actually drives this scenario's decision.
+function liveHead() {
+  const kind = S.sample.kind;
+  if (kind === "pick") return "pick";
+  if (kind === "call") return "call";
+  return "pointer"; // bury / lead / follow all score hand slots
+}
+
+// ============================================================
+// Stage layout (X positions)
+// ============================================================
+const XS = {
+  input: -56,
+  embed: -38,
+  tokensPre: -20,
+  attnRing: -2,
+  pools: 14,
+  gru: 24,
+  features: 34,
+  actor: 50,
+  critic: 50,
+  output: 64,
+};
+
+// ============================================================
+// Rebuildable scene root + registries
+// ============================================================
+let sceneRoot = null;
+let stageGroups = {};
+let PICKABLES = [];
+let connLines = [];
+let inputInfo, embedInfo, tokensInfo, attnInfo, poolsInfo, memInfo, featInfo,
+  actorInfo, criticInfo, outputInfo;
+
+function group(name) {
+  if (!stageGroups[name]) {
+    stageGroups[name] = new THREE.Group();
+    stageGroups[name].name = name;
+    sceneRoot.add(stageGroups[name]);
+  }
+  return stageGroups[name];
+}
+
+function registerPickable(mesh, info) {
+  mesh.userData.pickInfo = info;
+  PICKABLES.push(mesh);
+}
+
 function registerConn(obj, baseOpacity) {
   connLines.push({ obj, base: baseOpacity });
   return obj;
@@ -347,24 +481,25 @@ function makeGlowLine(p0, p1, color, opacity = 0.4) {
   return registerConn(new THREE.Line(geom, mat), opacity);
 }
 
-function makeCurveLine(p0, p1, controlOffsetY = 6, color = C.pulse, opacity = 0.7) {
-  const mid = p0.clone().add(p1).multiplyScalar(0.5);
-  mid.y += controlOffsetY;
-  const curve = new THREE.QuadraticBezierCurve3(p0, mid, p1);
-  const points = curve.getPoints(40);
-  const geom = new THREE.BufferGeometry().setFromPoints(points);
-  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-  const line = new THREE.Line(geom, mat);
-  line.userData.curve = curve;
-  return registerConn(line, opacity);
+function disposeScene() {
+  if (!sceneRoot) return;
+  sceneRoot.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) {
+        if (m.map) m.map.dispose();
+        m.dispose();
+      }
+    }
+  });
+  scene.remove(sceneRoot);
+  sceneRoot = null;
+  stageGroups = {};
+  PICKABLES = [];
+  connLines = [];
+  hovered = null;
 }
-
-function vecMag(arr) {
-  let s = 0;
-  for (const v of arr) s += v * v;
-  return Math.sqrt(s);
-}
-function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 
 // ---- Connection emphasis -------------------------------------------------
 // When ON, strong attention chords get thicker / brighter / more opaque and
@@ -401,54 +536,7 @@ function styleConn() {
 }
 
 // ============================================================
-// Data prep
-// ============================================================
-const handCardCodes = DATA.sample.hand_cards;
-const handCardIds = DATA.sample.hand_ids; // length 8, with 0 padding
-const trumpCardCodes = DATA.constants.TRUMP;
-const trumpCardIds = DATA.constants.trump_card_ids;
-const deckIds = DATA.constants.DECK_IDS;
-const idToCode = {};
-for (const [code, id] of Object.entries(deckIds)) idToCode[id] = code;
-idToCode[0] = "PAD";
-idToCode[33] = "UNDER";
-
-// ============================================================
-// Stage layout (X positions)
-// ============================================================
-const XS = {
-  input: -56,
-  embed: -38,
-  tokensPre: -20,
-  attnRing: -2,
-  pools: 14,
-  gru: 24,
-  features: 34,
-  actor: 50,
-  critic: 50,
-  output: 62,
-};
-
-// Containers per stage (for highlight)
-const stageGroups = {};
-function group(name) {
-  if (!stageGroups[name]) {
-    stageGroups[name] = new THREE.Group();
-    stageGroups[name].name = name;
-    scene.add(stageGroups[name]);
-  }
-  return stageGroups[name];
-}
-
-// Hover/click registry
-const PICKABLES = []; // { mesh, info: { title, body, kv } }
-function registerPickable(mesh, info) {
-  mesh.userData.pickInfo = info;
-  PICKABLES.push(mesh);
-}
-
-// ============================================================
-// STAGE 1: INPUT CARDS (hand)
+// STAGE 1: OBSERVATION (hand + trick on table + header + memory)
 // ============================================================
 function buildInputCards() {
   const g = group("input");
@@ -456,10 +544,12 @@ function buildInputCards() {
   handLabel.position.set(XS.input, -9.7, 0);
   g.add(handLabel);
 
-  const realCards = handCardCodes; // 6 cards
+  const n = handCardCodes.length;
+  const spacing = n <= 6 ? 2.0 : 1.75;
+  const topY = 8;
   const cardObjs = [];
-  for (let i = 0; i < realCards.length; i++) {
-    const code = realCards[i];
+  for (let i = 0; i < n; i++) {
+    const code = handCardCodes[i];
     const cardGeom = new THREE.BoxGeometry(3.6, 5, 0.3);
     const isTrump = trumpCardCodes.includes(code);
     const color = isTrump ? 0xd4af37 : 0x8aa0e0;
@@ -471,13 +561,13 @@ function buildInputCards() {
       roughness: 0.35,
     });
     const card = new THREE.Mesh(cardGeom, mat);
-    card.position.set(XS.input, 7 - i * 2.0, 0);
+    card.position.set(XS.input, topY - i * spacing, 0);
     card.rotation.y = -0.25;
     g.add(card);
     cardObjs.push(card);
 
     const lab = makeLabel(code, isTrump ? "#ffe89c" : "#cdd9ff", 0.7);
-    lab.position.set(XS.input + 2.6, 7 - i * 2.0, 0.5);
+    lab.position.set(XS.input + 2.6, topY - i * spacing, 0.5);
     g.add(lab);
 
     registerPickable(card, {
@@ -487,44 +577,84 @@ function buildInputCards() {
     });
   }
 
+  // Cards already on the table this trick (play scenarios)
+  const trickCodes = S.sample.trick_card_codes
+    .map((code, seatOff) => ({ code, seatOff }))
+    .filter(t => t.code !== "PAD");
+  const trickObjs = [];
+  if (trickCodes.length) {
+    const tLab = makeLabel("on the table", "#b58bff", 0.55);
+    tLab.position.set(XS.input, topY + 2.2, 7);
+    g.add(tLab);
+    for (let i = 0; i < trickCodes.length; i++) {
+      const { code } = trickCodes[i];
+      const isTrump = trumpCardCodes.includes(code);
+      const color = isTrump ? 0xd4af37 : 0x7286c9;
+      const card = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 3.6, 0.24),
+        new THREE.MeshStandardMaterial({
+          color, emissive: color, emissiveIntensity: 0.12,
+          metalness: 0.4, roughness: 0.4,
+        }),
+      );
+      card.position.set(XS.input, topY - 0.4 - i * 1.6, 7);
+      card.rotation.y = -0.25;
+      g.add(card);
+      trickObjs.push(card);
+      const lab = makeLabel(code, isTrump ? "#ffe89c" : "#b9c6f2", 0.5);
+      lab.position.set(XS.input + 2.1, topY - 0.4 - i * 1.6, 7.4);
+      g.add(lab);
+      registerPickable(card, {
+        title: `${code} (on table)`,
+        badge: "input",
+        body: `<p>Played earlier this trick. Feeds a trick token (with is-picker / is-known-partner flags) so the network can reason about what it must beat.</p>`,
+      });
+    }
+  }
+
   // header chip + memory chip
+  const chipY = topY - n * spacing - 0.6;
   const headerGeom = new THREE.BoxGeometry(3.6, 1.4, 0.3);
   const headerMat = new THREE.MeshStandardMaterial({
     color: 0x9d7bff, emissive: 0x9d7bff, emissiveIntensity: 0.2, roughness: 0.4
   });
   const headerChip = new THREE.Mesh(headerGeom, headerMat);
-  headerChip.position.set(XS.input, -6, 0);
+  headerChip.position.set(XS.input, chipY, 0);
   headerChip.rotation.y = -0.25;
   g.add(headerChip);
   const headerLab = makeLabel("header (10)", "#e6ddff", 0.6);
-  headerLab.position.set(XS.input + 3, -6, 0.5);
+  headerLab.position.set(XS.input + 3, chipY, 0.5);
   g.add(headerLab);
   registerPickable(headerChip, {
     title: "Header scalars (10)",
     badge: "input",
-    body: `<p>partner_mode, is_leaster, play_started, current_trick, alone_called, called_under, picker_rel, partner_rel, leader_rel, picker_position. All zeros here — clean pick-decision state.</p>`,
+    body: `<p>partner_mode, is_leaster, play_started, current_trick, alone_called, called_under, picker_rel, partner_rel, leader_rel, picker_position — the game-phase context for this decision (trick ${S.sample.trick + 1}, ${S.sample.phase.toLowerCase()}).</p>`,
   });
 
+  const memMag = vecMag(S.memory.memory_in);
   const memGeom = new THREE.BoxGeometry(3.6, 1.4, 0.3);
   const memMat = new THREE.MeshStandardMaterial({
-    color: 0xf4a261, emissive: 0xf4a261, emissiveIntensity: 0.25, roughness: 0.4
+    color: 0xf4a261, emissive: 0xf4a261,
+    emissiveIntensity: 0.15 + clamp(memMag / 10, 0, 1) * 0.5, roughness: 0.4
   });
   const memChip = new THREE.Mesh(memGeom, memMat);
-  memChip.position.set(XS.input, -8.5, 0);
+  memChip.position.set(XS.input, chipY - 2.2, 0);
   memChip.rotation.y = -0.25;
   g.add(memChip);
-  const memLab = makeLabel("memory hₜ₋₁ (256)", "#ffd99c", 0.6);
-  memLab.position.set(XS.input + 3, -8.5, 0.5);
+  const memLab = makeLabel(`memory hₜ₋₁ (256) · ‖${memMag.toFixed(1)}‖`, "#ffd99c", 0.6);
+  memLab.position.set(XS.input + 3, chipY - 2.2, 0.5);
   g.add(memLab);
   registerPickable(memChip, {
     title: "Prior memory hₜ₋₁",
     badge: "input",
-    body: `<p>256-d recurrent state from this player's previous decision. Zeros here (game just started). Carried via a GRU cell — see stage 6.</p>`,
+    kv: { "‖memory_in‖": memMag.toFixed(2) },
+    body: memMag < 1e-6
+      ? `<p>256-d recurrent state from this player's previous decision. Zeros here — this is the seat's first decision of the hand. Carried via a GRU cell — see stage 6.</p>`
+      : `<p>256-d recurrent state carried from this seat's previous decisions — it has already seen the earlier phases of this hand. Updated by the GRU cell in stage 6.</p>`,
   });
 
-  return { cardObjs };
+  return { cardObjs, trickObjs, chipY, spacing, topY };
 }
-const inputInfo = buildInputCards();
 
 // ============================================================
 // STAGE 2: CARD EMBEDDING TABLE (34 × 16) — instanced
@@ -540,7 +670,15 @@ function buildEmbeddingTable() {
   const totalW = COLS * (cellW + gap);
   const totalH = ROWS * (cellH + gap);
 
-  // Build full 34x16 with neutral color, then color rows-used by actual embedding values
+  // Rows referenced by this scenario: hand + cards on the table + called card
+  const usedIds = new Set(handCardIds.filter(id => id !== 0));
+  for (const code of S.sample.trick_card_codes) {
+    if (code !== "PAD") usedIds.add(code === "UNDER" ? 33 : deckIds[code]);
+  }
+  if (S.sample.called_card && deckIds[S.sample.called_card]) {
+    usedIds.add(deckIds[S.sample.called_card]);
+  }
+
   const geom = new THREE.BoxGeometry(cellW, cellH, 0.25);
   const inst = new THREE.InstancedMesh(geom, new THREE.MeshStandardMaterial({
     metalness: 0.2, roughness: 0.55, vertexColors: false,
@@ -550,12 +688,10 @@ function buildEmbeddingTable() {
   const tempColor = new THREE.Color();
   const dummy = new THREE.Object3D();
 
-  // Compute min/max for normalization
   const embMin = DATA.card_embedding.min;
   const embMax = DATA.card_embedding.max;
   const embRange = Math.max(1e-6, embMax - embMin);
-
-  const rowsUsed = DATA.card_embedding.rows_used;
+  const table = DATA.card_embedding.table;
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -566,11 +702,9 @@ function buildEmbeddingTable() {
       dummy.updateMatrix();
       inst.setMatrixAt(i, dummy.matrix);
 
-      // Default dim color
       tempColor.setHex(C.dim);
-      // If this row is "used", color it by value
-      if (rowsUsed[String(r)]) {
-        const v = rowsUsed[String(r)][c];
+      if (usedIds.has(r)) {
+        const v = table[r][c];
         const norm = (v - embMin) / embRange; // 0..1
         // diverging-ish: cool blue for low, white-ish mid, warm for high
         tempColor.setHSL(0.6 - norm * 0.55, 0.9, 0.25 + norm * 0.45);
@@ -585,8 +719,7 @@ function buildEmbeddingTable() {
 
   // Row labels (only used rows)
   const usedRowYs = {};
-  for (const cidStr of Object.keys(rowsUsed)) {
-    const r = parseInt(cidStr, 10);
+  for (const r of usedIds) {
     const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
     const code = idToCode[r] || `id ${r}`;
     const rowLab = makeLabel(`${code} (row ${r})`, "#ffe89c", 0.5);
@@ -596,15 +729,25 @@ function buildEmbeddingTable() {
   }
 
   // Connections: each input card → its row
-  const connections = [];
   for (let i = 0; i < handCardCodes.length; i++) {
     const cid = handCardIds[i];
     if (!(cid in usedRowYs)) continue;
-    const start = new THREE.Vector3(XS.input + 2, 7 - i * 2.0, 0);
+    const start = new THREE.Vector3(XS.input + 2, inputInfo.topY - i * inputInfo.spacing, 0);
     const end = new THREE.Vector3(XS.embed - 0.1, usedRowYs[cid], 0);
-    const line = makeGlowLine(start, end, C.input, 0.3);
-    g.add(line);
-    connections.push({ line, start, end });
+    g.add(makeGlowLine(start, end, C.input, 0.3));
+  }
+  // ... and each on-table card → its row
+  let trickIdx = 0;
+  for (const code of S.sample.trick_card_codes) {
+    if (code === "PAD") continue;
+    const cid = code === "UNDER" ? 33 : deckIds[code];
+    if (cid in usedRowYs) {
+      const start = new THREE.Vector3(
+        XS.input + 2, inputInfo.topY - 0.4 - trickIdx * 1.6, 7);
+      const end = new THREE.Vector3(XS.embed - 0.1, usedRowYs[cid], 0);
+      g.add(makeGlowLine(start, end, C.input, 0.22));
+    }
+    trickIdx++;
   }
 
   // Click-target for the whole table
@@ -618,45 +761,22 @@ function buildEmbeddingTable() {
     title: "nn.Embedding(34, 16)",
     badge: "enc",
     body: `<p>The card embedding table. 34 rows (PAD, 32 real cards, UNDER token) × 16 dims. Dims 0–3 = suit one-hot · 4–7 = per-suit rank · 8 = points/11 · 9 = UNDER flag · 10–15 = free to learn.</p>
-      <p>The 6 highlighted rows are the cards in the hand — each one is the lookup result for one input card. The same table is reused by the actor's two-tower CALL scorer and the critic's seen-trump-mask head, so any update here propagates everywhere.</p>`,
+      <p>The highlighted rows are the cards this scenario touches (hand, table, called card). The same table is reused by the actor's two-tower CALL scorer and the critic's seen-trump-mask head, so any update here propagates everywhere.</p>`,
   });
 
-  return { connections, usedRowYs, totalW, totalH };
+  return { usedRowYs, totalW, totalH };
 }
-const embedInfo = buildEmbeddingTable();
 
 // ============================================================
 // STAGE 3: TOKEN BANK (19 tokens, 64-d each)
 // ============================================================
-// Order: context(1), memory(1), hand(8), trick(5), blind(2), bury(2)
-const TOKEN_INFO = [
-  { type: "context", color: 0xf4a261 },
-  { type: "memory", color: 0xf4a261 },
-];
-for (let i = 0; i < 8; i++) TOKEN_INFO.push({ type: "hand", color: 0x4cc9f0, idx: i });
-for (let i = 0; i < 5; i++) TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, idx: i });
-for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "blind", color: 0x88e0e8, idx: i });
-for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "bury", color: 0xa6f0c1, idx: i });
-
-// Which actual card (if any) a token carries. context/memory are not cards;
-// hand tokens map to the dealt hand; trick/blind/bury are empty in this
-// pick-decision state (nothing played, blind not taken) so they stay PAD.
-function tokenCardCode(i) {
-  const info = TOKEN_INFO[i];
-  if (info.type === "hand") {
-    const code = idToCode[handCardIds[info.idx]];
-    return code && code !== "PAD" ? code : null;
-  }
-  return null;
-}
-
 function buildTokens() {
   const g = group("tokens");
   const lab = makeStageLabel("3 · TOKENIZE · (19 × 64)", "#4cc9f0");
   lab.position.set(XS.tokensPre, -9.7, 0);
   g.add(lab);
 
-  const preTok = DATA.tokens_pre_attn;
+  const preTok = S.tokens_pre_attn;
   const mask = preTok.mask;
   const tokenVecs = [
     preTok.context,
@@ -668,14 +788,12 @@ function buildTokens() {
   ];
 
   const tokenObjs = [];
-  // Lay out in a 19-tall vertical column at X=XS.tokensPre, varying Z slightly per type
   const spacingY = 1.5;
   const topY = (19 * spacingY) / 2 - 0.5;
   for (let i = 0; i < 19; i++) {
     const info = TOKEN_INFO[i];
     const active = !!mask[i];
     const mag = vecMag(tokenVecs[i]);
-    const height = 0.6 + clamp(mag / 5, 0, 1.0) * 2.2;
     const tokGeom = new THREE.BoxGeometry(4.5, 0.6, 0.6);
     const color = active ? info.color : C.dim;
     const intensity = active ? 0.35 : 0.05;
@@ -690,10 +808,10 @@ function buildTokens() {
     g.add(tok);
     tokenObjs.push({ mesh: tok, y, info, active, magnitude: mag, vec: tokenVecs[i] });
 
-    // small label
     let labText = info.type;
-    if (info.type === "hand") labText = `hand[${info.idx}] ${idToCode[handCardIds[info.idx]] || "PAD"}`;
-    else if (info.type === "trick") labText = `trick[${info.idx}]`;
+    const code = tokenCardCode(i);
+    if (info.type === "hand") labText = `hand[${info.idx}] ${code || "PAD"}`;
+    else if (info.type === "trick") labText = `trick[${info.idx}]${code ? " " + code : ""}`;
     else if (info.type === "blind") labText = `blind[${info.idx}]`;
     else if (info.type === "bury") labText = `bury[${info.idx}]`;
     const tlab = makeLabel(labText + (active ? "" : "  · PAD"),
@@ -710,13 +828,12 @@ function buildTokens() {
     });
   }
 
-  // Connections: embedding rows → relevant token positions
-  // context ← header + called_card → token 0 (gold connection from header chip)
-  const ctxStart = new THREE.Vector3(XS.input + 2, -6, 0);
+  // context ← header chip
+  const ctxStart = new THREE.Vector3(XS.input + 2, inputInfo.chipY, 0);
   const ctxEnd = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[0].y, 0);
   g.add(makeGlowLine(ctxStart, ctxEnd, C.share, 0.4));
   // memory chip → token 1
-  const memStart = new THREE.Vector3(XS.input + 2, -8.5, 0);
+  const memStart = new THREE.Vector3(XS.input + 2, inputInfo.chipY - 2.2, 0);
   const memEnd = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[1].y, 0);
   g.add(makeGlowLine(memStart, memEnd, C.share, 0.4));
 
@@ -730,10 +847,21 @@ function buildTokens() {
     const end = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[handTokenStart + i].y, 0);
     g.add(makeGlowLine(start, end, C.enc, 0.35));
   }
+  // ... and for each on-table card, row → trick token
+  const trickTokenStart = 10;
+  for (let ti = 0; ti < 5; ti++) {
+    const code = S.sample.trick_card_codes[ti];
+    if (code === "PAD") continue;
+    const cid = code === "UNDER" ? 33 : deckIds[code];
+    const rowY = embedInfo.usedRowYs[cid];
+    if (rowY === undefined) continue;
+    const start = new THREE.Vector3(XS.embed + 0.3, rowY, 0);
+    const end = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[trickTokenStart + ti].y, 0);
+    g.add(makeGlowLine(start, end, C.enc, 0.3));
+  }
 
   return { tokenObjs };
 }
-const tokensInfo = buildTokens();
 
 // ============================================================
 // STAGE 4: ATTENTION RING (transformer cross-card reasoning)
@@ -744,7 +872,6 @@ function buildAttentionRing() {
   lab.position.set(XS.attnRing, -9.7, 0);
   g.add(lab);
 
-  // Place 19 tokens in a ring in the YZ plane (centered around X=XS.attnRing)
   const N = 19;
   const radius = 9;
   const ringPos = [];
@@ -755,23 +882,20 @@ function buildAttentionRing() {
     ringPos.push(new THREE.Vector3(XS.attnRing, y, z));
   }
 
-  // Token spheres on the ring (post-attention)
-  const postCtx = DATA.tokens_post_attn.context;
   const postTok = [
-    postCtx,
-    null, // memory not exported post-attn (we have hand/trick/blind/bury only) — use null sentinel
-    ...DATA.tokens_post_attn.hand,
-    ...DATA.tokens_post_attn.trick,
-    ...DATA.tokens_post_attn.blind,
-    ...DATA.tokens_post_attn.bury,
+    S.tokens_post_attn.context,
+    S.tokens_post_attn.memory,
+    ...S.tokens_post_attn.hand,
+    ...S.tokens_post_attn.trick,
+    ...S.tokens_post_attn.blind,
+    ...S.tokens_post_attn.bury,
   ];
-  // memory post-attn isn't dumped; use a neutral magnitude
   const ringObjs = [];
   for (let i = 0; i < N; i++) {
     const info = TOKEN_INFO[i];
-    const active = !!DATA.tokens_pre_attn.mask[i];
+    const active = !!S.tokens_pre_attn.mask[i];
     const v = postTok[i];
-    const mag = v ? vecMag(v) : 1.2;
+    const mag = vecMag(v);
     const r = 0.5 + clamp(mag / 6, 0, 1) * 0.7;
     const geom = new THREE.SphereGeometry(r, 18, 14);
     const mat = new THREE.MeshStandardMaterial({
@@ -786,8 +910,6 @@ function buildAttentionRing() {
     g.add(sph);
     ringObjs.push({ mesh: sph, info, active, pos: ringPos[i] });
 
-    // Card label: hand tokens show the card they represent (trump highlighted),
-    // context/memory show their role, empty bag slots show PAD.
     const code = tokenCardCode(i);
     const isTrump = code && trumpCardCodes.includes(code);
     let labText, labColor;
@@ -795,7 +917,6 @@ function buildAttentionRing() {
     else if (info.type === "context" || info.type === "memory") { labText = info.type; labColor = "#ffd9a0"; }
     else { labText = info.type + " · PAD"; labColor = "#5d6790"; }
     const tlab = makeLabel(labText, labColor, code ? 0.6 : 0.45);
-    // push the label radially outward from the ring center so it clears the sphere
     const outward = ringPos[i].clone().sub(new THREE.Vector3(XS.attnRing, 4, 0)).normalize();
     tlab.position.copy(ringPos[i]).addScaledVector(outward, r + 1.4);
     g.add(tlab);
@@ -811,22 +932,21 @@ function buildAttentionRing() {
 
   // Lines from token bank → ring
   for (let i = 0; i < N; i++) {
-    if (!DATA.tokens_pre_attn.mask[i]) continue;
+    if (!S.tokens_pre_attn.mask[i]) continue;
     const start = new THREE.Vector3(XS.tokensPre + 2.3, tokensInfo.tokenObjs[i].y, 0);
     const end = ringPos[i].clone();
     g.add(makeGlowLine(start, end, C.enc, 0.18));
   }
 
   // Attention chords: pair every token with every other; opacity from attn weight
-  const attn = DATA.attention_weights_last_layer; // (19, 19)
-  // Get a global scale for visibility
+  const attn = S.attention_weights_last_layer; // (19, 19)
   let maxW = 0;
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (i !== j) maxW = Math.max(maxW, attn[i][j]);
   const chordLines = [];
   for (let i = 0; i < N; i++) {
-    if (!DATA.tokens_pre_attn.mask[i]) continue;
+    if (!S.tokens_pre_attn.mask[i]) continue;
     for (let j = i + 1; j < N; j++) {
-      if (!DATA.tokens_pre_attn.mask[j]) continue;
+      if (!S.tokens_pre_attn.mask[j]) continue;
       const wij = attn[i][j];
       const wji = attn[j][i];
       const w = (wij + wji) / 2;
@@ -835,7 +955,6 @@ function buildAttentionRing() {
       const start = ringPos[i];
       const end = ringPos[j];
       const mid = start.clone().add(end).multiplyScalar(0.5);
-      // pull toward the ring center
       const ringCenter = new THREE.Vector3(XS.attnRing, 4, 0);
       mid.lerp(ringCenter, 0.6);
       const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
@@ -852,7 +971,6 @@ function buildAttentionRing() {
 
   return { ringObjs, ringPos, chordLines };
 }
-const attnInfo = buildAttentionRing();
 
 // ============================================================
 // STAGE 5: POOLS (4)
@@ -864,10 +982,10 @@ function buildPools() {
   g.add(lab);
 
   const POOLS = [
-    { name: "hand",  vec: DATA.pools.hand_vec,  color: 0x4cc9f0, ringIdxs: [2,3,4,5,6,7,8,9] },
-    { name: "trick", vec: DATA.pools.trick_vec, color: 0x6fb1ff, ringIdxs: [10,11,12,13,14] },
-    { name: "blind", vec: DATA.pools.blind_vec, color: 0x88e0e8, ringIdxs: [15,16] },
-    { name: "bury",  vec: DATA.pools.bury_vec,  color: 0xa6f0c1, ringIdxs: [17,18] },
+    { name: "hand",  vec: S.pools.hand_vec,  color: 0x4cc9f0, ringIdxs: [2,3,4,5,6,7,8,9] },
+    { name: "trick", vec: S.pools.trick_vec, color: 0x6fb1ff, ringIdxs: [10,11,12,13,14] },
+    { name: "blind", vec: S.pools.blind_vec, color: 0x88e0e8, ringIdxs: [15,16] },
+    { name: "bury",  vec: S.pools.bury_vec,  color: 0xa6f0c1, ringIdxs: [17,18] },
   ];
   const poolObjs = [];
   for (let i = 0; i < POOLS.length; i++) {
@@ -890,9 +1008,8 @@ function buildPools() {
     tlab.position.set(XS.pools, y + sizeY / 2 + 0.6, 0);
     g.add(tlab);
 
-    // Lines from corresponding ring tokens → this pool
     for (const ri of p.ringIdxs) {
-      if (!DATA.tokens_pre_attn.mask[ri]) continue;
+      if (!S.tokens_pre_attn.mask[ri]) continue;
       const start = attnInfo.ringPos[ri];
       const end = new THREE.Vector3(XS.pools - w / 2, y, 0);
       g.add(makeGlowLine(start, end, p.color, 0.25));
@@ -907,7 +1024,6 @@ function buildPools() {
   }
   return { poolObjs };
 }
-const poolsInfo = buildPools();
 
 // ============================================================
 // STAGE 6: GRU + MEMORY FEEDBACK
@@ -918,7 +1034,6 @@ function buildMemory() {
   lab.position.set(XS.gru, -9.7, 0);
   g.add(lab);
 
-  // GRU cell as a hexagonal prism
   const gruGeom = new THREE.CylinderGeometry(1.8, 1.8, 3, 6);
   const gruMat = new THREE.MeshStandardMaterial({
     color: 0xf4a261, emissive: 0xf4a261, emissiveIntensity: 0.4,
@@ -931,16 +1046,18 @@ function buildMemory() {
   gruLab.position.set(XS.gru, 9, 0);
   g.add(gruLab);
 
+  const memInMag = vecMag(S.memory.memory_in);
+  const memOutMag = vecMag(S.memory.memory_out);
   registerPickable(gru, {
     title: "memory_gru (GRUCell)",
     badge: "share",
+    kv: { "‖memory_in‖": memInMag.toFixed(2), "‖memory_out‖": memOutMag.toFixed(2) },
     body: `<p>The only true recurrence in the network. memory_out = GRU(context_token_after_attn, memory_in). Stored per-player and read back on the next decision step — the curved arc going back to the left is exactly that feedback.</p>`,
   });
 
   // Feedback arc: from gru position back to the memory chip at input
   const start = new THREE.Vector3(XS.gru - 1.5, 6, 0);
-  const end = new THREE.Vector3(XS.input + 2, -8.5, 0);
-  const mid1 = new THREE.Vector3((start.x + end.x) / 2, 24, 0);
+  const end = new THREE.Vector3(XS.input + 2, inputInfo.chipY - 2.2, 0);
   const curve = new THREE.CubicBezierCurve3(
     start,
     new THREE.Vector3(start.x - 5, 22, 0),
@@ -953,7 +1070,6 @@ function buildMemory() {
   const arc = new THREE.Line(geom, mat);
   g.add(arc);
 
-  // Arrow head at the end
   const arrowGeom = new THREE.ConeGeometry(0.4, 1.0, 12);
   const arrowMat = new THREE.MeshStandardMaterial({
     color: 0xf4a261, emissive: 0xf4a261, emissiveIntensity: 0.6,
@@ -968,16 +1084,14 @@ function buildMemory() {
   g.add(arcLab);
 
   // context_out → GRU
-  const ctxToGru = makeGlowLine(
+  g.add(makeGlowLine(
     new THREE.Vector3(XS.attnRing, attnInfo.ringPos[0].y, attnInfo.ringPos[0].z),
     new THREE.Vector3(XS.gru, 6, 0),
     C.share, 0.6,
-  );
-  g.add(ctxToGru);
+  ));
 
   return { gru, curve };
 }
-const memInfo = buildMemory();
 
 // ============================================================
 // STAGE 7: FEATURES (256-d bar)
@@ -988,8 +1102,7 @@ function buildFeatures() {
   lab.position.set(XS.features, -9.7, 0);
   g.add(lab);
 
-  const features = DATA.features;
-  // Render as a vertical column of 16x16 small cubes to look like a "memory bank"
+  const features = S.features;
   const COLS = 16, ROWS = 16;
   const cellW = 0.45, cellH = 0.45, gap = 0.06;
   const totalW = COLS * (cellW + gap);
@@ -1023,7 +1136,6 @@ function buildFeatures() {
   if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
   g.add(inst);
 
-  // proxy for click
   const proxy = new THREE.Mesh(
     new THREE.BoxGeometry(0.5, totalH + 0.5, totalW + 0.5),
     new THREE.MeshBasicMaterial({ visible: false }),
@@ -1037,13 +1149,11 @@ function buildFeatures() {
     body: `<p>The 256-d vector that summarizes the entire game state. Consumed by both the actor and critic adapters. After LayerNorm, the values are well-distributed — see the color spread.</p>`,
   });
 
-  // Lines from each pool → features bar
   for (const p of poolsInfo.poolObjs) {
     const start = new THREE.Vector3(XS.pools, p.y, 0);
     const end = new THREE.Vector3(XS.features - totalW / 2, 0, 0);
     g.add(makeGlowLine(start, end, p.pool.color, 0.3));
   }
-  // context_out → features (joined via feature_proj)
   g.add(makeGlowLine(
     new THREE.Vector3(XS.attnRing, attnInfo.ringPos[0].y, attnInfo.ringPos[0].z),
     new THREE.Vector3(XS.features - totalW / 2, 4, 0),
@@ -1052,11 +1162,21 @@ function buildFeatures() {
 
   return { proxy, totalW, totalH };
 }
-const featInfo = buildFeatures();
 
 // ============================================================
-// STAGE 8: ACTOR
+// STAGE 8: ACTOR heads
 // ============================================================
+// Live-vs-idle styling: the head that actually decides this scenario is shown
+// at full strength; the others stay visible but dimmed.
+function headStyle(isLive) {
+  return {
+    opacity: isLive ? 1.0 : 0.3,
+    emissiveBoost: isLive ? 1.0 : 0.25,
+    labelColor: isLive ? "#dffbe6" : "#5d6790",
+    suffix: isLive ? "" : " · idle",
+  };
+}
+
 function buildActor() {
   const g = group("actor");
   const lab = makeStageLabel("8 · ACTOR · policy heads", "#80ed99");
@@ -1064,6 +1184,7 @@ function buildActor() {
   g.add(lab);
 
   const ACTOR_BASE_Y = 12;
+  const live = liveHead();
 
   // adapter cube
   const adapterGeom = new THREE.BoxGeometry(1.6, 3.2, 1.6);
@@ -1083,24 +1204,15 @@ function buildActor() {
     body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Adds nonlinearity before the 4 policy heads.</p>`,
   });
 
-  // features bar → adapter
   g.add(makeGlowLine(
     new THREE.Vector3(XS.features, 0, 0),
     adapter.position,
     C.share, 0.5,
   ));
 
-  // ----- Heads -----
-  // (a) pick head — 2 small balls
-  const pickGroup = new THREE.Group();
-  const pickProbs = (function() {
-    const logits = DATA.actor.pick_logits;
-    const m = Math.max(...logits);
-    const ex = logits.map(v => Math.exp(v - m));
-    const s = ex.reduce((a,b)=>a+b,0);
-    return ex.map(v => v / s);
-  })();
-  // PICK / PASS positions
+  // ----- (a) pick head — 2 small balls -----
+  const pickStyle = headStyle(live === "pick");
+  const pickProbs = softmax(S.actor.pick_logits);
   const headX = XS.actor + 2;
   const pickPositions = [
     { name: "PICK", y: ACTOR_BASE_Y + 1.5, z: 13, prob: pickProbs[0] },
@@ -1112,40 +1224,52 @@ function buildActor() {
       new THREE.SphereGeometry(r, 22, 16),
       new THREE.MeshStandardMaterial({
         color: 0x80ed99,
-        emissive: 0x80ed99, emissiveIntensity: 0.3 + p.prob * 0.7,
+        emissive: 0x80ed99,
+        emissiveIntensity: (0.3 + p.prob * 0.7) * pickStyle.emissiveBoost,
         metalness: 0.4, roughness: 0.35,
+        transparent: pickStyle.opacity < 1, opacity: pickStyle.opacity,
       }),
     );
     ball.position.set(headX, p.y, p.z);
     g.add(ball);
-    const pl = makeLabel(`${p.name}: ${(p.prob*100).toFixed(2)}%`, "#dffbe6", 0.55);
+    const pl = makeLabel(
+      `${p.name}: ${(p.prob * 100).toFixed(1)}%${pickStyle.suffix}`,
+      pickStyle.labelColor, 0.55);
     pl.position.set(headX, p.y, p.z + r + 0.6);
     g.add(pl);
     registerPickable(ball, {
-      title: `${p.name} action`,
+      title: `pick_head · ${p.name}`,
       badge: "actor",
-      kv: { "logit": p.name === "PICK" ? DATA.actor.pick_logits[0].toFixed(3) : DATA.actor.pick_logits[1].toFixed(3), "prob": p.prob.toFixed(4) },
-      body: `<p>pick_head is a Linear(256→2). Logits get divided by <code>temperature_pick</code>, masked to legal actions, and softmaxed against the rest of the action space.</p>`,
+      kv: {
+        "logit": (p.name === "PICK" ? S.actor.pick_logits[0] : S.actor.pick_logits[1]).toFixed(3),
+        "prob": p.prob.toFixed(4),
+        "live here": live === "pick" ? "yes" : "no",
+      },
+      body: `<p>pick_head is a Linear(256→2). Logits get divided by <code>temperature_pick</code>, masked to legal actions, and softmaxed against the rest of the action space.${live === "pick" ? "" : " Not the deciding head for this scenario."}</p>`,
     });
-    g.add(makeGlowLine(adapter.position, ball.position, 0x80ed99, 0.5));
+    g.add(makeGlowLine(adapter.position, ball.position, 0x80ed99, live === "pick" ? 0.5 : 0.15));
   }
 
-  // (b) partner_basic + two-tower CALL — small ring of "call cards" with line intensities = score
-  // We are not in a partner-decision phase so these are illustrative. Show the 6 callable cards on a row.
-  const callableCodes = ["AC","AS","AH","10C","10S","10H"];
-  const callableIds = callableCodes.map(c => deckIds[c]);
-  const cardScores = DATA.actor.card_scores_all;
+  // ----- (b) two-tower CALL scorer -----
+  const callStyle = headStyle(live === "call");
+  const callable = S.sample.callable_cards.length
+    ? S.sample.callable_cards.map(c => c.code)
+    : ["AC", "AS", "AH", "10C", "10S", "10H"]; // illustrative when no call is legal
+  const callableIds = callable.map(c => deckIds[c]);
+  const cardScores = S.actor.card_scores_all;
 
-  const callRow = new THREE.Group();
-  callRow.position.set(XS.actor + 6, ACTOR_BASE_Y + 5, 6);
-  const callLab = makeLabel("two-tower CALL scorer", "#cdf5d8", 0.5);
+  const callLab = makeLabel(
+    `two-tower CALL scorer${callStyle.suffix}`, callStyle.labelColor, 0.5);
   callLab.position.set(XS.actor + 6, ACTOR_BASE_Y + 8, 6);
   g.add(callLab);
 
-  // q dot card_emb — visualize q as a small node then 6 lines to callable cards
   const qNode = new THREE.Mesh(
     new THREE.SphereGeometry(0.4, 16, 12),
-    new THREE.MeshStandardMaterial({ color: 0x80ed99, emissive: 0x80ed99, emissiveIntensity: 0.6 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x80ed99, emissive: 0x80ed99,
+      emissiveIntensity: 0.6 * callStyle.emissiveBoost,
+      transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
+    }),
   );
   qNode.position.set(XS.actor + 1, ACTOR_BASE_Y + 5, 6);
   g.add(qNode);
@@ -1154,11 +1278,11 @@ function buildActor() {
     badge: "actor",
     body: `<p>64-d query produced from the 256-d actor features. Dot-producted against the projection of every card embedding to score CALL actions.</p>`,
   });
+  g.add(makeGlowLine(adapter.position, qNode.position, 0x80ed99, live === "call" ? 0.5 : 0.15));
 
-  // Lines from q → each callable card (intensity = card score)
   const minCS = Math.min(...callableIds.map(cid => cardScores[cid]));
   const maxCS = Math.max(...callableIds.map(cid => cardScores[cid]));
-  for (let i = 0; i < callableCodes.length; i++) {
+  for (let i = 0; i < callable.length; i++) {
     const cid = callableIds[i];
     const s = cardScores[cid];
     const norm = (s - minCS) / Math.max(1e-6, maxCS - minCS);
@@ -1167,32 +1291,40 @@ function buildActor() {
     const ccolor = new THREE.Color().setHSL(0.33, 0.6, 0.3 + norm * 0.4);
     const cardMat = new THREE.MeshStandardMaterial({
       color: ccolor, emissive: ccolor,
-      emissiveIntensity: 0.2 + norm * 0.7, roughness: 0.4,
+      emissiveIntensity: (0.2 + norm * 0.7) * callStyle.emissiveBoost,
+      roughness: 0.4,
+      transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
     });
     const card = new THREE.Mesh(cardGeom, cardMat);
     card.position.set(x, ACTOR_BASE_Y + 5, 6);
     g.add(card);
-    const lab2 = makeLabel(callableCodes[i], "#dffbe6", 0.4);
+    const lab2 = makeLabel(callable[i], callStyle.labelColor, 0.4);
     lab2.position.set(x, ACTOR_BASE_Y + 6.5, 6);
     g.add(lab2);
-    const ll = makeGlowLine(qNode.position, card.position, 0x80ed99, 0.15 + norm * 0.55);
-    g.add(ll);
+    g.add(makeGlowLine(qNode.position, card.position, 0x80ed99,
+      (0.15 + norm * 0.55) * (live === "call" ? 1 : 0.35)));
     registerPickable(card, {
-      title: `CALL ${callableCodes[i]}`,
+      title: `CALL ${callable[i]}`,
       badge: "actor",
-      kv: { "score": s.toFixed(2), "rank": "" },
+      kv: { "score": s.toFixed(2), "live here": live === "call" ? "yes" : "no (illustrative)" },
       body: `<p>Score = q · tw_We(card_emb[${cid}])ᵀ. Reusing the shared card embedding means the actor inherits everything the embedding has learned elsewhere.</p>`,
     });
   }
 
-  // (c) pointer scorer over 8 hand slots
-  const pointerLab = makeLabel("pointer scorer · 8 hand slots", "#cdf5d8", 0.5);
+  // ----- (c) pointer scorer over 8 hand slots -----
+  const ptrStyle = headStyle(live === "pointer");
+  const pointerLab = makeLabel(
+    `pointer scorer · 8 hand slots${ptrStyle.suffix}`, ptrStyle.labelColor, 0.5);
   pointerLab.position.set(XS.actor + 6, ACTOR_BASE_Y - 3, 6);
   g.add(pointerLab);
 
   const pNode = new THREE.Mesh(
     new THREE.SphereGeometry(0.4, 16, 12),
-    new THREE.MeshStandardMaterial({ color: 0xb8f0a2, emissive: 0xb8f0a2, emissiveIntensity: 0.6 }),
+    new THREE.MeshStandardMaterial({
+      color: 0xb8f0a2, emissive: 0xb8f0a2,
+      emissiveIntensity: 0.6 * ptrStyle.emissiveBoost,
+      transparent: ptrStyle.opacity < 1, opacity: ptrStyle.opacity,
+    }),
   );
   pNode.position.set(XS.actor + 1, ACTOR_BASE_Y - 5, 6);
   g.add(pNode);
@@ -1201,10 +1333,12 @@ function buildActor() {
     badge: "actor",
     body: `<p>For each hand slot: score = v · tanh( pointer_Wg(feat) + pointer_Wt(token) ). Same scorer drives bury / under / play.</p>`,
   });
+  g.add(makeGlowLine(adapter.position, pNode.position, 0xb8f0a2, live === "pointer" ? 0.5 : 0.15));
 
-  const slotScores = DATA.actor.slot_scores;
-  const minSlot = Math.min(...slotScores);
-  const maxSlot = Math.max(...slotScores);
+  const slotScores = S.actor.slot_scores;
+  const realSlots = handCardIds.map((cid, i) => ({ cid, i })).filter(s => s.cid !== 0);
+  const minSlot = Math.min(...realSlots.map(s => slotScores[s.i]));
+  const maxSlot = Math.max(...realSlots.map(s => slotScores[s.i]));
   for (let i = 0; i < 8; i++) {
     const x = XS.actor + 4 + i * 1.1;
     const cid = handCardIds[i];
@@ -1215,19 +1349,21 @@ function buildActor() {
                          : new THREE.Color().setHSL(0.32, 0.7, 0.25 + norm * 0.45);
     const cardMat = new THREE.MeshStandardMaterial({
       color: ccolor, emissive: ccolor,
-      emissiveIntensity: isPad ? 0.05 : (0.15 + norm * 0.6),
-      transparent: isPad, opacity: isPad ? 0.35 : 1.0,
+      emissiveIntensity: (isPad ? 0.05 : (0.15 + norm * 0.6)) * ptrStyle.emissiveBoost,
+      transparent: isPad || ptrStyle.opacity < 1,
+      opacity: isPad ? 0.35 : ptrStyle.opacity,
       roughness: 0.45,
     });
     const card = new THREE.Mesh(cardGeom, cardMat);
     card.position.set(x, ACTOR_BASE_Y - 5, 6);
     g.add(card);
     const code = isPad ? "PAD" : (idToCode[cid] || `id${cid}`);
-    const lab2 = makeLabel(code, isPad ? "#5d6790" : "#dffbe6", 0.4);
+    const lab2 = makeLabel(code, isPad ? "#5d6790" : ptrStyle.labelColor, 0.4);
     lab2.position.set(x, ACTOR_BASE_Y - 3.5, 6);
     g.add(lab2);
     if (!isPad) {
-      g.add(makeGlowLine(pNode.position, card.position, 0xb8f0a2, 0.15 + norm * 0.55));
+      g.add(makeGlowLine(pNode.position, card.position, 0xb8f0a2,
+        (0.15 + norm * 0.55) * (live === "pointer" ? 1 : 0.35)));
     }
     registerPickable(card, {
       title: isPad ? `slot ${i} · PAD` : `slot ${i} · ${code}`,
@@ -1239,50 +1375,80 @@ function buildActor() {
     });
   }
 
-  // (d) Output bar: PICK vs PASS as final action distribution
-  const outLab = makeLabel("9 · π(a | s) · masked + softmax", "#ffd6d6", 0.7);
-  outLab.position.set(XS.output, 22, 6);
-  g.add(outLab);
-
-  // For our state only PICK and PASS are valid — display as two large bars
-  const pickProb = DATA.actor.full_probs[DATA.constants.PICK_index_0based];
-  const passProb = DATA.actor.full_probs[DATA.constants.PASS_index_0based];
-  const bars = [
-    { name: "PICK", prob: pickProb, color: 0x80ed99 },
-    { name: "PASS", prob: passProb, color: 0xff9ec7 },
-  ];
-  for (let i = 0; i < bars.length; i++) {
-    const b = bars[i];
-    const h = 0.5 + b.prob * 10;
-    const geom = new THREE.BoxGeometry(2.4, h, 2.4);
-    const mat = new THREE.MeshStandardMaterial({
-      color: b.color, emissive: b.color, emissiveIntensity: 0.4 + b.prob * 0.4,
-      metalness: 0.3, roughness: 0.4,
-    });
-    const m = new THREE.Mesh(geom, mat);
-    m.position.set(XS.output, 12 + h / 2, 6 + i * 3.5);
-    g.add(m);
-    const labOut = makeLabel(`${b.name}  ${(b.prob*100).toFixed(2)}%`, "#fff", 0.55);
-    labOut.position.set(XS.output, 12 + h + 0.6, 6 + i * 3.5);
-    g.add(labOut);
-    registerPickable(m, {
-      title: `π(${b.name})`,
-      badge: "output",
-      kv: { "prob": b.prob.toFixed(4) },
-      body: `<p>Final action probability after masking illegal actions and applying softmax. The trained network is <b>${pickProb > 0.5 ? "very confident this is a pick" : "leaning toward passing"}</b>.</p>`,
-    });
-  }
-
   return { adapter };
 }
-const actorInfo = buildActor();
 
 // ============================================================
-// STAGE 9: CRITIC
+// STAGE 9: OUTPUT · π(a | s) — generic top-K action bars
+// ============================================================
+function buildOutput() {
+  const g = group("output");
+  const lab = makeStageLabel("9 · OUTPUT · π(a | s)", "#ff6b6b");
+  lab.position.set(XS.output, -9.7, 0);
+  g.add(lab);
+
+  const probs = S.actor.full_probs;
+  const entries = S.actor.valid_action_indices
+    .map(idx => ({ idx, name: ACTIONS[idx], prob: probs[idx] }))
+    .sort((a, b) => b.prob - a.prob);
+  const shown = entries.slice(0, 8);
+  const hidden = entries.length - shown.length;
+
+  const barSpacing = 3.4;
+  const z0 = -((shown.length - 1) / 2) * barSpacing;
+  const barObjs = [];
+  for (let i = 0; i < shown.length; i++) {
+    const e = shown[i];
+    const chosen = e.name === S.sample.chosen_action;
+    const h = 0.5 + e.prob * 10;
+    const color = chosen ? 0x80ed99 : 0x8aa0e0;
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, h, 2.4),
+      new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 0.25 + e.prob * 0.5,
+        metalness: 0.3, roughness: 0.4,
+      }),
+    );
+    m.position.set(XS.output, h / 2, z0 + i * barSpacing);
+    g.add(m);
+    barObjs.push({ mesh: m, entry: e });
+    const labOut = makeLabel(
+      `${e.name}  ${(e.prob * 100).toFixed(1)}%${chosen ? " ✓" : ""}`,
+      chosen ? "#dffbe6" : "#cdd9ff", 0.55);
+    labOut.position.set(XS.output, h + 0.8, z0 + i * barSpacing);
+    g.add(labOut);
+    registerPickable(m, {
+      title: `π(${e.name})`,
+      badge: "output",
+      kv: {
+        "prob": e.prob.toFixed(4),
+        "logit": S.actor.full_logits[e.idx].toFixed(3),
+        "chosen": chosen ? "yes (argmax)" : "no",
+      },
+      body: `<p>Final action probability after masking illegal actions and applying softmax across all ${entries.length} legal actions of this decision.</p>`,
+    });
+  }
+  if (hidden > 0) {
+    const moreLab = makeLabel(`+ ${hidden} more legal actions`, "#8e9bd1", 0.45);
+    moreLab.position.set(XS.output, 0.6, z0 + shown.length * barSpacing);
+    g.add(moreLab);
+  }
+
+  // actor adapter → output bars
+  const adapterPos = new THREE.Vector3(XS.actor - 4, 12, 8);
+  for (const b of barObjs) {
+    g.add(makeGlowLine(adapterPos, b.mesh.position, C.output, 0.2));
+  }
+
+  return { barObjs, entries };
+}
+
+// ============================================================
+// STAGE 10: CRITIC
 // ============================================================
 function buildCritic() {
   const g = group("critic");
-  const lab = makeStageLabel("8 · CRITIC · value + aux", "#ff9ec7");
+  const lab = makeStageLabel("10 · CRITIC · value + aux", "#ff9ec7");
   lab.position.set(XS.critic, -9.7, -18);
   g.add(lab);
 
@@ -1311,17 +1477,16 @@ function buildCritic() {
     C.share, 0.5,
   ));
 
-  // ----- heads -----
   const heads = [
-    { name: "V(s)",   val: DATA.critic.value.toFixed(3), color: 0xff9ec7, badge: "critic",
+    { name: "V(s)",   val: S.critic.value.toFixed(3), color: 0xff9ec7, badge: "critic",
       body: `<p>State value used to compute advantages via GAE (γ=λ=0.95). PPO clipped value loss against returns.</p>` },
-    { name: "win",    val: DATA.critic.win_prob.toFixed(3), color: 0xffd166, badge: "aux",
+    { name: "win",    val: S.critic.win_prob.toFixed(3), color: 0xffd166, badge: "aux",
       body: `<p>P(this player wins). BCE loss · coefficient 0.05.</p>` },
-    { name: "return", val: DATA.critic.return_pred.toFixed(3), color: 0xffd166, badge: "aux",
+    { name: "return", val: S.critic.return_pred.toFixed(3), color: 0xffd166, badge: "aux",
       body: `<p>Expected final scalar return (scale ≈ ±12). Smooth-L1 · coefficient 0.1.</p>` },
-    { name: "secret", val: DATA.critic.secret_prob.toFixed(3), color: 0xffd166, badge: "aux",
+    { name: "secret", val: S.critic.secret_prob.toFixed(3), color: 0xffd166, badge: "aux",
       body: `<p>P(I am the secret partner). BCE · coefficient 0.1.</p>` },
-    { name: "points", val: DATA.critic.points_pred.map(v => v.toFixed(1)).join(" / "), color: 0xffd166, badge: "aux",
+    { name: "points", val: S.critic.points_pred.map(v => v.toFixed(1)).join(" / "), color: 0xffd166, badge: "aux",
       body: `<p>Per-seat final point totals (relative order). Smooth-L1 · coefficient 0.2.</p>` },
   ];
   for (let i = 0; i < heads.length; i++) {
@@ -1356,7 +1521,7 @@ function buildCritic() {
   trumpLab.position.set(XS.critic + 8, CY - 5, -8);
   g.add(trumpLab);
 
-  const seenProbs = DATA.critic.seen_trump_mask_probs;
+  const seenProbs = S.critic.seen_trump_mask_probs;
   for (let i = 0; i < 14; i++) {
     const p = seenProbs[i];
     const x = XS.critic + i * 1.1;
@@ -1372,7 +1537,7 @@ function buildCritic() {
     const lab2 = makeLabel(trumpCardCodes[i], "#ffe89c", 0.35);
     lab2.position.set(x, CY - 6.3, -8);
     g.add(lab2);
-    const lab3 = makeLabel(`${(p*100).toFixed(0)}%`, "#fff7e0", 0.3);
+    const lab3 = makeLabel(`${(p * 100).toFixed(0)}%`, "#fff7e0", 0.3);
     lab3.position.set(x, CY - 8.7, -8);
     g.add(lab3);
     registerPickable(card, {
@@ -1383,62 +1548,77 @@ function buildCritic() {
     });
   }
 
-  // unseen higher than hand
-  const unseenLab = makeLabel(`unseen trump higher than my hand: ${(DATA.critic.unseen_higher_prob*100).toFixed(0)}%`, "#ffe89c", 0.5);
+  const unseenLab = makeLabel(`unseen trump higher than my hand: ${(S.critic.unseen_higher_prob * 100).toFixed(0)}%`, "#ffe89c", 0.5);
   unseenLab.position.set(XS.critic + 8, CY - 10.5, -8);
   g.add(unseenLab);
 
   return { adapter };
 }
-const criticInfo = buildCritic();
 
 // ============================================================
-// Subtle background nebula spheres
+// Scene build / rebuild
 // ============================================================
-for (let i = 0; i < 30; i++) {
-  const s = new THREE.Mesh(
-    new THREE.SphereGeometry(0.15, 8, 6),
-    new THREE.MeshBasicMaterial({
-      color: i % 2 === 0 ? 0x7cc4ff : 0xb58bff, transparent: true, opacity: 0.4,
-    }),
-  );
-  s.position.set(
-    (Math.random() - 0.5) * 200,
-    (Math.random() - 0.3) * 60,
-    (Math.random() - 0.5) * 80,
-  );
-  scene.add(s);
+function buildScene() {
+  sceneRoot = new THREE.Group();
+  sceneRoot.name = "sceneRoot";
+  scene.add(sceneRoot);
+  inputInfo = buildInputCards();
+  embedInfo = buildEmbeddingTable();
+  tokensInfo = buildTokens();
+  attnInfo = buildAttentionRing();
+  poolsInfo = buildPools();
+  memInfo = buildMemory();
+  featInfo = buildFeatures();
+  actorInfo = buildActor();
+  outputInfo = buildOutput();
+  criticInfo = buildCritic();
+  styleChords();
+  styleConn();
 }
 
 // ============================================================
-// Stage definitions for tour
+// Stage definitions for tour (bodies re-evaluated per scenario)
 // ============================================================
+function seatRole() {
+  if (S.sample.is_picker) return "the picker";
+  if (S.sample.is_partner) return "the partner";
+  return "a defender";
+}
+function topActionsHtml(k = 4) {
+  return outputInfo.entries.slice(0, k)
+    .map(e => `<b>${e.name}</b> ${(e.prob * 100).toFixed(1)}%`)
+    .join(" · ");
+}
+
 const STAGES = [
   {
     title: "Sheepshead PPO — 3D forward pass",
     label: "intro",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: `<p>This is a live forward pass through checkpoint <code>pfsp_swish_checkpoint_30000000.pt</code> on a synthetic pick-decision state. Hand: <b>QC, JC, AD, AS, KH, 7C</b> — 3 trump including the Queen of Clubs. Press <b>Next ▶</b> or <b>▶ Play tour</b>.</p>`,
+    body: () => `<p>A live forward pass through the final PFSP-trained network (<code>${DATA.checkpoint}</code>) on a real hand it played against itself (seed ${DATA.seed}).</p>
+      <p><b>${S.label}:</b> ${S.description}</p>
+      <p>Use the <b>decision</b> buttons up top to switch scenarios. Drag to orbit · scroll to zoom · click anything for details · <b>▶ Play tour</b> to walk the architecture.</p>`,
   },
   {
     title: "1 · Observation",
     label: "input",
     badge: "input",
     cam: { pos: [XS.input + 24, 8, 22], target: [XS.input, 0, 0] },
-    body: `<p>The 6 cards in the hand (gold = trump), the 10 header scalars, and the 256-d prior memory hₜ₋₁ from this player's previous decision. The lines on the right show each card being looked up in the embedding table.</p>`,
+    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds <b>${S.sample.hand_cards.join(", ")}</b> (gold = trump)${S.sample.trick_card_codes.some(c => c !== "PAD") ? ", with cards already on the table this trick" : ""}. Plus the 10 header scalars and the 256-d prior memory hₜ₋₁.</p>
+      <p>The lines on the right show each card being looked up in the embedding table.</p>`,
   },
   {
     title: "2 · Card embedding lookup",
     label: "embed",
     badge: "enc",
     cam: { pos: [XS.embed + 14, 4, 16], target: [XS.embed, 0, 0] },
-    body: `<p>The shared 34×16 table. The lit-up rows are the cards in our hand. With <code>use_informed_init=True</code>, the first 10 dims start as a hand-designed prior (suit / rank / points / UNDER flag); dims 10–15 are free for the network to use.</p>
+    body: () => `<p>The shared 34×16 table. The lit-up rows are the cards this scenario touches. With <code>use_informed_init=True</code>, the first 10 dims start as a hand-designed prior (suit / rank / points / UNDER flag); dims 10–15 are free for the network to use.</p>
       <p>This same table is read by:</p>
       <ul>
         <li>the encoder (here)</li>
         <li>the actor's two-tower CALL scorer (stage 8)</li>
-        <li>the critic's seen-trump mask (stage 8)</li>
+        <li>the critic's seen-trump mask (stage 10)</li>
       </ul>`,
   },
   {
@@ -1446,90 +1626,96 @@ const STAGES = [
     label: "tokens",
     badge: "enc",
     cam: { pos: [XS.tokensPre + 18, 4, 18], target: [XS.tokensPre, 0, 0] },
-    body: `<p>19 entity tokens are assembled, each 64-d:</p>
+    body: () => `<p>19 entity tokens are assembled, each 64-d:</p>
       <ul>
         <li><b>1 context</b> = header scalars + called-card embedding → MLP</li>
         <li><b>1 memory</b> = prior 256-d projected to 64-d</li>
         <li><b>8 hand</b> = card embedding ⊕ actor role → MLP</li>
         <li><b>5 trick</b>, <b>2 blind</b>, <b>2 bury</b>, each via their MLP</li>
       </ul>
-      <p>Two slots are PAD here (the hand only has 6 cards) — those tokens are dim and will be masked in attention.</p>`,
+      <p>Dim slots are PAD — masked out of attention.</p>`,
   },
   {
     title: "4 · Cross-card attention",
     label: "attn",
     badge: "enc",
     cam: { pos: [XS.attnRing + 14, 14, 28], target: [XS.attnRing, 4, 0] },
-    body: `<p>All 19 tokens are placed on a ring. Each curved chord shows attention strength between two tokens (averaged across the 4 heads in the last transformer layer). Brighter = stronger attention.</p>
-      <p>This is where cards reason about each other — the QC in our hand can attend to the called card, the trick, the bury pile, and the context token.</p>`,
+    body: () => `<p>All 19 tokens are placed on a ring. Each curved chord shows attention strength between two tokens (averaged across the 4 heads in the last transformer layer). Brighter = stronger attention.</p>
+      <p>This is where cards reason about each other — hand cards attend to the trick, the called card, and the context/memory tokens.</p>`,
   },
   {
     title: "5 · Attention pools",
     label: "pools",
     badge: "enc",
     cam: { pos: [XS.pools + 14, 4, 18], target: [XS.pools, 4, 0] },
-    body: `<p>4 multi-query attention pools compress each bag's post-attention tokens into a single vector: hand → 64, trick → 64, blind → 32, bury → 32.</p>`,
+    body: () => `<p>4 multi-query attention pools compress each bag's post-attention tokens into a single vector: hand → 64, trick → 64, blind → 32, bury → 32.</p>`,
   },
   {
     title: "6 · GRU memory · recurrence",
     label: "gru",
     badge: "share",
-    cam: { pos: [XS.gru + 6, 22, 28], target: [(XS.input + XS.gru)/2, 10, 0] },
-    body: `<p>The post-attention context token + the prior memory go into a GRU cell, producing the new 256-d memory state. That state is stored per player and read back on the next decision step — the orange arc going back to the left is exactly this feedback. It's the only true recurrence in the whole network.</p>`,
+    cam: { pos: [XS.gru + 6, 22, 28], target: [(XS.input + XS.gru) / 2, 10, 0] },
+    body: () => `<p>The post-attention context token + the prior memory go into a GRU cell, producing the new 256-d memory state (‖in‖ ${vecMag(S.memory.memory_in).toFixed(1)} → ‖out‖ ${vecMag(S.memory.memory_out).toFixed(1)}). That state is stored per player and read back on the next decision step — the orange arc going back to the left is exactly this feedback. It's the only true recurrence in the whole network.</p>`,
   },
   {
     title: "7 · Shared features (256)",
     label: "features",
     badge: "share",
     cam: { pos: [XS.features + 12, 4, 18], target: [XS.features, 0, 0] },
-    body: `<p>Concat of all 4 pool outputs + the post-attention context, then Linear(256→256) + LayerNorm. Bright cells = positive feature values, dim cells = negative. This 256-d block is what both actor and critic see.</p>`,
+    body: () => `<p>Concat of all 4 pool outputs + the post-attention context, then Linear(256→256) + LayerNorm. Bright cells = positive feature values, dim cells = negative. This 256-d block is what both actor and critic see.</p>`,
   },
   {
-    title: "8a · Actor heads",
+    title: "8 · Actor heads",
     label: "actor",
     badge: "actor",
     cam: { pos: [XS.actor + 14, 18, 28], target: [XS.actor + 4, 12, 6] },
-    body: `<p>The features flow through the actor adapter, then split into 4 heads:</p>
+    body: () => {
+      const live = liveHead();
+      const liveName = { pick: "pick_head", call: "two-tower CALL scorer", pointer: "pointer scorer" }[live];
+      return `<p>The features flow through the actor adapter, then split into 4 heads:</p>
       <ul>
-        <li><b>pick_head</b> · PICK vs PASS</li>
-        <li><b>partner_basic_head</b> · ALONE / JD PARTNER</li>
-        <li><b>two-tower CALL scorer</b> · query · card-embedding key per callable card (lines)</li>
-        <li><b>pointer scorer</b> · scalar per hand slot (for bury / under / play)</li>
+        <li><b>pick_head</b> · PICK vs PASS${live === "pick" ? " ← <b>live</b>" : ""}</li>
+        <li><b>partner_basic_head</b> · ALONE / JD PARTNER (JD mode only)</li>
+        <li><b>two-tower CALL scorer</b> · query · card-embedding key per callable card${live === "call" ? " ← <b>live</b>" : ""}</li>
+        <li><b>pointer scorer</b> · scalar per hand slot (bury / under / play)${live === "pointer" ? " ← <b>live</b>" : ""}</li>
       </ul>
-      <p>The two-tower &amp; pointer scorers reuse the card embeddings, so any signal the encoder learns about cards immediately helps the policy too.</p>`,
+      <p>For this decision the <b>${liveName}</b> is the head that matters — the others are dimmed. The two-tower &amp; pointer scorers reuse the card embeddings, so any signal the encoder learns about cards immediately helps the policy too.</p>`;
+    },
   },
   {
-    title: "9 · π(a | s)",
+    title: "9 · Output · π(a | s)",
     label: "output",
     badge: "output",
-    cam: { pos: [XS.output + 12, 18, 18], target: [XS.output, 14, 6] },
-    body: `<p>Only <code>PICK</code> and <code>PASS</code> are valid here, so they take all the probability mass. The trained network's answer:</p>
-      <p style="font-size:14px"><b>P(PICK) = ${(DATA.actor.full_probs[DATA.constants.PICK_index_0based]*100).toFixed(2)}%</b><br/>
-      <b>P(PASS) = ${(DATA.actor.full_probs[DATA.constants.PASS_index_0based]*100).toFixed(2)}%</b></p>
-      <p>With QC + 2 other trump including JC and AD, picking is overwhelmingly favored — and the network agrees.</p>`,
+    cam: { pos: [XS.output + 14, 12, 24], target: [XS.output, 4, 0] },
+    body: () => `<p>${outputInfo.entries.length} legal action${outputInfo.entries.length > 1 ? "s" : ""} after masking + softmax. The network's answer:</p>
+      <p style="font-size:14px">${topActionsHtml()}</p>
+      <p>The agent played <b>${S.sample.chosen_action}</b> (✓ bar).</p>`,
   },
   {
-    title: "8b · Critic value + aux heads",
+    title: "10 · Critic value + aux heads",
     label: "critic",
     badge: "critic",
     cam: { pos: [XS.critic + 18, 4, -28], target: [XS.critic + 4, -8, -6] },
-    body: `<p>The critic adapter feeds the value head and 4 auxiliary heads. The critic's value here is <b>${DATA.critic.value.toFixed(3)}</b>; win probability <b>${(DATA.critic.win_prob*100).toFixed(1)}%</b>; expected return <b>${DATA.critic.return_pred.toFixed(2)}</b>.</p>
+    body: () => `<p>The critic adapter feeds the value head and 4 auxiliary heads. The critic's value here is <b>${S.critic.value.toFixed(3)}</b>; win probability <b>${(S.critic.win_prob * 100).toFixed(1)}%</b>; expected return <b>${S.critic.return_pred.toFixed(2)}</b>.</p>
       <p>The auxiliary losses don't change the policy directly, but their gradients flow back through the shared critic adapter and all the way into the encoder, giving the network dense supervision beyond reward alone.</p>`,
   },
   {
-    title: "Trump tracker",
+    title: "11 · Trump tracker",
     label: "trumpaux",
     badge: "aux",
     cam: { pos: [XS.critic + 12, -2, -22], target: [XS.critic + 8, -7, -8] },
-    body: `<p>The seen-trump mask uses a small query–key head built on top of the card embeddings: for each of the 14 trumps, the network predicts whether it has been seen or is otherwise known.</p>
-      <p>Since the game has barely started here, all 14 trumps are still unseen (low % everywhere). The "unseen higher than my hand" head reports <b>${(DATA.critic.unseen_higher_prob*100).toFixed(0)}%</b> — yes, there are bigger trumps still out there.</p>`,
+    body: () => {
+      const seen = S.critic.seen_trump_mask_probs.filter(p => p > 0.5).length;
+      return `<p>The seen-trump mask uses a small query–key head built on top of the card embeddings: for each of the 14 trumps, the network predicts whether it has been seen or is otherwise known.</p>
+      <p>Here it marks <b>${seen} / 14</b> trumps as seen/known${seen === 0 ? " — the hand has barely started" : ""}. The "unseen trump higher than my hand" head reports <b>${(S.critic.unseen_higher_prob * 100).toFixed(0)}%</b>.</p>`;
+    },
   },
   {
     title: "Full architecture",
     label: "overview",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: `<p>Zoomed out: observation → embedding table → tokens → transformer → pools → GRU + features → actor + critic. Drag the scene to explore. Click any object for details. Tour again with <b>▶ Play</b>.</p>`,
+    body: () => `<p>Zoomed out: observation → embedding table → tokens → transformer → pools → GRU + features → actor + critic → π(a|s). Drag the scene to explore. Click any object for details. Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
   },
 ];
 
@@ -1575,22 +1761,24 @@ const els = {
   sCounter: document.getElementById("s-counter"),
   sBar: document.getElementById("s-bar"),
 };
-function showStage(i) {
+function showStage(i, moveCamera = true) {
   curStage = clamp(i, 0, STAGES.length - 1);
   const s = STAGES[curStage];
-  els.stage.textContent = `${curStage + 1} / ${STAGES.length} · ${s.label}`;
+  els.stage.textContent = `${curStage + 1} / ${STAGES.length} · ${s.label} · ${S.label.toLowerCase()}`;
   els.title.innerHTML = `<span class="badge b-${s.badge}">${s.badge}</span> ${s.title}`;
-  els.body.innerHTML = s.body;
+  els.body.innerHTML = s.body();
   els.meta.textContent = "";
   els.sLabel.textContent = s.title;
   els.sCounter.textContent = `${curStage + 1} / ${STAGES.length}`;
   els.sBar.style.width = `${((curStage + 1) / STAGES.length) * 100}%`;
   navItems.forEach((b, idx) => b.classList.toggle("active", idx === curStage));
   if (navItems[curStage]) navItems[curStage].scrollIntoView({ block: "nearest" });
-  // Pull the camera back along its view direction so more of each stage fits.
-  const tgt = new THREE.Vector3(...s.cam.target);
-  const pos = new THREE.Vector3(...s.cam.pos).sub(tgt).multiplyScalar(ZOOM_OUT).add(tgt);
-  tweenTo([pos.x, pos.y, pos.z], s.cam.target);
+  if (moveCamera) {
+    // Pull the camera back along its view direction so more of each stage fits.
+    const tgt = new THREE.Vector3(...s.cam.target);
+    const pos = new THREE.Vector3(...s.cam.pos).sub(tgt).multiplyScalar(ZOOM_OUT).add(tgt);
+    tweenTo([pos.x, pos.y, pos.z], s.cam.target);
+  }
 }
 
 // Clickable stage navigator — jump straight to any stage and read its description.
@@ -1605,7 +1793,28 @@ const navItems = STAGES.map((s, i) => {
   return b;
 });
 
-showStage(0);
+// ============================================================
+// Scenario selector
+// ============================================================
+const scenBar = document.getElementById("scenario-bar");
+scenBar.innerHTML = '<span class="scen-head">Decision</span>';
+const scenButtons = DATA.scenarios.map((sc, i) => {
+  const b = document.createElement("button");
+  b.textContent = sc.label;
+  b.addEventListener("click", () => switchScenario(i));
+  scenBar.appendChild(b);
+  return b;
+});
+function switchScenario(i) {
+  if (i === scenIdx) return;
+  stopTour();
+  setScenarioData(i);
+  scenButtons.forEach((b, bi) => b.classList.toggle("active", bi === i));
+  disposeScene();
+  buildScene();
+  // Refresh the current stage's text (and reframe its camera) for the new data.
+  showStage(curStage);
+}
 
 // ============================================================
 // Tour playback
@@ -1690,7 +1899,7 @@ renderer.domElement.addEventListener("click", (e) => {
   els.title.innerHTML = `<span class="badge b-${info.badge}">${info.badge}</span> ${info.title}`;
   let kvHtml = "";
   if (info.kv) {
-    kvHtml = `<div class="kv">${Object.entries(info.kv).map(([k,v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join("")}</div>`;
+    kvHtml = `<div class="kv">${Object.entries(info.kv).map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join("")}</div>`;
   }
   els.body.innerHTML = kvHtml + (info.body || "");
 });
@@ -1719,6 +1928,13 @@ function animate(now) {
   }
   renderer.render(scene, camera);
 }
+
+// ============================================================
+// Boot
+// ============================================================
+buildScene();
+scenButtons[0].classList.add("active");
+showStage(0);
 requestAnimationFrame(animate);
 </script>
 
