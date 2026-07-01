@@ -149,6 +149,17 @@ root is a placeholder stub, so this is a build-from-scratch decision.)
 
 ## 6. Work plan (one at a time, before any new run)
 
+**Status 2026-07-01:** step 1 running (`runs/rigorous_baseline_202607/`);
+step 2 done (76599a6); step 3 done (acffc1e); step 4 done (d88b7bb); step 5
+done (e67306c); step 6 agent done (1facce1, exploit probe pending baseline);
+step 7 pending. Bonus: the scripted agent's self-play smoke exposed a
+leaster tie-break bug — `get_leaster_winner` re-rolled the tie on every
+call, so tied leasters scored two +4s / none and broke zero-sum across
+every score-based tool — fixed + regression-tested in f67a827.
+Scripted-agent placement (150 paired deals): beats selfplay-100k
++0.63±0.24; the 13.65M league main clears it by only +0.34±0.21 — it is
+mid-ladder, not a floor.
+
 1. **Diagnose before changing anything** (cheap, gating): run
    `analysis/rigorous_eval.py` (committed f4ce6f7) with heroes at
    ~1M / 7M / 13.65M vs PANEL-A (below). Flat curve ⇒ F1 is confirmed as the
