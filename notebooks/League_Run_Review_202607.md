@@ -157,8 +157,18 @@ Verdict: bidding oscillation = heat not sickness; endpoint ≈ panel average
 (clearly above selfplay seed, not yet clearly above the 30M lineage's mid
 rungs). Since exploiter pressure was inert for gens 1–11 (F2), this curve is
 effectively the PFSP-only control trajectory the fixed league must beat.
-Matched-episode comparison (pfsp 5M/15M as heroes, same deals) run separately
-in reference_lineage_*.csv.
+**Matched-episode comparison (reference_lineage_*.csv, same seed-42 deals +
+field):** the repro trajectory is BEHIND the original pfsp lineage at matched
+training. Reference pfsp-15M scores CA +0.120 / JD +0.111 vs the league
+13.65M's CA −0.120 / JD +0.038 (gap ≈ 0.24 CA / 0.07 JD); reference pfsp-5M
+(CA +0.033 / JD +0.066) already matches-or-beats the league endpoint. Two
+non-exclusive readings: (a) the original run's shaped per-trick reward buys
+early learning speed that terminal-only gives up (accepted trade for
+unbiased signals); (b) the repro's slow start (play-head collapse gens 0–2,
+inert exploiters, failed-exploiter era) cost real ground. Consequence for
+step 7: success criteria must compare the new run against BOTH trajectories
+at matched episodes, and reaching 30M-reference strength by ~14M episodes is
+not the realistic bar — beating the repro control curve is.
 
 **Step-6b RESULT (2026-07-01, analysis/trump_lead_probe.py, frozen seed
 20260702, 2000 deals × 5 seats, scripted field):** the diagnosed trump-lead
