@@ -12,6 +12,7 @@ OUT_PATH = HERE / "ppo_architecture_3d.html"
 VENDOR = HERE / "vendor"
 THREE_PATH = VENDOR / "three.module.min.js"
 ORBIT_PATH = VENDOR / "OrbitControls.js"
+ADDONS_PATH = VENDOR / "addons.bundle.js"  # esbuild bundle, see vendor/README.md
 
 
 def js_string(s: str) -> str:
@@ -28,6 +29,7 @@ def main():
         template
         .replace("__THREE_SRC_JSON__", js_string(THREE_PATH.read_text()))
         .replace("__ORBIT_SRC_JSON__", js_string(ORBIT_PATH.read_text()))
+        .replace("__ADDONS_SRC_JSON__", js_string(ADDONS_PATH.read_text()))
         .replace("__DATA_JSON__", embedded)
     )
     OUT_PATH.write_text(out)

@@ -227,12 +227,19 @@
 // single-file HTML works with no network access.
 const THREE_SRC = __THREE_SRC_JSON__;
 const ORBIT_SRC = __ORBIT_SRC_JSON__;
+const ADDONS_SRC = __ADDONS_SRC_JSON__;
 const threeUrl = URL.createObjectURL(new Blob([THREE_SRC], { type: "text/javascript" }));
 const THREE = await import(threeUrl);
-const { OrbitControls } = await import(URL.createObjectURL(new Blob(
-  [ORBIT_SRC.replace(/from\s+['"]three['"]/g, () => `from "${threeUrl}"`)],
+const importAddon = (src) => import(URL.createObjectURL(new Blob(
+  [src.replace(/from\s*['"]three['"]/g, () => `from "${threeUrl}"`)],
   { type: "text/javascript" },
 )));
+const { OrbitControls } = await importAddon(ORBIT_SRC);
+const {
+  EffectComposer, RenderPass, UnrealBloomPass, OutputPass,
+  Line2, LineMaterial, LineGeometry,
+  RoundedBoxGeometry, RoomEnvironment,
+} = await importAddon(ADDONS_SRC);
 
 const DATA = __DATA_JSON__;
 
@@ -258,7 +265,21 @@ const C = {
 // Scene setup
 // ============================================================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(C.bgBot);
+// Vertical gradient backdrop (bgTop → bgBot); fog still blends to bgBot.
+{
+  const bgCanvas = document.createElement("canvas");
+  bgCanvas.width = 2; bgCanvas.height = 512;
+  const bctx = bgCanvas.getContext("2d");
+  const grad = bctx.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, "#0d1330");
+  grad.addColorStop(0.55, "#070b1c");
+  grad.addColorStop(1, "#05070f");
+  bctx.fillStyle = grad;
+  bctx.fillRect(0, 0, 2, 512);
+  const bgTex = new THREE.CanvasTexture(bgCanvas);
+  bgTex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = bgTex;
+}
 scene.fog = new THREE.Fog(C.bgBot, 220, 900);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1200);
@@ -268,7 +289,29 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
 document.body.appendChild(renderer.domElement);
+
+// Soft image-based lighting so metallic surfaces pick up believable
+// reflections; intensity is dialed down per material after each build.
+{
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+}
+
+// Post-processing: bloom makes the emissive "glow" the legend promises real.
+const composer = new EffectComposer(renderer);
+composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.5,   // strength
+  0.55,  // radius
+  0.6,   // luminance threshold
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -284,9 +327,11 @@ const rim = new THREE.PointLight(0xb58bff, 0.6, 200);
 rim.position.set(-30, 20, -30);
 scene.add(rim);
 
-// Floor grid for spatial reference
-const grid = new THREE.GridHelper(220, 44, 0x1a2350, 0x121833);
+// Floor grid for spatial reference — translucent so it recedes
+const grid = new THREE.GridHelper(220, 44, 0x27336b, 0x151c3d);
 grid.position.y = -10;
+grid.material.transparent = true;
+grid.material.opacity = 0.45;
 scene.add(grid);
 
 // Subtle background nebula spheres (static; survives scenario rebuilds)
@@ -492,13 +537,24 @@ function registerConn(obj, baseOpacity) {
   return obj;
 }
 
-function makeGlowLine(p0, p1, color, opacity = 0.4) {
-  const geom = new THREE.BufferGeometry().setFromPoints([p0, p1]);
-  const mat = new THREE.LineBasicMaterial({
-    color, transparent: true, opacity,
+// Fat lines (Line2): WebGL ignores LineBasicMaterial.linewidth, so classic
+// lines render as flickery 1px hairlines. These rasterize at a real width.
+function makeFatLine(points, color, opacity, linewidth = 1.7) {
+  const positions = [];
+  for (const p of points) positions.push(p.x, p.y, p.z);
+  const geom = new LineGeometry();
+  geom.setPositions(positions);
+  const mat = new LineMaterial({
+    color, transparent: true, opacity, linewidth,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
-  return registerConn(new THREE.Line(geom, mat), opacity);
+  mat.resolution.set(window.innerWidth, window.innerHeight);
+  const line = new Line2(geom, mat);
+  line.computeLineDistances();
+  return line;
+}
+function makeGlowLine(p0, p1, color, opacity = 0.4) {
+  return registerConn(makeFatLine([p0, p1], color, opacity), opacity);
 }
 
 function disposeScene() {
@@ -573,7 +629,7 @@ function buildInputCards() {
   const cardObjs = [];
   for (let i = 0; i < n; i++) {
     const code = handCardCodes[i];
-    const cardGeom = new THREE.BoxGeometry(3.6, 5, 0.3);
+    const cardGeom = new RoundedBoxGeometry(3.6, 5, 0.3, 3, 0.18);
     const isTrump = trumpCardCodes.includes(code);
     const color = isTrump ? 0xd4af37 : 0x8aa0e0;
     const mat = new THREE.MeshStandardMaterial({
@@ -616,7 +672,7 @@ function buildInputCards() {
       const isTrump = trumpCardCodes.includes(code);
       const color = isTrump ? 0xd4af37 : 0x7286c9;
       const card = new THREE.Mesh(
-        new THREE.BoxGeometry(2.6, 3.6, 0.24),
+        new RoundedBoxGeometry(2.6, 3.6, 0.24, 3, 0.14),
         new THREE.MeshStandardMaterial({
           color, emissive: color, emissiveIntensity: 0.12,
           metalness: 0.4, roughness: 0.4,
@@ -639,7 +695,7 @@ function buildInputCards() {
 
   // header chip + memory chip
   const chipY = topY - n * spacing - 0.6;
-  const headerGeom = new THREE.BoxGeometry(3.6, 1.4, 0.3);
+  const headerGeom = new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14);
   const headerMat = new THREE.MeshStandardMaterial({
     color: 0x9d7bff, emissive: 0x9d7bff, emissiveIntensity: 0.2, roughness: 0.4
   });
@@ -657,7 +713,7 @@ function buildInputCards() {
   });
 
   const memMag = vecMag(S.memory.memory_in);
-  const memGeom = new THREE.BoxGeometry(3.6, 1.4, 0.3);
+  const memGeom = new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14);
   const memMat = new THREE.MeshStandardMaterial({
     color: 0xf4a261, emissive: 0xf4a261,
     emissiveIntensity: 0.15 + clamp(memMag / 10, 0, 1) * 0.5, roughness: 0.4
@@ -1098,13 +1154,7 @@ function buildMemory() {
     new THREE.Vector3(end.x + 5, 22, 0),
     end,
   );
-  const points = curve.getPoints(80);
-  const geom = new THREE.BufferGeometry().setFromPoints(points);
-  const mat = new THREE.LineBasicMaterial({
-    color: 0xf4a261, transparent: true, opacity: 0.55,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  const arc = new THREE.Line(geom, mat);
+  const arc = registerConn(makeFatLine(curve.getPoints(80), 0xf4a261, 0.55, 2.2), 0.55);
   g.add(arc);
 
   const arrowGeom = new THREE.ConeGeometry(0.4, 1.0, 12);
@@ -1326,7 +1376,7 @@ function buildActor() {
     const s = cardScores[cid];
     const norm = (s - minCS) / Math.max(1e-6, maxCS - minCS);
     const x = XS.actor + 4 + i * 1.4;
-    const cardGeom = new THREE.BoxGeometry(1.0, 1.5, 0.18);
+    const cardGeom = new RoundedBoxGeometry(1.0, 1.5, 0.18, 2, 0.08);
     const ccolor = new THREE.Color().setHSL(0.33, 0.6, 0.3 + norm * 0.4);
     const cardMat = new THREE.MeshStandardMaterial({
       color: ccolor, emissive: ccolor,
@@ -1383,7 +1433,7 @@ function buildActor() {
     const cid = handCardIds[i];
     const isPad = cid === 0;
     const norm = isPad ? 0 : (slotScores[i] - minSlot) / Math.max(1e-6, maxSlot - minSlot);
-    const cardGeom = new THREE.BoxGeometry(0.9, 1.3, 0.16);
+    const cardGeom = new RoundedBoxGeometry(0.9, 1.3, 0.16, 2, 0.07);
     const ccolor = isPad ? new THREE.Color(0x223060)
                          : new THREE.Color().setHSL(0.32, 0.7, 0.25 + norm * 0.45);
     const cardMat = new THREE.MeshStandardMaterial({
@@ -1442,7 +1492,7 @@ function buildOutput() {
     const h = 0.5 + e.prob * 10;
     const color = chosen ? 0x80ed99 : 0x8aa0e0;
     const m = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, h, 2.4),
+      new RoundedBoxGeometry(2.4, h, 2.4, 2, 0.12),
       new THREE.MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.25 + e.prob * 0.5,
         metalness: 0.3, roughness: 0.4,
@@ -1567,7 +1617,7 @@ function buildCritic() {
     const p = seenProbs[i];
     const x = XS.critic + i * 1.1;
     const card = new THREE.Mesh(
-      new THREE.BoxGeometry(0.9, 1.3, 0.18),
+      new RoundedBoxGeometry(0.9, 1.3, 0.18, 2, 0.07),
       new THREE.MeshStandardMaterial({
         color: 0xffd166, emissive: 0xffd166, emissiveIntensity: 0.1 + p * 0.7,
         roughness: 0.4,
@@ -1613,6 +1663,12 @@ function buildScene() {
   actorInfo = buildActor();
   outputInfo = buildOutput();
   criticInfo = buildCritic();
+  // Reflections read best as an accent, not a mirror finish.
+  sceneRoot.traverse((o) => {
+    if (o.material && o.material.isMeshStandardMaterial) {
+      o.material.envMapIntensity = 0.45;
+    }
+  });
   styleChords();
   styleConn();
   applyStageDim();
@@ -2007,6 +2063,12 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  for (const c of connLines) {
+    if (c.obj.material.isLineMaterial) {
+      c.obj.material.resolution.set(window.innerWidth, window.innerHeight);
+    }
+  }
 });
 
 // Pulse animation: subtle scale breathing on the "active" chord lines, etc.
@@ -2025,7 +2087,7 @@ function animate(now) {
       Math.min(1, c.baseOpacity * (0.7 + breath * 0.4)) * attnDimFactor;
   }
   if (frameCount++ % 5 === 0) updateLabelFade();
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 // ============================================================
