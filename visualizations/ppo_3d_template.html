@@ -186,6 +186,7 @@
     </label>
     <label><input type="checkbox" id="chk-rotate" /> auto-rotate</label>
     <label><input type="checkbox" id="chk-emphasis" /> emphasize connections</label>
+    <label><input type="checkbox" id="chk-flow" checked /> flow</label>
   </div>
   <div class="panel" id="scenario-bar"></div>
 </div>
@@ -554,7 +555,12 @@ function makeFatLine(points, color, opacity, linewidth = 1.7) {
   return line;
 }
 function makeGlowLine(p0, p1, color, opacity = 0.4) {
-  return registerConn(makeFatLine([p0, p1], color, opacity), opacity);
+  const line = registerConn(makeFatLine([p0, p1], color, opacity), opacity);
+  // Flow particles ride this edge (see buildFlowSystem).
+  line.userData.flowCurve = new THREE.LineCurve3(p0.clone(), p1.clone());
+  line.userData.flowColor = color;
+  line.userData.flowIntensity = opacity;
+  return line;
 }
 
 function disposeScene() {
@@ -575,6 +581,7 @@ function disposeScene() {
   PICKABLES = [];
   connLines = [];
   labelRegistry.length = 0;
+  flowState = null;
   hovered = null;
 }
 
@@ -644,6 +651,7 @@ function buildInputCards() {
     // so the cards read as cards instead of edge-on slabs.
     card.position.set(XS.input, topY - i * spacing, i * 0.32);
     card.rotation.y = 0.45;
+    card.userData.baseY = card.position.y; // idle bob anchors here
     g.add(card);
     cardObjs.push(card);
 
@@ -1155,6 +1163,12 @@ function buildMemory() {
     end,
   );
   const arc = registerConn(makeFatLine(curve.getPoints(80), 0xf4a261, 0.55, 2.2), 0.55);
+  // The recurrence loop gets a denser particle stream — the one piece of
+  // state that literally flows back in time deserves a comet.
+  arc.userData.flowCurve = curve;
+  arc.userData.flowColor = 0xffc98a;
+  arc.userData.flowIntensity = 0.55;
+  arc.userData.flowBoost = 3;
   g.add(arc);
 
   const arrowGeom = new THREE.ConeGeometry(0.4, 1.0, 12);
@@ -1500,7 +1514,7 @@ function buildOutput() {
     );
     m.position.set(XS.output, h / 2, z0 + i * barSpacing);
     g.add(m);
-    barObjs.push({ mesh: m, entry: e });
+    barObjs.push({ mesh: m, entry: e, targetH: h });
     const labOut = makeLabel(
       `${e.name}  ${(e.prob * 100).toFixed(1)}%${chosen ? " ✓" : ""}`,
       chosen ? "#dffbe6" : "#cdd9ff", 0.55);
@@ -1669,9 +1683,108 @@ function buildScene() {
       o.material.envMapIntensity = 0.45;
     }
   });
+  buildFlowSystem();
   styleChords();
   styleConn();
   applyStageDim();
+}
+
+// ============================================================
+// Data-flow particles: every connection edge registered a curve;
+// one Points cloud rides them all. Particle count and brightness
+// scale with the edge's intensity, stage dimming carries over, and
+// advancing the tour fires a burst along the newly active stage.
+// ============================================================
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let flowEnabled = !reducedMotion;
+let flowState = null;
+let flowBurst = null;
+const groupDimMap = {};
+
+function makeFlowTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.35, "rgba(255,255,255,0.6)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+function buildFlowSystem() {
+  const edges = [];
+  for (const [name, grp] of Object.entries(stageGroups)) {
+    grp.traverse((o) => {
+      if (!o.userData.flowCurve) return;
+      edges.push({
+        curve: o.userData.flowCurve,
+        group: name,
+        colorObj: new THREE.Color(o.userData.flowColor),
+        intensity: o.userData.flowIntensity,
+        boost: o.userData.flowBoost || 1,
+        length: o.userData.flowCurve.getLength(),
+      });
+    });
+  }
+  const particles = [];
+  for (const e of edges) {
+    const n = Math.min(8, Math.max(1, Math.round(e.intensity * 8))) * e.boost;
+    for (let k = 0; k < n; k++) {
+      particles.push({
+        edge: e,
+        t: Math.random(),
+        speed: (6 + Math.random() * 4) / Math.max(e.length, 4), // ~6-10 units/s
+      });
+    }
+  }
+  const geom = new THREE.BufferGeometry();
+  const positions = new Float32Array(particles.length * 3);
+  const colors = new Float32Array(particles.length * 3);
+  geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({
+    size: 0.7, map: makeFlowTexture(), vertexColors: true,
+    transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, sizeAttenuation: true,
+  });
+  const points = new THREE.Points(geom, mat);
+  points.frustumCulled = false;
+  sceneRoot.add(points);
+  flowState = { particles, points, geom };
+}
+
+const _flowVec = new THREE.Vector3();
+function updateFlow(nowMs, dt) {
+  if (!flowState) return;
+  flowState.points.visible = flowEnabled;
+  if (!flowEnabled) return;
+  const pos = flowState.geom.attributes.position.array;
+  const col = flowState.geom.attributes.color.array;
+  const burstAge = flowBurst ? (nowMs - flowBurst.t0) / 1000 : Infinity;
+  const burstK = burstAge < 1.6 ? Math.exp(-burstAge * 2.2) : 0;
+  for (let i = 0; i < flowState.particles.length; i++) {
+    const p = flowState.particles[i];
+    const e = p.edge;
+    const inBurst = burstK > 0 && flowBurst.groups.has(e.group);
+    const speedMul = inBurst ? 1 + 1.8 * burstK : 1;
+    p.t = (p.t + dt * p.speed * speedMul) % 1;
+    e.curve.getPoint(p.t, _flowVec);
+    pos[i * 3] = _flowVec.x;
+    pos[i * 3 + 1] = _flowVec.y;
+    pos[i * 3 + 2] = _flowVec.z;
+    const dim = groupDimMap[e.group] ?? 1;
+    const wave = 0.7 + 0.3 * Math.sin((p.t * 5 + pulseT * 0.4) * Math.PI * 2);
+    const b = clamp(e.intensity * 1.7, 0.3, 0.95) * dim * wave
+      * (inBurst ? 1 + 2.2 * burstK : 1) * (e.boost > 1 ? 1.25 : 1);
+    col[i * 3] = e.colorObj.r * b;
+    col[i * 3 + 1] = e.colorObj.g * b;
+    col[i * 3 + 2] = e.colorObj.b * b;
+  }
+  flowState.geom.attributes.position.needsUpdate = true;
+  flowState.geom.attributes.color.needsUpdate = true;
 }
 
 // ============================================================
@@ -1699,6 +1812,7 @@ function applyStageDim() {
   for (const [name, grp] of Object.entries(stageGroups)) {
     const on = !active || active.includes(name);
     if (name === "attn") attnDimFactor = on ? 1 : 0.3;
+    groupDimMap[name] = on ? 1 : 0.15; // flow particles follow stage focus
     const om = on ? 1 : 0.3;
     const em = on ? 1 : 0.25;
     grp.traverse((o) => {
@@ -1924,6 +2038,15 @@ function showStage(i, moveCamera = true) {
   navItems.forEach((b, idx) => b.classList.toggle("active", idx === curStage));
   if (navItems[curStage]) navItems[curStage].scrollIntoView({ block: "nearest" });
   applyStageDim();
+  // Fire a particle burst along the newly active stage's edges, and grow
+  // the output bars in when that stage arrives.
+  const activeGroups = STAGE_GROUPS[s.label];
+  flowBurst = activeGroups
+    ? { t0: performance.now(), groups: new Set(activeGroups) }
+    : null;
+  if (s.label === "output" && !reducedMotion) {
+    outputAnim = { t0: performance.now() };
+  }
   if (moveCamera) {
     // Pull the camera back along its view direction so more of each stage fits.
     const tgt = new THREE.Vector3(...s.cam.target);
@@ -2008,6 +2131,9 @@ document.getElementById("chk-rotate").addEventListener("change", (e) => {
   controls.autoRotate = e.target.checked;
   controls.autoRotateSpeed = 0.6;
 });
+const chkFlow = document.getElementById("chk-flow");
+chkFlow.checked = flowEnabled;
+chkFlow.addEventListener("change", (e) => { flowEnabled = e.target.checked; });
 
 // ============================================================
 // Picking (click + hover tooltip)
@@ -2071,21 +2197,52 @@ window.addEventListener("resize", () => {
   }
 });
 
-// Pulse animation: subtle scale breathing on the "active" chord lines, etc.
+// Render loop: chord breathing, flow particles, output grow-in, idle motion.
 let pulseT = 0;
 let frameCount = 0;
+let lastNow = 0;
+let outputAnim = null;
 function animate(now) {
   requestAnimationFrame(animate);
   controls.update();
   updateCameraTween();
-  pulseT = (now || 0) * 0.001;
+  now = now || 0;
+  const dt = Math.min((now - lastNow) / 1000 || 0.016, 0.05);
+  lastNow = now;
+  pulseT = now * 0.001;
+
   // Gentle pulse on attention chords proportional to weight
-  const breath = 0.6 + Math.sin(pulseT * 1.3) * 0.4;
+  const breath = reducedMotion ? 1 : 0.6 + Math.sin(pulseT * 1.3) * 0.4;
   for (const c of attnInfo.chordLines) {
     if (!c.mesh.visible) continue;
     c.mesh.material.opacity =
       Math.min(1, c.baseOpacity * (0.7 + breath * 0.4)) * attnDimFactor;
   }
+
+  updateFlow(now, dt);
+
+  // Output bars grow in when the output stage arrives.
+  if (outputAnim && outputInfo) {
+    const t = Math.min((now - outputAnim.t0) / 800, 1);
+    const e = 1 - Math.pow(1 - t, 3);
+    for (const b of outputInfo.barObjs) {
+      b.mesh.scale.y = Math.max(e, 0.02);
+      b.mesh.position.y = (b.targetH * b.mesh.scale.y) / 2;
+    }
+    if (t >= 1) outputAnim = null;
+  }
+
+  // Idle micro-motion: hand cards bob, the GRU prism slowly turns.
+  if (flowEnabled && !reducedMotion) {
+    if (memInfo) memInfo.gru.rotation.y += dt * 0.3;
+    if (inputInfo) {
+      for (let i = 0; i < inputInfo.cardObjs.length; i++) {
+        const card = inputInfo.cardObjs[i];
+        card.position.y = card.userData.baseY + Math.sin(pulseT * 0.9 + i * 0.8) * 0.07;
+      }
+    }
+  }
+
   if (frameCount++ % 5 === 0) updateLabelFade();
   composer.render();
 }
