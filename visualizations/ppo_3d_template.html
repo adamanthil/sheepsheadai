@@ -1316,8 +1316,8 @@ function buildActor() {
   const pickProbs = softmax(S.actor.pick_logits);
   const headX = XS.actor + 2;
   const pickPositions = [
-    { name: "PICK", y: ACTOR_BASE_Y + 1.5, z: 13, prob: pickProbs[0] },
-    { name: "PASS", y: ACTOR_BASE_Y - 1.5, z: 13, prob: pickProbs[1] },
+    { name: "PICK", y: ACTOR_BASE_Y + 1.5, z: 13, prob: pickProbs[0], labelDir: 1 },
+    { name: "PASS", y: ACTOR_BASE_Y - 1.5, z: 13, prob: pickProbs[1], labelDir: -1 },
   ];
   for (const p of pickPositions) {
     // Idle probabilities can still be extreme (e.g. PASS ≈ 1 mid-hand);
@@ -1338,7 +1338,9 @@ function buildActor() {
     const pl = makeLabel(
       `${p.name}: ${(p.prob * 100).toFixed(1)}%${pickStyle.suffix}`,
       pickStyle.labelColor, 0.55);
-    pl.position.set(headX, p.y, p.z + r + 0.6);
+    // Billboarded sprite: offset outward (PICK above, PASS below) past the
+    // ball's radius so the label clears the sphere from any camera angle.
+    pl.position.set(headX, p.y + p.labelDir * (r + 0.75), p.z);
     g.add(pl);
     registerPickable(ball, {
       title: `pick_head · ${p.name}`,
