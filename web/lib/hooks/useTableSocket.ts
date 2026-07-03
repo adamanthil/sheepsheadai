@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import type { TableStateMsg } from "../../../../lib/types";
-import { apiFetch, wsSubprotocols, wsUrl } from "../../../../lib/api";
+import type { TableStateMsg, TableView } from "../types";
+import { apiFetch, wsSubprotocols, wsUrl } from "../api";
+import { parseWsMessage } from "../wsMessages";
 
 export interface TableSocketCallbacks {
   onTrickComplete?: (cards: string[], winner: number) => void;
@@ -10,6 +11,8 @@ export interface TableSocketCallbacks {
   onCall?: (pickerName: string, cardDisplay: string, under: boolean) => void;
   onTableClosed?: () => void;
   onLobbyEvent?: (message: string) => void;
+  /** Fired on table_update messages (waiting room seat/rules changes). */
+  onTableUpdate?: (table: TableView, isHost?: boolean) => void;
   /** A REST action or the socket failed in a way the user should see. */
   onError?: (message: string) => void;
 }
@@ -110,10 +113,11 @@ export function useTableSocket(
       };
 
       socket.onmessage = (ev) => {
-        const data = JSON.parse(ev.data);
+        const data = parseWsMessage(ev.data);
+        if (!data) return;
 
       if (data.type === "state") {
-        const msg = data as TableStateMsg;
+        const msg = data as unknown as TableStateMsg;
 
         setLastState((prev: TableStateMsg | null) => {
           const cbs = callbacksRef.current;
@@ -179,33 +183,29 @@ export function useTableSocket(
 
           return msg;
         });
-      } else if (data?.type === "table_closed") {
+      } else if (data.type === "table_closed") {
         callbacksRef.current?.onTableClosed?.();
         socket.close();
         window.location.href = "/";
-      } else if (data?.type === "lobby_event") {
-        const message = String(data.message || "");
-        if (message) {
-          callbacksRef.current?.onLobbyEvent?.(message);
+      } else if (data.type === "lobby_event") {
+        if (data.message) {
+          callbacksRef.current?.onLobbyEvent?.(data.message);
         }
-      } else if (data?.type === "table_update") {
-        const tbl = data.table;
-        if (tbl) {
-          setLastState((prev: TableStateMsg | null) =>
-            prev ? { ...prev, table: tbl } : prev,
-          );
-        }
-      } else if (data?.type === "chat:init") {
+      } else if (data.type === "table_update") {
+        const tbl = data.table as unknown as TableView;
+        callbacksRef.current?.onTableUpdate?.(tbl, data.isHost);
+        setLastState((prev: TableStateMsg | null) =>
+          prev ? { ...prev, table: tbl } : prev,
+        );
+      } else if (data.type === "chat:init") {
         // Initialize chat with full history
-        const messages = (data.messages || []) as ChatMessage[];
-        setChatMessages(messages);
-      } else if (data?.type === "chat:append") {
-        // Append new message to chat
-        const message = data.message as ChatMessage;
-        if (message) {
-          setChatMessages((prev) => [...prev, message]);
-        }
-      } else if (data?.type === "server_restart") {
+        setChatMessages(data.messages as unknown as ChatMessage[]);
+      } else if (data.type === "chat:append") {
+        setChatMessages((prev) => [
+          ...prev,
+          data.message as unknown as ChatMessage,
+        ]);
+      } else if (data.type === "server_restart") {
         // Deploy in progress: the socket is about to drop; the reconnect
         // loop keeps retrying until the server is back.
         callbacksRef.current?.onError?.("Server restarting…");

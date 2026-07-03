@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import type { TableSummary, TableClosedMsg } from "../../../lib/types";
-import { apiFetch, wsSubprotocols, wsUrl } from "../../../lib/api";
+import type { TableSummary } from "../../../lib/types";
+import { apiFetch } from "../../../lib/api";
+import { useTableSocket } from "../../../lib/hooks/useTableSocket";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import styles from "./page.module.css";
-import { ChatPanel, type ChatMessage } from "../../components/chat";
+import { ChatPanel } from "../../components/chat";
 import { ds, Wordmark, useIsMobile } from "../../../lib/ds";
 import SeatCard from "./components/SeatCard";
 import RulesPanel from "./components/RulesPanel";
@@ -40,10 +41,8 @@ export default function WaitingRoom() {
   const [error, setError] = useState<string | null>(null);
   const [partnerMode, setPartnerMode] = useState<number>(1); // 1 = Called Ace (default), 0 = Jack of Diamonds
   const [scoringMode, setScoringMode] = useState<number>(1); // 1 = Double on the Bump (default), 0 = Symmetric
-  const wsRef = useRef<WebSocket | null>(null);
   const [callout, setCallout] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   async function load() {
     setLoading(true);
@@ -77,76 +76,37 @@ export default function WaitingRoom() {
     load();
   }, [params?.id]);
 
-  // Connect WS in waiting room to receive lobby updates and auto-navigate on start
-  useEffect(() => {
-    if (!params?.id || !clientId) return;
-    const ws = new WebSocket(wsUrl(params.id), wsSubprotocols(clientId));
-    wsRef.current = ws;
-    ws.onmessage = (evt) => {
-      try {
-        const data = JSON.parse(evt.data);
-        if (data?.type === "table_update") {
-          const t = data.table as TableInfo;
-          setTable(t);
-          if (typeof data.isHost === "boolean") setIsHost(data.isHost);
-          const rules = t.rules ?? {};
-          if (rules.partnerMode !== undefined)
-            setPartnerMode(rules.partnerMode);
-          if (rules.doubleOnTheBump !== undefined)
-            setScoringMode(rules.doubleOnTheBump ? 1 : 0);
-          if (t.status === "playing") {
-            router.push(`/table/${params.id}`);
-          }
-        } else if (data?.type === "lobby_event") {
-          setCallout(String(data.message || ""));
-          setTimeout(() => setCallout(null), 1800);
-        } else if (data?.type === "table_closed") {
-          const m = data as TableClosedMsg;
-          setCallout("Table closed");
-          setTimeout(() => setCallout(null), 1200);
-          // Navigate home
-          router.push(`/`);
-        } else if (data?.type === "state") {
-          const t = data.table as TableInfo;
-          // If we receive state while in waiting room, the game has started
-          if (t?.status === "playing") {
-            router.push(`/table/${params.id}`);
-          }
-        } else if (data?.type === "chat:init") {
-          // Initialize chat with full history
-          const messages = (data.messages || []) as ChatMessage[];
-          setChatMessages(messages);
-        } else if (data?.type === "chat:append") {
-          // Append new message to chat
-          const message = data.message as ChatMessage;
-          if (message) {
-            setChatMessages((prev) => [...prev, message]);
-          }
+  // Shared socket hook: lobby updates, chat, auto-navigation on game start,
+  // and reconnect-with-backoff all come from useTableSocket.
+  const { lastState, chatMessages, sendChatMessage } = useTableSocket(
+    params?.id,
+    clientId,
+    {
+      onTableUpdate: (t, hostFlag) => {
+        setTable(t as TableInfo);
+        if (typeof hostFlag === "boolean") setIsHost(hostFlag);
+        const rules = t.rules ?? {};
+        if (rules.partnerMode !== undefined) setPartnerMode(rules.partnerMode);
+        if (rules.doubleOnTheBump !== undefined)
+          setScoringMode(rules.doubleOnTheBump ? 1 : 0);
+        if (t.status === "playing") {
+          router.push(`/table/${params?.id}`);
         }
-      } catch (e) {
-        console.error("WS message parse error", e);
-      }
-    };
-    ws.onerror = () => {
-      console.error("WS error", { url: ws.url, readyState: ws.readyState });
-    };
-    ws.onclose = (e) => {
-      if (!e.wasClean) {
-        console.warn("WS closed uncleanly", {
-          code: e.code,
-          reason: e.reason || "(none)",
-          url: ws.url,
-        });
-      }
-    };
-    return () => {
-      ws.onclose = null;
-      try {
-        ws.close();
-      } catch {}
-      wsRef.current = null;
-    };
-  }, [params?.id, clientId]);
+      },
+      onLobbyEvent: (msg) => {
+        setCallout(msg);
+        setTimeout(() => setCallout(null), 1800);
+      },
+      onTableClosed: () => setCallout("Table closed"),
+    },
+  );
+
+  // A state message while in the waiting room means the game has started.
+  useEffect(() => {
+    if (lastState?.table?.status === "playing" && params?.id) {
+      router.push(`/table/${params.id}`);
+    }
+  }, [lastState, params?.id, router]);
 
   async function chooseSeat(seat: number) {
     const res = await apiFetch(`/api/tables/${params?.id}/seat`, {
@@ -235,20 +195,6 @@ export default function WaitingRoom() {
       method: "POST",
       body: JSON.stringify({ client_id: clientId }),
     });
-  }
-
-  function sendChatMessage(message: string) {
-    if (!wsRef.current || !message.trim()) return;
-    try {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "chat:send",
-          message: message.trim(),
-        }),
-      );
-    } catch (err) {
-      console.error("Failed to send chat message:", err);
-    }
   }
 
   const seatItems = useMemo(() => {

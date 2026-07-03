@@ -1,8 +1,8 @@
-export { useTableSocket } from "./useTableSocket";
+export { useTableSocket } from "../../../../lib/hooks/useTableSocket";
 export type {
   UseTableSocketReturn,
   TableSocketCallbacks,
-} from "./useTableSocket";
+} from "../../../../lib/hooks/useTableSocket";
 
 export { useTrickAnimation } from "./useTrickAnimation";
 export type { UseTrickAnimationReturn, AnimTrick } from "./useTrickAnimation";
