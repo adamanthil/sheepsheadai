@@ -5,6 +5,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from server.api.auth import resolve_player
 from server.realtime.broadcast import (
     broadcast_table_event,
     broadcast_table_state,
@@ -30,6 +31,7 @@ router = APIRouter()
 
 
 _CLIENT_SUBPROTO_PREFIX = "sheepshead.client."
+_TOKEN_SUBPROTO_PREFIX = "sheepshead.token."
 
 # DoS backstop: one IP may hold at most this many concurrent sockets. Counted
 # only for connections that pass validation; check+increment happen with no
@@ -52,17 +54,30 @@ async def table_ws(websocket: WebSocket, table_id: str):
     # does not end up in proxy access logs / browser history.
     offered = websocket.scope.get("subprotocols", []) or []
     client_id: str | None = None
+    token: str | None = None
     chosen_subproto: str | None = None
     for sp in offered:
-        if isinstance(sp, str) and sp.startswith(_CLIENT_SUBPROTO_PREFIX):
+        if not isinstance(sp, str):
+            continue
+        if sp.startswith(_CLIENT_SUBPROTO_PREFIX) and client_id is None:
             client_id = sp[len(_CLIENT_SUBPROTO_PREFIX) :]
+            # Echo the client entry; the token must never appear in the
+            # response headers.
             chosen_subproto = sp
-            break
+        elif sp.startswith(_TOKEN_SUBPROTO_PREFIX) and token is None:
+            token = sp[len(_TOKEN_SUBPROTO_PREFIX) :]
 
-    if not client_id:
+    if not client_id or not token:
         await websocket.accept()
         await websocket.close(code=4401)
         return
+
+    identity = await resolve_player(token)
+    if identity is None:
+        await websocket.accept(subprotocol=chosen_subproto)
+        await websocket.close(code=4401)
+        return
+
     try:
         table = tables.get_table(table_id)
     except KeyError:
@@ -70,7 +85,8 @@ async def table_ws(websocket: WebSocket, table_id: str):
         await websocket.close(code=4404)
         return
 
-    if client_id not in table.clients:
+    conn_check = table.clients.get(client_id)
+    if conn_check is None or conn_check.player_id != str(identity.id):
         await websocket.accept(subprotocol=chosen_subproto)
         await websocket.close(code=4403)
         return

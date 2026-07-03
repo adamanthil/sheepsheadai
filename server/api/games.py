@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from server.api.auth import PlayerIdentity, current_player
 from server.api.ratelimit import GAME_ACTIONS, HOST_ACTIONS, limiter
 from server.api.schemas import (
     ActionRequest,
     RedealRequest,
     StartGameRequest,
 )
-from server.api.tables import require_host
+from server.api.tables import require_client, require_host
 from server.config import get_settings
 from server.realtime.broadcast import (
     broadcast_table_state,
@@ -57,13 +58,18 @@ def _fill_empty_seats_with_ai(table) -> None:
 
 @router.post("/api/tables/{table_id}/fill_ai")
 @limiter.limit(HOST_ACTIONS)
-async def fill_ai(request: Request, table_id: str, req: RedealRequest | None = None):
+async def fill_ai(
+    request: Request,
+    table_id: str,
+    req: RedealRequest | None = None,
+    identity: PlayerIdentity = Depends(current_player),
+):
     try:
         table = tables.get_table(table_id)
     except KeyError as e:
         raise HTTPException(status_code=404, detail="table_not_found") from e
 
-    require_host(table, req.client_id if req else None)
+    require_host(table, req.client_id if req else None, identity)
     _fill_empty_seats_with_ai(table)
 
     await broadcast_table_update(table)
@@ -72,7 +78,12 @@ async def fill_ai(request: Request, table_id: str, req: RedealRequest | None = N
 
 @router.post("/api/tables/{table_id}/start")
 @limiter.limit(HOST_ACTIONS)
-async def start_game(request: Request, table_id: str, req: StartGameRequest):
+async def start_game(
+    request: Request,
+    table_id: str,
+    req: StartGameRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
     try:
         table = tables.get_table(table_id)
     except KeyError:
@@ -81,7 +92,7 @@ async def start_game(request: Request, table_id: str, req: StartGameRequest):
     if table.status != "open":
         raise HTTPException(status_code=400, detail="already_started")
 
-    require_host(table, req.client_id)
+    require_host(table, req.client_id, identity)
 
     if table.fill_with_ai:
         _fill_empty_seats_with_ai(table)
@@ -134,13 +145,18 @@ async def start_game(request: Request, table_id: str, req: StartGameRequest):
 
 @router.post("/api/tables/{table_id}/redeal")
 @limiter.limit(HOST_ACTIONS)
-async def redeal(request: Request, table_id: str, req: RedealRequest | None = None):
+async def redeal(
+    request: Request,
+    table_id: str,
+    req: RedealRequest | None = None,
+    identity: PlayerIdentity = Depends(current_player),
+):
     try:
         table = tables.get_table(table_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
-    require_host(table, req.client_id if req else None)
+    require_host(table, req.client_id if req else None, identity)
 
     old = {i: table.seats[i] for i in range(1, 6)}
     new_map = {
@@ -165,7 +181,12 @@ async def redeal(request: Request, table_id: str, req: RedealRequest | None = No
 
 @router.post("/api/tables/{table_id}/action")
 @limiter.limit(GAME_ACTIONS)
-async def post_action(request: Request, table_id: str, req: ActionRequest):
+async def post_action(
+    request: Request,
+    table_id: str,
+    req: ActionRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
     try:
         table = tables.get_table(table_id)
     except KeyError:
@@ -174,8 +195,8 @@ async def post_action(request: Request, table_id: str, req: ActionRequest):
     if not table.game:
         raise HTTPException(status_code=400, detail="game_not_started")
 
-    conn = table.clients.get(req.client_id)
-    if not conn or not conn.seat:
+    conn = require_client(table, req.client_id, identity)
+    if not conn.seat:
         raise HTTPException(status_code=400, detail="client_not_joined")
 
     actor_seat = get_actor_seat(table)

@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from server.api.auth import optional_player
+from server.api.auth import PlayerIdentity, current_player, optional_player
 from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, limiter
 from server.api.schemas import (
     CloseTableRequest,
@@ -33,10 +33,26 @@ from server.services.persistence.pool import get_db_pool
 router = APIRouter()
 
 
-def require_host(table: Table, client_id: Optional[str]) -> None:
-    """Raise the appropriate HTTPException unless ``client_id`` is the host."""
-    if not client_id or client_id not in table.clients:
+def require_client(
+    table: Table, client_id: Optional[str], identity: PlayerIdentity
+) -> ClientConn:
+    """Return the table connection for ``client_id`` after verifying it
+    belongs to the authenticated player. client_id in a request body is a
+    routing hint, never a credential — the bearer token is."""
+    conn = table.clients.get(client_id or "")
+    if conn is None:
         raise HTTPException(status_code=400, detail="client_not_joined")
+    if conn.player_id != str(identity.id):
+        raise HTTPException(status_code=403, detail="client_mismatch")
+    return conn
+
+
+def require_host(
+    table: Table, client_id: Optional[str], identity: PlayerIdentity
+) -> None:
+    """Raise the appropriate HTTPException unless the authenticated caller
+    is the host connection of ``table``."""
+    require_client(table, client_id, identity)
     if not table.host_client_id or client_id != table.host_client_id:
         raise HTTPException(status_code=403, detail="not_host")
 
@@ -165,7 +181,12 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
 
 @router.post("/api/tables/{table_id}/seat")
 @limiter.limit(HOST_ACTIONS)
-async def choose_seat(request: Request, table_id: str, req: SeatRequest):
+async def choose_seat(
+    request: Request,
+    table_id: str,
+    req: SeatRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
     try:
         table = tables.get_table(table_id)
     except KeyError as e:
@@ -178,8 +199,7 @@ async def choose_seat(request: Request, table_id: str, req: SeatRequest):
         table.occupants.get(current).is_ai if table.occupants.get(current) else False
     ):
         raise HTTPException(status_code=400, detail="seat_taken")
-    if req.client_id not in table.clients:
-        raise HTTPException(status_code=400, detail="client_not_joined")
+    require_client(table, req.client_id, identity)
 
     for i in range(1, 6):
         if table.seats[i] == req.client_id:
@@ -210,7 +230,10 @@ async def choose_seat(request: Request, table_id: str, req: SeatRequest):
 @router.patch("/api/tables/{table_id}/rules")
 @limiter.limit(HOST_ACTIONS)
 async def update_table_rules(
-    request: Request, table_id: str, req: UpdateTableRulesRequest
+    request: Request,
+    table_id: str,
+    req: UpdateTableRulesRequest,
+    identity: PlayerIdentity = Depends(current_player),
 ):
     try:
         table = tables.get_table(table_id)
@@ -220,7 +243,7 @@ async def update_table_rules(
     if table.status != "open":
         raise HTTPException(status_code=400, detail="game_already_started")
 
-    require_host(table, req.client_id)
+    require_host(table, req.client_id, identity)
 
     if not table.rules:
         table.rules = {}
@@ -232,13 +255,18 @@ async def update_table_rules(
 
 @router.post("/api/tables/{table_id}/close")
 @limiter.limit(HOST_ACTIONS)
-async def api_close_table(request: Request, table_id: str, req: CloseTableRequest):
+async def api_close_table(
+    request: Request,
+    table_id: str,
+    req: CloseTableRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
     try:
         table = tables.get_table(table_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
-    require_host(table, req.client_id)
+    require_host(table, req.client_id, identity)
 
     await close_table(table, reason="host_closed")
     return {"ok": True}
