@@ -124,6 +124,7 @@ export default function TablePage() {
 
   const {
     connected,
+    connectionState,
     lastState,
     actionLookup,
     chatMessages,
@@ -143,6 +144,7 @@ export default function TablePage() {
       ),
     onTableClosed: () => showCallout("PICK", "Table closed", 1200),
     onLobbyEvent: (msg) => showCallout("PICK", msg),
+    onError: (msg) => showCallout("PICK", msg, 2500),
   });
 
   const [showScores, setShowScores] = useState(false);
@@ -310,6 +312,29 @@ export default function TablePage() {
 
   const overlays = (
     <>
+      {(connectionState === "reconnecting" ||
+        connectionState === "failed") && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            textAlign: "center",
+            padding: "6px 12px",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#fff",
+            background: connectionState === "failed" ? "#7f1d1d" : "#92400e",
+          }}
+        >
+          {connectionState === "failed"
+            ? "Connection rejected — rejoin from the lobby"
+            : "Connection lost — reconnecting…"}
+        </div>
+      )}
       {view.is_done && view.final && (
         <GameOverBanner
           final={view.final}

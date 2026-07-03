@@ -222,10 +222,8 @@ export default function HomePage() {
       const typedName = displayNameInput.trim();
       await persistIdentityFromJoin(joined, typedName);
 
-      // Use setTimeout to ensure state updates complete before navigation
-      setTimeout(() => {
-        router.push(`/waiting/${t.id}`);
-      }, 100);
+      // localStorage writes above are synchronous; navigate directly.
+      router.push(`/waiting/${t.id}`);
     } catch (err) {
       const errorMessage =
         err instanceof Error
@@ -276,10 +274,7 @@ export default function HomePage() {
       const typedName = displayNameInput.trim();
       await persistIdentityFromJoin(data, typedName);
 
-      // Use setTimeout for consistent navigation behavior
-      setTimeout(() => {
-        router.push(`/waiting/${data.table.id}`);
-      }, 100);
+      router.push(`/waiting/${data.table.id}`);
     } catch (err) {
       const errorMessage =
         err instanceof Error

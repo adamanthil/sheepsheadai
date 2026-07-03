@@ -10,7 +10,19 @@ export interface TableSocketCallbacks {
   onCall?: (pickerName: string, cardDisplay: string, under: boolean) => void;
   onTableClosed?: () => void;
   onLobbyEvent?: (message: string) => void;
+  /** A REST action or the socket failed in a way the user should see. */
+  onError?: (message: string) => void;
 }
+
+export type ConnectionState =
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "failed";
+
+/** Close codes the server uses for auth/authorization failures — retrying
+ * cannot help, so the client must not hammer the server. */
+const TERMINAL_WS_CODES = new Set([4401, 4403, 4404, 4429]);
 
 export interface ChatMessage {
   id: string;
@@ -23,6 +35,7 @@ export interface ChatMessage {
 
 export interface UseTableSocketReturn {
   connected: boolean;
+  connectionState: ConnectionState;
   lastState: TableStateMsg | null;
   actionLookup: Record<string, string>;
   chatMessages: ChatMessage[];
@@ -37,7 +50,9 @@ export function useTableSocket(
   clientId: string,
   callbacks?: TableSocketCallbacks,
 ): UseTableSocketReturn {
-  const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>("connecting");
+  const connected = connectionState === "connected";
   const [lastState, setLastState] = useState<TableStateMsg | null>(null);
   const [actionLookup, setActionLookup] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -48,25 +63,54 @@ export function useTableSocket(
   // Fetch action lookup on mount
   useEffect(() => {
     (async () => {
-      const res = await apiFetch("/api/actions");
-      const data = await res.json();
-      setActionLookup(data.action_lookup);
+      try {
+        const res = await apiFetch("/api/actions");
+        const data = await res.json();
+        setActionLookup(data.action_lookup);
+      } catch (err) {
+        console.warn("action lookup fetch failed", err);
+        callbacksRef.current?.onError?.("Backend unreachable");
+      }
     })();
   }, []);
 
-  // WebSocket connection
+  // WebSocket connection with automatic reconnect. The server sends the full
+  // table state on every connect, so a successful reconnect resyncs for free.
   useEffect(() => {
     if (!tableId || !clientId) return;
 
-    // client_id and session token are carried in the Sec-WebSocket-Protocol
-    // header so they do not appear in URL access logs.
-    const socket = new WebSocket(wsUrl(tableId), wsSubprotocols(clientId));
+    let disposed = false;
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    socket.onopen = () => setConnected(true);
-    socket.onclose = () => setConnected(false);
+    const connect = () => {
+      if (disposed) return;
+      // client_id and session token are carried in the Sec-WebSocket-Protocol
+      // header so they do not appear in URL access logs.
+      const socket = new WebSocket(wsUrl(tableId), wsSubprotocols(clientId));
+      wsRef.current = socket;
 
-    socket.onmessage = (ev) => {
-      const data = JSON.parse(ev.data);
+      socket.onopen = () => {
+        attempt = 0;
+        setConnectionState("connected");
+      };
+      socket.onclose = (e) => {
+        if (wsRef.current === socket) wsRef.current = null;
+        if (disposed) return;
+        if (TERMINAL_WS_CODES.has(e.code)) {
+          setConnectionState("failed");
+          return;
+        }
+        setConnectionState("reconnecting");
+        // Exponential backoff, 0.5s → 8s, with jitter.
+        const delay =
+          Math.min(8000, 500 * 2 ** attempt) * (0.5 + Math.random() * 0.5);
+        attempt += 1;
+        timer = setTimeout(connect, delay);
+      };
+
+      socket.onmessage = (ev) => {
+        const data = JSON.parse(ev.data);
 
       if (data.type === "state") {
         const msg = data as TableStateMsg;
@@ -161,42 +205,75 @@ export function useTableSocket(
         if (message) {
           setChatMessages((prev) => [...prev, message]);
         }
+      } else if (data?.type === "server_restart") {
+        // Deploy in progress: the socket is about to drop; the reconnect
+        // loop keeps retrying until the server is back.
+        callbacksRef.current?.onError?.("Server restarting…");
       }
+      };
     };
 
-    wsRef.current = socket;
-    return () => socket.close();
+    connect();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      try {
+        wsRef.current?.close();
+      } catch {}
+      wsRef.current = null;
+    };
   }, [tableId, clientId]);
 
   const takeAction = useCallback(
     async (actionId: number) => {
       if (!clientId || !tableId) return;
-      await apiFetch(`/api/tables/${tableId}/action`, {
-        method: "POST",
-        body: JSON.stringify({ client_id: clientId, action_id: actionId }),
-      }).catch(() => {});
+      try {
+        const res = await apiFetch(`/api/tables/${tableId}/action`, {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId, action_id: actionId }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          callbacksRef.current?.onError?.(
+            `Action failed: ${j?.detail || res.status}`,
+          );
+        }
+      } catch (err) {
+        console.warn("action POST failed", err);
+        callbacksRef.current?.onError?.("Action failed: network error");
+      }
     },
     [tableId, clientId],
   );
 
   const closeTable = useCallback(async () => {
     if (!tableId || !clientId) return;
-    await apiFetch(`/api/tables/${tableId}/close`, {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId }),
-    }).catch(() => {});
+    try {
+      await apiFetch(`/api/tables/${tableId}/close`, {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId }),
+      });
+    } catch (err) {
+      console.warn("close POST failed", err);
+      callbacksRef.current?.onError?.("Close failed: network error");
+    }
   }, [tableId, clientId]);
 
   const redeal = useCallback(async () => {
     if (!tableId || !clientId) return;
-    await apiFetch(`/api/tables/${tableId}/redeal`, {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId }),
-    });
-    await apiFetch(`/api/tables/${tableId}/start`, {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId }),
-    }).catch(() => {});
+    try {
+      await apiFetch(`/api/tables/${tableId}/redeal`, {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId }),
+      });
+      await apiFetch(`/api/tables/${tableId}/start`, {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId }),
+      });
+    } catch (err) {
+      console.warn("redeal POST failed", err);
+      callbacksRef.current?.onError?.("Redeal failed: network error");
+    }
   }, [tableId, clientId]);
 
   const sendChatMessage = useCallback((message: string) => {
@@ -215,6 +292,7 @@ export function useTableSocket(
 
   return {
     connected,
+    connectionState,
     lastState,
     actionLookup,
     chatMessages,
