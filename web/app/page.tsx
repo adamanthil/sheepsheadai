@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TableSummary } from "../lib/types";
-import { API_BASE } from "../lib/apiBase";
+import { apiFetch, storeSessionToken } from "../lib/api";
 import { STORAGE_KEYS } from "../lib/storage";
 import { ds } from "../lib/ds";
 import MastheadBand from "./components/home/MastheadBand";
@@ -59,7 +59,7 @@ export default function HomePage() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/tables`);
+      const res = await apiFetch("/api/tables");
       const data = await res.json();
       setTables(data);
     } catch {
@@ -100,7 +100,7 @@ export default function HomePage() {
     setPlayerId(storedId);
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/players/${storedId}`);
+        const res = await apiFetch(`/api/players/${storedId}`);
         if (cancelled) return;
         if (res.status === 404) {
           window.localStorage.removeItem(STORAGE_KEYS.playerId);
@@ -150,9 +150,8 @@ export default function HomePage() {
     const previous = window.localStorage.getItem(STORAGE_KEYS.displayName);
     if (previous === typedName) return;
     try {
-      await fetch(`${API_BASE}/api/players/${id}`, {
+      await apiFetch(`/api/players/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: typedName }),
       });
       window.localStorage.setItem(STORAGE_KEYS.displayName, typedName);
@@ -183,9 +182,8 @@ export default function HomePage() {
 
     try {
       // Create table
-      const res = await fetch(`${API_BASE}/api/tables`, {
+      const res = await apiFetch("/api/tables", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
           fillWithAI: true,
@@ -201,14 +199,10 @@ export default function HomePage() {
 
       const t = await res.json();
 
-      // Auto-join the table
-      const res2 = await fetch(`${API_BASE}/api/tables/${t.id}/join`, {
+      // Auto-join the table; identity rides on the Authorization header.
+      const res2 = await apiFetch(`/api/tables/${t.id}/join`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          display_name: resolvedDisplayName,
-          player_id: playerId,
-        }),
+        body: JSON.stringify({ display_name: resolvedDisplayName }),
       });
 
       if (!res2.ok) {
@@ -218,6 +212,7 @@ export default function HomePage() {
       }
 
       const joined = await res2.json();
+      storeSessionToken(joined.session_token);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
           STORAGE_KEYS.clientId(t.id),
@@ -259,13 +254,9 @@ export default function HomePage() {
         }
       }
 
-      const res = await fetch(`${API_BASE}/api/tables/${tableId}/join`, {
+      const res = await apiFetch(`/api/tables/${tableId}/join`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          display_name: resolvedDisplayName,
-          player_id: playerId,
-        }),
+        body: JSON.stringify({ display_name: resolvedDisplayName }),
       });
 
       if (!res.ok) {
@@ -275,6 +266,7 @@ export default function HomePage() {
       }
 
       const data = await res.json();
+      storeSessionToken(data.session_token);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
           STORAGE_KEYS.clientId(tableId),

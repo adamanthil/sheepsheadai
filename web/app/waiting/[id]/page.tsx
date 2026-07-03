@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { TableSummary, TableClosedMsg } from "../../../lib/types";
-import { API_BASE } from "../../../lib/apiBase";
+import { apiFetch, wsSubprotocols, wsUrl } from "../../../lib/api";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import styles from "./page.module.css";
 import { ChatPanel, type ChatMessage } from "../../components/chat";
@@ -49,7 +49,7 @@ export default function WaitingRoom() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/tables`);
+      const res = await apiFetch("/api/tables");
       const list: TableInfo[] = await res.json();
       const t = list.find((t) => t.id === params?.id);
       if (t) {
@@ -80,10 +80,7 @@ export default function WaitingRoom() {
   // Connect WS in waiting room to receive lobby updates and auto-navigate on start
   useEffect(() => {
     if (!params?.id || !clientId) return;
-    const api = new URL(API_BASE);
-    const wsProto = api.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProto}//${api.host}/ws/table/${params.id}`;
-    const ws = new WebSocket(wsUrl, [`sheepshead.client.${clientId}`]);
+    const ws = new WebSocket(wsUrl(params.id), wsSubprotocols(clientId));
     wsRef.current = ws;
     ws.onmessage = (evt) => {
       try {
@@ -131,14 +128,14 @@ export default function WaitingRoom() {
       }
     };
     ws.onerror = () => {
-      console.error("WS error", { url: wsUrl, readyState: ws.readyState });
+      console.error("WS error", { url: ws.url, readyState: ws.readyState });
     };
     ws.onclose = (e) => {
       if (!e.wasClean) {
         console.warn("WS closed uncleanly", {
           code: e.code,
           reason: e.reason || "(none)",
-          url: wsUrl,
+          url: ws.url,
         });
       }
     };
@@ -152,9 +149,8 @@ export default function WaitingRoom() {
   }, [params?.id, clientId]);
 
   async function chooseSeat(seat: number) {
-    const res = await fetch(`${API_BASE}/api/tables/${params?.id}/seat`, {
+    const res = await apiFetch(`/api/tables/${params?.id}/seat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: clientId, seat }),
     });
     if (!res.ok) {
@@ -167,9 +163,8 @@ export default function WaitingRoom() {
   }
 
   async function fillAI() {
-    const res = await fetch(`${API_BASE}/api/tables/${params?.id}/fill_ai`, {
+    const res = await apiFetch(`/api/tables/${params?.id}/fill_ai`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: clientId }),
     });
     if (!res.ok) {
@@ -183,9 +178,8 @@ export default function WaitingRoom() {
 
   async function updatePartnerMode(newMode: number) {
     try {
-      const res = await fetch(`${API_BASE}/api/tables/${params?.id}/rules`, {
+      const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: clientId,
           rules: { partnerMode: newMode },
@@ -204,9 +198,8 @@ export default function WaitingRoom() {
 
   async function updateScoringMode(newMode: number) {
     try {
-      const res = await fetch(`${API_BASE}/api/tables/${params?.id}/rules`, {
+      const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: clientId,
           rules: { doubleOnTheBump: newMode === 1 },
@@ -224,9 +217,8 @@ export default function WaitingRoom() {
   }
 
   async function startGame() {
-    const res = await fetch(`${API_BASE}/api/tables/${params?.id}/start`, {
+    const res = await apiFetch(`/api/tables/${params?.id}/start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: clientId }),
     });
     if (!res.ok) {
@@ -239,9 +231,8 @@ export default function WaitingRoom() {
 
   async function closeTable() {
     if (!params?.id || !clientId) return;
-    await fetch(`${API_BASE}/api/tables/${params?.id}/close`, {
+    await apiFetch(`/api/tables/${params?.id}/close`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: clientId }),
     });
   }

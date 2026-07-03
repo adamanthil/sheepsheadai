@@ -8,7 +8,7 @@ import {
 } from "../../lib/analyzeTypes";
 import ActionTimeline from "./ActionTimeline";
 import GameSummary from "./GameSummary";
-import { API_BASE } from "../../lib/apiBase";
+import { apiFetch } from "../../lib/api";
 import styles from "./page.module.css";
 
 export default function AnalyzePage() {
@@ -39,11 +39,8 @@ export default function AnalyzePage() {
         maxSteps: 200,
       };
 
-      const res = await fetch(`${API_BASE}/api/analyze/simulate`, {
+      const res = await apiFetch("/api/analyze/simulate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(requestBody),
       });
 

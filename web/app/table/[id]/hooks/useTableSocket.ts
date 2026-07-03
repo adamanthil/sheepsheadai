@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { TableStateMsg } from "../../../../lib/types";
-import { API_BASE } from "../../../../lib/apiBase";
+import { apiFetch, wsSubprotocols, wsUrl } from "../../../../lib/api";
 
 export interface TableSocketCallbacks {
   onTrickComplete?: (cards: string[], winner: number) => void;
@@ -48,7 +48,7 @@ export function useTableSocket(
   // Fetch action lookup on mount
   useEffect(() => {
     (async () => {
-      const res = await fetch(`${API_BASE}/api/actions`);
+      const res = await apiFetch("/api/actions");
       const data = await res.json();
       setActionLookup(data.action_lookup);
     })();
@@ -58,12 +58,9 @@ export function useTableSocket(
   useEffect(() => {
     if (!tableId || !clientId) return;
 
-    const api = new URL(API_BASE);
-    const wsProto = api.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProto}//${api.host}/ws/table/${tableId}`;
-    // client_id is carried in the Sec-WebSocket-Protocol header so it does
-    // not appear in URL access logs.
-    const socket = new WebSocket(wsUrl, [`sheepshead.client.${clientId}`]);
+    // client_id and session token are carried in the Sec-WebSocket-Protocol
+    // header so they do not appear in URL access logs.
+    const socket = new WebSocket(wsUrl(tableId), wsSubprotocols(clientId));
 
     socket.onopen = () => setConnected(true);
     socket.onclose = () => setConnected(false);
@@ -174,9 +171,8 @@ export function useTableSocket(
   const takeAction = useCallback(
     async (actionId: number) => {
       if (!clientId || !tableId) return;
-      await fetch(`${API_BASE}/api/tables/${tableId}/action`, {
+      await apiFetch(`/api/tables/${tableId}/action`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ client_id: clientId, action_id: actionId }),
       }).catch(() => {});
     },
@@ -185,23 +181,20 @@ export function useTableSocket(
 
   const closeTable = useCallback(async () => {
     if (!tableId || !clientId) return;
-    await fetch(`${API_BASE}/api/tables/${tableId}/close`, {
+    await apiFetch(`/api/tables/${tableId}/close`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: clientId }),
     }).catch(() => {});
   }, [tableId, clientId]);
 
   const redeal = useCallback(async () => {
     if (!tableId || !clientId) return;
-    await fetch(`${API_BASE}/api/tables/${tableId}/redeal`, {
+    await apiFetch(`/api/tables/${tableId}/redeal`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: clientId }),
     });
-    await fetch(`${API_BASE}/api/tables/${tableId}/start`, {
+    await apiFetch(`/api/tables/${tableId}/start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: clientId }),
     }).catch(() => {});
   }, [tableId, clientId]);
