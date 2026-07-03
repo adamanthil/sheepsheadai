@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from server.api.auth import optional_player
 from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, limiter
 from server.api.schemas import (
     CloseTableRequest,
@@ -26,6 +27,7 @@ from server.runtime.seating import (
 )
 from server.runtime.tables import ClientConn, Table, TableLimitError, tables
 from server.services.persistence import players as players_db
+from server.services.persistence import sessions as sessions_db
 from server.services.persistence.pool import get_db_pool
 
 router = APIRouter()
@@ -73,10 +75,18 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         raise HTTPException(status_code=400, detail="table_finished")
 
     pool = get_db_pool()
-    player_uuid = req.player_id if req.player_id is not None else uuid.uuid4()
-    # Idempotent insert handles both the freshly-minted case and the
-    # "client presented a stale id after a DB reset" case (Phase 4 §4.3).
-    await players_db.ensure_player(pool, player_uuid)
+    # Identity comes from the bearer token, never from the request body: a
+    # valid token maps to an existing player; otherwise the server mints a
+    # fresh player + session token and returns the token once.
+    identity = await optional_player(request)
+    session_token: Optional[str] = None
+    if identity is not None:
+        player_uuid = identity.id
+        await players_db.ensure_player(pool, player_uuid)
+    else:
+        player_uuid = uuid.uuid4()
+        await players_db.ensure_player(pool, player_uuid)
+        session_token = await sessions_db.create_session(pool, player_uuid)
 
     client_id = str(uuid.uuid4())
     conn = ClientConn(
@@ -145,6 +155,9 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
     return {
         "client_id": client_id,
         "player_id": str(player_uuid),
+        # Present only when a fresh identity was minted; the client must
+        # store it and send it as Authorization: Bearer from then on.
+        "session_token": session_token,
         "is_host": client_id == table.host_client_id,
         "table": table.to_public_dict(),
     }

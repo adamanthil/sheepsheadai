@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -39,8 +38,8 @@ class CreateTableRequest(BaseModel):
 
 
 class JoinTableRequest(BaseModel):
+    # Identity is derived from the Authorization header, never the body.
     display_name: str
-    player_id: Optional[UUID] = None
 
     @field_validator("display_name")
     @classmethod

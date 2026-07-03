@@ -32,6 +32,10 @@ def app(monkeypatch, tmp_path):
     # tests' requests and tables don't leak into this test.
     limiter.reset()
     tables.tables.clear()
+
+    from server.api import auth
+
+    auth.clear_cache()
     try:
         yield app_module.create_app()
     finally:
