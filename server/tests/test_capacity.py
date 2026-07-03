@@ -8,12 +8,14 @@ import httpx
 from starlette.testclient import TestClient
 
 import server.realtime.websocket as ws_module
+import server.runtime.manager as manager_module
 import server.runtime.tables as tables_module
 from server.api.auth import PlayerIdentity
 
 
 async def test_table_cap_returns_503(app, monkeypatch):
-    monkeypatch.setattr(tables_module, "MAX_TABLES", 2)
+    # Patch the module the manager actually reads, not the tables facade.
+    monkeypatch.setattr(manager_module, "MAX_TABLES", 2)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         assert (await client.post("/api/tables", json={"name": "a"})).status_code == 200
