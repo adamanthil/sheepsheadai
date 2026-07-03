@@ -19,3 +19,7 @@ analysis/card_embedding_analysis/
 
 # Archived checkpoint backups (multi-GB model snapshots, not for version control)
 model-history/
+
+# Production deploy secrets and local backup dumps
+deploy/.env.prod
+backups/

@@ -1,0 +1,99 @@
+# Production stack: caddy (TLS, same-origin routing) -> web + api -> postgres.
+# Configure via deploy/.env.prod (see docs/deploy.md), then:
+#   docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml up -d
+#
+# The api service is intentionally a single container with a single uvicorn
+# worker: all live game state is in-process. Do not scale it out.
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sheepshead}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the env file}
+      POSTGRES_DB: sheepshead
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sheepshead}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot migration runner; invoked by the deploy script:
+  #   docker compose ... run --rm migrate
+  migrate:
+    image: node:22-alpine
+    profiles: ["tools"]
+    working_dir: /db
+    volumes:
+      - ./db:/db
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-sheepshead}:${POSTGRES_PASSWORD:?}@postgres:5432/sheepshead
+    command: sh -c "npm ci --no-audit --no-fund && npx graphile-migrate migrate"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      SHEEPSHEAD_MODEL_PATH: /models/model.pt
+      SHEEPSHEAD_MODEL_LABEL: ${SHEEPSHEAD_MODEL_LABEL:?set SHEEPSHEAD_MODEL_LABEL}
+      DATABASE_URL: postgres://${POSTGRES_USER:-sheepshead}:${POSTGRES_PASSWORD:?}@postgres:5432/sheepshead
+      ENV: production
+      LOG_FORMAT: json
+      # Same-origin via Caddy, but the allowlist must be non-empty in prod.
+      SHEEPSHEAD_CORS_ORIGINS: https://${DOMAIN:?set DOMAIN}
+    volumes:
+      - ${MODEL_FILE:?set MODEL_FILE to the checkpoint path on the host}:/models/model.pt:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+
+  db-backup:
+    image: prodrigestivill/postgres-backup-local:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: sheepshead
+      POSTGRES_USER: ${POSTGRES_USER:-sheepshead}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: "14"
+      BACKUP_KEEP_WEEKS: "8"
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

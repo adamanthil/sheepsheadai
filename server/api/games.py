@@ -19,6 +19,7 @@ from server.realtime.broadcast import (
 )
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import ai_observe_all, schedule_ai_turns
+from server.runtime.lifecycle import is_draining
 from server.runtime.tables import (
     Occupant,
     _try_int,
@@ -90,6 +91,8 @@ async def start_game(
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
+    if is_draining():
+        raise HTTPException(status_code=503, detail="server_restarting")
     require_host(table, req.client_id, identity)
 
     async with table.state_lock:

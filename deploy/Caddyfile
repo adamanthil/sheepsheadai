@@ -1,0 +1,18 @@
+# Same-origin layout: one public domain, API paths proxied to the backend,
+# everything else to the Next.js server. Caddy handles TLS automatically and
+# proxies websocket upgrades natively.
+
+{$DOMAIN} {
+	encode gzip
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	@api path /api/* /ws/* /health /openapi.json
+	handle @api {
+		reverse_proxy api:9000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,6 +20,7 @@ from server.api import players as players_router
 from server.api.ratelimit import limiter
 from server.api import tables as tables_router
 from server.config import get_settings
+from server.runtime import lifecycle
 from server.realtime import websocket as websocket_router
 from server.services.ai_loader import load_agent
 from server.services.persistence.pool import close_pool, open_pool, set_db_state
@@ -106,6 +109,40 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # Deploy story: SIGTERM → announce the restart to every table, stop
+        # accepting new tables/games, then hand off to uvicorn's graceful
+        # shutdown (via SIGINT — uvicorn's own handler stays bound to it).
+        # Clients auto-reconnect once the new process is up.
+        def _handle_sigterm() -> None:
+            if lifecycle.is_draining():
+                return
+            lifecycle.set_draining()
+
+            async def _drain() -> None:
+                from server.realtime.broadcast import broadcast_table_event
+                from server.runtime.tables import tables
+
+                for table in list(tables.tables.values()):
+                    try:
+                        await broadcast_table_event(
+                            table, {"type": "server_restart"}
+                        )
+                    except Exception:
+                        logging.exception(
+                            "server_restart broadcast failed for %s", table.id
+                        )
+                await asyncio.sleep(2.0)
+                signal.raise_signal(signal.SIGINT)
+
+            asyncio.get_running_loop().create_task(_drain())
+
+        try:
+            asyncio.get_running_loop().add_signal_handler(
+                signal.SIGTERM, _handle_sigterm
+            )
+        except (NotImplementedError, RuntimeError):
+            pass  # non-unix / non-main-thread (tests)
+
         pool = await open_pool(settings.database_url)
 
         async with pool.acquire() as conn:

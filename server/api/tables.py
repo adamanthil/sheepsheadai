@@ -16,7 +16,11 @@ from server.api.schemas import (
 )
 from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
-from server.runtime.lifecycle import close_table, schedule_autoclose_if_no_humans
+from server.runtime.lifecycle import (
+    close_table,
+    is_draining,
+    schedule_autoclose_if_no_humans,
+)
 from server.runtime.seating import (
     _allocate_ai_occupant,
     _is_ai_occupant,
@@ -71,6 +75,8 @@ def list_tables():
 @router.post("/api/tables")
 @limiter.limit(CREATE_JOIN)
 async def create_table(request: Request, req: CreateTableRequest):
+    if is_draining():
+        raise HTTPException(status_code=503, detail="server_restarting")
     try:
         table = await tables.create_table(
             req.name, req.fillWithAI, req.rules.model_dump()

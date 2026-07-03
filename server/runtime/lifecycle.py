@@ -10,6 +10,20 @@ from server.services.persistence.games import close_game_table
 from server.services.persistence.pool import get_db_pool
 
 
+# Set on SIGTERM (deploy/restart): new tables/games are refused with a 503
+# while in-flight hands get a heads-up broadcast before the process exits.
+_draining = False
+
+
+def set_draining() -> None:
+    global _draining
+    _draining = True
+
+
+def is_draining() -> bool:
+    return _draining
+
+
 async def close_table(table: Table, reason: str = "closed") -> None:
     """Gracefully close a table: cancel AI, notify clients, close websockets, and remove from manager."""
     if table.ai_task and not table.ai_task.done():
