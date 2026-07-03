@@ -27,6 +27,7 @@ async def test_health_endpoint(app):
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/health")
     assert resp.status_code == 200
+    assert resp.headers["x-content-type-options"] == "nosniff"
     body = resp.json()
     assert body["status"] == "ok"
     assert body["model"] == "test-model"

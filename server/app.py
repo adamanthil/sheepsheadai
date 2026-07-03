@@ -145,6 +145,15 @@ def create_app() -> FastAPI:
         }
     app.add_middleware(CORSMiddleware, **cors_config)
 
+    @app.middleware("http")
+    async def security_headers(request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        # API responses are per-player game state; never cache them.
+        if request.url.path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
     app.include_router(health_router.router)
     app.include_router(tables_router.router)
     app.include_router(games_router.router)
