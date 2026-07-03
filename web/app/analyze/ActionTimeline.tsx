@@ -174,12 +174,12 @@ export default function ActionTimeline({
                 maxValue,
               )}
               normalizedReward={normalize(
-                action.discountedReturn,
+                action.discountedReturn ?? undefined,
                 minReward,
                 maxReward,
               )}
               normalizedStepReward={normalize(
-                action.stepReward,
+                action.stepReward ?? undefined,
                 minStepReward,
                 maxStepReward,
               )}

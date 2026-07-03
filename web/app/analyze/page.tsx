@@ -258,8 +258,8 @@ export default function AnalyzePage() {
               {response.summary && <GameSummary summary={response.summary} />}
               <ActionTimeline
                 trace={response.trace}
-                picker={response.summary?.picker}
-                partner={response.summary?.partner}
+                picker={response.summary?.picker ?? undefined}
+                partner={response.summary?.partner ?? undefined}
                 shapingWeightPercent={shapingWeightPercent}
                 terminalRewards={terminalRewards}
                 gamma={response.meta.gamma}

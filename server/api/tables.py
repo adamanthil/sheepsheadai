@@ -9,6 +9,10 @@ from server.api.auth import PlayerIdentity, current_player, optional_player
 from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, limiter
 from server.api.schemas import (
     CloseTableRequest,
+    JoinTableResponse,
+    OkResponse,
+    RulesUpdateResponse,
+    TablePublic,
     CreateTableRequest,
     JoinTableRequest,
     SeatRequest,
@@ -67,12 +71,12 @@ def require_host(
         raise HTTPException(status_code=403, detail="not_host")
 
 
-@router.get("/api/tables")
+@router.get("/api/tables", response_model=list[TablePublic])
 def list_tables():
     return tables.list_tables()
 
 
-@router.post("/api/tables")
+@router.post("/api/tables", response_model=TablePublic)
 @limiter.limit(CREATE_JOIN)
 async def create_table(request: Request, req: CreateTableRequest):
     if is_draining():
@@ -90,7 +94,7 @@ async def create_table(request: Request, req: CreateTableRequest):
     return table.to_public_dict()
 
 
-@router.post("/api/tables/{table_id}/join")
+@router.post("/api/tables/{table_id}/join", response_model=JoinTableResponse)
 @limiter.limit(CREATE_JOIN)
 async def join_table(request: Request, table_id: str, req: JoinTableRequest):
     try:
@@ -196,7 +200,7 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
     }
 
 
-@router.post("/api/tables/{table_id}/seat")
+@router.post("/api/tables/{table_id}/seat", response_model=TablePublic)
 @limiter.limit(HOST_ACTIONS)
 async def choose_seat(
     request: Request,
@@ -249,7 +253,7 @@ async def choose_seat(
     return table.to_public_dict()
 
 
-@router.patch("/api/tables/{table_id}/rules")
+@router.patch("/api/tables/{table_id}/rules", response_model=RulesUpdateResponse)
 @limiter.limit(HOST_ACTIONS)
 async def update_table_rules(
     request: Request,
@@ -275,7 +279,7 @@ async def update_table_rules(
     return {"status": "success", "rules": table.rules}
 
 
-@router.post("/api/tables/{table_id}/close")
+@router.post("/api/tables/{table_id}/close", response_model=OkResponse)
 @limiter.limit(HOST_ACTIONS)
 async def api_close_table(
     request: Request,

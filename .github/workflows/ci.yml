@@ -34,6 +34,10 @@ jobs:
       - run: uv run ruff check server
       - run: uv run python -m compileall -q server
       - run: uv run pytest server/tests -q
+      # The committed OpenAPI schema (and the TS types generated from it)
+      # must match the live server schemas.
+      - run: uv run python scripts/export_openapi.py
+      - run: git diff --exit-code web/openapi.json
 
   web:
     runs-on: ubuntu-latest
@@ -48,6 +52,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - run: npm run gen:api
+      - run: git diff --exit-code lib/api.gen.ts
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run build

@@ -101,8 +101,8 @@ class CloseTableRequest(BaseModel):
 class TablePublic(BaseModel):
     id: str
     name: str
-    status: str
-    rules: Dict[str, Any]
+    status: Literal["open", "playing", "finished"]
+    rules: RulesInput
     fillWithAI: bool
     seats: Dict[int, Optional[str]] | Dict[str, Optional[str]]
     runningBySeat: Dict[int, int] | Dict[str, int]
@@ -112,6 +112,41 @@ class TablePublic(BaseModel):
     resultsHistory: List[Dict[str, Any]]
     initialSeatOrder: List[str]
     initialNames: Dict[str, str]
+
+
+class JoinTableResponse(BaseModel):
+    client_id: str
+    player_id: str
+    # Present only when a fresh identity was minted on this join.
+    session_token: Optional[str]
+    is_host: bool
+    table: TablePublic
+
+
+class PlayerPublic(BaseModel):
+    player_id: str
+    name: Optional[str]
+
+
+class RulesUpdateResponse(BaseModel):
+    status: str
+    rules: RulesInput
+
+
+class OkResponse(BaseModel):
+    ok: bool
+
+
+class ActionsLookupResponse(BaseModel):
+    action_lookup: Dict[int, str]
+
+
+class HealthResponse(BaseModel):
+    status: str
+    db: bool
+    model_label: str = Field(alias="model")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # Analyze AI Model schemas

@@ -8,6 +8,8 @@ from server.api.auth import PlayerIdentity, current_player
 from server.api.ratelimit import GAME_ACTIONS, HOST_ACTIONS, limiter
 from server.api.schemas import (
     ActionRequest,
+    OkResponse,
+    TablePublic,
     RedealRequest,
     StartGameRequest,
 )
@@ -57,7 +59,7 @@ def _fill_empty_seats_with_ai(table) -> None:
             table.seats[i] = occ_id
 
 
-@router.post("/api/tables/{table_id}/fill_ai")
+@router.post("/api/tables/{table_id}/fill_ai", response_model=TablePublic)
 @limiter.limit(HOST_ACTIONS)
 async def fill_ai(
     request: Request,
@@ -78,7 +80,7 @@ async def fill_ai(
     return table.to_public_dict()
 
 
-@router.post("/api/tables/{table_id}/start")
+@router.post("/api/tables/{table_id}/start", response_model=TablePublic)
 @limiter.limit(HOST_ACTIONS)
 async def start_game(
     request: Request,
@@ -150,7 +152,7 @@ async def start_game(
     return table.to_public_dict()
 
 
-@router.post("/api/tables/{table_id}/redeal")
+@router.post("/api/tables/{table_id}/redeal", response_model=TablePublic)
 @limiter.limit(HOST_ACTIONS)
 async def redeal(
     request: Request,
@@ -187,7 +189,7 @@ async def redeal(
     return table.to_public_dict()
 
 
-@router.post("/api/tables/{table_id}/action")
+@router.post("/api/tables/{table_id}/action", response_model=OkResponse)
 @limiter.limit(GAME_ACTIONS)
 async def post_action(
     request: Request,

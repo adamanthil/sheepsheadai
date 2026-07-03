@@ -55,7 +55,7 @@ export default function WaitingRoom() {
       if (t) {
         setTable(t);
         // Initialize modes from table rules
-        const rules = (t as any).rules || {};
+        const rules = t.rules ?? {};
         const pMode = rules.partnerMode !== undefined ? rules.partnerMode : 1; // Default to Called Ace
         setPartnerMode(pMode);
         const sMode =
@@ -66,8 +66,8 @@ export default function WaitingRoom() {
             : 1; // Default to Double on the Bump
         setScoringMode(sMode);
       }
-    } catch (e: any) {
-      setError(String(e?.message || e));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -89,7 +89,7 @@ export default function WaitingRoom() {
           const t = data.table as TableInfo;
           setTable(t);
           if (typeof data.isHost === "boolean") setIsHost(data.isHost);
-          const rules = (t as any).rules || {};
+          const rules = t.rules ?? {};
           if (rules.partnerMode !== undefined)
             setPartnerMode(rules.partnerMode);
           if (rules.doubleOnTheBump !== undefined)
@@ -191,7 +191,7 @@ export default function WaitingRoom() {
         return;
       }
       setPartnerMode(newMode);
-    } catch (e: any) {
+    } catch {
       setError("Failed to update partner mode");
     }
   }
@@ -211,7 +211,7 @@ export default function WaitingRoom() {
         return;
       }
       setScoringMode(newMode);
-    } catch (e: any) {
+    } catch {
       setError("Failed to update scoring mode");
     }
   }
@@ -259,7 +259,7 @@ export default function WaitingRoom() {
       out.push({
         seat: i,
         name: table.seats[String(i)] || null,
-        isAI: Boolean((table as any).seatIsAI?.[String(i)]),
+        isAI: Boolean(table.seatIsAI?.[String(i)]),
       });
     return out;
   }, [table]);

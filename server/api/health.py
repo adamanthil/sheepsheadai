@@ -5,6 +5,7 @@ import logging
 
 from fastapi import APIRouter
 
+from server.api.schemas import HealthResponse
 from server.config import get_settings
 from server.services.persistence.pool import get_db_pool
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthResponse)
 async def health():
     """Liveness/readiness probe for uptime checks and container healthchecks.
 

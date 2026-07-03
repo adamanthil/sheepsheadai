@@ -1,88 +1,47 @@
-// TypeScript types that mirror the backend response schemas
+// Generated from the server's OpenAPI schema — regenerate with
+// `npm run gen:api` after changing server/api/schemas.py.
+import type { components } from "./api.gen";
 
-export interface AnalyzeSimulateRequest {
-  seed?: number;
-  partnerMode?: number; // 0 = JD, 1 = Called Ace
+export type AnalyzeSimulateRequest =
+  components["schemas"]["AnalyzeSimulateRequest"];
+export type AnalyzeProbability = components["schemas"]["AnalyzeProbability"];
+export type AnalyzePointEstimate =
+  components["schemas"]["AnalyzePointEstimate"];
+export type AnalyzeTrumpSeenMaskEntry =
+  components["schemas"]["AnalyzeTrumpSeenMaskEntry"];
+export type AnalyzeGameSummary = components["schemas"]["AnalyzeGameSummary"];
+
+/** The per-step `view` is an untyped dict server-side (built straight from
+ * the game engine); type the fields the analyze UI reads. */
+export type AnalyzeView = {
+  player?: number;
+  picker?: number;
+  partner?: number;
+  is_leaster?: boolean;
+  called_card?: string | null;
+  current_trick?: string[];
+  current_trick_index?: number;
+  hand?: string[];
+  blind?: string[];
+  bury?: string[];
+  [key: string]: unknown;
+};
+
+export type AnalyzeMeta = {
+  partnerMode?: number;
   deterministic?: boolean;
-  maxSteps?: number;
-}
+  seed?: number | null;
+  model?: string;
+  gamma?: number;
+  [key: string]: unknown;
+};
 
-export interface AnalyzeProbability {
-  actionId: number;
-  action: string;
-  prob: number;
-  logit: number;
-}
+export type AnalyzeActionDetail = Omit<
+  components["schemas"]["AnalyzeActionDetail"],
+  "view"
+> & { view: AnalyzeView };
 
-export interface AnalyzePointEstimate {
-  seat: number;
-  seatName: string;
-  points: number;
-  relativePosition: number;
-}
-
-export interface AnalyzeTrumpProbability {
-  card: string;
-  probability: number;
-}
-
-export interface AnalyzeTrumpSeenMaskEntry {
-  card: string;
-  probabilitySeen: number;
-  actualSeen: boolean;
-}
-
-export interface AnalyzeActionDetail {
-  stepIndex: number;
-  seat: number;
-  seatName: string;
-  phase: string; // "pick" | "partner" | "bury" | "play"
-  actionId: number;
-  action: string;
-  valueEstimate: number;
-  discountedReturn?: number;
-  stepReward?: number;
-  stepRewardBase?: number;
-  stepRewardHeadShaping?: number;
-  /** Terminal-only per-step reward (reward_mode="terminal"): full return on the
-   *  player's last action, 0 elsewhere; no shaping/trick/leaster bonus. */
-  stepRewardTerminal?: number;
-  winProb?: number;
-  expectedFinalReturn?: number;
-  secretPartnerProb?: number;
-  pointEstimates?: AnalyzePointEstimate[];
-  pointActuals?: AnalyzePointEstimate[];
-  trumpSeenMask?: AnalyzeTrumpSeenMaskEntry[];
-  unseenTrumpHigherThanHandProb?: number;
-  unseenTrumpHigherThanHandActual?: boolean;
-  validActionIds: number[];
-  probabilities: AnalyzeProbability[];
-  view: Record<string, any>;
-  state?: number[];
-}
-
-export interface AnalyzeGameSummary {
-  hands: Record<string, string[]>; // player name -> cards
-  blind: string[];
-  picker?: string;
-  partner?: string;
-  bury: string[];
-  pickerPoints: number;
-  defenderPoints: number;
-  scores: number[]; // indexed by seat-1
-}
-
-export interface AnalyzeSimulateResponse {
-  meta: {
-    partnerMode: number;
-    deterministic: boolean;
-    seed?: number;
-    model?: string;
-    gamma?: number;
-  };
-  actionLookup: Record<number, string>;
-  players: string[];
-  summary?: AnalyzeGameSummary;
-  trace: AnalyzeActionDetail[];
-  final?: Record<string, any>;
-}
+export type AnalyzeSimulateResponse = Omit<
+  components["schemas"]["AnalyzeSimulateResponse"],
+  "meta" | "trace"
+> & { meta: AnalyzeMeta; trace: AnalyzeActionDetail[] };

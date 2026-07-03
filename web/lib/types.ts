@@ -1,14 +1,13 @@
-export type TableSummary = {
-  id: string;
-  name: string;
-  status: "open" | "playing" | "finished";
-  rules: Record<string, unknown>;
-  fillWithAI: boolean;
-  seats: Record<string, string | null>;
-  seatIsAI?: Record<string, boolean>;
-  host: string | null;
-  runningBySeat?: Record<string, number>;
-};
+import type { components } from "./api.gen";
+
+/** REST shapes are generated from the server's OpenAPI schema — regenerate
+ * with `npm run gen:api` after changing server/api/schemas.py. */
+export type TablePublic = components["schemas"]["TablePublic"];
+export type Rules = components["schemas"]["RulesInput"];
+export type JoinTableResponse = components["schemas"]["JoinTableResponse"];
+export type PlayerPublic = components["schemas"]["PlayerPublic"];
+
+export type TableSummary = TablePublic;
 
 export type HandResult = {
   hand?: number;
@@ -16,20 +15,9 @@ export type HandResult = {
   sum?: number;
 };
 
-/** The table object received inside WebSocket state messages. */
-export type TableView = {
-  id: string;
-  name: string;
-  status: "open" | "playing" | "finished";
-  seats: Record<string, string | null>;
-  seatIsAI?: Record<string, boolean>;
-  seatOccupants?: Record<string, string>;
-  initialSeatOrder?: string[];
-  resultsHistory?: HandResult[];
-  host: string | null;
-  rules?: Record<string, unknown>;
-  runningBySeat?: Record<string, number>;
-};
+/** The table object inside WebSocket state messages is the same
+ * to_public_dict() payload the REST endpoints return. */
+export type TableView = TablePublic;
 
 export type FinalState = {
   mode?: "leaster" | "normal";
