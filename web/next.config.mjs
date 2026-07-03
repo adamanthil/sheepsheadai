@@ -34,6 +34,8 @@ const csp = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Self-contained server bundle for the Docker image.
+  output: "standalone",
   experimental: {},
   async headers() {
     return [

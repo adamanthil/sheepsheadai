@@ -31,9 +31,10 @@ export function apiFetch(
 }
 
 export function wsUrl(tableId: string): string {
-  const api = new URL(API_BASE);
-  const wsProto = api.protocol === "https:" ? "wss:" : "ws:";
-  return `${wsProto}//${api.host}/ws/table/${tableId}`;
+  // Empty API_BASE means same-origin: derive the ws host from the page URL.
+  const base = API_BASE ? new URL(API_BASE) : window.location;
+  const wsProto = base.protocol === "https:" ? "wss:" : "ws:";
+  return `${wsProto}//${base.host}/ws/table/${tableId}`;
 }
 
 /** Subprotocol entries carry the client id and session token so neither
