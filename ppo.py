@@ -2054,7 +2054,7 @@ class PPOAgent:
             filepath,
         )
 
-    def load(self, filepath, load_optimizers: bool = True):
+    def load(self, filepath, load_optimizers: bool = True, checkpoint=None):
         """Load model parameters.
 
         Parameters
@@ -2064,8 +2064,14 @@ class PPOAgent:
         load_optimizers : bool
             If True, also loads optimizer states. For population/inference agents,
             pass False to skip optimizer loading entirely.
+        checkpoint : dict, optional
+            A checkpoint already read via ``torch.load``. Lets callers that
+            build many agents from one file (e.g. the game server) skip the
+            per-agent disk read; ``load_state_dict`` copies tensors, so agents
+            never alias the shared checkpoint.
         """
-        checkpoint = torch.load(filepath, map_location=device)
+        if checkpoint is None:
+            checkpoint = torch.load(filepath, map_location=device)
 
         self.encoder.load_state_dict(checkpoint["encoder_state_dict"])
         self.actor.load_state_dict(checkpoint["actor_state_dict"])

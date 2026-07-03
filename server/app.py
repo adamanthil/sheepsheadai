@@ -96,6 +96,12 @@ def create_app() -> FastAPI:
         raise RuntimeError("SHEEPSHEAD_MODEL_LABEL must be set")
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL must be set")
+
+    # Leave headroom for the event loop and Postgres: inference threads are
+    # additionally bounded by ai_loader.inference_limit.
+    import torch
+
+    torch.set_num_threads(max(1, (os.cpu_count() or 4) // 2))
     load_agent(settings.sheepshead_model_path)
 
     @asynccontextmanager
