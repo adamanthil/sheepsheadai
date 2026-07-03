@@ -24,8 +24,12 @@ def app(monkeypatch, tmp_path):
     get_settings.cache_clear()
 
     import server.app as app_module
+    from server.api.ratelimit import limiter
 
     monkeypatch.setattr(app_module, "load_agent", lambda path: object())
+    # The limiter is module-level state; reset so earlier tests' requests
+    # don't count against this test's budget.
+    limiter.reset()
     try:
         yield app_module.create_app()
     finally:

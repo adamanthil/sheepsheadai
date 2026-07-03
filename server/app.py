@@ -7,12 +7,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from server.api import actions as actions_router
 from server.api import analyze as analyze_router
 from server.api import games as games_router
 from server.api import health as health_router
 from server.api import players as players_router
+from server.api.ratelimit import limiter
 from server.api import tables as tables_router
 from server.config import get_settings
 from server.realtime import websocket as websocket_router
@@ -116,6 +119,8 @@ def create_app() -> FastAPI:
             await close_pool()
 
     app = FastAPI(title="Sheepshead Realtime API", lifespan=lifespan)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     if settings.env == "production":
         origins = [

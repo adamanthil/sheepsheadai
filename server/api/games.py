@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from server.api.ratelimit import GAME_ACTIONS, HOST_ACTIONS, limiter
 from server.api.schemas import (
     ActionRequest,
     RedealRequest,
@@ -55,7 +56,8 @@ def _fill_empty_seats_with_ai(table) -> None:
 
 
 @router.post("/api/tables/{table_id}/fill_ai")
-async def fill_ai(table_id: str, req: RedealRequest | None = None):
+@limiter.limit(HOST_ACTIONS)
+async def fill_ai(request: Request, table_id: str, req: RedealRequest | None = None):
     try:
         table = tables.get_table(table_id)
     except KeyError as e:
@@ -69,7 +71,8 @@ async def fill_ai(table_id: str, req: RedealRequest | None = None):
 
 
 @router.post("/api/tables/{table_id}/start")
-async def start_game(table_id: str, req: StartGameRequest):
+@limiter.limit(HOST_ACTIONS)
+async def start_game(request: Request, table_id: str, req: StartGameRequest):
     try:
         table = tables.get_table(table_id)
     except KeyError:
@@ -130,7 +133,8 @@ async def start_game(table_id: str, req: StartGameRequest):
 
 
 @router.post("/api/tables/{table_id}/redeal")
-async def redeal(table_id: str, req: RedealRequest | None = None):
+@limiter.limit(HOST_ACTIONS)
+async def redeal(request: Request, table_id: str, req: RedealRequest | None = None):
     try:
         table = tables.get_table(table_id)
     except KeyError:
@@ -160,7 +164,8 @@ async def redeal(table_id: str, req: RedealRequest | None = None):
 
 
 @router.post("/api/tables/{table_id}/action")
-async def post_action(table_id: str, req: ActionRequest):
+@limiter.limit(GAME_ACTIONS)
+async def post_action(request: Request, table_id: str, req: ActionRequest):
     try:
         table = tables.get_table(table_id)
     except KeyError:

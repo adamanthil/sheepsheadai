@@ -1,17 +1,29 @@
 from __future__ import annotations
 
 import logging
+import threading
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from server.api.ratelimit import ANALYZE, limiter
 from server.api.schemas import AnalyzeSimulateRequest, AnalyzeSimulateResponse
 
 router = APIRouter()
 
+# Each simulation runs a full game of torch inference; bound concurrency so a
+# burst (this is a sync endpoint, so each request occupies a threadpool
+# worker) cannot oversubscribe the CPU that live games depend on.
+_sim_slots = threading.BoundedSemaphore(2)
+
 
 @router.post("/api/analyze/simulate")
-def analyze_simulate(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
+@limiter.limit(ANALYZE)
+def analyze_simulate(
+    request: Request, req: AnalyzeSimulateRequest
+) -> AnalyzeSimulateResponse:
     """Simulate a full Sheepshead game and return detailed analysis trace."""
+    if not _sim_slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="analyze_busy")
     try:
         from server.services.analyze import simulate_game
 
@@ -21,3 +33,5 @@ def analyze_simulate(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     except Exception as e:
         logging.exception("analyze_simulate failed: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        _sim_slots.release()

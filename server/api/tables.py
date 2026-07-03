@@ -3,8 +3,9 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, limiter
 from server.api.schemas import (
     CloseTableRequest,
     CreateTableRequest,
@@ -49,13 +50,15 @@ def list_tables():
 
 
 @router.post("/api/tables")
-async def create_table(req: CreateTableRequest):
+@limiter.limit(CREATE_JOIN)
+async def create_table(request: Request, req: CreateTableRequest):
     table = await tables.create_table(req.name, req.fillWithAI, req.rules.model_dump())
     return table.to_public_dict()
 
 
 @router.post("/api/tables/{table_id}/join")
-async def join_table(table_id: str, req: JoinTableRequest):
+@limiter.limit(CREATE_JOIN)
+async def join_table(request: Request, table_id: str, req: JoinTableRequest):
     try:
         table = tables.get_table(table_id)
     except KeyError as e:
@@ -143,7 +146,8 @@ async def join_table(table_id: str, req: JoinTableRequest):
 
 
 @router.post("/api/tables/{table_id}/seat")
-async def choose_seat(table_id: str, req: SeatRequest):
+@limiter.limit(HOST_ACTIONS)
+async def choose_seat(request: Request, table_id: str, req: SeatRequest):
     try:
         table = tables.get_table(table_id)
     except KeyError as e:
@@ -186,7 +190,10 @@ async def choose_seat(table_id: str, req: SeatRequest):
 
 
 @router.patch("/api/tables/{table_id}/rules")
-async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
+@limiter.limit(HOST_ACTIONS)
+async def update_table_rules(
+    request: Request, table_id: str, req: UpdateTableRulesRequest
+):
     try:
         table = tables.get_table(table_id)
     except KeyError:
@@ -206,7 +213,8 @@ async def update_table_rules(table_id: str, req: UpdateTableRulesRequest):
 
 
 @router.post("/api/tables/{table_id}/close")
-async def api_close_table(table_id: str, req: CloseTableRequest):
+@limiter.limit(HOST_ACTIONS)
+async def api_close_table(request: Request, table_id: str, req: CloseTableRequest):
     try:
         table = tables.get_table(table_id)
     except KeyError:
