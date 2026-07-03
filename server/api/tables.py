@@ -128,6 +128,27 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
     )
     async with table.state_lock:
         prune_table_state(table)
+        # Idempotent for an already-present player (second tab, lost
+        # localStorage): hand back the existing connection rather than
+        # seating the same player twice — one player at two seats also
+        # breaks hand persistence's (game, player) uniqueness.
+        existing = next(
+            (
+                c
+                for c in table.clients.values()
+                if c.player_id == str(player_uuid)
+            ),
+            None,
+        )
+        if existing is not None:
+            existing.display_name = req.display_name
+            return {
+                "client_id": existing.client_id,
+                "player_id": str(player_uuid),
+                "session_token": session_token,
+                "is_host": existing.client_id == table.host_client_id,
+                "table": table.to_public_dict(),
+            }
         table.clients[client_id] = conn
         if not table.host_client_id:
             table.host_client_id = client_id
