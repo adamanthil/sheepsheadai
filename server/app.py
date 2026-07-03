@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from server.api import actions as actions_router
 from server.api import analyze as analyze_router
 from server.api import games as games_router
+from server.api import health as health_router
 from server.api import players as players_router
 from server.api import tables as tables_router
 from server.config import get_settings
@@ -134,6 +135,7 @@ def create_app() -> FastAPI:
         }
     app.add_middleware(CORSMiddleware, **cors_config)
 
+    app.include_router(health_router.router)
     app.include_router(tables_router.router)
     app.include_router(games_router.router)
     app.include_router(actions_router.router)
