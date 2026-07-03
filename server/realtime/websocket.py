@@ -31,6 +31,20 @@ router = APIRouter()
 
 _CLIENT_SUBPROTO_PREFIX = "sheepshead.client."
 
+# DoS backstop: one IP may hold at most this many concurrent sockets. Counted
+# only for connections that pass validation; check+increment happen with no
+# await in between, so the asyncio event loop makes them atomic.
+MAX_SOCKETS_PER_IP = 20
+_sockets_by_ip: dict[str, int] = {}
+
+
+def _release_ip_slot(ip: str) -> None:
+    remaining = _sockets_by_ip.get(ip, 1) - 1
+    if remaining <= 0:
+        _sockets_by_ip.pop(ip, None)
+    else:
+        _sockets_by_ip[ip] = remaining
+
 
 @router.websocket("/ws/table/{table_id}")
 async def table_ws(websocket: WebSocket, table_id: str):
@@ -61,6 +75,22 @@ async def table_ws(websocket: WebSocket, table_id: str):
         await websocket.close(code=4403)
         return
 
+    ip = websocket.client.host if websocket.client else "unknown"
+    if _sockets_by_ip.get(ip, 0) >= MAX_SOCKETS_PER_IP:
+        await websocket.accept(subprotocol=chosen_subproto)
+        await websocket.close(code=4429)
+        return
+    _sockets_by_ip[ip] = _sockets_by_ip.get(ip, 0) + 1
+
+    try:
+        await _serve_connection(websocket, table, client_id, chosen_subproto)
+    finally:
+        _release_ip_slot(ip)
+
+
+async def _serve_connection(
+    websocket: WebSocket, table, client_id: str, chosen_subproto: str | None
+):
     await websocket.accept(subprotocol=chosen_subproto)
 
     conn = table.clients[client_id]

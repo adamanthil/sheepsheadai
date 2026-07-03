@@ -24,7 +24,7 @@ from server.runtime.seating import (
     _replace_ai_with_human_and_reserve,
     _reserved_ai_ids,
 )
-from server.runtime.tables import ClientConn, Table, tables
+from server.runtime.tables import ClientConn, Table, TableLimitError, tables
 from server.services.persistence import players as players_db
 from server.services.persistence.pool import get_db_pool
 
@@ -52,7 +52,12 @@ def list_tables():
 @router.post("/api/tables")
 @limiter.limit(CREATE_JOIN)
 async def create_table(request: Request, req: CreateTableRequest):
-    table = await tables.create_table(req.name, req.fillWithAI, req.rules.model_dump())
+    try:
+        table = await tables.create_table(
+            req.name, req.fillWithAI, req.rules.model_dump()
+        )
+    except TableLimitError:
+        raise HTTPException(status_code=503, detail="table_limit_reached")
     return table.to_public_dict()
 
 

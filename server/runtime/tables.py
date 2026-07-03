@@ -158,6 +158,16 @@ class Table:
         }
 
 
+# DoS backstop: hard ceiling on concurrently open tables. Each table holds an
+# in-memory Game plus (once started) its own PPOAgent, so unbounded creation
+# is a memory exhaustion vector.
+MAX_TABLES = 200
+
+
+class TableLimitError(RuntimeError):
+    """Raised when creating a table would exceed MAX_TABLES."""
+
+
 class TableManager:
     def __init__(self):
         self.tables: Dict[str, Table] = {}
@@ -167,6 +177,8 @@ class TableManager:
         self, name: str, fill_with_ai: bool, rules: Dict[str, Any]
     ) -> Table:
         async with self._lock:
+            if len(self.tables) >= MAX_TABLES:
+                raise TableLimitError()
             tid = str(uuid.uuid4())
             table = Table(id=tid, name=name, fill_with_ai=fill_with_ai, rules=rules)
             self.tables[tid] = table

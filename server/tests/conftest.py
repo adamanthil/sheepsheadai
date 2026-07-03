@@ -25,11 +25,13 @@ def app(monkeypatch, tmp_path):
 
     import server.app as app_module
     from server.api.ratelimit import limiter
+    from server.runtime.tables import tables
 
     monkeypatch.setattr(app_module, "load_agent", lambda path: object())
-    # The limiter is module-level state; reset so earlier tests' requests
-    # don't count against this test's budget.
+    # The limiter and TableManager are module-level state; reset so earlier
+    # tests' requests and tables don't leak into this test.
     limiter.reset()
+    tables.tables.clear()
     try:
         yield app_module.create_app()
     finally:
