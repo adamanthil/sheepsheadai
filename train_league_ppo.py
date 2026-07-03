@@ -430,6 +430,14 @@ def run_main_phase(
                     adv_std_all = astats.get("std", 0.0)
                     adv_std_play = hstd.get("play", 0.0)
                     adv_std_pick = hstd.get("pick", 0.0)
+                    # Oracle mode: explained variance of each critic vs the
+                    # empirical return — the variance-reduction headline.
+                    ostats = stats.get("oracle") or {}
+                    oracle_str = (
+                        f"  ev O/L {ostats['ev_oracle']:.2f}/{ostats['ev_limited']:.2f}"
+                        if ostats
+                        else ""
+                    )
                     print(
                         f"Ep {episode:,} | picker_avg {picker_avg:+.2f} | "
                         f"pick {100 * np.mean(pick_window):.0f}% | "
@@ -437,7 +445,7 @@ def run_main_phase(
                         f"x-share {league.exploiter_share():.2f} | "
                         f"advσ all/pick/play "
                         f"{adv_std_all:.3f}/{adv_std_pick:.3f}/{adv_std_play:.3f} | "
-                        f"{eps_s:.1f} eps/s{anchor_str}",
+                        f"{eps_s:.1f} eps/s{anchor_str}{oracle_str}",
                         flush=True,
                     )
                     write_header = not os.path.exists(progress_csv)
@@ -456,6 +464,8 @@ def run_main_phase(
                                     "adv_std_all",
                                     "adv_std_pick",
                                     "adv_std_play",
+                                    "ev_oracle",
+                                    "ev_limited",
                                 ]
                             )
                         w.writerow(
@@ -470,6 +480,8 @@ def run_main_phase(
                                 f"{adv_std_all:.4f}",
                                 f"{adv_std_pick:.4f}",
                                 f"{adv_std_play:.4f}",
+                                f"{ostats['ev_oracle']:.4f}" if ostats else "",
+                                f"{ostats['ev_limited']:.4f}" if ostats else "",
                             ]
                         )
 
