@@ -20,6 +20,11 @@ from server.services.ai_loader import load_agent
 from server.services.persistence.pool import close_pool, open_pool, set_db_state
 
 
+# Dev-only CORS: local Next.js dev servers. Anchored so hostile origins that
+# merely *contain* a local-looking suffix (e.g. http://evil.com:3000) never match.
+DEV_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         data: dict = {
@@ -128,7 +133,7 @@ def create_app() -> FastAPI:
         }
     else:
         cors_config = {
-            "allow_origin_regex": r"http://[^/]+:3000",
+            "allow_origin_regex": DEV_CORS_ORIGIN_REGEX,
             "allow_credentials": True,
             "allow_methods": ["*"],
             "allow_headers": ["*"],
