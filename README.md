@@ -125,7 +125,36 @@ The frontend is available at `http://localhost:3000`.
 npm run build      # production build
 npm run lint       # ESLint check
 npm run typecheck  # TypeScript type check (tsc --noEmit)
+npm run gen:api    # regenerate lib/api.gen.ts from openapi.json
 ```
+
+### 4. Tests and generated types
+
+```bash
+uv run pytest server/tests          # hermetic server tests (no DB needed)
+
+# Full API-flow tests against a real Postgres:
+docker exec sheepshead_postgres psql -U sheepshead -c "CREATE DATABASE sheepshead_test;"
+(cd db && DATABASE_URL=postgres://sheepshead:sheepshead@localhost:5433/sheepshead_test npx graphile-migrate migrate)
+TEST_DATABASE_URL=postgres://sheepshead:sheepshead@localhost:5433/sheepshead_test uv run pytest server/tests
+```
+
+REST types are generated from the server's OpenAPI schema. After changing
+`server/api/schemas.py` or any route signature:
+
+```bash
+uv run python scripts/export_openapi.py   # refresh web/openapi.json
+cd web && npm run gen:api                 # refresh lib/api.gen.ts
+```
+
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, both test suites, and
+fails if the committed schema or generated types drift.
+
+### 5. Deployment
+
+See [docs/deploy.md](docs/deploy.md) — single-VPS Docker Compose stack
+(Caddy TLS + web + api + Postgres + nightly backups). The API is a single
+process by design; the runbook covers deploys, drains, and restores.
 
 ---
 
