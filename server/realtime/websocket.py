@@ -22,8 +22,8 @@ from server.realtime.chat import (
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.lifecycle import schedule_autoclose_if_no_humans
 from server.runtime.seating import (
-    _cancel_disconnect_task,
-    _find_seat_of_occupant,
+    cancel_disconnect_task,
+    find_seat_of_occupant,
     schedule_ai_replacement_for_disconnected_human,
 )
 from server.runtime.tables import _json_default, tables
@@ -116,11 +116,11 @@ async def _serve_connection(
         conn.disconnected_at = None
         # Cancel any pending replacement and attempt to reclaim reserved AI
         # seat if needed.
-        _cancel_disconnect_task(table, client_id)
+        cancel_disconnect_task(table, client_id)
         ai_id = table.reserved_ai_by_human.get(client_id)
         reclaimed_seat = None
         if ai_id:
-            seat_idx = _find_seat_of_occupant(table, ai_id)
+            seat_idx = find_seat_of_occupant(table, ai_id)
             if seat_idx:
                 table.seats[seat_idx] = client_id
                 conn.seat = seat_idx

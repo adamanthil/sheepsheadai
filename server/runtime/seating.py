@@ -12,32 +12,32 @@ from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import schedule_ai_turns
 
 
-def _is_ai_occupant(table: Table, occ_id: Optional[str]) -> bool:
+def is_ai_occupant(table: Table, occ_id: Optional[str]) -> bool:
     if not occ_id:
         return False
     occ = table.occupants.get(occ_id)
     return bool(occ and occ.is_ai)
 
 
-def _first_ai_seat(table: Table) -> Optional[int]:
+def first_ai_seat(table: Table) -> Optional[int]:
     for i in range(1, 6):
-        if _is_ai_occupant(table, table.seats.get(i)):
+        if is_ai_occupant(table, table.seats.get(i)):
             return i
     return None
 
 
-def _reserved_ai_ids(table: Table) -> Set[str]:
+def reserved_ai_ids(table: Table) -> Set[str]:
     return {v for v in table.reserved_ai_by_human.values() if v}
 
 
-def _pick_join_ai_seat(table: Table) -> Optional[int]:
+def pick_join_ai_seat(table: Table) -> Optional[int]:
     """Pick an AI seat for a newcomer, preferring AIs not reserved for disconnected humans."""
-    reserved_ids = _reserved_ai_ids(table)
+    reserved_ids = reserved_ai_ids(table)
     non_reserved: list = []
     reserved: list = []
     for i in range(1, 6):
         occ = table.seats.get(i)
-        if _is_ai_occupant(table, occ):
+        if is_ai_occupant(table, occ):
             if occ in reserved_ids:
                 reserved.append(i)
             else:
@@ -49,23 +49,23 @@ def _pick_join_ai_seat(table: Table) -> Optional[int]:
     return None
 
 
-def _lowest_non_human_seat(table: Table) -> Optional[int]:
+def lowest_non_human_seat(table: Table) -> Optional[int]:
     """Return the lowest seat index that is either empty or occupied by an AI."""
     for i in range(1, 6):
         occ = table.seats.get(i)
-        if not occ or _is_ai_occupant(table, occ):
+        if not occ or is_ai_occupant(table, occ):
             return i
     return None
 
 
-def _find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
+def find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
     for i in range(1, 6):
         if table.seats.get(i) == occ_id:
             return i
     return None
 
 
-def _allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
+def allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
     occ_id = str(uuid.uuid4())
     name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
     return Occupant(
@@ -75,19 +75,19 @@ def _allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
     )
 
 
-async def _replace_ai_with_human_and_reserve(
+async def replace_ai_with_human_and_reserve(
     table: Table, seat: int, client_id: str
 ) -> None:
     """Replace AI at seat with human client and remember the AI for future reclaim."""
     prev_occ = table.seats.get(seat)
-    if not _is_ai_occupant(table, prev_occ):
+    if not is_ai_occupant(table, prev_occ):
         return
     table.seats[seat] = client_id
     if client_id in table.clients:
         table.clients[client_id].seat = seat
     if prev_occ:
-        if prev_occ in _reserved_ai_ids(table):
-            placeholder = _allocate_ai_occupant()
+        if prev_occ in reserved_ai_ids(table):
+            placeholder = allocate_ai_occupant()
             table.occupants[placeholder.id] = placeholder
             table.reserved_ai_by_human[client_id] = placeholder.id
         else:
@@ -113,7 +113,7 @@ async def _replace_ai_with_human_and_reserve(
     schedule_ai_turns(table)
 
 
-def _cancel_disconnect_task(table: Table, client_id: str) -> None:
+def cancel_disconnect_task(table: Table, client_id: str) -> None:
     task = table.disconnect_tasks.get(client_id)
     if task and not task.done():
         task.cancel()
@@ -146,7 +146,7 @@ def schedule_ai_replacement_for_disconnected_human(
                     return
                 ai_id = table.reserved_ai_by_human.get(client_id)
                 if not ai_id:
-                    occ = _allocate_ai_occupant()
+                    occ = allocate_ai_occupant()
                     table.occupants[occ.id] = occ
                     ai_id = occ.id
                     table.reserved_ai_by_human[client_id] = ai_id
@@ -182,5 +182,5 @@ def schedule_ai_replacement_for_disconnected_human(
         finally:
             table.disconnect_tasks.pop(client_id, None)
 
-    _cancel_disconnect_task(table, client_id)
+    cancel_disconnect_task(table, client_id)
     table.disconnect_tasks[client_id] = asyncio.create_task(_runner())

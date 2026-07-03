@@ -26,12 +26,12 @@ from server.runtime.lifecycle import (
     schedule_autoclose_if_no_humans,
 )
 from server.runtime.seating import (
-    _allocate_ai_occupant,
-    _is_ai_occupant,
-    _lowest_non_human_seat,
-    _pick_join_ai_seat,
-    _replace_ai_with_human_and_reserve,
-    _reserved_ai_ids,
+    allocate_ai_occupant,
+    is_ai_occupant,
+    lowest_non_human_seat,
+    pick_join_ai_seat,
+    replace_ai_with_human_and_reserve,
+    reserved_ai_ids,
 )
 from server.runtime.tables import (
     ClientConn,
@@ -154,28 +154,28 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
             table.host_client_id = client_id
 
         if table.status == "playing":
-            ai_seat = _pick_join_ai_seat(table)
+            ai_seat = pick_join_ai_seat(table)
             if ai_seat is None:
                 try:
                     del table.clients[client_id]
                 except KeyError:
                     pass
                 raise HTTPException(status_code=400, detail="no_ai_seat_available")
-            await _replace_ai_with_human_and_reserve(table, ai_seat, client_id)
+            await replace_ai_with_human_and_reserve(table, ai_seat, client_id)
         else:
             seat_to_take: Optional[int] = None
             if table.host_client_id == client_id:
-                if not table.seats.get(5) or _is_ai_occupant(
+                if not table.seats.get(5) or is_ai_occupant(
                     table, table.seats.get(5)
                 ):
                     seat_to_take = 5
             if seat_to_take is None:
-                seat_to_take = _lowest_non_human_seat(table)
+                seat_to_take = lowest_non_human_seat(table)
 
             if seat_to_take is not None:
                 prev_occ = table.seats.get(seat_to_take)
-                if _is_ai_occupant(table, prev_occ):
-                    await _replace_ai_with_human_and_reserve(
+                if is_ai_occupant(table, prev_occ):
+                    await replace_ai_with_human_and_reserve(
                         table, seat_to_take, client_id
                     )
                 else:
@@ -256,9 +256,9 @@ async def choose_seat(
         prev_occ = table.seats.get(req.seat)
         table.seats[req.seat] = req.client_id
         table.clients[req.client_id].seat = req.seat
-        if _is_ai_occupant(table, prev_occ):
-            if prev_occ in _reserved_ai_ids(table):
-                placeholder = _allocate_ai_occupant()
+        if is_ai_occupant(table, prev_occ):
+            if prev_occ in reserved_ai_ids(table):
+                placeholder = allocate_ai_occupant()
                 table.occupants[placeholder.id] = placeholder
                 table.reserved_ai_by_human[req.client_id] = placeholder.id
             else:
