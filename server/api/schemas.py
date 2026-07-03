@@ -117,10 +117,13 @@ class TablePublic(BaseModel):
 
 # Analyze AI Model schemas
 class AnalyzeSimulateRequest(BaseModel):
+    # extra="forbid" so removed fields (e.g. the old client-supplied
+    # modelPath, which let callers point torch.load at arbitrary files)
+    # are rejected with a 422 instead of silently ignored.
+    model_config = ConfigDict(extra="forbid")
     seed: Optional[int] = None
     partnerMode: int = 1  # 0 = JD, 1 = Called Ace
     deterministic: bool = False
-    modelPath: Optional[str] = None
     maxSteps: int = 200
 
 

@@ -4,7 +4,6 @@ export interface AnalyzeSimulateRequest {
   seed?: number;
   partnerMode?: number; // 0 = JD, 1 = Called Ace
   deterministic?: boolean;
-  modelPath?: string;
   maxSteps?: number;
 }
 
@@ -78,7 +77,7 @@ export interface AnalyzeSimulateResponse {
     partnerMode: number;
     deterministic: boolean;
     seed?: number;
-    modelPath?: string;
+    model?: string;
     gamma?: number;
   };
   actionLookup: Record<number, string>;

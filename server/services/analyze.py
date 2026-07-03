@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import random
 from typing import Dict, List
 
@@ -14,6 +13,7 @@ from server.api.schemas import (
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
 )
+from server.config import get_settings
 from server.services.ai_loader import load_agent
 from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game, Player
 from training_utils import (
@@ -65,13 +65,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     if req.seed is not None:
         set_seed(req.seed)
 
-    # Load agent
-    global_model_path = os.environ.get("SHEEPSHEAD_MODEL_PATH")
-    model_path = req.modelPath or global_model_path
-    if not model_path:
-        raise ValueError("SHEEPSHEAD_MODEL_PATH must be set (or provide modelPath)")
-
-    agent = load_agent(model_path)
+    # Load the configured agent; clients cannot influence which file is read.
+    settings = get_settings()
+    agent = load_agent(settings.sheepshead_model_path)
 
     # agent.set_head_temperatures(partner=3.0)
 
@@ -444,7 +440,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             "partnerMode": req.partnerMode,
             "deterministic": req.deterministic,
             "seed": req.seed,
-            "modelPath": model_path or "auto-selected",
+            "model": settings.sheepshead_model_label,
             "gamma": float(agent.gamma),
         },
         actionLookup={k: v for k, v in ACTION_LOOKUP.items()},
