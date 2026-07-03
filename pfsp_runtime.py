@@ -94,6 +94,7 @@ def play_population_game(
     teacher: "ISMCTSTeacher | None" = None,
     determinization_rng: "random.Random | None" = None,
     search_config: "SearchConfig | None" = None,
+    collect_oracle: bool = False,
 ) -> tuple:
     """Play a single game with the training agent and population opponents.
 
@@ -105,6 +106,11 @@ def play_population_game(
     the agent still acts on-policy). The league/exploiter trainers call this with
     ``reward_mode="terminal"`` and no teacher; the search arguments are the
     deploy/audit hook (the ISMCTS engine lives in ismcts.py).
+
+    ``collect_oracle``: attach a full-information ``oracle_state`` (captured at
+    decision time, while the Game holds the hidden cards) to every training-agent
+    event, for the privileged critic's GAE baseline (critic_mode="oracle").
+    When False the event dicts are byte-identical to the historical schema.
 
     Returns:
         tuple: (game, episode_events, final_scores, training_agent_data, opponents_by_position)
@@ -203,6 +209,8 @@ def play_population_game(
                         "search_target": None,
                         "has_search_target": False,
                     }
+                    if collect_oracle:
+                        transition["oracle_state"] = player.get_oracle_state_dict()
                     episode_transitions.append(transition)
 
                     if shaped:
@@ -300,13 +308,16 @@ def play_population_game(
                                 seat.get_last_trick_state_dict(),
                                 player_id=seat.position,
                             )
-                            episode_transitions.append(
-                                {
-                                    "kind": "observation",
-                                    "player": seat,
-                                    "state": seat.get_last_trick_state_dict(),
-                                }
-                            )
+                            obs_transition = {
+                                "kind": "observation",
+                                "player": seat,
+                                "state": seat.get_last_trick_state_dict(),
+                            }
+                            if collect_oracle:
+                                obs_transition["oracle_state"] = (
+                                    seat.get_last_trick_oracle_state_dict()
+                                )
+                            episode_transitions.append(obs_transition)
                         else:
                             seat_agent.observe(
                                 seat.get_last_trick_state_dict(), seat.position
@@ -343,37 +354,36 @@ def play_population_game(
     episode_events = []
     for ev in episode_transitions:
         if ev["kind"] == "observation":
-            episode_events.append(
-                {
-                    "kind": "observation",
-                    "state": ev["state"],
-                    "player_id": ev["player"].position,
-                }
-            )
+            out = {
+                "kind": "observation",
+                "state": ev["state"],
+                "player_id": ev["player"].position,
+            }
         else:
             seat_pos = ev["player"].position
-            episode_events.append(
-                {
-                    "kind": "action",
-                    "state": ev["state"],
-                    "action": ev["action"],
-                    "log_prob": ev["log_prob"],
-                    "value": ev["value"],
-                    "valid_actions": ev["valid_actions"],
-                    "reward": reward_map[id(ev)],
-                    "player_id": seat_pos,
-                    "win_label": 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
-                    "final_return_label": float(final_scores[seat_pos - 1]),
-                    "secret_partner_label": ev.get("secret_partner_label", 0.0),
-                    "points_label": ev.get("points_label", None),
-                    "seen_trump_mask_label": ev.get("seen_trump_mask_label", None),
-                    "unseen_trump_higher_than_hand_label": ev.get(
-                        "unseen_trump_higher_than_hand_label", None
-                    ),
-                    "search_target": ev.get("search_target"),
-                    "has_search_target": ev.get("has_search_target", False),
-                }
-            )
+            out = {
+                "kind": "action",
+                "state": ev["state"],
+                "action": ev["action"],
+                "log_prob": ev["log_prob"],
+                "value": ev["value"],
+                "valid_actions": ev["valid_actions"],
+                "reward": reward_map[id(ev)],
+                "player_id": seat_pos,
+                "win_label": 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
+                "final_return_label": float(final_scores[seat_pos - 1]),
+                "secret_partner_label": ev.get("secret_partner_label", 0.0),
+                "points_label": ev.get("points_label", None),
+                "seen_trump_mask_label": ev.get("seen_trump_mask_label", None),
+                "unseen_trump_higher_than_hand_label": ev.get(
+                    "unseen_trump_higher_than_hand_label", None
+                ),
+                "search_target": ev.get("search_target"),
+                "has_search_target": ev.get("has_search_target", False),
+            }
+        if ev.get("oracle_state") is not None:
+            out["oracle_state"] = ev["oracle_state"]
+        episode_events.append(out)
 
     return (
         game,

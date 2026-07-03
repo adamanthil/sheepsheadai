@@ -467,7 +467,14 @@ class RecurrentCriticNetwork(nn.Module):
 
 
 class PPOAgent:
-    def __init__(self, action_size, lr_actor=3e-4, lr_critic=3e-4, activation="swish"):
+    def __init__(
+        self,
+        action_size,
+        lr_actor=3e-4,
+        lr_critic=3e-4,
+        activation="swish",
+        critic_mode="limited",
+    ):
         # Dict-based encoder → fixed 256-d features
         self.state_size = 256
         self.action_size = action_size
@@ -543,6 +550,32 @@ class PPOAgent:
         ]
         self.actor_optimizer = optim.Adam(actor_groups)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=lr_critic)
+
+        # Privileged (oracle) critic: a fully separate value network over
+        # full-information observations, used only as the GAE baseline during
+        # update() (asymmetric actor-critic / CTDE; see oracle.py for the
+        # literature). The limited critic above keeps training unchanged —
+        # its aux heads shape the shared trunk and its value head stays the
+        # deployable, observation-only estimator. A third optimizer keeps
+        # existing checkpoints' critic_optimizer state loadable.
+        self.critic_mode = critic_mode
+        self.oracle_critic = None
+        self.oracle_optimizer = None
+        self.oracle_value_loss_coeff = 1.0
+        self._oracle_lr_ratios = [0.2, 1.0]  # card embeddings, rest
+        if critic_mode == "oracle":
+            from oracle import OracleValueNetwork
+
+            self.oracle_critic = OracleValueNetwork(activation=activation).to(device)
+            self.oracle_optimizer = optim.Adam(
+                self.oracle_critic.param_groups(
+                    base_lr=lr_critic, card_lr_scale=self._oracle_lr_ratios[0]
+                )
+            )
+        elif critic_mode != "limited":
+            raise ValueError(
+                f"critic_mode must be 'limited' or 'oracle': {critic_mode}"
+            )
 
         # Track LR ratios for actor optimizer param groups (relative to group 0)
         # Used to maintain correct relative scaling when updating learning rates
@@ -745,6 +778,12 @@ class PPOAgent:
         if critic_lr is not None:
             critic_lr = float(critic_lr)
             self.critic_optimizer.param_groups[0]["lr"] = critic_lr
+            # The oracle critic rides the same LR schedule as the limited one.
+            if self.oracle_optimizer is not None:
+                for group, ratio in zip(
+                    self.oracle_optimizer.param_groups, self._oracle_lr_ratios
+                ):
+                    group["lr"] = critic_lr * ratio
 
     def set_anchor(self, ref_agent, coeff: float):
         """Enable (or disable) the bidding-head KL anchor toward a frozen
@@ -760,6 +799,15 @@ class PPOAgent:
                 net.eval()
                 for p in net.parameters():
                     p.requires_grad_(False)
+
+    def strip_oracle(self):
+        """Drop the oracle critic and its optimizer (reverting to limited
+        mode). Population snapshots call this so league members don't carry
+        (or persist) the privileged network, which is a training-time-only
+        construct — inference never uses it."""
+        self.oracle_critic = None
+        self.oracle_optimizer = None
+        self.critic_mode = "limited"
 
     def reset_storage(self):
         # Ordered list of events: each is a dict with keys:
@@ -949,40 +997,58 @@ class PPOAgent:
                 else:
                     search_target = [0.0] * self.action_size
                     has_search_target = False
-                self.events.append(
-                    {
-                        "kind": "action",
-                        "state": ev["state"],
-                        "mask": mask,
-                        "action": int(ev["action"]) - 1,
-                        "reward": float(ev["reward"]),
-                        "value": float(ev["value"]),
-                        "log_prob": float(ev["log_prob"]),
-                        "done": (idx == last_action_idx),
-                        "win": float(ev.get("win_label", 0.0) or 0.0),
-                        "final_return": float(ev.get("final_return_label", 0.0) or 0.0),
-                        "secret_partner": float(
-                            ev.get("secret_partner_label", 0.0) or 0.0
-                        ),
-                        "points_rel": [
-                            float(x) for x in (ev.get("points_label") or [0.0] * 5)
-                        ],
-                        "seen_trump_mask": [float(x) for x in seen_mask],
-                        "unseen_trump_higher_than_hand": float(unseen_higher),
-                        "search_target": search_target,
-                        "has_search_target": has_search_target,
-                    }
-                )
+                record = {
+                    "kind": "action",
+                    "state": ev["state"],
+                    "mask": mask,
+                    "action": int(ev["action"]) - 1,
+                    "reward": float(ev["reward"]),
+                    "value": float(ev["value"]),
+                    "log_prob": float(ev["log_prob"]),
+                    "done": (idx == last_action_idx),
+                    "win": float(ev.get("win_label", 0.0) or 0.0),
+                    "final_return": float(ev.get("final_return_label", 0.0) or 0.0),
+                    "secret_partner": float(ev.get("secret_partner_label", 0.0) or 0.0),
+                    "points_rel": [
+                        float(x) for x in (ev.get("points_label") or [0.0] * 5)
+                    ],
+                    "seen_trump_mask": [float(x) for x in seen_mask],
+                    "unseen_trump_higher_than_hand": float(unseen_higher),
+                    "search_target": search_target,
+                    "has_search_target": has_search_target,
+                }
+                # Oracle mode: full-information observation captured at
+                # decision time, consumed by _fill_oracle_values(). Only added
+                # when collected so limited-mode events stay byte-identical.
+                if ev.get("oracle_state") is not None:
+                    record["oracle_state"] = ev["oracle_state"]
+                self.events.append(record)
             else:
                 # Observation: mask = all ones by default
                 mask = torch.ones(self.action_size, dtype=torch.bool)
-                self.events.append(
-                    {
-                        "kind": "observation",
-                        "state": ev["state"],
-                        "mask": mask,
-                    }
-                )
+                record = {
+                    "kind": "observation",
+                    "state": ev["state"],
+                    "mask": mask,
+                }
+                if ev.get("oracle_state") is not None:
+                    record["oracle_state"] = ev["oracle_state"]
+                self.events.append(record)
+
+    @staticmethod
+    def _gae_1d(rewards, values, dones, gamma, gae_lambda):
+        """Plain GAE (Schulman et al. 2016) over aligned 1-D arrays.
+
+        ``values``/``dones`` carry one trailing bootstrap element beyond
+        ``rewards``. Returns (advantages, lambda-returns)."""
+        advantages = np.zeros_like(rewards)
+        gae = 0.0
+        for t in reversed(range(len(rewards))):
+            delta = rewards[t] + gamma * values[t + 1] * (1 - dones[t]) - values[t]
+            gae = delta + gamma * gae_lambda * (1 - dones[t]) * gae
+            advantages[t] = gae
+        returns = advantages + values[:-1]
+        return advantages, returns
 
     def compute_gae(self):
         """Compute GAE over action events; write results back into events."""
@@ -994,19 +1060,86 @@ class PPOAgent:
         values = np.array([self.events[i]["value"] for i in action_idxs] + [0.0])
         dones = np.array([self.events[i]["done"] for i in action_idxs] + [False])
 
-        advantages = np.zeros_like(rewards)
-        gae = 0.0
-        for t in reversed(range(len(rewards))):
-            delta = rewards[t] + self.gamma * values[t + 1] * (1 - dones[t]) - values[t]
-            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
-            advantages[t] = gae
-        returns = advantages + values[:-1]
+        advantages, returns = self._gae_1d(
+            rewards, values, dones, self.gamma, self.gae_lambda
+        )
 
         for i, adv, ret in zip(action_idxs, advantages, returns):
             self.events[i]["advantage"] = float(adv)
             self.events[i]["return"] = float(ret)
 
         return advantages, returns
+
+    def _fill_oracle_values(self, chunk_size: int = 64):
+        """Batch-compute oracle values for every stored action event.
+
+        Runs the recurrent oracle critic (no grad) over each episode's full
+        event stream — observation events advance the memory exactly as they
+        do for the limited critic's training forward — and writes
+        ``value_oracle`` into action events. Called once at the top of
+        update(); rollout/workers never touch the oracle."""
+        kinds = [e["kind"] for e in self.events]
+        segments = self._segments_from_events(kinds)
+        if not segments:
+            return
+        for i, e in enumerate(self.events):
+            if e.get("oracle_state") is None:
+                raise ValueError(
+                    "critic_mode='oracle' requires every event to carry an "
+                    f"oracle_state (missing at event {i}); collect episodes "
+                    "with collect_oracle=True"
+                )
+        with torch.no_grad():
+            for c in range(0, len(segments), chunk_size):
+                chunk = segments[c : c + chunk_size]
+                seqs = [
+                    [self.events[i]["oracle_state"] for i in range(s, e + 1)]
+                    for (s, e) in chunk
+                ]
+                vals = self.oracle_critic.forward_sequences(seqs, device=device)
+                for b, (s, e) in enumerate(chunk):
+                    for t, i in enumerate(range(s, e + 1)):
+                        if kinds[i] == "action":
+                            self.events[i]["value_oracle"] = float(vals[b, t].item())
+
+    def compute_gae_dual(self):
+        """Dual GAE for oracle mode.
+
+        Pass 1 (privileged baseline): advantages for the POLICY come from the
+        oracle critic's values — the asymmetric-actor-critic payoff — and the
+        oracle regresses to its own lambda-returns (``return_oracle``).
+        Pass 2: the LIMITED critic's target ``return`` is computed from its
+        own rollout values, exactly as compute_gae() does, so the deployable
+        value head (and everything downstream of it) trains identically to a
+        limited-mode run. Returns (advantages, oracle returns)."""
+        action_idxs = [i for i, e in enumerate(self.events) if e["kind"] == "action"]
+        if not action_idxs:
+            return np.array([]), np.array([])
+
+        rewards = np.array([self.events[i]["reward"] for i in action_idxs])
+        dones = np.array([self.events[i]["done"] for i in action_idxs] + [False])
+        values_oracle = np.array(
+            [self.events[i]["value_oracle"] for i in action_idxs] + [0.0]
+        )
+        values_limited = np.array(
+            [self.events[i]["value"] for i in action_idxs] + [0.0]
+        )
+
+        adv_oracle, ret_oracle = self._gae_1d(
+            rewards, values_oracle, dones, self.gamma, self.gae_lambda
+        )
+        _, ret_limited = self._gae_1d(
+            rewards, values_limited, dones, self.gamma, self.gae_lambda
+        )
+
+        for i, adv, ret_o, ret_l in zip(
+            action_idxs, adv_oracle, ret_oracle, ret_limited
+        ):
+            self.events[i]["advantage"] = float(adv)
+            self.events[i]["return_oracle"] = float(ret_o)
+            self.events[i]["return"] = float(ret_l)
+
+        return adv_oracle, ret_oracle
 
     # ------------------------------------------------------------------
     # Internal helpers for PPO update
@@ -1270,6 +1403,46 @@ class PPOAgent:
             search_target_bt,
             has_search_bt,
         )
+
+    def _build_oracle_minibatch(self, batch, kinds):
+        """Oracle-mode companion to _build_minibatch_tensors: per-segment
+        oracle observation sequences plus (B, T) targets. Kept separate so
+        the limited-mode tensor path stays byte-identical."""
+        oracle_seqs = []
+        ret_list = []
+        old_v_list = []
+        lengths = []
+        for seg_start, seg_end in batch:
+            ev_range = range(seg_start, seg_end + 1)
+            lengths.append(seg_end - seg_start + 1)
+            oracle_seqs.append([self.events[i]["oracle_state"] for i in ev_range])
+            ret_list.append(
+                torch.tensor(
+                    [
+                        self.events[i].get("return_oracle", 0.0)
+                        if kinds[i] == "action"
+                        else 0.0
+                        for i in ev_range
+                    ],
+                    dtype=torch.float32,
+                    device=device,
+                )
+            )
+            old_v_list.append(
+                torch.tensor(
+                    [
+                        self.events[i].get("value_oracle", 0.0)
+                        if kinds[i] == "action"
+                        else 0.0
+                        for i in ev_range
+                    ],
+                    dtype=torch.float32,
+                    device=device,
+                )
+            )
+        returns_oracle_bt, _ = self._pad_to_bt(ret_list, lengths, 0.0)
+        old_value_oracle_bt, _ = self._pad_to_bt(old_v_list, lengths, 0.0)
+        return oracle_seqs, returns_oracle_bt, old_value_oracle_bt
 
     def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
         """Vectorized forward pass for training with recurrent memory.
@@ -1611,8 +1784,33 @@ class PPOAgent:
         if len(self.events) == 0:
             return {}
 
-        # Compute advantages and returns
-        advantages, returns = self.compute_gae()
+        # Compute advantages and returns. In oracle mode the policy's
+        # advantages come from the privileged critic (asymmetric
+        # actor-critic); the limited critic's targets are computed from its
+        # own rollout values either way (see compute_gae_dual).
+        oracle_active = self.critic_mode == "oracle" and self.oracle_critic is not None
+        oracle_stats = None
+        if oracle_active:
+            self._fill_oracle_values()
+            advantages, returns = self.compute_gae_dual()
+            if advantages.size:
+                # Explained variance of each critic against the SAME target —
+                # the empirical discounted return G (lambda=1 with zero
+                # values) — the headline variance-reduction diagnostic.
+                acts = [e for e in self.events if e["kind"] == "action"]
+                rew = np.array([e["reward"] for e in acts])
+                dns = np.array([e["done"] for e in acts] + [False])
+                zeros = np.zeros(len(acts) + 1)
+                _, g_emp = self._gae_1d(rew, zeros, dns, self.gamma, 1.0)
+                v_ora = np.array([e["value_oracle"] for e in acts])
+                v_lim = np.array([e["value"] for e in acts])
+                var_g = float(np.var(g_emp)) + 1e-8
+                oracle_stats = {
+                    "ev_oracle": float(1.0 - np.var(g_emp - v_ora) / var_g),
+                    "ev_limited": float(1.0 - np.var(g_emp - v_lim) / var_g),
+                }
+        else:
+            advantages, returns = self.compute_gae()
 
         # Store statistics before normalization
         raw_advantages = advantages.copy() if advantages.size else np.array([0.0])
@@ -1689,6 +1887,8 @@ class PPOAgent:
         ent_batches = 0
         value_loss_sum = 0.0
         value_loss_count = 0
+        oracle_loss_sum = 0.0
+        oracle_loss_count = 0
         pick_adv_sum = 0.0
         pick_adv_count = 0
         pass_adv_sum = 0.0
@@ -1927,6 +2127,38 @@ class PPOAgent:
                 )
                 unseen_trump_higher_than_hand_loss_count += 1
 
+                # Oracle value loss: with-grad forward of the privileged
+                # critic on the same minibatch, clipped-MSE against its own
+                # lambda-returns (same form as the limited critic's loss).
+                # Its graph is disjoint from encoder/actor/critic, so sharing
+                # total_loss.backward() cannot leak privileged gradients into
+                # the policy trunk.
+                oracle_loss = None
+                if oracle_active:
+                    (
+                        oracle_seqs,
+                        returns_oracle_bt,
+                        old_value_oracle_bt,
+                    ) = self._build_oracle_minibatch(batch, kinds)
+                    t_fwd = time.time()
+                    values_oracle_bt = self.oracle_critic.forward_sequences(
+                        oracle_seqs, device=device
+                    )
+                    forward_time += time.time() - t_fwd
+                    flat_idx = is_action_bt.view(-1)
+                    v_o = values_oracle_bt.reshape(-1)[flat_idx]
+                    ret_o = returns_oracle_bt.reshape(-1)[flat_idx]
+                    old_o = old_value_oracle_bt.reshape(-1)[flat_idx]
+                    v_o_clipped = old_o + torch.clamp(
+                        v_o - old_o, -self.value_clip_epsilon, self.value_clip_epsilon
+                    )
+                    oracle_loss = torch.max(
+                        F.mse_loss(v_o, ret_o, reduction="none"),
+                        F.mse_loss(v_o_clipped, ret_o, reduction="none"),
+                    ).mean()
+                    oracle_loss_sum += oracle_loss.detach().item()
+                    oracle_loss_count += 1
+
                 # Backward + step per minibatch
                 t_bwd = time.time()
                 total_loss = (
@@ -1941,8 +2173,12 @@ class PPOAgent:
                     + self.unseen_trump_higher_than_hand_loss_coeff
                     * unseen_trump_higher_than_hand_loss
                 )
+                if oracle_loss is not None:
+                    total_loss = total_loss + self.oracle_value_loss_coeff * oracle_loss
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
+                if oracle_active:
+                    self.oracle_optimizer.zero_grad()
                 total_loss.backward()
                 backward_time += time.time() - t_bwd
 
@@ -1958,6 +2194,11 @@ class PPOAgent:
                 )
                 self.actor_optimizer.step()
                 self.critic_optimizer.step()
+                if oracle_active:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.oracle_critic.parameters(), self.max_grad_norm
+                    )
+                    self.oracle_optimizer.step()
                 step_time += time.time() - t_step
                 optimizer_steps += 1
 
@@ -1970,6 +2211,11 @@ class PPOAgent:
                 break
 
         transitions = sum(1 for e in self.events if e["kind"] == "action")
+
+        if oracle_stats is not None:
+            oracle_stats["value_loss"] = self.oracle_value_loss_coeff * (
+                oracle_loss_sum / max(oracle_loss_count, 1)
+            )
 
         # Clear storage
         self.reset_storage()
@@ -1987,6 +2233,7 @@ class PPOAgent:
         return {
             "advantage_stats": advantage_stats,
             "value_target_stats": value_target_stats,
+            "oracle": oracle_stats,
             "num_transitions": transitions,
             "approx_kl": last_approx_kl,
             "early_stop": early_stop_triggered,
@@ -2042,17 +2289,23 @@ class PPOAgent:
         }
 
     def save(self, filepath):
-        """Save model parameters"""
-        torch.save(
-            {
-                "encoder_state_dict": self.encoder.state_dict(),
-                "actor_state_dict": self.actor.state_dict(),
-                "critic_state_dict": self.critic.state_dict(),
-                "actor_optimizer": self.actor_optimizer.state_dict(),
-                "critic_optimizer": self.critic_optimizer.state_dict(),
-            },
-            filepath,
-        )
+        """Save model parameters.
+
+        Oracle-mode agents additionally persist the privileged critic under
+        OPTIONAL keys; every existing checkpoint consumer ignores them, and
+        limited-mode saves are byte-compatible with the historical format."""
+        payload = {
+            "encoder_state_dict": self.encoder.state_dict(),
+            "actor_state_dict": self.actor.state_dict(),
+            "critic_state_dict": self.critic.state_dict(),
+            "actor_optimizer": self.actor_optimizer.state_dict(),
+            "critic_optimizer": self.critic_optimizer.state_dict(),
+        }
+        if self.oracle_critic is not None:
+            payload["critic_mode"] = self.critic_mode
+            payload["oracle_state_dict"] = self.oracle_critic.state_dict()
+            payload["oracle_optimizer"] = self.oracle_optimizer.state_dict()
+        torch.save(payload, filepath)
 
     def load(self, filepath, load_optimizers: bool = True, checkpoint=None):
         """Load model parameters.
@@ -2090,7 +2343,10 @@ class PPOAgent:
         ckpt_has_value_trunk = any(
             k.startswith("value_trunk") for k in checkpoint["critic_state_dict"]
         )
-        if any(k.startswith("value_trunk") for k in missing) and not ckpt_has_value_trunk:
+        if (
+            any(k.startswith("value_trunk") for k in missing)
+            and not ckpt_has_value_trunk
+        ):
             self.critic.value_trunk = self.critic.critic_adapter
             print(
                 f"Note: {filepath} predates value_trunk; routing the value head "
@@ -2102,6 +2358,18 @@ class PPOAgent:
                 f"missing={list(missing)} unexpected={list(unexpected)}"
             )
 
+        # Oracle critic: optional checkpoint keys. An oracle-mode agent
+        # resuming a limited checkpoint keeps its fresh-init oracle — the
+        # expected baseline→oracle warm start. Limited agents ignore the keys.
+        if self.oracle_critic is not None:
+            if "oracle_state_dict" in checkpoint:
+                self.oracle_critic.load_state_dict(checkpoint["oracle_state_dict"])
+            else:
+                print(
+                    f"Note: {filepath} has no oracle critic; warm-starting the "
+                    "oracle value network from fresh init."
+                )
+
         # Optimizers: best-effort restore; fall back to fresh states if shapes changed
         if load_optimizers:
             try:
@@ -2111,6 +2379,16 @@ class PPOAgent:
                 self._actor_lr_ratios = self._capture_actor_lr_ratios()
             except ValueError as e:
                 print(f"Warning: could not load optimizer state from {filepath}: {e}")
+            if self.oracle_optimizer is not None and "oracle_optimizer" in checkpoint:
+                try:
+                    self.oracle_optimizer.load_state_dict(
+                        checkpoint["oracle_optimizer"]
+                    )
+                except ValueError as e:
+                    print(
+                        f"Warning: could not load oracle optimizer state from "
+                        f"{filepath}: {e}"
+                    )
 
         # Reset memory states after loading
         self._player_memories = {}

@@ -93,6 +93,7 @@ class _Job:
     training_position: int
     opponent_ids: list  # member_id strings; SELF_PLAY for self seats
     weight_version: int
+    collect_oracle: bool = False  # attach oracle_state to events (critic_mode=oracle)
 
 
 # ----------------------------------------------------------------------------
@@ -163,6 +164,7 @@ def _lw_play(job: _Job) -> dict:
             partner_mode=job.partner_mode,
             training_agent_position=job.training_position,
             reward_mode="terminal",
+            collect_oracle=job.collect_oracle,
         )
     )
     return {
@@ -217,6 +219,11 @@ def run_main_phase(
     trend is policy-driven, not deal-luck."""
     rng = random.Random(args.seed + start_episode)
     end_episode = start_episode + n_episodes
+    # Oracle critic (critic_mode="oracle"): collection attaches full-information
+    # oracle_state to every training-agent event; the learner uses it as the
+    # GAE baseline (asymmetric actor-critic; see oracle.py). getattr keeps the
+    # exploiter's SimpleNamespace args (no critic_mode field) on the limited path.
+    collect_oracle = getattr(args, "critic_mode", "limited") == "oracle"
     transitions_since_update = 0
     picker_scores = deque(maxlen=3000)
     pick_window = deque(maxlen=3000)
@@ -273,6 +280,7 @@ def run_main_phase(
                 partner_mode=mode,
                 training_agent_position=position,
                 reward_mode="terminal",
+                collect_oracle=collect_oracle,
             )
             yield (
                 episode,
@@ -329,6 +337,7 @@ def run_main_phase(
                             SELF_PLAY if e == SELF_PLAY else e.member_id for e in table
                         ],
                         weight_version=weight_sync["version"],
+                        collect_oracle=collect_oracle,
                     )
                 )
             for r in pool.imap(_lw_play, jobs):
@@ -468,6 +477,9 @@ def run_main_phase(
             if episode % args.snapshot_interval == 0:
                 snap = copy.deepcopy(training_agent)
                 snap.set_anchor(None, 0.0)
+                # League members are inference-only: drop the privileged critic
+                # so it isn't persisted into every member checkpoint.
+                snap.strip_oracle()
                 league.add_member(
                     snap,
                     ROLE_PAST_MAIN,
@@ -705,6 +717,14 @@ def main():
     ap.add_argument("--greedy-eval-interval", type=int, default=50_000)
     ap.add_argument("--greedy-eval-games", type=int, default=200)
     ap.add_argument("--schedule-horizon", type=int, default=20_000_000)
+    ap.add_argument(
+        "--critic-mode",
+        choices=["limited", "oracle"],
+        default="limited",
+        help="'oracle' trains a privileged full-information critic as the GAE "
+        "baseline (asymmetric actor-critic; see oracle.py). The actor, the "
+        "limited critic, and all aux heads train identically in both modes.",
+    )
     ap.add_argument("--anchor-coeff", type=float, default=0.0)
     ap.add_argument("--anchor-ref", default=None)
     ap.add_argument(
@@ -741,8 +761,12 @@ def main():
         )
     print(league.summary())
 
-    training_agent = PPOAgent(len(ACTIONS), activation=args.activation)
+    training_agent = PPOAgent(
+        len(ACTIONS), activation=args.activation, critic_mode=args.critic_mode
+    )
     training_agent.load(args.resume, load_optimizers=True)
+    if args.critic_mode == "oracle":
+        print("🔮 Oracle critic ON: privileged full-information GAE baseline")
     start_episode = 0
     if "checkpoint_" in args.resume:
         start_episode = int(args.resume.split("_")[-1].split(".")[0])

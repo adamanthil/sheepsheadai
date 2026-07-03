@@ -1050,6 +1050,68 @@ class Player:
         last_idx = max(0, self.game.current_trick - 1)
         return self.get_state_dict(trick_index=last_idx)
 
+    def get_oracle_state_dict(self, trick_index=None):
+        """Full-information observation for a privileged (oracle) critic.
+
+        Strict superset of ``get_state_dict``: same keys and conventions, plus
+        hidden state — every opponent's hand, the true blind/bury (all seats,
+        not just the picker), the under card, the secret partner's seat, and
+        public points taken. Used only for centralized value estimation during
+        training (asymmetric actor-critic); actors never see this dict.
+
+        Must be captured at decision time: hands shrink as cards are played.
+        """
+
+        def rel(seat: int | None) -> int:
+            if not seat:
+                return 0
+            return ((seat - self.position) % 5) + 1
+
+        def to_ids(cards, length):
+            ids = [DECK_IDS[c] for c in cards]
+            ids += [0] * (length - len(ids))
+            return np.array(ids[:length], dtype=np.uint8)
+
+        obs = self.get_state_dict(trick_index=trick_index)
+
+        # True blind/bury for every seat (limited obs zeroes these for
+        # non-pickers; for the picker they already equal the truth).
+        obs["blind_ids"] = to_ids(self.game.blind, 2)
+        obs["bury_ids"] = to_ids(self.game.bury, 2)
+
+        # Opponent hands at relative seats 2..5, padded like hand_ids.
+        opp_hand_ids = np.zeros((4, 8), dtype=np.uint8)
+        for i, r in enumerate(range(2, 6)):
+            abs_seat = ((self.position + r - 2) % 5) + 1
+            opp_hand_ids[i] = to_ids(self.game.players[abs_seat - 1].hand, 8)
+        obs["opp_hand_ids"] = opp_hand_ids
+
+        obs["under_card_id"] = (
+            np.uint8(DECK_IDS[self.game.under_card])
+            if self.game.under_card
+            else np.uint8(0)
+        )
+
+        secret_partner_rel = 0
+        for p in self.game.players:
+            if p.is_secret_partner:
+                secret_partner_rel = rel(p.position)
+                break
+        obs["secret_partner_rel"] = np.uint8(secret_partner_rel)
+
+        obs["points_taken_rel"] = np.array(
+            [
+                self.game.points_taken[((self.position + r - 2) % 5)]
+                for r in range(1, 6)
+            ],
+            dtype=np.uint8,
+        )
+        return obs
+
+    def get_last_trick_oracle_state_dict(self):
+        last_idx = max(0, self.game.current_trick - 1)
+        return self.get_oracle_state_dict(trick_index=last_idx)
+
     def get_valid_actions(self):
         """Get set of valid actions."""
 
