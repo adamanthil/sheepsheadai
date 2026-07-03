@@ -26,7 +26,7 @@ ACTION_SIZE = len(ACTION_IDS)
 def _try_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return default
 
 
