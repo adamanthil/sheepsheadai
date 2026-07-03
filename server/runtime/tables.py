@@ -52,6 +52,9 @@ class ClientConn:
     chat_timestamps: deque = field(default_factory=deque)
     # Long-lived cross-table identity (Phase 4). Set on /join.
     player_id: Optional[str] = None
+    # Wall-clock time of the last websocket disconnect; None while connected.
+    # Drives pruning of clients that never came back (prune_table_state).
+    disconnected_at: Optional[float] = None
 
 
 @dataclass
@@ -85,6 +88,11 @@ class Table:
     # game/runtime
     game: Optional[Game] = None
     game_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # Guards seat/occupant/client bookkeeping (join, seat choice, AI
+    # replacement, reconnect reclaim). Distinct from game_lock so seat
+    # operations never wait on AI inference. Never acquire game_lock while
+    # holding this (or vice versa) — the two protect disjoint state.
+    state_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     ai_agent: Optional[PPOAgent] = None
     ai_task: Optional[asyncio.Task] = None
     # background task to auto-close the table when humans disconnect
@@ -198,6 +206,35 @@ class TableManager:
 
 
 tables = TableManager()
+
+# A disconnected, unseated client keeps its reclaim rights this long; after
+# that its ClientConn (and any AI seat reservation) is swept.
+STALE_CLIENT_SECONDS = 30 * 60
+
+
+def prune_table_state(table: Table) -> None:
+    """Sweep bookkeeping that only grows during a table's lifetime.
+
+    Caller must hold ``table.state_lock``. Removes clients that disconnected
+    long ago without a seat, their AI-seat reservations, and AI occupants no
+    longer referenced by a seat or reservation.
+    """
+    now = time.time()
+    for cid, conn in list(table.clients.items()):
+        if (
+            conn.websocket is None
+            and conn.seat is None
+            and conn.disconnected_at is not None
+            and now - conn.disconnected_at > STALE_CLIENT_SECONDS
+        ):
+            del table.clients[cid]
+            table.reserved_ai_by_human.pop(cid, None)
+
+    seated = {occ for occ in table.seats.values() if occ}
+    reserved = set(table.reserved_ai_by_human.values())
+    for occ_id, occ in list(table.occupants.items()):
+        if occ.is_ai and occ_id not in seated and occ_id not in reserved:
+            del table.occupants[occ_id]
 
 
 def build_player_state(player: Player) -> Dict[str, Any]:

@@ -16,7 +16,7 @@ from server.api.schemas import (
 )
 from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
-from server.runtime.lifecycle import close_table
+from server.runtime.lifecycle import close_table, schedule_autoclose_if_no_humans
 from server.runtime.seating import (
     _allocate_ai_occupant,
     _is_ai_occupant,
@@ -25,7 +25,13 @@ from server.runtime.seating import (
     _replace_ai_with_human_and_reserve,
     _reserved_ai_ids,
 )
-from server.runtime.tables import ClientConn, Table, TableLimitError, tables
+from server.runtime.tables import (
+    ClientConn,
+    Table,
+    TableLimitError,
+    prune_table_state,
+    tables,
+)
 from server.services.persistence import players as players_db
 from server.services.persistence import sessions as sessions_db
 from server.services.persistence.pool import get_db_pool
@@ -71,6 +77,10 @@ async def create_table(request: Request, req: CreateTableRequest):
         )
     except TableLimitError:
         raise HTTPException(status_code=503, detail="table_limit_reached")
+    # A table whose players never open a websocket would otherwise linger
+    # forever: the other autoclose triggers live in the ws connect/disconnect
+    # paths. Give it a generous window to acquire its first connection.
+    schedule_autoclose_if_no_humans(table, delay_seconds=300.0)
     return table.to_public_dict()
 
 
@@ -106,62 +116,68 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         seat=None,
         player_id=str(player_uuid),
     )
-    table.clients[client_id] = conn
-    if not table.host_client_id:
-        table.host_client_id = client_id
+    async with table.state_lock:
+        prune_table_state(table)
+        table.clients[client_id] = conn
+        if not table.host_client_id:
+            table.host_client_id = client_id
 
-    if table.status == "playing":
-        ai_seat = _pick_join_ai_seat(table)
-        if ai_seat is None:
-            try:
-                del table.clients[client_id]
-            except KeyError:
-                pass
-            raise HTTPException(status_code=400, detail="no_ai_seat_available")
-        await _replace_ai_with_human_and_reserve(table, ai_seat, client_id)
-    else:
-        seat_to_take: Optional[int] = None
-        if table.host_client_id == client_id:
-            if not table.seats.get(5) or _is_ai_occupant(table, table.seats.get(5)):
-                seat_to_take = 5
-        if seat_to_take is None:
-            seat_to_take = _lowest_non_human_seat(table)
+        if table.status == "playing":
+            ai_seat = _pick_join_ai_seat(table)
+            if ai_seat is None:
+                try:
+                    del table.clients[client_id]
+                except KeyError:
+                    pass
+                raise HTTPException(status_code=400, detail="no_ai_seat_available")
+            await _replace_ai_with_human_and_reserve(table, ai_seat, client_id)
+        else:
+            seat_to_take: Optional[int] = None
+            if table.host_client_id == client_id:
+                if not table.seats.get(5) or _is_ai_occupant(
+                    table, table.seats.get(5)
+                ):
+                    seat_to_take = 5
+            if seat_to_take is None:
+                seat_to_take = _lowest_non_human_seat(table)
 
-        if seat_to_take is not None:
-            prev_occ = table.seats.get(seat_to_take)
-            if _is_ai_occupant(table, prev_occ):
-                await _replace_ai_with_human_and_reserve(table, seat_to_take, client_id)
+            if seat_to_take is not None:
+                prev_occ = table.seats.get(seat_to_take)
+                if _is_ai_occupant(table, prev_occ):
+                    await _replace_ai_with_human_and_reserve(
+                        table, seat_to_take, client_id
+                    )
+                else:
+                    table.seats[seat_to_take] = client_id
+                    conn.seat = seat_to_take
+                    msg_dict = await add_chat_message(
+                        table,
+                        "system",
+                        f"{req.display_name} joined and took seat {seat_to_take}",
+                    )
+                    await broadcast_chat_append(table, msg_dict)
+                    await broadcast_table_event(
+                        table,
+                        {
+                            "type": "lobby_event",
+                            "message": f"{req.display_name} joined and took seat {seat_to_take}",
+                            "table": table.to_public_dict(),
+                        },
+                    )
+                    await broadcast_table_update(table)
             else:
-                table.seats[seat_to_take] = client_id
-                conn.seat = seat_to_take
                 msg_dict = await add_chat_message(
-                    table,
-                    "system",
-                    f"{req.display_name} joined and took seat {seat_to_take}",
+                    table, "system", f"{req.display_name} joined the table"
                 )
                 await broadcast_chat_append(table, msg_dict)
                 await broadcast_table_event(
                     table,
                     {
                         "type": "lobby_event",
-                        "message": f"{req.display_name} joined and took seat {seat_to_take}",
+                        "message": f"{req.display_name} joined the table",
                         "table": table.to_public_dict(),
                     },
                 )
-                await broadcast_table_update(table)
-        else:
-            msg_dict = await add_chat_message(
-                table, "system", f"{req.display_name} joined the table"
-            )
-            await broadcast_chat_append(table, msg_dict)
-            await broadcast_table_event(
-                table,
-                {
-                    "type": "lobby_event",
-                    "message": f"{req.display_name} joined the table",
-                    "table": table.to_public_dict(),
-                },
-            )
 
     return {
         "client_id": client_id,
@@ -189,28 +205,33 @@ async def choose_seat(
 
     if req.seat not in {1, 2, 3, 4, 5}:
         raise HTTPException(status_code=400, detail="invalid_seat")
-    current = table.seats.get(req.seat)
-    if current and not (
-        table.occupants.get(current).is_ai if table.occupants.get(current) else False
-    ):
-        raise HTTPException(status_code=400, detail="seat_taken")
-    require_client(table, req.client_id, identity)
+    async with table.state_lock:
+        # Check and write under the same lock so two clients cannot both pass
+        # the occupancy check and land in one seat.
+        current = table.seats.get(req.seat)
+        if current and not (
+            table.occupants.get(current).is_ai
+            if table.occupants.get(current)
+            else False
+        ):
+            raise HTTPException(status_code=409, detail="seat_taken")
+        require_client(table, req.client_id, identity)
 
-    for i in range(1, 6):
-        if table.seats[i] == req.client_id:
-            table.seats[i] = None
-            break
+        for i in range(1, 6):
+            if table.seats[i] == req.client_id:
+                table.seats[i] = None
+                break
 
-    prev_occ = table.seats.get(req.seat)
-    table.seats[req.seat] = req.client_id
-    table.clients[req.client_id].seat = req.seat
-    if _is_ai_occupant(table, prev_occ):
-        if prev_occ in _reserved_ai_ids(table):
-            placeholder = _allocate_ai_occupant()
-            table.occupants[placeholder.id] = placeholder
-            table.reserved_ai_by_human[req.client_id] = placeholder.id
-        else:
-            table.reserved_ai_by_human[req.client_id] = prev_occ  # type: ignore[assignment]
+        prev_occ = table.seats.get(req.seat)
+        table.seats[req.seat] = req.client_id
+        table.clients[req.client_id].seat = req.seat
+        if _is_ai_occupant(table, prev_occ):
+            if prev_occ in _reserved_ai_ids(table):
+                placeholder = _allocate_ai_occupant()
+                table.occupants[placeholder.id] = placeholder
+                table.reserved_ai_by_human[req.client_id] = placeholder.id
+            else:
+                table.reserved_ai_by_human[req.client_id] = prev_occ  # type: ignore[assignment]
 
     display_name = table.clients[req.client_id].display_name
     msg_dict = await add_chat_message(

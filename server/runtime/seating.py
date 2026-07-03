@@ -131,31 +131,32 @@ def schedule_ai_replacement_for_disconnected_human(
             delay = 0.0 if table.status == "open" else 10.0
             if delay > 0:
                 await asyncio.sleep(delay)
-            conn = table.clients.get(client_id)
-            if not conn:
-                return
-            if conn.websocket is not None:
-                return
-            seat_idx: Optional[int] = None
-            for i in range(1, 6):
-                if table.seats.get(i) == client_id:
-                    seat_idx = i
-                    break
-            if not seat_idx:
-                return
-            ai_id = table.reserved_ai_by_human.get(client_id)
-            if not ai_id:
-                occ = _allocate_ai_occupant()
-                table.occupants[occ.id] = occ
-                ai_id = occ.id
-                table.reserved_ai_by_human[client_id] = ai_id
-            else:
-                if ai_id not in table.occupants:
-                    table.occupants[ai_id] = Occupant(
-                        id=ai_id, display_name="AI", is_ai=True
-                    )
-            table.seats[seat_idx] = ai_id
-            conn.seat = None
+            async with table.state_lock:
+                conn = table.clients.get(client_id)
+                if not conn:
+                    return
+                if conn.websocket is not None:
+                    return
+                seat_idx: Optional[int] = None
+                for i in range(1, 6):
+                    if table.seats.get(i) == client_id:
+                        seat_idx = i
+                        break
+                if not seat_idx:
+                    return
+                ai_id = table.reserved_ai_by_human.get(client_id)
+                if not ai_id:
+                    occ = _allocate_ai_occupant()
+                    table.occupants[occ.id] = occ
+                    ai_id = occ.id
+                    table.reserved_ai_by_human[client_id] = ai_id
+                else:
+                    if ai_id not in table.occupants:
+                        table.occupants[ai_id] = Occupant(
+                            id=ai_id, display_name="AI", is_ai=True
+                        )
+                table.seats[seat_idx] = ai_id
+                conn.seat = None
             msg_dict = await add_chat_message(
                 table, "system", f"{conn.display_name} disconnected. Seat filled by AI."
             )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -110,25 +111,31 @@ async def _serve_connection(
     await websocket.accept(subprotocol=chosen_subproto)
 
     conn = table.clients[client_id]
-    conn.websocket = websocket
-    # Cancel any pending replacement and attempt to reclaim reserved AI seat if needed
-    _cancel_disconnect_task(table, client_id)
-    ai_id = table.reserved_ai_by_human.get(client_id)
-    if ai_id:
-        seat_idx = _find_seat_of_occupant(table, ai_id)
-        if seat_idx:
-            table.seats[seat_idx] = client_id
-            conn.seat = seat_idx
-            await broadcast_table_event(
-                table,
-                {
-                    "type": "lobby_event",
-                    "message": f"{conn.display_name} reconnected and reclaimed seat {seat_idx}",
-                    "table": table.to_public_dict(),
-                },
-            )
-            await broadcast_table_update(table)
-            schedule_ai_turns(table)
+    async with table.state_lock:
+        conn.websocket = websocket
+        conn.disconnected_at = None
+        # Cancel any pending replacement and attempt to reclaim reserved AI
+        # seat if needed.
+        _cancel_disconnect_task(table, client_id)
+        ai_id = table.reserved_ai_by_human.get(client_id)
+        reclaimed_seat = None
+        if ai_id:
+            seat_idx = _find_seat_of_occupant(table, ai_id)
+            if seat_idx:
+                table.seats[seat_idx] = client_id
+                conn.seat = seat_idx
+                reclaimed_seat = seat_idx
+    if reclaimed_seat is not None:
+        await broadcast_table_event(
+            table,
+            {
+                "type": "lobby_event",
+                "message": f"{conn.display_name} reconnected and reclaimed seat {reclaimed_seat}",
+                "table": table.to_public_dict(),
+            },
+        )
+        await broadcast_table_update(table)
+        schedule_ai_turns(table)
     # On connect, cancel any pending autoclose
     schedule_autoclose_if_no_humans(table)
 
@@ -176,6 +183,7 @@ async def _serve_connection(
         c = table.clients.get(client_id)
         if c:
             c.websocket = None
+            c.disconnected_at = time.time()
             try:
                 if c.seat is not None:
                     schedule_ai_replacement_for_disconnected_human(table, client_id)

@@ -70,7 +70,8 @@ async def fill_ai(
         raise HTTPException(status_code=404, detail="table_not_found") from e
 
     require_host(table, req.client_id if req else None, identity)
-    _fill_empty_seats_with_ai(table)
+    async with table.state_lock:
+        _fill_empty_seats_with_ai(table)
 
     await broadcast_table_update(table)
     return table.to_public_dict()
@@ -89,48 +90,51 @@ async def start_game(
     except KeyError:
         raise HTTPException(status_code=404, detail="table_not_found")
 
-    if table.status != "open":
-        raise HTTPException(status_code=400, detail="already_started")
-
     require_host(table, req.client_id, identity)
 
-    if table.fill_with_ai:
-        _fill_empty_seats_with_ai(table)
+    async with table.state_lock:
+        # Status is re-checked under the lock so a double-submit cannot
+        # build two Games for one table.
+        if table.status != "open":
+            raise HTTPException(status_code=400, detail="already_started")
 
-    if not all(table.seats[i] for i in range(1, 6)):
-        raise HTTPException(status_code=400, detail="not_enough_players")
+        if table.fill_with_ai:
+            _fill_empty_seats_with_ai(table)
 
-    if not table.host_client_id or all(
-        table.seats[i] != table.host_client_id for i in range(1, 6)
-    ):
-        raise HTTPException(status_code=400, detail="host_not_seated")
+        if not all(table.seats[i] for i in range(1, 6)):
+            raise HTTPException(status_code=400, detail="not_enough_players")
 
-    rules = table.rules or {}
-    partner_mode = _try_int(rules.get("partnerMode", 1), 1)
-    double_on_the_bump = bool(rules.get("doubleOnTheBump", True))
+        if not table.host_client_id or all(
+            table.seats[i] != table.host_client_id for i in range(1, 6)
+        ):
+            raise HTTPException(status_code=400, detail="host_not_seated")
 
-    game = Game(
-        double_on_the_bump=double_on_the_bump,
-        partner_selection_mode=partner_mode,
-    )
-    table.game = game
-    table.status = "playing"
-    table.results_counted = False
-    if not table.initial_seat_order:
-        table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
-        pub = table.to_public_dict()
-        for i in range(1, 6):
-            occ = table.seats[i]
-            if occ:
-                table.initial_names[str(occ)] = pub["seats"][i]
+        rules = table.rules or {}
+        partner_mode = _try_int(rules.get("partnerMode", 1), 1)
+        double_on_the_bump = bool(rules.get("doubleOnTheBump", True))
 
-    has_ai = any(
-        (occ_id and (occ := table.occupants.get(occ_id)) and occ.is_ai)
-        for occ_id in table.seats.values()
-    )
-    if has_ai:
-        settings = get_settings()
-        table.ai_agent = load_agent(settings.sheepshead_model_path)
+        game = Game(
+            double_on_the_bump=double_on_the_bump,
+            partner_selection_mode=partner_mode,
+        )
+        table.game = game
+        table.status = "playing"
+        table.results_counted = False
+        if not table.initial_seat_order:
+            table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
+            pub = table.to_public_dict()
+            for i in range(1, 6):
+                occ = table.seats[i]
+                if occ:
+                    table.initial_names[str(occ)] = pub["seats"][i]
+
+        has_ai = any(
+            (occ_id and (occ := table.occupants.get(occ_id)) and occ.is_ai)
+            for occ_id in table.seats.values()
+        )
+        if has_ai:
+            settings = get_settings()
+            table.ai_agent = load_agent(settings.sheepshead_model_path)
 
     await broadcast_table_update(table)
     await broadcast_table_state(table)
@@ -158,23 +162,24 @@ async def redeal(
 
     require_host(table, req.client_id if req else None, identity)
 
-    old = {i: table.seats[i] for i in range(1, 6)}
-    new_map = {
-        1: old[2],
-        2: old[3],
-        3: old[4],
-        4: old[5],
-        5: old[1],
-    }
-    for i in range(1, 6):
-        table.seats[i] = new_map[i]
-        occ = new_map[i]
-        if occ and occ in table.clients:
-            table.clients[occ].seat = i
+    async with table.state_lock:
+        old = {i: table.seats[i] for i in range(1, 6)}
+        new_map = {
+            1: old[2],
+            2: old[3],
+            3: old[4],
+            4: old[5],
+            5: old[1],
+        }
+        for i in range(1, 6):
+            table.seats[i] = new_map[i]
+            occ = new_map[i]
+            if occ and occ in table.clients:
+                table.clients[occ].seat = i
 
-    table.game = None
-    table.status = "open"
-    table.results_counted = False
+        table.game = None
+        table.status = "open"
+        table.results_counted = False
 
     return table.to_public_dict()
 
@@ -199,17 +204,20 @@ async def post_action(
     if not conn.seat:
         raise HTTPException(status_code=400, detail="client_not_joined")
 
-    actor_seat = get_actor_seat(table)
-    if actor_seat != conn.seat:
-        raise HTTPException(status_code=400, detail="not_your_turn")
-
-    valid = get_valid_action_ids_for_seat(table, conn.seat)
-    if req.action_id not in valid:
-        raise HTTPException(status_code=400, detail="invalid_action")
-
     pre = None
     post = None
     async with table.game_lock:
+        # Validate under the lock: turn order and the valid-action set can
+        # change between an unlocked check and the apply (e.g. a concurrent
+        # AI move or a double-submitted request).
+        actor_seat = get_actor_seat(table)
+        if actor_seat != conn.seat:
+            raise HTTPException(status_code=400, detail="not_your_turn")
+
+        valid = get_valid_action_ids_for_seat(table, conn.seat)
+        if req.action_id not in valid:
+            raise HTTPException(status_code=400, detail="invalid_action")
+
         player = table.game.players[conn.seat - 1]
         pre = capture_pre_state(table.game)
         ok = player.act(int(req.action_id))
