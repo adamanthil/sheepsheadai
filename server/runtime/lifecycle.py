@@ -5,7 +5,7 @@ import json
 import logging
 
 from server.realtime.broadcast import broadcast_table_event
-from server.runtime.tables import Table, _json_default, tables
+from server.runtime.tables import Table, tables
 from server.services.persistence.games import close_game_table
 from server.services.persistence.pool import get_db_pool
 

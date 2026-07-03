@@ -10,7 +10,6 @@ from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.tables import (
     Table,
     get_actor_seat,
-    get_valid_action_ids_for_seat,
     record_hand_result,
 )
 from server.services.persistence.games import (
