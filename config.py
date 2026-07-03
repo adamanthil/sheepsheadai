@@ -52,8 +52,8 @@ class PFSPHyperparams:
     # collapse for 586k episodes: a flattened policy still *samples* ~30% PICK
     # while its argmax is PASS. The greedy probe (training_utils.greedy_health_probe)
     # plays argmax self-play and warns when any rate crosses these gates.
-    greedy_gate_min_pick: float = 25.0
-    greedy_gate_max_alone: float = 12.0
+    greedy_gate_min_pick: float = 20.0
+    greedy_gate_max_alone: float = 15.0
     greedy_gate_max_trump_lead: float = 8.0
     greedy_gate_min_play_spread: float = 0.5
 
