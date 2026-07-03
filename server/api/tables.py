@@ -57,11 +57,6 @@ def require_host(
         raise HTTPException(status_code=403, detail="not_host")
 
 
-@router.get("/api/health")
-def health():
-    return {"status": "ok"}
-
-
 @router.get("/api/tables")
 def list_tables():
     return tables.list_tables()
