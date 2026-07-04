@@ -54,6 +54,61 @@ class ArchitectureSpec:
 
 
 # ---------------------------------------------------------------------------
+# Pooled-memory encoder (the "no-transformer" rung)
+# ---------------------------------------------------------------------------
+
+
+class PooledMemoryEncoder(CardReasoningEncoder):
+    """Embeddings + attention pools + recurrence, no cross-card transformer.
+
+    Restores the pre-transformer recurrence shape (encoder -> LSTM over the
+    fused 256-d features -> heads; see ppo.py before commit 0729e11): the
+    fused pooled features feed a GRUCell(256, 256) and the heads consume the
+    recurrent state itself.
+
+    Why not just n_reasoning_layers=0 on the base class? Without attention
+    the base encoder's memory token cannot mix back into the features and
+    the context-fed GRU input never sees the cards — memory becomes
+    write-only, i.e. the policy would be effectively memoryless. That would
+    conflate "no transformer" with "no usable memory". Here memory sees
+    everything the heads see, so the rung isolates cross-card attention.
+
+    The inherited memory token machinery (memory_in_proj, card_type id 1)
+    stays constructed but is inert with zero reasoning layers (~16k dead
+    params — accepted to keep the base encode_batch untouched).
+    """
+
+    def __init__(self, card_config: "CardEmbeddingConfig | None" = None):
+        super().__init__(
+            card_config=card_config or CardEmbeddingConfig(),
+            n_reasoning_layers=0,
+        )
+        # Replace the context-token GRU (d_token -> 256) with a fused-features GRU.
+        self.memory_gru = nn.GRUCell(256, 256)
+
+    def _fuse_and_update_memory(
+        self,
+        context_out,
+        hand_tok_out,
+        hand_vec,
+        trick_vec,
+        blind_vec,
+        bury_vec,
+        memory_in,
+    ):
+        features = self.feature_proj(
+            torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, context_out], dim=1)
+        )
+        memory_out = self.memory_gru(features, memory_in)
+        return {
+            "features": memory_out,
+            "hand_tokens": hand_tok_out,
+            "context_token": context_out,
+            "memory_out": memory_out,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Legacy-style one-hot state representation (onehot-ff baseline)
 # ---------------------------------------------------------------------------
 
@@ -394,12 +449,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
     "no-transformer": ArchitectureSpec(
         name="no-transformer",
         description=(
-            "no-aux minus transformer card reasoning (n_reasoning_layers=0; "
-            "tokens go straight from embedding MLPs to the attention pools)."
+            "no-aux minus transformer card reasoning: PooledMemoryEncoder "
+            "(embeddings -> pools -> fused features -> GRU; heads consume "
+            "the recurrent state, matching the pre-transformer LSTM shape)."
         ),
-        build_encoder=lambda activation: CardReasoningEncoder(
-            card_config=CardEmbeddingConfig(), n_reasoning_layers=0
-        ),
+        build_encoder=lambda activation: PooledMemoryEncoder(),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
@@ -407,9 +461,8 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
     "no-transformer-uninformed": ArchitectureSpec(
         name="no-transformer-uninformed",
         description="no-transformer minus informed card-embedding initialization.",
-        build_encoder=lambda activation: CardReasoningEncoder(
-            card_config=CardEmbeddingConfig(use_informed_init=False),
-            n_reasoning_layers=0,
+        build_encoder=lambda activation: PooledMemoryEncoder(
+            card_config=CardEmbeddingConfig(use_informed_init=False)
         ),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,

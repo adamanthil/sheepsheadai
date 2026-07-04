@@ -26,6 +26,7 @@ import ppo
 from architectures import (
     ONEHOT_STATE_DIM,
     OneHotFeedForwardEncoder,
+    PooledMemoryEncoder,
     build_onehot_state,
 )
 from encoder import CardEmbeddingConfig, CardReasoningEncoder
@@ -258,9 +259,7 @@ class TestNoAuxCritic(unittest.TestCase):
 
 class TestNoTransformer(unittest.TestCase):
     def test_reasoner_is_parameterless_noop(self):
-        enc = CardReasoningEncoder(
-            card_config=CardEmbeddingConfig(), n_reasoning_layers=0
-        )
+        enc = PooledMemoryEncoder()
         self.assertEqual(sum(p.numel() for p in enc.card_reasoner.parameters()), 0)
         tokens = torch.randn(2, 19, enc.d_token_dim)
         mask = torch.ones(2, 19, dtype=torch.bool)
@@ -268,13 +267,36 @@ class TestNoTransformer(unittest.TestCase):
         self.assertTrue(torch.equal(out, tokens))
 
     def test_encode_batch_contract(self):
-        enc = CardReasoningEncoder(
-            card_config=CardEmbeddingConfig(), n_reasoning_layers=0
-        )
+        enc = PooledMemoryEncoder()
         game = Game(seed=123)
         out = enc.encode_batch([game.players[0].get_state_dict()])
         self.assertEqual(tuple(out["features"].shape), (1, 256))
         self.assertEqual(tuple(out["hand_tokens"].shape), (1, 8, enc.d_token_dim))
+
+    def test_memory_feeds_features(self):
+        # The whole point of the pooled-memory design: without attention the
+        # base encoder's memory is write-only, so this variant must route the
+        # recurrent state into the features the heads consume.
+        enc = PooledMemoryEncoder()
+        game = Game(seed=124)
+        s = game.players[0].get_state_dict()
+        out1 = enc.encode_batch([s])
+        out2 = enc.encode_batch([s], memory_in=out1["memory_out"])
+        self.assertFalse(torch.equal(out1["features"], out2["features"]))
+        # Heads consume the recurrent state itself (pre-transformer LSTM shape).
+        self.assertTrue(torch.equal(out1["features"], out1["memory_out"]))
+
+    def test_base_encoder_memory_is_write_only_without_attention(self):
+        # Documents why PooledMemoryEncoder exists: plain n_reasoning_layers=0
+        # leaves features independent of memory.
+        enc = CardReasoningEncoder(
+            card_config=CardEmbeddingConfig(), n_reasoning_layers=0
+        )
+        game = Game(seed=125)
+        s = game.players[0].get_state_dict()
+        out1 = enc.encode_batch([s])
+        out2 = enc.encode_batch([s], memory_in=torch.randn(1, 256))
+        self.assertTrue(torch.equal(out1["features"], out2["features"]))
 
     def test_uninformed_init_differs(self):
         torch.manual_seed(4)

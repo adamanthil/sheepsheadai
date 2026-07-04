@@ -141,12 +141,18 @@ and the literature on multi-seed requirements):
 | `full` | — (current) | 1,003,607 | 0.26 |
 | `full-uninformed` | informed init (factorial arm) | 1,003,607 | 0.27 |
 | `no-aux` | critic aux heads | 891,534 | 0.26 |
-| `no-transformer` | + transformer reasoning | 757,646 | 0.14 |
-| `no-transformer-uninformed` | + informed init | 757,646 | 0.14 |
+| `no-transformer` | + transformer reasoning² | 905,102 | 0.15 |
+| `no-transformer-uninformed` | + informed init | 905,102 | 0.15 |
 | `onehot-ff` | + card-token pipeline (legacy FF+GRU, flat heads) | 1,128,303 | 0.04 |
 
 ¹ Single-process, 4 torch threads, 2026 dev Mac; ~7.3 h per 100k-episode
 full-family run.
+
+² `no-transformer` = `PooledMemoryEncoder`: embeddings → pools → fused
+features → GRU(256,256), heads consume the recurrent state (the
+pre-transformer LSTM shape, ppo.py before 0729e11). Plain
+`n_reasoning_layers=0` would leave the memory write-only (no attention to
+mix it back into features) and conflate "no transformer" with "no memory".
 
 **Protocol (approved 2026-07-03):** 6 archs × seeds {42, 1042, 2042} ×
 100k episodes, pure self-play. Launch each arm:

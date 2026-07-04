@@ -579,10 +579,34 @@ class CardReasoningEncoder(nn.Module):
         blind_vec = self.pool_blind(blind_tok_out, blind_mask)
         bury_vec = self.pool_bury(bury_tok_out, bury_mask)
 
-        # 10. Update memory: memory_out = GRU(context_token_out, memory_in)
+        # 10-11. Update memory + fuse features. Overridable seam: architecture
+        # variants may route the memory GRU differently (see architectures.py
+        # PooledMemoryEncoder); the base implementation is byte-identical to
+        # the historical inline code.
+        return self._fuse_and_update_memory(
+            context_out,
+            hand_tok_out,
+            hand_vec,
+            trick_vec,
+            blind_vec,
+            bury_vec,
+            memory_in,
+        )
+
+    def _fuse_and_update_memory(
+        self,
+        context_out: torch.Tensor,
+        hand_tok_out: torch.Tensor,
+        hand_vec: torch.Tensor,
+        trick_vec: torch.Tensor,
+        blind_vec: torch.Tensor,
+        bury_vec: torch.Tensor,
+        memory_in: torch.Tensor,
+    ) -> Dict[str, torch.Tensor]:
+        # Update memory: memory_out = GRU(context_token_out, memory_in)
         memory_out = self.memory_gru(context_out, memory_in)  # (B, 256)
 
-        # 11. Fuse features
+        # Fuse features
         features = self.feature_proj(
             torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, context_out], dim=1)
         )
