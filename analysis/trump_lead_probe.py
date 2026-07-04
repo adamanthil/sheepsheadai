@@ -48,7 +48,6 @@ import time
 from scripted_agent import ScriptedAgent
 from sheepshead import (
     ACTION_LOOKUP,
-    ACTIONS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     TRUMP,
@@ -191,10 +190,10 @@ def main() -> int:
     if args.scripted:
         hero, label = ScriptedAgent(), "ScriptedAgent"
     elif args.ckpt:
-        from ppo import PPOAgent
+        from ppo import load_agent
 
-        hero = PPOAgent(len(ACTIONS))
-        hero.load(args.ckpt, load_optimizers=False)
+        # Arch-aware: constructs whatever architecture the checkpoint records.
+        hero = load_agent(args.ckpt)
         label = args.ckpt
     else:
         ap.error("provide --ckpt or --scripted")
