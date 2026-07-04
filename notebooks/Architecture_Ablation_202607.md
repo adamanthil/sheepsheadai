@@ -31,6 +31,19 @@ of the transformer.
 - **Concurrency:** 8 simultaneous training subprocesses, 1 BLAS thread each
   (Apple M1 Max, 10 cores, 64 GB; game logic is Python-bound so process
   parallelism wins). Finished slot ⇒ next queued job starts automatically.
+- **Reward regime: SHAPED** (the trainer's historical bootstrap stack:
+  hand-conditioned pick/pass nudges + per-trick intermediate rewards +
+  final score/RETURN_SCALE with leaster bonus — `process_episode_rewards`
+  + `update_intermediate_rewards_for_action`). Deliberate: identical
+  shaping across arms keeps the comparison controlled; it matches the
+  regime in which these components were historically adopted; and
+  cold-start terminal-only at 100k episodes risks a floor effect (the
+  terminal-reward league run warm-started from a shaped policy — cold
+  terminal bootstrap is untested). **Pre-registered caveat:** dense shaping
+  does some of the work the aux heads / critic do, so shaped-regime deltas
+  for those rungs (esp. `full − no-aux`) are best read as a *lower bound*
+  on their terminal-regime value; phase 2 (league trainer, terminal-only)
+  is the regime check.
 
 ## Environment
 
