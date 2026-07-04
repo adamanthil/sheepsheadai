@@ -63,7 +63,7 @@ def time_ismcts(n_searches):
     from ppo import PPOAgent
     from ismcts import ISMCTSTeacher, ISMCTSConfig
 
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load("final_pfsp_swish_ppo.pt", load_optimizers=False)
     cfg = ISMCTSConfig(
         iters={"pick": 48, "partner": 64, "bury": 96, "play": 96},

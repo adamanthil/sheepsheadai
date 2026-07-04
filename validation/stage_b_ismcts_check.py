@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import copy
 import random
-from collections import deque
 
 import numpy as np
 import torch
@@ -35,7 +34,7 @@ import torch
 import ppo
 from ppo import PPOAgent
 from ismcts import ISMCTSTeacher, ISMCTSConfig
-from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
+from sheepshead import ACTIONS, TRUMP, Game
 from training_utils import get_partner_selection_mode
 
 DEV = ppo.device
@@ -478,7 +477,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
 
     cfg = ISMCTSConfig(

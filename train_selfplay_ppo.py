@@ -73,7 +73,6 @@ def train_ppo(
     save_interval=5000,
     strategic_eval_interval=10000,
     resume_model=None,
-    activation="swish",
     run_name="selfplay_ppo",
     arch="full",
     anchor_eval_interval=5000,
@@ -96,7 +95,6 @@ def train_ppo(
     print(f"  Update interval: {update_interval}")
     print(f"  Save interval: {save_interval}")
     print(f"  Strategic evaluation interval: {strategic_eval_interval}")
-    print(f"  Activation function: {activation.upper()}")
     print(f"  Architecture: {arch}")
     print("=" * 60)
 
@@ -105,7 +103,6 @@ def train_ppo(
         len(ACTIONS),
         lr_actor=_HP.lr_actor,
         lr_critic=_HP.lr_critic,
-        activation=activation,
         arch=arch,
     )
     n_enc = sum(p.numel() for p in agent.encoder.parameters())
@@ -180,7 +177,7 @@ def train_ppo(
         yardsticks["scripted"] = ScriptedAgent()
         for name, path in (("selfplay100k", anchor_100k), ("final_pfsp", anchor_pfsp)):
             if path and os.path.exists(path):
-                yardsticks[name] = load_agent(path, activation=activation)
+                yardsticks[name] = load_agent(path)
             else:
                 print(f"⚠️  Anchored-eval yardstick missing, skipping: {path}")
     eval_wall_s = 0.0
@@ -600,14 +597,14 @@ def train_ppo(
             # We want the absolute value to be as small as possible
             if current_team_diff < best_team_difference:
                 best_team_difference = current_team_diff
-                agent.save(os.path.join(checkpoint_dir, f"best_{activation}.pt"))
+                agent.save(os.path.join(checkpoint_dir, f"best_{arch}.pt"))
                 print(
                     f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved."
                 )
 
         # Save regular checkpoints
         if episode % save_interval == 0:
-            checkpoint_path = f"{checkpoint_dir}/{activation}_checkpoint_{episode}.pt"
+            checkpoint_path = f"{checkpoint_dir}/{arch}_checkpoint_{episode}.pt"
             agent.save(checkpoint_path)
 
             # Save enhanced training plot
@@ -650,13 +647,13 @@ def train_ppo(
                 f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]"
             )
 
-    agent.save(os.path.join(checkpoint_dir, f"final_{activation}.pt"))
+    agent.save(os.path.join(checkpoint_dir, f"final_{arch}.pt"))
 
     # Save final enhanced training plot
     if len(training_data["episodes"]) > 0:
         save_training_plot(
             training_data,
-            os.path.join(checkpoint_dir, f"final_{activation}_training.png"),
+            os.path.join(checkpoint_dir, f"final_{arch}_training.png"),
         )
 
     total_time = time.time() - start_time
@@ -722,13 +719,6 @@ def main():
         "--resume", type=str, default=None, help="Model file to resume from"
     )
     parser.add_argument(
-        "--activation",
-        type=str,
-        default="swish",
-        choices=["relu", "swish"],
-        help="Activation function to use (default: swish)",
-    )
-    parser.add_argument(
         "--run-name",
         type=str,
         default="selfplay_ppo",
@@ -789,7 +779,6 @@ def main():
         args.save_interval,
         args.strategic_eval_interval,
         args.resume,
-        args.activation,
         args.run_name,
         arch=args.arch,
         anchor_eval_interval=args.anchor_eval_interval,

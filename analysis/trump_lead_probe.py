@@ -185,7 +185,6 @@ def main() -> int:
     )
     ap.add_argument("--deals", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=PROBE_SEED)
-    ap.add_argument("--activation", default="swish")
     ap.add_argument("--out-json", default=None)
     args = ap.parse_args()
 
@@ -194,7 +193,7 @@ def main() -> int:
     elif args.ckpt:
         from ppo import PPOAgent
 
-        hero = PPOAgent(len(ACTIONS), activation=args.activation)
+        hero = PPOAgent(len(ACTIONS))
         hero.load(args.ckpt, load_optimizers=False)
         label = args.ckpt
     else:

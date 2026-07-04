@@ -124,7 +124,6 @@ class TestFullArchUnchanged(unittest.TestCase):
         actor = MultiHeadRecurrentActorNetwork(
             len(ACTIONS),
             via_registry.action_groups,
-            activation="swish",
             d_card=encoder.d_card_dim,
             d_token=encoder.d_token_dim,
             map_cid_to_play_action_index=mappings[0],
@@ -134,9 +133,7 @@ class TestFullArchUnchanged(unittest.TestCase):
             call_card_ids=mappings[4],
             play_under_action_index=mappings[5],
         ).to(ppo.device)
-        critic = RecurrentCriticNetwork(
-            activation="swish", d_card=encoder.d_card_dim
-        ).to(ppo.device)
+        critic = RecurrentCriticNetwork(d_card=encoder.d_card_dim).to(ppo.device)
 
         for reg_net, direct_net in (
             (via_registry.encoder, encoder),

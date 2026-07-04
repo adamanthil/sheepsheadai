@@ -35,8 +35,8 @@ from sheepshead import ACTIONS, TRUMP, Game
 from training_utils import get_partner_selection_mode
 
 
-def load(model, activation="swish"):
-    a = PPOAgent(len(ACTIONS), activation=activation)
+def load(model):
+    a = PPOAgent(len(ACTIONS))
     a.load(model, load_optimizers=False)
     return a
 

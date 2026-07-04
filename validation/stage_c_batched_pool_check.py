@@ -10,7 +10,6 @@ import random
 import time
 import copy
 
-import numpy as np
 import torch
 
 from ppo import PPOAgent
@@ -66,7 +65,7 @@ def sequential_pool(teacher, real_game, deals, fp, observer):
 def main():
     random.seed(0)
     torch.manual_seed(0)
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(CKPT, load_optimizers=False)
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
 

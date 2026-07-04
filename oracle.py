@@ -313,10 +313,10 @@ class OracleValueNetwork(nn.Module):
     only to supply the GAE baseline (see module docstring).
     """
 
-    def __init__(self, activation: str = "swish"):
+    def __init__(self):
         super().__init__()
         self.encoder = OracleCriticEncoder(card_config=CardEmbeddingConfig())
-        act = nn.ReLU if activation == "relu" else nn.SiLU
+        act = nn.SiLU
         # Same shape as RecurrentCriticNetwork.value_trunk.
         self.value_trunk = nn.Sequential(
             nn.LayerNorm(256),

@@ -487,7 +487,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
 
     print(f"Scanning up to {args.max_games} games for trick-0 defender trump-leads ...")

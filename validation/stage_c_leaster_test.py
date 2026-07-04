@@ -22,7 +22,6 @@ from ppo import PPOAgent
 from sheepshead import (
     Game,
     ACTIONS,
-    ACTION_IDS,
     DECK,
     UNDER_TOKEN,
     PARTNER_BY_JD,
@@ -35,7 +34,7 @@ PASS_ID = ACTIONS.index("PASS") + 1
 
 
 def make_agent():
-    a = PPOAgent(len(ACTIONS), activation="swish")
+    a = PPOAgent(len(ACTIONS))
     a.load(CKPT, load_optimizers=False)
     return a
 
@@ -198,7 +197,7 @@ def main():
         # n_iter > 0 confirms the determinizer actually built leaster worlds.
         if res["n_iter"] == 0:
             print(
-                f"  WARNING: 0 worlds built (determinizer produced nothing)", flush=True
+                "  WARNING: 0 worlds built (determinizer produced nothing)", flush=True
             )
 
     print(f"\nleaster play nodes found: {found}")

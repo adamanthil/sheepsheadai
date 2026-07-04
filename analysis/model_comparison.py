@@ -30,7 +30,7 @@ from collections import defaultdict, Counter
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 
 from ppo import PPOAgent
 from sheepshead import Game, ACTIONS
@@ -43,7 +43,6 @@ class ModelConfig:
     path: str
     name: str
     num_positions: int  # How many player positions this model controls
-    activation: str = "swish"
 
 
 @dataclass
@@ -147,7 +146,7 @@ class ModelComparisonSimulator:
         print("Loading models...")
         for config in self.model_configs:
             try:
-                agent = PPOAgent(len(ACTIONS), activation=config.activation)
+                agent = PPOAgent(len(ACTIONS))
                 agent.load(config.path, load_optimizers=False)
                 self.models[config.name] = agent
                 print(f"✅ Loaded {config.name} from {config.path}")
@@ -445,7 +444,6 @@ class ModelComparisonSimulator:
                         "name": config.name,
                         "path": config.path,
                         "num_positions": config.num_positions,
-                        "activation": config.activation,
                     }
                     for config in self.model_configs
                 ],
@@ -532,13 +530,6 @@ Examples:
         required=True,
         help="Number of positions for first model (1-4)",
     )
-    parser.add_argument(
-        "--model1-activation",
-        type=str,
-        default="swish",
-        choices=["relu", "swish"],
-        help="Activation function for first model (default: swish)",
-    )
 
     # Model 2 arguments
     parser.add_argument(
@@ -555,13 +546,6 @@ Examples:
         type=int,
         required=True,
         help="Number of positions for second model (1-4)",
-    )
-    parser.add_argument(
-        "--model2-activation",
-        type=str,
-        default="swish",
-        choices=["relu", "swish"],
-        help="Activation function for second model (default: swish)",
     )
 
     args = parser.parse_args()
@@ -584,13 +568,11 @@ Examples:
             path=args.model1_path,
             name=args.model1_name,
             num_positions=args.model1_positions,
-            activation=args.model1_activation,
         ),
         ModelConfig(
             path=args.model2_path,
             name=args.model2_name,
             num_positions=args.model2_positions,
-            activation=args.model2_activation,
         ),
     ]
 

@@ -53,8 +53,8 @@ from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 _MODE_BY_NAME = {"jd": PARTNER_BY_JD, "called-ace": PARTNER_BY_CALLED_ACE}
 
 
-def load_agent(ckpt: str, activation: str) -> PPOAgent:
-    agent = PPOAgent(len(ACTIONS), activation=activation)
+def load_agent(ckpt: str) -> PPOAgent:
+    agent = PPOAgent(len(ACTIONS))
     agent.load(ckpt, load_optimizers=False)
     return agent
 
@@ -174,11 +174,6 @@ def main() -> None:
         "--seed", type=int, default=1000, help="base RNG seed (default 1000)"
     )
     ap.add_argument(
-        "--activation",
-        default="swish",
-        help="network activation for both agents (default swish)",
-    )
-    ap.add_argument(
         "--partner-mode",
         choices=["jd", "called-ace", "both"],
         default="both",
@@ -198,8 +193,8 @@ def main() -> None:
     else:
         modes = [_MODE_BY_NAME[args.partner_mode]]
 
-    agent_a = load_agent(args.model_a, args.activation)
-    agent_b = load_agent(args.model_b, args.activation)
+    agent_a = load_agent(args.model_a)
+    agent_b = load_agent(args.model_b)
 
     result = compare(
         agent_a,

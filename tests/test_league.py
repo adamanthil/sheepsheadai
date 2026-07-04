@@ -30,7 +30,7 @@ from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 def _agent(seed: int) -> PPOAgent:
     torch.manual_seed(seed)
-    return PPOAgent(len(ACTIONS), activation="swish")
+    return PPOAgent(len(ACTIONS))
 
 
 class TestLeagueRoster(unittest.TestCase):

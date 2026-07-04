@@ -141,12 +141,12 @@ def filter_snapshots_by_episode(
 
 
 def load_eval_agents(
-    paths_with_eps: List[Tuple[Path, int]], activation: str = "swish"
+    paths_with_eps: List[Tuple[Path, int]],
 ) -> List[EvalAgent]:
     agents: List[EvalAgent] = []
     for path, episodes in paths_with_eps:
         try:
-            agent = PPOAgent(len(ACTIONS), activation=activation)
+            agent = PPOAgent(len(ACTIONS))
             agent.load(str(path), load_optimizers=False)
             # Create default PL rating (mu defaults to ~25, sigma ~25/3)
             pl = PlackettLuce()
@@ -454,12 +454,6 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Number of unique deals per 5-agent group (same deal reused across all 5 seat rotations)",
     )
     parser.add_argument(
-        "--activation",
-        type=str,
-        default="swish",
-        help="Activation used by agents (for model init)",
-    )
-    parser.add_argument(
         "--seed", type=int, default=42, help="Random seed for reproducibility"
     )
     parser.add_argument(
@@ -487,7 +481,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     input_dir = Path(args.input_dir).resolve()
     partner_mode = resolve_partner_mode(args.partner_mode)
-    activation = args.activation
     out_csv = Path(args.out_csv).resolve()
     out_plot = Path(args.out_plot).resolve()
 
@@ -503,7 +496,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     print("Loading agents ...")
-    agents = load_eval_agents(filtered, activation=activation)
+    agents = load_eval_agents(filtered)
     print(f"Loaded {len(agents)} agents")
     if len(agents) < 5:
         print("Need at least 5 loaded agents to run a tournament. Exiting.")

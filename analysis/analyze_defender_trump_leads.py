@@ -52,7 +52,7 @@ def unseen_higher_trumps(player, card: str) -> int:
 
 
 def collect(model_path: str, num_games: int, seed: int, deterministic: bool):
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(model_path, load_optimizers=False)
 
     rng = random.Random(seed)

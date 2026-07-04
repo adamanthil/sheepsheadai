@@ -109,18 +109,13 @@ def _lw_init(init_args: dict) -> None:
     import torch as _torch
 
     _torch.set_num_threads(1)
-    agent = PPOAgent(
-        len(ACTIONS),
-        activation=init_args["activation"],
-        arch=init_args.get("arch", "full"),
-    )
+    agent = PPOAgent(len(ACTIONS), arch=init_args.get("arch", "full"))
     seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
     random.seed(seed)
     _LWORKER.clear()
     _LWORKER.update(
         {
             "agent": agent,
-            "activation": init_args["activation"],
             "members_dir": init_args["members_dir"],
             "weight_path_base": init_args["weight_path_base"],
             "version": 0,
@@ -135,10 +130,7 @@ def _lw_get_member(member_id: str) -> _Seat:
     if seat is None:
         # Arch-aware: members carry their architecture in checkpoint metadata
         # (legacy members without the key are the full architecture).
-        agent = load_agent(
-            os.path.join(_LWORKER["members_dir"], f"{member_id}.pt"),
-            activation=_LWORKER["activation"],
-        )
+        agent = load_agent(os.path.join(_LWORKER["members_dir"], f"{member_id}.pt"))
         seat = _Seat(agent, member_id)
         cache[member_id] = seat
     return seat
@@ -367,7 +359,6 @@ def run_main_phase(
             initializer=_lw_init,
             initargs=(
                 {
-                    "activation": args.activation,
                     "arch": getattr(args, "arch", "full"),
                     "members_dir": str(league.members_dir),
                     "weight_path_base": weight_sync["base"],
@@ -503,7 +494,6 @@ def run_main_phase(
                     snap,
                     ROLE_PAST_MAIN,
                     training_episodes=episode,
-                    activation=args.activation,
                     initial_ratings=_inherited_ratings(league, training_ratings),
                 )
                 print(f"👥 League snapshot at ep {episode:,}; {league.summary()}")
@@ -618,7 +608,7 @@ def run_main_phase(
                 training_agent.save(
                     os.path.join(
                         checkpoint_dir,
-                        f"pfsp_{args.activation}_checkpoint_{episode}.pt",
+                        f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
                     )
                 )
                 league.save()
@@ -667,7 +657,7 @@ def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
         return json.load(f)
 
 
-def _seed_league_from_checkpoints(league: League, spec: str, activation: str) -> None:
+def _seed_league_from_checkpoints(league: League, spec: str) -> None:
     """Seed an empty league with PPO checkpoints as past_mains. ``spec`` is a
     glob (``.../*.pt``) or a directory (all ``*.pt`` within). Mirrors how the
     original pfsp run bootstrapped its population from the selfplay snapshots."""
@@ -679,16 +669,14 @@ def _seed_league_from_checkpoints(league: League, spec: str, activation: str) ->
     if not paths:
         raise SystemExit(f"--seed-checkpoints matched no .pt files: {spec}")
     for p in paths:
-        agent = load_agent(p, activation=activation)
+        agent = load_agent(p)
         episodes = 0
         if "checkpoint_" in p:
             try:
                 episodes = int(os.path.basename(p).split("_")[-1].split(".")[0])
             except ValueError:
                 episodes = 0
-        league.add_member(
-            agent, ROLE_PAST_MAIN, training_episodes=episodes, activation=activation
-        )
+        league.add_member(agent, ROLE_PAST_MAIN, training_episodes=episodes)
     print(f"🌱 Seeded league with {len(paths)} checkpoints as past_mains")
 
 
@@ -756,7 +744,6 @@ def main():
     ap.add_argument("--anchor-eval-interval", type=int, default=100_000)
     ap.add_argument("--anchor-eval-deals", type=int, default=300)
     ap.add_argument("--num-workers", type=int, default=8)
-    ap.add_argument("--activation", default="swish")
     ap.add_argument(
         "--arch",
         default="full",
@@ -780,7 +767,7 @@ def main():
         print(f"🏗️  Empty league; migrating legacy population from {args.migrate_from}")
         league = League.migrate_legacy(args.migrate_from, args.league_dir)
     if len(league) == 0 and args.seed_checkpoints:
-        _seed_league_from_checkpoints(league, args.seed_checkpoints, args.activation)
+        _seed_league_from_checkpoints(league, args.seed_checkpoints)
     if len(league) == 0:
         print(
             "⚠️  Empty league: bootstrapping from pure self-play until past_main "
@@ -789,10 +776,7 @@ def main():
     print(league.summary())
 
     training_agent = PPOAgent(
-        len(ACTIONS),
-        activation=args.activation,
-        critic_mode=args.critic_mode,
-        arch=args.arch,
+        len(ACTIONS), critic_mode=args.critic_mode, arch=args.arch
     )
     training_agent.load(args.resume, load_optimizers=True)
     if args.arch != "full":
@@ -805,14 +789,14 @@ def main():
     print(f"📍 Main resumed from {args.resume} (episode {start_episode:,})")
 
     if args.anchor_coeff > 0.0:
-        ref = load_agent(args.anchor_ref or args.resume, activation=args.activation)
+        ref = load_agent(args.anchor_ref or args.resume)
         training_agent.set_anchor(ref, args.anchor_coeff)
         print(f"⚓ Bidding anchor ON (coeff={args.anchor_coeff})")
 
     anchor_eval = None
     if args.anchor_eval_ckpt and args.anchor_eval_interval > 0:
         if os.path.exists(args.anchor_eval_ckpt):
-            ref_agent = load_agent(args.anchor_eval_ckpt, activation=args.activation)
+            ref_agent = load_agent(args.anchor_eval_ckpt)
             anchor_eval = {
                 "agent": ref_agent,
                 "label": os.path.basename(args.anchor_eval_ckpt),
@@ -858,7 +842,8 @@ def main():
             anchor_eval=anchor_eval,
         )
         main_ckpt = os.path.join(
-            checkpoint_dir, f"pfsp_{args.activation}_checkpoint_{episode}.pt"
+            checkpoint_dir,
+            f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
         )
         if not os.path.exists(main_ckpt):
             training_agent.save(main_ckpt)
@@ -915,7 +900,7 @@ def main():
                     f"{snaps[-1].member_id} promoted to HOF anchor"
                 )
 
-    training_agent.save(os.path.join(run_dir, f"final_{args.activation}.pt"))
+    training_agent.save(os.path.join(run_dir, f"final_{args.arch}.pt"))
     print(f"\n✅ League run complete at episode {episode:,}")
     print(league.summary())
 

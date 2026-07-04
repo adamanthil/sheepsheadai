@@ -290,7 +290,7 @@ def leak_signal(trump_pref, agent, R):
     print(f"(B) LEAK SIGNAL on trump-pref first-trick states (n={len(trump_pref)})")
     print("=" * 72)
     print(f"  Action-value gap  E[G_trump - G_fail] : {mean_gap:+.4f} reward units")
-    print(f"    (negative => fail lead is better, matching the counterfactual)")
+    print("    (negative => fail lead is better, matching the counterfactual)")
     print(f"  Per-sample return noise (pooled std)  : {mean_std:.4f}")
     print(f"  Signal-to-noise per rollout           : {abs(mean_gap) / mean_std:.3f}")
     print(f"  On-policy samples to resolve gap (2σ) : ~{n_needed:.0f} per action")
@@ -373,7 +373,7 @@ def main():
     rng = random.Random(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
 
     print(

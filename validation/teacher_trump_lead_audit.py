@@ -78,7 +78,7 @@ def _load_population_opponents(pop_dir: str, k: int = 4):
     candidates.sort(reverse=True)
     agents = []
     for eps, path in candidates[:k]:
-        a = PPOAgent(len(ACTIONS), activation="swish")
+        a = PPOAgent(len(ACTIONS))
         a.load(path, load_optimizers=False)
         agents.append(a)
         print(f"  opponent: {os.path.basename(path)} (eps={eps:,})")
@@ -123,7 +123,7 @@ def main():
     torch.manual_seed(args.seed)
 
     print(f"Loading {args.model} ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
 
     opponents = None

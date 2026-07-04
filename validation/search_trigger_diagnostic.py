@@ -82,7 +82,7 @@ def _is_private(valid) -> bool:
 
 
 def _load(model: str) -> PPOAgent:
-    a = PPOAgent(len(ACTIONS), activation="swish")
+    a = PPOAgent(len(ACTIONS))
     a.load(model, load_optimizers=False)
     return a
 

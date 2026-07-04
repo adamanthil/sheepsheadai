@@ -37,7 +37,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self,
         action_size,
         action_groups,
-        activation="swish",
         *,
         d_card: int,
         d_token: int,
@@ -58,9 +57,9 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self.actor_adapter = nn.Sequential(
             nn.LayerNorm(256),
             nn.Linear(256, 256),
-            nn.ReLU() if activation == "relu" else nn.SiLU(),
+            nn.SiLU(),
             nn.Linear(256, 256),
-            nn.ReLU() if activation == "relu" else nn.SiLU(),
+            nn.SiLU(),
         )
 
         # === Heads ===
@@ -331,9 +330,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 class RecurrentCriticNetwork(nn.Module):
     """Critic head using encoder features directly."""
 
-    def __init__(
-        self, activation="swish", d_card: int | None = None, use_aux_heads: bool = True
-    ):
+    def __init__(self, d_card: int | None = None, use_aux_heads: bool = True):
         super().__init__()
         self.has_aux_heads = bool(use_aux_heads)
         if d_card is None and self.has_aux_heads:
@@ -341,7 +338,7 @@ class RecurrentCriticNetwork(nn.Module):
                 "RecurrentCriticNetwork requires card embedding dimension (d_card)."
             )
 
-        act = nn.ReLU if activation == "relu" else nn.SiLU
+        act = nn.SiLU
         if self.has_aux_heads:
             # Adapter feeding the auxiliary heads (win/return/points/trump). Kept
             # shallow and shared so the aux tasks continue to shape the encoder.
@@ -487,7 +484,6 @@ class PPOAgent:
         action_size,
         lr_actor=3e-4,
         lr_critic=3e-4,
-        activation="swish",
         critic_mode="limited",
         arch="full",
     ):
@@ -530,7 +526,7 @@ class PPOAgent:
         self.pass_action_index = ACTION_IDS["PASS"] - 1
 
         # Encoder with memory
-        self.encoder = spec.build_encoder(activation).to(device)
+        self.encoder = spec.build_encoder().to(device)
 
         # Per-player memory tracking
         self._player_memories = {}
@@ -554,10 +550,10 @@ class PPOAgent:
             "play_under_action_index": play_under_action_index,
         }
         self.actor = spec.build_actor(
-            action_size, self.action_groups, activation, self.encoder, actor_mappings
+            action_size, self.action_groups, self.encoder, actor_mappings
         ).to(device)
 
-        self.critic = spec.build_critic(activation, self.encoder).to(device)
+        self.critic = spec.build_critic(self.encoder).to(device)
 
         # Optimizers (include encoder params with scaled LR for card embeddings)
         encoder_groups = self.encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.2)
@@ -583,7 +579,7 @@ class PPOAgent:
         if critic_mode == "oracle":
             from oracle import OracleValueNetwork
 
-            self.oracle_critic = OracleValueNetwork(activation=activation).to(device)
+            self.oracle_critic = OracleValueNetwork().to(device)
             self.oracle_optimizer = optim.Adam(
                 self.oracle_critic.param_groups(
                     base_lr=lr_critic, card_lr_scale=self._oracle_lr_ratios[0]
@@ -2455,7 +2451,6 @@ class PPOAgent:
 def load_agent(
     filepath,
     *,
-    activation: str = "swish",
     load_optimizers: bool = False,
     checkpoint=None,
 ) -> "PPOAgent":
@@ -2473,8 +2468,6 @@ def load_agent(
         checkpoint = torch.load(filepath, map_location=device)
     arch = checkpoint.get("arch", "full")
     critic_mode = checkpoint.get("critic_mode", "limited")
-    agent = PPOAgent(
-        len(ACTIONS), activation=activation, critic_mode=critic_mode, arch=arch
-    )
+    agent = PPOAgent(len(ACTIONS), critic_mode=critic_mode, arch=arch)
     agent.load(filepath, load_optimizers=load_optimizers, checkpoint=checkpoint)
     return agent

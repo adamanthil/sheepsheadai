@@ -59,7 +59,6 @@ class MemberMeta:
     role: str
     creation_time: float
     training_episodes: int
-    activation: str = "swish"
     parent_id: Optional[str] = None
     # Exploiter lineage: which league generation spawned it (-1 for past mains)
     # and the paired-deal edge (settlement score/deal vs the frozen main) measured
@@ -156,7 +155,6 @@ class League:
         agent: PPOAgent,
         role: str,
         training_episodes: int,
-        activation: str = "swish",
         parent_id: str | None = None,
         generation: int = -1,
         gate_edge: float | None = None,
@@ -174,7 +172,6 @@ class League:
             role=role,
             creation_time=time.time(),
             training_episodes=int(training_episodes),
-            activation=activation,
             parent_id=parent_id,
             generation=int(generation),
             gate_edge=gate_edge,
@@ -463,7 +460,7 @@ class League:
                     data = json.load(f)
                 meta = MemberMeta.from_dict(data)
                 pt, _ = self._member_paths(meta.member_id)
-                agent = load_agent(str(pt), activation=meta.activation)
+                agent = load_agent(str(pt))
                 ratings = {
                     int(mode): self.rating_model.rating(mu=rs["mu"], sigma=rs["sigma"])
                     for mode, rs in data.get("ratings", {}).items()
@@ -576,12 +573,11 @@ class League:
                 role=role,
                 creation_time=float(data.get("creation_time", time.time())),
                 training_episodes=int(data.get("training_episodes", 0)),
-                activation=data.get("activation", "swish"),
                 parent_id=data.get("parent_id"),
             )
             pt_dst, js_dst = league._member_paths(member_id)
             shutil.copyfile(e["pt"], pt_dst)
-            agent = load_agent(str(pt_dst), activation=meta.activation)
+            agent = load_agent(str(pt_dst))
             ratings = {
                 mode: model.rating(mu=mu, sigma=sigma)
                 for mode, (mu, sigma) in e["ratings"].items()

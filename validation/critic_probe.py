@@ -33,7 +33,7 @@ import torch.nn as nn
 
 import ppo
 from ppo import PPOAgent
-from sheepshead import ACTIONS, TRUMP, Game
+from sheepshead import ACTIONS, Game
 from training_utils import RETURN_SCALE, TRICK_POINT_RATIO, get_partner_selection_mode
 
 DEV = ppo.device
@@ -200,7 +200,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
     act = nn.SiLU
 

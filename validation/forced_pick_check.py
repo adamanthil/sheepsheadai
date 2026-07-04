@@ -47,8 +47,8 @@ PICK_ID = ACTIONS.index("PICK") + 1
 PASS_ID = ACTIONS.index("PASS") + 1
 
 
-def load(model, activation="swish"):
-    a = PPOAgent(len(ACTIONS), activation=activation)
+def load(model):
+    a = PPOAgent(len(ACTIONS))
     a.load(model, load_optimizers=False)
     return a
 
@@ -140,10 +140,10 @@ def forced_pick_eval(agent, make_field, n_games, seed, min_strength, determinist
     }
 
 
-def make_single_field(field_model, activation):
+def make_single_field(field_model):
     """One shared baseline agent in all four non-picker seats (deterministic field,
     reproducible). Keeps per-seat recurrent memory via player_id."""
-    base = load(field_model, activation)
+    base = load(field_model)
 
     def make_field(mode, pos):
         return (lambda seat: base), [base]
@@ -185,11 +185,10 @@ def main():
         action="store_true",
         help="sample play actions instead of greedy (greedy default = low-variance paired delta)",
     )
-    ap.add_argument("--activation", default="swish", choices=["relu", "swish"])
     args = ap.parse_args()
 
     deterministic = not args.stochastic
-    make_field, field_desc = make_single_field(args.field, args.activation)
+    make_field, field_desc = make_single_field(args.field)
 
     print("=" * 70)
     print("DIAGNOSTIC A — forced-pick EV (agent always becomes picker)")
@@ -205,7 +204,7 @@ def main():
     # (forced_pick_eval reseeds per game from --seed), so a multi-model sweep is
     # apples-to-apples across checkpoints.
     print(f"\nreference  ({args.reference}) ...")
-    ref = load(args.reference, args.activation)
+    ref = load(args.reference)
     r_ref = forced_pick_eval(
         ref, make_field, args.games, args.seed, args.min_hand_strength, deterministic
     )
@@ -223,7 +222,7 @@ def main():
     sweep = len(args.model) > 1
     for model in args.model:
         print(f"challenger ({model}) ...")
-        cha = load(model, args.activation)
+        cha = load(model)
         r_cha = forced_pick_eval(
             cha,
             make_field,

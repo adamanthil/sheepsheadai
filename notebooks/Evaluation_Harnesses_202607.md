@@ -170,10 +170,13 @@ nohup uv run train_selfplay_ppo.py --arch <A> --seed <S> --episodes 100000 \
   `edge_selfplay100k` (strength-matched reference), `edge_final_pfsp`
   (absolute yardstick, saturated-negative early). `train_wall_s` excludes
   eval time; `transitions_done`/`updates_done` give the sample axis.
-* **Endpoints:** each run's `final_swish.pt` through §1 PANEL-A (both
+* **Endpoints:** each run's `final_<arch>.pt` through §1 PANEL-A (both
   modes), §2 scripted probe, §3 trump-lead probe. `analysis/` tools are
   arch-aware via `ppo.load_agent` (checkpoints record their `arch`;
-  pre-registry checkpoints = `full`).
+  pre-registry checkpoints = `full`). Saved-model names carry the arch, not
+  the activation — the relu option is gone, SiLU everywhere (old
+  `*_swish*.pt` files on disk keep working, incl. a legacy fallback in
+  `exploiter.latest_checkpoint`).
 * **Decision criteria:** *training speed* = median (across seeds) episodes
   AND train-wall-clock to fixed edge thresholds vs scripted/100k (report
   both axes — cheaper archs win s/episode; the question is sample

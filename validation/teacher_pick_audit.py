@@ -47,8 +47,8 @@ PASS_ID = ACTIONS.index("PASS") + 1
 PICK_ROLLOUT_DEPTH = 6  # trick 0 <= t_full=1 -> 6 - current_trick(0); matches training
 
 
-def load(model, activation="swish"):
-    a = PPOAgent(len(ACTIONS), activation=activation)
+def load(model):
+    a = PPOAgent(len(ACTIONS))
     a.load(model, load_optimizers=False)
     return a
 
@@ -163,7 +163,6 @@ def main():
     )
     ap.add_argument("--games", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--activation", default="swish", choices=["relu", "swish"])
     args = ap.parse_args()
 
     print("=" * 78)
@@ -175,9 +174,7 @@ def main():
     results = {}
     for tag, path in (("reference", args.reference), ("challenger", args.model)):
         print(f"\n{tag} ({path}) — searching ...")
-        results[tag] = summarize(
-            audit(load(path, args.activation), args.games, args.seed)
-        )
+        results[tag] = summarize(audit(load(path), args.games, args.seed))
 
     hdr = f"  {'hand str':<9}" + "".join(f"{lbl:>22}" for lbl, _ in _BINS)
     for tag in ("reference", "challenger"):

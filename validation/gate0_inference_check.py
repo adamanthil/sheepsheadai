@@ -19,7 +19,7 @@ import torch
 
 import ppo
 from ppo import PPOAgent
-from sheepshead import ACTIONS, TRUMP, get_card_points
+from sheepshead import ACTIONS, TRUMP
 from gate0_determinizer import collect
 
 DEV = ppo.device
@@ -52,7 +52,7 @@ def main():
     np.random.seed(args.seed)
     random.seed(args.seed)
     print(f"Loading {args.model} ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
 
     print(f"Scanning for {args.states} trick-0 defender trump-lead states ...")
@@ -85,7 +85,7 @@ def main():
     print("PICKER TRUMP STRENGTH: true (self-selected) vs uniform determinized")
     print("=" * 64)
     print(f"  states={len(states)}, determinizations each={args.K}")
-    print(f"  trump in picker's 8 cards:")
+    print("  trump in picker's 8 cards:")
     print(
         f"    TRUE picker        mean={real_tc.mean():.2f}  (SE {real_tc.std(ddof=1) / np.sqrt(len(real_tc)):.2f})"
     )
@@ -93,7 +93,7 @@ def main():
         f"    DETERMINIZED picker mean={det_tc.mean():.2f}  (SE {det_tc.std(ddof=1) / np.sqrt(len(det_tc)):.2f})"
     )
     print(f"    gap (true - det)   = {real_tc.mean() - det_tc.mean():+.2f} trump")
-    print(f"  top trump (Q/J) in picker's 8:")
+    print("  top trump (Q/J) in picker's 8:")
     print(f"    TRUE        mean={real_top.mean():.2f}")
     print(f"    DETERMINIZED mean={det_top.mean():.2f}")
     print(f"    gap         = {real_top.mean() - det_top.mean():+.2f}")

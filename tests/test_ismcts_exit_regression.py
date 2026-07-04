@@ -52,7 +52,7 @@ def _seed():
 def _fresh_agent():
     from ppo import PPOAgent
 
-    return PPOAgent(len(ACTIONS), activation="swish")
+    return PPOAgent(len(ACTIONS))
 
 
 def _is_private(valid):

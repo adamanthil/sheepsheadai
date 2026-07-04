@@ -148,7 +148,7 @@ def pick_evaluator(agent):
 
 
 if __name__ == "__main__":
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
     encoder_param_count = sum(p.numel() for p in agent.encoder.parameters())
     actor_param_count = sum(p.numel() for p in agent.actor.parameters())

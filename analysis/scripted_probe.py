@@ -58,7 +58,6 @@ def main() -> int:
     )
     ap.add_argument("--deals", type=int, default=500)
     ap.add_argument("--seed", type=int, default=PROBE_SEED)
-    ap.add_argument("--activation", default="swish")
     ap.add_argument("--log-every", type=int, default=100)
     ap.add_argument("--out-json", default=None)
     args = ap.parse_args()
@@ -73,7 +72,7 @@ def main() -> int:
     for path in args.ckpt:
         from ppo import load_agent
 
-        agent = load_agent(path, activation=args.activation)
+        agent = load_agent(path)
         heroes.append((path, agent))
 
     results = {"probe_seed": args.seed, "deals": args.deals, "probes": []}

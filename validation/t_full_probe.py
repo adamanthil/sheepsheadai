@@ -96,7 +96,7 @@ def main():
     args = ap.parse_args()
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
 
     print(

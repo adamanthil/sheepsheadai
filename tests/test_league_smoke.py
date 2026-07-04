@@ -52,7 +52,6 @@ class TestMainPhaseSmoke(unittest.TestCase):
         args = SimpleNamespace(
             seed=13,
             run_name=f"_smoke_{critic_mode}_{arch}",
-            activation="swish",
             critic_mode=critic_mode,
             arch=arch,
             num_workers=1,

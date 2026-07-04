@@ -123,8 +123,7 @@ class ModelRegistry:
     so distinct seats never share state.
     """
 
-    def __init__(self, activation: str = "swish") -> None:
-        self.activation = activation
+    def __init__(self) -> None:
         self._by_path: Dict[Path, Model] = {}
 
     def get(self, path: Path, episodes: Optional[int] = None) -> Model:
@@ -132,7 +131,7 @@ class ModelRegistry:
         if path not in self._by_path:
             # Arch-aware: builds whatever architecture the checkpoint records
             # (legacy checkpoints without the key are the full architecture).
-            agent = load_agent(str(path), activation=self.activation)
+            agent = load_agent(str(path))
             self._by_path[path] = Model(
                 model_id=path.stem, filepath=path, episodes=episodes, agent=agent
             )
@@ -723,7 +722,6 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument(
         "--partner-mode", type=str, default="called", choices=["jd", "called", "0", "1"]
     )
-    p.add_argument("--activation", type=str, default="swish")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--n-boot", type=int, default=5000, help="Bootstrap resamples")
     p.add_argument(
@@ -740,7 +738,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     partner_mode = resolve_partner_mode(args.partner_mode)
-    registry = ModelRegistry(activation=args.activation)
+    registry = ModelRegistry()
 
     # --- Resolve candidates -------------------------------------------------
     cand_specs: List[Tuple[Path, Optional[int]]] = []

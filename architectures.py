@@ -47,9 +47,9 @@ class ArchitectureSpec:
 
     name: str
     description: str
-    build_encoder: Callable[[str], nn.Module]
+    build_encoder: Callable[[], nn.Module]
     build_actor: Callable[..., nn.Module]
-    build_critic: Callable[[str, nn.Module], nn.Module]
+    build_critic: Callable[[nn.Module], nn.Module]
     has_aux_heads: bool = True
 
 
@@ -201,14 +201,13 @@ class OneHotFeedForwardEncoder(nn.Module):
     hand_tokens cannot be paired with this encoder.
     """
 
-    def __init__(self, activation: str = "swish"):
+    def __init__(self):
         super().__init__()
-        act = nn.ReLU if activation == "relu" else nn.SiLU
         self.mlp = nn.Sequential(
             nn.Linear(ONEHOT_STATE_DIM, 512),
-            act(),
+            nn.SiLU(),
             nn.Linear(512, 256),
-            act(),
+            nn.SiLU(),
         )
         self.memory_gru = nn.GRUCell(256, 256)
         self.fuse = nn.Linear(512, 256)
@@ -291,18 +290,17 @@ class FlatHeadActorNetwork(nn.Module):
     card actions are scored by absolute action id, not by hand slot.
     """
 
-    def __init__(self, action_size, action_groups, activation: str = "swish"):
+    def __init__(self, action_size, action_groups):
         super().__init__()
         self.action_size = action_size
         self.action_groups = action_groups
 
-        act = nn.ReLU if activation == "relu" else nn.SiLU
         self.actor_adapter = nn.Sequential(
             nn.LayerNorm(256),
             nn.Linear(256, 256),
-            act(),
+            nn.SiLU(),
             nn.Linear(256, 256),
-            act(),
+            nn.SiLU(),
         )
         self.heads = nn.ModuleDict(
             {
@@ -388,32 +386,29 @@ class FlatHeadActorNetwork(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-def _pointer_actor(action_size, action_groups, activation, encoder, mappings):
+def _pointer_actor(action_size, action_groups, encoder, mappings):
     from ppo import MultiHeadRecurrentActorNetwork
 
     return MultiHeadRecurrentActorNetwork(
         action_size,
         action_groups,
-        activation=activation,
         d_card=encoder.d_card_dim,
         d_token=encoder.d_token_dim,
         **mappings,
     )
 
 
-def _aux_critic(activation, encoder):
+def _aux_critic(encoder):
     from ppo import RecurrentCriticNetwork
 
-    return RecurrentCriticNetwork(activation=activation, d_card=encoder.d_card_dim)
+    return RecurrentCriticNetwork(d_card=encoder.d_card_dim)
 
 
-def _no_aux_critic(activation, encoder):
+def _no_aux_critic(encoder):
     from ppo import RecurrentCriticNetwork
 
     d_card = getattr(encoder, "d_card_dim", 0) or None
-    return RecurrentCriticNetwork(
-        activation=activation, d_card=d_card, use_aux_heads=False
-    )
+    return RecurrentCriticNetwork(d_card=d_card, use_aux_heads=False)
 
 
 # ---------------------------------------------------------------------------
@@ -428,9 +423,7 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
             "card reasoning + GRU memory + pointer/two-tower actor + limited "
             "critic with auxiliary heads."
         ),
-        build_encoder=lambda activation: CardReasoningEncoder(
-            card_config=CardEmbeddingConfig()
-        ),
+        build_encoder=lambda: CardReasoningEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
         has_aux_heads=True,
@@ -439,9 +432,7 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
     "no-aux": ArchitectureSpec(
         name="no-aux",
         description="full minus the critic's auxiliary heads.",
-        build_encoder=lambda activation: CardReasoningEncoder(
-            card_config=CardEmbeddingConfig()
-        ),
+        build_encoder=lambda: CardReasoningEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
@@ -453,7 +444,7 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
             "(embeddings -> pools -> fused features -> GRU; heads consume "
             "the recurrent state, matching the pre-transformer LSTM shape)."
         ),
-        build_encoder=lambda activation: PooledMemoryEncoder(),
+        build_encoder=lambda: PooledMemoryEncoder(),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
@@ -461,7 +452,7 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
     "no-transformer-uninformed": ArchitectureSpec(
         name="no-transformer-uninformed",
         description="no-transformer minus informed card-embedding initialization.",
-        build_encoder=lambda activation: PooledMemoryEncoder(
+        build_encoder=lambda: PooledMemoryEncoder(
             card_config=CardEmbeddingConfig(use_informed_init=False)
         ),
         build_actor=_pointer_actor,
@@ -475,11 +466,9 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
             "memory, flat per-phase linear action heads. No card embeddings, "
             "no tokens, no aux heads."
         ),
-        build_encoder=lambda activation: OneHotFeedForwardEncoder(
-            activation=activation
-        ),
-        build_actor=lambda action_size, action_groups, activation, encoder, mappings: (
-            FlatHeadActorNetwork(action_size, action_groups, activation=activation)
+        build_encoder=lambda: OneHotFeedForwardEncoder(),
+        build_actor=lambda action_size, action_groups, encoder, mappings: (
+            FlatHeadActorNetwork(action_size, action_groups)
         ),
         build_critic=_no_aux_critic,
         has_aux_heads=False,
@@ -488,7 +477,7 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
     "full-uninformed": ArchitectureSpec(
         name="full-uninformed",
         description="full minus informed card-embedding initialization.",
-        build_encoder=lambda activation: CardReasoningEncoder(
+        build_encoder=lambda: CardReasoningEncoder(
             card_config=CardEmbeddingConfig(use_informed_init=False)
         ),
         build_actor=_pointer_actor,

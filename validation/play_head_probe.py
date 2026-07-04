@@ -34,8 +34,8 @@ from sheepshead import ACTIONS, Game
 from training_utils import get_partner_selection_mode
 
 
-def _load(model: str, activation: str = "swish") -> PPOAgent:
-    a = PPOAgent(len(ACTIONS), activation=activation)
+def _load(model: str) -> PPOAgent:
+    a = PPOAgent(len(ACTIONS))
     a.load(model, load_optimizers=False)
     return a
 
@@ -59,11 +59,11 @@ def _play_stats(agent, state, valid, pid):
     return pol_arg, spread, p1 - p2, entropy, p1
 
 
-def run(model, deals, seed, activation):
+def run(model, deals, seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    agent = _load(model, activation)
+    agent = _load(model)
 
     rows = []  # (trick, n_valid, spread, margin, entropy, top1p)
     for d in range(deals):
@@ -148,10 +148,9 @@ def main():
     ap.add_argument("-m", "--model", required=True)
     ap.add_argument("--deals", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--activation", default="swish")
     args = ap.parse_args()
     print(f"Loading {args.model} ...")
-    rows = run(args.model, args.deals, args.seed, args.activation)
+    rows = run(args.model, args.deals, args.seed)
     report(rows)
 
 

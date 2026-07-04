@@ -29,7 +29,7 @@ import numpy as np
 import torch
 
 from ppo import PPOAgent
-from sheepshead import ACTIONS, ACTION_IDS, DECK, Game
+from sheepshead import ACTIONS, DECK, Game
 from ismcts import ISMCTSTeacher, ISMCTSConfig
 from training_utils import get_partner_selection_mode
 
@@ -200,7 +200,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} ...")
-    agent = PPOAgent(len(ACTIONS), activation="swish")
+    agent = PPOAgent(len(ACTIONS))
     agent.load(args.model, load_optimizers=False)
 
     # Small budgets so the check is fast but exercises every head.
