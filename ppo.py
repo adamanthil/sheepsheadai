@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from encoder import CardEmbeddingConfig, CardReasoningEncoder
+import architectures
 from sheepshead import (
     ACTION_IDS,
     BURY_ACTIONS,
@@ -331,21 +331,25 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 class RecurrentCriticNetwork(nn.Module):
     """Critic head using encoder features directly."""
 
-    def __init__(self, activation="swish", d_card: int | None = None):
+    def __init__(
+        self, activation="swish", d_card: int | None = None, use_aux_heads: bool = True
+    ):
         super().__init__()
-        if d_card is None:
+        self.has_aux_heads = bool(use_aux_heads)
+        if d_card is None and self.has_aux_heads:
             raise ValueError(
                 "RecurrentCriticNetwork requires card embedding dimension (d_card)."
             )
 
         act = nn.ReLU if activation == "relu" else nn.SiLU
-        # Adapter feeding the auxiliary heads (win/return/points/trump). Kept
-        # shallow and shared so the aux tasks continue to shape the encoder.
-        self.critic_adapter = nn.Sequential(
-            nn.LayerNorm(256),
-            nn.Linear(256, 256),
-            act(),
-        )
+        if self.has_aux_heads:
+            # Adapter feeding the auxiliary heads (win/return/points/trump). Kept
+            # shallow and shared so the aux tasks continue to shape the encoder.
+            self.critic_adapter = nn.Sequential(
+                nn.LayerNorm(256),
+                nn.Linear(256, 256),
+                act(),
+            )
         # Dedicated, deep value trunk. Decoupled from the aux adapter so the
         # value head has capacity to fit the spread of returns instead of
         # regressing to the mean (addresses measured under-dispersion).
@@ -357,40 +361,48 @@ class RecurrentCriticNetwork(nn.Module):
             act(),
         )
         self.value_head = nn.Linear(256, 1)
-        # Auxiliary heads
-        self.win_head = nn.Linear(256, 1)
-        self.return_head = nn.Linear(256, 1)
-        self.secret_partner_head = nn.Linear(256, 1)
-        # Per-player point prediction head (relative seating order, length-5 vector)
-        self.points_head = nn.Linear(256, 5)
+        if self.has_aux_heads:
+            # Auxiliary heads
+            self.win_head = nn.Linear(256, 1)
+            self.return_head = nn.Linear(256, 1)
+            self.secret_partner_head = nn.Linear(256, 1)
+            # Per-player point prediction head (relative seating order, length-5 vector)
+            self.points_head = nn.Linear(256, 5)
 
-        # Trump-tracking auxiliaries:
-        #  - seen_trump_mask: multi-label (len(TRUMP)) logits, 1 = seen/known
-        #  - unseen_trump_higher_than_hand: binary logit, 1 = exists unseen trump higher than best trump in hand
-        self.trump_aux = nn.Sequential(
-            nn.LayerNorm(256),
-            nn.Linear(256, 128),
-            nn.SiLU(),
-        )
-        # Seen-mask head uses the shared card embedding table:
-        #   q = Wq(trump_aux(feat))  (B, d_key)
-        #   k_i = Wk(card_embedding[trump_i])  (14, d_key)
-        #   logit_i = q · k_i
-        self.seen_trump_key_dim = 64
-        self.seen_trump_query = nn.Linear(128, self.seen_trump_key_dim)
-        self.seen_trump_key = nn.Linear(d_card, self.seen_trump_key_dim, bias=False)
-        # Per-trump key offsets for better separation of trump cards with very similar embeddings.
-        self.seen_trump_key_delta = nn.Parameter(
-            torch.zeros(len(TRUMP), self.seen_trump_key_dim)
-        )
-        self.register_buffer(
-            "trump_card_ids",
-            torch.tensor([DECK_IDS[c] for c in TRUMP], dtype=torch.long),
-            persistent=False,
-        )
-        self.unseen_trump_higher_than_hand_head = nn.Linear(128, 1)
+            # Trump-tracking auxiliaries:
+            #  - seen_trump_mask: multi-label (len(TRUMP)) logits, 1 = seen/known
+            #  - unseen_trump_higher_than_hand: binary logit, 1 = exists unseen trump higher than best trump in hand
+            self.trump_aux = nn.Sequential(
+                nn.LayerNorm(256),
+                nn.Linear(256, 128),
+                nn.SiLU(),
+            )
+            # Seen-mask head uses the shared card embedding table:
+            #   q = Wq(trump_aux(feat))  (B, d_key)
+            #   k_i = Wk(card_embedding[trump_i])  (14, d_key)
+            #   logit_i = q · k_i
+            self.seen_trump_key_dim = 64
+            self.seen_trump_query = nn.Linear(128, self.seen_trump_key_dim)
+            self.seen_trump_key = nn.Linear(d_card, self.seen_trump_key_dim, bias=False)
+            # Per-trump key offsets for better separation of trump cards with very similar embeddings.
+            self.seen_trump_key_delta = nn.Parameter(
+                torch.zeros(len(TRUMP), self.seen_trump_key_dim)
+            )
+            self.register_buffer(
+                "trump_card_ids",
+                torch.tensor([DECK_IDS[c] for c in TRUMP], dtype=torch.long),
+                persistent=False,
+            )
+            self.unseen_trump_higher_than_hand_head = nn.Linear(128, 1)
 
         self.apply(self._init_weights)
+
+    def _require_aux(self, what: str):
+        if not self.has_aux_heads:
+            raise RuntimeError(
+                f"{what} requires auxiliary heads, but this critic was built "
+                "without them (a no-aux architecture variant)."
+            )
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -433,6 +445,7 @@ class RecurrentCriticNetwork(nn.Module):
         points_vector : list[float] | None
             Per-seat point predictions (0–120) in relative seat order.
         """
+        self._require_aux("aux_predictions")
         with torch.no_grad():
             aux_feat = self.critic_adapter(encoder_out["features"])
             win_logit = self.win_head(aux_feat).squeeze(-1)
@@ -450,6 +463,7 @@ class RecurrentCriticNetwork(nn.Module):
         self, feat: torch.Tensor, card_embedding: nn.Embedding
     ) -> torch.Tensor:
         """Return logits for a length-len(TRUMP) seen/known mask using card embeddings."""
+        self._require_aux("seen_trump_mask_logits")
         h = self.trump_aux(feat)
         q = self.seen_trump_query(h)  # (..., d_key)
         flat_q = q.reshape(-1, q.size(-1))
@@ -462,6 +476,7 @@ class RecurrentCriticNetwork(nn.Module):
 
     def unseen_trump_higher_than_hand_logits(self, feat: torch.Tensor) -> torch.Tensor:
         """Return logits for 'exists unseen trump higher than best trump in hand'."""
+        self._require_aux("unseen_trump_higher_than_hand_logits")
         h = self.trump_aux(feat)
         return self.unseen_trump_higher_than_hand_head(h).squeeze(-1)
 
@@ -474,7 +489,15 @@ class PPOAgent:
         lr_critic=3e-4,
         activation="swish",
         critic_mode="limited",
+        arch="full",
     ):
+        # Networks are built from a named ArchitectureSpec (architectures.py).
+        # The default "full" spec constructs exactly the pre-registry
+        # networks, in the same order, so seeded runs are bit-identical.
+        spec = architectures.get_spec(arch)
+        self.arch_name = spec.name
+        self.arch_spec = spec
+
         # Dict-based encoder → fixed 256-d features
         self.state_size = 256
         self.action_size = action_size
@@ -507,9 +530,7 @@ class PPOAgent:
         self.pass_action_index = ACTION_IDS["PASS"] - 1
 
         # Encoder with memory
-        self.encoder = CardReasoningEncoder(card_config=CardEmbeddingConfig()).to(
-            device
-        )
+        self.encoder = spec.build_encoder(activation).to(device)
 
         # Per-player memory tracking
         self._player_memories = {}
@@ -524,23 +545,19 @@ class PPOAgent:
             play_under_action_index,
         ) = self._build_action_index_mappings()
 
-        self.actor = MultiHeadRecurrentActorNetwork(
-            action_size,
-            self.action_groups,
-            activation=activation,
-            d_card=self.encoder.d_card_dim,
-            d_token=self.encoder.d_token_dim,
-            map_cid_to_play_action_index=map_cid_to_play_action_index,
-            map_cid_to_bury_action_index=map_cid_to_bury_action_index,
-            map_cid_to_under_action_index=map_cid_to_under_action_index,
-            call_action_global_indices=call_action_global_indices,
-            call_card_ids=call_card_ids,
-            play_under_action_index=play_under_action_index,
+        actor_mappings = {
+            "map_cid_to_play_action_index": map_cid_to_play_action_index,
+            "map_cid_to_bury_action_index": map_cid_to_bury_action_index,
+            "map_cid_to_under_action_index": map_cid_to_under_action_index,
+            "call_action_global_indices": call_action_global_indices,
+            "call_card_ids": call_card_ids,
+            "play_under_action_index": play_under_action_index,
+        }
+        self.actor = spec.build_actor(
+            action_size, self.action_groups, activation, self.encoder, actor_mappings
         ).to(device)
 
-        self.critic = RecurrentCriticNetwork(
-            activation=activation, d_card=self.encoder.d_card_dim
-        ).to(device)
+        self.critic = spec.build_critic(activation, self.encoder).to(device)
 
         # Optimizers (include encoder params with scaled LR for card embeddings)
         encoder_groups = self.encoder.param_groups(base_lr=lr_actor, card_lr_scale=0.2)
@@ -1485,8 +1502,12 @@ class PPOAgent:
         flat_feat = features_bt.reshape(B * T, -1)
         flat_hand = hand_ids_bt.reshape(B * T, N)
         flat_mask = masks_bt.view(B * T, -1)
-        hand_tokens_bt = encoder_out_seq["hand_tokens"]  # (B, T, N, d_token)
-        flat_tokens = hand_tokens_bt.reshape(B * T, N, -1)
+        # Token-less encoders (onehot-ff) emit no hand_tokens; their actors
+        # ignore the argument.
+        hand_tokens_bt = encoder_out_seq.get("hand_tokens")  # (B, T, N, d_token)
+        flat_tokens = (
+            hand_tokens_bt.reshape(B * T, N, -1) if hand_tokens_bt is not None else None
+        )
 
         logits_flat = self.actor._build_logits_from_features(
             actor_features=flat_feat,
@@ -1501,18 +1522,30 @@ class PPOAgent:
         value_feat_bt = self.critic.value_trunk(features_bt)
         values_bt = self.critic.value_head(value_feat_bt).squeeze(-1)
 
-        # Auxiliary preds share the shallow critic_adapter (gradients flow to encoder)
-        aux_feat_bt = self.critic.critic_adapter(features_bt)
-        win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
-        ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
-        secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
-        points_pred_bt = self.critic.points_head(aux_feat_bt)
-        seen_trump_mask_logits_bt = self.critic.seen_trump_mask_logits(
-            aux_feat_bt, self.encoder.card
-        )
-        unseen_trump_higher_than_hand_logits_bt = (
-            self.critic.unseen_trump_higher_than_hand_logits(aux_feat_bt)
-        )
+        if self.critic.has_aux_heads:
+            # Auxiliary preds share the shallow critic_adapter (gradients flow to encoder)
+            aux_feat_bt = self.critic.critic_adapter(features_bt)
+            win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
+            ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
+            secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
+            points_pred_bt = self.critic.points_head(aux_feat_bt)
+            seen_trump_mask_logits_bt = self.critic.seen_trump_mask_logits(
+                aux_feat_bt, self.encoder.card
+            )
+            unseen_trump_higher_than_hand_logits_bt = (
+                self.critic.unseen_trump_higher_than_hand_logits(aux_feat_bt)
+            )
+        else:
+            # No-aux variants: shape-correct zero placeholders keep the
+            # downstream flatten/stats plumbing unchanged; update() skips the
+            # aux losses entirely, so these never contribute gradients.
+            zeros_bt = values_bt.detach() * 0.0
+            win_logits_bt = zeros_bt
+            ret_pred_bt = zeros_bt
+            secret_logits_bt = zeros_bt
+            points_pred_bt = zeros_bt.unsqueeze(-1).expand(B, T, 5)
+            seen_trump_mask_logits_bt = zeros_bt.unsqueeze(-1).expand(B, T, len(TRUMP))
+            unseen_trump_higher_than_hand_logits_bt = zeros_bt
 
         return (
             logits_bt,
@@ -2080,38 +2113,51 @@ class PPOAgent:
                 ent_play_sum += play_entropy.detach().item()
                 ent_batches += 1
 
-                # Auxiliary losses
-                win_loss = F.binary_cross_entropy_with_logits(
-                    win_logits_flat, win_labels_flat
-                )
-                return_loss = F.smooth_l1_loss(
-                    ret_pred_flat / RETURN_SCALE,
-                    final_ret_labels_flat / RETURN_SCALE,
-                )
-                secret_loss = F.binary_cross_entropy_with_logits(
-                    secret_logits_flat, secret_labels_flat
-                )
-                # Per-player points auxiliary loss (regression on per-seat totals, 0–120)
-                # points_pred_flat and labels are (N, 5); smooth L1 stabilizes training.
-                points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[
-                    is_action_bt.view(-1)
-                ]
-                points_labels_flat = points_bt.view(-1, points_bt.size(-1))[
-                    is_action_bt.view(-1)
-                ]
-                points_loss = F.smooth_l1_loss(
-                    points_pred_flat / POINTS_SCALE,
-                    points_labels_flat / POINTS_SCALE,
-                )
+                # Auxiliary losses (skipped entirely for no-aux architecture
+                # variants: the placeholder logits carry no gradients, so the
+                # losses would be meaningless constants anyway).
+                if self.critic.has_aux_heads:
+                    win_loss = F.binary_cross_entropy_with_logits(
+                        win_logits_flat, win_labels_flat
+                    )
+                    return_loss = F.smooth_l1_loss(
+                        ret_pred_flat / RETURN_SCALE,
+                        final_ret_labels_flat / RETURN_SCALE,
+                    )
+                    secret_loss = F.binary_cross_entropy_with_logits(
+                        secret_logits_flat, secret_labels_flat
+                    )
+                    # Per-player points auxiliary loss (regression on per-seat totals, 0–120)
+                    # points_pred_flat and labels are (N, 5); smooth L1 stabilizes training.
+                    points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[
+                        is_action_bt.view(-1)
+                    ]
+                    points_labels_flat = points_bt.view(-1, points_bt.size(-1))[
+                        is_action_bt.view(-1)
+                    ]
+                    points_loss = F.smooth_l1_loss(
+                        points_pred_flat / POINTS_SCALE,
+                        points_labels_flat / POINTS_SCALE,
+                    )
 
-                seen_trump_mask_loss = F.binary_cross_entropy_with_logits(
-                    seen_trump_mask_logits_flat,
-                    seen_trump_mask_labels_flat,
-                )
-                unseen_trump_higher_than_hand_loss = F.binary_cross_entropy_with_logits(
-                    unseen_trump_higher_than_hand_logits_flat,
-                    unseen_trump_higher_than_hand_labels_flat,
-                )
+                    seen_trump_mask_loss = F.binary_cross_entropy_with_logits(
+                        seen_trump_mask_logits_flat,
+                        seen_trump_mask_labels_flat,
+                    )
+                    unseen_trump_higher_than_hand_loss = (
+                        F.binary_cross_entropy_with_logits(
+                            unseen_trump_higher_than_hand_logits_flat,
+                            unseen_trump_higher_than_hand_labels_flat,
+                        )
+                    )
+                else:
+                    aux_zero = torch.zeros((), device=device)
+                    win_loss = aux_zero
+                    return_loss = aux_zero
+                    secret_loss = aux_zero
+                    points_loss = aux_zero
+                    seen_trump_mask_loss = aux_zero
+                    unseen_trump_higher_than_hand_loss = aux_zero
                 win_loss_sum += win_loss.detach().item()
                 win_loss_count += 1
                 return_loss_sum += return_loss.detach().item()
@@ -2295,6 +2341,7 @@ class PPOAgent:
         OPTIONAL keys; every existing checkpoint consumer ignores them, and
         limited-mode saves are byte-compatible with the historical format."""
         payload = {
+            "arch": self.arch_name,
             "encoder_state_dict": self.encoder.state_dict(),
             "actor_state_dict": self.actor.state_dict(),
             "critic_state_dict": self.critic.state_dict(),
@@ -2325,6 +2372,17 @@ class PPOAgent:
         """
         if checkpoint is None:
             checkpoint = torch.load(filepath, map_location=device)
+
+        # Architecture guard: refuse to copy tensors across architecture
+        # variants. Checkpoints predating the registry carry no "arch" key
+        # and are, by construction, the full architecture.
+        ckpt_arch = checkpoint.get("arch", "full")
+        if ckpt_arch != self.arch_name:
+            raise ValueError(
+                f"Checkpoint arch '{ckpt_arch}' does not match agent arch "
+                f"'{self.arch_name}' ({filepath}). Construct the agent with "
+                f"arch='{ckpt_arch}' or use ppo.load_agent()."
+            )
 
         self.encoder.load_state_dict(checkpoint["encoder_state_dict"])
         self.actor.load_state_dict(checkpoint["actor_state_dict"])
@@ -2392,3 +2450,31 @@ class PPOAgent:
 
         # Reset memory states after loading
         self._player_memories = {}
+
+
+def load_agent(
+    filepath,
+    *,
+    activation: str = "swish",
+    load_optimizers: bool = False,
+    checkpoint=None,
+) -> "PPOAgent":
+    """Construct a PPOAgent matching a checkpoint's recorded metadata.
+
+    Reads the checkpoint once, extracts the architecture name (``arch``,
+    default "full" for pre-registry checkpoints) and ``critic_mode``
+    (default "limited"), builds the matching agent, and loads the weights.
+    This is the canonical loader for eval tooling, league members, and the
+    game server — anywhere the caller does not already know the arch.
+    """
+    from sheepshead import ACTIONS
+
+    if checkpoint is None:
+        checkpoint = torch.load(filepath, map_location=device)
+    arch = checkpoint.get("arch", "full")
+    critic_mode = checkpoint.get("critic_mode", "limited")
+    agent = PPOAgent(
+        len(ACTIONS), activation=activation, critic_mode=critic_mode, arch=arch
+    )
+    agent.load(filepath, load_optimizers=load_optimizers, checkpoint=checkpoint)
+    return agent
