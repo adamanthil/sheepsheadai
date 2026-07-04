@@ -92,12 +92,11 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ppo import PPOAgent
+from ppo import PPOAgent, load_agent
 from sheepshead import (
     Game,
     PARTNER_BY_JD,
     PARTNER_BY_CALLED_ACE,
-    ACTIONS,
 )
 
 NUM_SEATS = 5
@@ -131,8 +130,9 @@ class ModelRegistry:
     def get(self, path: Path, episodes: Optional[int] = None) -> Model:
         path = path.resolve()
         if path not in self._by_path:
-            agent = PPOAgent(len(ACTIONS), activation=self.activation)
-            agent.load(str(path), load_optimizers=False)
+            # Arch-aware: builds whatever architecture the checkpoint records
+            # (legacy checkpoints without the key are the full architecture).
+            agent = load_agent(str(path), activation=self.activation)
             self._by_path[path] = Model(
                 model_id=path.stem, filepath=path, episodes=episodes, agent=agent
             )

@@ -43,7 +43,6 @@ import json
 import time
 
 from scripted_agent import ScriptedAgent
-from sheepshead import ACTIONS
 from training_utils import paired_edge
 
 PROBE_SEED = 31  # frozen: pairs new probes with the recorded placement numbers
@@ -72,10 +71,9 @@ def main() -> int:
     if args.self_check:
         heroes.append(("ScriptedAgent (self-check)", ScriptedAgent()))
     for path in args.ckpt:
-        from ppo import PPOAgent
+        from ppo import load_agent
 
-        agent = PPOAgent(len(ACTIONS), activation=args.activation)
-        agent.load(path, load_optimizers=False)
+        agent = load_agent(path, activation=args.activation)
         heroes.append((path, agent))
 
     results = {"probe_seed": args.seed, "deals": args.deals, "probes": []}

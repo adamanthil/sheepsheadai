@@ -3,6 +3,7 @@
 Extended long-term PPO training for Sheepshead.
 """
 
+import csv
 import os
 import random
 import time
@@ -13,8 +14,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+import architectures
 from config import SelfPlayHyperparams
-from ppo import PPOAgent
+from ppo import PPOAgent, load_agent
 from sheepshead import (
     ACTIONS,
     PARTNER_BY_CALLED_ACE,
@@ -35,6 +37,35 @@ from training_utils import (
 
 _HP = SelfPlayHyperparams()  # fixed LRs + entropy decay schedule (bootstrap run)
 
+# Frozen seed for the in-training anchored CRN probe: identical across all
+# ablation arms, so every run's eval curve is paired on the same deal sets.
+ANCHOR_EVAL_SEED = 20260703
+
+# Fixed external yardsticks for the anchored eval curve (never trained on):
+# the conventions ScriptedAgent, the historical self-play reference at 100k
+# episodes (strength-matched to this regime), and the 30M-episode league
+# final (absolute yardstick).
+DEFAULT_ANCHOR_100K = (
+    "runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt"
+)
+DEFAULT_ANCHOR_PFSP = "final_pfsp_swish_ppo.pt"
+
+
+def _run_anchored_eval(
+    agent,
+    yardsticks: dict,
+    n_deals: int,
+) -> dict:
+    """Paired CRN edges of the training agent vs each fixed yardstick."""
+    from training_utils import paired_edge
+
+    results = {}
+    for name, anchor in yardsticks.items():
+        results[name] = paired_edge(
+            agent, anchor, anchor, n_deals, seed=ANCHOR_EVAL_SEED, log_every=0
+        )
+    return results
+
 
 def train_ppo(
     num_episodes=300000,
@@ -44,6 +75,12 @@ def train_ppo(
     resume_model=None,
     activation="swish",
     run_name="selfplay_ppo",
+    arch="full",
+    anchor_eval_interval=5000,
+    anchor_eval_deals=300,
+    anchor_100k=DEFAULT_ANCHOR_100K,
+    anchor_pfsp=DEFAULT_ANCHOR_PFSP,
+    seed=None,
 ):
     """
     PPO training with strategic evaluation metrics.
@@ -60,6 +97,7 @@ def train_ppo(
     print(f"  Save interval: {save_interval}")
     print(f"  Strategic evaluation interval: {strategic_eval_interval}")
     print(f"  Activation function: {activation.upper()}")
+    print(f"  Architecture: {arch}")
     print("=" * 60)
 
     # Create agent with optimized hyperparameters
@@ -68,6 +106,14 @@ def train_ppo(
         lr_actor=_HP.lr_actor,
         lr_critic=_HP.lr_critic,
         activation=activation,
+        arch=arch,
+    )
+    n_enc = sum(p.numel() for p in agent.encoder.parameters())
+    n_act = sum(p.numel() for p in agent.actor.parameters())
+    n_cri = sum(p.numel() for p in agent.critic.parameters())
+    print(
+        f"  Parameters: encoder {n_enc:,} + actor {n_act:,} + critic {n_cri:,} "
+        f"= {n_enc + n_act + n_cri:,}"
     )
 
     # Resume from specified model or try to load best existing
@@ -123,6 +169,24 @@ def train_ppo(
     checkpoint_dir = os.path.join("runs", run_name)
     os.makedirs(checkpoint_dir, exist_ok=True)
 
+    # Anchored CRN eval: fixed external yardsticks, paired deals across all
+    # probes (and across runs) via ANCHOR_EVAL_SEED. Eval wall-clock is
+    # tracked separately so throughput comparisons exclude probe time.
+    anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
+    yardsticks = {}
+    if anchor_eval_interval:
+        from scripted_agent import ScriptedAgent
+
+        yardsticks["scripted"] = ScriptedAgent()
+        for name, path in (("selfplay100k", anchor_100k), ("final_pfsp", anchor_pfsp)):
+            if path and os.path.exists(path):
+                yardsticks[name] = load_agent(path, activation=activation)
+            else:
+                print(f"⚠️  Anchored-eval yardstick missing, skipping: {path}")
+    eval_wall_s = 0.0
+    updates_done = 0
+    transitions_done = 0
+
     start_time = time.time()
     game_count = 0
     last_checkpoint_time = start_time
@@ -133,7 +197,10 @@ def train_ppo(
     transitions_since_update = 0
     for episode in range(start_episode + 1, num_episodes + 1):
         partner_mode = get_partner_selection_mode(episode)
-        game = Game(partner_selection_mode=partner_mode)
+        # Deterministic deals when a seed is given: makes ablation runs with
+        # the same --seed fully reproducible (deal distribution unchanged).
+        game_seed = None if seed is None else seed * 1_000_003 + episode
+        game = Game(partner_selection_mode=partner_mode, seed=game_seed)
         # Reset recurrent hidden states in the actor at the start of each game
         agent.reset_recurrent_state()
         episode_scores = []
@@ -285,7 +352,9 @@ def train_ppo(
                         }
                     )
             agent.store_episode_events(events)
-            transitions_since_update += sum(1 for e in events if e["kind"] == "action")
+            n_new = sum(1 for e in events if e["kind"] == "action")
+            transitions_since_update += n_new
+            transitions_done += n_new
 
         # Track statistics
         picker_score = episode_scores[game.picker - 1] if game.picker else 0
@@ -388,6 +457,34 @@ def train_ppo(
 
             game_count = 0
             transitions_since_update = 0
+            updates_done += 1
+
+        # Anchored CRN eval at intervals (fixed yardsticks, paired deals)
+        if anchor_eval_interval and yardsticks and episode % anchor_eval_interval == 0:
+            t_eval = time.time()
+            print(f"⚓ Anchored eval... (Episode {episode:,})")
+            results = _run_anchored_eval(agent, yardsticks, anchor_eval_deals)
+            eval_wall_s += time.time() - t_eval
+            train_wall_s = (time.time() - start_time) - eval_wall_s
+            row = {
+                "episode": episode,
+                "train_wall_s": round(train_wall_s, 1),
+                "eval_wall_s": round(eval_wall_s, 1),
+                "updates_done": updates_done,
+                "transitions_done": transitions_done,
+            }
+            for name in ("scripted", "selfplay100k", "final_pfsp"):
+                r = results.get(name)
+                row[f"edge_{name}"] = round(r["edge"], 4) if r else ""
+                row[f"se_{name}"] = round(r["se"], 4) if r else ""
+            write_header = not os.path.exists(anchored_csv)
+            with open(anchored_csv, "a", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(row.keys()))
+                if write_header:
+                    w.writeheader()
+                w.writerow(row)
+            for name, r in results.items():
+                print(f"   edge vs {name}: {r['edge']:+.3f} ± {r['se']:.3f}")
 
             # Strategic evaluation at intervals
         if episode % strategic_eval_interval == 0:
@@ -637,13 +734,51 @@ def main():
         default="selfplay_ppo",
         help="Run name; all artifacts go under runs/<run-name>/ (default: selfplay_ppo)",
     )
+    parser.add_argument(
+        "--arch",
+        type=str,
+        default="full",
+        choices=architectures.available_architectures(),
+        help="Network architecture variant (see architectures.py)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for python/numpy/torch (default: 42)",
+    )
+    parser.add_argument(
+        "--anchor-eval-interval",
+        type=int,
+        default=5000,
+        help="Episodes between anchored CRN evals (0 disables; default: 5000)",
+    )
+    parser.add_argument(
+        "--anchor-eval-deals",
+        type=int,
+        default=300,
+        help="Paired deals per yardstick per anchored eval (default: 300)",
+    )
+    parser.add_argument(
+        "--anchor-100k",
+        type=str,
+        default=DEFAULT_ANCHOR_100K,
+        help="Strength-matched anchor checkpoint for the eval curve",
+    )
+    parser.add_argument(
+        "--anchor-pfsp",
+        type=str,
+        default=DEFAULT_ANCHOR_PFSP,
+        help="Absolute-yardstick anchor checkpoint for the eval curve",
+    )
 
     args = parser.parse_args()
 
     # Set random seed for reproducibility
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    print(f"🎲 Seed: {args.seed}")
 
     # Ensure matplotlib uses a non-interactive backend
     plt.switch_backend("Agg")
@@ -656,6 +791,12 @@ def main():
         args.resume,
         args.activation,
         args.run_name,
+        arch=args.arch,
+        anchor_eval_interval=args.anchor_eval_interval,
+        anchor_eval_deals=args.anchor_eval_deals,
+        anchor_100k=args.anchor_100k,
+        anchor_pfsp=args.anchor_pfsp,
+        seed=args.seed,
     )
 
 

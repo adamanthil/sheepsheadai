@@ -36,22 +36,25 @@ class TestMainPhaseSmoke(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def _run(self, critic_mode: str, snapshot_interval: int) -> tuple:
+    def _run(
+        self, critic_mode: str, snapshot_interval: int, arch: str = "full"
+    ) -> tuple:
         random.seed(3)
         torch.manual_seed(3)
-        league = League(os.path.join(self.dir, f"league_{critic_mode}"))
+        league = League(os.path.join(self.dir, f"league_{critic_mode}_{arch}"))
         for i in range(2):
             torch.manual_seed(10 + i)
             league.add_member(
-                PPOAgent(len(ACTIONS)), ROLE_PAST_MAIN, training_episodes=i
+                PPOAgent(len(ACTIONS), arch=arch), ROLE_PAST_MAIN, training_episodes=i
             )
-        agent = PPOAgent(len(ACTIONS), critic_mode=critic_mode)
+        agent = PPOAgent(len(ACTIONS), critic_mode=critic_mode, arch=arch)
         never = 1_000_000_000
         args = SimpleNamespace(
             seed=13,
-            run_name=f"_smoke_{critic_mode}",
+            run_name=f"_smoke_{critic_mode}_{arch}",
             activation="swish",
             critic_mode=critic_mode,
+            arch=arch,
             num_workers=1,
             update_interval=30,
             schedule_horizon=never,
@@ -97,6 +100,20 @@ class TestMainPhaseSmoke(unittest.TestCase):
         ckpt = torch.load(member_files[0], map_location="cpu")
         self.assertNotIn("oracle_state_dict", ckpt)
         self.assertIsNone(snaps[0].agent.oracle_critic)
+
+    def test_nonfull_arch_runs_and_snapshots_carry_arch(self):
+        agent, league, end = self._run("limited", snapshot_interval=5, arch="onehot-ff")
+        self.assertEqual(end, 8)
+        self.assertGreater(len(agent.actor_optimizer.state), 0)
+        snaps = [
+            m for m in league.by_role(ROLE_PAST_MAIN) if m.meta.training_episodes == 5
+        ]
+        self.assertEqual(len(snaps), 1)
+        member_files = glob.glob(
+            os.path.join(str(league.members_dir), f"{snaps[0].member_id}.pt")
+        )
+        ckpt = torch.load(member_files[0], map_location="cpu")
+        self.assertEqual(ckpt.get("arch"), "onehot-ff")
 
 
 if __name__ == "__main__":

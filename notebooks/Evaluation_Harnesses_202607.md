@@ -130,7 +130,63 @@ the live run healthy?" without any manual evaluation:
   best-of-checkpoints exploiter screens. These measure *relative* progress
   and exploitability, and are meaningless if the greedy gates are failing.
 
-## 5. Gotchas that have already bitten
+## 5. Architecture ablation (self-play arms; `architectures.py` registry)
+
+Six registered architectures form a reverse-historical ladder — each
+adjacent pair isolates one addition (see `architectures.py` for the specs
+and the literature on multi-seed requirements):
+
+| arch | removes | params (E+A+C) | s/episode¹ |
+|---|---|---|---|
+| `full` | — (current) | 1,003,607 | 0.26 |
+| `full-uninformed` | informed init (factorial arm) | 1,003,607 | 0.27 |
+| `no-aux` | critic aux heads | 891,534 | 0.26 |
+| `no-transformer` | + transformer reasoning | 757,646 | 0.14 |
+| `no-transformer-uninformed` | + informed init | 757,646 | 0.14 |
+| `onehot-ff` | + card-token pipeline (legacy FF+GRU, flat heads) | 1,128,303 | 0.04 |
+
+¹ Single-process, 4 torch threads, 2026 dev Mac; ~7.3 h per 100k-episode
+full-family run.
+
+**Protocol (approved 2026-07-03):** 6 archs × seeds {42, 1042, 2042} ×
+100k episodes, pure self-play. Launch each arm:
+
+```bash
+nohup uv run train_selfplay_ppo.py --arch <A> --seed <S> --episodes 100000 \
+    --run-name ablate_<A>_s<S> > runs/ablate_<A>_s<S>.log 2>&1 &
+```
+
+* `--seed` fully determines the run (network init, action sampling, AND
+  deals — the trainer seeds each episode's `Game`).
+* **Curves:** `runs/<run>/anchored_eval.csv` every 5k episodes — paired
+  300-deal CRN edges (`ANCHOR_EVAL_SEED = 20260703`) vs three fixed
+  yardsticks: `edge_scripted` (ScriptedAgent; resolves early curve),
+  `edge_selfplay100k` (strength-matched reference), `edge_final_pfsp`
+  (absolute yardstick, saturated-negative early). `train_wall_s` excludes
+  eval time; `transitions_done`/`updates_done` give the sample axis.
+* **Endpoints:** each run's `final_swish.pt` through §1 PANEL-A (both
+  modes), §2 scripted probe, §3 trump-lead probe. `analysis/` tools are
+  arch-aware via `ppo.load_agent` (checkpoints record their `arch`;
+  pre-registry checkpoints = `full`).
+* **Decision criteria:** *training speed* = median (across seeds) episodes
+  AND train-wall-clock to fixed edge thresholds vs scripted/100k (report
+  both axes — cheaper archs win s/episode; the question is sample
+  efficiency). *Ceiling (self-play regime)* = mean final PANEL-A pt/game;
+  deltas > 0.07 (the 1000-deal MDE) treated as real; report per-seed
+  spread + collapse count (edge regressing > 2 SE from its own peak).
+  Component verdicts come from adjacent-rung deltas.
+* Extension rule: top-2 arms get +100k episodes if the last-20k anchored
+  edge slope is still > 1 SE above zero.
+* **Phase 2 (the honest ceiling test):** top-2 archs through
+  `train_league_ppo.py --arch <A>` for 5–10M episodes — self-play ceiling
+  ≠ league ceiling.
+
+Gotcha: aux-head consumers (`server/services/analyze.py`,
+`visualizations/dump_forward_pass.py`) hard-fail on no-aux checkpoints by
+design. League members/exploiters inherit the run's arch; mixed-arch
+leagues work for play but exploiter warm-starts must stay same-arch.
+
+## 6. Gotchas that have already bitten
 
 * **`PYTHONPATH=.`** is required for everything under `analysis/`.
 * All harnesses play **greedy/deterministic**; results say nothing about

@@ -60,10 +60,11 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+import architectures
 from config import LeagueConfig, PFSPHyperparams
 from league import ROLE_PAST_MAIN, SELF_PLAY, League
 from pfsp_runtime import interpolated_weight, make_game_summary, play_population_game
-from ppo import PPOAgent
+from ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS
 from training_utils import get_partner_selection_mode, greedy_health_probe, paired_edge
 
@@ -108,7 +109,11 @@ def _lw_init(init_args: dict) -> None:
     import torch as _torch
 
     _torch.set_num_threads(1)
-    agent = PPOAgent(len(ACTIONS), activation=init_args["activation"])
+    agent = PPOAgent(
+        len(ACTIONS),
+        activation=init_args["activation"],
+        arch=init_args.get("arch", "full"),
+    )
     seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
     random.seed(seed)
     _LWORKER.clear()
@@ -128,10 +133,11 @@ def _lw_get_member(member_id: str) -> _Seat:
     cache = _LWORKER["cache"]
     seat = cache.get(member_id)
     if seat is None:
-        agent = PPOAgent(len(ACTIONS), activation=_LWORKER["activation"])
-        agent.load(
+        # Arch-aware: members carry their architecture in checkpoint metadata
+        # (legacy members without the key are the full architecture).
+        agent = load_agent(
             os.path.join(_LWORKER["members_dir"], f"{member_id}.pt"),
-            load_optimizers=False,
+            activation=_LWORKER["activation"],
         )
         seat = _Seat(agent, member_id)
         cache[member_id] = seat
@@ -362,6 +368,7 @@ def run_main_phase(
             initargs=(
                 {
                     "activation": args.activation,
+                    "arch": getattr(args, "arch", "full"),
                     "members_dir": str(league.members_dir),
                     "weight_path_base": weight_sync["base"],
                     "base_seed": args.seed,
@@ -646,6 +653,8 @@ def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
         args.league_dir,
         "--seed",
         str(args.seed + generation),
+        "--arch",
+        getattr(args, "arch", "full"),
     ]
     if args.num_workers:
         cmd += ["--num-workers", str(args.num_workers)]
@@ -670,8 +679,7 @@ def _seed_league_from_checkpoints(league: League, spec: str, activation: str) ->
     if not paths:
         raise SystemExit(f"--seed-checkpoints matched no .pt files: {spec}")
     for p in paths:
-        agent = PPOAgent(len(ACTIONS), activation=activation)
-        agent.load(p, load_optimizers=False)
+        agent = load_agent(p, activation=activation)
         episodes = 0
         if "checkpoint_" in p:
             try:
@@ -749,6 +757,13 @@ def main():
     ap.add_argument("--anchor-eval-deals", type=int, default=300)
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument("--activation", default="swish")
+    ap.add_argument(
+        "--arch",
+        default="full",
+        choices=architectures.available_architectures(),
+        help="Network architecture variant for the training agent, its "
+        "snapshots, and the exploiter phase (see architectures.py)",
+    )
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -774,9 +789,14 @@ def main():
     print(league.summary())
 
     training_agent = PPOAgent(
-        len(ACTIONS), activation=args.activation, critic_mode=args.critic_mode
+        len(ACTIONS),
+        activation=args.activation,
+        critic_mode=args.critic_mode,
+        arch=args.arch,
     )
     training_agent.load(args.resume, load_optimizers=True)
+    if args.arch != "full":
+        print(f"🧬 Architecture: {args.arch}")
     if args.critic_mode == "oracle":
         print("🔮 Oracle critic ON: privileged full-information GAE baseline")
     start_episode = 0
@@ -785,16 +805,14 @@ def main():
     print(f"📍 Main resumed from {args.resume} (episode {start_episode:,})")
 
     if args.anchor_coeff > 0.0:
-        ref = PPOAgent(len(ACTIONS), activation=args.activation)
-        ref.load(args.anchor_ref or args.resume, load_optimizers=False)
+        ref = load_agent(args.anchor_ref or args.resume, activation=args.activation)
         training_agent.set_anchor(ref, args.anchor_coeff)
         print(f"⚓ Bidding anchor ON (coeff={args.anchor_coeff})")
 
     anchor_eval = None
     if args.anchor_eval_ckpt and args.anchor_eval_interval > 0:
         if os.path.exists(args.anchor_eval_ckpt):
-            ref_agent = PPOAgent(len(ACTIONS), activation=args.activation)
-            ref_agent.load(args.anchor_eval_ckpt, load_optimizers=False)
+            ref_agent = load_agent(args.anchor_eval_ckpt, activation=args.activation)
             anchor_eval = {
                 "agent": ref_agent,
                 "label": os.path.basename(args.anchor_eval_ckpt),

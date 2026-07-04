@@ -5,6 +5,7 @@ import logging
 import os
 from functools import lru_cache
 
+import ppo
 from ppo import PPOAgent, device
 from sheepshead import ACTION_IDS
 
@@ -36,7 +37,8 @@ def load_agent(model_path: str) -> PPOAgent:
         raise FileNotFoundError(model_path)
 
     checkpoint = _load_checkpoint(model_path, os.path.getmtime(model_path))
-    agent = PPOAgent(action_size=ACTION_SIZE)
-    agent.load(model_path, load_optimizers=False, checkpoint=checkpoint)
+    # Arch-aware construction from checkpoint metadata (legacy checkpoints
+    # without the "arch" key are the full architecture).
+    agent = ppo.load_agent(model_path, checkpoint=checkpoint)
     agent.reset_recurrent_state()
     return agent

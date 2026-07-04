@@ -38,8 +38,8 @@ import numpy as np
 from openskill.models import PlackettLuce
 
 from config import LeagueConfig
-from ppo import PPOAgent
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from ppo import PPOAgent, load_agent
+from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 ROLE_PAST_MAIN = "past_main"
 ROLE_MAIN_EXPLOITER = "main_exploiter"
@@ -463,8 +463,7 @@ class League:
                     data = json.load(f)
                 meta = MemberMeta.from_dict(data)
                 pt, _ = self._member_paths(meta.member_id)
-                agent = PPOAgent(len(ACTIONS), activation=meta.activation)
-                agent.load(str(pt), load_optimizers=False)
+                agent = load_agent(str(pt), activation=meta.activation)
                 ratings = {
                     int(mode): self.rating_model.rating(mu=rs["mu"], sigma=rs["sigma"])
                     for mode, rs in data.get("ratings", {}).items()
@@ -582,8 +581,7 @@ class League:
             )
             pt_dst, js_dst = league._member_paths(member_id)
             shutil.copyfile(e["pt"], pt_dst)
-            agent = PPOAgent(len(ACTIONS), activation=meta.activation)
-            agent.load(str(pt_dst), load_optimizers=False)
+            agent = load_agent(str(pt_dst), activation=meta.activation)
             ratings = {
                 mode: model.rating(mu=mu, sigma=sigma)
                 for mode, (mu, sigma) in e["ratings"].items()
