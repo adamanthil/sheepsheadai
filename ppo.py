@@ -40,6 +40,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         *,
         d_card: int,
         d_token: int,
+        d_model: int = 256,
         map_cid_to_play_action_index: torch.Tensor,
         map_cid_to_bury_action_index: torch.Tensor,
         map_cid_to_under_action_index: torch.Tensor,
@@ -52,25 +53,26 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self.action_groups = (
             action_groups  # dict with keys 'pick', 'partner', 'bury', 'play'
         )
+        d_model = int(d_model)
 
         # Shared actor adapter to add nonlinearity and specialization before heads
         self.actor_adapter = nn.Sequential(
-            nn.LayerNorm(256),
-            nn.Linear(256, 256),
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model),
             nn.SiLU(),
-            nn.Linear(256, 256),
+            nn.Linear(d_model, d_model),
             nn.SiLU(),
         )
 
         # === Heads ===
-        self.pick_head = nn.Linear(256, len(action_groups["pick"]))
+        self.pick_head = nn.Linear(d_model, len(action_groups["pick"]))
 
         # Partner head is split: basic (ALONE, JD PARTNER) + CALL actions via two-tower
-        self.partner_basic_head = nn.Linear(256, 2)
+        self.partner_basic_head = nn.Linear(d_model, 2)
 
         # Bury and Play are produced via pointer over hand tokens; keep a dedicated
         # scalar for PLAY UNDER which is not a hand-slot action
-        self.play_under_head = nn.Linear(256, 1)
+        self.play_under_head = nn.Linear(d_model, 1)
 
         # Per-head temperatures (τ): logits will be divided by τ before softmax
         # τ > 1.0 softens (higher entropy), τ < 1.0 sharpens. Defaults to 1.0.
@@ -87,12 +89,12 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self._d_token = int(d_token)
         # Pointer scorer (Bahdanau style)
         self.pointer_hidden = 64
-        self.pointer_Wg = nn.Linear(256, self.pointer_hidden)
+        self.pointer_Wg = nn.Linear(d_model, self.pointer_hidden)
         self.pointer_Wt = nn.Linear(self._d_token, self.pointer_hidden)
         self.pointer_v = nn.Linear(self.pointer_hidden, 1, bias=False)
         # Two-tower (card CALL scoring)
         self.tw_latent = 64
-        self.tw_Wg = nn.Linear(256, self.tw_latent)
+        self.tw_Wg = nn.Linear(d_model, self.tw_latent)
         self.tw_We = nn.Linear(self._d_card, self.tw_latent)
 
         # Action index mappings
@@ -330,48 +332,54 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 class RecurrentCriticNetwork(nn.Module):
     """Critic head using encoder features directly."""
 
-    def __init__(self, d_card: int | None = None, use_aux_heads: bool = True):
+    def __init__(
+        self,
+        d_card: int | None = None,
+        use_aux_heads: bool = True,
+        d_model: int = 256,
+    ):
         super().__init__()
         self.has_aux_heads = bool(use_aux_heads)
         if d_card is None and self.has_aux_heads:
             raise ValueError(
                 "RecurrentCriticNetwork requires card embedding dimension (d_card)."
             )
+        d_model = int(d_model)
 
         act = nn.SiLU
         if self.has_aux_heads:
             # Adapter feeding the auxiliary heads (win/return/points/trump). Kept
             # shallow and shared so the aux tasks continue to shape the encoder.
             self.critic_adapter = nn.Sequential(
-                nn.LayerNorm(256),
-                nn.Linear(256, 256),
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, d_model),
                 act(),
             )
         # Dedicated, deep value trunk. Decoupled from the aux adapter so the
         # value head has capacity to fit the spread of returns instead of
         # regressing to the mean (addresses measured under-dispersion).
         self.value_trunk = nn.Sequential(
-            nn.LayerNorm(256),
-            nn.Linear(256, 256),
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model),
             act(),
-            nn.Linear(256, 256),
+            nn.Linear(d_model, d_model),
             act(),
         )
-        self.value_head = nn.Linear(256, 1)
+        self.value_head = nn.Linear(d_model, 1)
         if self.has_aux_heads:
             # Auxiliary heads
-            self.win_head = nn.Linear(256, 1)
-            self.return_head = nn.Linear(256, 1)
-            self.secret_partner_head = nn.Linear(256, 1)
+            self.win_head = nn.Linear(d_model, 1)
+            self.return_head = nn.Linear(d_model, 1)
+            self.secret_partner_head = nn.Linear(d_model, 1)
             # Per-player point prediction head (relative seating order, length-5 vector)
-            self.points_head = nn.Linear(256, 5)
+            self.points_head = nn.Linear(d_model, 5)
 
             # Trump-tracking auxiliaries:
             #  - seen_trump_mask: multi-label (len(TRUMP)) logits, 1 = seen/known
             #  - unseen_trump_higher_than_hand: binary logit, 1 = exists unseen trump higher than best trump in hand
             self.trump_aux = nn.Sequential(
-                nn.LayerNorm(256),
-                nn.Linear(256, 128),
+                nn.LayerNorm(d_model),
+                nn.Linear(d_model, 128),
                 nn.SiLU(),
             )
             # Seen-mask head uses the shared card embedding table:
@@ -494,8 +502,7 @@ class PPOAgent:
         self.arch_name = spec.name
         self.arch_spec = spec
 
-        # Dict-based encoder → fixed 256-d features
-        self.state_size = 256
+        # Feature/memory width comes from the encoder (set after construction)
         self.action_size = action_size
 
         # --------------------------------------------------
@@ -527,6 +534,8 @@ class PPOAgent:
 
         # Encoder with memory
         self.encoder = spec.build_encoder().to(device)
+        # Dict-based encoder → fixed d_model-wide features/memory (256 default)
+        self.state_size = int(getattr(self.encoder, "d_model", 256))
 
         # Per-player memory tracking
         self._player_memories = {}
@@ -662,7 +671,7 @@ class PPOAgent:
         )
         mem = self._player_memories.get(player_id) if player_id is not None else None
         if mem is None:
-            return torch.zeros(256, device=target_device)
+            return torch.zeros(self.state_size, device=target_device)
         return mem.to(target_device) if mem.device != target_device else mem
 
     def set_recurrent_memory(
@@ -1472,7 +1481,7 @@ class PPOAgent:
         T = masks_bt.size(1)
 
         # Initialize memory to zeros for each segment
-        memory_init = torch.zeros((B, 256), device=device)
+        memory_init = torch.zeros((B, self.state_size), device=device)
 
         # Encode sequences with memory
         encoder_out_seq = self.encoder.encode_sequences(

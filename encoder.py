@@ -162,6 +162,7 @@ class CardReasoningEncoder(nn.Module):
         card_config: CardEmbeddingConfig | None = None,
         n_reasoning_heads: int = 4,
         n_reasoning_layers: int = 4,
+        d_model: int = 256,
     ):
         super().__init__()
         # Allow config to override d_card
@@ -171,6 +172,11 @@ class CardReasoningEncoder(nn.Module):
         # Expose configured dimensions for downstream modules
         self.d_card_dim = int(d_card)
         self.d_token_dim = int(d_token)
+        # Feature/memory width; pool widths scale with it (256 -> 64/64/32/32,
+        # matching the historical constants exactly).
+        self.d_model = int(d_model)
+        pool_big = self.d_model // 4
+        pool_small = self.d_model // 8
 
         # Embeddings
         self.card = nn.Embedding(34, d_card, padding_idx=PAD_CARD_ID)  # 0..33
@@ -194,7 +200,7 @@ class CardReasoningEncoder(nn.Module):
             nn.Linear(10 + d_card, d_token),  # header scalars + called_card_emb
             nn.SiLU(),
         )
-        self.memory_in_proj = nn.Linear(256, d_token)
+        self.memory_in_proj = nn.Linear(self.d_model, d_token)
         self.token_mlp_hand = nn.Sequential(
             nn.Linear(d_card + 4, d_token),  # card + actor_role
             nn.SiLU(),
@@ -214,18 +220,18 @@ class CardReasoningEncoder(nn.Module):
         )
 
         # Pools per bag
-        self.pool_hand = AttentionPool(d_token, 64)
-        self.pool_trick = AttentionPool(d_token, 64)
-        self.pool_blind = AttentionPool(d_token, 32)
-        self.pool_bury = AttentionPool(d_token, 32)
+        self.pool_hand = AttentionPool(d_token, pool_big)
+        self.pool_trick = AttentionPool(d_token, pool_big)
+        self.pool_blind = AttentionPool(d_token, pool_small)
+        self.pool_bury = AttentionPool(d_token, pool_small)
 
         # Memory update (GRU cell)
-        self.memory_gru = nn.GRUCell(d_token, 256)
+        self.memory_gru = nn.GRUCell(d_token, self.d_model)
 
         # Fused feature projection
         self.feature_proj = nn.Sequential(
-            nn.Linear(64 + 64 + 32 + 32 + d_token, 256),  # pools + context
-            nn.LayerNorm(256),
+            nn.Linear(2 * pool_big + 2 * pool_small + d_token, self.d_model),
+            nn.LayerNorm(self.d_model),
         )
 
     def _build_informed_card_init(self, d_card: int, max_points: float) -> torch.Tensor:
@@ -432,7 +438,9 @@ class CardReasoningEncoder(nn.Module):
 
         # Initialize memory if not provided
         if memory_in is None:
-            memory_in = torch.zeros((B, 256), dtype=torch.float32, device=device)
+            memory_in = torch.zeros(
+                (B, self.d_model), dtype=torch.float32, device=device
+            )
         else:
             memory_in = to_device(memory_in)
 
@@ -641,14 +649,18 @@ class CardReasoningEncoder(nn.Module):
         T = max((len(seq) for seq in sequences), default=1)
 
         # Initialize outputs
-        features_out = torch.zeros((B, T, 256), dtype=torch.float32, device=device)
+        features_out = torch.zeros(
+            (B, T, self.d_model), dtype=torch.float32, device=device
+        )
         hand_tokens_out = torch.zeros(
             (B, T, 8, self.d_token_dim), dtype=torch.float32, device=device
         )
 
         # Initialize memory
         if memory_in is None:
-            memory_state = torch.zeros((B, 256), dtype=torch.float32, device=device)
+            memory_state = torch.zeros(
+                (B, self.d_model), dtype=torch.float32, device=device
+            )
         else:
             memory_state = memory_in.to(device) if device is not None else memory_in
 

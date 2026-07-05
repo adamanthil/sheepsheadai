@@ -83,8 +83,9 @@ class PooledMemoryEncoder(CardReasoningEncoder):
             card_config=card_config or CardEmbeddingConfig(),
             n_reasoning_layers=0,
         )
-        # Replace the context-token GRU (d_token -> 256) with a fused-features GRU.
-        self.memory_gru = nn.GRUCell(256, 256)
+        # Replace the context-token GRU (d_token -> d_model) with a
+        # fused-features GRU.
+        self.memory_gru = nn.GRUCell(self.d_model, self.d_model)
 
     def _fuse_and_update_memory(
         self,
@@ -217,6 +218,7 @@ class OneHotFeedForwardEncoder(nn.Module):
         self.card = None
         self.d_card_dim = 0
         self.d_token_dim = 0
+        self.d_model = 256
 
         self.apply(self._init_weights)
 
@@ -394,6 +396,7 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
         action_groups,
         d_card=encoder.d_card_dim,
         d_token=encoder.d_token_dim,
+        d_model=getattr(encoder, "d_model", 256),
         **mappings,
     )
 
@@ -401,14 +404,41 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
 def _aux_critic(encoder):
     from ppo import RecurrentCriticNetwork
 
-    return RecurrentCriticNetwork(d_card=encoder.d_card_dim)
+    return RecurrentCriticNetwork(
+        d_card=encoder.d_card_dim, d_model=getattr(encoder, "d_model", 256)
+    )
 
 
 def _no_aux_critic(encoder):
     from ppo import RecurrentCriticNetwork
 
     d_card = getattr(encoder, "d_card_dim", 0) or None
-    return RecurrentCriticNetwork(d_card=d_card, use_aux_heads=False)
+    return RecurrentCriticNetwork(
+        d_card=d_card,
+        use_aux_heads=False,
+        d_model=getattr(encoder, "d_model", 256),
+    )
+
+
+def _full_size_variant(
+    name: str, description: str, **encoder_kwargs
+) -> ArchitectureSpec:
+    """A `full`-shaped spec with one (or more) encoder dimension overridden.
+
+    Actor and critic read their widths off the encoder (d_model / d_token /
+    d_card), so a size variant is fully specified by encoder kwargs. Used by
+    the capacity sweep: is the current full architecture the right SIZE?
+    """
+    return ArchitectureSpec(
+        name=name,
+        description=description,
+        build_encoder=lambda: CardReasoningEncoder(
+            card_config=CardEmbeddingConfig(), **encoder_kwargs
+        ),
+        build_actor=_pointer_actor,
+        build_critic=_aux_critic,
+        has_aux_heads=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +502,37 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         ),
         build_critic=_no_aux_critic,
         has_aux_heads=False,
+    ),
+    # --- Capacity sweep around `full` (one knob per variant) ---------------
+    "full-dtok32": _full_size_variant(
+        "full-dtok32",
+        "full with d_token 64 -> 32 (transformer width /2).",
+        d_token=32,
+    ),
+    "full-dtok128": _full_size_variant(
+        "full-dtok128",
+        "full with d_token 64 -> 128 (transformer width x2).",
+        d_token=128,
+    ),
+    "full-layers2": _full_size_variant(
+        "full-layers2",
+        "full with 2 reasoning layers (depth /2).",
+        n_reasoning_layers=2,
+    ),
+    "full-layers6": _full_size_variant(
+        "full-layers6",
+        "full with 6 reasoning layers (depth x1.5).",
+        n_reasoning_layers=6,
+    ),
+    "full-dmodel128": _full_size_variant(
+        "full-dmodel128",
+        "full with d_model 256 -> 128 (trunk/memory/pool width /2).",
+        d_model=128,
+    ),
+    "full-dmodel512": _full_size_variant(
+        "full-dmodel512",
+        "full with d_model 256 -> 512 (trunk/memory/pool width x2).",
+        d_model=512,
     ),
     # --- Factorial arm (informed init in the presence of the transformer) --
     "full-uninformed": ArchitectureSpec(

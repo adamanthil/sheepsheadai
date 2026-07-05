@@ -305,6 +305,33 @@ class TestNoTransformer(unittest.TestCase):
         self.assertFalse(torch.equal(informed.card.weight, uninformed.card.weight))
 
 
+class TestSizeVariants(unittest.TestCase):
+    def test_dmodel_shapes_propagate(self):
+        for d_model in (128, 512):
+            enc = CardReasoningEncoder(
+                card_config=CardEmbeddingConfig(), d_model=d_model
+            )
+            self.assertEqual(enc.d_model, d_model)
+            game = Game(seed=200 + d_model)
+            out = enc.encode_batch([game.players[0].get_state_dict()])
+            self.assertEqual(tuple(out["features"].shape), (1, d_model))
+            self.assertEqual(tuple(out["memory_out"].shape), (1, d_model))
+
+    def test_default_dmodel_matches_historical_pool_widths(self):
+        enc = CardReasoningEncoder(card_config=CardEmbeddingConfig())
+        self.assertEqual(enc.d_model, 256)
+        # 256 -> 64/64/32/32: the historical constants exactly.
+        self.assertEqual(enc.pool_hand.proj.out_features, 64)
+        self.assertEqual(enc.pool_blind.proj.out_features, 32)
+
+    def test_agent_state_size_follows_encoder(self):
+        _seed_all(6)
+        agent = PPOAgent(len(ACTIONS), arch="full-dmodel128")
+        self.assertEqual(agent.state_size, 128)
+        mem = agent.get_recurrent_memory(None)
+        self.assertEqual(tuple(mem.shape), (128,))
+
+
 class TestOneHotState(unittest.TestCase):
     def test_dim_and_determinism(self):
         game = Game(seed=77)
