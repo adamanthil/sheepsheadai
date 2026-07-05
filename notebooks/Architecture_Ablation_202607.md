@@ -294,3 +294,56 @@ phase 2.
    `train_league_ppo.py --arch` (terminal reward, PFSP league) to settle
    the aux-head question and the true ceiling; optionally a 200k
    onehot-ff control run for the budget-equal comparison.
+
+## Phase 2 + onehot control (launched 2026-07-05)
+
+**Onehot 200k control** (budget-equal comparison; ~3 h): the three
+`onehot-ff` arms resumed 100k→200k with the same command shape as the
+full/no-aux extension, then probes + PANEL-A →
+`runs/ablation_202607/panel_a_onehot200k_{called,jd}.csv`.
+Runner: `runs/ablation_202607/onehot_control_200k.sh`.
+
+**Phase 2** (terminal-reward league regime; ~6 days): `full` vs `no-aux`,
+one arm each, both seeded from their s42 200k self-play finals, run
+concurrently with 4 workers each. Budget: **2 generations × 750k = 1.5M
+episodes per arm** (the 5–10M "ideal" would be 3+ weeks; the repro-v1
+control curve gives a PANEL-A reference at ~1M episodes). Recipe per arm —
+generation 1 anchored, generation 2 released (the anchored-then-release
+plan; identical treatment keeps the arms paired; the anchor is collapse
+insurance for an anchor-free warm start that has failed twice before):
+
+```bash
+# gen 1 (bidding anchor to the arm's own resume checkpoint)
+PYTHONPATH=. .venv/bin/python train_league_ppo.py \
+    --arch <full|no-aux> --resume runs/ablate_<A>_s42/final_<A>.pt \
+    --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
+    --league-dir runs/phase2_<A>/league --run-name phase2_<A> \
+    --generations 1 --main-episodes 750000 --anchor-coeff 1.0 \
+    --num-workers 4 --seed 42 --schedule-horizon 20000000
+# gen 2 (anchor-free, resumed at the generation boundary)
+PYTHONPATH=. .venv/bin/python train_league_ppo.py \
+    --arch <A> --resume runs/phase2_<A>/checkpoints/pfsp_<A>_checkpoint_750000.pt \
+    --league-dir runs/phase2_<A>/league --run-name phase2_<A> \
+    --generations 1 --main-episodes 750000 \
+    --num-workers 4 --seed 42 --schedule-horizon 20000000
+```
+
+Exploiter phases fire at each generation boundary (default 50k episodes,
+3000-deal gate) → an exploitability datapoint per arm per generation. Live
+telemetry per arm: `runs/phase2_<A>/checkpoints/anchored_eval.csv` (300
+paired deals vs `final_pfsp` every 100k eps), `greedy_health.csv`,
+`exploitability.csv`. Endpoints: PANEL-A + trump-lead probe on the 1.5M
+finals → `runs/phase2_202607/`. Runner: `runs/phase2_202607/phase2.sh`.
+
+**What phase 2 decides:** (a) whether aux heads matter once the dense
+shaped signal is gone (terminal reward) — the fair test the self-play arms
+couldn't give; (b) whether the self-play ceiling ordering survives the
+league regime; (c) per-arm exploitability.
+
+## Results — onehot 200k control
+
+*(pending)*
+
+## Results — phase 2
+
+*(pending)*
