@@ -146,6 +146,8 @@ ax.axhline(0, ls="--", c="gray"); ax.legend(); ax.set_ylabel("edge vs scripted")
   run. 100k-episode artifacts snapshotted as `*_100k.*`.
 - 2026-07-04 evening: pre-registered extension rule applied — `full` and
   `no-aux` (top-2 still-climbing arms) resumed to 200k episodes, all seeds.
+- 2026-07-05 05:20: **extension complete** (6/6 ok). Experiment closed;
+  conclusions below.
 
 ## Results — 100k episodes (18 runs)
 
@@ -236,4 +238,59 @@ PYTHONPATH=. .venv/bin/python train_selfplay_ppo.py \
 
 ## Results — 200k extension (full, no-aux)
 
-*(pending — filled when the extension completes)*
+Extension complete 2026-07-05 05:20 (6 runs resumed 100k→200k, ~9.6 h wall;
+probes + PANEL-A on the 200k finals in `panel_a_ext_{called,jd}.csv`).
+Note: `results.csv`'s `panel_a_*` columns still refer to the **100k**
+finals; the 200k gauntlet values live in the `_ext_` CSVs and below.
+
+### PANEL-A at 200k (mean ± seed-std)
+
+| arch | called | jd | both | vs its own 100k | vs onehot-ff@100k (−0.387) |
+|---|---|---|---|---|---|
+| `full` | −0.249 ± 0.047 | −0.216 ± 0.039 | **−0.233** | +0.180 | **+0.154** |
+| `no-aux` | −0.270 ± 0.091 | −0.284 ± 0.121 | **−0.277** | +0.143 | **+0.110** |
+
+Both gaps over onehot-ff's (flat) 100k endpoint exceed the 0.07 MDE and the
+seed spread. Trajectory (edge vs selfplay-100k, seed means): full
+−0.13 → −0.03 → **+0.19** at 100k/150k/200k; no-aux −0.15 → −0.08 →
+**+0.08** — both crossed *positive* (now beating their 100k-lineage
+ancestor head-to-head) and are **still climbing at 200k** (180k→200k slope
++0.13 / +0.19). The scripted-probe endpoints also crossed zero for full
+(+0.10/−0.24/+0.24 per seed).
+
+Honest caveat: onehot-ff was not extended (pre-registered rule extends only
+still-climbing arms; its 80k→100k slope was +0.098 < 1 SE), so 200k-vs-100k
+is budget-unequal. Its flatness bounds the expected shortfall, but a 200k
+onehot control (~3.3 h) is cheap if wanted.
+
+Canary: `full` s42's called-mode trump-lead incidence jumped to **10.6%**
+at 200k (other extended seeds 0–1.8%) — the documented defender
+trump-lead mechanism appearing in a self-play arm; worth tracking into
+phase 2.
+
+## Conclusions
+
+1. **The token/transformer stack is about ceiling, not start speed.**
+   `onehot-ff` reaches its plateau ~5× faster in wall-clock and matches
+   `full` at the 100k bootstrap scale, but is flat from ~20k on; the
+   full-family arms blow past it by 200k and are still improving. The
+   historical additions are vindicated for the regime that matters
+   (long-horizon training), not for short bootstraps.
+2. **Informed embedding init is the clearest single win** (+0.150 under
+   the transformer, 2 SE) and it *synergizes* with attention (only +0.060
+   without it). Keep it.
+3. **Transformer reasoning: +0.124 at 100k and growing** (its arms were
+   still climbing when the flat arms had stopped). Keep it.
+4. **Aux heads: no measurable effect in the shaped self-play regime**
+   (+0.007 at 100k; full−no-aux = +0.044 at 200k, within seed noise).
+   Per the pre-registered caveat this is a lower bound — the terminal
+   league regime (phase 2) is where their dense-signal role should show,
+   if anywhere. Worth pairing with the oracle-critic comparison, which
+   attacks the same credit-assignment problem from the value side.
+5. **Practical**: `onehot-ff` is a legitimate fast prototyping baseline
+   (17 eps/s); `no-transformer` (pooled memory) buys 2× wall-clock over
+   full at a real strength cost.
+6. **Next**: phase 2 — `full` and `no-aux` through
+   `train_league_ppo.py --arch` (terminal reward, PFSP league) to settle
+   the aux-head question and the true ceiling; optionally a 200k
+   onehot-ff control run for the budget-equal comparison.
