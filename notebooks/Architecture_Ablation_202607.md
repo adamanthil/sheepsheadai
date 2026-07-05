@@ -340,6 +340,62 @@ shaped signal is gone (terminal reward) — the fair test the self-play arms
 couldn't give; (b) whether the self-play ceiling ordering survives the
 league regime; (c) per-arm exploitability.
 
+## Phase 3: capacity sweep (queued, auto-launches after phase 2)
+
+**Why:** the ladder validated the *components* of `full`, but every
+dimension (d_token 64, 4 reasoning layers, and especially the 256-wide
+trunk/memory/pools, which hold ~70% of the parameters) is untested
+folklore. This sweep asks whether `full` is the right **size** — would a
+wider/deeper net raise the ceiling, or a smaller one train faster at no
+cost?
+
+**Design:** six one-knob variants around `full` (registry
+`_full_size_variant`; actor/critic widths follow the encoder's `d_model`,
+parameterized in commit `4cd5505` with the default bit-identical):
+
+| arch | knob | params (E+A+C) |
+|---|---|---|
+| `full-dmodel128` | trunk/memory/pool width /2 | 470,519 |
+| `full-dtok32` | transformer width /2 | 783,031 |
+| `full-layers2` | depth /2 | 936,663 |
+| `full` (existing runs = center point) | — | 1,003,607 |
+| `full-layers6` | depth ×1.5 | 1,070,551 |
+| `full-dtok128` | transformer width ×2 | 1,739,671 |
+| `full-dmodel512` | trunk/memory/pool width ×2 | 2,929,943 |
+
+3 seeds {42, 1042, 2042} × **200k episodes** (not 100k — the 100k matrix
+showed endpoint ranks can invert while arms are still climbing; 200k
+matches the existing `full` extension runs, which serve as the CRN-paired
+center point, same seeds ⇒ same deals). Shaped self-play, same protocol
+and yardsticks as the main matrix. ~2 days on the free machine.
+
+**Launch (automatic):** `runs/size_sweep_202607/watch_and_launch.sh` is
+running detached; it waits for phase 2 to exit, then runs:
+
+```bash
+PYTHONPATH=. caffeinate -is .venv/bin/python analysis/run_ablation_matrix.py \
+    --archs full-dtok32 full-dtok128 full-layers2 full-layers6 \
+            full-dmodel128 full-dmodel512 \
+    --episodes 200000 --out-dir runs/size_sweep_202607 --prefix ablate
+```
+
+and finishes by writing `runs/size_sweep_202607/report.md` via
+`analysis/ablation_report.py` (which merges the existing full@200k rows
+from `runs/ablation_202607/results_200k_panel.csv` — that file carries the
+*corrected* 200k PANEL-A values for the extended arms; the main
+`results.csv`'s panel columns for those rows are stale 100k values).
+
+**How to read the report** (`report.md` — no further analysis needed):
+- *Delta vs `full` table*: a variant is better/worse only if its delta
+  exceeds ~2 seed-level SE **and** the 0.07 MDE. Expected outcomes:
+  smaller variants win eps/s — the question is whether they lose PANEL-A;
+  bigger variants must beat `full` by > 0.07 to justify their cost.
+- *Slope table*: any still-climbing variant's endpoint understates it
+  (the onehot-ff lesson). If `full-dmodel512` ranks ≈ `full` but is still
+  climbing steeply while `full` flattens, size likely pays at longer
+  horizons — the right follow-up is extending the climbing arm, not
+  concluding "same".
+
 ## Results — onehot 200k control
 
 *(pending)*
@@ -347,3 +403,94 @@ league regime; (c) per-arm exploitability.
 ## Results — phase 2
 
 *(pending)*
+
+## Results — capacity sweep
+
+*(pending — `runs/size_sweep_202607/report.md` is generated automatically;
+paste it here with a short verdict per the "How to read" rules above)*
+
+---
+
+# HANDOFF PLAYBOOK (written 2026-07-05)
+
+Context: the operator loses access to the LLM that ran this experiment
+after 2026-07-07. Everything below is written so a person (or a smaller
+model) can finish the analysis mechanically. **Read the Design + Decision
+criteria sections above first; every number needed is produced by
+committed tools.**
+
+## What is running / queued right now
+
+| item | what | ETA | completion signal |
+|---|---|---|---|
+| onehot 200k control | 3 self-play resumes + probes + PANEL-A | hours (2026-07-05 evening) | `ONEHOT CONTROL COMPLETE` in `runs/ablation_202607/onehot_control.log` |
+| phase 2 | `full` vs `no-aux` league runs, 2×750k eps each | ~2026-07-11 | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
+| capacity sweep | auto-launches when phase 2 exits (watcher) | ~2 days after phase 2 | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
+
+**If the machine reboots or something dies**, everything is resumable:
+- phase 2: rerun the exact gen-1/gen-2 commands in the Phase 2 section
+  (skip gen 1 if `runs/phase2_<arch>/checkpoints/pfsp_<arch>_checkpoint_750000.pt`
+  exists) or simply `zsh runs/phase2_202607/phase2.sh` again — completed
+  invocations resume from their last league checkpoint via `--resume`
+  (use the newest `pfsp_<arch>_checkpoint_*.pt`; edit the script's
+  `--resume` accordingly).
+- capacity sweep: `zsh runs/size_sweep_202607/watch_and_launch.sh`
+  (skips finished jobs).
+- onehot control: `zsh runs/ablation_202607/onehot_control_200k.sh`.
+
+## When the onehot control lands
+
+1. Numbers: `runs/ablation_202607/panel_a_onehot200k_{called,jd}.csv`
+   (column `score_per_hand` per seed; average called+jd per seed, then
+   mean over seeds).
+2. Compare to full@200k = **−0.233** and no-aux@200k = **−0.277**
+   (both-modes means; from `panel_a_ext_*.csv`).
+3. Interpretation: if onehot@200k stays ≈ −0.35 or worse, the "flat
+   plateau" reading is confirmed and the budget-inequality caveat is
+   closed — the token stack wins at equal budget. If onehot improves to
+   within 0.07 of full, the plateau reading was wrong and the token-stack
+   advantage is NOT yet demonstrated at this scale (note it honestly).
+
+## When phase 2 lands
+
+1. Numbers: `runs/phase2_202607/panel_a_{called,jd}.csv` (2 candidates:
+   `phase2_full`, `phase2_no-aux`), `scripted_probe_*.json`,
+   `trump_lead_*.json`, per-arm `runs/phase2_<arch>/checkpoints/
+   {anchored_eval,greedy_health,exploitability}.csv`.
+2. Questions, in order:
+   a. **Did either arm collapse?** greedy_health.csv: greedy PICK → 0% or
+      leaster → 100% means dead run — say so, compare only pre-collapse
+      trends, and distrust the endpoint.
+   b. **Aux heads under terminal reward:** PANEL-A(phase2_full) −
+      PANEL-A(phase2_no-aux), both-modes mean. Single seed each, so use
+      the per-measurement SE from the CSVs (~0.04 each ⇒ difference SE
+      ~0.055; also compare the anchored_eval.csv *trends*, which are
+      CRN-paired between arms at each episode). Gap > ~0.11 (2 SE) =
+      aux heads matter under terminal reward. Gap within noise = the
+      aux-head null generalizes; simplifying to no-aux is defensible.
+   c. **League vs self-play regime:** both arms should sit well above
+      their 200k self-play starting points (−0.233 / −0.277). Compare
+      also to the repro-v1 control at ~1M episodes (PANEL-A baselines in
+      `runs/rigorous_baseline_202607/`, headline league-13.65M CA −0.120 /
+      JD +0.038): phase-2 arms at 1.5M with the roster/exploiter fixes
+      should be at least competitive with the v1 curve at matched episodes.
+   d. **Exploitability:** `exploitability.csv` per arm (gate edge per
+      generation; lower/declining = better).
+3. Paste the numbers into "Results — phase 2" above with the verdicts.
+
+## When the capacity sweep lands
+
+Open `runs/size_sweep_202607/report.md` (auto-generated) and apply the
+"How to read the report" rules in the Phase 3 section. Paste into
+"Results — capacity sweep".
+
+## If something needs rerunning from scratch
+
+All tooling is committed: `analysis/run_ablation_matrix.py` (orchestrator;
+`--smoke` for a 5-minute pipeline check), `analysis/aggregate_ablation.py`
+(CSVs/plots/table), `analysis/ablation_report.py` (statistics/verdict
+tables), `analysis/rigorous_eval.py` + `analysis/scripted_probe.py` +
+`analysis/trump_lead_probe.py` (instruments — frozen seeds, see
+`Evaluation_Harnesses_202607.md`). Checkpoints record their architecture;
+**always load via `ppo.load_agent(path)`**, never construct `PPOAgent`
+with a guessed arch.
