@@ -270,12 +270,17 @@ phase 2.
 
 ## Conclusions
 
-1. **The token/transformer stack is about ceiling, not start speed.**
-   `onehot-ff` reaches its plateau ~5× faster in wall-clock and matches
-   `full` at the 100k bootstrap scale, but is flat from ~20k on; the
-   full-family arms blow past it by 200k and are still improving. The
-   historical additions are vindicated for the regime that matters
-   (long-horizon training), not for short bootstraps.
+1. ~~The token/transformer stack is about ceiling, not start speed~~
+   **AMENDED 2026-07-05 after the budget-equal control:** at the equal
+   200k budget, `onehot-ff` (−0.247) is statistically indistinguishable
+   from `full` (−0.233) — the original version of this conclusion compared
+   200k arms against onehot's 100k endpoint and was a budget artifact.
+   What stands: onehot reaches strength ~5× cheaper in wall-clock at every
+   matched budget so far, and **the token stack's ceiling advantage is not
+   demonstrated at ≤ 200k in the shaped self-play regime**. The ceiling
+   question now rests entirely on the terminal-reward league regime
+   (phase 2 tests full vs no-aux; an onehot league arm is the missing
+   experiment — see the onehot-control section).
 2. **Informed embedding init is the clearest single win** (+0.150 under
    the transformer, 2 SE) and it *synergizes* with attention (only +0.060
    without it). Keep it.
@@ -398,7 +403,29 @@ from `runs/ablation_202607/results_200k_panel.csv` — that file carries the
 
 ## Results — onehot 200k control
 
-*(pending)*
+Completed 2026-07-05 18:36. PANEL-A both-modes per seed: s42 −0.251,
+s1042 −0.307, s2042 −0.181 → **mean −0.247 ± 0.063**.
+
+**This overturns the extension section's conclusion.** At the equal 200k
+budget: full −0.233, onehot-ff −0.247, no-aux −0.277 — all within ~1
+seed-level SE of each other. The "flat plateau" inference from onehot's
+80k→100k slope (+0.098, < 1 SE) was wrong: its curve sat flat 100k→150k
+(edge vs scripted −0.23 → −0.23) and then moved sharply 150k→200k
+(→ −0.09, +0.14 PANEL-A overall). Slope-based plateau calls on 20k windows
+are unreliable — a second lesson of the same kind as the 100k rank
+inversion, one level up.
+
+Pre-registered verdict (playbook rule): **the token-stack ceiling
+advantage is NOT demonstrated at ≤ 200k in the shaped self-play regime.**
+The earlier "full-family blows past onehot by 200k" compared unequal
+budgets and is retracted (the Conclusions section below is amended
+accordingly). All three arms are still climbing at 200k; the regimes where
+the token stack should matter most (terminal reward, long-horizon league)
+remain untested for onehot — phase 2 covers only full/no-aux. **Optional
+follow-up for the operator:** an onehot-ff league arm mirroring phase 2
+(same commands with `--arch onehot-ff --resume
+runs/ablate_onehot-ff_s42/final_onehot-ff.pt`) would settle onehot-vs-full
+where it counts.
 
 ## Results — phase 2
 
@@ -438,18 +465,13 @@ committed tools.**
   (skips finished jobs).
 - onehot control: `zsh runs/ablation_202607/onehot_control_200k.sh`.
 
-## When the onehot control lands
+## When the onehot control lands — RESOLVED 2026-07-05
 
-1. Numbers: `runs/ablation_202607/panel_a_onehot200k_{called,jd}.csv`
-   (column `score_per_hand` per seed; average called+jd per seed, then
-   mean over seeds).
-2. Compare to full@200k = **−0.233** and no-aux@200k = **−0.277**
-   (both-modes means; from `panel_a_ext_*.csv`).
-3. Interpretation: if onehot@200k stays ≈ −0.35 or worse, the "flat
-   plateau" reading is confirmed and the budget-inequality caveat is
-   closed — the token stack wins at equal budget. If onehot improves to
-   within 0.07 of full, the plateau reading was wrong and the token-stack
-   advantage is NOT yet demonstrated at this scale (note it honestly).
+Onehot@200k = −0.247 ± 0.063 ⇒ within 0.07 of full (−0.233): the plateau
+reading was wrong; conclusion #1 amended (see the onehot-control results
+section). The recommended next experiment is an **onehot-ff league arm**
+mirroring phase 2 (exact commands in that section) — it settles
+onehot-vs-full in the regime that matters.
 
 ## When phase 2 lands
 
