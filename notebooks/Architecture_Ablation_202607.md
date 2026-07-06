@@ -866,6 +866,22 @@ strength; what degrades is construct validity — gains against strong
 adaptive opponents (the live league) may be worth ~0 against weaker frozen
 panel members.
 
+**Oracle-critic regime (`--critic-mode oracle`):** this rule applies
+VERBATIM. Every instrument above (PANEL-A, head-to-head, exploiter gate,
+scripted probe) evaluates the ACTOR playing partial-observation games; the
+oracle critic exists only inside `update()` (ppo.py `_fill_oracle_values`)
+and never runs at play time, so nothing about eval variance, MDE, CRN
+pairing, or thresholds changes. Two regime-specific additions only:
+(1) league snapshots are oracle-stripped automatically and `ppo.load_agent`
+handles `critic_mode` — no special checkpoint handling; (2) watch the
+oracle value loss in training logs as a HEALTH diagnostic (an underfit
+oracle silently degrades to a noisy baseline — that shows up in training
+stats, not in the panel). If the goal is to ATTRIBUTE a gain to the oracle
+critic (vs merely benefiting from it), that requires a paired arm
+(oracle vs limited, same seed, CRN anchored evals) — same design as the
+phase-2 arms; a single long oracle run + this stopping rule measures the
+combined result but cannot isolate the cause.
+
 **Confirmatory eval (guard against stopping-rule selection bias):** the
 stopping decision peeks at seed-42 deals repeatedly, so the FINAL reported
 number for the chosen checkpoint must come from one fresh-deal run:
