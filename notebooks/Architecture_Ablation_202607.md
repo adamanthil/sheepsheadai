@@ -766,21 +766,24 @@ are already registered (commit with `_perceiver_size_variant`; params
 
 (baseline for the report is then the perceiver@200k probe rows: use
 `--extra-results runs/perceiver_202607/results.csv --baseline perceiver`.)
-**Also rebuild the oracle critic** (operator, 2026-07-06): `oracle.py`'s
-`OracleCriticEncoder` mirrors `full`'s pooled design (five AttentionPools
-incl. `pool_opp` squeezing 18 opponent-held-card tokens into 64 dims, plus
-a fusion MLP). No oracle training has happened and no checkpoint
-compatibility exists, so if the pool-free design is adopted, mirror it
-before the long oracle run: delete the five pools + fusion MLP, add an MHA
-readout (4 learned queries × 4 heads, same modules as
-`PerceiverCriticNetwork` in ppo.py) over all ~37 post-reasoning tokens
-(opponent-hand tokens then reach the value trunk unsqueezed), feed the
-memory GRU the post-reasoning MEMORY token. Verify with the existing
-oracle unit tests + trainer smoke. If perceiver TIES, keep the pooled
-oracle as-built and instead watch oracle value loss / explained variance
-in the first oracle run — full information makes its target nearly
-deterministic given the policies, so persistent underfit there (and only
-that) is the evidence that the pools bind the critic; upgrade then.
+**Oracle critic readout — DONE unconditionally (operator decision,
+2026-07-06):** the operator chose to rebuild `oracle.py` perceiver-style
+without waiting for the probe verdict (no oracle training had happened, no
+checkpoint compatibility existed, and worst case it is equivalent —
+elegance worth it). `OracleCriticEncoder` now deletes the five pools +
+fusion MLP (incl. `pool_opp`, which squeezed 32 opponent-hand token slots
+into 64 dims); `OracleValueNetwork` reads all 51 post-reasoning tokens
+through its own MHA readout (4 queries × 4 heads, same modules as
+`PerceiverCriticNetwork`); the memory GRU is fed the post-reasoning
+MEMORY token. 622,473 params (was 772,745; −150k = the pools; the readout
+replaces the fusion MLP at identical size). All 15 oracle tests pass
+(incl. dual-GAE update, gradient isolation, checkpoints) + 4 new readout
+invariants. Any future oracle run uses this design; there are NO
+pooled-oracle checkpoints anywhere. Oracle health check for the first
+run stands: watch oracle value loss / explained variance (`ev_oracle` in
+update stats) — full information makes the target nearly deterministic
+given the policies, so persistent underfit means the VALUE net (not the
+regime) needs attention.
 **If it ties**, the operator's own bar applies: adoption requires
 capability evidence, so a tie ⇒ keep `full` as default, let phase 2 run
 as designed, and keep the full-based sweep. Paste report + verdict into

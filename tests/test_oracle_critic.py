@@ -133,6 +133,65 @@ class TestOracleStateSchema(unittest.TestCase):
         self.assertIn("opp_hand_ids", o)
 
 
+class TestOracleReadout(unittest.TestCase):
+    """Perceiver-style readout invariants (2026-07-06 refactor): no pooled
+    bags anywhere between the reasoning transformer and the value trunk."""
+
+    @classmethod
+    def setUpClass(cls):
+        from oracle import OracleValueNetwork
+
+        cls.net = OracleValueNetwork()
+        game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=3)
+        cls.obs = [p.get_oracle_state_dict() for p in game.players]
+
+    def test_pools_and_fusion_deleted(self):
+        for name in (
+            "pool_hand",
+            "pool_trick",
+            "pool_blind",
+            "pool_bury",
+            "pool_opp",
+            "feature_proj",
+        ):
+            self.assertFalse(hasattr(self.net.encoder, name), name)
+
+    def test_encode_batch_emits_tokens_and_memory_token_recurrence(self):
+        import torch
+
+        enc = self.net.encoder
+        with torch.no_grad():
+            out = enc.encode_batch(self.obs)
+        self.assertEqual(tuple(out["all_tokens"].shape), (5, 51, enc.d_token_dim))
+        self.assertEqual(tuple(out["all_mask"].shape), (5, 51))
+        # context + memory tokens are always valid keys for the readout.
+        self.assertTrue(out["all_mask"][:, :2].all())
+        self.assertTrue(torch.equal(out["features"], out["memory_out"]))
+        # The GRU input is the post-reasoning MEMORY token, not the context.
+        with torch.no_grad():
+            expected = enc.memory_gru(
+                out["all_tokens"][:, 1, :], torch.zeros(5, enc.d_model)
+            )
+        self.assertTrue(torch.allclose(out["memory_out"], expected, atol=1e-6))
+
+    def test_forward_sequences_shape_and_readout_grad(self):
+        import torch
+
+        vals = self.net.forward_sequences([self.obs[:3], self.obs[:1]])
+        self.assertEqual(tuple(vals.shape), (2, 3))
+        self.assertTrue(torch.isfinite(vals).all())
+        vals.sum().backward()
+        self.assertIsNotNone(self.net.readout_query.grad)
+        self.assertTrue(torch.any(self.net.readout_query.grad != 0))
+        self.net.zero_grad()
+
+    def test_param_groups_cover_every_parameter(self):
+        groups = self.net.param_groups(base_lr=1e-3)
+        grouped = sum(p.numel() for g in groups for p in g["params"])
+        total = sum(p.numel() for p in self.net.parameters())
+        self.assertEqual(grouped, total)
+
+
 def _collect_episodes(agent, n_episodes, collect_oracle):
     """Play self-play episodes via play_population_game and store the events."""
     import random

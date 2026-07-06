@@ -41,7 +41,6 @@ import torch
 import torch.nn as nn
 
 from encoder import (
-    AttentionPool,
     CardEmbeddingConfig,
     CardReasoningEncoder,
     PAD_CARD_ID,
@@ -49,12 +48,12 @@ from encoder import (
 
 
 class OracleCriticEncoder(CardReasoningEncoder):
-    """CardReasoningEncoder over the full-information observation.
+    """Token-centric encoder over the full-information observation.
 
-    Reuses the policy encoder's machinery wholesale (card embeddings with
-    informed init, seat/role embeddings, transformer reasoning, attention
-    pools, GRU memory, `encode_sequences`) and extends the token set with
-    the hidden state. Token layout (51 tokens vs the base encoder's 19):
+    Reuses the policy encoder's machinery (card embeddings with informed
+    init, seat/role embeddings, transformer reasoning, GRU memory,
+    `encode_sequences`) and extends the token set with the hidden state.
+    Token layout (51 tokens vs the base encoder's 19):
 
         [context, memory, hand x8, trick x5, blind x2, bury x2, opp x32]
 
@@ -64,6 +63,20 @@ class OracleCriticEncoder(CardReasoningEncoder):
     relative seat, and the under card. `encode_batch` is an adapted copy of
     the base implementation rather than a hook-based refactor so the policy
     encoder's forward path stays byte-identical.
+
+    Perceiver-style readout (operator decision, 2026-07-06): the base
+    encoder's per-bag attention pools and fused feature trunk are DELETED —
+    the value network reads the post-reasoning token set through its own
+    cross-attention readout, so no information is squeezed through pooled
+    bags on its way to the value estimate. Memory follows the `perceiver`
+    rung's design: the GRU input is the post-reasoning MEMORY token (the
+    transformer's own "what to remember" slot) rather than the context
+    token. The 'features' output is set to the recurrent state purely so
+    the inherited `encode_sequences` plumbing keeps working; the value
+    network ignores it. NOTE: the inherited CardReasoningEncoder
+    `param_groups` would reference the deleted pools — never call it here;
+    OracleValueNetwork.param_groups is name-filtered and is the only
+    grouping used.
     """
 
     # card_type ids: 0=context, 1=memory, 2=hand, 3=trick, 4=blind, 5=bury
@@ -100,12 +113,14 @@ class OracleCriticEncoder(CardReasoningEncoder):
             nn.Linear(d_card + 4 + 4, d_token),
             nn.SiLU(),
         )
-        self.pool_opp = AttentionPool(d_token, 64)
-        # Fusion gains the pooled opponent bag.
-        self.feature_proj = nn.Sequential(
-            nn.Linear(64 + 64 + 32 + 32 + 64 + d_token, 256),
-            nn.LayerNorm(256),
-        )
+        # Perceiver-style: value information reaches the trunk through the
+        # OracleValueNetwork readout, not pooled bags — drop the base
+        # encoder's pools + fusion (and never build an opponent pool).
+        del self.pool_hand
+        del self.pool_trick
+        del self.pool_blind
+        del self.pool_bury
+        del self.feature_proj
 
     def _embed_opp_hands(
         self,
@@ -275,33 +290,17 @@ class OracleCriticEncoder(CardReasoningEncoder):
         )
         all_tokens = all_tokens + self.card_type(type_ids)
 
-        # 6. Reason, extract, pool, update memory, fuse.
+        # 6. Reason, update memory from the post-reasoning MEMORY token,
+        # and hand the full token set to the value network's readout.
         all_tokens = self.card_reasoner(all_tokens, all_mask)
-        context_out = all_tokens[:, 0, :]
-        hand_tok_out = all_tokens[:, 2:10, :]
-        trick_tok_out = all_tokens[:, 10:15, :]
-        blind_tok_out = all_tokens[:, 15:17, :]
-        bury_tok_out = all_tokens[:, 17:19, :]
-        opp_tok_out = all_tokens[:, 19:51, :]
-
-        hand_vec = self.pool_hand(hand_tok_out, hand_mask)
-        trick_vec = self.pool_trick(trick_tok_out, trick_mask)
-        blind_vec = self.pool_blind(blind_tok_out, blind_mask)
-        bury_vec = self.pool_bury(bury_tok_out, bury_mask)
-        opp_vec = self.pool_opp(opp_tok_out, opp_mask)
-
-        memory_out = self.memory_gru(context_out, memory_in)
-        features = self.feature_proj(
-            torch.cat(
-                [hand_vec, trick_vec, blind_vec, bury_vec, opp_vec, context_out],
-                dim=1,
-            )
-        )
+        memory_out = self.memory_gru(all_tokens[:, 1, :], memory_in)
         return {
-            "features": features,
-            "hand_tokens": hand_tok_out,
-            "context_token": context_out,
+            "features": memory_out,
+            "hand_tokens": all_tokens[:, 2:10, :],
+            "context_token": all_tokens[:, 0, :],
             "memory_out": memory_out,
+            "all_tokens": all_tokens,
+            "all_mask": all_mask,
         }
 
 
@@ -311,11 +310,24 @@ class OracleValueNetwork(nn.Module):
     Own encoder, own trunk, no auxiliary heads, no parameter sharing with
     the policy stack. Trained only at update time on lambda-returns; used
     only to supply the GAE baseline (see module docstring).
+
+    Reads the encoder's post-reasoning token set through its own
+    cross-attention readout (M learned queries over all 51 tokens — the
+    32 opponent-hand tokens reach the value trunk unsqueezed), mirroring
+    PerceiverCriticNetwork in ppo.py.
     """
 
-    def __init__(self):
+    def __init__(self, n_readout_queries: int = 4, n_readout_heads: int = 4):
         super().__init__()
         self.encoder = OracleCriticEncoder(card_config=CardEmbeddingConfig())
+        d_token = self.encoder.d_token_dim
+        self._d_token = d_token
+        self.readout_n_queries = int(n_readout_queries)
+        self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
+        self.readout_mha = nn.MultiheadAttention(
+            d_token, int(n_readout_heads), batch_first=True
+        )
+        self.readout_proj = nn.Linear(self.readout_n_queries * d_token, 256)
         act = nn.SiLU
         # Same shape as RecurrentCriticNetwork.value_trunk.
         self.value_trunk = nn.Sequential(
@@ -326,8 +338,10 @@ class OracleValueNetwork(nn.Module):
             act(),
         )
         self.value_head = nn.Linear(256, 1)
-        self.value_trunk.apply(self._init_weights)
-        self.value_head.apply(self._init_weights)
+        # Orthogonal init for the dense stack (critic convention); the MHA
+        # keeps torch defaults (encoder AttentionPool convention).
+        for mod in (self.readout_proj, self.value_trunk, self.value_head):
+            mod.apply(self._init_weights)
 
     @staticmethod
     def _init_weights(m):
@@ -335,6 +349,20 @@ class OracleValueNetwork(nn.Module):
             nn.init.orthogonal_(m.weight, gain=1.0)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0.0)
+
+    def _readout(self, all_tokens: torch.Tensor, all_mask: torch.Tensor):
+        B = all_tokens.size(0)
+        q = self.readout_query.unsqueeze(0).expand(B, -1, -1)
+        attn_out, _ = self.readout_mha(
+            q,
+            all_tokens,
+            all_tokens,
+            key_padding_mask=~all_mask,
+            need_weights=False,
+        )
+        return self.readout_proj(
+            attn_out.reshape(B, self.readout_n_queries * self._d_token)
+        )
 
     def forward_sequences(
         self,
@@ -345,7 +373,11 @@ class OracleValueNetwork(nn.Module):
         sequence, the same protocol as the limited critic's training
         forward) and return values of shape (B, T)."""
         out = self.encoder.encode_sequences(sequences, memory_in=None, device=device)
-        return self.value_head(self.value_trunk(out["features"])).squeeze(-1)
+        at = out["all_tokens"]  # (B, T, 51, d_token)
+        am = out["all_mask"]  # (B, T, 51)
+        B, T, N, d = at.shape
+        r = self._readout(at.reshape(B * T, N, d), am.reshape(B * T, N))
+        return self.value_head(self.value_trunk(r)).view(B, T)
 
     def param_groups(self, base_lr: float, card_lr_scale: float = 0.2):
         """Card embeddings at scaled LR, everything else at base LR.
