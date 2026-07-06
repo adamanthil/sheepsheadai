@@ -638,11 +638,20 @@ probe, not a candidate — the clean end-state is `perceiver`).
 Per-seed diagnostics (both-modes mean): s42 −0.159, s1042 −0.294,
 s2042 −0.115.
 
-- **s1042 = the documented pathology seed**: pick/partner/bury entropies
-  locked at exactly 0.000 mid-run (dual-path optimization instability);
-  it finished worst on every yardstick and drives the jd seed-std (0.142).
-  Supports the "dual-path probe is noisy" caveat, but the headline verdict
-  uses all three seeds as pre-registered.
+- **s1042 = a full PASS-collapse (recovered late), not mere noise**: by
+  episode ~1.4k pick/partner/bury entropies hit exactly 0.000 (PPO KL
+  0.0000 — heads frozen) and the self-play leaster rate pinned at 100%
+  (every seat passing every deal); it stayed in the all-leaster
+  equilibrium for ~88% of the run (anchored edges flat ~−0.75 from
+  25k–175k), then spontaneously escaped at ~180k (leaster 100%→1.9%),
+  relearned bidding, and jumped (selfplay100k edge −0.71→−0.20 in the
+  final window). Same attractor as the ExIt warm-start collapse. Its
+  endpoint (−0.294, worst seed; drives the jd seed-std 0.142) is really
+  "~20k episodes of non-leaster training." `full` on the identical
+  seed/deals did NOT collapse — evidence the dual-path readout
+  destabilizes early bidding gradients. Headline verdict still uses all
+  three seeds as pre-registered; count this arm as 1 collapse per the
+  protocol's collapse-reporting rule.
 - **s2042 trump-lead canary hot**: 20.9% jd / 17.6% called at 200k (full
   s42 canary was 10.6%) — the leak got *worse* under the readout for that
   seed.
