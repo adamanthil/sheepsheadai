@@ -159,6 +159,85 @@ class TokenReadEncoder(CardReasoningEncoder):
 
 
 # ---------------------------------------------------------------------------
+# Perceiver-IO encoder (the "perceiver" rung — clean token-centric design)
+# ---------------------------------------------------------------------------
+
+
+class PerceiverEncoder(CardReasoningEncoder):
+    """Token-centric encoder: embeddings + transformer + recurrence, nothing
+    else. The per-bag attention pools and the fused feature trunk are GONE —
+    every consumer (PerceiverActorNetwork, PerceiverCriticNetwork) reads the
+    post-reasoning token set through its own attention readout.
+
+    Memory (operator's design, 2026-07-06): the GRU input is the
+    post-reasoning MEMORY token — the transformer's own "what to remember"
+    slot, which attends over everything during reasoning and which the base
+    architecture computes and discards (its GRU reads the *context* token
+    instead). Same GRUCell(d_token, d_model) shape, zero parameter change;
+    the recurrent state re-enters next step via memory_in_proj as today.
+
+    The 'features' output is set to the recurrent state purely so generic
+    plumbing that expects a (B, d_model) tensor keeps working; the perceiver
+    actor and critic both ignore it. Removes the pools + feature_proj
+    (~178k params) relative to the base encoder.
+    """
+
+    def __init__(self, card_config: "CardEmbeddingConfig | None" = None):
+        super().__init__(card_config=card_config or CardEmbeddingConfig())
+        del self.pool_hand
+        del self.pool_trick
+        del self.pool_blind
+        del self.pool_bury
+        del self.feature_proj
+
+    def param_groups(self, base_lr: float, card_lr_scale: float = 0.1):
+        import itertools
+
+        other_params = itertools.chain(
+            self.seat.parameters(),
+            self.role.parameters(),
+            self.card_type.parameters(),
+            self.context_mlp.parameters(),
+            self.memory_in_proj.parameters(),
+            self.token_mlp_hand.parameters(),
+            self.token_mlp_trick.parameters(),
+            self.token_mlp_simple.parameters(),
+            self.card_reasoner.parameters(),
+            self.memory_gru.parameters(),
+        )
+        return [
+            {"params": self.card.parameters(), "lr": base_lr * card_lr_scale},
+            {"params": other_params, "lr": base_lr},
+        ]
+
+    def _pool_fuse_update(
+        self,
+        context_out,
+        hand_tok_out,
+        hand_mask,
+        trick_tok_out,
+        trick_mask,
+        blind_tok_out,
+        blind_mask,
+        bury_tok_out,
+        bury_mask,
+        memory_in,
+        all_tokens,
+        all_mask,
+    ):
+        # Memory write: the post-reasoning MEMORY token (index 1).
+        memory_out = self.memory_gru(all_tokens[:, 1, :], memory_in)
+        return {
+            "features": memory_out,  # vestigial (see class docstring)
+            "hand_tokens": hand_tok_out,
+            "context_token": context_out,
+            "memory_out": memory_out,
+            "all_tokens": all_tokens,
+            "all_mask": all_mask,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Legacy-style one-hot state representation (onehot-ff baseline)
 # ---------------------------------------------------------------------------
 
@@ -466,6 +545,28 @@ def _tokenread_actor(action_size, action_groups, encoder, mappings):
     )
 
 
+def _perceiver_actor(action_size, action_groups, encoder, mappings):
+    from ppo import PerceiverActorNetwork
+
+    return PerceiverActorNetwork(
+        action_size,
+        action_groups,
+        d_card=encoder.d_card_dim,
+        d_token=encoder.d_token_dim,
+        d_model=getattr(encoder, "d_model", 256),
+        **mappings,
+    )
+
+
+def _perceiver_critic(encoder):
+    from ppo import PerceiverCriticNetwork
+
+    return PerceiverCriticNetwork(
+        d_token=encoder.d_token_dim,
+        d_model=getattr(encoder, "d_model", 256),
+    )
+
+
 def _aux_critic(encoder):
     from ppo import RecurrentCriticNetwork
 
@@ -598,6 +699,22 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         "full-dmodel512",
         "full with d_model 256 -> 512 (trunk/memory/pool width x2).",
         d_model=512,
+    ),
+    # --- Clean token-centric redesign (Perceiver-IO shape) ------------------
+    "perceiver": ArchitectureSpec(
+        name="perceiver",
+        description=(
+            "Token-centric end to end: embeddings + transformer + recurrence "
+            "shared; the actor AND the critic each read the 19 post-reasoning "
+            "tokens through their own 4-query cross-attention readout. No "
+            "per-bag pools, no fused feature trunk; the memory GRU is fed the "
+            "post-reasoning memory token. No aux heads — compare against "
+            "no-aux as well as full."
+        ),
+        build_encoder=lambda: PerceiverEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_perceiver_actor,
+        build_critic=_perceiver_critic,
+        has_aux_heads=False,
     ),
     # --- Readout variant (pooling-bottleneck hypothesis) --------------------
     "full-tokenread": ArchitectureSpec(

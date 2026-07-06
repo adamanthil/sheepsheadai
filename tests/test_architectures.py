@@ -384,6 +384,94 @@ class TestTokenRead(unittest.TestCase):
         self.assertTrue(torch.isfinite(probs).all())
 
 
+class TestPerceiver(unittest.TestCase):
+    def test_pools_and_trunk_gone(self):
+        enc = architectures.PerceiverEncoder()
+        for name in (
+            "pool_hand",
+            "pool_trick",
+            "pool_blind",
+            "pool_bury",
+            "feature_proj",
+        ):
+            self.assertFalse(hasattr(enc, name), name)
+        base = CardReasoningEncoder(card_config=CardEmbeddingConfig())
+        n_base = sum(p.numel() for p in base.parameters())
+        n_perc = sum(p.numel() for p in enc.parameters())
+        self.assertLess(n_perc, n_base - 150_000)
+
+    def test_memory_token_drives_recurrence(self):
+        enc = architectures.PerceiverEncoder()
+        game = Game(seed=130)
+        s = game.players[0].get_state_dict()
+        out1 = enc.encode_batch([s])
+        out2 = enc.encode_batch([s], memory_in=out1["memory_out"])
+        # Recurrence is live and features carry the recurrent state.
+        self.assertFalse(torch.equal(out1["memory_out"], out2["memory_out"]))
+        self.assertTrue(torch.equal(out1["features"], out1["memory_out"]))
+        self.assertEqual(tuple(out1["all_tokens"].shape), (1, 19, enc.d_token_dim))
+
+    def test_actor_ignores_features_reads_tokens(self):
+        _seed_all(12)
+        agent = PPOAgent(len(ACTIONS), arch="perceiver")
+        game = Game(seed=131)
+        s = game.players[0].get_state_dict()
+        enc_out = agent.encoder.encode_batch([s])
+        mask = torch.ones(1, len(ACTIONS), dtype=torch.bool)
+        hand_ids = torch.as_tensor(s["hand_ids"], dtype=torch.long).view(1, -1)
+        with torch.no_grad():
+            _, logits1 = agent.actor.forward_with_logits(
+                enc_out, mask, hand_ids, agent.encoder.card
+            )
+            enc_out2 = dict(enc_out)
+            enc_out2["features"] = torch.randn_like(enc_out["features"])
+            _, logits2 = agent.actor.forward_with_logits(
+                enc_out2, mask, hand_ids, agent.encoder.card
+            )
+            enc_out3 = dict(enc_out)
+            enc_out3["all_tokens"] = enc_out["all_tokens"].clone()
+            enc_out3["all_tokens"][:, 1, :] += 1.0
+            _, logits3 = agent.actor.forward_with_logits(
+                enc_out3, mask, hand_ids, agent.encoder.card
+            )
+        self.assertTrue(torch.equal(logits1, logits2))
+        self.assertFalse(torch.equal(logits1, logits3))
+
+    def test_critic_reads_tokens_and_sequences(self):
+        _seed_all(13)
+        agent = PPOAgent(len(ACTIONS), arch="perceiver")
+        game = Game(seed=132)
+        s = game.players[0].get_state_dict()
+        enc_out = agent.encoder.encode_batch([s])
+        with torch.no_grad():
+            v1 = agent.critic(enc_out)
+            enc_out2 = dict(enc_out)
+            enc_out2["all_tokens"] = enc_out["all_tokens"].clone()
+            enc_out2["all_tokens"][:, 1, :] += 1.0
+            v2 = agent.critic(enc_out2)
+        self.assertEqual(tuple(v1.shape), (1, 1))
+        self.assertFalse(torch.equal(v1, v2))
+        seq_out = agent.encoder.encode_sequences([[s, s], [s]])
+        vals = agent.critic.sequence_values(seq_out)
+        self.assertEqual(tuple(vals.shape), (2, 2))
+        with self.assertRaises(RuntimeError):
+            agent.critic.aux_predictions(enc_out)
+
+    def test_base_critic_sequence_values_matches_inline(self):
+        # The seam must be exactly the old two lines for existing archs.
+        _seed_all(14)
+        agent = PPOAgent(len(ACTIONS), arch="full")
+        game = Game(seed=133)
+        s = game.players[0].get_state_dict()
+        seq_out = agent.encoder.encode_sequences([[s, s]])
+        with torch.no_grad():
+            via_seam = agent.critic.sequence_values(seq_out)
+            inline = agent.critic.value_head(
+                agent.critic.value_trunk(seq_out["features"])
+            ).squeeze(-1)
+        self.assertTrue(torch.equal(via_seam, inline))
+
+
 class TestSizeVariants(unittest.TestCase):
     def test_dmodel_shapes_propagate(self):
         for d_model in (128, 512):

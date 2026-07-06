@@ -421,6 +421,145 @@ class TokenReadActorNetwork(MultiHeadRecurrentActorNetwork):
         return self.readout_fuse(torch.cat([feat, readout], dim=1))
 
 
+class PerceiverActorNetwork(MultiHeadRecurrentActorNetwork):
+    """Actor whose ONLY input is a cross-attention readout over the full
+    post-reasoning token set (the `perceiver` architecture rung).
+
+    Unlike TokenReadActorNetwork (additive probe: readout fused WITH the
+    pooled trunk features), this actor ignores `actor_features` entirely:
+    M learned queries attend over the 19 tokens, the flattened result is
+    projected to d_model and passed through the standard actor_adapter
+    before the heads. Requires an encoder emitting 'all_tokens'/'all_mask'
+    (PerceiverEncoder in architectures.py).
+    """
+
+    def __init__(
+        self,
+        *args,
+        n_readout_queries: int = 4,
+        n_readout_heads: int = 4,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        d_model = self.actor_adapter[1].in_features
+        self.readout_n_queries = int(n_readout_queries)
+        self.readout_query = nn.Parameter(
+            torch.randn(self.readout_n_queries, self._d_token)
+        )
+        self.readout_mha = nn.MultiheadAttention(
+            self._d_token, int(n_readout_heads), batch_first=True
+        )
+        self.readout_proj = nn.Linear(self.readout_n_queries * self._d_token, d_model)
+
+    def _adapt_features(
+        self,
+        actor_features: torch.Tensor,
+        all_tokens: torch.Tensor | None = None,
+        all_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if all_tokens is None or all_mask is None:
+            raise RuntimeError(
+                "PerceiverActorNetwork requires encoder outputs 'all_tokens'/"
+                "'all_mask' (use the perceiver encoder variant)."
+            )
+        del actor_features  # perceiver heads read tokens only
+        B = all_tokens.size(0)
+        q = self.readout_query.unsqueeze(0).expand(B, -1, -1)
+        attn_out, _ = self.readout_mha(
+            q,
+            all_tokens,
+            all_tokens,
+            key_padding_mask=~all_mask,
+            need_weights=False,
+        )
+        readout = self.readout_proj(
+            attn_out.reshape(B, self.readout_n_queries * self._d_token)
+        )
+        return self.actor_adapter(readout)
+
+
+class PerceiverCriticNetwork(nn.Module):
+    """Value network with its own cross-attention readout over the token set.
+
+    The `perceiver` rung's critic: no shared trunk features — M learned
+    queries attend over the 19 post-reasoning tokens, then the same deep
+    value trunk shape as RecurrentCriticNetwork produces the value. No
+    auxiliary heads (compare perceiver against `no-aux` as well as `full`).
+    """
+
+    def __init__(
+        self,
+        d_token: int = 64,
+        d_model: int = 256,
+        n_readout_queries: int = 4,
+        n_readout_heads: int = 4,
+    ):
+        super().__init__()
+        self.has_aux_heads = False
+        d_token, d_model = int(d_token), int(d_model)
+        self._d_token = d_token
+        self.readout_n_queries = int(n_readout_queries)
+        self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
+        self.readout_mha = nn.MultiheadAttention(
+            d_token, int(n_readout_heads), batch_first=True
+        )
+        self.readout_proj = nn.Linear(self.readout_n_queries * d_token, d_model)
+        # Same shape as RecurrentCriticNetwork.value_trunk / value_head.
+        act = nn.SiLU
+        self.value_trunk = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model),
+            act(),
+            nn.Linear(d_model, d_model),
+            act(),
+        )
+        self.value_head = nn.Linear(d_model, 1)
+        # Orthogonal init for the dense stack (critic convention); the MHA
+        # keeps torch defaults (encoder AttentionPool convention).
+        for mod in (self.readout_proj, self.value_trunk, self.value_head):
+            mod.apply(self._init_weights)
+
+    @staticmethod
+    def _init_weights(m):
+        if isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=1.0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0.0)
+
+    def _readout(self, all_tokens: torch.Tensor, all_mask: torch.Tensor):
+        B = all_tokens.size(0)
+        q = self.readout_query.unsqueeze(0).expand(B, -1, -1)
+        attn_out, _ = self.readout_mha(
+            q,
+            all_tokens,
+            all_tokens,
+            key_padding_mask=~all_mask,
+            need_weights=False,
+        )
+        return self.readout_proj(
+            attn_out.reshape(B, self.readout_n_queries * self._d_token)
+        )
+
+    def forward(self, encoder_out: Dict[str, torch.Tensor]):
+        feat = self.value_trunk(
+            self._readout(encoder_out["all_tokens"], encoder_out["all_mask"])
+        )
+        return self.value_head(feat)
+
+    def sequence_values(self, encoder_out_seq: Dict[str, torch.Tensor]):
+        at = encoder_out_seq["all_tokens"]  # (B, T, N, d_token)
+        am = encoder_out_seq["all_mask"]  # (B, T, N)
+        B, T, N, d = at.shape
+        r = self._readout(at.reshape(B * T, N, d), am.reshape(B * T, N))
+        return self.value_head(self.value_trunk(r)).view(B, T)
+
+    def aux_predictions(self, *args, **kwargs):
+        raise RuntimeError(
+            "aux predictions require auxiliary heads, but the perceiver "
+            "critic is built without them."
+        )
+
+
 class RecurrentCriticNetwork(nn.Module):
     """Critic head using encoder features directly."""
 
@@ -522,6 +661,13 @@ class RecurrentCriticNetwork(nn.Module):
         feat = self.value_trunk(encoder_out["features"])
         value = self.value_head(feat)
         return value
+
+    def sequence_values(self, encoder_out_seq: Dict[str, torch.Tensor]):
+        """Values over an encoded sequence batch, (B, T). Overridable seam:
+        token-readout critics (PerceiverCriticNetwork) consume the token set
+        instead of the fused features."""
+        value_feat_bt = self.value_trunk(encoder_out_seq["features"])
+        return self.value_head(value_feat_bt).squeeze(-1)
 
     def aux_predictions(self, encoder_out: Dict[str, torch.Tensor]):
         """Return auxiliary predictions as scalars and per-seat point estimates.
@@ -1629,9 +1775,9 @@ class PPOAgent:
         )
         logits_bt = logits_flat.view(B, T, -1)
 
-        # Critic values (dedicated deep trunk, decoupled from aux adapter)
-        value_feat_bt = self.critic.value_trunk(features_bt)
-        values_bt = self.critic.value_head(value_feat_bt).squeeze(-1)
+        # Critic values (dedicated deep trunk, decoupled from aux adapter;
+        # token-readout critics override sequence_values to read all_tokens)
+        values_bt = self.critic.sequence_values(encoder_out_seq)
 
         if self.critic.has_aux_heads:
             # Auxiliary preds share the shallow critic_adapter (gradients flow to encoder)

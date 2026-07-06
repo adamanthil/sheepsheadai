@@ -581,6 +581,40 @@ class CardReasoningEncoder(nn.Module):
         blind_tok_out = all_tokens[:, 15:17, :]
         bury_tok_out = all_tokens[:, 17:19, :]
 
+        # 9-11. Pool bags, update memory, fuse features. Overridable seam:
+        # pool-free variants (PerceiverEncoder in architectures.py) replace
+        # this whole tail; the base implementation is byte-identical to the
+        # historical inline code.
+        return self._pool_fuse_update(
+            context_out,
+            hand_tok_out,
+            hand_mask,
+            trick_tok_out,
+            trick_mask,
+            blind_tok_out,
+            blind_mask,
+            bury_tok_out,
+            bury_mask,
+            memory_in,
+            all_tokens,
+            all_mask,
+        )
+
+    def _pool_fuse_update(
+        self,
+        context_out: torch.Tensor,
+        hand_tok_out: torch.Tensor,
+        hand_mask: torch.Tensor,
+        trick_tok_out: torch.Tensor,
+        trick_mask: torch.Tensor,
+        blind_tok_out: torch.Tensor,
+        blind_mask: torch.Tensor,
+        bury_tok_out: torch.Tensor,
+        bury_mask: torch.Tensor,
+        memory_in: torch.Tensor,
+        all_tokens: torch.Tensor,
+        all_mask: torch.Tensor,
+    ) -> Dict[str, torch.Tensor]:
         # 9. Pool bags
         hand_vec = self.pool_hand(hand_tok_out, hand_mask)
         trick_vec = self.pool_trick(trick_tok_out, trick_mask)
