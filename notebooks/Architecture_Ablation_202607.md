@@ -647,6 +647,19 @@ order:
   `all_tokens[:, 1, :]` (or concat with context → GRUCell(128, 256),
   +small params) as the GRU input. Not implemented; one-knob it against
   full-tokenread.
+- **Operator intent (2026-07-05), longer term:** `full-tokenread` is a
+  *probe*, not the end-state design. Its dual output (pooled bags +
+  context → 256-d trunk, PLUS raw tokens for head-side MHA) is
+  deliberately clunky — additive so the win is attributable. If the
+  probe proves the readout valuable, the operator wants a clean
+  re-architecture of the encoder rather than shipping the dual-path
+  structure: token-centric end to end (Perceiver-IO shape — encoder
+  emits tokens + recurrent state; actor AND critic each own a readout;
+  the pooled trunk disappears). Build it as a NEW registry arch and
+  ladder it against full-tokenread; it will not be
+  checkpoint-compatible with anything (fresh training only), and the
+  memory write path then needs its own summary (learned query or the
+  memory-token feed above) since fused trunk features no longer exist.
 
 ## When phase 2 lands
 
