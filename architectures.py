@@ -182,8 +182,16 @@ class PerceiverEncoder(CardReasoningEncoder):
     (~178k params) relative to the base encoder.
     """
 
-    def __init__(self, card_config: "CardEmbeddingConfig | None" = None):
-        super().__init__(card_config=card_config or CardEmbeddingConfig())
+    def __init__(
+        self, card_config: "CardEmbeddingConfig | None" = None, **encoder_kwargs
+    ):
+        # encoder_kwargs (d_token / d_model / n_reasoning_layers / ...) pass
+        # through to CardReasoningEncoder so perceiver size variants exist
+        # (the capacity-sweep knobs must be probeable on THIS base too —
+        # sweeping only `full` confounds every knob with the pool squeeze).
+        super().__init__(
+            card_config=card_config or CardEmbeddingConfig(), **encoder_kwargs
+        )
         del self.pool_hand
         del self.pool_trick
         del self.pool_blind
@@ -607,6 +615,28 @@ def _full_size_variant(
     )
 
 
+def _perceiver_size_variant(
+    name: str, description: str, **encoder_kwargs
+) -> ArchitectureSpec:
+    """A `perceiver`-shaped spec with one encoder dimension overridden.
+
+    Mirror of _full_size_variant for the token-centric base: if the
+    perceiver becomes the default architecture, capacity questions must be
+    answered on it directly — a depth/width sweep on `full` is confounded
+    by the attention-pool squeeze the perceiver removes.
+    """
+    return ArchitectureSpec(
+        name=name,
+        description=description,
+        build_encoder=lambda: PerceiverEncoder(
+            card_config=CardEmbeddingConfig(), **encoder_kwargs
+        ),
+        build_actor=_perceiver_actor,
+        build_critic=_perceiver_critic,
+        has_aux_heads=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -715,6 +745,37 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_perceiver_actor,
         build_critic=_perceiver_critic,
         has_aux_heads=False,
+    ),
+    # --- Perceiver capacity variants (one knob each, mirroring full's) ------
+    "perceiver-dtok32": _perceiver_size_variant(
+        "perceiver-dtok32",
+        "perceiver with d_token 64 -> 32 (transformer/readout width /2).",
+        d_token=32,
+    ),
+    "perceiver-dtok128": _perceiver_size_variant(
+        "perceiver-dtok128",
+        "perceiver with d_token 64 -> 128 (transformer/readout width x2).",
+        d_token=128,
+    ),
+    "perceiver-layers2": _perceiver_size_variant(
+        "perceiver-layers2",
+        "perceiver with 2 reasoning layers (depth /2).",
+        n_reasoning_layers=2,
+    ),
+    "perceiver-layers6": _perceiver_size_variant(
+        "perceiver-layers6",
+        "perceiver with 6 reasoning layers (depth x1.5).",
+        n_reasoning_layers=6,
+    ),
+    "perceiver-dmodel128": _perceiver_size_variant(
+        "perceiver-dmodel128",
+        "perceiver with d_model 256 -> 128 (memory/adapter/value width /2).",
+        d_model=128,
+    ),
+    "perceiver-dmodel512": _perceiver_size_variant(
+        "perceiver-dmodel512",
+        "perceiver with d_model 256 -> 512 (memory/adapter/value width x2).",
+        d_model=512,
     ),
     # --- Readout variant (pooling-bottleneck hypothesis) --------------------
     "full-tokenread": ArchitectureSpec(

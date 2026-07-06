@@ -457,6 +457,16 @@ class TestPerceiver(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             agent.critic.aux_predictions(enc_out)
 
+    def test_size_variants_propagate(self):
+        _seed_all(15)
+        agent = PPOAgent(len(ACTIONS), arch="perceiver-dmodel128")
+        self.assertEqual(agent.state_size, 128)
+        enc = architectures.PerceiverEncoder(d_token=128)
+        self.assertEqual(enc.d_token_dim, 128)
+        game = Game(seed=134)
+        out = enc.encode_batch([game.players[0].get_state_dict()])
+        self.assertEqual(tuple(out["all_tokens"].shape), (1, 19, 128))
+
     def test_base_critic_sequence_values_matches_inline(self):
         # The seam must be exactly the old two lines for existing archs.
         _seed_all(14)

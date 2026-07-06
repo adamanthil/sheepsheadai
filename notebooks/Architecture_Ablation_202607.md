@@ -460,6 +460,14 @@ the pooled bottleneck was binding and a readout redesign is the highest-
 value next architecture experiment; if it doesn't, the bottleneck-width
 story loses support (though the structural question stays open).
 
+*Caveat added 2026-07-06 (operator):* every knob in this sweep is
+confounded by the pool squeeze — in particular a **depth** null on `full`
+(`full-layers6` ≈ `full`) does not mean depth is useless, only that extra
+reasoning capacity doesn't survive the 4-query pools. If the perceiver
+probe wins and the base changes, rerun the sweep on the perceiver
+variants instead (registered; see the perceiver-probe playbook entry for
+the exact stage-3 swap).
+
 **Candidate variants** (registry makes each a contained `architectures.py`
 entry): (1) `full-tokenread` — cross-attention readout: the actor gets
 learned queries attending over all 19 post-reasoning tokens, fused with
@@ -742,10 +750,26 @@ check). **If perceiver wins** (> +0.07 and > 2 SE vs full): the
 contingency below activates with `perceiver` (not tokenread) as the new
 base — pause phase 2 early, rebase its arms to `perceiver` vs a
 `perceiver-with-aux` or keep full-vs-no-aux alongside a perceiver league
-arm; the operator decides the exact arm set. **If it ties**, the
-operator's own bar applies: adoption requires capability evidence, so a
-tie ⇒ keep `full` as default and let phase 2 run as designed. Paste
-report + verdict into "Results — perceiver probe".
+arm; the operator decides the exact arm set. **Also rebase the capacity
+sweep** (operator, 2026-07-06): a depth/width sweep on `full` is
+confounded by the attention-pool squeeze — extra transformer capacity
+still exits through 4-query pools, so a depth null on `full` would not
+mean depth is useless on `perceiver`. Perceiver-based one-knob variants
+are already registered (commit with `_perceiver_size_variant`; params
+412k-2.48M). The swap is one edit in
+`runs/size_sweep_202607/watch_and_launch.sh` stage 3:
+
+```
+--archs perceiver-dtok32 perceiver-dtok128 perceiver-layers2 \
+        perceiver-layers6 perceiver-dmodel128 perceiver-dmodel512
+```
+
+(baseline for the report is then the perceiver@200k probe rows: use
+`--extra-results runs/perceiver_202607/results.csv --baseline perceiver`.)
+**If it ties**, the operator's own bar applies: adoption requires
+capability evidence, so a tie ⇒ keep `full` as default, let phase 2 run
+as designed, and keep the full-based sweep. Paste report + verdict into
+"Results — perceiver probe".
 
 ## When phase 2 lands
 
