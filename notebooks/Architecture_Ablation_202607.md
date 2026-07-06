@@ -308,6 +308,12 @@ full/no-aux extension, then probes + PANEL-A →
 `runs/ablation_202607/panel_a_onehot200k_{called,jd}.csv`.
 Runner: `runs/ablation_202607/onehot_control_200k.sh`.
 
+*Update 2026-07-05 22:00: the first launch was paused at ~129k gen-1
+episodes (operator prioritized the full-tokenread probe; attempt archived
+at `runs/phase2_202607/aborted_gen1_20260705/`). Phase 2 restarts from
+scratch as stage 1 of the chained watcher once the probe finishes —
+everything below is unchanged except the dates.*
+
 **Phase 2** (terminal-reward league regime; ~6 days): `full` vs `no-aux`,
 one arm each, both seeded from their s42 200k self-play finals, run
 concurrently with 4 workers each. Budget: **2 generations × 750k = 1.5M
@@ -454,16 +460,62 @@ the pooled bottleneck was binding and a readout redesign is the highest-
 value next architecture experiment; if it doesn't, the bottleneck-width
 story loses support (though the structural question stays open).
 
-**Candidate variant if the question becomes live** (registry makes each a
-contained `architectures.py` entry): (1) `full-tokenread` — per-head
-cross-attention readout: the actor adapter gets learned queries attending
-over all 19 post-reasoning tokens, concatenated with the pooled features
-(Perceiver-style; the direct fix). (2) wider pools — parameterize
+**Candidate variants** (registry makes each a contained `architectures.py`
+entry): (1) `full-tokenread` — cross-attention readout: the actor gets
+learned queries attending over all 19 post-reasoning tokens, fused with
+the pooled features (Perceiver-style; the direct fix) — **implemented
+2026-07-05 (commit a019b9f) and running as its own probe, see the
+"full-tokenread probe" section below**. (2) wider pools — parameterize
 `AttentionPool.n_queries` (4→8) — cheapest capacity fix inside the same
 structure. (3) richer memory — feed the GRU the fused 256-dim features
 instead of the 64-dim context token (the `PooledMemoryEncoder` seam
 `_fuse_and_update_memory` already exists for exactly this kind of
-rerouting). None are implemented; do not conflate with the queued sweep.
+rerouting). (2) and (3) are not implemented.
+
+## full-tokenread probe (launched 2026-07-05 21:32 — runs FIRST)
+
+**Priority call by the operator:** run this before everything else queued,
+pausing phase 2 (its gen-1 arms were ~129k/750k episodes in; archived to
+`runs/phase2_202607/aborted_gen1_20260705/` and restarted from scratch
+afterward so the anchor-to-resume-checkpoint semantics stay exactly as
+pre-registered).
+
+**Design** (`full-tokenread`, commit a019b9f): `full` plus a
+cross-attention readout in the actor — 4 learned queries × 4 heads
+(mirroring `AttentionPool`'s internals) attend over all **19**
+post-reasoning tokens; the flattened result is projected to 256 and fused
+(`Linear(512→256)+SiLU`) with the adapted trunk features before every
+head. Everything else — encoder weights, critic, aux heads, and the
+**memory recurrence** (context token → `GRUCell` → 256-d state →
+`memory_in_proj` → next step's 64-d memory token) — is identical to
+`full`; the encoder variant adds zero parameters and its standard outputs
+are byte-identical (test-pinned). Note the readout also attends to the
+post-reasoning *memory token*, which the base architecture computes and
+then discards. Params: 1,217,623 vs full 1,003,607 (+214k, actor only).
+
+**What it tests:** whether the per-bag attention-pool squeeze (hand→64,
+trick→64, blind→32, bury→32 dims) between the token stack and the heads is
+what's holding `full` at onehot-ff's level — readout *structure* at fixed
+trunk width. The sweep's `full-dmodel512` tests *width*; together they
+triangulate the bottleneck question.
+
+**Protocol:** 3 seeds {42, 1042, 2042} × 200k episodes, shaped self-play,
+identical to the main matrix — CRN-paired with the existing full@200k runs
+(same seeds ⇒ same deals). Runner: stage 0 of
+`runs/size_sweep_202607/watch_and_launch.sh`; auto-report at
+`runs/tokenread_202607/report.md` (delta-vs-`full` table merges the
+existing full@200k rows).
+
+**Pre-registered interpretation:** delta vs `full` (PANEL-A both-modes,
+3 seeds) > +0.07 MDE and > 2 seed-level SE ⇒ the pooling readout is a real
+bottleneck — prefer `full-tokenread` for future runs and consider variants
+(2)/(3). Within ±0.07 ⇒ readout structure is not the binding constraint at
+this budget/regime; the onehot tie is then more likely a regime property
+(shaped ≤200k self-play doesn't reward fine-grained state) — the phase-2
+league arms become the operative test. Worse by > 0.07 ⇒ the extra actor
+capacity hurts at this budget (optimization, not representation). Same
+caveats as the whole matrix: shaped rewards, 200k horizon, watch the slope
+table before calling a plateau (the onehot lesson).
 
 ## Results — onehot 200k control
 
@@ -490,6 +542,12 @@ league arm mirroring phase 2 (arm 3 in the Phase 2 section above) runs
 automatically after the full/no-aux arms finish and before the capacity
 sweep — it settles onehot-vs-full where it counts.
 
+## Results — full-tokenread probe
+
+*(pending — `runs/tokenread_202607/report.md` is generated automatically;
+apply the pre-registered interpretation in the probe section above and
+paste here)*
+
 ## Results — phase 2
 
 *(pending)*
@@ -514,23 +572,28 @@ committed tools.**
 | item | what | ETA | completion signal |
 |---|---|---|---|
 | onehot 200k control | 3 self-play resumes + probes + PANEL-A | DONE 2026-07-05 18:36 | `ONEHOT CONTROL COMPLETE` in `runs/ablation_202607/onehot_control.log` |
-| phase 2 (arms 1-2) | `full` vs `no-aux` league runs, 2×750k eps each | ~2026-07-11 | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
-| phase 2 arm 3 | `onehot-ff` league run, 2×750k eps, solo on machine | ~1.5-3 days after arms 1-2 (~2026-07-13; onehot is much cheaper per episode — check `runs/phase2_onehot-ff/checkpoints/` for progress) | `PHASE2 ONEHOT ARM COMPLETE` in `runs/phase2_202607/phase2_onehot.log` |
-| capacity sweep | auto-launches when arm 3 exits (watcher) | ~2-3 days after arm 3 (~2026-07-16) | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
+| stage 0: tokenread probe | `full-tokenread` 3×200k self-play + PANEL-A + auto-report | ~1-1.5 days (~2026-07-07) | `STAGE 0 (TOKENREAD) COMPLETE` in `runs/size_sweep_202607/watcher.log`; report at `runs/tokenread_202607/report.md` |
+| stage 1: phase 2 arms 1-2 | `full` vs `no-aux` league runs, 2×750k eps each (restarted fresh after the pause) | ~6 days after stage 0 (~2026-07-13) | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
+| stage 2: phase 2 arm 3 | `onehot-ff` league run, 2×750k eps, solo on machine | ~1.5-3 days after stage 1 (~2026-07-15; check `runs/phase2_onehot-ff/checkpoints/` for progress) | `PHASE2 ONEHOT ARM COMPLETE` in `runs/phase2_202607/phase2_onehot.log` |
+| stages 3-4: capacity sweep | 6 size variants × 3 seeds × 200k + auto-report | ~2-3 days after stage 2 (~2026-07-18) | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
 
 The whole chain is driven by one detached watcher
-(`runs/size_sweep_202607/watch_and_launch.sh`, relaunched 2026-07-05 pid
-5287): phase2.sh → phase2_onehot.sh → capacity sweep → report. Progress:
-`tail runs/size_sweep_202607/watcher.log`.
+(`runs/size_sweep_202607/watch_and_launch.sh`, rewritten + relaunched
+2026-07-05 22:00): tokenread probe → phase2.sh → phase2_onehot.sh →
+capacity sweep → report. Progress: `tail
+runs/size_sweep_202607/watcher.log`. The first phase-2 attempt (paused
+2026-07-05 at ~129k eps for the tokenread probe) is archived at
+`runs/phase2_202607/aborted_gen1_20260705/` and feeds nothing.
 
 **If the machine reboots or something dies**, everything is resumable:
 - the whole chain: `nohup zsh runs/size_sweep_202607/watch_and_launch.sh
-  > /dev/null 2>&1 & disown` — completed stages are skipped (stage-2 per
-  generation; stage-3 per job). Only caveat: a league generation that died
-  *mid-run* restarts from its last `--resume` point, i.e. the generation
-  start; to salvage partial progress instead, edit the arm script's
-  `--resume` to the newest `runs/phase2_<arch>/checkpoints/
-  pfsp_<arch>_checkpoint_*.pt` and reduce `--main-episodes` accordingly.
+  > /dev/null 2>&1 & disown` — completed stages are skipped (stages 0/3
+  per job via the orchestrator; stage 1 via `PHASE2 COMPLETE`; stage 2 per
+  generation). Only caveat: a league generation that died *mid-run*
+  restarts from its last `--resume` point, i.e. the generation start; to
+  salvage partial progress instead, edit the arm script's `--resume` to
+  the newest `runs/phase2_<arch>/checkpoints/pfsp_<arch>_checkpoint_*.pt`
+  and reduce `--main-episodes` accordingly.
 - phase 2 arms 1-2 alone: `zsh runs/phase2_202607/phase2.sh` (same caveat).
 - arm 3 alone: `zsh runs/phase2_202607/phase2_onehot.sh`.
 - onehot control: `zsh runs/ablation_202607/onehot_control_200k.sh`.
@@ -542,6 +605,20 @@ reading was wrong; conclusion #1 amended (see the onehot-control results
 section). The recommended next experiment is an **onehot-ff league arm**
 mirroring phase 2 (exact commands in that section) — it settles
 onehot-vs-full in the regime that matters.
+
+## When the tokenread probe lands (~2026-07-07)
+
+1. Open `runs/tokenread_202607/report.md` (auto-generated; merges the
+   existing full@200k rows as the baseline).
+2. Read the `full-tokenread` row of the delta-vs-`full` table and apply
+   the pre-registered interpretation in the "full-tokenread probe"
+   section verbatim (> +0.07 and > 2 SE ⇒ pooling bottleneck real; ±0.07
+   ⇒ structure not binding here, league arms decide; < −0.07 ⇒ extra
+   capacity hurts at this budget).
+3. Check the slope table: if full-tokenread is still climbing > 1 SE
+   while `full` was flat at 200k, the endpoint understates it (onehot
+   lesson) — say so next to the verdict.
+4. Paste report + verdict into "Results — full-tokenread probe".
 
 ## When phase 2 lands
 
