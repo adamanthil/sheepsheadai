@@ -651,6 +651,20 @@ s2042 −0.115.
   no extension run: the perceiver probe answers the underlying question
   more cleanly than +100k of a deliberately-clunky probe arm would.
 
+### Post-hoc contrast: tokenread vs onehot-ff at 200k (suggestive only)
+
+Seed-paired PANEL-A both-modes means (onehot from
+`panel_a_onehot200k_{called,jd}.csv`): s42 +0.093, s1042 +0.014,
+s2042 +0.066 in tokenread's favor — **+0.057 ± 0.023 seed-SE, same sign
+in all three seeds**: the first consistent separation any token
+architecture has shown over the dense FF net (plain `full` vs onehot
+remains a wash, −0.233 vs −0.247). NOT pre-registered, under the 0.07
+MDE, n=3 — treat as suggestive. Its specific shape (tokens pay only when
+a head reads them directly, not through pools) is exactly the perceiver
+thesis; the perceiver probe and the phase-2 onehot league arm are the
+decisive tests. Cost caveat: onehot trains several× faster than full,
+tokenread ~2× slower — evidence-per-compute still favors onehot.
+
 ## Results — perceiver probe
 
 *(pending — `runs/perceiver_202607/report.md` is generated automatically;
