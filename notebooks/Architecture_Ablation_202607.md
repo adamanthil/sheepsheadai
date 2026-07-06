@@ -572,10 +572,10 @@ committed tools.**
 | item | what | ETA | completion signal |
 |---|---|---|---|
 | onehot 200k control | 3 self-play resumes + probes + PANEL-A | DONE 2026-07-05 18:36 | `ONEHOT CONTROL COMPLETE` in `runs/ablation_202607/onehot_control.log` |
-| stage 0: tokenread probe | `full-tokenread` 3×200k self-play + PANEL-A + auto-report | ~1-1.5 days (~2026-07-07) | `STAGE 0 (TOKENREAD) COMPLETE` in `runs/size_sweep_202607/watcher.log`; report at `runs/tokenread_202607/report.md` |
-| stage 1: phase 2 arms 1-2 | `full` vs `no-aux` league runs, 2×750k eps each (restarted fresh after the pause) | ~6 days after stage 0 (~2026-07-13) | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
-| stage 2: phase 2 arm 3 | `onehot-ff` league run, 2×750k eps, solo on machine | ~1.5-3 days after stage 1 (~2026-07-15; check `runs/phase2_onehot-ff/checkpoints/` for progress) | `PHASE2 ONEHOT ARM COMPLETE` in `runs/phase2_202607/phase2_onehot.log` |
-| stages 3-4: capacity sweep | 6 size variants × 3 seeds × 200k + auto-report | ~2-3 days after stage 2 (~2026-07-18) | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
+| stage 0: tokenread probe | `full-tokenread` 3×200k self-play + PANEL-A + auto-report | **~2026-07-06 morning** (full@200k measured 7.0-7.5 h/run at ~7.4-8.0 eps/s under the same 1-core-per-job conditions; tokenread ≈ +10-20% compute ⇒ ~8-9.5 h training + ~1-2 h probes/panel/report) | `STAGE 0 (TOKENREAD) COMPLETE` in `runs/size_sweep_202607/watcher.log`; report at `runs/tokenread_202607/report.md` |
+| stage 1: phase 2 arms 1-2 | `full` vs `no-aux` league runs, 2×750k eps each (restarted fresh after the pause) | ~6 days after stage 0 (~2026-07-12) | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
+| stage 2: phase 2 arm 3 | `onehot-ff` league run, 2×750k eps, solo on machine | ~1.5-3 days after stage 1 (~2026-07-14; check `runs/phase2_onehot-ff/checkpoints/` for progress) | `PHASE2 ONEHOT ARM COMPLETE` in `runs/phase2_202607/phase2_onehot.log` |
+| stages 3-4: capacity sweep | 6 size variants × 3 seeds × 200k + auto-report | ~2-3 days after stage 2 (~2026-07-17) | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
 
 The whole chain is driven by one detached watcher
 (`runs/size_sweep_202607/watch_and_launch.sh`, rewritten + relaunched
@@ -619,6 +619,34 @@ onehot-vs-full in the regime that matters.
    while `full` was flat at 200k, the endpoint understates it (onehot
    lesson) — say so next to the verdict.
 4. Paste report + verdict into "Results — full-tokenread probe".
+
+**CONTINGENCY if the verdict is "bottleneck real" (tokenread > full by
+> 0.07 and > 2 SE)** — operator decision (2026-07-05): subsequent
+experiments should move to the winning architecture. Concretely, in cost
+order:
+- *Phase 2 will be only hours into gen 1* when the report lands (stage 1
+  starts right after stage 0). Pausing it again is cheap: kill the
+  phase2.sh shells + the two train_league_ppo processes, archive
+  `runs/phase2_full` / `runs/phase2_no-aux` next to
+  `aborted_gen1_20260705/`, and re-plan arms before relaunching. The
+  natural redesign keeps the aux question paired on the new base:
+  `full-tokenread` vs a `tokenread-no-aux` variant (one registry entry:
+  `build_critic=_no_aux_critic, has_aux_heads=False` on the tokenread
+  encoder/actor) — plus the onehot arm unchanged as the cost baseline.
+  Warm-start ckpt for a tokenread league arm:
+  `runs/ablate_full-tokenread_s42/final_full-tokenread.pt`.
+- The capacity sweep's variants are `full`-based; if tokenread wins they
+  answer "is `full` the right size" but not "is `full-tokenread` the
+  right size" — still useful (width vs structure triangulation), keep or
+  drop by taste/time.
+- Next architecture step already sketched by the operator: feed the
+  post-reasoning MEMORY token into the GRU (today the GRU input is the
+  post-reasoning *context* token and the post-reasoning memory token is
+  discarded). Zero new params (same 64-d input width): a
+  TokenReadEncoder subclass overriding `_fuse_and_update_memory` to use
+  `all_tokens[:, 1, :]` (or concat with context → GRUCell(128, 256),
+  +small params) as the GRU input. Not implemented; one-knob it against
+  full-tokenread.
 
 ## When phase 2 lands
 
