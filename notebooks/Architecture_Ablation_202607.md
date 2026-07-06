@@ -766,6 +766,21 @@ are already registered (commit with `_perceiver_size_variant`; params
 
 (baseline for the report is then the perceiver@200k probe rows: use
 `--extra-results runs/perceiver_202607/results.csv --baseline perceiver`.)
+**Also rebuild the oracle critic** (operator, 2026-07-06): `oracle.py`'s
+`OracleCriticEncoder` mirrors `full`'s pooled design (five AttentionPools
+incl. `pool_opp` squeezing 18 opponent-held-card tokens into 64 dims, plus
+a fusion MLP). No oracle training has happened and no checkpoint
+compatibility exists, so if the pool-free design is adopted, mirror it
+before the long oracle run: delete the five pools + fusion MLP, add an MHA
+readout (4 learned queries × 4 heads, same modules as
+`PerceiverCriticNetwork` in ppo.py) over all ~37 post-reasoning tokens
+(opponent-hand tokens then reach the value trunk unsqueezed), feed the
+memory GRU the post-reasoning MEMORY token. Verify with the existing
+oracle unit tests + trainer smoke. If perceiver TIES, keep the pooled
+oracle as-built and instead watch oracle value loss / explained variance
+in the first oracle run — full information makes its target nearly
+deterministic given the policies, so persistent underfit there (and only
+that) is the evidence that the pools bind the critic; upgrade then.
 **If it ties**, the operator's own bar applies: adoption requires
 capability evidence, so a tie ⇒ keep `full` as default, let phase 2 run
 as designed, and keep the full-based sweep. Paste report + verdict into
