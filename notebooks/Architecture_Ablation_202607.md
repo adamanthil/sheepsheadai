@@ -616,9 +616,40 @@ sweep — it settles onehot-vs-full where it counts.
 
 ## Results — full-tokenread probe
 
-*(pending — `runs/tokenread_202607/report.md` is generated automatically;
-apply the pre-registered interpretation in the probe section above and
-paste here)*
+**Landed 2026-07-06 (matrix 17.2h, 3/3 seeds OK). Verdict: NULL by the
+pre-registered rule — the readout did not beat `full` by > +0.07 and
+> 2 SE, so the pooling bottleneck is NOT demonstrated in this regime.**
+Per the one-sided-probe logic this is ambiguous, not exculpatory; the
+`perceiver` probe (running next) is the fair test of the token-centric
+design.
+
+From `runs/tokenread_202607/report.md`:
+
+| arch | PANEL-A called | PANEL-A jd | both | eps/s |
+|---|---|---|---|---|
+| full | −0.249 ± 0.047 | −0.216 ± 0.039 | −0.233 | 7.6 |
+| full-tokenread | −0.194 ± 0.048 | −0.185 ± 0.142 | **−0.189** | 3.9 |
+
+Delta vs full = **+0.043, seed-level SE 0.059** — inside the ±0.07 null
+band, not > 2 SE. Tokenread cost ~2× the wall-clock per episode for a
+within-noise gain: not adoptable on this evidence (and it was always a
+probe, not a candidate — the clean end-state is `perceiver`).
+
+Per-seed diagnostics (both-modes mean): s42 −0.159, s1042 −0.294,
+s2042 −0.115.
+
+- **s1042 = the documented pathology seed**: pick/partner/bury entropies
+  locked at exactly 0.000 mid-run (dual-path optimization instability);
+  it finished worst on every yardstick and drives the jd seed-std (0.142).
+  Supports the "dual-path probe is noisy" caveat, but the headline verdict
+  uses all three seeds as pre-registered.
+- **s2042 trump-lead canary hot**: 20.9% jd / 17.6% called at 200k (full
+  s42 canary was 10.6%) — the leak got *worse* under the readout for that
+  seed.
+- **Still-climbing flag**: last-20k slope vs selfplay-100k = +0.201 ±
+  0.120 (> 1 SE) — the 200k endpoint may understate tokenread. Noted, but
+  no extension run: the perceiver probe answers the underlying question
+  more cleanly than +100k of a deliberately-clunky probe arm would.
 
 ## Results — perceiver probe
 
