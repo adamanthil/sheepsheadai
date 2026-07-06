@@ -517,6 +517,70 @@ capacity hurts at this budget (optimization, not representation). Same
 caveats as the whole matrix: shaped rewards, 200k horizon, watch the slope
 table before calling a plateau (the onehot lesson).
 
+**Epistemics amendment (2026-07-06, before results):** this probe is
+**one-sided** for the Perceiver-IO redesign question. A *win* is strong
+evidence the pools discard policy-relevant information. A *tie/loss* is
+ambiguous between four readings: pools fine / dual-path optimization
+pathology / critic still trunk-bound (GAE advantages computed from pooled
+features can't resolve distinctions the actor could represent) / regime
+doesn't reward it. **In-flight evidence for the pathology reading:**
+s1042's pick/partner/bury entropies hit exactly 0.000 (other runs of both
+archs: 0.004-0.006) with its scripted edge flat at −0.45..−0.49 from
+50k→150k, while `full` on the same seed and deals recovered −0.75 → −0.06
+— premature deterministic lock-in of the bidding heads. One seed proves
+nothing, but treat a tokenread null as NOT falsifying the redesign — the
+`perceiver` probe below is the fair test. (If the additive design is ever
+iterated: zero-init the readout projection so the new path starts inert.)
+
+## perceiver probe (launched 2026-07-06 — the fair Perceiver-IO test)
+
+**Why (operator + assistant, Jul-6):** the tokenread probe can't test the
+redesign's expressive potential (see amendment above), and after Jul-7
+nobody can build the clean architecture. So it was built and queued as
+stage 0.5, before the phase-2 restart.
+
+**Design** (`perceiver`, commit 365a7de): token-centric end to end.
+Shared: embeddings + token MLPs + 4-layer transformer + recurrence. Gone:
+all four per-bag attention pools and the fused 256-d feature trunk.
+- **Actor** (`PerceiverActorNetwork`): 4 learned queries × 4 heads attend
+  over the 19 post-reasoning tokens → project to 256 → the standard
+  actor_adapter → the existing pick/partner/two-tower/pointer heads. It
+  ignores trunk features entirely (test-pinned).
+- **Critic** (`PerceiverCriticNetwork`): its own independent 4-query
+  readout → the same deep value-trunk shape as before → value. No aux
+  heads (aux was ~null under shaping; compare against `no-aux` as well
+  as `full`).
+- **Memory** (operator's design): the GRU input is the post-reasoning
+  **memory token** — the transformer's own "what to remember" slot, which
+  the old architecture computed and discarded (its GRU read the *context*
+  token). Same GRUCell(64, 256), zero parameter change; the state
+  re-enters next step via `memory_in_proj` as always.
+- **Params: 873,678** — *smaller* than full (1,003,607): the two readouts
+  (+~170k) cost less than the pools + trunk they replace (−~300k).
+
+**Protocol:** identical to the tokenread probe — 3 seeds {42, 1042, 2042}
+× 200k shaped self-play, CRN-paired with full@200k; auto-report at
+`runs/perceiver_202607/report.md`.
+
+**Pre-registered interpretation** (PANEL-A both-modes vs `full`, also read
+the `no-aux` row since perceiver has no aux heads):
+- **> +0.07 and > 2 SE ⇒ the redesign wins** — adopt `perceiver` as the
+  base for subsequent experiments (operator's stated intent) and rebase
+  phase 2 per the contingency below.
+- **Within ±0.07 ⇒ capability advantage NOT demonstrated** at this
+  budget/regime (remember: onehot also ties here — a tie is weak
+  evidence). Adopting anyway is a simplicity/cost call (~13% fewer
+  params), not an evidence call; the operator set "justified by evidence
+  that it is more capable" as the bar, so a tie means DON'T adopt yet —
+  the league regime or longer horizons would have to justify it.
+- **< −0.07 ⇒ the redesign underperforms** at this budget; keep `full`,
+  and note whether the failure is optimization (check per-seed entropy
+  collapse à la tokenread s1042) or representation (all seeds uniformly
+  worse, healthy entropies).
+- Stability check either way: per-seed pick-head entropy in each
+  `runs/ablate_perceiver_s*/train.log` (grep "Entropy - pick") — exactly
+  0.000 early = the lock-in failure mode; flag that seed.
+
 ## Results — onehot 200k control
 
 Completed 2026-07-05 18:36. PANEL-A both-modes per seed: s42 −0.251,
@@ -548,6 +612,12 @@ sweep — it settles onehot-vs-full where it counts.
 apply the pre-registered interpretation in the probe section above and
 paste here)*
 
+## Results — perceiver probe
+
+*(pending — `runs/perceiver_202607/report.md` is generated automatically;
+apply the pre-registered interpretation in the perceiver section above,
+including the per-seed entropy stability check, and paste here)*
+
 ## Results — phase 2
 
 *(pending)*
@@ -572,24 +642,25 @@ committed tools.**
 | item | what | ETA | completion signal |
 |---|---|---|---|
 | onehot 200k control | 3 self-play resumes + probes + PANEL-A | DONE 2026-07-05 18:36 | `ONEHOT CONTROL COMPLETE` in `runs/ablation_202607/onehot_control.log` |
-| stage 0: tokenread probe | `full-tokenread` 3×200k self-play + PANEL-A + auto-report | **~2026-07-06 morning** (full@200k measured 7.0-7.5 h/run at ~7.4-8.0 eps/s under the same 1-core-per-job conditions; tokenread ≈ +10-20% compute ⇒ ~8-9.5 h training + ~1-2 h probes/panel/report) | `STAGE 0 (TOKENREAD) COMPLETE` in `runs/size_sweep_202607/watcher.log`; report at `runs/tokenread_202607/report.md` |
-| stage 1: phase 2 arms 1-2 | `full` vs `no-aux` league runs, 2×750k eps each (restarted fresh after the pause) | ~6 days after stage 0 (~2026-07-12) | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
-| stage 2: phase 2 arm 3 | `onehot-ff` league run, 2×750k eps, solo on machine | ~1.5-3 days after stage 1 (~2026-07-14; check `runs/phase2_onehot-ff/checkpoints/` for progress) | `PHASE2 ONEHOT ARM COMPLETE` in `runs/phase2_202607/phase2_onehot.log` |
-| stages 3-4: capacity sweep | 6 size variants × 3 seeds × 200k + auto-report | ~2-3 days after stage 2 (~2026-07-17) | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
+| stage 0: tokenread probe | `full-tokenread` 3×200k self-play + PANEL-A + auto-report | ~2026-07-06 late afternoon (measured ~3.7-4.3 eps/s train — the token readout makes the PPO update ~1.9× costlier than full's 7.4-8.0 eps/s) | `STAGE 0 (TOKENREAD) COMPLETE` in `runs/size_sweep_202607/watcher.log`; report at `runs/tokenread_202607/report.md` |
+| stage 0.5: perceiver probe | `perceiver` 3×200k self-play + PANEL-A + auto-report | ~14-17 h after stage 0 (~2026-07-07 morning/noon) | `STAGE 0.5 (PERCEIVER) COMPLETE` in `runs/size_sweep_202607/watcher.log`; report at `runs/perceiver_202607/report.md` |
+| stage 1: phase 2 arms 1-2 | `full` vs `no-aux` league runs, 2×750k eps each (restarted fresh after the pause) | ~6 days after stage 0.5 (~2026-07-13) | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
+| stage 2: phase 2 arm 3 | `onehot-ff` league run, 2×750k eps, solo on machine | ~1.5-3 days after stage 1 (~2026-07-15; check `runs/phase2_onehot-ff/checkpoints/` for progress) | `PHASE2 ONEHOT ARM COMPLETE` in `runs/phase2_202607/phase2_onehot.log` |
+| stages 3-4: capacity sweep | 6 size variants × 3 seeds × 200k + auto-report | ~2-3 days after stage 2 (~2026-07-18) | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
 
 The whole chain is driven by one detached watcher
 (`runs/size_sweep_202607/watch_and_launch.sh`, rewritten + relaunched
-2026-07-05 22:00): tokenread probe → phase2.sh → phase2_onehot.sh →
-capacity sweep → report. Progress: `tail
+2026-07-06 ~10:15): tokenread probe → perceiver probe → phase2.sh →
+phase2_onehot.sh → capacity sweep → report. Progress: `tail
 runs/size_sweep_202607/watcher.log`. The first phase-2 attempt (paused
 2026-07-05 at ~129k eps for the tokenread probe) is archived at
 `runs/phase2_202607/aborted_gen1_20260705/` and feeds nothing.
 
 **If the machine reboots or something dies**, everything is resumable:
 - the whole chain: `nohup zsh runs/size_sweep_202607/watch_and_launch.sh
-  > /dev/null 2>&1 & disown` — completed stages are skipped (stages 0/3
-  per job via the orchestrator; stage 1 via `PHASE2 COMPLETE`; stage 2 per
-  generation). Only caveat: a league generation that died *mid-run*
+  > /dev/null 2>&1 & disown` — completed stages are skipped (stages
+  0/0.5/3 per job via the orchestrator; stage 1 via `PHASE2 COMPLETE`;
+  stage 2 per generation). Only caveat: a league generation that died *mid-run*
   restarts from its last `--resume` point, i.e. the generation start; to
   salvage partial progress instead, edit the arm script's `--resume` to
   the newest `runs/phase2_<arch>/checkpoints/pfsp_<arch>_checkpoint_*.pt`
@@ -660,6 +731,21 @@ order:
   checkpoint-compatible with anything (fresh training only), and the
   memory write path then needs its own summary (learned query or the
   memory-token feed above) since fused trunk features no longer exist.
+
+## When the perceiver probe lands (~2026-07-07)
+
+Same mechanical recipe as the tokenread probe, using
+`runs/perceiver_202607/report.md` and the pre-registered interpretation
+in the "perceiver probe" section (including the per-seed
+`grep "Entropy - pick" runs/ablate_perceiver_s*/train.log` stability
+check). **If perceiver wins** (> +0.07 and > 2 SE vs full): the
+contingency below activates with `perceiver` (not tokenread) as the new
+base — pause phase 2 early, rebase its arms to `perceiver` vs a
+`perceiver-with-aux` or keep full-vs-no-aux alongside a perceiver league
+arm; the operator decides the exact arm set. **If it ties**, the
+operator's own bar applies: adoption requires capability evidence, so a
+tie ⇒ keep `full` as default and let phase 2 run as designed. Paste
+report + verdict into "Results — perceiver probe".
 
 ## When phase 2 lands
 
