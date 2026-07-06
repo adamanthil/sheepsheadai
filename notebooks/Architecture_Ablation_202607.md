@@ -345,6 +345,29 @@ shaped signal is gone (terminal reward) — the fair test the self-play arms
 couldn't give; (b) whether the self-play ceiling ordering survives the
 league regime; (c) per-arm exploitability.
 
+**Arm 3: onehot-ff (queued 2026-07-05, runs after the full/no-aux arms
+finish).** Added the day the 200k control landed (see "Results — onehot
+200k control"): onehot-ff tied `full` at every matched self-play budget,
+so the league/terminal regime is now the *decisive* onehot-vs-full test —
+if the token/transformer stack has real value, this is where it must show.
+Identical recipe, `--arch onehot-ff --resume
+runs/ablate_onehot-ff_s42/final_onehot-ff.pt`, run solo on the whole
+machine (still 4 workers for recipe identity). Runner:
+`runs/phase2_202607/phase2_onehot.sh` (restartable; skips finished
+generations), chained automatically by
+`runs/size_sweep_202607/watch_and_launch.sh` between phase 2 and the
+capacity sweep. It ends by re-running PANEL-A over **all three** phase-2
+finals in one paired gauntlet →
+`runs/phase2_202607/panel_a_all3_{called,jd}.csv` (supersedes the
+2-candidate `panel_a_{called,jd}.csv` from phase2.sh; CRN makes them
+consistent, the all3 files just put every arm in one table).
+Pre-registered interpretation is in the script header: onehot within the
+0.07 MDE of `phase2_full` ⇒ the token stack has no demonstrated value at
+≤ 1.5M league episodes and the default architecture should be revisited on
+cost grounds (~5× cheaper); `full` ahead by > 0.07 and > 2 SE ⇒ the
+stack's edge lives in the terminal/league regime. Single seed per arm —
+treat sub-0.07 orderings as noise.
+
 ## Phase 3: capacity sweep (queued, auto-launches after phase 2)
 
 **Why:** the ladder validated the *components* of `full`, but every
@@ -401,6 +424,47 @@ from `runs/ablation_202607/results_200k_panel.csv` — that file carries the
   horizons — the right follow-up is extending the climbing arm, not
   concluding "same".
 
+### What this sweep does NOT probe: the pooling readout (open question)
+
+Raised 2026-07-05 (operator): could the attention-pooling stage between
+the token stack and the shared trunk be *throwing away* the rich
+embeddings' advantage — explaining why onehot-ff ties full? The
+architecture facts (encoder.py):
+
+- After transformer reasoning over all 19 tokens (context, memory, 8 hand,
+  5 trick, 2 blind, 2 bury; d_token 64), each bag is compressed by an
+  `AttentionPool` with **4 learned queries × 4 heads (hardcoded,
+  encoder.py:92-93)**: hand → 64 dims, trick → 64, blind → 32, bury → 32;
+  concat with the 64-dim context token → 256 trunk features. Everything
+  the pick/partner/call heads and the critic see passes through this.
+- The recurrent memory is even tighter: `memory_gru` input is the **64-dim
+  context token alone** (encoder.py:615) — all cross-trick history must
+  squeeze through one token.
+- The only unmediated token access is the pointer head (play/bury/under
+  scores see post-reasoning hand tokens directly, ppo.py:129), but its
+  situation-conditioning `Wg(feat)` still comes from the pooled trunk.
+
+**Sweep coverage:** `full-dmodel128/512` scale the pool *output* widths
+proportionally (`d_model//4`, `//8`) — the closest existing probe, but
+conflated with trunk/GRU width by design (one-knob). `full-dtok32/128`
+scale the pool inputs/queries. The query count (4) and the *structure*
+(pooling vs direct token readout by the heads) are NOT probed.
+Diagnostic reading: if `full-dmodel512` beats `full` (> 0.07), capacity at
+the pooled bottleneck was binding and a readout redesign is the highest-
+value next architecture experiment; if it doesn't, the bottleneck-width
+story loses support (though the structural question stays open).
+
+**Candidate variant if the question becomes live** (registry makes each a
+contained `architectures.py` entry): (1) `full-tokenread` — per-head
+cross-attention readout: the actor adapter gets learned queries attending
+over all 19 post-reasoning tokens, concatenated with the pooled features
+(Perceiver-style; the direct fix). (2) wider pools — parameterize
+`AttentionPool.n_queries` (4→8) — cheapest capacity fix inside the same
+structure. (3) richer memory — feed the GRU the fused 256-dim features
+instead of the 64-dim context token (the `PooledMemoryEncoder` seam
+`_fuse_and_update_memory` already exists for exactly this kind of
+rerouting). None are implemented; do not conflate with the queued sweep.
+
 ## Results — onehot 200k control
 
 Completed 2026-07-05 18:36. PANEL-A both-modes per seed: s42 −0.251,
@@ -421,11 +485,10 @@ The earlier "full-family blows past onehot by 200k" compared unequal
 budgets and is retracted (the Conclusions section below is amended
 accordingly). All three arms are still climbing at 200k; the regimes where
 the token stack should matter most (terminal reward, long-horizon league)
-remain untested for onehot — phase 2 covers only full/no-aux. **Optional
-follow-up for the operator:** an onehot-ff league arm mirroring phase 2
-(same commands with `--arch onehot-ff --resume
-runs/ablate_onehot-ff_s42/final_onehot-ff.pt`) would settle onehot-vs-full
-where it counts.
+remain untested for onehot. **Follow-up QUEUED same day:** an onehot-ff
+league arm mirroring phase 2 (arm 3 in the Phase 2 section above) runs
+automatically after the full/no-aux arms finish and before the capacity
+sweep — it settles onehot-vs-full where it counts.
 
 ## Results — phase 2
 
@@ -450,19 +513,26 @@ committed tools.**
 
 | item | what | ETA | completion signal |
 |---|---|---|---|
-| onehot 200k control | 3 self-play resumes + probes + PANEL-A | hours (2026-07-05 evening) | `ONEHOT CONTROL COMPLETE` in `runs/ablation_202607/onehot_control.log` |
-| phase 2 | `full` vs `no-aux` league runs, 2×750k eps each | ~2026-07-11 | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
-| capacity sweep | auto-launches when phase 2 exits (watcher) | ~2 days after phase 2 | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
+| onehot 200k control | 3 self-play resumes + probes + PANEL-A | DONE 2026-07-05 18:36 | `ONEHOT CONTROL COMPLETE` in `runs/ablation_202607/onehot_control.log` |
+| phase 2 (arms 1-2) | `full` vs `no-aux` league runs, 2×750k eps each | ~2026-07-11 | `PHASE2 COMPLETE` in `runs/phase2_202607/phase2.log` |
+| phase 2 arm 3 | `onehot-ff` league run, 2×750k eps, solo on machine | ~1.5-3 days after arms 1-2 (~2026-07-13; onehot is much cheaper per episode — check `runs/phase2_onehot-ff/checkpoints/` for progress) | `PHASE2 ONEHOT ARM COMPLETE` in `runs/phase2_202607/phase2_onehot.log` |
+| capacity sweep | auto-launches when arm 3 exits (watcher) | ~2-3 days after arm 3 (~2026-07-16) | `SIZE SWEEP COMPLETE` in `runs/size_sweep_202607/watcher.log` |
+
+The whole chain is driven by one detached watcher
+(`runs/size_sweep_202607/watch_and_launch.sh`, relaunched 2026-07-05 pid
+5287): phase2.sh → phase2_onehot.sh → capacity sweep → report. Progress:
+`tail runs/size_sweep_202607/watcher.log`.
 
 **If the machine reboots or something dies**, everything is resumable:
-- phase 2: rerun the exact gen-1/gen-2 commands in the Phase 2 section
-  (skip gen 1 if `runs/phase2_<arch>/checkpoints/pfsp_<arch>_checkpoint_750000.pt`
-  exists) or simply `zsh runs/phase2_202607/phase2.sh` again — completed
-  invocations resume from their last league checkpoint via `--resume`
-  (use the newest `pfsp_<arch>_checkpoint_*.pt`; edit the script's
-  `--resume` accordingly).
-- capacity sweep: `zsh runs/size_sweep_202607/watch_and_launch.sh`
-  (skips finished jobs).
+- the whole chain: `nohup zsh runs/size_sweep_202607/watch_and_launch.sh
+  > /dev/null 2>&1 & disown` — completed stages are skipped (stage-2 per
+  generation; stage-3 per job). Only caveat: a league generation that died
+  *mid-run* restarts from its last `--resume` point, i.e. the generation
+  start; to salvage partial progress instead, edit the arm script's
+  `--resume` to the newest `runs/phase2_<arch>/checkpoints/
+  pfsp_<arch>_checkpoint_*.pt` and reduce `--main-episodes` accordingly.
+- phase 2 arms 1-2 alone: `zsh runs/phase2_202607/phase2.sh` (same caveat).
+- arm 3 alone: `zsh runs/phase2_202607/phase2_onehot.sh`.
 - onehot control: `zsh runs/ablation_202607/onehot_control_200k.sh`.
 
 ## When the onehot control lands — RESOLVED 2026-07-05
@@ -475,9 +545,11 @@ onehot-vs-full in the regime that matters.
 
 ## When phase 2 lands
 
-1. Numbers: `runs/phase2_202607/panel_a_{called,jd}.csv` (2 candidates:
-   `phase2_full`, `phase2_no-aux`), `scripted_probe_*.json`,
-   `trump_lead_*.json`, per-arm `runs/phase2_<arch>/checkpoints/
+1. Numbers: `runs/phase2_202607/panel_a_{called,jd}.csv` (arms 1-2, lands
+   ~Jul-11) and `panel_a_all3_{called,jd}.csv` (all three arms in one
+   paired table, lands with arm 3 ~Jul-13 — **prefer this one once it
+   exists**), `scripted_probe_*.json`, `trump_lead_*.json`, per-arm
+   `runs/phase2_<arch>/checkpoints/
    {anchored_eval,greedy_health,exploitability}.csv`.
 2. Questions, in order:
    a. **Did either arm collapse?** greedy_health.csv: greedy PICK → 0% or
@@ -498,6 +570,16 @@ onehot-vs-full in the regime that matters.
       should be at least competitive with the v1 curve at matched episodes.
    d. **Exploitability:** `exploitability.csv` per arm (gate edge per
       generation; lower/declining = better).
+   e. **Onehot vs full where it counts (arm 3, ~Jul-13):**
+      PANEL-A(phase2_full) − PANEL-A(phase2_onehot-ff) from
+      `panel_a_all3_*.csv`, both-modes mean. Pre-registered rule (also in
+      the `phase2_onehot.sh` header): gap within 0.07 ⇒ token stack has NO
+      demonstrated value at ≤ 1.5M league episodes — recommend revisiting
+      the default architecture on cost grounds (~5× cheaper training);
+      full ahead by > 0.07 and > 2 SE (~0.11) ⇒ the stack's edge is
+      real but regime-dependent. Also sanity-check arm 3's
+      `greedy_health.csv` for collapse exactly as in (a) — a collapsed arm
+      decides nothing.
 3. Paste the numbers into "Results — phase 2" above with the verdicts.
 
 ## When the capacity sweep lands
