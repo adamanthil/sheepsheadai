@@ -816,6 +816,64 @@ Open `runs/size_sweep_202607/report.md` (auto-generated) and apply the
 "How to read the report" rules in the Phase 3 section. Paste into
 "Results — capacity sweep".
 
+## Continuing league generations after the architecture settles — stopping rule (pre-registered 2026-07-06)
+
+Once the winning architecture is chosen, further league generations are gated
+per-generation instead of running an arbitrary episode budget. At the end of
+each generation `g` run BOTH instruments on the gen-final checkpoint:
+
+1. **Frozen longitudinal yardstick — PANEL-A** (membership and seed 42 never
+   change; this is the number comparable across the whole project):
+
+   ```bash
+   PYTHONPATH=. uv run python analysis/rigorous_eval.py \
+       --candidates runs/<league_run>/finals/gen<g>.pt \
+       --anchors final_pfsp_swish_ppo.pt <pfsp 15M> <pfsp 5M> <selfplay 100k> \
+       --deals 1000 --seed 42 --partner-mode called \
+       --out-csv runs/<league_run>/panel_gen<g>_called.csv
+   # repeat with --partner-mode jd
+   ```
+
+2. **Moving local anchor — gen g vs gen g−1 head-to-head** (cheap, one
+   pairing; this signal does NOT saturate as the agent surpasses the panel):
+
+   ```bash
+   PYTHONPATH=. uv run python analysis/rigorous_eval.py \
+       --candidates runs/<league_run>/finals/gen<g>.pt \
+       --anchors    runs/<league_run>/finals/gen<g-1>.pt \
+       --deals 1000 --seed 42 --partner-mode called \
+       --out-csv runs/<league_run>/h2h_gen<g>_called.csv
+   # repeat with --partner-mode jd; report the both-modes mean edge
+   ```
+
+**Stopping rule (fixed in advance — do not adjust after seeing results):**
+stop after generation `g` when BOTH hold for `g` and `g−1` (two consecutive
+flat generations):
+
+- (a) PANEL-A both-modes mean has not exceeded its previous best by ≥ 0.07
+  (the 1000-deal MDE), AND
+- (b) the gen-vs-previous head-to-head edge is < +0.07.
+
+Rationale for two consecutive: the ablation showed single-window plateau
+calls are unreliable (onehot-ff sat flat 100k–150k, then jumped). Rationale
+for instrument (b): panel edge vs fixed policies is bounded by the
+best-response value against them and compresses as the agent approaches/
+passes parity with `final_pfsp` — a flat panel slope past that point can be
+signal saturation, not learning stagnation. The head-to-head anchor measures
+the local improvement gradient directly and keeps sensitivity. Panel
+statistical power (SE at 1000 CRN deals) does NOT degrade with candidate
+strength; what degrades is construct validity — gains against strong
+adaptive opponents (the live league) may be worth ~0 against weaker frozen
+panel members.
+
+**Confirmatory eval (guard against stopping-rule selection bias):** the
+stopping decision peeks at seed-42 deals repeatedly, so the FINAL reported
+number for the chosen checkpoint must come from one fresh-deal run:
+identical panel membership, `--seed 20260706`, 1000 deals, both modes.
+Label it "confirmation" — the seed-42 run remains the longitudinal series.
+Keep exploiter-gate edge (`exploitability.csv`) as the robustness check
+neither instrument covers.
+
 ## If something needs rerunning from scratch
 
 All tooling is committed: `analysis/run_ablation_matrix.py` (orchestrator;
