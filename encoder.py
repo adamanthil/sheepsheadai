@@ -588,9 +588,10 @@ class CardReasoningEncoder(nn.Module):
         bury_vec = self.pool_bury(bury_tok_out, bury_mask)
 
         # 10-11. Update memory + fuse features. Overridable seam: architecture
-        # variants may route the memory GRU differently (see architectures.py
-        # PooledMemoryEncoder); the base implementation is byte-identical to
-        # the historical inline code.
+        # variants may route the memory GRU differently (PooledMemoryEncoder)
+        # or expose the full post-reasoning token set to the actor
+        # (TokenReadEncoder) — see architectures.py; the base implementation
+        # is byte-identical to the historical inline code.
         return self._fuse_and_update_memory(
             context_out,
             hand_tok_out,
@@ -599,6 +600,8 @@ class CardReasoningEncoder(nn.Module):
             blind_vec,
             bury_vec,
             memory_in,
+            all_tokens=all_tokens,
+            all_mask=all_mask,
         )
 
     def _fuse_and_update_memory(
@@ -610,6 +613,8 @@ class CardReasoningEncoder(nn.Module):
         blind_vec: torch.Tensor,
         bury_vec: torch.Tensor,
         memory_in: torch.Tensor,
+        all_tokens: torch.Tensor | None = None,
+        all_mask: torch.Tensor | None = None,
     ) -> Dict[str, torch.Tensor]:
         # Update memory: memory_out = GRU(context_token_out, memory_in)
         memory_out = self.memory_gru(context_out, memory_in)  # (B, 256)
@@ -655,6 +660,10 @@ class CardReasoningEncoder(nn.Module):
         hand_tokens_out = torch.zeros(
             (B, T, 8, self.d_token_dim), dtype=torch.float32, device=device
         )
+        # Allocated lazily on the first timestep if the encoder variant emits
+        # the full token set (TokenReadEncoder); stays None for the base class.
+        all_tokens_out = None
+        all_mask_out = None
 
         # Initialize memory
         if memory_in is None:
@@ -686,12 +695,30 @@ class CardReasoningEncoder(nn.Module):
             # Store outputs
             features_out[:, t, :] = encoder_out["features"]
             hand_tokens_out[:, t, :, :] = encoder_out["hand_tokens"]
+            step_all_tokens = encoder_out.get("all_tokens")
+            if step_all_tokens is not None:
+                if all_tokens_out is None:
+                    n_all = step_all_tokens.size(1)
+                    all_tokens_out = torch.zeros(
+                        (B, T, n_all, self.d_token_dim),
+                        dtype=torch.float32,
+                        device=device,
+                    )
+                    all_mask_out = torch.zeros(
+                        (B, T, n_all), dtype=torch.bool, device=device
+                    )
+                all_tokens_out[:, t, :, :] = step_all_tokens
+                all_mask_out[:, t, :] = encoder_out["all_mask"]
 
             # Update memory for next timestep
             memory_state = encoder_out["memory_out"]
 
-        return {
+        out = {
             "features": features_out,
             "hand_tokens": hand_tokens_out,
             "memory_out": memory_state,
         }
+        if all_tokens_out is not None:
+            out["all_tokens"] = all_tokens_out
+            out["all_mask"] = all_mask_out
+        return out

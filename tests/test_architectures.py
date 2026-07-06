@@ -305,6 +305,85 @@ class TestNoTransformer(unittest.TestCase):
         self.assertFalse(torch.equal(informed.card.weight, uninformed.card.weight))
 
 
+class TestTokenRead(unittest.TestCase):
+    def test_encoder_adds_tokens_without_changing_anything_else(self):
+        # Same seed -> same params (TokenReadEncoder adds none) -> the
+        # standard outputs must be byte-identical to the base encoder.
+        torch.manual_seed(7)
+        base = CardReasoningEncoder(card_config=CardEmbeddingConfig())
+        torch.manual_seed(7)
+        enc = architectures.TokenReadEncoder(card_config=CardEmbeddingConfig())
+        game = Game(seed=126)
+        s = game.players[0].get_state_dict()
+        out_b, out_t = base.encode_batch([s]), enc.encode_batch([s])
+        self.assertTrue(torch.equal(out_b["features"], out_t["features"]))
+        self.assertTrue(torch.equal(out_b["memory_out"], out_t["memory_out"]))
+        self.assertNotIn("all_tokens", out_b)
+        self.assertEqual(tuple(out_t["all_tokens"].shape), (1, 19, enc.d_token_dim))
+        self.assertEqual(tuple(out_t["all_mask"].shape), (1, 19))
+        # Context + memory tokens always valid (readout needs >= 1 key).
+        self.assertTrue(bool(out_t["all_mask"][:, :2].all()))
+
+    def test_encode_sequences_carries_tokens(self):
+        enc = architectures.TokenReadEncoder(card_config=CardEmbeddingConfig())
+        game = Game(seed=127)
+        seqs = [
+            [game.players[0].get_state_dict(), game.players[0].get_state_dict()],
+            [game.players[1].get_state_dict()],
+        ]
+        out = enc.encode_sequences(seqs)
+        self.assertEqual(tuple(out["all_tokens"].shape), (2, 2, 19, enc.d_token_dim))
+        self.assertEqual(tuple(out["all_mask"].shape), (2, 2, 19))
+        self.assertEqual(out["all_mask"].dtype, torch.bool)
+
+    def test_readout_reaches_the_logits(self):
+        # Perturbing a token the pools would summarize must change the
+        # logits through the readout path alone.
+        _seed_all(8)
+        agent = PPOAgent(len(ACTIONS), arch="full-tokenread")
+        game = Game(seed=128)
+        s = game.players[0].get_state_dict()
+        enc_out = agent.encoder.encode_batch([s])
+        mask = torch.ones(1, len(ACTIONS), dtype=torch.bool)
+        hand_ids = torch.as_tensor(s["hand_ids"], dtype=torch.long).view(1, -1)
+        with torch.no_grad():
+            _, logits1 = agent.actor.forward_with_logits(
+                enc_out, mask, hand_ids, agent.encoder.card
+            )
+            enc_out["all_tokens"] = enc_out["all_tokens"].clone()
+            # Perturb the post-reasoning MEMORY token (index 1, always
+            # valid; trick/blind/bury tokens are masked pre-play). The base
+            # architecture discards this token entirely, so a logit change
+            # proves the readout's unmediated path.
+            enc_out["all_tokens"][:, 1, :] += 1.0
+            _, logits2 = agent.actor.forward_with_logits(
+                enc_out, mask, hand_ids, agent.encoder.card
+            )
+        self.assertFalse(torch.equal(logits1, logits2))
+
+    def test_actor_requires_tokens(self):
+        _seed_all(9)
+        agent = PPOAgent(len(ACTIONS), arch="full-tokenread")
+        with self.assertRaises(RuntimeError):
+            agent.actor._adapt_features(torch.randn(1, 256))
+
+    def test_base_actor_ignores_token_kwargs(self):
+        # The threaded-through kwargs must be inert for the default arch.
+        _seed_all(10)
+        agent = PPOAgent(len(ACTIONS), arch="full")
+        game = Game(seed=129)
+        s = game.players[0].get_state_dict()
+        enc_out = agent.encoder.encode_batch([s])
+        self.assertNotIn("all_tokens", enc_out)
+        mask = torch.ones(1, len(ACTIONS), dtype=torch.bool)
+        hand_ids = torch.as_tensor(s["hand_ids"], dtype=torch.long).view(1, -1)
+        with torch.no_grad():
+            probs, _ = agent.actor.forward_with_logits(
+                enc_out, mask, hand_ids, agent.encoder.card
+            )
+        self.assertTrue(torch.isfinite(probs).all())
+
+
 class TestSizeVariants(unittest.TestCase):
     def test_dmodel_shapes_propagate(self):
         for d_model in (128, 512):

@@ -143,6 +143,17 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         s = self.pointer_v(e).squeeze(-1)  # (B, N)
         return s
 
+    def _adapt_features(
+        self,
+        actor_features: torch.Tensor,
+        all_tokens: torch.Tensor | None = None,
+        all_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Turn encoder features into the head input. Overridable seam:
+        readout variants (see TokenReadActorNetwork) additionally attend over
+        the full post-reasoning token set; the base actor ignores it."""
+        return self.actor_adapter(actor_features)
+
     def _build_logits_from_features(
         self,
         actor_features: torch.Tensor,
@@ -150,6 +161,8 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         card_embedding: nn.Embedding,
         hand_tokens: torch.Tensor,
         action_mask: torch.Tensor | None = None,
+        all_tokens: torch.Tensor | None = None,
+        all_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Assemble full action logits from actor features and hand ids.
 
@@ -160,6 +173,10 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         card_embedding : nn.Embedding
         hand_tokens : Tensor (K, N, d_token)
         action_mask : BoolTensor (K, A) | None
+        all_tokens : Tensor (K, N_all, d_token) | None
+            Full post-reasoning token set (only emitted by tokenread encoder
+            variants; consumed by TokenReadActorNetwork, ignored here).
+        all_mask : BoolTensor (K, N_all) | None
 
         Returns
         -------
@@ -170,7 +187,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         logits = torch.full((K, self.action_size), -1e8, device=device)
 
         # Adapt features
-        feat = self.actor_adapter(actor_features)
+        feat = self._adapt_features(actor_features, all_tokens, all_mask)
 
         # PICK / PASS
         pick_logits = self.pick_head(feat) / max(self.temperature_pick, 1e-6)
@@ -300,6 +317,8 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             card_embedding=card_embedding,
             hand_tokens=encoder_out["hand_tokens"],
             action_mask=action_mask,
+            all_tokens=encoder_out.get("all_tokens"),
+            all_mask=encoder_out.get("all_mask"),
         )
         probs = F.softmax(logits, dim=-1)
         return probs
@@ -324,9 +343,82 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             card_embedding=card_embedding,
             hand_tokens=encoder_out["hand_tokens"],
             action_mask=action_mask,
+            all_tokens=encoder_out.get("all_tokens"),
+            all_mask=encoder_out.get("all_mask"),
         )
         probs = F.softmax(logits, dim=-1)
         return probs, logits
+
+
+class TokenReadActorNetwork(MultiHeadRecurrentActorNetwork):
+    """Pointer actor plus a cross-attention readout over ALL post-reasoning
+    tokens (the `full-tokenread` architecture rung).
+
+    Hypothesis under test: the per-bag attention pools between the token
+    stack and the 256-d trunk (hand→64, trick→64, blind→32, bury→32 dims)
+    throw away card-level information before the policy heads see it. Here
+    the heads' input is `fuse(actor_adapter(features) ⊕ readout)`, where the
+    readout is M learned queries attending over the full 19-token
+    post-reasoning set — an unmediated read path from tokens to every head
+    (including the pointer's situation-conditioning and the two-tower CALL
+    scorer). The encoder — including the memory recurrence (context token →
+    GRUCell → 256-d state) — is byte-identical to `full`; only the actor
+    grows. Requires an encoder that emits 'all_tokens'/'all_mask'
+    (TokenReadEncoder in architectures.py).
+    """
+
+    def __init__(
+        self,
+        *args,
+        n_readout_queries: int = 4,
+        n_readout_heads: int = 4,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        d_model = self.actor_adapter[1].in_features
+        # Same construction style as encoder.AttentionPool; created after
+        # super().__init__ so, like the pointer/two-tower layers, they keep
+        # default (non-orthogonal) init.
+        self.readout_n_queries = int(n_readout_queries)
+        self.readout_query = nn.Parameter(
+            torch.randn(self.readout_n_queries, self._d_token)
+        )
+        self.readout_mha = nn.MultiheadAttention(
+            self._d_token, int(n_readout_heads), batch_first=True
+        )
+        self.readout_proj = nn.Linear(self.readout_n_queries * self._d_token, d_model)
+        self.readout_fuse = nn.Sequential(
+            nn.Linear(2 * d_model, d_model),
+            nn.SiLU(),
+        )
+
+    def _adapt_features(
+        self,
+        actor_features: torch.Tensor,
+        all_tokens: torch.Tensor | None = None,
+        all_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if all_tokens is None or all_mask is None:
+            raise RuntimeError(
+                "TokenReadActorNetwork requires encoder outputs 'all_tokens'/"
+                "'all_mask' (use a tokenread encoder variant)."
+            )
+        feat = self.actor_adapter(actor_features)
+        B = all_tokens.size(0)
+        q = self.readout_query.unsqueeze(0).expand(B, -1, -1)  # (B, M, d_token)
+        # Context + memory tokens are always valid, so no all-masked-row guard
+        # is needed (cf. encoder.AttentionPool).
+        attn_out, _ = self.readout_mha(
+            q,
+            all_tokens,
+            all_tokens,
+            key_padding_mask=~all_mask,
+            need_weights=False,
+        )  # (B, M, d_token)
+        readout = self.readout_proj(
+            attn_out.reshape(B, self.readout_n_queries * self._d_token)
+        )  # (B, d_model)
+        return self.readout_fuse(torch.cat([feat, readout], dim=1))
 
 
 class RecurrentCriticNetwork(nn.Module):
@@ -1513,6 +1605,18 @@ class PPOAgent:
         flat_tokens = (
             hand_tokens_bt.reshape(B * T, N, -1) if hand_tokens_bt is not None else None
         )
+        # Tokenread encoders additionally emit the full post-reasoning token
+        # set for the actor's readout; other actors ignore the arguments.
+        all_tokens_bt = encoder_out_seq.get("all_tokens")  # (B, T, N_all, d_token)
+        all_mask_bt = encoder_out_seq.get("all_mask")  # (B, T, N_all)
+        flat_all_tokens = (
+            all_tokens_bt.reshape(B * T, all_tokens_bt.size(2), -1)
+            if all_tokens_bt is not None
+            else None
+        )
+        flat_all_mask = (
+            all_mask_bt.reshape(B * T, -1) if all_mask_bt is not None else None
+        )
 
         logits_flat = self.actor._build_logits_from_features(
             actor_features=flat_feat,
@@ -1520,6 +1624,8 @@ class PPOAgent:
             card_embedding=self.encoder.card,
             hand_tokens=flat_tokens,
             action_mask=flat_mask,
+            all_tokens=flat_all_tokens,
+            all_mask=flat_all_mask,
         )
         logits_bt = logits_flat.view(B, T, -1)
 

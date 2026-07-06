@@ -96,7 +96,10 @@ class PooledMemoryEncoder(CardReasoningEncoder):
         blind_vec,
         bury_vec,
         memory_in,
+        all_tokens=None,
+        all_mask=None,
     ):
+        del all_tokens, all_mask  # not exposed by this rung
         features = self.feature_proj(
             torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, context_out], dim=1)
         )
@@ -107,6 +110,52 @@ class PooledMemoryEncoder(CardReasoningEncoder):
             "context_token": context_out,
             "memory_out": memory_out,
         }
+
+
+# ---------------------------------------------------------------------------
+# Token-readout encoder (the "full-tokenread" rung)
+# ---------------------------------------------------------------------------
+
+
+class TokenReadEncoder(CardReasoningEncoder):
+    """`full`'s encoder, additionally exposing the post-reasoning token set.
+
+    Zero new parameters and no change to features or memory: the standard
+    outputs are byte-identical to the base class; 'all_tokens'
+    (B, 19, d_token) and 'all_mask' (B, 19) are emitted alongside them so a
+    readout-equipped actor (ppo.TokenReadActorNetwork) can attend over the
+    tokens directly instead of seeing them only through the per-bag
+    attention pools. The memory recurrence is untouched: context token →
+    GRUCell → d_model state, re-projected to a memory token next step by
+    memory_in_proj — and because the post-reasoning memory token is part of
+    'all_tokens', the actor's readout reads memory directly too (the base
+    architecture discards that token).
+    """
+
+    def _fuse_and_update_memory(
+        self,
+        context_out,
+        hand_tok_out,
+        hand_vec,
+        trick_vec,
+        blind_vec,
+        bury_vec,
+        memory_in,
+        all_tokens=None,
+        all_mask=None,
+    ):
+        out = super()._fuse_and_update_memory(
+            context_out,
+            hand_tok_out,
+            hand_vec,
+            trick_vec,
+            blind_vec,
+            bury_vec,
+            memory_in,
+        )
+        out["all_tokens"] = all_tokens
+        out["all_mask"] = all_mask
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -348,8 +397,11 @@ class FlatHeadActorNetwork(nn.Module):
         card_embedding=None,
         hand_tokens=None,
         action_mask: "torch.Tensor | None" = None,
+        all_tokens=None,
+        all_mask=None,
     ) -> torch.Tensor:
-        del hand_ids, card_embedding, hand_tokens  # unused by flat heads
+        # unused by flat heads
+        del hand_ids, card_embedding, hand_tokens, all_tokens, all_mask
         K = actor_features.size(0)
         logits = torch.full((K, self.action_size), -1e8, device=actor_features.device)
         feat = self.actor_adapter(actor_features)
@@ -392,6 +444,19 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
     from ppo import MultiHeadRecurrentActorNetwork
 
     return MultiHeadRecurrentActorNetwork(
+        action_size,
+        action_groups,
+        d_card=encoder.d_card_dim,
+        d_token=encoder.d_token_dim,
+        d_model=getattr(encoder, "d_model", 256),
+        **mappings,
+    )
+
+
+def _tokenread_actor(action_size, action_groups, encoder, mappings):
+    from ppo import TokenReadActorNetwork
+
+    return TokenReadActorNetwork(
         action_size,
         action_groups,
         d_card=encoder.d_card_dim,
@@ -533,6 +598,23 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         "full-dmodel512",
         "full with d_model 256 -> 512 (trunk/memory/pool width x2).",
         d_model=512,
+    ),
+    # --- Readout variant (pooling-bottleneck hypothesis) --------------------
+    "full-tokenread": ArchitectureSpec(
+        name="full-tokenread",
+        description=(
+            "full plus a cross-attention token readout in the actor: 4 "
+            "learned queries attend over all 19 post-reasoning tokens and "
+            "the result is fused with the pooled trunk features before the "
+            "heads. Tests whether the per-bag attention-pool bottleneck "
+            "limits the policy (readout STRUCTURE at fixed width; the "
+            "capacity sweep's d_model variants test width). Encoder and "
+            "memory recurrence identical to full."
+        ),
+        build_encoder=lambda: TokenReadEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_tokenread_actor,
+        build_critic=_aux_critic,
+        has_aux_heads=True,
     ),
     # --- Factorial arm (informed init in the presence of the transformer) --
     "full-uninformed": ArchitectureSpec(
