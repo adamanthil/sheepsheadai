@@ -821,10 +821,33 @@ lost. Diagnostics already run (2026-07-07 morning):
 2. **Critic-baseline proxy — comparable**: advantage-std/target-std over
    the last 50 updates: full 0.68–0.70, perceiver 0.69–0.74, no-aux
    0.72–0.73. No catastrophic critic deficit at endpoint.
-3. **Endpoint-snapshot check — pending**: PANEL-A (1000 deals, seed 42,
-   both modes) on all three 175k checkpoints:
-   `runs/perceiver_202607/diag/panel_a_175k_{called,jd}.csv`. Motivated
-   by s2042's last-10k cliff (edge vs scripted +0.07@190k → −0.58@200k).
+3. **175k-checkpoint panels — LANDED 2026-07-07, two corrections.**
+   Per-seed PANEL-A both-modes, 175k → 200k: s42 −0.658 → −0.367
+   (**+0.291**), s1042 −0.498 → −0.273 (**+0.225**), s2042 −0.580 →
+   −0.619 (−0.039); mean −0.579 → −0.420. (a) The s2042 "endpoint cliff"
+   was 300-deal anchored-eval noise — it was already bad at 175k; its
+   final number is its real level. (b) FAR more important: **the
+   perceiver was climbing steeply at cutoff** — 2/3 seeds gained ~+0.25
+   panel points in the final 25k episodes. The "last-20k slope ≈ 0"
+   anchored-curve call was WRONG (third slope-instrument failure; only
+   panel-grade checkpoint evals can read curves). Control still needed:
+   paired `full` 175k panels
+   (`runs/perceiver_202607/diag/panel_a_full175k_{called,jd}.csv`,
+   launched 2026-07-07) tell whether the late slope is DIFFERENTIAL. If
+   full's last-25k gain is much smaller, the 200k verdict is a budget
+   artifact (like onehot@100k) and a **400k extension of the three
+   perceiver runs** is the decisive test — resume from the 200k finals
+   or rerun `--episodes 400000` fresh if resume is unsupported.
+4. **Throughput correction (2026-07-07 microbenchmark)**: the probe's
+   4.4-vs-7.6 eps/s gap is largely a MACHINE-LOAD confound across runs,
+   not architecture. Under identical load, per-decision act cost is
+   full 13.4 ms / tokenread 14.0 / perceiver 12.5 (perceiver's encoder
+   is fastest — two readouts replace four pool-MHA calls), and
+   perceiver's UPDATE phase is cheaper than full's (s42 sum: 7.59h vs
+   8.59h; batched sequence readouts < pools+fusion+aux). Do not cite
+   per-arch eps/s across differently-loaded runs; the concurrent
+   watchdog-on/decomp arms give clean equal-load numbers via
+   `train_wall_s` in their anchored_eval.csv.
 4. **Strongest existing clue**: full-tokenread (readout ADDED, pooled
    trunk KEPT, actor only) ≈ full; perceiver (pooled trunk DELETED in
    both networks + memory driver changed) lost 0.187. The readout is not
@@ -840,6 +863,15 @@ ONE switch; 974,222 params for the hybrids, 873,678 for ctxmem):
 | `readout-critic` | critic trunk: pooled fusion → token readout | `ablate_no-aux_s*` |
 | `perceiver-ctxmem` | memory-GRU driver: memory token → context token | `ablate_perceiver_s*` |
 | `perceiver-aux` (already existed) | aux gradients shaping the critic readout | `ablate_perceiver_s*` |
+| `perceiver-shared` (e56825e) | bag SCOPING alone: full's 4 bag pools + fusion → ONE shared 4q/4h readout over all 19 tokens; trunk sharing, aux forcing, pointer actor, context-token memory driver all kept | `ablate_full_s*` |
+
+`perceiver-shared` (903,063 params) doubles as the throughput-friendly
+token-centric layout (decision-time attention once, in the encoder) and
+restores full-strength aux forcing (aux heads shape the very 256-d
+vector the actor reads; per-network readouts reduce aux to indirect
+token shaping — operator's observation, 2026-07-07). If the decomposition
+implicates the loss of the shared/aux-forced trunk rather than either
+network alone, this is the natural adoption candidate.
 
 **Regime: watchdog-OFF, prefix `ablate`** — these explain a watchdog-off
 result, so they replicate the probe regime exactly and pair with the
