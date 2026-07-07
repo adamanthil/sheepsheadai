@@ -899,15 +899,24 @@ are already registered (commit with `_perceiver_size_variant`; params
 `runs/size_sweep_202607/watch_and_launch.sh` stage 3:
 
 ```
---archs perceiver-dtok32 perceiver-dtok128 perceiver-layers2 \
+--archs perceiver perceiver-dtok32 perceiver-dtok128 perceiver-layers2 \
         perceiver-layers6 perceiver-dmodel128 perceiver-dmodel512 \
         perceiver-readq2 perceiver-readq8 \
         perceiver-readheads2 perceiver-readheads8 \
-        perceiver-rheads2 perceiver-rheads8
+        perceiver-rheads2 perceiver-rheads8 \
+--leaster-watchdog
 ```
 
-(baseline for the report is then the perceiver@200k probe rows: use
-`--extra-results runs/perceiver_202607/results.csv --baseline perceiver`.)
+**The sweep runs `--leaster-watchdog` (operator decision, 2026-07-06):**
+escape latency from the always-PASS trap is seed lottery, and for
+capacity questions it is pure confound — the sweep should measure
+learning slope, not collapse luck. Because the watchdog changes the
+regime, the base arch is INCLUDED in `--archs` (first entry above, +3
+runs ≈ +17h) and the report baseline is that in-sweep, watchdog-on run:
+`--baseline perceiver` with NO `--extra-results` as the baseline source
+(old probe rows are watchdog-off; cite them as context only). The
+watchdog-on base vs the watchdog-off probe is itself a free read on what
+the watchdog is worth.
 The second line onward are the **attention-shape knobs** (operator,
 2026-07-06): readout queries, readout heads, and transformer reasoning
 heads were all an unexamined "4" chosen when the transformer was first
@@ -938,8 +947,18 @@ given the policies, so persistent underfit means the VALUE net (not the
 regime) needs attention.
 **If it ties**, the operator's own bar applies: adoption requires
 capability evidence, so a tie ⇒ keep `full` as default, let phase 2 run
-as designed, and keep the full-based sweep. Paste report + verdict into
-"Results — perceiver probe".
+as designed, and keep the full-based sweep — but STILL apply the
+watchdog decision: stage 3 becomes
+`--archs full full-dtok32 ... full-dmodel512 --leaster-watchdog` with
+`--baseline full` and no watchdog-off `--extra-results` baseline.
+**Either branch requires one watcher edit** (stage 3 lacks the flag and
+the in-sweep baseline arch as written): kill ONLY the watcher shell
+(`pgrep -fl watch_and_launch`), never the training processes, edit
+`runs/size_sweep_202607/watch_and_launch.sh` stage 3, relaunch
+(`nohup zsh runs/size_sweep_202607/watch_and_launch.sh > /dev/null 2>&1 &
+disown`) — the per-stage skip guards make this safe; do it while stage
+0.5/1/2 is still running, well before stage 3 launches (~Jul-15).
+Paste report + verdict into "Results — perceiver probe".
 
 ## When phase 2 lands
 

@@ -134,6 +134,8 @@ class Orchestrator:
             "--strategic-eval-interval",
             str(self.args.episodes * 10),
         ]
+        if self.args.leaster_watchdog:
+            train_cmd.append("--leaster-watchdog")
         status["train_cmd"] = " ".join(train_cmd)
         rc = self._run_logged(train_cmd, os.path.join(run_dir, "train.log"), run)
         status["train_rc"] = rc
@@ -302,6 +304,14 @@ def main() -> int:
     ap.add_argument("--trump-deals", type=int, default=2000)
     ap.add_argument("--panel-deals", type=int, default=1000)
     ap.add_argument("--skip-panel-a", action="store_true")
+    ap.add_argument(
+        "--leaster-watchdog",
+        action="store_true",
+        help="Forward --leaster-watchdog to every trainer (always-PASS "
+        "collapse guard). Regime change: only compare watchdog-on runs "
+        "against watchdog-on runs — include the baseline arch in --archs "
+        "rather than borrowing watchdog-off rows via --extra-results.",
+    )
     ap.add_argument("--out-dir", default="runs/ablation_202607")
     ap.add_argument("--prefix", default="ablate")
     ap.add_argument(
