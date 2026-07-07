@@ -923,11 +923,40 @@ PYTHONPATH=. nohup caffeinate -is .venv/bin/python analysis/run_ablation_matrix.
     >> runs/decomp_202607/orchestrator.out 2>&1 & disown
 ```
 
-**Launch state (2026-07-07 12:49):** `readout-actor`/`readout-critic`
-run in `runs/decomp_202607` (batch 1 s42/s42/s1042 since 09:08, batch 2
-auto-follows ~Jul-8); `perceiver-shared` runs in **`runs/decomp_202607b`**
-(3 seeds since 12:49 — separate out-dir so the two concurrent
-orchestrators' aggregate steps don't clobber each other's results.csv).
+**Launch state (updated 2026-07-07 ~14:45):** the operator DISPLACED the
+readout-actor/readout-critic decomposition with the 400k budget-equal
+extension ("if perceiver is on track to surpass full, *why it hasn't
+yet* is much less critical"): batch 1 was killed ~5.5h in (partial data
+in `runs/ablate_readout-*`; the orchestrator command above restarts the
+whole 6-run matrix fresh whenever wanted — status files say "running",
+which does not skip). **Now running: the six 400k extensions**
+(`ablate_{perceiver,full}400_s{42,1042,2042}`, resumed from the 200k
+checkpoints with optimizer state, launched ~14:45, ETA ~Jul-8 late
+evening at 9-concurrent load) **plus `perceiver-shared`** in
+**`runs/decomp_202607b`** (3 seeds since 12:49, kept — it is the
+adoption candidate, not just attribution; auto-panels its own finals).
+Endpoint read for the extensions (run after all six finish):
+
+```
+for MODE in called jd; do
+  PYTHONPATH=. .venv/bin/python analysis/rigorous_eval.py \
+    --candidates runs/ablate_perceiver400_s42/final_perceiver.pt \
+                 runs/ablate_perceiver400_s1042/final_perceiver.pt \
+                 runs/ablate_perceiver400_s2042/final_perceiver.pt \
+                 runs/ablate_full400_s42/final_full.pt \
+                 runs/ablate_full400_s1042/final_full.pt \
+                 runs/ablate_full400_s2042/final_full.pt \
+    --anchors final_pfsp_swish_ppo.pt \
+              runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt \
+              runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_5000000.pt \
+              runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt \
+    --deals 1000 --partner-mode $MODE --seed 42 \
+    --out-csv runs/perceiver_202607/diag/panel_a_400k_$MODE.csv
+done
+```
+
+Same command shape with `*_checkpoint_300000.pt` gives the trustworthy
+mid-course read (~25 min/mode).
 The operator chose perceiver-shared over per-network `perceiver-aux`
 (registered, unlaunched) — the shared readout is the aux design working
 as intended. The watchdog-on `sweep_full_s*` baseline (arm A) was KILLED
