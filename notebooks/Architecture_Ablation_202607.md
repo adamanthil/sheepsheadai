@@ -674,6 +674,70 @@ thesis; the perceiver probe and the phase-2 onehot league arm are the
 decisive tests. Cost caveat: onehot trains several× faster than full,
 tokenread ~2× slower — evidence-per-compute still favors onehot.
 
+## The always-PASS collapse is UNIVERSAL in from-scratch self-play
+## (leaster-rate scan, 2026-07-06)
+
+Prompted by the operator observing the crash across arms (and live in
+perceiver s1042), `analysis/leaster_scan.py` (committed) extracts the
+rollout leaster-rate trajectory from every run log. Rerun any time with
+`PYTHONPATH=. uv run python analysis/leaster_scan.py [runs/glob ...]`.
+
+**Finding: every one of the 24 from-scratch shaped-reward self-play runs
+collapsed to ~100% leaster (all seats always PASS) within the first
+~3-4k episodes — entry is universal; architectures differ ONLY in escape
+time.** Hard-collapse spans (leaster ≥ 90%):
+
+| arch | s42 | s1042 | s2042 | worst % of budget |
+|---|---|---|---|---|
+| onehot-ff | 3k-5k | 3k-3k | 3k-3k | ~1% |
+| full | 3k-7k | 3k-10k | 3k-10k | ~4% |
+| full-uninformed | 3k-10k | 3k-11k | 4k-8k | ~9% |
+| no-aux | 4k-12k | 3k-80k | 4k-20k | **39%** |
+| no-transformer | 3k-78k | 3k-18k | 3k-67k | **76%** |
+| no-transformer-uninformed | 3k-30k | 3k-61k | 2k-31k | **59%** |
+| full-tokenread | 3k-32k | 3k-178k | 3k-13k | **88%** |
+| perceiver (@~59k, running) | 3k-16k | 4k-**51k** (escaped) | 3k-23k | TBD |
+
+Mechanism (consistent with every trace): at init play skill is terrible,
+so picking has strongly negative EV → PASS dominates for every seat →
+all-leaster equilibrium with bidding entropy frozen at ~0. Escape appears
+driven by rare exploratory PICKs finally paying off once play skill
+learned *inside leasters* transfers to trick play generally — which
+explains why fast-learning-per-episode archs (onehot) escape almost
+immediately and slow/unstable ones (tokenread, no-transformer) linger.
+
+**Reinterpretation duties:**
+
+1. **100k adjacent-rung deltas are partly escape-speed, not steady-state
+   capability.** no-transformer spent 18-78% of its 100k budget in the
+   collapse; the "+0.124 transformer" delta substantially measures
+   "transformer escapes faster." Same for informed-init (+0.150).
+   Escape speed is a real, valuable property — but it is a different
+   claim, and a cheap stabilizer could erase those deltas.
+2. **no-aux s1042 lost 80k of 200k** — the no-aux endpoint (−0.277) is
+   partly collapse time, not aux-head value.
+3. **perceiver s1042 lost its first ~51k but escaped with 145k to go**
+   (vs tokenread s1042's escape at 178k with only 20k left). When the
+   perceiver report lands, run the scanner and read the endpoint with
+   the per-seed spans next to it.
+4. onehot's 100-150k flat-then-jump was NOT leaster (it escaped at 5k) —
+   separate phenomenon.
+
+**Improvement options (proposed 2026-07-06, NOT implemented — operator
+decision pending):** (a) collapse watchdog in train_selfplay_ppo.py:
+if rollout leaster ≥90% for K updates, boost bidding-head entropy coeff
+until <30% — adaptive, only intervenes in the pathological region, no
+reward change; (b) constant per-head entropy floor on pick/partner/bury;
+(c) bidding-warmup curriculum (first N eps sample pick/pass from an
+ε-mixture, bidding heads frozen, so play heads see picker/defender data
+before bidding optimizes); (d) early scripted-opponent mixing (breaks the
+equilibrium but leaves the pure-self-play regime); (e) oracle critic
+(already built) should shorten escapes via lower-variance PICK
+evaluation but won't prevent entry. Any fix should be flag-gated and
+applied to ALL arms of a comparison equally; existing completed runs stay
+comparable (all collapsed, same regime). The league/warm-start production
+regime never enters this attractor — it is a from-scratch probe artifact.
+
 ## Results — perceiver probe
 
 *(pending — `runs/perceiver_202607/report.md` is generated automatically;
