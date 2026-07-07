@@ -1185,6 +1185,23 @@ run stands: watch oracle value loss / explained variance (`ev_oracle` in
 update stats) — full information makes the target nearly deterministic
 given the policies, so persistent underfit means the VALUE net (not the
 regime) needs attention.
+**Oracle cost + warm-start shock (measured 2026-07-07):** paired
+update() bench on identical 7.2k-event buffers: oracle update ≈ **2.7×**
+limited (rollout unchanged — values fill batched at update time);
+end-to-end league estimate ~1.5–2×; cheapest knob if needed = train the
+oracle loss on 1 of 4 epochs (its target is near-deterministic).
+Warm-start shock sim (200k `full` checkpoint + random oracle, 6
+collect→update cycles, terminal reward): **mild** — a random oracle acts
+as a near-zero-constant baseline (≈ REINFORCE with λ-returns), not an
+adversarial one; KL fell 0.013→0.005, oracle value loss 0.40→0.02 within
+2 updates, ev_oracle ≥ ev_limited from the first update. Notable:
+`ev_limited` is ALSO poor at league warm start (−2.7 → −0.11 over 6
+updates) because the shaped→terminal return mismatch forces the limited
+critic to re-fit at every league gen 1 — the existing gen-1 bidding
+anchor already covers this window. Verdict: **no burn-in mechanism
+needed**; an ev-gated policy freeze would release immediately. If
+belt-and-suspenders is wanted, a fixed ~10–20-update policy freeze is
+the right shape, but the evidence says the anchor suffices.
 **If it ties**, the operator's own bar applies: adoption requires
 capability evidence, so a tie ⇒ keep `full` as default, let phase 2 run
 as designed, and keep the full-based sweep — but STILL apply the
