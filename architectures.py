@@ -282,6 +282,87 @@ class PerceiverCtxMemEncoder(PerceiverEncoder):
         }
 
 
+class SharedReadoutEncoder(PerceiverEncoder):
+    """Pool-free encoder with ONE shared token readout producing `features`.
+
+    `full` with the four bag-scoped pools + fusion MLP replaced by a single
+    4-query x 4-head readout over all 19 post-reasoning tokens (the same
+    module design as AttentionPool, un-scoped). Everything downstream is
+    standard: the pointer actor and the aux critic both consume the shared
+    256-d `features`, so aux gradients shape the very vector the policy
+    reads (full's forcing mechanism, which per-network perceiver readouts
+    reduce to indirect token shaping), and decision-time attention runs
+    ONCE in the encoder instead of per network. Memory driver is the
+    context token, as in `full`. vs full this isolates bag SCOPING itself,
+    holding sharing/aux/memory fixed.
+    """
+
+    def __init__(
+        self, card_config: "CardEmbeddingConfig | None" = None, **encoder_kwargs
+    ):
+        super().__init__(card_config=card_config, **encoder_kwargs)
+        d_token = self.d_token_dim
+        d_model = getattr(self, "d_model", 256)
+        self.readout_n_queries = 4
+        # Torch-default MHA init + randn queries: the AttentionPool
+        # convention (matches the modules this readout replaces).
+        self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
+        self.readout_mha = nn.MultiheadAttention(d_token, 4, batch_first=True)
+        self.readout_proj = nn.Linear(self.readout_n_queries * d_token, d_model)
+
+    def param_groups(self, base_lr: float, card_lr_scale: float = 0.1):
+        groups = super().param_groups(base_lr, card_lr_scale)
+        groups.append(
+            {
+                "params": [
+                    self.readout_query,
+                    *self.readout_mha.parameters(),
+                    *self.readout_proj.parameters(),
+                ],
+                "lr": base_lr,
+            }
+        )
+        return groups
+
+    def _pool_fuse_update(
+        self,
+        context_out,
+        hand_tok_out,
+        hand_mask,
+        trick_tok_out,
+        trick_mask,
+        blind_tok_out,
+        blind_mask,
+        bury_tok_out,
+        bury_mask,
+        memory_in,
+        all_tokens,
+        all_mask,
+    ):
+        # Memory write: context token, as in the base architecture.
+        memory_out = self.memory_gru(all_tokens[:, 0, :], memory_in)
+        B = all_tokens.size(0)
+        q = self.readout_query.unsqueeze(0).expand(B, -1, -1)
+        attn_out, _ = self.readout_mha(
+            q,
+            all_tokens,
+            all_tokens,
+            key_padding_mask=~all_mask,
+            need_weights=False,
+        )
+        features = self.readout_proj(
+            attn_out.reshape(B, self.readout_n_queries * self.d_token_dim)
+        )
+        return {
+            "features": features,
+            "hand_tokens": hand_tok_out,
+            "context_token": context_out,
+            "memory_out": memory_out,
+            "all_tokens": all_tokens,
+            "all_mask": all_mask,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Legacy-style one-hot state representation (onehot-ff baseline)
 # ---------------------------------------------------------------------------
@@ -875,6 +956,22 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_perceiver_critic,
         has_aux_heads=False,
+    ),
+    "perceiver-shared": ArchitectureSpec(
+        name="perceiver-shared",
+        description=(
+            "full with the four bag-scoped pools + fusion MLP replaced by a "
+            "single shared 4-query/4-head readout over all 19 post-reasoning "
+            "tokens; pointer actor, aux critic, and context-token memory "
+            "driver unchanged. Isolates bag SCOPING (holding trunk sharing, "
+            "aux forcing, and the memory driver fixed) and is the "
+            "throughput-friendly token-centric layout (decision-time "
+            "attention once, in the encoder)."
+        ),
+        build_encoder=lambda: SharedReadoutEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_pointer_actor,
+        build_critic=_aux_critic,
+        has_aux_heads=True,
     ),
     "perceiver-ctxmem": ArchitectureSpec(
         name="perceiver-ctxmem",

@@ -534,6 +534,36 @@ class TestPerceiver(unittest.TestCase):
         self.assertIsInstance(rc.critic, PerceiverCriticNetwork)
         self.assertTrue(hasattr(rc.encoder, "pool_hand"))
 
+    def test_shared_readout_features_and_aux(self):
+        _seed_all(21)
+        agent = PPOAgent(len(ACTIONS), arch="perceiver-shared")
+        enc = agent.encoder
+        # Pools/fusion gone; shared readout present; aux critic wired.
+        self.assertFalse(hasattr(enc, "pool_hand"))
+        self.assertFalse(hasattr(enc, "feature_proj"))
+        self.assertTrue(hasattr(enc, "readout_query"))
+        self.assertTrue(agent.critic.has_aux_heads)
+        game = Game(seed=144)
+        s = game.players[0].get_state_dict()
+        out = enc.encode_batch([s])
+        self.assertEqual(tuple(out["features"].shape), (1, 256))
+        # Features flow from the readout (not the memory state) and carry
+        # gradient to the readout query.
+        self.assertFalse(torch.equal(out["features"], out["memory_out"]))
+        out["features"].sum().backward()
+        self.assertIsNotNone(enc.readout_query.grad)
+        # Memory driver is the context token (full's convention).
+        with torch.no_grad():
+            out2 = enc.encode_batch([s])
+            expect = enc.memory_gru(out2["all_tokens"][:, 0, :], torch.zeros(1, 256))
+        self.assertTrue(torch.allclose(out2["memory_out"], expect, atol=1e-6))
+        # param_groups cover every encoder parameter exactly once.
+        grouped = [p for g in enc.param_groups(3e-4) for p in g["params"]]
+        self.assertEqual(
+            sorted(p.data_ptr() for p in grouped),
+            sorted(p.data_ptr() for p in enc.parameters()),
+        )
+
     def test_ctxmem_context_token_drives_recurrence(self):
         _seed_all(20)
         enc = architectures.PerceiverCtxMemEncoder()
