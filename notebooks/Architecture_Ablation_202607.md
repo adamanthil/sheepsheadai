@@ -753,9 +753,59 @@ regime never enters this attractor — it is a from-scratch probe artifact.
 
 ## Results — perceiver probe
 
-*(pending — `runs/perceiver_202607/report.md` is generated automatically;
-apply the pre-registered interpretation in the perceiver section above,
-including the per-seed entropy stability check, and paste here)*
+**Landed 2026-07-07 07:26 (matrix 15.4 h, 3/3 seeds OK). Verdict by the
+pre-registered rule: the redesign UNDERPERFORMS (`< −0.07` branch) —
+keep `full` as the base.**
+
+From `runs/perceiver_202607/report.md`:
+
+| arch | PANEL-A called | PANEL-A jd | both | eps/s | train h |
+|---|---|---|---|---|---|
+| full | −0.249 ± 0.047 | −0.216 ± 0.039 | −0.233 | 7.6 | 7.3 |
+| no-aux | −0.270 ± 0.091 | −0.284 ± 0.121 | −0.277 | 7.6 | 7.3 |
+| perceiver | −0.402 ± 0.122 | −0.438 ± 0.237 | **−0.420** | 4.4 | 12.8 |
+
+Delta vs full = **−0.187, seed-level SE 0.106** (1.8 SE; point estimate
+2.7× the 0.07 MDE, in the wrong direction). CRN-paired per-seed deltas
+(both-modes): s42 **−0.181**, s1042 −0.003, s2042 **−0.377** — 0/3 seed
+wins. It also loses to the aux-free comparator `no-aux` (−0.143). And it
+is ~1.7× slower per episode than full (4.4 vs 7.6 eps/s) — the per-head
+token readouts cost more than the pools they replaced, echoing
+tokenread's 2× slowdown.
+
+**Failure-mode classification (pre-registered check): NOT entropy
+lock-in.** Collapse spans (leaster_scan): s42 3k–16k, s2042 3k–23k,
+s1042 4k–51k — all three escaped with 150–180k episodes to recover, and
+endpoint pick entropies are alive (0.003–0.009, same magnitude as
+healthy full runs; no 0.000 freeze). Escape latency does not explain the
+ranking either: s1042 collapsed the LONGEST yet finished best (paired
+delta ≈ 0), while s2042 escaped at 23k and finished worst (−0.62 both).
+High seed variance (jd seed-std 0.237, ~2× full's worst) with uniformly
+negative paired deltas points at **optimization instability /
+representation under this budget**, not the always-PASS trap. Last-20k
+slope −0.067 ± 0.131 — not climbing, so no extension run.
+
+**Caveats for the record** (why this is "not demonstrated at this
+budget/regime", not "perceiver refuted"): watchdog-OFF regime, 200k
+shaped self-play, n=3 seeds, and the readout shape (4 queries × 4 heads)
+was never tuned — the registered perceiver-readq/readheads/rheads
+variants would test whether the readout is the bottleneck. But by the
+operator's own bar (adoption requires capability evidence), the tie/loss
+branch applies: base stays `full`, phase 2 runs as designed (full vs
+no-aux, launched 2026-07-07 07:27), capacity sweep stays full-based.
+
+**Chain edit executed 2026-07-07** (the one-time watcher edit, tie/loss
+branch): stage 3 = `--archs full full-dtok32 full-dtok128 full-layers2
+full-layers6 full-dmodel128 full-dmodel512 --episodes 200000
+--leaster-watchdog --prefix sweep`; stage 4 report `--baseline full`
+with NO `--extra-results`. Two non-obvious details: (1) the sweep uses a
+**fresh prefix `sweep`** — with `--prefix ablate` the orchestrator's
+skip-guard would have found the completed watchdog-OFF
+`runs/ablate_full_s*` probe runs and silently skipped retraining the
+watchdog-on baseline; (2) stage 1 gained a **pgrep wait-guard** for
+`phase2_202607/phase2.sh` — phase2.sh has no internal resume guards, and
+the relaunched watcher would otherwise double-launch it on top of the
+running arms.
 
 ## Results — phase 2
 
@@ -872,6 +922,11 @@ order:
   memory-token feed above) since fused trunk features no longer exist.
 
 ## When the perceiver probe lands (~2026-07-07)
+
+**EXECUTED 2026-07-07 — verdict: perceiver UNDERPERFORMS (−0.187 vs
+full); the tie/loss branch below was applied, including the one-time
+watcher edit (see "Results — perceiver probe"). Nothing in this section
+remains to be done.**
 
 Same mechanical recipe as the tokenread probe, using
 `runs/perceiver_202607/report.md` and the pre-registered interpretation
