@@ -889,13 +889,26 @@ PYTHONPATH=. nohup caffeinate -is .venv/bin/python analysis/run_ablation_matrix.
     >> runs/decomp_202607/orchestrator.out 2>&1 & disown
 ```
 
-Report (merges the probe rows in as comparators):
+**Launch state (2026-07-07 12:49):** `readout-actor`/`readout-critic`
+run in `runs/decomp_202607` (batch 1 s42/s42/s1042 since 09:08, batch 2
+auto-follows ~Jul-8); `perceiver-shared` runs in **`runs/decomp_202607b`**
+(3 seeds since 12:49 — separate out-dir so the two concurrent
+orchestrators' aggregate steps don't clobber each other's results.csv).
+The operator chose perceiver-shared over per-network `perceiver-aux`
+(registered, unlaunched) — the shared readout is the aux design working
+as intended. The watchdog-on `sweep_full_s*` baseline (arm A) was KILLED
+at ~12:45 (~3.8h in) to free slots — core architecture questions first;
+its status files in `runs/size_sweep_202607/status/` say "running" and a
+future rerun of that orchestrator command restarts them fresh (correct).
+
+Report (merges the probe rows + the perceiver-shared out-dir):
 
 ```
 PYTHONPATH=. .venv/bin/python analysis/ablation_report.py \
     --out-dir runs/decomp_202607 --baseline no-aux \
     --extra-results runs/ablation_202607/results_200k_panel.csv \
     --extra-results runs/perceiver_202607/results.csv \
+    --extra-results runs/decomp_202607b/results.csv \
     > runs/decomp_202607/report.md 2>&1
 ```
 
