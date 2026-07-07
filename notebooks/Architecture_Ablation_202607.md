@@ -807,6 +807,83 @@ watchdog-on baseline; (2) stage 1 gained a **pgrep wait-guard** for
 the relaunched watcher would otherwise double-launch it on top of the
 running arms.
 
+## Perceiver-loss decomposition (2026-07-07, operator-requested)
+
+The operator paused adoption decisions to understand WHY the perceiver
+lost. Diagnostics already run (2026-07-07 morning):
+
+1. **Readout attention audit — HEALTHY** (scratchpad script, 40 self-play
+   deals/seed, MHA weights captured on the trained finals): play-phase
+   actor mass on trick tokens 0.32–0.39 vs 0.24 uniform, memory token
+   above uniform everywhere, no dead/collapsed queries, all 3 seeds. The
+   "readout squeezes harder than the pools" story is NOT a coverage
+   failure.
+2. **Critic-baseline proxy — comparable**: advantage-std/target-std over
+   the last 50 updates: full 0.68–0.70, perceiver 0.69–0.74, no-aux
+   0.72–0.73. No catastrophic critic deficit at endpoint.
+3. **Endpoint-snapshot check — pending**: PANEL-A (1000 deals, seed 42,
+   both modes) on all three 175k checkpoints:
+   `runs/perceiver_202607/diag/panel_a_175k_{called,jd}.csv`. Motivated
+   by s2042's last-10k cliff (edge vs scripted +0.07@190k → −0.58@200k).
+4. **Strongest existing clue**: full-tokenread (readout ADDED, pooled
+   trunk KEPT, actor only) ≈ full; perceiver (pooled trunk DELETED in
+   both networks + memory driver changed) lost 0.187. The readout is not
+   toxic; the deletion of the pooled path is where the damage lives —
+   split across three simultaneous changes.
+
+**Decomposition arms** (registered + tested, commit 885da0f; each flips
+ONE switch; 974,222 params for the hybrids, 873,678 for ctxmem):
+
+| arch | change isolated | comparator (CRN-paired) |
+|---|---|---|
+| `readout-actor` | actor trunk: pooled fusion → token readout | `ablate_no-aux_s*` |
+| `readout-critic` | critic trunk: pooled fusion → token readout | `ablate_no-aux_s*` |
+| `perceiver-ctxmem` | memory-GRU driver: memory token → context token | `ablate_perceiver_s*` |
+| `perceiver-aux` (already existed) | aux gradients shaping the critic readout | `ablate_perceiver_s*` |
+
+**Regime: watchdog-OFF, prefix `ablate`** — these explain a watchdog-off
+result, so they replicate the probe regime exactly and pair with the
+existing probe rows (the watchdog-on `sweep_full_s*` baseline running
+since 2026-07-07 08:50 belongs to the capacity sweep, not to this).
+
+Launch (3 seeds × 200k each; ~13–15 h per arch batch unloaded, more under
+contention; drop archs to shrink scope):
+
+```
+PYTHONPATH=. nohup caffeinate -is .venv/bin/python analysis/run_ablation_matrix.py \
+    --archs readout-actor readout-critic perceiver-ctxmem perceiver-aux \
+    --episodes 200000 \
+    --out-dir runs/decomp_202607 --prefix ablate \
+    >> runs/decomp_202607/orchestrator.out 2>&1 & disown
+```
+
+Report (merges the probe rows in as comparators):
+
+```
+PYTHONPATH=. .venv/bin/python analysis/ablation_report.py \
+    --out-dir runs/decomp_202607 --baseline no-aux \
+    --extra-results runs/ablation_202607/results_200k_panel.csv \
+    --extra-results runs/perceiver_202607/results.csv \
+    > runs/decomp_202607/report.md 2>&1
+```
+
+**Pre-registered interpretation** (PANEL-A both-modes, per-seed CRN
+pairs, same ±0.07 / 2-SE bars):
+- `readout-actor` − `no-aux` = actor-side cost; `readout-critic` −
+  `no-aux` = critic-side cost. Whichever is significantly negative
+  carries the blame; both ≈ 0 with `perceiver` still low ⇒ the loss is
+  an interaction (both trunks gone at once) or the memory driver.
+- `perceiver-ctxmem` − `perceiver` = memory-driver effect (positive ⇒
+  the memory-token driver was a mistake; adopt context driver in any
+  future perceiver work).
+- `perceiver-aux` − `perceiver` = aux-rescue effect on the token-centric
+  base (positive & significant ⇒ the critic readout needs aux shaping —
+  the operator's original intuition that aux belonged in the design).
+- Additivity check: actor Δ + critic Δ + driver Δ vs the observed
+  −0.143 (perceiver − no-aux); a large residual ⇒ interaction effects,
+  which argues the pooled trunk is load-bearing as a UNIT (inductive
+  bias), not through any single path.
+
 ## Results — phase 2
 
 *(pending)*
