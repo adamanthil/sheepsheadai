@@ -830,14 +830,48 @@ lost. Diagnostics already run (2026-07-07 morning):
    perceiver was climbing steeply at cutoff** — 2/3 seeds gained ~+0.25
    panel points in the final 25k episodes. The "last-20k slope ≈ 0"
    anchored-curve call was WRONG (third slope-instrument failure; only
-   panel-grade checkpoint evals can read curves). Control still needed:
-   paired `full` 175k panels
-   (`runs/perceiver_202607/diag/panel_a_full175k_{called,jd}.csv`,
-   launched 2026-07-07) tell whether the late slope is DIFFERENTIAL. If
-   full's last-25k gain is much smaller, the 200k verdict is a budget
-   artifact (like onehot@100k) and a **400k extension of the three
-   perceiver runs** is the decisive test — resume from the 200k finals
-   or rerun `--episodes 400000` fresh if resume is unsupported.
+   panel-grade checkpoint evals can read curves). **Control LANDED 2026-07-07 ~14:00
+   (`diag/panel_a_full175k_{called,jd}.csv`) — the late climb IS
+   DIFFERENTIAL.** Per-seed both-modes mean, 175k → 200k:
+
+   | seed | full | perceiver |
+   |---|---|---|
+   | s42 | −0.282 → −0.186 (+0.096) | −0.658 → −0.367 (+0.291) |
+   | s1042 | −0.328 → −0.270 (+0.057) | −0.498 → −0.273 (+0.225) |
+   | s2042 | −0.154 → −0.242 (−0.088) | −0.580 → −0.619 (−0.039) |
+   | mean | −0.255 → −0.233 (**+0.021**) | −0.579 → −0.420 (**+0.159**) |
+
+   full is plateaued (+0.02/25k, s2042 giving ground); the perceiver
+   gained ~7× as much over the same window. **The 200k probe verdict
+   stands only as a fixed-budget statement; the budget-artifact reading
+   (onehot@100k class) is now strongly supported.** In both archs s2042
+   regressed late — endpoint churn is regime-wide.
+
+   **400k extension (the decisive headroom test — run BOTH archs,
+   budget-equal, or the onehot lesson repeats).** The selfplay trainer
+   resumes with optimizer state and parses the start episode from
+   `checkpoint_N` names. Six runs (~2 days at 3-concurrent):
+
+   ```
+   for S in 42 1042 2042; do
+     PYTHONPATH=. nohup .venv/bin/python train_selfplay_ppo.py \
+       --arch perceiver --seed $S --episodes 400000 \
+       --resume runs/ablate_perceiver_s$S/perceiver_checkpoint_200000.pt \
+       --run-name ablate_perceiver400_s$S \
+       --anchor-eval-interval 5000 --anchor-eval-deals 300 \
+       --save-interval 25000 --strategic-eval-interval 4000000 \
+       > runs/ablate_perceiver400_s$S.log 2>&1 &
+   done
+   # same for --arch full / full_checkpoint_200000.pt / ablate_full400_s$S
+   ```
+
+   Endpoint read: PANEL-A both modes on the six 400k finals (same
+   rigorous_eval command shape as the 175k diagnostics), CRN-paired
+   per-seed deltas, ±0.07 / 2-SE bars. Pre-registered: perceiver@400k
+   beating full@400k reverses the probe verdict; also compare each
+   arch's own 200k→400k gain (plateau confirmation for full). Panels on
+   the 300k checkpoints give a cheap mid-course read (~25 min/mode);
+   the anchored 300-deal curves CANNOT be trusted for slope calls.
 4. **Throughput correction (2026-07-07 microbenchmark)**: the probe's
    4.4-vs-7.6 eps/s gap is largely a MACHINE-LOAD confound across runs,
    not architecture. Under identical load, per-decision act cost is
