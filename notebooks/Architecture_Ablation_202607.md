@@ -578,7 +578,10 @@ all four per-bag attention pools and the fused 256-d feature trunk.
 × 200k shaped self-play, CRN-paired with full@200k; auto-report at
 `runs/perceiver_202607/report.md`.
 
-**Pre-registered interpretation** (PANEL-A both-modes vs `full`, also read
+**Pre-registered interpretation** *(SUPERSEDED 2026-07-07: preference P1
+in "PROGRAM STATE & DECISION TREE" reverses the tie bar — ties now go to
+the perceiver-variant — and adoption is decided by the oracle-league
+stage, not this probe)* (PANEL-A both-modes vs `full`, also read
 the `no-aux` row since perceiver has no aux heads):
 - **> +0.07 and > 2 SE ⇒ the redesign wins** — adopt `perceiver` as the
   base for subsequent experiments (operator's stated intent) and rebase
@@ -1214,7 +1217,10 @@ anchor already covers this window. Verdict: **no burn-in mechanism
 needed**; an ev-gated policy freeze would release immediately. If
 belt-and-suspenders is wanted, a fixed ~10–20-update policy freeze is
 the right shape, but the evidence says the anchor suffices.
-**If it ties**, the operator's own bar applies: adoption requires
+**If it ties** *(SUPERSEDED 2026-07-07 — see "PROGRAM STATE & DECISION
+TREE": ties now go to the perceiver-variant (P1), phase 2 was replaced
+by the oracle-league stage-1 arms, and the sweep was redesigned in
+stage 2)*, the operator's own bar applies: adoption requires
 capability evidence, so a tie ⇒ keep `full` as default, let phase 2 run
 as designed, and keep the full-based sweep — but STILL apply the
 watchdog decision: stage 3 becomes
@@ -1521,8 +1527,9 @@ On the ADOPTED base from stage 1, not before:
   (pre-dates the re-planning); do not relaunch it.
 - Phase-2 league arms (full/no-aux) killed Jul-7 morning; superseded by
   stage 1. `phase2_onehot.sh` unlaunched (optional writeup arm).
-- `perceiver-shared-noaux` registry entry not yet written (needed only
-  for the stage-1 aux arm).
+- `perceiver-shared-noaux` registered 2026-07-07 evening (generic
+  build/play/update/roundtrip tests cover it) — the stage-1 aux arm is
+  launchable as written.
 - Stale "running" status JSONs exist in `runs/size_sweep_202607/status/`
   and `runs/decomp_202607/status/` — harmless (skip logic only honors
   "done").

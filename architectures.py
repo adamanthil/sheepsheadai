@@ -973,6 +973,21 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_critic=_aux_critic,
         has_aux_heads=True,
     ),
+    "perceiver-shared-noaux": ArchitectureSpec(
+        name="perceiver-shared-noaux",
+        description=(
+            "perceiver-shared minus the aux heads: shared encoder readout "
+            "trunk, pointer actor, plain no-aux critic. The aux rung on "
+            "the shared-readout base — the stage-1 league aux-contribution "
+            "arm pairs this against perceiver-shared (under the oracle "
+            "critic the only surviving aux channel is trunk-shaping for "
+            "the actor)."
+        ),
+        build_encoder=lambda: SharedReadoutEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_pointer_actor,
+        build_critic=_no_aux_critic,
+        has_aux_heads=False,
+    ),
     "perceiver-ctxmem": ArchitectureSpec(
         name="perceiver-ctxmem",
         description=(
