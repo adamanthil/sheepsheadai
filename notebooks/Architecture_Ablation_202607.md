@@ -723,11 +723,24 @@ immediately and slow/unstable ones (tokenread, no-transformer) linger.
 4. onehot's 100-150k flat-then-jump was NOT leaster (it escaped at 5k) —
    separate phenomenon.
 
-**Improvement options (proposed 2026-07-06, NOT implemented — operator
-decision pending):** (a) collapse watchdog in train_selfplay_ppo.py:
-if rollout leaster ≥90% for K updates, boost bidding-head entropy coeff
-until <30% — adaptive, only intervenes in the pathological region, no
-reward change; (b) constant per-head entropy floor on pick/partner/bury;
+**Fix chosen and IMPLEMENTED (operator decision 2026-07-06): option (a),
+the selective entropy kick** — `--leaster-watchdog` on
+train_selfplay_ppo.py, **default OFF** (no completed or running run used
+it; enable explicitly on future from-scratch runs). `LeasterWatchdog`:
+when the rolling 3000-episode leaster rate crosses 90% it multiplies the
+pick head's *scheduled* entropy coefficient ×10 each update until the
+rate falls below 30% (hysteresis), then normal annealing resumes.
+Rationale for firing at the crossing: the entropy bonus's gradient
+vanishes as the head approaches determinism, so the kick must land while
+pick entropy is still alive (~episode 3k), holding a probability floor so
+the deep freeze never forms. Rewards untouched. Survey result: NO other
+adaptive mechanism exists in either trainer today — both use open-loop
+per-head entropy schedules from config.py only (the old trainer's
+controllers/epsilon-floors were retired); ppo.py's per-head
+`entropy_coeff_*` attributes made this a trainer-side-only change.
+Engage/release events print to train.log (grep "watchdog"). If used in a
+comparison, enable it for ALL arms. Alternatives considered:
+(b) constant per-head entropy floor on pick/partner/bury;
 (c) bidding-warmup curriculum (first N eps sample pick/pass from an
 ε-mixture, bidding heads frozen, so play heads see picker/defender data
 before bidding optimizes); (d) early scripted-opponent mixing (breaks the

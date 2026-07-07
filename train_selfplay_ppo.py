@@ -51,6 +51,47 @@ DEFAULT_ANCHOR_100K = (
 DEFAULT_ANCHOR_PFSP = "final_pfsp_swish_ppo.pt"
 
 
+class LeasterWatchdog:
+    """Selective pick-entropy kick against the always-PASS collapse.
+
+    Every from-scratch shaped-reward self-play run collapses to ~100%
+    leasters within the first few thousand episodes: play skill is
+    terrible at init, so picking has negative EV and every seat learns to
+    PASS (see the leaster-rate scan in
+    notebooks/Architecture_Ablation_202607.md; `analysis/leaster_scan.py`).
+    The scheduled entropy bonus cannot prevent the freeze because its
+    gradient vanishes as the pick head approaches determinism — so this
+    watchdog fires EARLY, at the 90% leaster crossing while pick entropy
+    is still alive, and multiplies the pick head's scheduled entropy
+    coefficient until the rolling rate falls back below 30% (hysteresis).
+    Bidding rewards are untouched, and the kick is inert outside the
+    pathological region — the pick head anneals normally once released.
+    """
+
+    ENGAGE_RATE = 0.90
+    RELEASE_RATE = 0.30
+    KICK = 10.0
+    MIN_SAMPLES = 1000
+
+    def __init__(self):
+        self.engaged = False
+        self.engaged_updates = 0
+
+    def observe(self, leaster_window) -> str | None:
+        """Advance state from the rolling 0/1 leaster window. Returns
+        "engaged"/"released" on a transition, else None."""
+        if len(leaster_window) < self.MIN_SAMPLES:
+            return None
+        rate = sum(leaster_window) / len(leaster_window)
+        if not self.engaged and rate >= self.ENGAGE_RATE:
+            self.engaged = True
+            return "engaged"
+        if self.engaged and rate < self.RELEASE_RATE:
+            self.engaged = False
+            return "released"
+        return None
+
+
 def _run_anchored_eval(
     agent,
     yardsticks: dict,
@@ -80,6 +121,7 @@ def train_ppo(
     anchor_100k=DEFAULT_ANCHOR_100K,
     anchor_pfsp=DEFAULT_ANCHOR_PFSP,
     seed=None,
+    leaster_watchdog=False,
 ):
     """
     PPO training with strategic evaluation metrics.
@@ -96,7 +138,9 @@ def train_ppo(
     print(f"  Save interval: {save_interval}")
     print(f"  Strategic evaluation interval: {strategic_eval_interval}")
     print(f"  Architecture: {arch}")
+    print(f"  Leaster watchdog: {'ON' if leaster_watchdog else 'off'}")
     print("=" * 60)
+    watchdog = LeasterWatchdog() if leaster_watchdog else None
 
     # Create agent with optimized hyperparameters
     agent = PPOAgent(
@@ -416,6 +460,25 @@ def train_ppo(
                 _HP.entropy_bury_start
                 + (_HP.entropy_bury_end - _HP.entropy_bury_start) * decay_fraction
             )
+
+            if watchdog is not None:
+                transition = watchdog.observe(leaster_window)
+                if transition is not None:
+                    rate = sum(leaster_window) / len(leaster_window)
+                    if transition == "engaged":
+                        print(
+                            f"🚨 Leaster watchdog ENGAGED (rate {rate:.0%}): "
+                            f"pick entropy coeff ×{LeasterWatchdog.KICK:g} "
+                            f"until rate < {LeasterWatchdog.RELEASE_RATE:.0%}"
+                        )
+                    else:
+                        print(
+                            f"✅ Leaster watchdog released (rate {rate:.0%}) "
+                            f"after {watchdog.engaged_updates} kicked updates"
+                        )
+                if watchdog.engaged:
+                    agent.entropy_coeff_pick *= LeasterWatchdog.KICK
+                    watchdog.engaged_updates += 1
 
             update_stats = agent.update(epochs=4, batch_size=256)
 
@@ -761,6 +824,12 @@ def main():
         default=DEFAULT_ANCHOR_PFSP,
         help="Absolute-yardstick anchor checkpoint for the eval curve",
     )
+    parser.add_argument(
+        "--leaster-watchdog",
+        action="store_true",
+        help="Selective pick-entropy kick against the always-PASS collapse "
+        "(engages at 90%% rolling leaster rate, releases below 30%%)",
+    )
 
     args = parser.parse_args()
 
@@ -786,6 +855,7 @@ def main():
         anchor_100k=args.anchor_100k,
         anchor_pfsp=args.anchor_pfsp,
         seed=args.seed,
+        leaster_watchdog=args.leaster_watchdog,
     )
 
 
