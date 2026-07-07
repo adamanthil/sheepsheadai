@@ -5,6 +5,14 @@ Companion to `Evaluation_Harnesses_202607.md` §5 (protocol) and
 of the actual experiment: exact commands, environment, output schema, and
 the final results.
 
+> **START HERE (added 2026-07-07): the section "PROGRAM STATE & DECISION
+> TREE" near the end of this notebook supersedes all earlier
+> pre-registered branch decisions.** The chronological log below is
+> accurate as history, but several of its verdict rules were amended
+> after the budget-artifact discovery of 2026-07-07 — annotated inline
+> where they occur. Operator model access runs through **2026-07-12
+> 23:59**.
+
 **Question:** what did each historical architecture addition buy, in
 training speed (sample efficiency AND wall-clock) and in self-play-regime
 skill ceiling? Each adjacent ladder rung removes exactly one addition;
@@ -1350,3 +1358,171 @@ tables), `analysis/rigorous_eval.py` + `analysis/scripted_probe.py` +
 `Evaluation_Harnesses_202607.md`). Checkpoints record their architecture;
 **always load via `ppo.load_agent(path)`**, never construct `PPOAgent`
 with a guessed arch.
+
+---
+
+# PROGRAM STATE & DECISION TREE (2026-07-07, supersedes earlier branches)
+
+Written after the budget-artifact discovery and the operator's re-planning
+session of 2026-07-07. Everything below reflects the operator's codified
+preferences and is the CURRENT plan; earlier pre-registered branch rules
+(tokenread/perceiver probe sections, the tie-branch sweep) are history.
+Operator model access through **2026-07-12 23:59**; after that every step
+here must be executable mechanically.
+
+## Codified operator preferences (P1–P5)
+
+- **P1 — Architecture preference:** the operator prefers the
+  perceiver/perceiver-shared family on theoretical and engineering
+  grounds. **Ties go to the perceiver-variant.** This REPLACES the old
+  "tie ⇒ keep full" bar: `full` is retained only if it beats the best
+  perceiver-variant DECISIVELY (> 0.07 and > 2 SE, CRN-paired) in the
+  decisive test (see P3).
+- **P2 — Aux heads ship.** The deployed agent includes the aux heads as a
+  product feature (limited-info score/win/trump insight) regardless of
+  their training benefit. Their LEARNING contribution is still a real
+  question — measured in the target regime (league aux arm below), not
+  assumed from the shaped-self-play null.
+- **P3 — The oracle-critic league regime is decisive.** Shaped self-play
+  results (including the running 400k extensions) are SCREENING evidence
+  only: they pick contenders and catch gross failures. Adoption is
+  settled by paired league arms under `--critic-mode oracle`.
+- **P4 — A size sweep still happens**, redesigned to fit P3 (below).
+- **P5 — Writeup instrumentation** (secondary to strength, still
+  required): every architecture comparison that might appear in the
+  writeup uses the comparable-instrument set (checkpoint panels, equal-load
+  throughput bench, param counts) — never the 300-deal anchored curves.
+
+## Standing measurement rules (learned the hard way this week)
+
+1. **Endpoints = mean of the last THREE checkpoint panels** (e.g.
+   350k/375k/400k), both modes, CRN-paired per seed. Single-final-checkpoint
+   verdicts are exposed to ±0.1 endpoint churn (observed in BOTH archs'
+   s2042 and full s42).
+2. **Curve/slope claims only from checkpoint panels** (1000 deals/mode).
+   The anchored 300-deal curves have produced three wrong calls.
+3. **Fixed-budget endpoint deltas between archs with different learning
+   speeds are budget artifacts until a differential-slope check clears
+   them** (the perceiver lesson). This retro-applies to the banked ladder
+   verdicts (transformer +0.124, informed-init +0.150, aux null, onehot
+   tie): treat as instrument-limited screening reads, NOT settled facts.
+   Anything load-bearing gets re-decided in the league regime.
+4. Never compare eps/s across differently-loaded runs; use the paired
+   act-bench + update-timing method.
+
+## Stage 0 — RUNNING NOW: self-play screening
+
+- **Six 400k extensions** (`ablate_{perceiver,full}400_s{42,1042,2042}`,
+  launched Jul-7 14:45, ~Jul-8 late evening) — budget-equal headroom test.
+  300k mid-course panels automated (detached watcher, see above).
+- **perceiver-shared 3×200k** (`runs/decomp_202607b`, since Jul-7 12:49) —
+  the P1+P2 adoption candidate: shared readout trunk + full aux stack +
+  pointer actor.
+- **Reads (apply rules 1–3):**
+  - perceiver vs full @400k, last-3-ckpt endpoints
+    (`diag/panel_a_400k_{called,jd}.csv` + 375k/350k panels — same command
+    shape; also read own-arch 200k→400k gains).
+  - perceiver-shared vs full @200k **plus its 150k/175k/200k checkpoint-
+    panel slope** — if shared trails full but is climbing differentially,
+    EXTEND IT to 400k (same resume recipe) before judging; do not repeat
+    the fixed-budget mistake on the new candidate.
+- **Screening outcome → league contenders:** unless the perceiver family
+  is decisively WORSE at equal 400k budget (full ahead > 0.07 & > 2 SE),
+  the league pair is **full vs perceiver-shared**. (Plain `perceiver`
+  wins screening but lacks aux ⇒ P2 still routes adoption through
+  perceiver-shared; a perceiver-shared underperformance vs plain
+  perceiver at screening would be the one surprise requiring operator
+  judgment — it would implicate the shared-trunk/aux forcing itself.)
+
+## Stage 1 — DECISIVE: paired oracle-critic league arms
+
+The regime that matters (P3). Two arms, identical protocol, CRN seed:
+
+```
+# per arm (arch = full | perceiver-shared):
+PYTHONPATH=. nohup caffeinate -is .venv/bin/python train_league_ppo.py \
+    --arch <ARCH> --critic-mode oracle \
+    --resume <that arch's best 400k/200k self-play final> \
+    --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
+    --league-dir runs/league_arch_<ARCH>/league --run-name league_arch_<ARCH> \
+    --generations 1 --main-episodes 750000 --anchor-coeff 1.0 \
+    --num-workers 4 --seed 42 --schedule-horizon 20000000 \
+    > runs/league_arch_<ARCH>.log 2>&1 &
+# gen 2 (anchor-free) exactly as in runs/phase2_202607/phase2.sh
+```
+
+- Warm starts: each arch resumes from ITS OWN self-play final (full400 /
+  perceiver-shared 200k-or-400k). Warm-start shock: none expected
+  (shock sim above); watch `ev_oracle` day 1 (health check).
+- Oracle cost: expect ~1.5–2× wall clock vs limited (measured 2.7× update
+  cost); knob if needed = oracle loss on 1 of 4 epochs.
+- Instruments per gen: PANEL-A both modes (last-3-ckpt rule) + gen-vs-gen
+  h2h + trump-lead probe.
+- **Adoption rule (P1): adopt perceiver-shared unless full wins > 0.07
+  and > 2 SE.** Two arms ≈ 2×3.5 days/gen concurrent.
+- **Aux-contribution arm (P2 question, optional third arm or follow-up):**
+  perceiver-shared vs `perceiver-shared-noaux` (registry entry pending —
+  one-liner: SharedReadoutEncoder + `_no_aux_critic`), same league
+  protocol. This is the definitive aux measurement: under the oracle the
+  only surviving aux channel is trunk-shaping for the actor.
+- The phase-2 questions this displaces (full vs no-aux league, onehot
+  league arm) are ANSWERED or OBSOLETED by these arms; run the onehot
+  league arm later only if the writeup wants the token-stack-vs-flat
+  story at league scale.
+
+## Stage 2 — size sweep, redesigned (P4)
+
+On the ADOPTED base from stage 1, not before:
+
+- **Coarse screen (self-play):** one-knob variants × 3 seeds × **400k**
+  episodes, `--leaster-watchdog`, base arch included in-sweep, endpoints
+  by rule 1. (400k, not 200k: bigger models are plausibly slower
+  climbers — a 200k sweep would systematically favor small variants; this
+  is rule 3 applied prospectively.)
+- **Confirm (league):** top-1/2 variants + base through one oracle-league
+  gen each before any switch.
+- If the base is perceiver-shared: size/attention-shape registry variants
+  for the shared encoder DON'T EXIST YET (only `perceiver-*` variants do)
+  — needed code: a `_perceiver_shared_size_variant` factory mirroring
+  `_perceiver_size_variant` (ask the operator before building; ~1h with
+  tests).
+- Attention-shape knobs (readout queries/heads, reasoning heads) fold
+  into the same sweep on the adopted base.
+
+## Writeup figure pipeline (P5)
+
+- **Panel-grade learning curves** (the headline figure): every probe run
+  and extension has 25k-interval checkpoints on disk. Batch
+  `rigorous_eval` over all checkpoints of an arch (one call, many
+  candidates, both modes, seed 42) → score-vs-episodes with CIs,
+  CRN-comparable across archs. Backfillable TODAY for full / perceiver /
+  onehot-ff / no-aux / tokenread / extensions from existing run dirs
+  (~2-3h background per arch batch; entirely mechanical).
+- **Efficiency table:** param counts (registry) + equal-load per-decision
+  act bench + update-phase timing split. Method scripts currently live in
+  the session scratchpad (`act_bench.py`, `readout_attention_audit.py`,
+  `oracle_update_bench.py`, `oracle_shock_sim.py`) — commit them under
+  `analysis/diagnostics/` before 2026-07-12 for reproducibility.
+- **Mechanism figures:** readout-attention coverage by token group over
+  training (audit script), pass-collapse escape table (leaster_scan).
+- Standing caveat for the text: 300-deal anchored curves are
+  motivation-only; every published number is a checkpoint panel.
+
+## Loose ends ledger (as of 2026-07-07 evening)
+
+- Decomposition matrix (readout-actor/readout-critic ×3 seeds) PAUSED,
+  restartable via the orchestrator command above — now a "why" question,
+  interesting for the writeup, not on the critical path.
+- `perceiver-ctxmem` + `perceiver-aux` registered, never launched (the
+  memory-driver and per-network-aux questions — writeup material).
+- Watchdog-on `sweep_full_s*` baseline killed ~3.8h in; rerun only when
+  stage 2 launches (command in tie-branch section, use prefix `sweep`).
+- `runs/size_sweep_202607/watch_and_launch.sh.new` staged file is STALE
+  (pre-dates the re-planning); do not relaunch it.
+- Phase-2 league arms (full/no-aux) killed Jul-7 morning; superseded by
+  stage 1. `phase2_onehot.sh` unlaunched (optional writeup arm).
+- `perceiver-shared-noaux` registry entry not yet written (needed only
+  for the stage-1 aux arm).
+- Stale "running" status JSONs exist in `runs/size_sweep_202607/status/`
+  and `runs/decomp_202607/status/` — harmless (skip logic only honors
+  "done").
