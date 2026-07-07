@@ -892,11 +892,24 @@ are already registered (commit with `_perceiver_size_variant`; params
 
 ```
 --archs perceiver-dtok32 perceiver-dtok128 perceiver-layers2 \
-        perceiver-layers6 perceiver-dmodel128 perceiver-dmodel512
+        perceiver-layers6 perceiver-dmodel128 perceiver-dmodel512 \
+        perceiver-readq2 perceiver-readq8 \
+        perceiver-readheads2 perceiver-readheads8 \
+        perceiver-rheads2 perceiver-rheads8
 ```
 
 (baseline for the report is then the perceiver@200k probe rows: use
 `--extra-results runs/perceiver_202607/results.csv --baseline perceiver`.)
+The second line onward are the **attention-shape knobs** (operator,
+2026-07-06): readout queries, readout heads, and transformer reasoning
+heads were all an unexamined "4" chosen when the transformer was first
+added. The four head-count variants are exactly param-matched to base
+perceiver (873,678 — MHA params don't depend on num_heads), so any delta
+there is pure structure; readq2/readq8 are 807,886 / 1,005,262. NOTE:
+12 variants ≈ doubles sweep wall-clock (~6 days at 3-seeds-parallel,
+~17h per variant batch). If that's too long, run capacity first (line 1)
+and attention second (lines 2-4) as two sweeps — the report can merge
+them via repeated `--extra-results`.
 **Oracle critic readout — DONE unconditionally (operator decision,
 2026-07-06):** the operator chose to rebuild `oracle.py` perceiver-style
 without waiting for the probe verdict (no oracle training had happened, no

@@ -467,6 +467,31 @@ class TestPerceiver(unittest.TestCase):
         out = enc.encode_batch([game.players[0].get_state_dict()])
         self.assertEqual(tuple(out["all_tokens"].shape), (1, 19, 128))
 
+    def test_attention_shape_variants(self):
+        _seed_all(16)
+        agent = PPOAgent(len(ACTIONS), arch="perceiver-readq8")
+        self.assertEqual(tuple(agent.actor.readout_query.shape), (8, 64))
+        self.assertEqual(tuple(agent.critic.readout_query.shape), (8, 64))
+        # End-to-end: a non-default readout shape must act.
+        game = Game(seed=140)
+        p = game.players[0]
+        valid = p.get_valid_action_ids()
+        a, _, _ = agent.act(p.get_state_dict(), list(valid), p.position)
+        self.assertIn(a, valid)
+
+        agent2 = PPOAgent(len(ACTIONS), arch="perceiver-readheads2")
+        self.assertEqual(agent2.actor.readout_mha.num_heads, 2)
+        self.assertEqual(agent2.critic.readout_mha.num_heads, 2)
+
+        agent3 = PPOAgent(len(ACTIONS), arch="perceiver-rheads8")
+        self.assertEqual(agent3.encoder.card_reasoner.attn_layers[0].num_heads, 8)
+
+        # Helper defaults still reproduce the base perceiver readout shape,
+        # so the pre-existing size variants are untouched by the refactor.
+        agent4 = PPOAgent(len(ACTIONS), arch="perceiver-layers6")
+        self.assertEqual(tuple(agent4.actor.readout_query.shape), (4, 64))
+        self.assertEqual(agent4.actor.readout_mha.num_heads, 4)
+
     def test_base_critic_sequence_values_matches_inline(self):
         # The seam must be exactly the old two lines for existing archs.
         _seed_all(14)

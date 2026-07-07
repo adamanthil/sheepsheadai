@@ -616,23 +616,56 @@ def _full_size_variant(
 
 
 def _perceiver_size_variant(
-    name: str, description: str, **encoder_kwargs
+    name: str,
+    description: str,
+    n_readout_queries: int = 4,
+    n_readout_heads: int = 4,
+    **encoder_kwargs,
 ) -> ArchitectureSpec:
-    """A `perceiver`-shaped spec with one encoder dimension overridden.
+    """A `perceiver`-shaped spec with one dimension overridden.
 
     Mirror of _full_size_variant for the token-centric base: if the
     perceiver becomes the default architecture, capacity questions must be
     answered on it directly — a depth/width sweep on `full` is confounded
-    by the attention-pool squeeze the perceiver removes.
+    by the attention-pool squeeze the perceiver removes. Besides the
+    encoder kwargs, the actor/critic readout attention shape
+    (n_readout_queries x n_readout_heads, both historically an unexamined
+    4) is sweepable; the defaults reproduce the base `perceiver` networks
+    exactly.
     """
+
+    def build_actor(action_size, action_groups, encoder, mappings):
+        from ppo import PerceiverActorNetwork
+
+        return PerceiverActorNetwork(
+            action_size,
+            action_groups,
+            d_card=encoder.d_card_dim,
+            d_token=encoder.d_token_dim,
+            d_model=getattr(encoder, "d_model", 256),
+            n_readout_queries=n_readout_queries,
+            n_readout_heads=n_readout_heads,
+            **mappings,
+        )
+
+    def build_critic(encoder):
+        from ppo import PerceiverCriticNetwork
+
+        return PerceiverCriticNetwork(
+            d_token=encoder.d_token_dim,
+            d_model=getattr(encoder, "d_model", 256),
+            n_readout_queries=n_readout_queries,
+            n_readout_heads=n_readout_heads,
+        )
+
     return ArchitectureSpec(
         name=name,
         description=description,
         build_encoder=lambda: PerceiverEncoder(
             card_config=CardEmbeddingConfig(), **encoder_kwargs
         ),
-        build_actor=_perceiver_actor,
-        build_critic=_perceiver_critic,
+        build_actor=build_actor,
+        build_critic=build_critic,
         has_aux_heads=False,
     )
 
@@ -776,6 +809,39 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         "perceiver-dmodel512",
         "perceiver with d_model 256 -> 512 (memory/adapter/value width x2).",
         d_model=512,
+    ),
+    # Attention-shape knobs: every 4 below (readout queries, readout heads,
+    # reasoning heads) was chosen without evidence when the transformer was
+    # first added — these variants finally probe them, one knob at a time.
+    "perceiver-readq2": _perceiver_size_variant(
+        "perceiver-readq2",
+        "perceiver with 2 readout queries per network (4 -> 2).",
+        n_readout_queries=2,
+    ),
+    "perceiver-readq8": _perceiver_size_variant(
+        "perceiver-readq8",
+        "perceiver with 8 readout queries per network (4 -> 8).",
+        n_readout_queries=8,
+    ),
+    "perceiver-readheads2": _perceiver_size_variant(
+        "perceiver-readheads2",
+        "perceiver with 2 readout attention heads (4 -> 2, head_dim 32).",
+        n_readout_heads=2,
+    ),
+    "perceiver-readheads8": _perceiver_size_variant(
+        "perceiver-readheads8",
+        "perceiver with 8 readout attention heads (4 -> 8, head_dim 8).",
+        n_readout_heads=8,
+    ),
+    "perceiver-rheads2": _perceiver_size_variant(
+        "perceiver-rheads2",
+        "perceiver with 2 transformer reasoning heads (4 -> 2).",
+        n_reasoning_heads=2,
+    ),
+    "perceiver-rheads8": _perceiver_size_variant(
+        "perceiver-rheads8",
+        "perceiver with 8 transformer reasoning heads (4 -> 8).",
+        n_reasoning_heads=8,
     ),
     # --- Readout variant (pooling-bottleneck hypothesis) --------------------
     "full-tokenread": ArchitectureSpec(
