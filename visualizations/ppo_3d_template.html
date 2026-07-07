@@ -153,8 +153,26 @@
   .b-share { color: #f4a261; }
   .b-actor { color: #80ed99; }
   .b-critic { color: #ff9ec7; }
-  .b-aux { color: #ffd166; }
   .b-output { color: #ff6b6b; }
+
+  #head-chips { display: flex; gap: 5px; align-items: center; }
+  #head-chips .chips-head {
+    font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
+    color: var(--muted); margin: 0 2px 0 6px;
+  }
+  #head-chips button {
+    width: 26px; padding: 4px 0; text-align: center;
+    font-size: 10px; font-weight: 600;
+    background: rgba(20,26,54,0.9);
+    border: 1px solid var(--hc, var(--line));
+    color: var(--hc, var(--text));
+    border-radius: 8px; cursor: pointer;
+    box-shadow: 0 0 7px color-mix(in srgb, var(--hc) 55%, transparent);
+    transition: opacity .15s, box-shadow .15s;
+  }
+  #head-chips button.off {
+    opacity: 0.32; box-shadow: none; border-color: var(--line); color: var(--muted);
+  }
 
   .pill {
     display: inline-block;
@@ -174,7 +192,7 @@
 
 <div id="ui-top">
   <div class="panel" id="title">
-    Sheepshead PPO <span class="sub">3D · live forward pass · final PFSP model</span>
+    Sheepshead PPO <span class="sub">3D · perceiver forward pass</span>
   </div>
   <div class="panel controls">
     <button id="btn-play" class="primary">▶ Play tour</button>
@@ -187,6 +205,7 @@
     <label><input type="checkbox" id="chk-rotate" /> auto-rotate</label>
     <label><input type="checkbox" id="chk-emphasis" /> emphasize connections</label>
     <label><input type="checkbox" id="chk-flow" checked /> flow</label>
+    <span id="head-chips"><span class="chips-head">heads</span></span>
   </div>
   <div class="panel" id="scenario-bar"></div>
 </div>
@@ -204,11 +223,14 @@
 
 <div class="panel" id="legend">
   <div class="row"><span class="swatch" style="background:#b58bff;color:#b58bff"></span>Input / observation</div>
-  <div class="row"><span class="swatch" style="background:#4cc9f0;color:#4cc9f0"></span>Encoder · tokens · transformer</div>
-  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>Shared features · memory</div>
-  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor (policy)</div>
-  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic value</div>
-  <div class="row"><span class="swatch" style="background:#ffd166;color:#ffd166"></span>Auxiliary heads</div>
+  <div class="row"><span class="swatch" style="background:#4cc9f0;color:#4cc9f0"></span>Encoder tokens</div>
+  <div class="row">
+    <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
+    Attention heads 1–4
+  </div>
+  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · recurrence</div>
+  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor readout + policy</div>
+  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic readout + value</div>
   <div class="row"><span class="swatch" style="background:#fffa9e;color:#fffa9e"></span>Active flow / connection</div>
 </div>
 
@@ -255,12 +277,17 @@ const C = {
   share: 0xf4a261,
   actor: 0x80ed99,
   critic: 0xff9ec7,
-  aux: 0xffd166,
   output: 0xff6b6b,
   pulse: 0xfffa9e,
   dim: 0x223060,
   text: 0xe6ecff,
 };
+// One hue per attention head — used by the transformer chords and the
+// H1–H4 toggle chips (keep in sync with the legend / chip CSS colors).
+const HEAD_COLORS = [0x4cc9f0, 0x3ee6b0, 0x6f8dff, 0xc77bff];
+// Per-query hue families for the two readouts (actor greens, critic pinks).
+const ACTOR_Q_COLORS = [0x80ed99, 0x5fd9a4, 0xa9f27e, 0x4fe0c0];
+const CRITIC_Q_COLORS = [0xff9ec7, 0xff7fb0, 0xe08cff, 0xffb3a0];
 
 // ============================================================
 // Scene setup
@@ -496,18 +523,24 @@ function liveHead() {
 // ============================================================
 // Stage layout (X positions)
 // ============================================================
+const N_LAYERS = DATA.dims.n_layers;   // transformer reasoning layers (4)
+const N_HEADS = DATA.dims.n_heads;     // attention heads per layer (4)
 const XS = {
-  input: -56,
-  embed: -38,
-  tokensPre: -20,
-  attnRing: -2,
-  pools: 14,
-  gru: 24,
-  features: 34,
+  input: -66,
+  embed: -48,
+  tokensPre: -30,
+  xf0: -14,        // first transformer layer ring
+  xfSpacing: 10,   // ring-to-ring distance (FFN lens sits halfway)
+  gru: 26,
+  readout: 34,     // actor (upper) + critic (lower) query gems
   actor: 50,
   critic: 50,
-  output: 64,
+  output: 66,
 };
+const xfX = (l) => XS.xf0 + l * XS.xfSpacing;      // ring x of layer l
+const XF_EXIT = xfX(N_LAYERS - 1);                 // final ring (readout keys)
+const RING_R = 9;
+const RING_CY = 5; // ring center height
 
 // ============================================================
 // Rebuildable scene root + registries
@@ -516,8 +549,9 @@ let sceneRoot = null;
 let stageGroups = {};
 let PICKABLES = [];
 let connLines = [];
-let inputInfo, embedInfo, tokensInfo, attnInfo, poolsInfo, memInfo, featInfo,
-  actorInfo, criticInfo, outputInfo;
+let allChords = []; // every attention chord (tunnel + readouts), for styling
+let inputInfo, embedInfo, tokensInfo, xfInfo, memInfo,
+  actorReadoutInfo, actorInfo, criticInfo, outputInfo;
 
 function group(name) {
   if (!stageGroups[name]) {
@@ -580,6 +614,7 @@ function disposeScene() {
   stageGroups = {};
   PICKABLES = [];
   connLines = [];
+  allChords = [];
   labelRegistry.length = 0;
   flowState = null;
   hovered = null;
@@ -590,28 +625,53 @@ function disposeScene() {
 // the weakest ones drop out, so high-strength token→token links pop. All other
 // connection lines are boosted too.
 let emphasize = false;
-const CHORD_COLD = new THREE.Color(0x274080);
-const CHORD_HOT = new THREE.Color(C.pulse);
+// Per-head visibility, driven by the H1–H4 chips in the HUD.
+const headOn = new Array(N_HEADS).fill(true);
 function chordRadius(norm) {
   return emphasize ? 0.06 + Math.pow(norm, 1.15) * 0.62 : 0.035 + norm * 0.18;
 }
 function chordBaseOpacity(norm) {
   return emphasize ? clamp(0.4 + norm * 0.6, 0, 1) : 0.18 + norm * 0.5;
 }
-function chordVisible(norm) { return emphasize ? norm >= 0.18 : true; }
+function chordVisible(c) {
+  if (c.head !== undefined && !headOn[c.head]) return false;
+  return emphasize ? c.norm >= 0.18 : true;
+}
 function chordGeometry(curve, norm) {
   return new THREE.TubeGeometry(curve, 18, chordRadius(norm), 6, false);
 }
+// Every chord keeps its own hue (head color / query color); strength shows
+// as brightness toward the hot pulse tone plus thickness.
+function chordColor(c) {
+  const t = emphasize ? Math.pow(c.norm, 0.55) : c.norm;
+  const cold = new THREE.Color(c.baseColor).multiplyScalar(0.42);
+  const hot = new THREE.Color(c.baseColor).lerp(new THREE.Color(C.pulse), 0.55);
+  return cold.lerp(hot, t);
+}
 function styleChords() {
-  for (const c of attnInfo.chordLines) {
-    c.mesh.visible = chordVisible(c.norm);
+  for (const c of allChords) {
+    c.mesh.visible = chordVisible(c);
     c.mesh.geometry.dispose();
     c.mesh.geometry = chordGeometry(c.curve, c.norm);
     c.baseOpacity = chordBaseOpacity(c.norm);
-    const t = emphasize ? Math.pow(c.norm, 0.55) : c.norm;
-    c.mesh.material.color.copy(CHORD_COLD).lerp(CHORD_HOT, t);
+    c.mesh.material.color.copy(chordColor(c));
     c.mesh.material.opacity = c.baseOpacity;
   }
+}
+// Shared factory: a curved additive tube whose thickness/brightness encode an
+// attention weight. `group` ties it into stage dimming; `head` into toggles.
+function addChord(g, curve, norm, baseColor, groupName, head) {
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: chordBaseOpacity(norm),
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(chordGeometry(curve, norm), mat);
+  g.add(mesh);
+  const c = { mesh, curve, norm, baseColor, group: groupName, head,
+    baseOpacity: chordBaseOpacity(norm) };
+  mat.color.copy(chordColor(c));
+  allChords.push(c);
+  return c;
 }
 function styleConn() {
   // Write into baseOpacity: applyStageDim() owns the final material opacity.
@@ -738,8 +798,8 @@ function buildInputCards() {
     badge: "input",
     kv: { "‖memory_in‖": memMag.toFixed(2) },
     body: memMag < 1e-6
-      ? `<p>256-d recurrent state from this player's previous decision. Zeros here — this is the seat's first decision of the hand. Carried via a GRU cell — see stage 6.</p>`
-      : `<p>256-d recurrent state carried from this seat's previous decisions — it has already seen the earlier phases of this hand. Updated by the GRU cell in stage 6.</p>`,
+      ? `<p>256-d recurrent state from this player's previous decision. Zeros here — this is the seat's first decision of the hand. Carried via a GRU cell — see stage 5.</p>`
+      : `<p>256-d recurrent state carried from this seat's previous decisions — it has already seen the earlier phases of this hand. Updated by the GRU cell in stage 5.</p>`,
   });
 
   return { cardObjs, trickObjs, chipY, spacing, topY };
@@ -850,7 +910,7 @@ function buildEmbeddingTable() {
     title: "nn.Embedding(34, 16)",
     badge: "enc",
     body: `<p>The card embedding table. 34 rows (PAD, 32 real cards, UNDER token) × 16 dims. Dims 0–3 = suit one-hot · 4–7 = per-suit rank · 8 = points/11 · 9 = UNDER flag · 10–15 = free to learn.</p>
-      <p>The highlighted rows are the cards this scenario touches (hand, table, called card). The same table is reused by the actor's two-tower CALL scorer and the critic's seen-trump-mask head, so any update here propagates everywhere.</p>`,
+      <p>The highlighted rows are the cards this scenario touches (hand, table, called card). The same table is reused by the actor's two-tower CALL scorer, so any update here propagates everywhere.</p>`,
   });
 
   return { usedRowYs, totalW, totalH };
@@ -917,7 +977,7 @@ function buildTokens() {
       badge: "enc",
       kv: { "type": info.type, "active": active ? "yes" : "PAD", "‖vec‖": mag.toFixed(2) },
       body: `<p>One of 19 entity tokens. Built by the type-specific MLP, then has the <code>card_type</code> embedding added in (so attention can tell context vs memory vs hand-card etc.).</p>
-        <p>Goes through 4 transformer layers next.</p>`,
+        <p>Rides its residual rail through ${N_LAYERS} transformer layers next.</p>`,
     });
   }
 
@@ -957,191 +1017,274 @@ function buildTokens() {
 }
 
 // ============================================================
-// STAGE 4: ATTENTION RING (transformer cross-card reasoning)
+// STAGE 4: TRANSFORMER TUNNEL — one ring per reasoning layer,
+// per-head attention chords inside each ring, FFN lens after it,
+// straight residual-stream rails carrying each token through.
 // ============================================================
-function buildAttentionRing() {
-  const g = group("attn");
-  const lab = makeStageLabel("4 · TRANSFORMER ATTENTION · 4 layers × 4 heads", "#4cc9f0");
-  lab.position.set(XS.attnRing, -9.7, 0);
+const N_TOK = 19;
+function ringPoint(l, i) {
+  const theta = (i / N_TOK) * Math.PI * 2 - Math.PI / 2;
+  return new THREE.Vector3(
+    xfX(l),
+    Math.sin(theta) * RING_R + RING_CY,
+    Math.cos(theta) * RING_R,
+  );
+}
+function tokName(i) {
+  const code = tokenCardCode(i);
+  if (code) return code;
+  const info = TOKEN_INFO[i];
+  return info.type === "hand" || info.type === "trick"
+    ? `${info.type}[${info.idx}]` : info.type;
+}
+
+function buildTransformerTunnel() {
+  const g = group("xf"); // rails + entry lines + shared labels
+  const lab = makeStageLabel(
+    `4 · TRANSFORMER · ${N_LAYERS} layers × ${N_HEADS} heads`, "#4cc9f0");
+  lab.position.set(xfX(0) + XS.xfSpacing, -9.7, 0);
   g.add(lab);
 
-  const N = 19;
-  const radius = 9;
-  const ringPos = [];
-  for (let i = 0; i < N; i++) {
-    const theta = (i / N) * Math.PI * 2 - Math.PI / 2;
-    const y = Math.sin(theta) * radius + 4;
-    const z = Math.cos(theta) * radius;
-    ringPos.push(new THREE.Vector3(XS.attnRing, y, z));
+  const layers = S.transformer.layers;
+  const ringPosByLayer = [];
+  for (let l = 0; l < N_LAYERS; l++) {
+    ringPosByLayer.push(Array.from({ length: N_TOK }, (_, i) => ringPoint(l, i)));
   }
+  const layerObjs = [];
 
-  const postTok = [
-    S.tokens_post_attn.context,
-    S.tokens_post_attn.memory,
-    ...S.tokens_post_attn.hand,
-    ...S.tokens_post_attn.trick,
-    ...S.tokens_post_attn.blind,
-    ...S.tokens_post_attn.bury,
-  ];
-  const ringObjs = [];
-  for (let i = 0; i < N; i++) {
-    const info = TOKEN_INFO[i];
-    const active = !!S.tokens_pre_attn.mask[i];
-    const v = postTok[i];
-    const mag = vecMag(v);
-    const r = active ? 0.5 + clamp(mag / 6, 0, 1) * 0.7 : 0.22;
-    const geom = new THREE.SphereGeometry(r, 18, 14);
-    const mat = new THREE.MeshStandardMaterial({
-      color: active ? info.color : C.dim,
-      emissive: active ? info.color : C.dim,
-      emissiveIntensity: active ? 0.45 : 0.05,
-      metalness: 0.3, roughness: 0.4,
-      transparent: !active, opacity: active ? 1 : 0.15,
+  for (let l = 0; l < N_LAYERS; l++) {
+    const gl = group(`xf${l}`);
+    const L = layers[l];
+    const pos = ringPosByLayer[l];
+    const center = new THREE.Vector3(xfX(l), RING_CY, 0);
+
+    // Translucent layer disc — the residual/LayerNorm boundary of this layer.
+    const disc = new THREE.Mesh(
+      new THREE.TorusGeometry(RING_R + 1.2, 0.14, 10, 72),
+      new THREE.MeshStandardMaterial({
+        color: C.enc, emissive: C.enc, emissiveIntensity: 0.28,
+        metalness: 0.5, roughness: 0.3,
+        transparent: true, opacity: 0.5,
+      }),
+    );
+    disc.position.copy(center);
+    disc.rotateY(Math.PI / 2);
+    gl.add(disc);
+    const dLab = makeLabel(`layer ${l + 1}`, "#9fd8ff", 0.6);
+    dLab.position.set(xfX(l), RING_CY + RING_R + 2.6, 0);
+    gl.add(dLab);
+    registerPickable(disc, {
+      title: `Transformer layer ${l + 1} / ${N_LAYERS}`,
+      badge: "enc",
+      kv: { "attention": `${N_HEADS} heads · ${DATA.dims.d_token}d`, "FFN": `${DATA.dims.d_token}→${DATA.dims.d_token * 2}→${DATA.dims.d_token} · SiLU`, "norms": "post-LN ×2 (after attn, after FFN)" },
+      body: `<p>One reasoning layer: multi-head self-attention over the ${N_TOK} tokens (chords, colored by head), residual + LayerNorm, then the position-wise FFN (the lens behind the ring), residual + LayerNorm.</p>
+        <p>The ring itself marks the residual boundary — every token passes straight through on its rail and is only <i>updated</i>, never replaced.</p>`,
     });
-    const sph = new THREE.Mesh(geom, mat);
-    sph.position.copy(ringPos[i]);
-    g.add(sph);
-    ringObjs.push({ mesh: sph, info, active, pos: ringPos[i] });
 
-    const code = tokenCardCode(i);
-    const isTrump = code && trumpCardCodes.includes(code);
-    if (code || info.type === "context" || info.type === "memory") {
-      const labText = code || info.type;
-      const labColor = code ? (isTrump ? "#ffe89c" : "#cfe9ff") : "#ffd9a0";
-      const tlab = makeLabel(labText, labColor, code ? 0.6 : 0.5);
-      const outward = ringPos[i].clone().sub(new THREE.Vector3(XS.attnRing, 4, 0)).normalize();
-      tlab.position.copy(ringPos[i]).addScaledVector(outward, r + 1.4);
-      g.add(tlab);
+    // Token nodes — radius tracks this layer's post-FFN token norm, so the
+    // representation visibly evolves ring to ring.
+    const normsFfn = L.token_norms_ffn;
+    const maxNorm = Math.max(...normsFfn.filter((_, i) => S.tokens_pre_attn.mask[i]));
+    const nodeObjs = [];
+    for (let i = 0; i < N_TOK; i++) {
+      const info = TOKEN_INFO[i];
+      const active = !!S.tokens_pre_attn.mask[i];
+      const mag = normsFfn[i];
+      const r = active ? 0.42 + clamp(mag / Math.max(maxNorm, 1e-6), 0, 1) * 0.62 : 0.2;
+      const sph = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 18, 14),
+        new THREE.MeshStandardMaterial({
+          color: active ? info.color : C.dim,
+          emissive: active ? info.color : C.dim,
+          emissiveIntensity: active ? 0.45 : 0.05,
+          metalness: 0.3, roughness: 0.4,
+          transparent: !active, opacity: active ? 1 : 0.15,
+        }),
+      );
+      sph.position.copy(pos[i]);
+      gl.add(sph);
+      nodeObjs.push({ mesh: sph, r });
+
+      const code = tokenCardCode(i);
+      const isTrump = code && trumpCardCodes.includes(code);
+      // Labels on the first and last rings only — inner rings stay clean.
+      if ((l === 0 || l === N_LAYERS - 1)
+          && (code || info.type === "context" || info.type === "memory")) {
+        const labText = code || info.type;
+        const labColor = code ? (isTrump ? "#ffe89c" : "#cfe9ff") : "#ffd9a0";
+        const tlab = makeLabel(labText, labColor, code ? 0.55 : 0.48);
+        const outward = pos[i].clone().sub(center).normalize();
+        tlab.position.copy(pos[i]).addScaledVector(outward, r + 1.3);
+        gl.add(tlab);
+      }
+
+      registerPickable(sph, {
+        title: code
+          ? `L${l + 1} · token ${i} · ${code}${isTrump ? " (trump)" : ""}`
+          : `L${l + 1} · token ${i} · ${info.type}`,
+        badge: "enc",
+        kv: {
+          "type": info.type,
+          "card": code || (active ? "—" : "PAD"),
+          [`‖after L${l + 1}‖`]: mag.toFixed(2),
+        },
+        body: `<p>This token's ${DATA.dims.d_token}-d state after layer ${l + 1}'s attention + FFN. <b>Sphere size</b> = its L2 norm at this depth — watch it change ring to ring as the layers rewrite the representation.</p>`,
+      });
     }
 
-    registerPickable(sph, {
-      title: code ? `Token ${i} · ${code}${isTrump ? " (trump)" : ""}` : `Token ${i} · ${info.type}`,
-      badge: "enc",
-      kv: { "type": info.type, "card": code || (active ? "—" : "PAD"), "‖post‖": mag.toFixed(2) },
-      body: `<p>After 4 transformer layers each token has been updated by attending to every other (valid) token. Connections here are weighted by the last-layer attention weight.</p>
-             <p><b>Sphere size</b> = the L2 norm (magnitude) of this token's 64-d vector <i>after</i> attention — bigger means the transformer wrote a stronger, more activated representation into this slot.</p>`,
-    });
+    // Per-head attention chords: symmetrized weight per (i, j, head),
+    // normalized within the layer, strongest kept. Additive tubes; hue = head.
+    const MAX_CHORDS_PER_LAYER = 36;
+    let maxW = 0;
+    for (let h = 0; h < N_HEADS; h++) {
+      for (let i = 0; i < N_TOK; i++) {
+        for (let j = 0; j < N_TOK; j++) {
+          if (i !== j) maxW = Math.max(maxW, L.attn[h][i][j]);
+        }
+      }
+    }
+    const triples = [];
+    for (let h = 0; h < N_HEADS; h++) {
+      for (let i = 0; i < N_TOK; i++) {
+        if (!S.tokens_pre_attn.mask[i]) continue;
+        for (let j = i + 1; j < N_TOK; j++) {
+          if (!S.tokens_pre_attn.mask[j]) continue;
+          const norm = ((L.attn[h][i][j] + L.attn[h][j][i]) / 2) / Math.max(maxW, 1e-6);
+          if (norm >= 0.07) triples.push({ h, i, j, norm });
+        }
+      }
+    }
+    triples.sort((a, b) => b.norm - a.norm);
+    for (const { h, i, j, norm } of triples.slice(0, MAX_CHORDS_PER_LAYER)) {
+      const start = pos[i];
+      const end = pos[j];
+      const mid = start.clone().add(end).multiplyScalar(0.5).lerp(center, 0.6);
+      // Nudge each head's chords onto its own shallow x-offset plane so
+      // overlapping pairs from different heads stay distinguishable.
+      mid.x += (h - (N_HEADS - 1) / 2) * 0.55;
+      const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+      addChord(gl, curve, norm, HEAD_COLORS[h], `xf${l}`, h);
+    }
+
+    // FFN lens: a slim luminous disc + per-token gems on the rails right
+    // behind the ring — the 64→128→64 SiLU expansion, gem glow = hidden norm.
+    const lensX = xfX(l) + XS.xfSpacing * 0.45;
+    const ffnMax = Math.max(...L.ffn_hidden_norms.filter((_, i) => S.tokens_pre_attn.mask[i]));
+    const lens = new THREE.Mesh(
+      new THREE.CylinderGeometry(RING_R * 0.99, RING_R * 0.99, 0.10, 48, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0x2a6fae, transparent: true, opacity: 0.15,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    lens.position.set(lensX, RING_CY, 0);
+    lens.rotation.z = Math.PI / 2;
+    gl.add(lens);
+    const ffnLab = makeLabel(
+      `FFN ${DATA.dims.d_token}→${DATA.dims.d_token * 2}→${DATA.dims.d_token} · SiLU`,
+      "#9fd8ff", 0.42);
+    ffnLab.position.set(lensX, RING_CY - RING_R - 1.7, 0);
+    gl.add(ffnLab);
+    for (let i = 0; i < N_TOK; i++) {
+      if (!S.tokens_pre_attn.mask[i]) continue;
+      const hNorm = L.ffn_hidden_norms[i] / Math.max(ffnMax, 1e-6);
+      const gem = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.24 + hNorm * 0.22),
+        new THREE.MeshStandardMaterial({
+          color: C.enc, emissive: C.enc,
+          emissiveIntensity: 0.15 + hNorm * 0.75,
+          metalness: 0.5, roughness: 0.3,
+        }),
+      );
+      const p = ringPoint(l, i);
+      gem.position.set(lensX, p.y, p.z);
+      gl.add(gem);
+      registerPickable(gem, {
+        title: `L${l + 1} FFN · ${tokName(i)}`,
+        badge: "enc",
+        kv: { "‖hidden (128d)‖": L.ffn_hidden_norms[i].toFixed(2) },
+        body: `<p>The position-wise FFN expands this token to ${DATA.dims.d_token * 2}d (SiLU), then projects back to ${DATA.dims.d_token}d. Gem glow = how strongly the hidden layer fired for this token.</p>`,
+      });
+    }
+
+    layerObjs.push({ disc, nodeObjs });
   }
 
-  // Lines from token bank → ring
-  for (let i = 0; i < N; i++) {
+  // Residual-stream rails: each active token rides a straight rail through
+  // every ring (same angle on each) — the transformer only nudges it.
+  for (let i = 0; i < N_TOK; i++) {
+    if (!S.tokens_pre_attn.mask[i]) continue;
+    const p0 = ringPosByLayer[0][i];
+    const p1 = ringPosByLayer[N_LAYERS - 1][i];
+    const rail = registerConn(
+      makeFatLine([p0, p1], TOKEN_INFO[i].color, 0.16, 1.1), 0.16);
+    rail.userData.flowCurve = new THREE.LineCurve3(p0.clone(), p1.clone());
+    rail.userData.flowColor = TOKEN_INFO[i].color;
+    rail.userData.flowIntensity = 0.3;
+    g.add(rail);
+  }
+
+  // Entry lines: token bank column → first ring.
+  for (let i = 0; i < N_TOK; i++) {
     if (!S.tokens_pre_attn.mask[i]) continue;
     const start = new THREE.Vector3(XS.tokensPre + 2.3, tokensInfo.tokenObjs[i].y, 0);
-    const end = ringPos[i].clone();
-    g.add(makeGlowLine(start, end, C.enc, 0.18));
+    g.add(makeGlowLine(start, ringPosByLayer[0][i].clone(), C.enc, 0.16));
   }
 
-  // Attention chords. Collect every valid pair, then keep only the strongest
-  // MAX_CHORDS — drawing all ~170 translucent tubes overdraws into a solid
-  // blob. Additive blending lets the survivors read as glow, not paint.
-  const MAX_CHORDS = 40;
-  const attn = S.attention_weights_last_layer; // (19, 19)
+  return { ringPosByLayer, exitPos: ringPosByLayer[N_LAYERS - 1], layerObjs };
+}
+
+// Strongest attention pairs of one layer (head-tagged), for the stage text.
+function topPairsHtml(l, k = 5) {
+  const L = S.transformer.layers[l];
   let maxW = 0;
-  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (i !== j) maxW = Math.max(maxW, attn[i][j]);
-  const pairs = [];
-  for (let i = 0; i < N; i++) {
-    if (!S.tokens_pre_attn.mask[i]) continue;
-    for (let j = i + 1; j < N; j++) {
-      if (!S.tokens_pre_attn.mask[j]) continue;
-      const norm = ((attn[i][j] + attn[j][i]) / 2) / maxW;
-      if (norm >= 0.05) pairs.push({ i, j, norm });
+  const triples = [];
+  for (let h = 0; h < N_HEADS; h++) {
+    for (let i = 0; i < N_TOK; i++) {
+      if (!S.tokens_pre_attn.mask[i]) continue;
+      for (let j = 0; j < N_TOK; j++) {
+        if (i === j || !S.tokens_pre_attn.mask[j]) continue;
+        maxW = Math.max(maxW, L.attn[h][i][j]);
+        triples.push({ h, i, j, w: L.attn[h][i][j] });
+      }
     }
   }
-  pairs.sort((a, b) => b.norm - a.norm);
-  const chordLines = [];
-  for (const { i, j, norm } of pairs.slice(0, MAX_CHORDS)) {
-    const start = ringPos[i];
-    const end = ringPos[j];
-    const mid = start.clone().add(end).multiplyScalar(0.5);
-    const ringCenter = new THREE.Vector3(XS.attnRing, 4, 0);
-    mid.lerp(ringCenter, 0.6);
-    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-    // Tube (not a line) so relative attention strength shows up as thickness.
-    const color = new THREE.Color().copy(CHORD_COLD).lerp(CHORD_HOT, norm);
-    const mat = new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: chordBaseOpacity(norm),
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-    const mesh = new THREE.Mesh(chordGeometry(curve, norm), mat);
-    g.add(mesh);
-    chordLines.push({ mesh, curve, norm, baseOpacity: chordBaseOpacity(norm) });
+  triples.sort((a, b) => b.w - a.w);
+  const seen = new Set();
+  const rows = [];
+  for (const t of triples) {
+    const key = `${Math.min(t.i, t.j)}-${Math.max(t.i, t.j)}-${t.h}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const hue = "#" + HEAD_COLORS[t.h].toString(16).padStart(6, "0");
+    rows.push(
+      `<span style="color:${hue}">●</span> <b>${tokName(t.i)}</b> → <b>${tokName(t.j)}</b> ${(t.w * 100).toFixed(0)}%`);
+    if (rows.length >= k) break;
   }
-
-  return { ringObjs, ringPos, chordLines };
+  return rows.join("<br>");
 }
 
 // ============================================================
-// STAGE 5: POOLS (4)
-// ============================================================
-function buildPools() {
-  const g = group("pools");
-  const lab = makeStageLabel("5 · ATTENTION POOLS", "#4cc9f0");
-  lab.position.set(XS.pools, -9.7, 0);
-  g.add(lab);
-
-  const POOLS = [
-    { name: "hand",  vec: S.pools.hand_vec,  color: 0x4cc9f0, ringIdxs: [2,3,4,5,6,7,8,9] },
-    { name: "trick", vec: S.pools.trick_vec, color: 0x6fb1ff, ringIdxs: [10,11,12,13,14] },
-    { name: "blind", vec: S.pools.blind_vec, color: 0x88e0e8, ringIdxs: [15,16] },
-    { name: "bury",  vec: S.pools.bury_vec,  color: 0xa6f0c1, ringIdxs: [17,18] },
-  ];
-  const poolObjs = [];
-  for (let i = 0; i < POOLS.length; i++) {
-    const p = POOLS[i];
-    const mag = vecMag(p.vec);
-    const w = 0.8 + clamp(mag / 5, 0, 1.5);
-    const y = 8 - i * 4.5;
-    const sizeY = p.vec.length === 64 ? 3.5 : 2.2;
-    const geom = new THREE.BoxGeometry(w, sizeY, w);
-    const mat = new THREE.MeshStandardMaterial({
-      color: p.color, emissive: p.color, emissiveIntensity: 0.35,
-      metalness: 0.35, roughness: 0.4,
-    });
-    const m = new THREE.Mesh(geom, mat);
-    m.position.set(XS.pools, y, 0);
-    g.add(m);
-    poolObjs.push({ mesh: m, pool: p, y });
-
-    const tlab = makeLabel(`pool_${p.name} → ${p.vec.length}d`, "#cfe9ff", 0.55);
-    tlab.position.set(XS.pools, y + sizeY / 2 + 0.6, 0);
-    g.add(tlab);
-
-    for (const ri of p.ringIdxs) {
-      if (!S.tokens_pre_attn.mask[ri]) continue;
-      const start = attnInfo.ringPos[ri];
-      const end = new THREE.Vector3(XS.pools - w / 2, y, 0);
-      g.add(makeGlowLine(start, end, p.color, 0.25));
-    }
-
-    registerPickable(m, {
-      title: `pool_${p.name}`,
-      badge: "enc",
-      kv: { "out dim": p.vec.length, "‖vec‖": mag.toFixed(2) },
-      body: `<p>Multi-query (M=4) × multi-head (H=4) attention pool. Compresses the bag's post-attention tokens into a single vector.</p>`,
-    });
-  }
-  return { poolObjs };
-}
-
-// ============================================================
-// STAGE 6: GRU + MEMORY FEEDBACK
+// STAGE 5: GRU + MEMORY FEEDBACK (reads the MEMORY token)
 // ============================================================
 function buildMemory() {
   const g = group("gru");
-  const lab = makeStageLabel("6 · GRU MEMORY UPDATE", "#f4a261");
+  const lab = makeStageLabel("5 · GRU MEMORY UPDATE", "#f4a261");
   lab.position.set(XS.gru, -9.7, 0);
   g.add(lab);
 
+  const GRU_Y = RING_CY + RING_R + 6;
   const gruGeom = new THREE.CylinderGeometry(1.8, 1.8, 3, 6);
   const gruMat = new THREE.MeshStandardMaterial({
     color: 0xf4a261, emissive: 0xf4a261, emissiveIntensity: 0.4,
     metalness: 0.4, roughness: 0.3,
   });
   const gru = new THREE.Mesh(gruGeom, gruMat);
-  gru.position.set(XS.gru, 6, 0);
+  gru.position.set(XS.gru, GRU_Y, 0);
   g.add(gru);
-  const gruLab = makeLabel("GRUCell · 256", "#ffd99c", 0.55);
-  gruLab.position.set(XS.gru, 9, 0);
+  const gruLab = makeLabel(`GRUCell · ${DATA.dims.d_token} → ${DATA.dims.d_model}`, "#ffd99c", 0.55);
+  gruLab.position.set(XS.gru, GRU_Y + 3, 0);
   g.add(gruLab);
 
   const memInMag = vecMag(S.memory.memory_in);
@@ -1150,16 +1293,24 @@ function buildMemory() {
     title: "memory_gru (GRUCell)",
     badge: "share",
     kv: { "‖memory_in‖": memInMag.toFixed(2), "‖memory_out‖": memOutMag.toFixed(2) },
-    body: `<p>The only true recurrence in the network. memory_out = GRU(context_token_after_attn, memory_in). Stored per-player and read back on the next decision step — the curved arc going back to the left is exactly that feedback.</p>`,
+    body: `<p>The only true recurrence in the network. memory_out = GRU(<b>memory token</b> after reasoning, memory_in) — the perceiver feeds the GRU the transformer's own "what to remember" slot (the base architecture used the context token and threw this one away).</p>
+      <p>Stored per-player and read back on the next decision step — the curved arc going back to the left is exactly that feedback.</p>`,
   });
 
+  // MEMORY token (index 1) on the final ring → GRU: the changed wiring.
+  const memTokPos = xfInfo.exitPos[1];
+  g.add(makeGlowLine(memTokPos.clone(), gru.position.clone(), C.share, 0.6));
+  const wireLab = makeLabel("post-reasoning memory token", "#ffd99c", 0.45);
+  wireLab.position.copy(memTokPos).lerp(gru.position, 0.5).add(new THREE.Vector3(0, 1.2, 0));
+  g.add(wireLab);
+
   // Feedback arc: from gru position back to the memory chip at input
-  const start = new THREE.Vector3(XS.gru - 1.5, 6, 0);
+  const start = new THREE.Vector3(XS.gru - 1.5, GRU_Y, 0);
   const end = new THREE.Vector3(XS.input + 2, inputInfo.chipY - 2.2, 0);
   const curve = new THREE.CubicBezierCurve3(
     start,
-    new THREE.Vector3(start.x - 5, 22, 0),
-    new THREE.Vector3(end.x + 5, 22, 0),
+    new THREE.Vector3(start.x - 5, GRU_Y + 12, 0),
+    new THREE.Vector3(end.x + 5, GRU_Y + 12, 0),
     end,
   );
   const arc = registerConn(makeFatLine(curve.getPoints(80), 0xf4a261, 0.55, 2.2), 0.55);
@@ -1180,92 +1331,134 @@ function buildMemory() {
   arrow.rotation.z = Math.PI / 2;
   g.add(arrow);
 
-  const arcLab = makeLabel("memory_out → next-step memory_in", "#ffd99c", 0.5);
-  arcLab.position.set(0, 25, 0);
+  const arcLab = makeLabel("memory_out → next-step memory_in (via memory_in_proj)", "#ffd99c", 0.5);
+  arcLab.position.set((XS.input + XS.gru) / 2, GRU_Y + 10.5, 0);
   g.add(arcLab);
-
-  // context_out → GRU
-  g.add(makeGlowLine(
-    new THREE.Vector3(XS.attnRing, attnInfo.ringPos[0].y, attnInfo.ringPos[0].z),
-    new THREE.Vector3(XS.gru, 6, 0),
-    C.share, 0.6,
-  ));
 
   return { gru, curve };
 }
 
 // ============================================================
-// STAGE 7: FEATURES (256-d bar)
+// STAGE 6: PERCEIVER READOUTS — the actor's and critic's own
+// learned queries cross-attend over the 19 post-reasoning tokens.
+// No pools, no shared trunk: these two readouts ARE the interface.
 // ============================================================
-function buildFeatures() {
-  const g = group("features");
-  const lab = makeStageLabel("7 · SHARED FEATURES (256)", "#f4a261");
-  lab.position.set(XS.features, -9.7, 0);
-  g.add(lab);
-
-  const features = S.features;
-  const COLS = 16, ROWS = 16;
-  const cellW = 0.45, cellH = 0.45, gap = 0.06;
-  const totalW = COLS * (cellW + gap);
-  const totalH = ROWS * (cellH + gap);
-
-  let fmin = features[0], fmax = features[0];
-  for (const v of features) { if (v < fmin) fmin = v; if (v > fmax) fmax = v; }
-  const frange = Math.max(1e-6, fmax - fmin);
-
-  const geom = new THREE.BoxGeometry(cellW, cellH, 0.3);
-  const inst = new THREE.InstancedMesh(geom, new THREE.MeshStandardMaterial({
-    metalness: 0.25, roughness: 0.5,
-  }), 256);
-  inst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(256 * 3), 3);
-
-  const dummy = new THREE.Object3D();
-  const color = new THREE.Color();
-  for (let i = 0; i < 256; i++) {
-    const r = Math.floor(i / COLS), c = i % COLS;
-    const xLocal = (c - COLS / 2) * (cellW + gap) + cellW / 2;
-    const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
-    dummy.position.set(XS.features, yLocal, xLocal);
-    dummy.updateMatrix();
-    inst.setMatrixAt(i, dummy.matrix);
-
-    const norm = clamp((features[i] - fmin) / frange, 0, 1);
-    color.setHSL(0.07 + norm * 0.04, 0.85, 0.2 + norm * 0.55);
-    inst.setColorAt(i, color);
+function buildQueryReadout({
+  groupName, attn, colors, gemY, zLane, hubPos, hubLabel, badge, who, vec,
+}) {
+  const g = group(groupName);
+  const nQ = attn[0].length; // (H, M, 19) → M
+  // Head-averaged weight per (query, token), normalized within the readout.
+  const w = [];
+  let maxW = 0;
+  for (let q = 0; q < nQ; q++) {
+    w.push([]);
+    for (let i = 0; i < N_TOK; i++) {
+      let s = 0;
+      for (let h = 0; h < N_HEADS; h++) s += attn[h][q][i];
+      s /= N_HEADS;
+      w[q].push(s);
+      if (S.tokens_pre_attn.mask[i]) maxW = Math.max(maxW, s);
+    }
   }
-  inst.instanceMatrix.needsUpdate = true;
-  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-  g.add(inst);
 
-  const proxy = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, totalH + 0.5, totalW + 0.5),
-    new THREE.MeshBasicMaterial({ visible: false }),
+  // Query gems: crystalline octahedra hovering in this network's lane.
+  const gemPositions = [];
+  for (let q = 0; q < nQ; q++) {
+    const gp = new THREE.Vector3(
+      XS.readout,
+      gemY + (q - (nQ - 1) / 2) * 3.1,
+      zLane + (q % 2 === 0 ? -0.9 : 0.9),
+    );
+    gemPositions.push(gp);
+    const gem = new THREE.Mesh(
+      new THREE.OctahedronGeometry(1.05),
+      new THREE.MeshStandardMaterial({
+        color: colors[q], emissive: colors[q], emissiveIntensity: 0.5,
+        metalness: 0.6, roughness: 0.22,
+      }),
+    );
+    gem.position.copy(gp);
+    gem.userData.pulsePhase = q * 1.4;
+    g.add(gem);
+    const gl2 = makeLabel(`q${q + 1}`, "#e8fff1", 0.42);
+    gl2.position.copy(gp).add(new THREE.Vector3(0, 1.7, 0));
+    g.add(gl2);
+
+    // Top attended tokens for the tooltip.
+    const top = w[q]
+      .map((v, i) => ({ v, i }))
+      .filter(t => S.tokens_pre_attn.mask[t.i])
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 3)
+      .map(t => `${tokName(t.i)} ${(t.v * 100).toFixed(0)}%`)
+      .join(" · ");
+    registerPickable(gem, {
+      title: `${who} readout query ${q + 1} / ${nQ}`,
+      badge,
+      kv: { "attends most to": top },
+      body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens; the ${nQ} answers are concatenated and projected to ${DATA.dims.d_model}d. Chord brightness = head-averaged attention weight.</p>`,
+    });
+
+    // Chords from this gem to the tokens it reads (final ring positions).
+    for (let i = 0; i < N_TOK; i++) {
+      if (!S.tokens_pre_attn.mask[i]) continue;
+      const norm = w[q][i] / Math.max(maxW, 1e-6);
+      if (norm < 0.10) continue;
+      const start = xfInfo.exitPos[i].clone();
+      const mid = start.clone().add(gp).multiplyScalar(0.5);
+      mid.z += zLane * 0.35; // bow the bundle into its own lane
+      const curve = new THREE.QuadraticBezierCurve3(start, mid, gp.clone());
+      addChord(g, curve, norm, colors[q], groupName, undefined);
+    }
+  }
+
+  // Hub: concat(M × d_token) → Linear → d_model.
+  const hub = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 3.4, 1.5),
+    new THREE.MeshStandardMaterial({
+      color: colors[0], emissive: colors[0], emissiveIntensity: 0.35,
+      metalness: 0.35, roughness: 0.4,
+    }),
   );
-  proxy.position.set(XS.features, 0, 0);
-  g.add(proxy);
-  registerPickable(proxy, {
-    title: "Shared features (256)",
-    badge: "share",
-    kv: { "min": fmin.toFixed(3), "max": fmax.toFixed(3) },
-    body: `<p>The 256-d vector that summarizes the entire game state. Consumed by both the actor and critic adapters. After LayerNorm, the values are well-distributed — see the color spread.</p>`,
+  hub.position.copy(hubPos);
+  g.add(hub);
+  const hubLab = makeLabel(hubLabel, "#e6ecff", 0.48);
+  hubLab.position.copy(hubPos).add(new THREE.Vector3(0, 2.7, 0));
+  g.add(hubLab);
+  registerPickable(hub, {
+    title: `${who} readout_proj`,
+    badge,
+    kv: { "in": `${nQ} × ${DATA.dims.d_token} = ${nQ * DATA.dims.d_token}`, "out": `${DATA.dims.d_model}`, "‖vec‖": vecMag(vec).toFixed(2) },
+    body: `<p>The ${nQ} query answers are flattened and linearly projected to ${DATA.dims.d_model}d — the only thing the ${who.toLowerCase()} sees. The ${who === "Actor" ? "critic has its own separate readout below" : "actor has its own separate readout above"}: same tokens, independent queries, no shared trunk.</p>`,
   });
-
-  for (const p of poolsInfo.poolObjs) {
-    const start = new THREE.Vector3(XS.pools, p.y, 0);
-    const end = new THREE.Vector3(XS.features - totalW / 2, 0, 0);
-    g.add(makeGlowLine(start, end, p.pool.color, 0.3));
+  for (const gp of gemPositions) {
+    g.add(makeGlowLine(gp.clone(), hubPos.clone(), colors[0], 0.4));
   }
-  g.add(makeGlowLine(
-    new THREE.Vector3(XS.attnRing, attnInfo.ringPos[0].y, attnInfo.ringPos[0].z),
-    new THREE.Vector3(XS.features - totalW / 2, 4, 0),
-    C.share, 0.3,
-  ));
+  return { gemPositions, hubPos: hubPos.clone(), gems: g.children.filter(o => o.geometry && o.geometry.type === "OctahedronGeometry") };
+}
 
-  return { proxy, totalW, totalH };
+function buildActorReadout() {
+  const g = group("rdA");
+  const lab = makeStageLabel("6 · ACTOR READOUT · 4 queries × 19 tokens", "#80ed99");
+  lab.position.set(XS.readout, -9.7, 14);
+  g.add(lab);
+  return buildQueryReadout({
+    groupName: "rdA",
+    attn: S.actor.readout.attn,
+    colors: ACTOR_Q_COLORS,
+    gemY: RING_CY + 10,
+    zLane: 7,
+    hubPos: new THREE.Vector3(XS.readout + 7, RING_CY + 8, 8),
+    hubLabel: `concat 4×${DATA.dims.d_token} → readout_proj → ${DATA.dims.d_model}`,
+    badge: "actor",
+    who: "Actor",
+    vec: S.actor.readout.vec,
+  });
 }
 
 // ============================================================
-// STAGE 8: ACTOR heads
+// STAGE 7: ACTOR heads
 // ============================================================
 // Live-vs-idle styling: the head that actually decides this scenario is shown
 // at full strength; the others stay visible but dimmed.
@@ -1280,7 +1473,7 @@ function headStyle(isLive) {
 
 function buildActor() {
   const g = group("actor");
-  const lab = makeStageLabel("8 · ACTOR · policy heads", "#80ed99");
+  const lab = makeStageLabel("7 · ACTOR · policy heads", "#80ed99");
   lab.position.set(XS.actor, -9.7, 18);
   g.add(lab);
 
@@ -1302,13 +1495,13 @@ function buildActor() {
   registerPickable(adapter, {
     title: "actor_adapter",
     badge: "actor",
-    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Adds nonlinearity before the 4 policy heads.</p>`,
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Its input is the actor readout's 256-d projection — the pooled trunk of the old architecture is gone.</p>`,
   });
 
   g.add(makeGlowLine(
-    new THREE.Vector3(XS.features, 0, 0),
+    actorReadoutInfo.hubPos.clone(),
     adapter.position,
-    C.share, 0.5,
+    C.actor, 0.5,
   ));
 
   // ----- (a) pick head — 2 small balls -----
@@ -1488,7 +1681,7 @@ function buildActor() {
 // ============================================================
 function buildOutput() {
   const g = group("output");
-  const lab = makeStageLabel("9 · OUTPUT · π(a | s)", "#ff6b6b");
+  const lab = makeStageLabel("8 · OUTPUT · π(a | s)", "#ff6b6b");
   lab.position.set(XS.output, -9.7, 0);
   g.add(lab);
 
@@ -1549,117 +1742,77 @@ function buildOutput() {
 }
 
 // ============================================================
-// STAGE 10: CRITIC
+// STAGE 9: CRITIC — its own readout → value trunk → V(s)
 // ============================================================
 function buildCritic() {
   const g = group("critic");
-  const lab = makeStageLabel("10 · CRITIC · value + aux", "#ff9ec7");
+  const lab = makeStageLabel("9 · CRITIC · readout → value", "#ff9ec7");
   lab.position.set(XS.critic, -9.7, -18);
   g.add(lab);
 
   const CY = -2; // keep the whole critic block above the floor grid at y=-10
 
-  const adapter = new THREE.Mesh(
+  // The critic's own 4-query readout — mirrored below the actor's lane.
+  const readout = buildQueryReadout({
+    groupName: "critic",
+    attn: S.critic.readout_attn,
+    colors: CRITIC_Q_COLORS,
+    gemY: CY,
+    zLane: -7,
+    hubPos: new THREE.Vector3(XS.readout + 7, CY, -8),
+    hubLabel: `concat 4×${DATA.dims.d_token} → readout_proj → ${DATA.dims.d_model}`,
+    badge: "critic",
+    who: "Critic",
+    vec: S.critic.readout_vec,
+  });
+
+  // value_trunk box
+  const trunk = new THREE.Mesh(
     new THREE.BoxGeometry(1.6, 3.2, 1.6),
     new THREE.MeshStandardMaterial({
       color: 0xff9ec7, emissive: 0xff9ec7, emissiveIntensity: 0.35,
       metalness: 0.35, roughness: 0.4,
     }),
   );
-  adapter.position.set(XS.critic - 4, CY, -8);
-  g.add(adapter);
-  const adapterLab = makeLabel("critic_adapter", "#ffd6e8", 0.5);
-  adapterLab.position.set(XS.critic - 4, CY + 2.6, -8);
-  g.add(adapterLab);
-  registerPickable(adapter, {
-    title: "critic_adapter",
+  trunk.position.set(XS.critic - 3, CY, -8);
+  g.add(trunk);
+  const trunkLab = makeLabel("value_trunk (256→256→256)", "#ffd6e8", 0.5);
+  trunkLab.position.set(XS.critic - 3, CY + 2.6, -8);
+  g.add(trunkLab);
+  registerPickable(trunk, {
+    title: "value_trunk",
     badge: "critic",
-    body: `<p>LayerNorm → Linear(256→256) → SiLU. Feeds value + every auxiliary head — they all share gradients into the encoder.</p>`,
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU, fed by the critic's own readout. No auxiliary heads in the perceiver — the value path is all there is, so compare against <code>no-aux</code> as well as <code>full</code>.</p>`,
   });
-  g.add(makeGlowLine(
-    new THREE.Vector3(XS.features, 0, 0),
-    adapter.position,
-    C.share, 0.5,
-  ));
+  g.add(makeGlowLine(readout.hubPos.clone(), trunk.position.clone(), C.critic, 0.5));
 
-  const heads = [
-    { name: "V(s)",   val: S.critic.value.toFixed(3), color: 0xff9ec7, badge: "critic",
-      body: `<p>State value used to compute advantages via GAE (γ=λ=0.95). PPO clipped value loss against returns.</p>` },
-    { name: "win",    val: S.critic.win_prob.toFixed(3), color: 0xffd166, badge: "aux",
-      body: `<p>P(this player wins). BCE loss · coefficient 0.05.</p>` },
-    { name: "return", val: S.critic.return_pred.toFixed(3), color: 0xffd166, badge: "aux",
-      body: `<p>Expected final scalar return (scale ≈ ±12). Smooth-L1 · coefficient 0.1.</p>` },
-    { name: "secret", val: S.critic.secret_prob.toFixed(3), color: 0xffd166, badge: "aux",
-      body: `<p>P(I am the secret partner). BCE · coefficient 0.1.</p>` },
-    { name: "points", val: S.critic.points_pred.map(v => v.toFixed(1)).join(" / "), color: 0xffd166, badge: "aux",
-      body: `<p>Per-seat final point totals (relative order). Smooth-L1 · coefficient 0.2.</p>` },
-  ];
-  for (let i = 0; i < heads.length; i++) {
-    const h = heads[i];
-    const xOff = i * 3.3;
-    const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 22, 16),
-      new THREE.MeshStandardMaterial({
-        color: h.color, emissive: h.color, emissiveIntensity: 0.45,
-        metalness: 0.4, roughness: 0.35,
-      }),
-    );
-    ball.position.set(XS.critic + xOff, CY, -4);
-    g.add(ball);
-    const l = makeLabel(`${h.name}`, "#ffd6e8", 0.5);
-    l.position.set(XS.critic + xOff, CY + 1.6, -4);
-    g.add(l);
-    const v = makeLabel(`${h.val}`, "#fff", 0.5);
-    v.position.set(XS.critic + xOff, CY - 1.6, -4);
-    g.add(v);
-    g.add(makeGlowLine(adapter.position, ball.position, h.color, 0.4));
-    registerPickable(ball, {
-      title: `${h.name}_head`,
-      badge: h.badge,
-      kv: { "value": h.val },
-      body: h.body,
-    });
-  }
+  // V(s): one signed crystal — green above water, red below.
+  const v = S.critic.value;
+  const vMagNorm = clamp(Math.abs(v) / 1.5, 0, 1);
+  const vColor = v >= 0 ? 0x62e88a : 0xff6b6b;
+  const crystal = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.1 + vMagNorm * 1.2, 0),
+    new THREE.MeshStandardMaterial({
+      color: vColor, emissive: vColor,
+      emissiveIntensity: 0.4 + vMagNorm * 0.5,
+      metalness: 0.55, roughness: 0.2,
+      flatShading: true,
+    }),
+  );
+  crystal.position.set(XS.critic + 4, CY, -8);
+  g.add(crystal);
+  const vLab = makeLabel(`V(s) = ${v.toFixed(3)}`, v >= 0 ? "#dffbe6" : "#ffd0d0", 0.65);
+  vLab.position.set(XS.critic + 4, CY + 3.1, -8);
+  g.add(vLab);
+  registerPickable(crystal, {
+    title: "value_head · V(s)",
+    badge: "critic",
+    kv: { "V(s)": v.toFixed(4) },
+    body: `<p>State value from the critic's ${DATA.dims.d_model}-d trunk — used to compute advantages via GAE. Green = positive expected return for this seat, red = negative; size and glow scale with |V|.</p>`,
+  });
+  g.add(makeGlowLine(trunk.position.clone(), crystal.position.clone(), vColor, 0.55));
 
-  // Trump-aux block: seen_trump_mask as a row of 14 cards lit by sigmoid
-  // prob, on its own z-lane beside the value heads (not buried below them).
-  const TZ = -14;
-  const trumpLab = makeLabel("trump_aux · seen-mask (key–query over card embeddings)", "#ffe89c", 0.5);
-  trumpLab.position.set(XS.critic + 7, CY - 1.6, TZ);
-  g.add(trumpLab);
-
-  const seenProbs = S.critic.seen_trump_mask_probs;
-  for (let i = 0; i < 14; i++) {
-    const p = seenProbs[i];
-    const x = XS.critic + i * 1.1;
-    const card = new THREE.Mesh(
-      new RoundedBoxGeometry(0.9, 1.3, 0.18, 2, 0.07),
-      new THREE.MeshStandardMaterial({
-        color: 0xffd166, emissive: 0xffd166, emissiveIntensity: 0.1 + p * 0.7,
-        roughness: 0.4,
-      }),
-    );
-    card.position.set(x, CY - 3.6, TZ);
-    g.add(card);
-    const lab2 = makeLabel(trumpCardCodes[i], "#ffe89c", 0.35);
-    lab2.position.set(x, CY - 2.5, TZ);
-    g.add(lab2);
-    const lab3 = makeLabel(`${(p * 100).toFixed(0)}%`, "#fff7e0", 0.3);
-    lab3.position.set(x, CY - 4.7, TZ);
-    g.add(lab3);
-    registerPickable(card, {
-      title: `seen_trump[${trumpCardCodes[i]}]`,
-      badge: "aux",
-      kv: { "P(seen)": p.toFixed(3) },
-      body: `<p>Multi-label "have I seen / do I know this trump?" — built as q · (Wk(card_emb[trump]) + δ_per_trump)ᵀ. Reuses the shared card embedding.</p>`,
-    });
-  }
-
-  const unseenLab = makeLabel(`unseen trump higher than my hand: ${(S.critic.unseen_higher_prob * 100).toFixed(0)}%`, "#ffe89c", 0.5);
-  unseenLab.position.set(XS.critic + 7, CY - 6.2, TZ);
-  g.add(unseenLab);
-
-  return { adapter };
+  return { trunk, crystal, gems: readout.gems, hubPos: readout.hubPos };
 }
 
 // ============================================================
@@ -1672,10 +1825,9 @@ function buildScene() {
   inputInfo = buildInputCards();
   embedInfo = buildEmbeddingTable();
   tokensInfo = buildTokens();
-  attnInfo = buildAttentionRing();
-  poolsInfo = buildPools();
+  xfInfo = buildTransformerTunnel();
   memInfo = buildMemory();
-  featInfo = buildFeatures();
+  actorReadoutInfo = buildActorReadout();
   actorInfo = buildActor();
   outputInfo = buildOutput();
   criticInfo = buildCritic();
@@ -1793,27 +1945,31 @@ function updateFlow(nowMs, dt) {
 // Stage emphasis: the toured stage renders at full strength, the
 // rest of the scene recedes. Intro/overview show everything.
 // ============================================================
+const XF_ALL = ["xf", "xf0", "xf1", "xf2", "xf3"].slice(0, N_LAYERS + 1);
 const STAGE_GROUPS = {
   input: ["input"],
   embed: ["input", "embed"],
   tokens: ["embed", "tokens"],
-  attn: ["tokens", "attn"],
-  pools: ["attn", "pools"],
-  gru: ["gru"],
-  features: ["pools", "gru", "features"],
-  actor: ["features", "actor"],
+  xf: ["tokens", ...XF_ALL],
+  xfL1: ["xf", "xf0"],
+  xfL2: ["xf", "xf1"],
+  xfL3: ["xf", "xf2"],
+  xfL4: ["xf", "xf3"],
+  gru: [`xf${N_LAYERS - 1}`, "gru"],
+  rdA: [`xf${N_LAYERS - 1}`, "rdA"],
+  actor: ["rdA", "actor"],
   output: ["actor", "output"],
-  critic: ["features", "critic"],
-  trumpaux: ["critic"],
+  critic: [`xf${N_LAYERS - 1}`, "critic"],
 };
-let attnDimFactor = 1;
+const chordDimMap = {}; // per-group chord dim factors, read by animate()
 function applyStageDim() {
   const s = STAGES[curStage];
   const active = s ? STAGE_GROUPS[s.label] ?? null : null;
-  attnDimFactor = 1;
   for (const [name, grp] of Object.entries(stageGroups)) {
     const on = !active || active.includes(name);
-    if (name === "attn") attnDimFactor = on ? 1 : 0.3;
+    // Additive chords stay hot even at 0.3 — push inactive bundles way down
+    // so the focused stage's attention actually owns the frame.
+    chordDimMap[name] = on ? 1 : 0.12;
     groupDimMap[name] = on ? 1 : 0.15; // flow particles follow stage focus
     const om = on ? 1 : 0.3;
     const em = on ? 1 : 0.25;
@@ -1852,14 +2008,28 @@ function topActionsHtml(k = 4) {
     .join(" · ");
 }
 
+const xfLayerStage = (l) => ({
+  title: `4.${l + 1} · Layer ${l + 1} attention + FFN`,
+  label: `xfL${l + 1}`,
+  badge: "enc",
+  cam: {
+    pos: [xfX(l) - 13, RING_CY + 8, 26],
+    target: [xfX(l) + 2, RING_CY, 0],
+  },
+  body: () => `<p>Layer ${l + 1} of ${N_LAYERS}. Chords = this layer's self-attention, one hue per head (toggle heads with the <b>H1–H4</b> chips up top). Strongest links this layer:</p>
+    <p style="line-height:1.8">${topPairsHtml(l)}</p>
+    <p>Behind the ring, the FFN lens: each token expands ${DATA.dims.d_token}→${DATA.dims.d_token * 2} (SiLU) and back — gem glow shows how hard the hidden layer fired. Sphere size tracks each token's norm at this depth.</p>`,
+});
+
 const STAGES = [
   {
-    title: "Sheepshead PPO — 3D forward pass",
+    title: "Sheepshead PPO — perceiver forward pass",
     label: "intro",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: () => `<p>A live forward pass through the final PFSP-trained network (<code>${DATA.checkpoint}</code>) on a real hand it played against itself (seed ${DATA.seed}).</p>
+    body: () => `<p>A live forward pass through the perceiver-architecture network (<code>${DATA.checkpoint}</code>) on a real hand it played against itself (seed ${DATA.seed}).</p>
       <p><b>${S.label}:</b> ${S.description}</p>
+      <p>Token-centric end to end: embeddings → transformer → two independent cross-attention readouts (actor & critic). No pooling bags, no shared feature trunk.</p>
       <p>Use the <b>decision</b> buttons up top to switch scenarios. Drag to orbit · scroll to zoom · click anything for details · <b>▶ Play tour</b> to walk the architecture.</p>`,
   },
   {
@@ -1867,7 +2037,7 @@ const STAGES = [
     label: "input",
     badge: "input",
     cam: { pos: [XS.input + 22, 7, 24], target: [XS.input, 0, 2] },
-    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds <b>${S.sample.hand_cards.join(", ")}</b> (gold = trump)${S.sample.trick_card_codes.some(c => c !== "PAD") ? ", with cards already on the table this trick" : ""}. Plus the 10 header scalars and the 256-d prior memory hₜ₋₁.</p>
+    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds <b>${S.sample.hand_cards.join(", ")}</b> (gold = trump)${S.sample.trick_card_codes.some(c => c !== "PAD") ? ", with cards already on the table this trick" : ""}. Plus the 10 header scalars and the ${DATA.dims.d_model}-d prior memory hₜ₋₁.</p>
       <p>The lines on the right show each card being looked up in the embedding table.</p>`,
   },
   {
@@ -1875,12 +2045,11 @@ const STAGES = [
     label: "embed",
     badge: "enc",
     cam: { pos: [XS.embed + 14, 4, 16], target: [XS.embed, 0, 0] },
-    body: () => `<p>The shared 34×16 table. The lit-up rows are the cards this scenario touches. With <code>use_informed_init=True</code>, the first 10 dims start as a hand-designed prior (suit / rank / points / UNDER flag); dims 10–15 are free for the network to use.</p>
+    body: () => `<p>The shared 34×${DATA.dims.d_card} table. The lit-up rows are the cards this scenario touches. With <code>use_informed_init=True</code>, the first 10 dims start as a hand-designed prior (suit / rank / points / UNDER flag); the rest are free for the network to use.</p>
       <p>This same table is read by:</p>
       <ul>
         <li>the encoder (here)</li>
-        <li>the actor's two-tower CALL scorer (stage 8)</li>
-        <li>the critic's seen-trump mask (stage 10)</li>
+        <li>the actor's two-tower CALL scorer (stage 7)</li>
       </ul>`,
   },
   {
@@ -1888,64 +2057,60 @@ const STAGES = [
     label: "tokens",
     badge: "enc",
     cam: { pos: [XS.tokensPre + 18, 4, 18], target: [XS.tokensPre, 0, 0] },
-    body: () => `<p>19 entity tokens are assembled, each 64-d:</p>
+    body: () => `<p>19 entity tokens are assembled, each ${DATA.dims.d_token}-d:</p>
       <ul>
         <li><b>1 context</b> = header scalars + called-card embedding → MLP</li>
-        <li><b>1 memory</b> = prior 256-d projected to 64-d</li>
+        <li><b>1 memory</b> = prior ${DATA.dims.d_model}-d projected to ${DATA.dims.d_token}-d</li>
         <li><b>8 hand</b> = card embedding ⊕ actor role → MLP</li>
         <li><b>5 trick</b>, <b>2 blind</b>, <b>2 bury</b>, each via their MLP</li>
       </ul>
-      <p>Dim slots are PAD — masked out of attention.</p>`,
+      <p>Dim slots are PAD — masked out of attention. From here on, <i>everything</i> the network does is a read of these tokens.</p>`,
   },
   {
-    title: "4 · Cross-card attention",
-    label: "attn",
+    title: "4 · The transformer tunnel",
+    label: "xf",
     badge: "enc",
-    cam: { pos: [XS.attnRing + 14, 14, 28], target: [XS.attnRing, 4, 0] },
-    body: () => `<p>All 19 tokens are placed on a ring. Each curved chord shows attention strength between two tokens (averaged across the 4 heads in the last transformer layer). Brighter = stronger attention.</p>
-      <p>This is where cards reason about each other — hand cards attend to the trick, the called card, and the context/memory tokens.</p>`,
+    cam: { pos: [xfX(1) + 5, RING_CY + 10, 46], target: [xfX(1) + 5, RING_CY, 0] },
+    body: () => `<p>${N_LAYERS} reasoning layers, one ring each. Every token rides a straight <i>residual rail</i> through all ${N_LAYERS} rings — each layer only nudges it: self-attention (${N_HEADS} heads — the colored chords), then a position-wise FFN (the lens behind each ring), with residual + LayerNorm after both.</p>
+      <p>This tunnel is the whole encoder now — the per-bag pooling of the old architecture is gone. The tour steps through each layer next.</p>`,
   },
+  ...Array.from({ length: N_LAYERS }, (_, l) => xfLayerStage(l)),
   {
-    title: "5 · Attention pools",
-    label: "pools",
-    badge: "enc",
-    cam: { pos: [XS.pools + 14, 4, 18], target: [XS.pools, 4, 0] },
-    body: () => `<p>4 multi-query attention pools compress each bag's post-attention tokens into a single vector: hand → 64, trick → 64, blind → 32, bury → 32.</p>`,
-  },
-  {
-    title: "6 · GRU memory · recurrence",
+    title: "5 · GRU memory · recurrence",
     label: "gru",
     badge: "share",
-    cam: { pos: [XS.gru + 6, 22, 28], target: [(XS.input + XS.gru) / 2, 10, 0] },
-    body: () => `<p>The post-attention context token + the prior memory go into a GRU cell, producing the new 256-d memory state (‖in‖ ${vecMag(S.memory.memory_in).toFixed(1)} → ‖out‖ ${vecMag(S.memory.memory_out).toFixed(1)}). That state is stored per player and read back on the next decision step — the orange arc going back to the left is exactly this feedback. It's the only true recurrence in the whole network.</p>`,
+    cam: { pos: [XS.gru + 8, 30, 32], target: [(XS.input + XS.gru) / 2, 14, 0] },
+    body: () => `<p>The transformer's own <b>memory token</b> — its "what to remember" slot, which attended over everything during reasoning — feeds the GRU cell, producing the new ${DATA.dims.d_model}-d memory state (‖in‖ ${vecMag(S.memory.memory_in).toFixed(1)} → ‖out‖ ${vecMag(S.memory.memory_out).toFixed(1)}).</p>
+      <p>The base architecture fed the GRU the <i>context</i> token and discarded this one. That state is stored per player and read back on the next decision step — the orange arc going left is exactly this feedback. It's the only true recurrence in the whole network.</p>`,
   },
   {
-    title: "7 · Shared features (256)",
-    label: "features",
-    badge: "share",
-    cam: { pos: [XS.features + 12, 4, 18], target: [XS.features, 0, 0] },
-    body: () => `<p>Concat of all 4 pool outputs + the post-attention context, then Linear(256→256) + LayerNorm. Bright cells = positive feature values, dim cells = negative. This 256-d block is what both actor and critic see.</p>`,
+    title: "6 · Actor readout · 4 learned queries",
+    label: "rdA",
+    badge: "actor",
+    cam: { pos: [XS.readout + 12, RING_CY + 14, 32], target: [XS.readout - 5, RING_CY + 6, 3] },
+    body: () => `<p>The actor's <b>only</b> input: 4 learned query gems cross-attend (${N_HEADS} heads) over the 19 post-reasoning tokens. The 4 answers are concatenated (4×${DATA.dims.d_token} = ${4 * DATA.dims.d_token}) and projected to ${DATA.dims.d_model}d.</p>
+      <p>Chord brightness = head-averaged attention. Hover a gem to see what it reads. There is no pooled trunk behind this — if the policy needs a card-level fact, a query has to go fetch it.</p>`,
   },
   {
-    title: "8 · Actor heads",
+    title: "7 · Actor heads",
     label: "actor",
     badge: "actor",
     cam: { pos: [XS.actor + 14, 18, 28], target: [XS.actor + 4, 12, 6] },
     body: () => {
       const live = liveHead();
       const liveName = { pick: "pick_head", call: "two-tower CALL scorer", pointer: "pointer scorer" }[live];
-      return `<p>The features flow through the actor adapter, then split into 4 heads:</p>
+      return `<p>The readout flows through the actor adapter, then splits into 4 heads:</p>
       <ul>
         <li><b>pick_head</b> · PICK vs PASS${live === "pick" ? " ← <b>live</b>" : ""}</li>
         <li><b>partner_basic_head</b> · ALONE / JD PARTNER (JD mode only)</li>
         <li><b>two-tower CALL scorer</b> · query · card-embedding key per callable card${live === "call" ? " ← <b>live</b>" : ""}</li>
         <li><b>pointer scorer</b> · scalar per hand slot (bury / under / play)${live === "pointer" ? " ← <b>live</b>" : ""}</li>
       </ul>
-      <p>For this decision the <b>${liveName}</b> is the head that matters — the others are dimmed. The two-tower &amp; pointer scorers reuse the card embeddings, so any signal the encoder learns about cards immediately helps the policy too.</p>`;
+      <p>For this decision the <b>${liveName}</b> is the head that matters — the others are dimmed. The pointer scorer still reads the post-reasoning hand tokens directly, and the two-tower scorer reuses the card embedding table.</p>`;
     },
   },
   {
-    title: "9 · Output · π(a | s)",
+    title: "8 · Output · π(a | s)",
     label: "output",
     badge: "output",
     cam: { pos: [XS.output + 14, 12, 24], target: [XS.output, 4, 0] },
@@ -1954,30 +2119,19 @@ const STAGES = [
       <p>The agent played <b>${S.sample.chosen_action}</b> (✓ bar).</p>`,
   },
   {
-    title: "10 · Critic value + aux heads",
+    title: "9 · Critic readout → V(s)",
     label: "critic",
     badge: "critic",
-    cam: { pos: [XS.critic + 18, 6, -26], target: [XS.critic + 5, -3, -7] },
-    body: () => `<p>The critic adapter feeds the value head and 4 auxiliary heads. The critic's value here is <b>${S.critic.value.toFixed(3)}</b>; win probability <b>${(S.critic.win_prob * 100).toFixed(1)}%</b>; expected return <b>${S.critic.return_pred.toFixed(2)}</b>.</p>
-      <p>The auxiliary losses don't change the policy directly, but their gradients flow back through the shared critic adapter and all the way into the encoder, giving the network dense supervision beyond reward alone.</p>`,
-  },
-  {
-    title: "11 · Trump tracker",
-    label: "trumpaux",
-    badge: "aux",
-    cam: { pos: [XS.critic + 9, 2, -27], target: [XS.critic + 7, -5, -14] },
-    body: () => {
-      const seen = S.critic.seen_trump_mask_probs.filter(p => p > 0.5).length;
-      return `<p>The seen-trump mask uses a small query–key head built on top of the card embeddings: for each of the 14 trumps, the network predicts whether it has been seen or is otherwise known.</p>
-      <p>Here it marks <b>${seen} / 14</b> trumps as seen/known${seen === 0 ? " — the hand has barely started" : ""}. The "unseen trump higher than my hand" head reports <b>${(S.critic.unseen_higher_prob * 100).toFixed(0)}%</b>.</p>`;
-    },
+    cam: { pos: [XS.critic + 10, -1, -36], target: [XS.readout + 3, 0, -7] },
+    body: () => `<p>The critic mirrors the actor: its <b>own</b> 4 learned queries attend over the <i>same</i> 19 tokens — independent parameters, no shared trunk — then a deep value trunk produces <b>V(s) = ${S.critic.value.toFixed(3)}</b>.</p>
+      <p>No auxiliary heads in the perceiver (no win/points/trump-tracker predictions): the value path is the critic, full stop.</p>`,
   },
   {
     title: "Full architecture",
     label: "overview",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: () => `<p>Zoomed out: observation → embedding table → tokens → transformer → pools → GRU + features → actor + critic → π(a|s). Drag the scene to explore. Click any object for details. Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
+    body: () => `<p>Zoomed out: observation → embedding table → 19 tokens → ${N_LAYERS}-layer transformer tunnel → memory-token GRU + two independent query readouts → actor heads / value crystal → π(a|s). Drag the scene to explore. Click any object for details. Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
   },
 ];
 
@@ -2137,6 +2291,21 @@ const chkFlow = document.getElementById("chk-flow");
 chkFlow.checked = flowEnabled;
 chkFlow.addEventListener("change", (e) => { flowEnabled = e.target.checked; });
 
+// H1–H4 chips: hide/show one attention head's chords across all layers.
+const headChipsEl = document.getElementById("head-chips");
+for (let h = 0; h < N_HEADS; h++) {
+  const b = document.createElement("button");
+  b.textContent = `H${h + 1}`;
+  b.style.setProperty("--hc", "#" + HEAD_COLORS[h].toString(16).padStart(6, "0"));
+  b.title = `toggle attention head ${h + 1}`;
+  b.addEventListener("click", () => {
+    headOn[h] = !headOn[h];
+    b.classList.toggle("off", !headOn[h]);
+    styleChords();
+  });
+  headChipsEl.appendChild(b);
+}
+
 // ============================================================
 // Picking (click + hover tooltip)
 // ============================================================
@@ -2215,10 +2384,22 @@ function animate(now) {
 
   // Gentle pulse on attention chords proportional to weight
   const breath = reducedMotion ? 1 : 0.6 + Math.sin(pulseT * 1.3) * 0.4;
-  for (const c of attnInfo.chordLines) {
+  for (const c of allChords) {
     if (!c.mesh.visible) continue;
     c.mesh.material.opacity =
-      Math.min(1, c.baseOpacity * (0.7 + breath * 0.4)) * attnDimFactor;
+      Math.min(1, c.baseOpacity * (0.7 + breath * 0.4)) * (chordDimMap[c.group] ?? 1);
+  }
+  // Query gems slowly spin and pulse in sync with the chord breathing.
+  if (!reducedMotion) {
+    for (const info of [actorReadoutInfo, criticInfo]) {
+      const gems = info && info.gems;
+      if (!gems) continue;
+      for (const gem of gems) {
+        gem.rotation.y += dt * 0.5;
+        const ph = gem.userData.pulsePhase || 0;
+        gem.scale.setScalar(1 + 0.07 * Math.sin(pulseT * 1.3 + ph));
+      }
+    }
   }
 
   updateFlow(now, dt);
