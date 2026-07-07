@@ -512,6 +512,45 @@ class TestPerceiver(unittest.TestCase):
         aux_bt = agent.critic.aux_sequence_features(seq_out)
         self.assertEqual(tuple(aux_bt.shape), (1, 2, 256))
 
+    def test_decomposition_hybrids(self):
+        from ppo import (
+            MultiHeadRecurrentActorNetwork,
+            PerceiverActorNetwork,
+            PerceiverCriticNetwork,
+            RecurrentCriticNetwork,
+        )
+
+        _seed_all(19)
+        # readout-actor: perceiver actor + pooled no-aux critic, pools alive.
+        ra = PPOAgent(len(ACTIONS), arch="readout-actor")
+        self.assertIsInstance(ra.actor, PerceiverActorNetwork)
+        self.assertIsInstance(ra.critic, RecurrentCriticNetwork)
+        self.assertFalse(ra.critic.has_aux_heads)
+        self.assertTrue(hasattr(ra.encoder, "pool_hand"))
+        # readout-critic: standard pointer actor + perceiver critic.
+        rc = PPOAgent(len(ACTIONS), arch="readout-critic")
+        self.assertNotIsInstance(rc.actor, PerceiverActorNetwork)
+        self.assertIsInstance(rc.actor, MultiHeadRecurrentActorNetwork)
+        self.assertIsInstance(rc.critic, PerceiverCriticNetwork)
+        self.assertTrue(hasattr(rc.encoder, "pool_hand"))
+
+    def test_ctxmem_context_token_drives_recurrence(self):
+        _seed_all(20)
+        enc = architectures.PerceiverCtxMemEncoder()
+        game = Game(seed=143)
+        s = game.players[0].get_state_dict()
+        out = enc.encode_batch([s])
+        with torch.no_grad():
+            zero_mem = torch.zeros(1, 256)
+            expect = enc.memory_gru(out["all_tokens"][:, 0, :], zero_mem)
+        self.assertTrue(torch.allclose(out["memory_out"], expect, atol=1e-6))
+        # Param-identical to the perceiver encoder (driver change only).
+        base = architectures.PerceiverEncoder()
+        self.assertEqual(
+            sum(p.numel() for p in enc.parameters()),
+            sum(p.numel() for p in base.parameters()),
+        )
+
     def test_base_aux_seam_bit_identical(self):
         _seed_all(18)
         agent = PPOAgent(len(ACTIONS), arch="full")

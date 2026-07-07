@@ -245,6 +245,43 @@ class PerceiverEncoder(CardReasoningEncoder):
         }
 
 
+class PerceiverCtxMemEncoder(PerceiverEncoder):
+    """PerceiverEncoder with `full`'s memory driver: the GRU input is the
+    post-reasoning CONTEXT token (index 0) instead of the memory token.
+    Decomposition arm for the perceiver-probe loss (2026-07): the probe
+    changed three things at once (actor trunk, critic trunk, memory driver);
+    `perceiver` vs `perceiver-ctxmem` isolates the memory-driver change
+    alone. Same GRUCell shape, zero parameter change.
+    """
+
+    def _pool_fuse_update(
+        self,
+        context_out,
+        hand_tok_out,
+        hand_mask,
+        trick_tok_out,
+        trick_mask,
+        blind_tok_out,
+        blind_mask,
+        bury_tok_out,
+        bury_mask,
+        memory_in,
+        all_tokens,
+        all_mask,
+    ):
+        # Memory write: the post-reasoning CONTEXT token (index 0), as in
+        # the base architecture.
+        memory_out = self.memory_gru(all_tokens[:, 0, :], memory_in)
+        return {
+            "features": memory_out,  # vestigial (see PerceiverEncoder)
+            "hand_tokens": hand_tok_out,
+            "context_token": context_out,
+            "memory_out": memory_out,
+            "all_tokens": all_tokens,
+            "all_mask": all_mask,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Legacy-style one-hot state representation (onehot-ff baseline)
 # ---------------------------------------------------------------------------
@@ -802,6 +839,54 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_perceiver_actor,
         build_critic=_perceiver_aux_critic,
         has_aux_heads=True,
+    ),
+    # --- Perceiver-loss decomposition arms (2026-07-07) ---------------------
+    # The perceiver probe changed three things at once relative to no-aux:
+    # (1) the actor's trunk input (pooled fusion -> token readout), (2) the
+    # critic's trunk input (same swap), (3) the memory-GRU driver (context
+    # token -> memory token). These arms flip ONE switch each. The hybrids
+    # ride on TokenReadEncoder (byte-identical to the base encoder, also
+    # emits all_tokens), so the pooled path survives for whichever network
+    # still needs it and the memory driver stays `full`'s. Comparator for
+    # the hybrids is `no-aux` (all three are aux-free, pooled-encoder runs);
+    # comparator for perceiver-ctxmem is `perceiver`.
+    "readout-actor": ArchitectureSpec(
+        name="readout-actor",
+        description=(
+            "Hybrid decomposition arm: perceiver-style actor (token-readout "
+            "trunk, ignores pooled features) + no-aux pooled critic on the "
+            "tokenread encoder. vs no-aux = the actor-side pool deletion "
+            "alone."
+        ),
+        build_encoder=lambda: TokenReadEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_perceiver_actor,
+        build_critic=_no_aux_critic,
+        has_aux_heads=False,
+    ),
+    "readout-critic": ArchitectureSpec(
+        name="readout-critic",
+        description=(
+            "Hybrid decomposition arm: standard pooled/pointer actor + "
+            "perceiver-style critic (token-readout value trunk) on the "
+            "tokenread encoder. vs no-aux = the critic-side pool deletion "
+            "alone."
+        ),
+        build_encoder=lambda: TokenReadEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_pointer_actor,
+        build_critic=_perceiver_critic,
+        has_aux_heads=False,
+    ),
+    "perceiver-ctxmem": ArchitectureSpec(
+        name="perceiver-ctxmem",
+        description=(
+            "perceiver with full's memory driver (GRU fed the post-reasoning "
+            "context token instead of the memory token). vs perceiver = the "
+            "memory-driver change alone; zero parameter change."
+        ),
+        build_encoder=lambda: PerceiverCtxMemEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_perceiver_actor,
+        build_critic=_perceiver_critic,
+        has_aux_heads=False,
     ),
     # --- Perceiver capacity variants (one knob each, mirroring full's) ------
     "perceiver-dtok32": _perceiver_size_variant(
