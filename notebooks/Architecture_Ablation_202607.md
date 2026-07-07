@@ -956,7 +956,11 @@ done
 ```
 
 Same command shape with `*_checkpoint_300000.pt` gives the trustworthy
-mid-course read (~25 min/mode).
+mid-course read (~25 min/mode). **AUTOMATED (2026-07-07 13:54):** a
+detached watcher (`runs/perceiver_202607/diag/panel300k_watch.sh`, nohup,
+restartable, skips existing CSVs) waits for all six 300k checkpoints and
+writes `diag/panel_a_400ext_300k_{called,jd}.csv`; progress in
+`diag/panel300k_watch.log` ("MID-COURSE PANELS COMPLETE" = done).
 The operator chose perceiver-shared over per-network `perceiver-aux`
 (registered, unlaunched) — the shared readout is the aux design working
 as intended. The watchdog-on `sweep_full_s*` baseline (arm A) was KILLED
