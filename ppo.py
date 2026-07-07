@@ -669,6 +669,18 @@ class RecurrentCriticNetwork(nn.Module):
         value_feat_bt = self.value_trunk(encoder_out_seq["features"])
         return self.value_head(value_feat_bt).squeeze(-1)
 
+    def aux_sequence_features(self, encoder_out_seq: Dict[str, torch.Tensor]):
+        """Adapter features for the aux heads over a sequence batch,
+        (B, T, d_model). Overridable seam: token-readout critics
+        (PerceiverAuxCriticNetwork) compute these from their own attention
+        readout instead of the fused features."""
+        return self.critic_adapter(encoder_out_seq["features"])
+
+    def _aux_features_single(self, encoder_out: Dict[str, torch.Tensor]):
+        """Single-step adapter features for aux_predictions. Same seam as
+        aux_sequence_features, batch-of-one shape."""
+        return self.critic_adapter(encoder_out["features"])
+
     def aux_predictions(self, encoder_out: Dict[str, torch.Tensor]):
         """Return auxiliary predictions as scalars and per-seat point estimates.
 
@@ -690,7 +702,7 @@ class RecurrentCriticNetwork(nn.Module):
         """
         self._require_aux("aux_predictions")
         with torch.no_grad():
-            aux_feat = self.critic_adapter(encoder_out["features"])
+            aux_feat = self._aux_features_single(encoder_out)
             win_logit = self.win_head(aux_feat).squeeze(-1)
             expected_return = self.return_head(aux_feat).squeeze(-1)
             secret_logit = self.secret_partner_head(aux_feat).squeeze(-1)
@@ -722,6 +734,62 @@ class RecurrentCriticNetwork(nn.Module):
         self._require_aux("unseen_trump_higher_than_hand_logits")
         h = self.trump_aux(feat)
         return self.unseen_trump_higher_than_hand_head(h).squeeze(-1)
+
+
+class PerceiverAuxCriticNetwork(RecurrentCriticNetwork):
+    """Perceiver critic WITH the full auxiliary-head stack.
+
+    The operator's intended perceiver design: inherits every aux head
+    (win/return/secret-partner/points + trump tracking) and the deep value
+    trunk from RecurrentCriticNetwork, and replaces the feature source —
+    one cross-attention readout over the post-reasoning token set feeds
+    BOTH the value trunk and the shallow aux adapter, so aux gradients
+    shape the readout + encoder exactly as they shape the pooled trunk in
+    `full`. Readout modules match PerceiverCriticNetwork (whose forward /
+    sequence_values / _readout are reused directly).
+    """
+
+    def __init__(
+        self,
+        d_token: int = 64,
+        d_model: int = 256,
+        d_card: int = 16,
+        n_readout_queries: int = 4,
+        n_readout_heads: int = 4,
+    ):
+        super().__init__(d_card=d_card, use_aux_heads=True, d_model=d_model)
+        d_token, d_model = int(d_token), int(d_model)
+        self._d_token = d_token
+        self.readout_n_queries = int(n_readout_queries)
+        self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
+        self.readout_mha = nn.MultiheadAttention(
+            d_token, int(n_readout_heads), batch_first=True
+        )
+        self.readout_proj = nn.Linear(self.readout_n_queries * d_token, d_model)
+        # super().__init__ already orthogonal-initialized the inherited stack;
+        # only the projection is initialized here (MHA keeps torch defaults,
+        # the encoder AttentionPool convention).
+        self.readout_proj.apply(self._init_weights)
+
+    _readout = PerceiverCriticNetwork._readout
+    forward = PerceiverCriticNetwork.forward
+    sequence_values = PerceiverCriticNetwork.sequence_values
+
+    def _readout_bt(self, encoder_out_seq: Dict[str, torch.Tensor]):
+        at = encoder_out_seq["all_tokens"]  # (B, T, N, d_token)
+        am = encoder_out_seq["all_mask"]  # (B, T, N)
+        B, T, N, d = at.shape
+        return self._readout(at.reshape(B * T, N, d), am.reshape(B * T, N)).view(
+            B, T, -1
+        )
+
+    def aux_sequence_features(self, encoder_out_seq: Dict[str, torch.Tensor]):
+        return self.critic_adapter(self._readout_bt(encoder_out_seq))
+
+    def _aux_features_single(self, encoder_out: Dict[str, torch.Tensor]):
+        return self.critic_adapter(
+            self._readout(encoder_out["all_tokens"], encoder_out["all_mask"])
+        )
 
 
 class PPOAgent:
@@ -1780,8 +1848,10 @@ class PPOAgent:
         values_bt = self.critic.sequence_values(encoder_out_seq)
 
         if self.critic.has_aux_heads:
-            # Auxiliary preds share the shallow critic_adapter (gradients flow to encoder)
-            aux_feat_bt = self.critic.critic_adapter(features_bt)
+            # Auxiliary preds share the shallow critic_adapter (gradients flow
+            # to encoder); token-readout critics override the seam to feed the
+            # adapter from their own attention readout.
+            aux_feat_bt = self.critic.aux_sequence_features(encoder_out_seq)
             win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
             ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
             secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)

@@ -575,6 +575,16 @@ def _perceiver_critic(encoder):
     )
 
 
+def _perceiver_aux_critic(encoder):
+    from ppo import PerceiverAuxCriticNetwork
+
+    return PerceiverAuxCriticNetwork(
+        d_token=encoder.d_token_dim,
+        d_model=getattr(encoder, "d_model", 256),
+        d_card=encoder.d_card_dim,
+    )
+
+
 def _aux_critic(encoder):
     from ppo import RecurrentCriticNetwork
 
@@ -778,6 +788,20 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_perceiver_actor,
         build_critic=_perceiver_critic,
         has_aux_heads=False,
+    ),
+    "perceiver-aux": ArchitectureSpec(
+        name="perceiver-aux",
+        description=(
+            "perceiver plus the full auxiliary-head stack (the operator's "
+            "intended design, added 2026-07-06): the critic's readout feeds "
+            "both the value trunk and the aux adapter, so aux gradients "
+            "shape the readout + encoder as they shape the pooled trunk in "
+            "full. vs perceiver = the aux rung on the token-centric base."
+        ),
+        build_encoder=lambda: PerceiverEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_perceiver_actor,
+        build_critic=_perceiver_aux_critic,
+        has_aux_heads=True,
     ),
     # --- Perceiver capacity variants (one knob each, mirroring full's) ------
     "perceiver-dtok32": _perceiver_size_variant(

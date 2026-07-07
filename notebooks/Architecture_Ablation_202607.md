@@ -879,9 +879,17 @@ in the "perceiver probe" section (including the per-seed
 `grep "Entropy - pick" runs/ablate_perceiver_s*/train.log` stability
 check). **If perceiver wins** (> +0.07 and > 2 SE vs full): the
 contingency below activates with `perceiver` (not tokenread) as the new
-base — pause phase 2 early, rebase its arms to `perceiver` vs a
-`perceiver-with-aux` or keep full-vs-no-aux alongside a perceiver league
-arm; the operator decides the exact arm set. **Also rebase the capacity
+base — pause phase 2 early and rebase its arms. **`perceiver-aux` exists
+for exactly this** (registered 2026-07-06 after the operator flagged that
+dropping the aux heads was not intended): the critic's token readout
+feeds both the value trunk and the full inherited aux stack
+(985,751 params vs perceiver's 873,678 and full's 1,003,607); the running
+probe itself is aux-FREE (restarting it to add aux would have pushed the
+report past the operator's access window, and redefining `perceiver`
+mid-flight would break its own checkpoint loads). The natural rebased
+arm pair is `perceiver-aux` vs `perceiver` — it mirrors full-vs-no-aux
+and answers the aux question on the new base under league terminal
+reward. The operator decides the exact arm set. **Also rebase the capacity
 sweep** (operator, 2026-07-06): a depth/width sweep on `full` is
 confounded by the attention-pool squeeze — extra transformer capacity
 still exits through 4-query pools, so a depth null on `full` would not

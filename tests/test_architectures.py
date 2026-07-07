@@ -492,6 +492,37 @@ class TestPerceiver(unittest.TestCase):
         self.assertEqual(tuple(agent4.actor.readout_query.shape), (4, 64))
         self.assertEqual(agent4.actor.readout_mha.num_heads, 4)
 
+    def test_perceiver_aux_critic(self):
+        _seed_all(17)
+        agent = PPOAgent(len(ACTIONS), arch="perceiver-aux")
+        self.assertTrue(agent.critic.has_aux_heads)
+        for mod in ("win_head", "points_head", "trump_aux", "readout_query"):
+            self.assertTrue(hasattr(agent.critic, mod), mod)
+        # Encoder is still pool-free.
+        self.assertFalse(hasattr(agent.encoder, "pool_hand"))
+        game = Game(seed=141)
+        enc_out = agent.encoder.encode_batch([game.players[0].get_state_dict()])
+        win_prob, _exp_ret, secret_prob, points = agent.critic.aux_predictions(enc_out)
+        self.assertTrue(0.0 <= win_prob <= 1.0)
+        self.assertTrue(0.0 <= secret_prob <= 1.0)
+        self.assertEqual(len(points), 5)
+        # Sequence aux features come from the token readout, (B, T, d_model).
+        s = game.players[0].get_state_dict()
+        seq_out = agent.encoder.encode_sequences([[s, s]])
+        aux_bt = agent.critic.aux_sequence_features(seq_out)
+        self.assertEqual(tuple(aux_bt.shape), (1, 2, 256))
+
+    def test_base_aux_seam_bit_identical(self):
+        _seed_all(18)
+        agent = PPOAgent(len(ACTIONS), arch="full")
+        game = Game(seed=142)
+        s = game.players[0].get_state_dict()
+        seq_out = agent.encoder.encode_sequences([[s, s]])
+        with torch.no_grad():
+            via_seam = agent.critic.aux_sequence_features(seq_out)
+            inline = agent.critic.critic_adapter(seq_out["features"])
+        self.assertTrue(torch.equal(via_seam, inline))
+
     def test_base_critic_sequence_values_matches_inline(self):
         # The seam must be exactly the old two lines for existing archs.
         _seed_all(14)
