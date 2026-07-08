@@ -1622,3 +1622,45 @@ Interpretation once landed (three-way split for the 200k anomaly):
 Whatever the split, the perceiver-vs-full screening comparison gets
 re-stated from `panel_a_ckpt200k_*` for methodology consistency (the
 175k panels were already checkpoint-based; only 200k endpoints move).
+
+## RESOLUTION (2026-07-08, panels landed)
+
+Called-mode, same panel field, CRN-paired (finals re-check reproduced
+the original finals panel EXACTLY to 4 decimals — instrument is
+deterministic; eval-anomaly branch eliminated):
+
+| seed  | 150k ckpt | 175k ckpt | 200k ckpt | 200k final | flush Δ |
+|-------|-----------|-----------|-----------|------------|---------|
+| s42   | −0.458    | −0.295    | −0.277    | −0.285     | −0.008  |
+| s1042 | −0.472    | −0.357    | −0.500    | −0.455     | +0.045  |
+| s2042 | −0.325    | −0.147    | −0.354    | −0.470     | −0.117  |
+
+**Verdict: genuine checkpoint-level movement, flush mostly noise.**
+
+1. **The 175k→200k drop lives in the standard checkpoints** for 2/3
+   seeds (s2042 −0.207, s1042 −0.142 in 25k) — not a save-path
+   artifact. Combined with the 150k→175k JUMPS (s42 +0.163, s2042
+   +0.178), the correct reading is that perceiver-shared's panel
+   trajectory is VOLATILE at the ±0.15–0.2/25k scale, seeds
+   oscillating. The "all-seed regression" framing was an artifact of
+   snapshotting a volatile curve at two points; 175k was a favorable
+   snapshot, 200k an unfavorable one. This is standing rule 1's
+   raison d'être — rule-1 endpoints (called, last-3-ckpt mean): s42
+   −0.343, s1042 −0.443, s2042 −0.275; mean ≈ −0.354.
+2. **Flush deltas are mixed-sign and mostly small** (−0.008 / +0.045 /
+   −0.117; mean −0.03) — consistent with the 30M analog (KL≈0). The
+   s2042 −0.117 shows a single flush CAN perturb at the panel-noise
+   scale, which is reason enough for the removal, but there is no
+   systematic damage. Expected taint on OTHER archs' finals-based
+   verdicts: ±0.05–0.1 noise, near-zero mean — the queued
+   `panel_a_ckpt200k_*` re-panels restate perceiver/full cleanly.
+3. **Stage-0 implication for shared:** 150k→200k checkpoint slope is
+   ~FLAT (per-seed +0.181 / −0.028 / −0.029 per 50k, called) — much
+   slower than plain perceiver's +0.159/25k at its 200k cutoff. The
+   "shared ≈ full@200k" read from the 175k snapshot was optimistic;
+   the rule-1 endpoint trails full. Await the jd ckpt200k panel +
+   full's ckpt200k re-panel for the paired comparison, then apply the
+   pre-registered extension rule using the rule-1 endpoints and the
+   flat measured slope (a 400k extension of shared needs a
+   differential-slope justification it currently does not have —
+   volatility, not climb).
