@@ -1664,3 +1664,54 @@ deterministic; eval-anomaly branch eliminated):
    flat measured slope (a 400k extension of shared needs a
    differential-slope justification it currently does not have —
    volatility, not climb).
+
+---
+
+# 300k MID-COURSE READ — DIFFERENTIAL SLOPE REVERSED (2026-07-08 18:36)
+
+`diag/panel_a_400ext_300k_{called,jd}.csv` (PANEL-A, 1000 deals/mode,
+standard checkpoints, CRN seed 42):
+
+| seed  | full called | perceiver called | full jd | perceiver jd |
+|-------|-------------|------------------|---------|--------------|
+| s42   | −0.316      | −0.401           | −0.142  | −0.377       |
+| s1042 | −0.139      | −0.324           | −0.042  | −0.220       |
+| s2042 | −0.173      | −0.592           | −0.158  | −0.574       |
+| mean  | −0.210      | −0.439           | −0.114  | −0.390       |
+
+Both-modes means: **full −0.162, perceiver −0.415** — gap −0.253
+(~3.6× MDE), **0/6 CRN-paired seed-mode wins for perceiver**.
+
+200k→300k movement (200k = finals-based, so ±0.05 flush noise applies;
+still unambiguous at this magnitude):
+
+- perceiver: −0.420 → −0.415 = **+0.005 per 100k — the climb STALLED.**
+  The +0.159/25k slope measured at the 200k cutoff did not continue.
+- full: −0.233 → −0.162 = **+0.071 per 100k — the "plateaued" baseline
+  resumed climbing.**
+
+The differential that justified the extension has REVERSED. Consistent
+mechanism: perceiver's steep 175k→200k climb was late PASS-collapse
+recovery catch-up (s1042 escaped ~51k), and the catch-up ran out near
+200k; full's formative phase was cheaper and it keeps compounding.
+Anchored telemetry (motivation-only) corroborates the direction:
+perceiver s42 shows no sustained climb 225k→350k.
+
+The extension is doing its job either way: it converts "budget
+artifact" into a real answer at converged budget. If the 400k rule-1
+endpoint confirms this picture (full ahead > 0.07 & > 2 SE), the
+stage-0 screening outcome is **"perceiver family decisively worse at
+equal budget"** — the decision-tree branch that puts the league pair
+in question. Combined with perceiver-shared's flat slope + rule-1
+endpoint ≈ −0.354 (called) from the RESOLUTION section above, the
+whole perceiver family currently trails full on screening; per P3 the
+league regime remains decisive, but burning a league arm on
+perceiver-shared now needs operator judgment rather than the default.
+
+**Endpoint panels AUTOMATED:** detached watcher
+`diag/panel400k_endpoint_watch.sh` (launched Jul-8 evening) waits for
+all six `checkpoint_400000` files AND the ckpt200k re-panel chain,
+then runs 350k/375k/400k × both modes sequentially →
+`panel_a_400ext_{350,375}k_{called,jd}.csv` + `panel_a_400k_{called,jd}.csv`
+(rule-1 endpoint = per-seed mean over the three). Done marker
+"ENDPOINT PANELS COMPLETE" in `diag/panel400k_endpoint_watch.log`.
