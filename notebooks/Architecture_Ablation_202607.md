@@ -951,12 +951,12 @@ Endpoint read for the extensions (run after all six finish):
 ```
 for MODE in called jd; do
   PYTHONPATH=. .venv/bin/python analysis/rigorous_eval.py \
-    --candidates runs/ablate_perceiver400_s42/final_perceiver.pt \
-                 runs/ablate_perceiver400_s1042/final_perceiver.pt \
-                 runs/ablate_perceiver400_s2042/final_perceiver.pt \
-                 runs/ablate_full400_s42/final_full.pt \
-                 runs/ablate_full400_s1042/final_full.pt \
-                 runs/ablate_full400_s2042/final_full.pt \
+    --candidates runs/ablate_perceiver400_s42/perceiver_checkpoint_400000.pt \
+                 runs/ablate_perceiver400_s1042/perceiver_checkpoint_400000.pt \
+                 runs/ablate_perceiver400_s2042/perceiver_checkpoint_400000.pt \
+                 runs/ablate_full400_s42/full_checkpoint_400000.pt \
+                 runs/ablate_full400_s1042/full_checkpoint_400000.pt \
+                 runs/ablate_full400_s2042/full_checkpoint_400000.pt \
     --anchors final_pfsp_swish_ppo.pt \
               runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt \
               runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_5000000.pt \
@@ -965,6 +965,12 @@ for MODE in called jd; do
     --out-csv runs/perceiver_202607/diag/panel_a_400k_$MODE.csv
 done
 ```
+
+*(2026-07-08: candidates switched from `final_*.pt` to
+`*_checkpoint_400000.pt` — see "FLUSH-UPDATE FINDING" section; the six
+extension processes predate the trainer fix, so their eventual
+`final_*.pt` files will still contain a flush update. Do not measure
+them.)*
 
 Same command shape with `*_checkpoint_300000.pt` gives the trustworthy
 mid-course read (~25 min/mode). **AUTOMATED (2026-07-07 13:54):** a
@@ -1415,6 +1421,13 @@ here must be executable mechanically.
    Anything load-bearing gets re-decided in the league regime.
 4. Never compare eps/s across differently-loaded runs; use the paired
    act-bench + update-timing method.
+5. **(added 2026-07-08) Measure standard checkpoints, never
+   `final_<arch>.pt` from runs started before 2026-07-08.** Those finals
+   carry one out-of-spec flush update (bare `agent.update()` = default
+   epochs=6 on a partial <2048-transition leftover buffer). The flush was
+   removed from `train_selfplay_ppo.py` on 2026-07-08; finals from runs
+   started after the fix equal the last threshold update's weights. The
+   league trainer never had a flush. See "FLUSH-UPDATE FINDING" section.
 
 ## Stage 0 — RUNNING NOW: self-play screening
 
@@ -1448,7 +1461,7 @@ The regime that matters (P3). Two arms, identical protocol, CRN seed:
 # per arm (arch = full | perceiver-shared):
 PYTHONPATH=. nohup caffeinate -is .venv/bin/python train_league_ppo.py \
     --arch <ARCH> --critic-mode oracle \
-    --resume <that arch's best 400k/200k self-play final> \
+    --resume <that arch's best 400k/200k self-play CHECKPOINT (rule 5: not final_*.pt)> \
     --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
     --league-dir runs/league_arch_<ARCH>/league --run-name league_arch_<ARCH> \
     --generations 1 --main-episodes 750000 --anchor-coeff 1.0 \
@@ -1533,3 +1546,79 @@ On the ADOPTED base from stage 1, not before:
 - Stale "running" status JSONs exist in `runs/size_sweep_202607/status/`
   and `runs/decomp_202607/status/` — harmless (skip logic only honors
   "done").
+
+---
+
+# FLUSH-UPDATE FINDING & METHODOLOGY FIX (2026-07-08)
+
+Trigger: perceiver-shared's 175k→200k both-modes panel regression
+(−0.232 → −0.404 mean; s2042 −0.121 → −0.445, ~8σ) with clean anchored
+telemetry and no entropy/leaster pathology. Diffing artifacts showed
+`final_perceiver-shared.pt` ≠ `perceiver-shared_checkpoint_200000.pt`
+in every state dict, which led to the end-of-run code path.
+
+## The defect
+
+`train_selfplay_ppo.py` ended every run with a bare `agent.update()`
+"flush" before saving `final_<arch>.pt`. That call is out-of-spec on
+two axes relative to every in-loop update (`epochs=4, batch_size=256`
+at a 2048-transition threshold):
+
+1. **epochs=6** (ppo.py `update()` default) — 50% more replay passes;
+2. **arbitrary partial buffer** — whatever leftover < 2048 transitions
+   existed at loop exit (observed 715 in a 12-episode smoke), so
+   advantage normalization runs over a small, unrepresentative sample
+   and the data re-use ratio is unlike anything during training.
+
+PPO's clip only bounds ratios ON the sampled states; encoder/trunk
+drift generalizes off-buffer. Operator ruling: updates must always run
+under the specified hyperparameters — the flush is unsound regardless
+of whether it explains the observed regression (prior against it as
+the -0.32 cause: the 30M `final_swish.pt` analog measured KL≈0 /
+98.6% argmax agreement for its flush).
+
+## The fix (this date)
+
+- `train_selfplay_ppo.py`: flush REMOVED; leftover buffered events are
+  discarded with a log line; `final_<arch>.pt` now equals the last
+  threshold update's weights (== last checkpoint when `--episodes` is
+  a multiple of `--save-interval`).
+- `train_league_ppo.py` / `exploiter.py`: audited, never had a flush
+  (single update site, always `epochs=4, batch_size=256`); stale
+  comment in `exploiter.latest_checkpoint` corrected.
+- Verified by 12-episode smoke: "Discarding 715 leftover buffered
+  events (no flush update)" then final save.
+
+## Methodology consequence (standing rule 5)
+
+All `final_<arch>.pt` from selfplay runs started BEFORE 2026-07-08 are
+deprecated as measurement subjects. Live lineage is clean: all six
+400k extensions resumed from `*_checkpoint_200000.pt` (verified via
+ps), and the 300k watcher + last-3-ckpt endpoint rule already use
+checkpoints. The 400k endpoint command above was repointed at
+`*_checkpoint_400000.pt`.
+
+## Re-panels queued (detached chain: `diag/ckpt200k_repanel.sh`)
+
+Waits for the two in-flight shared panels
+(`panel_a_shared_final_recheck.csv`, `panel_a_shared_ckpt200k_called.csv`),
+then sequentially:
+
+- `diag/panel_a_ckpt200k_called.csv` / `..._jd.csv` — perceiver +
+  full, 3 seeds each, `*_checkpoint_200000.pt` (replaces the
+  finals-based probe endpoint read);
+- `diag/panel_a_shared_ckpt200k_jd.csv` — perceiver-shared 3 seeds.
+
+Interpretation once landed (three-way split for the 200k anomaly):
+
+- ckpt200k ≈ 175k level, finals reproduce low ⇒ flush damage is real
+  at this scale too; checkpoint numbers become the record.
+- ckpt200k ALSO low ⇒ genuine late regression in shared (then
+  re-examine the extension decision for shared).
+- finals re-check DISAGREES with the original finals panel ⇒ eval
+  anomaly; investigate rigorous_eval reproducibility before trusting
+  any panel this week.
+
+Whatever the split, the perceiver-vs-full screening comparison gets
+re-stated from `panel_a_ckpt200k_*` for methodology consistency (the
+175k panels were already checkpoint-based; only 200k endpoints move).

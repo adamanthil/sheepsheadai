@@ -691,24 +691,17 @@ def train_ppo(
                 )
                 print(f"   Estimated time remaining: {estimated_time:.1f} min")
 
-    # Final update and save
+    # Final save. Leftover buffered transitions (< update_interval) are
+    # intentionally discarded: a flush update would train on a smaller
+    # sample than every other update (and at update()'s default epochs),
+    # so the saved weights would not be the product of the specified
+    # hyperparameters. final_<arch>.pt therefore equals the last
+    # threshold update's weights (== the last checkpoint when episodes
+    # is a multiple of save_interval).
     if agent.events:
-        print("🔄 Final model update...")
-        final_update_stats = agent.update()
-
-        # Log final advantage and value target statistics
-        if final_update_stats:
-            adv_stats = final_update_stats["advantage_stats"]
-            val_stats = final_update_stats["value_target_stats"]
-            num_transitions = final_update_stats["num_transitions"]
-
-            print(f"   Final Transitions: {num_transitions}")
-            print(
-                f"   Final Advantages - Mean: {adv_stats['mean']:+.3f}, Std: {adv_stats['std']:.3f}, Range: [{adv_stats['min']:+.3f}, {adv_stats['max']:+.3f}]"
-            )
-            print(
-                f"   Final Value Targets - Mean: {val_stats['mean']:+.3f}, Std: {val_stats['std']:.3f}, Range: [{val_stats['min']:+.3f}, {val_stats['max']:+.3f}]"
-            )
+        n_leftover = len(agent.events)
+        agent.events.clear()
+        print(f"   Discarding {n_leftover} leftover buffered events (no flush update)")
 
     agent.save(os.path.join(checkpoint_dir, f"final_{arch}.pt"))
 
