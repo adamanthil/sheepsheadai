@@ -464,6 +464,7 @@ def run_main_phase(
                                     "adv_std_play",
                                     "ev_oracle",
                                     "ev_limited",
+                                    "anchor_kl",
                                 ]
                             )
                         w.writerow(
@@ -480,6 +481,9 @@ def run_main_phase(
                                 f"{adv_std_play:.4f}",
                                 f"{ostats['ev_oracle']:.4f}" if ostats else "",
                                 f"{ostats['ev_limited']:.4f}" if ostats else "",
+                                f"{anchor.get('kl', 0.0):.5f}"
+                                if anchor.get("active")
+                                else "",
                             ]
                         )
 

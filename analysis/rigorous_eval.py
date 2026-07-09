@@ -173,6 +173,43 @@ def discover_candidates(
 
 
 # --------------------------------------------------------------------------- #
+# Passive decision probe (opt-in telemetry; never alters play)
+# --------------------------------------------------------------------------- #
+@dataclass
+class DecisionProbe:
+    """Observe selected hero decisions during evaluation, for free telemetry
+    piggybacked on the gauntlet's fixed deal panel (e.g. the defender
+    trump-lead leak trend in league_progress_eval.py).
+
+    wants(game, player, valid_actions) is a cheap predicate deciding whether
+    this node is recorded; record(...) additionally receives the chosen action
+    and the policy's action-probability vector at the node. The probe is
+    strictly passive: it consumes no RNG and leaves recurrent state untouched,
+    so per-deal scores are bit-identical with or without it.
+    """
+
+    wants: Callable[[Game, object, List[int]], bool]
+    record: Callable[[Game, object, List[int], int, np.ndarray], None]
+
+
+def _probe_action_probs(agent: PPOAgent, state, valid_actions, player_id) -> np.ndarray:
+    """Policy distribution at a decision node, without perturbing play.
+
+    get_action_probs_with_logits advances the recurrent memory, and act()
+    afterwards encodes the same state again -- without a snapshot/restore the
+    hand would proceed from a double-encoded memory (probe-vs-eval discrepancy
+    found 2026-06-10: 73% vs 7% greedy trump-lead rate on identical weights;
+    see validation/exit_validation.py). Snapshot, probe, restore.
+    """
+    saved_mem = {pid: t.detach().clone() for pid, t in agent._player_memories.items()}
+    probs, _ = agent.get_action_probs_with_logits(
+        state, valid_actions, player_id=player_id
+    )
+    agent._player_memories = saved_mem
+    return probs[0].detach().cpu().numpy()
+
+
+# --------------------------------------------------------------------------- #
 # Game driver
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -203,12 +240,19 @@ def _role_points_margin(game: Game, seat: int) -> float:
 
 
 def play_hand(
-    seat_to_model: Dict[int, Model], partner_mode: int, deal_seed: int
+    seat_to_model: Dict[int, Model],
+    partner_mode: int,
+    deal_seed: int,
+    probe: Optional[DecisionProbe] = None,
+    probe_seat: Optional[int] = None,
 ) -> HandResult:
     """Play one full hand with a fixed seat -> model assignment.
 
     The same Model may appear in multiple seats; recurrent state stays separate
     because act/observe are keyed by the seat's player_id.
+
+    An optional DecisionProbe observes `probe_seat`'s decisions (see the probe
+    docstring for the passivity guarantee).
     """
     game = Game(partner_selection_mode=partner_mode, seed=deal_seed)
 
@@ -222,9 +266,20 @@ def play_hand(
             valid_actions = player.get_valid_action_ids()
             while valid_actions:
                 state = player.get_state_dict()
+                probs = None
+                if (
+                    probe is not None
+                    and player.position == probe_seat
+                    and probe.wants(game, player, valid_actions)
+                ):
+                    probs = _probe_action_probs(
+                        model.agent, state, valid_actions, player.position
+                    )
                 action, _, _ = model.agent.act(
                     state, valid_actions, player.position, deterministic=True
                 )
+                if probs is not None:
+                    probe.record(game, player, valid_actions, action, probs)
                 player.act(action)
                 valid_actions = player.get_valid_action_ids()
 
@@ -273,6 +328,7 @@ def evaluate_hero_in_field(
     field_fn: FieldFn,
     deal_seeds: Sequence[int],
     partner_mode: int,
+    probe: Optional[DecisionProbe] = None,
 ) -> HeroEval:
     """Seat `hero` in all 5 seats per deal; the field fills the rest."""
     n = len(deal_seeds)
@@ -284,7 +340,7 @@ def evaluate_hero_in_field(
         for k in range(1, NUM_SEATS + 1):  # hero seat
             seat_to_model = dict(field_fn(d, k))
             seat_to_model[k] = hero
-            res = play_hand(seat_to_model, partner_mode, seed)
+            res = play_hand(seat_to_model, partner_mode, seed, probe=probe, probe_seat=k)
             raw_score[d, k - 1] = res.scores[k - 1]
             raw_margin[d, k - 1] = res.points_margin[k - 1]
             if res.is_leaster:

@@ -160,21 +160,28 @@ process by design; the runbook covers deploys, drains, and restores.
 
 ## Training the AI
 
-Training has two stages — a self-play bootstrap followed by league-based PPO.
-Both build on the shared game primitives in `pfsp_runtime.py` and the
-hyperparameters in `config.py`. All artifacts for a run — checkpoints, the final
-model, plots, CSVs, and the league roster — are written under `runs/<run-name>/`
-(gitignored).
+Training has two stages — a self-play bootstrap followed by league-based PPO —
+plus an orchestrator that runs the league stage end-to-end with an automatic
+stopping rule. All build on the shared game primitives in `pfsp_runtime.py`,
+the hyperparameters in `config.py`, and the architecture registry in
+`architectures.py` (`--arch` on every trainer; checkpoints record their
+architecture and are rebuilt to match on load). All artifacts for a run —
+checkpoints, the final model, plots, CSVs, and the league roster — are written
+under `runs/<run-name>/` (gitignored).
 
 ### Step 1 — Self-play PPO (bootstrap)
 
 Train a single agent by self-play. This is the starting point; it needs no
-population. Defaults to 100k episodes and writes periodic snapshots under
-`runs/selfplay_ppo/`:
+population. Defaults to 100k episodes and writes `<arch>_checkpoint_<N>.pt`
+snapshots plus an anchored strength curve (`anchored_eval.csv`, paired CRN
+edges vs three frozen yardsticks) under `runs/selfplay_ppo/`:
 
 ```bash
 uv run train_selfplay_ppo.py --episodes 100000
 ```
+
+Useful flags: `--arch` (architecture variant), `--leaster-watchdog` (guards the
+always-PASS collapse that affects all from-scratch shaped self-play runs).
 
 ### Step 2 — League PPO
 
@@ -187,8 +194,8 @@ the self-play snapshots** produced in step 1 (`--resume` for the weights,
 
 ```bash
 uv run train_league_ppo.py \
-  --resume runs/selfplay_ppo/swish_checkpoint_100000.pt \
-  --seed-checkpoints "runs/selfplay_ppo/swish_checkpoint_*.pt" \
+  --resume runs/selfplay_ppo/full_checkpoint_100000.pt \
+  --seed-checkpoints "runs/selfplay_ppo/full_checkpoint_*.pt" \
   --league-dir runs/league_ppo/league --run-name league_ppo \
   --generations 6 --main-episodes 5000000
 ```
@@ -201,6 +208,37 @@ the empirical-exploitability trend that certifies the run. Artifacts go under
 <legacy population dir>` to ingest an old PFSP population, or neither to
 cold-start the league from pure self-play. Pass `--resume <checkpoint>` pointing
 at a later checkpoint to continue an interrupted run.
+
+Notable flags: `--critic-mode oracle` trains a privileged full-information
+critic as the GAE baseline (CTDE / asymmetric actor-critic; the deployed policy
+never sees hidden state, and league snapshots strip the oracle before
+insertion); `--anchor-coeff` + `--anchor-ref` enable a bidding-head KL anchor
+for warm-start safety.
+
+### Step 3 — Extended league run with automatic stopping
+
+`analysis/run_extended_league.py` wraps step 2 into a fully instrumented,
+crash-resumable campaign that decides for itself when learning has concluded
+(design pre-registered in `notebooks/Extended_League_202607.md`). It
+calibrates the gen-1 KL-anchor coefficient with short probes, runs generation
+1 anchored and later generations unanchored (one trainer subprocess per
+generation), evaluates every generation on the frozen PANEL-A gauntlet
+(4000-deal composite endpoint + head-to-head vs the previous generation), and
+stops after two consecutive statistically flat generations confirmed on a
+fresh deal set:
+
+```bash
+uv run python analysis/run_extended_league.py \
+  --arch full --resume runs/selfplay_ppo/final_full.pt \
+  --seed-checkpoints "runs/selfplay_ppo/full_checkpoint_*.pt" \
+  --run-name ext_league --critic-mode oracle
+```
+
+Progress lands in `runs/<run-name>/orchestrator/`: `generations.csv`,
+`report.md`, `generations_curve.png` (strength + trick-0/1 defender
+trump-lead-leak trends), and `state.json` (re-invoke with the same arguments
+to resume after any interruption). `--smoke` runs the whole loop in minutes;
+`--dry-run` prints the planned commands without training.
 
 ---
 
