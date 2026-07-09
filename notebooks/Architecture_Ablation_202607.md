@@ -1810,7 +1810,15 @@ both modes, vs full's ckpt-based endpoints):
   shaping / formative dynamics; league arms decide with full as base.
 - Watch early leaster telemetry for PASS-trap escape speed (v1 escaped
   fast: 3k/6k/20k — v2 should match since trunk sharing + aux + driver
-  are unchanged).
+  are unchanged). CONFIRMED ~29k: leaster 3.4%/18.5%/4.0% — all seeds
+  escaped.
+- **Endpoint panels AUTOMATED** (Jul-9 10:09): detached watcher
+  `diag/panel_v2_endpoint_watch.sh` waits for the 400k endpoint panels
+  to complete + all three v2 `checkpoint_200000` files, then runs
+  150k/175k/200k × both modes → `diag/panel_v2_{150,175,200}k_{called,jd}.csv`.
+  Done marker "V2 ENDPOINT PANELS COMPLETE" in its log. Rule-1
+  comparators: full's ckpt-based 150k/175k (full175k control CSVs) +
+  ckpt200k re-panels; v1-shared's slope + ckpt200k panels.
 
 **Endpoint panels AUTOMATED:** detached watcher
 `diag/panel400k_endpoint_watch.sh` (launched Jul-8 evening) waits for
