@@ -564,6 +564,46 @@ class TestPerceiver(unittest.TestCase):
             sorted(p.data_ptr() for p in enc.parameters()),
         )
 
+    def test_shared_readout_v2_corrections(self):
+        _seed_all(22)
+        agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2")
+        enc = agent.encoder
+        # 16 queries, normed readout, context-token driver, aux critic.
+        self.assertEqual(enc.readout_n_queries, 16)
+        self.assertEqual(tuple(enc.readout_query.shape), (16, enc.d_token_dim))
+        self.assertIsInstance(enc.readout_proj, torch.nn.Sequential)
+        self.assertIsInstance(enc.readout_proj[1], torch.nn.LayerNorm)
+        self.assertFalse(enc.memory_token_driver)
+        self.assertTrue(agent.critic.has_aux_heads)
+        game = Game(seed=145)
+        s = game.players[0].get_state_dict()
+        out = enc.encode_batch([s])
+        self.assertEqual(tuple(out["features"].shape), (1, 256))
+        # LayerNorm pins the feature scale to full's convention (norm =
+        # sqrt(d_model) with default affine init).
+        self.assertAlmostEqual(float(out["features"].norm()), 256**0.5, delta=0.5)
+        # Memory driver is the context token (index 0), as in v1/full
+        # (operator decision 2026-07-09: keep the game-start prior).
+        with torch.no_grad():
+            out2 = enc.encode_batch([s])
+            expect = enc.memory_gru(out2["all_tokens"][:, 0, :], torch.zeros(1, 256))
+        self.assertTrue(torch.allclose(out2["memory_out"], expect, atol=1e-6))
+        # Gradient reaches the queries through the normed projection.
+        out["features"].sum().backward()
+        self.assertIsNotNone(enc.readout_query.grad)
+        # param_groups cover every encoder parameter exactly once.
+        grouped = [p for g in enc.param_groups(3e-4) for p in g["params"]]
+        self.assertEqual(
+            sorted(p.data_ptr() for p in grouped),
+            sorted(p.data_ptr() for p in enc.parameters()),
+        )
+        # v1 stays byte-compatible: default ctor keeps the bare Linear
+        # projection, 4 queries, and the context-token driver.
+        v1 = architectures.SharedReadoutEncoder()
+        self.assertIsInstance(v1.readout_proj, torch.nn.Linear)
+        self.assertEqual(v1.readout_n_queries, 4)
+        self.assertFalse(v1.memory_token_driver)
+
     def test_ctxmem_context_token_drives_recurrence(self):
         _seed_all(20)
         enc = architectures.PerceiverCtxMemEncoder()

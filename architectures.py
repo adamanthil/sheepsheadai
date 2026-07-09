@@ -298,17 +298,35 @@ class SharedReadoutEncoder(PerceiverEncoder):
     """
 
     def __init__(
-        self, card_config: "CardEmbeddingConfig | None" = None, **encoder_kwargs
+        self,
+        card_config: "CardEmbeddingConfig | None" = None,
+        n_readout_queries: int = 4,
+        n_readout_heads: int = 4,
+        normed_readout: bool = False,
+        memory_token_driver: bool = False,
+        **encoder_kwargs,
     ):
         super().__init__(card_config=card_config, **encoder_kwargs)
         d_token = self.d_token_dim
         d_model = getattr(self, "d_model", 256)
-        self.readout_n_queries = 4
+        self.readout_n_queries = int(n_readout_queries)
+        self.memory_token_driver = bool(memory_token_driver)
         # Torch-default MHA init + randn queries: the AttentionPool
         # convention (matches the modules this readout replaces).
         self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
-        self.readout_mha = nn.MultiheadAttention(d_token, 4, batch_first=True)
-        self.readout_proj = nn.Linear(self.readout_n_queries * d_token, d_model)
+        self.readout_mha = nn.MultiheadAttention(
+            d_token, int(n_readout_heads), batch_first=True
+        )
+        # normed_readout matches full's feature_proj convention
+        # (Linear + LayerNorm); the default bare Linear preserves
+        # state-dict compatibility with pre-v2 perceiver-shared runs.
+        if normed_readout:
+            self.readout_proj = nn.Sequential(
+                nn.Linear(self.readout_n_queries * d_token, d_model),
+                nn.LayerNorm(d_model),
+            )
+        else:
+            self.readout_proj = nn.Linear(self.readout_n_queries * d_token, d_model)
 
     def param_groups(self, base_lr: float, card_lr_scale: float = 0.1):
         groups = super().param_groups(base_lr, card_lr_scale)
@@ -339,8 +357,14 @@ class SharedReadoutEncoder(PerceiverEncoder):
         all_tokens,
         all_mask,
     ):
-        # Memory write: context token, as in the base architecture.
-        memory_out = self.memory_gru(all_tokens[:, 0, :], memory_in)
+        # Memory write: context token by default (as in the base
+        # architecture); v2 drives recurrence from the post-reasoning
+        # MEMORY token instead (the original perceiver design — the
+        # transformer learns what the GRU needs to see).
+        driver = (
+            all_tokens[:, 1, :] if self.memory_token_driver else all_tokens[:, 0, :]
+        )
+        memory_out = self.memory_gru(driver, memory_in)
         B = all_tokens.size(0)
         q = self.readout_query.unsqueeze(0).expand(B, -1, -1)
         attn_out, _ = self.readout_mha(
@@ -984,6 +1008,51 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
             "the actor)."
         ),
         build_encoder=lambda: SharedReadoutEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_pointer_actor,
+        build_critic=_no_aux_critic,
+        has_aux_heads=False,
+    ),
+    "perceiver-shared-v2": ArchitectureSpec(
+        name="perceiver-shared-v2",
+        description=(
+            "perceiver-shared with the two 2026-07-09 corrections: "
+            "16-query/4-head shared readout (64 attention distributions = "
+            "channel parity with full's 4 pools x 4q x 4h; the 4q/4h v1 "
+            "readout had 1/4 the channels, each softmaxing over all 19 "
+            "competing tokens) and LayerNorm after the readout projection "
+            "(full's feature_proj convention; v1's bare Linear left the "
+            "trunk scale unpinned — consumers renormalize, but gradient "
+            "geometry into the readout differs). Context-token memory "
+            "driver, pointer actor, and aux critic unchanged (operator "
+            "decision 2026-07-09: the context token is a strong prior at "
+            "game start and worked in all past training — change fewer "
+            "things). The family's best-effort adoption candidate; "
+            "attribution of the two changes is registry-recoverable but "
+            "secondary."
+        ),
+        build_encoder=lambda: SharedReadoutEncoder(
+            card_config=CardEmbeddingConfig(),
+            n_readout_queries=16,
+            n_readout_heads=4,
+            normed_readout=True,
+        ),
+        build_actor=_pointer_actor,
+        build_critic=_aux_critic,
+        has_aux_heads=True,
+    ),
+    "perceiver-shared-v2-noaux": ArchitectureSpec(
+        name="perceiver-shared-v2-noaux",
+        description=(
+            "perceiver-shared-v2 minus the aux heads: the missing cell of "
+            "the {pools|shared readout} x {aux|noaux} factorial on the "
+            "corrected base (full / no-aux / perceiver-shared-v2 / this)."
+        ),
+        build_encoder=lambda: SharedReadoutEncoder(
+            card_config=CardEmbeddingConfig(),
+            n_readout_queries=16,
+            n_readout_heads=4,
+            normed_readout=True,
+        ),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,

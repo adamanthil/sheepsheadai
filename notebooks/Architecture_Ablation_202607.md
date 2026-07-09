@@ -1746,6 +1746,59 @@ Caveat: equal accuracy does not strictly imply equal GRADIENT value
 the two constructions) — that residual question is exactly what the
 2×2 factorial's missing cell (perceiver-shared-noaux) measures.
 
+## perceiver-shared-v2 (registered + LAUNCHED 2026-07-09 ~00:13)
+
+Mechanism review of the shared-vs-full lag produced two corrections and
+one diagnostic, all committed:
+
+- **LayerNorm audit** (correcting the initial overclaim): every consumer
+  of the 256-d trunk starts with its own LayerNorm (actor_adapter,
+  critic_adapter, value_trunk, perceiver nets, oracle) — NO variant has
+  heads reading unnormalized activations, vanilla perceiver needs no
+  change. v1-shared's bare-Linear readout_proj only changes gradient
+  geometry into the readout (consumer LNs divide grads by per-state
+  feature std ≈ 0.2 and wandering ~20%, vs full's pinned 1.0) and lets
+  raw feature scale drift (measured 2.7→3.3 over 100k). Real but
+  second-order.
+- **Attention-channel accounting**: full = 4 pools × 4q × 4h = 64
+  scoped distributions (softmax over ≤8 bag tokens each, no cross-bag
+  competition, guaranteed output bandwidth); v1 shared = 16
+  distributions over all 19 competing tokens. The anti-squeeze design
+  goal was defeated by the 4q/4h choice.
+- **Squeeze audit** (`analysis/diagnostics/readout_squeeze_audit.py`,
+  30 games/ckpt): v1's 16 distributions are HIGHLY REDUNDANT (mean
+  pairwise cosine of mean maps 0.61–0.70, max ~1.0) with coverage 0.53
+  (≈10/19 token slots get >half the uniform share; some of that is
+  often-masked blind/bury). The channels don't partition the tokens —
+  direct evidence the readout bandwidth binds.
+
+**perceiver-shared-v2** = SharedReadoutEncoder(n_readout_queries=16,
+n_readout_heads=4, normed_readout=True): 64 distributions (channel
+parity with full) + Linear+LayerNorm projection (full's feature_proj
+convention). **Context-token memory driver KEPT** (operator decision
+2026-07-09: strong game-start prior, worked in all past training,
+change fewer things — a MEMORY-token driver variant was built and
+reverted; the encoder kwarg `memory_token_driver` remains available,
+default False). Pointer actor + aux critic unchanged. 1,100,951 params
+(vs full 1,003,607, v1 903,063). `perceiver-shared-v2-noaux` also
+registered = the missing cell of the {pools|shared}×{aux|noaux}
+factorial on the corrected base. 42/42 tests.
+
+LAUNCHED: 3×200k, watchdog-off ablate regime, CRN seeds
+(`ablate_perceiver-shared-v2_s{42,1042,2042}`, standard probe flags,
+save-interval 25k). ETA ~Jul-10 under mixed load. **Pre-registered
+read** (rule-1 endpoints = mean of 150k/175k/200k checkpoint panels,
+both modes, vs full's ckpt-based endpoints):
+
+- v2 ≥ full − 0.07 ⇒ the family's adoption candidate is restored;
+  stage-1 league pair full vs perceiver-shared-v2 as planned.
+- v2 ≈ v1 (still ~0.15+ behind full) ⇒ channels+LN were not the binding
+  factor; the pools' residual edge is dedicated capacity / gradient
+  shaping / formative dynamics; league arms decide with full as base.
+- Watch early leaster telemetry for PASS-trap escape speed (v1 escaped
+  fast: 3k/6k/20k — v2 should match since trunk sharing + aux + driver
+  are unchanged).
+
 **Endpoint panels AUTOMATED:** detached watcher
 `diag/panel400k_endpoint_watch.sh` (launched Jul-8 evening) waits for
 all six `checkpoint_400000` files AND the ckpt200k re-panel chain,
