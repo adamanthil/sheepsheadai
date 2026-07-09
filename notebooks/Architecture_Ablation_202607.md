@@ -1623,6 +1623,19 @@ Whatever the split, the perceiver-vs-full screening comparison gets
 re-stated from `panel_a_ckpt200k_*` for methodology consistency (the
 175k panels were already checkpoint-based; only 200k endpoints move).
 
+**Complete checkpoint-based 200k table (chain finished Jul-8 21:58;
+seed means, `checkpoint_200000`, PANEL-A):**
+
+| arch             | called | jd     | both-modes |
+|------------------|--------|--------|------------|
+| full             | −0.221 | −0.208 | **−0.214** |
+| perceiver-shared | −0.377 | −0.369 | **−0.373** |
+| perceiver        | −0.437 | −0.473 | **−0.455** |
+
+(shared jd per-seed: s42 −0.317, s1042 −0.464, s2042 −0.327.) These
+supersede all finals-based 200k numbers. shared trails full by 0.159
+both-modes; plain perceiver by 0.241.
+
 ## RESOLUTION (2026-07-08, panels landed)
 
 Called-mode, same panel field, CRN-paired (finals re-check reproduced
