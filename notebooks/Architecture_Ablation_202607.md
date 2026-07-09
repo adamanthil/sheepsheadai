@@ -1708,6 +1708,44 @@ whole perceiver family currently trails full on screening; per P3 the
 league regime remains decisive, but burning a league arm on
 perceiver-shared now needs operator judgment rather than the default.
 
+## Aux-head accuracy audit (2026-07-08 evening; `analysis/diagnostics/aux_audit.py`)
+
+Motivated by the operator's hypothesis that full's 200k→300k climb =
+aux heads "bearing fruit" once predictions become reliable. Audit:
+200 CRN self-play games/checkpoint (same extraction path as
+server/services/analyze.py, trainer-identical labels + post-trick
+observe frames), ~7k action-states each. Results in
+`runs/perceiver_202607/diag/aux_audit.csv`. Seed means:
+
+| metric              | full@100k | shared@100k | full@200k | shared@200k | full@300k |
+|---------------------|-----------|-------------|-----------|-------------|-----------|
+| partner AUC         | 0.972     | 0.994       | 0.998     | 0.999       | 0.999     |
+| win AUC             | 0.812     | 0.788       | 0.824     | 0.817       | 0.822     |
+| return corr         | 0.540     | 0.536       | 0.591     | 0.578       | 0.584     |
+| points MAE (pts)    | 2.37      | 1.87        | 0.93      | 0.97        | 0.87      |
+| seen-trump acc      | 0.789     | 0.791       | 0.825     | 0.831       | 0.842     |
+| unseen-higher acc   | 0.944     | 0.932       | 0.981     | 0.986       | 0.988     |
+
+Two findings, both AGAINST the aux-fruit hypothesis in its simple form:
+
+1. **Aux quality is equal across archs at matched budget** (shared
+   even slightly better at 100k on partner/points). The shared
+   readout supports aux learning as well as the pools do — so aux
+   prediction quality cannot explain full's strength edge over
+   shared (~0.16 at 200k). The information is demonstrably present
+   and decodable in BOTH trunks; full converts it into better policy.
+   Points at "optimization/gradient-shaping/capacity-allocation"
+   explanations, not "missing information."
+2. **No inflection at 200k→300k in full**: every aux metric is
+   essentially saturated/flat across that window (partner ~1.0 and
+   unseen ~0.98 already by 200k). Whatever resumed full's climb after
+   200k, it is not newly-reliable aux predictions coming online.
+
+Caveat: equal accuracy does not strictly imply equal GRADIENT value
+(the aux losses could shape the actor-visible features differently in
+the two constructions) — that residual question is exactly what the
+2×2 factorial's missing cell (perceiver-shared-noaux) measures.
+
 **Endpoint panels AUTOMATED:** detached watcher
 `diag/panel400k_endpoint_watch.sh` (launched Jul-8 evening) waits for
 all six `checkpoint_400000` files AND the ckpt200k re-panel chain,
