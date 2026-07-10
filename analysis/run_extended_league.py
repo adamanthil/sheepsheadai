@@ -79,6 +79,11 @@ from analysis.league_stopping import (
 from analysis.run_ablation_matrix import PANEL_A
 
 BASELINE_PROBE_SEED = 20260709  # greedy-health baseline of the resume ckpt
+# The ALONE gate is applied relative to the resume checkpoint's own baseline:
+# effective limit = max(config gate, baseline + this margin). A high-alone
+# warm start (weak defender-field collaboration, which league training itself
+# repairs) then never trips the halt, while a genuine regression still does.
+ALONE_BASELINE_MARGIN = 5.0
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -268,6 +273,46 @@ class Orchestrator:
         self.log(f"  6. confirmation panel seed {CONFIRM_SEED}")
 
     # ------------------------------------------------------------------ #
+    # Baseline health (shared by calibration and the per-generation halts)
+    # ------------------------------------------------------------------ #
+    def ensure_baseline_health(self) -> dict:
+        """Greedy-health probe of the resume checkpoint, measured once."""
+        if self.state.get("baseline_health"):
+            return self.state["baseline_health"]
+        from ppo import load_agent
+        from training_utils import greedy_health_probe
+
+        agent = load_agent(self.args.resume)
+        probe = greedy_health_probe(
+            agent, n_games=self.args.baseline_probe_games, seed=BASELINE_PROBE_SEED
+        )
+        del agent
+        self.state["baseline_health"] = {
+            k: probe[k]
+            for k in (
+                "pick_rate",
+                "alone_rate",
+                "leaster_rate",
+                "t0_trump_lead_rate",
+                "play_logit_spread_med",
+            )
+        }
+        self._save_state()
+        self.log(
+            f"baseline greedy health: pick {probe['pick_rate']:.1f}%, "
+            f"alone {probe['alone_rate']:.1f}% "
+            f"(effective alone limit {self._alone_limit():.1f}%)"
+        )
+        return self.state["baseline_health"]
+
+    def _alone_limit(self) -> float:
+        from config import PFSPHyperparams
+
+        gate = PFSPHyperparams().greedy_gate_max_alone
+        base = self.state.get("baseline_health", {}).get("alone_rate", 0.0)
+        return max(gate, base + ALONE_BASELINE_MARGIN)
+
+    # ------------------------------------------------------------------ #
     # Calibration
     # ------------------------------------------------------------------ #
     def ensure_calibration(self) -> float:
@@ -276,20 +321,13 @@ class Orchestrator:
 
         from ppo import PPOAgent, load_agent
         from sheepshead import ACTIONS
-        from training_utils import greedy_health_probe
         import train_league_ppo as tlp
         from config import LeagueConfig
         from league import League
 
         a = self.args
         self.log(f"CALIBRATION: coeffs {a.anchor_coeffs}, {a.probe_episodes} eps each")
-
-        baseline_agent = load_agent(a.resume)
-        baseline = greedy_health_probe(
-            baseline_agent, n_games=a.baseline_probe_games, seed=BASELINE_PROBE_SEED
-        )
-        del baseline_agent
-        self.log(f"baseline greedy health: pick {baseline['pick_rate']:.1f}%")
+        baseline = self.ensure_baseline_health()
 
         greedy_interval = max(1, a.probe_episodes // 3)
         probes: List[ProbeSummary] = []
@@ -378,6 +416,7 @@ class Orchestrator:
             )
         violations = 0
         final_pick = float("nan")
+        alone_limit = self._alone_limit()  # baseline-relative
         greedy_csv = os.path.join(cal_dir, "greedy_health.csv")
         if os.path.exists(greedy_csv):
             with open(greedy_csv) as f:
@@ -385,7 +424,7 @@ class Orchestrator:
                     final_pick = float(row["pick_rate"])
                     if (
                         float(row["pick_rate"]) < hp.greedy_gate_min_pick
-                        or float(row["alone_rate"]) > hp.greedy_gate_max_alone
+                        or float(row["alone_rate"]) > alone_limit
                         or float(row["t0_trump_lead_rate"])
                         > hp.greedy_gate_max_trump_lead
                         or float(row["play_logit_spread_med"])
@@ -616,9 +655,10 @@ class Orchestrator:
             from config import PFSPHyperparams
 
             hp = PFSPHyperparams()
+            alone_limit = self._alone_limit()  # baseline-relative
             gates = {
                 "pick": lambda r: float(r["pick_rate"]) < hp.greedy_gate_min_pick,
-                "alone": lambda r: float(r["alone_rate"]) > hp.greedy_gate_max_alone,
+                "alone": lambda r: float(r["alone_rate"]) > alone_limit,
                 "trump_lead": lambda r: float(r["t0_trump_lead_rate"])
                 > hp.greedy_gate_max_trump_lead,
                 "play_spread": lambda r: float(r["play_logit_spread_med"])
@@ -868,8 +908,15 @@ class Orchestrator:
             f"panel {self.args.panel_deals} deals (seed {PANEL_SEED}); "
             f"h2h {self.args.h2h_deals} deals",
             f"- stop rule: {self.cfg}",
-            "",
         ]
+        if s.get("baseline_health"):
+            bh = s["baseline_health"]
+            lines.append(
+                f"- baseline greedy health: pick {bh['pick_rate']:.1f}%, alone "
+                f"{bh['alone_rate']:.1f}% → effective alone halt limit "
+                f"{self._alone_limit():.1f}% (baseline-relative)"
+            )
+        lines.append("")
         if s.get("calibration"):
             c = s["calibration"]
             lines += [
@@ -1080,6 +1127,7 @@ class Orchestrator:
             self._event("resuming a needs_review run (operator override implied)")
             self.state["status"] = "running"
         try:
+            self.ensure_baseline_health()  # anchors the relative ALONE gate
             self.ensure_calibration()
             self.ensure_endpoint(0)  # baseline
             g = 1

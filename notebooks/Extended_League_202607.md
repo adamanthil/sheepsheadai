@@ -30,7 +30,8 @@ learnings:
 
 Choose the **smallest** coefficient with ALL of:
 1. mean `anchor_kl` over the final 3 PPO updates ≤ 0.05 nats AND max ≤ 0.10;
-2. zero greedy-health gate violations (PFSPHyperparams thresholds);
+2. zero greedy-health gate violations (PFSPHyperparams thresholds; the ALONE
+   gate is baseline-relative, see amendment below);
 3. final greedy pick rate within ±10 percentage points of baseline.
 
 None qualifies → largest candidate + `needs_review` halt (operator must pass
@@ -95,3 +96,20 @@ as "stopped while still exploitable".
 - Health halts (orchestrator-enforced, trainer only warns): ≥3 consecutive
   greedy-gate violations of the same gate, or leaster rate > 0.30 and rising
   > +0.10 within a generation → `needs_review`.
+
+## Amendment 2026-07-09 (pre-launch): baseline-relative ALONE gate
+
+Recorded before the real run starts. The smoke run showed a selfplay-lineage
+resume legitimately sits at ~18-27% greedy ALONE (weak defender-field
+collaboration — the thing league training itself repairs), which tripped both
+the calibration criterion and the per-generation halt against the absolute 15%
+gate, forcing manual overrides. Changes:
+
+1. `PFSPHyperparams.greedy_gate_max_alone` **15 → 20** (20% of partner
+   decisions can still be clean play; trainer warning included).
+2. The orchestrator's ALONE checks (calibration criterion 2 and the
+   per-generation halt) use an **effective limit =
+   max(20, resume-baseline alone rate + 5 points)**, with the baseline
+   measured once by `greedy_health_probe(resume, seed 20260709)`. A high-alone
+   warm start no longer trips the halt; a *regression* past baseline+5 still
+   does. Other gates (pick, trump-lead, play-spread) stay absolute.
