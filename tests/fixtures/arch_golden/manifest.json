@@ -1,0 +1,7 @@
+{
+  "seed": 42,
+  "torch": "2.11.0",
+  "numpy": "2.4.4",
+  "python": "3.14.2",
+  "platform": "macOS-14.8.4-arm64-arm-64bit-Mach-O"
+}
