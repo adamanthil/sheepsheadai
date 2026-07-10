@@ -961,8 +961,12 @@ function buildTokens() {
   ];
 
   const tokenObjs = [];
-  const spacingY = 1.5;
-  const topY = (19 * spacingY) / 2 - 0.5;
+  // Column geometry: 19 rows must fit between the floor grid (y = −10,
+  // where the stage label lies) and a reasonable top. Center at +2 with
+  // 1.15 spacing puts the last token (bury[1]) at y ≈ −8.4 — above the
+  // floor even when trick tokens are live.
+  const spacingY = 1.15;
+  const topY = 2 + ((19 - 1) * spacingY) / 2;
   for (let i = 0; i < 19; i++) {
     const info = TOKEN_INFO[i];
     const active = !!mask[i];
@@ -2429,7 +2433,7 @@ const STAGES = [
     title: "3 · Tokenize · 19 tokens",
     label: "tokens",
     badge: "enc",
-    cam: { pos: [XS.tokensPre + 18, 4, 18], target: [XS.tokensPre, 0, 0] },
+    cam: { pos: [XS.tokensPre + 18, 6, 18], target: [XS.tokensPre, 2, 0] },
     body: () => `<p>19 entity tokens are assembled, each ${DATA.dims.d_token}-d:</p>
       <ul>
         <li><b>1 context</b> = header scalars + called-card embedding → MLP</li>
