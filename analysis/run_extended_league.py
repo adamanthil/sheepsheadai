@@ -25,15 +25,17 @@ exploitability.csv rows, .npz/.json eval outputs) plus an atomic state.json in
 runs/<run>/orchestrator/, so re-invoking with the same arguments always
 converges to where it left off. Exit codes: 0 stopped cleanly, 2 needs_review.
 
-Example (fill in the ablation winner):
+Example (fill in the ablation winner; resume a standard CHECKPOINT, not
+final_*.pt — pre-2026-07-08 finals carry an out-of-spec flush update, see
+the ablation notebook's standing rule 5):
   uv run python analysis/run_extended_league.py \
-    --arch full --resume runs/ablate_full_s42/final_full.pt \
+    --arch full --resume runs/ablate_full400_s42/full_checkpoint_400000.pt \
     --seed-checkpoints 'runs/ablate_full_s42/full_checkpoint_*.pt' \
     --run-name ext_league_202607 --critic-mode oracle
 
 Smoke test of the whole loop in minutes:
   uv run python analysis/run_extended_league.py --smoke \
-    --arch full --resume runs/ablate_full_s42/final_full.pt \
+    --arch full --resume runs/ablate_full400_s42/full_checkpoint_400000.pt \
     --seed-checkpoints 'runs/ablate_full_s42/full_checkpoint_*.pt' \
     --run-name smoke_ext_league
 """
@@ -167,9 +169,7 @@ class Orchestrator:
         out = []
         for back in (2, 1, 0):
             ep = self.boundary(g) - back * self.args.save_interval
-            p = os.path.join(
-                self.ckpt_dir, f"pfsp_{self.args.arch}_checkpoint_{ep}.pt"
-            )
+            p = os.path.join(self.ckpt_dir, f"pfsp_{self.args.arch}_checkpoint_{ep}.pt")
             if not os.path.exists(p):
                 self._event(
                     f"gen {g}: composite checkpoint {os.path.basename(p)} missing; "
@@ -255,12 +255,16 @@ class Orchestrator:
 
     def dry_run(self) -> None:
         self.log("DRY RUN — planned sequence:")
-        self.log(f"  1. calibration probes at coeffs {self.args.anchor_coeffs} "
-                 f"({self.args.probe_episodes} eps each)"
-                 if self.args.anchor_coeff is None
-                 else f"  1. calibration SKIPPED (--anchor-coeff {self.args.anchor_coeff})")
-        self.log(f"  2. baseline endpoint: {self.args.resume} x3, "
-                 f"{self.args.panel_deals} deals, seed {PANEL_SEED}")
+        self.log(
+            f"  1. calibration probes at coeffs {self.args.anchor_coeffs} "
+            f"({self.args.probe_episodes} eps each)"
+            if self.args.anchor_coeff is None
+            else f"  1. calibration SKIPPED (--anchor-coeff {self.args.anchor_coeff})"
+        )
+        self.log(
+            f"  2. baseline endpoint: {self.args.resume} x3, "
+            f"{self.args.panel_deals} deals, seed {PANEL_SEED}"
+        )
         self.log(
             "  3. gen-1 trainer: "
             + " ".join(self.trainer_cmd(1, self.args.anchor_coeff or 1.0))
@@ -447,24 +451,42 @@ class Orchestrator:
         cmd = [
             sys.executable,
             "train_league_ppo.py",
-            "--resume", self._resume_for(g),
-            "--league-dir", a.league_dir,
-            "--run-name", a.run_name,
-            "--generations", "1",
-            "--main-episodes", str(a.main_episodes),
-            "--exploiter-episodes", str(a.exploiter_episodes),
-            "--gate-deals", str(a.gate_deals),
-            "--screen-deals", str(a.screen_deals),
-            "--update-interval", str(a.update_interval),
-            "--save-interval", str(a.save_interval),
-            "--snapshot-interval", str(a.snapshot_interval),
-            "--greedy-eval-interval", str(a.greedy_eval_interval),
-            "--greedy-eval-games", str(a.greedy_eval_games),
-            "--schedule-horizon", str(a.schedule_horizon),
-            "--critic-mode", a.critic_mode,
-            "--arch", a.arch,
-            "--seed", str(a.seed),
-            "--num-workers", str(a.num_workers),
+            "--resume",
+            self._resume_for(g),
+            "--league-dir",
+            a.league_dir,
+            "--run-name",
+            a.run_name,
+            "--generations",
+            "1",
+            "--main-episodes",
+            str(a.main_episodes),
+            "--exploiter-episodes",
+            str(a.exploiter_episodes),
+            "--gate-deals",
+            str(a.gate_deals),
+            "--screen-deals",
+            str(a.screen_deals),
+            "--update-interval",
+            str(a.update_interval),
+            "--save-interval",
+            str(a.save_interval),
+            "--snapshot-interval",
+            str(a.snapshot_interval),
+            "--greedy-eval-interval",
+            str(a.greedy_eval_interval),
+            "--greedy-eval-games",
+            str(a.greedy_eval_games),
+            "--schedule-horizon",
+            str(a.schedule_horizon),
+            "--critic-mode",
+            a.critic_mode,
+            "--arch",
+            a.arch,
+            "--seed",
+            str(a.seed),
+            "--num-workers",
+            str(a.num_workers),
         ]
         if a.smoke:
             cmd += ["--anchor-eval-ckpt", ""]
@@ -475,8 +497,10 @@ class Orchestrator:
                 # Anchor to the ORIGINAL pre-registered resume checkpoint,
                 # also on mid-generation crash restarts.
                 cmd += [
-                    "--anchor-coeff", str(anchor_coeff),
-                    "--anchor-ref", a.resume,
+                    "--anchor-coeff",
+                    str(anchor_coeff),
+                    "--anchor-ref",
+                    a.resume,
                 ]
         return cmd
 
@@ -517,8 +541,10 @@ class Orchestrator:
             self._record_exploiter(g)
             return
         if os.path.exists(self.boundary_ckpt(g)):
-            self._event(f"gen {g}: boundary checkpoint exists but gate row missing; "
-                        "finishing exploiter phase in-process")
+            self._event(
+                f"gen {g}: boundary checkpoint exists but gate row missing; "
+                "finishing exploiter phase in-process"
+            )
             self._finish_exploiter_phase(g)
             self._record_exploiter(g)
             return
@@ -539,9 +565,9 @@ class Orchestrator:
                     stderr=subprocess.STDOUT,
                     env=dict(os.environ, PYTHONPATH="."),
                 )
-            rec["train_hours"] = rec.get("train_hours", 0.0) + (
-                time.time() - t0
-            ) / 3600.0
+            rec["train_hours"] = (
+                rec.get("train_hours", 0.0) + (time.time() - t0) / 3600.0
+            )
             self._save_state()
             if proc.returncode == 0:
                 break
@@ -572,6 +598,7 @@ class Orchestrator:
             league_dir=a.league_dir,
             seed=a.seed,
             arch=a.arch,
+            critic_mode=a.critic_mode,
         )
         episode = self.boundary(g)
         gate = tlp.run_exploiter_generation(ns, g, self.boundary_ckpt(g))
@@ -581,12 +608,26 @@ class Orchestrator:
             w = csv.writer(f)
             if write_header:
                 w.writerow(
-                    ["generation", "main_episode", "edge", "se", "win_frac",
-                     "passed", "exploiter_ckpt"]
+                    [
+                        "generation",
+                        "main_episode",
+                        "edge",
+                        "se",
+                        "win_frac",
+                        "passed",
+                        "exploiter_ckpt",
+                    ]
                 )
             w.writerow(
-                [g, episode, f"{gate['edge']:.4f}", f"{gate['se']:.4f}",
-                 f"{gate['win_frac']:.3f}", gate["passed"], gate["exploiter_ckpt"]]
+                [
+                    g,
+                    episode,
+                    f"{gate['edge']:.4f}",
+                    f"{gate['se']:.4f}",
+                    f"{gate['win_frac']:.3f}",
+                    gate["passed"],
+                    gate["exploiter_ckpt"],
+                ]
             )
         league = League(a.league_dir, LeagueConfig())
         league.note_generation(g)
@@ -617,9 +658,7 @@ class Orchestrator:
         npz = self.panel_npz(g)
         if os.path.exists(npz):
             return load_endpoint(Path(npz))
-        ckpts = (
-            [self.args.resume] * 3 if g == 0 else self.composite_ckpts(g)
-        )
+        ckpts = [self.args.resume] * 3 if g == 0 else self.composite_ckpts(g)
         self.log(f"endpoint eval gen {g}: {self.args.panel_deals} deals ...")
         t0 = time.time()
         e = eval_endpoint(
@@ -659,10 +698,12 @@ class Orchestrator:
             gates = {
                 "pick": lambda r: float(r["pick_rate"]) < hp.greedy_gate_min_pick,
                 "alone": lambda r: float(r["alone_rate"]) > alone_limit,
-                "trump_lead": lambda r: float(r["t0_trump_lead_rate"])
-                > hp.greedy_gate_max_trump_lead,
-                "play_spread": lambda r: float(r["play_logit_spread_med"])
-                < hp.greedy_gate_min_play_spread,
+                "trump_lead": lambda r: (
+                    float(r["t0_trump_lead_rate"]) > hp.greedy_gate_max_trump_lead
+                ),
+                "play_spread": lambda r: (
+                    float(r["play_logit_spread_med"]) < hp.greedy_gate_min_play_spread
+                ),
             }
             streaks = {k: 0 for k in gates}
             with open(greedy_csv) as f:
@@ -712,8 +753,7 @@ class Orchestrator:
         rec["h2h"] = h2h_res
 
         per_deal = {
-            h: load_endpoint(Path(self.panel_npz(h))).per_deal
-            for h in range(0, g + 1)
+            h: load_endpoint(Path(self.panel_npz(h))).per_deal for h in range(0, g + 1)
         }
         means = {
             h: (
@@ -823,18 +863,46 @@ class Orchestrator:
 
     def _write_generations_csv(self) -> None:
         cols = [
-            "generation", "boundary_episode", "ckpt",
-            "panel_mean", "panel_lo", "panel_hi", "panel_se",
-            "panel_called", "panel_jd",
-            "gain_vs_best", "gain_lo", "gain_hi", "gain_p", "gain_best_gen",
-            "h2h_edge", "h2h_se", "h2h_win_frac",
-            "slope", "slope_lo", "slope_hi",
-            "improving_A", "improving_B", "climbing_C", "flat", "flat_streak",
-            "exploiter_edge", "exploiter_se", "exploiter_passed",
+            "generation",
+            "boundary_episode",
+            "ckpt",
+            "panel_mean",
+            "panel_lo",
+            "panel_hi",
+            "panel_se",
+            "panel_called",
+            "panel_jd",
+            "gain_vs_best",
+            "gain_lo",
+            "gain_hi",
+            "gain_p",
+            "gain_best_gen",
+            "h2h_edge",
+            "h2h_se",
+            "h2h_win_frac",
+            "slope",
+            "slope_lo",
+            "slope_hi",
+            "improving_A",
+            "improving_B",
+            "climbing_C",
+            "flat",
+            "flat_streak",
+            "exploiter_edge",
+            "exploiter_se",
+            "exploiter_passed",
             "anchor_coeff",
-            "t0_def_leads", "t0_forced", "t0_trump_lead_rate", "t0_trump_prob_mass",
-            "t1_def_leads", "t1_forced", "t1_trump_lead_rate", "t1_trump_prob_mass",
-            "train_hours", "eval_hours", "stop_verdict",
+            "t0_def_leads",
+            "t0_forced",
+            "t0_trump_lead_rate",
+            "t0_trump_prob_mass",
+            "t1_def_leads",
+            "t1_forced",
+            "t1_trump_lead_rate",
+            "t1_trump_prob_mass",
+            "train_hours",
+            "eval_hours",
+            "stop_verdict",
         ]
         path = os.path.join(self.orch_dir, "generations.csv")
         with open(path, "w", newline="") as f:
@@ -963,7 +1031,7 @@ class Orchestrator:
                 f"| {v['gain']['mean']:+.4f} (vs g{v['gain']['best_generation']}) "
                 f"| {v['h2h']['edge']:+.3f}±{v['h2h']['se']:.3f} "
                 f"| {slope_s} | {abc} | {v['flat']} "
-                f"| {(f'{gate['edge']:+.3f}' + (' ✅' if not gate['passed'] else ' ⚔️')) if gate else '—'} "
+                f"| {(f'{gate["edge"]:+.3f}' + (' ✅' if not gate['passed'] else ' ⚔️')) if gate else '—'} "
                 f"| {_fmt(leak.get('t0_trump_lead_rate'))} "
                 f"| {_fmt(leak.get('t1_trump_lead_rate'))} |"
             )
@@ -984,8 +1052,11 @@ class Orchestrator:
                 "",
                 f"- last-two-generations gain {gg['mean']:+.4f} "
                 f"[{gg['lo']:+.4f},{gg['hi']:+.4f}] p={gg['p_value']:.4f} — "
-                + ("**CONTRADICTION** (training resumed)" if gg["contradiction"]
-                   else "plateau confirmed"),
+                + (
+                    "**CONTRADICTION** (training resumed)"
+                    if gg["contradiction"]
+                    else "plateau confirmed"
+                ),
                 f"- deploy candidate: generation {c['deploy_candidate']['generation']}"
                 + (
                     f", fresh-deal score {c['deploy_candidate']['score']['mean']:+.4f} "
@@ -1036,9 +1107,11 @@ class Orchestrator:
         import matplotlib.pyplot as plt
 
         gens, means, los, his, t0s, t1s = [], [], [], [], [], []
-        base = load_endpoint(Path(self.panel_npz(0))) if os.path.exists(
-            self.panel_npz(0)
-        ) else None
+        base = (
+            load_endpoint(Path(self.panel_npz(0)))
+            if os.path.exists(self.panel_npz(0))
+            else None
+        )
         if base is not None:
             gens.append(0)
             means.append(base.score.mean)
@@ -1054,15 +1127,22 @@ class Orchestrator:
             means.append(rec["panel"]["mean"])
             los.append(rec["panel"]["lo"])
             his.append(rec["panel"]["hi"])
-            t0s.append(rec["panel"]["trump_lead"].get("t0_trump_lead_rate", float("nan")))
-            t1s.append(rec["panel"]["trump_lead"].get("t1_trump_lead_rate", float("nan")))
+            t0s.append(
+                rec["panel"]["trump_lead"].get("t0_trump_lead_rate", float("nan"))
+            )
+            t1s.append(
+                rec["panel"]["trump_lead"].get("t1_trump_lead_rate", float("nan"))
+            )
         if len(gens) < 2:
             return
 
         ink, muted = "#333333", "#767672"
         blue, aqua = "#2a78d6", "#1baf7a"  # validated 2-series palette
         fig, (ax1, ax2) = plt.subplots(
-            2, 1, figsize=(7.2, 5.6), sharex=True,
+            2,
+            1,
+            figsize=(7.2, 5.6),
+            sharex=True,
             gridspec_kw={"height_ratios": [3, 2]},
         )
         for ax in (ax1, ax2):
@@ -1079,28 +1159,53 @@ class Orchestrator:
             cs = conf["deploy_candidate"]["score"]
             ax1.plot([cg], [cs["mean"]], marker="D", ms=7, color=ink, zorder=5)
             ax1.annotate(
-                "confirmation\n(fresh deals)", (cg, cs["mean"]),
-                textcoords="offset points", xytext=(8, -4), fontsize=8, color=ink,
+                "confirmation\n(fresh deals)",
+                (cg, cs["mean"]),
+                textcoords="offset points",
+                xytext=(8, -4),
+                fontsize=8,
+                color=ink,
             )
         ax1.set_ylabel("PANEL-A score/hand\n(95% CI)", fontsize=9, color=ink)
         ax1.set_title(
             "Extended league run: strength and trump-lead leak by generation",
-            fontsize=11, color=ink, loc="left",
+            fontsize=11,
+            color=ink,
+            loc="left",
         )
 
         ax2.plot(gens, t0s, color=blue, lw=2, marker="o", ms=5)
         ax2.plot(gens, t1s, color=aqua, lw=2, marker="s", ms=5)
         # Dodge the direct labels vertically when the line ends coincide.
         dodge = 9 if abs(t0s[-1] - t1s[-1]) < 0.004 else 0
-        ax2.annotate("trick 0", (gens[-1], t0s[-1]), textcoords="offset points",
-                     xytext=(6, dodge), fontsize=9, color=blue)
-        ax2.annotate("trick 1", (gens[-1], t1s[-1]), textcoords="offset points",
-                     xytext=(6, -dodge), fontsize=9, color=aqua)
+        ax2.annotate(
+            "trick 0",
+            (gens[-1], t0s[-1]),
+            textcoords="offset points",
+            xytext=(6, dodge),
+            fontsize=9,
+            color=blue,
+        )
+        ax2.annotate(
+            "trick 1",
+            (gens[-1], t1s[-1]),
+            textcoords="offset points",
+            xytext=(6, -dodge),
+            fontsize=9,
+            color=aqua,
+        )
         ax2.axhline(0.048, color=muted, lw=1, ls="--")
-        ax2.annotate("30M baseline t0", (gens[0], 0.048), fontsize=8, color=muted,
-                     textcoords="offset points", xytext=(0, 3))
-        ax2.set_ylabel("defender trump-lead rate\n(non-trump option held)",
-                       fontsize=9, color=ink)
+        ax2.annotate(
+            "30M baseline t0",
+            (gens[0], 0.048),
+            fontsize=8,
+            color=muted,
+            textcoords="offset points",
+            xytext=(0, 3),
+        )
+        ax2.set_ylabel(
+            "defender trump-lead rate\n(non-trump option held)", fontsize=9, color=ink
+        )
         ax2.set_xlabel("generation", fontsize=9, color=ink)
         ax2.set_ylim(bottom=0)
         ax2.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
@@ -1152,7 +1257,7 @@ def _fmt(v) -> str:
         if v != v:  # NaN
             return ""
         return f"{float(v):.4f}"
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return ""
 
 
@@ -1161,14 +1266,19 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         description="Extended league training with automatic stopping"
     )
     p.add_argument("--arch", default="full")
-    p.add_argument("--resume", required=True,
-                   help="checkpoint to resume (the ablation winner's final "
-                   "selfplay checkpoint; prefer a name without 'checkpoint_')")
-    p.add_argument("--seed-checkpoints", default=None,
-                   help="glob/dir of selfplay checkpoints seeding the league")
+    p.add_argument(
+        "--resume",
+        required=True,
+        help="checkpoint to resume (the ablation winner's final "
+        "selfplay checkpoint; prefer a name without 'checkpoint_')",
+    )
+    p.add_argument(
+        "--seed-checkpoints",
+        default=None,
+        help="glob/dir of selfplay checkpoints seeding the league",
+    )
     p.add_argument("--run-name", required=True)
-    p.add_argument("--league-dir", default=None,
-                   help="default: runs/<run-name>/league")
+    p.add_argument("--league-dir", default=None, help="default: runs/<run-name>/league")
     p.add_argument("--critic-mode", choices=["limited", "oracle"], default="oracle")
     p.add_argument("--main-episodes", type=int, default=1_000_000)
     p.add_argument("--exploiter-episodes", type=int, default=50_000)
@@ -1184,8 +1294,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     # Calibration
     p.add_argument("--anchor-coeffs", type=float, nargs="+", default=[0.3, 1.0, 3.0])
-    p.add_argument("--anchor-coeff", type=float, default=None,
-                   help="skip calibration and use this coefficient for gen 1")
+    p.add_argument(
+        "--anchor-coeff",
+        type=float,
+        default=None,
+        help="skip calibration and use this coefficient for gen 1",
+    )
     p.add_argument("--probe-episodes", type=int, default=15_000)
     p.add_argument("--baseline-probe-games", type=int, default=400)
     p.add_argument("--allow-calibration-fallback", action="store_true")
@@ -1196,8 +1310,9 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--max-generations", type=int, default=12)
     p.add_argument("--ignore-health-halt", action="store_true")
     p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--smoke", action="store_true",
-                   help="minutes-long end-to-end loop check")
+    p.add_argument(
+        "--smoke", action="store_true", help="minutes-long end-to-end loop check"
+    )
     args = p.parse_args(argv)
 
     if args.smoke:

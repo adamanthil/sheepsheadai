@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -458,6 +459,64 @@ class TestMigration(unittest.TestCase):
         episodes = sorted(m.meta.training_episodes for m in league.members)
         # Newest (5000, weakest) protected; then two strongest (1000, 2000)
         self.assertEqual(episodes, [1000, 2000, 5000])
+
+
+class TestExploiterPhaseCommand(unittest.TestCase):
+    """run_exploiter_generation must forward the main run's critic mode
+    (an oracle main gated by limited exploiters weakens the gate)."""
+
+    def _capture_cmd(self, ns):
+        import train_league_ppo as tlp
+
+        captured = {}
+        exp_run = f"{ns.run_name}_exploiter_gen1"
+        cwd = os.getcwd()
+        tmp = tempfile.mkdtemp()
+        os.chdir(tmp)
+        try:
+            os.makedirs(os.path.join("runs", exp_run))
+            with open(os.path.join("runs", exp_run, "gate_result.json"), "w") as f:
+                json.dump({"passed": False, "edge": 0.0}, f)
+
+            def fake_run(cmd, env=None):
+                captured["cmd"] = cmd
+                return SimpleNamespace(returncode=0)
+
+            orig = tlp.subprocess.run
+            tlp.subprocess.run = fake_run
+            try:
+                tlp.run_exploiter_generation(ns, 1, "main.pt")
+            finally:
+                tlp.subprocess.run = orig
+        finally:
+            os.chdir(cwd)
+            shutil.rmtree(tmp, ignore_errors=True)
+        return captured["cmd"]
+
+    def _ns(self, **extra):
+        base = dict(
+            run_name="cmdtest",
+            exploiter_episodes=10,
+            gate_deals=4,
+            screen_deals=2,
+            league_dir="league",
+            seed=1,
+            arch="full",
+            num_workers=0,
+        )
+        base.update(extra)
+        return SimpleNamespace(**base)
+
+    def test_forwards_oracle_critic_mode(self):
+        cmd = self._capture_cmd(self._ns(critic_mode="oracle"))
+        i = cmd.index("--critic-mode")
+        self.assertEqual(cmd[i + 1], "oracle")
+
+    def test_defaults_to_limited_without_field(self):
+        # e.g. legacy SimpleNamespace callers without a critic_mode field
+        cmd = self._capture_cmd(self._ns())
+        i = cmd.index("--critic-mode")
+        self.assertEqual(cmd[i + 1], "limited")
 
 
 if __name__ == "__main__":

@@ -144,9 +144,7 @@ def _lw_play(job: _Job) -> dict:
         ckpt = _torch.load(
             f"{g['weight_path_base']}_v{job.weight_version}.pt", map_location="cpu"
         )
-        g["agent"].load_network_states(
-            ckpt, source=f"weights v{job.weight_version}"
-        )
+        g["agent"].load_network_states(ckpt, source=f"weights v{job.weight_version}")
         g["version"] = job.weight_version
 
     opponents = [
@@ -647,6 +645,13 @@ def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
         str(args.seed + generation),
         "--arch",
         getattr(args, "arch", "full"),
+        # Exploiters inherit the main run's critic mode: an oracle-trained
+        # main must face oracle-trained best responses, or the gate's
+        # "certified robust" verdicts are weakened by a noise-limited
+        # adversary (the exploiter is pure training scaffolding — CTDE
+        # applies with no deployment constraint).
+        "--critic-mode",
+        getattr(args, "critic_mode", "limited"),
     ]
     if args.num_workers:
         cmd += ["--num-workers", str(args.num_workers)]
