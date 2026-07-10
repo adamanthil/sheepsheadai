@@ -35,7 +35,7 @@ import numpy as np
 import torch
 
 import ppo
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import (
     ACTION_IDS,
     ACTIONS,
@@ -574,8 +574,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
 
     for trick in args.tricks:
         print(f"\n##### TRICK {trick} #####")

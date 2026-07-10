@@ -18,7 +18,7 @@ import random
 
 import numpy as np
 
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import (
     Game,
     ACTIONS,
@@ -34,8 +34,7 @@ PASS_ID = ACTIONS.index("PASS") + 1
 
 
 def make_agent():
-    a = PPOAgent(len(ACTIONS))
-    a.load(CKPT, load_optimizers=False)
+    a = load_agent(CKPT)
     return a
 
 

@@ -20,7 +20,7 @@ import io
 import random
 import time
 
-from sheepshead import Game, ACTIONS, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
+from sheepshead import Game, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
 
 
 def pure_game_workload(n_games, seed=0):
@@ -60,11 +60,10 @@ def time_pure_game(n_games):
 
 def time_ismcts(n_searches):
     # Imports here so pure-game timing isn't polluted by torch import cost.
-    from ppo import PPOAgent
+    from ppo import load_agent
     from ismcts import ISMCTSTeacher, ISMCTSConfig
 
-    agent = PPOAgent(len(ACTIONS))
-    agent.load("final_pfsp_swish_ppo.pt", load_optimizers=False)
+    agent = load_agent("final_pfsp_swish_ppo.pt")
     cfg = ISMCTSConfig(
         iters={"pick": 48, "partner": 64, "bury": 96, "play": 96},
         det_max_tries=2000,

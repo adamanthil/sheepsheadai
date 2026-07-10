@@ -46,7 +46,7 @@ import numpy as np
 import torch
 
 import ppo
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from training_utils import RETURN_SCALE, TRICK_POINT_RATIO, get_partner_selection_mode
 
@@ -373,8 +373,7 @@ def main():
     rng = random.Random(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
 
     print(
         f"Scanning up to {args.max_games} games for first-trick defender leads "

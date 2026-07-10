@@ -28,7 +28,7 @@ import random
 import numpy as np
 import torch
 
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import ACTIONS, DECK, Game
 from ismcts import ISMCTSTeacher, ISMCTSConfig
 from training_utils import get_partner_selection_mode
@@ -200,8 +200,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
 
     # Small budgets so the check is fast but exercises every head.
     cfg = ISMCTSConfig(

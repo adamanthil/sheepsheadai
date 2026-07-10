@@ -32,8 +32,8 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 
-from ppo import PPOAgent
-from sheepshead import Game, ACTIONS
+from ppo import load_agent
+from sheepshead import Game
 
 
 @dataclass
@@ -146,8 +146,7 @@ class ModelComparisonSimulator:
         print("Loading models...")
         for config in self.model_configs:
             try:
-                agent = PPOAgent(len(ACTIONS))
-                agent.load(config.path, load_optimizers=False)
+                agent = load_agent(config.path)
                 self.models[config.name] = agent
                 print(f"✅ Loaded {config.name} from {config.path}")
             except Exception as e:

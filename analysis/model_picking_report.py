@@ -15,11 +15,10 @@ from argparse import ArgumentParser
 import random
 import re
 
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import (
     Game,
     Player,
-    ACTIONS,
     DECK,
     ACTION_IDS,
     PARTNER_BY_JD,
@@ -52,11 +51,9 @@ def test_final_model(model_path, position, random_hands, jack_of_diamonds=False)
     print("🎯 TESTING FINAL TRAINED MODEL")
     print("=" * 50)
 
-    # Create agent and load final model
-    agent = PPOAgent(len(ACTIONS), lr_actor=1e-3, lr_critic=1e-3)
-
+    # Load final model (arch-aware; inference-only, so no LR overrides)
     try:
-        agent.load(model_path, load_optimizers=False)
+        agent = load_agent(model_path)
         print(f"✅ Loaded {model_path}")
     except FileNotFoundError:
         print("❌ No trained model found")

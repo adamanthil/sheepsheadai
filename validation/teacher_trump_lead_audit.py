@@ -39,7 +39,7 @@ import numpy as np
 import torch
 
 from ismcts import ISMCTSConfig, ISMCTSTeacher
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import ACTIONS, TRUMP, Game
 from training_utils import get_partner_selection_mode
 
@@ -78,8 +78,7 @@ def _load_population_opponents(pop_dir: str, k: int = 4):
     candidates.sort(reverse=True)
     agents = []
     for eps, path in candidates[:k]:
-        a = PPOAgent(len(ACTIONS))
-        a.load(path, load_optimizers=False)
+        a = load_agent(path)
         agents.append(a)
         print(f"  opponent: {os.path.basename(path)} (eps={eps:,})")
     if len(agents) < k:
@@ -123,8 +122,7 @@ def main():
     torch.manual_seed(args.seed)
 
     print(f"Loading {args.model} ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
 
     opponents = None
     if args.opponents_dir:

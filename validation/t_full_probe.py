@@ -26,8 +26,8 @@ import torch
 
 import ppo
 from critic_probe import encode_decide, r2, train_head
-from ppo import PPOAgent
-from sheepshead import ACTIONS, Game
+from ppo import load_agent
+from sheepshead import Game
 from training_utils import RETURN_SCALE, get_partner_selection_mode
 
 DEV = ppo.device
@@ -96,8 +96,7 @@ def main():
     args = ap.parse_args()
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
 
     print(
         f"Collecting frozen-encoder features over {args.games} games "

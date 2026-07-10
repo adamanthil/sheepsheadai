@@ -29,14 +29,13 @@ import random
 import numpy as np
 import torch
 
-from ppo import PPOAgent
+from ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
 from training_utils import get_partner_selection_mode
 
 
 def _load(model: str) -> PPOAgent:
-    a = PPOAgent(len(ACTIONS))
-    a.load(model, load_optimizers=False)
+    a = load_agent(model)
     return a
 
 

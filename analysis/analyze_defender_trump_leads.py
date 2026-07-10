@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 
 import numpy as np
 
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import (
     ACTIONS,
     TRUMP,
@@ -52,8 +52,7 @@ def unseen_higher_trumps(player, card: str) -> int:
 
 
 def collect(model_path: str, num_games: int, seed: int, deterministic: bool):
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(model_path, load_optimizers=False)
+    agent = load_agent(model_path)
 
     rng = random.Random(seed)
     records = []

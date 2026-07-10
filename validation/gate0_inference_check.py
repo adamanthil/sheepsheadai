@@ -18,8 +18,8 @@ import numpy as np
 import torch
 
 import ppo
-from ppo import PPOAgent
-from sheepshead import ACTIONS, TRUMP
+from ppo import load_agent
+from sheepshead import TRUMP
 from gate0_determinizer import collect
 
 DEV = ppo.device
@@ -52,8 +52,7 @@ def main():
     np.random.seed(args.seed)
     random.seed(args.seed)
     print(f"Loading {args.model} ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
 
     print(f"Scanning for {args.states} trick-0 defender trump-lead states ...")
     states, scanned = collect(agent, args.max_games, args.states, args.seed)

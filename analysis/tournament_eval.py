@@ -46,12 +46,11 @@ import numpy as np
 from openskill.models import PlackettLuce
 import matplotlib.pyplot as plt
 
-from ppo import PPOAgent
+from ppo import PPOAgent, load_agent
 from sheepshead import (
     Game,
     PARTNER_BY_JD,
     PARTNER_BY_CALLED_ACE,
-    ACTIONS,
 )
 
 
@@ -146,8 +145,7 @@ def load_eval_agents(
     agents: List[EvalAgent] = []
     for path, episodes in paths_with_eps:
         try:
-            agent = PPOAgent(len(ACTIONS))
-            agent.load(str(path), load_optimizers=False)
+            agent = load_agent(str(path))
             # Create default PL rating (mu defaults to ~25, sigma ~25/3)
             pl = PlackettLuce()
             rating = pl.rating()

@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 
 import ppo
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import ACTIONS, Game
 from training_utils import RETURN_SCALE, TRICK_POINT_RATIO, get_partner_selection_mode
 
@@ -200,8 +200,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
     act = nn.SiLU
 
     print(f"Collecting features from {args.games} games (gamma={args.gamma}) ...")

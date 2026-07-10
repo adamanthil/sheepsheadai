@@ -3,7 +3,7 @@
 import torch
 from argparse import ArgumentParser
 
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import (
     Game,
     Player,
@@ -148,8 +148,7 @@ def pick_evaluator(agent):
 
 
 if __name__ == "__main__":
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
     encoder_param_count = sum(p.numel() for p in agent.encoder.parameters())
     actor_param_count = sum(p.numel() for p in agent.actor.parameters())
     critic_param_count = sum(p.numel() for p in agent.critic.parameters())

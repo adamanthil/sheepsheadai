@@ -23,7 +23,7 @@ import random
 from dataclasses import dataclass
 from typing import Dict, Sequence
 
-from ppo import PPOAgent
+from ppo import PPOAgent, load_agent
 from sheepshead import (
     ACTIONS,
     CALLED_ACES,
@@ -300,9 +300,8 @@ def main() -> int:
     partner_mode = PARTNER_BY_JD if args.partner_mode == "jd" else PARTNER_BY_CALLED_ACE
     rng = random.Random(args.seed)
 
-    agent = PPOAgent(len(ACTIONS))
     try:
-        agent.load(args.model, load_optimizers=False)
+        agent = load_agent(args.model)
     except FileNotFoundError as exc:
         print(f"Model not found: {exc}")
         return 1

@@ -39,7 +39,7 @@ import argparse
 import numpy as np
 import torch
 
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import ACTIONS, Game
 from training_utils import estimate_hand_strength_score, get_partner_selection_mode
 
@@ -48,8 +48,7 @@ PASS_ID = ACTIONS.index("PASS") + 1
 
 
 def load(model):
-    a = PPOAgent(len(ACTIONS))
-    a.load(model, load_optimizers=False)
+    a = load_agent(model)
     return a
 
 

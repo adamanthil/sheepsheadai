@@ -38,7 +38,7 @@ import numpy as np
 import torch
 
 from ismcts import ISMCTSConfig, ISMCTSTeacher
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import ACTIONS, Game
 from training_utils import estimate_hand_strength_score, get_partner_selection_mode
 
@@ -48,8 +48,7 @@ PICK_ROLLOUT_DEPTH = 6  # trick 0 <= t_full=1 -> 6 - current_trick(0); matches t
 
 
 def load(model):
-    a = PPOAgent(len(ACTIONS))
-    a.load(model, load_optimizers=False)
+    a = load_agent(model)
     return a
 
 

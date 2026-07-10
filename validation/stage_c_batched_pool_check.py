@@ -12,7 +12,7 @@ import copy
 
 import torch
 
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import Game, ACTIONS, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
 from ismcts import ISMCTSTeacher, ISMCTSConfig
 
@@ -65,8 +65,7 @@ def sequential_pool(teacher, real_game, deals, fp, observer):
 def main():
     random.seed(0)
     torch.manual_seed(0)
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(CKPT, load_optimizers=False)
+    agent = load_agent(CKPT)
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
 
     n_nodes = 6

@@ -50,7 +50,7 @@ import numpy as np
 import torch
 
 import ppo
-from ppo import PPOAgent
+from ppo import load_agent
 from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from training_utils import get_partner_selection_mode
 
@@ -487,8 +487,7 @@ def main():
     random.seed(args.seed)
 
     print(f"Loading {args.model} (device={DEV}) ...")
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(args.model, load_optimizers=False)
+    agent = load_agent(args.model)
 
     print(f"Scanning up to {args.max_games} games for trick-0 defender trump-leads ...")
     states, scanned = collect(agent, args.max_games, args.states, args.seed)

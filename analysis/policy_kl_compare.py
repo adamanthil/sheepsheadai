@@ -47,16 +47,10 @@ import statistics as st
 
 import torch
 
-from ppo import PPOAgent
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from ppo import PPOAgent, load_agent
+from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 _MODE_BY_NAME = {"jd": PARTNER_BY_JD, "called-ace": PARTNER_BY_CALLED_ACE}
-
-
-def load_agent(ckpt: str) -> PPOAgent:
-    agent = PPOAgent(len(ACTIONS))
-    agent.load(ckpt, load_optimizers=False)
-    return agent
 
 
 def _valid_dist(probs: torch.Tensor, action_ids: list[int]) -> torch.Tensor:
