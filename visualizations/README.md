@@ -18,7 +18,10 @@ lamp). A **Decision** bar switches between five scenarios captured from a
 single real self-played hand (pick, partner call, bury, opening lead, late
 follow), a guided tour steps through the 17 stages (dollying through the
 tunnel layer by layer) with data-flow particle animation, and **H1–H4** chips
-toggle individual attention heads' chords (tunnel and readout fans alike).
+toggle individual attention heads' chords in every attention block: tunnel
+self-attention, readout gem fans, and the gems' default top-3 chords (whose
+head-average is recomputed over just the enabled heads — one chip on shows
+that head's own top-3).
 
 A **Network** toggle switches to an analogous 13-stage walkthrough of the
 **oracle critic** (`oracle.py: OracleValueNetwork`, the CTDE privileged

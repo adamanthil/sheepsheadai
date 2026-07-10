@@ -1580,8 +1580,9 @@ function buildMemory() {
 // STAGE 6: SHARED READOUT — ONE set of 16 learned queries (4×4 grid)
 // cross-attends over the 19 post-reasoning tokens and produces the
 // single 256-d `features` vector that BOTH actor and critic consume.
-// Default view: each gem shows only its top-3 attended tokens
-// (head-averaged). Clicking a gem reveals its full per-head fan.
+// Default view: each gem shows only its top-3 attended tokens (averaged
+// over the heads enabled via the H1–H4 chips). Clicking a gem reveals its
+// full per-head fan.
 // ============================================================
 function buildSharedReadout() {
   const g = group("readout");
@@ -1655,20 +1656,9 @@ function buildSharedReadout() {
       title: `${NETWORK_MODE === 1 ? "oracle" : "shared"} readout query ${q + 1} / ${nQ}`,
       badge: "share",
       kv: { "attends most to": top },
-      body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens. Only its <b>top-3</b> links are drawn by default — <b>click to expand the full per-head fan</b> (colored by head, H1–H4 chips filter it). Click again to collapse.</p>`,
+      body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens. Only its <b>top-3</b> links are drawn by default, averaged over the heads enabled up top (H1–H4) — <b>click to expand the full per-head fan</b> (colored by head, chips filter it too). Click again to collapse.</p>`,
       onPick: () => selectQuery(q),
     });
-
-    // Default chords: this gem's top-3 attended tokens, head-averaged, amber.
-    for (const t of ranked.slice(0, 3)) {
-      const norm = t.v / Math.max(maxW, 1e-6);
-      const start = xfInfo.exitPos[t.i].clone();
-      const mid = start.clone().add(gp).multiplyScalar(0.5);
-      mid.z += gp.z * 0.25; // fan gently toward the gem's grid column
-      const curve = new THREE.QuadraticBezierCurve3(start, mid, gp.clone());
-      const c = addChord(g, curve, Math.max(norm, 0.12), gcolor.getHex(), "readout", undefined);
-      c.qTop = q;
-    }
 
     // Full per-head fan (hidden until the gem is selected): top-4 per head.
     for (let h = 0; h < N_HEADS; h++) {
@@ -1689,6 +1679,53 @@ function buildSharedReadout() {
       }
     }
   }
+
+  // Default chords: each gem's top-3 attended tokens, averaged over the
+  // ENABLED heads (H1–H4 chips) — rebuilt whenever a chip flips, so with a
+  // single head on they show that head's own top-3 (matching its gem fan).
+  function rebuildTopChords() {
+    for (let i = allChords.length - 1; i >= 0; i--) {
+      const c = allChords[i];
+      if (c.qTop === undefined) continue;
+      g.remove(c.mesh);
+      c.mesh.geometry.dispose();
+      c.mesh.material.dispose();
+      allChords.splice(i, 1);
+    }
+    const on = [];
+    for (let h = 0; h < N_HEADS; h++) if (headOn[h]) on.push(h);
+    if (!on.length) return; // no heads enabled → no default chords
+    const wOn = [];
+    let maxOn = 0;
+    for (let q = 0; q < nQ; q++) {
+      wOn.push([]);
+      for (let i = 0; i < N_TOK; i++) {
+        let s = 0;
+        for (const h of on) s += attn[h][q][i];
+        s /= on.length;
+        wOn[q].push(s);
+        if (tokenMask(i)) maxOn = Math.max(maxOn, s);
+      }
+    }
+    for (let q = 0; q < nQ; q++) {
+      const gp = gemPositions[q];
+      const gcolor = readoutGemColor(q);
+      const ranked = wOn[q]
+        .map((v, i) => ({ v, i }))
+        .filter(t => tokenMask(t.i))
+        .sort((a, b) => b.v - a.v);
+      for (const t of ranked.slice(0, 3)) {
+        const norm = t.v / Math.max(maxOn, 1e-6);
+        const start = xfInfo.exitPos[t.i].clone();
+        const mid = start.clone().add(gp).multiplyScalar(0.5);
+        mid.z += gp.z * 0.25; // fan gently toward the gem's grid column
+        const curve = new THREE.QuadraticBezierCurve3(start, mid, gp.clone());
+        const c = addChord(g, curve, Math.max(norm, 0.12), gcolor.getHex(), "readout", undefined);
+        c.qTop = q;
+      }
+    }
+  }
+  rebuildTopChords();
 
   // Features hub: policy = concat(16 × 64) → Linear+LN → 256 `features`;
   // oracle = concat(4 × 64) → Linear (no LN) → 256, read only by the trunk.
@@ -1725,7 +1762,7 @@ function buildSharedReadout() {
   for (const gp of gemPositions) {
     g.add(makeGlowLine(gp.clone(), hubPos.clone(), hubColor, 0.22));
   }
-  return { gemPositions, hubPos: hubPos.clone(), gems };
+  return { gemPositions, hubPos: hubPos.clone(), gems, rebuildTopChords };
 }
 
 // ============================================================
@@ -2966,7 +3003,7 @@ function buildPolicyStages() {
     badge: "share",
     cam: { pos: [XS.readout - 16, RING_CY + 10, 34], target: [XS.readout + 5, RING_CY, 0] },
     body: () => `<p>ONE readout for the whole network: ${DATA.dims.n_readout_queries} learned query gems (the 4×4 grid) cross-attend (${N_HEADS} heads) over the 19 post-reasoning tokens — ${DATA.dims.n_readout_queries}×${N_HEADS} = ${DATA.dims.n_readout_queries * N_HEADS} attention distributions, channel parity with <code>full</code>'s four pools. The answers are concatenated (${DATA.dims.n_readout_queries}×${DATA.dims.d_token}) and projected + LayerNormed to the ${DATA.dims.d_model}-d <b>features</b> vector.</p>
-      <p>Each gem shows only its <b>top-3</b> links — <b>click a gem</b> to expand its full per-head fan (H1–H4 chips filter it; click again to collapse). Actor and critic both read the features hub: decision-time attention runs once, here.</p>`,
+      <p>Each gem shows only its <b>top-3</b> links, averaged over the enabled heads — the <b>H1–H4</b> chips re-average them (one chip on = that head's own top-3). <b>Click a gem</b> to expand its full per-head fan (click again to collapse). Actor and critic both read the features hub: decision-time attention runs once, here.</p>`,
   },
   {
     title: "7 · Actor heads",
@@ -3115,7 +3152,7 @@ function buildOracleStages() {
     badge: "share",
     cam: { pos: [XSA.readout - 16, RING_CY + 10, 34], target: [XSA.readout + 5, RING_CY, 0] },
     body: () => `<p>${DATA.oracle.dims.n_readout_queries} learned queries cross-attend (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens — the 32 hidden-hand tokens reach the value trunk <b>unsqueezed</b> (the old pooled-oracle squeezed them through one bag; that squeeze is gone).</p>
-      <p>Same interaction as the policy view: top-3 links per gem, <b>click a gem</b> for its full per-head fan, H1–H4 chips filter.</p>`,
+      <p>Same interaction as the policy view: top-3 links per gem averaged over the enabled heads (H1–H4 chips re-average), <b>click a gem</b> for its full per-head fan.</p>`,
   },
   {
     title: "7 · Value · U(h,s)",
@@ -3357,7 +3394,11 @@ const chkFlow = document.getElementById("chk-flow");
 chkFlow.checked = flowEnabled;
 chkFlow.addEventListener("change", (e) => { flowEnabled = e.target.checked; });
 
-// H1–H4 chips: hide/show one attention head's chords across all layers.
+// H1–H4 chips: hide/show one attention head's chords in every attention
+// block — the tunnel's self-attention layers, the readout gem fans, and the
+// readout's default top-3 chords (whose head-average is recomputed over the
+// enabled heads). Head k is an independent parameter set in each block; the
+// chips are a per-block lens, not one head tracked through the network.
 const headChipsEl = document.getElementById("head-chips");
 for (let h = 0; h < N_HEADS; h++) {
   const b = document.createElement("button");
@@ -3367,6 +3408,7 @@ for (let h = 0; h < N_HEADS; h++) {
   b.addEventListener("click", () => {
     headOn[h] = !headOn[h];
     b.classList.toggle("off", !headOn[h]);
+    if (readoutInfo && readoutInfo.rebuildTopChords) readoutInfo.rebuildTopChords();
     styleChords();
   });
   headChipsEl.appendChild(b);
