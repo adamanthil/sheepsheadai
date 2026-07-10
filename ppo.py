@@ -841,7 +841,7 @@ class PPOAgent:
         # Encoder with memory
         self.encoder = spec.build_encoder().to(device)
         # Dict-based encoder → fixed d_model-wide features/memory (256 default)
-        self.state_size = int(getattr(self.encoder, "d_model", 256))
+        self.state_size = int(self.encoder.d_model)
 
         # Per-player memory tracking
         self._player_memories = {}

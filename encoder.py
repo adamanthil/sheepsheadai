@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Protocol
 import itertools
 from dataclasses import dataclass
 from sheepshead import DECK_IDS, TRUMP
@@ -8,6 +8,63 @@ from sheepshead import DECK_IDS, TRUMP
 
 PAD_CARD_ID = 0
 UNDER_CARD_ID = 33
+
+
+class EncoderInterface(Protocol):
+    """Structural contract every PPOAgent encoder implements.
+
+    Implementers: CardReasoningEncoder (and its architectures.py subclasses
+    PooledMemoryEncoder / TokenReadEncoder / PerceiverEncoder /
+    PerceiverCtxMemEncoder / SharedReadoutEncoder) and the token-free
+    OneHotFeedForwardEncoder baseline, which satisfies this Protocol by
+    hand. Documentation-only typing: nothing inherits from it, so existing
+    classes (and their state_dicts) are untouched.
+
+    Required attributes
+    -------------------
+    d_model : int
+        Width of 'features' and 'memory_out' (PPOAgent.state_size).
+    d_card_dim, d_token_dim : int
+        Card-embedding and post-reasoning token widths (0 when the encoder
+        emits no card tokens, e.g. the onehot baseline).
+    card : nn.Embedding | None
+        Card-id embedding table shared with pointer actors, or None for
+        token-free encoders (actors must then ignore it).
+
+    Output-dict contract
+    --------------------
+    encode_batch returns at least {'features': (B, d_model),
+    'memory_out': (B, d_model)}; token encoders add 'hand_tokens'
+    (B, 8, d_token) and 'context_token', and readout architectures add
+    'all_tokens' (B, 19, d_token) + 'all_mask' (B, 19) bool.
+    encode_sequences returns the same keys with a (B, T, ...) leading shape
+    for per-step tensors and final-step 'memory_out' (B, d_model).
+    """
+
+    d_model: int
+    d_card_dim: int
+    d_token_dim: int
+    card: "nn.Embedding | None"
+
+    def param_groups(
+        self, base_lr: float, card_lr_scale: float = 0.1
+    ) -> List[Dict[str, Any]]:
+        """Optimizer param groups (the card table may get a scaled LR)."""
+        ...
+
+    def encode_batch(
+        self,
+        batch: List[Dict[str, Any]],
+        memory_in: "torch.Tensor | None" = None,
+        device: "torch.device | None" = None,
+    ) -> Dict[str, torch.Tensor]: ...
+
+    def encode_sequences(
+        self,
+        sequences: List[List[Dict[str, Any]]],
+        memory_in: "torch.Tensor | None" = None,
+        device: "torch.device | None" = None,
+    ) -> Dict[str, torch.Tensor]: ...
 
 
 @dataclass
@@ -615,17 +672,27 @@ class CardReasoningEncoder(nn.Module):
         all_tokens: torch.Tensor,
         all_mask: torch.Tensor,
     ) -> Dict[str, torch.Tensor]:
+        """Overridable seam: post-reasoning tokens -> encoder output dict.
+
+        Called once per encode step with the post-reasoning per-bag tokens
+        (+ masks), the previous memory state, and the full 19-token set.
+        The base implementation pools each bag and delegates to
+        _fuse_and_update_memory; pool-free architectures (PerceiverEncoder,
+        PerceiverCtxMemEncoder, SharedReadoutEncoder in architectures.py)
+        override THIS seam to skip the bag pools entirely.
+
+        Contract for overrides: return the EncoderInterface output dict
+        ('features'/'memory_out' (B, d_model) at minimum), consume no RNG,
+        and construct no modules. The base implementation is byte-identical
+        to the historical inline code.
+        """
         # 9. Pool bags
         hand_vec = self.pool_hand(hand_tok_out, hand_mask)
         trick_vec = self.pool_trick(trick_tok_out, trick_mask)
         blind_vec = self.pool_blind(blind_tok_out, blind_mask)
         bury_vec = self.pool_bury(bury_tok_out, bury_mask)
 
-        # 10-11. Update memory + fuse features. Overridable seam: architecture
-        # variants may route the memory GRU differently (PooledMemoryEncoder)
-        # or expose the full post-reasoning token set to the actor
-        # (TokenReadEncoder) — see architectures.py; the base implementation
-        # is byte-identical to the historical inline code.
+        # 10-11. Update memory + fuse features (the narrower seam below).
         return self._fuse_and_update_memory(
             context_out,
             hand_tok_out,
@@ -650,6 +717,17 @@ class CardReasoningEncoder(nn.Module):
         all_tokens: torch.Tensor | None = None,
         all_mask: torch.Tensor | None = None,
     ) -> Dict[str, torch.Tensor]:
+        """Overridable seam: pooled bag vectors -> fused features + memory.
+
+        The narrower seam inside _pool_fuse_update, for variants that keep
+        the bag pools but change what the memory GRU consumes or what the
+        output dict exposes (PooledMemoryEncoder drives the GRU with the
+        fused features; TokenReadEncoder additionally emits
+        'all_tokens'/'all_mask'). Same override contract as
+        _pool_fuse_update: return the EncoderInterface output dict, no RNG,
+        no module construction; the base implementation is byte-identical
+        to the historical inline code.
+        """
         # Update memory: memory_out = GRU(context_token_out, memory_in)
         memory_out = self.memory_gru(context_out, memory_in)  # (B, 256)
 

@@ -311,7 +311,7 @@ class SharedReadoutEncoder(PerceiverEncoder):
     ):
         super().__init__(card_config=card_config, **encoder_kwargs)
         d_token = self.d_token_dim
-        d_model = getattr(self, "d_model", 256)
+        d_model = self.d_model
         self.readout_n_queries = int(n_readout_queries)
         self.memory_token_driver = bool(memory_token_driver)
         # Torch-default MHA init + randn queries: the AttentionPool
@@ -680,7 +680,7 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
         action_groups,
         d_card=encoder.d_card_dim,
         d_token=encoder.d_token_dim,
-        d_model=getattr(encoder, "d_model", 256),
+        d_model=encoder.d_model,
         **mappings,
     )
 
@@ -693,7 +693,7 @@ def _tokenread_actor(action_size, action_groups, encoder, mappings):
         action_groups,
         d_card=encoder.d_card_dim,
         d_token=encoder.d_token_dim,
-        d_model=getattr(encoder, "d_model", 256),
+        d_model=encoder.d_model,
         **mappings,
     )
 
@@ -706,7 +706,7 @@ def _perceiver_actor(action_size, action_groups, encoder, mappings):
         action_groups,
         d_card=encoder.d_card_dim,
         d_token=encoder.d_token_dim,
-        d_model=getattr(encoder, "d_model", 256),
+        d_model=encoder.d_model,
         **mappings,
     )
 
@@ -716,7 +716,7 @@ def _perceiver_critic(encoder):
 
     return PerceiverCriticNetwork(
         d_token=encoder.d_token_dim,
-        d_model=getattr(encoder, "d_model", 256),
+        d_model=encoder.d_model,
     )
 
 
@@ -725,7 +725,7 @@ def _perceiver_aux_critic(encoder):
 
     return PerceiverAuxCriticNetwork(
         d_token=encoder.d_token_dim,
-        d_model=getattr(encoder, "d_model", 256),
+        d_model=encoder.d_model,
         d_card=encoder.d_card_dim,
     )
 
@@ -734,7 +734,7 @@ def _aux_critic(encoder):
     from ppo import RecurrentCriticNetwork
 
     return RecurrentCriticNetwork(
-        d_card=encoder.d_card_dim, d_model=getattr(encoder, "d_model", 256)
+        d_card=encoder.d_card_dim, d_model=encoder.d_model
     )
 
 
@@ -745,7 +745,7 @@ def _no_aux_critic(encoder):
     return RecurrentCriticNetwork(
         d_card=d_card,
         use_aux_heads=False,
-        d_model=getattr(encoder, "d_model", 256),
+        d_model=encoder.d_model,
     )
 
 
@@ -797,7 +797,7 @@ def _perceiver_size_variant(
             action_groups,
             d_card=encoder.d_card_dim,
             d_token=encoder.d_token_dim,
-            d_model=getattr(encoder, "d_model", 256),
+            d_model=encoder.d_model,
             n_readout_queries=n_readout_queries,
             n_readout_heads=n_readout_heads,
             **mappings,
@@ -808,7 +808,7 @@ def _perceiver_size_variant(
 
         return PerceiverCriticNetwork(
             d_token=encoder.d_token_dim,
-            d_model=getattr(encoder, "d_model", 256),
+            d_model=encoder.d_model,
             n_readout_queries=n_readout_queries,
             n_readout_heads=n_readout_heads,
         )
