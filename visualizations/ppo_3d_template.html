@@ -216,7 +216,6 @@
       <input type="range" id="speed" min="1200" max="6000" step="200" value="3000" />
     </label>
     <label><input type="checkbox" id="chk-rotate" /> auto-rotate</label>
-    <label><input type="checkbox" id="chk-emphasis" /> emphasize connections</label>
     <label><input type="checkbox" id="chk-flow" checked /> flow</label>
     <span id="head-chips"><span class="chips-head">heads</span></span>
   </div>
@@ -757,11 +756,6 @@ function disposeScene() {
   selectedQuery = null;
 }
 
-// ---- Connection emphasis -------------------------------------------------
-// When ON, strong attention chords get thicker / brighter / more opaque and
-// the weakest ones drop out, so high-strength token→token links pop. All other
-// connection lines are boosted too.
-let emphasize = false;
 // Per-head visibility, driven by the H1–H4 chips in the HUD.
 const headOn = new Array(N_HEADS).fill(true);
 // Shared-readout gem selection: clicking a gem reveals its FULL per-head
@@ -772,10 +766,10 @@ function selectQuery(q) {
   styleChords();
 }
 function chordRadius(norm) {
-  return emphasize ? 0.06 + Math.pow(norm, 1.15) * 0.62 : 0.035 + norm * 0.18;
+  return 0.035 + norm * 0.18;
 }
 function chordBaseOpacity(norm) {
-  return emphasize ? clamp(0.4 + norm * 0.6, 0, 1) : 0.18 + norm * 0.5;
+  return 0.18 + norm * 0.5;
 }
 function chordVisible(c) {
   // Readout gem fans: a gem's full per-head fan shows only while selected;
@@ -783,7 +777,7 @@ function chordVisible(c) {
   if (c.qSel !== undefined && c.qSel !== selectedQuery) return false;
   if (c.qTop !== undefined && c.qTop === selectedQuery) return false;
   if (c.head !== undefined && !headOn[c.head]) return false;
-  return emphasize ? c.norm >= 0.18 : true;
+  return true;
 }
 function chordGeometry(curve, norm) {
   return new THREE.TubeGeometry(curve, 18, chordRadius(norm), 6, false);
@@ -791,7 +785,7 @@ function chordGeometry(curve, norm) {
 // Every chord keeps its own hue (head color / query color); strength shows
 // as brightness toward the hot pulse tone plus thickness.
 function chordColor(c) {
-  const t = emphasize ? Math.pow(c.norm, 0.55) : c.norm;
+  const t = c.norm;
   const cold = new THREE.Color(c.baseColor).multiplyScalar(0.42);
   const hot = new THREE.Color(c.baseColor).lerp(new THREE.Color(C.pulse), 0.55);
   return cold.lerp(hot, t);
@@ -824,7 +818,7 @@ function addChord(g, curve, norm, baseColor, groupName, head) {
 function styleConn() {
   // Write into baseOpacity: applyStageDim() owns the final material opacity.
   for (const c of connLines) {
-    c.obj.material.userData.baseOpacity = Math.min(0.95, c.base * (emphasize ? 2.3 : 1));
+    c.obj.material.userData.baseOpacity = Math.min(0.95, c.base);
     c.obj.material.opacity = c.obj.material.userData.baseOpacity;
   }
 }
@@ -3355,12 +3349,6 @@ document.getElementById("btn-play").addEventListener("click", () => playing ? st
 document.getElementById("btn-prev").addEventListener("click", () => { stopTour(); showStage(curStage - 1); });
 document.getElementById("btn-next").addEventListener("click", () => { stopTour(); showStage(curStage + 1); });
 document.getElementById("btn-reset").addEventListener("click", () => { stopTour(); showStage(0); });
-document.getElementById("chk-emphasis").addEventListener("change", (e) => {
-  emphasize = e.target.checked;
-  styleChords();
-  styleConn();
-  applyStageDim();
-});
 document.getElementById("chk-rotate").addEventListener("change", (e) => {
   controls.autoRotate = e.target.checked;
   controls.autoRotateSpeed = 0.6;
