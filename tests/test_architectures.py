@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the architecture registry (architectures.py).
+"""Tests for the architecture registry (the architectures package).
 
 Covers: every registered arch builds/plays/updates; the default "full" arch
 is construction-identical to building the networks directly (the registry

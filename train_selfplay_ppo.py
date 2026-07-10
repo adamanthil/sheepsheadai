@@ -785,7 +785,7 @@ def main():
         type=str,
         default="full",
         choices=architectures.available_architectures(),
-        help="Network architecture variant (see architectures.py)",
+        help="Network architecture variant (see the architectures package)",
     )
     parser.add_argument(
         "--seed",

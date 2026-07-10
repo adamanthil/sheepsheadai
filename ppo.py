@@ -364,7 +364,7 @@ class TokenReadActorNetwork(MultiHeadRecurrentActorNetwork):
     scorer). The encoder — including the memory recurrence (context token →
     GRUCell → 256-d state) — is byte-identical to `full`; only the actor
     grows. Requires an encoder that emits 'all_tokens'/'all_mask'
-    (TokenReadEncoder in architectures.py).
+    (TokenReadEncoder in architectures.encoders).
     """
 
     def __init__(
@@ -430,7 +430,7 @@ class PerceiverActorNetwork(MultiHeadRecurrentActorNetwork):
     M learned queries attend over the 19 tokens, the flattened result is
     projected to d_model and passed through the standard actor_adapter
     before the heads. Requires an encoder emitting 'all_tokens'/'all_mask'
-    (PerceiverEncoder in architectures.py).
+    (PerceiverEncoder in architectures.encoders).
     """
 
     def __init__(
@@ -814,7 +814,7 @@ class PPOAgent:
         critic_mode="limited",
         arch="full",
     ):
-        # Networks are built from a named ArchitectureSpec (architectures.py).
+        # Networks are built from a named ArchitectureSpec (architectures.registry).
         # The default "full" spec constructs exactly the pre-registry
         # networks, in the same order, so seeded runs are bit-identical.
         spec = architectures.get_spec(arch)

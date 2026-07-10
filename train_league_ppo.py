@@ -751,7 +751,7 @@ def main():
         default="full",
         choices=architectures.available_architectures(),
         help="Network architecture variant for the training agent, its "
-        "snapshots, and the exploiter phase (see architectures.py)",
+        "snapshots, and the exploiter phase (see the architectures package)",
     )
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()

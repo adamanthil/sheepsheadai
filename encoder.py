@@ -13,7 +13,7 @@ UNDER_CARD_ID = 33
 class EncoderInterface(Protocol):
     """Structural contract every PPOAgent encoder implements.
 
-    Implementers: CardReasoningEncoder (and its architectures.py subclasses
+    Implementers: CardReasoningEncoder (and its architectures.encoders subclasses
     PooledMemoryEncoder / TokenReadEncoder / PerceiverEncoder /
     PerceiverCtxMemEncoder / SharedReadoutEncoder) and the token-free
     OneHotFeedForwardEncoder baseline, which satisfies this Protocol by
@@ -639,7 +639,7 @@ class CardReasoningEncoder(nn.Module):
         bury_tok_out = all_tokens[:, 17:19, :]
 
         # 9-11. Pool bags, update memory, fuse features. Overridable seam:
-        # pool-free variants (PerceiverEncoder in architectures.py) replace
+        # pool-free variants (PerceiverEncoder in architectures.encoders) replace
         # this whole tail; the base implementation is byte-identical to the
         # historical inline code.
         return self._pool_fuse_update(
@@ -678,7 +678,7 @@ class CardReasoningEncoder(nn.Module):
         (+ masks), the previous memory state, and the full 19-token set.
         The base implementation pools each bag and delegates to
         _fuse_and_update_memory; pool-free architectures (PerceiverEncoder,
-        PerceiverCtxMemEncoder, SharedReadoutEncoder in architectures.py)
+        PerceiverCtxMemEncoder, SharedReadoutEncoder in architectures.encoders)
         override THIS seam to skip the bag pools entirely.
 
         Contract for overrides: return the EncoderInterface output dict

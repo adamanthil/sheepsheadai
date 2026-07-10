@@ -218,7 +218,7 @@ def find_hand(agent, max_seeds=500):
 
 def capture_forward(agent, state, valid_actions, memory_in):
     """Manually replicate PerceiverEncoder.encode_batch (mirrors encoder.py /
-    architectures.py) so every intermediate — per-layer per-head attention,
+    the architectures package) so every intermediate — per-layer per-head attention,
     FFN hidden activations, both readout cross-attentions — can be captured,
     then run the actor and critic heads. Returns the per-scenario payload."""
     enc = agent.encoder
