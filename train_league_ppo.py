@@ -144,11 +144,9 @@ def _lw_play(job: _Job) -> dict:
         ckpt = _torch.load(
             f"{g['weight_path_base']}_v{job.weight_version}.pt", map_location="cpu"
         )
-        agent = g["agent"]
-        agent.encoder.load_state_dict(ckpt["encoder_state_dict"])
-        agent.actor.load_state_dict(ckpt["actor_state_dict"])
-        agent.critic.load_state_dict(ckpt["critic_state_dict"], strict=False)
-        agent._player_memories = {}
+        g["agent"].load_network_states(
+            ckpt, source=f"weights v{job.weight_version}"
+        )
         g["version"] = job.weight_version
 
     opponents = [

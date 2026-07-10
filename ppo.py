@@ -2681,6 +2681,57 @@ class PPOAgent:
             payload["oracle_optimizer"] = self.oracle_optimizer.state_dict()
         torch.save(payload, filepath)
 
+    def _apply_legacy_value_trunk_shim(self, critic_state_dict, missing) -> bool:
+        """Inference-compatibility shim for pre-value_trunk checkpoints.
+
+        Older checkpoints (e.g. the pfsp-ppo-30M-baseline tag,
+        final_pfsp_swish_ppo.pt) predate the dedicated deep ``value_trunk``
+        and trained the value head off ``critic_adapter`` directly. A naive
+        strict=False load leaves the new ``value_trunk.*`` at random init, so
+        ``forward`` bootstraps the value off noise (~uncorrelated with the
+        trained value fn) -- silently corrupting any ISMCTS critic bootstrap.
+        Detect that case and re-point the value path at the trained
+        ``critic_adapter`` so legacy checkpoints evaluate exactly as they
+        were trained. Returns True when the shim fired."""
+        ckpt_has_value_trunk = any(
+            k.startswith("value_trunk") for k in critic_state_dict
+        )
+        if (
+            any(k.startswith("value_trunk") for k in missing)
+            and not ckpt_has_value_trunk
+        ):
+            self.critic.value_trunk = self.critic.critic_adapter
+            return True
+        return False
+
+    def load_network_states(self, checkpoint, source: str = "<checkpoint>"):
+        """Copy encoder/actor/critic tensors from a checkpoint payload and
+        reset per-player memories.
+
+        The single network-load path: both full checkpoint loads
+        (``PPOAgent.load``) and the league workers' weight refreshes
+        (train_league_ppo._lw_play) go through here, so the non-strict
+        critic handling and the legacy value_trunk shim cannot drift apart.
+        ``source`` only labels the printed diagnostics."""
+        self.encoder.load_state_dict(checkpoint["encoder_state_dict"])
+        self.actor.load_state_dict(checkpoint["actor_state_dict"])
+        missing, unexpected = self.critic.load_state_dict(
+            checkpoint["critic_state_dict"], strict=False
+        )
+        if self._apply_legacy_value_trunk_shim(
+            checkpoint["critic_state_dict"], missing
+        ):
+            print(
+                f"Note: {source} predates value_trunk; routing the value head "
+                f"through the trained critic_adapter (legacy critic compatibility)."
+            )
+        elif missing or unexpected:
+            print(
+                f"Warning: critic load mismatch for {source}: "
+                f"missing={list(missing)} unexpected={list(unexpected)}"
+            )
+        self._player_memories = {}
+
     def load(self, filepath, load_optimizers: bool = True, checkpoint=None):
         """Load model parameters.
 
@@ -2711,37 +2762,7 @@ class PPOAgent:
                 f"arch='{ckpt_arch}' or use ppo.load_agent()."
             )
 
-        self.encoder.load_state_dict(checkpoint["encoder_state_dict"])
-        self.actor.load_state_dict(checkpoint["actor_state_dict"])
-        # The critic load is non-strict because older checkpoints (e.g. the
-        # pfsp-ppo-30M-baseline tag, final_pfsp_swish_ppo.pt) predate the
-        # dedicated deep ``value_trunk`` and trained the value head off
-        # ``critic_adapter`` directly. A naive strict=False load leaves the new
-        # ``value_trunk.*`` at random init, so ``forward`` bootstraps the value
-        # off noise (~uncorrelated with the trained value fn) -- silently
-        # corrupting any ISMCTS critic bootstrap. Detect that case and re-point
-        # the value path at the trained ``critic_adapter`` so legacy checkpoints
-        # evaluate exactly as they were trained (inference-compatibility shim).
-        missing, unexpected = self.critic.load_state_dict(
-            checkpoint["critic_state_dict"], strict=False
-        )
-        ckpt_has_value_trunk = any(
-            k.startswith("value_trunk") for k in checkpoint["critic_state_dict"]
-        )
-        if (
-            any(k.startswith("value_trunk") for k in missing)
-            and not ckpt_has_value_trunk
-        ):
-            self.critic.value_trunk = self.critic.critic_adapter
-            print(
-                f"Note: {filepath} predates value_trunk; routing the value head "
-                f"through the trained critic_adapter (legacy critic compatibility)."
-            )
-        elif missing or unexpected:
-            print(
-                f"Warning: critic load mismatch for {filepath}: "
-                f"missing={list(missing)} unexpected={list(unexpected)}"
-            )
+        self.load_network_states(checkpoint, source=str(filepath))
 
         # Oracle critic: optional checkpoint keys. An oracle-mode agent
         # resuming a limited checkpoint keeps its fresh-init oracle — the
@@ -2774,9 +2795,6 @@ class PPOAgent:
                         f"Warning: could not load oracle optimizer state from "
                         f"{filepath}: {e}"
                     )
-
-        # Reset memory states after loading
-        self._player_memories = {}
 
 
 def load_agent(
