@@ -478,53 +478,33 @@ class PerceiverActorNetwork(MultiHeadRecurrentActorNetwork):
         return self.actor_adapter(readout)
 
 
-class PerceiverCriticNetwork(nn.Module):
-    """Value network with its own cross-attention readout over the token set.
+class _TokenReadoutValueMixin:
+    """Token-readout value path shared by the perceiver critics.
 
-    The `perceiver` rung's critic: no shared trunk features — M learned
-    queries attend over the 19 post-reasoning tokens, then the same deep
-    value trunk shape as RecurrentCriticNetwork produces the value. No
-    auxiliary heads (compare perceiver against `no-aux` as well as `full`).
+    Provides the cross-attention readout construction and the value
+    forward/sequence path that PerceiverCriticNetwork and
+    PerceiverAuxCriticNetwork have in common (the latter previously
+    borrowed these methods by class-attribute assignment). Plain mixin,
+    not an nn.Module: it registers modules only inside _build_readout,
+    which the host class calls at the historical point in its __init__ —
+    attribute order (query -> MHA -> proj) and RNG consumption are
+    load-bearing for state_dict layout and seeded bit-identity.
     """
 
-    def __init__(
-        self,
-        d_token: int = 64,
-        d_model: int = 256,
-        n_readout_queries: int = 4,
-        n_readout_heads: int = 4,
+    def _build_readout(
+        self, d_token: int, d_model: int, n_readout_queries: int, n_readout_heads: int
     ):
-        super().__init__()
-        self.has_aux_heads = False
-        d_token, d_model = int(d_token), int(d_model)
-        self._d_token = d_token
+        self._d_token = int(d_token)
         self.readout_n_queries = int(n_readout_queries)
-        self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
+        self.readout_query = nn.Parameter(
+            torch.randn(self.readout_n_queries, self._d_token)
+        )
         self.readout_mha = nn.MultiheadAttention(
-            d_token, int(n_readout_heads), batch_first=True
+            self._d_token, int(n_readout_heads), batch_first=True
         )
-        self.readout_proj = nn.Linear(self.readout_n_queries * d_token, d_model)
-        # Same shape as RecurrentCriticNetwork.value_trunk / value_head.
-        act = nn.SiLU
-        self.value_trunk = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, d_model),
-            act(),
-            nn.Linear(d_model, d_model),
-            act(),
+        self.readout_proj = nn.Linear(
+            self.readout_n_queries * self._d_token, int(d_model)
         )
-        self.value_head = nn.Linear(d_model, 1)
-        # Orthogonal init for the dense stack (critic convention); the MHA
-        # keeps torch defaults (encoder AttentionPool convention).
-        for mod in (self.readout_proj, self.value_trunk, self.value_head):
-            mod.apply(self._init_weights)
-
-    @staticmethod
-    def _init_weights(m):
-        if isinstance(m, nn.Linear):
-            nn.init.orthogonal_(m.weight, gain=1.0)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0.0)
 
     def _readout(self, all_tokens: torch.Tensor, all_mask: torch.Tensor):
         B = all_tokens.size(0)
@@ -552,6 +532,49 @@ class PerceiverCriticNetwork(nn.Module):
         B, T, N, d = at.shape
         r = self._readout(at.reshape(B * T, N, d), am.reshape(B * T, N))
         return self.value_head(self.value_trunk(r)).view(B, T)
+
+
+class PerceiverCriticNetwork(_TokenReadoutValueMixin, nn.Module):
+    """Value network with its own cross-attention readout over the token set.
+
+    The `perceiver` rung's critic: no shared trunk features — M learned
+    queries attend over the 19 post-reasoning tokens, then the same deep
+    value trunk shape as RecurrentCriticNetwork produces the value. No
+    auxiliary heads (compare perceiver against `no-aux` as well as `full`).
+    """
+
+    def __init__(
+        self,
+        d_token: int = 64,
+        d_model: int = 256,
+        n_readout_queries: int = 4,
+        n_readout_heads: int = 4,
+    ):
+        super().__init__()
+        self.has_aux_heads = False
+        d_model = int(d_model)
+        self._build_readout(d_token, d_model, n_readout_queries, n_readout_heads)
+        # Same shape as RecurrentCriticNetwork.value_trunk / value_head.
+        act = nn.SiLU
+        self.value_trunk = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model),
+            act(),
+            nn.Linear(d_model, d_model),
+            act(),
+        )
+        self.value_head = nn.Linear(d_model, 1)
+        # Orthogonal init for the dense stack (critic convention); the MHA
+        # keeps torch defaults (encoder AttentionPool convention).
+        for mod in (self.readout_proj, self.value_trunk, self.value_head):
+            mod.apply(self._init_weights)
+
+    @staticmethod
+    def _init_weights(m):
+        if isinstance(m, nn.Linear):
+            nn.init.orthogonal_(m.weight, gain=1.0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0.0)
 
     def aux_predictions(self, *args, **kwargs):
         raise RuntimeError(
@@ -736,7 +759,7 @@ class RecurrentCriticNetwork(nn.Module):
         return self.unseen_trump_higher_than_hand_head(h).squeeze(-1)
 
 
-class PerceiverAuxCriticNetwork(RecurrentCriticNetwork):
+class PerceiverAuxCriticNetwork(_TokenReadoutValueMixin, RecurrentCriticNetwork):
     """Perceiver critic WITH the full auxiliary-head stack.
 
     The operator's intended perceiver design: inherits every aux head
@@ -745,8 +768,9 @@ class PerceiverAuxCriticNetwork(RecurrentCriticNetwork):
     one cross-attention readout over the post-reasoning token set feeds
     BOTH the value trunk and the shallow aux adapter, so aux gradients
     shape the readout + encoder exactly as they shape the pooled trunk in
-    `full`. Readout modules match PerceiverCriticNetwork (whose forward /
-    sequence_values / _readout are reused directly).
+    `full`. The readout and the value forward/sequence path come from
+    _TokenReadoutValueMixin (ahead of RecurrentCriticNetwork in the MRO),
+    shared with PerceiverCriticNetwork.
     """
 
     def __init__(
@@ -758,22 +782,11 @@ class PerceiverAuxCriticNetwork(RecurrentCriticNetwork):
         n_readout_heads: int = 4,
     ):
         super().__init__(d_card=d_card, use_aux_heads=True, d_model=d_model)
-        d_token, d_model = int(d_token), int(d_model)
-        self._d_token = d_token
-        self.readout_n_queries = int(n_readout_queries)
-        self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
-        self.readout_mha = nn.MultiheadAttention(
-            d_token, int(n_readout_heads), batch_first=True
-        )
-        self.readout_proj = nn.Linear(self.readout_n_queries * d_token, d_model)
+        self._build_readout(d_token, d_model, n_readout_queries, n_readout_heads)
         # super().__init__ already orthogonal-initialized the inherited stack;
         # only the projection is initialized here (MHA keeps torch defaults,
         # the encoder AttentionPool convention).
         self.readout_proj.apply(self._init_weights)
-
-    _readout = PerceiverCriticNetwork._readout
-    forward = PerceiverCriticNetwork.forward
-    sequence_values = PerceiverCriticNetwork.sequence_values
 
     def _readout_bt(self, encoder_out_seq: Dict[str, torch.Tensor]):
         at = encoder_out_seq["all_tokens"]  # (B, T, N, d_token)
