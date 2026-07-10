@@ -17,10 +17,10 @@ Matters", arXiv:1709.06560), and controlled/equal-footing evaluation is the
 difference between measuring architectures and measuring tuning effort
 (Melis et al. 2018, arXiv:1707.05589).
 
-Adding a variant = adding one ``ArchitectureSpec`` entry; the trainers,
-checkpoint metadata (``arch`` key), and ``ppo.load_agent`` pick it up by
-name. Workers and subprocesses receive the architecture *name*, never the
-spec object.
+Adding a variant = one ``register(ArchitectureSpec(...))`` call; the spec's
+``name`` field is the registry key, and the trainers, checkpoint metadata
+(``arch`` key), and ``ppo.load_agent`` pick it up by name. Workers and
+subprocesses receive the architecture *name*, never the spec object.
 """
 
 from dataclasses import dataclass
@@ -50,6 +50,9 @@ class ArchitectureSpec:
     build_encoder: Callable[[], nn.Module]
     build_actor: Callable[..., nn.Module]
     build_critic: Callable[[nn.Module], nn.Module]
+    # Declarative metadata only; the runtime truth is the built critic's
+    # has_aux_heads attribute. tests/test_arch_golden.py welds the two (and
+    # the aux modules' state_dict presence) together for every entry.
     has_aux_heads: bool = True
 
 
@@ -826,8 +829,21 @@ def _perceiver_size_variant(
 # Registry
 # ---------------------------------------------------------------------------
 
-ARCHITECTURES: Dict[str, ArchitectureSpec] = {
-    "full": ArchitectureSpec(
+ARCHITECTURES: Dict[str, ArchitectureSpec] = {}
+
+
+def register(spec: ArchitectureSpec) -> ArchitectureSpec:
+    """Add a spec to the registry keyed by its own name (the single
+    source of truth for architecture identity); duplicate names fail at
+    import time. Registration constructs nothing and consumes no RNG."""
+    if spec.name in ARCHITECTURES:
+        raise ValueError(f"duplicate architecture name: {spec.name}")
+    ARCHITECTURES[spec.name] = spec
+    return spec
+
+
+register(
+    ArchitectureSpec(
         name="full",
         description=(
             "Current architecture: informed card embeddings + transformer "
@@ -838,17 +854,23 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
         has_aux_heads=True,
-    ),
-    # --- Ablation ladder (reverse-historical, cumulative) -----------------
-    "no-aux": ArchitectureSpec(
+    )
+)
+
+# --- Ablation ladder (reverse-historical, cumulative) -----------------
+register(
+    ArchitectureSpec(
         name="no-aux",
         description="full minus the critic's auxiliary heads.",
         build_encoder=lambda: CardReasoningEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
-    ),
-    "no-transformer": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="no-transformer",
         description=(
             "no-aux minus transformer card reasoning: PooledMemoryEncoder "
@@ -859,8 +881,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
-    ),
-    "no-transformer-uninformed": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="no-transformer-uninformed",
         description="no-transformer minus informed card-embedding initialization.",
         build_encoder=lambda: PooledMemoryEncoder(
@@ -869,8 +894,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
-    ),
-    "onehot-ff": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="onehot-ff",
         description=(
             "Legacy baseline: flat one-hot state -> feed-forward MLP + GRU "
@@ -883,40 +911,61 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         ),
         build_critic=_no_aux_critic,
         has_aux_heads=False,
-    ),
-    # --- Capacity sweep around `full` (one knob per variant) ---------------
-    "full-dtok32": _full_size_variant(
+    )
+)
+
+# --- Capacity sweep around `full` (one knob per variant) ---------------
+register(
+    _full_size_variant(
         "full-dtok32",
         "full with d_token 64 -> 32 (transformer width /2).",
         d_token=32,
-    ),
-    "full-dtok128": _full_size_variant(
+    )
+)
+
+register(
+    _full_size_variant(
         "full-dtok128",
         "full with d_token 64 -> 128 (transformer width x2).",
         d_token=128,
-    ),
-    "full-layers2": _full_size_variant(
+    )
+)
+
+register(
+    _full_size_variant(
         "full-layers2",
         "full with 2 reasoning layers (depth /2).",
         n_reasoning_layers=2,
-    ),
-    "full-layers6": _full_size_variant(
+    )
+)
+
+register(
+    _full_size_variant(
         "full-layers6",
         "full with 6 reasoning layers (depth x1.5).",
         n_reasoning_layers=6,
-    ),
-    "full-dmodel128": _full_size_variant(
+    )
+)
+
+register(
+    _full_size_variant(
         "full-dmodel128",
         "full with d_model 256 -> 128 (trunk/memory/pool width /2).",
         d_model=128,
-    ),
-    "full-dmodel512": _full_size_variant(
+    )
+)
+
+register(
+    _full_size_variant(
         "full-dmodel512",
         "full with d_model 256 -> 512 (trunk/memory/pool width x2).",
         d_model=512,
-    ),
-    # --- Clean token-centric redesign (Perceiver-IO shape) ------------------
-    "perceiver": ArchitectureSpec(
+    )
+)
+
+# --- Clean token-centric redesign (Perceiver-IO shape) ------------------
+register(
+    ArchitectureSpec(
         name="perceiver",
         description=(
             "Token-centric end to end: embeddings + transformer + recurrence "
@@ -930,8 +979,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_perceiver_actor,
         build_critic=_perceiver_critic,
         has_aux_heads=False,
-    ),
-    "perceiver-aux": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="perceiver-aux",
         description=(
             "perceiver plus the full auxiliary-head stack (the operator's "
@@ -944,18 +996,21 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_perceiver_actor,
         build_critic=_perceiver_aux_critic,
         has_aux_heads=True,
-    ),
-    # --- Perceiver-loss decomposition arms (2026-07-07) ---------------------
-    # The perceiver probe changed three things at once relative to no-aux:
-    # (1) the actor's trunk input (pooled fusion -> token readout), (2) the
-    # critic's trunk input (same swap), (3) the memory-GRU driver (context
-    # token -> memory token). These arms flip ONE switch each. The hybrids
-    # ride on TokenReadEncoder (byte-identical to the base encoder, also
-    # emits all_tokens), so the pooled path survives for whichever network
-    # still needs it and the memory driver stays `full`'s. Comparator for
-    # the hybrids is `no-aux` (all three are aux-free, pooled-encoder runs);
-    # comparator for perceiver-ctxmem is `perceiver`.
-    "readout-actor": ArchitectureSpec(
+    )
+)
+
+# --- Perceiver-loss decomposition arms (2026-07-07) ---------------------
+# The perceiver probe changed three things at once relative to no-aux:
+# (1) the actor's trunk input (pooled fusion -> token readout), (2) the
+# critic's trunk input (same swap), (3) the memory-GRU driver (context
+# token -> memory token). These arms flip ONE switch each. The hybrids
+# ride on TokenReadEncoder (byte-identical to the base encoder, also
+# emits all_tokens), so the pooled path survives for whichever network
+# still needs it and the memory driver stays `full`'s. Comparator for
+# the hybrids is `no-aux` (all three are aux-free, pooled-encoder runs);
+# comparator for perceiver-ctxmem is `perceiver`.
+register(
+    ArchitectureSpec(
         name="readout-actor",
         description=(
             "Hybrid decomposition arm: perceiver-style actor (token-readout "
@@ -967,8 +1022,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_perceiver_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
-    ),
-    "readout-critic": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="readout-critic",
         description=(
             "Hybrid decomposition arm: standard pooled/pointer actor + "
@@ -980,8 +1038,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_perceiver_critic,
         has_aux_heads=False,
-    ),
-    "perceiver-shared": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="perceiver-shared",
         description=(
             "full with the four bag-scoped pools + fusion MLP replaced by a "
@@ -996,8 +1057,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
         has_aux_heads=True,
-    ),
-    "perceiver-shared-noaux": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="perceiver-shared-noaux",
         description=(
             "perceiver-shared minus the aux heads: shared encoder readout "
@@ -1011,8 +1075,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
-    ),
-    "perceiver-shared-v2": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="perceiver-shared-v2",
         description=(
             "perceiver-shared with the two 2026-07-09 corrections: "
@@ -1039,8 +1106,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
         has_aux_heads=True,
-    ),
-    "perceiver-shared-v2-noaux": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="perceiver-shared-v2-noaux",
         description=(
             "perceiver-shared-v2 minus the aux heads: the missing cell of "
@@ -1056,8 +1126,11 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
         has_aux_heads=False,
-    ),
-    "perceiver-ctxmem": ArchitectureSpec(
+    )
+)
+
+register(
+    ArchitectureSpec(
         name="perceiver-ctxmem",
         description=(
             "perceiver with full's memory driver (GRU fed the post-reasoning "
@@ -1068,73 +1141,112 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_perceiver_actor,
         build_critic=_perceiver_critic,
         has_aux_heads=False,
-    ),
-    # --- Perceiver capacity variants (one knob each, mirroring full's) ------
-    "perceiver-dtok32": _perceiver_size_variant(
+    )
+)
+
+# --- Perceiver capacity variants (one knob each, mirroring full's) ------
+register(
+    _perceiver_size_variant(
         "perceiver-dtok32",
         "perceiver with d_token 64 -> 32 (transformer/readout width /2).",
         d_token=32,
-    ),
-    "perceiver-dtok128": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-dtok128",
         "perceiver with d_token 64 -> 128 (transformer/readout width x2).",
         d_token=128,
-    ),
-    "perceiver-layers2": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-layers2",
         "perceiver with 2 reasoning layers (depth /2).",
         n_reasoning_layers=2,
-    ),
-    "perceiver-layers6": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-layers6",
         "perceiver with 6 reasoning layers (depth x1.5).",
         n_reasoning_layers=6,
-    ),
-    "perceiver-dmodel128": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-dmodel128",
         "perceiver with d_model 256 -> 128 (memory/adapter/value width /2).",
         d_model=128,
-    ),
-    "perceiver-dmodel512": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-dmodel512",
         "perceiver with d_model 256 -> 512 (memory/adapter/value width x2).",
         d_model=512,
-    ),
-    # Attention-shape knobs: every 4 below (readout queries, readout heads,
-    # reasoning heads) was chosen without evidence when the transformer was
-    # first added — these variants finally probe them, one knob at a time.
-    "perceiver-readq2": _perceiver_size_variant(
+    )
+)
+
+# Attention-shape knobs: every 4 below (readout queries, readout heads,
+# reasoning heads) was chosen without evidence when the transformer was
+# first added — these variants finally probe them, one knob at a time.
+register(
+    _perceiver_size_variant(
         "perceiver-readq2",
         "perceiver with 2 readout queries per network (4 -> 2).",
         n_readout_queries=2,
-    ),
-    "perceiver-readq8": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-readq8",
         "perceiver with 8 readout queries per network (4 -> 8).",
         n_readout_queries=8,
-    ),
-    "perceiver-readheads2": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-readheads2",
         "perceiver with 2 readout attention heads (4 -> 2, head_dim 32).",
         n_readout_heads=2,
-    ),
-    "perceiver-readheads8": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-readheads8",
         "perceiver with 8 readout attention heads (4 -> 8, head_dim 8).",
         n_readout_heads=8,
-    ),
-    "perceiver-rheads2": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-rheads2",
         "perceiver with 2 transformer reasoning heads (4 -> 2).",
         n_reasoning_heads=2,
-    ),
-    "perceiver-rheads8": _perceiver_size_variant(
+    )
+)
+
+register(
+    _perceiver_size_variant(
         "perceiver-rheads8",
         "perceiver with 8 transformer reasoning heads (4 -> 8).",
         n_reasoning_heads=8,
-    ),
-    # --- Readout variant (pooling-bottleneck hypothesis) --------------------
-    "full-tokenread": ArchitectureSpec(
+    )
+)
+
+# --- Readout variant (pooling-bottleneck hypothesis) --------------------
+register(
+    ArchitectureSpec(
         name="full-tokenread",
         description=(
             "full plus a cross-attention token readout in the actor: 4 "
@@ -1149,9 +1261,12 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_tokenread_actor,
         build_critic=_aux_critic,
         has_aux_heads=True,
-    ),
-    # --- Factorial arm (informed init in the presence of the transformer) --
-    "full-uninformed": ArchitectureSpec(
+    )
+)
+
+# --- Factorial arm (informed init in the presence of the transformer) --
+register(
+    ArchitectureSpec(
         name="full-uninformed",
         description="full minus informed card-embedding initialization.",
         build_encoder=lambda: CardReasoningEncoder(
@@ -1160,8 +1275,8 @@ ARCHITECTURES: Dict[str, ArchitectureSpec] = {
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
         has_aux_heads=True,
-    ),
-}
+    )
+)
 
 
 def available_architectures() -> list:
