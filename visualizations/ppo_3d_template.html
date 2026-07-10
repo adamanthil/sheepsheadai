@@ -192,7 +192,7 @@
 
 <div id="ui-top">
   <div class="panel" id="title">
-    Sheepshead PPO <span class="sub">3D · perceiver forward pass</span>
+    Sheepshead PPO <span class="sub">3D · perceiver-shared-v2 forward pass</span>
   </div>
   <div class="panel controls">
     <button id="btn-play" class="primary">▶ Play tour</button>
@@ -229,8 +229,9 @@
     Attention heads 1–4
   </div>
   <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · recurrence</div>
-  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor readout + policy</div>
-  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic readout + value</div>
+  <div class="row"><span class="swatch" style="background:#ffc65c;color:#ffc65c"></span>Shared readout → features</div>
+  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor heads + pointer</div>
+  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic value + aux</div>
   <div class="row"><span class="swatch" style="background:#fffa9e;color:#fffa9e"></span>Active flow / connection</div>
 </div>
 
@@ -282,12 +283,18 @@ const C = {
   dim: 0x223060,
   text: 0xe6ecff,
 };
-// One hue per attention head — used by the transformer chords and the
-// H1–H4 toggle chips (keep in sync with the legend / chip CSS colors).
+// One hue per attention head — used by the transformer chords, the shared
+// readout fans, and the H1–H4 toggle chips (keep in sync with the legend /
+// chip CSS colors).
 const HEAD_COLORS = [0x4cc9f0, 0x3ee6b0, 0x6f8dff, 0xc77bff];
-// Per-query hue families for the two readouts (actor greens, critic pinks).
-const ACTOR_Q_COLORS = [0x80ed99, 0x5fd9a4, 0xa9f27e, 0x4fe0c0];
-const CRITIC_Q_COLORS = [0xff9ec7, 0xff7fb0, 0xe08cff, 0xffb3a0];
+// The SHARED encoder readout renders in an amber/gold family (it is trunk
+// infrastructure, feeding actor and critic alike). Per-gem hue varies
+// slightly by grid position so neighboring gems stay distinguishable.
+const READOUT_GOLD = 0xffc65c;
+function readoutGemColor(q) {
+  const row = Math.floor(q / 4), col = q % 4;
+  return new THREE.Color().setHSL(0.085 + col * 0.010, 0.82, 0.50 + row * 0.035);
+}
 
 // ============================================================
 // Scene setup
@@ -526,16 +533,21 @@ function liveHead() {
 const N_LAYERS = DATA.dims.n_layers;   // transformer reasoning layers (4)
 const N_HEADS = DATA.dims.n_heads;     // attention heads per layer (4)
 const XS = {
-  input: -66,
-  embed: -48,
-  tokensPre: -30,
-  xf0: -14,        // first transformer layer ring
+  input: -74,
+  embed: -56,
+  tokensPre: -38,
+  xf0: -22,        // first transformer layer ring
   xfSpacing: 10,   // ring-to-ring distance (FFN lens sits halfway)
-  gru: 26,
-  readout: 34,     // actor (upper) + critic (lower) query gems
-  actor: 50,
-  critic: 50,
-  output: 66,
+  gru: 14,
+  readout: 22,     // shared 4×4 query-gem grid, centered on the tunnel axis
+  hub: 32,         // features hub: concat 16×64 → Linear+LN → 256
+  actor: 44,       // actor adapter; pick / call heads spread to the right
+  heads: 50,
+  pointer: 58,     // pointer assembly (ghost hand row + combine nodes)
+  output: 76,
+  criticTrunk: 44, // value lane (z −12)
+  criticV: 54,
+  aux: 44,         // aux lane (z −24)
 };
 const xfX = (l) => XS.xf0 + l * XS.xfSpacing;      // ring x of layer l
 const XF_EXIT = xfX(N_LAYERS - 1);                 // final ring (readout keys)
@@ -551,7 +563,7 @@ let PICKABLES = [];
 let connLines = [];
 let allChords = []; // every attention chord (tunnel + readouts), for styling
 let inputInfo, embedInfo, tokensInfo, xfInfo, memInfo,
-  actorReadoutInfo, actorInfo, criticInfo, outputInfo;
+  readoutInfo, actorInfo, pointerInfo, outputInfo, criticVInfo, criticAuxInfo;
 
 function group(name) {
   if (!stageGroups[name]) {
@@ -618,6 +630,7 @@ function disposeScene() {
   labelRegistry.length = 0;
   flowState = null;
   hovered = null;
+  selectedQuery = null;
 }
 
 // ---- Connection emphasis -------------------------------------------------
@@ -627,6 +640,13 @@ function disposeScene() {
 let emphasize = false;
 // Per-head visibility, driven by the H1–H4 chips in the HUD.
 const headOn = new Array(N_HEADS).fill(true);
+// Shared-readout gem selection: clicking a gem reveals its FULL per-head
+// attention fan (and hides its default top-3 chords); null = none selected.
+let selectedQuery = null;
+function selectQuery(q) {
+  selectedQuery = selectedQuery === q ? null : q;
+  styleChords();
+}
 function chordRadius(norm) {
   return emphasize ? 0.06 + Math.pow(norm, 1.15) * 0.62 : 0.035 + norm * 0.18;
 }
@@ -634,6 +654,10 @@ function chordBaseOpacity(norm) {
   return emphasize ? clamp(0.4 + norm * 0.6, 0, 1) : 0.18 + norm * 0.5;
 }
 function chordVisible(c) {
+  // Readout gem fans: a gem's full per-head fan shows only while selected;
+  // its default top-3 (head-averaged) chords hide while the fan is up.
+  if (c.qSel !== undefined && c.qSel !== selectedQuery) return false;
+  if (c.qTop !== undefined && c.qTop === selectedQuery) return false;
   if (c.head !== undefined && !headOn[c.head]) return false;
   return emphasize ? c.norm >= 0.18 : true;
 }
@@ -1266,7 +1290,7 @@ function topPairsHtml(l, k = 5) {
 }
 
 // ============================================================
-// STAGE 5: GRU + MEMORY FEEDBACK (reads the MEMORY token)
+// STAGE 5: GRU + MEMORY FEEDBACK (reads the CONTEXT token in v2)
 // ============================================================
 function buildMemory() {
   const g = group("gru");
@@ -1289,18 +1313,20 @@ function buildMemory() {
 
   const memInMag = vecMag(S.memory.memory_in);
   const memOutMag = vecMag(S.memory.memory_out);
+  const driverIsMemory = S.memory.driver === "memory";
+  const driverName = driverIsMemory ? "memory token" : "context token";
   registerPickable(gru, {
     title: "memory_gru (GRUCell)",
     badge: "share",
-    kv: { "‖memory_in‖": memInMag.toFixed(2), "‖memory_out‖": memOutMag.toFixed(2) },
-    body: `<p>The only true recurrence in the network. memory_out = GRU(<b>memory token</b> after reasoning, memory_in) — the perceiver feeds the GRU the transformer's own "what to remember" slot (the base architecture used the context token and threw this one away).</p>
+    kv: { "‖memory_in‖": memInMag.toFixed(2), "‖memory_out‖": memOutMag.toFixed(2), "driver": driverName },
+    body: `<p>The only true recurrence in the network. memory_out = GRU(<b>${driverName}</b> after reasoning, memory_in) — shared-v2 keeps <code>full</code>'s wiring: the context token, a strong prior at game start, drives the write (the original perceiver used the memory token instead).</p>
       <p>Stored per-player and read back on the next decision step — the curved arc going back to the left is exactly that feedback.</p>`,
   });
 
-  // MEMORY token (index 1) on the final ring → GRU: the changed wiring.
-  const memTokPos = xfInfo.exitPos[1];
+  // Driver token on the final ring → GRU (context @ index 0 in v2).
+  const memTokPos = xfInfo.exitPos[driverIsMemory ? 1 : 0];
   g.add(makeGlowLine(memTokPos.clone(), gru.position.clone(), C.share, 0.6));
-  const wireLab = makeLabel("post-reasoning memory token", "#ffd99c", 0.45);
+  const wireLab = makeLabel(`post-reasoning ${driverName}`, "#ffd99c", 0.45);
   wireLab.position.copy(memTokPos).lerp(gru.position, 0.5).add(new THREE.Vector3(0, 1.2, 0));
   g.add(wireLab);
 
@@ -1339,16 +1365,22 @@ function buildMemory() {
 }
 
 // ============================================================
-// STAGE 6: PERCEIVER READOUTS — the actor's and critic's own
-// learned queries cross-attend over the 19 post-reasoning tokens.
-// No pools, no shared trunk: these two readouts ARE the interface.
+// STAGE 6: SHARED READOUT — ONE set of 16 learned queries (4×4 grid)
+// cross-attends over the 19 post-reasoning tokens and produces the
+// single 256-d `features` vector that BOTH actor and critic consume.
+// Default view: each gem shows only its top-3 attended tokens
+// (head-averaged). Clicking a gem reveals its full per-head fan.
 // ============================================================
-function buildQueryReadout({
-  groupName, attn, colors, gemY, zLane, hubPos, hubLabel, badge, who, vec,
-}) {
-  const g = group(groupName);
-  const nQ = attn[0].length; // (H, M, 19) → M
-  // Head-averaged weight per (query, token), normalized within the readout.
+function buildSharedReadout() {
+  const g = group("readout");
+  const nQ = DATA.dims.n_readout_queries;
+  const attn = S.encoder_readout.attn; // (H, M, 19)
+  const lab = makeStageLabel(
+    `6 · SHARED READOUT · ${nQ} queries × ${N_TOK} tokens`, "#ffc65c");
+  lab.position.set(XS.readout + 2, -9.7, 14);
+  g.add(lab);
+
+  // Head-averaged weight per (query, token), normalized across the readout.
   const w = [];
   let maxW = 0;
   for (let q = 0; q < nQ; q++) {
@@ -1361,100 +1393,118 @@ function buildQueryReadout({
       if (S.tokens_pre_attn.mask[i]) maxW = Math.max(maxW, s);
     }
   }
+  let maxWHead = 0; // separate scale for the per-head fans
+  for (let h = 0; h < N_HEADS; h++) {
+    for (let q = 0; q < nQ; q++) {
+      for (let i = 0; i < N_TOK; i++) {
+        if (S.tokens_pre_attn.mask[i]) maxWHead = Math.max(maxWHead, attn[h][q][i]);
+      }
+    }
+  }
 
-  // Query gems: crystalline octahedra hovering in this network's lane.
+  const hubPos = new THREE.Vector3(XS.hub, RING_CY, 0);
+  const GRID = Math.ceil(Math.sqrt(nQ)); // 4×4 for 16 queries
+  const SPACING = 3.3;
   const gemPositions = [];
+  const gems = [];
   for (let q = 0; q < nQ; q++) {
+    const row = Math.floor(q / GRID), col = q % GRID;
     const gp = new THREE.Vector3(
       XS.readout,
-      gemY + (q - (nQ - 1) / 2) * 3.1,
-      zLane + (q % 2 === 0 ? -0.9 : 0.9),
+      RING_CY + ((GRID - 1) / 2 - row) * SPACING,
+      (col - (GRID - 1) / 2) * SPACING,
     );
     gemPositions.push(gp);
+    const gcolor = readoutGemColor(q);
     const gem = new THREE.Mesh(
-      new THREE.OctahedronGeometry(1.05),
+      new THREE.OctahedronGeometry(0.85),
       new THREE.MeshStandardMaterial({
-        color: colors[q], emissive: colors[q], emissiveIntensity: 0.5,
+        color: gcolor, emissive: gcolor, emissiveIntensity: 0.5,
         metalness: 0.6, roughness: 0.22,
       }),
     );
     gem.position.copy(gp);
-    gem.userData.pulsePhase = q * 1.4;
+    gem.userData.pulsePhase = q * 0.9;
     g.add(gem);
-    const gl2 = makeLabel(`q${q + 1}`, "#e8fff1", 0.42);
-    gl2.position.copy(gp).add(new THREE.Vector3(0, 1.7, 0));
-    g.add(gl2);
+    gems.push(gem);
 
-    // Top attended tokens for the tooltip.
-    const top = w[q]
+    // Ranked attended tokens for the tooltip / info panel.
+    const ranked = w[q]
       .map((v, i) => ({ v, i }))
       .filter(t => S.tokens_pre_attn.mask[t.i])
-      .sort((a, b) => b.v - a.v)
-      .slice(0, 3)
+      .sort((a, b) => b.v - a.v);
+    const top = ranked.slice(0, 3)
       .map(t => `${tokName(t.i)} ${(t.v * 100).toFixed(0)}%`)
       .join(" · ");
     registerPickable(gem, {
-      title: `${who} readout query ${q + 1} / ${nQ}`,
-      badge,
+      title: `shared readout query ${q + 1} / ${nQ}`,
+      badge: "share",
       kv: { "attends most to": top },
-      body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens; the ${nQ} answers are concatenated and projected to ${DATA.dims.d_model}d. Chord brightness = head-averaged attention weight.</p>`,
+      body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens. Only its <b>top-3</b> links are drawn by default — <b>click to expand the full per-head fan</b> (colored by head, H1–H4 chips filter it). Click again to collapse.</p>`,
+      onPick: () => selectQuery(q),
     });
 
-    // Chords from this gem to the tokens it reads (final ring positions).
-    for (let i = 0; i < N_TOK; i++) {
-      if (!S.tokens_pre_attn.mask[i]) continue;
-      const norm = w[q][i] / Math.max(maxW, 1e-6);
-      if (norm < 0.10) continue;
-      const start = xfInfo.exitPos[i].clone();
+    // Default chords: this gem's top-3 attended tokens, head-averaged, amber.
+    for (const t of ranked.slice(0, 3)) {
+      const norm = t.v / Math.max(maxW, 1e-6);
+      const start = xfInfo.exitPos[t.i].clone();
       const mid = start.clone().add(gp).multiplyScalar(0.5);
-      mid.z += zLane * 0.35; // bow the bundle into its own lane
+      mid.z += gp.z * 0.25; // fan gently toward the gem's grid column
       const curve = new THREE.QuadraticBezierCurve3(start, mid, gp.clone());
-      addChord(g, curve, norm, colors[q], groupName, undefined);
+      const c = addChord(g, curve, Math.max(norm, 0.12), gcolor.getHex(), "readout", undefined);
+      c.qTop = q;
+    }
+
+    // Full per-head fan (hidden until the gem is selected): top-4 per head.
+    for (let h = 0; h < N_HEADS; h++) {
+      const rankedH = attn[h][q]
+        .map((v, i) => ({ v, i }))
+        .filter(t => S.tokens_pre_attn.mask[t.i] && t.v / Math.max(maxWHead, 1e-6) >= 0.08)
+        .sort((a, b) => b.v - a.v)
+        .slice(0, 4);
+      for (const t of rankedH) {
+        const norm = t.v / Math.max(maxWHead, 1e-6);
+        const start = xfInfo.exitPos[t.i].clone();
+        const mid = start.clone().add(gp).multiplyScalar(0.5);
+        mid.z += gp.z * 0.25;
+        mid.y += (h - (N_HEADS - 1) / 2) * 0.5; // per-head plane offset
+        const curve = new THREE.QuadraticBezierCurve3(start, mid, gp.clone());
+        const c = addChord(g, curve, norm, HEAD_COLORS[h], "readout", h);
+        c.qSel = q;
+      }
     }
   }
 
-  // Hub: concat(M × d_token) → Linear → d_model.
+  // Features hub: concat(16 × 64) → Linear → LayerNorm → 256-d `features`.
+  const featVec = S.encoder_readout.features;
   const hub = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 3.4, 1.5),
+    new THREE.BoxGeometry(1.7, 4.0, 1.7),
     new THREE.MeshStandardMaterial({
-      color: colors[0], emissive: colors[0], emissiveIntensity: 0.35,
-      metalness: 0.35, roughness: 0.4,
+      color: READOUT_GOLD, emissive: READOUT_GOLD, emissiveIntensity: 0.4,
+      metalness: 0.4, roughness: 0.35,
     }),
   );
   hub.position.copy(hubPos);
   g.add(hub);
-  const hubLab = makeLabel(hubLabel, "#e6ecff", 0.48);
-  hubLab.position.copy(hubPos).add(new THREE.Vector3(0, 2.7, 0));
+  const hubLab = makeLabel(
+    `concat ${nQ}×${DATA.dims.d_token} → Linear+LN → features (${DATA.dims.d_model})`,
+    "#ffe9c4", 0.5);
+  hubLab.position.copy(hubPos).add(new THREE.Vector3(0, 3.0, 0));
   g.add(hubLab);
   registerPickable(hub, {
-    title: `${who} readout_proj`,
-    badge,
-    kv: { "in": `${nQ} × ${DATA.dims.d_token} = ${nQ * DATA.dims.d_token}`, "out": `${DATA.dims.d_model}`, "‖vec‖": vecMag(vec).toFixed(2) },
-    body: `<p>The ${nQ} query answers are flattened and linearly projected to ${DATA.dims.d_model}d — the only thing the ${who.toLowerCase()} sees. The ${who === "Actor" ? "critic has its own separate readout below" : "actor has its own separate readout above"}: same tokens, independent queries, no shared trunk.</p>`,
+    title: "shared readout_proj → features",
+    badge: "share",
+    kv: {
+      "in": `${nQ} × ${DATA.dims.d_token} = ${nQ * DATA.dims.d_token}`,
+      "out": `${DATA.dims.d_model} (LayerNorm-pinned)`,
+      "‖features‖": vecMag(featVec).toFixed(2),
+    },
+    body: `<p>The ${nQ} query answers are flattened and projected to ${DATA.dims.d_model}d, then LayerNorm pins the scale (v2's correction — v1's bare Linear left it floating). This one vector is <b>everything</b> both networks see: the actor's heads and the critic's value + aux stack all read it. Decision-time attention runs once, here in the encoder.</p>`,
   });
   for (const gp of gemPositions) {
-    g.add(makeGlowLine(gp.clone(), hubPos.clone(), colors[0], 0.4));
+    g.add(makeGlowLine(gp.clone(), hubPos.clone(), READOUT_GOLD, 0.22));
   }
-  return { gemPositions, hubPos: hubPos.clone(), gems: g.children.filter(o => o.geometry && o.geometry.type === "OctahedronGeometry") };
-}
-
-function buildActorReadout() {
-  const g = group("rdA");
-  const lab = makeStageLabel("6 · ACTOR READOUT · 4 queries × 19 tokens", "#80ed99");
-  lab.position.set(XS.readout, -9.7, 14);
-  g.add(lab);
-  return buildQueryReadout({
-    groupName: "rdA",
-    attn: S.actor.readout.attn,
-    colors: ACTOR_Q_COLORS,
-    gemY: RING_CY + 10,
-    zLane: 7,
-    hubPos: new THREE.Vector3(XS.readout + 7, RING_CY + 8, 8),
-    hubLabel: `concat 4×${DATA.dims.d_token} → readout_proj → ${DATA.dims.d_model}`,
-    badge: "actor",
-    who: "Actor",
-    vec: S.actor.readout.vec,
-  });
+  return { gemPositions, hubPos: hubPos.clone(), gems };
 }
 
 // ============================================================
@@ -1474,7 +1524,7 @@ function headStyle(isLive) {
 function buildActor() {
   const g = group("actor");
   const lab = makeStageLabel("7 · ACTOR · policy heads", "#80ed99");
-  lab.position.set(XS.actor, -9.7, 18);
+  lab.position.set(XS.actor + 4, -9.7, 18);
   g.add(lab);
 
   const ACTOR_BASE_Y = 12;
@@ -1487,19 +1537,19 @@ function buildActor() {
     metalness: 0.35, roughness: 0.4,
   });
   const adapter = new THREE.Mesh(adapterGeom, adapterMat);
-  adapter.position.set(XS.actor - 4, ACTOR_BASE_Y, 8);
+  adapter.position.set(XS.actor, ACTOR_BASE_Y, 8);
   g.add(adapter);
   const adapterLab = makeLabel("actor_adapter (256→256)", "#cdf5d8", 0.5);
-  adapterLab.position.set(XS.actor - 4, ACTOR_BASE_Y + 2.6, 8);
+  adapterLab.position.set(XS.actor, ACTOR_BASE_Y + 2.6, 8);
   g.add(adapterLab);
   registerPickable(adapter, {
     title: "actor_adapter",
     badge: "actor",
-    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Its input is the actor readout's 256-d projection — the pooled trunk of the old architecture is gone.</p>`,
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Its input is the encoder's shared 256-d <code>features</code> vector — the same one the critic reads. Everything the policy knows arrives through it.</p>`,
   });
 
   g.add(makeGlowLine(
-    actorReadoutInfo.hubPos.clone(),
+    readoutInfo.hubPos.clone(),
     adapter.position,
     C.actor, 0.5,
   ));
@@ -1507,7 +1557,7 @@ function buildActor() {
   // ----- (a) pick head — 2 small balls -----
   const pickStyle = headStyle(live === "pick");
   const pickProbs = softmax(S.actor.pick_logits);
-  const headX = XS.actor + 2;
+  const headX = XS.heads;
   const pickPositions = [
     { name: "PICK", y: ACTOR_BASE_Y + 1.5, z: 13, prob: pickProbs[0], labelDir: 1 },
     { name: "PASS", y: ACTOR_BASE_Y - 1.5, z: 13, prob: pickProbs[1], labelDir: -1 },
@@ -1558,7 +1608,7 @@ function buildActor() {
 
   const callLab = makeLabel(
     `two-tower CALL scorer${callStyle.suffix}`, callStyle.labelColor, 0.5);
-  callLab.position.set(XS.actor + 6, ACTOR_BASE_Y + 8, 6);
+  callLab.position.set(XS.heads + 4, ACTOR_BASE_Y + 8, 6);
   g.add(callLab);
 
   const qNode = new THREE.Mesh(
@@ -1569,14 +1619,37 @@ function buildActor() {
       transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
     }),
   );
-  qNode.position.set(XS.actor + 1, ACTOR_BASE_Y + 5, 6);
+  qNode.position.set(XS.heads - 3, ACTOR_BASE_Y + 5, 6);
   g.add(qNode);
   registerPickable(qNode, {
     title: "two-tower query q = tw_Wg(feat)",
     badge: "actor",
-    body: `<p>64-d query produced from the 256-d actor features. Dot-producted against the projection of every card embedding to score CALL actions.</p>`,
+    body: `<p>${DATA.dims.tw_latent}-d query produced from the ${DATA.dims.d_model}-d actor features (tower 1). Dot-producted against tw_We's projection of every card embedding to score CALL actions.</p>`,
   });
   g.add(makeGlowLine(adapter.position, qNode.position, 0x80ed99, live === "call" ? 0.5 : 0.15));
+
+  // Tower 2: the shared 34-card embedding table, projected by tw_We.
+  const tableNode = new THREE.Mesh(
+    new THREE.BoxGeometry(1.0, 1.8, 0.5),
+    new THREE.MeshStandardMaterial({
+      color: 0xb58bff, emissive: 0xb58bff,
+      emissiveIntensity: 0.35 * callStyle.emissiveBoost,
+      metalness: 0.4, roughness: 0.4,
+      transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
+    }),
+  );
+  tableNode.position.set(XS.heads - 3, ACTOR_BASE_Y + 7.6, 6);
+  g.add(tableNode);
+  const tableLab = makeLabel(`tw_We(card table 34×${DATA.dims.d_card})`, callStyle.labelColor, 0.4);
+  tableLab.position.set(XS.heads - 3, ACTOR_BASE_Y + 9.2, 6);
+  g.add(tableLab);
+  registerPickable(tableNode, {
+    title: "two-tower keys K = tw_We(card_emb)",
+    badge: "actor",
+    kv: { "keys": `34 × ${DATA.dims.tw_latent}` },
+    body: `<p>Tower 2: every row of the shared 34×${DATA.dims.d_card} card embedding table (stage 2, far left) projected to ${DATA.dims.tw_latent}d. Score for a card = q · K[card]ᵀ, so the CALL head inherits everything the embedding learned elsewhere in the network.</p>`,
+  });
+  g.add(makeGlowLine(tableNode.position, qNode.position, 0xb58bff, live === "call" ? 0.35 : 0.12));
 
   const minCS = Math.min(...callableIds.map(cid => cardScores[cid]));
   const maxCS = Math.max(...callableIds.map(cid => cardScores[cid]));
@@ -1584,7 +1657,7 @@ function buildActor() {
     const cid = callableIds[i];
     const s = cardScores[cid];
     const norm = (s - minCS) / Math.max(1e-6, maxCS - minCS);
-    const x = XS.actor + 4 + i * 1.4;
+    const x = XS.heads + i * 1.4;
     const cardGeom = new RoundedBoxGeometry(1.0, 1.5, 0.18, 2, 0.08);
     const ccolor = new THREE.Color().setHSL(0.33, 0.6, 0.3 + norm * 0.4);
     const cardMat = new THREE.MeshStandardMaterial({
@@ -1609,71 +1682,205 @@ function buildActor() {
     });
   }
 
-  // ----- (c) pointer scorer over 8 hand slots -----
-  const ptrStyle = headStyle(live === "pointer");
-  const pointerLab = makeLabel(
-    `pointer scorer · 8 hand slots${ptrStyle.suffix}`, ptrStyle.labelColor, 0.5);
-  pointerLab.position.set(XS.actor + 6, ACTOR_BASE_Y - 3, 6);
-  g.add(pointerLab);
-
-  const pNode = new THREE.Mesh(
-    new THREE.SphereGeometry(0.4, 16, 12),
+  // ----- (c) small scalar heads: partner-basic + play-under -----
+  const pbStyle = headStyle(live === "call");
+  const pbNames = ["ALONE", "JD PARTNER"];
+  for (let i = 0; i < 2; i++) {
+    const chip = new THREE.Mesh(
+      new RoundedBoxGeometry(1.4, 0.8, 0.2, 2, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: 0x5fd9a4, emissive: 0x5fd9a4,
+        emissiveIntensity: 0.25 * pbStyle.emissiveBoost,
+        transparent: pbStyle.opacity < 1, opacity: pbStyle.opacity,
+        roughness: 0.45,
+      }),
+    );
+    chip.position.set(headX + i * 2.2, ACTOR_BASE_Y - 3.2, 11);
+    g.add(chip);
+    const cl = makeLabel(pbNames[i], pbStyle.labelColor, 0.34);
+    cl.position.set(headX + i * 2.2, ACTOR_BASE_Y - 2.3, 11);
+    g.add(cl);
+    registerPickable(chip, {
+      title: `partner_basic_head · ${pbNames[i]}`,
+      badge: "actor",
+      kv: { "logit": S.actor.partner_basic_logits[i].toFixed(3) },
+      body: `<p>Linear(256→2): the two non-card partner options, sharing the softmax with the two-tower CALL scores. Only live in JD-partner mode.</p>`,
+    });
+    g.add(makeGlowLine(adapter.position, chip.position, 0x5fd9a4, 0.12));
+  }
+  const puStyle = headStyle(live === "pointer");
+  const puChip = new THREE.Mesh(
+    new RoundedBoxGeometry(1.4, 0.8, 0.2, 2, 0.08),
     new THREE.MeshStandardMaterial({
       color: 0xb8f0a2, emissive: 0xb8f0a2,
-      emissiveIntensity: 0.6 * ptrStyle.emissiveBoost,
-      transparent: ptrStyle.opacity < 1, opacity: ptrStyle.opacity,
+      emissiveIntensity: 0.25 * puStyle.emissiveBoost,
+      transparent: puStyle.opacity < 1, opacity: puStyle.opacity,
+      roughness: 0.45,
     }),
   );
-  pNode.position.set(XS.actor + 1, ACTOR_BASE_Y - 5, 6);
-  g.add(pNode);
-  registerPickable(pNode, {
-    title: "pointer query (Bahdanau)",
+  puChip.position.set(headX + 4.4, ACTOR_BASE_Y - 3.2, 11);
+  g.add(puChip);
+  const puLab = makeLabel("PLAY UNDER", puStyle.labelColor, 0.34);
+  puLab.position.set(headX + 4.4, ACTOR_BASE_Y - 2.3, 11);
+  g.add(puLab);
+  registerPickable(puChip, {
+    title: "play_under_head",
     badge: "actor",
-    body: `<p>For each hand slot: score = v · tanh( pointer_Wg(feat) + pointer_Wt(token) ). Same scorer drives bury / under / play.</p>`,
+    kv: { "logit": S.actor.play_under_logit.toFixed(3) },
+    body: `<p>Linear(256→1): the one play action that isn't a hand slot — playing the face-down UNDER card. It joins the pointer's slot scores in the play softmax.</p>`,
   });
-  g.add(makeGlowLine(adapter.position, pNode.position, 0xb8f0a2, live === "pointer" ? 0.5 : 0.15));
+  g.add(makeGlowLine(adapter.position, puChip.position, 0xb8f0a2, 0.12));
 
-  const slotScores = S.actor.slot_scores;
+  return { adapter };
+}
+
+// ============================================================
+// STAGE 8: POINTER — Bahdanau scorer over the hand tokens.
+// The 8 post-reasoning hand tokens are re-materialized as a ghost
+// row (tethered to the final ring); each slot's combine node mixes
+// Wg(features-adapter) with Wt(token) through tanh, and pointer_v
+// turns the blend into the score bar above it.
+// ============================================================
+function buildPointer() {
+  const g = group("pointer");
+  const live = liveHead();
+  const st = headStyle(live === "pointer");
+  const lab = makeStageLabel(`8 · POINTER · v·tanh(Wg·feat + Wt·tok)${st.suffix}`, "#b8f0a2");
+  lab.position.set(XS.pointer, -9.7, 12);
+  g.add(lab);
+
+  const PY = 1.5;              // ghost row height
+  const SLOT_DZ = 2.6;
+  const slotZ = (i) => (i - 3.5) * SLOT_DZ;
+  const ptr = S.actor.pointer;
+  const slotScores = ptr.slot_scores;
   const realSlots = handCardIds.map((cid, i) => ({ cid, i })).filter(s => s.cid !== 0);
   const minSlot = Math.min(...realSlots.map(s => slotScores[s.i]));
   const maxSlot = Math.max(...realSlots.map(s => slotScores[s.i]));
+  const maxHid = Math.max(...realSlots.map(s => ptr.hidden_norms[s.i]));
+
+  // Wg node: the situation summary, broadcast to every slot.
+  const gNode = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55, 18, 14),
+    new THREE.MeshStandardMaterial({
+      color: 0xb8f0a2, emissive: 0xb8f0a2,
+      emissiveIntensity: 0.6 * st.emissiveBoost,
+      metalness: 0.4, roughness: 0.3,
+      transparent: st.opacity < 1, opacity: st.opacity,
+    }),
+  );
+  gNode.position.set(XS.pointer - 6, PY + 6.5, 0);
+  g.add(gNode);
+  const gLab = makeLabel(`g = pointer_Wg(feat) · ${DATA.dims.d_model}→${DATA.dims.pointer_hidden}`, st.labelColor, 0.42);
+  gLab.position.set(XS.pointer - 6, PY + 8.1, 0);
+  g.add(gLab);
+  registerPickable(gNode, {
+    title: "pointer_Wg · situation query",
+    badge: "actor",
+    kv: { "‖g‖": ptr.g_norm.toFixed(2) },
+    body: `<p>The actor-adapted features projected to ${DATA.dims.pointer_hidden}d — the "what does this situation want" half of the Bahdanau scorer, broadcast identically to all 8 hand slots.</p>`,
+  });
+  g.add(makeGlowLine(actorInfo.adapter.position.clone(), gNode.position.clone(), 0xb8f0a2, live === "pointer" ? 0.5 : 0.15));
+
+  const combines = [];
   for (let i = 0; i < 8; i++) {
-    const x = XS.actor + 4 + i * 1.1;
     const cid = handCardIds[i];
     const isPad = cid === 0;
-    const norm = isPad ? 0 : (slotScores[i] - minSlot) / Math.max(1e-6, maxSlot - minSlot);
-    const cardGeom = new RoundedBoxGeometry(0.9, 1.3, 0.16, 2, 0.07);
-    const ccolor = isPad ? new THREE.Color(0x223060)
-                         : new THREE.Color().setHSL(0.32, 0.7, 0.25 + norm * 0.45);
-    const cardMat = new THREE.MeshStandardMaterial({
-      color: ccolor, emissive: ccolor,
-      emissiveIntensity: (isPad ? 0.05 : (0.15 + norm * 0.6)) * ptrStyle.emissiveBoost,
-      transparent: isPad || ptrStyle.opacity < 1,
-      opacity: isPad ? 0.35 : ptrStyle.opacity,
-      roughness: 0.45,
-    });
-    const card = new THREE.Mesh(cardGeom, cardMat);
-    card.position.set(x, ACTOR_BASE_Y - 5, 6);
-    g.add(card);
     const code = isPad ? "PAD" : (idToCode[cid] || `id${cid}`);
-    const lab2 = makeLabel(code, isPad ? "#5d6790" : ptrStyle.labelColor, 0.4);
-    lab2.position.set(x, ACTOR_BASE_Y - 3.5, 6);
-    g.add(lab2);
-    if (!isPad) {
-      g.add(makeGlowLine(pNode.position, card.position, 0xb8f0a2,
-        (0.15 + norm * 0.55) * (live === "pointer" ? 1 : 0.35)));
-    }
-    registerPickable(card, {
-      title: isPad ? `slot ${i} · PAD` : `slot ${i} · ${code}`,
-      badge: "actor",
-      kv: { "score": isPad ? "—" : slotScores[i].toFixed(2) },
-      body: isPad
-        ? `<p>Empty hand slot. The pointer score is masked out before softmax.</p>`
-        : `<p>Pointer slot-score is scattered into BURY ${code}, UNDER ${code}, PLAY ${code} action logits via precomputed maps.</p>`,
-    });
-  }
+    const gp = new THREE.Vector3(XS.pointer, PY, slotZ(i));
 
-  return { adapter };
+    // Ghost hand token (tethered to its final-ring position).
+    const ghost = new THREE.Mesh(
+      new THREE.SphereGeometry(isPad ? 0.3 : 0.55, 18, 14),
+      new THREE.MeshStandardMaterial({
+        color: isPad ? C.dim : 0x4cc9f0,
+        emissive: isPad ? C.dim : 0x4cc9f0,
+        emissiveIntensity: isPad ? 0.05 : 0.4 * st.emissiveBoost,
+        metalness: 0.3, roughness: 0.4,
+        transparent: true, opacity: isPad ? 0.15 : Math.min(0.85, st.opacity),
+      }),
+    );
+    ghost.position.copy(gp);
+    g.add(ghost);
+    const isTrump = !isPad && trumpCardCodes.includes(code);
+    const glab = makeLabel(code, isPad ? "#5d6790" : (isTrump ? "#ffe89c" : st.labelColor), 0.4);
+    glab.position.set(XS.pointer + 0.2, PY - 1.3, slotZ(i));
+    g.add(glab);
+    if (!isPad) {
+      // Tether back to the final transformer ring — same token, same state.
+      const src = xfInfo.exitPos[2 + i].clone();
+      const mid = src.clone().add(gp).multiplyScalar(0.5);
+      mid.y -= 4; // duck under the readout grid on the way over
+      const tether = registerConn(
+        makeFatLine(new THREE.QuadraticBezierCurve3(src, mid, gp).getPoints(24),
+          0x4cc9f0, 0.10, 1.0), 0.10);
+      g.add(tether);
+      registerPickable(ghost, {
+        title: `hand token · ${code}${isTrump ? " (trump)" : ""}`,
+        badge: "actor",
+        kv: { "‖Wt·tok‖": ptr.t_norms[i].toFixed(2) },
+        body: `<p>The same post-reasoning ${DATA.dims.d_token}-d hand token from the final transformer ring (the faint tether), re-materialized here. pointer_Wt projects it to ${DATA.dims.pointer_hidden}d — the "what is this card" half of the scorer.</p>`,
+      });
+
+      // tanh-combine node above the ghost token.
+      const hidNorm = ptr.hidden_norms[i] / Math.max(maxHid, 1e-6);
+      const comb = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.5),
+        new THREE.MeshStandardMaterial({
+          color: 0xb8f0a2, emissive: 0xb8f0a2,
+          emissiveIntensity: (0.15 + hidNorm * 0.7) * st.emissiveBoost,
+          metalness: 0.5, roughness: 0.25,
+          transparent: st.opacity < 1, opacity: st.opacity,
+        }),
+      );
+      comb.position.set(XS.pointer, PY + 3.0, slotZ(i));
+      comb.userData.pulsePhase = i * 0.8;
+      g.add(comb);
+      combines.push(comb);
+      registerPickable(comb, {
+        title: `tanh combine · slot ${i} (${code})`,
+        badge: "actor",
+        kv: { "‖tanh(g + t)‖": ptr.hidden_norms[i].toFixed(2), "score": slotScores[i].toFixed(2) },
+        body: `<p>e = tanh(g + Wt·token): the situation query and this card's token added and squashed. pointer_v (the beam upward) reads the blend out as one scalar score.</p>`,
+      });
+      g.add(makeGlowLine(gNode.position.clone(), comb.position.clone(), 0xb8f0a2,
+        (live === "pointer" ? 0.28 : 0.10)));
+      g.add(makeGlowLine(gp.clone(), comb.position.clone(), 0x4cc9f0,
+        (live === "pointer" ? 0.4 : 0.14)));
+
+      // Score bar: v · e, height/heat by within-hand normalized score.
+      const norm = (slotScores[i] - minSlot) / Math.max(1e-6, maxSlot - minSlot);
+      const barH = 0.4 + norm * 3.4;
+      const bcolor = new THREE.Color().setHSL(0.32, 0.7, 0.28 + norm * 0.42);
+      const bar = new THREE.Mesh(
+        new RoundedBoxGeometry(0.85, barH, 0.85, 2, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: bcolor, emissive: bcolor,
+          emissiveIntensity: (0.2 + norm * 0.65) * st.emissiveBoost,
+          transparent: st.opacity < 1, opacity: st.opacity,
+          roughness: 0.4,
+        }),
+      );
+      bar.position.set(XS.pointer, PY + 5.2 + barH / 2, slotZ(i));
+      g.add(bar);
+      const blab = makeLabel(slotScores[i].toFixed(1), st.labelColor, 0.36);
+      blab.position.set(XS.pointer, PY + 5.9 + barH, slotZ(i));
+      g.add(blab);
+      registerPickable(bar, {
+        title: `pointer score · ${code}`,
+        badge: "actor",
+        kv: { "score": slotScores[i].toFixed(3) },
+        body: `<p>This slot's scalar is scattered into the BURY ${code} / UNDER ${code} / PLAY ${code} action logits via precomputed card-id maps — one scorer serves all three phases.</p>`,
+      });
+      g.add(makeGlowLine(comb.position.clone(), new THREE.Vector3(XS.pointer, PY + 5.2, slotZ(i)), bcolor.getHex(),
+        (0.15 + norm * 0.5) * (live === "pointer" ? 1 : 0.35)));
+    }
+  }
+  const vLab = makeLabel(`score = pointer_v · e  (${DATA.dims.pointer_hidden}→1)`, st.labelColor, 0.42);
+  vLab.position.set(XS.pointer, PY + 4.3, -(3.5 * SLOT_DZ) - 3.4);
+  g.add(vLab);
+
+  return { gNode, combines };
 }
 
 // ============================================================
@@ -1681,7 +1888,7 @@ function buildActor() {
 // ============================================================
 function buildOutput() {
   const g = group("output");
-  const lab = makeStageLabel("8 · OUTPUT · π(a | s)", "#ff6b6b");
+  const lab = makeStageLabel("9 · OUTPUT · π(a | s)", "#ff6b6b");
   lab.position.set(XS.output, -9.7, 0);
   g.add(lab);
 
@@ -1733,7 +1940,7 @@ function buildOutput() {
   }
 
   // actor adapter → output bars
-  const adapterPos = new THREE.Vector3(XS.actor - 4, 12, 8);
+  const adapterPos = new THREE.Vector3(XS.actor, 12, 8);
   for (const b of barObjs) {
     g.add(makeGlowLine(adapterPos, b.mesh.position, C.output, 0.2));
   }
@@ -1742,29 +1949,17 @@ function buildOutput() {
 }
 
 // ============================================================
-// STAGE 9: CRITIC — its own readout → value trunk → V(s)
+// STAGE 10: CRITIC VALUE — shared features → deep trunk → V(s)
 // ============================================================
-function buildCritic() {
-  const g = group("critic");
-  const lab = makeStageLabel("9 · CRITIC · readout → value", "#ff9ec7");
-  lab.position.set(XS.critic, -9.7, -18);
+const CRITIC_Y = -2;   // keep the critic lanes above the floor grid at y=-10
+const CRITIC_VZ = -12; // value lane
+const CRITIC_AZ = -24; // aux lane
+
+function buildCriticValue() {
+  const g = group("criticV");
+  const lab = makeStageLabel("10 · CRITIC · features → value", "#ff9ec7");
+  lab.position.set(XS.criticTrunk + 4, -9.7, CRITIC_VZ - 6);
   g.add(lab);
-
-  const CY = -2; // keep the whole critic block above the floor grid at y=-10
-
-  // The critic's own 4-query readout — mirrored below the actor's lane.
-  const readout = buildQueryReadout({
-    groupName: "critic",
-    attn: S.critic.readout_attn,
-    colors: CRITIC_Q_COLORS,
-    gemY: CY,
-    zLane: -7,
-    hubPos: new THREE.Vector3(XS.readout + 7, CY, -8),
-    hubLabel: `concat 4×${DATA.dims.d_token} → readout_proj → ${DATA.dims.d_model}`,
-    badge: "critic",
-    who: "Critic",
-    vec: S.critic.readout_vec,
-  });
 
   // value_trunk box
   const trunk = new THREE.Mesh(
@@ -1774,17 +1969,18 @@ function buildCritic() {
       metalness: 0.35, roughness: 0.4,
     }),
   );
-  trunk.position.set(XS.critic - 3, CY, -8);
+  trunk.position.set(XS.criticTrunk, CRITIC_Y, CRITIC_VZ);
   g.add(trunk);
   const trunkLab = makeLabel("value_trunk (256→256→256)", "#ffd6e8", 0.5);
-  trunkLab.position.set(XS.critic - 3, CY + 2.6, -8);
+  trunkLab.position.set(XS.criticTrunk, CRITIC_Y + 2.6, CRITIC_VZ);
   g.add(trunkLab);
   registerPickable(trunk, {
     title: "value_trunk",
     badge: "critic",
-    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU, fed by the critic's own readout. No auxiliary heads in the perceiver — the value path is all there is, so compare against <code>no-aux</code> as well as <code>full</code>.</p>`,
+    kv: { "‖trunk out‖": S.critic.value_trunk_norm.toFixed(2) },
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU, fed by the <b>same</b> shared features the actor reads. Deep and dedicated so the value head can fit the spread of returns; the aux heads (next stage) branch off a separate shallow adapter.</p>`,
   });
-  g.add(makeGlowLine(readout.hubPos.clone(), trunk.position.clone(), C.critic, 0.5));
+  g.add(makeGlowLine(readoutInfo.hubPos.clone(), trunk.position.clone(), C.critic, 0.5));
 
   // V(s): one signed crystal — green above water, red below.
   const v = S.critic.value;
@@ -1799,10 +1995,10 @@ function buildCritic() {
       flatShading: true,
     }),
   );
-  crystal.position.set(XS.critic + 4, CY, -8);
+  crystal.position.set(XS.criticV, CRITIC_Y, CRITIC_VZ);
   g.add(crystal);
   const vLab = makeLabel(`V(s) = ${v.toFixed(3)}`, v >= 0 ? "#dffbe6" : "#ffd0d0", 0.65);
-  vLab.position.set(XS.critic + 4, CY + 3.1, -8);
+  vLab.position.set(XS.criticV, CRITIC_Y + 3.1, CRITIC_VZ);
   g.add(vLab);
   registerPickable(crystal, {
     title: "value_head · V(s)",
@@ -1812,7 +2008,179 @@ function buildCritic() {
   });
   g.add(makeGlowLine(trunk.position.clone(), crystal.position.clone(), vColor, 0.55));
 
-  return { trunk, crystal, gems: readout.gems, hubPos: readout.hubPos };
+  return { trunk, crystal };
+}
+
+// ============================================================
+// STAGE 11: CRITIC AUX — the training-only prediction stack that
+// shapes the shared features: win / return / secret-partner gauges,
+// per-seat points, and the trump tracker.
+// ============================================================
+function buildCriticAux() {
+  const g = group("criticAux");
+  const aux = S.critic.aux;
+  const lab = makeStageLabel("11 · CRITIC AUX · training-only heads", "#e08cff");
+  lab.position.set(XS.aux + 10, -9.7, CRITIC_AZ - 8);
+  g.add(lab);
+
+  // Shallow critic adapter feeding every aux head.
+  const adapter = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 2.8, 1.5),
+    new THREE.MeshStandardMaterial({
+      color: 0xe08cff, emissive: 0xe08cff, emissiveIntensity: 0.35,
+      metalness: 0.35, roughness: 0.4,
+    }),
+  );
+  adapter.position.set(XS.aux, CRITIC_Y, CRITIC_AZ);
+  g.add(adapter);
+  const adLab = makeLabel("critic_adapter (LN→256→SiLU)", "#f3d9ff", 0.46);
+  adLab.position.set(XS.aux, CRITIC_Y + 2.4, CRITIC_AZ);
+  g.add(adLab);
+  registerPickable(adapter, {
+    title: "critic_adapter",
+    badge: "critic",
+    body: `<p>Shallow shared adapter for the auxiliary tasks. These heads only exist at training time — their gradients flow back through the shared features and readout, forcing the encoder to represent who is winning, where the points sit, and which trump are gone. At play time only V(s) is used.</p>`,
+  });
+  g.add(makeGlowLine(readoutInfo.hubPos.clone(), adapter.position.clone(), 0xe08cff, 0.4));
+
+  // --- three scalar gauges: win / expected return / secret partner ---
+  const gaugeDefs = [
+    { name: "P(win)", val: aux.win_prob, fmt: `${(aux.win_prob * 100).toFixed(0)}%`,
+      color: 0x62e88a, strength: aux.win_prob,
+      title: "win_head", body: `<p>Sigmoid head: probability this seat's side takes the hand. Glow tracks the probability.</p>` },
+    { name: "E[return]", val: aux.expected_return, fmt: aux.expected_return.toFixed(2),
+      color: aux.expected_return >= 0 ? 0x62e88a : 0xff6b6b,
+      strength: clamp(Math.abs(aux.expected_return) / 1.5, 0.1, 1),
+      title: "return_head", body: `<p>Linear head: expected final chip return for this seat.</p>` },
+    { name: "P(secret partner)", val: aux.secret_partner_prob, fmt: `${(aux.secret_partner_prob * 100).toFixed(0)}%`,
+      color: 0xffc65c, strength: aux.secret_partner_prob,
+      title: "secret_partner_head", body: `<p>Sigmoid head: is there a still-unrevealed partner at the table? Tracks the called card's owner staying hidden.</p>` },
+  ];
+  for (let i = 0; i < gaugeDefs.length; i++) {
+    const gd = gaugeDefs[i];
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55 + gd.strength * 0.5, 20, 16),
+      new THREE.MeshStandardMaterial({
+        color: gd.color, emissive: gd.color,
+        emissiveIntensity: 0.2 + gd.strength * 0.6,
+        metalness: 0.4, roughness: 0.3,
+      }),
+    );
+    orb.position.set(XS.aux + 7, CRITIC_Y + 3.2 - i * 3.2, CRITIC_AZ);
+    g.add(orb);
+    const ol = makeLabel(`${gd.name} = ${gd.fmt}`, "#f3d9ff", 0.44);
+    ol.position.set(XS.aux + 7, CRITIC_Y + 4.5 - i * 3.2, CRITIC_AZ);
+    g.add(ol);
+    registerPickable(orb, { title: gd.title, badge: "critic", kv: { [gd.name]: gd.fmt }, body: gd.body });
+    g.add(makeGlowLine(adapter.position.clone(), orb.position.clone(), 0xe08cff, 0.18));
+  }
+
+  // --- per-seat points bars (relative seat order: me, +1 … +4) ---
+  const seatNames = ["me", "+1", "+2", "+3", "+4"];
+  const ptsLab = makeLabel("points_head · predicted points per seat", "#f3d9ff", 0.44);
+  ptsLab.position.set(XS.aux + 14, CRITIC_Y + 6.2, CRITIC_AZ + 1);
+  g.add(ptsLab);
+  for (let i = 0; i < 5; i++) {
+    const pts = aux.points[i];
+    const norm = clamp(pts / 120, 0, 1);
+    const h = 0.3 + norm * 5.2;
+    const pcolor = new THREE.Color().setHSL(0.85, 0.55, 0.35 + norm * 0.3);
+    const bar = new THREE.Mesh(
+      new RoundedBoxGeometry(1.0, h, 1.0, 2, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: pcolor, emissive: pcolor,
+        emissiveIntensity: 0.2 + norm * 0.5,
+        roughness: 0.4,
+      }),
+    );
+    bar.position.set(XS.aux + 14, CRITIC_Y - 1.6 + h / 2, CRITIC_AZ + 5 - i * 2.4);
+    g.add(bar);
+    const bl = makeLabel(`${seatNames[i]} · ${pts.toFixed(0)}`, "#f3d9ff", 0.4);
+    bl.position.set(XS.aux + 14, CRITIC_Y - 0.9 + h, CRITIC_AZ + 5 - i * 2.4);
+    g.add(bl);
+    registerPickable(bar, {
+      title: `points_head · seat ${seatNames[i]}`,
+      badge: "critic",
+      kv: { "predicted points": pts.toFixed(1) },
+      body: `<p>Predicted final card points (0–120) for the seat ${i === 0 ? "making this decision" : `${i} to the left`}. Five bars must implicitly sum to ~120 — a full accounting of where the points will land.</p>`,
+    });
+    g.add(makeGlowLine(adapter.position.clone(), new THREE.Vector3(XS.aux + 14, CRITIC_Y - 1.6, CRITIC_AZ + 5 - i * 2.4), 0xe08cff, 0.12));
+  }
+
+  // --- trump tracker: 14 chips (2×7) + unseen-higher lamp ---
+  const trumpX = XS.aux + 22;
+  const ttLab = makeLabel("trump tracker · P(seen) per trump", "#ffe9c4", 0.46);
+  ttLab.position.set(trumpX, CRITIC_Y + 7.0, CRITIC_AZ + 0.5);
+  g.add(ttLab);
+  const ttNode = new THREE.Mesh(
+    new THREE.BoxGeometry(1.1, 1.1, 1.1),
+    new THREE.MeshStandardMaterial({
+      color: 0xffc65c, emissive: 0xffc65c, emissiveIntensity: 0.35,
+      metalness: 0.4, roughness: 0.4,
+    }),
+  );
+  ttNode.position.set(trumpX - 4, CRITIC_Y + 2, CRITIC_AZ);
+  g.add(ttNode);
+  registerPickable(ttNode, {
+    title: "trump_aux (LN→128→SiLU)",
+    badge: "critic",
+    body: `<p>Dedicated 128-d tower for card counting. Its query is dotted against tw-style keys built from the <b>shared card embedding table</b> (plus a learned per-trump offset) — one logit per trump card.</p>`,
+  });
+  g.add(makeGlowLine(adapter.position.clone(), ttNode.position.clone(), 0xffc65c, 0.25));
+  for (let i = 0; i < trumpCardCodes.length; i++) {
+    const code = trumpCardCodes[i];
+    const p = aux.seen_trump_probs[i];
+    const row = Math.floor(i / 7), col = i % 7;
+    const inHand = handCardCodes.includes(code);
+    const ccolor = new THREE.Color().setHSL(0.11, 0.75, 0.18 + p * 0.45);
+    const chip = new THREE.Mesh(
+      new RoundedBoxGeometry(1.05, 1.5, 0.16, 2, 0.07),
+      new THREE.MeshStandardMaterial({
+        color: ccolor, emissive: ccolor,
+        emissiveIntensity: 0.08 + p * 0.75,
+        roughness: 0.45,
+      }),
+    );
+    chip.position.set(trumpX + col * 1.4, CRITIC_Y + 4.4 - row * 2.1, CRITIC_AZ + 0.5);
+    g.add(chip);
+    const cl = makeLabel(code, p > 0.5 ? "#ffe9c4" : "#5d6790", 0.32);
+    cl.position.set(trumpX + col * 1.4, CRITIC_Y + 5.3 - row * 2.1, CRITIC_AZ + 0.5);
+    g.add(cl);
+    registerPickable(chip, {
+      title: `seen-trump · ${code}`,
+      badge: "critic",
+      kv: { "P(seen/known)": `${(p * 100).toFixed(0)}%`, "in this hand": inHand ? "yes" : "no" },
+      body: `<p>Predicted probability that ${code} is accounted for from this seat's view (in hand, on the table, or already played). Bright = counted, dark = still out there.</p>`,
+    });
+  }
+  g.add(makeGlowLine(ttNode.position.clone(), new THREE.Vector3(trumpX, CRITIC_Y + 3.4, CRITIC_AZ + 0.5), 0xffc65c, 0.3));
+
+  // Unseen-higher lamp: is there a live trump above my best?
+  const uh = aux.unseen_higher_prob;
+  const lampColor = uh > 0.5 ? 0xff6b6b : 0x62e88a;
+  const lamp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5 + uh * 0.4, 18, 14),
+    new THREE.MeshStandardMaterial({
+      color: lampColor, emissive: lampColor,
+      emissiveIntensity: 0.25 + uh * 0.55,
+      metalness: 0.4, roughness: 0.3,
+    }),
+  );
+  lamp.position.set(trumpX + 4.2, CRITIC_Y + 0.4, CRITIC_AZ + 0.5);
+  g.add(lamp);
+  const lampLab = makeLabel(
+    `P(unseen higher trump) = ${(uh * 100).toFixed(0)}%`, "#f3d9ff", 0.42);
+  lampLab.position.set(trumpX + 4.2, CRITIC_Y - 0.9, CRITIC_AZ + 0.5);
+  g.add(lampLab);
+  registerPickable(lamp, {
+    title: "unseen_trump_higher_than_hand_head",
+    badge: "critic",
+    kv: { "P": `${(uh * 100).toFixed(1)}%` },
+    body: `<p>Probability that a trump higher than this seat's best is still unaccounted for. Red = boss trump may be out against you; green = your best trump is the boss.</p>`,
+  });
+  g.add(makeGlowLine(ttNode.position.clone(), lamp.position.clone(), 0xffc65c, 0.2));
+
+  return { adapter };
 }
 
 // ============================================================
@@ -1827,10 +2195,12 @@ function buildScene() {
   tokensInfo = buildTokens();
   xfInfo = buildTransformerTunnel();
   memInfo = buildMemory();
-  actorReadoutInfo = buildActorReadout();
+  readoutInfo = buildSharedReadout();
   actorInfo = buildActor();
+  pointerInfo = buildPointer();
   outputInfo = buildOutput();
-  criticInfo = buildCritic();
+  criticVInfo = buildCriticValue();
+  criticAuxInfo = buildCriticAux();
   // Reflections read best as an accent, not a mirror finish.
   sceneRoot.traverse((o) => {
     if (o.material && o.material.isMeshStandardMaterial) {
@@ -1956,10 +2326,12 @@ const STAGE_GROUPS = {
   xfL3: ["xf", "xf2"],
   xfL4: ["xf", "xf3"],
   gru: [`xf${N_LAYERS - 1}`, "gru"],
-  rdA: [`xf${N_LAYERS - 1}`, "rdA"],
-  actor: ["rdA", "actor"],
-  output: ["actor", "output"],
-  critic: [`xf${N_LAYERS - 1}`, "critic"],
+  readout: [`xf${N_LAYERS - 1}`, "readout"],
+  actor: ["readout", "actor"],
+  pointer: [`xf${N_LAYERS - 1}`, "actor", "pointer"],
+  output: ["actor", "pointer", "output"],
+  criticV: ["readout", "criticV"],
+  criticAux: ["criticV", "criticAux"],
 };
 const chordDimMap = {}; // per-group chord dim factors, read by animate()
 function applyStageDim() {
@@ -2023,13 +2395,13 @@ const xfLayerStage = (l) => ({
 
 const STAGES = [
   {
-    title: "Sheepshead PPO — perceiver forward pass",
+    title: "Sheepshead PPO — perceiver-shared-v2 forward pass",
     label: "intro",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: () => `<p>A live forward pass through the perceiver-architecture network (<code>${DATA.checkpoint}</code>) on a real hand it played against itself (seed ${DATA.seed}).</p>
+    body: () => `<p>A live forward pass through the <code>${DATA.arch}</code> network (<code>${DATA.checkpoint}</code>) on a real hand it played against itself (seed ${DATA.seed}).</p>
       <p><b>${S.label}:</b> ${S.description}</p>
-      <p>Token-centric end to end: embeddings → transformer → two independent cross-attention readouts (actor & critic). No pooling bags, no shared feature trunk.</p>
+      <p>Token-centric with one shared trunk: embeddings → transformer → a single <b>${DATA.dims.n_readout_queries}-query shared readout</b> → one 256-d features vector that the actor's heads <i>and</i> the critic's value + auxiliary stack all consume. No pooling bags.</p>
       <p>Use the <b>decision</b> buttons up top to switch scenarios. Drag to orbit · scroll to zoom · click anything for details · <b>▶ Play tour</b> to walk the architecture.</p>`,
   },
   {
@@ -2050,6 +2422,7 @@ const STAGES = [
       <ul>
         <li>the encoder (here)</li>
         <li>the actor's two-tower CALL scorer (stage 7)</li>
+        <li>the critic's trump tracker (stage 11)</li>
       </ul>`,
   },
   {
@@ -2072,7 +2445,7 @@ const STAGES = [
     badge: "enc",
     cam: { pos: [xfX(1) + 5, RING_CY + 10, 46], target: [xfX(1) + 5, RING_CY, 0] },
     body: () => `<p>${N_LAYERS} reasoning layers, one ring each. Every token rides a straight <i>residual rail</i> through all ${N_LAYERS} rings — each layer only nudges it: self-attention (${N_HEADS} heads — the colored chords), then a position-wise FFN (the lens behind each ring), with residual + LayerNorm after both.</p>
-      <p>This tunnel is the whole encoder now — the per-bag pooling of the old architecture is gone. The tour steps through each layer next.</p>`,
+      <p>This tunnel plus one shared readout (next) is the whole encoder — the per-bag pooling of the old architecture is gone. The tour steps through each layer next.</p>`,
   },
   ...Array.from({ length: N_LAYERS }, (_, l) => xfLayerStage(l)),
   {
@@ -2080,37 +2453,49 @@ const STAGES = [
     label: "gru",
     badge: "share",
     cam: { pos: [XS.gru + 8, 30, 32], target: [(XS.input + XS.gru) / 2, 14, 0] },
-    body: () => `<p>The transformer's own <b>memory token</b> — its "what to remember" slot, which attended over everything during reasoning — feeds the GRU cell, producing the new ${DATA.dims.d_model}-d memory state (‖in‖ ${vecMag(S.memory.memory_in).toFixed(1)} → ‖out‖ ${vecMag(S.memory.memory_out).toFixed(1)}).</p>
-      <p>The base architecture fed the GRU the <i>context</i> token and discarded this one. That state is stored per player and read back on the next decision step — the orange arc going left is exactly this feedback. It's the only true recurrence in the whole network.</p>`,
+    body: () => `<p>The post-reasoning <b>${S.memory.driver} token</b> feeds the GRU cell, producing the new ${DATA.dims.d_model}-d memory state (‖in‖ ${vecMag(S.memory.memory_in).toFixed(1)} → ‖out‖ ${vecMag(S.memory.memory_out).toFixed(1)}).</p>
+      <p>shared-v2 keeps <code>full</code>'s wiring here: the <i>context</i> token — a strong summary prior from the very first decision — drives the write. That state is stored per player and read back on the next decision step; the orange arc going left is exactly this feedback, the only true recurrence in the whole network.</p>`,
   },
   {
-    title: "6 · Actor readout · 4 learned queries",
-    label: "rdA",
-    badge: "actor",
-    cam: { pos: [XS.readout + 12, RING_CY + 14, 32], target: [XS.readout - 5, RING_CY + 6, 3] },
-    body: () => `<p>The actor's <b>only</b> input: 4 learned query gems cross-attend (${N_HEADS} heads) over the 19 post-reasoning tokens. The 4 answers are concatenated (4×${DATA.dims.d_token} = ${4 * DATA.dims.d_token}) and projected to ${DATA.dims.d_model}d.</p>
-      <p>Chord brightness = head-averaged attention. Hover a gem to see what it reads. There is no pooled trunk behind this — if the policy needs a card-level fact, a query has to go fetch it.</p>`,
+    title: `6 · Shared readout · ${DATA.dims.n_readout_queries} learned queries`,
+    label: "readout",
+    badge: "share",
+    cam: { pos: [XS.readout - 16, RING_CY + 10, 34], target: [XS.readout + 5, RING_CY, 0] },
+    body: () => `<p>ONE readout for the whole network: ${DATA.dims.n_readout_queries} learned query gems (the 4×4 grid) cross-attend (${N_HEADS} heads) over the 19 post-reasoning tokens — ${DATA.dims.n_readout_queries}×${N_HEADS} = ${DATA.dims.n_readout_queries * N_HEADS} attention distributions, channel parity with <code>full</code>'s four pools. The answers are concatenated (${DATA.dims.n_readout_queries}×${DATA.dims.d_token}) and projected + LayerNormed to the ${DATA.dims.d_model}-d <b>features</b> vector.</p>
+      <p>Each gem shows only its <b>top-3</b> links — <b>click a gem</b> to expand its full per-head fan (H1–H4 chips filter it; click again to collapse). Actor and critic both read the features hub: decision-time attention runs once, here.</p>`,
   },
   {
     title: "7 · Actor heads",
     label: "actor",
     badge: "actor",
-    cam: { pos: [XS.actor + 14, 18, 28], target: [XS.actor + 4, 12, 6] },
+    cam: { pos: [XS.actor + 16, 19, 30], target: [XS.heads + 1, 12, 7] },
     body: () => {
       const live = liveHead();
       const liveName = { pick: "pick_head", call: "two-tower CALL scorer", pointer: "pointer scorer" }[live];
-      return `<p>The readout flows through the actor adapter, then splits into 4 heads:</p>
+      return `<p>The shared features flow through the actor adapter, then split into the policy heads:</p>
       <ul>
         <li><b>pick_head</b> · PICK vs PASS${live === "pick" ? " ← <b>live</b>" : ""}</li>
         <li><b>partner_basic_head</b> · ALONE / JD PARTNER (JD mode only)</li>
-        <li><b>two-tower CALL scorer</b> · query · card-embedding key per callable card${live === "call" ? " ← <b>live</b>" : ""}</li>
-        <li><b>pointer scorer</b> · scalar per hand slot (bury / under / play)${live === "pointer" ? " ← <b>live</b>" : ""}</li>
+        <li><b>two-tower CALL scorer</b> · tw_Wg(feat) · tw_We(card emb) per callable card${live === "call" ? " ← <b>live</b>" : ""}</li>
+        <li><b>play_under_head</b> · the one non-slot play action</li>
+        <li><b>pointer scorer</b> · next stage${live === "pointer" ? " ← <b>live</b>" : ""}</li>
       </ul>
-      <p>For this decision the <b>${liveName}</b> is the head that matters — the others are dimmed. The pointer scorer still reads the post-reasoning hand tokens directly, and the two-tower scorer reuses the card embedding table.</p>`;
+      <p>For this decision the <b>${liveName}</b> is the head that matters — the others are dimmed. The two-tower scorer reuses the shared card embedding table (purple block above the query node).</p>`;
     },
   },
   {
-    title: "8 · Output · π(a | s)",
+    title: "8 · Pointer over hand tokens",
+    label: "pointer",
+    badge: "actor",
+    cam: { pos: [XS.pointer + 16, 12, 24], target: [XS.pointer - 2, 4.5, 0] },
+    body: () => {
+      const live = liveHead() === "pointer";
+      return `<p>The bury / under / play decisions are a <b>pointer</b>: for each hand slot, score = v · tanh( Wg·feat + Wt·token ).${live ? " ← <b>live head</b> for this decision" : " (idle here)"}</p>
+      <p>The blue spheres are the <i>same</i> post-reasoning hand tokens from the final transformer ring (faint tethers) — the pointer reads cards at token level, conditioned by the situation query <b>g</b> broadcast from the left. Each slot's spinning combine node glows with how hard tanh(g+t) fired; the bar above is its score, scattered into the BURY / UNDER / PLAY logits.</p>`;
+    },
+  },
+  {
+    title: "9 · Output · π(a | s)",
     label: "output",
     badge: "output",
     cam: { pos: [XS.output + 14, 12, 24], target: [XS.output, 4, 0] },
@@ -2119,19 +2504,35 @@ const STAGES = [
       <p>The agent played <b>${S.sample.chosen_action}</b> (✓ bar).</p>`,
   },
   {
-    title: "9 · Critic readout → V(s)",
-    label: "critic",
+    title: "10 · Critic · features → V(s)",
+    label: "criticV",
     badge: "critic",
-    cam: { pos: [XS.critic + 10, -1, -36], target: [XS.readout + 3, 0, -7] },
-    body: () => `<p>The critic mirrors the actor: its <b>own</b> 4 learned queries attend over the <i>same</i> 19 tokens — independent parameters, no shared trunk — then a deep value trunk produces <b>V(s) = ${S.critic.value.toFixed(3)}</b>.</p>
-      <p>No auxiliary heads in the perceiver (no win/points/trump-tracker predictions): the value path is the critic, full stop.</p>`,
+    cam: { pos: [XS.criticTrunk + 8, 3, CRITIC_VZ - 26], target: [XS.criticTrunk + 5, -1, CRITIC_VZ] },
+    body: () => `<p>The critic reads the <i>same</i> shared ${DATA.dims.d_model}-d features as the actor — no separate readout — through a deep dedicated value trunk: <b>V(s) = ${S.critic.value.toFixed(3)}</b>, the baseline for GAE advantages.</p>
+      <p>Because actor and critic share the trunk, everything the auxiliary heads (next stage) teach the features is also directly available to the policy — <code>full</code>'s forcing mechanism, restored on the token-centric base.</p>`,
+  },
+  {
+    title: "11 · Critic aux heads",
+    label: "criticAux",
+    badge: "critic",
+    cam: { pos: [XS.aux + 15, 9, CRITIC_AZ - 32], target: [XS.aux + 14, 0, CRITIC_AZ] },
+    body: () => {
+      const aux = S.critic.aux;
+      return `<p>Training-only prediction heads off a shallow adapter — their gradients sculpt the shared features:</p>
+      <ul>
+        <li><b>win</b> ${(aux.win_prob * 100).toFixed(0)}% · <b>E[return]</b> ${aux.expected_return.toFixed(2)} · <b>secret partner</b> ${(aux.secret_partner_prob * 100).toFixed(0)}%</li>
+        <li><b>points_head</b> · predicted final points per seat (bars)</li>
+        <li><b>trump tracker</b> · P(seen) for all 14 trump (chips) + P(unseen higher trump) = ${(aux.unseen_higher_prob * 100).toFixed(0)}% (lamp)</li>
+      </ul>
+      <p>At play time these are ignored — but the card counting they force into the features is exactly what the pointer and CALL heads read.</p>`;
+    },
   },
   {
     title: "Full architecture",
     label: "overview",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: () => `<p>Zoomed out: observation → embedding table → 19 tokens → ${N_LAYERS}-layer transformer tunnel → memory-token GRU + two independent query readouts → actor heads / value crystal → π(a|s). Drag the scene to explore. Click any object for details. Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
+    body: () => `<p>Zoomed out: observation → embedding table → 19 tokens → ${N_LAYERS}-layer transformer tunnel → context-token GRU + one shared ${DATA.dims.n_readout_queries}-query readout → features hub → actor heads &amp; pointer / critic value + aux stack → π(a|s). Drag the scene to explore. Click any object for details (click a readout gem for its full attention fan). Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
   },
 ];
 
@@ -2344,6 +2745,7 @@ renderer.domElement.addEventListener("click", (e) => {
   if (!hovered) return;
   const info = hovered.userData.pickInfo;
   if (!info) return;
+  if (info.onPick) info.onPick(); // e.g. readout gems toggle their full fan
   els.stage.textContent = "selection";
   els.title.innerHTML = `<span class="badge b-${info.badge}">${info.badge}</span> ${info.title}`;
   let kvHtml = "";
@@ -2389,15 +2791,24 @@ function animate(now) {
     c.mesh.material.opacity =
       Math.min(1, c.baseOpacity * (0.7 + breath * 0.4)) * (chordDimMap[c.group] ?? 1);
   }
-  // Query gems slowly spin and pulse in sync with the chord breathing.
+  // Query gems (and the pointer's combine nodes) slowly spin and pulse in
+  // sync with the chord breathing; the selected gem pulses harder.
   if (!reducedMotion) {
-    for (const info of [actorReadoutInfo, criticInfo]) {
-      const gems = info && info.gems;
-      if (!gems) continue;
-      for (const gem of gems) {
-        gem.rotation.y += dt * 0.5;
+    const gems = readoutInfo ? readoutInfo.gems : null;
+    if (gems) {
+      for (let q = 0; q < gems.length; q++) {
+        const gem = gems[q];
+        gem.rotation.y += dt * (q === selectedQuery ? 1.4 : 0.5);
         const ph = gem.userData.pulsePhase || 0;
-        gem.scale.setScalar(1 + 0.07 * Math.sin(pulseT * 1.3 + ph));
+        const amp = q === selectedQuery ? 0.16 : 0.07;
+        gem.scale.setScalar(1 + amp * Math.sin(pulseT * 1.3 + ph));
+      }
+    }
+    if (pointerInfo && pointerInfo.combines) {
+      for (const node of pointerInfo.combines) {
+        node.rotation.y += dt * 0.5;
+        const ph = node.userData.pulsePhase || 0;
+        node.scale.setScalar(1 + 0.07 * Math.sin(pulseT * 1.3 + ph));
       }
     }
   }

@@ -1,6 +1,6 @@
-"""Play one deterministic hand with a trained perceiver PPO agent and dump
-the forward-pass activations at several decision points to JSON for the 3D
-architecture visualization.
+"""Play one deterministic hand with a trained perceiver-shared-v2 PPO agent
+and dump the forward-pass activations at several decision points to JSON for
+the 3D architecture visualization.
 
 The hand is played in called-ace mode with the same agent in all five seats
 (recurrent memory keyed per seat), so every captured scenario has a genuine
@@ -15,11 +15,13 @@ GRU memory state and trick context. Captured decision types:
 A seed is scanned so the hand contains all five decision types (someone
 picks, calls a partner card, and the hand plays out to completion).
 
-Unlike the old `full`-architecture dump (last-layer head-averaged attention
-only), this captures the whole transformer: per-layer, per-head attention
-maps, per-layer token norms, FFN hidden-activation norms, and the actor's
-and critic's readout cross-attention (learned queries over the 19
-post-reasoning tokens).
+Captured per decision: the whole transformer (per-layer, per-head attention
+maps, per-layer token norms, FFN hidden-activation norms), the encoder's
+SHARED readout cross-attention (16 learned queries x 4 heads over the 19
+post-reasoning tokens -> one 256-d `features` vector both networks consume),
+the actor's opened-up heads (two-tower CALL scores, Bahdanau pointer
+intermediates over the hand tokens), and the critic's value + full auxiliary
+stack (win/return/secret-partner/points and the trump tracker).
 """
 
 import argparse
@@ -35,8 +37,12 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
-from architectures import PerceiverEncoder  # noqa: E402
-from ppo import PerceiverActorNetwork, PerceiverCriticNetwork, load_agent  # noqa: E402
+from architectures import SharedReadoutEncoder  # noqa: E402
+from ppo import (  # noqa: E402
+    MultiHeadRecurrentActorNetwork,
+    RecurrentCriticNetwork,
+    load_agent,
+)
 from sheepshead import (  # noqa: E402
     ACTION_IDS,
     ACTION_LOOKUP,
@@ -47,7 +53,12 @@ from sheepshead import (  # noqa: E402
     Game,
 )
 
-DEFAULT_CHECKPOINT = ROOT / "runs" / "ablate_perceiver_s42" / "best_perceiver.pt"
+DEFAULT_CHECKPOINT = (
+    ROOT
+    / "runs"
+    / "ablate_perceiver-shared-v2_s42"
+    / "perceiver-shared-v2_checkpoint_175000.pt"
+)
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
 ID_TO_CODE = {v: k for k, v in DECK_IDS.items()}
@@ -365,15 +376,18 @@ def capture_forward(agent, state, valid_actions, memory_in):
         blind_tok_out = all_tokens_post[:, 15:17, :]
         bury_tok_out = all_tokens_post[:, 17:19, :]
 
-        # Memory write: the post-reasoning MEMORY token (index 1), not the
-        # context token — the perceiver's changed recurrence wiring.
-        memory_out = enc.memory_gru(memory_tok_out, memory_in)
+        # Memory write: v2 drives the GRU from the post-reasoning CONTEXT
+        # token (index 0, as in `full`); the original perceiver used the
+        # MEMORY token. Honor the encoder's flag so both wirings dump right.
+        driver_idx = 1 if enc.memory_token_driver else 0
+        memory_out = enc.memory_gru(all_tokens_post[:, driver_idx, :], memory_in)
 
-        # ---- Actor: readout cross-attention over the token set ----
-        actor = agent.actor
-        M = actor.readout_n_queries
-        q = actor.readout_query.unsqueeze(0)  # (1, M, d_token)
-        actor_ro_out, actor_ro_w = actor.readout_mha(
+        # ---- Shared encoder readout: one 16-query x 4-head cross-attention
+        # over the token set produces the 256-d `features` vector that BOTH
+        # the actor and the critic consume (no per-network readouts).
+        M = enc.readout_n_queries
+        q = enc.readout_query.unsqueeze(0)  # (1, M, d_token)
+        ro_out, ro_w = enc.readout_mha(
             q,
             all_tokens_post,
             all_tokens_post,
@@ -381,22 +395,29 @@ def capture_forward(agent, state, valid_actions, memory_in):
             need_weights=True,
             average_attn_weights=False,
         )  # (1, M, d_token), (1, H, M, 19)
-        readout = actor.readout_proj(
-            actor_ro_out.reshape(1, M * actor._d_token)
-        )  # (1, d_model)
-        feat = actor.actor_adapter(readout)
+        features = enc.readout_proj(
+            ro_out.reshape(1, M * enc.d_token_dim)
+        )  # (1, d_model); v2 readout_proj = Linear + LayerNorm
+
+        # ---- Actor: adapter + heads on the shared features ----
+        actor = agent.actor
+        feat = actor.actor_adapter(features)
 
         pick_logits = actor.pick_head(feat)  # (1, 2)
         partner_basic = actor.partner_basic_head(feat)  # (1, 2)
         play_under_logit = actor.play_under_head(feat).squeeze(-1)  # (1,)
 
-        # two-tower
+        # two-tower CALL scorer: query from features vs the whole card table
         q_tw = actor.tw_Wg(feat)  # (1, 64)
         K_tw = actor.tw_We(enc.card.weight)  # (34, 64)
         card_scores = torch.matmul(q_tw, K_tw.t())  # (1, 34)
 
-        # pointer
-        slot_scores = actor._score_hand_pointer(feat, hand_tok_out)  # (1, 8)
+        # Pointer over hand slots, opened up so the viz can show the
+        # Bahdanau combine: score_i = v . tanh(Wg(feat) + Wt(token_i))
+        ptr_g = actor.pointer_Wg(feat)  # (1, h)
+        ptr_t = actor.pointer_Wt(hand_tok_out)  # (1, 8, h)
+        ptr_hidden = torch.tanh(ptr_g.unsqueeze(1) + ptr_t)  # (1, 8, h)
+        slot_scores = actor.pointer_v(ptr_hidden).squeeze(-1)  # (1, 8)
 
         # full action logits via the model
         action_mask_t = (
@@ -406,7 +427,7 @@ def capture_forward(agent, state, valid_actions, memory_in):
         )
         probs, full_logits = actor.forward_with_logits(
             {
-                "features": memory_out,  # vestigial for the perceiver actor
+                "features": features,
                 "hand_tokens": hand_tok_out,
                 "all_tokens": all_tokens_post,
                 "all_mask": all_mask,
@@ -416,22 +437,21 @@ def capture_forward(agent, state, valid_actions, memory_in):
             enc.card,
         )
 
-        # ---- Critic: its own readout cross-attention ----
+        # ---- Critic: value trunk + auxiliary stack on the same features ----
         critic = agent.critic
-        Mc = critic.readout_n_queries
-        qc = critic.readout_query.unsqueeze(0)
-        critic_ro_out, critic_ro_w = critic.readout_mha(
-            qc,
-            all_tokens_post,
-            all_tokens_post,
-            key_padding_mask=~all_mask,
-            need_weights=True,
-            average_attn_weights=False,
-        )
-        critic_readout = critic.readout_proj(
-            critic_ro_out.reshape(1, Mc * critic._d_token)
-        )
-        value = critic.value_head(critic.value_trunk(critic_readout)).squeeze(-1)
+        value_feat = critic.value_trunk(features)
+        value = critic.value_head(value_feat).squeeze(-1)
+        aux_feat = critic.critic_adapter(features)
+        win_prob = torch.sigmoid(critic.win_head(aux_feat)).squeeze(-1)
+        expected_return = critic.return_head(aux_feat).squeeze(-1)
+        secret_prob = torch.sigmoid(critic.secret_partner_head(aux_feat)).squeeze(-1)
+        points_pred = torch.clamp(critic.points_head(aux_feat), min=0.0, max=120.0)
+        seen_trump_probs = torch.sigmoid(
+            critic.seen_trump_mask_logits(aux_feat, enc.card)
+        )  # (1, 14)
+        unseen_higher_prob = torch.sigmoid(
+            critic.unseen_trump_higher_than_hand_logits(aux_feat)
+        )  # (1,)
 
     return {
         "tokens_pre_attn": {
@@ -455,27 +475,40 @@ def capture_forward(agent, state, valid_actions, memory_in):
         "memory": {
             "memory_in": tensor_to_py(memory_in[0]),
             "memory_out": tensor_to_py(memory_out[0]),
+            "driver": "memory" if enc.memory_token_driver else "context",
+        },
+        "encoder_readout": {
+            "attn": tensor_to_py(ro_w[0]),  # (H, M, 19)
+            "features": tensor_to_py(features[0]),  # (d_model,)
         },
         "actor": {
-            "readout": {
-                "attn": tensor_to_py(actor_ro_w[0]),  # (H, M, 19)
-                "vec": tensor_to_py(readout[0]),  # (d_model,)
-            },
             "adapter_out": tensor_to_py(feat[0]),
             "pick_logits": tensor_to_py(pick_logits[0]),  # [PICK, PASS]
             "partner_basic_logits": tensor_to_py(partner_basic[0]),
             "play_under_logit": float(play_under_logit.item()),
             "two_tower_q": tensor_to_py(q_tw[0]),
             "card_scores_all": tensor_to_py(card_scores[0]),  # (34,)
-            "slot_scores": tensor_to_py(slot_scores[0]),  # (8,)
+            "pointer": {
+                "g_norm": float(ptr_g[0].norm().item()),
+                "t_norms": ptr_t[0].norm(dim=-1).tolist(),  # (8,)
+                "hidden_norms": ptr_hidden[0].norm(dim=-1).tolist(),  # (8,)
+                "slot_scores": tensor_to_py(slot_scores[0]),  # (8,)
+            },
             "full_probs": tensor_to_py(probs[0]),
             "full_logits": tensor_to_py(full_logits[0]),
             "valid_action_indices": (action_mask_t[0].nonzero().squeeze(-1).tolist()),
         },
         "critic": {
-            "readout_attn": tensor_to_py(critic_ro_w[0]),  # (H, M, 19)
-            "readout_vec": tensor_to_py(critic_readout[0]),
             "value": float(value.item()),
+            "value_trunk_norm": float(value_feat[0].norm().item()),
+            "aux": {
+                "win_prob": float(win_prob.item()),
+                "expected_return": float(expected_return.item()),
+                "secret_partner_prob": float(secret_prob.item()),
+                "points": tensor_to_py(points_pred[0]),  # (5,) relative seats
+                "seen_trump_probs": tensor_to_py(seen_trump_probs[0]),  # (14,)
+                "unseen_higher_prob": float(unseen_higher_prob.item()),
+            },
         },
     }
 
@@ -556,21 +589,25 @@ def main():
         "--checkpoint",
         type=Path,
         default=DEFAULT_CHECKPOINT,
-        help="Perceiver-arch checkpoint to visualize (loaded via ppo.load_agent).",
+        help=(
+            "perceiver-shared-v2-arch checkpoint to visualize "
+            "(loaded via ppo.load_agent)."
+        ),
     )
     args = parser.parse_args()
 
     print(f"Loading checkpoint: {args.checkpoint}")
     agent = load_agent(str(args.checkpoint), load_optimizers=False)
     enc = agent.encoder
-    if not isinstance(enc, PerceiverEncoder):
+    if not isinstance(enc, SharedReadoutEncoder):
         raise SystemExit(
-            f"Checkpoint arch is not a perceiver variant (encoder is "
-            f"{type(enc).__name__}); this dump captures the perceiver "
-            f"forward pass only."
+            f"Checkpoint arch is not a shared-readout perceiver variant "
+            f"(encoder is {type(enc).__name__}); this dump captures the "
+            f"perceiver-shared-v2 forward pass only."
         )
-    assert isinstance(agent.actor, PerceiverActorNetwork)
-    assert isinstance(agent.critic, PerceiverCriticNetwork)
+    assert type(agent.actor) is MultiHeadRecurrentActorNetwork
+    assert type(agent.critic) is RecurrentCriticNetwork
+    assert agent.critic.has_aux_heads, "expected the aux-head critic stack"
     enc.eval()
     agent.actor.eval()
     agent.critic.eval()
@@ -613,7 +650,7 @@ def main():
             if args.checkpoint.resolve().is_relative_to(ROOT)
             else args.checkpoint
         ),
-        "arch": "perceiver",
+        "arch": agent.arch_name,
         "generated": date.today().isoformat(),
         "seed": seed,
         "dims": {
@@ -622,8 +659,10 @@ def main():
             "d_model": enc.d_model,
             "n_layers": n_layers,
             "n_heads": n_heads,
-            "n_actor_queries": agent.actor.readout_n_queries,
-            "n_critic_queries": agent.critic.readout_n_queries,
+            "n_readout_queries": enc.readout_n_queries,
+            "n_readout_heads": enc.readout_mha.num_heads,
+            "pointer_hidden": agent.actor.pointer_hidden,
+            "tw_latent": agent.actor.tw_latent,
         },
         "hand_summary": {
             "picker": int(game.picker),

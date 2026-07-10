@@ -1,18 +1,24 @@
 # PPO architecture 3D visualization
 
 `ppo_architecture_3d.html` is a self-contained, offline three.js walkthrough of
-the **perceiver** network's forward pass: input observation → card embeddings →
-19 tokens → a transformer *tunnel* (one ring per reasoning layer, per-head
-attention chords, FFN lens behind each ring, residual rails carrying each token
-through) → memory-token GRU recurrence → the actor's and critic's independent
-4-query cross-attention readouts → actor heads (pick / two-tower call /
-pointer) → action output, and critic value crystal. There are no pooling bags
-or shared feature trunk — that is the point of the perceiver rung. A
-**Decision** bar switches between five scenarios captured from a single real
-self-played hand (pick, partner call, bury, opening lead, late follow), a
-guided tour steps through the stages (dollying through the tunnel layer by
-layer) with data-flow particle animation, and **H1–H4** chips toggle
-individual attention heads' chords.
+the **perceiver-shared-v2** network's forward pass: input observation → card
+embeddings → 19 tokens → a transformer *tunnel* (one ring per reasoning layer,
+per-head attention chords, FFN lens behind each ring, residual rails carrying
+each token through) → context-token GRU recurrence → ONE **shared 16-query ×
+4-head readout** (a 4×4 gem grid; each gem draws its top-3 attended tokens,
+and clicking a gem expands its full per-head attention fan) → a 256-d
+features hub that both networks consume → the actor's heads (pick / two-tower
+call over the card table / a fully opened-up **pointer stage** where the 8
+post-reasoning hand tokens re-materialize as a ghost row, combine with the
+Wg situation query through per-slot tanh nodes, and emerge as score bars) →
+action output; and, on the critic side, the deep value trunk → V(s) crystal
+plus a dedicated **aux stage** (win / E[return] / secret-partner gauges,
+per-seat points bars, and the 14-chip trump tracker with the unseen-higher
+lamp). A **Decision** bar switches between five scenarios captured from a
+single real self-played hand (pick, partner call, bury, opening lead, late
+follow), a guided tour steps through the 17 stages (dollying through the
+tunnel layer by layer) with data-flow particle animation, and **H1–H4** chips
+toggle individual attention heads' chords (tunnel and readout fans alike).
 
 ## Rebuilding
 
@@ -23,18 +29,22 @@ individual attention heads' chords.
 
 Use the project venv — the system python lacks torch.
 
-- `dump_forward_pass.py` loads a perceiver-arch checkpoint (default
-  `runs/ablate_perceiver_s42/best_perceiver.pt`, override with
-  `--checkpoint`; loaded via `ppo.load_agent` so arch metadata is honored),
-  plays one deterministic hand with the agent in all five seats (per-seat GRU
-  memory), snapshots the five decision points with their pre-decision memory,
-  and re-runs the forward pass manually (mirroring `encoder.py` /
-  `architectures.py`) to capture every intermediate: per-layer **per-head**
-  attention (L×H×19×19), per-layer token norms, FFN hidden-activation norms,
-  and the actor/critic readout cross-attention (H×4×19 each). If the
-  checkpoint passes every hand into a leaster (early/mid training), the seed
-  scan falls back to forcing the last seat's PICK so the call/bury phases
-  exist; the pick-scenario text is marked "forced" when that happens.
+- `dump_forward_pass.py` loads a perceiver-shared-v2-arch checkpoint (default
+  `runs/ablate_perceiver-shared-v2_s42/perceiver-shared-v2_checkpoint_175000.pt`,
+  override with `--checkpoint`; loaded via `ppo.load_agent` so arch metadata
+  is honored), plays one deterministic hand with the agent in all five seats
+  (per-seat GRU memory), snapshots the five decision points with their
+  pre-decision memory, and re-runs the forward pass manually (mirroring
+  `encoder.py` / `architectures.py`) to capture every intermediate: per-layer
+  **per-head** attention (L×H×19×19), per-layer token norms, FFN
+  hidden-activation norms, the shared readout cross-attention (H×16×19) +
+  features vector, the pointer's Bahdanau intermediates (g / per-slot Wt /
+  tanh-hidden norms / slot scores), two-tower card scores, and the critic's
+  value + full aux stack (win / return / secret / per-seat points /
+  seen-trump probabilities / unseen-higher). If the checkpoint passes every
+  hand into a leaster (early/mid training), the seed scan falls back to
+  forcing the last seat's PICK so the call/bury phases exist; the
+  pick-scenario text is marked "forced" when that happens.
 - `build_3d_html.py` splices `ppo_forward_pass.json` and the vendored three.js
   sources into `ppo_3d_template.html` to produce the single ~1.6 MB HTML file.
 
@@ -47,8 +57,8 @@ head / query counts come from its `dims` block), so most changes only touch
 ## Customizing
 
 **Different checkpoint:** pass `--checkpoint path/to/model.pt` (must be a
-perceiver-arch checkpoint — the script refuses others). Re-run the dump
-whenever a better checkpoint lands; the template needs no changes.
+shared-readout perceiver variant — the script refuses others). Re-run the
+dump whenever a better checkpoint lands; the template needs no changes.
 
 **Different hand:** `find_hand()` scans seeds from 0 and keeps the first hand
 containing all five decision types. To force another hand, start the scan past
