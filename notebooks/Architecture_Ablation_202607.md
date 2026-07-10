@@ -1636,6 +1636,15 @@ seed means, `checkpoint_200000`, PANEL-A):**
 supersede all finals-based 200k numbers. shared trails full by 0.159
 both-modes; plain perceiver by 0.241.
 
+**onehot-ff added 2026-07-10** (`panel_a_onehot_ckpt200k_{called,jd}.csv`):
+called −0.242 / jd −0.214 / both-modes **−0.228** vs full −0.214.
+CRN-paired per-seed deltas −0.023 / −0.064 / +0.045 (mean −0.014,
+mixed signs) — the 200k TIE STANDS on the consistent methodology.
+Still open: whether onehot matches full's late acceleration
+(+0.149 own-gain 200k→400k) — needs the 400k extension (operator
+deferred the launch decision to the v2-panel read); the league arm
+remains the decisive test (phase2_onehot.sh, unlaunched).
+
 ## RESOLUTION (2026-07-08, panels landed)
 
 Called-mode, same panel field, CRN-paired (finals re-check reproduced
