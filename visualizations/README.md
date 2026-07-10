@@ -20,6 +20,18 @@ follow), a guided tour steps through the 17 stages (dollying through the
 tunnel layer by layer) with data-flow particle animation, and **H1–H4** chips
 toggle individual attention heads' chords (tunnel and readout fans alike).
 
+A **Network** toggle switches to an analogous 13-stage walkthrough of the
+**oracle critic** (`oracle.py: OracleValueNetwork`, the CTDE privileged
+critic) on the *same* five decision states, in a violet "privileged
+information" identity: full-information observation (all five hands face up,
+gold halo on the secret partner, true blind/bury/under, per-seat points) →
+its own embedding table (zero parameter sharing) → 51 tokens (the familiar
+19 + 32 seat-tinted opponent-hand tokens) → the same-shape 4-layer tunnel at
+larger radius → memory-token GRU (U(h,s) recurrence) → 4-query readout →
+value trunk → U(h,s) crystal. Until the league run produces a trained
+oracle, the dump uses a seeded random init and the UI badges the network
+**untrained** everywhere.
+
 ## Rebuilding
 
 ```sh
@@ -60,6 +72,19 @@ head / query counts come from its `dims` block), so most changes only touch
 shared-readout perceiver variant — the script refuses others). Re-run the
 dump whenever a better checkpoint lands; the template needs no changes.
 
+**Oracle critic:** by default the dump instantiates a fresh
+`OracleValueNetwork()` with `torch.manual_seed(--oracle-seed)` (default
+20260709) — the manual forward replication is asserted `allclose` against
+the module's own `encode_batch`/readout, so every dump doubles as an
+architecture smoke test. The oracle's memory is threaded per seat over the
+same event stream the agent's memory sees (decisions + end-of-trick
+observations, zero-init per hand). Once a league run saves oracle weights,
+pass `--oracle-checkpoint path/to/ckpt.pt` (any checkpoint carrying an
+`oracle_state_dict`, i.e. saved with `--critic-mode oracle`) and the
+untrained badges disappear. Oracle transformer attention is stored sparse
+(top-400 directed `[head, i, j, w]` triples per layer) to keep the JSON
+small; the readout attention (4×4×51) stays dense.
+
 **Different hand:** `find_hand()` scans seeds from 0 and keeps the first hand
 containing all five decision types. To force another hand, start the scan past
 the current winner (e.g. `range(4, max_seeds)`) or hardcode a seed. Any seed
@@ -94,8 +119,9 @@ chosen seed higher or require raising `max_seeds` in `find_hand()`.
 
 To eyeball the built page without a display: copy it to a temp dir, pin a
 scenario/stage by replacing the boot line `showStage(0);` (find it with
-`grep -n "^showStage(0);$"`) with e.g. `switchScenario(2); showStage(9);`,
-then screenshot:
+`grep -n "^showStage(0);$"`) with e.g. `switchScenario(2); showStage(9);`
+— prepend `switchNetwork(1);` to land in the oracle walkthrough (13 stages,
+own index space) — then screenshot:
 
 ```sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \

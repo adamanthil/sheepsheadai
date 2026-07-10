@@ -22,6 +22,16 @@ post-reasoning tokens -> one 256-d `features` vector both networks consume),
 the actor's opened-up heads (two-tower CALL scores, Bahdanau pointer
 intermediates over the hand tokens), and the critic's value + full auxiliary
 stack (win/return/secret-partner/points and the trump tracker).
+
+The dump ALSO captures the ORACLE CRITIC (oracle.py: OracleValueNetwork, the
+CTDE privileged critic) on the same five decision states: its 51-token
+full-information forward pass (per-layer attention stored sparse top-K),
+memory-token GRU recurrence threaded over the same per-seat event stream the
+agent's memory sees, its 4-query readout, and U(h,s). With no trained oracle
+checkpoint yet, the default is a fresh seeded random init (--oracle-seed);
+the manual capture is cross-checked against the module's own encode_batch,
+so the dump doubles as an architecture smoke test. Pass --oracle-checkpoint
+to use a league checkpoint's `oracle_state_dict` once one exists.
 """
 
 import argparse
@@ -38,6 +48,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 from architectures import SharedReadoutEncoder  # noqa: E402
+from oracle import OracleValueNetwork  # noqa: E402
 from ppo import (  # noqa: E402
     MultiHeadRecurrentActorNetwork,
     RecurrentCriticNetwork,
@@ -60,6 +71,13 @@ DEFAULT_CHECKPOINT = (
     / "perceiver-shared-v2_checkpoint_175000.pt"
 )
 OUT_JSON = HERE / "ppo_forward_pass.json"
+
+# Oracle critic (untrained smoke test until the league run produces one).
+ORACLE_INIT_SEED = 20260709
+ORACLE_ATTN_TOPK = 400
+# The oracle runs on CPU end-to-end: 5 captures + ~40 memory advances are
+# trivial, and a fixed device keeps the seeded random init reproducible.
+ORACLE_DEVICE = torch.device("cpu")
 
 ID_TO_CODE = {v: k for k, v in DECK_IDS.items()}
 ID_TO_CODE[0] = "PAD"
@@ -86,6 +104,57 @@ def token_norms(t: torch.Tensor):
     return t[0].norm(dim=-1).tolist()
 
 
+def round4(seq):
+    """Round a flat float sequence to 4 dp (keeps the oracle JSON compact)."""
+    return [round(float(v), 4) for v in seq]
+
+
+def sparse_attn_topk(attn_hnn: torch.Tensor, mask, k=ORACLE_ATTN_TOPK):
+    """Top-k directed attention triples of a (H, N, N) map.
+
+    Returns [[h, i, j, w], ...] sorted by weight descending, restricted to
+    i != j with both tokens live. Dense 4x51x51 maps would add ~2.5 MB per
+    dump; the tunnel only draws the strongest chords anyway.
+    """
+    H, N, _ = attn_hnn.shape
+    live = [i for i in range(N) if mask[i]]
+    triples = []
+    for h in range(H):
+        layer = attn_hnn[h]
+        for i in live:
+            row = layer[i]
+            for j in live:
+                if j != i:
+                    triples.append((float(row[j]), h, i, j))
+    triples.sort(reverse=True)
+    return [[h, i, j, round(w, 4)] for w, h, i, j in triples[:k]]
+
+
+def load_oracle(args):
+    """Instantiate the oracle critic: a league checkpoint's oracle_state_dict
+    when --oracle-checkpoint is given, else a fresh seeded random init."""
+    if args.oracle_checkpoint is not None:
+        ckpt = torch.load(
+            args.oracle_checkpoint, map_location="cpu", weights_only=False
+        )
+        if "oracle_state_dict" not in ckpt:
+            raise SystemExit(
+                f"{args.oracle_checkpoint} has no 'oracle_state_dict' — it was "
+                f"not saved by a --critic-mode oracle trainer."
+            )
+        net = OracleValueNetwork()
+        net.load_state_dict(ckpt["oracle_state_dict"])
+        untrained = False
+    else:
+        # Seed immediately before construction so the init is independent of
+        # whatever RNG the policy load consumed.
+        torch.manual_seed(args.oracle_seed)
+        net = OracleValueNetwork()
+        untrained = True
+    net.to(ORACLE_DEVICE).eval()
+    return net, untrained
+
+
 def classify_decision(action_names, state):
     """Map a decision point to a scenario kind (or None to skip)."""
     if "PICK" in action_names:
@@ -103,7 +172,7 @@ def classify_decision(action_names, state):
     return None
 
 
-def play_hand(agent, seed, force_pick=False):
+def play_hand(agent, seed, force_pick=False, oracle=None):
     """Play one full deterministic hand, snapshotting candidate decisions.
 
     Returns (game, snapshots) where snapshots maps kind -> list of dicts with
@@ -114,16 +183,33 @@ def play_hand(agent, seed, force_pick=False):
     then the call/bury phases never occur). Every captured forward pass is
     still the genuine policy on a real game state; only that one action is
     overridden, and its snapshot is marked "forced".
+
+    With oracle set (an OracleValueNetwork), per-seat oracle memory is
+    threaded over the same event stream the agent's memory sees — each seat's
+    decision states plus its end-of-trick observations, zero-init per hand,
+    matching the training recurrence protocol — and every snapshot gains the
+    decision-time privileged state + pre-decision oracle memory.
     """
     game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=seed)
     agent.reset_recurrent_state()
     snapshots = {k: [] for k in SCENARIO_ORDER}
+    oracle_mem = None
+    if oracle is not None:
+        d_model = oracle.encoder.d_model
+        oracle_mem = {
+            p.position: torch.zeros(1, d_model, device=ORACLE_DEVICE)
+            for p in game.players
+        }
 
     while not game.is_done():
         for player in game.players:
             valid_actions = player.get_valid_action_ids()
             while valid_actions:
                 state = player.get_state_dict()
+                # Privileged state must be captured pre-action (hands shrink).
+                ostate = (
+                    player.get_oracle_state_dict() if oracle is not None else None
+                )
                 names = [ACTION_LOOKUP[a] for a in sorted(valid_actions)]
                 kind = classify_decision(names, state)
                 snap = None
@@ -138,6 +224,12 @@ def play_hand(agent, seed, force_pick=False):
                             player.position
                         ).clone(),
                     }
+                    if oracle is not None:
+                        snap["oracle_state"] = copy.deepcopy(ostate)
+                        # Clone BEFORE the decision advance below.
+                        snap["oracle_memory_in"] = oracle_mem[
+                            player.position
+                        ].clone()
 
                 forced = (
                     force_pick
@@ -153,6 +245,17 @@ def play_hand(agent, seed, force_pick=False):
                         state, valid_actions, player.position, deterministic=True
                     )
                 player.act(action)
+                # Oracle decision event: advance this seat's oracle memory
+                # (forced picks included — the event stream is defined by
+                # decisions, not by who chose the action).
+                if oracle is not None:
+                    with torch.no_grad():
+                        out = oracle.encoder.encode_batch(
+                            [ostate],
+                            memory_in=oracle_mem[player.position],
+                            device=ORACLE_DEVICE,
+                        )
+                    oracle_mem[player.position] = out["memory_out"].detach()
                 if snap is not None:
                     snap["chosen_action"] = ACTION_LOOKUP[action]
                     snapshots[kind].append(snap)
@@ -165,6 +268,14 @@ def play_hand(agent, seed, force_pick=False):
                             seat.get_last_trick_state_dict(),
                             player_id=seat.position,
                         )
+                        if oracle is not None:
+                            with torch.no_grad():
+                                oo = oracle.encoder.encode_batch(
+                                    [seat.get_last_trick_oracle_state_dict()],
+                                    memory_in=oracle_mem[seat.position],
+                                    device=ORACLE_DEVICE,
+                                )
+                            oracle_mem[seat.position] = oo["memory_out"].detach()
     return game, snapshots
 
 
@@ -214,6 +325,48 @@ def find_hand(agent, max_seeds=500):
         if picked is not None:
             return seed, game, picked, True
     raise RuntimeError(f"No seed in [0, {max_seeds}) produced all scenario kinds")
+
+
+def capture_transformer(card_reasoner, tokens, all_mask):
+    """Manually run a TransformerCardReasoning stack, capturing every layer's
+    per-head attention, post-attention/post-FFN token norms, and the FFN's
+    hidden-activation norms at the 128-d bottleneck.
+
+    Both the policy encoder and the oracle encoder inherit the same module
+    lists (attn_layers/ffn_layers/ln_attn/ln_ffn), so one capture loop serves
+    both. Returns (tokens_out, layers) where layers[l]["attn"] is the raw
+    (H, N, N) tensor — callers serialize dense (policy) or sparse (oracle).
+    """
+    attn_mask = ~all_mask
+    layers = []
+    for attn, ffn, ln1, ln2 in zip(
+        card_reasoner.attn_layers,
+        card_reasoner.ffn_layers,
+        card_reasoner.ln_attn,
+        card_reasoner.ln_ffn,
+    ):
+        attn_out, attn_w = attn(
+            tokens,
+            tokens,
+            tokens,
+            key_padding_mask=attn_mask,
+            need_weights=True,
+            average_attn_weights=False,
+        )  # attn_w: (1, H, N, N)
+        tokens = ln1(tokens + attn_out)
+        norms_attn = token_norms(tokens)
+        ffn_hidden = ffn[1](ffn[0](tokens))  # Linear -> SiLU, (1, N, 2*d)
+        ffn_out = ffn[2](ffn_hidden)
+        tokens = ln2(tokens + ffn_out)
+        layers.append(
+            {
+                "attn": attn_w[0],  # (H, N, N) tensor
+                "token_norms_attn": norms_attn,
+                "token_norms_ffn": token_norms(tokens),
+                "ffn_hidden_norms": token_norms(ffn_hidden),
+            }
+        )
+    return tokens, layers
 
 
 def capture_forward(agent, state, valid_actions, memory_in):
@@ -336,39 +489,20 @@ def capture_forward(agent, state, valid_actions, memory_in):
 
         # Run the transformer manually, capturing every layer's per-head
         # attention, post-attention/post-FFN token norms, and the FFN's
-        # 128-d hidden activation norms.
-        tokens = all_tokens_in
-        attn_mask = ~all_mask
-        layers_out = []
-        for attn, ffn, ln1, ln2 in zip(
-            enc.card_reasoner.attn_layers,
-            enc.card_reasoner.ffn_layers,
-            enc.card_reasoner.ln_attn,
-            enc.card_reasoner.ln_ffn,
-        ):
-            attn_out, attn_w = attn(
-                tokens,
-                tokens,
-                tokens,
-                key_padding_mask=attn_mask,
-                need_weights=True,
-                average_attn_weights=False,
-            )  # attn_w: (1, H, 19, 19)
-            tokens = ln1(tokens + attn_out)
-            norms_attn = token_norms(tokens)
-            ffn_hidden = ffn[1](ffn[0](tokens))  # Linear -> SiLU, (1, 19, 2*d)
-            ffn_out = ffn[2](ffn_hidden)
-            tokens = ln2(tokens + ffn_out)
-            layers_out.append(
-                {
-                    "attn": tensor_to_py(attn_w[0]),  # (H, 19, 19)
-                    "token_norms_attn": norms_attn,
-                    "token_norms_ffn": token_norms(tokens),
-                    "ffn_hidden_norms": token_norms(ffn_hidden),
-                }
-            )
-
-        all_tokens_post = tokens
+        # 128-d hidden activation norms. Policy maps stay dense on disk
+        # (19x19 is small).
+        all_tokens_post, cap_layers = capture_transformer(
+            enc.card_reasoner, all_tokens_in, all_mask
+        )
+        layers_out = [
+            {
+                "attn": tensor_to_py(L["attn"]),  # (H, 19, 19)
+                "token_norms_attn": L["token_norms_attn"],
+                "token_norms_ffn": L["token_norms_ffn"],
+                "ffn_hidden_norms": L["ffn_hidden_norms"],
+            }
+            for L in cap_layers
+        ]
         context_out = all_tokens_post[:, 0, :]
         memory_tok_out = all_tokens_post[:, 1, :]
         hand_tok_out = all_tokens_post[:, 2:10, :]
@@ -513,6 +647,252 @@ def capture_forward(agent, state, valid_actions, memory_in):
     }
 
 
+def capture_oracle_forward(oracle, ostate, memory_in):
+    """Manually replicate OracleCriticEncoder.encode_batch (mirrors
+    oracle.py) over the 51-token full-information layout, capturing per-layer
+    attention (serialized sparse top-K), the 4-query readout cross-attention,
+    and U(h,s) — then cross-check every stage against the module's own
+    forward. With an untrained oracle this doubles as the architecture
+    smoke test."""
+    enc = oracle.encoder
+    device = ORACLE_DEVICE
+
+    with torch.no_grad():
+        memory_in = memory_in.view(1, enc.d_model).to(device)
+        batch = [ostate]
+
+        # Context token: base header (normalized) + privileged scalars +
+        # called AND under card embeddings.
+        header_fields = [
+            "partner_mode",
+            "is_leaster",
+            "play_started",
+            "current_trick",
+            "alone_called",
+            "called_under",
+            "picker_rel",
+            "partner_rel",
+            "leader_rel",
+            "picker_position",
+        ]
+        header_cols = [enc._stack_scalar(batch, k) for k in header_fields]
+        header_scalar = torch.cat(header_cols, dim=1).to(device)
+        norm = torch.tensor(
+            [1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
+            dtype=header_scalar.dtype,
+            device=device,
+        )
+        header_scalar_n = header_scalar / norm
+
+        points_rel = (
+            torch.as_tensor(
+                ostate["points_taken_rel"], dtype=torch.float32, device=device
+            ).view(1, 5)
+            / 120.0
+        )
+        secret_rel_raw = torch.tensor(
+            [int(ostate["secret_partner_rel"])], device=device, dtype=torch.long
+        )
+        secret_scalar = secret_rel_raw.float().view(1, 1) / 5.0
+        called_ids = torch.tensor(
+            [int(ostate["called_card_id"])], device=device, dtype=torch.long
+        )
+        under_ids = torch.tensor(
+            [int(ostate["under_card_id"])], device=device, dtype=torch.long
+        )
+        context_tok = enc.context_mlp(
+            torch.cat(
+                [
+                    header_scalar_n,
+                    points_rel,
+                    secret_scalar,
+                    enc.card(called_ids),
+                    enc.card(under_ids),
+                ],
+                dim=1,
+            )
+        )
+        memory_tok = enc.memory_in_proj(memory_in)
+
+        picker_rel_raw = torch.tensor(
+            [int(ostate["picker_rel"])], device=device, dtype=torch.long
+        )
+        partner_rel_raw = torch.tensor(
+            [int(ostate["partner_rel"])], device=device, dtype=torch.long
+        )
+        actor_role_id = (
+            picker_rel_raw.eq(1).long() * 1 + partner_rel_raw.eq(1).long() * 2
+        )
+
+        hand_ids = torch.as_tensor(
+            ostate["hand_ids"], dtype=torch.long, device=device
+        ).view(1, 8)
+        # TRUE blind/bury for every seat — the privileged fields.
+        blind_ids = torch.as_tensor(
+            ostate["blind_ids"], dtype=torch.long, device=device
+        ).view(1, 2)
+        bury_ids = torch.as_tensor(
+            ostate["bury_ids"], dtype=torch.long, device=device
+        ).view(1, 2)
+        trick_card_ids = torch.as_tensor(
+            ostate["trick_card_ids"], dtype=torch.long, device=device
+        ).view(1, 5)
+        trick_is_picker = (
+            torch.as_tensor(ostate["trick_is_picker"], dtype=torch.long, device=device)
+            .view(1, 5)
+            .bool()
+        )
+        trick_is_partner_known = (
+            torch.as_tensor(
+                ostate["trick_is_partner_known"], dtype=torch.long, device=device
+            )
+            .view(1, 5)
+            .bool()
+        )
+        opp_ids = torch.as_tensor(
+            ostate["opp_hand_ids"], dtype=torch.long, device=device
+        ).view(1, 32)
+
+        hand_tok, hand_mask = enc._embed_hand(hand_ids, actor_role_id)
+        blind_tok, blind_mask = enc._embed_simple_bag(blind_ids)
+        bury_tok, bury_mask = enc._embed_simple_bag(bury_ids)
+        trick_tok, trick_mask = enc._embed_trick(
+            trick_card_ids, trick_is_picker, trick_is_partner_known
+        )
+        opp_tok, opp_mask = enc._embed_opp_hands(
+            opp_ids, picker_rel_raw, secret_rel_raw
+        )
+
+        all_tokens_pre = torch.cat(
+            [
+                context_tok.unsqueeze(1),
+                memory_tok.unsqueeze(1),
+                hand_tok,
+                trick_tok,
+                blind_tok,
+                bury_tok,
+                opp_tok,
+            ],
+            dim=1,
+        )  # (1, 51, d_token)
+        ones = torch.ones((1, 1), dtype=torch.bool, device=device)
+        all_mask = torch.cat(
+            [ones, ones, hand_mask, trick_mask, blind_mask, bury_mask, opp_mask],
+            dim=1,
+        )
+        type_ids = torch.cat(
+            [
+                torch.zeros((1, 1), dtype=torch.long, device=device),
+                torch.ones((1, 1), dtype=torch.long, device=device),
+                torch.full((1, 8), 2, dtype=torch.long, device=device),
+                torch.full((1, 5), 3, dtype=torch.long, device=device),
+                torch.full((1, 2), 4, dtype=torch.long, device=device),
+                torch.full((1, 2), 5, dtype=torch.long, device=device),
+                torch.full((1, 32), enc.OPP_TYPE_ID, dtype=torch.long, device=device),
+            ],
+            dim=1,
+        )
+        all_tokens_in = all_tokens_pre + enc.card_type(type_ids)
+
+        tokens_out, cap_layers = capture_transformer(
+            enc.card_reasoner, all_tokens_in, all_mask
+        )
+        # Memory write: the post-reasoning MEMORY token (index 1) — the
+        # oracle keeps the original perceiver wiring.
+        memory_out = enc.memory_gru(tokens_out[:, 1, :], memory_in)
+
+        # Readout re-run with weights (oracle._readout hardcodes
+        # need_weights=False).
+        q = oracle.readout_query.unsqueeze(0)
+        ro_out, ro_w = oracle.readout_mha(
+            q,
+            tokens_out,
+            tokens_out,
+            key_padding_mask=~all_mask,
+            need_weights=True,
+            average_attn_weights=False,
+        )  # (1, M, d_token), (1, H, M, 51)
+        features = oracle.readout_proj(
+            ro_out.reshape(1, oracle.readout_n_queries * oracle._d_token)
+        )
+        value_feat = oracle.value_trunk(features)
+        value = oracle.value_head(value_feat).squeeze(-1)
+
+        # ---- Smoke-test cross-check: the manual replication must match the
+        # module's own forward exactly.
+        ref = enc.encode_batch([ostate], memory_in=memory_in, device=device)
+        assert bool((all_mask == ref["all_mask"]).all()), "oracle mask mismatch"
+        assert torch.allclose(tokens_out, ref["all_tokens"], atol=1e-5), (
+            "oracle capture: post-reasoning tokens diverge from encode_batch"
+        )
+        assert torch.allclose(memory_out, ref["memory_out"], atol=1e-5), (
+            "oracle capture: memory_out diverges from encode_batch"
+        )
+        ref_value = oracle.value_head(
+            oracle.value_trunk(oracle._readout(ref["all_tokens"], ref["all_mask"]))
+        ).squeeze(-1)
+        assert torch.allclose(value, ref_value, atol=1e-5), (
+            "oracle capture: U(h,s) diverges from the module forward"
+        )
+
+    mask_list = all_mask[0].tolist()
+
+    def codes(ids):
+        return [ID_TO_CODE[int(c)] for c in ids if int(c) != 0]
+
+    opp_rows = [[int(c) for c in row] for row in ostate["opp_hand_ids"]]
+    return {
+        "sample": {
+            "opp_hand_ids": opp_rows,
+            "opp_hand_codes": [codes(row) for row in opp_rows],
+            "blind_cards": codes(ostate["blind_ids"]),
+            "bury_cards": codes(ostate["bury_ids"]),
+            "under_card": (
+                ID_TO_CODE[int(ostate["under_card_id"])]
+                if int(ostate["under_card_id"])
+                else None
+            ),
+            "secret_partner_rel": int(ostate["secret_partner_rel"]),
+            "points_taken_rel": [int(p) for p in ostate["points_taken_rel"]],
+            "picker_rel": int(ostate["picker_rel"]),
+            "partner_rel": int(ostate["partner_rel"]),
+        },
+        "tokens_pre": {
+            "norms": round4(all_tokens_pre[0].norm(dim=-1).tolist()),
+            "mask": mask_list,
+        },
+        "transformer": {
+            "layers": [
+                {
+                    "attn_topk": sparse_attn_topk(L["attn"], mask_list),
+                    "k": ORACLE_ATTN_TOPK,
+                    "token_norms_attn": round4(L["token_norms_attn"]),
+                    "token_norms_ffn": round4(L["token_norms_ffn"]),
+                    "ffn_hidden_norms": round4(L["ffn_hidden_norms"]),
+                }
+                for L in cap_layers
+            ]
+        },
+        "memory": {
+            "memory_in": round4(memory_in[0].tolist()),
+            "memory_out": round4(memory_out[0].tolist()),
+            "driver": "memory",
+        },
+        "encoder_readout": {
+            "attn": [
+                [round4(row) for row in per_query]
+                for per_query in ro_w[0].tolist()
+            ],  # (H, M, 51)
+            "features": round4(features[0].tolist()),
+        },
+        "value": {
+            "value": float(value.item()),
+            "value_trunk_norm": float(value_feat[0].norm().item()),
+            "features_norm": float(features[0].norm().item()),
+        },
+    }
+
+
 def describe_scenario(kind, snap, game):
     seat = snap["seat"]
     role = (
@@ -594,6 +974,21 @@ def main():
             "(loaded via ppo.load_agent)."
         ),
     )
+    parser.add_argument(
+        "--oracle-checkpoint",
+        type=Path,
+        default=None,
+        help=(
+            "Checkpoint holding an 'oracle_state_dict' (saved by a "
+            "--critic-mode oracle trainer). Default: fresh random init."
+        ),
+    )
+    parser.add_argument(
+        "--oracle-seed",
+        type=int,
+        default=ORACLE_INIT_SEED,
+        help="torch seed for the random-init oracle (ignored with a checkpoint).",
+    )
     args = parser.parse_args()
 
     print(f"Loading checkpoint: {args.checkpoint}")
@@ -615,12 +1010,36 @@ def main():
     n_layers = len(enc.card_reasoner.attn_layers)
     n_heads = enc.card_reasoner.attn_layers[0].num_heads
 
+    oracle_net, oracle_untrained = load_oracle(args)
+    n_oracle_params = sum(p.numel() for p in oracle_net.parameters())
+    oracle_src = (
+        f"random init (untrained), seed {args.oracle_seed}"
+        if oracle_untrained
+        else str(args.oracle_checkpoint)
+    )
+    print(f"Oracle critic: {oracle_src} · {n_oracle_params:,} params")
+
     print("Scanning seeds for a hand with all five decision types...")
     seed, game, picked, forced_pick = find_hand(agent)
     print(
         f"  seed={seed} picker=seat {game.picker} partner=seat {game.partner} "
         f"called={game.called_card}"
     )
+
+    # Replay the winning hand once with oracle memory threading (the scan
+    # itself stays oracle-free — 500 seeds x 51-token encodes is waste).
+    print("Replaying the hand with oracle-critic memory threading...")
+    game2, snapshots2 = play_hand(
+        agent, seed, force_pick=forced_pick, oracle=oracle_net
+    )
+    picked2 = select_snapshots(game2, snapshots2)
+    assert (
+        picked2 is not None
+        and game2.picker == game.picker
+        and game2.partner == game.partner
+        and game2.called_card == game.called_card
+    ), "oracle replay diverged from the scanned hand"
+    game, picked = game2, picked2
 
     trump_card_ids = [DECK_IDS[c] for c in TRUMP]
     scenarios = []
@@ -633,6 +1052,9 @@ def main():
         payload["label"] = SCENARIO_LABELS[kind]
         payload["description"] = describe_scenario(kind, snap, game)
         payload["sample"] = build_sample_block(kind, snap, game)
+        payload["oracle"] = capture_oracle_forward(
+            oracle_net, snap["oracle_state"], snap["oracle_memory_in"]
+        )
         scenarios.append(payload)
         probs = payload["actor"]["full_probs"]
         top_idx = max(
@@ -641,7 +1063,8 @@ def main():
         print(
             f"  [{kind:6s}] seat {snap['seat']} chose {snap['chosen_action']:12s} "
             f"argmax={ACTIONS[top_idx]} ({probs[top_idx]:.3f}) "
-            f"V={payload['critic']['value']:+.3f}"
+            f"V={payload['critic']['value']:+.3f} "
+            f"U={payload['oracle']['value']['value']:+.3f}"
         )
 
     out = {
@@ -677,6 +1100,40 @@ def main():
             "table": tensor_to_py(enc.card.weight),  # full 34 x d_card
             "min": float(enc.card.weight.min().item()),
             "max": float(enc.card.weight.max().item()),
+        },
+        "oracle": {
+            "untrained": oracle_untrained,
+            "init_seed": args.oracle_seed if oracle_untrained else None,
+            "checkpoint": (
+                None
+                if args.oracle_checkpoint is None
+                else str(
+                    args.oracle_checkpoint.resolve().relative_to(ROOT)
+                    if args.oracle_checkpoint.resolve().is_relative_to(ROOT)
+                    else args.oracle_checkpoint
+                )
+            ),
+            "n_params": n_oracle_params,
+            "dims": {
+                "d_card": oracle_net.encoder.d_card_dim,
+                "d_token": oracle_net.encoder.d_token_dim,
+                "d_model": oracle_net.encoder.d_model,
+                "n_layers": len(oracle_net.encoder.card_reasoner.attn_layers),
+                "n_heads": oracle_net.encoder.card_reasoner.attn_layers[0].num_heads,
+                "n_tokens": 51,
+                "n_readout_queries": oracle_net.readout_n_queries,
+                "n_readout_heads": oracle_net.readout_mha.num_heads,
+                "attn_top_k": ORACLE_ATTN_TOPK,
+            },
+            # The oracle's OWN table — zero parameters shared with the policy.
+            "card_embedding": {
+                "shape": list(oracle_net.encoder.card.weight.shape),
+                "table": [
+                    round4(row) for row in oracle_net.encoder.card.weight.tolist()
+                ],
+                "min": float(oracle_net.encoder.card.weight.min().item()),
+                "max": float(oracle_net.encoder.card.weight.max().item()),
+            },
         },
         "scenarios": scenarios,
         "constants": {

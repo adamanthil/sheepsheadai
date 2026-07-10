@@ -45,13 +45,13 @@
   #title { font-size: 15px; font-weight: 600; }
   #title .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
   .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .controls button, #scenario-bar button {
+  .controls button, #scenario-bar button, #network-bar button {
     background: rgba(20,26,54,0.9);
     border: 1px solid var(--line); color: var(--text);
     padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
     transition: border-color .15s, background .15s;
   }
-  .controls button:hover, #scenario-bar button:hover { border-color: var(--accent); background: rgba(35,45,90,0.95); }
+  .controls button:hover, #scenario-bar button:hover, #network-bar button:hover { border-color: var(--accent); background: rgba(35,45,90,0.95); }
   .controls button.primary {
     background: linear-gradient(135deg, var(--accent), var(--accent-2));
     color: #0b1020; font-weight: 600; border: none;
@@ -59,14 +59,27 @@
   .controls label { color: var(--muted); font-size: 11px; display: flex; gap: 6px; align-items: center; }
   .controls input[type=range] { accent-color: var(--accent); width: 90px; }
 
-  #scenario-bar { display: flex; gap: 8px; align-items: center; }
-  #scenario-bar .scen-head {
+  #scenario-bar, #network-bar { display: flex; gap: 8px; align-items: center; }
+  #scenario-bar .scen-head, #network-bar .scen-head {
     font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
     color: var(--muted); margin-right: 4px;
   }
-  #scenario-bar button.active {
+  #scenario-bar button.active, #network-bar button.active {
     background: linear-gradient(135deg, var(--accent), var(--accent-2));
     color: #0b1020; font-weight: 600; border-color: transparent;
+  }
+  #network-bar button.net-oracle.active {
+    background: linear-gradient(135deg, #8b6cff, #c9b8ff);
+  }
+  .mini-badge {
+    display: inline-block; margin-left: 6px; padding: 1px 6px;
+    border-radius: 8px; font-size: 9px; font-weight: 700;
+    letter-spacing: 0.4px; text-transform: uppercase;
+    background: rgba(255,198,92,0.18); color: #ffc65c;
+    border: 1px solid rgba(255,198,92,0.5);
+  }
+  #network-bar button.net-oracle.active .mini-badge {
+    background: rgba(11,16,32,0.35); color: #0b1020; border-color: rgba(11,16,32,0.4);
   }
 
   #ui-side {
@@ -192,7 +205,7 @@
 
 <div id="ui-top">
   <div class="panel" id="title">
-    Sheepshead PPO <span class="sub">3D · perceiver-shared-v2 forward pass</span>
+    Sheepshead PPO <span class="sub" id="title-sub">3D · perceiver-shared-v2 forward pass</span>
   </div>
   <div class="panel controls">
     <button id="btn-play" class="primary">▶ Play tour</button>
@@ -208,6 +221,11 @@
     <span id="head-chips"><span class="chips-head">heads</span></span>
   </div>
   <div class="panel" id="scenario-bar"></div>
+  <div class="panel" id="network-bar">
+    <span class="scen-head">Network</span>
+    <button id="net-policy" class="active">Policy</button>
+    <button id="net-oracle" class="net-oracle">Oracle critic<span class="mini-badge" id="oracle-badge">untrained</span></button>
+  </div>
 </div>
 
 <div id="ui-side">
@@ -221,19 +239,7 @@
 
 <div class="panel" id="stage-nav"></div>
 
-<div class="panel" id="legend">
-  <div class="row"><span class="swatch" style="background:#b58bff;color:#b58bff"></span>Input / observation</div>
-  <div class="row"><span class="swatch" style="background:#4cc9f0;color:#4cc9f0"></span>Encoder tokens</div>
-  <div class="row">
-    <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
-    Attention heads 1–4
-  </div>
-  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · recurrence</div>
-  <div class="row"><span class="swatch" style="background:#ffc65c;color:#ffc65c"></span>Shared readout → features</div>
-  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor heads + pointer</div>
-  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic value + aux</div>
-  <div class="row"><span class="swatch" style="background:#fffa9e;color:#fffa9e"></span>Active flow / connection</div>
-</div>
+<div class="panel" id="legend"></div>
 
 <div class="panel" id="status">
   <div class="step-line">
@@ -291,8 +297,20 @@ const HEAD_COLORS = [0x4cc9f0, 0x3ee6b0, 0x6f8dff, 0xc77bff];
 // infrastructure, feeding actor and critic alike). Per-gem hue varies
 // slightly by grid position so neighboring gems stay distinguishable.
 const READOUT_GOLD = 0xffc65c;
+// The ORACLE CRITIC renders in a violet/indigo "privileged information"
+// family — instantly distinct from the policy's cyan/amber/green/pink.
+const ORACLE_VIOLET = 0x8b6cff;
+const ORACLE_LIGHT = 0xc9b8ff;
+// One tint per opponent seat (rel +1..+4) for the 32 opp-hand tokens.
+const OPP_SEAT_COLORS = [0x8f7bff, 0xa86ef5, 0xc17bea, 0xd88fdd];
+// The secret partner's seat block pops in warm gold.
+const PARTNER_GOLD = 0xffd166;
 function readoutGemColor(q) {
   const row = Math.floor(q / 4), col = q % 4;
+  if (NETWORK_MODE === 1) {
+    // Oracle: 4 gems in a violet family.
+    return new THREE.Color().setHSL(0.72 + q * 0.012, 0.75, 0.58 + row * 0.03);
+  }
   return new THREE.Color().setHSL(0.085 + col * 0.010, 0.82, 0.50 + row * 0.035);
 }
 
@@ -479,33 +497,114 @@ for (const [code, id] of Object.entries(deckIds)) idToCode[id] = code;
 idToCode[0] = "PAD";
 idToCode[33] = "UNDER";
 
-// Token bank order: context(1), memory(1), hand(8), trick(5), blind(2), bury(2)
-const TOKEN_INFO = [
+// Policy token bank order: context(1), memory(1), hand(8), trick(5),
+// blind(2), bury(2) — 19 tokens.
+const POLICY_TOKEN_INFO = [
   { type: "context", color: 0xf4a261 },
   { type: "memory", color: 0xf4a261 },
 ];
-for (let i = 0; i < 8; i++) TOKEN_INFO.push({ type: "hand", color: 0x4cc9f0, idx: i });
-for (let i = 0; i < 5; i++) TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, idx: i });
-for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "blind", color: 0x88e0e8, idx: i });
-for (let i = 0; i < 2; i++) TOKEN_INFO.push({ type: "bury", color: 0xa6f0c1, idx: i });
+for (let i = 0; i < 8; i++) POLICY_TOKEN_INFO.push({ type: "hand", color: 0x4cc9f0, idx: i });
+for (let i = 0; i < 5; i++) POLICY_TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, idx: i });
+for (let i = 0; i < 2; i++) POLICY_TOKEN_INFO.push({ type: "blind", color: 0x88e0e8, idx: i });
+for (let i = 0; i < 2; i++) POLICY_TOKEN_INFO.push({ type: "bury", color: 0xa6f0c1, idx: i });
+
+// Oracle token bank: the 19 familiar tokens (blind/bury violet-shifted —
+// they carry the TRUE cards here) + 32 opponent-hand tokens in per-seat
+// tints — 51 tokens.
+const ORACLE_TOKEN_INFO = [
+  { type: "context", color: 0xf4a261 },
+  { type: "memory", color: 0xf4a261 },
+];
+for (let i = 0; i < 8; i++) ORACLE_TOKEN_INFO.push({ type: "hand", color: 0x4cc9f0, idx: i });
+for (let i = 0; i < 5; i++) ORACLE_TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, idx: i });
+for (let i = 0; i < 2; i++) ORACLE_TOKEN_INFO.push({ type: "blind", color: 0xb58bff, idx: i });
+for (let i = 0; i < 2; i++) ORACLE_TOKEN_INFO.push({ type: "bury", color: 0x9d7bff, idx: i });
+for (let s = 0; s < 4; s++) {
+  for (let i = 0; i < 8; i++) {
+    ORACLE_TOKEN_INFO.push({ type: "opp", color: OPP_SEAT_COLORS[s], seat: s, idx: i });
+  }
+}
+
+let TOKEN_INFO = POLICY_TOKEN_INFO;
+
+// Scenario-dependent token color: the secret partner's opp block glows gold.
+function tokenColor(i) {
+  const info = TOKEN_INFO[i];
+  if (
+    NETWORK_MODE === 1 && info.type === "opp" && SO
+    && SO.sample.secret_partner_rel >= 2
+    && info.seat === SO.sample.secret_partner_rel - 2
+  ) return PARTNER_GOLD;
+  return info.color;
+}
 
 // ============================================================
 // Scenario state
 // ============================================================
 let scenIdx = 0;
 let S = DATA.scenarios[0];
+let SO = null;          // current scenario's oracle payload (S.oracle)
 let handCardIds = [];   // length 8 with 0 padding
 let handCardCodes = []; // real cards only
+// 0 = policy network walkthrough, 1 = oracle critic walkthrough.
+let NETWORK_MODE = 0;
 
 function setScenarioData(i) {
   scenIdx = i;
   S = DATA.scenarios[i];
+  SO = S.oracle || null;
   handCardIds = S.sample.hand_ids;
   handCardCodes = S.sample.hand_cards;
 }
 setScenarioData(0);
 
-// Which actual card (if any) a token carries.
+// ---- Mode accessors: one place absorbs the policy/oracle schema split ----
+function curDims() { return NETWORK_MODE === 1 ? DATA.oracle.dims : DATA.dims; }
+function curEmbedding() {
+  return NETWORK_MODE === 1 ? DATA.oracle.card_embedding : DATA.card_embedding;
+}
+function curMemory() { return NETWORK_MODE === 1 ? SO.memory : S.memory; }
+function curReadout() {
+  return NETWORK_MODE === 1 ? SO.encoder_readout : S.encoder_readout;
+}
+function curLayers() {
+  return NETWORK_MODE === 1 ? SO.transformer.layers : S.transformer.layers;
+}
+function tokenMask(i) {
+  return NETWORK_MODE === 1
+    ? !!SO.tokens_pre.mask[i]
+    : !!S.tokens_pre_attn.mask[i];
+}
+function tokenPreNorm(i) {
+  if (NETWORK_MODE === 1) return SO.tokens_pre.norms[i];
+  const p = S.tokens_pre_attn;
+  const flat = [p.context, p.memory, ...p.hand, ...p.trick, ...p.blind, ...p.bury];
+  return vecMag(flat[i]);
+}
+// Directed attention triples {h, i, j, w} of layer l — dense policy maps
+// and the oracle's sparse top-K serialization meet here.
+function layerTriples(l) {
+  if (NETWORK_MODE === 1) {
+    return SO.transformer.layers[l].attn_topk.map(
+      ([h, i, j, w]) => ({ h, i, j, w }));
+  }
+  const L = S.transformer.layers[l];
+  const out = [];
+  for (let h = 0; h < N_HEADS; h++) {
+    for (let i = 0; i < N_TOK; i++) {
+      if (!tokenMask(i)) continue;
+      for (let j = 0; j < N_TOK; j++) {
+        if (j === i || !tokenMask(j)) continue;
+        out.push({ h, i, j, w: L.attn[h][i][j] });
+      }
+    }
+  }
+  return out;
+}
+
+// Which actual card (if any) a token carries. The oracle mode reveals the
+// privileged cards (true blind/bury, opponent hands); the policy mode must
+// keep hiding them — gate on NETWORK_MODE, not data presence.
 function tokenCardCode(i) {
   const info = TOKEN_INFO[i];
   if (info.type === "hand") {
@@ -515,6 +614,15 @@ function tokenCardCode(i) {
   if (info.type === "trick") {
     const code = S.sample.trick_card_codes[info.idx];
     return code && code !== "PAD" ? code : null;
+  }
+  if (NETWORK_MODE === 1 && SO) {
+    if (info.type === "opp") {
+      const cid = SO.sample.opp_hand_ids[info.seat][info.idx];
+      const code = idToCode[cid];
+      return cid && code && code !== "PAD" ? code : null;
+    }
+    if (info.type === "blind") return SO.sample.blind_cards[info.idx] || null;
+    if (info.type === "bury") return SO.sample.bury_cards[info.idx] || null;
   }
   return null;
 }
@@ -549,10 +657,25 @@ const XS = {
   criticV: 54,
   aux: 44,         // aux lane (z −24)
 };
-const xfX = (l) => XS.xf0 + l * XS.xfSpacing;      // ring x of layer l
-const XF_EXIT = xfX(N_LAYERS - 1);                 // final ring (readout keys)
-const RING_R = 9;
+// Oracle spine: value-only walkthrough, larger rings, wider spacing. Shares
+// key NAMES with XS so the mode-shared builders read either via XSA.
+const XS_O = {
+  input: -72,
+  embed: -52,
+  tokensPre: -32,
+  xf0: -12,
+  xfSpacing: 12,   // rings at −12, 0, 12, 24
+  gru: 36,
+  readout: 40,     // 2×2 query-gem grid (exit plane sits at x = 33)
+  hub: 50,
+  trunk: 60,
+  value: 70,
+};
+let XSA = XS;                                       // active spine
+const xfX = (l) => XSA.xf0 + l * XSA.xfSpacing;    // ring x of layer l
+let RING_R = 9;    // 14 in oracle mode (51 tokens per ring)
 const RING_CY = 5; // ring center height
+let N_TOK = 19;    // 51 in oracle mode
 
 // ============================================================
 // Rebuildable scene root + registries
@@ -562,8 +685,9 @@ let stageGroups = {};
 let PICKABLES = [];
 let connLines = [];
 let allChords = []; // every attention chord (tunnel + readouts), for styling
-let inputInfo, embedInfo, tokensInfo, xfInfo, memInfo,
-  readoutInfo, actorInfo, pointerInfo, outputInfo, criticVInfo, criticAuxInfo;
+let inputInfo, embedInfo, tokensInfo, xfInfo, memInfo, readoutInfo,
+  actorInfo, pointerInfo, outputInfo, criticVInfo, criticAuxInfo,
+  oracleValueInfo;
 
 function group(name) {
   if (!stageGroups[name]) {
@@ -834,8 +958,12 @@ function buildInputCards() {
 // ============================================================
 function buildEmbeddingTable() {
   const g = group("embed");
-  const lab = makeStageLabel("2 · CARD EMBEDDINGS · (34 × 16)", "#4cc9f0");
-  lab.position.set(XS.embed, -9.7, 0);
+  const lab = makeStageLabel(
+    NETWORK_MODE === 1
+      ? "2 · ORACLE CARD EMBEDDINGS · own (34 × 16)"
+      : "2 · CARD EMBEDDINGS · (34 × 16)",
+    NETWORK_MODE === 1 ? "#c9b8ff" : "#4cc9f0");
+  lab.position.set(XSA.embed, -9.7, 0);
   g.add(lab);
 
   const ROWS = 34, COLS = 16;
@@ -851,6 +979,18 @@ function buildEmbeddingTable() {
   if (S.sample.called_card && deckIds[S.sample.called_card]) {
     usedIds.add(deckIds[S.sample.called_card]);
   }
+  if (NETWORK_MODE === 1 && SO) {
+    // The oracle also embeds every hidden card it sees.
+    for (const row of SO.sample.opp_hand_ids) {
+      for (const cid of row) if (cid) usedIds.add(cid);
+    }
+    for (const code of [...SO.sample.blind_cards, ...SO.sample.bury_cards]) {
+      if (deckIds[code]) usedIds.add(deckIds[code]);
+    }
+    if (SO.sample.under_card && deckIds[SO.sample.under_card]) {
+      usedIds.add(deckIds[SO.sample.under_card]);
+    }
+  }
 
   const geom = new THREE.BoxGeometry(cellW, cellH, 0.25);
   const inst = new THREE.InstancedMesh(geom, new THREE.MeshStandardMaterial({
@@ -861,17 +1001,18 @@ function buildEmbeddingTable() {
   const tempColor = new THREE.Color();
   const dummy = new THREE.Object3D();
 
-  const embMin = DATA.card_embedding.min;
-  const embMax = DATA.card_embedding.max;
+  const emb = curEmbedding();
+  const embMin = emb.min;
+  const embMax = emb.max;
   const embRange = Math.max(1e-6, embMax - embMin);
-  const table = DATA.card_embedding.table;
+  const table = emb.table;
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const i = r * COLS + c;
       const xLocal = (c - COLS / 2) * (cellW + gap) + cellW / 2;
       const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
-      dummy.position.set(XS.embed, yLocal, xLocal); // table standing in YZ plane
+      dummy.position.set(XSA.embed, yLocal, xLocal); // table standing in YZ plane
       dummy.updateMatrix();
       inst.setMatrixAt(i, dummy.matrix);
 
@@ -896,31 +1037,41 @@ function buildEmbeddingTable() {
     const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
     const code = idToCode[r] || `id ${r}`;
     const rowLab = makeLabel(`${code} (row ${r})`, "#ffe89c", 0.5);
-    rowLab.position.set(XS.embed, yLocal, totalW / 2 + 1.4);
+    rowLab.position.set(XSA.embed, yLocal, totalW / 2 + 1.4);
     g.add(rowLab);
     usedRowYs[r] = yLocal;
   }
 
-  // Connections: each input card → its row
-  for (let i = 0; i < handCardCodes.length; i++) {
-    const cid = handCardIds[i];
-    if (!(cid in usedRowYs)) continue;
-    const start = new THREE.Vector3(XS.input + 2, inputInfo.topY - i * inputInfo.spacing, 0);
-    const end = new THREE.Vector3(XS.embed - 0.1, usedRowYs[cid], 0);
-    g.add(makeGlowLine(start, end, C.input, 0.3));
-  }
-  // ... and each on-table card → its row
-  let trickIdx = 0;
-  for (const code of S.sample.trick_card_codes) {
-    if (code === "PAD") continue;
-    const cid = code === "UNDER" ? 33 : deckIds[code];
-    if (cid in usedRowYs) {
-      const start = new THREE.Vector3(
-        XS.input + 2, inputInfo.topY - 0.4 - trickIdx * 1.6, 7);
-      const end = new THREE.Vector3(XS.embed - 0.1, usedRowYs[cid], 0);
-      g.add(makeGlowLine(start, end, C.input, 0.22));
+  // Connections: each input card → its row.
+  if (NETWORK_MODE === 0) {
+    for (let i = 0; i < handCardCodes.length; i++) {
+      const cid = handCardIds[i];
+      if (!(cid in usedRowYs)) continue;
+      const start = new THREE.Vector3(XS.input + 2, inputInfo.topY - i * inputInfo.spacing, 0);
+      const end = new THREE.Vector3(XSA.embed - 0.1, usedRowYs[cid], 0);
+      g.add(makeGlowLine(start, end, C.input, 0.3));
     }
-    trickIdx++;
+    // ... and each on-table card → its row
+    let trickIdx = 0;
+    for (const code of S.sample.trick_card_codes) {
+      if (code === "PAD") continue;
+      const cid = code === "UNDER" ? 33 : deckIds[code];
+      if (cid in usedRowYs) {
+        const start = new THREE.Vector3(
+          XS.input + 2, inputInfo.topY - 0.4 - trickIdx * 1.6, 7);
+        const end = new THREE.Vector3(XSA.embed - 0.1, usedRowYs[cid], 0);
+        g.add(makeGlowLine(start, end, C.input, 0.22));
+      }
+      trickIdx++;
+    }
+  } else {
+    // Oracle: one line per revealed fan (own + 4 opponents) into the table.
+    for (const a of (inputInfo.fanAnchors || [])) {
+      g.add(makeGlowLine(
+        a.clone(),
+        new THREE.Vector3(XSA.embed - 0.1, 0, 0),
+        ORACLE_VIOLET, 0.25));
+    }
   }
 
   // Click-target for the whole table
@@ -928,12 +1079,15 @@ function buildEmbeddingTable() {
     new THREE.BoxGeometry(0.5, totalH + 0.5, totalW + 0.5),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
-  tableProxy.position.set(XS.embed, 0, 0);
+  tableProxy.position.set(XSA.embed, 0, 0);
   g.add(tableProxy);
   registerPickable(tableProxy, {
     title: "nn.Embedding(34, 16)",
     badge: "enc",
-    body: `<p>The card embedding table. 34 rows (PAD, 32 real cards, UNDER token) × 16 dims. Dims 0–3 = suit one-hot · 4–7 = per-suit rank · 8 = points/11 · 9 = UNDER flag · 10–15 = free to learn.</p>
+    body: NETWORK_MODE === 1
+      ? `<p>The ORACLE'S OWN card embedding table — zero parameters are shared with the policy stack (the isolation guarantee: privileged gradients can never shape the actor). Same 34×16 layout and informed init as the policy's table.</p>
+        <p>The highlighted rows are every card the oracle sees this scenario — including all four hidden hands and the true blind/bury.</p>`
+      : `<p>The card embedding table. 34 rows (PAD, 32 real cards, UNDER token) × 16 dims. Dims 0–3 = suit one-hot · 4–7 = per-suit rank · 8 = points/11 · 9 = UNDER flag · 10–15 = free to learn.</p>
       <p>The highlighted rows are the cards this scenario touches (hand, table, called card). The same table is reused by the actor's two-tower CALL scorer, so any update here propagates everywhere.</p>`,
   });
 
@@ -945,37 +1099,26 @@ function buildEmbeddingTable() {
 // ============================================================
 function buildTokens() {
   const g = group("tokens");
-  const lab = makeStageLabel("3 · TOKENIZE · (19 × 64)", "#4cc9f0");
-  lab.position.set(XS.tokensPre, -9.7, 0);
+  const lab = makeStageLabel(
+    `3 · TOKENIZE · (${N_TOK} × ${curDims().d_token})`,
+    NETWORK_MODE === 1 ? "#c9b8ff" : "#4cc9f0");
+  lab.position.set(XSA.tokensPre, -9.7, 0);
   g.add(lab);
 
-  const preTok = S.tokens_pre_attn;
-  const mask = preTok.mask;
-  const tokenVecs = [
-    preTok.context,
-    preTok.memory,
-    ...preTok.hand,
-    ...preTok.trick,
-    ...preTok.blind,
-    ...preTok.bury,
-  ];
-
   const tokenObjs = [];
-  // Column geometry: 19 rows must fit between the floor grid (y = −10,
-  // where the stage label lies) and a reasonable top. Center at +2 with
-  // 1.15 spacing puts the last token (bury[1]) at y ≈ −8.4 — above the
-  // floor even when trick tokens are live.
-  const spacingY = 1.15;
-  const topY = 2 + ((19 - 1) * spacingY) / 2;
-  for (let i = 0; i < 19; i++) {
+
+  // One chip per token — shared between the policy column and the oracle
+  // column + opp grid layouts.
+  const addChip = (i, pos, labelDX, labelScale) => {
     const info = TOKEN_INFO[i];
-    const active = !!mask[i];
-    const mag = vecMag(tokenVecs[i]);
+    const active = tokenMask(i);
+    const mag = tokenPreNorm(i);
+    const dims = NETWORK_MODE === 1 ? [3.0, 0.5, 0.5] : [4.5, 0.6, 0.6];
     // PAD slots collapse to small ghost chips: present, but not clutter.
     const tokGeom = active
-      ? new THREE.BoxGeometry(4.5, 0.6, 0.6)
-      : new THREE.BoxGeometry(1.6, 0.3, 0.3);
-    const color = active ? info.color : C.dim;
+      ? new THREE.BoxGeometry(dims[0], dims[1], dims[2])
+      : new THREE.BoxGeometry(1.4, 0.26, 0.26);
+    const color = active ? tokenColor(i) : C.dim;
     const intensity = active ? 0.35 : 0.05;
     const mat = new THREE.MeshStandardMaterial({
       color, emissive: color, emissiveIntensity: intensity,
@@ -983,62 +1126,97 @@ function buildTokens() {
       transparent: !active, opacity: active ? 1 : 0.18,
     });
     const tok = new THREE.Mesh(tokGeom, mat);
-    const y = topY - i * spacingY;
-    tok.position.set(XS.tokensPre, y, 0);
+    tok.position.copy(pos);
     g.add(tok);
-    tokenObjs.push({ mesh: tok, y, info, active, magnitude: mag, vec: tokenVecs[i] });
+    tokenObjs.push({
+      mesh: tok, y: pos.y, pos: pos.clone(), info, active, magnitude: mag,
+    });
 
     let labText = info.type;
     const code = tokenCardCode(i);
     if (info.type === "hand") labText = `hand[${info.idx}] ${code || "PAD"}`;
     else if (info.type === "trick") labText = `trick[${info.idx}]${code ? " " + code : ""}`;
-    else if (info.type === "blind") labText = `blind[${info.idx}]`;
-    else if (info.type === "bury") labText = `bury[${info.idx}]`;
+    else if (info.type === "blind") labText = `blind[${info.idx}]${code ? " " + code : ""}`;
+    else if (info.type === "bury") labText = `bury[${info.idx}]${code ? " " + code : ""}`;
+    else if (info.type === "opp") labText = code || "PAD";
     if (active) {
-      const tlab = makeLabel(labText, "#cfe9ff", 0.45);
-      tlab.position.set(XS.tokensPre + 3.5, y, 0);
+      const tlab = makeLabel(labText, code ? "#e6dcff" : "#cfe9ff", labelScale);
+      tlab.position.copy(pos).add(new THREE.Vector3(labelDX, 0, 0));
       g.add(tlab);
     }
 
+    const isPartnerTok =
+      NETWORK_MODE === 1 && info.type === "opp" && SO
+      && SO.sample.secret_partner_rel >= 2
+      && info.seat === SO.sample.secret_partner_rel - 2;
     registerPickable(tok, {
       title: `Token ${i}: ${labText}`,
       badge: "enc",
       kv: { "type": info.type, "active": active ? "yes" : "PAD", "‖vec‖": mag.toFixed(2) },
-      body: `<p>One of 19 entity tokens. Built by the type-specific MLP, then has the <code>card_type</code> embedding added in (so attention can tell context vs memory vs hand-card etc.).</p>
+      body: info.type === "opp"
+        ? `<p>A HIDDEN card in relative seat +${info.seat + 1}'s hand${isPartnerTok ? " — <b>the secret partner's seat</b> (gold)" : ""}. The oracle sees it; the acting player never does. Built from card ⊕ seat ⊕ role embeddings → MLP.</p>`
+        : `<p>One of ${N_TOK} entity tokens. Built by the type-specific MLP, then has the <code>card_type</code> embedding added in (so attention can tell context vs memory vs hand-card etc.).</p>
         <p>Rides its residual rail through ${N_LAYERS} transformer layers next.</p>`,
     });
+  };
+
+  if (NETWORK_MODE === 0) {
+    // Column geometry: 19 rows must fit between the floor grid (y = −10,
+    // where the stage label lies) and a reasonable top. Center at +2 with
+    // 1.15 spacing puts the last token (bury[1]) at y ≈ −8.4 — above the
+    // floor even when trick tokens are live.
+    const spacingY = 1.15;
+    const topY = 2 + ((19 - 1) * spacingY) / 2;
+    for (let i = 0; i < N_TOK; i++) {
+      addChip(i, new THREE.Vector3(XSA.tokensPre, topY - i * spacingY, 0), 3.5, 0.45);
+    }
+  } else {
+    // Oracle: the 19 familiar tokens in a column, plus the 32 opponent-hand
+    // tokens as a 4-column grid (one column per hidden seat) beside it.
+    const spacingY = 1.05;
+    const topY = 2 + ((19 - 1) * spacingY) / 2;
+    for (let i = 0; i < 19; i++) {
+      addChip(i, new THREE.Vector3(XSA.tokensPre, topY - i * spacingY, -8), 3.0, 0.4);
+    }
+    const gSpacing = 1.3;
+    const gTop = 2 + ((8 - 1) * gSpacing) / 2;
+    for (let s = 0; s < 4; s++) {
+      const z = -2 + s * 3.4;
+      const isPartnerSeat = SO && SO.sample.secret_partner_rel >= 2
+        && s === SO.sample.secret_partner_rel - 2;
+      const head = makeLabel(
+        `seat +${s + 1}${isPartnerSeat ? " ★ partner" : ""}`,
+        isPartnerSeat ? "#ffe1a3" : "#d9ccff", 0.42);
+      head.position.set(XSA.tokensPre, gTop + 1.5, z);
+      g.add(head);
+      for (let k = 0; k < 8; k++) {
+        const i = 19 + s * 8 + k;
+        addChip(i, new THREE.Vector3(XSA.tokensPre, gTop - k * gSpacing, z), 2.0, 0.34);
+      }
+    }
   }
 
   // context ← header chip
-  const ctxStart = new THREE.Vector3(XS.input + 2, inputInfo.chipY, 0);
-  const ctxEnd = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[0].y, 0);
+  const ctxStart = new THREE.Vector3(XSA.input + 2, inputInfo.chipY, 0);
+  const ctxEnd = tokenObjs[0].pos.clone().add(new THREE.Vector3(-2.3, 0, 0));
   g.add(makeGlowLine(ctxStart, ctxEnd, C.share, 0.4));
   // memory chip → token 1
-  const memStart = new THREE.Vector3(XS.input + 2, inputInfo.chipY - 2.2, 0);
-  const memEnd = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[1].y, 0);
+  const memStart = new THREE.Vector3(XSA.input + 2, inputInfo.chipY - 2.2, 0);
+  const memEnd = tokenObjs[1].pos.clone().add(new THREE.Vector3(-2.3, 0, 0));
   g.add(makeGlowLine(memStart, memEnd, C.share, 0.4));
 
-  // For each hand card, line from its embedding row → its hand token
-  const handTokenStart = 2;
-  for (let i = 0; i < handCardCodes.length; i++) {
-    const cid = handCardIds[i];
-    const rowY = embedInfo.usedRowYs[cid];
-    if (rowY === undefined) continue;
-    const start = new THREE.Vector3(XS.embed + 0.3, rowY, 0);
-    const end = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[handTokenStart + i].y, 0);
-    g.add(makeGlowLine(start, end, C.enc, 0.35));
-  }
-  // ... and for each on-table card, row → trick token
-  const trickTokenStart = 10;
-  for (let ti = 0; ti < 5; ti++) {
-    const code = S.sample.trick_card_codes[ti];
-    if (code === "PAD") continue;
+  // Card-bearing tokens ← their embedding rows (hand + trick in policy;
+  // plus true blind/bury and all opp cards in oracle mode, where
+  // tokenCardCode reveals them).
+  for (let i = 0; i < N_TOK; i++) {
+    const code = tokenCardCode(i);
+    if (!code) continue;
     const cid = code === "UNDER" ? 33 : deckIds[code];
     const rowY = embedInfo.usedRowYs[cid];
     if (rowY === undefined) continue;
-    const start = new THREE.Vector3(XS.embed + 0.3, rowY, 0);
-    const end = new THREE.Vector3(XS.tokensPre - 2.3, tokenObjs[trickTokenStart + ti].y, 0);
-    g.add(makeGlowLine(start, end, C.enc, 0.3));
+    const start = new THREE.Vector3(XSA.embed + 0.3, rowY, 0);
+    const end = tokenObjs[i].pos.clone().add(new THREE.Vector3(-2.3, 0, 0));
+    g.add(makeGlowLine(start, end, C.enc, NETWORK_MODE === 1 ? 0.16 : 0.32));
   }
 
   return { tokenObjs };
@@ -1049,7 +1227,6 @@ function buildTokens() {
 // per-head attention chords inside each ring, FFN lens after it,
 // straight residual-stream rails carrying each token through.
 // ============================================================
-const N_TOK = 19;
 function ringPoint(l, i) {
   const theta = (i / N_TOK) * Math.PI * 2 - Math.PI / 2;
   return new THREE.Vector3(
@@ -1069,11 +1246,12 @@ function tokName(i) {
 function buildTransformerTunnel() {
   const g = group("xf"); // rails + entry lines + shared labels
   const lab = makeStageLabel(
-    `4 · TRANSFORMER · ${N_LAYERS} layers × ${N_HEADS} heads`, "#4cc9f0");
-  lab.position.set(xfX(0) + XS.xfSpacing, -9.7, 0);
+    `4 · TRANSFORMER · ${N_LAYERS} layers × ${N_HEADS} heads · ${N_TOK} tokens`,
+    NETWORK_MODE === 1 ? "#c9b8ff" : "#4cc9f0");
+  lab.position.set(xfX(0) + XSA.xfSpacing, -9.7, 0);
   g.add(lab);
 
-  const layers = S.transformer.layers;
+  const layers = curLayers();
   const ringPosByLayer = [];
   for (let l = 0; l < N_LAYERS; l++) {
     ringPosByLayer.push(Array.from({ length: N_TOK }, (_, i) => ringPoint(l, i)));
@@ -1112,18 +1290,20 @@ function buildTransformerTunnel() {
     // Token nodes — radius tracks this layer's post-FFN token norm, so the
     // representation visibly evolves ring to ring.
     const normsFfn = L.token_norms_ffn;
-    const maxNorm = Math.max(...normsFfn.filter((_, i) => S.tokens_pre_attn.mask[i]));
+    const maxNorm = Math.max(...normsFfn.filter((_, i) => tokenMask(i)));
     const nodeObjs = [];
     for (let i = 0; i < N_TOK; i++) {
       const info = TOKEN_INFO[i];
-      const active = !!S.tokens_pre_attn.mask[i];
+      const active = tokenMask(i);
       const mag = normsFfn[i];
-      const r = active ? 0.42 + clamp(mag / Math.max(maxNorm, 1e-6), 0, 1) * 0.62 : 0.2;
+      const rBase = NETWORK_MODE === 1 ? 0.28 : 0.42;
+      const rSpan = NETWORK_MODE === 1 ? 0.42 : 0.62;
+      const r = active ? rBase + clamp(mag / Math.max(maxNorm, 1e-6), 0, 1) * rSpan : 0.14;
       const sph = new THREE.Mesh(
         new THREE.SphereGeometry(r, 18, 14),
         new THREE.MeshStandardMaterial({
-          color: active ? info.color : C.dim,
-          emissive: active ? info.color : C.dim,
+          color: active ? tokenColor(i) : C.dim,
+          emissive: active ? tokenColor(i) : C.dim,
           emissiveIntensity: active ? 0.45 : 0.05,
           metalness: 0.3, roughness: 0.4,
           transparent: !active, opacity: active ? 1 : 0.15,
@@ -1140,7 +1320,8 @@ function buildTransformerTunnel() {
           && (code || info.type === "context" || info.type === "memory")) {
         const labText = code || info.type;
         const labColor = code ? (isTrump ? "#ffe89c" : "#cfe9ff") : "#ffd9a0";
-        const tlab = makeLabel(labText, labColor, code ? 0.55 : 0.48);
+        const labScale = NETWORK_MODE === 1 ? (code ? 0.4 : 0.36) : (code ? 0.55 : 0.48);
+        const tlab = makeLabel(labText, labColor, labScale);
         const outward = pos[i].clone().sub(center).normalize();
         tlab.position.copy(pos[i]).addScaledVector(outward, r + 1.3);
         gl.add(tlab);
@@ -1161,26 +1342,28 @@ function buildTransformerTunnel() {
     }
 
     // Per-head attention chords: symmetrized weight per (i, j, head),
-    // normalized within the layer, strongest kept. Additive tubes; hue = head.
-    const MAX_CHORDS_PER_LAYER = 36;
+    // normalized within the layer, strongest kept. Additive tubes; hue =
+    // head. Both modes flow through layerTriples() — dense policy maps and
+    // the oracle's sparse top-K serialization (a missing direction of a
+    // pair counts as 0).
+    const MAX_CHORDS_PER_LAYER = NETWORK_MODE === 1 ? 60 : 36;
+    const CHORD_FLOOR = NETWORK_MODE === 1 ? 0.10 : 0.07;
+    const directed = layerTriples(l);
     let maxW = 0;
-    for (let h = 0; h < N_HEADS; h++) {
-      for (let i = 0; i < N_TOK; i++) {
-        for (let j = 0; j < N_TOK; j++) {
-          if (i !== j) maxW = Math.max(maxW, L.attn[h][i][j]);
-        }
-      }
-    }
+    for (const t of directed) maxW = Math.max(maxW, t.w);
+    const wmap = new Map();
+    for (const t of directed) wmap.set((t.h * N_TOK + t.i) * N_TOK + t.j, t.w);
+    const seenPairs = new Set();
     const triples = [];
-    for (let h = 0; h < N_HEADS; h++) {
-      for (let i = 0; i < N_TOK; i++) {
-        if (!S.tokens_pre_attn.mask[i]) continue;
-        for (let j = i + 1; j < N_TOK; j++) {
-          if (!S.tokens_pre_attn.mask[j]) continue;
-          const norm = ((L.attn[h][i][j] + L.attn[h][j][i]) / 2) / Math.max(maxW, 1e-6);
-          if (norm >= 0.07) triples.push({ h, i, j, norm });
-        }
-      }
+    for (const t of directed) {
+      const i = Math.min(t.i, t.j), j = Math.max(t.i, t.j);
+      const key = (t.h * N_TOK + i) * N_TOK + j;
+      if (seenPairs.has(key)) continue;
+      seenPairs.add(key);
+      const wij = wmap.get((t.h * N_TOK + i) * N_TOK + j) || 0;
+      const wji = wmap.get((t.h * N_TOK + j) * N_TOK + i) || 0;
+      const norm = ((wij + wji) / 2) / Math.max(maxW, 1e-6);
+      if (norm >= CHORD_FLOOR) triples.push({ h: t.h, i, j, norm });
     }
     triples.sort((a, b) => b.norm - a.norm);
     for (const { h, i, j, norm } of triples.slice(0, MAX_CHORDS_PER_LAYER)) {
@@ -1196,8 +1379,8 @@ function buildTransformerTunnel() {
 
     // FFN lens: a slim luminous disc + per-token gems on the rails right
     // behind the ring — the 64→128→64 SiLU expansion, gem glow = hidden norm.
-    const lensX = xfX(l) + XS.xfSpacing * 0.45;
-    const ffnMax = Math.max(...L.ffn_hidden_norms.filter((_, i) => S.tokens_pre_attn.mask[i]));
+    const lensX = xfX(l) + XSA.xfSpacing * 0.45;
+    const ffnMax = Math.max(...L.ffn_hidden_norms.filter((_, i) => tokenMask(i)));
     const lens = new THREE.Mesh(
       new THREE.CylinderGeometry(RING_R * 0.99, RING_R * 0.99, 0.10, 48, 1, true),
       new THREE.MeshBasicMaterial({
@@ -1215,10 +1398,10 @@ function buildTransformerTunnel() {
     ffnLab.position.set(lensX, RING_CY - RING_R - 1.7, 0);
     gl.add(ffnLab);
     for (let i = 0; i < N_TOK; i++) {
-      if (!S.tokens_pre_attn.mask[i]) continue;
+      if (!tokenMask(i)) continue;
       const hNorm = L.ffn_hidden_norms[i] / Math.max(ffnMax, 1e-6);
       const gem = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.24 + hNorm * 0.22),
+        new THREE.OctahedronGeometry((NETWORK_MODE === 1 ? 0.17 : 0.24) + hNorm * 0.22),
         new THREE.MeshStandardMaterial({
           color: C.enc, emissive: C.enc,
           emissiveIntensity: 0.15 + hNorm * 0.75,
@@ -1239,46 +1422,74 @@ function buildTransformerTunnel() {
     layerObjs.push({ disc, nodeObjs });
   }
 
+  // Exit plane: the final layer's FFN lens sits behind ring N, so the rails
+  // continue THROUGH it and every downstream tap (readout chords, GRU wire,
+  // pointer tethers) originates past it — the final FFN's output IS the
+  // all_tokens tensor everything downstream reads.
+  const exitPos = ringPosByLayer[N_LAYERS - 1].map(
+    p => p.clone().add(new THREE.Vector3(XSA.xfSpacing * 0.75, 0, 0)));
+
+  // Output tokens: the transformer's product, re-materialized as spheres on
+  // the exit plane — no ring disc, no layer label; this is what LEAVES the
+  // tunnel — so the readout / GRU / pointer taps attach to tokens, not to
+  // bare rail ends. Grouped with the final layer so they stay lit in the
+  // gru / readout / pointer stages.
+  {
+    const gOut = group(`xf${N_LAYERS - 1}`);
+    const outNorms = layers[N_LAYERS - 1].token_norms_ffn;
+    const outMax = Math.max(...outNorms.filter((_, i) => tokenMask(i)));
+    const driverIdx = curMemory().driver === "memory" ? 1 : 0;
+    for (let i = 0; i < N_TOK; i++) {
+      if (!tokenMask(i)) continue;
+      const rBase = NETWORK_MODE === 1 ? 0.26 : 0.38;
+      const rSpan = NETWORK_MODE === 1 ? 0.36 : 0.52;
+      const r = rBase + clamp(outNorms[i] / Math.max(outMax, 1e-6), 0, 1) * rSpan;
+      const sph = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 18, 14),
+        new THREE.MeshStandardMaterial({
+          color: tokenColor(i), emissive: tokenColor(i), emissiveIntensity: 0.5,
+          metalness: 0.3, roughness: 0.4,
+        }),
+      );
+      sph.position.copy(exitPos[i]);
+      gOut.add(sph);
+      registerPickable(sph, {
+        title: `output token · ${tokName(i)}`,
+        badge: "enc",
+        kv: { "‖vec‖": outNorms[i].toFixed(2), "dim": `${curDims().d_token} (post final FFN + LN)` },
+        body: `<p>The transformer's output for this token — projected back to ${curDims().d_token}d by the final FFN, residual-added and LayerNormed. This exact vector is what the readout queries read${i === driverIdx ? ", and it drives the GRU memory write" : ""}${NETWORK_MODE === 0 && TOKEN_INFO[i].type === "hand" ? " — and the pointer scorer reads it directly" : ""}.</p>`,
+      });
+    }
+  }
+
   // Residual-stream rails: each active token rides a straight rail through
-  // every ring (same angle on each) — the transformer only nudges it.
+  // every ring (same angle on each) — the transformer only nudges it —
+  // and on out through the final FFN lens to the exit plane.
   for (let i = 0; i < N_TOK; i++) {
-    if (!S.tokens_pre_attn.mask[i]) continue;
+    if (!tokenMask(i)) continue;
     const p0 = ringPosByLayer[0][i];
-    const p1 = ringPosByLayer[N_LAYERS - 1][i];
+    const p1 = exitPos[i];
     const rail = registerConn(
-      makeFatLine([p0, p1], TOKEN_INFO[i].color, 0.16, 1.1), 0.16);
+      makeFatLine([p0, p1], tokenColor(i), 0.16, 1.1), 0.16);
     rail.userData.flowCurve = new THREE.LineCurve3(p0.clone(), p1.clone());
-    rail.userData.flowColor = TOKEN_INFO[i].color;
+    rail.userData.flowColor = tokenColor(i);
     rail.userData.flowIntensity = 0.3;
     g.add(rail);
   }
 
   // Entry lines: token bank column → first ring.
   for (let i = 0; i < N_TOK; i++) {
-    if (!S.tokens_pre_attn.mask[i]) continue;
-    const start = new THREE.Vector3(XS.tokensPre + 2.3, tokensInfo.tokenObjs[i].y, 0);
-    g.add(makeGlowLine(start, ringPosByLayer[0][i].clone(), C.enc, 0.16));
+    if (!tokenMask(i)) continue;
+    const start = tokensInfo.tokenObjs[i].pos.clone().add(new THREE.Vector3(2.3, 0, 0));
+    g.add(makeGlowLine(start, ringPosByLayer[0][i].clone(), C.enc, NETWORK_MODE === 1 ? 0.10 : 0.16));
   }
 
-  return { ringPosByLayer, exitPos: ringPosByLayer[N_LAYERS - 1], layerObjs };
+  return { ringPosByLayer, exitPos, layerObjs };
 }
 
 // Strongest attention pairs of one layer (head-tagged), for the stage text.
 function topPairsHtml(l, k = 5) {
-  const L = S.transformer.layers[l];
-  let maxW = 0;
-  const triples = [];
-  for (let h = 0; h < N_HEADS; h++) {
-    for (let i = 0; i < N_TOK; i++) {
-      if (!S.tokens_pre_attn.mask[i]) continue;
-      for (let j = 0; j < N_TOK; j++) {
-        if (i === j || !S.tokens_pre_attn.mask[j]) continue;
-        maxW = Math.max(maxW, L.attn[h][i][j]);
-        triples.push({ h, i, j, w: L.attn[h][i][j] });
-      }
-    }
-  }
-  triples.sort((a, b) => b.w - a.w);
+  const triples = layerTriples(l).slice().sort((a, b) => b.w - a.w);
   const seen = new Set();
   const rows = [];
   for (const t of triples) {
@@ -1299,7 +1510,7 @@ function topPairsHtml(l, k = 5) {
 function buildMemory() {
   const g = group("gru");
   const lab = makeStageLabel("5 · GRU MEMORY UPDATE", "#f4a261");
-  lab.position.set(XS.gru, -9.7, 0);
+  lab.position.set(XSA.gru, -9.7, 0);
   g.add(lab);
 
   const GRU_Y = RING_CY + RING_R + 6;
@@ -1309,21 +1520,24 @@ function buildMemory() {
     metalness: 0.4, roughness: 0.3,
   });
   const gru = new THREE.Mesh(gruGeom, gruMat);
-  gru.position.set(XS.gru, GRU_Y, 0);
+  gru.position.set(XSA.gru, GRU_Y, 0);
   g.add(gru);
   const gruLab = makeLabel(`GRUCell · ${DATA.dims.d_token} → ${DATA.dims.d_model}`, "#ffd99c", 0.55);
-  gruLab.position.set(XS.gru, GRU_Y + 3, 0);
+  gruLab.position.set(XSA.gru, GRU_Y + 3, 0);
   g.add(gruLab);
 
-  const memInMag = vecMag(S.memory.memory_in);
-  const memOutMag = vecMag(S.memory.memory_out);
-  const driverIsMemory = S.memory.driver === "memory";
+  const mem = curMemory();
+  const memInMag = vecMag(mem.memory_in);
+  const memOutMag = vecMag(mem.memory_out);
+  const driverIsMemory = mem.driver === "memory";
   const driverName = driverIsMemory ? "memory token" : "context token";
   registerPickable(gru, {
     title: "memory_gru (GRUCell)",
     badge: "share",
     kv: { "‖memory_in‖": memInMag.toFixed(2), "‖memory_out‖": memOutMag.toFixed(2), "driver": driverName },
-    body: `<p>The only true recurrence in the network. memory_out = GRU(<b>${driverName}</b> after reasoning, memory_in) — shared-v2 keeps <code>full</code>'s wiring: the context token, a strong prior at game start, drives the write (the original perceiver used the memory token instead).</p>
+    body: `<p>The only true recurrence in the network. memory_out = GRU(<b>${driverName}</b> after reasoning, memory_in) — ${driverIsMemory
+      ? "the transformer's own \"what to remember\" slot drives the write (the perceiver wiring; the policy network feeds the GRU the context token instead)"
+      : "shared-v2 keeps <code>full</code>'s wiring: the context token, a strong prior at game start, drives the write (the original perceiver used the memory token instead)"}.</p>
       <p>Stored per-player and read back on the next decision step — the curved arc going back to the left is exactly that feedback.</p>`,
   });
 
@@ -1335,8 +1549,8 @@ function buildMemory() {
   g.add(wireLab);
 
   // Feedback arc: from gru position back to the memory chip at input
-  const start = new THREE.Vector3(XS.gru - 1.5, GRU_Y, 0);
-  const end = new THREE.Vector3(XS.input + 2, inputInfo.chipY - 2.2, 0);
+  const start = new THREE.Vector3(XSA.gru - 1.5, GRU_Y, 0);
+  const end = new THREE.Vector3(XSA.input + 2, inputInfo.chipY - 2.2, 0);
   const curve = new THREE.CubicBezierCurve3(
     start,
     new THREE.Vector3(start.x - 5, GRU_Y + 12, 0),
@@ -1362,7 +1576,7 @@ function buildMemory() {
   g.add(arrow);
 
   const arcLab = makeLabel("memory_out → next-step memory_in (via memory_in_proj)", "#ffd99c", 0.5);
-  arcLab.position.set((XS.input + XS.gru) / 2, GRU_Y + 10.5, 0);
+  arcLab.position.set((XSA.input + XSA.gru) / 2, GRU_Y + 10.5, 0);
   g.add(arcLab);
 
   return { gru, curve };
@@ -1377,11 +1591,14 @@ function buildMemory() {
 // ============================================================
 function buildSharedReadout() {
   const g = group("readout");
-  const nQ = DATA.dims.n_readout_queries;
-  const attn = S.encoder_readout.attn; // (H, M, 19)
+  const nQ = curDims().n_readout_queries;
+  const attn = curReadout().attn; // (H, M, N_TOK)
   const lab = makeStageLabel(
-    `6 · SHARED READOUT · ${nQ} queries × ${N_TOK} tokens`, "#ffc65c");
-  lab.position.set(XS.readout + 2, -9.7, 14);
+    NETWORK_MODE === 1
+      ? `6 · ORACLE READOUT · ${nQ} queries × ${N_TOK} tokens`
+      : `6 · SHARED READOUT · ${nQ} queries × ${N_TOK} tokens`,
+    NETWORK_MODE === 1 ? "#c9b8ff" : "#ffc65c");
+  lab.position.set(XSA.readout + 2, -9.7, 14);
   g.add(lab);
 
   // Head-averaged weight per (query, token), normalized across the readout.
@@ -1394,19 +1611,19 @@ function buildSharedReadout() {
       for (let h = 0; h < N_HEADS; h++) s += attn[h][q][i];
       s /= N_HEADS;
       w[q].push(s);
-      if (S.tokens_pre_attn.mask[i]) maxW = Math.max(maxW, s);
+      if (tokenMask(i)) maxW = Math.max(maxW, s);
     }
   }
   let maxWHead = 0; // separate scale for the per-head fans
   for (let h = 0; h < N_HEADS; h++) {
     for (let q = 0; q < nQ; q++) {
       for (let i = 0; i < N_TOK; i++) {
-        if (S.tokens_pre_attn.mask[i]) maxWHead = Math.max(maxWHead, attn[h][q][i]);
+        if (tokenMask(i)) maxWHead = Math.max(maxWHead, attn[h][q][i]);
       }
     }
   }
 
-  const hubPos = new THREE.Vector3(XS.hub, RING_CY, 0);
+  const hubPos = new THREE.Vector3(XSA.hub, RING_CY, 0);
   const GRID = Math.ceil(Math.sqrt(nQ)); // 4×4 for 16 queries
   const SPACING = 3.3;
   const gemPositions = [];
@@ -1414,7 +1631,7 @@ function buildSharedReadout() {
   for (let q = 0; q < nQ; q++) {
     const row = Math.floor(q / GRID), col = q % GRID;
     const gp = new THREE.Vector3(
-      XS.readout,
+      XSA.readout,
       RING_CY + ((GRID - 1) / 2 - row) * SPACING,
       (col - (GRID - 1) / 2) * SPACING,
     );
@@ -1435,13 +1652,13 @@ function buildSharedReadout() {
     // Ranked attended tokens for the tooltip / info panel.
     const ranked = w[q]
       .map((v, i) => ({ v, i }))
-      .filter(t => S.tokens_pre_attn.mask[t.i])
+      .filter(t => tokenMask(t.i))
       .sort((a, b) => b.v - a.v);
     const top = ranked.slice(0, 3)
       .map(t => `${tokName(t.i)} ${(t.v * 100).toFixed(0)}%`)
       .join(" · ");
     registerPickable(gem, {
-      title: `shared readout query ${q + 1} / ${nQ}`,
+      title: `${NETWORK_MODE === 1 ? "oracle" : "shared"} readout query ${q + 1} / ${nQ}`,
       badge: "share",
       kv: { "attends most to": top },
       body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens. Only its <b>top-3</b> links are drawn by default — <b>click to expand the full per-head fan</b> (colored by head, H1–H4 chips filter it). Click again to collapse.</p>`,
@@ -1463,7 +1680,7 @@ function buildSharedReadout() {
     for (let h = 0; h < N_HEADS; h++) {
       const rankedH = attn[h][q]
         .map((v, i) => ({ v, i }))
-        .filter(t => S.tokens_pre_attn.mask[t.i] && t.v / Math.max(maxWHead, 1e-6) >= 0.08)
+        .filter(t => tokenMask(t.i) && t.v / Math.max(maxWHead, 1e-6) >= 0.08)
         .sort((a, b) => b.v - a.v)
         .slice(0, 4);
       for (const t of rankedH) {
@@ -1479,34 +1696,40 @@ function buildSharedReadout() {
     }
   }
 
-  // Features hub: concat(16 × 64) → Linear → LayerNorm → 256-d `features`.
-  const featVec = S.encoder_readout.features;
+  // Features hub: policy = concat(16 × 64) → Linear+LN → 256 `features`;
+  // oracle = concat(4 × 64) → Linear (no LN) → 256, read only by the trunk.
+  const hubColor = NETWORK_MODE === 1 ? ORACLE_VIOLET : READOUT_GOLD;
+  const featVec = curReadout().features;
   const hub = new THREE.Mesh(
     new THREE.BoxGeometry(1.7, 4.0, 1.7),
     new THREE.MeshStandardMaterial({
-      color: READOUT_GOLD, emissive: READOUT_GOLD, emissiveIntensity: 0.4,
+      color: hubColor, emissive: hubColor, emissiveIntensity: 0.4,
       metalness: 0.4, roughness: 0.35,
     }),
   );
   hub.position.copy(hubPos);
   g.add(hub);
   const hubLab = makeLabel(
-    `concat ${nQ}×${DATA.dims.d_token} → Linear+LN → features (${DATA.dims.d_model})`,
-    "#ffe9c4", 0.5);
+    NETWORK_MODE === 1
+      ? `concat ${nQ}×${curDims().d_token} → Linear → readout (${curDims().d_model}) · no LN`
+      : `concat ${nQ}×${curDims().d_token} → Linear+LN → features (${curDims().d_model})`,
+    NETWORK_MODE === 1 ? "#e6dcff" : "#ffe9c4", 0.5);
   hubLab.position.copy(hubPos).add(new THREE.Vector3(0, 3.0, 0));
   g.add(hubLab);
   registerPickable(hub, {
-    title: "shared readout_proj → features",
+    title: NETWORK_MODE === 1 ? "oracle readout_proj" : "shared readout_proj → features",
     badge: "share",
     kv: {
-      "in": `${nQ} × ${DATA.dims.d_token} = ${nQ * DATA.dims.d_token}`,
-      "out": `${DATA.dims.d_model} (LayerNorm-pinned)`,
-      "‖features‖": vecMag(featVec).toFixed(2),
+      "in": `${nQ} × ${curDims().d_token} = ${nQ * curDims().d_token}`,
+      "out": NETWORK_MODE === 1 ? `${curDims().d_model} (bare Linear)` : `${curDims().d_model} (LayerNorm-pinned)`,
+      "‖vec‖": vecMag(featVec).toFixed(2),
     },
-    body: `<p>The ${nQ} query answers are flattened and projected to ${DATA.dims.d_model}d, then LayerNorm pins the scale (v2's correction — v1's bare Linear left it floating). This one vector is <b>everything</b> both networks see: the actor's heads and the critic's value + aux stack all read it. Decision-time attention runs once, here in the encoder.</p>`,
+    body: NETWORK_MODE === 1
+      ? `<p>The ${nQ} query answers are flattened and linearly projected to ${curDims().d_model}d — the only thing the value trunk sees. No LayerNorm here (the trunk's own input LayerNorm pins the scale), and no other consumer: the oracle is a pure value network.</p>`
+      : `<p>The ${nQ} query answers are flattened and projected to ${curDims().d_model}d, then LayerNorm pins the scale (v2's correction — v1's bare Linear left it floating). This one vector is <b>everything</b> both networks see: the actor's heads and the critic's value + aux stack all read it. Decision-time attention runs once, here in the encoder.</p>`,
   });
   for (const gp of gemPositions) {
-    g.add(makeGlowLine(gp.clone(), hubPos.clone(), READOUT_GOLD, 0.22));
+    g.add(makeGlowLine(gp.clone(), hubPos.clone(), hubColor, 0.22));
   }
   return { gemPositions, hubPos: hubPos.clone(), gems };
 }
@@ -2188,23 +2411,293 @@ function buildCriticAux() {
 }
 
 // ============================================================
+// ORACLE STAGE 1: FULL-INFORMATION OBSERVATION — every hand face
+// up, the true blind/bury/under, per-seat points, partner halo.
+// ============================================================
+function buildOracleObservation() {
+  const g = group("input");
+  const lab = makeStageLabel("1 · FULL-INFORMATION OBSERVATION", "#c9b8ff");
+  lab.position.set(XSA.input, -9.7, 0);
+  g.add(lab);
+
+  const so = SO.sample;
+  const cardObjs = [];
+  const fanAnchors = [];
+
+  const makeFan = ({ codes, z, big, label, labelColor, holder }) => {
+    const spacing = big ? (codes.length <= 6 ? 1.9 : 1.6) : 1.35;
+    const topY = big ? 8 : 7;
+    const w = big ? 3.4 : 2.4, h = big ? 4.6 : 3.2;
+    const fl = makeLabel(label, labelColor, 0.5);
+    fl.position.set(XSA.input, topY + 2.2, z);
+    g.add(fl);
+    for (let i = 0; i < codes.length; i++) {
+      const code = codes[i];
+      const isTrump = trumpCardCodes.includes(code);
+      const color = isTrump ? 0xd4af37 : (big ? 0x8aa0e0 : 0x8f7bff);
+      const card = new THREE.Mesh(
+        new RoundedBoxGeometry(w, h, 0.26, 3, 0.15),
+        new THREE.MeshStandardMaterial({
+          color, emissive: color, emissiveIntensity: 0.15,
+          metalness: 0.4, roughness: 0.38,
+        }),
+      );
+      card.position.set(XSA.input, topY - i * spacing, z + i * 0.22);
+      card.rotation.y = 0.45;
+      card.userData.baseY = card.position.y;
+      g.add(card);
+      cardObjs.push(card);
+      const cl = makeLabel(code, isTrump ? "#ffe89c" : "#d5defa", big ? 0.6 : 0.45);
+      cl.position.set(XSA.input + (big ? 2.7 : 2.0), topY - i * spacing, z + i * 0.22 + 0.4);
+      g.add(cl);
+      registerPickable(card, {
+        title: `${code}${holder ? " · " + holder : ""}`,
+        badge: "input",
+        body: `<p>${isTrump ? "<b>Trump.</b> " : ""}${holder
+          ? `In ${holder}'s hand — hidden from the acting player, visible only to the oracle.`
+          : "The acting seat's own card (also in the policy observation)."}</p>`,
+      });
+    }
+    fanAnchors.push(new THREE.Vector3(
+      XSA.input + 2, topY - (codes.length - 1) * spacing * 0.5, z));
+  };
+
+  // Own hand center; the four hidden hands flank it.
+  makeFan({
+    codes: handCardCodes, z: 0, big: true,
+    label: `seat ${S.sample.seat} · me`, labelColor: "#cdd9ff",
+  });
+  const oppZ = [-16, -8, 8, 16];
+  for (let s = 0; s < 4; s++) {
+    const isPartner = so.secret_partner_rel >= 2 && s === so.secret_partner_rel - 2;
+    const isPicker = so.picker_rel >= 2 && s === so.picker_rel - 2;
+    makeFan({
+      codes: so.opp_hand_codes[s], z: oppZ[s], big: false,
+      label: `+${s + 1}${isPartner ? " ★ partner" : ""}${isPicker ? " · picker" : ""}`,
+      labelColor: isPartner ? "#ffe1a3" : "#d9ccff",
+      holder: `seat +${s + 1}`,
+    });
+    if (isPartner) {
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(3.4, 0.09, 10, 48),
+        new THREE.MeshBasicMaterial({
+          color: PARTNER_GOLD, transparent: true, opacity: 0.55,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        }),
+      );
+      halo.position.set(XSA.input - 0.8, 4.2, oppZ[s] + 0.6);
+      halo.rotation.y = Math.PI / 2 - 0.45;
+      g.add(halo);
+      registerPickable(halo, {
+        title: "secret partner",
+        badge: "input",
+        body: `<p>This seat holds the called card — the still-hidden partner. The oracle is told outright (<code>secret_partner_rel</code>); the acting player has to infer it from play.</p>`,
+      });
+    }
+  }
+
+  // True blind / bury / under — the cards nobody at the table can see.
+  const priv = [
+    ...so.blind_cards.map(c => ({ code: c, tag: "blind (true)" })),
+    ...so.bury_cards.map(c => ({ code: c, tag: "bury (true)" })),
+    ...(so.under_card ? [{ code: so.under_card, tag: "under" }] : []),
+  ];
+  if (priv.length) {
+    const pl = makeLabel("true blind · bury · under", "#e6dcff", 0.45);
+    pl.position.set(XSA.input, -2.2, -9);
+    g.add(pl);
+    for (let i = 0; i < priv.length; i++) {
+      const { code, tag } = priv[i];
+      const isTrump = trumpCardCodes.includes(code);
+      const chip = new THREE.Mesh(
+        new RoundedBoxGeometry(1.9, 2.6, 0.22, 3, 0.12),
+        new THREE.MeshStandardMaterial({
+          color: 0xb58bff, emissive: 0xb58bff, emissiveIntensity: 0.22,
+          metalness: 0.4, roughness: 0.4,
+        }),
+      );
+      chip.position.set(XSA.input, -4.4, -12.5 + i * 2.2);
+      chip.rotation.y = 0.45;
+      g.add(chip);
+      const cl = makeLabel(code, isTrump ? "#ffe89c" : "#e6dcff", 0.42);
+      cl.position.set(XSA.input + 1.5, -4.4, -12.3 + i * 2.2);
+      g.add(cl);
+      registerPickable(chip, {
+        title: `${code} · ${tag}`,
+        badge: "input",
+        body: `<p>${tag === "under" ? "The face-down under card." : `In the ${tag.split(" ")[0]} — face down on the table.`} Only the oracle's observation carries it${tag.startsWith("blind") ? " for every seat (the policy sees the blind only as the picker)" : ""}.</p>`,
+      });
+    }
+  }
+
+  // Per-seat points taken so far.
+  const seatNames = ["me", "+1", "+2", "+3", "+4"];
+  const ptsLab = makeLabel("points taken", "#e6dcff", 0.45);
+  ptsLab.position.set(XSA.input, -2.2, 9);
+  g.add(ptsLab);
+  for (let i = 0; i < 5; i++) {
+    const pts = so.points_taken_rel[i];
+    const norm = clamp(pts / 120, 0, 1);
+    const chip = new THREE.Mesh(
+      new RoundedBoxGeometry(1.7, 1.1, 0.22, 2, 0.1),
+      new THREE.MeshStandardMaterial({
+        color: 0xc17bea, emissive: 0xc17bea,
+        emissiveIntensity: 0.1 + norm * 0.6, roughness: 0.4,
+      }),
+    );
+    chip.position.set(XSA.input, -4.2, 6 + i * 2.1);
+    chip.rotation.y = 0.45;
+    g.add(chip);
+    const cl = makeLabel(`${seatNames[i]} ${pts}`, "#e6dcff", 0.38);
+    cl.position.set(XSA.input + 1.4, -4.2, 6.2 + i * 2.1);
+    g.add(cl);
+    registerPickable(chip, {
+      title: `points_taken · ${seatNames[i]}`,
+      badge: "input",
+      kv: { "points": pts },
+      body: `<p>Card points this seat has taken so far — fed to the oracle's context token (the acting player only ever sees the tricks it watched).</p>`,
+    });
+  }
+
+  // Header + memory chips (same anchor convention as the policy input, so
+  // the token-bank lines and the GRU feedback arc land unchanged).
+  const chipY = -5.4;
+  const headerChip = new THREE.Mesh(
+    new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14),
+    new THREE.MeshStandardMaterial({
+      color: 0x9d7bff, emissive: 0x9d7bff, emissiveIntensity: 0.2, roughness: 0.4,
+    }),
+  );
+  headerChip.position.set(XSA.input, chipY, 0);
+  headerChip.rotation.y = 0.45;
+  g.add(headerChip);
+  const headerLab = makeLabel("header (10) + priv scalars", "#e6ddff", 0.55);
+  headerLab.position.set(XSA.input + 3.2, chipY, 0.5);
+  g.add(headerLab);
+  registerPickable(headerChip, {
+    title: "Context inputs",
+    badge: "input",
+    body: `<p>The policy's 10 header scalars PLUS the privileged extras: per-seat points (5), the secret partner's seat, and the under-card embedding — all fused into the oracle's context token.</p>`,
+  });
+
+  const mem = curMemory();
+  const memMag = vecMag(mem.memory_in);
+  const memChip = new THREE.Mesh(
+    new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14),
+    new THREE.MeshStandardMaterial({
+      color: 0xf4a261, emissive: 0xf4a261,
+      emissiveIntensity: 0.15 + clamp(memMag / 10, 0, 1) * 0.5, roughness: 0.4,
+    }),
+  );
+  memChip.position.set(XSA.input, chipY - 2.2, 0);
+  memChip.rotation.y = 0.45;
+  g.add(memChip);
+  const memLab = makeLabel(`oracle memory hₜ₋₁ (256) · ‖${memMag.toFixed(1)}‖`, "#ffd99c", 0.55);
+  memLab.position.set(XSA.input + 3.2, chipY - 2.2, 0.5);
+  g.add(memLab);
+  registerPickable(memChip, {
+    title: "Oracle memory hₜ₋₁",
+    badge: "input",
+    kv: { "‖memory_in‖": memMag.toFixed(2) },
+    body: `<p>The oracle's OWN 256-d recurrent state — threaded over the same per-seat event stream the agent's memory sees (decisions + end-of-trick observations), but through the oracle's separate GRU. It estimates U(h, s), not V(s): history in, state in.</p>`,
+  });
+
+  return { cardObjs, chipY, topY: 8, spacing: 1.6, fanAnchors };
+}
+
+// ============================================================
+// ORACLE STAGE 7: VALUE — trunk + U(h,s) crystal on the spine.
+// ============================================================
+function buildOracleValue() {
+  const g = group("oValue");
+  const lab = makeStageLabel("7 · VALUE · U(h,s)", "#ff9ec7");
+  lab.position.set(XSA.trunk, -9.7, 10);
+  g.add(lab);
+  const y = RING_CY;
+
+  const trunk = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 3.2, 1.6),
+    new THREE.MeshStandardMaterial({
+      color: 0xd88fdd, emissive: 0xd88fdd, emissiveIntensity: 0.35,
+      metalness: 0.35, roughness: 0.4,
+    }),
+  );
+  trunk.position.set(XSA.trunk, y, 0);
+  g.add(trunk);
+  const trunkLab = makeLabel("value_trunk (LN→256→256)", "#ffd6e8", 0.5);
+  trunkLab.position.set(XSA.trunk, y + 2.6, 0);
+  g.add(trunkLab);
+  registerPickable(trunk, {
+    title: "oracle value_trunk",
+    badge: "critic",
+    kv: { "‖trunk out‖": SO.value.value_trunk_norm.toFixed(2) },
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU — the same trunk shape as the limited critic's, fed by the oracle readout. There is nothing else: no actor, no aux heads. This whole network exists to be the GAE baseline at training time.</p>`,
+  });
+  g.add(makeGlowLine(readoutInfo.hubPos.clone(), trunk.position.clone(), 0xd88fdd, 0.5));
+
+  const v = SO.value.value;
+  const vMagNorm = clamp(Math.abs(v) / 1.5, 0, 1);
+  const vColor = v >= 0 ? 0x62e88a : 0xff6b6b;
+  const crystal = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.1 + vMagNorm * 1.2, 0),
+    new THREE.MeshStandardMaterial({
+      color: vColor, emissive: vColor,
+      emissiveIntensity: 0.4 + vMagNorm * 0.5,
+      metalness: 0.55, roughness: 0.2,
+      flatShading: true,
+    }),
+  );
+  crystal.position.set(XSA.value, y, 0);
+  g.add(crystal);
+  const untrainedNote = DATA.oracle.untrained ? " · untrained" : "";
+  const vLab = makeLabel(`U(h,s) = ${v.toFixed(3)}${untrainedNote}`,
+    v >= 0 ? "#dffbe6" : "#ffd0d0", 0.65);
+  vLab.position.set(XSA.value, y + 3.1, 0);
+  g.add(vLab);
+  registerPickable(crystal, {
+    title: "value_head · U(h,s)",
+    badge: "critic",
+    kv: { "U(h,s)": v.toFixed(4), "trained": DATA.oracle.untrained ? "NO — random init" : "yes" },
+    body: `<p>The history-state value: what this seat should expect given <i>everything</i> — every hand, the true blind/bury, the secret partner — plus the history so far.${DATA.oracle.untrained
+      ? " <b>This checkpoint is a random init</b>: the number is meaningless; the wiring and shapes are what this walkthrough verifies."
+      : ""} At training time it replaces the limited critic's V(s) in GAE, removing hidden-card variance from advantages.</p>`,
+  });
+  g.add(makeGlowLine(trunk.position.clone(), crystal.position.clone(), vColor, 0.55));
+
+  return { trunk, crystal };
+}
+
+// ============================================================
 // Scene build / rebuild
 // ============================================================
 function buildScene() {
   sceneRoot = new THREE.Group();
   sceneRoot.name = "sceneRoot";
   scene.add(sceneRoot);
-  inputInfo = buildInputCards();
-  embedInfo = buildEmbeddingTable();
-  tokensInfo = buildTokens();
-  xfInfo = buildTransformerTunnel();
-  memInfo = buildMemory();
-  readoutInfo = buildSharedReadout();
-  actorInfo = buildActor();
-  pointerInfo = buildPointer();
-  outputInfo = buildOutput();
-  criticVInfo = buildCriticValue();
-  criticAuxInfo = buildCriticAux();
+  if (NETWORK_MODE === 0) {
+    inputInfo = buildInputCards();
+    embedInfo = buildEmbeddingTable();
+    tokensInfo = buildTokens();
+    xfInfo = buildTransformerTunnel();
+    memInfo = buildMemory();
+    readoutInfo = buildSharedReadout();
+    actorInfo = buildActor();
+    pointerInfo = buildPointer();
+    outputInfo = buildOutput();
+    criticVInfo = buildCriticValue();
+    criticAuxInfo = buildCriticAux();
+    oracleValueInfo = null;
+  } else {
+    inputInfo = buildOracleObservation();
+    embedInfo = buildEmbeddingTable();
+    tokensInfo = buildTokens();
+    xfInfo = buildTransformerTunnel();
+    memInfo = buildMemory();
+    readoutInfo = buildSharedReadout();
+    oracleValueInfo = buildOracleValue();
+    actorInfo = pointerInfo = outputInfo = criticVInfo = criticAuxInfo = null;
+    outputAnim = null;
+  }
   // Reflections read best as an accent, not a mirror finish.
   sceneRoot.traverse((o) => {
     if (o.material && o.material.isMeshStandardMaterial) {
@@ -2336,6 +2829,18 @@ const STAGE_GROUPS = {
   output: ["actor", "pointer", "output"],
   criticV: ["readout", "criticV"],
   criticAux: ["criticV", "criticAux"],
+  // Oracle-mode stages (same group names — only one scene exists at a time).
+  oObs: ["input"],
+  oEmbed: ["input", "embed"],
+  oTokens: ["embed", "tokens"],
+  oXf: ["tokens", ...XF_ALL],
+  oXfL1: ["xf", "xf0"],
+  oXfL2: ["xf", "xf1"],
+  oXfL3: ["xf", "xf2"],
+  oXfL4: ["xf", "xf3"],
+  oGru: [`xf${N_LAYERS - 1}`, "gru"],
+  oReadout: [`xf${N_LAYERS - 1}`, "readout"],
+  oValue: ["readout", "oValue"],
 };
 const chordDimMap = {}; // per-group chord dim factors, read by animate()
 function applyStageDim() {
@@ -2397,7 +2902,8 @@ const xfLayerStage = (l) => ({
     <p>Behind the ring, the FFN lens: each token expands ${DATA.dims.d_token}→${DATA.dims.d_token * 2} (SiLU) and back — gem glow shows how hard the hidden layer fired. Sphere size tracks each token's norm at this depth.</p>`,
 });
 
-const STAGES = [
+function buildPolicyStages() {
+  return [
   {
     title: "Sheepshead PPO — perceiver-shared-v2 forward pass",
     label: "intro",
@@ -2538,7 +3044,104 @@ const STAGES = [
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
     body: () => `<p>Zoomed out: observation → embedding table → 19 tokens → ${N_LAYERS}-layer transformer tunnel → context-token GRU + one shared ${DATA.dims.n_readout_queries}-query readout → features hub → actor heads &amp; pointer / critic value + aux stack → π(a|s). Drag the scene to explore. Click any object for details (click a readout gem for its full attention fan). Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
   },
-];
+  ];
+}
+
+// Oracle-mode stage list (built fresh on each toggle so cameras pick up the
+// oracle spine XS_O via XSA).
+const oXfLayerStage = (l) => ({
+  title: `4.${l + 1} · Layer ${l + 1} attention + FFN`,
+  label: `oXfL${l + 1}`,
+  badge: "enc",
+  cam: {
+    pos: [xfX(l) - 16, RING_CY + 10, 36],
+    target: [xfX(l) + 2, RING_CY, 0],
+  },
+  body: () => `<p>Layer ${l + 1} of ${N_LAYERS} — the same reasoning shape as the policy encoder, but over <b>${N_TOK}</b> tokens (the 32 hidden-hand tokens ride the tunnel too). Strongest links this layer:</p>
+    <p style="line-height:1.8">${topPairsHtml(l)}</p>
+    ${DATA.oracle.untrained ? `<p><b>Untrained:</b> expect diffuse, near-uniform attention — structure appears here once the league run trains the oracle.</p>` : `<p>Behind the ring, the FFN lens: each token expands ${curDims().d_token}→${curDims().d_token * 2} (SiLU) and back — gem glow shows how hard the hidden layer fired.</p>`}`,
+});
+
+function buildOracleStages() {
+  return [
+  {
+    title: "Oracle critic — U(h,s) forward pass",
+    label: "ointro",
+    badge: "critic",
+    cam: { pos: [30, 34, 70], target: [0, 5, 0] },
+    body: () => `<p>The CTDE <b>privileged critic</b> (<code>oracle.py</code>) on the same decision: it sees every hand, the true blind/bury, the under card, and the secret partner — and estimates the history-state value <b>U(h,s)</b> used as the GAE baseline during league training. The deployed agent never runs it.</p>
+      ${DATA.oracle.untrained ? `<p><span class="badge b-critic">untrained</span> This is a <b>random init</b> (seed ${DATA.oracle.init_seed}) — an architecture smoke test. Values and attention are meaningless; the structure is the point.</p>` : `<p>Loaded from <code>${DATA.oracle.checkpoint}</code>.</p>`}
+      <p><b>${S.label}:</b> ${S.description}</p>
+      <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack. Toggle back with the <b>Network</b> buttons up top.</p>`,
+  },
+  {
+    title: "1 · Full-information observation",
+    label: "oObs",
+    badge: "input",
+    cam: { pos: [XSA.input + 26, 9, 32], target: [XSA.input + 2, 2, 0] },
+    body: () => `<p>What the oracle sees: <b>all five hands face up</b> (gold halo = the secret partner's seat), the true blind and bury, the under card, and per-seat points taken — plus everything the acting player's own observation carries.</p>
+      <p>This is a strict superset of the policy observation (<code>get_oracle_state_dict</code>), so U(h,s) conditions on history <i>and</i> state — the unbiased target under partial observability.</p>`,
+  },
+  {
+    title: "2 · Oracle card embeddings",
+    label: "oEmbed",
+    badge: "enc",
+    cam: { pos: [XSA.embed + 14, 4, 16], target: [XSA.embed, 0, 0] },
+    body: () => `<p>The oracle's <b>own</b> 34×${curDims().d_card} card table — zero parameters shared with the policy (the isolation guarantee: privileged gradients can never reach the actor).</p>
+      <p>Far more rows light up than in the policy view: every hidden hand, the true blind/bury, and the under card get embedded.</p>`,
+  },
+  {
+    title: `3 · Tokenize · ${DATA.oracle.dims.n_tokens} tokens`,
+    label: "oTokens",
+    badge: "enc",
+    cam: { pos: [XSA.tokensPre + 13, 8, 32], target: [XSA.tokensPre - 3, 2, 0] },
+    body: () => `<p>The policy's 19 tokens <i>plus</i> <b>32 opponent-hand tokens</b> (4 seats × 8 slots, seat-tinted columns; the secret partner's column glows gold). Blind and bury tokens carry the TRUE cards here.</p>
+      <p>Each opp token = card ⊕ seat ⊕ role embedding → MLP; the context token additionally packs points-taken, the partner's seat, and the under card.</p>`,
+  },
+  {
+    title: "4 · The transformer tunnel · 51 tokens",
+    label: "oXf",
+    badge: "enc",
+    cam: { pos: [xfX(1) + 6, RING_CY + 12, 58], target: [xfX(1) + 6, RING_CY, 0] },
+    body: () => `<p>The same 4-layer × ${N_HEADS}-head reasoning stack as the policy encoder — its own parameters — over rings of <b>${N_TOK}</b> tokens. Hidden-hand tokens attend and are attended like any other: card counting happens by construction, not inference.</p>
+      ${DATA.oracle.untrained ? "<p><b>Untrained:</b> chords are diffuse; tour the layers anyway to see the machinery.</p>" : ""}`,
+  },
+  ...Array.from({ length: N_LAYERS }, (_, l) => oXfLayerStage(l)),
+  {
+    title: "5 · GRU memory · U(h,s) recurrence",
+    label: "oGru",
+    badge: "share",
+    cam: { pos: [XSA.gru + 8, 30, 36], target: [(XSA.input + XSA.gru) / 2, 14, 0] },
+    body: () => `<p>The oracle is <b>recurrent</b>: the post-reasoning <b>memory token</b> (the perceiver wiring — unlike the policy's context-token driver) feeds its own GRU (‖in‖ ${vecMag(curMemory().memory_in).toFixed(1)} → ‖out‖ ${vecMag(curMemory().memory_out).toFixed(1)}), threaded over the same per-seat event stream the agent sees.</p>
+      <p>Why memory at all, when it sees everything? A critic conditioned on the hidden state alone is biased under partial observability — the sound target is the history-state value U(h,s), so history rides along.</p>`,
+  },
+  {
+    title: `6 · Oracle readout · ${DATA.oracle.dims.n_readout_queries} queries`,
+    label: "oReadout",
+    badge: "share",
+    cam: { pos: [XSA.readout - 16, RING_CY + 10, 34], target: [XSA.readout + 5, RING_CY, 0] },
+    body: () => `<p>${DATA.oracle.dims.n_readout_queries} learned queries cross-attend (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens — the 32 hidden-hand tokens reach the value trunk <b>unsqueezed</b> (the old pooled-oracle squeezed them through one bag; that squeeze is gone).</p>
+      <p>Same interaction as the policy view: top-3 links per gem, <b>click a gem</b> for its full per-head fan, H1–H4 chips filter.</p>`,
+  },
+  {
+    title: "7 · Value · U(h,s)",
+    label: "oValue",
+    badge: "critic",
+    cam: { pos: [XSA.trunk + 8, RING_CY + 6, 28], target: [XSA.trunk + 4, RING_CY, 0] },
+    body: () => `<p>Readout → deep value trunk → <b>U(h,s) = ${SO.value.value.toFixed(3)}</b>${DATA.oracle.untrained ? " (random init — meaningless by design)" : ""}.</p>
+      <p>No actor, no aux heads, no deployment: at league-training time this number replaces the limited critic's V(s) in GAE, removing hidden-card variance from the policy's advantages while the actor still learns from its own partial view.</p>`,
+  },
+  {
+    title: "Oracle architecture",
+    label: "ooverview",
+    badge: "critic",
+    cam: { pos: [30, 36, 76], target: [0, 5, 0] },
+    body: () => `<p>Zoomed out: full-information observation → own embedding table → ${DATA.oracle.dims.n_tokens} tokens → ${N_LAYERS}-layer tunnel → memory-token GRU + ${DATA.oracle.dims.n_readout_queries}-query readout → value trunk → U(h,s). ${DATA.oracle.n_params.toLocaleString()} params, all its own. Switch decisions up top, or flip back to the <b>Policy</b> network.</p>`,
+  },
+  ];
+}
+
+let STAGES = buildPolicyStages();
 
 // ============================================================
 // Camera tween + tour controller
@@ -2618,15 +3221,19 @@ function showStage(i, moveCamera = true) {
 
 // Clickable stage navigator — jump straight to any stage and read its description.
 const navEl = document.getElementById("stage-nav");
-navEl.innerHTML = '<div class="nav-head">Stages · click to jump</div>';
-const navItems = STAGES.map((s, i) => {
-  const b = document.createElement("button");
-  b.className = "nav-item";
-  b.innerHTML = `<span class="dot b-${s.badge}"></span><span>${s.title}</span>`;
-  b.addEventListener("click", () => { stopTour(); showStage(i); });
-  navEl.appendChild(b);
-  return b;
-});
+let navItems = [];
+function rebuildNav() {
+  navEl.innerHTML = '<div class="nav-head">Stages · click to jump</div>';
+  navItems = STAGES.map((s, i) => {
+    const b = document.createElement("button");
+    b.className = "nav-item";
+    b.innerHTML = `<span class="dot b-${s.badge}"></span><span>${s.title}</span>`;
+    b.addEventListener("click", () => { stopTour(); showStage(i); });
+    navEl.appendChild(b);
+    return b;
+  });
+}
+rebuildNav();
 
 // ============================================================
 // Scenario selector
@@ -2650,6 +3257,72 @@ function switchScenario(i) {
   // Refresh the current stage's text (and reframe its camera) for the new data.
   showStage(curStage);
 }
+
+// ============================================================
+// Network toggle: policy walkthrough ⇄ oracle critic walkthrough
+// ============================================================
+const LEGEND_POLICY = `
+  <div class="row"><span class="swatch" style="background:#b58bff;color:#b58bff"></span>Input / observation</div>
+  <div class="row"><span class="swatch" style="background:#4cc9f0;color:#4cc9f0"></span>Encoder tokens</div>
+  <div class="row">
+    <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
+    Attention heads 1–4
+  </div>
+  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · recurrence</div>
+  <div class="row"><span class="swatch" style="background:#ffc65c;color:#ffc65c"></span>Shared readout → features</div>
+  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor heads + pointer</div>
+  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic value + aux</div>
+  <div class="row"><span class="swatch" style="background:#fffa9e;color:#fffa9e"></span>Active flow / connection</div>`;
+const LEGEND_ORACLE = `
+  <div class="row"><span class="swatch" style="background:#c9b8ff;color:#c9b8ff"></span>Privileged observation</div>
+  <div class="row">
+    <span class="swatch" style="background:#8f7bff;color:#8f7bff;width:6px"></span><span class="swatch" style="background:#a86ef5;color:#a86ef5;width:6px"></span><span class="swatch" style="background:#c17bea;color:#c17bea;width:6px"></span><span class="swatch" style="background:#d88fdd;color:#d88fdd;width:6px"></span>
+    Hidden hands · seats +1…+4
+  </div>
+  <div class="row"><span class="swatch" style="background:#ffd166;color:#ffd166"></span>Secret partner</div>
+  <div class="row">
+    <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
+    Attention heads 1–4
+  </div>
+  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · U(h,s) recurrence</div>
+  <div class="row"><span class="swatch" style="background:#8b6cff;color:#8b6cff"></span>Oracle readout</div>
+  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Value trunk · U(h,s)</div>`;
+function renderLegend() {
+  document.getElementById("legend").innerHTML =
+    NETWORK_MODE === 1 ? LEGEND_ORACLE : LEGEND_POLICY;
+}
+renderLegend();
+
+const netButtons = [
+  document.getElementById("net-policy"),
+  document.getElementById("net-oracle"),
+];
+const titleSub = document.getElementById("title-sub");
+if (DATA.oracle && !DATA.oracle.untrained) {
+  document.getElementById("oracle-badge").style.display = "none";
+}
+function switchNetwork(m) {
+  if (m === NETWORK_MODE) return;
+  if (m === 1 && !DATA.oracle) return;
+  stopTour();
+  NETWORK_MODE = m;
+  N_TOK = m ? DATA.oracle.dims.n_tokens : 19;
+  TOKEN_INFO = m ? ORACLE_TOKEN_INFO : POLICY_TOKEN_INFO;
+  RING_R = m ? 14 : 9;
+  XSA = m ? XS_O : XS;
+  STAGES = m ? buildOracleStages() : buildPolicyStages();
+  rebuildNav();
+  renderLegend();
+  netButtons.forEach((b, i) => b.classList.toggle("active", i === m));
+  titleSub.textContent = m
+    ? `3D · oracle critic U(h,s)${DATA.oracle.untrained ? " · random init (untrained)" : ""}`
+    : "3D · perceiver-shared-v2 forward pass";
+  disposeScene();
+  buildScene();
+  showStage(0); // stage index spaces differ between modes
+}
+netButtons[0].addEventListener("click", () => switchNetwork(0));
+netButtons[1].addEventListener("click", () => switchNetwork(1));
 
 // ============================================================
 // Tour playback
