@@ -1812,6 +1812,20 @@ both modes, vs full's ckpt-based endpoints):
   fast: 3k/6k/20k — v2 should match since trunk sharing + aux + driver
   are unchanged). CONFIRMED ~29k: leaster 3.4%/18.5%/4.0% — all seeds
   escaped.
+- **Readout rank audit** (Jul-9 eve,
+  `analysis/diagnostics/readout_rank_audit.py`, commit eab809c;
+  operator hypothesis: is v2's single 1024→256 projection a
+  bottleneck vs full's multi-stage path?): NO, decisively. Both paths
+  are purely linear pre-LN so they compare as matrices. v2's dense map:
+  eff. rank ~172, σ_min 0.31, no collapsed directions. full's exact
+  composite (pools ∘ fusion): eff. rank ~119, σ_min ≈ 0 — the block
+  factorization is the MORE rank-deficient map, and full wins anyway.
+  On-distribution feature covariance (CRN states): participation ratio
+  ~10–13 of 256 dims for BOTH archs, 90% variance in 16–19 dims —
+  neither trunk is capacity-limited (also deflates the dmodel512 width
+  hypothesis for this regime). Convergent conclusion across all four
+  mechanism audits (LN, channels, aux accuracy, rank): the family's
+  deficit is optimization/priors, NOT representational capacity.
 - **Endpoint panels AUTOMATED** (Jul-9 10:09): detached watcher
   `diag/panel_v2_endpoint_watch.sh` waits for the 400k endpoint panels
   to complete + all three v2 `checkpoint_200000` files, then runs
