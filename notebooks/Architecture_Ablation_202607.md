@@ -1641,9 +1641,30 @@ called −0.242 / jd −0.214 / both-modes **−0.228** vs full −0.214.
 CRN-paired per-seed deltas −0.023 / −0.064 / +0.045 (mean −0.014,
 mixed signs) — the 200k TIE STANDS on the consistent methodology.
 Still open: whether onehot matches full's late acceleration
-(+0.149 own-gain 200k→400k) — needs the 400k extension (operator
-deferred the launch decision to the v2-panel read); the league arm
-remains the decisive test (phase2_onehot.sh, unlaunched).
+(+0.149 own-gain 200k→400k); the league arm remains the decisive test
+(phase2_onehot.sh, unlaunched).
+
+**SECOND EXTENSION BATCH LAUNCHED (2026-07-10 ~09:15):** operator
+ordered 400k extensions for BOTH onehot-ff and perceiver-shared-v2
+(`ablate_{onehot-ff,perceiver-shared-v2}400_s{42,1042,2042}`, resumed
+from checkpoint_200000, standard probe flags, post-flush-fix trainer
+code so finals are clean). Context for the v2 arm: its 200k read came
+in v2 ≈ v1 EXACTLY (Δ −0.006 ± 0.008 on the 175k+200k rungs; the
+channel+LN corrections had no effect — bandwidth was never binding),
+so the extension tests whether the shared-readout family CONVERGES to
+full at 2× budget, not the corrections themselves. Panels AUTOMATED:
+`diag/panel_ext2_watch.sh` (detached) fires per-rung as all six
+checkpoints land — 300k mid-course + 350/375/400k, both modes →
+`diag/panel_ext2_{300,350,375,400}k_{called,jd}.csv`; full's CRN
+comparators at the same rungs already exist in
+`panel_a_400ext_*`/`panel_a_400k_*`. Done marker "EXT2 PANELS
+COMPLETE". ETA: training ~Jul-11 evening at 6-trainer load, endpoint
+panels overnight → verdicts ~Jul-12 morning. Read = rule-1 endpoints,
+CRN-paired vs full@400k (−0.065): onehot tests the token-stack
+question at converged budget; v2 tests family convergence (pre-register:
+v2 within 0.07 of full at 400k ⇒ family restored for stage-1 league;
+onehot within 0.07 of full at 400k ⇒ token-stack advantage remains
+undemonstrated in shaped self-play at ANY tested budget).
 
 ## RESOLUTION (2026-07-08, panels landed)
 
