@@ -1820,6 +1820,51 @@ both modes, vs full's ckpt-based endpoints):
   comparators: full's ckpt-based 150k/175k (full175k control CSVs) +
   ckpt200k re-panels; v1-shared's slope + ckpt200k panels.
 
+## 400k BUDGET-EQUAL VERDICT (2026-07-09, all six endpoint panels landed)
+
+Rule-1 endpoints = per-seed mean over SIX panels (350k/375k/400k ×
+called/jd, PANEL-A 1000 deals, CRN seed 42):
+
+| seed  | full    | perceiver | paired Δ (perc − full) |
+|-------|---------|-----------|------------------------|
+| s42   | −0.094  | −0.283    | −0.190                 |
+| s1042 | −0.075  | −0.297    | −0.222                 |
+| s2042 | −0.026  | −0.390    | −0.364                 |
+| mean  | **−0.065** | **−0.324** | **−0.259 (SE 0.054, t = −4.8)** |
+
+**VERDICT (pre-registered rule): full is DECISIVELY better at equal
+400k budget** — 3.7× the 0.07 bar, 4.8 seed-SE, 3/3 CRN-paired seed
+wins, both modes. The probe-verdict reversal condition (perceiver >
+full @400k) did not occur; the opposite is confirmed beyond the
+decisive threshold. The stage-0 screening outcome is the
+"perceiver family decisively worse at equal budget" branch.
+
+Reading of the trajectories (both-modes means): 300k full −0.162 /
+perc −0.415; 350k −0.118 / −0.351; 375k −0.043 / −0.354; 400k −0.034 /
+−0.286. Full's 200k plateau was temporary — it accelerated late
+(+0.149 own-arch gain 200k→400k); perceiver gained similarly
+(+0.131) but from a hole dug in its formative phase that never
+closed. Per-rung volatility remains a perceiver-family signature
+(perc s42 swung +0.23 in the last 25k, winning its 400k-called rung
+vs full — rule 1 smooths exactly this).
+
+Milestone: full@400k rule-1 endpoint −0.065 ⇒ plain 400k self-play
+now roughly at parity with the frozen PANEL-A field's weaker half
+(s1042/s2042 positive at single rungs vs the field).
+
+**Consequences:**
+- Plain `perceiver` is OUT as an adoption candidate at self-play
+  budgets. The family's remaining shot is `perceiver-shared-v2`
+  (running; endpoints tomorrow) under its own pre-registered read.
+- If v2 also trails decisively ⇒ stage-1 league base = full;
+  the optional league aux arm (full vs no-aux) becomes the P2
+  learning-contribution measurement; perceiver-family league arm
+  only if the operator wants the writeup contrast.
+- The budget-artifact lesson STANDS (the 200k verdict was indeed not
+  the converged picture — full's own numbers moved +0.149) but the
+  extension answered the right question: the gap is real, stable, and
+  seed-robust at converged budget.
+
 **Endpoint panels AUTOMATED:** detached watcher
 `diag/panel400k_endpoint_watch.sh` (launched Jul-8 evening) waits for
 all six `checkpoint_400000` files AND the ckpt200k re-panel chain,
