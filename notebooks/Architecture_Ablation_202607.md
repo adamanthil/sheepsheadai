@@ -1666,6 +1666,17 @@ v2 within 0.07 of full at 400k ⇒ family restored for stage-1 league;
 onehot within 0.07 of full at 400k ⇒ token-stack advantage remains
 undemonstrated in shaped self-play at ANY tested budget).
 
+**Three-rung matrix COMPLETED (2026-07-10,
+`panel_a_full_ckpt150k_{called,jd}.csv` landed):** rule-1 endpoints
+(mean of the 150k/175k/200k checkpoint panels, both modes, 3 seeds
+each): full **−0.269**, perceiver-shared v1 **−0.337**, v2 **−0.347**.
+The interim conclusion stands on the full matrix — v2 ≈ v1 (Δ −0.009;
+the 16q+LN corrections had no effect) and full leads the shared-readout
+family by ~0.07 (≈ the panel MDE) over the 150–200k window. Per-rung
+both-modes means: full −0.338/−0.254/−0.214; v1 −0.406/−0.232/−0.373;
+v2 −0.423/−0.301/−0.315 (v1's 175k spike-up and 200k drop illustrate
+the family's trajectory volatility — endpoint rule, not single rungs).
+
 ## RESOLUTION (2026-07-08, panels landed)
 
 Called-mode, same panel field, CRN-paired (finals re-check reproduced
