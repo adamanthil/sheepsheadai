@@ -23,7 +23,7 @@ import random
 from dataclasses import dataclass
 from typing import Dict, Sequence
 
-from ppo import PPOAgent, load_agent
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import (
     ACTIONS,
     CALLED_ACES,

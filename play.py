@@ -3,7 +3,7 @@
 import torch
 from argparse import ArgumentParser
 
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import (
     Game,
     Player,

@@ -17,8 +17,8 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import architectures
-import ppo
+from sheepshead.agent import architectures
+from sheepshead.agent import ppo
 from analysis.capture_arch_goldens import (
     FIXTURE_DIR,
     build_agent,
@@ -29,7 +29,7 @@ from analysis.capture_arch_goldens import (
     _key_sha,
 )
 from sheepshead import ACTIONS, Game
-from ppo import PPOAgent
+from sheepshead.agent.ppo import PPOAgent
 
 _HAVE_FIXTURES = os.path.exists(manifest_path())
 

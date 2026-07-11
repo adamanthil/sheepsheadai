@@ -40,7 +40,7 @@ from typing import Any, Dict, List
 import torch
 import torch.nn as nn
 
-from encoder import (
+from sheepshead.agent.encoder import (
     CardEmbeddingConfig,
     CardReasoningEncoder,
     PAD_CARD_ID,

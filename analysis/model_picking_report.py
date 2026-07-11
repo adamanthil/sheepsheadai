@@ -15,7 +15,7 @@ from argparse import ArgumentParser
 import random
 import re
 
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import (
     Game,
     Player,
@@ -25,7 +25,7 @@ from sheepshead import (
     PARTNER_BY_CALLED_ACE,
     pretty_card_list,
 )
-from training_utils import estimate_hand_strength_score
+from sheepshead.training.training_utils import estimate_hand_strength_score
 
 
 def calculate_display_width(text):

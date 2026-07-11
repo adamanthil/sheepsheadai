@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 
 import numpy as np
 
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import (
     ACTIONS,
     TRUMP,
@@ -32,7 +32,7 @@ from sheepshead import (
     get_card_points,
     get_card_suit,
 )
-from training_utils import (
+from sheepshead.training.training_utils import (
     compute_seen_trump_mask,
     get_partner_selection_mode,
 )

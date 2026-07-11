@@ -12,9 +12,9 @@ import copy
 
 import torch
 
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import Game, ACTIONS, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
-from ismcts import ISMCTSTeacher, ISMCTSConfig
+from sheepshead.ismcts import ISMCTSTeacher, ISMCTSConfig
 
 CKPT = "final_pfsp_swish_ppo.pt"
 

@@ -20,17 +20,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import torch
 
-import architectures
-import pfsp_runtime
-import ppo
-from architectures import (
+from sheepshead.agent import architectures
+from sheepshead.training import pfsp_runtime
+from sheepshead.agent import ppo
+from sheepshead.agent.architectures import (
     ONEHOT_STATE_DIM,
     OneHotFeedForwardEncoder,
     PooledMemoryEncoder,
     build_onehot_state,
 )
-from encoder import CardEmbeddingConfig, CardReasoningEncoder
-from ppo import MultiHeadRecurrentActorNetwork, PPOAgent, RecurrentCriticNetwork
+from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
+from sheepshead.agent.ppo import (
+    MultiHeadRecurrentActorNetwork,
+    PPOAgent,
+    RecurrentCriticNetwork,
+)
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 # Frozen sha256 over the sorted encoder/actor/critic state_dict KEY NAMES of
@@ -513,7 +517,7 @@ class TestPerceiver(unittest.TestCase):
         self.assertEqual(tuple(aux_bt.shape), (1, 2, 256))
 
     def test_decomposition_hybrids(self):
-        from ppo import (
+        from sheepshead.agent.ppo import (
             MultiHeadRecurrentActorNetwork,
             PerceiverActorNetwork,
             PerceiverCriticNetwork,

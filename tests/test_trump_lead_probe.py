@@ -8,7 +8,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from analysis.trump_lead_probe import PROBE_SEED, probe_agent
-from scripted_agent import ScriptedAgent
+from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import PARTNER_BY_CALLED_ACE
 
 

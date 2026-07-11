@@ -16,7 +16,7 @@ from server.api.schemas import (
 from server.config import get_settings
 from server.services.ai_loader import load_agent
 from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game, Player
-from training_utils import (
+from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,

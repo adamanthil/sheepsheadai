@@ -51,10 +51,10 @@ import time
 import numpy as np
 import torch
 
-from ismcts import ISMCTSConfig, ISMCTSTeacher
-from ppo import PPOAgent, load_agent
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
-from training_utils import RETURN_SCALE, get_partner_selection_mode
+from sheepshead.training.training_utils import RETURN_SCALE, get_partner_selection_mode
 
 T_FULL = 1  # production rollout-depth schedule (config.SearchConfig)
 D_SHORT = 2

@@ -1,0 +1,85 @@
+"""Sheepshead RL core package.
+
+Re-exports the game API from :mod:`sheepshead.game` so the historical
+``from sheepshead import Game, ACTIONS, ...`` sites keep working after the
+2026-07 repo reorganization (the flat ``sheepshead.py`` module became this
+package's ``game.py``).
+
+Subpackages: ``agent`` (networks + PPO), ``training`` (trainers, league,
+orchestrators), ``analysis`` (measurement instruments), ``validation``
+(historical one-off gate checks).
+"""
+
+from sheepshead.game import (
+    ACTION_IDS,
+    ACTION_LOOKUP,
+    ACTIONS,
+    BURY_ACTIONS,
+    CALL_ACTIONS,
+    CALLED_10S,
+    CALLED_ACES,
+    CALLED_PARTNER_CARDS,
+    CARD_FULL_NAMES,
+    DECK,
+    DECK_IDS,
+    FAIL,
+    FAIL_POWER,
+    Game,
+    PARTNER_BY_CALLED_ACE,
+    PARTNER_BY_JD,
+    PLAY_ACTIONS,
+    Player,
+    SUIT_NAMES,
+    TRUMP,
+    TRUMP_POWER,
+    UNDER_ACTIONS,
+    UNDER_CARD_ID,
+    UNDER_TOKEN,
+    colorize_card,
+    filter_by_suit,
+    get_callable_cards,
+    get_card_points,
+    get_card_suit,
+    get_leadable_called_partner_cards,
+    get_playable_called_picker_cards,
+    get_trick_points,
+    get_trick_winner,
+    pretty_card_list,
+)
+
+__all__ = [
+    "ACTION_IDS",
+    "ACTION_LOOKUP",
+    "ACTIONS",
+    "BURY_ACTIONS",
+    "CALL_ACTIONS",
+    "CALLED_10S",
+    "CALLED_ACES",
+    "CALLED_PARTNER_CARDS",
+    "CARD_FULL_NAMES",
+    "DECK",
+    "DECK_IDS",
+    "FAIL",
+    "FAIL_POWER",
+    "Game",
+    "PARTNER_BY_CALLED_ACE",
+    "PARTNER_BY_JD",
+    "PLAY_ACTIONS",
+    "Player",
+    "SUIT_NAMES",
+    "TRUMP",
+    "TRUMP_POWER",
+    "UNDER_ACTIONS",
+    "UNDER_CARD_ID",
+    "UNDER_TOKEN",
+    "colorize_card",
+    "filter_by_suit",
+    "get_callable_cards",
+    "get_card_points",
+    "get_card_suit",
+    "get_leadable_called_partner_cards",
+    "get_playable_called_picker_cards",
+    "get_trick_points",
+    "get_trick_winner",
+    "pretty_card_list",
+]

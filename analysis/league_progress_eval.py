@@ -68,14 +68,14 @@ from analysis.rigorous_eval import (
 )
 from analysis.run_ablation_matrix import PANEL_A
 from analysis.trump_lead_probe import _is_secret_partner, _lead_options
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     TRUMP,
 )
-from training_utils import paired_edge
+from sheepshead.training.training_utils import paired_edge
 
 _TRUMP_SET = set(TRUMP)
 

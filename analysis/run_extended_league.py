@@ -283,8 +283,8 @@ class Orchestrator:
         """Greedy-health probe of the resume checkpoint, measured once."""
         if self.state.get("baseline_health"):
             return self.state["baseline_health"]
-        from ppo import load_agent
-        from training_utils import greedy_health_probe
+        from sheepshead.agent.ppo import load_agent
+        from sheepshead.training.training_utils import greedy_health_probe
 
         agent = load_agent(self.args.resume)
         probe = greedy_health_probe(
@@ -310,7 +310,7 @@ class Orchestrator:
         return self.state["baseline_health"]
 
     def _alone_limit(self) -> float:
-        from config import PFSPHyperparams
+        from sheepshead.training.config import PFSPHyperparams
 
         gate = PFSPHyperparams().greedy_gate_max_alone
         base = self.state.get("baseline_health", {}).get("alone_rate", 0.0)
@@ -323,11 +323,11 @@ class Orchestrator:
         if self.state.get("anchor_coeff") is not None:
             return float(self.state["anchor_coeff"])
 
-        from ppo import PPOAgent, load_agent
+        from sheepshead.agent.ppo import PPOAgent, load_agent
         from sheepshead import ACTIONS
-        import train_league_ppo as tlp
-        from config import LeagueConfig
-        from league import League
+        import sheepshead.training.train_league_ppo as tlp
+        from sheepshead.training.config import LeagueConfig
+        from sheepshead.training.league import League
 
         a = self.args
         self.log(f"CALIBRATION: coeffs {a.anchor_coeffs}, {a.probe_episodes} eps each")
@@ -404,7 +404,7 @@ class Orchestrator:
         return choice.coeff
 
     def _summarize_probe(self, coeff: float, cal_dir: str) -> ProbeSummary:
-        from config import PFSPHyperparams
+        from sheepshead.training.config import PFSPHyperparams
 
         hp = PFSPHyperparams()
         kls: List[float] = []
@@ -450,7 +450,8 @@ class Orchestrator:
         a = self.args
         cmd = [
             sys.executable,
-            "train_league_ppo.py",
+            "-m",
+            "sheepshead.training.train_league_ppo",
             "--resume",
             self._resume_for(g),
             "--league-dir",
@@ -584,9 +585,9 @@ class Orchestrator:
     def _finish_exploiter_phase(self, g: int) -> None:
         """Replicates the trainer's post-main-phase block for the crash window
         between the boundary save and the gate row (train_league_ppo.main)."""
-        import train_league_ppo as tlp
-        from config import LeagueConfig
-        from league import ROLE_PAST_MAIN, League
+        import sheepshead.training.train_league_ppo as tlp
+        from sheepshead.training.config import LeagueConfig
+        from sheepshead.training.league import ROLE_PAST_MAIN, League
 
         a = self.args
         ns = SimpleNamespace(
@@ -691,7 +692,7 @@ class Orchestrator:
         lo, hi = self.boundary(g - 1), self.boundary(g)
         greedy_csv = os.path.join(self.ckpt_dir, "greedy_health.csv")
         if os.path.exists(greedy_csv):
-            from config import PFSPHyperparams
+            from sheepshead.training.config import PFSPHyperparams
 
             hp = PFSPHyperparams()
             alone_limit = self._alone_limit()  # baseline-relative

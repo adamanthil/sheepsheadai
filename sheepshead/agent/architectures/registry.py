@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict
 
 import torch.nn as nn
 
-from encoder import CardEmbeddingConfig, CardReasoningEncoder
+from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
 
 from .encoders import (
     PerceiverCtxMemEncoder,
@@ -48,7 +48,7 @@ class ArchitectureSpec:
 
 
 def _pointer_actor(action_size, action_groups, encoder, mappings):
-    from ppo import MultiHeadRecurrentActorNetwork
+    from sheepshead.agent.ppo import MultiHeadRecurrentActorNetwork
 
     return MultiHeadRecurrentActorNetwork(
         action_size,
@@ -61,7 +61,7 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
 
 
 def _tokenread_actor(action_size, action_groups, encoder, mappings):
-    from ppo import TokenReadActorNetwork
+    from sheepshead.agent.ppo import TokenReadActorNetwork
 
     return TokenReadActorNetwork(
         action_size,
@@ -74,7 +74,7 @@ def _tokenread_actor(action_size, action_groups, encoder, mappings):
 
 
 def _perceiver_actor(action_size, action_groups, encoder, mappings):
-    from ppo import PerceiverActorNetwork
+    from sheepshead.agent.ppo import PerceiverActorNetwork
 
     return PerceiverActorNetwork(
         action_size,
@@ -87,7 +87,7 @@ def _perceiver_actor(action_size, action_groups, encoder, mappings):
 
 
 def _perceiver_critic(encoder):
-    from ppo import PerceiverCriticNetwork
+    from sheepshead.agent.ppo import PerceiverCriticNetwork
 
     return PerceiverCriticNetwork(
         d_token=encoder.d_token_dim,
@@ -96,7 +96,7 @@ def _perceiver_critic(encoder):
 
 
 def _perceiver_aux_critic(encoder):
-    from ppo import PerceiverAuxCriticNetwork
+    from sheepshead.agent.ppo import PerceiverAuxCriticNetwork
 
     return PerceiverAuxCriticNetwork(
         d_token=encoder.d_token_dim,
@@ -106,13 +106,13 @@ def _perceiver_aux_critic(encoder):
 
 
 def _aux_critic(encoder):
-    from ppo import RecurrentCriticNetwork
+    from sheepshead.agent.ppo import RecurrentCriticNetwork
 
     return RecurrentCriticNetwork(d_card=encoder.d_card_dim, d_model=encoder.d_model)
 
 
 def _no_aux_critic(encoder):
-    from ppo import RecurrentCriticNetwork
+    from sheepshead.agent.ppo import RecurrentCriticNetwork
 
     d_card = getattr(encoder, "d_card_dim", 0) or None
     return RecurrentCriticNetwork(
@@ -163,7 +163,7 @@ def _perceiver_size_variant(
     """
 
     def build_actor(action_size, action_groups, encoder, mappings):
-        from ppo import PerceiverActorNetwork
+        from sheepshead.agent.ppo import PerceiverActorNetwork
 
         return PerceiverActorNetwork(
             action_size,
@@ -177,7 +177,7 @@ def _perceiver_size_variant(
         )
 
     def build_critic(encoder):
-        from ppo import PerceiverCriticNetwork
+        from sheepshead.agent.ppo import PerceiverCriticNetwork
 
         return PerceiverCriticNetwork(
             d_token=encoder.d_token_dim,

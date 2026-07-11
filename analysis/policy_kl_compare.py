@@ -47,7 +47,7 @@ import statistics as st
 
 import torch
 
-from ppo import PPOAgent, load_agent
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 _MODE_BY_NAME = {"jd": PARTNER_BY_JD, "called-ace": PARTNER_BY_CALLED_ACE}

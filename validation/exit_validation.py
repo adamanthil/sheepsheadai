@@ -30,9 +30,9 @@ import random
 import numpy as np
 import torch
 
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTIONS, TRUMP, Game
-from training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode
 
 
 def load(model):

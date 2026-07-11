@@ -5,8 +5,8 @@ import logging
 import os
 from functools import lru_cache
 
-import ppo
-from ppo import PPOAgent, device
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import PPOAgent, device
 from sheepshead import ACTION_IDS
 
 ACTION_SIZE = len(ACTION_IDS)

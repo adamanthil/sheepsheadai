@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import Game
 
 

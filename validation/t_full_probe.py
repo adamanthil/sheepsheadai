@@ -24,11 +24,11 @@ import random
 import numpy as np
 import torch
 
-import ppo
+from sheepshead.agent import ppo
 from critic_probe import encode_decide, r2, train_head
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import Game
-from training_utils import RETURN_SCALE, get_partner_selection_mode
+from sheepshead.training.training_utils import RETURN_SCALE, get_partner_selection_mode
 
 DEV = ppo.device
 

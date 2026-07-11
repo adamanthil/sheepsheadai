@@ -34,8 +34,8 @@ from collections import deque
 import numpy as np
 import torch
 
-import ppo
-from ppo import load_agent
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import load_agent
 from sheepshead import (
     ACTION_IDS,
     ACTIONS,
@@ -46,7 +46,7 @@ from sheepshead import (
     get_card_suit,
     get_callable_cards,
 )
-from training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode
 
 from counterfactual_trump_leads import (
     snapshot_memory,

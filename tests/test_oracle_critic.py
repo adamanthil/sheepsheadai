@@ -16,7 +16,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripted_agent import ScriptedAgent
+from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import (
     DECK_IDS,
     PARTNER_BY_CALLED_ACE,
@@ -139,7 +139,7 @@ class TestOracleReadout(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from oracle import OracleValueNetwork
+        from sheepshead.agent.oracle import OracleValueNetwork
 
         cls.net = OracleValueNetwork()
         game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=3)
@@ -198,9 +198,9 @@ def _collect_episodes(agent, n_episodes, collect_oracle):
 
     import torch
 
-    from league import SELF_PLAY
-    from pfsp_runtime import play_population_game
-    from train_league_ppo import _Seat
+    from sheepshead.training.league import SELF_PLAY
+    from sheepshead.training.pfsp_runtime import play_population_game
+    from sheepshead.training.train_league_ppo import _Seat
 
     random.seed(7)
     torch.manual_seed(7)
@@ -224,7 +224,7 @@ def _collect_episodes(agent, n_episodes, collect_oracle):
 class TestOracleEventCollection(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from ppo import PPOAgent
+        from sheepshead.agent.ppo import PPOAgent
         from sheepshead import ACTIONS
 
         cls.agent = PPOAgent(len(ACTIONS))  # limited: shared inference agent
@@ -253,7 +253,7 @@ class TestOracleEventCollection(unittest.TestCase):
 class TestOracleUpdate(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from ppo import PPOAgent
+        from sheepshead.agent.ppo import PPOAgent
         from sheepshead import ACTIONS
 
         cls.ACTIONS = ACTIONS
@@ -305,7 +305,7 @@ class TestGradientIsolation(unittest.TestCase):
         import torch
         import torch.nn.functional as F
 
-        from ppo import PPOAgent, device
+        from sheepshead.agent.ppo import PPOAgent, device
         from sheepshead import ACTIONS
 
         agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
@@ -352,7 +352,7 @@ class TestOracleCheckpoints(unittest.TestCase):
     def test_roundtrips(self):
         import torch
 
-        from ppo import PPOAgent
+        from sheepshead.agent.ppo import PPOAgent
         from sheepshead import ACTIONS
 
         path = os.path.join(self.dir, "a.pt")
@@ -387,7 +387,7 @@ class TestOracleCheckpoints(unittest.TestCase):
 
         import torch
 
-        from ppo import PPOAgent
+        from sheepshead.agent.ppo import PPOAgent
         from sheepshead import ACTIONS
 
         agent = PPOAgent(len(ACTIONS), critic_mode="oracle")

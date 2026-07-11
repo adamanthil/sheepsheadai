@@ -17,8 +17,8 @@ import random
 import numpy as np
 import torch
 
-import ppo
-from ppo import load_agent
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import load_agent
 from sheepshead import TRUMP
 from gate0_determinizer import collect
 

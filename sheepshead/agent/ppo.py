@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-import architectures
+from sheepshead.agent import architectures
 from sheepshead import (
     ACTION_IDS,
     BURY_ACTIONS,
@@ -18,7 +18,7 @@ from sheepshead import (
     UNDER_ACTIONS,
     UNDER_TOKEN,
 )
-from training_utils import RETURN_SCALE
+from sheepshead.training.training_utils import RETURN_SCALE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -905,7 +905,7 @@ class PPOAgent:
         self.oracle_value_loss_coeff = 1.0
         self._oracle_lr_ratios = [0.2, 1.0]  # card embeddings, rest
         if critic_mode == "oracle":
-            from oracle import OracleValueNetwork
+            from sheepshead.agent.oracle import OracleValueNetwork
 
             self.oracle_critic = OracleValueNetwork().to(device)
             self.oracle_optimizer = optim.Adam(

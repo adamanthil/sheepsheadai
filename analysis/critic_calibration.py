@@ -45,10 +45,14 @@ import random
 import numpy as np
 import torch
 
-import ppo
-from ppo import load_agent
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
-from training_utils import RETURN_SCALE, TRICK_POINT_RATIO, get_partner_selection_mode
+from sheepshead.training.training_utils import (
+    RETURN_SCALE,
+    TRICK_POINT_RATIO,
+    get_partner_selection_mode,
+)
 
 DEV = ppo.device
 GAMMA = 0.95  # must match PPOAgent.gamma

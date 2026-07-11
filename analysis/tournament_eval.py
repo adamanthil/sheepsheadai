@@ -46,7 +46,7 @@ import numpy as np
 from openskill.models import PlackettLuce
 import matplotlib.pyplot as plt
 
-from ppo import PPOAgent, load_agent
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import (
     Game,
     PARTNER_BY_JD,

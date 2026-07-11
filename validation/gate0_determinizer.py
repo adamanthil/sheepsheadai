@@ -49,10 +49,10 @@ from collections import deque
 import numpy as np
 import torch
 
-import ppo
-from ppo import load_agent
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
-from training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode
 
 # Reuse the validated paired-rollout scaffolding.
 from counterfactual_trump_leads import (

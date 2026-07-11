@@ -20,7 +20,7 @@ import argparse
 from typing import Dict, Tuple
 import csv
 
-from encoder import (
+from sheepshead.agent.encoder import (
     CardReasoningEncoder,
     CardEmbeddingConfig,
     PAD_CARD_ID,

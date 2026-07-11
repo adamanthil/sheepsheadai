@@ -116,7 +116,8 @@ class Orchestrator:
 
         train_cmd = [
             sys.executable,
-            "train_selfplay_ppo.py",
+            "-m",
+            "sheepshead.training.train_selfplay_ppo",
             "--arch",
             arch,
             "--seed",

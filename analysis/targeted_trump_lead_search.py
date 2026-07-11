@@ -226,7 +226,7 @@ def main() -> int:
 
     device = cf._device()
     agent = scan._cached_load_agent(args.model)
-    from ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     cfg = ISMCTSConfig()
     cfg.batch_size = args.batch_size

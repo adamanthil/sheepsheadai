@@ -9,7 +9,7 @@ are unchanged (checkpoints store no class paths)."""
 import torch
 import torch.nn as nn
 
-from encoder import CardEmbeddingConfig, CardReasoningEncoder
+from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
 
 
 # ---------------------------------------------------------------------------

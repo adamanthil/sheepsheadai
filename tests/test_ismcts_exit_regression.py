@@ -50,7 +50,7 @@ def _seed():
 
 
 def _fresh_agent():
-    from ppo import PPOAgent
+    from sheepshead.agent.ppo import PPOAgent
 
     return PPOAgent(len(ACTIONS))
 
@@ -331,7 +331,7 @@ def _drive_to_second_bury(game):
 
 def test_private_root_replay_matches_completed_private_actions():
     """A second BURY root must replay the first BURY before returning the root."""
-    from ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     game = Game(partner_selection_mode=PARTNER_BY_JD)
@@ -367,7 +367,7 @@ def test_private_root_replay_matches_completed_private_actions():
 # 3. Batched pool build == sequential reference (the key Tier-2 guard)
 # ---------------------------------------------------------------------------
 def test_batched_pool_matches_sequential():
-    from ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     agent = _fresh_agent()
@@ -426,7 +426,7 @@ def test_batched_pool_fallback_on_inconsistency():
     a recorded play illegal — void inference is not exhaustive), _build_worlds_batched
     must fall back to the per-world sequential build and still return a valid pool,
     not abort. Forced here by monkeypatching the lockstep to raise."""
-    from ismcts import ISMCTSConfig, ISMCTSTeacher, _ReplayInconsistency
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _ReplayInconsistency
 
     _seed()
     agent = _fresh_agent()
@@ -485,7 +485,7 @@ ISMCTS_FLOOR = 1.0
 
 
 def test_search_output_contract():
-    from ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     agent = _fresh_agent()
@@ -526,7 +526,7 @@ def test_search_output_contract():
 
 
 def test_ismcts_backup_discount_uses_agent_gamma():
-    from ismcts import ISMCTSConfig, ISMCTSTeacher, _Node
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _Node
 
     agent = _fresh_agent()
     agent.gamma = 0.5
@@ -557,7 +557,10 @@ def test_ismcts_backup_discount_uses_agent_gamma():
 # 5. Terminal reward contract (pure)
 # ---------------------------------------------------------------------------
 def test_terminal_reward_contract():
-    from training_utils import RETURN_SCALE, process_terminal_rewards
+    from sheepshead.training.training_utils import (
+        RETURN_SCALE,
+        process_terminal_rewards,
+    )
 
     class _P:
         def __init__(self, pos):
@@ -590,9 +593,9 @@ def _make_pop_agent(agent, mode, i):
 
 
 def test_distill_pgmask_and_dormant():
-    from config import SearchConfig
-    from ismcts import ISMCTSConfig, ISMCTSTeacher
-    from pfsp_runtime import play_population_game
+    from sheepshead.training.config import SearchConfig
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     agent = _fresh_agent()
@@ -665,9 +668,9 @@ def test_distill_pgmask_and_dormant():
 def _generate_searched_events(n_games=5):
     """Play terminal-mode games with a teacher and return the concatenated event
     stream (with search targets on a fraction of transitions)."""
-    from config import SearchConfig
-    from ismcts import ISMCTSConfig, ISMCTSTeacher
-    from pfsp_runtime import play_population_game
+    from sheepshead.training.config import SearchConfig
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     gen = _fresh_agent()
@@ -738,7 +741,7 @@ def test_searched_ppo_weight_ab():
 def _generate_terminal_events(n_games=5):
     """Play plain terminal-mode games (no teacher/search) and return the
     per-game event streams."""
-    from pfsp_runtime import play_population_game
+    from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     gen = _fresh_agent()
@@ -802,7 +805,7 @@ def test_seat_policies_population_grounding():
     memories must survive the search untouched (the real game continues after
     it); (3) the lockstep batched pool build must keep matching the sequential
     reference with controllers active."""
-    from ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     agent = _fresh_agent()
@@ -901,7 +904,7 @@ def test_seat_policies_population_grounding():
 def test_greedy_health_probe_side_effect_free():
     """The greedy health probe must restore the global random state and the
     agent's recurrent memories, and return rates in [0, 100]."""
-    from training_utils import greedy_health_probe
+    from sheepshead.training.training_utils import greedy_health_probe
 
     _seed()
     a = _fresh_agent()
@@ -926,7 +929,7 @@ def test_greedy_health_probe_side_effect_free():
 def test_make_game_summary_roles():
     """make_game_summary must classify every seat and expose the public fields the
     training driver reads, matching the live game state."""
-    from pfsp_runtime import make_game_summary
+    from sheepshead.training.pfsp_runtime import make_game_summary
 
     rng = random.Random(SEED)
     for _ in range(20):

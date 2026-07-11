@@ -24,9 +24,9 @@ import torch
 
 sys.path.insert(0, "/Volumes/Nargothrond/dev/sheepsheadai")
 
-from ppo import load_agent
+from sheepshead.agent.ppo import load_agent
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
-from training_utils import (
+from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,

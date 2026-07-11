@@ -31,11 +31,11 @@ import random
 import numpy as np
 import torch
 
-import ppo
-from ppo import load_agent
-from ismcts import ISMCTSTeacher, ISMCTSConfig
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import load_agent
+from sheepshead.ismcts import ISMCTSTeacher, ISMCTSConfig
 from sheepshead import ACTIONS, TRUMP, Game
-from training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device
 

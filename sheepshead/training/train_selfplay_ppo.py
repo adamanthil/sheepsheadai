@@ -14,16 +14,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-import architectures
-from config import SelfPlayHyperparams
-from ppo import PPOAgent, load_agent
+from sheepshead.agent import architectures
+from sheepshead.training.config import SelfPlayHyperparams
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import (
     ACTIONS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     Game,
 )
-from training_utils import (
+from sheepshead.training.training_utils import (
     analyze_strategic_decisions,
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -98,7 +98,7 @@ def _run_anchored_eval(
     n_deals: int,
 ) -> dict:
     """Paired CRN edges of the training agent vs each fixed yardstick."""
-    from training_utils import paired_edge
+    from sheepshead.training.training_utils import paired_edge
 
     results = {}
     for name, anchor in yardsticks.items():
@@ -216,7 +216,7 @@ def train_ppo(
     anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
     yardsticks = {}
     if anchor_eval_interval:
-        from scripted_agent import ScriptedAgent
+        from sheepshead.scripted_agent import ScriptedAgent
 
         yardsticks["scripted"] = ScriptedAgent()
         for name, path in (("selfplay100k", anchor_100k), ("final_pfsp", anchor_pfsp)):

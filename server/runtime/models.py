@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import WebSocket
 
-from ppo import PPOAgent
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead import Game
 
 

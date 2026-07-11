@@ -60,13 +60,21 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-import architectures
-from config import LeagueConfig, PFSPHyperparams
-from league import ROLE_PAST_MAIN, SELF_PLAY, League
-from pfsp_runtime import interpolated_weight, make_game_summary, play_population_game
-from ppo import PPOAgent, load_agent
+from sheepshead.agent import architectures
+from sheepshead.training.config import LeagueConfig, PFSPHyperparams
+from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
+from sheepshead.training.pfsp_runtime import (
+    interpolated_weight,
+    make_game_summary,
+    play_population_game,
+)
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS
-from training_utils import get_partner_selection_mode, greedy_health_probe, paired_edge
+from sheepshead.training.training_utils import (
+    get_partner_selection_mode,
+    greedy_health_probe,
+    paired_edge,
+)
 
 _PARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
 
@@ -622,11 +630,12 @@ def run_main_phase(
 
 # ----------------------------------------------------------------------------
 def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
-    """Subprocess exploiter.py vs the frozen main; returns the gate result."""
+    """Subprocess the exploiter module vs the frozen main; returns the gate result."""
     exp_run = f"{args.run_name}_exploiter_gen{generation}"
     cmd = [
         sys.executable,
-        "exploiter.py",
+        "-m",
+        "sheepshead.training.exploiter",
         "--main-ckpt",
         main_ckpt,
         "--run-name",

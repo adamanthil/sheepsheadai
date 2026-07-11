@@ -29,9 +29,9 @@ import random
 import numpy as np
 import torch
 
-from ppo import PPOAgent, load_agent
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
-from training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode
 
 
 def _load(model: str) -> PPOAgent:

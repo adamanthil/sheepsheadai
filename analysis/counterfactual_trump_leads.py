@@ -1067,7 +1067,7 @@ def main() -> int:
     # the determinizer / belief-weighting). Build it if either is enabled.
     teacher = None
     if args.explore_sweep or not (args.no_search and args.no_belief_mc):
-        from ismcts import ISMCTSConfig, ISMCTSTeacher
+        from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
         cfg = ISMCTSConfig()
         cfg.iters = {k: args.iters for k in cfg.iters}

@@ -92,7 +92,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ppo import PPOAgent, load_agent
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import (
     Game,
     PARTNER_BY_JD,

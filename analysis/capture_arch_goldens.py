@@ -41,9 +41,9 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import architectures
-import ppo
-from ppo import PPOAgent
+from sheepshead.agent import architectures
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead import ACTIONS, Game
 
 SEED = 42

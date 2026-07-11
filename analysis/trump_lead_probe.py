@@ -45,7 +45,7 @@ import argparse
 import json
 import time
 
-from scripted_agent import ScriptedAgent
+from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
@@ -190,7 +190,7 @@ def main() -> int:
     if args.scripted:
         hero, label = ScriptedAgent(), "ScriptedAgent"
     elif args.ckpt:
-        from ppo import load_agent
+        from sheepshead.agent.ppo import load_agent
 
         # Arch-aware: constructs whatever architecture the checkpoint records.
         hero = load_agent(args.ckpt)
