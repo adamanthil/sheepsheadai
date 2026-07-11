@@ -1524,6 +1524,16 @@ On the ADOPTED base from stage 1, not before:
 
 ## Writeup figure pipeline (P5)
 
+- **PANEL-A strength matrix (added 2026-07-11):**
+  `notebooks/panel_a_strength_matrix.csv` — wide format, one row per
+  25k snapshot, one column per arch+seed lineage (both-modes panel
+  mean; blank where panels haven't run), plus `_edge_scripted` /
+  `_edge_100k` supplementary columns (300-deal anchored edges —
+  motivation-only, never publishable). Regenerate after any backfill
+  with `uv run python analysis/build_panel_matrix.py` — it globs
+  `runs/perceiver_202607/diag/panel*.csv` and picks up new
+  checkpoint-based panels automatically (finals-based rows are
+  structurally excluded via the filepath pattern, rule 5).
 - **Panel-grade learning curves** (the headline figure): every probe run
   and extension has 25k-interval checkpoints on disk. Batch
   `rigorous_eval` over all checkpoints of an arch (one call, many
