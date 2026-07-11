@@ -60,7 +60,6 @@ import argparse
 import copy
 import json
 import random
-import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -68,12 +67,11 @@ from typing import Dict, List, Optional
 import numpy as np
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Importing the scanner installs the cached load_agent patch on the analyze
 # service and gives us its case-detection helpers + simulate_game.
-import analysis.scan_defender_trump_leads as scan  # noqa: E402
+import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
 from sheepshead import (  # noqa: E402
     ACTION_IDS,
@@ -300,7 +298,9 @@ def _force_and_play(
     then roll to terminal. Both branches start from the identical snapshot."""
     g = copy.deepcopy(node_game)
     _restore_memory(agent, node_mem)
-    g.players[seat - 1].act(ACTION_IDS[f"PLAY {card}"])  # a lead never completes a trick
+    g.players[seat - 1].act(
+        ACTION_IDS[f"PLAY {card}"]
+    )  # a lead never completes a trick
     _play_out(agent, g, device, deterministic)
     return _branch_metrics(g, seat)
 
@@ -310,7 +310,9 @@ def _mc_branch(
 ) -> McBranch:
     dps, scores, wins = [], [], []
     for _ in range(R):
-        m = _force_and_play(agent, node_game, node_mem, seat, card, device, deterministic=False)
+        m = _force_and_play(
+            agent, node_game, node_mem, seat, card, device, deterministic=False
+        )
         dps.append(m.defenderPoints)
         scores.append(m.leaderScore)
         wins.append(m.win)
@@ -369,7 +371,9 @@ def _replay_to_node(
         agent.set_recurrent_memory(pos, encoder_out["memory_out"][0])
 
         with torch.no_grad():
-            mask = agent.get_action_mask(valid, agent.action_size).unsqueeze(0).to(device)
+            mask = (
+                agent.get_action_mask(valid, agent.action_size).unsqueeze(0).to(device)
+            )
             hand_ids = torch.as_tensor(
                 state["hand_ids"], dtype=torch.long, device=device
             ).view(1, -1)
@@ -689,12 +693,16 @@ def _explore_sweep(agent, teacher, spot, args, device, fracs, iters_list) -> Non
         agent, seed, partner_mode, target_step, args.max_steps, device, teacher=None
     )
     if node is None or node.argmaxCard != spot["cardLed"]:
-        print(f"  ! seed={seed} step={target_step}: node not reached / non-reproducing; skip")
+        print(
+            f"  ! seed={seed} step={target_step}: node not reached / non-reproducing; skip"
+        )
         return
     trump_aid = ACTION_IDS[f"PLAY {node.bestTrumpCard}"]
     fail_aid = ACTION_IDS[f"PLAY {node.bestFailCard}"]
     observer = seat
-    depth = args.rollout_depth if args.rollout_depth is not None else 6 - node.trickIndex
+    depth = (
+        args.rollout_depth if args.rollout_depth is not None else 6 - node.trickIndex
+    )
 
     print(
         f"\nSWEEP seed={seed} trick={node.trickIndex + 1} seat {seat}  "
@@ -716,8 +724,12 @@ def _explore_sweep(agent, teacher, spot, args, device, fracs, iters_list) -> Non
                 rng = random.Random((seed * 1000003) ^ int(frac * 1000) ^ (iters << 3))
                 g = copy.deepcopy(node_game)
                 res = teacher.search(
-                    g, observer, list(forced_public), rng,
-                    d_rollout=depth, seat_policies=None,
+                    g,
+                    observer,
+                    list(forced_public),
+                    rng,
+                    d_rollout=depth,
+                    seat_policies=None,
                 )
                 root_n, root_q, valid = res["root_n"], res["root_q"], res["valid"]
                 total = sum(root_n.values()) or 1.0
@@ -725,7 +737,9 @@ def _explore_sweep(agent, teacher, spot, args, device, fracs, iters_list) -> Non
                 tq, fq = root_q.get(trump_aid, 0.0), root_q.get(fail_aid, 0.0)
                 top_n = max(valid, key=lambda a: root_n.get(a, 0.0))
                 visited = [a for a in valid if root_n.get(a, 0.0) > 0]
-                top_q = max(visited, key=lambda a: root_q.get(a, 0.0)) if visited else top_n
+                top_q = (
+                    max(visited, key=lambda a: root_q.get(a, 0.0)) if visited else top_n
+                )
                 print(
                     f"  {frac:>5.2f} {iters:>6} | {res['ess']:>5.1f} | "
                     f"{tn:>6.0f} ({tn / total * 100:>3.0f}%) {tq:>+6.3f} | "
@@ -741,9 +755,7 @@ def _explore_sweep(agent, teacher, spot, args, device, fracs, iters_list) -> Non
 # ---------------------------------------------------------------------------
 # Per-case analysis
 # ---------------------------------------------------------------------------
-def analyze_case(
-    agent, teacher, spot: dict, args, device
-) -> Optional[CaseResult]:
+def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[CaseResult]:
     seed, partner_mode = spot["seed"], spot["partnerMode"]
     target_step, seat = spot["stepIndex"], spot["seat"]
     det_rng = random.Random(0xC0FFEE ^ (seed << 8) ^ target_step)
@@ -833,11 +845,13 @@ def analyze_case(
         beliefMcFail=belief_fail,
         beliefMcDeltaPoints=(
             belief_trump.defenderPointsMean - belief_fail.defenderPointsMean
-            if belief_trump else None
+            if belief_trump
+            else None
         ),
         beliefMcDeltaScore=(
             belief_trump.leaderScoreMean - belief_fail.leaderScoreMean
-            if belief_trump else None
+            if belief_trump
+            else None
         ),
         beliefMcDeltaWin=(
             belief_trump.winRate - belief_fail.winRate if belief_trump else None
@@ -876,10 +890,16 @@ def _fmt_case(r: CaseResult) -> str:
         def _verdict(card: str, is_t: bool, is_f: bool) -> str:
             return "TRUMP " + card if is_t else (("FAIL " + card) if is_f else card)
 
-        primary = _verdict(s.topQAction[5:] if s.topQAction.startswith("PLAY ") else s.topQAction,
-                           s.topQIsTrump, s.topQIsFail)
-        info = _verdict(s.topAction[5:] if s.topAction.startswith("PLAY ") else s.topAction,
-                        s.topIsTrump, s.topIsFail)
+        primary = _verdict(
+            s.topQAction[5:] if s.topQAction.startswith("PLAY ") else s.topQAction,
+            s.topQIsTrump,
+            s.topQIsFail,
+        )
+        info = _verdict(
+            s.topAction[5:] if s.topAction.startswith("PLAY ") else s.topAction,
+            s.topIsTrump,
+            s.topIsFail,
+        )
         lines.append(
             f"    ismcts({s.iters}it f{s.rootExploreFrac:g} ess {s.ess:.0f}"
             f"{'' if s.ok else ' LOW'}): top@Q={primary} (Q={s.topQValue:+.3f})  "
@@ -904,7 +924,9 @@ def summarize_group(label: str, results: List[CaseResult], iters: int) -> None:
         return
 
     # Paired Monte-Carlo, Delta = trump - fail.
-    print(f"  Paired Monte-Carlo (Δ = trump − fail, {results[0].mcTrump.R} rollouts/branch):")
+    print(
+        f"  Paired Monte-Carlo (Δ = trump − fail, {results[0].mcTrump.R} rollouts/branch):"
+    )
     for key, name, scale, unit in [
         ("mcDeltaPoints", "Defender card points", 1, "pts"),
         ("mcDeltaScore", "Leader game score", 1, "score"),
@@ -918,7 +940,9 @@ def summarize_group(label: str, results: List[CaseResult], iters: int) -> None:
         )
     tp = np.mean([r.mcTrump.defenderPointsMean for r in results])
     fp = np.mean([r.mcFail.defenderPointsMean for r in results])
-    print(f"    Absolute EV: trump-lead {tp:.1f} pts vs fail-lead {fp:.1f} pts (need 60 to win)")
+    print(
+        f"    Absolute EV: trump-lead {tp:.1f} pts vs fail-lead {fp:.1f} pts (need 60 to win)"
+    )
 
     # Belief-pool Monte-Carlo: same policy continuation, but over the search's
     # determinized belief worlds instead of the true deal (isolates hindsight).
@@ -1013,47 +1037,71 @@ def main() -> int:
     parser.add_argument("--num-seeds", type=int, default=800)
     parser.add_argument("--max-steps", type=int, default=200)
     parser.add_argument(
-        "--max-trick", type=int, default=1,
+        "--max-trick",
+        type=int,
+        default=1,
         help="Analyze defender leads at or below this 0-based trick (default 1 = tricks 0-1).",
     )
-    parser.add_argument("--rollouts", type=int, default=50, help="Monte-Carlo rollouts/branch.")
-    parser.add_argument("--iters", type=int, default=512, help="ISMCTS iterations (audit default 512).")
     parser.add_argument(
-        "--root-explore-frac", type=float, default=1.0,
+        "--rollouts", type=int, default=50, help="Monte-Carlo rollouts/branch."
+    )
+    parser.add_argument(
+        "--iters", type=int, default=512, help="ISMCTS iterations (audit default 512)."
+    )
+    parser.add_argument(
+        "--root-explore-frac",
+        type=float,
+        default=1.0,
         help="ISMCTS root prior uniform-mix fraction. 1.0 (audit default) flattens the "
         "root prior so visits track value, not the policy's (biased) confidence.",
     )
     parser.add_argument(
-        "--min-visit-frac", type=float, default=0.01,
+        "--min-visit-frac",
+        type=float,
+        default=0.01,
         help="Min share of visits an action needs to be eligible for the top@Q verdict.",
     )
     parser.add_argument(
-        "--rollout-depth", type=int, default=None,
+        "--rollout-depth",
+        type=int,
+        default=None,
         help="Search rollout depth; default rolls to terminal (6 - trick).",
     )
     parser.add_argument(
-        "--control-ratio", type=float, default=1.0,
+        "--control-ratio",
+        type=float,
+        default=1.0,
         help="FAIL-PREF controls collected = TRUMP-PREF count * this (default 1.0).",
     )
     parser.add_argument("--control-seed", type=int, default=0)
     parser.add_argument(
-        "--belief-worlds", type=int, default=None,
+        "--belief-worlds",
+        type=int,
+        default=None,
         help="Belief-pool size for belief-MC; default = --iters (matches the search pool).",
     )
     parser.add_argument("--no-search", action="store_true", help="Skip ISMCTS.")
     parser.add_argument(
-        "--no-belief-mc", action="store_true", help="Skip the belief-pool Monte-Carlo rung."
+        "--no-belief-mc",
+        action="store_true",
+        help="Skip the belief-pool Monte-Carlo rung.",
     )
-    parser.add_argument("--no-control", action="store_true", help="Skip FAIL-PREF control group.")
-    parser.add_argument("--limit", type=int, default=None, help="Cap TRUMP-PREF cases analyzed.")
+    parser.add_argument(
+        "--no-control", action="store_true", help="Skip FAIL-PREF control group."
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Cap TRUMP-PREF cases analyzed."
+    )
     parser.add_argument("--out", default=None)
     # root_explore_frac / iters sweep diagnostic mode.
     parser.add_argument(
-        "--explore-sweep", action="store_true",
+        "--explore-sweep",
+        action="store_true",
         help="Diagnostic: re-run ISMCTS at each target node across a frac x iters grid.",
     )
     parser.add_argument(
-        "--sweep-seeds", default="266,679",
+        "--sweep-seeds",
+        default="266,679",
         help="Comma-separated seeds whose trump-pref node(s) to sweep (explore-sweep mode).",
     )
     parser.add_argument("--sweep-fracs", default="0.25,0.5,1.0")
@@ -1084,8 +1132,11 @@ def main() -> int:
         )
         for seed in sweep_seeds:
             req = AnalyzeSimulateRequest(
-                seed=seed, partnerMode=args.partner_mode, deterministic=True,
-                modelPath=args.model, maxSteps=args.max_steps,
+                seed=seed,
+                partnerMode=args.partner_mode,
+                deterministic=True,
+                modelPath=args.model,
+                maxSteps=args.max_steps,
             )
             resp = scan.simulate_game(req)
             spots = [
@@ -1094,7 +1145,9 @@ def main() -> int:
                 if s["group"] == "trump"
             ]
             if not spots:
-                print(f"seed={seed}: no trump-pref defender lead on tricks 0-{args.max_trick}")
+                print(
+                    f"seed={seed}: no trump-pref defender lead on tricks 0-{args.max_trick}"
+                )
                 continue
             for spot in spots:
                 _explore_sweep(agent, teacher, spot, args, device, fracs, iters_list)
@@ -1124,9 +1177,13 @@ def main() -> int:
     trump_results = run(trump_spots, "TRUMP-PREF")
     fail_results = run(fail_spots, "FAIL-PREF control")
 
-    summarize_group("TRUMP-PREF defender leads (behavior under scrutiny)", trump_results, args.iters)
+    summarize_group(
+        "TRUMP-PREF defender leads (behavior under scrutiny)", trump_results, args.iters
+    )
     print_examples(trump_results, "TRUMP-PREF")
-    summarize_group("FAIL-PREF defender leads (control / method check)", fail_results, args.iters)
+    summarize_group(
+        "FAIL-PREF defender leads (control / method check)", fail_results, args.iters
+    )
 
     print(
         "\nInterpretation (Δ = trump − fail). Three-rung ladder to localize any "
@@ -1158,7 +1215,9 @@ def main() -> int:
                         "iters": args.iters,
                         "rootExploreFrac": args.root_explore_frac,
                         "minVisitFrac": args.min_visit_frac,
-                        "beliefWorlds": args.belief_worlds if args.belief_worlds is not None else args.iters,
+                        "beliefWorlds": args.belief_worlds
+                        if args.belief_worlds is not None
+                        else args.iters,
                         "controlRatio": args.control_ratio,
                     },
                     "trumpPref": [asdict(r) for r in trump_results],

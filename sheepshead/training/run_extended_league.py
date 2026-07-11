@@ -45,7 +45,6 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
 import csv
@@ -59,7 +58,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from analysis.league_progress_eval import (
+from sheepshead.analysis.league_progress_eval import (
     CONFIRM_SEED,
     N_BOOT,
     PANEL_SEED,
@@ -69,7 +68,7 @@ from analysis.league_progress_eval import (
     h2h,
     load_endpoint,
 )
-from analysis.league_stopping import (
+from sheepshead.analysis.league_stopping import (
     ProbeSummary,
     StopRuleConfig,
     confirmation_verdict,
@@ -78,7 +77,7 @@ from analysis.league_stopping import (
     pick_anchor_coeff,
     verdict_to_dict,
 )
-from analysis.run_ablation_matrix import PANEL_A
+from sheepshead.analysis.panels import PANEL_A
 
 BASELINE_PROBE_SEED = 20260709  # greedy-health baseline of the resume ckpt
 # The ALONE gate is applied relative to the resume checkpoint's own baseline:
@@ -86,7 +85,9 @@ BASELINE_PROBE_SEED = 20260709  # greedy-health baseline of the resume ckpt
 # warm start (weak defender-field collaboration, which league training itself
 # repairs) then never trips the halt, while a genuine regression still does.
 ALONE_BASELINE_MARGIN = 5.0
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 
 
 class NeedsReview(Exception):

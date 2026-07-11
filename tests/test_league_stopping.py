@@ -4,7 +4,7 @@
 Every case builds deal-aligned per-deal endpoint vectors with a shared
 heavy-tailed deal effect (the structure CRN pairing exploits) plus
 idiosyncratic noise, then walks the generation loop exactly the way
-analysis/run_extended_league.py does: flat_verdict per generation, then
+sheepshead/training/run_extended_league.py does: flat_verdict per generation, then
 decide_stop over the accumulated flat history.
 """
 
@@ -16,7 +16,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from analysis.league_stopping import (
+from sheepshead.analysis.league_stopping import (
     CalibrationChoice,
     ProbeSummary,
     StopRuleConfig,

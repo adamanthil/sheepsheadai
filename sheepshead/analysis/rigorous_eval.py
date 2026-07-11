@@ -75,11 +75,9 @@ Example
 
 from __future__ import annotations
 
-import os
 import sys
 
 # Repo-root imports work regardless of invocation directory.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
 import csv
@@ -340,7 +338,9 @@ def evaluate_hero_in_field(
         for k in range(1, NUM_SEATS + 1):  # hero seat
             seat_to_model = dict(field_fn(d, k))
             seat_to_model[k] = hero
-            res = play_hand(seat_to_model, partner_mode, seed, probe=probe, probe_seat=k)
+            res = play_hand(
+                seat_to_model, partner_mode, seed, probe=probe, probe_seat=k
+            )
             raw_score[d, k - 1] = res.scores[k - 1]
             raw_margin[d, k - 1] = res.points_margin[k - 1]
             if res.is_leaster:

@@ -29,7 +29,6 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
 import json
@@ -38,6 +37,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+
+from sheepshead.analysis.panels import PANEL_A
 
 ARCHS = [
     "full",
@@ -48,13 +49,6 @@ ARCHS = [
     "onehot-ff",
 ]
 SEEDS = [42, 1042, 2042]
-
-PANEL_A = [
-    "final_pfsp_swish_ppo.pt",
-    "runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt",
-    "runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_5000000.pt",
-    "runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt",
-]
 
 _log_lock = threading.Lock()
 
@@ -149,7 +143,8 @@ class Orchestrator:
             rc1 = self._run_logged(
                 [
                     sys.executable,
-                    "analysis/scripted_probe.py",
+                    "-m",
+                    "sheepshead.analysis.scripted_probe",
                     "--ckpt",
                     final_ckpt,
                     "--deals",
@@ -163,7 +158,8 @@ class Orchestrator:
             rc2 = self._run_logged(
                 [
                     sys.executable,
-                    "analysis/trump_lead_probe.py",
+                    "-m",
+                    "sheepshead.analysis.trump_lead_probe",
                     "--ckpt",
                     final_ckpt,
                     "--deals",
@@ -236,7 +232,8 @@ class Orchestrator:
         for mode in ("called", "jd"):
             cmd = [
                 sys.executable,
-                "analysis/rigorous_eval.py",
+                "-m",
+                "sheepshead.analysis.rigorous_eval",
                 "--candidates",
                 *finals,
                 "--anchors",
@@ -276,7 +273,8 @@ class Orchestrator:
         self._run_logged(
             [
                 sys.executable,
-                "analysis/aggregate_ablation.py",
+                "-m",
+                "sheepshead.analysis.aggregate_ablation",
                 "--out-dir",
                 self.out_dir,
                 "--prefix",

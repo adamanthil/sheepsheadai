@@ -22,7 +22,6 @@ import sys
 import numpy as np
 import torch
 
-sys.path.insert(0, "/Volumes/Nargothrond/dev/sheepsheadai")
 
 from sheepshead.agent.ppo import load_agent
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game

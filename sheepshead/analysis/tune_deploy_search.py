@@ -73,7 +73,6 @@ import argparse
 import itertools
 import json
 import random
-import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -82,14 +81,13 @@ from typing import List, Optional
 import numpy as np
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Importing the counterfactual module installs the cached load_agent patch (via the
 # scanner it imports) and gives us the public/private + card helpers it already
 # defines, so deploy play matches the audit's decision loop exactly.
-import analysis.counterfactual_trump_leads as cf  # noqa: E402
-import analysis.scan_defender_trump_leads as scan  # noqa: E402
+import sheepshead.analysis.counterfactual_trump_leads as cf  # noqa: E402
+import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 from sheepshead import Game  # noqa: E402
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL
@@ -98,7 +96,9 @@ DEFAULT_MODEL = scan.DEFAULT_MODEL
 ALL_HEADS = ("pick", "partner", "bury", "play")
 
 
-def _pick_from_search(res: dict, argmax_aid: int, min_visit_frac: float, by: str) -> int:
+def _pick_from_search(
+    res: dict, argmax_aid: int, min_visit_frac: float, by: str
+) -> int:
     """The deploy action chosen from a search result. ``by='q'`` (default) returns the
     highest-Q action among those with enough visits for Q to be meaningful (guards a
     1-visit fluke); ``by='visits'`` returns the most-visited action."""
@@ -207,9 +207,7 @@ def play_game(
         actor.act(chosen)
         if game.was_trick_just_completed:
             for seat in game.players:
-                agent.observe(
-                    seat.get_last_trick_state_dict(), player_id=seat.position
-                )
+                agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
         step += 1
 
     return float(game.players[hero_seat - 1].get_score()), n_search, search_secs
@@ -283,9 +281,7 @@ def run_config(
         for hero in hero_seats:
             key = (seed, hero, partner_mode)
             if key not in baseline_cache:
-                base, _, _ = play_game(
-                    agent, None, hero, seed, partner_mode, max_steps
-                )
+                base, _, _ = play_game(agent, None, hero, seed, partner_mode, max_steps)
                 baseline_cache[key] = base
             base = baseline_cache[key]
 

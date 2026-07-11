@@ -39,7 +39,6 @@ import sys
 import numpy as np
 import torch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.agent import architectures
 from sheepshead.agent import ppo
@@ -48,7 +47,7 @@ from sheepshead import ACTIONS, Game
 
 SEED = 42
 FIXTURE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "tests",
     "fixtures",
     "arch_golden",
@@ -147,7 +146,9 @@ def capture_outputs(agent: PPOAgent) -> dict:
         for k, v in seq_out.items():
             if isinstance(v, torch.Tensor):
                 out[f"seq.enc.{k}"] = v.detach().clone()
-        out["seq.critic.values"] = agent.critic.sequence_values(seq_out).detach().clone()
+        out["seq.critic.values"] = (
+            agent.critic.sequence_values(seq_out).detach().clone()
+        )
 
         if agent.critic.has_aux_heads:
             out["seq.critic.aux_features"] = (

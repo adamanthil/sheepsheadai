@@ -2,7 +2,7 @@
 """Golden-fixture and consistency guards for the architecture registry.
 
 Fixtures live in tests/fixtures/arch_golden/ and are captured by
-analysis/capture_arch_goldens.py at a known-good commit. Structural checks
+sheepshead/analysis/capture_arch_goldens.py at a known-good commit. Structural checks
 (state_dict key names) run everywhere; weight/numerical bit-identity checks
 run only on the environment recorded in the fixture manifest (orthogonal
 init and kernels are LAPACK/BLAS dependent).
@@ -18,8 +18,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.agent import architectures
-from sheepshead.agent import ppo
-from analysis.capture_arch_goldens import (
+from sheepshead.analysis.capture_arch_goldens import (
     FIXTURE_DIR,
     build_agent,
     check_arch,
@@ -35,9 +34,7 @@ _HAVE_FIXTURES = os.path.exists(manifest_path())
 
 
 def _golden(arch: str) -> dict:
-    return torch.load(
-        os.path.join(FIXTURE_DIR, f"{arch}.pt"), weights_only=True
-    )
+    return torch.load(os.path.join(FIXTURE_DIR, f"{arch}.pt"), weights_only=True)
 
 
 class TestRegistryConsistency(unittest.TestCase):
@@ -87,7 +84,7 @@ class TestNumericalGoldens(unittest.TestCase):
             raise unittest.SkipTest(
                 "runtime differs from fixture manifest "
                 f"(torch {manifest['torch']}, {manifest['platform']}); "
-                "re-capture with analysis/capture_arch_goldens.py to gate "
+                "re-capture with sheepshead/analysis/capture_arch_goldens.py to gate "
                 "refactors on this machine"
             )
 
@@ -123,9 +120,7 @@ class TestLegacyValueTrunkShim(unittest.TestCase):
 
             # The value path must route through the trained adapter exactly.
             game = Game(seed=126)
-            enc_out = loaded.encoder.encode_batch(
-                [game.players[0].get_state_dict()]
-            )
+            enc_out = loaded.encoder.encode_batch([game.players[0].get_state_dict()])
             with torch.no_grad():
                 value = loaded.critic(enc_out)
                 expected = loaded.critic.value_head(

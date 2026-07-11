@@ -48,7 +48,7 @@ import re
 import sys
 from collections import defaultdict
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 PANEL_GLOB = os.path.join(REPO_ROOT, "runs/perceiver_202607/diag/panel*.csv")
 RUN_GLOB = os.path.join(REPO_ROOT, "runs/ablate_*_s*")

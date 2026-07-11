@@ -43,10 +43,8 @@ Example
 
 from __future__ import annotations
 
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
 import hashlib
@@ -58,16 +56,16 @@ from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
-from analysis.league_stopping import IntervalStat, bootstrap_interval
-from analysis.rigorous_eval import (
+from sheepshead.analysis.league_stopping import IntervalStat, bootstrap_interval
+from sheepshead.analysis.rigorous_eval import (
     DecisionProbe,
     Model,
     ModelRegistry,
     evaluate_hero_in_field,
     make_panel_field_fn,
 )
-from analysis.run_ablation_matrix import PANEL_A
-from analysis.trump_lead_probe import _is_secret_partner, _lead_options
+from sheepshead.analysis.panels import PANEL_A
+from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
 from sheepshead.agent.ppo import load_agent
 from sheepshead import (
     ACTION_LOOKUP,
@@ -97,7 +95,9 @@ def panel_deal_seeds(n: int, seed: int) -> List[int]:
     return [rng.randint(0, 2**31 - 1) for _ in range(n)]
 
 
-def design_hash(seed: int, n_deals: int, field_seed: int, panel_paths: Sequence[str]) -> str:
+def design_hash(
+    seed: int, n_deals: int, field_seed: int, panel_paths: Sequence[str]
+) -> str:
     """Fingerprint of everything that must match for per-deal vectors to be
     paired across generations. Deliberately excludes the hero checkpoints."""
     payload = json.dumps(
@@ -172,7 +172,9 @@ class TrumpLeadCollector:
             n = tally["opportunities"]
             out[f"t{t}_def_leads"] = int(n)
             out[f"t{t}_forced"] = int(tally["forced"])
-            out[f"t{t}_trump_lead_rate"] = tally["trump_leads"] / n if n else float("nan")
+            out[f"t{t}_trump_lead_rate"] = (
+                tally["trump_leads"] / n if n else float("nan")
+            )
             out[f"t{t}_trump_prob_mass"] = (
                 tally["prob_mass_sum"] / n if n else float("nan")
             )

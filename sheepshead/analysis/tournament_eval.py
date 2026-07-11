@@ -26,18 +26,15 @@ Example:
 
 from __future__ import annotations
 
-import os
 import sys
 
 # Repo-root imports work regardless of invocation directory.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 import argparse
 import csv
 import random
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple

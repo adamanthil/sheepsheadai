@@ -49,18 +49,16 @@ from __future__ import annotations
 import argparse
 import json
 import random
-import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-import analysis.counterfactual_trump_leads as cf  # noqa: E402
-import analysis.scan_defender_trump_leads as scan  # noqa: E402
+import sheepshead.analysis.counterfactual_trump_leads as cf  # noqa: E402
+import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 
 TRUMP_SET = cf.TRUMP_SET
 FAIL_SET = cf.FAIL_SET
@@ -93,9 +91,9 @@ class ConfigAgg:
     iters: int
     n: int
     nEssOk: int
-    fixRate: float       # fraction where search changed the lead
-    toFailRate: float    # fraction where search changed it to a fail
-    dScoreAll: float     # realized deploy value over ALL spots (zeros where unchanged)
+    fixRate: float  # fraction where search changed the lead
+    toFailRate: float  # fraction where search changed it to a fail
+    dScoreAll: float  # realized deploy value over ALL spots (zeros where unchanged)
     dScoreAllSE: float
     dScoreChanged: float  # conditional on search actually changing the lead
     dScoreChangedSE: float
@@ -117,8 +115,18 @@ def _parse_depth(tok: str) -> Optional[int]:
 
 
 def _eval_spots(
-    agent, teacher, spots, *, group, frac, depth_tok, iters, max_steps,
-    min_visit_frac, select, device,
+    agent,
+    teacher,
+    spots,
+    *,
+    group,
+    frac,
+    depth_tok,
+    iters,
+    max_steps,
+    min_visit_frac,
+    select,
+    device,
 ) -> tuple[ConfigAgg, List[SpotResult]]:
     teacher.config.root_explore_frac = frac
     teacher.config.iters = {k: iters for k in teacher.config.iters}
@@ -130,7 +138,12 @@ def _eval_spots(
         target_step, seat = spot["stepIndex"], spot["seat"]
         depth = depth_req if depth_req is not None else 6 - spot["trickIndex"]
         node_game, node_mem, node, search, _ = cf._replay_to_node(
-            agent, seed, pm, target_step, max_steps, device,
+            agent,
+            seed,
+            pm,
+            target_step,
+            max_steps,
+            device,
             teacher=teacher,
             det_rng=random.Random(seed * 7919 + target_step),
             iters=iters,
@@ -141,9 +154,7 @@ def _eval_spots(
             continue  # node not reached / non-reproducing / no search
 
         policy_card = node.argmaxCard
-        search_card = (
-            (search.topQAction if select == "q" else search.topAction)[5:]
-        )
+        search_card = (search.topQAction if select == "q" else search.topAction)[5:]
         base = cf._force_and_play(
             agent, node_game, node_mem, seat, policy_card, device, deterministic=True
         )
@@ -212,10 +223,14 @@ def main() -> int:
     p.add_argument("--start-seed", type=int, default=0)
     p.add_argument("--partner-mode", type=int, default=1)
     p.add_argument("--max-steps", type=int, default=200)
-    p.add_argument("--max-trick", type=int, default=1, help="0-indexed; 1 = tricks 0 and 1")
+    p.add_argument(
+        "--max-trick", type=int, default=1, help="0-indexed; 1 = tricks 0 and 1"
+    )
     p.add_argument("--fracs", default="0.1,0.25,0.5,1.0")
     p.add_argument("--iters", type=int, default=384)
-    p.add_argument("--depths", default="2", help="d_rollout list; 'term' = roll to terminal")
+    p.add_argument(
+        "--depths", default="2", help="d_rollout list; 'term' = roll to terminal"
+    )
     p.add_argument("--select", default="q", help="comma list of: q, visits")
     p.add_argument("--min-visit-frac", type=float, default=0.01)
     p.add_argument("--control-ratio", type=float, default=1.0)
@@ -252,10 +267,17 @@ def main() -> int:
             for depth_tok in depths:
                 for frac in fracs:
                     agg, rows = _eval_spots(
-                        agent, teacher, spots,
-                        group=group, frac=frac, depth_tok=depth_tok, iters=args.iters,
-                        max_steps=args.max_steps, min_visit_frac=args.min_visit_frac,
-                        select=select, device=device,
+                        agent,
+                        teacher,
+                        spots,
+                        group=group,
+                        frac=frac,
+                        depth_tok=depth_tok,
+                        iters=args.iters,
+                        max_steps=args.max_steps,
+                        min_visit_frac=args.min_visit_frac,
+                        select=select,
+                        device=device,
                     )
                     print(_fmt(agg))
                     out_aggs.append(agg)
