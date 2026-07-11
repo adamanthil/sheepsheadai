@@ -1,6 +1,13 @@
 """Assemble the wide PANEL-A strength matrix for the architecture comparison.
 
-Produces one CSV (default notebooks/panel_a_strength_matrix.csv) with:
+Produces three CSVs: the combined-modes matrix (default
+notebooks/panel_a_strength_matrix.csv) plus per-mode companions with
+`_called` / `_jd` suffixes holding the same panel columns separated by
+partner mode (a per-mode cell fills whenever that mode's panel exists,
+even if the other mode's is missing; the edge columns below appear only
+in the combined file since anchored-eval edges are not mode-separable).
+
+The combined file has:
 
   - one row per 25k-episode snapshot (25k .. 400k);
   - one column per architecture+seed lineage (header `<arch>_s<seed>`)
@@ -138,11 +145,65 @@ def lineages():
     return ordered
 
 
+def panel_value(cells, a, s, ep, mode):
+    """Panel cell for one lineage/snapshot: both-modes mean or a single mode.
+
+    Returns None (blank cell) unless every required mode has panel data.
+    """
+    if mode == "both":
+        called = cells.get((a, s, ep, "called"))
+        jd = cells.get((a, s, ep, "jd"))
+        if not (called and jd):
+            return None
+        return (sum(called) / len(called) + sum(jd) / len(jd)) / 2
+    vals = cells.get((a, s, ep, mode))
+    return sum(vals) / len(vals) if vals else None
+
+
+def write_matrix(path, mode, cells, edges, cols, max_episode):
+    """Write one matrix file; returns the number of filled panel cells.
+
+    The per-mode files carry only the panel columns: the anchored-eval
+    edges are single numbers over alternating-mode games and cannot be
+    mode-separated, so they appear only in the combined file.
+    """
+    header = ["episode"] + [f"{a}_s{s}" for a, s in cols]
+    if mode == "both":
+        header += [f"{a}_s{s}_edge_scripted" for a, s in cols]
+        header += [f"{a}_s{s}_edge_100k" for a, s in cols]
+
+    n_panel = 0
+    out_rows = []
+    for ep in range(25000, max_episode + 1, 25000):
+        row = [str(ep)]
+        for a, s in cols:
+            v = panel_value(cells, a, s, ep, mode)
+            if v is not None:
+                row.append(f"{v:.4f}")
+                n_panel += 1
+            else:
+                row.append("")
+        if mode == "both":
+            for idx in (0, 1):
+                for a, s in cols:
+                    e = edges.get((a, s, ep))
+                    row.append(f"{e[idx]:.4f}" if e else "")
+        out_rows.append(row)
+
+    with open(path, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(header)
+        w.writerows(out_rows)
+    print(f"  {mode:6s} -> {path}  ({n_panel} panel cells)")
+    return n_panel
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
         "--out",
         default=os.path.join(REPO_ROOT, "notebooks/panel_a_strength_matrix.csv"),
+        help="combined-modes output; per-mode files get _called/_jd suffixes",
     )
     ap.add_argument("--max-episode", type=int, default=400000)
     args = ap.parse_args()
@@ -151,40 +212,12 @@ def main():
     edges = collect_edges()
     cols = lineages()
 
-    header = ["episode"]
-    header += [f"{a}_s{s}" for a, s in cols]
-    header += [f"{a}_s{s}_edge_scripted" for a, s in cols]
-    header += [f"{a}_s{s}_edge_100k" for a, s in cols]
+    base, ext = os.path.splitext(args.out)
+    print(f"{len(cols)} lineages, snapshots 25k..{args.max_episode // 1000}k")
+    write_matrix(args.out, "both", cells, edges, cols, args.max_episode)
+    write_matrix(f"{base}_called{ext}", "called", cells, edges, cols, args.max_episode)
+    write_matrix(f"{base}_jd{ext}", "jd", cells, edges, cols, args.max_episode)
 
-    n_panel = 0
-    out_rows = []
-    for ep in range(25000, args.max_episode + 1, 25000):
-        row = [str(ep)]
-        for a, s in cols:
-            called = cells.get((a, s, ep, "called"))
-            jd = cells.get((a, s, ep, "jd"))
-            if called and jd:
-                both = sum(called) / len(called) + sum(jd) / len(jd)
-                row.append(f"{both / 2:.4f}")
-                n_panel += 1
-            else:
-                row.append("")
-        for idx in (0, 1):
-            for a, s in cols:
-                e = edges.get((a, s, ep))
-                row.append(f"{e[idx]:.4f}" if e else "")
-        out_rows.append(row)
-
-    with open(args.out, "w", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(header)
-        w.writerows(out_rows)
-
-    print(f"{len(cols)} lineages x {len(out_rows)} snapshots -> {args.out}")
-    print(f"  PANEL-A cells filled: {n_panel}")
-    print(
-        f"  edge cells filled: {sum(1 for r in out_rows for v in r[1 + len(cols) :] if v) // 2} per yardstick"
-    )
     filled_archs = sorted({a for (a, s, ep, m) in cells})
     print(f"  archs with panel data: {', '.join(filled_archs)}")
     return 0

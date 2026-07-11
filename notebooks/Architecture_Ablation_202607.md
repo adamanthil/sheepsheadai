@@ -1529,7 +1529,10 @@ On the ADOPTED base from stage 1, not before:
   25k snapshot, one column per arch+seed lineage (both-modes panel
   mean; blank where panels haven't run), plus `_edge_scripted` /
   `_edge_100k` supplementary columns (300-deal anchored edges —
-  motivation-only, never publishable). Regenerate after any backfill
+  motivation-only, never publishable). Per-mode companions
+  `panel_a_strength_matrix_{called,jd}.csv` carry the same panel
+  columns separated by partner mode (no edge columns — the anchored
+  edges aren't mode-separable). Regenerate after any backfill
   with `uv run python analysis/build_panel_matrix.py` — it globs
   `runs/perceiver_202607/diag/panel*.csv` and picks up new
   checkpoint-based panels automatically (finals-based rows are
