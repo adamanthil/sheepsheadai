@@ -1429,7 +1429,21 @@ here must be executable mechanically.
    started after the fix equal the last threshold update's weights. The
    league trainer never had a flush. See "FLUSH-UPDATE FINDING" section.
 
-## Stage 0 — RUNNING NOW: self-play screening
+## Stage 0 — self-play screening — **COMPLETE 2026-07-11**
+
+> **STATUS (2026-07-11): all screening runs and panels are done.** See
+> "SECOND EXTENSION VERDICTS" above for the final numbers. Outcome:
+> plain perceiver OUT (decisively worse, t=−4.8); onehot-ff OUT
+> (decisively worse at 400k, t=−6.99 — the 200k tie was a budget
+> artifact); **perceiver-shared-v2 QUALIFIED** (within the 0.07 band
+> of full@400k, gap 0.050). The stage-1 league pair is
+> **full vs perceiver-shared-v2**, warm-started from
+> `runs/ablate_full400_s*/full_checkpoint_400000.pt` and
+> `runs/ablate_perceiver-shared-v2400_s*/perceiver-shared-v2_checkpoint_400000.pt`
+> (rule 5). Where the stage-1 recipe below says `perceiver-shared`,
+> read `perceiver-shared-v2` (v1 is superseded by v2 — identical
+> family, corrected readout; the aux arm's counterpart is
+> `perceiver-shared-v2-noaux`, registered).
 
 - **Six 400k extensions** (`ablate_{perceiver,full}400_s{42,1042,2042}`,
   launched Jul-7 14:45, ~Jul-8 late evening) — budget-equal headroom test.
@@ -1665,6 +1679,40 @@ question at converged budget; v2 tests family convergence (pre-register:
 v2 within 0.07 of full at 400k ⇒ family restored for stage-1 league;
 onehot within 0.07 of full at 400k ⇒ token-stack advantage remains
 undemonstrated in shaped self-play at ANY tested budget).
+
+## SECOND EXTENSION VERDICTS (2026-07-11, EXT2 PANELS COMPLETE 13:08)
+
+All six runs reached 400k clean (onehot-ff finished Jul-10 ~19:00,
+v2 Jul-11 ~10:45); watcher produced all eight panels
+(`panel_ext2_{300,350,375,400}k_{called,jd}.csv`). Rule-1 endpoints
+(mean of 350/375/400k checkpoint panels, both modes, 3 seeds) with
+full400's CRN comparators from `panel_a_400ext_*`/`panel_a_400k_*`:
+
+| arch                | 300k mid | 400k endpoint | Δ vs full (CRN-paired)         | per-seed Δ              |
+|---------------------|----------|---------------|--------------------------------|-------------------------|
+| full                | −0.162   | **−0.065**    | —                              | —                       |
+| perceiver-shared-v2 | −0.224   | **−0.115**    | −0.050 ± 0.022 (t=−2.27)       | +0.002 / −0.061 / −0.092 |
+| onehot-ff           | −0.224   | **−0.205**    | −0.140 ± 0.020 (t=−6.99, 3/3)  | −0.082 / −0.161 / −0.176 |
+
+**Pre-registered read, v2: WITHIN 0.07 of full@400k (gap 0.050) ⇒
+FAMILY RESTORED for stage 1.** v2's 200k→400k own gain was +0.200
+(200k rung −0.315 → endpoint −0.115), out-slope-ing full's +0.149 —
+the shared-readout family kept converging where plain perceiver
+stalled (−0.324 at 400k). The residual −0.050 deficit is real but
+sub-MDE and not decisive under P1 (ties/near-ties go to the
+perceiver-variant only on DECISIVE evidence the other way). Stage-1
+oracle-league pair = full vs perceiver-shared-v2, warm-started from
+their own 400k checkpoints (rule 5), league regime decides adoption.
+
+**Pre-registered read, onehot-ff: OUTSIDE 0.07 (gap 0.140, t=−6.99,
+3/3 seeds) ⇒ the token-stack advantage IS now demonstrated in shaped
+self-play at converged budget.** The 100k/200k ties were budget
+artifacts, as suspected: onehot's own gain 200k→400k was only +0.023
+(−0.228 → −0.205) vs full's +0.149 — the tiny network hit its
+ceiling while the token stack kept climbing. This retires the
+"onehot matches full" screening result; the onehot league arm
+(phase2_onehot.sh) is now optional context, not a decisive missing
+experiment.
 
 **Three-rung matrix COMPLETED (2026-07-10,
 `panel_a_full_ckpt150k_{called,jd}.csv` landed):** rule-1 endpoints
