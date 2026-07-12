@@ -1,6 +1,7 @@
 # Production stack: caddy (TLS, same-origin routing) -> web + api -> postgres.
-# Configure via deploy/.env.prod (see docs/deploy.md), then:
-#   docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml up -d
+# Configure via app/deploy/.env.prod (see docs/deploy.md), then from repo root:
+#   docker compose --env-file app/deploy/.env.prod -f app/docker-compose.prod.yml up -d
+# (relative paths below resolve against this file's directory, app/)
 #
 # The api service is intentionally a single container with a single uvicorn
 # worker: all live game state is in-process. Do not scale it out.
@@ -38,8 +39,8 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: server/Dockerfile
+      context: ..
+      dockerfile: app/server/Dockerfile
     restart: unless-stopped
     stop_grace_period: 30s
     environment:
@@ -88,7 +89,9 @@ services:
       BACKUP_KEEP_DAYS: "14"
       BACKUP_KEEP_WEEKS: "8"
     volumes:
-      - ./backups:/backups
+      # Repo-root backups/ (gitignored) — unchanged host location from
+      # before the compose files moved into app/.
+      - ../backups:/backups
     depends_on:
       postgres:
         condition: service_healthy

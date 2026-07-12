@@ -4,19 +4,17 @@
 Deterministic (sorted keys, fixed dummy settings) so CI can regenerate and
 diff to catch drift between the server schemas and the committed TS types.
 
-Run from the repo root:  uv run python scripts/export_openapi.py
+Run from the repo root:  uv run python app/scripts/export_openapi.py
 """
 
 from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 from unittest import mock
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main() -> None:
@@ -34,7 +32,7 @@ def main() -> None:
             app = app_module.create_app()
         schema = app.openapi()
 
-    out_path = os.path.join(ROOT, "web", "openapi.json")
+    out_path = os.path.join(APP_DIR, "web", "openapi.json")
     with open(out_path, "w") as f:
         json.dump(schema, f, indent=2, sort_keys=True)
         f.write("\n")

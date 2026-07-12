@@ -7,7 +7,7 @@ HOST=${HOST:-0.0.0.0}
 PORT=${PORT:-9000}
 MODEL_PATH=""
 
-# Usage: bash server/run_server.sh [--model path/to/checkpoint.pt]
+# Usage: bash app/server/run_server.sh [--model path/to/checkpoint.pt]
 if [[ "${1:-}" == "--model" && -n "${2:-}" ]]; then
   MODEL_PATH="${2}"
   export SHEEPSHEAD_MODEL_PATH="${MODEL_PATH}"

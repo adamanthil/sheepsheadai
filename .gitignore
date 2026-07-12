@@ -11,7 +11,7 @@ node_modules/
 next-env.d.ts
 
 .env
-db/node_modules/
+app/db/node_modules/
 
 # Training run artifacts (checkpoints, final models, plots, CSVs, per-run population)
 runs/
@@ -21,5 +21,5 @@ sheepshead/analysis/card_embedding_analysis/
 model-history/
 
 # Production deploy secrets and local backup dumps
-deploy/.env.prod
+app/deploy/.env.prod
 backups/

@@ -1,7 +1,6 @@
-# Build from the REPO ROOT: docker build -f server/Dockerfile .
-# The server imports sheepshead.py / ppo.py / encoder.py / training_utils.py
-# from the repo root (engine extraction into a package is deferred), so the
-# build context must include them.
+# Build from the REPO ROOT: docker build -f app/server/Dockerfile .
+# The server imports the sheepshead package (game engine, agent, shared
+# training utilities), so the build context must be the repo root.
 #
 # The model checkpoint is NOT baked in — mount it and set
 # SHEEPSHEAD_MODEL_PATH (e.g. -v ./final_pfsp_swish_ppo.pt:/models/model.pt
@@ -21,8 +20,8 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --extra server --no-dev --no-install-project
 
-COPY sheepshead.py ppo.py encoder.py training_utils.py ./
-COPY server ./server
+COPY sheepshead ./sheepshead
+COPY app/server ./server
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 9000
