@@ -11,7 +11,7 @@
     "gen:api": "openapi-typescript openapi.json -o lib/api.gen.ts"
   },
   "dependencies": {
-    "next": "^16.2.4",
+    "next": "^16.2.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^4.4.3"
@@ -24,5 +24,9 @@
     "eslint-config-next": "^16.2.4",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.8.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.10",
+    "@babel/core": "^7.29.6"
   }
 }
