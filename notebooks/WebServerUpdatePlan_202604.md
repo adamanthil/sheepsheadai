@@ -1,5 +1,7 @@
 # Web Server Update Plan — April 2026
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 This plan covers four coordinated workstreams against `/server` (FastAPI + Python)
 and `/web` (Next.js + TypeScript):
 

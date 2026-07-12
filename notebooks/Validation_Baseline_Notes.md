@@ -1,5 +1,7 @@
 # ExIt Validation Protocol + Baseline Reference (NOT committed)
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 May 2026. The validation protocol "defined up front" so a from-scratch ExIt run
 can be judged against the frozen PPO baseline. All numbers CPU, dev Mac.
 Baseline model = `final_pfsp_swish_ppo.pt` (the 30M PPO agent, incl. the critic

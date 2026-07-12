@@ -1,5 +1,7 @@
 # Deploy-Time Search — Design Notes (June 2026)
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 The June 2026 consolidation (see `Exit_Arms_202606.md`, `Exploiter_League_Plan_202606.md`)
 ended with one demonstrated strength mechanism: **decision-time ISMCTS at play
 time**. Search-as-teacher (ExIt) was retired — stable in its grounded form but

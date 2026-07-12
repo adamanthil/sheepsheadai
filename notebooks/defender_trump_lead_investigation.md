@@ -1,5 +1,7 @@
 # Defender Trump-Lead Investigation (final_pfsp_swish_ppo.pt)
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 Date: 2026-06-17 (leak EV) · 2026-06-18/19 (deploy-time search, §8) · Baseline commit: `64e2b36` · Author: analysis session log
 
 ## 0. Summary

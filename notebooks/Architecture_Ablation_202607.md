@@ -68,7 +68,7 @@ resumable — rerunning it skips finished jobs):
 
 ```bash
 mkdir -p runs/ablation_202607
-PYTHONPATH=. nohup .venv/bin/python analysis/run_ablation_matrix.py \
+PYTHONPATH=. nohup .venv/bin/python -m sheepshead.training.run_ablation_matrix \
     > runs/ablation_202607/orchestrator.out 2>&1 &
 ```
 
@@ -76,16 +76,16 @@ Which executes, per (arch, seed) job — exact argv also recorded in
 `runs/ablation_202607/status/<run>.json`:
 
 ```bash
-PYTHONPATH=. .venv/bin/python train_selfplay_ppo.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.training.train_selfplay_ppo \
     --arch <ARCH> --seed <SEED> --episodes 100000 \
     --run-name ablate_<ARCH>_s<SEED> \
     --anchor-eval-interval 5000 --anchor-eval-deals 300 \
     --save-interval 25000 --strategic-eval-interval 1000000
 # then, on the run's final checkpoint:
-PYTHONPATH=. .venv/bin/python analysis/scripted_probe.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.scripted_probe \
     --ckpt runs/ablate_<ARCH>_s<SEED>/final_<ARCH>.pt --deals 500 \
     --out-json runs/ablate_<ARCH>_s<SEED>/scripted_probe.json
-PYTHONPATH=. .venv/bin/python analysis/trump_lead_probe.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.trump_lead_probe \
     --ckpt runs/ablate_<ARCH>_s<SEED>/final_<ARCH>.pt --deals 2000 \
     --out-json runs/ablate_<ARCH>_s<SEED>/trump_lead_probe.json
 ```
@@ -94,7 +94,7 @@ And once all 18 runs finish (finals copied to
 `runs/ablation_202607/finals/<arch>__s<seed>.pt`):
 
 ```bash
-PYTHONPATH=. .venv/bin/python analysis/rigorous_eval.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.rigorous_eval \
     --candidates runs/ablation_202607/finals/*.pt \
     --anchors final_pfsp_swish_ppo.pt \
               runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt \
@@ -104,7 +104,7 @@ PYTHONPATH=. .venv/bin/python analysis/rigorous_eval.py \
     --out-csv runs/ablation_202607/panel_a_called.csv \
     --out-plot runs/ablation_202607/panel_a_called.png
 # repeated with --partner-mode jd
-PYTHONPATH=. .venv/bin/python analysis/aggregate_ablation.py   # CSVs + plots + table
+PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.aggregate_ablation   # CSVs + plots + table
 ```
 
 ## Outputs (all under `runs/ablation_202607/`)
@@ -140,7 +140,7 @@ ax.axhline(0, ls="--", c="gray"); ax.legend(); ax.set_ylabel("edge vs scripted")
   > 0.07 treated as real. Report per-seed spread and collapse count (edge
   regressing > 2 SE from its own peak). 100k-episode self-play measures
   *learnability*, not the league-regime ceiling (phase 2 = top-2 archs
-  through `train_league_ppo.py --arch`).
+  through `sheepshead/training/train_league_ppo.py --arch`).
 - **Component verdicts:** adjacent-rung deltas (full−no-aux = aux heads;
   no-aux−no-transformer = transformer; no-transformer−…-uninformed =
   informed init; …-uninformed−onehot-ff = card-token pipeline;
@@ -236,7 +236,7 @@ continues; entropy schedule refers to the new 200k horizon, identical
 treatment for both extended arms):
 
 ```bash
-PYTHONPATH=. .venv/bin/python train_selfplay_ppo.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.training.train_selfplay_ppo \
     --arch <full|no-aux> --seed <S> --episodes 200000 \
     --resume runs/ablate_<A>_s<S>/<A>_checkpoint_100000.pt \
     --run-name ablate_<A>_s<S> \
@@ -304,7 +304,7 @@ phase 2.
    (17 eps/s); `no-transformer` (pooled memory) buys 2× wall-clock over
    full at a real strength cost.
 6. **Next**: phase 2 — `full` and `no-aux` through
-   `train_league_ppo.py --arch` (terminal reward, PFSP league) to settle
+   `sheepshead/training/train_league_ppo.py --arch` (terminal reward, PFSP league) to settle
    the aux-head question and the true ceiling; optionally a 200k
    onehot-ff control run for the budget-equal comparison.
 
@@ -333,14 +333,14 @@ insurance for an anchor-free warm start that has failed twice before):
 
 ```bash
 # gen 1 (bidding anchor to the arm's own resume checkpoint)
-PYTHONPATH=. .venv/bin/python train_league_ppo.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.training.train_league_ppo \
     --arch <full|no-aux> --resume runs/ablate_<A>_s42/final_<A>.pt \
     --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
     --league-dir runs/phase2_<A>/league --run-name phase2_<A> \
     --generations 1 --main-episodes 750000 --anchor-coeff 1.0 \
     --num-workers 4 --seed 42 --schedule-horizon 20000000
 # gen 2 (anchor-free, resumed at the generation boundary)
-PYTHONPATH=. .venv/bin/python train_league_ppo.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.training.train_league_ppo \
     --arch <A> --resume runs/phase2_<A>/checkpoints/pfsp_<A>_checkpoint_750000.pt \
     --league-dir runs/phase2_<A>/league --run-name phase2_<A> \
     --generations 1 --main-episodes 750000 \
@@ -415,14 +415,14 @@ and yardsticks as the main matrix. ~2 days on the free machine.
 running detached; it waits for phase 2 to exit, then runs:
 
 ```bash
-PYTHONPATH=. caffeinate -is .venv/bin/python analysis/run_ablation_matrix.py \
+PYTHONPATH=. caffeinate -is .venv/bin/python -m sheepshead.training.run_ablation_matrix \
     --archs full-dtok32 full-dtok128 full-layers2 full-layers6 \
             full-dmodel128 full-dmodel512 \
     --episodes 200000 --out-dir runs/size_sweep_202607 --prefix ablate
 ```
 
 and finishes by writing `runs/size_sweep_202607/report.md` via
-`analysis/ablation_report.py` (which merges the existing full@200k rows
+`sheepshead/analysis/ablation_report.py` (which merges the existing full@200k rows
 from `runs/ablation_202607/results_200k_panel.csv` — that file carries the
 *corrected* 200k PANEL-A values for the extended arms; the main
 `results.csv`'s panel columns for those rows are stale 100k values).
@@ -689,9 +689,9 @@ tokenread ~2× slower — evidence-per-compute still favors onehot.
 ## (leaster-rate scan, 2026-07-06)
 
 Prompted by the operator observing the crash across arms (and live in
-perceiver s1042), `analysis/leaster_scan.py` (committed) extracts the
+perceiver s1042), `sheepshead/analysis/leaster_scan.py` (committed) extracts the
 rollout leaster-rate trajectory from every run log. Rerun any time with
-`PYTHONPATH=. uv run python analysis/leaster_scan.py [runs/glob ...]`.
+`PYTHONPATH=. uv run python -m sheepshead.analysis.leaster_scan [runs/glob ...]`.
 
 **Finding: every one of the 24 from-scratch shaped-reward self-play runs
 collapsed to ~100% leaster (all seats always PASS) within the first
@@ -736,7 +736,7 @@ immediately and slow/unstable ones (tokenread, no-transformer) linger.
 
 **Fix chosen and IMPLEMENTED (operator decision 2026-07-06): option (a),
 the selective entropy kick** — `--leaster-watchdog` on
-train_selfplay_ppo.py, **default OFF** (no completed or running run used
+sheepshead/training/train_selfplay_ppo.py, **default OFF** (no completed or running run used
 it; enable explicitly on future from-scratch runs). `LeasterWatchdog`:
 when the rolling 3000-episode leaster rate crosses 90% it multiplies the
 pick head's *scheduled* entropy coefficient ×10 each update until the
@@ -865,7 +865,7 @@ lost. Diagnostics already run (2026-07-07 morning):
 
    ```
    for S in 42 1042 2042; do
-     PYTHONPATH=. nohup .venv/bin/python train_selfplay_ppo.py \
+     PYTHONPATH=. nohup .venv/bin/python -m sheepshead.training.train_selfplay_ppo \
        --arch perceiver --seed $S --episodes 400000 \
        --resume runs/ablate_perceiver_s$S/perceiver_checkpoint_200000.pt \
        --run-name ablate_perceiver400_s$S \
@@ -927,7 +927,7 @@ Launch (3 seeds × 200k each; ~13–15 h per arch batch unloaded, more under
 contention; drop archs to shrink scope):
 
 ```
-PYTHONPATH=. nohup caffeinate -is .venv/bin/python analysis/run_ablation_matrix.py \
+PYTHONPATH=. nohup caffeinate -is .venv/bin/python -m sheepshead.training.run_ablation_matrix \
     --archs readout-actor readout-critic perceiver-ctxmem perceiver-aux \
     --episodes 200000 \
     --out-dir runs/decomp_202607 --prefix ablate \
@@ -950,7 +950,7 @@ Endpoint read for the extensions (run after all six finish):
 
 ```
 for MODE in called jd; do
-  PYTHONPATH=. .venv/bin/python analysis/rigorous_eval.py \
+  PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.rigorous_eval \
     --candidates runs/ablate_perceiver400_s42/perceiver_checkpoint_400000.pt \
                  runs/ablate_perceiver400_s1042/perceiver_checkpoint_400000.pt \
                  runs/ablate_perceiver400_s2042/perceiver_checkpoint_400000.pt \
@@ -988,7 +988,7 @@ future rerun of that orchestrator command restarts them fresh (correct).
 Report (merges the probe rows + the perceiver-shared out-dir):
 
 ```
-PYTHONPATH=. .venv/bin/python analysis/ablation_report.py \
+PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.ablation_report \
     --out-dir runs/decomp_202607 --baseline no-aux \
     --extra-results runs/ablation_202607/results_200k_panel.csv \
     --extra-results runs/perceiver_202607/results.csv \
@@ -1296,7 +1296,7 @@ each generation `g` run BOTH instruments on the gen-final checkpoint:
    change; this is the number comparable across the whole project):
 
    ```bash
-   PYTHONPATH=. uv run python analysis/rigorous_eval.py \
+   PYTHONPATH=. uv run python -m sheepshead.analysis.rigorous_eval \
        --candidates runs/<league_run>/finals/gen<g>.pt \
        --anchors final_pfsp_swish_ppo.pt <pfsp 15M> <pfsp 5M> <selfplay 100k> \
        --deals 1000 --seed 42 --partner-mode called \
@@ -1308,7 +1308,7 @@ each generation `g` run BOTH instruments on the gen-final checkpoint:
    pairing; this signal does NOT saturate as the agent surpasses the panel):
 
    ```bash
-   PYTHONPATH=. uv run python analysis/rigorous_eval.py \
+   PYTHONPATH=. uv run python -m sheepshead.analysis.rigorous_eval \
        --candidates runs/<league_run>/finals/gen<g>.pt \
        --anchors    runs/<league_run>/finals/gen<g-1>.pt \
        --deals 1000 --seed 42 --partner-mode called \
@@ -1362,11 +1362,11 @@ neither instrument covers.
 
 ## If something needs rerunning from scratch
 
-All tooling is committed: `analysis/run_ablation_matrix.py` (orchestrator;
-`--smoke` for a 5-minute pipeline check), `analysis/aggregate_ablation.py`
-(CSVs/plots/table), `analysis/ablation_report.py` (statistics/verdict
-tables), `analysis/rigorous_eval.py` + `analysis/scripted_probe.py` +
-`analysis/trump_lead_probe.py` (instruments — frozen seeds, see
+All tooling is committed: `sheepshead/training/run_ablation_matrix.py` (orchestrator;
+`--smoke` for a 5-minute pipeline check), `sheepshead/analysis/aggregate_ablation.py`
+(CSVs/plots/table), `sheepshead/analysis/ablation_report.py` (statistics/verdict
+tables), `sheepshead/analysis/rigorous_eval.py` + `sheepshead/analysis/scripted_probe.py` +
+`sheepshead/analysis/trump_lead_probe.py` (instruments — frozen seeds, see
 `Evaluation_Harnesses_202607.md`). Checkpoints record their architecture;
 **always load via `ppo.load_agent(path)`**, never construct `PPOAgent`
 with a guessed arch.
@@ -1425,7 +1425,7 @@ here must be executable mechanically.
    `final_<arch>.pt` from runs started before 2026-07-08.** Those finals
    carry one out-of-spec flush update (bare `agent.update()` = default
    epochs=6 on a partial <2048-transition leftover buffer). The flush was
-   removed from `train_selfplay_ppo.py` on 2026-07-08; finals from runs
+   removed from `sheepshead/training/train_selfplay_ppo.py` on 2026-07-08; finals from runs
    started after the fix equal the last threshold update's weights. The
    league trainer never had a flush. See "FLUSH-UPDATE FINDING" section.
 
@@ -1473,7 +1473,7 @@ The regime that matters (P3). Two arms, identical protocol, CRN seed:
 
 ```
 # per arm (arch = full | perceiver-shared):
-PYTHONPATH=. nohup caffeinate -is .venv/bin/python train_league_ppo.py \
+PYTHONPATH=. nohup caffeinate -is .venv/bin/python -m sheepshead.training.train_league_ppo \
     --arch <ARCH> --critic-mode oracle \
     --resume <that arch's best 400k/200k self-play CHECKPOINT (rule 5: not final_*.pt)> \
     --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
@@ -1533,7 +1533,7 @@ On the ADOPTED base from stage 1, not before:
   `panel_a_strength_matrix_{called,jd}.csv` carry the same panel
   columns separated by partner mode (no edge columns — the anchored
   edges aren't mode-separable). Regenerate after any backfill
-  with `uv run python analysis/build_panel_matrix.py` — it globs
+  with `uv run python -m sheepshead.analysis.build_panel_matrix` — it globs
   `runs/perceiver_202607/diag/panel*.csv` and picks up new
   checkpoint-based panels automatically (finals-based rows are
   structurally excluded via the filepath pattern, rule 5).
@@ -1548,7 +1548,7 @@ On the ADOPTED base from stage 1, not before:
   act bench + update-phase timing split. Method scripts currently live in
   the session scratchpad (`act_bench.py`, `readout_attention_audit.py`,
   `oracle_update_bench.py`, `oracle_shock_sim.py`) — commit them under
-  `analysis/diagnostics/` before 2026-07-12 for reproducibility.
+  `sheepshead/analysis/diagnostics/` before 2026-07-12 for reproducibility.
 - **Mechanism figures:** readout-attention coverage by token group over
   training (audit script), pass-collapse escape table (leaster_scan).
 - Standing caveat for the text: 300-deal anchored curves are
@@ -1586,7 +1586,7 @@ in every state dict, which led to the end-of-run code path.
 
 ## The defect
 
-`train_selfplay_ppo.py` ended every run with a bare `agent.update()`
+`sheepshead/training/train_selfplay_ppo.py` ended every run with a bare `agent.update()`
 "flush" before saving `final_<arch>.pt`. That call is out-of-spec on
 two axes relative to every in-loop update (`epochs=4, batch_size=256`
 at a 2048-transition threshold):
@@ -1606,11 +1606,11 @@ the -0.32 cause: the 30M `final_swish.pt` analog measured KL≈0 /
 
 ## The fix (this date)
 
-- `train_selfplay_ppo.py`: flush REMOVED; leftover buffered events are
+- `sheepshead/training/train_selfplay_ppo.py`: flush REMOVED; leftover buffered events are
   discarded with a log line; `final_<arch>.pt` now equals the last
   threshold update's weights (== last checkpoint when `--episodes` is
   a multiple of `--save-interval`).
-- `train_league_ppo.py` / `exploiter.py`: audited, never had a flush
+- `sheepshead/training/train_league_ppo.py` / `sheepshead/training/exploiter.py`: audited, never had a flush
   (single update site, always `epochs=4, batch_size=256`); stale
   comment in `exploiter.latest_checkpoint` corrected.
 - Verified by 12-episode smoke: "Discarding 715 leftover buffered
@@ -1823,7 +1823,7 @@ whole perceiver family currently trails full on screening; per P3 the
 league regime remains decisive, but burning a league arm on
 perceiver-shared now needs operator judgment rather than the default.
 
-## Aux-head accuracy audit (2026-07-08 evening; `analysis/diagnostics/aux_audit.py`)
+## Aux-head accuracy audit (2026-07-08 evening; `sheepshead/analysis/diagnostics/aux_audit.py`)
 
 Motivated by the operator's hypothesis that full's 200k→300k climb =
 aux heads "bearing fruit" once predictions become reliable. Audit:
@@ -1880,7 +1880,7 @@ one diagnostic, all committed:
   competition, guaranteed output bandwidth); v1 shared = 16
   distributions over all 19 competing tokens. The anti-squeeze design
   goal was defeated by the 4q/4h choice.
-- **Squeeze audit** (`analysis/diagnostics/readout_squeeze_audit.py`,
+- **Squeeze audit** (`sheepshead/analysis/diagnostics/readout_squeeze_audit.py`,
   30 games/ckpt): v1's 16 distributions are HIGHLY REDUNDANT (mean
   pairwise cosine of mean maps 0.61–0.70, max ~1.0) with coverage 0.53
   (≈10/19 token slots get >half the uniform share; some of that is
@@ -1915,7 +1915,7 @@ both modes, vs full's ckpt-based endpoints):
   are unchanged). CONFIRMED ~29k: leaster 3.4%/18.5%/4.0% — all seeds
   escaped.
 - **Readout rank audit** (Jul-9 eve,
-  `analysis/diagnostics/readout_rank_audit.py`, commit eab809c;
+  `sheepshead/analysis/diagnostics/readout_rank_audit.py`, commit eab809c;
   operator hypothesis: is v2's single 1024→256 projection a
   bottleneck vs full's multi-stage path?): NO, decisively. Both paths
   are purely linear pre-LN so they compare as matrices. v2's dense map:

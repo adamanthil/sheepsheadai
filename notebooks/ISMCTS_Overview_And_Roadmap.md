@@ -1,5 +1,7 @@
 # ISMCTS Soft-Teacher: Problem, Progress, and Roadmap
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 *Companion to the detailed technical plan in `ISMCTS_Teacher_Refactor_Plan.md`.
 This file is the higher-level narrative: what we are solving, what is done, and
 the agreed plan forward. Last updated 2026-05-29.*

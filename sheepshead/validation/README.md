@@ -4,18 +4,18 @@ One-off analysis / smoke-test / probe scripts written while building the
 SO-ISMCTS soft-teacher ExIt pipeline (the determinizer, the search engine, the
 training integration, the throughput work, and the validation protocol).
 Committed for reproducibility — they are NOT part of the production code path
-(`sheepshead.py`, `ppo.py`, `encoder.py`, `ismcts.py`, `pfsp_runtime.py`,
-`config.py`, `training_utils.py` are). The committed unit/regression test is
+(the `sheepshead` package — game engine, agent, ismcts, pfsp_runtime,
+config, training_utils — is). The committed unit/regression test is
 `tests/test_ismcts_exit_regression.py`; these are the heavier,
 slower, evidence-gathering scripts behind the design decisions.
 
 ## Running
 
-Run from the **repo root** with the repo root on `PYTHONPATH` (the scripts
+Run from the **repo root** (module invocation; the scripts
 import repo modules like `sheepshead` and also cross-import each other):
 
 ```bash
-PYTHONPATH=. .venv/bin/python validation/t_full_probe.py --games 3000
+uv run python -m sheepshead.validation.t_full_probe --games 3000
 ```
 
 **Model arg:** several scripts default `-m` to
