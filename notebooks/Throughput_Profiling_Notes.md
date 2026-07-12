@@ -1,5 +1,7 @@
 # ISMCTS ExIt — Throughput Profiling Notes (NOT committed)
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 Reference notes from the May 2026 throughput pass. All numbers are **CPU,
 single process**, on the dev Mac (Darwin arm64). The real training box may be
 CUDA — batching helps there too, but absolute times will differ.

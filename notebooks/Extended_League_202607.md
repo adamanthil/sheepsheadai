@@ -1,13 +1,13 @@
 # Extended League Run — pre-registration (July 2026)
 
 Pre-registered BEFORE the run starts, per repo practice. Orchestrated by
-`analysis/run_extended_league.py`; decision math in `analysis/league_stopping.py`
+`sheepshead/training/run_extended_league.py`; decision math in `sheepshead/analysis/league_stopping.py`
 (unit-tested on synthetic curves in `tests/test_league_stopping.py`); endpoint
-machinery in `analysis/league_progress_eval.py`.
+machinery in `sheepshead/analysis/league_progress_eval.py`.
 
 ## Design
 
-One long league run (`train_league_ppo.py`, one subprocess per generation,
+One long league run (`sheepshead/training/train_league_ppo.py`, one subprocess per generation,
 resume-chained on the absolute-episode boundaries) folding in the July-2026
 learnings:
 

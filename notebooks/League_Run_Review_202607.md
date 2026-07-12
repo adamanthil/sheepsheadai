@@ -1,5 +1,7 @@
 # League Repro Run Review & Fix Plan (July 2026)
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 Review of the first long league run (`train_league_ppo.py`, log
 `runs/repro_league_train.log`, run dir `runs/repro_league/`), assessed at
 episode ~13.68M (mid generation 14). Companion to

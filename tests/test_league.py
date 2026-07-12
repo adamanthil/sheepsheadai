@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import torch
 
-from config import LeagueConfig
-from league import (
+from sheepshead.training.config import LeagueConfig
+from sheepshead.training.league import (
     ROLE_HOF_ANCHOR,
     ROLE_MAIN_EXPLOITER,
     ROLE_PAST_MAIN,
@@ -25,7 +25,7 @@ from league import (
     League,
     LeagueMember,
 )
-from ppo import PPOAgent
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 
@@ -117,7 +117,7 @@ class TestLeagueRoster(unittest.TestCase):
         self.assertAlmostEqual(m.ratings[PARTNER_BY_CALLED_ACE].sigma, 4.0, places=5)
 
     def test_inherited_ratings_scale_and_sigma_floor(self):
-        from train_league_ppo import _inherited_ratings
+        from sheepshead.training.train_league_ppo import _inherited_ratings
 
         league = League(self.dir)
         training_ratings = {
@@ -466,7 +466,7 @@ class TestExploiterPhaseCommand(unittest.TestCase):
     (an oracle main gated by limited exploiters weakens the gate)."""
 
     def _capture_cmd(self, ns):
-        import train_league_ppo as tlp
+        import sheepshead.training.train_league_ppo as tlp
 
         captured = {}
         exp_run = f"{ns.run_name}_exploiter_gen1"

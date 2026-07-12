@@ -47,9 +47,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
-from architectures import SharedReadoutEncoder  # noqa: E402
-from oracle import OracleValueNetwork  # noqa: E402
-from ppo import (  # noqa: E402
+from sheepshead.agent.architectures import SharedReadoutEncoder  # noqa: E402
+from sheepshead.agent.oracle import OracleValueNetwork  # noqa: E402
+from sheepshead.agent.ppo import (  # noqa: E402
     MultiHeadRecurrentActorNetwork,
     RecurrentCriticNetwork,
     load_agent,

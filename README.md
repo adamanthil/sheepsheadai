@@ -2,6 +2,29 @@
 
 Deep learning AI for the Sheepshead card game.
 
+## Repository layout
+
+```
+sheepshead/         installable RL core (uv sync installs it editable)
+  game.py           game engine (rules, deals, scoring)
+  scripted_agent.py rules baseline    ismcts.py  search / ExIt teacher
+  agent/            ppo, encoder, oracle, architectures registry
+  training/         self-play + league trainers, exploiter, orchestrators
+  analysis/         measurement instruments (rigorous_eval, probes, panels)
+  validation/       historical one-off gate checks
+app/                the hosted product: server/ (FastAPI), web/ (Next.js),
+                    db/ (graphile-migrate), deploy/, scripts/, compose files
+tests/              core test suite (server tests live in app/server/tests)
+visualizations/     network visualization artifacts
+notebooks/ docs/    research journals and operator docs
+play.py             CLI game entry point
+```
+
+Python imports use the `sheepshead.*` (and `server.*`) package names from any
+cwd once `uv sync` has run. Trainer entry points: `uv run train-selfplay`,
+`uv run train-league`, `uv run extended-league` (or `python -m
+sheepshead.training.<module>`).
+
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) — Python package manager
@@ -30,7 +53,7 @@ The server requires Postgres at runtime. A local dev instance is provided
 via Docker Compose:
 
 ```bash
-docker compose up -d postgres
+docker compose -f app/docker-compose.yml up -d postgres
 ```
 
 This boots Postgres 18 on `localhost:5433` (host port chosen to avoid colliding
@@ -38,7 +61,7 @@ with a local Postgres on 5432) with both the `sheepshead` database and a
 `sheepshead_shadow` database (used by graphile-migrate). Credentials match
 `.env.example`.
 
-All database commands run from the `db/` directory (or use `npm --prefix db`
+All database commands run from the `app/db/` directory (or use `npm --prefix app/db`
 from the repo root). Apply the schema with
 [graphile-migrate](https://github.com/graphile/migrate):
 
@@ -59,14 +82,14 @@ npm --prefix db run commit -- -m "msg"    # freeze current.sql as a committed mi
 npm --prefix db run reset                 # drop & recreate, re-run migrations + afterReset.sql
 ```
 
-Equivalently, `cd db && npm run migrate` etc.
+Equivalently, `cd app/db && npm run migrate` etc.
 
 See [docs/database-migrations.md](docs/database-migrations.md) for the full
 migration workflow (writing new migrations, deploying to production, common
 pitfalls).
 
-Reference seed data (`suit`, `card`) is generated from `sheepshead.py` by
-`scripts/gen_card_seed.py` and lives in `db/fixtures/afterReset.sql`. Re-run
+Reference seed data (`suit`, `card`) is generated from the `sheepshead` package by
+`app/scripts/gen_card_seed.py` and lives in `app/db/fixtures/afterReset.sql`. Re-run
 the script after any change to `DECK` / `SUIT_NAMES` and commit the result.
 
 ### 2. Backend server
@@ -81,7 +104,7 @@ uv sync --extra server
 Start the backend (pass the path to your trained model checkpoint):
 
 ```bash
-./server/run_server.sh --model final_pfsp_swish_ppo.pt
+./app/server/run_server.sh --model final_pfsp_swish_ppo.pt
 ```
 
 The server listens on `http://localhost:9000` by default.
@@ -107,7 +130,7 @@ Copy `.env.example` to `.env` and fill in your values. `.env` is never committed
 Install Node dependencies (first time only, or after dependency changes):
 
 ```bash
-cd web
+cd app/web
 npm install
 ```
 
@@ -131,20 +154,20 @@ npm run gen:api    # regenerate lib/api.gen.ts from openapi.json
 ### 4. Tests and generated types
 
 ```bash
-uv run pytest server/tests          # hermetic server tests (no DB needed)
+uv run pytest app/server/tests          # hermetic server tests (no DB needed)
 
 # Full API-flow tests against a real Postgres:
 docker exec sheepshead_postgres psql -U sheepshead -c "CREATE DATABASE sheepshead_test;"
-(cd db && DATABASE_URL=postgres://sheepshead:sheepshead@localhost:5433/sheepshead_test npx graphile-migrate migrate)
-TEST_DATABASE_URL=postgres://sheepshead:sheepshead@localhost:5433/sheepshead_test uv run pytest server/tests
+(cd app/db && DATABASE_URL=postgres://sheepshead:sheepshead@localhost:5433/sheepshead_test npx graphile-migrate migrate)
+TEST_DATABASE_URL=postgres://sheepshead:sheepshead@localhost:5433/sheepshead_test uv run pytest app/server/tests
 ```
 
 REST types are generated from the server's OpenAPI schema. After changing
-`server/api/schemas.py` or any route signature:
+`app/server/api/schemas.py` or any route signature:
 
 ```bash
-uv run python scripts/export_openapi.py   # refresh web/openapi.json
-cd web && npm run gen:api                 # refresh lib/api.gen.ts
+uv run python app/scripts/export_openapi.py   # refresh app/web/openapi.json
+cd app/web && npm run gen:api                 # refresh lib/api.gen.ts
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint, typecheck, both test suites, and
@@ -177,7 +200,7 @@ snapshots plus an anchored strength curve (`anchored_eval.csv`, paired CRN
 edges vs three frozen yardsticks) under `runs/selfplay_ppo/`:
 
 ```bash
-uv run train_selfplay_ppo.py --episodes 100000
+uv run train-selfplay --episodes 100000
 ```
 
 Useful flags: `--arch` (architecture variant), `--leaster-watchdog` (guards the
@@ -185,7 +208,7 @@ always-PASS collapse that affects all from-scratch shaped self-play runs).
 
 ### Step 2 — League PPO
 
-`train_league_ppo.py` is the main trainer: one agent improves under a
+`sheepshead/training/train_league_ppo.py` is the main trainer: one agent improves under a
 terminal-reward PPO objective against a **league** of its own past snapshots
 plus, optionally, best-response *exploiters*. The usual practice is to **resume
 the policy from the final self-play checkpoint and seed the initial league from
@@ -193,7 +216,7 @@ the self-play snapshots** produced in step 1 (`--resume` for the weights,
 `--seed-checkpoints` for the opponent roster), matching that starting point:
 
 ```bash
-uv run train_league_ppo.py \
+uv run train-league \
   --resume runs/selfplay_ppo/full_checkpoint_100000.pt \
   --seed-checkpoints "runs/selfplay_ppo/full_checkpoint_*.pt" \
   --league-dir runs/league_ppo/league --run-name league_ppo \
@@ -217,7 +240,7 @@ for warm-start safety.
 
 ### Step 3 — Extended league run with automatic stopping
 
-`analysis/run_extended_league.py` wraps step 2 into a fully instrumented,
+`sheepshead/training/run_extended_league.py` wraps step 2 into a fully instrumented,
 crash-resumable campaign that decides for itself when learning has concluded
 (design pre-registered in `notebooks/Extended_League_202607.md`). It
 calibrates the gen-1 KL-anchor coefficient with short probes, runs generation
@@ -228,7 +251,7 @@ stops after two consecutive statistically flat generations confirmed on a
 fresh deal set:
 
 ```bash
-uv run python analysis/run_extended_league.py \
+uv run extended-league \
   --arch full --resume runs/selfplay_ppo/final_full.pt \
   --seed-checkpoints "runs/selfplay_ppo/full_checkpoint_*.pt" \
   --run-name ext_league --critic-mode oracle
@@ -257,8 +280,8 @@ uv sync --extra server --upgrade
 Upgrade Node dependencies and update `package-lock.json`:
 
 ```bash
-cd web
+cd app/web
 npm install
 ```
 
-To upgrade to new major versions, edit the version ranges in `web/package.json` first, then re-run `npm install`.
+To upgrade to new major versions, edit the version ranges in `app/web/package.json` first, then re-run `npm install`.

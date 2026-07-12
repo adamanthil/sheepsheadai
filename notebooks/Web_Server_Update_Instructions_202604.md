@@ -1,3 +1,5 @@
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 Carefully analyze the web app implemented in /server and /web for playing the trick taking card game [Sheepshead](Sheepshead.md) in real time against human and trained AI agents. I would like to:
 
   1. Clean up all the code so it is more maintainable, straightforward, and secure to prepare for releasing it.

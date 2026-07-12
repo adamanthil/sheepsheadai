@@ -10,7 +10,7 @@ from collections import deque
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from train_selfplay_ppo import LeasterWatchdog, train_ppo
+from sheepshead.training.train_selfplay_ppo import LeasterWatchdog, train_ppo
 
 
 def _window(rate, n=3000):

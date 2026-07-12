@@ -21,10 +21,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 
-from league import ROLE_PAST_MAIN, League
-from ppo import PPOAgent
+from sheepshead.training.league import ROLE_PAST_MAIN, League
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead import ACTIONS
-from train_league_ppo import run_main_phase
+from sheepshead.training.train_league_ppo import run_main_phase
 
 
 class TestMainPhaseSmoke(unittest.TestCase):

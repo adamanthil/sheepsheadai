@@ -1,5 +1,7 @@
 # ISMCTS Soft-Teacher Refactor Plan
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 Status: planning (no implementation started). This document is the reference for
 replacing the hand-crafted exploration/shaping machinery in PFSP training with a
 single search-derived soft-target teacher.

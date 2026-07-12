@@ -1,11 +1,13 @@
 # Repository Reorganization Plan — July 2026
 
-**Status: PLANNED, NOT EXECUTED.** Implementation is deferred until the 400k
-extension batch (`ablate_onehot-ff400_s*`, `ablate_perceiver-shared-v2400_s*`)
-finishes and its ext2 panels are read (~2026-07-12). Nothing in this plan may
-be executed while those trainers or the `panel_ext2_watch.sh` watcher are
-running: the watcher subprocesses `analysis/rigorous_eval.py` by path, and
-resumed trainers would need the old script paths.
+**Status: EXECUTED 2026-07-11** on branch `repo-reorg` (commit series
+starting at `91a15bb`), after the 400k extension batch finished and its ext2
+panels were read and recorded (stage-0 closed 2026-07-11, commit `45cdd7e`).
+All gates passed, including golden 34/34 bit-identity, full pytest, a
+byte-identical CRN reproduction of the v2 200k called-mode panel, docker
+build + in-image import smoke, server tests, and the web build. The document
+below is the plan as approved; deviations, if any, are noted in the commit
+messages.
 
 Operator decisions locked 2026-07-10:
 

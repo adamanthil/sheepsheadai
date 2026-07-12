@@ -1,5 +1,7 @@
 # ExIt stabilization arms (June 2026)
 
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+
 Decision experiment: confirm what broke in the two collapsed warm-start runs and
 gather the evidence needed to choose between **(a) population-grounded teacher
 rollouts** (determinize/roll out opponent seats with frozen population policies)

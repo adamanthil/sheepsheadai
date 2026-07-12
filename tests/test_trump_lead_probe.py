@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trump-lead incidence probe invariants (analysis/trump_lead_probe.py)."""
+"""Trump-lead incidence probe invariants (sheepshead/analysis/trump_lead_probe.py)."""
 
 import os
 import sys
@@ -7,8 +7,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from analysis.trump_lead_probe import PROBE_SEED, probe_agent
-from scripted_agent import ScriptedAgent
+from sheepshead.analysis.trump_lead_probe import PROBE_SEED, probe_agent
+from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import PARTNER_BY_CALLED_ACE
 
 

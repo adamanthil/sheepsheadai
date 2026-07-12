@@ -1,4 +1,6 @@
 # Improving point tracking in sheepshead AI
+
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
 _Exported on 12/4/2025 at 10:11:26 CST from Cursor (2.1.47)_
 
 ---
