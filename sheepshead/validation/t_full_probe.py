@@ -25,7 +25,7 @@ import numpy as np
 import torch
 
 from sheepshead.agent import ppo
-from critic_probe import encode_decide, r2, train_head
+from sheepshead.validation.critic_probe import encode_decide, r2, train_head
 from sheepshead.agent.ppo import load_agent
 from sheepshead import Game
 from sheepshead.training.training_utils import RETURN_SCALE, get_partner_selection_mode

@@ -20,7 +20,7 @@ import torch
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import load_agent
 from sheepshead import TRUMP
-from gate0_determinizer import collect
+from sheepshead.validation.gate0_determinizer import collect
 
 DEV = ppo.device
 

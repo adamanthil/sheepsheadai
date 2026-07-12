@@ -55,7 +55,7 @@ from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 # Reuse the validated paired-rollout scaffolding.
-from counterfactual_trump_leads import (
+from sheepshead.analysis.counterfactual_trump_leads import (
     snapshot_memory,
     restore_memory,
     play_out,
