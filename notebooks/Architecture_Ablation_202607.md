@@ -1469,30 +1469,125 @@ here must be executable mechanically.
 
 ## Stage 1 — DECISIVE: paired oracle-critic league arms
 
-The regime that matters (P3). Two arms, identical protocol, CRN seed:
+The regime that matters (P3). Two arms, identical protocol, CRN seed.
 
-```
-# per arm (arch = full | perceiver-shared):
-PYTHONPATH=. nohup caffeinate -is .venv/bin/python -m sheepshead.training.train_league_ppo \
+**Amendment 2026-07-11 (pre-launch): `--main-episodes` 750k → 1,000,000.**
+Alignment with the `run_extended_league.py` pre-registration
+(Extended_League_202607.md) so the adopted arm resume-chains directly into
+the orchestrator after stage 1. The 750k figure was a phase-2 compute
+carryover, never derived; 1M is the calibrated number — the orchestrator's
+stop-rule constants are *per-generation* quantities (gain ≥ 0.035, paired
+slope ≥ 0.0175/gen, 4000-deal composite MDE ≈ 0.035) set against the
+measured repro-league slope of ~0.015 score/hand per 1M episodes. At 750k
+generations the slow-regime expected gain (~0.011/gen) falls below the
+slope criterion and the rule false-stops; 1M is the smallest generation
+whose real gain the instrument resolves (the PSRO principle — generation
+length is set by what the evaluator can certify, not by a fixed count;
+nothing in the league literature prescribes a portable episode number).
+Changing the orchestrator down instead would have meant re-registering
+every stop-rule constant.
+
+**Warm-start resume-name trap (both trainer and orchestrator):** a resume
+filename containing `checkpoint_` parses as the ABSOLUTE episode counter,
+so resuming `<arch>_checkpoint_400000.pt` would shrink generation 1 to
+600k episodes and shift every boundary off the 1M grid. Stage 1 therefore
+resumes RENAMED COPIES of each arch's best pre-registered 400k checkpoint:
+`runs/league_arch_<ARCH>/warmstart_<ARCH>_400k.pt`. Rule 5 audit
+(2026-07-11, tensor-level compare): `ablate_full400_s2042/final_full.pt`
+**differs** from `full_checkpoint_400000.pt` (post-final update — finals
+remain unusable for full); the v2 s2042 final is tensor-identical to its
+400k checkpoint, but both arms use the renamed-copy route for symmetric
+treatment. Warm-start seeds = best 400k rung by both-modes panel
+(strength matrix row 400000): full_s2042 (+0.0097), v2_s2042 (−0.0882).
+
+**LAUNCHED 2026-07-11 evening** via `runs/stage1_202607/stage1.sh`
+(nohup + caffeinate; logs `runs/stage1_202607/league_arch_<ARCH>.log`).
+Per arm — gen 1 anchored, gen 2 released, arms concurrent, 4 workers each
+(~4.7 days/gen/arm at the phase-2 rate ⇒ ~9.5 days total); the script ends
+with the endpoint instruments (trump-lead + scripted probes at 2M, one
+shared-CRN PANEL-A per mode over BOTH arms' last-3 checkpoints →
+`runs/stage1_202607/panel_stage1_{called,jd}.csv`):
+
+```bash
+# gen 1 (per arm; ARCH = full | perceiver-shared-v2)
+.venv/bin/python -m sheepshead.training.train_league_ppo \
     --arch <ARCH> --critic-mode oracle \
-    --resume <that arch's best 400k/200k self-play CHECKPOINT (rule 5: not final_*.pt)> \
+    --resume runs/league_arch_<ARCH>/warmstart_<ARCH>_400k.pt \
     --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
     --league-dir runs/league_arch_<ARCH>/league --run-name league_arch_<ARCH> \
-    --generations 1 --main-episodes 750000 --anchor-coeff 1.0 \
-    --num-workers 4 --seed 42 --schedule-horizon 20000000 \
-    > runs/league_arch_<ARCH>.log 2>&1 &
-# gen 2 (anchor-free) exactly as in runs/phase2_202607/phase2.sh
+    --generations 1 --main-episodes 1000000 \
+    --anchor-coeff 1.0 --anchor-ref runs/league_arch_<ARCH>/warmstart_<ARCH>_400k.pt \
+    --num-workers 4 --seed 42 --schedule-horizon 20000000
+# gen 2 (anchor-free, resumed at the absolute 1M boundary)
+.venv/bin/python -m sheepshead.training.train_league_ppo \
+    --arch <ARCH> --critic-mode oracle \
+    --resume runs/league_arch_<ARCH>/checkpoints/pfsp_<ARCH>_checkpoint_1000000.pt \
+    --league-dir runs/league_arch_<ARCH>/league --run-name league_arch_<ARCH> \
+    --generations 1 --main-episodes 1000000 \
+    --num-workers 4 --seed 42 --schedule-horizon 20000000
 ```
 
-- Warm starts: each arch resumes from ITS OWN self-play final (full400 /
-  perceiver-shared 200k-or-400k). Warm-start shock: none expected
-  (shock sim above); watch `ev_oracle` day 1 (health check).
+All other trainer flags are at defaults, which are IDENTICAL to the
+orchestrator's `trainer_cmd` values (exploiter 50k / gate 3000 / screen 200
+/ update 2048 / save 50k / snapshot 50k / greedy 50k×200 / horizon 20M) —
+verified 2026-07-11, so a stage-1 generation is indistinguishable on disk
+from an orchestrator-launched one.
+
+### Continuing the adopted arm with run_extended_league (post-adoption)
+
+After the P1 adoption call (below), continue ONLY the winner:
+
+```bash
+nohup uv run extended-league \
+    --arch <WINNER> \
+    --resume runs/league_arch_<WINNER>/warmstart_<WINNER>_400k.pt \
+    --seed-checkpoints 'runs/reference_selfplay_ppo/checkpoints/*.pt' \
+    --run-name league_arch_<WINNER> \
+    --anchor-coeff 1.0 \
+    > runs/league_arch_<WINNER>_ext.log 2>&1 &
+```
+
+Why this resumes cleanly (verified against the orchestrator source
+2026-07-11):
+
+- `--run-name league_arch_<WINNER>` ⇒ league-dir defaults to
+  `runs/league_arch_<WINNER>/league` (same as stage 1) and
+  `ensure_trained(g)` finds each stage-1 generation's boundary checkpoint
+  (`checkpoints/pfsp_<ARCH>_checkpoint_{1000000,2000000}.pt`) plus its
+  `exploitability.csv` gate row, so generations 1–2 are treated as
+  complete: the orchestrator runs their 4000-deal composite panels + h2h,
+  applies the stop rule, and starts TRAINING at generation 3 (resume-chained
+  from the 2M boundary checkpoint).
+- `--resume` = the same warm-start file: parses to episode 0 (no
+  `checkpoint_` in the name), records the correct arch metadata, defines
+  the generation-0 endpoint, and is the anchor-ref on the books (gen 1
+  never retrains, so the anchor is historical).
+- `--anchor-coeff 1.0` skips the calibration phase and records the
+  coefficient stage 1 actually used.
+- `--main-episodes` default (1,000,000) now matches stage 1 — the point of
+  the amendment; boundary math `g × 1M` lines up exactly.
+- `--num-workers` (default 8) is free to differ from stage 1's 4: it is
+  not state-bearing, and the winner runs alone.
+- Composite endpoints need boundary−100k/−50k checkpoints: guaranteed by
+  save-interval 50k during stage 1 (default).
+- The stop rule then governs: floor 4 generations, cap 12, two consecutive
+  flats + fresh-deal confirmation to stop (per the Extended_League
+  pre-registration; generation numbering continues 3, 4, …).
+
+The loser's run directory stays as a complete 2-generation record (its own
+extended-league continuation remains possible later with the mirrored
+command).
+
+- Warm-start shock: none expected (shock sim above); watch `ev_oracle`
+  day 1 (health check).
 - Oracle cost: expect ~1.5–2× wall clock vs limited (measured 2.7× update
   cost); knob if needed = oracle loss on 1 of 4 epochs.
 - Instruments per gen: PANEL-A both modes (last-3-ckpt rule) + gen-vs-gen
   h2h + trump-lead probe.
-- **Adoption rule (P1): adopt perceiver-shared unless full wins > 0.07
-  and > 2 SE.** Two arms ≈ 2×3.5 days/gen concurrent.
+- **Adoption rule (P1): adopt perceiver-shared-v2 unless full wins > 0.07
+  and > 2 SE** on the shared-CRN stage-1 panels
+  (`runs/stage1_202607/panel_stage1_{called,jd}.csv`, last-3-ckpt
+  both-modes means). Two arms ≈ 2×4.7 days/gen concurrent at 1M.
 - **Aux-contribution arm (P2 question, optional third arm or follow-up):**
   perceiver-shared vs `perceiver-shared-noaux` (registry entry pending —
   one-liner: SharedReadoutEncoder + `_no_aux_critic`), same league
