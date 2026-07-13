@@ -80,6 +80,7 @@ from sheepshead import (  # noqa: E402
     FAIL,
     Game,
     TRUMP,
+    UNDER_TOKEN,
 )
 
 TRUMP_SET = set(TRUMP)
@@ -126,15 +127,20 @@ class NodeInfo:
     trickIndex: int
     argmaxCard: str
     argmaxLogit: float
-    bestTrumpCard: str
-    bestTrumpLogit: float
-    bestFailCard: str
-    bestFailLogit: float
+    # None when the node has no trump (or no fail) lead option; the original
+    # trump-vs-fail cases always have both, C2 called-suit nodes may not.
+    bestTrumpCard: Optional[str]
+    bestTrumpLogit: Optional[float]
+    bestFailCard: Optional[str]
+    bestFailLogit: Optional[float]
     trumpLeadOptions: List[str]
     failLeadOptions: List[str]
     handTrumpCount: int
     handFailCount: int
     hand: List[str]
+    # card -> logit for every legal lead at the node (UNDER token excluded),
+    # so callers can pick branch cards by any class (e.g. called-suit fails).
+    leadLogits: Optional[Dict[str, float]] = None
 
 
 @dataclass
@@ -155,6 +161,10 @@ class McBranch:
     defenderPointsMean: float
     leaderScoreMean: float
     winRate: float
+    # Sample SDs across the R rollouts (0.0 when R < 2): per-case CIs for the
+    # exception-rate readout (design E3) and the learnability SNR (E5).
+    defenderPointsSd: float = 0.0
+    leaderScoreSd: float = 0.0
 
 
 @dataclass
@@ -321,6 +331,8 @@ def _mc_branch(
         defenderPointsMean=float(np.mean(dps)),
         leaderScoreMean=float(np.mean(scores)),
         winRate=float(np.mean(wins)),
+        defenderPointsSd=float(np.std(dps, ddof=1)) if R > 1 else 0.0,
+        leaderScoreSd=float(np.std(scores, ddof=1)) if R > 1 else 0.0,
     )
 
 
@@ -398,8 +410,12 @@ def _replay_to_node(
                 for aid in valid_sorted
                 if _card_of(aid) in FAIL_SET
             ]
-            best_trump_aid, best_trump_logit = max(trump_leads, key=lambda x: x[1])
-            best_fail_aid, best_fail_logit = max(fail_leads, key=lambda x: x[1])
+            best_trump_aid, best_trump_logit = (
+                max(trump_leads, key=lambda x: x[1]) if trump_leads else (None, None)
+            )
+            best_fail_aid, best_fail_logit = (
+                max(fail_leads, key=lambda x: x[1]) if fail_leads else (None, None)
+            )
             node = NodeInfo(
                 seat=pos,
                 trickIndex=int(game.current_trick),
@@ -418,6 +434,11 @@ def _replay_to_node(
                 handTrumpCount=sum(1 for c in actor.hand if c in TRUMP_SET),
                 handFailCount=sum(1 for c in actor.hand if c in FAIL_SET),
                 hand=sorted(actor.hand, key=lambda c: (c not in TRUMP_SET, c)),
+                leadLogits={
+                    _card_of(aid): float(logits_np[aid - 1])
+                    for aid in valid_sorted
+                    if _card_of(aid) and _card_of(aid) != UNDER_TOKEN
+                },
             )
 
             search_outcome = None
@@ -465,8 +486,8 @@ def _belief_mc(
     node_game,
     observer: int,
     forced_public: List[tuple],
-    trump_card: str,
-    fail_card: str,
+    card_a: str,
+    card_b: str,
     R: int,
     pool_k: int,
     rng: random.Random,
@@ -476,11 +497,12 @@ def _belief_mc(
 
     Builds the exact determinized-world pool the search uses (``_build_pool``),
     resamples R worlds ~ exp(log_w) (``_pool_probs``), and -- on the SAME sampled
-    worlds (common random worlds) -- forces the trump vs the fail lead and rolls
-    the raw policy to terminal. This is ISMCTS's belief distribution evaluated by
-    policy continuation instead of tree search.
+    worlds (common random worlds) -- forces the ``card_a`` vs ``card_b`` lead
+    (trump vs fail in the original study; any two legal leads in general) and
+    rolls the raw policy to terminal. This is ISMCTS's belief distribution
+    evaluated by policy continuation instead of tree search.
 
-    Returns ``(BeliefMcBranch_trump, BeliefMcBranch_fail)`` or ``(None, None)``.
+    Returns ``(BeliefMcBranch_a, BeliefMcBranch_b)`` or ``(None, None)``.
     """
     teacher._rng = rng
     teacher._seat_policies = None
@@ -503,8 +525,8 @@ def _belief_mc(
         trump_m, fail_m = [], []
         for i in idxs:
             world_game, world_mem, _ = pool[i]
-            trump_m.append(_rollout_world(world_game, world_mem, trump_card))
-            fail_m.append(_rollout_world(world_game, world_mem, fail_card))
+            trump_m.append(_rollout_world(world_game, world_mem, card_a))
+            fail_m.append(_rollout_world(world_game, world_mem, card_b))
     finally:
         _restore_memory(agent, saved)
 
