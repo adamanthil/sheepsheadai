@@ -118,13 +118,18 @@ class ModelRegistry:
 
     A single PPOAgent instance can safely fill several seats in one game because
     its recurrent memory is keyed by player_id (ppo.PPOAgent._player_memories),
-    so distinct seats never share state.
+    so distinct seats never share state. A convention-wrapped entrant (``wrap``,
+    design E4) shares the raw instance for the same reason: the wrapper only
+    filters valid actions per call and holds no per-seat state itself.
     """
 
     def __init__(self) -> None:
         self._by_path: Dict[Path, Model] = {}
+        self._wrapped: Dict[tuple, Model] = {}
 
-    def get(self, path: Path, episodes: Optional[int] = None) -> Model:
+    def get(
+        self, path: Path, episodes: Optional[int] = None, wrap: Optional[str] = None
+    ) -> Model:
         path = path.resolve()
         if path not in self._by_path:
             # Arch-aware: builds whatever architecture the checkpoint records
@@ -133,7 +138,19 @@ class ModelRegistry:
             self._by_path[path] = Model(
                 model_id=path.stem, filepath=path, episodes=episodes, agent=agent
             )
-        return self._by_path[path]
+        if wrap is None:
+            return self._by_path[path]
+        key = (path, wrap)
+        if key not in self._wrapped:
+            from sheepshead.agent.convention_wrapper import wrap_agent
+
+            self._wrapped[key] = Model(
+                model_id=f"{path.stem}@{wrap}",
+                filepath=path,
+                episodes=episodes,
+                agent=wrap_agent(self._by_path[path].agent, wrap),
+            )
+        return self._wrapped[key]
 
 
 def extract_episodes_from_name(path: Path) -> Optional[int]:
@@ -797,15 +814,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     registry = ModelRegistry()
 
     # --- Resolve candidates -------------------------------------------------
-    cand_specs: List[Tuple[Path, Optional[int]]] = []
+    from sheepshead.agent.convention_wrapper import parse_wrap_spec
+
+    cand_specs: List[Tuple[Path, Optional[int], Optional[str]]] = []
     if args.candidates:
         for c in args.candidates:
-            pth = Path(c)
-            cand_specs.append((pth, extract_episodes_from_name(pth)))
+            raw_path, wrap = parse_wrap_spec(c)
+            pth = Path(raw_path)
+            cand_specs.append((pth, extract_episodes_from_name(pth), wrap))
     elif args.input_dir:
-        cand_specs = discover_candidates(
-            Path(args.input_dir).resolve(), args.episode_divisor
-        )
+        cand_specs = [
+            (p, eps, None)
+            for p, eps in discover_candidates(
+                Path(args.input_dir).resolve(), args.episode_divisor
+            )
+        ]
     else:
         print("Provide --candidates or --input-dir.")
         return 1
@@ -817,14 +840,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     print(f"Loading {len(cand_specs)} candidates ...")
-    candidates = [registry.get(p, eps) for p, eps in cand_specs]
+    candidates = [registry.get(p, eps, wrap) for p, eps, wrap in cand_specs]
 
     # --- Resolve anchor panel ----------------------------------------------
     if args.anchors:
-        panel = [registry.get(Path(a)) for a in args.anchors]
+        panel = []
+        for a in args.anchors:
+            raw_path, wrap = parse_wrap_spec(a)
+            panel.append(registry.get(Path(raw_path), wrap=wrap))
         # Canonical order: the frozen field assignment is drawn from panel
         # indices, so CLI argument order must not change the experiment.
-        panel.sort(key=lambda m: str(m.filepath))
+        # (model_id tiebreak only distinguishes wrapped arms of one file;
+        # raw-only panels keep their historical ordering.)
+        panel.sort(key=lambda m: (str(m.filepath), m.model_id))
         print(f"Reference panel: {[m.model_id for m in panel]}")
     else:
         strongest = max(
