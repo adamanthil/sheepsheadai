@@ -62,7 +62,10 @@ regardless of its measured strength.
   `scan_defender_trump_leads.py`) leads on trick 0 or 1, holding ≥1 legal trump
   lead AND ≥1 legal fail lead, non-leaster.
 * **C2-eligible node:** called-ace mode, non-alone, defender leads, holds ≥1
-  called-suit fail, `was_called_suit_played == False`, non-leaster. Primary
+  called-suit fail AND ≥1 legal non-called-suit lead (refined 2026-07-13 while
+  building the instruments, before any results: a forced all-called-suit hand
+  is not a decision and trivially inflates adherence),
+  `was_called_suit_played == False`, non-leaster. Primary
   slice: trick 0. Secondary: first lead opportunity at any trick.
 * **Convention action:** C1 — any fail lead (best-fail per branch search);
   C2 — a called-suit lead (card chosen by policy argmax among called-suit
