@@ -294,6 +294,32 @@ behavioral delta is small; its gauntlet arm mainly prices the *remaining* 6%
 already economically irrelevant at deploy; the human-perception argument then
 rests on the rarity of violations rather than strength.
 
+## Results — E2 pilot (2026-07-13, rung 2 only, R=25, 300 seeds)
+
+**PILOT — harness validation + power calibration only; excluded from decision
+rules by pre-registration.** → `cf_called_suit_pilot.{json,log}`.
+
+| group | n | true-deal MC Δscore (SE) | read |
+|---|---|---|---|
+| AGREE (sanity) | 120 | **+0.272 (0.108)** ≈ +2.5σ | Δ ≥ 0 holds — forcing machinery sound |
+| DISAGREE (decision) | 25 | +0.253 (0.235) ≈ +1.1σ | right sign, underpowered (expected) |
+| PARTNER mirror (falsifier) | 80 | **−0.286 (0.123)** ≈ −2.3σ | fires correctly: the method can say "no" |
+
+Coherence check: PARTNER Δpts is +5.8 for the *defenders* while the partner's
+own ΔleaderScore is −0.29 — surfacing the called card early helps the other
+team, exactly the convention's logic. Descriptive: AGREE conv value decays
+with seat distance from picker (+0.49 at picker+1 → +0.07 at picker+4).
+
+**Power calibration for the full run:** DISAGREE yield ≈ 25 cases / 300 seeds;
+per-case SE ≈ 1.17 score at R=25. For 2σ on Δ ≈ 0.25 we need ~90 cases →
+**≥ 1100 seeds** (or R=50 + ~70 cases). Note the yield will *shrink* as
+adherence rises in newer models — scan seeds accordingly.
+
+Rough per-game stake implied by the pilot (30M model): Δ ≈ 0.25 ×
+p(disagree) ≈ 0.083/game ⇒ ~0.02 score/game — consistent with expecting a
+small E4 wrapper effect at deploy (MDE 0.07 at 1000 deals would NOT resolve
+this; the wrapper arm is a bound, not a detection).
+
 ## Scheduling & budgets
 
 Stage 1 (two oracle-critic league trainers, 4 workers each) saturates the box
