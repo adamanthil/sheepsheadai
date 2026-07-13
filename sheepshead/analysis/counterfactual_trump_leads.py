@@ -649,6 +649,7 @@ def _find_cases(args) -> tuple[List[dict], List[dict]]:
     FAIL-PREF controls are randomly subsampled to ``len(trump) * control_ratio``
     (seeded), mirroring the original validation script's balanced control set.
     """
+    scan.set_scan_model(args.model)
     trump_spots: List[dict] = []
     fail_spots: List[dict] = []
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
@@ -656,7 +657,6 @@ def _find_cases(args) -> tuple[List[dict], List[dict]]:
             seed=seed,
             partnerMode=args.partner_mode,
             deterministic=True,
-            modelPath=args.model,
             maxSteps=args.max_steps,
         )
         resp = scan.simulate_game(req)
@@ -1109,6 +1109,7 @@ def main() -> int:
     args = parser.parse_args()
 
     device = _device()
+    scan.set_scan_model(args.model)
     agent = scan._cached_load_agent(args.model)
 
     # The teacher is needed for ISMCTS search AND for the belief-pool MC (it owns
@@ -1135,7 +1136,6 @@ def main() -> int:
                 seed=seed,
                 partnerMode=args.partner_mode,
                 deterministic=True,
-                modelPath=args.model,
                 maxSteps=args.max_steps,
             )
             resp = scan.simulate_game(req)

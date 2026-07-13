@@ -240,6 +240,7 @@ def main() -> int:
     args = p.parse_args()
 
     device = cf._device()
+    scan.set_scan_model(args.model)
     agent = scan._cached_load_agent(args.model)
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 

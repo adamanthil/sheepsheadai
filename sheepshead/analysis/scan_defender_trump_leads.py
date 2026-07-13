@@ -54,13 +54,28 @@ import server.services.analyze as analyze_mod  # noqa: E402
 from server.services.ai_loader import load_agent as _real_load_agent  # noqa: E402
 
 _AGENT_CACHE: dict[str, object] = {}
+_FORCED_MODEL: Optional[str] = None
+
+
+def set_scan_model(model_path: str) -> None:
+    """Route the analyze service's model loads to ``model_path``.
+
+    The hardened ``AnalyzeSimulateRequest`` no longer carries a modelPath (the
+    field let API clients point ``torch.load`` at arbitrary files), so scanners
+    select the model here instead: ``simulate_game`` resolves the configured
+    settings path through the patched loader below, which defers to this
+    override when set.
+    """
+    global _FORCED_MODEL
+    _FORCED_MODEL = model_path
 
 
 def _cached_load_agent(model_path: str):
-    agent = _AGENT_CACHE.get(model_path)
+    path = _FORCED_MODEL or model_path
+    agent = _AGENT_CACHE.get(path)
     if agent is None:
-        agent = _real_load_agent(model_path)
-        _AGENT_CACHE[model_path] = agent
+        agent = _real_load_agent(path)
+        _AGENT_CACHE[path] = agent
     return agent
 
 
@@ -268,13 +283,13 @@ def main() -> int:
     stats = ScanStats()
     all_cases: List[DefenderTrumpLeadCase] = []
 
+    set_scan_model(args.model)
     end_seed = args.start_seed + args.num_seeds
     for seed in range(args.start_seed, end_seed):
         req = AnalyzeSimulateRequest(
             seed=seed,
             partnerMode=args.partner_mode,
             deterministic=True,
-            modelPath=args.model,
             maxSteps=args.max_steps,
         )
         resp = simulate_game(req)
