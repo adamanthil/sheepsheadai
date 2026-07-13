@@ -1,8 +1,36 @@
 # Convention Optimality — Experiment Design (July 2026)
 
-**Status: DESIGN / pre-registration. No experiments launched.**
-Written 2026-07-12 while ablation Stage 1 owns the box (ETA ~Jul-21); see
+**Status: instruments built (2026-07-13); E1 running. E2/E3 pilots pending;
+full runs + E4 gauntlet wait for Stage 1 (ETA ~Jul-21).**
+Written 2026-07-12 while ablation Stage 1 owns the box; see
 Scheduling section for what may run concurrently.
+
+## Instruments (built 2026-07-13, commits 61a151ef..a866eaf8)
+
+| Piece | Where | Notes |
+|---|---|---|
+| C2 self-play scanner | `sheepshead/analysis/scan_called_suit_leads.py` | /analyze-reproducible nodes + policy margins |
+| C2 CRN probe | `sheepshead/analysis/called_suit_probe.py` | any agent incl. scripted anchor; same deal set as trump probe |
+| E1 sweep driver | `sheepshead/analysis/convention_adherence_sweep.py` | scripted anchor = hard instrument gate |
+| E2 ladder | `sheepshead/analysis/counterfactual_called_suit_leads.py` | AGREE/DISAGREE/PARTNER groups |
+| E3 exception report | `sheepshead/analysis/convention_exception_report.py` | over an unconditional `counterfactual_trump_leads` run (`--control-ratio 1e9`) |
+| E4 wrapper | `sheepshead/agent/convention_wrapper.py` + `rigorous_eval` `model.pt@c1/@c2/@c1c2` specs | C1 tricks 0-1; C2 trick 0 (provable-eligibility scope) |
+| E5 SNR calc | `sheepshead/analysis/convention_learnability.py` | raw-signal bound |
+
+Repair note: the July web hardening removed `modelPath` from
+`AnalyzeSimulateRequest`, which had silently broken the trump-lead scanner /
+ladder / targeted search; fixed via `scan.set_scan_model()` (commit 055f38d3)
+before any new measurements were taken.
+
+Falsifier amendment (2026-07-13, before results): the pre-registered
+"zero-sum check" for E2 is vacuous — points and scores are zero-sum across
+teams by engine construction — so the AGREE sanity group and the
+PARTNER mirror carry the falsification load.
+
+E4 scope note: the wrapper forces C2 at trick 0 only (the pre-registered
+primary slice, and the only trick where "called suit unled" is provable from
+the per-seat observation dict); C1 masking covers tricks 0-1 (the diagnosed
+leak scope), not a blanket all-trick mask.
 
 ## Motivation
 
@@ -215,6 +243,56 @@ remedies, in order of preference (per the deploy-search teacher plan): oracle
 critic (already in flight via Stage 1), V_oracle-baseline GAE, ISMCTS-teacher
 distillation at these node classes, deploy wrapper (E4) as the product
 backstop.
+
+## Results — E1 adherence sweep (2026-07-13)
+
+Run: `convention_adherence_sweep --deals 1000 --both-modes` (CRN probe deal set,
+scripted field, greedy heroes; anchor gate passed) →
+`runs/convention_optimality_202607/adherence_sweep.{json,log}`.
+
+| checkpoint | episodes | C1 trump-lead% (n) | C1 rich% | C2 adh% | C2 t0% | C2 1st% | (n) |
+|---|---|---|---|---|---|---|---|
+| scripted-anchor | – | 0.00 (758) | 0.00 | 69.7 | **100.0** | 70.6 | (643) |
+| selfplay_100000 | 100k | 0.00 (674) | 0.00 | 52.0 | 48.0 | 51.6 | (615) |
+| pfsp_1000000 | 1M | **7.80** (744) | 9.52 | 44.6 | **32.3** | 42.1 | (660) |
+| pfsp_5000000 | 5M | 0.82 (854) | 1.05 | 52.9 | 45.5 | 51.1 | (736) |
+| pfsp_15000000 | 15M | 0.44 (686) | 1.52 | 74.1 | 75.2 | 75.0 | (614) |
+| final_pfsp (30M) | 30M | 1.00 (798) | 2.28 | 86.3 | 94.0 | 87.4 | (672) |
+
+Self-play cross-check (600 seeds, `scan_called_suit_leads`, final model):
+C2 94.4% at trick 0 (n=162), 86.5% overall (n=342), position-uniform
+(85–89% across picker+1..4); eligible ≈ 0.57 nodes/game (0.27 at trick 0)
+→ `called_suit_scan_final.json` (per-node policy margins for E5).
+
+**Readings (empirical half of Q2):**
+
+1. **Both conventions ARE being learned under terminal-only reward.** C2
+   trick-0 adherence climbs 48% → 94% over the lineage and is still rising at
+   30M (15M→30M: +19 points); the C1 early-trick leak has receded to 1.0%
+   (probe) and ~0 in self-play greedy at tricks 0-1. The premise that
+   terminal-only reward cannot find these behaviors is **not supported** for
+   the convention *directions* — the open question is the residual gap
+   (94→100 on C2; 1%→0 and trump-rich 2.3%→0 on C1) and its cost, which is
+   E2/E3's job.
+2. **Learning is non-monotone**: both conventions dip at pfsp-1M (C1 spikes to
+   7.8%, C2 t0 drops to 32%) before recovering — convention adherence emerges
+   late, consistent with the small-early-gap mechanism slowing (not
+   preventing) acquisition. Checkpoint-picking by strength alone could ship a
+   convention-poor model.
+3. The historical "trick-0 trump-lead 4.8%" baseline (exit_validation, PPO@30M)
+   does not reproduce in either of today's greedy contexts (probe 1.0%,
+   self-play scan 0/40-seed spot-check at tricks 0-1; the 11 remaining
+   self-play trump leads all sat at tricks 2-4). Measurement context matters;
+   the CRN probe is the canonical adherence instrument going forward.
+4. Scripted anchor's C2 69.7% overall confirms its convention is trick-0-only;
+   the 30M model exceeds the scripted agent's own overall adherence (86.3%)
+   by continuing to lead the suit at later first opportunities.
+
+**Implication for the E4 wrapper:** at 94% t0 adherence the wrapper's
+behavioral delta is small; its gauntlet arm mainly prices the *remaining* 6%
+(and C1's trump-rich 2.3%). A null result would mean the convention gap is
+already economically irrelevant at deploy; the human-perception argument then
+rests on the rarity of violations rather than strength.
 
 ## Scheduling & budgets
 
