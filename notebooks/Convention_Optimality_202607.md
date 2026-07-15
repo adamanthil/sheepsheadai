@@ -1,8 +1,12 @@
 # Convention Optimality — Experiment Log (July 2026)
 
-**Status (2026-07-14): E1 DONE. E2 pilot DONE (falsifiers pass). Remaining:
-E2 full, E3, E4, E5 — all runnable from the Runbook below; heavy runs wait
-for ablation Stage 1 to free the box (ETA ~Jul-21).**
+**Status (2026-07-14 23:55): E1 DONE. E2 pilot DONE (falsifiers pass).
+QUEUE RUNNING (`runs/convention_optimality_202607/queue_202607_14.sh`,
+progress in `queue.log`): E1-b on Stage-1 intermediate ckpts → E2 full
+rung 2 → three E5 critic-gap probes → E3 rung 2 + exception report.
+Thread-capped (OMP=2, nice 19) so Stage 1 keeps the box; ETA ~20 h total.
+Still deferred to post-Stage-1: E2 step 2 (4096-iter search rung), E3
+exception rung-3 re-runs, E4 gauntlet.**
 
 > Editorial note 2026-07-14: restructured into runbook form (TL;DR, state of
 > play, exact commands per experiment). Pre-registered decision rules,
@@ -37,12 +41,14 @@ existing amendments) — never edit history.
 |---|---|---|---|
 | Instruments | scanners, probes, ladder, wrapper, calculators | **DONE 07-13** (commits 61a151ef..a866eaf8) | see Instruments table |
 | E1 | adherence across checkpoints | **DONE 07-13** — both conventions being learned; see Results | `adherence_sweep.{json,log}` |
-| E1-b | adherence on Stage-1 oracle-critic gens | PENDING (as gens land) | Runbook §E1 |
+| E1-b | adherence on Stage-1 intermediate ckpts (850k/900k) | QUEUED 07-14 (queue step 1) | `adherence_sweep_stage1_intermediate.*` |
 | E2 pilot | 300 seeds, rung 2 | **DONE 07-13** — sanity + falsifier pass; see Results | `cf_called_suit_pilot.{json,log}` |
-| E2 full | ≥1200 seeds, rungs 2 + 2b/3 | PENDING (post-Stage-1) | Runbook §E2 |
-| E3 | unconditional trump-lead Δ + exception report | PENDING (post-Stage-1) | Runbook §E3 |
+| E2 full step 1 | 1200 seeds, rung 2 | QUEUED 07-14 (queue step 2) | `cf_called_suit_r2.*` |
+| E2 full step 2 | rungs 2b + 3 (4096-iter search subsample) | PENDING (post-Stage-1) | Runbook §E2 |
+| E3 step 1 | unconditional rung 2 + exception report | QUEUED 07-14 (queue steps 6-7, control-cap 800) | `cf_trump_unconditional.*`, `exception_report.json` |
+| E3 step 2 | rung-3 re-runs on flagged exceptions | PENDING (post-Stage-1) | Runbook §E3 |
 | E4 | wrapper gauntlet (raw vs @c1 vs @c1c2) | PENDING (post-Stage-1) | Runbook §E4 |
-| E5 | learnability numbers | Part 1 PENDING (needs E2/E3 outputs); Part 2 critic probe BUILT 07-14, runnable now (Stage-1 ckpts have oracle weights) | Runbook §E5 |
+| E5 | learnability numbers | critic-gap probes QUEUED 07-14 (final / Stage-1-850k / pfsp-1M, queue steps 3-5); SNR calc after E2/E3 land | Runbook §E5 |
 
 All outputs go to `runs/convention_optimality_202607/` (gitignored — results
 are recorded in this document). All commands run from the repo root with
