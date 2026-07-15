@@ -1,44 +1,61 @@
-# Convention Optimality — Experiment Design (July 2026)
+# Convention Optimality — Experiment Log (July 2026)
 
-**Status: instruments built (2026-07-13); E1 running. E2/E3 pilots pending;
-full runs + E4 gauntlet wait for Stage 1 (ETA ~Jul-21).**
-Written 2026-07-12 while ablation Stage 1 owns the box; see
-Scheduling section for what may run concurrently.
+**Status (2026-07-14): E1 DONE. E2 pilot DONE (falsifiers pass). Remaining:
+E2 full, E3, E4, E5 — all runnable from the Runbook below; heavy runs wait
+for ablation Stage 1 to free the box (ETA ~Jul-21).**
 
-## Instruments (built 2026-07-13, commits 61a151ef..a866eaf8)
+> Editorial note 2026-07-14: restructured into runbook form (TL;DR, state of
+> play, exact commands per experiment). Pre-registered decision rules,
+> definitions, and dated amendments are carried over UNCHANGED from the
+> 2026-07-12 design.
 
-| Piece | Where | Notes |
-|---|---|---|
-| C2 self-play scanner | `sheepshead/analysis/scan_called_suit_leads.py` | /analyze-reproducible nodes + policy margins |
-| C2 CRN probe | `sheepshead/analysis/called_suit_probe.py` | any agent incl. scripted anchor; same deal set as trump probe |
-| E1 sweep driver | `sheepshead/analysis/convention_adherence_sweep.py` | scripted anchor = hard instrument gate |
-| E2 ladder | `sheepshead/analysis/counterfactual_called_suit_leads.py` | AGREE/DISAGREE/PARTNER groups |
-| E3 exception report | `sheepshead/analysis/convention_exception_report.py` | over an unconditional `counterfactual_trump_leads` run (`--control-ratio 1e9`) |
-| E4 wrapper | `sheepshead/agent/convention_wrapper.py` + `rigorous_eval` `model.pt@c1/@c2/@c1c2` specs | C1 tricks 0-1; C2 trick 0 (provable-eligibility scope) |
-| E5 SNR calc | `sheepshead/analysis/convention_learnability.py` | raw-signal bound |
+## TL;DR — what this is and how to use it
 
-Repair note: the July web hardening removed `modelPath` from
-`AnalyzeSimulateRequest`, which had silently broken the trump-lead scanner /
-ladder / targeted search; fixed via `scan.set_scan_model()` (commit 055f38d3)
-before any new measurements were taken.
+We are testing whether two human Sheepshead conventions are (Q1) actually
+optimal and (Q2) learnable under terminal-only reward:
 
-Falsifier amendment (2026-07-13, before results): the pre-registered
-"zero-sum check" for E2 is vacuous — points and scores are zero-sum across
-teams by engine construction — so the AGREE sanity group and the
-PARTNER mirror carry the falsification load.
+* **C1 — defenders don't lead trump** (while holding a legal fail lead).
+* **C2 — defenders lead the called suit through** (called-ace mode, while the
+  called suit has not been led yet).
 
-E4 scope note: the wrapper forces C2 at trick 0 only (the pre-registered
-primary slice, and the only trick where "called suit unled" is provable from
-the per-seat observation dict); C1 masking covers tricks 0-1 (the diagnosed
-leak scope), not a blanket all-trick mask.
+Five experiments: **E1** measures whether checkpoints *follow* the conventions
+(done — they increasingly do); **E2** measures whether C2 is actually *good*
+(counterfactual ladder); **E3** measures whether C1 has legitimate
+*exceptions*; **E4** prices *forcing* the conventions at deploy; **E5** turns
+the results into an "episodes to learn this" number.
 
-## Motivation
+To continue this work: read **State of play**, pick the next PENDING row, run
+the exact commands in its Runbook section, check the falsifiers listed there,
+then append a `## Results` section here (copy the E1/E2-pilot format) and
+apply the decision rule quoted in that section. Do not change decision rules
+or definitions; if something must be amended, add a dated note (see the two
+existing amendments) — never edit history.
 
-Two conventions are near-universal among experienced human Sheepshead players:
+## State of play
+
+| Step | What | Status | Where |
+|---|---|---|---|
+| Instruments | scanners, probes, ladder, wrapper, calculators | **DONE 07-13** (commits 61a151ef..a866eaf8) | see Instruments table |
+| E1 | adherence across checkpoints | **DONE 07-13** — both conventions being learned; see Results | `adherence_sweep.{json,log}` |
+| E1-b | adherence on Stage-1 oracle-critic gens | PENDING (as gens land) | Runbook §E1 |
+| E2 pilot | 300 seeds, rung 2 | **DONE 07-13** — sanity + falsifier pass; see Results | `cf_called_suit_pilot.{json,log}` |
+| E2 full | ≥1200 seeds, rungs 2 + 2b/3 | PENDING (post-Stage-1) | Runbook §E2 |
+| E3 | unconditional trump-lead Δ + exception report | PENDING (post-Stage-1) | Runbook §E3 |
+| E4 | wrapper gauntlet (raw vs @c1 vs @c1c2) | PENDING (post-Stage-1) | Runbook §E4 |
+| E5 | learnability numbers | PENDING (needs E2/E3 outputs); critic probe NOT BUILT | Runbook §E5 |
+
+All outputs go to `runs/convention_optimality_202607/` (gitignored — results
+are recorded in this document). All commands run from the repo root with
+`uv run` (never system python; repo pins 3.14) and `nice -n 19` for anything
+heavy.
+
+## Background
+
+### The two conventions
 
 * **C1 — Defenders don't lead trump.** A defender (not picker, not revealed or
   secret partner, non-leaster) never leads trump while holding a legal fail
-  lead. This is the exact behavior the 30M lineage leaks (the trick-0/1
+  lead. This is the behavior the 30M lineage historically leaked (the trick-0/1
   "trump leak" investigation, `notebooks/defender_trump_lead_investigation.md`).
 * **C2 — Defenders lead the called suit through.** In called-ace mode, a
   defender holding a called-suit fail leads it at the first opportunity
@@ -49,8 +66,7 @@ Two conventions are near-universal among experienced human Sheepshead players:
   suit is led, so the lead (a) publicly identifies the partner immediately and
   (b) offers a void defender the chance to trump the 11-point ace.
 
-Two distinct questions, pre-registered separately because they have different
-consequences:
+### The two questions
 
 * **Q1 (optimality):** Is each convention actually optimal in expectation — or
   a good-but-imperfect human heuristic with exception classes? If exceptions
@@ -66,25 +82,26 @@ Product stake: experienced humans playing at a table with an agent that leads
 trump as a defender, or sits on the called suit, will read it as weak play
 regardless of its measured strength.
 
-## Prior evidence (what this design must not re-derive)
+### Prior evidence (do not re-derive)
 
-* C1 on the *agent's mistake nodes* is largely settled: the 3-rung
-  counterfactual ladder (`counterfactual_trump_leads.py`) found belief-MC
-  −0.19 score for the trump lead, and `targeted_trump_lead_search.py` at
-  offline compute (4096 iters, rollout-to-terminal, low frac + top@Q) confirmed
-  fixing those leads is worth +0.16 (2.4σ, n=101) with zero control harm.
-  **But both condition on TRUMP-PREF nodes** — spots where the policy argmax
-  already leads trump. That answers "are the agent's trump leads mistakes?"
-  (yes), not "is *never* leading trump optimal?" (E3's job).
-* C2 has never been measured — no scanner stat, no counterfactual.
+* C1 on the *agent's mistake nodes* is settled: the 3-rung counterfactual
+  ladder (`counterfactual_trump_leads.py`) found belief-MC −0.19 score for the
+  trump lead, and `targeted_trump_lead_search.py` at offline compute (4096
+  iters, rollout-to-terminal, frac=1.0 + top@Q) confirmed fixing those leads is
+  worth +0.16 (2.4σ, n=101) with zero control harm. **But both condition on
+  TRUMP-PREF nodes** — spots where the policy argmax already leads trump. That
+  answers "are the agent's trump leads mistakes?" (yes), not "is *never*
+  leading trump optimal?" (E3's job).
+* C2 had never been measured before E1.
 * Terminal-only learnability mechanism is documented: PPO-can't-learn-
-  small-early-gaps (hidden-card variance swamps small early advantages;
-  see deploy-search notes + oracle-critic motivation). E5 quantifies it for
-  these two specific decisions instead of arguing it generally.
-* `exit_validation.py` already tracks `t0_trump_lead_rate` (PPO baseline 4.8%
-  greedy).
+  small-early-gaps (hidden-card variance swamps small early advantages; see
+  deploy-search notes + oracle-critic motivation). E5 quantifies it for these
+  two specific decisions instead of arguing it generally.
+* `exit_validation.py` tracks `t0_trump_lead_rate` (historical figure 4.8%
+  greedy) — superseded: E1 found this does not reproduce in current greedy
+  contexts (see E1 reading #3); the CRN probe is canonical now.
 
-## Definitions (shared across experiments)
+## Definitions (shared across experiments; pre-registered)
 
 * **C1-eligible node:** defender (per scanner definition in
   `scan_defender_trump_leads.py`) leads on trick 0 or 1, holding ≥1 legal trump
@@ -93,8 +110,8 @@ regardless of its measured strength.
   called-suit fail AND ≥1 legal non-called-suit lead (refined 2026-07-13 while
   building the instruments, before any results: a forced all-called-suit hand
   is not a decision and trivially inflates adherence),
-  `was_called_suit_played == False`, non-leaster. Primary
-  slice: trick 0. Secondary: first lead opportunity at any trick.
+  `was_called_suit_played == False`, non-leaster. Primary slice: trick 0.
+  Secondary: first lead opportunity at any trick.
 * **Convention action:** C1 — any fail lead (best-fail per branch search);
   C2 — a called-suit lead (card chosen by policy argmax among called-suit
   fails; card choice recorded as a secondary observable, it is not part of the
@@ -103,146 +120,254 @@ regardless of its measured strength.
   branch) from one snapshot, on the three outcomes the ladder already reports:
   defender card points, leader's RL game score, defender win rate.
 
-## Experiments
+## Instruments (built 2026-07-13, commits 61a151ef..a866eaf8)
 
-### E1 — Convention adherence audit (cheap; runs now)
+| Piece | Where | Notes |
+|---|---|---|
+| C2 self-play scanner | `sheepshead/analysis/scan_called_suit_leads.py` | /analyze-reproducible nodes + policy margins |
+| C2 CRN probe | `sheepshead/analysis/called_suit_probe.py` | any agent incl. scripted anchor; same deal set as trump probe |
+| E1 sweep driver | `sheepshead/analysis/convention_adherence_sweep.py` | scripted anchor = hard instrument gate |
+| E2 ladder | `sheepshead/analysis/counterfactual_called_suit_leads.py` | AGREE/DISAGREE/PARTNER groups |
+| E3 exception report | `sheepshead/analysis/convention_exception_report.py` | over an unconditional `counterfactual_trump_leads` run |
+| E4 wrapper | `sheepshead/agent/convention_wrapper.py` + `rigorous_eval` `model.pt@c1/@c2/@c1c2` specs | C1 tricks 0-1; C2 trick 0 (provable-eligibility scope) |
+| E5 SNR calc | `sheepshead/analysis/convention_learnability.py` | raw-signal bound |
 
-**What:** extend the scanner to report, per checkpoint, greedy-mode adherence:
+Tests: `tests/test_called_suit_probe.py`, `tests/test_convention_wrapper.py`
+(scripted anchors are exact by construction; wrapped violators must measure 0).
 
-* C1: defender trump-lead rate at trick 0 and trick 1 (existing stat).
-* C2 (new): among C2-eligible nodes, fraction where the agent leads the called
-  suit — at trick 0, and at first-opportunity-any-trick. Also positional split
-  (seat relative to picker) and the card chosen.
-* Denominators reported alongside rates (eligibility is rare-ish; we need to
-  know n before trusting any rate).
+Repair note: the July web hardening removed `modelPath` from
+`AnalyzeSimulateRequest`, which had silently broken the trump-lead scanner /
+ladder / targeted search; fixed via `scan.set_scan_model()` (commit 055f38d3)
+before any new measurements were taken.
 
-**Checkpoints:** selfplay 100k, pfsp 5M / 15M / 30M (`final_pfsp_swish_ppo.pt`),
-scripted agent (must read C1 = 0%, C2 = 100% by construction — harness sanity
-check), and — free evidence as they land — Stage 1's oracle-critic league gens
-for both arms.
+Falsifier amendment (2026-07-13, before results): the pre-registered
+"zero-sum check" for E2 is vacuous — points and scores are zero-sum across
+teams by engine construction — so the AGREE sanity group and the PARTNER
+mirror carry the falsification load.
 
-**Deliverable:** adherence-vs-training-compute curves. This is the empirical
-half of Q2: if Δ>0 in E2/E3 but adherence is flat across 100k→30M, terminal-only
-reward is not finding it.
+E4 scope note: the wrapper forces C2 at trick 0 only (the pre-registered
+primary slice, and the only trick where "called suit unled" is provable from
+the per-seat observation dict); C1 masking covers tricks 0-1 (the diagnosed
+leak scope), not a blanket all-trick mask.
 
-**Implementation:** new `sheepshead/analysis/scan_called_suit_leads.py`
-mirroring `scan_defender_trump_leads.py` (same deterministic
-`simulate_game` replay path so every case reproduces in `/analyze`), plus the
-per-checkpoint sweep. ~forward passes only; niced, fine to run during Stage 1.
+---
 
-### E2 — Called-suit lead counterfactual ladder (C2 optimality)
+# Runbook
 
-**What:** port the 3-rung ladder to C2-eligible nodes. Branches from one
-snapshot (game + per-seat recurrent memory), differing only in the led card:
+## E1 — Convention adherence audit  [DONE for the 30M lineage]
 
-1. convention: called-suit lead;
-2. policy argmax lead (when ≠ convention);
-3. best other-fail lead;
-4. best trump lead (when legal).
+**Question:** do checkpoints follow the conventions, and is adherence rising
+with training compute? (Empirical half of Q2.)
 
-Rungs, exactly as in `counterfactual_trump_leads.py`: (2) paired true-deal MC
-(R=50 stochastic rollouts/branch — the workhorse), (2b) belief-pool MC
-(hindsight bracket), (3) ISMCTS at offline budget (the targeted-search
-confirmed recipe: iters-to-terminal, low root_explore_frac, top@Q) on a
-subsample.
+Already run for the reference lineage — see `## Results — E1`. Re-run as
+Stage-1 oracle-critic generations land (pre-registered E5 hypothesis: their C2
+adherence slope should be steeper than the limited-critic lineage at matched
+compute):
 
-**Falsifiers / controls (pre-registered):**
+```bash
+nice -n 19 uv run python -m sheepshead.analysis.convention_adherence_sweep \
+    --deals 1000 --both-modes \
+    --ckpts <stage1 gen checkpoints, oldest first, both arms> \
+    --out runs/convention_optimality_202607/adherence_sweep_stage1.json \
+    | tee runs/convention_optimality_202607/adherence_sweep_stage1.log
+```
 
-* *Zero-sum check:* Δ computed from the picker team's perspective must be ≈ −Δ
-  defenders (accounting for the score vector); a same-sign result means the
-  measurement is broken.
-* *Agree-group sanity:* on nodes where policy argmax already IS the called-suit
-  lead, forced-convention vs next-best-alternative must show Δ ≥ 0 under the
-  policy's own rollouts; if not, the forcing machinery is suspect.
-* *Partner mirror:* on matched nodes where the leader is the SECRET PARTNER
-  holding called-suit fails (convention: partner does NOT lead the suit except
-  via the ace/under rules — engine restricts via
-  `get_leadable_called_partner_cards`), the sign should reverse. This is the
-  strongest "the method can find a No" probe.
+**Check before trusting output:** the sweep aborts by itself if the scripted
+anchor is off its by-construction rates (C1 exactly 0%, C2 trick-0 exactly
+100%). ~7 min per checkpoint niced.
 
-**Decision rule (Q1, C2):** convention *supported* if Δ(convention − best
-alternative) > 0 at ≥2σ on rung 2 AND sign-consistent on rungs 2b and 3;
-*refuted* if ≤ 0 at 2σ on rung 2 and 3 agrees; otherwise *underpowered* —
-report the CI and stop (no p-hacking by slicing). Secondary read: positional
-heterogeneity (leader upstream vs downstream of picker) reported descriptively,
-not tested.
+**Self-play cross-check** (per-node policy margins; feeds E5) for any single
+checkpoint:
 
-### E3 — Unconditional trump-lead Δ distribution (C1 optimality)
+```bash
+nice -n 19 uv run python -m sheepshead.analysis.scan_called_suit_leads \
+    --num-seeds 600 --quiet --model <ckpt.pt> \
+    --out runs/convention_optimality_202607/called_suit_scan_<label>.json
+```
 
-**What:** the missing complement to the TRUMP-PREF studies. Sample C1-eligible
-nodes *unconditionally* (not filtered on the policy's preference), estimate per
-node Δ = (best-fail − best-trump) via rung 2, with rung 3 on a subsample
-enriched for Δ<0 candidates.
+## E2 — Is leading the called suit actually good? (C2, Q1)  [PILOT DONE]
 
-**Read-outs:**
+**Question:** at C2-eligible nodes, is the called-suit lead better than the
+best alternative lead? Counterfactual ladder, Δ = convention − alternative.
 
-* Distribution of Δ (not just the mean): the convention claim is Δ ≥ 0
-  *pointwise-ish*, which a mean cannot establish.
-* **Exception rate:** fraction of nodes where trump-lead is better by > ε
-  (ε = 0.05 score, ~the rigorous-eval MDE scale) with per-node MC support
-  (n_rollouts CI excluding 0). Characterize exceptions by hand trump count,
-  trump quality (queens held), seat vs picker, fail shape.
-* Pre-registered hypothesis: exceptions exist but are rare (<5% of eligible
-  nodes) and cluster on trump-heavy hands where the "fail option" is a bare
-  10/ace (the classic human exception "lead trump when long and the picker sits
-  behind you" is folklore we may actually confirm or kill).
+**Decision rule (pre-registered, UNCHANGED):** convention *supported* if
+Δ(convention − best alternative) > 0 at ≥2σ on rung 2 AND sign-consistent on
+rungs 2b and 3; *refuted* if ≤ 0 at 2σ on rung 2 and 3 agrees; otherwise
+*underpowered* — report the CI and stop (no p-hacking by slicing). Secondary
+read: positional heterogeneity reported descriptively, not tested. The
+decision cell is the **DISAGREE** group only.
 
-**Decision rule (Q1, C1):** convention *optimal-as-a-rule* if exception rate
-<5% and mean Δ > 0 at 2σ; *heuristic-with-exceptions* if exception rate ≥5%
-with rung-3 agreement on sampled exceptions — in which case the trump-leak
-investigation's framing shifts from "agent is wrong" to "agent is wrong at
-THESE nodes, right at THOSE", and E4's wrapper must use the learned exception
-classifier, not a blanket mask.
+**Falsifiers — check FIRST, stop if either fails:**
 
-### E4 — Deploy-level intervention eval (what a human would experience)
+* AGREE group (policy already leads called suit): rung-2 Δ must be ≥ 0. If
+  negative at 2σ the forcing machinery is broken, not the convention.
+* PARTNER mirror (secret partner surfaces the called card): rung-2 Δscore must
+  be ≤ 0. If positive at 2σ the method is rubber-stamping leads.
 
-**What:** a `ConventionWrapper` around the deploy agent that overrides only
-lead decisions: (i) C1 — mask trump leads for a defender when fail is legal;
-(ii) C2 — force the called-suit lead at C2-eligible nodes. Three arms vs raw
-`final_pfsp_swish_ppo.pt`: raw, +C1, +C1+C2.
+**Step 1 — rung 2 over the full case set** (~3-4 h niced; pilot power calc
+says ≥1100 seeds for ~90 DISAGREE cases):
 
-**Harness:** `rigorous_eval.py` anchored gauntlet vs PANEL-A, CRN paired deals,
-1000 deals (MDE ≈ 0.07), both partner modes (matrix already split:
-`panel_a_strength_matrix_{called,jd}.csv`).
+```bash
+nice -n 19 uv run python -m sheepshead.analysis.counterfactual_called_suit_leads \
+    --num-seeds 1200 --rollouts 50 --no-search --no-belief-mc \
+    --max-cases-per-group 150 \
+    --out runs/convention_optimality_202607/cf_called_suit_r2.json \
+    | tee runs/convention_optimality_202607/cf_called_suit_r2.log
+```
 
-**Decision rule:** if wrapped ≥ raw (CI excludes a loss > MDE), the convention
-costs nothing at deploy — ship the wrapper for human tables regardless of Q2's
-answer (product fix, no retrain). If wrapped < raw, quantifies exactly what
-enforcing human convention costs, which is the honest answer to "is
-conventional human play optimal" at the whole-policy level.
+**Step 2 — rungs 2b + 3 on a subsample** (offline-grade search: 4096 iters,
+rollout-to-terminal and root-explore-frac 1.0 are the script defaults; verdict
+is read by top@Q). Time one case first with `--max-cases-per-group 5`; then:
 
-**Implementation:** small wrapper class + a `rigorous_eval` hook to accept it
-as a panel entrant. Forward passes only, but 1000 deals × panel is moderate —
-schedule after Stage 1 or heavily niced.
+```bash
+nice -n 19 uv run python -m sheepshead.analysis.counterfactual_called_suit_leads \
+    --num-seeds 1200 --rollouts 50 --iters 4096 \
+    --max-cases-per-group 40 \
+    --out runs/convention_optimality_202607/cf_called_suit_r3.json \
+    | tee runs/convention_optimality_202607/cf_called_suit_r3.log
+```
 
-### E5 — Terminal-only learnability quantification (analysis over E1–E3 outputs)
+Same `--num-seeds` and default `--subsample-seed` in both steps ⇒ step-2 cases
+are a strict subset of step-1 cases (same shuffle permutation), so the rungs
+are comparable case-for-case.
 
-**What:** turn the documented "PPO can't learn small early gaps" mechanism into
-numbers for these two specific decisions. From rung-2 outputs at each eligible
-node class:
+**Record:** copy the printed group tables into a `## Results — E2 full`
+section; state the decision-rule verdict for DISAGREE; note the ISMCTS top@Q
+convention fraction.
 
-* effect size Δ̄ (score units) and per-rollout terminal-return SD σ at the node;
-* node visitation rate p under the *training* policy (E1 scanner over self-play
-  episodes — same distribution the trainer sees);
-* detectability: episodes to resolve the advantage sign,
-  N ≈ (z·σ/Δ̄)² / p at z=2, vs actual budgets (1M eps/gen league, 30M lineage).
+## E3 — Does "never lead trump" have real exceptions? (C1, Q1)
 
-**Critic-side probe:** does the limited critic even represent the gap? Paired
-value-head readout at the node for convention vs violation branch (extends
-`critic_calibration.py`), compared against realized rollout outcomes. Then the
-same probe on Stage 1's oracle-critic arms: the oracle critic *sees* the hands,
-so C2's core premise (picker holds the suit; who has the ace) is directly
-observable to it. **Pre-registered hypothesis:** oracle-critic arms show a
-larger critic gap at C2 nodes and a steeper E1 adherence slope than the
-limited-critic 30M lineage did at matched compute.
+**Question:** over ALL C1-eligible nodes (not just where the policy prefers
+trump), what fraction genuinely favor the trump lead?
 
-**Decision rule (Q2):** *likely learnable* if N_detect is < ~20% of a realistic
-budget AND the critic gap has the right sign; *unlikely under terminal-only* if
-N_detect exceeds budgets or the critic is blind to the gap — in which case the
-remedies, in order of preference (per the deploy-search teacher plan): oracle
-critic (already in flight via Stage 1), V_oracle-baseline GAE, ISMCTS-teacher
-distillation at these node classes, deploy wrapper (E4) as the product
-backstop.
+**Decision rule (pre-registered, UNCHANGED):** convention *optimal-as-a-rule*
+if exception rate <5% and mean Δ > 0 at 2σ (Δ oriented fail-better-positive;
+the report prints trump−fail, so that is mean printed-Δ < 0); *heuristic-with-
+exceptions* if exception rate ≥5% with rung-3 agreement on sampled exceptions
+— in which case E4's wrapper must use the learned exception classifier, not a
+blanket mask.
+
+**Step 1 — unconditional rung-2 run + report** (`--control-ratio 1e9` keeps
+every FAIL-PREF node instead of subsampling; expect the TRUMP-PREF group to be
+nearly empty at tricks 0-1 — E1 showed the early-trick leak has receded — the
+run is dominated by FAIL-PREF nodes, which is the point):
+
+```bash
+nice -n 19 uv run python -m sheepshead.analysis.counterfactual_trump_leads \
+    --num-seeds 1200 --max-trick 1 --rollouts 50 --control-ratio 1e9 \
+    --no-search --no-belief-mc \
+    --out runs/convention_optimality_202607/cf_trump_unconditional.json \
+    | tee runs/convention_optimality_202607/cf_trump_unconditional.log
+
+uv run python -m sheepshead.analysis.convention_exception_report \
+    runs/convention_optimality_202607/cf_trump_unconditional.json \
+    --out runs/convention_optimality_202607/exception_report.json
+```
+
+**Step 2 — rung-3 verification of flagged exceptions** (the report prints
+"Top exceptions" with their seeds; re-run each seed with search + belief
+enabled — one game per command):
+
+```bash
+# for each exception seed S:
+nice -n 19 uv run python -m sheepshead.analysis.counterfactual_trump_leads \
+    --start-seed S --num-seeds 1 --max-trick 1 --rollouts 50 \
+    --control-ratio 1e9 --iters 4096 \
+    --out runs/convention_optimality_202607/e3_exception_seed_S.json
+```
+
+An exception is *confirmed* when the ISMCTS top@Q at that node is the trump
+lead. Report the confirmed-exception rate against the 5% threshold.
+
+## E4 — What does forcing the conventions cost at deploy? (product)
+
+**Question:** wrapped vs raw strength under the frozen CRN gauntlet.
+
+**Decision rule (pre-registered, UNCHANGED):** if wrapped ≥ raw (CI excludes a
+loss > MDE), the convention costs nothing at deploy — ship the wrapper for
+human tables regardless of Q2's answer. If wrapped < raw, that quantifies what
+enforcing human convention costs.
+
+**Calibration from the pilot:** expected |effect| ≈ 0.02 score/game — BELOW
+the 1000-deal MDE (~0.07). Read the result as a *bound* ("forcing conventions
+costs less than X"), not a detection.
+
+```bash
+# Called-ace mode (both wrapper rules active):
+nice -n 19 uv run python -m sheepshead.analysis.rigorous_eval \
+    --candidates final_pfsp_swish_ppo.pt \
+                 final_pfsp_swish_ppo.pt@c1 \
+                 final_pfsp_swish_ppo.pt@c1c2 \
+    --anchors final_pfsp_swish_ppo.pt \
+              runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt \
+              runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_5000000.pt \
+              runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt \
+    --deals 1000 --partner-mode called --seed 42 \
+    --out-csv runs/convention_optimality_202607/e4_gauntlet_called.csv \
+    --out-plot runs/convention_optimality_202607/e4_gauntlet_called.png \
+    | tee runs/convention_optimality_202607/e4_gauntlet_called.log
+
+# JD mode (C2 is inert there — drop the @c1c2 arm):
+nice -n 19 uv run python -m sheepshead.analysis.rigorous_eval \
+    --candidates final_pfsp_swish_ppo.pt final_pfsp_swish_ppo.pt@c1 \
+    --anchors final_pfsp_swish_ppo.pt \
+              runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt \
+              runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_5000000.pt \
+              runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt \
+    --deals 1000 --partner-mode jd --seed 42 \
+    --out-csv runs/convention_optimality_202607/e4_gauntlet_jd.csv \
+    --out-plot runs/convention_optimality_202607/e4_gauntlet_jd.png \
+    | tee runs/convention_optimality_202607/e4_gauntlet_jd.log
+```
+
+The anchors are frozen PANEL-A (`sheepshead/analysis/panels.py`) — do not
+substitute. Read the pairwise `wrapped vs raw  d=… […, …]` lines (paired over
+CRN deals), not the absolute ranking.
+
+## E5 — Episodes-to-learn numbers (Q2, quantitative half)
+
+**Decision rule (pre-registered, UNCHANGED):** *likely learnable* if N_detect
+is < ~20% of a realistic budget AND the critic gap has the right sign;
+*unlikely under terminal-only* if N_detect exceeds budgets or the critic is
+blind to the gap — remedies in order: oracle critic (in flight via Stage 1),
+V_oracle-baseline GAE, ISMCTS-teacher distillation, deploy wrapper (E4).
+
+**Part 1 — SNR calculator** (after E2/E3 produce their JSONs):
+
+```bash
+# C2 decision class (DISAGREE). p = violations per game; pilot measured
+# 25 cases / 300 games = 0.083 (re-derive from the full run's scan line):
+uv run python -m sheepshead.analysis.convention_learnability \
+    runs/convention_optimality_202607/cf_called_suit_r2.json \
+    --group disagree --p 0.083 --budgets 1000000,30000000
+
+# C2 all-eligible class (p auto-derived from the self-play scan JSON):
+uv run python -m sheepshead.analysis.convention_learnability \
+    runs/convention_optimality_202607/cf_called_suit_r2.json \
+    --group disagree \
+    --scan-json runs/convention_optimality_202607/called_suit_scan_final.json
+
+# C1 (from the E3 run; trumpPref may be near-empty at tricks 0-1 — if so,
+# report "class extinct at 30M" rather than forcing a number):
+uv run python -m sheepshead.analysis.convention_learnability \
+    runs/convention_optimality_202607/cf_trump_unconditional.json \
+    --group trumpPref --p 0.01
+```
+
+Caveat is printed by the tool: this is a raw-signal bound (no GAE/critic
+variance reduction, no credit assignment).
+
+**Part 2 — critic-gap probe: NOT BUILT.** Requires extending
+`critic_calibration.py` to read the value head at ladder nodes for the
+convention vs violation branch, on (a) the 30M limited critic and (b) Stage-1
+oracle-critic checkpoints. Build this before claiming any Q2 verdict that
+depends on critic visibility. Pre-registered hypothesis: oracle-critic arms
+show a larger critic gap at C2 nodes and a steeper E1 adherence slope than the
+limited-critic lineage at matched compute.
+
+---
+
+# Results
 
 ## Results — E1 adherence sweep (2026-07-13)
 
@@ -320,6 +445,10 @@ p(disagree) ≈ 0.083/game ⇒ ~0.02 score/game — consistent with expecting a
 small E4 wrapper effect at deploy (MDE 0.07 at 1000 deals would NOT resolve
 this; the wrapper arm is a bound, not a detection).
 
+---
+
+# Reference
+
 ## Scheduling & budgets
 
 Stage 1 (two oracle-critic league trainers, 4 workers each) saturates the box
@@ -327,15 +456,15 @@ through ~Jul-21. Plan:
 
 | Phase | What | Cost | When |
 |---|---|---|---|
-| Now | E1 scanner + adherence sweep (niced) | hours, forward passes | during Stage 1 |
-| Now | E2/E3 **pilots**: n≈300 seeds, rung 2 only, R=25 (niced) | ~hours | during Stage 1 |
-| Post-Stage-1 | E2/E3 full: n≥1000 eligible nodes rung 2; rung 2b + rung 3 subsamples (≥100 nodes, targeted-search recipe) | days | after Jul-21 |
-| Post-Stage-1 | E4 gauntlet (3 arms × 1000 deals × panel) | ~day | after Jul-21 |
-| Free-riding | E1 + E5 critic probes on Stage 1 checkpoints | minutes each | as gens land |
+| ~~Now~~ DONE | E1 scanner + adherence sweep (niced) | hours, forward passes | done 07-13 |
+| ~~Now~~ DONE | E2 **pilot**: 300 seeds, rung 2 only, R=25 (niced) | ~1 h | done 07-13 |
+| Post-Stage-1 | E2 full (Runbook §E2), E3 (Runbook §E3) | ~day total | after Jul-21 |
+| Post-Stage-1 | E4 gauntlet (Runbook §E4) | ~day | after Jul-21 |
+| Free-riding | E1-b + E5 critic probes on Stage 1 checkpoints | minutes each | as gens land |
 
-Pilots exist to validate eligibility rates (is n achievable?), harness
-correctness (falsifiers fire the right way), and effect-size guesses for
-powering the full runs — **pilot results do not count toward decision rules.**
+Pilots exist to validate eligibility rates, harness correctness (falsifiers),
+and effect-size guesses for powering the full runs — **pilot results do not
+count toward decision rules.**
 
 ## Threats to validity
 
@@ -344,7 +473,8 @@ powering the full runs — **pilot results do not count toward decision rules.**
   alone.
 * **Search-continuation optimism** at rung 3 — same bracket, plus the
   targeted-search lesson: prior-dominated search (default frac) silently
-  rubber-stamps the policy; use frac=1.0 + top@Q at offline budgets.
+  rubber-stamps the policy; use frac=1.0 + top@Q at offline budgets (these are
+  the E2 script's defaults).
 * **Selection effects from eligibility conditioning** — eligibility is defined
   by public state + own hand only (no policy-preference filter in E2/E3), so
   the node distribution is policy-dependent only through *reaching* the lead;
@@ -353,11 +483,12 @@ powering the full runs — **pilot results do not count toward decision rules.**
   if the population never punishes convention violations, MC under-estimates
   Δ (the exploiter-league lesson). Mitigation: rung 3's search continuation,
   plus a descriptive re-run of rung 2 with the scripted agent seated as the
-  three other defenders/picker opponents (convention-aware world) — reported as
-  a sensitivity, not a primary result.
+  other four seats (convention-aware world) — reported as a sensitivity, not a
+  primary result.
 * **Critic-load bug class** — any rung-3 run must be on the fixed
-  value_trunk→critic_adapter path (verified once at pilot start with the
-  r=0.13-noise regression check from the deploy-search notes).
+  value_trunk→critic_adapter path (the loader prints
+  "routing the value head through the trained critic_adapter" for legacy
+  checkpoints — if that note is absent on a legacy model, STOP and check).
 
 ## Deliverables
 
@@ -368,8 +499,8 @@ powering the full runs — **pilot results do not count toward decision rules.**
 
 |  | Q1 optimal? | Q2 learnable terminal-only? |
 |---|---|---|
-| C1 never-lead-trump | E3 | E1 + E5 |
-| C2 lead-called-suit | E2 | E1 + E5 |
+| C1 never-lead-trump | E3 | E1 ✅ (learned, slowly) + E5 |
+| C2 lead-called-suit | E2 | E1 ✅ (learned, slowly) + E5 |
 
 4. If Q1=yes & Q2=no for either: the E4 wrapper verdict decides whether the
    product ships convention enforcement while training-side fixes (oracle
