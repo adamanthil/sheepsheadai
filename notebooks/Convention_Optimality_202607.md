@@ -333,6 +333,12 @@ The anchors are frozen PANEL-A (`sheepshead/analysis/panels.py`) — do not
 substitute. Read the pairwise `wrapped vs raw  d=… […, …]` lines (paired over
 CRN deals), not the absolute ranking.
 
+**Product plumbing (added 2026-07-15, default OFF):** table agents can be
+convention-wrapped in the web app via `SHEEPSHEAD_CONVENTION_WRAP=c1c2` (or
+`c1` / `c2`) in `.env` — a deploy-time action mask, no training change.
+`/analyze` deliberately stays raw so the scanners keep measuring the
+unwrapped policy. Recommended gate before enabling: this E4 gauntlet bound.
+
 ## E5 — Episodes-to-learn numbers (Q2, quantitative half)
 
 **Decision rule (pre-registered, UNCHANGED):** *likely learnable* if N_detect

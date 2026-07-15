@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -140,6 +141,17 @@ async def start_game(
         if has_ai:
             settings = get_settings()
             table.ai_agent = load_agent(settings.sheepshead_model_path)
+            if settings.sheepshead_convention_wrap:
+                from sheepshead.agent.convention_wrapper import wrap_agent
+
+                table.ai_agent = wrap_agent(
+                    table.ai_agent, settings.sheepshead_convention_wrap
+                )
+                logging.info(
+                    "Table %s AI wrapped with convention mask %s",
+                    table.id,
+                    settings.sheepshead_convention_wrap,
+                )
 
     await broadcast_table_update(table)
     await broadcast_table_state(table)

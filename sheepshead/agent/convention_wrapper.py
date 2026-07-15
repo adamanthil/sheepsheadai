@@ -120,15 +120,20 @@ class ConventionWrapper:
         return valid
 
 
+VALID_WRAPS = ("c1", "c2", "c1c2")
+
+
 def parse_wrap_spec(spec: str):
     """Split a ``path[@c1|@c2|@c1c2]`` model spec into (path_str, wrap|None)."""
     if "@" not in spec:
         return spec, None
     path, wrap = spec.rsplit("@", 1)
-    if wrap not in ("c1", "c2", "c1c2"):
+    if wrap not in VALID_WRAPS:
         raise ValueError(f"unknown wrap spec '@{wrap}' in {spec!r}")
     return path, wrap
 
 
 def wrap_agent(agent, wrap: str):
+    if wrap not in VALID_WRAPS:
+        raise ValueError(f"unknown convention wrap {wrap!r}; use one of {VALID_WRAPS}")
     return ConventionWrapper(agent, c1="c1" in wrap, c2="c2" in wrap)

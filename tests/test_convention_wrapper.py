@@ -78,6 +78,9 @@ class TestConventionWrapper(unittest.TestCase):
         w = wrap_agent(ScriptedAgent(), "c1")
         self.assertTrue(w.c1)
         self.assertFalse(w.c2)
+        # A typo'd deploy config must fail fast, not silently no-op.
+        with self.assertRaises(ValueError):
+            wrap_agent(ScriptedAgent(), "c3")
 
 
 if __name__ == "__main__":
