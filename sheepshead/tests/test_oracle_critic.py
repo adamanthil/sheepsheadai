@@ -12,6 +12,7 @@ import pickle
 import unittest
 
 import numpy as np
+import pytest
 
 from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import (
@@ -20,6 +21,9 @@ from sheepshead import (
     PARTNER_BY_JD,
     Game,
 )
+
+# Collects real games and runs PPO update mechanics (~10s).
+pytestmark = pytest.mark.slow
 
 
 def _play_and_probe(seed, mode, probe):

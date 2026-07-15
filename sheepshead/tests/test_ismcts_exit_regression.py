@@ -22,6 +22,7 @@ import time
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 from sheepshead import (
@@ -34,6 +35,9 @@ from sheepshead import (
     get_card_points,
     get_card_suit,
 )
+
+# Runs real (tiny-budget) ISMCTS searches and distill updates (~50s).
+pytestmark = pytest.mark.slow
 
 SEED = 1234
 

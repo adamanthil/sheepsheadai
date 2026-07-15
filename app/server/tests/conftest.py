@@ -1,4 +1,6 @@
-"""Shared fixtures for server tests.
+"""Shared fixtures for the product/server test suite (the deployed FastAPI
+app). Training/research tests for the sheepshead package live in
+sheepshead/tests.
 
 Tests must be hermetic: no Postgres, no model checkpoint on disk beyond a
 placeholder file. ``create_app`` validates that the model path exists and

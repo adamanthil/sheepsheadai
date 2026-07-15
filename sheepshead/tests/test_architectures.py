@@ -15,6 +15,7 @@ import unittest
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 from sheepshead.agent import architectures
@@ -33,6 +34,9 @@ from sheepshead.agent.ppo import (
     RecurrentCriticNetwork,
 )
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+
+# Builds, plays, and updates every registered architecture (~30s+).
+pytestmark = pytest.mark.slow
 
 # Frozen sha256 over the sorted encoder/actor/critic state_dict KEY NAMES of
 # the full architecture (recorded pre-refactor at commit 825b37c). Weights are
