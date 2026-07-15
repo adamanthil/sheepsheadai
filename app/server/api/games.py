@@ -45,6 +45,29 @@ from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES, Game
 router = APIRouter()
 
 
+def build_table_agent(settings, table_id: str):
+    """Load the table's AI, applying the configured convention mask if any.
+
+    SHEEPSHEAD_CONVENTION_WRAP ("", "c1", "c2", "c1c2") wraps the agent with
+    the deploy-time convention mask (sheepshead/agent/convention_wrapper.py):
+    convention-violating defender leads are masked, the policy still picks the
+    card. Table agents only — /analyze stays raw so the research scanners
+    measure the unwrapped policy. An unknown value raises (fail fast at game
+    start rather than silently no-opping).
+    """
+    agent = load_agent(settings.sheepshead_model_path)
+    if settings.sheepshead_convention_wrap:
+        from sheepshead.agent.convention_wrapper import wrap_agent
+
+        agent = wrap_agent(agent, settings.sheepshead_convention_wrap)
+        logging.info(
+            "Table %s AI wrapped with convention mask %s",
+            table_id,
+            settings.sheepshead_convention_wrap,
+        )
+    return agent
+
+
 _AI_NAME_POOL = ("Dan", "Kyle", "John", "Trevor", "Tim", "Tom")
 
 
@@ -139,19 +162,7 @@ async def start_game(
             for occ_id in table.seats.values()
         )
         if has_ai:
-            settings = get_settings()
-            table.ai_agent = load_agent(settings.sheepshead_model_path)
-            if settings.sheepshead_convention_wrap:
-                from sheepshead.agent.convention_wrapper import wrap_agent
-
-                table.ai_agent = wrap_agent(
-                    table.ai_agent, settings.sheepshead_convention_wrap
-                )
-                logging.info(
-                    "Table %s AI wrapped with convention mask %s",
-                    table.id,
-                    settings.sheepshead_convention_wrap,
-                )
+            table.ai_agent = build_table_agent(get_settings(), table.id)
 
     await broadcast_table_update(table)
     await broadcast_table_state(table)
