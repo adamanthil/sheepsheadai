@@ -52,6 +52,19 @@ jobs:
       - run: uv run python app/scripts/export_openapi.py
       - run: git diff --exit-code app/web/openapi.json
 
+  training:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # CPU-only torch wheels on Linux via [tool.uv.sources]; the server
+      # extra is not needed for the training suite.
+      - run: uv sync --extra dev
+      - run: uv run ruff check sheepshead play.py
+      - run: uv run pytest sheepshead/tests -q
+
   web:
     runs-on: ubuntu-latest
     defaults:

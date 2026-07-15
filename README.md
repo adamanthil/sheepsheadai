@@ -12,9 +12,10 @@ sheepshead/         installable RL core (uv sync installs it editable)
   training/         self-play + league trainers, exploiter, orchestrators
   analysis/         measurement instruments (rigorous_eval, probes, panels)
   validation/       historical one-off gate checks
+  tests/            training/research test suite (kept out of the wheel)
 app/                the hosted product: server/ (FastAPI), web/ (Next.js),
                     db/ (graphile-migrate), deploy/, scripts/, compose files
-tests/              core test suite (server tests live in app/server/tests)
+                    (server tests live in app/server/tests)
 visualizations/     network visualization artifacts
 notebooks/ docs/    research journals and operator docs
 play.py             CLI game entry point
@@ -154,6 +155,9 @@ npm run gen:api    # regenerate lib/api.gen.ts from openapi.json
 ### 4. Tests and generated types
 
 ```bash
+uv run pytest                           # both suites (training + server)
+uv run pytest sheepshead/tests          # training/research suite (~2 min)
+uv run pytest sheepshead/tests -m "not slow"   # fast subset (~15s)
 uv run pytest app/server/tests          # hermetic server tests (no DB needed)
 
 # Full API-flow tests against a real Postgres:
@@ -170,8 +174,10 @@ uv run python app/scripts/export_openapi.py   # refresh app/web/openapi.json
 cd app/web && npm run gen:api                 # refresh lib/api.gen.ts
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint, typecheck, both test suites, and
-fails if the committed schema or generated types drift.
+CI (`.github/workflows/ci.yml`) runs three jobs — `server` (ruff + server
+tests against Postgres + schema drift), `training` (ruff over the package +
+the full training suite), and `web` (typecheck/lint/build + generated-type
+drift).
 
 ### 5. Deployment
 
