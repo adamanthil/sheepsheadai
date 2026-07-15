@@ -5,11 +5,6 @@ construction and a scripted-action driver so scenario tests can assert
 hand-computed expectations against fully deterministic games.
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from sheepshead import ACTION_IDS, DECK, Game
 
 

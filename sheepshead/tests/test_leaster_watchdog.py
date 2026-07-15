@@ -3,12 +3,8 @@
 re-engagement, and default-off wiring in the trainer."""
 
 import inspect
-import os
-import sys
 import unittest
 from collections import deque
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.training.train_selfplay_ppo import LeasterWatchdog, train_ppo
 

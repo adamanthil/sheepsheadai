@@ -19,11 +19,11 @@ The fixtures gate the architecture-registry refactor: capture once at the
 pre-refactor commit, then run --check after every structural change.
 
 Usage:
-    uv run python analysis/capture_arch_goldens.py            # write fixtures
-    uv run python analysis/capture_arch_goldens.py --check    # compare
-    uv run python analysis/capture_arch_goldens.py --check --arch full
+    uv run python -m sheepshead.analysis.capture_arch_goldens            # write fixtures
+    uv run python -m sheepshead.analysis.capture_arch_goldens --check    # compare
+    uv run python -m sheepshead.analysis.capture_arch_goldens --check --arch full
 
-tests/test_arch_golden.py imports this module and re-runs the comparison
+sheepshead/tests/test_arch_golden.py imports this module and re-runs the comparison
 under pytest (numerical/weight checks are skipped there when the runtime
 torch version does not match the manifest).
 """
@@ -47,7 +47,7 @@ from sheepshead import ACTIONS, Game
 
 SEED = 42
 FIXTURE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "tests",
     "fixtures",
     "arch_golden",

@@ -21,12 +21,9 @@ Scenarios:
   JD JD-mode reveal on play, and buried-JD -> picker is own partner
 """
 
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from game_test_utils import act, make_game, run_script, sole_actor, valid_action_names
+from sheepshead.tests.game_test_utils import act, make_game, run_script, sole_actor, valid_action_names
 from sheepshead import (
     ACTION_IDS,
     PARTNER_BY_JD,

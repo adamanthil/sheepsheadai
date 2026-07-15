@@ -10,12 +10,9 @@ the no-aux critic; the no-transformer encoder; and the one-hot state vector.
 
 import os
 import random
-import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import torch

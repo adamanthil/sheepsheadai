@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """ScriptedAgent invariants: legality, determinism, zero-sum self-play."""
 
-import os
-import sys
 import unittest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game

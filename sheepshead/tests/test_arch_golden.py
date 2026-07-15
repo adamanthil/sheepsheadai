@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Golden-fixture and consistency guards for the architecture registry.
 
-Fixtures live in tests/fixtures/arch_golden/ and are captured by
+Fixtures live in sheepshead/tests/fixtures/arch_golden/ and are captured by
 sheepshead/analysis/capture_arch_goldens.py at a known-good commit. Structural checks
 (state_dict key names) run everywhere; weight/numerical bit-identity checks
 run only on the environment recorded in the fixture manifest (orthogonal
@@ -9,13 +9,10 @@ init and kernels are LAPACK/BLAS dependent).
 """
 
 import os
-import sys
 import tempfile
 import unittest
 
 import torch
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.agent import architectures
 from sheepshead.analysis.capture_arch_goldens import (
@@ -153,14 +150,18 @@ class TestCheckpointPickleSafety(unittest.TestCase):
     @unittest.skipUnless(
         os.path.exists(
             os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                ),
                 "final_pfsp_swish_ppo.pt",
             )
         ),
         "legacy checkpoint not present",
     )
     def test_legacy_30m_checkpoint_loads_weights_only(self):
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
         ckpt = torch.load(
             os.path.join(root, "final_pfsp_swish_ppo.pt"),
             map_location="cpu",

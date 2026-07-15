@@ -10,11 +10,7 @@ measurement (rigorous_eval, paired gates, terminal rewards) on ~tied
 leasters. The winner is now drawn once and cached.
 """
 
-import os
-import sys
 import unittest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead import ACTION_IDS, Game
 

@@ -12,12 +12,9 @@ import glob
 import os
 import random
 import shutil
-import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 

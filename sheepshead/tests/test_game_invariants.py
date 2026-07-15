@@ -9,11 +9,8 @@ consistency, card conservation, zero-sum scoring consistent with the score
 table, and byte-identical replay determinism from the recorded action log.
 """
 
-import os
 import random
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead import (
     ACTION_LOOKUP,

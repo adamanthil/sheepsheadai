@@ -8,13 +8,9 @@ sheepshead/training/run_extended_league.py does: flat_verdict per generation, th
 decide_stop over the accumulated flat history.
 """
 
-import os
-import sys
 import unittest
 
 import numpy as np
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.analysis.league_stopping import (
     CalibrationChoice,

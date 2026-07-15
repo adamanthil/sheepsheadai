@@ -25,6 +25,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sheepshead", "app/server"]
+exclude = ["sheepshead/tests"]
 
 [project.optional-dependencies]
 server = [
@@ -46,6 +47,10 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+testpaths = ["sheepshead/tests", "app/server/tests"]
+markers = [
+    "slow: long-running training/architecture tests; deselect with -m 'not slow'",
+]
 
 # Linux (CI, Docker) gets CPU-only torch wheels: the CUDA distribution is
 # several GB and useless on those hosts. macOS wheels are CPU-only already.

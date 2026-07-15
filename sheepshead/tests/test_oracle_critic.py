@@ -9,12 +9,9 @@ critic must be completely unaffected when it is disabled.
 
 import os
 import pickle
-import sys
 import unittest
 
 import numpy as np
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import (

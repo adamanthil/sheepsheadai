@@ -14,14 +14,11 @@ These are the regression guards for refactors of ``sheepshead.py``:
 * Branch tests cover the under-call play rules that random playouts rarely hit.
 """
 
-import os
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 
-from game_test_utils import act, make_game, run_script, valid_action_names
+from sheepshead.tests.game_test_utils import act, make_game, run_script, valid_action_names
 from sheepshead import (
     ACTION_IDS,
     ACTION_LOOKUP,

@@ -16,12 +16,8 @@ SHEEPSHEAD_CONVENTION_WRAP is set), so coverage is product-grade:
     heroes drives their probe-measured violation rates to exactly zero.
 """
 
-import os
 import random
-import sys
 import unittest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.agent.convention_wrapper import (
     ConventionWrapper,

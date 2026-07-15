@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """Called-suit-lead adherence probe invariants (sheepshead/analysis/called_suit_probe.py)."""
 
-import os
-import sys
 import unittest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sheepshead.analysis.called_suit_probe import _called_suit_fail, probe_agent
 from sheepshead.analysis.trump_lead_probe import PROBE_SEED

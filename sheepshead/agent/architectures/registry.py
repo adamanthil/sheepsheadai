@@ -37,7 +37,7 @@ class ArchitectureSpec:
     build_actor: Callable[..., nn.Module]
     build_critic: Callable[[nn.Module], nn.Module]
     # Declarative metadata only; the runtime truth is the built critic's
-    # has_aux_heads attribute. tests/test_arch_golden.py welds the two (and
+    # has_aux_heads attribute. sheepshead/tests/test_arch_golden.py welds the two (and
     # the aux modules' state_dict presence) together for every entry.
     has_aux_heads: bool = True
 
