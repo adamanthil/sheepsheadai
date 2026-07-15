@@ -107,6 +107,12 @@ def main() -> int:
 
     n = len(rows)
     mean_delta = sum(r["delta"] for r in rows) / n
+    # Δ orientation differs by layout: C2 groups store conv − alt (positive =
+    # convention better); C1 groups store trump − fail (NEGATIVE = convention
+    # better). Report the raw group Δ and derive the convention advantage
+    # explicitly so the sign cannot be misread (it was, once: 2026-07-15).
+    c1_layout = "groups" not in payload
+    conv_adv = -mean_delta if c1_layout else mean_delta
     delta = abs(mean_delta)
     sigma = math.sqrt(
         sum(r["sd_a"] ** 2 + r["sd_b"] ** 2 for r in rows) / (2 * n)
@@ -118,7 +124,16 @@ def main() -> int:
     n_detect = (args.z * sigma / delta) ** 2 / p if sigma else 0.0
 
     print(f"group={args.group}  cases={n}")
-    print(f"Δ̄ (convention advantage): {mean_delta:+.3f} score  (|Δ̄| used: {delta:.3f})")
+    if c1_layout:
+        print(
+            f"Δ̄ raw (trump − fail): {mean_delta:+.3f} score  "
+            f"⇒ convention (fail) advantage {conv_adv:+.3f}  (|Δ̄| used: {delta:.3f})"
+        )
+    else:
+        print(
+            f"Δ̄ (convention advantage, conv − alt): {conv_adv:+.3f} score  "
+            f"(|Δ̄| used: {delta:.3f})"
+        )
     print(f"σ (terminal noise/rollout): {sigma:.3f} score  -> per-visit SNR {snr:.4f}")
     print(f"p (visitation/episode):     {p:.4f}")
     print(

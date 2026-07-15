@@ -1,12 +1,14 @@
 # Convention Optimality — Experiment Log (July 2026)
 
-**Status (2026-07-15): E1, E1-b, E2 rung 2, E3 rung 2, E5 all DONE — see
-Results. Headline: both conventions are genuinely good on average AND already
-internalized by the 30M model; its residual deviations look like justified
-exceptions (C2 deviation cell null; C1 exception rate 17.5%; residual trump
-leads Δ<0). Remaining, post-Stage-1: E2 step 2 + E3 step 2 (rung-3 search —
-decides the exception verdicts), E4 gauntlet, gen-end E1-b/critic-probe
-oracle retest.**
+**Status (2026-07-15, corrected same day): E1, E1-b, E2 rung 2, E3 rung 2,
+E5 all DONE — see Results. Headline: both conventions are genuinely good on
+average AND largely internalized by the 30M model. C2's residual deviations
+are cost-neutral (DISAGREE null). C1's residual trump leads are still mildly
+bad (−0.13/case, REPRODUCING the June investigation — see Reconciliation)
+but rare enough (~0.8%/game) to be economically nil. The 17.5% fail-pref
+"exception" class is hindsight-suspect and awaits rung-3. Remaining,
+post-Stage-1: E2 step 2 + E3 step 2 (rung-3 search — decides the exception
+verdicts), E4 gauntlet, gen-end E1-b/critic-probe oracle retest.**
 
 > Editorial note 2026-07-14: restructured into runbook form (TL;DR, state of
 > play, exact commands per experiment). Pre-registered decision rules,
@@ -47,7 +49,7 @@ existing amendments) — never edit history.
 | E2 full step 2 | rungs 2b + 3 (4096-iter search subsample) | PENDING (post-Stage-1; de-biases AGREE/PARTNER magnitudes) | Runbook §E2 |
 | E3 step 1 | unconditional rung 2 + exception report | **DONE 07-15** — pooled −0.49 (10σ pro-convention) BUT 17.5% exceptions | `cf_trump_unconditional.*`, `exception_report.json` |
 | E3 step 2 | rung-3 re-runs on flagged exceptions | PENDING (post-Stage-1) — decides heuristic-with-exceptions verdict | Runbook §E3 |
-| E4 | wrapper gauntlet (raw vs @c1 vs @c1c2) | PENDING (post-Stage-1); pre-read: expect @c1 ≤ 0 (mask binds on justified exceptions) | Runbook §E4 |
+| E4 | wrapper gauntlet (raw vs @c1 vs @c1c2) | PENDING (post-Stage-1); pre-read (corrected 07-15): expect ≈ 0, tiny positive at most (~+0.001/game) — a bound-check | Runbook §E4 |
 | E5 | learnability numbers | **DONE 07-15** (probes + SNR) — limited critic partially sighted; oracle≈limited at 850k (retest gen end); raw signal not the binding constraint | Runbook §E5 |
 
 All outputs go to `runs/convention_optimality_202607/` (gitignored — results
@@ -523,20 +525,58 @@ supported at >10σ. But:
   1T 20.5%, 2T 12.5%, 3T 20.8%, 4T 24.5%) — the pre-registered "trump-heavy"
   hypothesis is not supported; many top exceptions are LOW-DIAMOND leads over
   a fail ten/ace.
-* The 10 remaining TRUMP-PREF nodes (the residual "leak") score Δ = **−0.130**
-  — on rung-2 evidence the model's surviving trump leads are *better* than
-  the best fail (n=10, weak, but sign-consistent with the exception story).
+* The 10 remaining TRUMP-PREF nodes (the residual "leak") score
+  Δ(trump − fail) = **−0.130**: the surviving trump leads are still *worse*
+  than the best fail on average — the residual C1 leak is real but tiny
+  (mix: 6/10 cases ≈ 0, mean dragged by two clearly-bad leads — seeds 266 and
+  679, the June investigation's canonical sweep cases).
 
-**Emerging synthesis:** both conventions are genuinely good on average, the
-30M model has already internalized them, and its residual deviations look
-like *justified exceptions* rather than leaks (C2 DISAGREE ≈ 0, C1 residual
-trump leads negative-Δ). Caveat: all rung-2 / hindsight-biased until step-2
-search runs confirm.
+  > **Correction 2026-07-15:** this bullet originally read the sign backwards
+  > ("the model's surviving trump leads are *better*") because the E5 tool
+  > labeled the raw trump−fail Δ as "convention advantage" (only true for the
+  > C2 layout). Tool label fixed; see the Reconciliation subsection below.
 
-**E4 pre-read:** the @c1 wrapper mask only binds exactly on the TRUMP-PREF
-class — the nodes where the trump lead currently looks right — so expect the
-@c1 arm to measure ≤ 0. That would be the *correct* outcome, not a wrapper
-bug: blanket enforcement prices the exceptions.
+**Emerging synthesis (corrected):** both conventions are genuinely good on
+average and the 30M model has largely internalized them. Its residual
+deviations split by convention: **C2** deviations are cost-neutral (DISAGREE
+null) — plausibly justified; **C1** residual trump leads remain mildly bad
+(−0.13/case, matching the June investigation) but are now so rare
+(~0.8% of games) that the per-game stake is ~0.001 score. The separate 17.5%
+"exception" class (fail-pref nodes where rung-2 says trump was better) is a
+NEW claim, hindsight-suspect, awaiting rung-3. Caveat: all rung-2 until
+step-2 search runs confirm.
+
+**E4 pre-read (corrected):** the @c1 wrapper mask binds exactly on the
+TRUMP-PREF class, where trump leads are mildly bad — so expect @c1 ≥ 0 but
+utterly negligible (~+0.001/game, far below the 0.07 MDE). The @c1c2 arm
+similarly prices a near-null. E4 is a bound-check, not a detection.
+
+### Reconciliation with defender_trump_lead_investigation.md (2026-07-15)
+
+Prompted by the obvious question: the June study found search-to-terminal
+overruled the policy's trump leads back to fail (+0.16/case, 2.4σ, n=101) —
+how can today's deviations be "justified"? Answer, after checking:
+
+1. **For C1 there is NO tension — today's numbers reproduce June's.** The
+   trump-pref node rate matches (June: 101/9600 seeds ≈ 1.05%/game; today:
+   10/1200 ≈ 0.83%/game — same population, seeds 266/679 recur byte-for-byte),
+   and the per-case cost matches (today rung-2 −0.13; June belief-MC −0.19,
+   search-confirmed −0.16). The "justified exceptions" phrasing was a
+   sign-misreading for this class (corrected above): the residual trump
+   leads are still leak-flavored, just rare and cheap in aggregate.
+2. **The 17.5% exception class is a different population** the June study
+   never tested for optimality: FAIL-PREF nodes (the agent already follows
+   the convention; hindsight rung-2 MC says trump would have scored better).
+   June's evidence actually *tempers* this class: its offline-grade FAIL-PREF
+   control (n=101, search to terminal) was FLAT — a value-seeking search
+   found no gains flipping fail → trump. If ~17.5% of fail-pref nodes truly
+   favored trump by material margins, that control should have moved. So
+   expect rung-3 (E3 step 2) to deflate the exception rate substantially;
+   the 5%-line verdict stays open until then.
+3. The E1 reading #3 ("4.8% doesn't reproduce") stands for that specific
+   exit_validation-era figure, but note the June *investigation's* node rate
+   (~1%/game) reproduces exactly — the discrepancy is with the older 4.8%
+   context, not with the investigation.
 
 ### E1-b — Stage-1 intermediate checkpoints (oracle-critic league arms)
 
@@ -569,13 +609,13 @@ supported**, with two outs recorded in advance of the gen-end retest: the
 oracle head is only ~450k episodes old (fresh-init at the 400k warmstart), and
 the realized gap at this checkpoint's own nodes is ≈ 0 (nothing to see).
 
-SNR calculator (raw-signal bound): C2 DISAGREE N_detect ≈ 2.4k episodes; C1
-TRUMP-PREF ≈ 18k — both trivial vs budgets, BUT Δ̄ in both classes is ≈ 0 or
-negative, so these are "detecting a null": the raw signal was never the
-binding constraint at the current margins. The learnability bottleneck story
-(slow non-monotone acquisition, E1) is about credit assignment/variance along
-the way, not signal existence at 30M — the E1-b gen-end slope comparison
-stays the operative test.
+SNR calculator (raw-signal bound): C2 DISAGREE N_detect ≈ 2.4k episodes
+(but its Δ̄ ≈ 0 — detecting a null); C1 TRUMP-PREF ≈ 18k episodes for a real
++0.13 convention advantage (fail − trump) at the residual nodes. Both trivial
+vs budgets: the raw signal was never the binding constraint at the current
+margins. The learnability bottleneck story (slow non-monotone acquisition,
+E1) is about credit assignment/variance along the way, not signal existence
+at 30M — the E1-b gen-end slope comparison stays the operative test.
 
 ---
 
