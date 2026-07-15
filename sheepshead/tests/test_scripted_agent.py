@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """ScriptedAgent invariants: legality, determinism, zero-sum self-play."""
 
-import unittest
-
 from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 
-class TestScriptedAgent(unittest.TestCase):
+class TestScriptedAgent:
     def test_selfplay_legal_deterministic_zero_sum(self):
         ag = ScriptedAgent()
         for g in range(60):
@@ -24,16 +22,16 @@ class TestScriptedAgent(unittest.TestCase):
                             deterministic=True,
                         )
                         # Legality and a stable repeat decision.
-                        self.assertIn(a, valid)
+                        assert a in valid
                         a2, _, _ = ag.act(
                             player.get_state_dict(), valid, player.position
                         )
-                        self.assertEqual(a, a2)
-                        self.assertEqual((logp, val), (0.0, 0.0))
+                        assert a == a2
+                        assert (logp, val) == (0.0, 0.0)
                         player.act(a)
                         valid = player.get_valid_action_ids()
             scores = [p.get_score() for p in game.players]
-            self.assertEqual(sum(scores), 0, f"game {g}: {scores}")
+            assert sum(scores) == 0, f"game {g}: {scores}"
 
     def test_defender_never_leads_trump_holding_fail(self):
         # The convention the 30M lineage leaks against: as an unrevealed
@@ -73,16 +71,16 @@ class TestScriptedAgent(unittest.TestCase):
                                 card_played = name.split(" ", 1)[1]
                             has_fail = any(c not in trump_set for c in player.hand)
                             if card_played and has_fail:
-                                self.assertNotIn(
-                                    card_played, trump_set, f"game {g}: led trump"
-                                )
+                                assert (
+                                    card_played not in trump_set
+                                ), f"game {g}: led trump"
                                 checked += 1
                         player.act(a)
                         valid = player.get_valid_action_ids()
-        self.assertGreater(checked, 50)  # the probe actually exercised leads
+        assert checked > 50  # the probe actually exercised leads
 
 
-class TestTeamInference(unittest.TestCase):
+class TestTeamInference:
     def _lead_state(self, partner_mode, alone, hand_ids):
         import numpy as np
 
@@ -116,11 +114,15 @@ class TestTeamInference(unittest.TestCase):
         jd_hand = [DECK_IDS["JD"], DECK_IDS["7C"], DECK_IDS["8S"]]
         state_partner = self._lead_state(0, alone=0, hand_ids=jd_hand)
         state_defender = self._lead_state(0, alone=1, hand_ids=jd_hand)
-        self.assertTrue(ag._same_team(state_partner, 0, leading=True))
-        self.assertFalse(ag._same_team(state_defender, 0, leading=True))
-        self.assertEqual(ag._lead(state_partner, ["JD", "7C", "8S"]), "JD")
-        self.assertNotEqual(ag._lead(state_defender, ["JD", "7C", "8S"]), "JD")
+        assert ag._same_team(state_partner, 0, leading=True)
+        assert not ag._same_team(state_defender, 0, leading=True)
+        assert ag._lead(state_partner, ["JD", "7C", "8S"]) == "JD"
+        assert ag._lead(state_defender, ["JD", "7C", "8S"]) != "JD"
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-v"]))

@@ -3,7 +3,6 @@
 re-engagement, and default-off wiring in the trainer."""
 
 import inspect
-import unittest
 from collections import deque
 
 from sheepshead.training.train_selfplay_ppo import LeasterWatchdog, train_ppo
@@ -14,40 +13,44 @@ def _window(rate, n=3000):
     return deque([1] * ones + [0] * (n - ones), maxlen=n)
 
 
-class TestLeasterWatchdog(unittest.TestCase):
+class TestLeasterWatchdog:
     def test_no_engage_below_min_samples(self):
         wd = LeasterWatchdog()
         tiny = deque([1] * (LeasterWatchdog.MIN_SAMPLES - 1))
-        self.assertIsNone(wd.observe(tiny))
-        self.assertFalse(wd.engaged)
+        assert wd.observe(tiny) is None
+        assert not wd.engaged
 
     def test_engage_release_hysteresis(self):
         wd = LeasterWatchdog()
-        self.assertEqual(wd.observe(_window(0.95)), "engaged")
-        self.assertTrue(wd.engaged)
+        assert wd.observe(_window(0.95)) == "engaged"
+        assert wd.engaged
         # Repeated high rate: no duplicate transition, stays engaged.
-        self.assertIsNone(wd.observe(_window(0.95)))
+        assert wd.observe(_window(0.95)) is None
         # In the hysteresis band (30-90%): still engaged, no transition.
-        self.assertIsNone(wd.observe(_window(0.50)))
-        self.assertTrue(wd.engaged)
+        assert wd.observe(_window(0.50)) is None
+        assert wd.engaged
         # Below the release threshold: releases.
-        self.assertEqual(wd.observe(_window(0.10)), "released")
-        self.assertFalse(wd.engaged)
+        assert wd.observe(_window(0.10)) == "released"
+        assert not wd.engaged
         # Healthy rate never re-engages...
-        self.assertIsNone(wd.observe(_window(0.05)))
+        assert wd.observe(_window(0.05)) is None
         # ...but a relapse does.
-        self.assertEqual(wd.observe(_window(0.92)), "engaged")
+        assert wd.observe(_window(0.92)) == "engaged"
 
     def test_no_engage_at_healthy_rates(self):
         wd = LeasterWatchdog()
         for rate in (0.0, 0.05, 0.30, 0.89):
-            self.assertIsNone(wd.observe(_window(rate)))
-            self.assertFalse(wd.engaged)
+            assert wd.observe(_window(rate)) is None
+            assert not wd.engaged
 
     def test_trainer_default_off(self):
         sig = inspect.signature(train_ppo)
-        self.assertIs(sig.parameters["leaster_watchdog"].default, False)
+        assert sig.parameters["leaster_watchdog"].default is False
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-v"]))

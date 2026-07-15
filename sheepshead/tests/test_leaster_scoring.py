@@ -10,8 +10,6 @@ measurement (rigorous_eval, paired gates, terminal rewards) on ~tied
 leasters. The winner is now drawn once and cached.
 """
 
-import unittest
-
 from sheepshead import ACTION_IDS, Game
 
 # Seeds whose forced-pass games (everyone passes, then plays the lowest legal
@@ -35,22 +33,22 @@ def _play_forced_pass_game(seed: int) -> Game:
     return game
 
 
-class TestLeasterTieScoring(unittest.TestCase):
+class TestLeasterTieScoring:
     def test_tied_leaster_has_one_stable_winner_and_zero_sum(self):
         for seed in TIE_SEEDS:
             game = _play_forced_pass_game(seed)
-            self.assertTrue(game.is_leaster)
+            assert game.is_leaster
 
             # The winner must be stable across calls (each seat's get_score,
             # __str__, and any re-query must agree).
             winner = game.get_leaster_winner()
             for _ in range(25):
-                self.assertEqual(game.get_leaster_winner(), winner)
+                assert game.get_leaster_winner() == winner
 
             scores = [p.get_score() for p in game.players]
-            self.assertEqual(sum(scores), 0, f"seed {seed}: {scores}")
-            self.assertEqual(sorted(scores), [-1, -1, -1, -1, 4])
-            self.assertEqual(scores.index(4) + 1, winner)
+            assert sum(scores) == 0, f"seed {seed}: {scores}"
+            assert sorted(scores) == [-1, -1, -1, -1, 4]
+            assert scores.index(4) + 1 == winner
 
     def test_untied_leasters_also_zero_sum(self):
         # A broad sweep: every forced-pass leaster must produce exactly one
@@ -58,9 +56,13 @@ class TestLeasterTieScoring(unittest.TestCase):
         for seed in range(60):
             game = _play_forced_pass_game(seed)
             scores = [p.get_score() for p in game.players]
-            self.assertEqual(sum(scores), 0, f"seed {seed}: {scores}")
-            self.assertEqual(sorted(scores), [-1, -1, -1, -1, 4])
+            assert sum(scores) == 0, f"seed {seed}: {scores}"
+            assert sorted(scores) == [-1, -1, -1, -1, 4]
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-v"]))

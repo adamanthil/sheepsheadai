@@ -9,7 +9,6 @@ critic must be completely unaffected when it is disabled.
 
 import os
 import pickle
-import unittest
 
 import numpy as np
 import pytest
@@ -42,7 +41,7 @@ def _play_and_probe(seed, mode, probe):
     return game
 
 
-class TestOracleStateSchema(unittest.TestCase):
+class TestOracleStateSchema:
     def test_superset_of_limited_obs_and_hidden_fields_correct(self):
         checked = {"deals": 0, "secret_partner_seen": 0, "under_seen": 0}
 
@@ -53,7 +52,7 @@ class TestOracleStateSchema(unittest.TestCase):
             # Superset: every limited key present; identical except the
             # de-masked blind/bury.
             for k, v in limited.items():
-                self.assertIn(k, oracle)
+                assert k in oracle
                 if k in ("blind_ids", "bury_ids"):
                     continue
                 np.testing.assert_array_equal(np.asarray(oracle[k]), np.asarray(v))
@@ -71,7 +70,7 @@ class TestOracleStateSchema(unittest.TestCase):
                 np.testing.assert_array_equal(oracle["bury_ids"], limited["bury_ids"])
 
             # Opponent hands at relative seats 2..5.
-            self.assertEqual(oracle["opp_hand_ids"].shape, (4, 8))
+            assert oracle["opp_hand_ids"].shape == (4, 8)
             for i, r in enumerate(range(2, 6)):
                 abs_seat = ((player.position + r - 2) % 5) + 1
                 np.testing.assert_array_equal(
@@ -85,23 +84,21 @@ class TestOracleStateSchema(unittest.TestCase):
                 if p.is_secret_partner:
                     expected = ((p.position - player.position) % 5) + 1
                     break
-            self.assertEqual(int(oracle["secret_partner_rel"]), expected)
+            assert int(oracle["secret_partner_rel"]) == expected
             if expected:
                 checked["secret_partner_seen"] += 1
 
             # Under card and points taken.
             if game.under_card:
-                self.assertEqual(
-                    int(oracle["under_card_id"]), DECK_IDS[game.under_card]
-                )
+                assert int(oracle["under_card_id"]) == DECK_IDS[game.under_card]
                 checked["under_seen"] += 1
             else:
-                self.assertEqual(int(oracle["under_card_id"]), 0)
+                assert int(oracle["under_card_id"]) == 0
             for r in range(1, 6):
                 abs_seat = ((player.position + r - 2) % 5) + 1
-                self.assertEqual(
-                    int(oracle["points_taken_rel"][r - 1]),
-                    game.points_taken[abs_seat - 1],
+                assert (
+                    int(oracle["points_taken_rel"][r - 1])
+                    == game.points_taken[abs_seat - 1]
                 )
 
             # Must survive the worker pickle boundary.
@@ -112,7 +109,7 @@ class TestOracleStateSchema(unittest.TestCase):
                 _play_and_probe(1000 + seed, mode, probe)
                 checked["deals"] += 1
         # The sweep must actually exercise the interesting states.
-        self.assertGreater(checked["secret_partner_seen"], 0)
+        assert checked["secret_partner_seen"] > 0
 
     def test_initial_state_partitions_deck(self):
         # Before any action, the 5 hands plus the blind are exactly ids 1..32.
@@ -123,23 +120,23 @@ class TestOracleStateSchema(unittest.TestCase):
             ids = list(oracle["hand_ids"]) + list(oracle["opp_hand_ids"].flatten())
             ids += list(oracle["blind_ids"])
             real = sorted(i for i in ids if i != 0)
-            self.assertEqual(real, list(range(1, 33)))
+            assert real == list(range(1, 33))
 
     def test_last_trick_oracle_state_matches_convention(self):
         game = Game(partner_selection_mode=PARTNER_BY_JD, seed=11)
         player = game.players[0]
         o = player.get_last_trick_oracle_state_dict()
         lim = player.get_last_trick_state_dict()
-        self.assertEqual(int(o["current_trick"]), int(lim["current_trick"]))
-        self.assertIn("opp_hand_ids", o)
+        assert int(o["current_trick"]) == int(lim["current_trick"])
+        assert "opp_hand_ids" in o
 
 
-class TestOracleReadout(unittest.TestCase):
+class TestOracleReadout:
     """Perceiver-style readout invariants (2026-07-06 refactor): no pooled
     bags anywhere between the reasoning transformer and the value trunk."""
 
     @classmethod
-    def setUpClass(cls):
+    def setup_class(cls):
         from sheepshead.agent.oracle import OracleValueNetwork
 
         cls.net = OracleValueNetwork()
@@ -155,7 +152,7 @@ class TestOracleReadout(unittest.TestCase):
             "pool_opp",
             "feature_proj",
         ):
-            self.assertFalse(hasattr(self.net.encoder, name), name)
+            assert not hasattr(self.net.encoder, name), name
 
     def test_encode_batch_emits_tokens_and_memory_token_recurrence(self):
         import torch
@@ -163,34 +160,34 @@ class TestOracleReadout(unittest.TestCase):
         enc = self.net.encoder
         with torch.no_grad():
             out = enc.encode_batch(self.obs)
-        self.assertEqual(tuple(out["all_tokens"].shape), (5, 51, enc.d_token_dim))
-        self.assertEqual(tuple(out["all_mask"].shape), (5, 51))
+        assert tuple(out["all_tokens"].shape) == (5, 51, enc.d_token_dim)
+        assert tuple(out["all_mask"].shape) == (5, 51)
         # context + memory tokens are always valid keys for the readout.
-        self.assertTrue(out["all_mask"][:, :2].all())
-        self.assertTrue(torch.equal(out["features"], out["memory_out"]))
+        assert out["all_mask"][:, :2].all()
+        assert torch.equal(out["features"], out["memory_out"])
         # The GRU input is the post-reasoning MEMORY token, not the context.
         with torch.no_grad():
             expected = enc.memory_gru(
                 out["all_tokens"][:, 1, :], torch.zeros(5, enc.d_model)
             )
-        self.assertTrue(torch.allclose(out["memory_out"], expected, atol=1e-6))
+        assert torch.allclose(out["memory_out"], expected, atol=1e-6)
 
     def test_forward_sequences_shape_and_readout_grad(self):
         import torch
 
         vals = self.net.forward_sequences([self.obs[:3], self.obs[:1]])
-        self.assertEqual(tuple(vals.shape), (2, 3))
-        self.assertTrue(torch.isfinite(vals).all())
+        assert tuple(vals.shape) == (2, 3)
+        assert torch.isfinite(vals).all()
         vals.sum().backward()
-        self.assertIsNotNone(self.net.readout_query.grad)
-        self.assertTrue(torch.any(self.net.readout_query.grad != 0))
+        assert self.net.readout_query.grad is not None
+        assert torch.any(self.net.readout_query.grad != 0)
         self.net.zero_grad()
 
     def test_param_groups_cover_every_parameter(self):
         groups = self.net.param_groups(base_lr=1e-3)
         grouped = sum(p.numel() for g in groups for p in g["params"])
         total = sum(p.numel() for p in self.net.parameters())
-        self.assertEqual(grouped, total)
+        assert grouped == total
 
 
 def _collect_episodes(agent, n_episodes, collect_oracle):
@@ -222,9 +219,9 @@ def _collect_episodes(agent, n_episodes, collect_oracle):
     return all_events
 
 
-class TestOracleEventCollection(unittest.TestCase):
+class TestOracleEventCollection:
     @classmethod
-    def setUpClass(cls):
+    def setup_class(cls):
         from sheepshead.agent.ppo import PPOAgent
         from sheepshead import ACTIONS
 
@@ -234,11 +231,11 @@ class TestOracleEventCollection(unittest.TestCase):
         self.agent.reset_storage()
         episodes = _collect_episodes(self.agent, 2, collect_oracle=True)
         for events in episodes:
-            self.assertGreater(len(events), 0)
+            assert len(events) > 0
             for ev in events:
-                self.assertIn("oracle_state", ev)
-                self.assertIn("opp_hand_ids", ev["oracle_state"])
-        self.assertTrue(all("oracle_state" in e for e in self.agent.events))
+                assert "oracle_state" in ev
+                assert "opp_hand_ids" in ev["oracle_state"]
+        assert all("oracle_state" in e for e in self.agent.events)
         self.agent.reset_storage()
 
     def test_legacy_schema_unchanged_without_collect_oracle(self):
@@ -246,14 +243,14 @@ class TestOracleEventCollection(unittest.TestCase):
         episodes = _collect_episodes(self.agent, 2, collect_oracle=False)
         for events in episodes:
             for ev in events:
-                self.assertNotIn("oracle_state", ev)
-        self.assertTrue(all("oracle_state" not in e for e in self.agent.events))
+                assert "oracle_state" not in ev
+        assert all("oracle_state" not in e for e in self.agent.events)
         self.agent.reset_storage()
 
 
-class TestOracleUpdate(unittest.TestCase):
+class TestOracleUpdate:
     @classmethod
-    def setUpClass(cls):
+    def setup_class(cls):
         from sheepshead.agent.ppo import PPOAgent
         from sheepshead import ACTIONS
 
@@ -269,39 +266,39 @@ class TestOracleUpdate(unittest.TestCase):
         # Fill + dual GAE write the oracle fields into action events.
         agent._fill_oracle_values()
         adv, ret_o = agent.compute_gae_dual()
-        self.assertGreater(adv.size, 0)
+        assert adv.size > 0
         for e in agent.events:
             if e["kind"] == "action":
-                self.assertIn("value_oracle", e)
-                self.assertIn("return_oracle", e)
-                self.assertIn("return", e)
+                assert "value_oracle" in e
+                assert "return_oracle" in e
+                assert "return" in e
 
         stats = agent.update(epochs=1, batch_size=4)
-        self.assertIsNotNone(stats["oracle"])
+        assert stats["oracle"] is not None
         for key in ("ev_oracle", "ev_limited", "value_loss"):
-            self.assertIn(key, stats["oracle"])
-        self.assertTrue(np.isfinite(stats["oracle"]["value_loss"]))
+            assert key in stats["oracle"]
+        assert np.isfinite(stats["oracle"]["value_loss"])
 
     def test_missing_oracle_state_fails_fast(self):
         agent = self.agent
         agent.reset_storage()
         _collect_episodes(agent, 1, collect_oracle=False)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             agent.update(epochs=1, batch_size=4)
         agent.reset_storage()
 
     def test_limited_mode_has_no_oracle_surface(self):
         limited = self.PPOAgent(len(self.ACTIONS))
-        self.assertIsNone(limited.oracle_critic)
-        self.assertIsNone(limited.oracle_optimizer)
+        assert limited.oracle_critic is None
+        assert limited.oracle_optimizer is None
         limited.reset_storage()
         _collect_episodes(limited, 1, collect_oracle=False)
         stats = limited.update(epochs=1, batch_size=4)
-        self.assertIsNone(stats["oracle"])
-        self.assertNotIn("value_oracle", stats["critic_losses"])
+        assert stats["oracle"] is None
+        assert "value_oracle" not in stats["critic_losses"]
 
 
-class TestGradientIsolation(unittest.TestCase):
+class TestGradientIsolation:
     def test_no_parameter_sharing_and_no_gradient_leak(self):
         import torch
         import torch.nn.functional as F
@@ -318,7 +315,7 @@ class TestGradientIsolation(unittest.TestCase):
             for p in net.parameters()
         }
         for p in agent.oracle_critic.parameters():
-            self.assertNotIn(id(p), policy_param_ids)
+            assert id(p) not in policy_param_ids
 
         # Behavioral isolation: an oracle loss backward reaches no
         # policy/limited-critic parameter.
@@ -334,18 +331,16 @@ class TestGradientIsolation(unittest.TestCase):
         loss.backward()
         for net in (agent.encoder, agent.actor, agent.critic):
             for p in net.parameters():
-                self.assertIsNone(p.grad)
-        self.assertTrue(
-            any(
-                p.grad is not None and torch.any(p.grad != 0)
-                for p in agent.oracle_critic.parameters()
-            )
+                assert p.grad is None
+        assert any(
+            p.grad is not None and torch.any(p.grad != 0)
+            for p in agent.oracle_critic.parameters()
         )
         agent.reset_storage()
 
 
-class TestOracleCheckpoints(unittest.TestCase):
-    def setUp(self):
+class TestOracleCheckpoints:
+    def setup_method(self, method):
         import tempfile
 
         self.dir = tempfile.mkdtemp(prefix="oracle_ckpt_test_")
@@ -360,28 +355,28 @@ class TestOracleCheckpoints(unittest.TestCase):
         oracle_agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
         oracle_agent.save(path)
         ckpt = torch.load(path, map_location="cpu")
-        self.assertIn("oracle_state_dict", ckpt)
-        self.assertEqual(ckpt["critic_mode"], "oracle")
+        assert "oracle_state_dict" in ckpt
+        assert ckpt["critic_mode"] == "oracle"
 
         # oracle -> oracle: weights equal after load.
         reloaded = PPOAgent(len(ACTIONS), critic_mode="oracle")
         reloaded.load(path)
         for k, v in oracle_agent.oracle_critic.state_dict().items():
-            self.assertTrue(torch.equal(v, reloaded.oracle_critic.state_dict()[k]))
+            assert torch.equal(v, reloaded.oracle_critic.state_dict()[k])
 
         # oracle checkpoint -> limited agent: keys ignored, no crash.
         limited = PPOAgent(len(ACTIONS))
         limited.load(path)
-        self.assertIsNone(limited.oracle_critic)
+        assert limited.oracle_critic is None
 
         # limited checkpoint -> oracle agent: fresh-init warm start, no crash.
         lim_path = os.path.join(self.dir, "b.pt")
         limited.save(lim_path)
         ckpt_lim = torch.load(lim_path, map_location="cpu")
-        self.assertNotIn("oracle_state_dict", ckpt_lim)
+        assert "oracle_state_dict" not in ckpt_lim
         warm = PPOAgent(len(ACTIONS), critic_mode="oracle")
         warm.load(lim_path)
-        self.assertIsNotNone(warm.oracle_critic)
+        assert warm.oracle_critic is not None
 
     def test_snapshot_strip_oracle(self):
         import copy
@@ -394,16 +389,20 @@ class TestOracleCheckpoints(unittest.TestCase):
         agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
         snap = copy.deepcopy(agent)
         snap.strip_oracle()
-        self.assertIsNone(snap.oracle_critic)
-        self.assertEqual(snap.critic_mode, "limited")
+        assert snap.oracle_critic is None
+        assert snap.critic_mode == "limited"
         path = os.path.join(self.dir, "snap.pt")
         snap.save(path)
         ckpt = torch.load(path, map_location="cpu")
-        self.assertNotIn("oracle_state_dict", ckpt)
-        self.assertNotIn("oracle_optimizer", ckpt)
+        assert "oracle_state_dict" not in ckpt
+        assert "oracle_optimizer" not in ckpt
         # The original keeps its oracle.
-        self.assertIsNotNone(agent.oracle_critic)
+        assert agent.oracle_critic is not None
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-v"]))

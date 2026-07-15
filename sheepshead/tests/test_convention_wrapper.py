@@ -17,7 +17,8 @@ SHEEPSHEAD_CONVENTION_WRAP is set), so coverage is product-grade:
 """
 
 import random
-import unittest
+
+import pytest
 
 from sheepshead.agent.convention_wrapper import (
     ConventionWrapper,
@@ -129,7 +130,7 @@ def _collect(nodes_iter, predicate, n):
 # --------------------------------------------------------------------------
 # Mask rules
 # --------------------------------------------------------------------------
-class TestC2MaskRules(unittest.TestCase):
+class TestC2MaskRules:
     def test_restricts_to_called_suit_fails_at_trick0(self):
         w = ConventionWrapper(ScriptedAgent(), c1=False, c2=True)
         nodes = _collect(
@@ -137,12 +138,12 @@ class TestC2MaskRules(unittest.TestCase):
             lambda g, p, v: g.current_trick == 0 and _c2_shape(g, p, v),
             8,
         )
-        self.assertEqual(len(nodes), 8)
+        assert len(nodes) == 8
         for game, p, state, valid in nodes:
             restricted = w._restrict(state, list(valid))
-            self.assertEqual(sorted(restricted), sorted(_conv_ids(game, valid)))
-            self.assertTrue(set(restricted) <= set(valid))
-            self.assertTrue(restricted)
+            assert sorted(restricted) == sorted(_conv_ids(game, valid))
+            assert set(restricted) <= set(valid)
+            assert restricted
 
     def test_inactive_after_trick0(self):
         # Later-trick eligibility is unknowable from the observation dict, so
@@ -153,9 +154,9 @@ class TestC2MaskRules(unittest.TestCase):
             lambda g, p, v: g.current_trick >= 1 and _c2_shape(g, p, v),
             6,
         )
-        self.assertGreaterEqual(len(nodes), 3)
+        assert len(nodes) >= 3
         for _, _, state, valid in nodes:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
 
     def test_non_defender_seats_exempt(self):
         w = ConventionWrapper(ScriptedAgent(), c1=True, c2=True)
@@ -164,9 +165,9 @@ class TestC2MaskRules(unittest.TestCase):
             lambda g, p, v: not g.is_leaster and not _true_defender(g, p),
             8,
         )
-        self.assertEqual(len(nodes), 8)
+        assert len(nodes) == 8
         for _, _, state, valid in nodes:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
 
     def test_alone_and_under_call_exempt_from_c2(self):
         w = ConventionWrapper(ScriptedAgent(), c1=False, c2=True)
@@ -176,9 +177,9 @@ class TestC2MaskRules(unittest.TestCase):
             lambda g, p, v: g.alone_called and not g.is_leaster,
             3,
         )
-        self.assertGreaterEqual(len(alone), 1)
+        assert len(alone) >= 1
         for _, _, state, valid in alone:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
         # Under calls: the picker is void by rule; the premise doesn't hold.
         under = _collect(
             _leads(PARTNER_BY_CALLED_ACE, 800),
@@ -188,9 +189,9 @@ class TestC2MaskRules(unittest.TestCase):
             and not g.is_leaster,
             2,
         )
-        self.assertGreaterEqual(len(under), 1)
+        assert len(under) >= 1
         for game, p, state, valid in under:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
 
     def test_forced_hands_are_not_decisions(self):
         # All legal leads in the called suit -> nothing to mask.
@@ -207,7 +208,7 @@ class TestC2MaskRules(unittest.TestCase):
             2,
         )
         for _, _, state, valid in nodes:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
 
     def test_leaster_passthrough(self):
         w = ConventionWrapper(ScriptedAgent(), c1=True, c2=True)
@@ -216,12 +217,12 @@ class TestC2MaskRules(unittest.TestCase):
             lambda g, p, v: g.is_leaster,
             5,
         )
-        self.assertEqual(len(nodes), 5)
+        assert len(nodes) == 5
         for _, _, state, valid in nodes:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
 
 
-class TestC1MaskRules(unittest.TestCase):
+class TestC1MaskRules:
     def _c1_shape(self, g, p, v):
         if g.is_leaster or not _true_defender(g, p):
             return False
@@ -238,14 +239,14 @@ class TestC1MaskRules(unittest.TestCase):
                 lambda g, p, v: g.current_trick <= 1 and self._c1_shape(g, p, v),
                 8,
             )
-            self.assertEqual(len(nodes), 8)
+            assert len(nodes) == 8
             for game, p, state, valid in nodes:
                 restricted = w._restrict(state, list(valid))
                 expected = [
                     a for a in valid if ACTIONS[a - 1][5:] not in _TRUMP
                 ]
-                self.assertEqual(restricted, expected)
-                self.assertTrue(restricted)
+                assert restricted == expected
+                assert restricted
 
     def test_respects_c1_max_trick(self):
         default = ConventionWrapper(ScriptedAgent(), c1=True, c2=False)
@@ -257,12 +258,10 @@ class TestC1MaskRules(unittest.TestCase):
             lambda g, p, v: g.current_trick >= 2 and self._c1_shape(g, p, v),
             6,
         )
-        self.assertGreaterEqual(len(nodes), 3)
+        assert len(nodes) >= 3
         for _, _, state, valid in nodes:
-            self.assertEqual(default._restrict(state, list(valid)), valid)
-            self.assertLess(
-                len(extended._restrict(state, list(valid))), len(valid)
-            )
+            assert default._restrict(state, list(valid)) == valid
+            assert len(extended._restrict(state, list(valid))) < len(valid)
 
     def test_no_choice_untouched(self):
         # All-trump or all-fail lead options: C1 has nothing to mask.
@@ -278,9 +277,9 @@ class TestC1MaskRules(unittest.TestCase):
             ),
             5,
         )
-        self.assertGreaterEqual(len(nodes), 2)
+        assert len(nodes) >= 2
         for _, _, state, valid in nodes:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
 
     def test_jd_secret_partner_exempt(self):
         w = ConventionWrapper(ScriptedAgent(), c1=True, c2=True)
@@ -289,9 +288,9 @@ class TestC1MaskRules(unittest.TestCase):
             lambda g, p, v: p.is_secret_partner and self._c1_shape_ignoring_defender(g, p, v),
             3,
         )
-        self.assertGreaterEqual(len(nodes), 1)
+        assert len(nodes) >= 1
         for _, _, state, valid in nodes:
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
 
     def _c1_shape_ignoring_defender(self, g, p, v):
         if g.is_leaster:
@@ -302,7 +301,7 @@ class TestC1MaskRules(unittest.TestCase):
         )
 
 
-class TestNonLeadPassthrough(unittest.TestCase):
+class TestNonLeadPassthrough:
     def test_bidding_bury_and_follows_untouched(self):
         w = ConventionWrapper(ScriptedAgent(), c1=True, c2=True)
         checked = 0
@@ -314,11 +313,11 @@ class TestNonLeadPassthrough(unittest.TestCase):
             )
             if is_lead:
                 continue
-            self.assertEqual(w._restrict(state, list(valid)), valid)
+            assert w._restrict(state, list(valid)) == valid
             checked += 1
             if checked >= 60:
                 break
-        self.assertGreaterEqual(checked, 60)
+        assert checked >= 60
 
 
 # --------------------------------------------------------------------------
@@ -346,7 +345,7 @@ class SpyAgent:
         self.resets += 1
 
 
-class TestDelegation(unittest.TestCase):
+class TestDelegation:
     def test_act_passes_restriction_and_preserves_inputs(self):
         spy = SpyAgent()
         w = ConventionWrapper(spy, c1=False, c2=True)
@@ -355,25 +354,25 @@ class TestDelegation(unittest.TestCase):
             lambda g, p, v: g.current_trick == 0 and _c2_shape(g, p, v),
             1,
         )
-        self.assertEqual(len(nodes), 1)
+        assert len(nodes) == 1
         game, p, state, valid = nodes[0]
         original = list(valid)
         action, _, _ = w.act(state, valid, p.position, deterministic=False)
         # Inner agent saw exactly the convention set; caller's list untouched.
-        self.assertEqual(sorted(spy.seen_valid), sorted(_conv_ids(game, valid)))
-        self.assertIs(spy.seen_deterministic, False)
-        self.assertEqual(valid, original)
+        assert sorted(spy.seen_valid) == sorted(_conv_ids(game, valid))
+        assert spy.seen_deterministic is False
+        assert valid == original
         # Returned action is the inner agent's pick from the restricted set.
-        self.assertIn(action, spy.seen_valid)
+        assert action in spy.seen_valid
 
     def test_observe_reset_and_attribute_delegation(self):
         spy = SpyAgent()
         w = ConventionWrapper(spy)
         w.observe({}, player_id=3)
         w.reset_recurrent_state()
-        self.assertEqual(spy.observes, 1)
-        self.assertEqual(spy.resets, 1)
-        self.assertEqual(w.custom_marker, "spy")
+        assert spy.observes == 1
+        assert spy.resets == 1
+        assert w.custom_marker == "spy"
 
 
 class RandomLegal:
@@ -390,7 +389,7 @@ class RandomLegal:
         pass
 
 
-class TestFuzzLegality(unittest.TestCase):
+class TestFuzzLegality:
     def test_wrapped_random_agent_plays_full_games_legally(self):
         # The strongest product invariant: whatever the mask does, every
         # returned action is legal, the restriction is never empty, and games
@@ -410,16 +409,16 @@ class TestFuzzLegality(unittest.TestCase):
                     valid = actor.get_valid_action_ids()
                     state = actor.get_state_dict()
                     restricted = w._restrict(state, list(valid))
-                    self.assertTrue(restricted, "restriction must never be empty")
-                    self.assertTrue(set(restricted) <= set(valid))
+                    assert restricted, "restriction must never be empty"
+                    assert set(restricted) <= set(valid)
                     if len(restricted) < len(valid):
                         shrunk += 1
                     action, _, _ = w.act(state, valid, actor.position)
-                    self.assertIn(action, valid)
+                    assert action in valid
                     actor.act(action)
-                self.assertTrue(game.is_done())
+                assert game.is_done()
             if mode == PARTNER_BY_CALLED_ACE:
-                self.assertGreater(shrunk, 0, "mask never fired: fuzz is vacuous")
+                assert shrunk > 0, "mask never fired: fuzz is vacuous"
 
 
 # --------------------------------------------------------------------------
@@ -443,47 +442,51 @@ class CalledSuitAvoider(ScriptedAgent):
         return super()._lead(state, cards)
 
 
-class TestEndToEnd(unittest.TestCase):
+class TestEndToEnd:
     def test_c1_mask_zeroes_a_trump_leader(self):
         raw = probe_trump(TrumpLeader(), n_deals=60, partner_mode=PARTNER_BY_CALLED_ACE)
-        self.assertEqual(raw["trump_leads"], raw["opportunities"])  # violates freely
+        assert raw["trump_leads"] == raw["opportunities"]  # violates freely
         wrapped = probe_trump(
             ConventionWrapper(TrumpLeader(), c1=True, c2=False),
             n_deals=60,
             partner_mode=PARTNER_BY_CALLED_ACE,
         )
-        self.assertGreater(wrapped["opportunities"], 10)
-        self.assertEqual(wrapped["trump_leads"], 0)
+        assert wrapped["opportunities"] > 10
+        assert wrapped["trump_leads"] == 0
 
     def test_c2_force_makes_an_avoider_adherent_at_trick0(self):
         raw = probe_agent(CalledSuitAvoider(), n_deals=60)
-        self.assertEqual(raw["adherent_trick0"], 0)  # violates freely
+        assert raw["adherent_trick0"] == 0  # violates freely
         wrapped = probe_agent(
             ConventionWrapper(CalledSuitAvoider(), c1=False, c2=True), n_deals=60
         )
-        self.assertGreater(wrapped["eligible_trick0"], 5)
-        self.assertEqual(wrapped["adherent_trick0"], wrapped["eligible_trick0"])
+        assert wrapped["eligible_trick0"] > 5
+        assert wrapped["adherent_trick0"] == wrapped["eligible_trick0"]
         # Trick-0 only: later-trick eligibility is unknowable from the state
         # dict, so the wrapper must NOT have forced anything there.
-        self.assertEqual(
-            wrapped["adherent"] - wrapped["adherent_trick0"],
-            raw["adherent"] - raw["adherent_trick0"],
+        assert (
+            wrapped["adherent"] - wrapped["adherent_trick0"]
+            == raw["adherent"] - raw["adherent_trick0"]
         )
 
 
-class TestWrapSpecs(unittest.TestCase):
+class TestWrapSpecs:
     def test_wrap_specs(self):
-        self.assertEqual(parse_wrap_spec("m.pt"), ("m.pt", None))
-        self.assertEqual(parse_wrap_spec("m.pt@c1c2"), ("m.pt", "c1c2"))
-        with self.assertRaises(ValueError):
+        assert parse_wrap_spec("m.pt") == ("m.pt", None)
+        assert parse_wrap_spec("m.pt@c1c2") == ("m.pt", "c1c2")
+        with pytest.raises(ValueError):
             parse_wrap_spec("m.pt@bogus")
         w = wrap_agent(ScriptedAgent(), "c1")
-        self.assertTrue(w.c1)
-        self.assertFalse(w.c2)
+        assert w.c1
+        assert not w.c2
         # A typo'd deploy config must fail fast, not silently no-op.
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             wrap_agent(ScriptedAgent(), "c3")
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-v"]))

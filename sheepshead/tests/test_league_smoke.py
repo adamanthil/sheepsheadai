@@ -13,7 +13,6 @@ import os
 import random
 import shutil
 import tempfile
-import unittest
 from types import SimpleNamespace
 
 import pytest
@@ -28,13 +27,13 @@ from sheepshead.training.train_league_ppo import run_main_phase
 pytestmark = pytest.mark.slow
 
 
-class TestMainPhaseSmoke(unittest.TestCase):
-    def setUp(self):
+class TestMainPhaseSmoke:
+    def setup_method(self, method):
         self.dir = tempfile.mkdtemp(prefix="league_smoke_")
         self.ckpt_dir = os.path.join(self.dir, "checkpoints")
         os.makedirs(self.ckpt_dir)
 
-    def tearDown(self):
+    def teardown_method(self, method):
         shutil.rmtree(self.dir, ignore_errors=True)
 
     def _run(
@@ -77,44 +76,48 @@ class TestMainPhaseSmoke(unittest.TestCase):
 
     def test_limited_mode_runs_and_updates(self):
         agent, _, end = self._run("limited", snapshot_interval=1_000_000_000)
-        self.assertEqual(end, 8)
+        assert end == 8
         # >= 1 PPO update fired (Adam has per-param state after a step).
-        self.assertGreater(len(agent.actor_optimizer.state), 0)
-        self.assertIsNone(agent.oracle_critic)
+        assert len(agent.actor_optimizer.state) > 0
+        assert agent.oracle_critic is None
 
     def test_oracle_mode_runs_updates_and_strips_snapshots(self):
         agent, league, end = self._run("oracle", snapshot_interval=5)
-        self.assertEqual(end, 8)
-        self.assertGreater(len(agent.actor_optimizer.state), 0)
+        assert end == 8
+        assert len(agent.actor_optimizer.state) > 0
         # The oracle itself trained too.
-        self.assertGreater(len(agent.oracle_optimizer.state), 0)
+        assert len(agent.oracle_optimizer.state) > 0
         # The episode-5 snapshot joined the league WITHOUT the oracle critic.
         snaps = [
             m for m in league.by_role(ROLE_PAST_MAIN) if m.meta.training_episodes == 5
         ]
-        self.assertEqual(len(snaps), 1)
+        assert len(snaps) == 1
         member_files = glob.glob(
             os.path.join(str(league.members_dir), f"{snaps[0].member_id}.pt")
         )
-        self.assertEqual(len(member_files), 1)
+        assert len(member_files) == 1
         ckpt = torch.load(member_files[0], map_location="cpu")
-        self.assertNotIn("oracle_state_dict", ckpt)
-        self.assertIsNone(snaps[0].agent.oracle_critic)
+        assert "oracle_state_dict" not in ckpt
+        assert snaps[0].agent.oracle_critic is None
 
     def test_nonfull_arch_runs_and_snapshots_carry_arch(self):
         agent, league, end = self._run("limited", snapshot_interval=5, arch="onehot-ff")
-        self.assertEqual(end, 8)
-        self.assertGreater(len(agent.actor_optimizer.state), 0)
+        assert end == 8
+        assert len(agent.actor_optimizer.state) > 0
         snaps = [
             m for m in league.by_role(ROLE_PAST_MAIN) if m.meta.training_episodes == 5
         ]
-        self.assertEqual(len(snaps), 1)
+        assert len(snaps) == 1
         member_files = glob.glob(
             os.path.join(str(league.members_dir), f"{snaps[0].member_id}.pt")
         )
         ckpt = torch.load(member_files[0], map_location="cpu")
-        self.assertEqual(ckpt.get("arch"), "onehot-ff")
+        assert ckpt.get("arch") == "onehot-ff"
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-v"]))
