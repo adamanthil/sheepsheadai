@@ -1,12 +1,12 @@
 # Convention Optimality — Experiment Log (July 2026)
 
-**Status (2026-07-14 23:55): E1 DONE. E2 pilot DONE (falsifiers pass).
-QUEUE RUNNING (`runs/convention_optimality_202607/queue_202607_14.sh`,
-progress in `queue.log`): E1-b on Stage-1 intermediate ckpts → E2 full
-rung 2 → three E5 critic-gap probes → E3 rung 2 + exception report.
-Thread-capped (OMP=2, nice 19) so Stage 1 keeps the box; ETA ~20 h total.
-Still deferred to post-Stage-1: E2 step 2 (4096-iter search rung), E3
-exception rung-3 re-runs, E4 gauntlet.**
+**Status (2026-07-15): E1, E1-b, E2 rung 2, E3 rung 2, E5 all DONE — see
+Results. Headline: both conventions are genuinely good on average AND already
+internalized by the 30M model; its residual deviations look like justified
+exceptions (C2 deviation cell null; C1 exception rate 17.5%; residual trump
+leads Δ<0). Remaining, post-Stage-1: E2 step 2 + E3 step 2 (rung-3 search —
+decides the exception verdicts), E4 gauntlet, gen-end E1-b/critic-probe
+oracle retest.**
 
 > Editorial note 2026-07-14: restructured into runbook form (TL;DR, state of
 > play, exact commands per experiment). Pre-registered decision rules,
@@ -41,14 +41,14 @@ existing amendments) — never edit history.
 |---|---|---|---|
 | Instruments | scanners, probes, ladder, wrapper, calculators | **DONE 07-13** (commits 61a151ef..a866eaf8) | see Instruments table |
 | E1 | adherence across checkpoints | **DONE 07-13** — both conventions being learned; see Results | `adherence_sweep.{json,log}` |
-| E1-b | adherence on Stage-1 intermediate ckpts (850k/900k) | QUEUED 07-14 (queue step 1) | `adherence_sweep_stage1_intermediate.*` |
-| E2 pilot | 300 seeds, rung 2 | **DONE 07-13** — sanity + falsifier pass; see Results | `cf_called_suit_pilot.{json,log}` |
-| E2 full step 1 | 1200 seeds, rung 2 | QUEUED 07-14 (queue step 2) | `cf_called_suit_r2.*` |
-| E2 full step 2 | rungs 2b + 3 (4096-iter search subsample) | PENDING (post-Stage-1) | Runbook §E2 |
-| E3 step 1 | unconditional rung 2 + exception report | QUEUED 07-14 (queue steps 6-7, control-cap 800) | `cf_trump_unconditional.*`, `exception_report.json` |
-| E3 step 2 | rung-3 re-runs on flagged exceptions | PENDING (post-Stage-1) | Runbook §E3 |
-| E4 | wrapper gauntlet (raw vs @c1 vs @c1c2) | PENDING (post-Stage-1) | Runbook §E4 |
-| E5 | learnability numbers | critic-gap probes QUEUED 07-14 (final / Stage-1-850k / pfsp-1M, queue steps 3-5); SNR calc after E2/E3 land | Runbook §E5 |
+| E1-b | adherence on Stage-1 intermediate ckpts (850k/900k) | **DONE 07-15** — no C1 spike in oracle arms; see Results | `adherence_sweep_stage1_intermediate.*` |
+| E2 pilot | 300 seeds, rung 2 | **DONE 07-13** — sanity + falsifier pass | `cf_called_suit_pilot.{json,log}` |
+| E2 full step 1 | 1200 seeds, rung 2 | **DONE 07-15** — AGREE +4.4σ, PARTNER −2.7σ, DISAGREE null (verdict: underpowered) | `cf_called_suit_r2.*` |
+| E2 full step 2 | rungs 2b + 3 (4096-iter search subsample) | PENDING (post-Stage-1; de-biases AGREE/PARTNER magnitudes) | Runbook §E2 |
+| E3 step 1 | unconditional rung 2 + exception report | **DONE 07-15** — pooled −0.49 (10σ pro-convention) BUT 17.5% exceptions | `cf_trump_unconditional.*`, `exception_report.json` |
+| E3 step 2 | rung-3 re-runs on flagged exceptions | PENDING (post-Stage-1) — decides heuristic-with-exceptions verdict | Runbook §E3 |
+| E4 | wrapper gauntlet (raw vs @c1 vs @c1c2) | PENDING (post-Stage-1); pre-read: expect @c1 ≤ 0 (mask binds on justified exceptions) | Runbook §E4 |
+| E5 | learnability numbers | **DONE 07-15** (probes + SNR) — limited critic partially sighted; oracle≈limited at 850k (retest gen end); raw signal not the binding constraint | Runbook §E5 |
 
 All outputs go to `runs/convention_optimality_202607/` (gitignored — results
 are recorded in this document). All commands run from the repo root with
@@ -485,6 +485,98 @@ p(disagree) ≈ 0.083/game ⇒ ~0.02 score/game — consistent with expecting a
 small E4 wrapper effect at deploy (MDE 0.07 at 1000 deals would NOT resolve
 this; the wrapper arm is a bound, not a detection).
 
+## Results — 07-15 throttled queue (E1-b, E2 full rung 2, E3 rung 2, critic probes, E5)
+
+Queue `queue_202607_14.sh` ran 07-14 23:55 → 07-15 05:36, all 7 steps DONE,
+thread-capped alongside Stage 1. Logs/JSONs per step in
+`runs/convention_optimality_202607/`.
+
+### E2 full rung 2 (1200 seeds, R=50) — the C2 decision cell
+
+| group | n | true-deal MC Δscore (SE) | read |
+|---|---|---|---|
+| AGREE (sanity) | 150 | **+0.488 (0.110)** ≈ +4.4σ | convention genuinely valuable where followed |
+| DISAGREE (decision) | 71 | **+0.092 (0.138)** ≈ +0.7σ | CI ≈ [−0.18, +0.37] |
+| PARTNER (falsifier) | 150 | **−0.236 (0.089)** ≈ −2.7σ | fires correctly |
+
+**Pre-registered verdict (Q1, C2, rung 2): UNDERPOWERED / null.** Δ > 0 at 2σ
+not met; ≤ 0 at 2σ not met; per the rule we report the CI and stop. Two honest
+notes: (1) the pilot's Δ ≈ +0.25 shrank to +0.09 at full n — the model's
+residual deviations look approximately cost-neutral, not leak-like; detecting
++0.09 at 2σ would need ~650 cases ≈ 11k seeds. (2) DISAGREE yield was 71/1200
+seeds (pilot extrapolation said ~100) — adherence keeps rising, shrinking the
+class. Rungs 2b/3 (step 2) remain worthwhile mainly to de-bias AGREE/PARTNER
+magnitudes, not to rescue the DISAGREE cell.
+
+### E3 rung 2 (unconditional, 810 cases) + exception report — the C1 cell
+
+Pooled Δ (trump − fail) = **−0.490 (SE 0.046)**: the fail lead is worth ~half
+a score point on the average eligible node — the convention *direction* is
+supported at >10σ. But:
+
+* **Exception rate 17.5%** (142/810; Wilson 15.1–20.3%) — far above the
+  pre-registered 5% line. Per the rule the provisional verdict is
+  **heuristic-with-exceptions, PENDING rung-3 agreement** on sampled
+  exceptions (E3 step 2; the per-seed re-run commands are in the Runbook, top
+  candidates listed in `exception_report.json`).
+* Exceptions are NOT concentrated in trump-rich hands (rates by trump count:
+  1T 20.5%, 2T 12.5%, 3T 20.8%, 4T 24.5%) — the pre-registered "trump-heavy"
+  hypothesis is not supported; many top exceptions are LOW-DIAMOND leads over
+  a fail ten/ace.
+* The 10 remaining TRUMP-PREF nodes (the residual "leak") score Δ = **−0.130**
+  — on rung-2 evidence the model's surviving trump leads are *better* than
+  the best fail (n=10, weak, but sign-consistent with the exception story).
+
+**Emerging synthesis:** both conventions are genuinely good on average, the
+30M model has already internalized them, and its residual deviations look
+like *justified exceptions* rather than leaks (C2 DISAGREE ≈ 0, C1 residual
+trump leads negative-Δ). Caveat: all rung-2 / hindsight-biased until step-2
+search runs confirm.
+
+**E4 pre-read:** the @c1 wrapper mask only binds exactly on the TRUMP-PREF
+class — the nodes where the trump lead currently looks right — so expect the
+@c1 arm to measure ≤ 0. That would be the *correct* outcome, not a wrapper
+bug: blanket enforcement prices the exceptions.
+
+### E1-b — Stage-1 intermediate checkpoints (oracle-critic league arms)
+
+| checkpoint | episodes | C1 % (rich%) | C2 t0% (overall) |
+|---|---|---|---|
+| stage-1 full (oracle) | 850k | **1.15** (2.84) | 35.4 (40.8) |
+| stage-1 perceiver-v2 (oracle) | 900k | **0.45** (1.92) | 29.3 (41.4) |
+| reference pfsp (limited) | 1M | **7.80** (9.52) | 32.3 (44.6) |
+
+The reference lineage's C1 spike at 1M is **absent** in both oracle arms; C2
+sits in the same dip region (no acceleration yet). Confounded comparison
+(league + anchor + warmstart differ, not just critic mode) — suggestive only;
+the clean read is at gen end.
+
+### E5 — critic-gap probes + SNR numbers
+
+Critic probes (C2 nodes, 80 nodes × R=25, critic reward units; read
+sign-agree and r, not raw magnitude):
+
+| ckpt | realized gap (SE) | limited boot gap | oracle boot gap | sign-agree lim/orc | r lim/orc |
+|---|---|---|---|---|---|
+| final 30M | +0.032 (0.016) | +0.019 | – | 68% / – | +0.39 / – |
+| stage-1 full 850k | +0.000 (0.010) | +0.013 | +0.007 | 66% / 69% | +0.42 / +0.41 |
+| pfsp-1M | +0.022 (0.010) | +0.007 | – | 64% / – | +0.31 / – |
+
+The limited critic is **partially sighted** at C2 nodes (positive correlation,
+~2/3 sign agreement, attenuated magnitude) — not blind. Oracle ≈ limited at
+850k: the pre-registered "larger oracle gap" hypothesis is **not yet
+supported**, with two outs recorded in advance of the gen-end retest: the
+oracle head is only ~450k episodes old (fresh-init at the 400k warmstart), and
+the realized gap at this checkpoint's own nodes is ≈ 0 (nothing to see).
+
+SNR calculator (raw-signal bound): C2 DISAGREE N_detect ≈ 2.4k episodes; C1
+TRUMP-PREF ≈ 18k — both trivial vs budgets, BUT Δ̄ in both classes is ≈ 0 or
+negative, so these are "detecting a null": the raw signal was never the
+binding constraint at the current margins. The learnability bottleneck story
+(slow non-monotone acquisition, E1) is about credit assignment/variance along
+the way, not signal existence at 30M — the E1-b gen-end slope comparison
+stays the operative test.
+
 ---
 
 # Reference
@@ -539,8 +631,8 @@ count toward decision rules.**
 
 |  | Q1 optimal? | Q2 learnable terminal-only? |
 |---|---|---|
-| C1 never-lead-trump | E3 | E1 ✅ (learned, slowly) + E5 |
-| C2 lead-called-suit | E2 | E1 ✅ (learned, slowly) + E5 |
+| C1 never-lead-trump | E3 rung-2: optimal-on-average (10σ) but **17.5% exceptions** → provisional heuristic-with-exceptions, rung-3 pending | E1 ✅ learned (slowly); E5: signal exists, critic partially sighted |
+| C2 lead-called-suit | E2 rung-2: strongly valuable where followed (+0.49, 4.4σ); residual-deviation cell **null/underpowered** (CI −0.18..+0.37) | E1 ✅ learned (slowly); E5: same |
 
 4. If Q1=yes & Q2=no for either: the E4 wrapper verdict decides whether the
    product ships convention enforcement while training-side fixes (oracle
