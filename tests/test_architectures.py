@@ -208,6 +208,98 @@ class TestCheckpointArchMetadata(unittest.TestCase):
                 PPOAgent(len(ACTIONS), arch="no-transformer").load(path)
 
 
+class TestLegacyValueTrunkShim(unittest.TestCase):
+    """The pre-value_trunk critic shim, including the aliased re-save
+    signature (a shimmed agent saved again, e.g. by league seeding): the
+    aliased module used to serialize under both prefixes, leaving shallow
+    ``value_trunk.*`` copies that half-loaded into a fresh deep trunk."""
+
+    def _save_legacy(self, agent: PPOAgent, path: str) -> None:
+        """Persist ``agent`` as a pre-value_trunk checkpoint."""
+        agent.save(path)
+        ckpt = torch.load(path, map_location="cpu")
+        ckpt["critic_state_dict"] = {
+            k: v
+            for k, v in ckpt["critic_state_dict"].items()
+            if not k.startswith("value_trunk")
+        }
+        torch.save(ckpt, path)
+
+    def test_legacy_load_resave_roundtrip(self):
+        _seed_all(11)
+        agent = PPOAgent(len(ACTIONS))
+        with tempfile.TemporaryDirectory() as d:
+            legacy = os.path.join(d, "legacy.pt")
+            self._save_legacy(agent, legacy)
+            first = ppo.load_agent(legacy)
+            self.assertIs(first.critic.value_trunk, first.critic.critic_adapter)
+
+            # Re-save the shimmed agent (the league seeding path): the save
+            # must strip the aliased value_trunk.* duplicates...
+            resaved = os.path.join(d, "resaved.pt")
+            first.save(resaved)
+            ckpt = torch.load(resaved, map_location="cpu")
+            self.assertFalse(
+                any(
+                    k.startswith("value_trunk")
+                    for k in ckpt["critic_state_dict"]
+                )
+            )
+            # ...and the reload must shim again, with the trained weights.
+            second = ppo.load_agent(resaved)
+            self.assertIs(second.critic.value_trunk, second.critic.critic_adapter)
+            want = first.critic.critic_adapter.state_dict()
+            got = second.critic.value_trunk.state_dict()
+            for k, v in want.items():
+                self.assertTrue(torch.equal(v, got[k]), k)
+
+    def test_preexisting_aliased_resave_loads(self):
+        # The on-disk signature this shim extension fixes: value_trunk.*
+        # present as a shallow tensor-equal copy of critic_adapter.* (written
+        # by a save() that predates the strip).
+        _seed_all(12)
+        agent = PPOAgent(len(ACTIONS))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "aliased.pt")
+            agent.save(path)
+            ckpt = torch.load(path, map_location="cpu")
+            cs = {
+                k: v
+                for k, v in ckpt["critic_state_dict"].items()
+                if not k.startswith("value_trunk")
+            }
+            for k, v in list(cs.items()):
+                if k.startswith("critic_adapter."):
+                    cs["value_trunk." + k[len("critic_adapter.") :]] = v.clone()
+            ckpt["critic_state_dict"] = cs
+            torch.save(ckpt, path)
+
+            loaded = ppo.load_agent(path)
+            self.assertIs(loaded.critic.value_trunk, loaded.critic.critic_adapter)
+            want = agent.critic.critic_adapter.state_dict()
+            got = loaded.critic.value_trunk.state_dict()
+            for k, v in want.items():
+                self.assertTrue(torch.equal(v, got[k]), k)
+
+    def test_truncated_deep_trunk_does_not_shim(self):
+        # A real deep-trunk checkpoint missing only its deep layer is NOT the
+        # legacy signature (value_trunk.0/1 differ from critic_adapter.*):
+        # the shim must not silently alias it.
+        _seed_all(13)
+        agent = PPOAgent(len(ACTIONS))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "truncated.pt")
+            agent.save(path)
+            ckpt = torch.load(path, map_location="cpu")
+            for k in ("value_trunk.3.weight", "value_trunk.3.bias"):
+                del ckpt["critic_state_dict"][k]
+            torch.save(ckpt, path)
+            loaded = ppo.load_agent(path)
+            self.assertIsNot(
+                loaded.critic.value_trunk, loaded.critic.critic_adapter
+            )
+
+
 class TestNoAuxCritic(unittest.TestCase):
     def test_aux_modules_absent_and_accessors_raise(self):
         critic = RecurrentCriticNetwork(use_aux_heads=False)

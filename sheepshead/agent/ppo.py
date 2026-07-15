@@ -2680,11 +2680,23 @@ class PPOAgent:
         Oracle-mode agents additionally persist the privileged critic under
         OPTIONAL keys; every existing checkpoint consumer ignores them, and
         limited-mode saves are byte-compatible with the historical format."""
+        critic_state = self.critic.state_dict()
+        if self.critic.value_trunk is getattr(self.critic, "critic_adapter", None):
+            # Shim-aliased agent (see _apply_legacy_value_trunk_shim): the
+            # aliased module serializes under BOTH prefixes, and the shallow
+            # value_trunk.* copies would half-load into a fresh deep trunk on
+            # reload. Strip them so the re-save is canonical legacy format,
+            # which the shim recognizes.
+            critic_state = {
+                k: v
+                for k, v in critic_state.items()
+                if not k.startswith("value_trunk")
+            }
         payload = {
             "arch": self.arch_name,
             "encoder_state_dict": self.encoder.state_dict(),
             "actor_state_dict": self.actor.state_dict(),
-            "critic_state_dict": self.critic.state_dict(),
+            "critic_state_dict": critic_state,
             "actor_optimizer": self.actor_optimizer.state_dict(),
             "critic_optimizer": self.critic_optimizer.state_dict(),
         }
@@ -2705,17 +2717,35 @@ class PPOAgent:
         trained value fn) -- silently corrupting any ISMCTS critic bootstrap.
         Detect that case and re-point the value path at the trained
         ``critic_adapter`` so legacy checkpoints evaluate exactly as they
-        were trained. Returns True when the shim fired."""
-        ckpt_has_value_trunk = any(
-            k.startswith("value_trunk") for k in critic_state_dict
-        )
-        if (
-            any(k.startswith("value_trunk") for k in missing)
-            and not ckpt_has_value_trunk
+        were trained. Returns True when the shim fired.
+
+        Two checkpoint signatures qualify:
+        * the original legacy format: no ``value_trunk.*`` keys at all;
+        * an aliased re-save: a shimmed agent saved again by a save() that
+          predates the value_trunk strip (e.g. the league seeding path
+          re-persisting loaded members), so the aliased module serialized
+          under both prefixes -- ``value_trunk.*`` exists but is a shallow
+          copy of ``critic_adapter.*`` (no deep ``value_trunk.3``).
+        One rule covers both: every ``value_trunk.*`` key the checkpoint
+        does have must be tensor-equal to its ``critic_adapter.*``
+        counterpart (vacuously true for the original format). A genuinely
+        truncated deep-trunk checkpoint fails the equality and still warns."""
+        if not any(k.startswith("value_trunk") for k in missing):
+            return False
+        adapter = getattr(self.critic, "critic_adapter", None)
+        if adapter is None or not any(
+            k.startswith("critic_adapter.") for k in critic_state_dict
         ):
-            self.critic.value_trunk = self.critic.critic_adapter
-            return True
-        return False
+            return False
+        prefix = "value_trunk."
+        for k, v in critic_state_dict.items():
+            if not k.startswith(prefix):
+                continue
+            twin = critic_state_dict.get("critic_adapter." + k[len(prefix) :])
+            if twin is None or not torch.equal(v, twin):
+                return False
+        self.critic.value_trunk = adapter
+        return True
 
     def load_network_states(self, checkpoint, source: str = "<checkpoint>"):
         """Copy encoder/actor/critic tensors from a checkpoint payload and
@@ -2735,8 +2765,8 @@ class PPOAgent:
             checkpoint["critic_state_dict"], missing
         ):
             print(
-                f"Note: {source} predates value_trunk; routing the value head "
-                f"through the trained critic_adapter (legacy critic compatibility)."
+                f"Note: {source} carries no trained value_trunk; routing the value "
+                f"head through the trained critic_adapter (legacy critic compatibility)."
             )
         elif missing or unexpected:
             print(
