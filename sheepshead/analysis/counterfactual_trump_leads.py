@@ -685,7 +685,15 @@ def _find_cases(args) -> tuple[List[dict], List[dict]]:
         for spot in _classify_spots(resp, seed, args.partner_mode, args.max_trick):
             (trump_spots if spot["group"] == "trump" else fail_spots).append(spot)
 
-    n_control = int(round(len(trump_spots) * args.control_ratio))
+    # --control-cap decouples the control count from the TRUMP-PREF yield:
+    # the unconditional E3 run needs FAIL-PREF cases even when the policy no
+    # longer produces trump-pref nodes at tricks 0-1 (ratio x 0 = 0).
+    control_cap = getattr(args, "control_cap", None)
+    n_control = (
+        control_cap
+        if control_cap is not None
+        else int(round(len(trump_spots) * args.control_ratio))
+    )
     rng = random.Random(args.control_seed)
     rng.shuffle(fail_spots)
     fail_spots = fail_spots[:n_control]
@@ -1094,6 +1102,13 @@ def main() -> int:
         type=float,
         default=1.0,
         help="FAIL-PREF controls collected = TRUMP-PREF count * this (default 1.0).",
+    )
+    parser.add_argument(
+        "--control-cap",
+        type=int,
+        default=None,
+        help="Absolute FAIL-PREF control count (overrides --control-ratio); "
+        "for unconditional E3 runs where TRUMP-PREF is near-empty.",
     )
     parser.add_argument("--control-seed", type=int, default=0)
     parser.add_argument(
