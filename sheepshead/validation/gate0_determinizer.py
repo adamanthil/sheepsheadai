@@ -197,7 +197,6 @@ def rollout_score(game, mem, agent, forced_card, observer, n):
 def collect(agent, max_games, target, seed):
     """Find trick-0 defender TRUMP-pref lead states (seat 1 = leader = defender,
     argmax PLAY is a trump, a fail option also exists)."""
-    rng = random.Random(seed)
     states = []
     scanned = 0
     for g in range(max_games):

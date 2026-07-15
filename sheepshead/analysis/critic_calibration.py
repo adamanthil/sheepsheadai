@@ -173,7 +173,6 @@ def rollout_onpolicy(cand, agent, R, rng, seat=1):
 
 
 def collect(agent, max_games, cap_cal, cap_trump, seed):
-    rng = random.Random(seed)
     cal, trump_pref = [], []
     for g in range(max_games):
         if len(cal) >= cap_cal and len(trump_pref) >= cap_trump:

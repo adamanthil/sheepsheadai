@@ -76,7 +76,6 @@ def forced_encode(agent, player, pid):
 
 def _qualifies(player):
     """A defender lead with both a trump and a fail option in hand."""
-    g = player.game
     if player.is_picker or player.is_partner or player.is_secret_partner:
         return False
     has_trump = any(c in TRUMP for c in player.hand)
@@ -355,7 +354,6 @@ def check_legality(real_game, deal, observer):
 
 
 def collect(agent, max_games, target, trick, seed):
-    rng_seed = seed
     states = []
     scanned = 0
     g = 0
@@ -511,7 +509,6 @@ def summarize(rows, diag, tau, trick):
     oracle_d = np.array([r["oracle_d"] for r in rows])
     ess = np.array([r["ess"] for r in rows])
     acc = np.array([r["acc_rate"] for r in rows])
-    dp = np.array([r["dp"] for r in rows])
 
     md, mo, mu = float(det_d.mean()), float(oracle_d.mean()), float(uni_d.mean())
     sd, so = se(det_d), se(oracle_d)

@@ -113,7 +113,6 @@ def collect_trick0(agent, max_games, target, seed, min_raw_trump):
         game = Game(partner_selection_mode=mode)
         agent.reset_recurrent_state()
         forced_public = []
-        ok = True
         guard = 0
         while not game.play_started and guard < 200:
             guard += 1

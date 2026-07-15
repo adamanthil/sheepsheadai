@@ -577,7 +577,7 @@ Examples:
     simulator.run_simulation()
 
     # Analyze results
-    stats_summary = simulator.analyze_results()
+    simulator.analyze_results()
 
     # Generate plots
     simulator.generate_plots(args.output_dir)
