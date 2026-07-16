@@ -2784,7 +2784,7 @@ class PPOAgent:
 
         The single network-load path: both full checkpoint loads
         (``PPOAgent.load``) and the league workers' weight refreshes
-        (train_league_ppo._lw_play) go through here, so the non-strict
+        (train_league_ppo._league_worker_play) go through here, so the non-strict
         critic handling and the legacy value_trunk shim cannot drift apart.
         ``source`` only labels the printed diagnostics."""
         self.encoder.load_state_dict(checkpoint["encoder_state_dict"])
