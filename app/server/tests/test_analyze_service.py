@@ -164,12 +164,12 @@ def test_build_observation_decodes_state():
     from sheepshead import Game
 
     from server.runtime.seating import ANALYZE_SEAT_NAMES
-    from server.services.analyze import _build_observation
+    from server.services.analysis_common import build_observation
 
     game = Game(partner_selection_mode=1, seed=42)
     player = game.players[2]  # seat 3, pre-pick
 
-    obs = _build_observation(player.get_state_dict(), 3, ANALYZE_SEAT_NAMES)
+    obs = build_observation(player.get_state_dict(), 3, ANALYZE_SEAT_NAMES)
 
     assert sorted(obs.hand) == sorted(player.hand)
     assert obs.blind == []  # not the picker: blind is hidden

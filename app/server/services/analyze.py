@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import random
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import torch
 
 from server.api.schemas import (
     AnalyzeActionDetail,
     AnalyzeCalibrationSummary,
     AnalyzeGameSummary,
-    AnalyzeObservation,
-    AnalyzeObservationTrickSlot,
-    AnalyzeProbability,
     AnalyzeSeatCalibration,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
@@ -21,89 +15,20 @@ from server.api.schemas import (
 from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
-from sheepshead import ACTION_LOOKUP, DECK, DECK_IDS, TRUMP, Game
-from sheepshead.game import UNDER_CARD_ID, UNDER_TOKEN
+from server.services.analysis_common import (
+    build_observation,
+    build_probability_list,
+    infer_phase_from_action_id,
+    run_inference_step,
+    set_seed,
+)
+from sheepshead import ACTION_LOOKUP, DECK, Game
 from sheepshead.training.reward_shaping import (
-    compute_any_unseen_trump_higher_than_hand,
-    compute_known_points_rel,
-    compute_seen_trump_mask,
     handle_trick_completion,
     process_episode_rewards,
     process_terminal_rewards,
     update_intermediate_rewards_for_action,
 )
-
-
-def set_seed(seed: int) -> None:
-    """Set random seeds for reproducibility."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-
-
-def infer_phase_from_action_id(
-    action_id: int, action_groups: Dict[str, List[int]]
-) -> str:
-    """Infer the game phase from action ID using PPOAgent action groups."""
-    # Convert to 0-indexed
-    zero_indexed = action_id - 1
-
-    for phase, indices in action_groups.items():
-        if zero_indexed in indices:
-            return phase
-
-    return "unknown"
-
-
-# Card id -> card code (0 = empty stays unmapped; 33 = face-down under).
-_ID_TO_CARD: Dict[int, str] = {v: k for k, v in DECK_IDS.items()}
-_ID_TO_CARD[UNDER_CARD_ID] = UNDER_TOKEN
-
-
-def _build_observation(
-    state: Dict[str, Any], actor_seat: int, players: List[str]
-) -> AnalyzeObservation:
-    """Decode the acting player's state dict (the model's actual input)
-    into card codes for display."""
-
-    def cards(ids) -> List[str]:
-        return [_ID_TO_CARD[int(i)] for i in ids if int(i) != 0]
-
-    trick_slots: List[AnalyzeObservationTrickSlot] = []
-    for rel_idx in range(1, 6):
-        abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-        trick_slots.append(
-            AnalyzeObservationTrickSlot(
-                seat=abs_seat,
-                seatName=players[abs_seat - 1],
-                relativePosition=rel_idx,
-                card=_ID_TO_CARD.get(int(state["trick_card_ids"][rel_idx - 1])),
-                isPicker=bool(state["trick_is_picker"][rel_idx - 1]),
-                isPartnerKnown=bool(state["trick_is_partner_known"][rel_idx - 1]),
-            )
-        )
-
-    called_id = int(state["called_card_id"])
-    return AnalyzeObservation(
-        partnerMode=int(state["partner_mode"]),
-        isLeaster=bool(state["is_leaster"]),
-        playStarted=bool(state["play_started"]),
-        currentTrick=int(state["current_trick"]),
-        aloneCalled=bool(state["alone_called"]),
-        calledUnder=bool(state["called_under"]),
-        calledCard=_ID_TO_CARD.get(called_id) if called_id else None,
-        pickerRel=int(state["picker_rel"]),
-        partnerRel=int(state["partner_rel"]),
-        leaderRel=int(state["leader_rel"]),
-        pickerPosition=int(state["picker_position"]),
-        hand=cards(state["hand_ids"]),
-        blind=cards(state["blind_ids"]),
-        bury=cards(state["bury_ids"]),
-        trick=trick_slots,
-    )
 
 
 def _setup_simulation(
@@ -144,195 +69,6 @@ def _setup_simulation(
         )
 
     return agent, settings, game, initial_hands
-
-
-@dataclass
-class _StepInference:
-    """Encoder/actor/critic forward pass results and aux-head extraction for
-    one acting player's turn."""
-
-    state: Dict[str, Any]
-    valid_actions: List[int]
-    encoder_out: Dict[str, Any]
-    action_probs: torch.Tensor
-    logits: torch.Tensor
-    value: torch.Tensor
-    win_prob_val: Optional[float]
-    expected_final_val: Optional[float]
-    secret_partner_prob: Optional[float]
-    trump_seen_mask: List[Dict[str, Any]]
-    point_estimates: List[Dict[str, Any]]
-    point_actuals: List[Dict[str, Any]]
-    unseen_trump_higher_than_hand_prob: Optional[float]
-    unseen_trump_higher_than_hand_actual: Optional[bool]
-    memory_cosine_distance: Optional[float]
-    memory_norm: float
-
-
-def _run_inference_step(
-    agent: Any,
-    actor_player: Any,
-    actor_seat: int,
-    players: List[str],
-    device: torch.device,
-) -> _StepInference:
-    """Run the encoder/actor/critic forward pass for the current actor and
-    extract the auxiliary-head predictions (seen-trump mask, known-points
-    estimate, win probability, etc).
-
-    Stage (b) of ``simulate_game``: the per-step loop's inference block.
-    """
-    state = actor_player.get_state_dict()
-    valid_actions = actor_player.get_valid_action_ids()
-
-    # Get or init memory for this player
-    memory_in = agent.get_recurrent_memory(actor_player.position, device=device)
-
-    # Encode dict state with memory
-    encoder_out = agent.encoder.encode_batch(
-        [state], memory_in=memory_in.unsqueeze(0), device=device
-    )
-
-    # Store updated memory
-    memory_out = encoder_out["memory_out"][0]
-    agent.set_recurrent_memory(actor_player.position, memory_out)
-
-    # Memory drift across this encode. A zero memory_in is the seat's first
-    # encode: there is no previous belief state to drift from, so leave None.
-    memory_norm = float(memory_out.detach().norm().item())
-    if bool(torch.any(memory_in != 0)):
-        memory_cosine_distance = float(
-            1.0
-            - torch.nn.functional.cosine_similarity(
-                memory_in.detach().flatten(), memory_out.detach().flatten(), dim=0
-            ).item()
-        )
-    else:
-        memory_cosine_distance = None
-
-    with torch.no_grad():
-        # Build mask and hand ids for actor
-        action_mask_t = (
-            agent.get_action_mask(valid_actions, agent.action_size)
-            .unsqueeze(0)
-            .to(device)
-        )
-        hand_ids_t = torch.as_tensor(
-            state["hand_ids"], dtype=torch.long, device=device
-        ).view(1, -1)
-
-        # Use existing encoder_out for logits and probabilities
-        action_probs, logits = agent.actor.forward_with_logits(
-            encoder_out,
-            action_mask_t,
-            hand_ids_t,
-            agent.encoder.card,
-        )
-
-        value = agent.critic(encoder_out)
-
-        # Auxiliary critic heads via accessor. No-aux architecture variants
-        # (e.g. "no-aux", "perceiver") have no adapter or aux heads at all,
-        # so every aux-derived field stays None for them.
-        win_prob_val: Optional[float] = None
-        expected_final_val: Optional[float] = None
-        secret_partner_prob: Optional[float] = None
-        point_vector: Optional[List[float]] = None
-        seen_trump_mask_probs: Optional[List[float]] = None
-        unseen_trump_higher_than_hand_prob: Optional[float] = None
-        if agent.critic.has_aux_heads:
-            win_prob_val, expected_final_val, secret_partner_prob, point_vector = (
-                agent.critic.aux_predictions(encoder_out)
-            )
-            aux_feat = agent.critic.critic_adapter(encoder_out["features"])
-            seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(
-                aux_feat, agent.encoder.card
-            ).squeeze(0)
-            seen_trump_mask_probs = (
-                torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
-            )
-            unseen_trump_higher_than_hand_logit = (
-                agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
-            )
-            unseen_trump_higher_than_hand_prob = float(
-                torch.sigmoid(unseen_trump_higher_than_hand_logit).item()
-            )
-
-    trump_seen_mask: List[Dict[str, Any]] = []
-    unseen_trump_higher_than_hand_actual: Optional[bool] = None
-    if seen_trump_mask_probs is not None:
-        seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
-        unseen_trump_higher_than_hand_actual = bool(
-            compute_any_unseen_trump_higher_than_hand(actor_player)
-        )
-        trump_seen_mask = [
-            {
-                "card": TRUMP[i],
-                "probabilitySeen": float(seen_trump_mask_probs[i]),
-                "actualSeen": bool(seen_trump_mask_actual[i]),
-            }
-            for i in range(len(TRUMP))
-        ]
-
-    point_estimates: List[Dict[str, Any]] = []
-    if point_vector:
-        for rel_idx, rel_val in enumerate(point_vector, start=1):
-            abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-            seat_label = (
-                players[abs_seat - 1]
-                if 0 < abs_seat <= len(players)
-                else f"Seat {abs_seat}"
-            )
-            point_estimates.append(
-                {
-                    "seat": abs_seat,
-                    "seatName": seat_label,
-                    "points": rel_val,
-                    "relativePosition": rel_idx,
-                }
-            )
-
-    # Actuals exist only to be compared against the aux-head estimates, so
-    # they are omitted whenever the estimates are.
-    point_actuals: List[Dict[str, Any]] = []
-    known_points_rel = (
-        compute_known_points_rel(actor_player) if agent.critic.has_aux_heads else None
-    )
-    if known_points_rel:
-        for rel_idx, rel_val in enumerate(known_points_rel, start=1):
-            abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-            seat_label = (
-                players[abs_seat - 1]
-                if 0 < abs_seat <= len(players)
-                else f"Seat {abs_seat}"
-            )
-            point_actuals.append(
-                {
-                    "seat": abs_seat,
-                    "seatName": seat_label,
-                    "points": rel_val,
-                    "relativePosition": rel_idx,
-                }
-            )
-
-    return _StepInference(
-        state=state,
-        valid_actions=valid_actions,
-        encoder_out=encoder_out,
-        action_probs=action_probs,
-        logits=logits,
-        value=value,
-        win_prob_val=win_prob_val,
-        expected_final_val=expected_final_val,
-        secret_partner_prob=secret_partner_prob,
-        trump_seen_mask=trump_seen_mask,
-        point_estimates=point_estimates,
-        point_actuals=point_actuals,
-        unseen_trump_higher_than_hand_prob=unseen_trump_higher_than_hand_prob,
-        unseen_trump_higher_than_hand_actual=unseen_trump_higher_than_hand_actual,
-        memory_cosine_distance=memory_cosine_distance,
-        memory_norm=memory_norm,
-    )
 
 
 def _compute_oracle_values(
@@ -652,7 +388,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             # No valid actions found, game should be done
             break
 
-        inference = _run_inference_step(agent, actor_player, actor_seat, players, device)
+        inference = run_inference_step(agent, actor_player, actor_seat, players, device)
 
         if has_oracle:
             # Must be captured at decision time: hands shrink as cards play.
@@ -669,25 +405,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             dist = torch.distributions.Categorical(inference.action_probs)
             action_id = dist.sample().item() + 1  # Convert to 1-indexed
 
-        # Build probabilities list (only for valid actions, sorted descending)
-        probabilities = []
-        action_probs_np = inference.action_probs.squeeze().cpu().numpy()
-        logits_np = inference.logits.squeeze().cpu().numpy()
-        for valid_action_id in inference.valid_actions:
-            zero_indexed = valid_action_id - 1
-            prob = float(action_probs_np[zero_indexed])
-            logit = float(logits_np[zero_indexed])
-            probabilities.append(
-                AnalyzeProbability(
-                    actionId=valid_action_id,
-                    action=ACTION_LOOKUP[valid_action_id],
-                    prob=prob,
-                    logit=logit,
-                )
-            )
-
-        # Sort probabilities by probability descending
-        probabilities.sort(key=lambda x: x.prob, reverse=True)
+        # Per-valid-action probabilities, sorted descending
+        probabilities = build_probability_list(
+            inference.action_probs, inference.logits, inference.valid_actions
+        )
 
         # Get player state/view
         player_state = build_player_state(actor_player)
@@ -708,7 +429,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             validActionIds=inference.valid_actions,
             probabilities=probabilities,
             view=player_state["view"],
-            observation=_build_observation(inference.state, actor_seat, players),
+            observation=build_observation(inference.state, actor_seat, players),
             winProb=float(inference.win_prob_val)
             if inference.win_prob_val is not None
             else None,
