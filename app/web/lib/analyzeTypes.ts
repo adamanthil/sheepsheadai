@@ -9,10 +9,6 @@ export type AnalyzePointEstimate =
   components["schemas"]["AnalyzePointEstimate"];
 export type AnalyzeTrumpSeenMaskEntry =
   components["schemas"]["AnalyzeTrumpSeenMaskEntry"];
-export type AnalyzeGameSummary = components["schemas"]["AnalyzeGameSummary"];
-export type AnalyzeObservation = components["schemas"]["AnalyzeObservation"];
-export type AnalyzeObservationTrickSlot =
-  components["schemas"]["AnalyzeObservationTrickSlot"];
 export type AnalyzeCalibrationSummary =
   components["schemas"]["AnalyzeCalibrationSummary"];
 export type AnalyzeSeatCalibration =

@@ -3,8 +3,8 @@
 Everything here is per-decision plumbing used by both the full-game
 simulation (services.analyze) and the pick-scenario analysis
 (services.pick_analysis): seeding, the encoder/actor/critic forward pass
-with aux-head extraction, decoding the model's observation for display,
-and assembling the valid-action probability list.
+with aux-head extraction, and assembling the valid-action probability
+list.
 """
 
 from __future__ import annotations
@@ -16,23 +16,13 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
-from server.api.schemas import (
-    AnalyzeActionDetail,
-    AnalyzeObservation,
-    AnalyzeObservationTrickSlot,
-    AnalyzeProbability,
-)
-from sheepshead import ACTION_LOOKUP, DECK_IDS, TRUMP
-from sheepshead.game import UNDER_CARD_ID, UNDER_TOKEN
+from server.api.schemas import AnalyzeActionDetail, AnalyzeProbability
+from sheepshead import ACTION_LOOKUP, TRUMP
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,
 )
-
-# Card id -> card code (0 = empty stays unmapped; 33 = face-down under).
-ID_TO_CARD: Dict[int, str] = {v: k for k, v in DECK_IDS.items()}
-ID_TO_CARD[UNDER_CARD_ID] = UNDER_TOKEN
 
 
 def set_seed(seed: int) -> None:
@@ -57,49 +47,6 @@ def infer_phase_from_action_id(
             return phase
 
     return "unknown"
-
-
-def build_observation(
-    state: Dict[str, Any], actor_seat: int, players: List[str]
-) -> AnalyzeObservation:
-    """Decode the acting player's state dict (the model's actual input)
-    into card codes for display."""
-
-    def cards(ids) -> List[str]:
-        return [ID_TO_CARD[int(i)] for i in ids if int(i) != 0]
-
-    trick_slots: List[AnalyzeObservationTrickSlot] = []
-    for rel_idx in range(1, 6):
-        abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-        trick_slots.append(
-            AnalyzeObservationTrickSlot(
-                seat=abs_seat,
-                seatName=players[abs_seat - 1],
-                relativePosition=rel_idx,
-                card=ID_TO_CARD.get(int(state["trick_card_ids"][rel_idx - 1])),
-                isPicker=bool(state["trick_is_picker"][rel_idx - 1]),
-                isPartnerKnown=bool(state["trick_is_partner_known"][rel_idx - 1]),
-            )
-        )
-
-    called_id = int(state["called_card_id"])
-    return AnalyzeObservation(
-        partnerMode=int(state["partner_mode"]),
-        isLeaster=bool(state["is_leaster"]),
-        playStarted=bool(state["play_started"]),
-        currentTrick=int(state["current_trick"]),
-        aloneCalled=bool(state["alone_called"]),
-        calledUnder=bool(state["called_under"]),
-        calledCard=ID_TO_CARD.get(called_id) if called_id else None,
-        pickerRel=int(state["picker_rel"]),
-        partnerRel=int(state["partner_rel"]),
-        leaderRel=int(state["leader_rel"]),
-        pickerPosition=int(state["picker_position"]),
-        hand=cards(state["hand_ids"]),
-        blind=cards(state["blind_ids"]),
-        bury=cards(state["bury_ids"]),
-        trick=trick_slots,
-    )
 
 
 def build_probability_list(

@@ -6,7 +6,6 @@ import {
   AnalyzeSimulateResponse,
 } from "../../lib/analyzeTypes";
 import ActionTimeline from "./ActionTimeline";
-import GameSummary from "./GameSummary";
 import CalibrationSummary from "./CalibrationSummary";
 import MemoryDriftChart from "./MemoryDriftChart";
 import CardEmbeddingsPanel from "./CardEmbeddingsPanel";
@@ -89,6 +88,9 @@ export default function AnalyzePage() {
       `Seat ${seat}`
     );
   };
+
+  const seatNameOpt = (seat: number | undefined): string | undefined =>
+    seat ? seatName(seat) : undefined;
 
   const pickerWon =
     final && final.mode === "standard" && final.picker && final.scores
@@ -200,11 +202,32 @@ export default function AnalyzePage() {
                   ) : (
                     <>
                       Picker {seatName(final.picker)}
-                      {response.summary?.partner &&
-                        ` · Partner ${response.summary.partner}`}
+                      {final.partner
+                        ? ` · Partner ${seatName(final.partner)}`
+                        : ""}
                     </>
                   )}
                 </div>
+
+                {final.scores && (
+                  <div className={styles.finalScores}>
+                    {final.scores.map((score, i) => (
+                      <span
+                        key={i}
+                        className={`${styles.scoreChip} ${
+                          score > 0
+                            ? styles.scorePos
+                            : score < 0
+                              ? styles.scoreNeg
+                              : ""
+                        }`}
+                      >
+                        {seatName(i + 1)}{" "}
+                        <strong>{score > 0 ? `+${score}` : score}</strong>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {final.mode === "standard" && (
@@ -243,8 +266,6 @@ export default function AnalyzePage() {
               </div>
             </section>
           )}
-
-          {response.summary && <GameSummary summary={response.summary} />}
 
           {response.calibration && (
             <CalibrationSummary calibration={response.calibration} />
@@ -303,8 +324,8 @@ export default function AnalyzePage() {
 
             <ActionTimeline
               trace={response.trace}
-              picker={response.summary?.picker ?? undefined}
-              partner={response.summary?.partner ?? undefined}
+              picker={seatNameOpt(final?.picker)}
+              partner={seatNameOpt(final?.partner)}
               shapingWeightPercent={shapingWeightPercent}
               terminalRewards={terminalRewards}
               gamma={response.meta.gamma}

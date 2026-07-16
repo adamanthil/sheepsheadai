@@ -209,38 +209,6 @@ class AnalyzeTrumpSeenMaskEntry(BaseModel):
     actualSeen: bool
 
 
-class AnalyzeObservationTrickSlot(BaseModel):
-    seat: int  # absolute seat (1..5)
-    seatName: str
-    relativePosition: int  # 1 = actor, 2 = left-hand opponent, ... 5
-    card: Optional[str] = None  # None = empty slot; "UNDER" = face-down under
-    isPicker: bool
-    isPartnerKnown: bool
-
-
-class AnalyzeObservation(BaseModel):
-    """The observation the model actually received (Player.get_state_dict),
-    decoded from card ids to card codes. Blind/bury are empty unless the
-    actor is the picker — this mirrors exactly what the actor sees, unlike
-    the omniscient `view`."""
-
-    partnerMode: int  # 0 = JD, 1 = Called Ace
-    isLeaster: bool
-    playStarted: bool
-    currentTrick: int  # 0-indexed trick number
-    aloneCalled: bool
-    calledUnder: bool
-    calledCard: Optional[str] = None
-    pickerRel: int  # picker's relative seat (1 = actor .. 5; 0 = none yet)
-    partnerRel: int  # known partner's relative seat (0 = unknown/none)
-    leaderRel: int  # trick leader's relative seat (0 before play starts)
-    pickerPosition: int  # absolute picker seat (0 = none yet)
-    hand: List[str]
-    blind: List[str]  # empty unless actor is picker
-    bury: List[str]  # empty unless actor is picker
-    trick: List[AnalyzeObservationTrickSlot]  # relative seat order
-
-
 class AnalyzeActionDetail(BaseModel):
     stepIndex: int
     seat: int
@@ -277,7 +245,6 @@ class AnalyzeActionDetail(BaseModel):
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]
-    observation: AnalyzeObservation
 
 
 class AnalyzeSeatCalibration(BaseModel):
@@ -303,17 +270,6 @@ class AnalyzeCalibrationSummary(BaseModel):
     # (probabilitySeen > 0.5) matches the seen/unseen ground truth.
     trumpMaskAccuracy: Optional[float] = None
     trumpMaskCount: int = 0
-
-
-class AnalyzeGameSummary(BaseModel):
-    hands: Dict[str, List[str]]  # player name -> cards
-    blind: List[str]
-    picker: Optional[str] = None
-    partner: Optional[str] = None
-    bury: List[str]
-    pickerPoints: int
-    defenderPoints: int
-    scores: List[int]  # indexed by seat-1
 
 
 class AnalyzePickRequest(BaseModel):
@@ -359,7 +315,6 @@ class AnalyzePickResponse(BaseModel):
 
 class AnalyzeSimulateResponse(BaseModel):
     meta: Dict[str, Any]
-    summary: Optional[AnalyzeGameSummary] = None
     calibration: Optional[AnalyzeCalibrationSummary] = None
     trace: List[AnalyzeActionDetail]
     final: Optional[Dict[str, Any]] = None

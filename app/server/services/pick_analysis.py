@@ -30,7 +30,6 @@ from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
 from server.services.analysis_common import (
-    build_observation,
     build_probability_list,
     compute_oracle_values,
     infer_phase_from_action_id,
@@ -165,7 +164,6 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
                     inference.action_probs, inference.logits, inference.valid_actions
                 ),
                 view=build_player_state(actor_player)["view"],
-                observation=build_observation(inference.state, actor_seat, players),
                 winProb=inference.win_prob_val,
                 expectedFinalReturn=inference.expected_final_val,
                 secretPartnerProb=inference.secret_partner_prob,

@@ -235,6 +235,36 @@
   font-size: 0.95rem;
 }
 
+.finalScores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.scoreChip {
+  font-size: 0.8rem;
+  color: var(--an-ink-soft);
+  padding: 0.25rem 0.6rem;
+  background: var(--an-sunk);
+  border: 1px solid var(--an-rule);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.scoreChip strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.scorePos strong {
+  color: var(--an-pos);
+}
+
+.scoreNeg strong {
+  color: var(--an-neg);
+}
+
 .outcomeScore {
   text-align: center;
 }

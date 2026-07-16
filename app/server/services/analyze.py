@@ -7,7 +7,6 @@ import torch
 from server.api.schemas import (
     AnalyzeActionDetail,
     AnalyzeCalibrationSummary,
-    AnalyzeGameSummary,
     AnalyzeSeatCalibration,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
@@ -16,14 +15,13 @@ from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
 from server.services.analysis_common import (
-    build_observation,
     build_probability_list,
     compute_oracle_values,
     infer_phase_from_action_id,
     run_inference_step,
     set_seed,
 )
-from sheepshead import ACTION_LOOKUP, DECK, Game
+from sheepshead import ACTION_LOOKUP, Game
 from sheepshead.training.reward_shaping import (
     handle_trick_completion,
     process_episode_rewards,
@@ -34,9 +32,8 @@ from sheepshead.training.reward_shaping import (
 
 def _setup_simulation(
     req: AnalyzeSimulateRequest,
-) -> tuple[Any, Any, Game, Dict[str, List[str]]]:
-    """Seed RNGs, load the configured agent, deal the game, and capture the
-    initial hands for the summary.
+) -> tuple[Any, Any, Game]:
+    """Seed RNGs, load the configured agent, and deal the game.
 
     Stage (a) of ``simulate_game``: deal/agent setup + seeding.
     """
@@ -62,14 +59,7 @@ def _setup_simulation(
         seed=req.seed,
     )
 
-    # Capture initial hands for summary
-    initial_hands: Dict[str, List[str]] = {}
-    for player in game.players:
-        initial_hands[ANALYZE_SEAT_NAMES[player.position - 1]] = sorted(
-            list(player.hand), key=lambda card: DECK.index(card)
-        )
-
-    return agent, settings, game, initial_hands
+    return agent, settings, game
 
 
 def _compute_discounted_returns(
@@ -232,74 +222,25 @@ def _build_calibration_summary(
     )
 
 
-def _build_final_summary(
-    game: Game, initial_hands: Dict[str, List[str]], players: List[str]
-) -> tuple[Optional[Dict[str, Any]], Optional[AnalyzeGameSummary]]:
-    """Build the final-state payload and the game summary once the
-    simulation reaches a terminal game state.
+def _build_final_payload(game: Game) -> Optional[Dict[str, Any]]:
+    """Build the final-state payload once the simulation reaches a terminal
+    game state.
 
     Stage (d) of ``simulate_game`` (part 1): response assembly.
     """
-    final_payload: Optional[Dict[str, Any]] = None
-    game_summary: Optional[AnalyzeGameSummary] = None
-    if game.is_done():
-        from server.runtime.tables import build_player_state
+    if not game.is_done():
+        return None
+    from server.runtime.tables import build_player_state
 
-        # Use any player to get the final state
-        final_state = build_player_state(game.players[0])
-        final_payload = final_state["view"].get("final")
-
-        # Build game summary
-        picker_seat = game.picker if hasattr(game, "picker") and game.picker else 0
-        partner_seat = game.partner if hasattr(game, "partner") and game.partner else 0
-
-        # If partner not revealed yet, try to find the secret partner
-        if partner_seat == 0 and picker_seat > 0 and not game.alone_called:
-            for player in game.players:
-                if player.is_secret_partner:
-                    partner_seat = player.position
-                    break
-
-        # Get bury cards (from the picker or game)
-        bury_cards = []
-        if picker_seat > 0:
-            picker_player = game.players[picker_seat - 1]
-            bury_cards = (
-                list(picker_player.bury) if hasattr(picker_player, "bury") else []
-            )
-        elif hasattr(game, "bury"):
-            bury_cards = list(game.bury)
-
-        # Get point totals
-        picker_points = 0
-        defender_points = 0
-        if final_payload and final_payload.get("mode") == "standard":
-            picker_points = final_payload.get("picker_score", 0)
-            defender_points = final_payload.get("defender_score", 0)
-
-        # Get final scores
-        scores = [p.get_score() for p in game.players] if final_payload else [0] * 5
-
-        game_summary = AnalyzeGameSummary(
-            hands=initial_hands,
-            blind=game.blind,
-            picker=players[picker_seat - 1] if picker_seat > 0 else None,
-            partner=players[partner_seat - 1] if partner_seat > 0 else None,
-            bury=bury_cards,
-            pickerPoints=picker_points,
-            defenderPoints=defender_points,
-            scores=scores,
-        )
-
-    return final_payload, game_summary
+    # Use any player to get the final state
+    final_state = build_player_state(game.players[0])
+    return final_state["view"].get("final")
 
 
 def _assemble_response(
     req: AnalyzeSimulateRequest,
     settings: Any,
     agent: Any,
-    players: List[str],
-    game_summary: Optional[AnalyzeGameSummary],
     calibration: Optional[AnalyzeCalibrationSummary],
     trace: List[AnalyzeActionDetail],
     final_payload: Optional[Dict[str, Any]],
@@ -318,7 +259,6 @@ def _assemble_response(
             "criticMode": getattr(agent, "critic_mode", "limited"),
             "hasOracle": getattr(agent, "oracle_critic", None) is not None,
         },
-        summary=game_summary,
         calibration=calibration,
         trace=trace,
         final=final_payload,
@@ -328,7 +268,7 @@ def _assemble_response(
 def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     """Simulate a full Sheepshead game and return detailed analysis trace."""
 
-    agent, settings, game, initial_hands = _setup_simulation(req)
+    agent, settings, game = _setup_simulation(req)
 
     # Player display names
     players = ANALYZE_SEAT_NAMES
@@ -406,7 +346,6 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             validActionIds=inference.valid_actions,
             probabilities=probabilities,
             view=player_state["view"],
-            observation=build_observation(inference.state, actor_seat, players),
             winProb=float(inference.win_prob_val)
             if inference.win_prob_val is not None
             else None,
@@ -464,8 +403,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
         step_index += 1
 
-    # Get final state and build summary if game is done
-    final_payload, game_summary = _build_final_summary(game, initial_hands, players)
+    # Get final state if game is done
+    final_payload = _build_final_payload(game)
 
     # Compute discounted returns per action if we have any transitions
     _compute_discounted_returns(trace, episode_transitions, game, agent)
@@ -479,5 +418,5 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
     # Build response
     return _assemble_response(
-        req, settings, agent, players, game_summary, calibration, trace, final_payload
+        req, settings, agent, calibration, trace, final_payload
     )

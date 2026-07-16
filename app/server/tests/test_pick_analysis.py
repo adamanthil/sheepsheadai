@@ -76,7 +76,6 @@ def test_pick_scenario_targets_requested_seat(analyze_env, pick_agent):
     assert first.seat == 3
     assert first.phase == "pick"
     assert {p.action for p in first.probabilities} == {"PICK", "PASS"}
-    assert sorted(first.observation.hand) == sorted(hand)
 
     # Deal integrity: every seat's observed cards are disjoint and no forced
     # card leaked to another seat (decisions after a pick reveal the picker's

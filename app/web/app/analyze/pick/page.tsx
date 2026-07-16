@@ -8,7 +8,6 @@ import { apiErrorMessage, fetchFailureMessage } from "../../../lib/apiError";
 import { CardText, PlayingCard } from "../../../lib/ds";
 import ProbabilityBar from "../ProbabilityBar";
 import ActionInsights from "../ActionInsights";
-import ObservationView from "../ObservationView";
 import HandBlindPicker from "./HandBlindPicker";
 import styles from "./page.module.css";
 
@@ -94,13 +93,12 @@ function DecisionCard({
         className={styles.expandToggle}
         onClick={() => setExpanded((v) => !v)}
       >
-        {expanded ? "Hide details" : "Head predictions & observation"}
+        {expanded ? "Hide details" : "Head predictions"}
       </button>
 
       {expanded && (
         <div className={styles.decisionDetails}>
           <ActionInsights action={decision} />
-          <ObservationView observation={decision.observation} />
         </div>
       )}
     </div>

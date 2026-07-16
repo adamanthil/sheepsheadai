@@ -314,7 +314,6 @@ export interface components {
             memoryCosineDistance?: number | null;
             /** Memorynorm */
             memoryNorm?: number | null;
-            observation: components["schemas"]["AnalyzeObservation"];
             /** Oraclevalue */
             oracleValue?: number | null;
             /** Phase */
@@ -404,27 +403,6 @@ export interface components {
             /** Pcaexplainedvariance */
             pcaExplainedVariance: number[];
         };
-        /** AnalyzeGameSummary */
-        AnalyzeGameSummary: {
-            /** Blind */
-            blind: string[];
-            /** Bury */
-            bury: string[];
-            /** Defenderpoints */
-            defenderPoints: number;
-            /** Hands */
-            hands: {
-                [key: string]: string[];
-            };
-            /** Partner */
-            partner?: string | null;
-            /** Picker */
-            picker?: string | null;
-            /** Pickerpoints */
-            pickerPoints: number;
-            /** Scores */
-            scores: number[];
-        };
         /** AnalyzeModelResponse */
         AnalyzeModelResponse: {
             /** Arch */
@@ -440,60 +418,6 @@ export interface components {
             hasOracle: boolean;
             /** Modellabel */
             modelLabel: string;
-        };
-        /**
-         * AnalyzeObservation
-         * @description The observation the model actually received (Player.get_state_dict),
-         *     decoded from card ids to card codes. Blind/bury are empty unless the
-         *     actor is the picker — this mirrors exactly what the actor sees, unlike
-         *     the omniscient `view`.
-         */
-        AnalyzeObservation: {
-            /** Alonecalled */
-            aloneCalled: boolean;
-            /** Blind */
-            blind: string[];
-            /** Bury */
-            bury: string[];
-            /** Calledcard */
-            calledCard?: string | null;
-            /** Calledunder */
-            calledUnder: boolean;
-            /** Currenttrick */
-            currentTrick: number;
-            /** Hand */
-            hand: string[];
-            /** Isleaster */
-            isLeaster: boolean;
-            /** Leaderrel */
-            leaderRel: number;
-            /** Partnermode */
-            partnerMode: number;
-            /** Partnerrel */
-            partnerRel: number;
-            /** Pickerposition */
-            pickerPosition: number;
-            /** Pickerrel */
-            pickerRel: number;
-            /** Playstarted */
-            playStarted: boolean;
-            /** Trick */
-            trick: components["schemas"]["AnalyzeObservationTrickSlot"][];
-        };
-        /** AnalyzeObservationTrickSlot */
-        AnalyzeObservationTrickSlot: {
-            /** Card */
-            card?: string | null;
-            /** Ispartnerknown */
-            isPartnerKnown: boolean;
-            /** Ispicker */
-            isPicker: boolean;
-            /** Relativeposition */
-            relativePosition: number;
-            /** Seat */
-            seat: number;
-            /** Seatname */
-            seatName: string;
         };
         /**
          * AnalyzePickOutcome
@@ -637,7 +561,6 @@ export interface components {
             meta: {
                 [key: string]: unknown;
             };
-            summary?: components["schemas"]["AnalyzeGameSummary"] | null;
             /** Trace */
             trace: components["schemas"]["AnalyzeActionDetail"][];
         };
