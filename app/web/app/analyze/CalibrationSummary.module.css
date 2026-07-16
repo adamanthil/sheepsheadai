@@ -1,0 +1,201 @@
+/* CalibrationSummary: per-seat aux-head prediction quality rollup.
+   Palette tokens (--an-*) are inherited from page.module.css .container. */
+
+.calibrationSummary {
+  background: var(--an-panel);
+  border-radius: 12px;
+  border: 1px solid var(--an-rule);
+  box-shadow: var(--an-shadow-sm);
+  padding: 1.5rem 1.75rem;
+}
+
+.header {
+  margin-bottom: 1.25rem;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 400;
+  color: var(--an-ink);
+  margin: 0 0 0.35rem 0;
+}
+
+.subhead {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--an-muted);
+  line-height: 1.5;
+  max-width: 60ch;
+}
+
+.tableWrap {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--an-rule);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.8fr 0.8fr 1.6fr 1fr 0.8fr;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--an-rule);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.headRow {
+  background: var(--an-sunk);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--an-muted);
+}
+
+.cellSeat {
+  font-weight: 600;
+  color: var(--an-ink-soft);
+  font-size: 0.85rem;
+}
+
+.cellResult {
+  display: flex;
+}
+
+.resultMarker {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+}
+
+.resultWon {
+  color: var(--an-pos);
+  background: color-mix(in oklab, var(--an-pos) 12%, transparent);
+}
+
+.resultLost {
+  color: var(--an-neg);
+  background: color-mix(in oklab, var(--an-neg) 10%, transparent);
+}
+
+.cellCount {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--an-ink-soft);
+  font-size: 0.85rem;
+}
+
+.cellTrend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.trajectory {
+  width: 56px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.trajectoryBaseline {
+  stroke: var(--an-track);
+  stroke-width: 1;
+}
+
+.trajectoryLine {
+  stroke: var(--an-accent);
+  stroke-width: 1.5;
+}
+
+.trajectoryDot {
+  fill: var(--an-accent-soft);
+  stroke: var(--an-panel);
+  stroke-width: 1;
+}
+
+.trajectoryDotEnd {
+  fill: var(--an-accent-strong);
+}
+
+.trendText {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--an-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cellNum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--an-ink);
+  font-size: 0.85rem;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--an-rule);
+}
+
+.footerStat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.footerLabel {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--an-muted);
+}
+
+.footerValue {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--an-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.footerSub {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--an-muted);
+  margin-left: 0.15rem;
+}
+
+@media (max-width: 768px) {
+  .calibrationSummary {
+    padding: 1.25rem;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 0.75rem;
+  }
+
+  .headRow {
+    display: none;
+  }
+
+  .cellTrend {
+    justify-content: flex-start;
+  }
+}

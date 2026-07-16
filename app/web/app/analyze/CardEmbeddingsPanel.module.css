@@ -1,0 +1,252 @@
+/* CardEmbeddingsPanel: self-fetching collapsible panel — PCA scatter +
+   cosine-similarity heatmap of the model's learned card-embedding table.
+   Palette tokens (--an-*) are inherited from page.module.css .container. */
+
+.panel {
+  background: var(--an-panel);
+  border-radius: 14px;
+  border: 1px solid var(--an-rule);
+  box-shadow: var(--an-shadow-sm);
+  overflow: hidden;
+}
+
+.summary {
+  padding: 1.25rem 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.summary:hover {
+  background: var(--an-sunk);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 400;
+  color: var(--an-ink);
+}
+
+.expandIcon {
+  color: var(--an-muted);
+  transition: transform 0.2s ease;
+}
+
+.expandIcon.expanded {
+  transform: rotate(180deg);
+}
+
+.body {
+  padding: 0 1.75rem 1.75rem 1.75rem;
+  border-top: 1px solid var(--an-rule);
+  background: var(--an-sunk);
+}
+
+.status {
+  padding: 1.5rem 0;
+  color: var(--an-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.errorBox {
+  margin-top: 1.25rem;
+  background: #fdecec;
+  border: 1px solid #f6c9c9;
+  color: var(--an-neg);
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+
+.retryButton {
+  background: var(--an-neg);
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.metaLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  padding: 1.25rem 0 0.5rem 0;
+  font-size: 0.8rem;
+  color: var(--an-muted);
+}
+
+.metaLine strong {
+  color: var(--an-ink-soft);
+  font-weight: 600;
+}
+
+.sectionTitle {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+  margin: 1.5rem 0 0.75rem 0;
+}
+
+/* PCA scatter */
+.scatterWrap {
+  width: 100%;
+  max-width: 420px;
+}
+
+.scatterSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule);
+  border-radius: 10px;
+}
+
+.pointLabel {
+  font-size: 7.5px;
+  font-family: var(--font-mono);
+  fill: var(--an-ink-soft);
+}
+
+.pointLabelUnder {
+  font-size: 7.5px;
+  font-family: var(--font-mono);
+  font-style: italic;
+  fill: var(--an-muted);
+}
+
+.pointUnder {
+  fill: var(--an-muted);
+  opacity: 0.6;
+}
+
+.scatterLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--an-muted);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legendDotFilled {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--an-ink-soft);
+  flex-shrink: 0;
+}
+
+.legendDotHollow {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--an-ink-soft);
+  background: var(--an-panel);
+  flex-shrink: 0;
+}
+
+.legendSwatchRed {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--card-red);
+  flex-shrink: 0;
+}
+
+.legendSwatchBlack {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--card-black);
+  flex-shrink: 0;
+}
+
+.legendSwatchUnder {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--an-muted);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* Cosine similarity heatmap */
+.heatmapWrap {
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.heatmapGrid {
+  display: grid;
+  width: max-content;
+}
+
+.heatCorner {
+  background: var(--an-sunk);
+}
+
+.heatColLabel,
+.heatRowLabel {
+  font-size: 7px;
+  font-family: var(--font-mono);
+  color: var(--an-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--an-panel);
+}
+
+.heatColLabel {
+  writing-mode: vertical-rl;
+  align-items: flex-end;
+  padding-bottom: 2px;
+}
+
+.heatRowLabel {
+  justify-content: flex-end;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+
+.heatCell {
+  box-sizing: border-box;
+}
+
+.boundaryRight {
+  border-right: 2px solid var(--an-ink-soft);
+}
+
+.boundaryBottom {
+  border-bottom: 2px solid var(--an-ink-soft);
+}
+
+@media (max-width: 768px) {
+  .body {
+    padding: 0 1rem 1.25rem 1rem;
+  }
+
+  .metaLine {
+    gap: 0.75rem;
+  }
+}
