@@ -67,6 +67,28 @@
             ],
             "title": "Expectedfinalreturn"
           },
+          "memoryCosineDistance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memorycosinedistance"
+          },
+          "memoryNorm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memorynorm"
+          },
           "observation": {
             "$ref": "#/components/schemas/AnalyzeObservation"
           },

@@ -163,6 +163,8 @@ class _StepInference:
     point_actuals: List[Dict[str, Any]]
     unseen_trump_higher_than_hand_prob: Optional[float]
     unseen_trump_higher_than_hand_actual: Optional[bool]
+    memory_cosine_distance: Optional[float]
+    memory_norm: float
 
 
 def _run_inference_step(
@@ -190,7 +192,21 @@ def _run_inference_step(
     )
 
     # Store updated memory
-    agent.set_recurrent_memory(actor_player.position, encoder_out["memory_out"][0])
+    memory_out = encoder_out["memory_out"][0]
+    agent.set_recurrent_memory(actor_player.position, memory_out)
+
+    # Memory drift across this encode. A zero memory_in is the seat's first
+    # encode: there is no previous belief state to drift from, so leave None.
+    memory_norm = float(memory_out.detach().norm().item())
+    if bool(torch.any(memory_in != 0)):
+        memory_cosine_distance = float(
+            1.0
+            - torch.nn.functional.cosine_similarity(
+                memory_in.detach().flatten(), memory_out.detach().flatten(), dim=0
+            ).item()
+        )
+    else:
+        memory_cosine_distance = None
 
     with torch.no_grad():
         # Build mask and hand ids for actor
@@ -312,6 +328,8 @@ def _run_inference_step(
         point_actuals=point_actuals,
         unseen_trump_higher_than_hand_prob=unseen_trump_higher_than_hand_prob,
         unseen_trump_higher_than_hand_actual=unseen_trump_higher_than_hand_actual,
+        memory_cosine_distance=memory_cosine_distance,
+        memory_norm=memory_norm,
     )
 
 
@@ -579,6 +597,8 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             trumpSeenMask=inference.trump_seen_mask or None,
             unseenTrumpHigherThanHandProb=inference.unseen_trump_higher_than_hand_prob,
             unseenTrumpHigherThanHandActual=inference.unseen_trump_higher_than_hand_actual,
+            memoryCosineDistance=inference.memory_cosine_distance,
+            memoryNorm=inference.memory_norm,
         )
 
         trace.append(action_detail)

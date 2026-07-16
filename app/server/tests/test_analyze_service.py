@@ -56,6 +56,18 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
         assert step.probabilities
         assert step.valueEstimate == step.valueEstimate  # not NaN
         assert step.observation.hand
+        assert step.memoryNorm is not None
+
+    # Memory drift: a None distance can only happen on a seat's first
+    # decision (zero memory going in); afterwards the seat's own previous
+    # encode guarantees non-zero memory, so a distance is always reported.
+    seen_seats: set[int] = set()
+    for step in resp.trace:
+        if step.seat in seen_seats:
+            assert step.memoryCosineDistance is not None
+        seen_seats.add(step.seat)
+    # The very first decision of the game always starts from zero memory.
+    assert resp.trace[0].memoryCosineDistance is None
 
 
 def test_build_observation_decodes_state():

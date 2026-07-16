@@ -236,6 +236,12 @@ class AnalyzeActionDetail(BaseModel):
     trumpSeenMask: Optional[List[AnalyzeTrumpSeenMaskEntry]] = None
     unseenTrumpHigherThanHandProb: Optional[float] = None  # [0,1]
     unseenTrumpHigherThanHandActual: Optional[bool] = None
+    # Recurrent-memory drift at this decision: cosine distance between the
+    # actor's GRU memory before and after their own encode. Measured only at
+    # the actor's decisions (trick-completion observes update memory too but
+    # are not sampled here). None on the seat's first encode (memory is zeros).
+    memoryCosineDistance: Optional[float] = None
+    memoryNorm: Optional[float] = None
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]

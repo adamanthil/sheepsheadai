@@ -268,6 +268,10 @@ export interface components {
             discountedReturn?: number | null;
             /** Expectedfinalreturn */
             expectedFinalReturn?: number | null;
+            /** Memorycosinedistance */
+            memoryCosineDistance?: number | null;
+            /** Memorynorm */
+            memoryNorm?: number | null;
             observation: components["schemas"]["AnalyzeObservation"];
             /** Phase */
             phase: string;
