@@ -1,0 +1,205 @@
+{
+ "full-limited": {
+  "state_hash": "34377715a23512e914d3a2e496dbd7be85083783f63ee923619bd36446d1bdfc",
+  "stats": {
+   "advantage_stats": {
+    "head_n": {
+     "bury": 12,
+     "partner": 6,
+     "pick": 6,
+     "play": 180
+    },
+    "head_std": {
+     "bury": 0.06543882511723448,
+     "partner": 0.06905201452303947,
+     "pick": 0.060833982413996505,
+     "play": 0.2489258783879944
+    },
+    "max": 0.14475464573949118,
+    "mean": -0.18970015407699983,
+    "min": -1.240110343158245,
+    "std": 0.24200626789621416
+   },
+   "anchor": {
+    "active": false,
+    "kl": 0.0,
+    "loss": 0.0
+   },
+   "approx_kl": 0.001460330211557448,
+   "critic_losses": {
+    "points": 0.1161097526550293,
+    "return": 0.0060773642733693125,
+    "secret_partner": 0.09285645186901093,
+    "seen_trump_mask": 0.14897853136062622,
+    "unseen_trump_higher_than_hand": 0.05883589088916779,
+    "value": 0.5188489519059658,
+    "win": 0.0351134866476059
+   },
+   "distill": {
+    "loss": 0.0,
+    "pg_masked_fraction": 0.0,
+    "pi_target_entropy": 0.0,
+    "teacher_kl": 0.0
+   },
+   "early_stop": false,
+   "head_entropy": {
+    "bury": 0.1169767826795578,
+    "partner": 0.02359691634774208,
+    "pick": 0.017161723226308823,
+    "play": 0.6115606725215912
+   },
+   "num_transitions": 204,
+   "oracle": null,
+   "pick_pass_adv": {
+    "pass_count": 0,
+    "pass_mean": 0.0,
+    "pick_count": 12,
+    "pick_mean": 0.5072226921717325
+   },
+   "value_target_stats": {
+    "max": 0.3333333333333333,
+    "mean": 0.07854779963038898,
+    "min": -1.0,
+    "std": 0.22998646092871364
+   }
+  }
+ },
+ "full-oracle": {
+  "state_hash": "c9fe341353600ce208296713eceedca6a9a36b9ef9940f93fd02ed08476640b7",
+  "stats": {
+   "advantage_stats": {
+    "head_n": {
+     "bury": 12,
+     "partner": 6,
+     "pick": 10,
+     "play": 180
+    },
+    "head_std": {
+     "bury": 0.03132295320777257,
+     "partner": 0.030180775120215043,
+     "pick": 0.032671115167471565,
+     "play": 0.14813750853788657
+    },
+    "max": 0.6873787882551551,
+    "mean": 0.11004041860118807,
+    "min": -0.08261111709466873,
+    "std": 0.13934349684684297
+   },
+   "anchor": {
+    "active": false,
+    "kl": 0.0,
+    "loss": 0.0
+   },
+   "approx_kl": 0.003923806827515364,
+   "critic_losses": {
+    "points": 0.1277629554271698,
+    "return": 0.015770912170410156,
+    "secret_partner": 0.0848323941230774,
+    "seen_trump_mask": 0.15244582295417786,
+    "unseen_trump_higher_than_hand": 0.05677321255207062,
+    "value": 0.29531143605709076,
+    "win": 0.035241191089153294
+   },
+   "distill": {
+    "loss": 0.0,
+    "pg_masked_fraction": 0.0,
+    "pi_target_entropy": 0.0,
+    "teacher_kl": 0.0
+   },
+   "early_stop": false,
+   "head_entropy": {
+    "bury": 0.11398749053478241,
+    "partner": 0.023671990260481834,
+    "pick": 0.028311312198638916,
+    "play": 0.601684033870697
+   },
+   "num_transitions": 208,
+   "oracle": {
+    "ev_limited": -0.09308156702561021,
+    "ev_oracle": -0.07603299254722318,
+    "value_loss": 0.4297760184854269
+   },
+   "pick_pass_adv": {
+    "pass_count": 8,
+    "pass_mean": -0.511321485042572,
+    "pick_count": 12,
+    "pick_mean": -0.4637260437011719
+   },
+   "value_target_stats": {
+    "max": 0.5,
+    "mean": 0.054880620619663374,
+    "min": -0.09455103671175576,
+    "std": 0.12142124627547242
+   }
+  }
+ },
+ "perceiver-shared-v2-oracle": {
+  "state_hash": "a4ec0a5198e52bd1dfa083a285ccca5c4a8c06224abfa9122c1c3a68d0a48afc",
+  "stats": {
+   "advantage_stats": {
+    "head_n": {
+     "bury": 12,
+     "partner": 6,
+     "pick": 14,
+     "play": 180
+    },
+    "head_std": {
+     "bury": 0.03132964807703012,
+     "partner": 0.02787532778599181,
+     "pick": 0.022697813871207746,
+     "play": 0.1530402718926298
+    },
+    "max": 0.46758931004089455,
+    "mean": 0.10295980864152326,
+    "min": -0.6574741005897522,
+    "std": 0.1416076295476405
+   },
+   "anchor": {
+    "active": false,
+    "kl": 0.0,
+    "loss": 0.0
+   },
+   "approx_kl": 0.0020674928091466427,
+   "critic_losses": {
+    "points": 0.14658185243606567,
+    "return": 0.006522020697593689,
+    "secret_partner": 0.045638065040111545,
+    "seen_trump_mask": 0.12591075301170349,
+    "unseen_trump_higher_than_hand": 0.06772426366806031,
+    "value": 0.9109183074906468,
+    "win": 0.0353007048368454
+   },
+   "distill": {
+    "loss": 0.0,
+    "pg_masked_fraction": 0.0,
+    "pi_target_entropy": 0.0,
+    "teacher_kl": 0.0
+   },
+   "early_stop": false,
+   "head_entropy": {
+    "bury": 0.11120405793190002,
+    "partner": 0.01635088725015521,
+    "pick": 0.04207736253738403,
+    "play": 0.5284551084041595
+   },
+   "num_transitions": 212,
+   "oracle": {
+    "ev_limited": -0.4155169309803646,
+    "ev_oracle": -0.4285047767757968,
+    "value_loss": 0.2914408864453435
+   },
+   "pick_pass_adv": {
+    "pass_count": 16,
+    "pass_mean": 0.036050112918019295,
+    "pick_count": 12,
+    "pick_mean": 0.06338867048422496
+   },
+   "value_target_stats": {
+    "max": 0.08661845840513704,
+    "mean": -0.19993838925019455,
+    "min": -0.5,
+    "std": 0.11033950041212523
+   }
+  }
+ }
+}
