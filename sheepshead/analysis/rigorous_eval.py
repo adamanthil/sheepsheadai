@@ -2,17 +2,16 @@
 """
 Rigorous strength comparison for Sheepshead RL agents.
 
-Why this exists (vs. tournament_eval.py)
-----------------------------------------
+Why this exists (vs. a round-robin tournament)
+----------------------------------------------
 A Sheepshead hand is *exactly zero-sum* across the 5 seats (picker 2x, partner
 1x, three defenders -1x per multiplier; leaster +4/-1x4; alone 4x/-1x4 -- every
 hand sums to 0; see Player.get_score in sheepshead.py). Consequences:
 
   * "Average score per hand" has no absolute meaning -- it is defined only
     relative to whoever fills the other seats. Measuring each snapshot against a
-    rotating pool of all the *other* snapshots (as tournament_eval.py does) gives
-    a number that shifts every time the pool changes and is mechanically pinned
-    near 0.
+    rotating pool of all the *other* snapshots gives a number that shifts every
+    time the pool changes and is mechanically pinned near 0.
   * Teammate composition (dynamic 2-v-3 teams) is a large, uncontrolled
     confounder when every seat is a different model.
   * Policies act deterministically, so the unit of independent randomness is the
