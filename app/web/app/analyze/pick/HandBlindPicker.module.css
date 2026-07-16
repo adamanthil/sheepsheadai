@@ -1,0 +1,191 @@
+/* Scenario deal builder: hand/blind target slots + the 32-card deck grid.
+   Inherits the --an-* palette from the analyze layout shell. */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+/* --- Target slots ------------------------------------------------------ */
+
+.targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.targetGroup {
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--an-sunk);
+  border: 1px solid var(--an-rule);
+  border-radius: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.targetActive {
+  border-color: var(--an-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--an-accent) 14%, transparent);
+}
+
+.targetButton {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--an-ink);
+}
+
+.targetLabel {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.targetCount {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--an-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.targetCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-height: 1.9rem;
+  align-items: center;
+}
+
+.randomNote {
+  font-size: 0.8rem;
+  color: var(--an-muted);
+  font-style: italic;
+}
+
+.selectedCard {
+  padding: 0.25rem 0.5rem;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule-strong);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.selectedCard:hover {
+  border-color: var(--an-neg);
+}
+
+.targetActions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.miniButton {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  background: var(--an-panel);
+  color: var(--an-ink-soft);
+  border: 1px solid var(--an-rule);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.miniButton:hover {
+  border-color: var(--an-accent);
+  color: var(--an-accent-strong);
+}
+
+/* --- Deck grid ---------------------------------------------------------- */
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gridRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.rowLabel {
+  flex: 0 0 3.6rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+  text-align: right;
+}
+
+.rowCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.card {
+  min-width: 2.6rem;
+  padding: 0.35rem 0.4rem;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule-strong);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    transform 0.12s ease;
+}
+
+.card:hover {
+  border-color: var(--an-accent);
+  transform: translateY(-1px);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--an-accent);
+  outline-offset: 1px;
+}
+
+.cardInHand {
+  background: color-mix(in oklab, var(--an-accent) 14%, var(--an-panel));
+  border-color: var(--an-accent);
+}
+
+.cardInBlind {
+  background: color-mix(in oklab, var(--an-actual) 16%, var(--an-panel));
+  border-color: var(--an-actual);
+}
+
+.cardDim {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cardDim:hover {
+  transform: none;
+  border-color: var(--an-rule-strong);
+}
+
+@media (max-width: 640px) {
+  .rowLabel {
+    flex-basis: 2.9rem;
+  }
+
+  .card {
+    min-width: 2.3rem;
+    padding: 0.3rem 0.3rem;
+    font-size: 0.78rem;
+  }
+}
