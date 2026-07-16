@@ -774,7 +774,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     does not write into the training buffer.
     """
     rng_state = random.getstate()
-    saved_mem = {pid: t.detach().clone() for pid, t in agent._player_memories.items()}
+    saved_mem = agent.snapshot_player_memories()
     random.seed(seed)
     picks = passes = 0
     alone = partner_decisions = 0
@@ -851,7 +851,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
             if game.is_leaster:
                 leasters += 1
     finally:
-        agent._player_memories = saved_mem
+        agent.restore_player_memories(saved_mem)
         random.setstate(rng_state)
     return {
         "games": n_games,

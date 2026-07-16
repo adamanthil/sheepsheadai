@@ -44,11 +44,11 @@ DEV = ppo.device
 # Shared helpers
 # ---------------------------------------------------------------------------
 def snapshot_memory(agent):
-    return {pid: t.detach().clone() for pid, t in agent._player_memories.items()}
+    return agent.snapshot_player_memories()
 
 
 def restore_memory(agent, snap):
-    agent._player_memories = {pid: t.detach().clone() for pid, t in snap.items()}
+    agent.restore_player_memories(snap)
 
 
 def _is_private(valid):

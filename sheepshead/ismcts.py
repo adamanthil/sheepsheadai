@@ -291,20 +291,14 @@ class ISMCTSTeacher:
             for agent in self._seat_policies.values():
                 involved[id(agent)] = agent
         saved_memories = {
-            agent_id: {
-                player_id: memory.detach().clone()
-                for player_id, memory in agent._player_memories.items()
-            }
+            agent_id: agent.snapshot_player_memories()
             for agent_id, agent in involved.items()
         }
         try:
             return self._search_inner(real_game, observer, forced_public)
         finally:
             for agent_id, agent in involved.items():
-                agent._player_memories = {
-                    player_id: memory.detach().clone()
-                    for player_id, memory in saved_memories[agent_id].items()
-                }
+                agent.restore_player_memories(saved_memories[agent_id])
             self._d_rollout_override = None
             self._seat_policies = None
 

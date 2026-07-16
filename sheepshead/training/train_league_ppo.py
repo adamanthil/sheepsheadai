@@ -631,10 +631,7 @@ def run_main_phase(
             # Anchored strength probe: paired CRN greedy edge vs the frozen
             # reference (fixed deal set => probe-to-probe diffs are paired).
             if anchor_eval is not None and episode % anchor_eval["interval"] == 0:
-                saved_mem = {
-                    pid: t.detach().clone()
-                    for pid, t in training_agent._player_memories.items()
-                }
+                saved_mem = training_agent.snapshot_player_memories()
                 probe = paired_edge(
                     training_agent,
                     anchor_eval["agent"],
@@ -643,7 +640,7 @@ def run_main_phase(
                     seed=LEAGUE_ANCHOR_EVAL_SEED,
                     log_every=0,
                 )
-                training_agent._player_memories = saved_mem
+                training_agent.restore_player_memories(saved_mem)
                 print(
                     f"⚓ Anchored eval vs {anchor_eval['label']}: "
                     f"{probe['edge']:+.3f} ± {probe['se']:.3f} score/deal "

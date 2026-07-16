@@ -353,6 +353,20 @@ class PPOAgent:
         """Set the recurrent memory vector for a player."""
         self._player_memories[player_id] = memory_vector
 
+    def snapshot_player_memories(self) -> dict:
+        """Return a detached, cloned copy of all per-player memory tensors."""
+        return {pid: t.detach().clone() for pid, t in self._player_memories.items()}
+
+    def restore_player_memories(self, snapshot: dict) -> None:
+        """Replace per-player memories with detached clones from a snapshot."""
+        self._player_memories = {
+            pid: t.detach().clone() for pid, t in snapshot.items()
+        }
+
+    def clear_player_memories(self) -> None:
+        """Reset all per-player memories to empty."""
+        self._player_memories = {}
+
     def _build_action_index_mappings(self):
         """Precompute global action index mappings for card-specific actions."""
         map_cid_to_play_action_index = torch.full((34,), -1, dtype=torch.long)

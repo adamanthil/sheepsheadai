@@ -215,11 +215,11 @@ def _probe_action_probs(agent: PPOAgent, state, valid_actions, player_id) -> np.
     found 2026-06-10: 73% vs 7% greedy trump-lead rate on identical weights;
     see validation/exit_validation.py). Snapshot, probe, restore.
     """
-    saved_mem = {pid: t.detach().clone() for pid, t in agent._player_memories.items()}
+    saved_mem = agent.snapshot_player_memories()
     probs, _ = agent.get_action_probs_with_logits(
         state, valid_actions, player_id=player_id
     )
-    agent._player_memories = saved_mem
+    agent.restore_player_memories(saved_mem)
     return probs[0].detach().cpu().numpy()
 
 

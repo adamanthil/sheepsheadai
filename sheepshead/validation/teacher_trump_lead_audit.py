@@ -169,14 +169,11 @@ def main():
                         and any(c not in TRUMP for c in player.hand)
                     )
                     if is_t0_def_lead and len(rows) < args.nodes:
-                        saved_mem = {
-                            pid: t.detach().clone()
-                            for pid, t in agent._player_memories.items()
-                        }
+                        saved_mem = agent.snapshot_player_memories()
                         probs, _ = agent.get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
-                        agent._player_memories = saved_mem
+                        agent.restore_player_memories(saved_mem)
                         prior = probs[0].detach().cpu().numpy()
                         prior_mass = _trump_mass(prior, valid)
                         if args.only_leak_nodes:
