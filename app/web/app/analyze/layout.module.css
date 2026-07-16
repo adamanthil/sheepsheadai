@@ -1,0 +1,148 @@
+/* Analyze shell: declares the scoped --an-* palette for BOTH analysis tools
+   (/analyze and /analyze/pick) so every co-located module file inherits it
+   by cascade, and renders the shared masthead + tab nav.
+
+   Design language: cool, light dashboard. Blue = model/prediction,
+   orange = actual/ground-truth, green/red = good/bad outcomes. Serif display
+   headings + monospace numerals tie back to the main app. */
+
+.shell {
+  --an-page: linear-gradient(180deg, #f4f7fb 0%, #eaeef5 100%);
+  --an-panel: #ffffff;
+  --an-sunk: #f5f7fb; /* subtle nested/expanded section bg */
+  --an-rule: #e4e8ef;
+  --an-rule-strong: #cdd4df;
+  --an-ink: #1e2a3a;
+  --an-ink-soft: #3b4757;
+  --an-muted: #6a7585;
+  --an-accent: #2563eb;
+  --an-accent-strong: #1d4ed8;
+  --an-accent-soft: #60a5fa;
+  --an-actual: #f97316; /* "actual / seen" marker */
+  --an-pos: #15803d;
+  --an-neg: #dc2626;
+  --an-highlight: #fdf3d3;
+  --an-track: #e7ecf3; /* progress-bar tracks */
+  --an-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04),
+    0 1px 3px rgba(16, 24, 40, 0.05);
+  --an-shadow: 0 2px 4px rgba(16, 24, 40, 0.04),
+    0 10px 28px rgba(16, 24, 40, 0.08);
+
+  min-height: 100vh;
+  background: var(--an-page);
+  color: var(--an-ink-soft);
+}
+
+.masthead {
+  border-bottom: 1px solid var(--an-rule);
+  background: color-mix(in oklab, var(--an-panel) 72%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.mastheadInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.4rem 2rem 0;
+}
+
+.mastheadTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.homeLink {
+  font-size: 0.8rem;
+  color: var(--an-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  flex: 1 0 0;
+}
+
+.homeLink:hover {
+  color: var(--an-accent);
+}
+
+/* Mirrors .homeLink's flex share so the title stays optically centered. */
+.homeSpacer {
+  flex: 1 0 0;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--an-ink);
+  margin: 0;
+  text-align: center;
+}
+
+.tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 0.9rem;
+}
+
+.tab {
+  position: relative;
+  padding: 0.55rem 1.1rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 550;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+  text-decoration: none;
+  border-radius: 8px 8px 0 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--an-ink);
+  background: color-mix(in oklab, var(--an-accent) 6%, transparent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--an-accent);
+  outline-offset: -2px;
+}
+
+.tabActive {
+  color: var(--an-accent-strong);
+}
+
+.tabActive::after {
+  content: "";
+  position: absolute;
+  left: 0.9rem;
+  right: 0.9rem;
+  bottom: -1px; /* sits on the masthead's border */
+  height: 2px;
+  background: var(--an-accent);
+}
+
+.content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+@media (max-width: 768px) {
+  .mastheadInner {
+    padding: 1rem 1rem 0;
+  }
+
+  .mastheadTop {
+    flex-wrap: wrap;
+  }
+
+  .title {
+    font-size: 1.5rem;
+  }
+
+  .content {
+    padding: 1rem;
+  }
+}

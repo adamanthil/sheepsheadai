@@ -7,8 +7,22 @@ import {
 } from "../../lib/analyzeTypes";
 import ActionTimeline from "./ActionTimeline";
 import GameSummary from "./GameSummary";
+import CalibrationSummary from "./CalibrationSummary";
+import MemoryDriftChart from "./MemoryDriftChart";
+import CardEmbeddingsPanel from "./CardEmbeddingsPanel";
 import { apiFetch } from "../../lib/api";
 import styles from "./page.module.css";
+
+/** Shape of the untyped `final` payload (server: runtime/views.py). */
+type AnalyzeFinal = {
+  mode?: string;
+  winner?: number;
+  picker?: number;
+  partner?: number;
+  picker_score?: number;
+  defender_score?: number;
+  scores?: number[];
+};
 
 export default function AnalyzePage() {
   // Form state
@@ -28,7 +42,6 @@ export default function AnalyzePage() {
   const handleSimulate = async () => {
     setError(null);
     setLoading(true);
-    setResponse(null);
 
     try {
       const requestBody: AnalyzeSimulateRequest = {
@@ -77,16 +90,23 @@ export default function AnalyzePage() {
     }
   };
 
+  const final = (response?.final ?? null) as AnalyzeFinal | null;
+
+  const seatName = (seat: number | undefined): string => {
+    if (!seat || !response) return `Seat ${seat ?? "?"}`;
+    return (
+      response.trace.find((step) => step.seat === seat)?.seatName ??
+      `Seat ${seat}`
+    );
+  };
+
+  const pickerWon =
+    final && final.mode === "standard" && final.picker && final.scores
+      ? final.scores[final.picker - 1] > 0
+      : null;
+
   return (
     <div className={styles.container}>
-      {/* Header */}
-      <div className={styles.header}>
-        <h1 className={styles.title}>AI Model Analysis</h1>
-        <p className={styles.subtitle}>
-          Simulate a Sheepshead game and explore the AI's decisions.
-        </p>
-      </div>
-
       {/* Error Display */}
       {error && (
         <div className={styles.error}>
@@ -94,178 +114,215 @@ export default function AnalyzePage() {
         </div>
       )}
 
-      {/* Controls Panel */}
-      <div className={styles.controlsPanel}>
-        <h2 className={styles.controlsTitle}>Simulation Settings</h2>
-
-        <div className={styles.controlsGrid}>
-          <div className={styles.controlGroup}>
-            <label htmlFor="partnerMode" className={styles.label}>
-              Partner Mode
-            </label>
-            <select
-              id="partnerMode"
-              className={styles.select}
-              value={partnerMode}
-              onChange={(e) => setPartnerMode(parseInt(e.target.value, 10))}
-            >
-              <option value={0}>Jack of Diamonds</option>
-              <option value={1}>Called Ace</option>
-            </select>
-          </div>
-
-          <div className={styles.controlGroup}>
-            <label htmlFor="seed" className={styles.label}>
-              Random Seed (optional)
-            </label>
-            <input
-              id="seed"
-              type="text"
-              className={styles.input}
-              placeholder="Leave empty for random"
-              value={seed}
-              onChange={(e) => handleSeedChange(e.target.value)}
-            />
-          </div>
-
-        </div>
-
-        <div className={styles.rewardControls}>
-          <div className={styles.checkboxWrapper}>
-            <input
-              type="checkbox"
-              id="deterministic"
-              className={styles.checkbox}
-              checked={deterministic}
-              onChange={(e) => setDeterministic(e.target.checked)}
-            />
-            <label htmlFor="deterministic" className={styles.checkboxLabel}>
-              Deterministic (greedy)
-            </label>
-          </div>
-
-          <div className={styles.checkboxWrapper}>
-            <input
-              type="checkbox"
-              id="terminalRewards"
-              className={styles.checkbox}
-              checked={terminalRewards}
-              onChange={(e) => setTerminalRewards(e.target.checked)}
-            />
-            <label htmlFor="terminalRewards" className={styles.checkboxLabel}>
-              Terminal-only (no shaping)
-            </label>
-          </div>
-
-          <div
-            className={styles.shapingControl}
-            style={{ opacity: terminalRewards ? 0.45 : 1 }}
+      {/* Compact controls bar */}
+      <div className={styles.controlsBar}>
+        <div className={styles.controlGroup}>
+          <label htmlFor="partnerMode" className={styles.label}>
+            Partner mode
+          </label>
+          <select
+            id="partnerMode"
+            className={styles.select}
+            value={partnerMode}
+            onChange={(e) => setPartnerMode(parseInt(e.target.value, 10))}
           >
-            <label htmlFor="shapingWeight" className={styles.shapingLabel}>
-              Shaping weight
-            </label>
-            <input
-              id="shapingWeight"
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={shapingWeightPercent}
-              onChange={(e) =>
-                setShapingWeightPercent(parseInt(e.target.value, 10))
-              }
-              className={styles.range}
-              disabled={terminalRewards}
-            />
-            <span className={styles.rangeValue}>
-              {terminalRewards ? "—" : `${shapingWeightPercent}%`}
-            </span>
-          </div>
+            <option value={0}>Jack of Diamonds</option>
+            <option value={1}>Called Ace</option>
+          </select>
         </div>
 
-        <div className={styles.buttonRow}>
-          <button
-            className={styles.simulateButton}
-            onClick={handleSimulate}
-            disabled={loading}
-          >
-            {loading && <div className={styles.spinner} />}
-            {loading ? "Simulating..." : "Simulate Game"}
-          </button>
+        <div className={styles.controlGroup}>
+          <label htmlFor="seed" className={styles.label}>
+            Seed
+          </label>
+          <input
+            id="seed"
+            type="text"
+            className={styles.input}
+            placeholder="random"
+            value={seed}
+            onChange={(e) => handleSeedChange(e.target.value)}
+          />
         </div>
+
+        <label className={styles.checkboxWrapper} htmlFor="deterministic">
+          <input
+            type="checkbox"
+            id="deterministic"
+            className={styles.checkbox}
+            checked={deterministic}
+            onChange={(e) => setDeterministic(e.target.checked)}
+          />
+          <span className={styles.checkboxLabel}>Deterministic</span>
+        </label>
+
+        <button
+          className={styles.simulateButton}
+          onClick={handleSimulate}
+          disabled={loading}
+        >
+          {loading && <span className={styles.spinner} />}
+          {loading ? "Simulating…" : "Simulate game"}
+        </button>
       </div>
 
-      {/* Results Panel */}
-      {(response || loading) && (
-        <div className={styles.resultsPanel}>
-          <div className={styles.resultsHeader}>
-            <h2 className={styles.resultsTitle}>Game Analysis</h2>
-            {response && (
-              <div className={styles.meta}>
-                <div className={styles.metaItem}>
-                  <span>Steps: {response.trace.length}</span>
+      {!response && !loading && (
+        <div className={styles.emptyState}>
+          <p>
+            Simulate a full game to inspect every decision the model makes:
+            action probabilities, value estimates, auxiliary-head predictions,
+            and the exact observation behind each choice.
+          </p>
+        </div>
+      )}
+
+      {loading && (
+        <div className={styles.loading}>
+          <span className={styles.spinner} />
+          Analyzing game decisions…
+        </div>
+      )}
+
+      {response && !loading && (
+        <>
+          {/* Outcome banner — the verdict first, everything else below */}
+          {final && (
+            <section
+              className={`${styles.outcomeBanner} ${
+                final.mode === "leaster"
+                  ? styles.outcomeLeaster
+                  : pickerWon
+                    ? styles.outcomeWin
+                    : styles.outcomeLoss
+              }`}
+            >
+              <div className={styles.outcomeVerdict}>
+                <h2 className={styles.verdictText}>
+                  {final.mode === "leaster"
+                    ? "Leaster"
+                    : pickerWon
+                      ? "Picker side wins"
+                      : "Defenders win"}
+                </h2>
+                <div className={styles.verdictDetail}>
+                  {final.mode === "leaster" ? (
+                    <>Winner: {seatName(final.winner)} (fewest points)</>
+                  ) : (
+                    <>
+                      Picker {seatName(final.picker)}
+                      {response.summary?.partner &&
+                        ` · Partner ${response.summary.partner}`}
+                    </>
+                  )}
                 </div>
-                <div className={styles.metaItem}>
-                  <span>
-                    Partner:{" "}
-                    {response.meta.partnerMode === 1
-                      ? "Called Ace"
-                      : "Jack of Diamonds"}
-                  </span>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>
-                    Mode:{" "}
-                    {response.meta.deterministic
-                      ? "Deterministic"
-                      : "Stochastic"}
-                  </span>
-                </div>
-                <div className={styles.metaItem}>
-                  <span>
-                    Rewards:{" "}
-                    {terminalRewards
-                      ? "Terminal-only"
-                      : `Shaped (${shapingWeightPercent}%)`}
-                  </span>
-                </div>
-                {response.meta.seed && (
-                  <div className={styles.metaItem}>
-                    <span>Seed: {response.meta.seed}</span>
+              </div>
+
+              {final.mode === "standard" && (
+                <div className={styles.outcomeScore}>
+                  <div className={styles.scoreFigure}>
+                    <span>{final.picker_score}</span>
+                    <span className={styles.scoreDivider}>:</span>
+                    <span>{final.defender_score}</span>
                   </div>
+                  <div className={styles.scoreLabels}>
+                    <span>picker</span>
+                    <span />
+                    <span>defenders</span>
+                  </div>
+                </div>
+              )}
+
+              <div className={styles.outcomeChips}>
+                <span className={styles.chip}>
+                  {response.trace.length} decisions
+                </span>
+                <span className={styles.chip}>
+                  {response.meta.partnerMode === 1
+                    ? "Called Ace"
+                    : "Jack of Diamonds"}
+                </span>
+                <span className={styles.chip}>
+                  {response.meta.deterministic ? "Deterministic" : "Stochastic"}
+                </span>
+                {response.meta.seed != null && (
+                  <span className={styles.chip}>Seed {response.meta.seed}</span>
                 )}
-                {response.final && (
-                  <div className={styles.metaItem}>
-                    <span>
-                      {response.final.mode === "leaster"
-                        ? `Leaster - Winner: Seat ${response.final.winner}`
-                        : `Picker: Seat ${response.final.picker}, Partner: Seat ${response.final.partner}`}
-                    </span>
-                  </div>
+                {response.meta.model && (
+                  <span className={styles.chip}>{response.meta.model}</span>
                 )}
               </div>
-            )}
-          </div>
+            </section>
+          )}
 
-          {loading ? (
-            <div className={styles.loading}>
-              <div className={styles.spinner} />
-              Analyzing game decisions...
+          {response.summary && <GameSummary summary={response.summary} />}
+
+          {response.calibration && (
+            <CalibrationSummary calibration={response.calibration} />
+          )}
+
+          <MemoryDriftChart trace={response.trace} />
+
+          <CardEmbeddingsPanel />
+
+          {/* Decision timeline */}
+          <section className={styles.resultsPanel}>
+            <div className={styles.resultsHeader}>
+              <h2 className={styles.resultsTitle}>Decision Timeline</h2>
+
+              <div className={styles.rewardControls}>
+                <label
+                  className={styles.checkboxWrapper}
+                  htmlFor="terminalRewards"
+                >
+                  <input
+                    type="checkbox"
+                    id="terminalRewards"
+                    className={styles.checkbox}
+                    checked={terminalRewards}
+                    onChange={(e) => setTerminalRewards(e.target.checked)}
+                  />
+                  <span className={styles.checkboxLabel}>
+                    Terminal-only rewards
+                  </span>
+                </label>
+
+                <div
+                  className={styles.shapingControl}
+                  style={{ opacity: terminalRewards ? 0.45 : 1 }}
+                >
+                  <label htmlFor="shapingWeight" className={styles.shapingLabel}>
+                    Shaping weight
+                  </label>
+                  <input
+                    id="shapingWeight"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={shapingWeightPercent}
+                    onChange={(e) =>
+                      setShapingWeightPercent(parseInt(e.target.value, 10))
+                    }
+                    className={styles.range}
+                    disabled={terminalRewards}
+                  />
+                  <span className={styles.rangeValue}>
+                    {terminalRewards ? "—" : `${shapingWeightPercent}%`}
+                  </span>
+                </div>
+              </div>
             </div>
-          ) : response ? (
-            <>
-              {response.summary && <GameSummary summary={response.summary} />}
-              <ActionTimeline
-                trace={response.trace}
-                picker={response.summary?.picker ?? undefined}
-                partner={response.summary?.partner ?? undefined}
-                shapingWeightPercent={shapingWeightPercent}
-                terminalRewards={terminalRewards}
-                gamma={response.meta.gamma}
-              />
-            </>
-          ) : null}
-        </div>
+
+            <ActionTimeline
+              trace={response.trace}
+              picker={response.summary?.picker ?? undefined}
+              partner={response.summary?.partner ?? undefined}
+              shapingWeightPercent={shapingWeightPercent}
+              terminalRewards={terminalRewards}
+              gamma={response.meta.gamma}
+            />
+          </section>
+        </>
       )}
     </div>
   );

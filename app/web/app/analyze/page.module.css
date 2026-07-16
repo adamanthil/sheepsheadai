@@ -1,144 +1,56 @@
-/* Analyze page shell + the scoped palette for the whole analyze view.
-
-   The --an-* custom properties below are declared on .container, which wraps
-   every analyze component, so all co-located module files inherit them by
-   cascade. Change a color here once and it updates the entire view.
-
-   Design language: cool, light dashboard. Blue = model/prediction,
-   orange = actual/ground-truth, green/red = good/bad outcomes. Serif display
-   headings + monospace numerals tie back to the main app. */
+/* Game-analysis page. The scoped --an-* palette and the page chrome
+   (masthead, tabs, max-width, background) live in layout.module.css; this
+   file only styles the page's own sections, results-first:
+   outcome banner -> summary/diagnostics -> decision timeline. */
 
 .container {
-  --an-page: linear-gradient(180deg, #f4f7fb 0%, #eaeef5 100%);
-  --an-panel: #ffffff;
-  --an-sunk: #f5f7fb; /* subtle nested/expanded section bg */
-  --an-rule: #e4e8ef;
-  --an-rule-strong: #cdd4df;
-  --an-ink: #1e2a3a;
-  --an-ink-soft: #3b4757;
-  --an-muted: #6a7585;
-  --an-accent: #2563eb;
-  --an-accent-strong: #1d4ed8;
-  --an-accent-soft: #60a5fa;
-  --an-actual: #f97316; /* "actual / seen" marker */
-  --an-pos: #15803d;
-  --an-neg: #dc2626;
-  --an-highlight: #fdf3d3; /* state-vector value highlight */
-  --an-track: #e7ecf3; /* progress-bar tracks */
-  --an-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04),
-    0 1px 3px rgba(16, 24, 40, 0.05);
-  --an-shadow: 0 2px 4px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.08);
-
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-  min-height: 100vh;
-  background: var(--an-page);
-  color: var(--an-ink-soft);
-}
-
-.header {
-  text-align: center;
-  margin-bottom: 3rem;
-}
-
-.title {
-  font-family: var(--font-display);
-  font-size: 2.75rem;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  color: var(--an-ink);
-  margin-bottom: 1rem;
-}
-
-.subtitle {
-  font-size: 1.1rem;
-  color: var(--an-muted);
-  max-width: 600px;
-  margin: 0 auto;
-  line-height: 1.6;
-}
-
-/* Controls Panel */
-.controlsPanel {
-  background: var(--an-panel);
-  border-radius: 14px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: var(--an-shadow-sm);
-  border: 1px solid var(--an-rule);
-}
-
-.controlsTitle {
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  font-weight: 400;
-  color: var(--an-ink);
-  margin-bottom: 1.5rem;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-/* Two full-width bands: the labeled text fields on top, then a single inline
-   row of reward/decision controls. Both bands span the panel edge-to-edge so
-   their left/right rules line up. */
-.controlsGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem 1.5rem;
-  margin-bottom: 1.25rem;
-}
+/* --- Compact controls bar ------------------------------------------- */
 
-/* The toggles and the shaping slider share one row. The pills are content-sized
-   and the slider control flexes to fill the remaining width, so it is never
-   stranded on a line by itself. */
-.rewardControls {
+.controlsBar {
   display: flex;
   flex-wrap: wrap;
-  align-items: stretch;
+  align-items: end;
   gap: 0.85rem;
-  margin-bottom: 2rem;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  box-shadow: var(--an-shadow-sm);
 }
 
 .controlGroup {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.3rem;
 }
 
 .label {
   font-weight: 500;
-  color: var(--an-ink-soft);
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.rangeValue {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--an-ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.range {
-  width: 100%;
-  accent-color: var(--an-accent);
+  color: var(--an-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .select,
-.input,
-.checkbox {
-  padding: 0.75rem;
+.input {
+  padding: 0.55rem 0.7rem;
   border: 1px solid var(--an-rule-strong);
   border-radius: 8px;
   font-size: 0.875rem;
   background: var(--an-panel);
   color: var(--an-ink);
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input {
+  width: 7rem;
+  font-family: var(--font-mono);
 }
 
 .select:focus,
@@ -152,56 +64,23 @@
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.6rem 0.9rem;
+  padding: 0.55rem 0.9rem;
   background: var(--an-sunk);
   border-radius: 8px;
   border: 1px solid var(--an-rule);
-  transition: all 0.2s ease;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .checkboxWrapper:hover {
   background: #eef2f8;
 }
 
-/* Inline shaping-weight control: sits in the reward row beside the toggles and
-   flexes to absorb the leftover width. Same pill skin as the checkboxes so the
-   row reads as one cohesive band. */
-.shapingControl {
-  flex: 1 1 260px;
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 0.6rem 0.95rem;
-  background: var(--an-sunk);
-  border-radius: 8px;
-  border: 1px solid var(--an-rule);
-  transition: opacity 0.2s ease;
-}
-
-.shapingLabel {
-  font-weight: 500;
-  color: var(--an-ink-soft);
-  font-size: 0.875rem;
-  white-space: nowrap;
-}
-
-.shapingControl .range {
-  flex: 1;
-  min-width: 80px;
-}
-
-.shapingControl .rangeValue {
-  margin-left: 0;
-  min-width: 2.5rem;
-  text-align: right;
-}
-
 .checkbox {
   margin: 0;
   padding: 0;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.1rem;
+  height: 1.1rem;
   cursor: pointer;
   accent-color: var(--an-accent);
 }
@@ -210,9 +89,12 @@
   margin: 0;
   cursor: pointer;
   user-select: none;
+  font-size: 0.875rem;
+  color: var(--an-ink-soft);
 }
 
 .simulateButton {
+  margin-left: auto;
   background: linear-gradient(
     135deg,
     var(--an-accent) 0%,
@@ -220,23 +102,26 @@
   );
   color: #ffffff;
   border: none;
-  padding: 1rem 2rem;
+  padding: 0.7rem 1.6rem;
   border-radius: 10px;
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
-  display: flex;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   justify-content: center;
-  min-width: 200px;
-  box-shadow: 0 6px 16px -6px color-mix(in oklab, var(--an-accent) 70%, transparent);
+  box-shadow: 0 6px 16px -6px
+    color-mix(in oklab, var(--an-accent) 70%, transparent);
 }
 
 .simulateButton:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px -6px color-mix(in oklab, var(--an-accent) 75%, transparent);
+  box-shadow: 0 10px 24px -6px
+    color-mix(in oklab, var(--an-accent) 75%, transparent);
 }
 
 .simulateButton:disabled {
@@ -246,24 +131,160 @@
   box-shadow: none;
 }
 
-.buttonRow {
+/* --- Empty / loading / error ----------------------------------------- */
+
+.emptyState {
+  padding: 3.5rem 2rem;
+  text-align: center;
+  color: var(--an-muted);
+  border: 1px dashed var(--an-rule-strong);
+  border-radius: 12px;
+}
+
+.emptyState p {
+  max-width: 520px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.loading {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: var(--an-muted);
 }
 
-/* Error Styling */
 .error {
   background: #fdecec;
   border: 1px solid #f6c9c9;
   color: var(--an-neg);
   padding: 1rem;
   border-radius: 10px;
-  margin-bottom: 2rem;
 }
 
-/* Results Panel */
+.spinner {
+  border: 2px solid var(--an-track);
+  border-radius: 50%;
+  border-top: 2px solid var(--an-accent);
+  width: 18px;
+  height: 18px;
+  animation: spin 1s linear infinite;
+  flex: 0 0 auto;
+}
+
+.simulateButton .spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Outcome banner ---------------------------------------------------
+   The verdict is the first thing on the page after a run: serif verdict,
+   monospace score figure, and a left edge colored by how it ended. */
+
+.outcomeBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 2rem;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule);
+  border-left: 5px solid var(--an-muted);
+  border-radius: 12px;
+  padding: 1.4rem 1.75rem;
+  box-shadow: var(--an-shadow);
+}
+
+.outcomeWin {
+  border-left-color: var(--an-pos);
+}
+
+.outcomeLoss {
+  border-left-color: var(--an-neg);
+}
+
+.outcomeLeaster {
+  border-left-color: var(--an-actual);
+}
+
+.outcomeVerdict {
+  min-width: 0;
+}
+
+.verdictText {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--an-ink);
+  margin: 0 0 0.25rem;
+}
+
+.verdictDetail {
+  color: var(--an-muted);
+  font-size: 0.95rem;
+}
+
+.outcomeScore {
+  text-align: center;
+}
+
+.scoreFigure {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--an-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreDivider {
+  color: var(--an-rule-strong);
+  font-weight: 400;
+}
+
+.scoreLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+}
+
+.outcomeChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+  max-width: 40%;
+  justify-content: flex-end;
+}
+
+.chip {
+  font-size: 0.78rem;
+  color: var(--an-muted);
+  padding: 0.25rem 0.6rem;
+  background: var(--an-sunk);
+  border: 1px solid var(--an-rule);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* --- Decision timeline panel ------------------------------------------ */
+
 .resultsPanel {
   background: var(--an-panel);
   border-radius: 14px;
@@ -273,7 +294,12 @@
 }
 
 .resultsHeader {
-  padding: 1.5rem 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 1.1rem 1.5rem;
   border-bottom: 1px solid var(--an-rule);
   background: var(--an-sunk);
 }
@@ -286,64 +312,61 @@
   margin: 0;
 }
 
-.meta {
+/* Timeline display settings (client-side reward recompute) */
+.rewardControls {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 0.75rem;
-  font-size: 0.875rem;
-  color: var(--an-muted);
+  align-items: stretch;
+  gap: 0.65rem;
 }
 
-.metaItem {
+.shapingControl {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
+  gap: 0.7rem;
+  padding: 0.55rem 0.9rem;
   background: var(--an-panel);
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--an-rule);
+  transition: opacity 0.2s ease;
 }
 
-/* Loading State */
-.loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 3rem;
-  color: var(--an-muted);
+.shapingLabel {
+  font-weight: 500;
+  color: var(--an-ink-soft);
+  font-size: 0.875rem;
+  white-space: nowrap;
 }
 
-.spinner {
-  border: 2px solid var(--an-track);
-  border-radius: 50%;
-  border-top: 2px solid var(--an-accent);
-  width: 24px;
-  height: 24px;
-  animation: spin 1s linear infinite;
-  margin-right: 0.75rem;
+.range {
+  width: 110px;
+  accent-color: var(--an-accent);
 }
 
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+.rangeValue {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--an-ink);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5rem;
+  text-align: right;
 }
 
-/* Responsive */
+/* --- Responsive -------------------------------------------------------- */
+
 @media (max-width: 768px) {
-  .container {
-    padding: 1rem;
+  .controlsBar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .title {
-    font-size: 2.1rem;
+  .simulateButton {
+    margin-left: 0;
   }
 
-  .controlsGrid {
-    grid-template-columns: 1fr;
+  .outcomeChips {
+    margin-left: 0;
+    max-width: none;
+    justify-content: flex-start;
   }
 }
