@@ -491,6 +491,58 @@ class Game:
             return self._leaster_winner
         return False
 
+    def _complete_trick_if_done(self):
+        if self.cards_played == 5:
+            if self.current_trick == 5:
+                # Handle buried partner card on final play (JD only)
+                if self.partner_mode_flag == PARTNER_BY_JD and "JD" in self.bury:
+                    self.partner = self.picker
+
+            trick = self.history[self.current_trick]
+
+            is_called_10_suit = (
+                self.called_card
+                and self.called_card in CALLED_10S
+                and not self.was_called_suit_played
+                and self.current_suit == self.called_suit
+            )
+            winner = get_trick_winner(trick, self.current_suit, is_called_10_suit)
+            winner_index = winner - 1
+            trick_points = get_trick_points(trick)
+
+            # In leaster mode, give blind to winner of first trick
+            if self.is_leaster and self.current_trick == 0:
+                trick_points += get_trick_points(self.blind)
+
+            # Add under points to trick if it was played
+            if self.is_called_under and UNDER_TOKEN in trick:
+                trick_points += get_card_points(self.under_card)
+
+            self.trick_points[self.current_trick] = trick_points
+            self.trick_winners[self.current_trick] = winner
+            self.points_taken[winner_index] += trick_points
+
+            if (
+                self.called_card
+                and not self.was_called_suit_played
+                and self.called_suit == self.current_suit
+            ):
+                self.was_called_suit_played = True
+
+            if self.current_trick < 5:
+                self.leaders[self.current_trick + 1] = winner
+
+            # Next trick must start with winner
+            self.leader = winner
+            self.last_player = winner - 1
+            self.current_suit = ""
+            self.cards_played = 0
+            self.was_trick_just_completed = True
+
+            self.current_trick += 1
+        elif self.was_trick_just_completed:
+            self.was_trick_just_completed = False
+
     def _play_revealed_voids(self):
         """Infer, from the public play record, the suits each seat is known void
         in: a seat that discarded off-suit when a suit was led must hold no card
@@ -1149,6 +1201,9 @@ class Player:
         if self.play_started and self.last_player != self.position - 1:
             return set()
 
+        return self._valid_play_actions()
+
+    def _valid_play_actions(self):
         actions = set()
 
         # Determine which cards are valid to play
@@ -1260,7 +1315,7 @@ class Player:
                 self.game.leader = 1
                 self.game.leaders[0] = 1
 
-        if "BURY" in action:
+        if action.startswith("BURY "):
             card = action[5:]
             self.game.bury.append(card)
             self.hand.remove(card)
@@ -1274,7 +1329,7 @@ class Player:
             self.game.alone_called = True
             self.game.partner = self.position
 
-        if "CALL" in action:
+        if action.startswith("CALL "):
             parts = action.split()
             called_card = parts[1]
 
@@ -1293,7 +1348,7 @@ class Player:
             self.game.under_card = under_card
             self.hand.remove(under_card)
 
-        if "PLAY" in action:
+        if action.startswith("PLAY "):
             card = action[5:]
 
             # Set suit lead if we are the first to play this trick
@@ -1322,61 +1377,7 @@ class Player:
             if self.game.last_player == 5:
                 self.game.last_player = 0
 
-            if self.game.cards_played == 5:
-                if self.current_trick == 5:
-                    # Handle buried partner card on final play (JD only)
-                    if (
-                        self.game.partner_mode_flag == PARTNER_BY_JD
-                        and "JD" in self.bury
-                    ):
-                        self.game.partner = self.game.picker
-
-                trick = self.game.history[self.current_trick]
-
-                is_called_10_suit = (
-                    self.game.called_card
-                    and self.game.called_card in CALLED_10S
-                    and not self.game.was_called_suit_played
-                    and self.game.current_suit == self.game.called_suit
-                )
-                winner = get_trick_winner(
-                    trick, self.game.current_suit, is_called_10_suit
-                )
-                winner_index = winner - 1
-                trick_points = get_trick_points(trick)
-
-                # In leaster mode, give blind to winner of first trick
-                if self.game.is_leaster and self.current_trick == 0:
-                    trick_points += get_trick_points(self.game.blind)
-
-                # Add under points to trick if it was played
-                if self.game.is_called_under and UNDER_TOKEN in trick:
-                    trick_points += get_card_points(self.game.under_card)
-
-                self.game.trick_points[self.current_trick] = trick_points
-                self.game.trick_winners[self.current_trick] = winner
-                self.game.points_taken[winner_index] += trick_points
-
-                if (
-                    self.game.called_card
-                    and not self.game.was_called_suit_played
-                    and self.game.called_suit == self.game.current_suit
-                ):
-                    self.game.was_called_suit_played = True
-
-                if self.current_trick < 5:
-                    self.game.leaders[self.current_trick + 1] = winner
-
-                # Next trick must start with winner
-                self.game.leader = winner
-                self.game.last_player = winner - 1
-                self.game.current_suit = ""
-                self.game.cards_played = 0
-                self.game.was_trick_just_completed = True
-
-                self.game.current_trick += 1
-            elif self.game.was_trick_just_completed:
-                self.game.was_trick_just_completed = False
+            self.game._complete_trick_if_done()
 
         return True
 
