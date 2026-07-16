@@ -14,6 +14,7 @@ from server.api.schemas import (
     AnalyzeSimulateResponse,
 )
 from server.config import get_settings
+from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
 from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game
 from sheepshead.training.training_utils import (
@@ -79,7 +80,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     )
 
     # Player display names
-    players = ["Dan", "Kyle", "Trevor", "John", "Andrew"]
+    players = ANALYZE_SEAT_NAMES
 
     # Capture initial hands for summary
     initial_hands = {}

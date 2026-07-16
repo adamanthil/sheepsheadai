@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import type { TableStateMsg, TableView } from "../types";
+import type { ChatMessage, TableStateMsg, TableView } from "../types";
 import { apiFetch, wsSubprotocols, wsUrl } from "../api";
 import { parseWsMessage } from "../wsMessages";
 
@@ -26,15 +26,6 @@ export type ConnectionState =
 /** Close codes the server uses for auth/authorization failures — retrying
  * cannot help, so the client must not hammer the server. */
 const TERMINAL_WS_CODES = new Set([4401, 4403, 4404, 4429]);
-
-export interface ChatMessage {
-  id: string;
-  table_id: string;
-  type: "player" | "system";
-  author: string | null;
-  body: string;
-  timestamp: number;
-}
 
 export interface UseTableSocketReturn {
   connected: boolean;

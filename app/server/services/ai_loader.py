@@ -7,9 +7,6 @@ from functools import lru_cache
 
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import PPOAgent, device
-from sheepshead import ACTION_IDS
-
-ACTION_SIZE = len(ACTION_IDS)
 
 # Global bound on concurrent torch inference across all tables so many
 # simultaneous games can't oversubscribe the CPU (uvicorn runs 1 process).

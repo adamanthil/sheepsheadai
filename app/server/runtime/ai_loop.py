@@ -4,10 +4,10 @@ import asyncio
 import logging
 from typing import Optional
 
-from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES
+from sheepshead import ACTION_LOOKUP
 
 from server.realtime.broadcast import broadcast_table_state
-from server.realtime.chat import add_chat_message, broadcast_chat_append
+from server.realtime.chat import emit_bid_chat_message
 from server.runtime.tables import (
     Table,
     get_actor_seat,
@@ -109,43 +109,8 @@ async def ai_take_turns(table: Table) -> None:
             await fire_game_hooks(table, pre, post)
 
         action_str = ACTION_LOOKUP.get(action_id, "")
-        if action_str in (
-            "PICK",
-            "PASS",
-            "ALONE",
-            "JD PARTNER",
-        ) or action_str.startswith("CALL "):
-            display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"
-            if action_str == "PICK":
-                msg_dict = await add_chat_message(
-                    table, "system", f"{display_name} picked"
-                )
-                await broadcast_chat_append(table, msg_dict)
-            elif action_str == "PASS":
-                msg_dict = await add_chat_message(
-                    table, "system", f"{display_name} passed"
-                )
-                await broadcast_chat_append(table, msg_dict)
-            elif action_str == "ALONE":
-                msg_dict = await add_chat_message(
-                    table, "system", f"{display_name} goes alone"
-                )
-                await broadcast_chat_append(table, msg_dict)
-            elif action_str == "JD PARTNER":
-                msg_dict = await add_chat_message(
-                    table, "system", f"{display_name} chose JD partner"
-                )
-                await broadcast_chat_append(table, msg_dict)
-            elif action_str.startswith("CALL "):
-                parts = action_str.split()
-                called_card = parts[1] if len(parts) > 1 else ""
-                under = "under" if len(parts) > 2 and parts[2] == "UNDER" else ""
-                card_display = CARD_FULL_NAMES.get(called_card, called_card)
-                call_msg = f"{display_name} calls {card_display}"
-                if under:
-                    call_msg += " under"
-                msg_dict = await add_chat_message(table, "system", call_msg)
-                await broadcast_chat_append(table, msg_dict)
+        display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"
+        await emit_bid_chat_message(table, action_str, display_name)
         if isinstance(action_str, str) and action_str.startswith("PLAY "):
             await asyncio.sleep(0.5)
         await broadcast_table_state(table)

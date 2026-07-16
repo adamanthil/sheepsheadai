@@ -15,12 +15,23 @@ export type HandResult = {
   sum?: number;
 };
 
+/** A single chat log entry, as sent over the table WebSocket's
+ * chat:init / chat:append messages. */
+export interface ChatMessage {
+  id: string;
+  table_id: string;
+  type: "player" | "system";
+  author: string | null;
+  body: string;
+  timestamp: number;
+}
+
 /** The table object inside WebSocket state messages is the same
  * to_public_dict() payload the REST endpoints return. */
 export type TableView = TablePublic;
 
 export type FinalState = {
-  mode?: "leaster" | "normal";
+  mode?: "leaster" | "standard";
   winner?: number;
   picker?: number;
   partner?: number;
