@@ -87,11 +87,11 @@ def _is_private_action(action_id: int) -> bool:
 
 
 def _valid_has_play(valid) -> bool:
-    return any(_is_play_action(a) for a in valid)
+    return any(_is_play_action(action_id) for action_id in valid)
 
 
 def _private_root_ready(real_game, world, valid) -> bool:
-    if not any(_is_private_action(a) for a in valid):
+    if not any(_is_private_action(action_id) for action_id in valid):
         return True
     return (
         list(world.bury) == list(real_game.bury)
@@ -275,7 +275,11 @@ class ISMCTSTeacher:
         self._rng = rng
         self._d_rollout_override = d_rollout
         self._seat_policies = (
-            {s: a for s, a in seat_policies.items() if s != observer and a is not None}
+            {
+                seat: agent
+                for seat, agent in seat_policies.items()
+                if seat != observer and agent is not None
+            }
             if seat_policies
             else None
         )
@@ -284,18 +288,22 @@ class ISMCTSTeacher:
         # snapshot/restore every distinct agent involved, not just self.agent.
         involved = {id(self.agent): self.agent}
         if self._seat_policies:
-            for a in self._seat_policies.values():
-                involved[id(a)] = a
-        saved_mem = {
-            key: {pid: t.detach().clone() for pid, t in a._player_memories.items()}
-            for key, a in involved.items()
+            for agent in self._seat_policies.values():
+                involved[id(agent)] = agent
+        saved_memories = {
+            agent_id: {
+                player_id: memory.detach().clone()
+                for player_id, memory in agent._player_memories.items()
+            }
+            for agent_id, agent in involved.items()
         }
         try:
             return self._search_inner(real_game, observer, forced_public)
         finally:
-            for key, a in involved.items():
-                a._player_memories = {
-                    pid: t.detach().clone() for pid, t in saved_mem[key].items()
+            for agent_id, agent in involved.items():
+                agent._player_memories = {
+                    player_id: memory.detach().clone()
+                    for player_id, memory in saved_memories[agent_id].items()
                 }
             self._d_rollout_override = None
             self._seat_policies = None
@@ -307,9 +315,9 @@ class ISMCTSTeacher:
         observer_player = real_game.players[observer - 1]
         valid_real = sorted(observer_player.get_valid_action_ids())
         head = self._infer_head(valid_real)
-        cfg = self.config
-        m_iters = cfg.iters[head]
-        self._max_depth = cfg.max_depth[head]
+        config = self.config
+        m_iters = config.iters[head]
+        self._max_depth = config.max_depth[head]
 
         # Reset transient search state.
         root = _Node()
@@ -319,7 +327,7 @@ class ISMCTSTeacher:
         self.fail = defaultdict(int)
 
         # Build a belief-weighted pool of determinized worlds, then run the tree
-        # search by SAMPLING worlds from the pool ~ exp(log_w) (scheme-B bidding
+        # search by SAMPLING worlds from the pool ~ exp(log_weight) (scheme-B bidding
         # belief). The tree accumulates UNIT-weight visits, so it gets the full
         # m_iters of exploration (FPU + PUCT behave correctly and the visit-count
         # target is built from m_iters samples), while the bidding inference
@@ -336,27 +344,28 @@ class ISMCTSTeacher:
 
         return self._finalize(root, valid_real, head, len(pool), ess)
 
-    def _build_pool(self, real_game, observer, forced_public, k):
-        """Sample up to ``k`` determinized worlds and rebuild all of them to the
-        root by a single LOCKSTEP forced replay. Returns a list of
-        ``(game_at_root, memory_snapshot, log_w)``; ``log_w`` is the scheme-B
-        bidding log-likelihood.
+    def _build_pool(self, real_game, observer, forced_public, n_worlds):
+        """Sample up to ``n_worlds`` determinized worlds and rebuild all of them
+        to the root by a single LOCKSTEP forced replay. Returns a list of
+        ``(game_at_root, memory_snapshot, log_weight)``; ``log_weight`` is the
+        scheme-B bidding log-likelihood.
 
         Every world replays the *identical* public action sequence
         (``forced_public``) and the same per-decision structure (the private
         bury/under count is fixed by the public record), differing only in the
-        hidden cards. So instead of replaying each world separately (k batch-1
-        encoder calls per decision — the dominant search cost; see profiling), we
-        step all worlds together and batch the encoder/actor over the k worlds at
-        each decision point. The per-world sequential path is kept as
-        ``_build_world`` (the reference the batched build is validated against)."""
-        cfg = self.config
+        hidden cards. So instead of replaying each world separately (n_worlds
+        batch-1 encoder calls per decision — the dominant search cost; see
+        profiling), we step all worlds together and batch the encoder/actor over
+        the n_worlds worlds at each decision point. The per-world sequential path
+        is kept as ``_build_world`` (the reference the batched build is
+        validated against)."""
+        config = self.config
         deals = []
-        for _ in range(k):
+        for _ in range(n_worlds):
             try:
                 deals.append(
                     real_game.sample_determinization(
-                        observer, self._rng, max_tries=cfg.det_max_tries
+                        observer, self._rng, max_tries=config.det_max_tries
                     )
                 )
             except RuntimeError:
@@ -369,53 +378,61 @@ class ISMCTSTeacher:
         """Fresh Game with the determinized hands + blind installed (pre-replay)."""
         from sheepshead import Game
 
-        g = Game(partner_selection_mode=real_game.partner_mode_flag)
-        for s in range(1, 6):
-            h = deal["initial_hands"][s][:]
-            g.players[s - 1].hand = h
-            g.players[s - 1].initial_hand = h[:]
-        g.blind = deal["blind"][:]
-        return g
+        world = Game(partner_selection_mode=real_game.partner_mode_flag)
+        for seat in range(1, 6):
+            hand = deal["initial_hands"][seat][:]
+            world.players[seat - 1].hand = hand
+            world.players[seat - 1].initial_hand = hand[:]
+        world.blind = deal["blind"][:]
+        return world
 
-    def _encode_seat_batched(self, games, seat, mems):
+    def _encode_seat_batched(self, games, seat, seat_memories):
         """Batch-encode ``seat``'s current state across all ``games`` with that
         seat's controller and advance its (n, 256) recurrent memory. Returns
         (states, encoder_out)."""
         ctrl = self._controller(seat)
-        states = [g.players[seat - 1].get_state_dict() for g in games]
-        enc = ctrl.encoder.encode_batch(states, memory_in=mems[seat], device=DEV)
-        mems[seat] = enc["memory_out"].detach()
-        return states, enc
+        states = [game.players[seat - 1].get_state_dict() for game in games]
+        encoded = ctrl.encoder.encode_batch(
+            states, memory_in=seat_memories[seat], device=DEV
+        )
+        seat_memories[seat] = encoded["memory_out"].detach()
+        return states, encoded
 
-    def _actor_probs_batched(self, enc, states, valid_list, seat):
+    def _actor_probs_batched(self, encoded, states, valid_list, seat):
         """Post-mixture action probabilities (n, A) under ``seat``'s controller —
         mirrors ``get_action_probs_with_logits`` but over n worlds at once.
-        ``enc`` must come from the same controller's encoder
+        ``encoded`` must come from the same controller's encoder
         (``_encode_seat_batched`` on the same seat)."""
         ctrl = self._controller(seat)
         masks = torch.stack(
-            [ctrl.get_action_mask(v, self.action_size) for v in valid_list]
+            [ctrl.get_action_mask(valid, self.action_size) for valid in valid_list]
         ).to(DEV)
         hand_ids = torch.as_tensor(
-            np.stack([s["hand_ids"] for s in states]), dtype=torch.long, device=DEV
+            np.stack([state["hand_ids"] for state in states]),
+            dtype=torch.long,
+            device=DEV,
         )
         with torch.no_grad():
             probs, _ = ctrl.actor.forward_with_logits(
-                enc, masks, hand_ids, ctrl.encoder.card
+                encoded, masks, hand_ids, ctrl.encoder.card
             )
         return probs
 
-    def _after_action_batched(self, games, mems):
+    def _after_action_batched(self, games, seat_memories):
         """End-of-trick observe for every seat (with its controller), batched over
         worlds (the plays are forced identically, so trick completion is
         synchronized across worlds)."""
         if not games[0].was_trick_just_completed:
             return
-        for s in range(1, 6):
-            ctrl = self._controller(s)
-            states = [g.players[s - 1].get_last_trick_state_dict() for g in games]
-            enc = ctrl.encoder.encode_batch(states, memory_in=mems[s], device=DEV)
-            mems[s] = enc["memory_out"].detach()
+        for seat in range(1, 6):
+            ctrl = self._controller(seat)
+            states = [
+                game.players[seat - 1].get_last_trick_state_dict() for game in games
+            ]
+            encoded = ctrl.encoder.encode_batch(
+                states, memory_in=seat_memories[seat], device=DEV
+            )
+            seat_memories[seat] = encoded["memory_out"].detach()
 
     def _build_worlds_batched(self, real_game, deals, forced_public, observer):
         """Build the world pool, batched. Fast path is the lockstep replay; if any
@@ -437,16 +454,18 @@ class ISMCTSTeacher:
         ``_build_world`` and skip the ones that fail (returns None)."""
         pool = []
         for deal in deals:
-            world, log_w = self._build_world(real_game, deal, forced_public, observer)
+            world, log_weight = self._build_world(
+                real_game, deal, forced_public, observer
+            )
             if world is None:
                 continue
             # Each seat's memory lives in its controller's dict after the replay.
-            mem = {}
-            for s in range(1, 6):
-                t = self._controller(s)._player_memories.get(s)
-                if t is not None:
-                    mem[s] = t.detach().clone()
-            pool.append((world, mem, log_w))
+            memory_snapshot = {}
+            for seat in range(1, 6):
+                memory = self._controller(seat)._player_memories.get(seat)
+                if memory is not None:
+                    memory_snapshot[seat] = memory.detach().clone()
+            pool.append((world, memory_snapshot, log_weight))
         return pool
 
     def _build_worlds_lockstep(self, real_game, deals, forced_public, observer):
@@ -458,13 +477,15 @@ class ISMCTSTeacher:
         so the caller can fall back to the per-world build."""
         from collections import deque
 
-        n = len(deals)
-        games = [self._fresh_world(real_game, d) for d in deals]
-        det_buries = [deque(d["bury"]) for d in deals]
-        det_unders = [d["under_card"] for d in deals]
-        pub = deque(forced_public)
-        mems = {s: torch.zeros((n, 256), device=DEV) for s in range(1, 6)}
-        log_w = torch.zeros(n, device=DEV)
+        n_worlds = len(deals)
+        games = [self._fresh_world(real_game, deal) for deal in deals]
+        det_buries = [deque(deal["bury"]) for deal in deals]
+        det_unders = [deal["under_card"] for deal in deals]
+        public_actions = deque(forced_public)
+        seat_memories = {
+            seat: torch.zeros((n_worlds, 256), device=DEV) for seat in range(1, 6)
+        }
+        log_weights = torch.zeros(n_worlds, device=DEV)
 
         guard = 0
         while True:
@@ -474,98 +495,121 @@ class ISMCTSTeacher:
                 raise _ReplayInconsistency("batched pool build guard exceeded")
             acted = False
             for pos in range(1, 6):
-                ref = games[0].players[pos - 1]
-                valid0 = ref.get_valid_action_ids()
-                while valid0:
+                ref_player = games[0].players[pos - 1]
+                ref_valid = ref_player.get_valid_action_ids()
+                while ref_valid:
                     # Root reached: public record exhausted and it is the
                     # observer's turn. If this is a later private decision, first
                     # force the already-taken private actions so the replay stops
                     # at the same bury/under step as the live game.
                     if (
-                        not pub
+                        not public_actions
                         and pos == observer
-                        and _private_root_ready(real_game, games[0], valid0)
+                        and _private_root_ready(real_game, games[0], ref_valid)
                     ):
                         pool = []
-                        for i, g in enumerate(games):
-                            if g.history != real_game.history:
+                        for i, game in enumerate(games):
+                            if game.history != real_game.history:
                                 self.fail["hist_mismatch"] += 1
                                 continue
-                            mem_i = {
-                                s: mems[s][i].detach().clone() for s in range(1, 6)
+                            memory_snapshot = {
+                                seat: seat_memories[seat][i].detach().clone()
+                                for seat in range(1, 6)
                             }
-                            pool.append((g, mem_i, float(log_w[i].item())))
+                            pool.append(
+                                (game, memory_snapshot, float(log_weights[i].item()))
+                            )
                         return pool
 
-                    if any(_is_private_action(a) for a in valid0):
+                    if any(_is_private_action(action_id) for action_id in ref_valid):
                         # Forced bury/under: encode (advance memory), then act each
                         # world with its own determinized card. Not weighted.
-                        self._encode_seat_batched(games, pos, mems)
-                        for i, g in enumerate(games):
-                            vi = g.players[pos - 1].get_valid_action_ids()
-                            aid = self._forced_private(vi, det_buries[i], det_unders[i])
-                            if aid is None or aid not in vi:
+                        self._encode_seat_batched(games, pos, seat_memories)
+                        for i, game in enumerate(games):
+                            world_valid = game.players[pos - 1].get_valid_action_ids()
+                            action_id = self._forced_private(
+                                world_valid, det_buries[i], det_unders[i]
+                            )
+                            if action_id is None or action_id not in world_valid:
                                 self.fail["bad_private"] += 1
                                 raise _ReplayInconsistency(
                                     "batched replay: bad forced private action"
                                 )
-                            g.players[pos - 1].act(aid)
+                            game.players[pos - 1].act(action_id)
                     else:
-                        if not pub or pub[0][0] != pos:
+                        if not public_actions or public_actions[0][0] != pos:
                             self.fail["pub_desync"] += 1
                             raise _ReplayInconsistency(
                                 "batched replay: public action desync"
                             )
-                        _, aid = pub.popleft()
-                        states, enc = self._encode_seat_batched(games, pos, mems)
+                        _, action_id = public_actions.popleft()
+                        states, encoded = self._encode_seat_batched(
+                            games, pos, seat_memories
+                        )
                         # Weight bidding actions only (scheme B); plays are forced
                         # but never weighted. The actor head runs only here.
-                        if not _is_play_action(aid):
-                            valids = [
-                                g.players[pos - 1].get_valid_action_ids() for g in games
+                        if not _is_play_action(action_id):
+                            valid_lists = [
+                                game.players[pos - 1].get_valid_action_ids()
+                                for game in games
                             ]
-                            probs = self._actor_probs_batched(enc, states, valids, pos)
-                            p_a = probs[:, aid - 1].clamp_min(1e-8)
-                            log_w = log_w + torch.log(p_a)
-                        for g in games:
-                            if aid not in g.players[pos - 1].get_valid_action_ids():
+                            probs = self._actor_probs_batched(
+                                encoded, states, valid_lists, pos
+                            )
+                            action_probs = probs[:, action_id - 1].clamp_min(1e-8)
+                            log_weights = log_weights + torch.log(action_probs)
+                        for game in games:
+                            world_valid = game.players[pos - 1].get_valid_action_ids()
+                            if action_id not in world_valid:
                                 self.fail["bad_public"] += 1
                                 raise _ReplayInconsistency(
                                     "batched replay: bad forced public action"
                                 )
-                            g.players[pos - 1].act(aid)
+                            game.players[pos - 1].act(action_id)
 
                     acted = True
-                    self._after_action_batched(games, mems)
-                    valid0 = ref.get_valid_action_ids()
+                    self._after_action_batched(games, seat_memories)
+                    ref_valid = ref_player.get_valid_action_ids()
             if not acted:
                 self.fail["no_acted"] += 1
                 raise _ReplayInconsistency("batched replay: no seat acted")
 
     @staticmethod
     def _pool_probs(pool):
-        lw = np.array([w for _, _, w in pool], dtype=np.float64)
-        w = np.exp(lw - lw.max())
-        return (w / w.sum()).tolist()
+        log_weights = np.array(
+            [log_weight for _, _, log_weight in pool], dtype=np.float64
+        )
+        weights = np.exp(log_weights - log_weights.max())
+        return (weights / weights.sum()).tolist()
 
     @staticmethod
     def _pool_ess(pool) -> float:
         if not pool:
             return 0.0
-        lw = np.array([w for _, _, w in pool], dtype=np.float64)
-        w = np.exp(lw - lw.max())
-        s = w.sum()
-        if s <= 0:
+        log_weights = np.array(
+            [log_weight for _, _, log_weight in pool], dtype=np.float64
+        )
+        weights = np.exp(log_weights - log_weights.max())
+        total = weights.sum()
+        if total <= 0:
             return 0.0
-        return float(s * s / np.square(w).sum())
+        return float(total * total / np.square(weights).sum())
 
     def _finalize(self, root, valid_real, head, n_used, ess) -> dict:
         pi = np.zeros(self.action_size, dtype=np.float32)
-        counts = np.array([root.N.get(a, 0.0) for a in valid_real], dtype=np.float64)
-        root_n = {a: float(root.N.get(a, 0.0)) for a in valid_real}
+        counts = np.array(
+            [root.N.get(action_id, 0.0) for action_id in valid_real], dtype=np.float64
+        )
+        root_n = {
+            action_id: float(root.N.get(action_id, 0.0)) for action_id in valid_real
+        }
         root_q = {
-            a: (float(root.W[a] / root.N[a]) if root.N.get(a, 0.0) > 0 else 0.0)
-            for a in valid_real
+            action_id: (
+                float(root.W[action_id] / root.N[action_id])
+                if root.N.get(action_id, 0.0) > 0
+                else 0.0
+            )
+            for action_id in valid_real
         }
         if counts.sum() <= 0.0:
             return dict(
@@ -580,8 +624,8 @@ class ISMCTSTeacher:
             )
         powered = np.power(counts, 1.0 / self.config.tau_target)
         powered /= powered.sum()
-        for a, p in zip(valid_real, powered):
-            pi[a - 1] = p
+        for action_id, prob in zip(valid_real, powered):
+            pi[action_id - 1] = prob
         ok = ess >= self.config.ess_floor
         return dict(
             pi=pi,
@@ -596,14 +640,15 @@ class ISMCTSTeacher:
 
     @staticmethod
     def _infer_head(valid) -> str:
-        names = [ACTIONS[a - 1] for a in valid]
-        if any(n in ("PICK", "PASS") for n in names):
+        names = [ACTIONS[action_id - 1] for action_id in valid]
+        if any(name in ("PICK", "PASS") for name in names):
             return "pick"
         if any(
-            n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names
+            name == "ALONE" or name == "JD PARTNER" or name.startswith("CALL ")
+            for name in names
         ):
             return "partner"
-        if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
+        if any(name.startswith("BURY ") or name.startswith("UNDER ") for name in names):
             return "bury"
         return "play"
 
@@ -618,25 +663,25 @@ class ISMCTSTeacher:
     def _next_actor(world):
         """Seat (1-5) whose turn it is, or None if terminal (exactly one seat has
         legal actions at any non-terminal point)."""
-        for p in world.players:
-            if p.get_valid_action_ids():
-                return p.position
+        for player in world.players:
+            if player.get_valid_action_ids():
+                return player.position
         return None
 
     def _run_batched(self, root, pool, indices, observer):
-        B = self.config.batch_size
-        i = 0
-        while i < len(indices):
-            chunk = indices[i : i + B]
-            i += len(chunk)
+        batch_size = self.config.batch_size
+        start = 0
+        while start < len(indices):
+            chunk = indices[start : start + batch_size]
+            start += len(chunk)
             sims = []
-            for k in chunk:
-                world = copy.deepcopy(pool[k][0])
-                snap = pool[k][1]
+            for pool_idx in chunk:
+                world = copy.deepcopy(pool[pool_idx][0])
+                memory_snapshot = pool[pool_idx][1]
                 mem = torch.zeros((5, 256), device=DEV)
-                for s in range(1, 6):
-                    if s in snap:
-                        mem[s - 1] = snap[s]
+                for seat in range(1, 6):
+                    if seat in memory_snapshot:
+                        mem[seat - 1] = memory_snapshot[seat]
                 sims.append(_Sim(world, mem, root))
             self._run_chunk(sims, observer)
 
@@ -647,15 +692,16 @@ class ISMCTSTeacher:
             if guard > 100000:
                 raise RuntimeError("batched chunk guard exceeded")
 
-            # 1. Resolve no-network transitions; collect this round's encode reqs.
-            reqs = []  # (sim, kind, is_tree)
+            # 1. Resolve no-network transitions; collect this round's encode
+            # requests.
+            requests = []  # (sim, kind, is_tree)
             for sim in sims:
                 if sim.phase == "done":
                     continue
-                r = self._prepare(sim, observer)
-                if r is not None:
-                    reqs.append((sim, r[0], r[1]))
-            if not reqs:
+                prepared = self._prepare(sim, observer)
+                if prepared is not None:
+                    requests.append((sim, prepared[0], prepared[1]))
+            if not requests:
                 continue
 
             # 2+3. Encode + actor/critic heads, grouped by the acting seat's
@@ -664,51 +710,66 @@ class ISMCTSTeacher:
             # seat_policies are present (see notebooks/Population_Grounded_Teacher_Plan.md).
             # The critic now runs only on groups that contain a bootstrap request
             # (it used to run on every row and be discarded).
-            states = [s.world.players[s.seat - 1].get_state_dict() for s, _, _ in reqs]
+            states = [
+                sim.world.players[sim.seat - 1].get_state_dict()
+                for sim, _, _ in requests
+            ]
             groups: dict[int, tuple] = {}
-            for j, (s, _, _) in enumerate(reqs):
-                ctrl = self._controller(s.seat)
-                groups.setdefault(id(ctrl), (ctrl, []))[1].append(j)
+            for req_idx, (sim, _, _) in enumerate(requests):
+                ctrl = self._controller(sim.seat)
+                groups.setdefault(id(ctrl), (ctrl, []))[1].append(req_idx)
 
-            probs_np = np.zeros((len(reqs), self.action_size), dtype=np.float32)
-            v_np = np.zeros(len(reqs), dtype=np.float32)
-            for ctrl, idxs in groups.values():
-                g_states = [states[j] for j in idxs]
-                mem_in = torch.stack(
-                    [reqs[j][0].mem[reqs[j][0].seat - 1] for j in idxs]
+            probs_np = np.zeros((len(requests), self.action_size), dtype=np.float32)
+            values_np = np.zeros(len(requests), dtype=np.float32)
+            for ctrl, req_idxs in groups.values():
+                group_states = [states[req_idx] for req_idx in req_idxs]
+                memory_in = torch.stack(
+                    [
+                        requests[req_idx][0].mem[requests[req_idx][0].seat - 1]
+                        for req_idx in req_idxs
+                    ]
                 )
-                enc = ctrl.encoder.encode_batch(g_states, memory_in=mem_in, device=DEV)
-                mem_out = enc["memory_out"].detach()
-                for row, j in enumerate(idxs):
-                    reqs[j][0].mem[reqs[j][0].seat - 1] = mem_out[row]
+                encoded = ctrl.encoder.encode_batch(
+                    group_states, memory_in=memory_in, device=DEV
+                )
+                memory_out = encoded["memory_out"].detach()
+                for row, req_idx in enumerate(req_idxs):
+                    req_sim = requests[req_idx][0]
+                    req_sim.mem[req_sim.seat - 1] = memory_out[row]
                 masks = torch.stack(
                     [
-                        ctrl.get_action_mask(reqs[j][0].valid, self.action_size)
-                        for j in idxs
+                        ctrl.get_action_mask(
+                            requests[req_idx][0].valid, self.action_size
+                        )
+                        for req_idx in req_idxs
                     ]
                 ).to(DEV)
                 hand_ids = torch.as_tensor(
-                    np.stack([states[j]["hand_ids"] for j in idxs]),
+                    np.stack([states[req_idx]["hand_ids"] for req_idx in req_idxs]),
                     dtype=torch.long,
                     device=DEV,
                 )
                 with torch.no_grad():
-                    probs_g, _ = ctrl.actor.forward_with_logits(
-                        enc, masks, hand_ids, ctrl.encoder.card
+                    group_probs, _ = ctrl.actor.forward_with_logits(
+                        encoded, masks, hand_ids, ctrl.encoder.card
                     )
-                    if any(reqs[j][1] == "critic" for j in idxs):
-                        v_np[idxs] = ctrl.critic(enc).detach().view(-1).cpu().numpy()
-                probs_np[idxs] = probs_g.detach().cpu().numpy()
+                    if any(requests[req_idx][1] == "critic" for req_idx in req_idxs):
+                        values_np[req_idxs] = (
+                            ctrl.critic(encoded).detach().view(-1).cpu().numpy()
+                        )
+                probs_np[req_idxs] = group_probs.detach().cpu().numpy()
 
             # 4. Apply each request; collect sims that completed a trick this round.
             completers = []
-            for j, (sim, kind, is_tree) in enumerate(reqs):
+            for req_idx, (sim, kind, is_tree) in enumerate(requests):
                 if kind == "critic":
                     self._finish_value(
-                        sim, self._discount(float(v_np[j]), sim.obs_plays)
+                        sim, self._discount(float(values_np[req_idx]), sim.obs_plays)
                     )
                 else:
-                    self._apply_actor(sim, observer, probs_np[j], is_tree, completers)
+                    self._apply_actor(
+                        sim, observer, probs_np[req_idx], is_tree, completers
+                    )
 
             # 5. End-of-trick observe for the completer subset, batched per seat.
             self._observe_completers_batched(completers)
@@ -717,52 +778,52 @@ class ISMCTSTeacher:
         """Run no-network state-machine transitions until ``sim`` needs an encode
         (sets sim.seat/valid and returns (kind, is_tree)) or is done (returns None)."""
         while True:
-            w = sim.world
-            if w.is_done():
+            world = sim.world
+            if world.is_done():
                 self._finish_terminal(sim, observer)
                 return None
             if sim.phase == "tree":
-                valid = sorted(w.players[observer - 1].get_valid_action_ids())
+                valid = sorted(world.players[observer - 1].get_valid_action_ids())
                 if not valid:
                     sim.phase = "rollout"  # defensive; should not happen at a tree node
                     continue
                 sim.seat, sim.valid = observer, valid
                 return ("actor", True)
             if sim.phase == "advance":
-                nxt = self._next_actor(w)
-                if nxt is None:
+                next_seat = self._next_actor(world)
+                if next_seat is None:
                     self._finish_terminal(sim, observer)
                     return None
-                if nxt == observer:
+                if next_seat == observer:
                     # Done advancing -> descend into the selected action's child.
-                    parent, a = sim.node, sim.pending_action
-                    child = parent.children.get(a)
+                    parent, action_id = sim.node, sim.pending_action
+                    child = parent.children.get(action_id)
                     if child is None:
                         child = _Node()
-                        parent.children[a] = child
+                        parent.children[action_id] = child
                         self._nodes.append(child)
                     sim.node, sim.depth, sim.pending_action = child, sim.depth + 1, None
                     sim.phase = "tree"
                     continue
-                sim.seat = nxt
-                sim.valid = sorted(w.players[nxt - 1].get_valid_action_ids())
+                sim.seat = next_seat
+                sim.valid = sorted(world.players[next_seat - 1].get_valid_action_ids())
                 return ("actor", False)
             # rollout
-            nxt = self._next_actor(w)
-            if nxt is None:
+            next_seat = self._next_actor(world)
+            if next_seat is None:
                 self._finish_terminal(sim, observer)
                 return None
-            sim.seat = nxt
-            sim.valid = sorted(w.players[nxt - 1].get_valid_action_ids())
-            d_roll = (
+            sim.seat = next_seat
+            sim.valid = sorted(world.players[next_seat - 1].get_valid_action_ids())
+            rollout_depth = (
                 self._d_rollout_override
                 if self._d_rollout_override is not None
                 else self.config.d_rollout
             )
             if (
-                nxt == observer
+                next_seat == observer
                 and _valid_has_play(sim.valid)
-                and sim.obs_plays >= d_roll
+                and sim.obs_plays >= rollout_depth
             ):
                 return ("critic", False)
             return ("actor", False)
@@ -771,17 +832,17 @@ class ISMCTSTeacher:
         if is_tree:
             node, valid = sim.node, sim.valid
             is_root = sim.depth == 0
-            frac = self.config.root_explore_frac
+            explore_frac = self.config.root_explore_frac
             n_legal = len(valid)
-            for a in valid:
-                p = float(probs[a - 1])
-                if is_root and frac > 0.0:
-                    p = (1.0 - frac) * p + frac / n_legal
-                node.P[a] = p
-                node.N.setdefault(a, 0.0)
-                node.W.setdefault(a, 0.0)
-                node.avail.setdefault(a, 0.0)
-                node.avail[a] += 1.0
+            for action_id in valid:
+                prior = float(probs[action_id - 1])
+                if is_root and explore_frac > 0.0:
+                    prior = (1.0 - explore_frac) * prior + explore_frac / n_legal
+                node.P[action_id] = prior
+                node.N.setdefault(action_id, 0.0)
+                node.W.setdefault(action_id, 0.0)
+                node.avail.setdefault(action_id, 0.0)
+                node.avail[action_id] += 1.0
             leaf = (not node.visited) or (sim.depth >= self._max_depth)
             node.visited = True
             if leaf:
@@ -790,17 +851,17 @@ class ISMCTSTeacher:
                 sim.phase = "rollout"
                 return
             following = self._is_following(sim.world, observer)
-            a = self._select_vl(node, valid, following)
-            node.vloss[a] = node.vloss.get(a, 0) + 1
-            sim.path.append((node, a))
-            sim.pending_action = a
-            sim.world.players[observer - 1].act(a)
+            action_id = self._select_vl(node, valid, following)
+            node.vloss[action_id] = node.vloss.get(action_id, 0) + 1
+            sim.path.append((node, action_id))
+            sim.pending_action = action_id
+            sim.world.players[observer - 1].act(action_id)
             sim.phase = "advance"
         else:
             seat, valid = sim.seat, sim.valid
-            a = self._sample_action(probs, valid)
+            action_id = self._sample_action(probs, valid)
             is_obs_play = seat == observer and _valid_has_play(valid)
-            sim.world.players[seat - 1].act(a)
+            sim.world.players[seat - 1].act(action_id)
             if sim.phase == "rollout" and is_obs_play:
                 sim.obs_plays += 1
         if sim.world.was_trick_just_completed:
@@ -811,47 +872,57 @@ class ISMCTSTeacher:
     def _select_vl(self, node, valid, following) -> int:
         """PUCT selection with virtual loss: an in-flight selected edge is charged
         ``virtual_loss`` extra (pessimistic) visits so concurrent sims diversify."""
-        c = self.config.c_puct
-        vl = self.config.virtual_loss
-        n_eff = {a: node.N[a] + node.vloss.get(a, 0) for a in valid}
-        sqrt_total = math.sqrt(sum(n_eff.values()) + 1.0)
+        c_puct = self.config.c_puct
+        virtual_loss = self.config.virtual_loss
+        effective_counts = {
+            action_id: node.N[action_id] + node.vloss.get(action_id, 0)
+            for action_id in valid
+        }
+        sqrt_total = math.sqrt(sum(effective_counts.values()) + 1.0)
         qmin, qmax = self._qmin, self._qmax
         has_span = qmax > qmin
         span = (qmax - qmin) if has_span else 1.0
-        best_a, best_u = valid[0], -math.inf
-        for a in valid:
-            ne = n_eff[a]
-            if ne > 0:
-                w_eff = node.W[a] - node.vloss.get(a, 0) * vl
-                q_norm = (w_eff / ne - qmin) / span if has_span else 0.5
+        best_action, best_score = valid[0], -math.inf
+        for action_id in valid:
+            n_effective = effective_counts[action_id]
+            if n_effective > 0:
+                w_effective = (
+                    node.W[action_id] - node.vloss.get(action_id, 0) * virtual_loss
+                )
+                q_norm = (w_effective / n_effective - qmin) / span if has_span else 0.5
             else:
                 q_norm = self.config.fpu
             if following:
-                explore = c * node.P[a] * math.sqrt(node.avail[a]) / (1.0 + ne)
+                explore = (
+                    c_puct
+                    * node.P[action_id]
+                    * math.sqrt(node.avail[action_id])
+                    / (1.0 + n_effective)
+                )
             else:
-                explore = c * node.P[a] * sqrt_total / (1.0 + ne)
-            u = q_norm + explore
-            if u > best_u:
-                best_u, best_a = u, a
-        return best_a
+                explore = c_puct * node.P[action_id] * sqrt_total / (1.0 + n_effective)
+            score = q_norm + explore
+            if score > best_score:
+                best_score, best_action = score, action_id
+        return best_action
 
     def _sample_action(self, probs, valid) -> int:
         """Sample an action id from the masked policy over ``valid`` (search RNG)."""
-        r = self._rng.random()
+        draw = self._rng.random()
         cum = 0.0
-        for a in valid:
-            cum += float(probs[a - 1])
-            if r <= cum:
-                return a
+        for action_id in valid:
+            cum += float(probs[action_id - 1])
+            if draw <= cum:
+                return action_id
         return valid[-1]
 
     def _gamma(self) -> float:
         return float(getattr(self.agent, "gamma", 1.0))
 
-    def _discount(self, v: float, observer_actions_elapsed: int) -> float:
+    def _discount(self, value: float, observer_actions_elapsed: int) -> float:
         if observer_actions_elapsed <= 0:
-            return float(v)
-        return float((self._gamma() ** observer_actions_elapsed) * v)
+            return float(value)
+        return float((self._gamma() ** observer_actions_elapsed) * value)
 
     def _terminal_value(
         self, world, observer, observer_actions_elapsed: int = 0
@@ -872,20 +943,20 @@ class ISMCTSTeacher:
             self._terminal_value(sim.world, observer, elapsed),
         )
 
-    def _finish_value(self, sim, v):
-        backed = float(v)
-        for node, a in reversed(sim.path):
-            node.N[a] += 1.0
-            node.W[a] += backed
-            node.vloss[a] = node.vloss.get(a, 0) - 1
-            q = node.W[a] / node.N[a]
+    def _finish_value(self, sim, value):
+        backed = float(value)
+        for node, action_id in reversed(sim.path):
+            node.N[action_id] += 1.0
+            node.W[action_id] += backed
+            node.vloss[action_id] = node.vloss.get(action_id, 0) - 1
+            q = node.W[action_id] / node.N[action_id]
             if q < self._qmin:
                 self._qmin = q
             if q > self._qmax:
                 self._qmax = q
             backed *= self._gamma()
         sim.phase = "done"
-        sim.value = v
+        sim.value = value
 
     def _observe_completers_batched(self, completers):
         """Batched end-of-trick observe (advance every seat's memory) across the
@@ -893,17 +964,17 @@ class ISMCTSTeacher:
         share of search encodes, so it is batched over the completer subset."""
         if not completers:
             return
-        for s in range(1, 6):
-            ctrl = self._controller(s)
+        for seat in range(1, 6):
+            ctrl = self._controller(seat)
             states = [
-                sim.world.players[s - 1].get_last_trick_state_dict()
+                sim.world.players[seat - 1].get_last_trick_state_dict()
                 for sim in completers
             ]
-            mem_in = torch.stack([sim.mem[s - 1] for sim in completers])
-            enc = ctrl.encoder.encode_batch(states, memory_in=mem_in, device=DEV)
-            mo = enc["memory_out"].detach()
+            memory_in = torch.stack([sim.mem[seat - 1] for sim in completers])
+            encoded = ctrl.encoder.encode_batch(states, memory_in=memory_in, device=DEV)
+            memory_out = encoded["memory_out"].detach()
             for i, sim in enumerate(completers):
-                sim.mem[s - 1] = mo[i]
+                sim.mem[seat - 1] = memory_out[i]
 
     # ------------------------------------------------------------------
     # World advancement helpers
@@ -934,9 +1005,9 @@ class ISMCTSTeacher:
         """Replay the public record into a fresh game whose hidden hands are the
         sampled determinization, rebuilding every seat's recurrent memory, and
         stop at the observer's current decision (root). Returns
-        ``(world, log_w)`` or ``(None, None)`` on a replay/desync failure.
+        ``(world, log_weight)`` or ``(None, None)`` on a replay/desync failure.
 
-        ``log_w`` is the sum of policy log-probs of every forced PUBLIC *bidding*
+        ``log_weight`` is the sum of policy log-probs of every forced PUBLIC *bidding*
         action (pick / pass / call / alone / jd-partner) under the rebuilt
         memory + determinized hands (scheme B). Plays are forced (to rebuild
         memory and reproduce the record) but never weighted. Private bury/under
@@ -946,21 +1017,21 @@ class ISMCTSTeacher:
 
         from sheepshead import Game
 
-        g = Game(partner_selection_mode=real_game.partner_mode_flag)
-        for s in range(1, 6):
-            h = deal["initial_hands"][s][:]
-            g.players[s - 1].hand = h
-            g.players[s - 1].initial_hand = h[:]
-        g.blind = deal["blind"][:]
+        world = Game(partner_selection_mode=real_game.partner_mode_flag)
+        for seat in range(1, 6):
+            hand = deal["initial_hands"][seat][:]
+            world.players[seat - 1].hand = hand
+            world.players[seat - 1].initial_hand = hand[:]
+        world.blind = deal["blind"][:]
 
         self.agent.reset_recurrent_state()
         if self._seat_policies:
-            for a in self._seat_policies.values():
-                a.reset_recurrent_state()
-        pub = deque(forced_public)
+            for policy in self._seat_policies.values():
+                policy.reset_recurrent_state()
+        public_actions = deque(forced_public)
         det_bury = deque(deal["bury"])
         det_under = deal["under_card"]
-        log_w = 0.0
+        log_weight = 0.0
         guard = 0
         while True:
             guard += 1
@@ -968,7 +1039,7 @@ class ISMCTSTeacher:
                 self.fail["guard"] += 1
                 return None, None
             acted = False
-            for player in g.players:
+            for player in world.players:
                 valid = player.get_valid_action_ids()
                 while valid:
                     # Root reached: all public actions forced and it is the
@@ -976,52 +1047,57 @@ class ISMCTSTeacher:
                     # determinized private actions until bury/under progress
                     # matches the live root; the simulate step encodes the root.
                     if (
-                        not pub
+                        not public_actions
                         and player.position == observer
-                        and _private_root_ready(real_game, g, valid)
+                        and _private_root_ready(real_game, world, valid)
                     ):
-                        if g.history != real_game.history:
+                        if world.history != real_game.history:
                             self.fail["hist_mismatch"] += 1
                             return None, None
-                        return g, log_w
+                        return world, log_weight
 
-                    if any(_is_private_action(a) for a in valid):
-                        aid = self._forced_private(valid, det_bury, det_under)
-                        if aid is None or aid not in valid:
+                    if any(_is_private_action(action_id) for action_id in valid):
+                        action_id = self._forced_private(valid, det_bury, det_under)
+                        if action_id is None or action_id not in valid:
                             self.fail["bad_private"] += 1
                             return None, None
                         # Advance this seat's memory through the forced decision.
                         self._controller(player.position).get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
-                        player.act(aid)
+                        player.act(action_id)
                     else:
-                        if not pub or pub[0][0] != player.position:
+                        if (
+                            not public_actions
+                            or public_actions[0][0] != player.position
+                        ):
                             self.fail["pub_desync"] += 1
                             return None, None
-                        _, aid = pub.popleft()
-                        if aid not in valid:
+                        _, action_id = public_actions.popleft()
+                        if action_id not in valid:
                             self.fail["bad_public"] += 1
                             return None, None
-                        probs_t, _ = self._controller(
+                        probs, _ = self._controller(
                             player.position
                         ).get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
-                        if not _is_play_action(aid):
-                            p_a = float(probs_t[0][aid - 1].item())
-                            log_w += math.log(max(p_a, 1e-8))
-                        player.act(aid)
+                        if not _is_play_action(action_id):
+                            action_prob = float(probs[0][action_id - 1].item())
+                            log_weight += math.log(max(action_prob, 1e-8))
+                        player.act(action_id)
                     acted = True
                     valid = player.get_valid_action_ids()
-                    self._after_action(g)
+                    self._after_action(world)
             if not acted:
                 self.fail["no_acted"] += 1
                 return None, None
 
     @staticmethod
     def _forced_private(valid, det_bury, det_under):
-        is_under = any(ACTIONS[a - 1].startswith("UNDER ") for a in valid)
+        is_under = any(
+            ACTIONS[action_id - 1].startswith("UNDER ") for action_id in valid
+        )
         if is_under:
             if det_under is None:
                 return None
