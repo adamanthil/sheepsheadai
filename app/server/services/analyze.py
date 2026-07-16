@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import random
-from typing import Dict, List
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -17,7 +18,7 @@ from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
 from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game
-from sheepshead.training.training_utils import (
+from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,
@@ -52,9 +53,14 @@ def infer_phase_from_action_id(
     return "unknown"
 
 
-def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
-    """Simulate a full Sheepshead game and return detailed analysis trace."""
+def _setup_simulation(
+    req: AnalyzeSimulateRequest,
+) -> tuple[Any, Any, Game, Dict[str, List[str]]]:
+    """Seed RNGs, load the configured agent, deal the game, and capture the
+    initial hands for the summary.
 
+    Stage (a) of ``simulate_game``: deal/agent setup + seeding.
+    """
     # Set seed if provided
     if req.seed is not None:
         set_seed(req.seed)
@@ -62,8 +68,6 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # Load the configured agent; clients cannot influence which file is read.
     settings = get_settings()
     agent = load_agent(settings.sheepshead_model_path)
-
-    from server.runtime.tables import build_player_state
 
     # Reset recurrent state before simulation
     agent.reset_recurrent_state()
@@ -79,247 +83,261 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         seed=req.seed,
     )
 
-    # Player display names
-    players = ANALYZE_SEAT_NAMES
-
     # Capture initial hands for summary
-    initial_hands = {}
+    initial_hands: Dict[str, List[str]] = {}
     for player in game.players:
-        initial_hands[players[player.position - 1]] = sorted(
+        initial_hands[ANALYZE_SEAT_NAMES[player.position - 1]] = sorted(
             list(player.hand), key=lambda card: DECK.index(card)
         )
 
-    # Trace storage
-    trace = []
-    step_index = 0
-    # For reward shaping and discounted return computation
-    episode_transitions = []
-    current_trick_transitions = []
+    return agent, settings, game, initial_hands
 
-    # Simulation loop
-    while not game.is_done() and step_index < req.maxSteps:
-        # Find the current actor seat
-        actor_seat = None
-        actor_player = None
-        for player in game.players:
-            valid_actions = player.get_valid_action_ids()
-            if valid_actions:
-                actor_seat = player.position
-                actor_player = player
-                break
 
-        if actor_player is None:
-            # No valid actions found, game should be done
-            break
+@dataclass
+class _StepInference:
+    """Encoder/actor/critic forward pass results and aux-head extraction for
+    one acting player's turn."""
 
-        # Get state and valid actions
-        state = actor_player.get_state_dict()
-        valid_actions = actor_player.get_valid_action_ids()
+    state: Dict[str, Any]
+    valid_actions: List[int]
+    encoder_out: Dict[str, Any]
+    action_probs: torch.Tensor
+    logits: torch.Tensor
+    value: torch.Tensor
+    win_prob_val: float
+    expected_final_val: Optional[float]
+    secret_partner_prob: Optional[float]
+    trump_seen_mask: List[Dict[str, Any]]
+    point_estimates: List[Dict[str, Any]]
+    point_actuals: List[Dict[str, Any]]
+    unseen_trump_higher_than_hand_prob: float
+    unseen_trump_higher_than_hand_actual: bool
 
-        # Get or init memory for this player
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        memory_in = agent.get_recurrent_memory(actor_player.position, device=device)
 
-        # Encode dict state with memory
-        encoder_out = agent.encoder.encode_batch(
-            [state], memory_in=memory_in.unsqueeze(0), device=device
+def _run_inference_step(
+    agent: Any,
+    actor_player: Any,
+    actor_seat: int,
+    players: List[str],
+    device: torch.device,
+) -> _StepInference:
+    """Run the encoder/actor/critic forward pass for the current actor and
+    extract the auxiliary-head predictions (seen-trump mask, known-points
+    estimate, win probability, etc).
+
+    Stage (b) of ``simulate_game``: the per-step loop's inference block.
+    """
+    state = actor_player.get_state_dict()
+    valid_actions = actor_player.get_valid_action_ids()
+
+    # Get or init memory for this player
+    memory_in = agent.get_recurrent_memory(actor_player.position, device=device)
+
+    # Encode dict state with memory
+    encoder_out = agent.encoder.encode_batch(
+        [state], memory_in=memory_in.unsqueeze(0), device=device
+    )
+
+    # Store updated memory
+    agent.set_recurrent_memory(actor_player.position, encoder_out["memory_out"][0])
+
+    with torch.no_grad():
+        # Build mask and hand ids for actor
+        action_mask_t = (
+            agent.get_action_mask(valid_actions, agent.action_size)
+            .unsqueeze(0)
+            .to(device)
+        )
+        hand_ids_t = torch.as_tensor(
+            state["hand_ids"], dtype=torch.long, device=device
+        ).view(1, -1)
+
+        # Use existing encoder_out for logits and probabilities
+        action_probs, logits = agent.actor.forward_with_logits(
+            encoder_out,
+            action_mask_t,
+            hand_ids_t,
+            agent.encoder.card,
         )
 
-        # Store updated memory
-        agent.set_recurrent_memory(actor_player.position, encoder_out["memory_out"][0])
+        value = agent.critic(encoder_out)
 
-        with torch.no_grad():
-            # Build mask and hand ids for actor
-            action_mask_t = (
-                agent.get_action_mask(valid_actions, agent.action_size)
-                .unsqueeze(0)
-                .to(device)
-            )
-            hand_ids_t = torch.as_tensor(
-                state["hand_ids"], dtype=torch.long, device=device
-            ).view(1, -1)
-
-            # Use existing encoder_out for logits and probabilities
-            action_probs, logits = agent.actor.forward_with_logits(
-                encoder_out,
-                action_mask_t,
-                hand_ids_t,
-                agent.encoder.card,
-            )
-
-            value = agent.critic(encoder_out)
-
-            # Auxiliary critic heads via accessor
-            win_prob_val, expected_final_val, secret_partner_prob, point_vector = (
-                agent.critic.aux_predictions(encoder_out)
-            )
-            aux_feat = agent.critic.critic_adapter(encoder_out["features"])
-            seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(
-                aux_feat, agent.encoder.card
-            ).squeeze(0)
-            seen_trump_mask_probs = (
-                torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
-            )
-            unseen_trump_higher_than_hand_logit = (
-                agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
-            )
-            unseen_trump_higher_than_hand_prob = float(
-                torch.sigmoid(unseen_trump_higher_than_hand_logit).item()
-            )
-
-        seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
-        unseen_trump_higher_than_hand_actual = bool(
-            compute_any_unseen_trump_higher_than_hand(actor_player)
+        # Auxiliary critic heads via accessor
+        win_prob_val, expected_final_val, secret_partner_prob, point_vector = (
+            agent.critic.aux_predictions(encoder_out)
         )
-        trump_seen_mask = [
-            {
-                "card": TRUMP[i],
-                "probabilitySeen": float(seen_trump_mask_probs[i]),
-                "actualSeen": bool(seen_trump_mask_actual[i]),
-            }
-            for i in range(len(TRUMP))
-        ]
-
-        point_estimates = []
-        if point_vector:
-            for rel_idx, rel_val in enumerate(point_vector, start=1):
-                abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-                seat_label = (
-                    players[abs_seat - 1]
-                    if 0 < abs_seat <= len(players)
-                    else f"Seat {abs_seat}"
-                )
-                point_estimates.append(
-                    {
-                        "seat": abs_seat,
-                        "seatName": seat_label,
-                        "points": rel_val,
-                        "relativePosition": rel_idx,
-                    }
-                )
-
-        point_actuals = []
-        known_points_rel = compute_known_points_rel(actor_player)
-        if known_points_rel:
-            for rel_idx, rel_val in enumerate(known_points_rel, start=1):
-                abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-                seat_label = (
-                    players[abs_seat - 1]
-                    if 0 < abs_seat <= len(players)
-                    else f"Seat {abs_seat}"
-                )
-                point_actuals.append(
-                    {
-                        "seat": abs_seat,
-                        "seatName": seat_label,
-                        "points": rel_val,
-                        "relativePosition": rel_idx,
-                    }
-                )
-
-        # Choose action
-        if req.deterministic:
-            action_id = (
-                torch.argmax(action_probs, dim=1).item() + 1
-            )  # Convert to 1-indexed
-        else:
-            dist = torch.distributions.Categorical(action_probs)
-            action_id = dist.sample().item() + 1  # Convert to 1-indexed
-
-        # Build probabilities list (only for valid actions, sorted descending)
-        probabilities = []
-        action_probs_np = action_probs.squeeze().cpu().numpy()
-        logits_np = logits.squeeze().cpu().numpy()
-        for valid_action_id in valid_actions:
-            zero_indexed = valid_action_id - 1
-            prob = float(action_probs_np[zero_indexed])
-            logit = float(logits_np[zero_indexed])
-            probabilities.append(
-                AnalyzeProbability(
-                    actionId=valid_action_id,
-                    action=ACTION_LOOKUP[valid_action_id],
-                    prob=prob,
-                    logit=logit,
-                )
-            )
-
-        # Sort probabilities by probability descending
-        probabilities.sort(key=lambda x: x.prob, reverse=True)
-
-        # Get player state/view
-        player_state = build_player_state(actor_player)
-
-        # Infer phase
-        phase = infer_phase_from_action_id(action_id, agent.action_groups)
-
-        # Create action detail
-        action_detail = AnalyzeActionDetail(
-            stepIndex=step_index,
-            seat=actor_seat,
-            seatName=players[actor_seat - 1],  # Convert to 0-indexed for array access
-            phase=phase,
-            actionId=action_id,
-            action=ACTION_LOOKUP[action_id],
-            valueEstimate=float(value.item()),
-            discountedReturn=None,
-            validActionIds=valid_actions,
-            probabilities=probabilities,
-            view=player_state["view"],
-            # Provide encoded 256-d feature vector as a plain float list for schema compatibility
-            # TODO: Update annotations to match new state and/or drop this in favor of state dict
-            state=encoder_out["features"].squeeze(0).detach().cpu().tolist(),
-            winProb=float(win_prob_val),
-            expectedFinalReturn=expected_final_val,
-            secretPartnerProb=float(secret_partner_prob)
-            if secret_partner_prob is not None
-            else None,
-            pointEstimates=point_estimates or None,
-            pointActuals=point_actuals or None,
-            trumpSeenMask=trump_seen_mask or None,
-            unseenTrumpHigherThanHandProb=unseen_trump_higher_than_hand_prob,
-            unseenTrumpHigherThanHandActual=unseen_trump_higher_than_hand_actual,
+        aux_feat = agent.critic.critic_adapter(encoder_out["features"])
+        seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(
+            aux_feat, agent.encoder.card
+        ).squeeze(0)
+        seen_trump_mask_probs = (
+            torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
+        )
+        unseen_trump_higher_than_hand_logit = (
+            agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
+        )
+        unseen_trump_higher_than_hand_prob = float(
+            torch.sigmoid(unseen_trump_higher_than_hand_logit).item()
         )
 
-        trace.append(action_detail)
-
-        # Build training-like transition for reward shaping
-        transition = {
-            "player": actor_player,
-            "state": state,
-            "action": action_id,
-            "log_prob": 0.0,
-            "value": float(value.item()),
-            "valid_actions": set(valid_actions),
-            "intermediate_reward": 0.0,
+    seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
+    unseen_trump_higher_than_hand_actual = bool(
+        compute_any_unseen_trump_higher_than_hand(actor_player)
+    )
+    trump_seen_mask = [
+        {
+            "card": TRUMP[i],
+            "probabilitySeen": float(seen_trump_mask_probs[i]),
+            "actualSeen": bool(seen_trump_mask_actual[i]),
         }
+        for i in range(len(TRUMP))
+    ]
 
-        # Apply shared intermediate shaping and trick tracking
-        update_intermediate_rewards_for_action(
-            game,
-            actor_player,
-            action_id,
-            transition,
-            current_trick_transitions,
-        )
+    point_estimates: List[Dict[str, Any]] = []
+    if point_vector:
+        for rel_idx, rel_val in enumerate(point_vector, start=1):
+            abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
+            seat_label = (
+                players[abs_seat - 1]
+                if 0 < abs_seat <= len(players)
+                else f"Seat {abs_seat}"
+            )
+            point_estimates.append(
+                {
+                    "seat": abs_seat,
+                    "seatName": seat_label,
+                    "points": rel_val,
+                    "relativePosition": rel_idx,
+                }
+            )
 
-        episode_transitions.append(transition)
+    point_actuals: List[Dict[str, Any]] = []
+    known_points_rel = compute_known_points_rel(actor_player)
+    if known_points_rel:
+        for rel_idx, rel_val in enumerate(known_points_rel, start=1):
+            abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
+            seat_label = (
+                players[abs_seat - 1]
+                if 0 < abs_seat <= len(players)
+                else f"Seat {abs_seat}"
+            )
+            point_actuals.append(
+                {
+                    "seat": abs_seat,
+                    "seatName": seat_label,
+                    "points": rel_val,
+                    "relativePosition": rel_idx,
+                }
+            )
 
-        # Apply action
-        actor_player.act(action_id)
+    return _StepInference(
+        state=state,
+        valid_actions=valid_actions,
+        encoder_out=encoder_out,
+        action_probs=action_probs,
+        logits=logits,
+        value=value,
+        win_prob_val=win_prob_val,
+        expected_final_val=expected_final_val,
+        secret_partner_prob=secret_partner_prob,
+        trump_seen_mask=trump_seen_mask,
+        point_estimates=point_estimates,
+        point_actuals=point_actuals,
+        unseen_trump_higher_than_hand_prob=unseen_trump_higher_than_hand_prob,
+        unseen_trump_higher_than_hand_actual=unseen_trump_higher_than_hand_actual,
+    )
 
-        # Trick completion rewards, if any
-        trick_completed = handle_trick_completion(game, current_trick_transitions)
-        if trick_completed:
-            # Propagate an observation for the just-completed trick to all seats
-            for seat in game.players:
-                agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
 
-        step_index += 1
+def _compute_discounted_returns(
+    trace: List[AnalyzeActionDetail],
+    episode_transitions: List[Dict[str, Any]],
+    game: Game,
+    agent: Any,
+) -> None:
+    """Replay the trainers' reward-shaping math over the simulated episode
+    and attach per-step rewards and discounted returns back onto ``trace``
+    (mutated in place, aligned by index).
 
-    # Get final state and build summary if game is done
-    final_payload = None
-    game_summary = None
+    Stage (c) of ``simulate_game``: the reward-shaping replay + discounted-
+    return computation. Both reward schedules are computed from the SAME
+    reward_shaping functions the trainers use: the shaped baseline
+    (``process_episode_rewards``) and the terminal-only return
+    (``process_terminal_rewards``, i.e. the league trainer's
+    ``reward_mode="terminal"``). The client toggles between them.
+    """
+    if not episode_transitions:
+        return
+
+    final_scores = [p.get_score() for p in game.players]
+    head_shaping = [tr["head_shaping_reward"] for tr in episode_transitions]
+
+    # Group indices by player (to compute rewards per player sequence)
+    idxs_by_player: Dict[int, List[int]] = {}
+    for i, tr in enumerate(episode_transitions):
+        idxs_by_player.setdefault(tr["player"].position, []).append(i)
+
+    # Fill rewards aligned to original order by calling per-player.
+    rewards = [0.0] * len(episode_transitions)
+    terminal_rewards = [0.0] * len(episode_transitions)
+    dones = [False] * len(episode_transitions)
+    for idxs in idxs_by_player.values():
+        acts = [episode_transitions[i] for i in idxs]
+        # Per-player rewards (last item is terminal)
+        for offset, reward_data in enumerate(
+            process_episode_rewards(
+                acts,
+                final_scores,
+                game.is_leaster,
+            )
+        ):
+            rewards[idxs[offset]] = float(reward_data["reward"])
+        for offset, reward_data in enumerate(
+            process_terminal_rewards(
+                acts,
+                final_scores,
+                game.is_leaster,
+            )
+        ):
+            terminal_rewards[idxs[offset]] = float(reward_data["reward"])
+        if idxs:
+            dones[idxs[-1]] = True
+
+    discounted_by_index: Dict[int, float] = {}
+    for _, idxs in idxs_by_player.items():
+        ret = 0.0
+        for idx in reversed(idxs):
+            if dones[idx]:
+                ret = 0.0
+            ret = rewards[idx] + agent.gamma * ret
+            discounted_by_index[idx] = ret
+
+    # Attach discounted returns and per-step rewards back to trace elements (aligned by order)
+    for i, action_detail in enumerate(trace):
+        if i in discounted_by_index:
+            action_detail.discountedReturn = float(discounted_by_index[i])
+        # Always provide the raw per-step reward value for this action
+        if i < len(rewards):
+            action_detail.stepReward = float(rewards[i])
+            action_detail.stepRewardHeadShaping = float(head_shaping[i])
+            action_detail.stepRewardBase = float(rewards[i]) - float(
+                action_detail.stepRewardHeadShaping
+            )
+            action_detail.stepRewardTerminal = float(terminal_rewards[i])
+
+
+def _build_final_summary(
+    game: Game, initial_hands: Dict[str, List[str]], players: List[str]
+) -> tuple[Optional[Dict[str, Any]], Optional[AnalyzeGameSummary]]:
+    """Build the final-state payload and the game summary once the
+    simulation reaches a terminal game state.
+
+    Stage (d) of ``simulate_game`` (part 1): response assembly.
+    """
+    final_payload: Optional[Dict[str, Any]] = None
+    game_summary: Optional[AnalyzeGameSummary] = None
     if game.is_done():
+        from server.runtime.tables import build_player_state
+
         # Use any player to get the final state
         final_state = build_player_state(game.players[0])
         final_payload = final_state["view"].get("final")
@@ -366,70 +384,23 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             scores=scores,
         )
 
-    # Compute discounted returns per action if we have any transitions
-    if episode_transitions:
-        final_scores = [p.get_score() for p in game.players]
-        head_shaping = [tr["head_shaping_reward"] for tr in episode_transitions]
+    return final_payload, game_summary
 
-        # Group indices by player (to compute rewards per player sequence)
-        idxs_by_player: Dict[int, List[int]] = {}
-        for i, tr in enumerate(episode_transitions):
-            idxs_by_player.setdefault(tr["player"].position, []).append(i)
 
-        # Fill rewards aligned to original order by calling per-player. We
-        # compute both schedules from the SAME training_utils reward functions
-        # the trainers use: the shaped baseline (process_episode_rewards) and
-        # the terminal-only return (process_terminal_rewards, i.e. the league
-        # trainer's reward_mode="terminal"). The client toggles between them.
-        rewards = [0.0] * len(episode_transitions)
-        terminal_rewards = [0.0] * len(episode_transitions)
-        dones = [False] * len(episode_transitions)
-        for idxs in idxs_by_player.values():
-            acts = [episode_transitions[i] for i in idxs]
-            # Per-player rewards (last item is terminal)
-            for offset, reward_data in enumerate(
-                process_episode_rewards(
-                    acts,
-                    final_scores,
-                    game.is_leaster,
-                )
-            ):
-                rewards[idxs[offset]] = float(reward_data["reward"])
-            for offset, reward_data in enumerate(
-                process_terminal_rewards(
-                    acts,
-                    final_scores,
-                    game.is_leaster,
-                )
-            ):
-                terminal_rewards[idxs[offset]] = float(reward_data["reward"])
-            if idxs:
-                dones[idxs[-1]] = True
+def _assemble_response(
+    req: AnalyzeSimulateRequest,
+    settings: Any,
+    agent: Any,
+    players: List[str],
+    game_summary: Optional[AnalyzeGameSummary],
+    trace: List[AnalyzeActionDetail],
+    final_payload: Optional[Dict[str, Any]],
+) -> AnalyzeSimulateResponse:
+    """Assemble the final ``AnalyzeSimulateResponse``.
 
-        discounted_by_index: Dict[int, float] = {}
-        for _, idxs in idxs_by_player.items():
-            ret = 0.0
-            for idx in reversed(idxs):
-                if dones[idx]:
-                    ret = 0.0
-                ret = rewards[idx] + agent.gamma * ret
-                discounted_by_index[idx] = ret
-
-        # Attach discounted returns and per-step rewards back to trace elements (aligned by order)
-        for i, action_detail in enumerate(trace):
-            if i in discounted_by_index:
-                action_detail.discountedReturn = float(discounted_by_index[i])
-            # Always provide the raw per-step reward value for this action
-            if i < len(rewards):
-                action_detail.stepReward = float(rewards[i])
-                action_detail.stepRewardHeadShaping = float(head_shaping[i])
-                action_detail.stepRewardBase = float(rewards[i]) - float(
-                    action_detail.stepRewardHeadShaping
-                )
-                action_detail.stepRewardTerminal = float(terminal_rewards[i])
-
-    # Build response
-    response = AnalyzeSimulateResponse(
+    Stage (d) of ``simulate_game`` (part 2): response assembly.
+    """
+    return AnalyzeSimulateResponse(
         meta={
             "partnerMode": req.partnerMode,
             "deterministic": req.deterministic,
@@ -444,4 +415,150 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         final=final_payload,
     )
 
-    return response
+
+def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
+    """Simulate a full Sheepshead game and return detailed analysis trace."""
+
+    agent, settings, game, initial_hands = _setup_simulation(req)
+
+    # Player display names
+    players = ANALYZE_SEAT_NAMES
+
+    from server.runtime.tables import build_player_state
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Trace storage
+    trace: List[AnalyzeActionDetail] = []
+    step_index = 0
+    # For reward shaping and discounted return computation
+    episode_transitions: List[Dict[str, Any]] = []
+    current_trick_transitions: List[Dict[str, Any]] = []
+
+    # Simulation loop
+    while not game.is_done() and step_index < req.maxSteps:
+        # Find the current actor seat
+        actor_seat = None
+        actor_player = None
+        for player in game.players:
+            valid_actions = player.get_valid_action_ids()
+            if valid_actions:
+                actor_seat = player.position
+                actor_player = player
+                break
+
+        if actor_player is None:
+            # No valid actions found, game should be done
+            break
+
+        inference = _run_inference_step(agent, actor_player, actor_seat, players, device)
+
+        # Choose action
+        if req.deterministic:
+            action_id = (
+                torch.argmax(inference.action_probs, dim=1).item() + 1
+            )  # Convert to 1-indexed
+        else:
+            dist = torch.distributions.Categorical(inference.action_probs)
+            action_id = dist.sample().item() + 1  # Convert to 1-indexed
+
+        # Build probabilities list (only for valid actions, sorted descending)
+        probabilities = []
+        action_probs_np = inference.action_probs.squeeze().cpu().numpy()
+        logits_np = inference.logits.squeeze().cpu().numpy()
+        for valid_action_id in inference.valid_actions:
+            zero_indexed = valid_action_id - 1
+            prob = float(action_probs_np[zero_indexed])
+            logit = float(logits_np[zero_indexed])
+            probabilities.append(
+                AnalyzeProbability(
+                    actionId=valid_action_id,
+                    action=ACTION_LOOKUP[valid_action_id],
+                    prob=prob,
+                    logit=logit,
+                )
+            )
+
+        # Sort probabilities by probability descending
+        probabilities.sort(key=lambda x: x.prob, reverse=True)
+
+        # Get player state/view
+        player_state = build_player_state(actor_player)
+
+        # Infer phase
+        phase = infer_phase_from_action_id(action_id, agent.action_groups)
+
+        # Create action detail
+        action_detail = AnalyzeActionDetail(
+            stepIndex=step_index,
+            seat=actor_seat,
+            seatName=players[actor_seat - 1],  # Convert to 0-indexed for array access
+            phase=phase,
+            actionId=action_id,
+            action=ACTION_LOOKUP[action_id],
+            valueEstimate=float(inference.value.item()),
+            discountedReturn=None,
+            validActionIds=inference.valid_actions,
+            probabilities=probabilities,
+            view=player_state["view"],
+            # Provide encoded 256-d feature vector as a plain float list for schema compatibility
+            # TODO: Update annotations to match new state and/or drop this in favor of state dict
+            state=inference.encoder_out["features"].squeeze(0).detach().cpu().tolist(),
+            winProb=float(inference.win_prob_val),
+            expectedFinalReturn=inference.expected_final_val,
+            secretPartnerProb=float(inference.secret_partner_prob)
+            if inference.secret_partner_prob is not None
+            else None,
+            pointEstimates=inference.point_estimates or None,
+            pointActuals=inference.point_actuals or None,
+            trumpSeenMask=inference.trump_seen_mask or None,
+            unseenTrumpHigherThanHandProb=inference.unseen_trump_higher_than_hand_prob,
+            unseenTrumpHigherThanHandActual=inference.unseen_trump_higher_than_hand_actual,
+        )
+
+        trace.append(action_detail)
+
+        # Build training-like transition for reward shaping
+        transition = {
+            "player": actor_player,
+            "state": inference.state,
+            "action": action_id,
+            "log_prob": 0.0,
+            "value": float(inference.value.item()),
+            "valid_actions": set(inference.valid_actions),
+            "intermediate_reward": 0.0,
+        }
+
+        # Apply shared intermediate shaping and trick tracking
+        update_intermediate_rewards_for_action(
+            game,
+            actor_player,
+            action_id,
+            transition,
+            current_trick_transitions,
+        )
+
+        episode_transitions.append(transition)
+
+        # Apply action
+        actor_player.act(action_id)
+
+        # Trick completion rewards, if any
+        trick_completed = handle_trick_completion(game, current_trick_transitions)
+        if trick_completed:
+            # Propagate an observation for the just-completed trick to all seats
+            for seat in game.players:
+                agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+
+        step_index += 1
+
+    # Get final state and build summary if game is done
+    final_payload, game_summary = _build_final_summary(game, initial_hands, players)
+
+    # Compute discounted returns per action if we have any transitions
+    _compute_discounted_returns(trace, episode_transitions, game, agent)
+
+    # Build response
+    return _assemble_response(
+        req, settings, agent, players, game_summary, trace, final_payload
+    )
