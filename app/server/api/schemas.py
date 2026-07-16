@@ -175,11 +175,6 @@ class AnalyzePointEstimate(BaseModel):
     relativePosition: int
 
 
-class AnalyzeTrumpProbability(BaseModel):
-    card: str
-    probability: float
-
-
 class AnalyzeTrumpSeenMaskEntry(BaseModel):
     card: str
     probabilitySeen: float
@@ -233,17 +228,3 @@ class AnalyzeSimulateResponse(BaseModel):
     summary: Optional[AnalyzeGameSummary] = None
     trace: List[AnalyzeActionDetail]
     final: Optional[Dict[str, Any]] = None
-
-
-class ChatMessage(BaseModel):
-    id: str
-    table_id: str
-    type: str  # "player" | "system"
-    author: Optional[str] = None  # player display name for player messages
-    body: str
-    timestamp: float
-
-
-class ChatSendRequest(BaseModel):
-    client_id: str
-    message: str

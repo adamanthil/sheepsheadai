@@ -67,11 +67,3 @@ export type TableStateMsg = {
   view: GameView;
   valid_actions: number[];
 };
-
-export type GameOverMsg = { type: "game_over"; table: TableView };
-
-export type TableClosedMsg = {
-  type: "table_closed";
-  reason?: string;
-  tableId?: string;
-};

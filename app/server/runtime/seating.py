@@ -19,13 +19,6 @@ def is_ai_occupant(table: Table, occ_id: Optional[str]) -> bool:
     return bool(occ and occ.is_ai)
 
 
-def first_ai_seat(table: Table) -> Optional[int]:
-    for i in range(1, 6):
-        if is_ai_occupant(table, table.seats.get(i)):
-            return i
-    return None
-
-
 def reserved_ai_ids(table: Table) -> Set[str]:
     return {v for v in table.reserved_ai_by_human.values() if v}
 

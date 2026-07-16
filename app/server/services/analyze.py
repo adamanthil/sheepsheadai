@@ -15,7 +15,7 @@ from server.api.schemas import (
 )
 from server.config import get_settings
 from server.services.ai_loader import load_agent
-from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game, Player
+from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game
 from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -35,13 +35,6 @@ def set_seed(seed: int) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-
-
-def build_player_state_for_analyze(player: Player) -> Dict[str, any]:
-    """Build the per-seat state payload: dict state and a readable view (simplified for analyze)."""
-    from server.runtime.tables import build_player_state
-
-    return build_player_state(player)
 
 
 def infer_phase_from_action_id(
@@ -69,7 +62,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     settings = get_settings()
     agent = load_agent(settings.sheepshead_model_path)
 
-    # agent.set_head_temperatures(partner=3.0)
+    from server.runtime.tables import build_player_state
 
     # Reset recurrent state before simulation
     agent.reset_recurrent_state()
@@ -253,7 +246,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         probabilities.sort(key=lambda x: x.prob, reverse=True)
 
         # Get player state/view
-        player_state = build_player_state_for_analyze(actor_player)
+        player_state = build_player_state(actor_player)
 
         # Infer phase
         phase = infer_phase_from_action_id(action_id, agent.action_groups)
@@ -327,7 +320,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     game_summary = None
     if game.is_done():
         # Use any player to get the final state
-        final_state = build_player_state_for_analyze(game.players[0])
+        final_state = build_player_state(game.players[0])
         final_payload = final_state["view"].get("final")
 
         # Build game summary
