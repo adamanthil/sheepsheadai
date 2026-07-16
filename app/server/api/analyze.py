@@ -6,7 +6,11 @@ import threading
 from fastapi import APIRouter, HTTPException, Request
 
 from server.api.ratelimit import ANALYZE, limiter
-from server.api.schemas import AnalyzeSimulateRequest, AnalyzeSimulateResponse
+from server.api.schemas import (
+    AnalyzeModelResponse,
+    AnalyzeSimulateRequest,
+    AnalyzeSimulateResponse,
+)
 
 router = APIRouter()
 
@@ -14,6 +18,20 @@ router = APIRouter()
 # burst (this is a sync endpoint, so each request occupies a threadpool
 # worker) cannot oversubscribe the CPU that live games depend on.
 _sim_slots = threading.BoundedSemaphore(2)
+
+
+@router.get("/api/analyze/model")
+@limiter.limit(ANALYZE)
+def analyze_model(request: Request) -> AnalyzeModelResponse:
+    """Describe the deployed model: architecture, capabilities, and its
+    card-embedding geometry. Cached per checkpoint."""
+    try:
+        from server.services.model_info import get_model_info
+
+        return get_model_info()
+    except Exception as e:
+        logging.exception("analyze_model failed: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/api/analyze/simulate")

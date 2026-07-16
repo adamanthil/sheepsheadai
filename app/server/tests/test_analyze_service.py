@@ -127,6 +127,36 @@ def test_simulate_with_oracle_critic(analyze_env, monkeypatch):
         assert step.oracleValue == step.oracleValue  # not NaN
 
 
+def test_model_info_card_embeddings(analyze_env, monkeypatch):
+    """The model-info payload must describe the full card table (32 cards +
+    UNDER, pad row dropped) with consistent geometry shapes."""
+    from sheepshead import ACTIONS, DECK
+    from sheepshead.agent.ppo import PPOAgent
+
+    import server.services.model_info as model_info_mod
+
+    agent = PPOAgent(len(ACTIONS), arch="full")
+    monkeypatch.setattr(model_info_mod, "load_agent", lambda path: agent)
+    model_info_mod._model_info.cache_clear()
+
+    info = model_info_mod.get_model_info()
+
+    assert info.arch == "full"
+    assert info.hasAuxHeads is True
+    assert info.hasOracle is False
+    emb = info.cardEmbeddings
+    assert emb is not None
+    assert emb.dims == 16
+    assert len(emb.cards) == 33
+    assert [e.card for e in emb.cards[:32]] == DECK
+    assert emb.cards[32].card == "UNDER"
+    assert len(emb.cosineSim) == 33 and len(emb.cosineSim[0]) == 33
+    assert all(abs(emb.cosineSim[i][i] - 1.0) < 1e-5 for i in range(33))
+    assert len(emb.pcaCoords) == 33 and len(emb.pcaCoords[0]) == 2
+    assert len(emb.pcaExplainedVariance) == 2
+    assert 0.0 < sum(emb.pcaExplainedVariance) <= 1.0 + 1e-6
+
+
 def test_build_observation_decodes_state():
     """_build_observation must mirror the acting player's state dict:
     their own cards, relative trick order anchored on their seat, and

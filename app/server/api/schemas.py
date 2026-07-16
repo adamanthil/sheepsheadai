@@ -150,6 +150,34 @@ class HealthResponse(BaseModel):
 
 
 # Analyze AI Model schemas
+class AnalyzeCardEmbeddingEntry(BaseModel):
+    id: int  # card id (1..32 real cards in DECK order, 33 = UNDER)
+    card: str  # card code, or "UNDER"
+    vector: List[float]
+
+
+class AnalyzeCardEmbeddings(BaseModel):
+    """The model's learned card-embedding table and precomputed geometry.
+    Row order is DECK order (all trump first, then fail), UNDER last."""
+
+    dims: int
+    cards: List[AnalyzeCardEmbeddingEntry]
+    cosineSim: List[List[float]]  # (n, n), order matches `cards`
+    pcaCoords: List[List[float]]  # (n, 2) projection onto top-2 PCs
+    pcaExplainedVariance: List[float]  # variance ratio of the 2 PCs
+
+
+class AnalyzeModelResponse(BaseModel):
+    modelLabel: str
+    arch: str
+    criticMode: str
+    hasAuxHeads: bool
+    hasOracle: bool
+    gamma: float
+    # None for architectures without a card-embedding table (onehot-ff).
+    cardEmbeddings: Optional[AnalyzeCardEmbeddings] = None
+
+
 class AnalyzeSimulateRequest(BaseModel):
     # extra="forbid" so removed fields (e.g. the old client-supplied
     # modelPath, which let callers point torch.load at arbitrary files)

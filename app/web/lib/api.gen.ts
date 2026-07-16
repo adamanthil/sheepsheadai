@@ -24,6 +24,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analyze/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Analyze Model
+         * @description Describe the deployed model: architecture, capabilities, and its
+         *     card-embedding geometry. Cached per checkpoint.
+         */
+        get: operations["analyze_model_api_analyze_model_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analyze/simulate": {
         parameters: {
             query?: never;
@@ -336,6 +357,32 @@ export interface components {
              */
             trumpMaskCount: number;
         };
+        /** AnalyzeCardEmbeddingEntry */
+        AnalyzeCardEmbeddingEntry: {
+            /** Card */
+            card: string;
+            /** Id */
+            id: number;
+            /** Vector */
+            vector: number[];
+        };
+        /**
+         * AnalyzeCardEmbeddings
+         * @description The model's learned card-embedding table and precomputed geometry.
+         *     Row order is DECK order (all trump first, then fail), UNDER last.
+         */
+        AnalyzeCardEmbeddings: {
+            /** Cards */
+            cards: components["schemas"]["AnalyzeCardEmbeddingEntry"][];
+            /** Cosinesim */
+            cosineSim: number[][];
+            /** Dims */
+            dims: number;
+            /** Pcacoords */
+            pcaCoords: number[][];
+            /** Pcaexplainedvariance */
+            pcaExplainedVariance: number[];
+        };
         /** AnalyzeGameSummary */
         AnalyzeGameSummary: {
             /** Blind */
@@ -356,6 +403,22 @@ export interface components {
             pickerPoints: number;
             /** Scores */
             scores: number[];
+        };
+        /** AnalyzeModelResponse */
+        AnalyzeModelResponse: {
+            /** Arch */
+            arch: string;
+            cardEmbeddings?: components["schemas"]["AnalyzeCardEmbeddings"] | null;
+            /** Criticmode */
+            criticMode: string;
+            /** Gamma */
+            gamma: number;
+            /** Hasauxheads */
+            hasAuxHeads: boolean;
+            /** Hasoracle */
+            hasOracle: boolean;
+            /** Modellabel */
+            modelLabel: string;
         };
         /**
          * AnalyzeObservation
@@ -701,6 +764,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionsLookupResponse"];
+                };
+            };
+        };
+    };
+    analyze_model_api_analyze_model_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyzeModelResponse"];
                 };
             };
         };
