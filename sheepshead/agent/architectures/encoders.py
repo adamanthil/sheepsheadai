@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 
 from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
+from sheepshead.agent.token_layout import CONTEXT_TOKEN, MEMORY_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +194,7 @@ class PerceiverEncoder(CardReasoningEncoder):
         all_mask,
     ):
         # Memory write: the post-reasoning MEMORY token (index 1).
-        memory_out = self.memory_gru(all_tokens[:, 1, :], memory_in)
+        memory_out = self.memory_gru(all_tokens[:, MEMORY_TOKEN, :], memory_in)
         return {
             "features": memory_out,  # vestigial (see class docstring)
             "hand_tokens": hand_tok_out,
@@ -230,7 +231,7 @@ class PerceiverCtxMemEncoder(PerceiverEncoder):
     ):
         # Memory write: the post-reasoning CONTEXT token (index 0), as in
         # the base architecture.
-        memory_out = self.memory_gru(all_tokens[:, 0, :], memory_in)
+        memory_out = self.memory_gru(all_tokens[:, CONTEXT_TOKEN, :], memory_in)
         return {
             "features": memory_out,  # vestigial (see PerceiverEncoder)
             "hand_tokens": hand_tok_out,
@@ -315,7 +316,7 @@ class SharedReadoutEncoder(PerceiverEncoder):
         all_mask,
     ):
         # Memory write: context token, as in the base architecture.
-        driver = all_tokens[:, 0, :]
+        driver = all_tokens[:, CONTEXT_TOKEN, :]
         memory_out = self.memory_gru(driver, memory_in)
         B = all_tokens.size(0)
         q = self.readout_query.unsqueeze(0).expand(B, -1, -1)

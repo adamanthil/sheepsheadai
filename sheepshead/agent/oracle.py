@@ -45,6 +45,17 @@ from sheepshead.agent.encoder import (
     CardReasoningEncoder,
     PAD_CARD_ID,
 )
+from sheepshead.agent.token_layout import (
+    BLIND_TYPE_ID,
+    BURY_TYPE_ID,
+    CONTEXT_TOKEN,
+    HAND_TOKENS,
+    HAND_TYPE_ID,
+    MEMORY_TOKEN,
+    OPPONENT_TYPE_ID,
+    ORACLE_TYPE_COUNT,
+    TRICK_TYPE_ID,
+)
 
 
 class OracleCriticEncoder(CardReasoningEncoder):
@@ -80,7 +91,7 @@ class OracleCriticEncoder(CardReasoningEncoder):
     """
 
     # card_type ids: 0=context, 1=memory, 2=hand, 3=trick, 4=blind, 5=bury
-    OPP_TYPE_ID = 6
+    OPP_TYPE_ID = OPPONENT_TYPE_ID
 
     def __init__(
         self,
@@ -107,7 +118,7 @@ class OracleCriticEncoder(CardReasoningEncoder):
             nn.SiLU(),
         )
         # +1 token type for opponent-hand cards.
-        self.card_type = nn.Embedding(7, d_token)
+        self.card_type = nn.Embedding(ORACLE_TYPE_COUNT, d_token)
         # Opponent-hand tokens: card + seat + role (same shape as trick MLP).
         self.token_mlp_opp = nn.Sequential(
             nn.Linear(d_card + 4 + 4, d_token),
@@ -280,10 +291,10 @@ class OracleCriticEncoder(CardReasoningEncoder):
             [
                 torch.zeros((B, 1), dtype=torch.long, device=dev),
                 torch.ones((B, 1), dtype=torch.long, device=dev),
-                torch.full((B, 8), 2, dtype=torch.long, device=dev),
-                torch.full((B, 5), 3, dtype=torch.long, device=dev),
-                torch.full((B, 2), 4, dtype=torch.long, device=dev),
-                torch.full((B, 2), 5, dtype=torch.long, device=dev),
+                torch.full((B, 8), HAND_TYPE_ID, dtype=torch.long, device=dev),
+                torch.full((B, 5), TRICK_TYPE_ID, dtype=torch.long, device=dev),
+                torch.full((B, 2), BLIND_TYPE_ID, dtype=torch.long, device=dev),
+                torch.full((B, 2), BURY_TYPE_ID, dtype=torch.long, device=dev),
                 torch.full((B, 32), self.OPP_TYPE_ID, dtype=torch.long, device=dev),
             ],
             dim=1,
@@ -293,11 +304,11 @@ class OracleCriticEncoder(CardReasoningEncoder):
         # 6. Reason, update memory from the post-reasoning MEMORY token,
         # and hand the full token set to the value network's readout.
         all_tokens = self.card_reasoner(all_tokens, all_mask)
-        memory_out = self.memory_gru(all_tokens[:, 1, :], memory_in)
+        memory_out = self.memory_gru(all_tokens[:, MEMORY_TOKEN, :], memory_in)
         return {
             "features": memory_out,
-            "hand_tokens": all_tokens[:, 2:10, :],
-            "context_token": all_tokens[:, 0, :],
+            "hand_tokens": all_tokens[:, HAND_TOKENS, :],
+            "context_token": all_tokens[:, CONTEXT_TOKEN, :],
             "memory_out": memory_out,
             "all_tokens": all_tokens,
             "all_mask": all_mask,

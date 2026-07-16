@@ -4,6 +4,18 @@ from typing import List, Dict, Any
 import itertools
 from dataclasses import dataclass
 from sheepshead import DECK_IDS, TRUMP
+from sheepshead.agent.token_layout import (
+    BASE_TYPE_COUNT,
+    BLIND_TOKENS,
+    BLIND_TYPE_ID,
+    BURY_TOKENS,
+    BURY_TYPE_ID,
+    CONTEXT_TOKEN,
+    HAND_TOKENS,
+    HAND_TYPE_ID,
+    TRICK_TOKENS,
+    TRICK_TYPE_ID,
+)
 
 
 PAD_CARD_ID = 0
@@ -183,7 +195,7 @@ class CardReasoningEncoder(nn.Module):
         self.seat = nn.Embedding(6, 4)  # 0=unknown, 1-5=relative positions
         self.role = nn.Embedding(4, 4)  # 0=none, 1=picker, 2=partner, 3=both
         self.card_type = nn.Embedding(
-            6, d_token
+            BASE_TYPE_COUNT, d_token
         )  # 0=context, 1=memory, 2=hand, 3=trick, 4=blind, 5=bury
 
         # Optional informed initialization for card embeddings
@@ -555,16 +567,16 @@ class CardReasoningEncoder(nn.Module):
                     (B, 1), dtype=torch.long, device=device_actual
                 ),  # memory = 1
                 torch.full(
-                    (B, 8), 2, dtype=torch.long, device=device_actual
+                    (B, 8), HAND_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # hand = 2
                 torch.full(
-                    (B, 5), 3, dtype=torch.long, device=device_actual
+                    (B, 5), TRICK_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # trick = 3
                 torch.full(
-                    (B, 2), 4, dtype=torch.long, device=device_actual
+                    (B, 2), BLIND_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # blind = 4
                 torch.full(
-                    (B, 2), 5, dtype=torch.long, device=device_actual
+                    (B, 2), BURY_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # bury = 5
             ],
             dim=1,
@@ -575,11 +587,11 @@ class CardReasoningEncoder(nn.Module):
         all_tokens = self.card_reasoner(all_tokens, all_mask)
 
         # 8. Extract post-attention tokens
-        context_out = all_tokens[:, 0, :]  # (B, d_token)
-        hand_tok_out = all_tokens[:, 2:10, :]  # (B, 8, d_token)
-        trick_tok_out = all_tokens[:, 10:15, :]
-        blind_tok_out = all_tokens[:, 15:17, :]
-        bury_tok_out = all_tokens[:, 17:19, :]
+        context_out = all_tokens[:, CONTEXT_TOKEN, :]  # (B, d_token)
+        hand_tok_out = all_tokens[:, HAND_TOKENS, :]  # (B, 8, d_token)
+        trick_tok_out = all_tokens[:, TRICK_TOKENS, :]
+        blind_tok_out = all_tokens[:, BLIND_TOKENS, :]
+        bury_tok_out = all_tokens[:, BURY_TOKENS, :]
 
         # 9-11. Pool bags, update memory, fuse features. Overridable seam:
         # pool-free variants (PerceiverEncoder in architectures.encoders) replace
