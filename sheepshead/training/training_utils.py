@@ -3,6 +3,8 @@
 Training utilities shared across training scripts.
 """
 
+import csv
+import os
 import random
 from typing import List, Dict
 import matplotlib.pyplot as plt
@@ -866,3 +868,26 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         ),
         "play_nodes": len(play_spreads),
     }
+
+
+def append_csv_row(path: str, fieldnames: List[str], row: Dict) -> None:
+    """Append one row to the CSV at ``path``, writing ``fieldnames`` as a
+    header first if the file doesn't exist yet.
+
+    Both PPO trainers periodically append a row to their own
+    ``anchored_eval.csv`` (and train_league_ppo has a few sibling logs with
+    the same idiom): check whether the file exists, open in append mode,
+    write the header once, then write the row. The two trainers' anchored-
+    eval schemas differ (different columns entirely), so this only factors
+    out that shared mechanism -- callers still supply their own header list
+    and row dict, so each trainer's exact byte-for-byte schema is unchanged.
+    Uses ``csv.DictWriter`` regardless of whether the caller's original code
+    used ``csv.writer`` with a plain list: given the same fieldnames order
+    and matching dict keys, the emitted bytes are identical either way.
+    """
+    write_header = not os.path.exists(path)
+    with open(path, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            w.writeheader()
+        w.writerow(row)
