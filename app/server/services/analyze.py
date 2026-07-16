@@ -104,14 +104,14 @@ class _StepInference:
     action_probs: torch.Tensor
     logits: torch.Tensor
     value: torch.Tensor
-    win_prob_val: float
+    win_prob_val: Optional[float]
     expected_final_val: Optional[float]
     secret_partner_prob: Optional[float]
     trump_seen_mask: List[Dict[str, Any]]
     point_estimates: List[Dict[str, Any]]
     point_actuals: List[Dict[str, Any]]
-    unseen_trump_higher_than_hand_prob: float
-    unseen_trump_higher_than_hand_actual: bool
+    unseen_trump_higher_than_hand_prob: Optional[float]
+    unseen_trump_higher_than_hand_actual: Optional[bool]
 
 
 def _run_inference_step(
@@ -162,36 +162,48 @@ def _run_inference_step(
 
         value = agent.critic(encoder_out)
 
-        # Auxiliary critic heads via accessor
-        win_prob_val, expected_final_val, secret_partner_prob, point_vector = (
-            agent.critic.aux_predictions(encoder_out)
-        )
-        aux_feat = agent.critic.critic_adapter(encoder_out["features"])
-        seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(
-            aux_feat, agent.encoder.card
-        ).squeeze(0)
-        seen_trump_mask_probs = (
-            torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
-        )
-        unseen_trump_higher_than_hand_logit = (
-            agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
-        )
-        unseen_trump_higher_than_hand_prob = float(
-            torch.sigmoid(unseen_trump_higher_than_hand_logit).item()
-        )
+        # Auxiliary critic heads via accessor. No-aux architecture variants
+        # (e.g. "no-aux", "perceiver") have no adapter or aux heads at all,
+        # so every aux-derived field stays None for them.
+        win_prob_val: Optional[float] = None
+        expected_final_val: Optional[float] = None
+        secret_partner_prob: Optional[float] = None
+        point_vector: Optional[List[float]] = None
+        seen_trump_mask_probs: Optional[List[float]] = None
+        unseen_trump_higher_than_hand_prob: Optional[float] = None
+        if agent.critic.has_aux_heads:
+            win_prob_val, expected_final_val, secret_partner_prob, point_vector = (
+                agent.critic.aux_predictions(encoder_out)
+            )
+            aux_feat = agent.critic.critic_adapter(encoder_out["features"])
+            seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(
+                aux_feat, agent.encoder.card
+            ).squeeze(0)
+            seen_trump_mask_probs = (
+                torch.sigmoid(seen_trump_mask_logits).detach().cpu().tolist()
+            )
+            unseen_trump_higher_than_hand_logit = (
+                agent.critic.unseen_trump_higher_than_hand_logits(aux_feat).squeeze(0)
+            )
+            unseen_trump_higher_than_hand_prob = float(
+                torch.sigmoid(unseen_trump_higher_than_hand_logit).item()
+            )
 
-    seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
-    unseen_trump_higher_than_hand_actual = bool(
-        compute_any_unseen_trump_higher_than_hand(actor_player)
-    )
-    trump_seen_mask = [
-        {
-            "card": TRUMP[i],
-            "probabilitySeen": float(seen_trump_mask_probs[i]),
-            "actualSeen": bool(seen_trump_mask_actual[i]),
-        }
-        for i in range(len(TRUMP))
-    ]
+    trump_seen_mask: List[Dict[str, Any]] = []
+    unseen_trump_higher_than_hand_actual: Optional[bool] = None
+    if seen_trump_mask_probs is not None:
+        seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
+        unseen_trump_higher_than_hand_actual = bool(
+            compute_any_unseen_trump_higher_than_hand(actor_player)
+        )
+        trump_seen_mask = [
+            {
+                "card": TRUMP[i],
+                "probabilitySeen": float(seen_trump_mask_probs[i]),
+                "actualSeen": bool(seen_trump_mask_actual[i]),
+            }
+            for i in range(len(TRUMP))
+        ]
 
     point_estimates: List[Dict[str, Any]] = []
     if point_vector:
@@ -211,8 +223,12 @@ def _run_inference_step(
                 }
             )
 
+    # Actuals exist only to be compared against the aux-head estimates, so
+    # they are omitted whenever the estimates are.
     point_actuals: List[Dict[str, Any]] = []
-    known_points_rel = compute_known_points_rel(actor_player)
+    known_points_rel = (
+        compute_known_points_rel(actor_player) if agent.critic.has_aux_heads else None
+    )
     if known_points_rel:
         for rel_idx, rel_val in enumerate(known_points_rel, start=1):
             abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
@@ -504,7 +520,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             # Provide encoded 256-d feature vector as a plain float list for schema compatibility
             # TODO: Update annotations to match new state and/or drop this in favor of state dict
             state=inference.encoder_out["features"].squeeze(0).detach().cpu().tolist(),
-            winProb=float(inference.win_prob_val),
+            winProb=float(inference.win_prob_val)
+            if inference.win_prob_val is not None
+            else None,
             expectedFinalReturn=inference.expected_final_val,
             secretPartnerProb=float(inference.secret_partner_prob)
             if inference.secret_partner_prob is not None
