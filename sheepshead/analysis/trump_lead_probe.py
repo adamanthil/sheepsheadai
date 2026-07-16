@@ -46,11 +46,10 @@ from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
-    TRUMP,
+    TRUMP_SET,
     Game,
 )
 
-_TRUMP_SET = set(TRUMP)
 PROBE_SEED = 20260702  # fixed CRN deal set: results comparable forever
 LEAK_COST_SCORE = 0.19  # −score per occurrence (investigation §5, belief-pool MC)
 
@@ -69,8 +68,8 @@ def _lead_options(player) -> tuple[list[str], list[str]]:
         if ACTION_LOOKUP[a].startswith("PLAY ")
     ]
     return (
-        [c for c in cards if c in _TRUMP_SET],
-        [c for c in cards if c not in _TRUMP_SET],
+        [c for c in cards if c in TRUMP_SET],
+        [c for c in cards if c not in TRUMP_SET],
     )
 
 
@@ -120,7 +119,7 @@ def probe_agent(hero, n_deals: int, partner_mode: int, seed: int = PROBE_SEED) -
                             if trumps and fails:
                                 record = (
                                     game.current_trick,
-                                    sum(1 for c in player.hand if c in _TRUMP_SET),
+                                    sum(1 for c in player.hand if c in TRUMP_SET),
                                 )
                         a, _, _ = ag.act(
                             player.get_state_dict(),
@@ -133,7 +132,7 @@ def probe_agent(hero, n_deals: int, partner_mode: int, seed: int = PROBE_SEED) -
                             name = ACTION_LOOKUP[a]
                             led_trump = (
                                 name.startswith("PLAY ")
-                                and name.split(" ", 1)[1] in _TRUMP_SET
+                                and name.split(" ", 1)[1] in TRUMP_SET
                             )
                             stats["opportunities"] += 1
                             stats["by_trick"][trick][0] += 1

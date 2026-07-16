@@ -126,8 +126,8 @@ FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 # and state encode; the old `card in TRUMP` list scan and substring-test chain
 # showed up directly in profiles. The functions fall back for non-deck tokens
 # (UNDER, "") so semantics are identical to the original definitions.
-_TRUMP_SET = set(TRUMP)
-CARD_SUIT = {c: ("T" if c in _TRUMP_SET else c[-1]) for c in DECK}
+TRUMP_SET = {*TRUMP}
+CARD_SUIT = {c: ("T" if c in TRUMP_SET else c[-1]) for c in DECK}
 CARD_POINTS = {
     c: (
         11

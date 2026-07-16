@@ -27,9 +27,8 @@ Evaluation hook: ``rigorous_eval`` accepts ``model.pt@c1`` / ``model.pt@c2`` /
 
 from __future__ import annotations
 
-from sheepshead import ACTIONS, DECK_IDS, FAIL, PARTNER_BY_CALLED_ACE, TRUMP
+from sheepshead import ACTIONS, DECK_IDS, FAIL, PARTNER_BY_CALLED_ACE, TRUMP_SET
 
-_TRUMP_SET = set(TRUMP)
 _FAIL_SET = set(FAIL)
 _JD_ID = DECK_IDS["JD"]
 _ID_TO_CARD = {v: k for k, v in DECK_IDS.items()}
@@ -40,7 +39,7 @@ def _lead_card(action_id: int) -> str | None:
     if not name.startswith("PLAY "):
         return None
     card = name[5:]
-    return card if card in _TRUMP_SET or card in _FAIL_SET else None
+    return card if card in DECK_IDS else None
 
 
 class ConventionWrapper:
@@ -113,7 +112,7 @@ class ConventionWrapper:
 
         # C1: mask trump leads while a fail lead is legal (tricks <= max_trick).
         if self.c1 and int(state["current_trick"]) <= self.c1_max_trick:
-            trump = [a for a, c in plays if c in _TRUMP_SET]
+            trump = [a for a, c in plays if c in TRUMP_SET]
             fails = [a for a, c in plays if c in _FAIL_SET]
             if trump and fails:
                 return [a for a in valid if a not in set(trump)]

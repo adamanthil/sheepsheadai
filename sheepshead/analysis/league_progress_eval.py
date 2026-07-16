@@ -71,11 +71,9 @@ from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
-    TRUMP,
+    TRUMP_SET,
 )
 from sheepshead.training.training_utils import paired_edge
-
-_TRUMP_SET = set(TRUMP)
 
 # Frozen experiment constants (pre-registered in notebooks/Extended_League_202607.md)
 FIELD_SEED = 20260619  # rigorous_eval.run_gauntlet's frozen field-assignment seed
@@ -157,13 +155,13 @@ class TrumpLeadCollector:
             return  # no trump available: cannot leak
         tally["opportunities"] += 1
         name = ACTION_LOOKUP[action]
-        if name.startswith("PLAY ") and name.split(" ", 1)[1] in _TRUMP_SET:
+        if name.startswith("PLAY ") and name.split(" ", 1)[1] in TRUMP_SET:
             tally["trump_leads"] += 1
         tally["prob_mass_sum"] += sum(
             float(probs[a - 1])
             for a in valid_actions
             if ACTION_LOOKUP[a].startswith("PLAY ")
-            and ACTION_LOOKUP[a].split(" ", 1)[1] in _TRUMP_SET
+            and ACTION_LOOKUP[a].split(" ", 1)[1] in TRUMP_SET
         )
 
     def summary(self) -> Dict[str, float]:

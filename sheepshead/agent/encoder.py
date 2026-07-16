@@ -3,7 +3,7 @@ import torch.nn as nn
 from typing import List, Dict, Any
 import itertools
 from dataclasses import dataclass
-from sheepshead import DECK_IDS, TRUMP
+from sheepshead import DECK_IDS, TRUMP, UNDER_CARD_ID
 from sheepshead.agent.token_layout import (
     BASE_TYPE_COUNT,
     BLIND_TOKENS,
@@ -19,7 +19,6 @@ from sheepshead.agent.token_layout import (
 
 
 PAD_CARD_ID = 0
-UNDER_CARD_ID = 33
 
 
 @dataclass

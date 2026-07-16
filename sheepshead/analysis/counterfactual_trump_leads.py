@@ -80,10 +80,10 @@ from sheepshead import (  # noqa: E402
     FAIL,
     Game,
     TRUMP,
+    TRUMP_SET,
     UNDER_TOKEN,
 )
 
-TRUMP_SET = set(TRUMP)
 FAIL_SET = set(FAIL)
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL

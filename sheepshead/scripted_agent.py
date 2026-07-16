@@ -73,16 +73,13 @@ from sheepshead import (
     ACTION_LOOKUP,
     DECK,
     FAIL_POWER,
-    TRUMP,
     TRUMP_POWER,
+    TRUMP_SET,
     UNDER_CARD_ID,
     UNDER_TOKEN,
+    get_card_points,
+    get_card_suit,
 )
-
-# Card points (standard Schafkopf/Sheepshead values).
-_RANK_POINTS = {"A": 11, "10": 10, "K": 4, "Q": 3, "J": 2, "9": 0, "8": 0, "7": 0}
-
-_TRUMP_SET = set(TRUMP)
 
 
 def _card(card_id: int) -> str | None:
@@ -96,18 +93,17 @@ def _points(card: str | None) -> int:
     """Decision-time card points. The UNDER token (the picker's face-down
     called-suit play, action "PLAY UNDER") counts 0: its real points are
     buried value, not trick equity to spend."""
-    if not card or card == UNDER_TOKEN:
-        return 0
-    return _RANK_POINTS[card[:-1]]
+    return get_card_points(card)
 
 
 def _is_trump(card: str) -> bool:
-    return card in _TRUMP_SET
+    return card in TRUMP_SET
 
 
 def _fail_suit(card: str) -> str | None:
     """Fail suit letter, or None for trump."""
-    return None if _is_trump(card) else card[-1]
+    suit = get_card_suit(card)
+    return None if suit == "T" else suit
 
 
 def _fail_power(card: str) -> int:
@@ -133,7 +129,7 @@ def hand_strength(cards: list[str]) -> int:
     """Trump-density pick score: +3/queen, +2/jack, +1/other trump."""
     score = 0
     for c in cards:
-        if c in _TRUMP_SET:
+        if c in TRUMP_SET:
             score += 3 if c.startswith("Q") else 2 if c.startswith("J") else 1
     return score
 
