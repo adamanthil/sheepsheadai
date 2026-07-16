@@ -138,8 +138,7 @@ class ISMCTSConfig:
     # per ply (the dominant search cost; see throughput profiling). ``virtual_loss``
     # is the pessimistic value (in critic units, ~[-1, 1]) charged to an in-flight
     # selected edge so concurrent sims in a chunk diversify instead of all taking
-    # the PUCT-best path. ``batch_size <= 1`` falls back to the exact sequential
-    # search (``_simulate``), which the batched path is validated against.
+    # the PUCT-best path.
     batch_size: int = 32
     virtual_loss: float = 1.0
 
@@ -333,13 +332,7 @@ class ISMCTSTeacher:
         if pool:
             probs = self._pool_probs(pool)
             indices = self._rng.choices(range(len(pool)), weights=probs, k=m_iters)
-            if self.config.batch_size > 1:
-                self._run_batched(root, pool, indices, observer)
-            else:
-                for k in indices:
-                    world = copy.deepcopy(pool[k][0])
-                    self._restore_pool_memory(pool[k][1])
-                    self._simulate(root, world, observer, 0)
+            self._run_batched(root, pool, indices, observer)
 
         return self._finalize(root, valid_real, head, len(pool), ess)
 
@@ -549,18 +542,6 @@ class ISMCTSTeacher:
                 self.fail["no_acted"] += 1
                 raise _ReplayInconsistency("batched replay: no seat acted")
 
-    def _restore_pool_memory(self, mem):
-        """Install a pool snapshot: reset every involved controller's memory dict,
-        then place each seat's memory with its controller."""
-        agents = {id(self.agent): self.agent}
-        if self._seat_policies:
-            for a in self._seat_policies.values():
-                agents[id(a)] = a
-        for a in agents.values():
-            a._player_memories = {}
-        for s, t in mem.items():
-            self._controller(s)._player_memories[s] = t.detach().clone()
-
     @staticmethod
     def _pool_probs(pool):
         lw = np.array([w for _, _, w in pool], dtype=np.float64)
@@ -627,100 +608,11 @@ class ISMCTSTeacher:
         return "play"
 
     # ------------------------------------------------------------------
-    # One simulation (recursive descent over observer decision nodes)
-    # ------------------------------------------------------------------
-    def _simulate(self, node, world, observer, depth) -> float:
-        obs_player = world.players[observer - 1]
-        valid = sorted(obs_player.get_valid_action_ids())
-        if not valid:
-            # Defensive: advancement should always stop at an observer decision.
-            return self._critic_value(world, observer)
-
-        # Encode the observer's state (advances its recurrent memory for this
-        # world) and refresh priors. The observation depends only on the
-        # observer's own hand + public record, but the in-tree opponent plays
-        # differ per world, so deeper-node priors genuinely differ -> refresh.
-        probs = self._observer_probs(world, observer)
-        following = self._is_following(world, observer)
-        is_root = depth == 0
-        frac = self.config.root_explore_frac
-        n_legal = len(valid)
-        for a in valid:
-            p = float(probs[a - 1])
-            if is_root and frac > 0.0:
-                p = (1.0 - frac) * p + frac / n_legal
-            node.P[a] = p
-            node.N.setdefault(a, 0.0)
-            node.W.setdefault(a, 0.0)
-            node.avail.setdefault(a, 0.0)
-            node.avail[a] += 1.0
-
-        # Leaf: first visit, or depth cap reached -> evaluate by rollout.
-        if not node.visited or depth >= self._max_depth:
-            node.visited = True
-            return self._rollout(world, observer)
-        node.visited = True
-
-        a = self._select(node, valid, following)
-        obs_player.act(a)
-        self._after_action(world)
-        if world.is_done():
-            v = self._terminal_value(world, observer)
-        else:
-            self._advance_opponents(world, observer)
-            if world.is_done():
-                v = self._terminal_value(world, observer)
-            else:
-                child = node.children.get(a)
-                if child is None:
-                    child = _Node()
-                    node.children[a] = child
-                    self._nodes.append(child)
-                v = self._gamma() * self._simulate(child, world, observer, depth + 1)
-
-        node.N[a] += 1.0
-        node.W[a] += v
-        q = node.W[a] / node.N[a]
-        if q < self._qmin:
-            self._qmin = q
-        if q > self._qmax:
-            self._qmax = q
-        return v
-
-    def _select(self, node, valid, following) -> int:
-        c = self.config.c_puct
-        total_n = sum(node.N[a] for a in valid)
-        sqrt_total = math.sqrt(total_n + 1.0)
-        # MuZero-style min-max normalization maps Q into [0, 1] so the AlphaZero
-        # c_puct = 1.25 is calibrated regardless of the (small, score/12-scaled)
-        # action-value gaps. Without it the prior-weighted exploration term
-        # swamps the EV signal and visits track the policy.
-        qmin, qmax = self._qmin, self._qmax
-        has_span = qmax > qmin
-        span = (qmax - qmin) if has_span else 1.0
-        best_a, best_u = valid[0], -math.inf
-        for a in valid:
-            n = node.N[a]
-            if n > 0:
-                q_norm = (node.W[a] / n - qmin) / span if has_span else 0.5
-            else:
-                q_norm = self.config.fpu  # first-play urgency (optimistic)
-            if following:
-                explore = c * node.P[a] * math.sqrt(node.avail[a]) / (1.0 + n)
-            else:
-                explore = c * node.P[a] * sqrt_total / (1.0 + n)
-            u = q_norm + explore
-            if u > best_u:
-                best_u, best_a = u, a
-        return best_a
-
-    # ------------------------------------------------------------------
     # Leaf-parallel batched search (Tier 2): run batch_size simulations
     # concurrently and batch every encoder/actor/critic call across them, with
-    # virtual loss so concurrent sims in a chunk diversify. Algorithmically
-    # mirrors _simulate; validated against it (the sequential path is used when
-    # batch_size <= 1). Profiling: the tree descent + opponent advance + per-trick
-    # observes are ~84% of search encodes, so this is where the throughput is.
+    # virtual loss so concurrent sims in a chunk diversify. Profiling: the tree
+    # descent + opponent advance + per-trick observes are ~84% of search
+    # encodes, so this is where the throughput is.
     # ------------------------------------------------------------------
     @staticmethod
     def _next_actor(world):
@@ -893,8 +785,8 @@ class ISMCTSTeacher:
             leaf = (not node.visited) or (sim.depth >= self._max_depth)
             node.visited = True
             if leaf:
-                # Observer is rolled out starting next round (re-encoded there,
-                # matching the sequential leaf's discard-priors-then-rollout).
+                # Observer is rolled out starting next round (re-encoded there;
+                # the freshly-written priors are not consumed at a leaf).
                 sim.phase = "rollout"
                 return
             following = self._is_following(sim.world, observer)
@@ -1014,87 +906,14 @@ class ISMCTSTeacher:
                 sim.mem[s - 1] = mo[i]
 
     # ------------------------------------------------------------------
-    # Rollout / leaf evaluation
-    # ------------------------------------------------------------------
-    def _rollout(self, world, observer) -> float:
-        """Truncated rollout: sample every seat from its controller (observer ->
-        pi_theta) for ``d_rollout`` further observer *play* plies, then bootstrap
-        with the observer's critic. A world that terminates first returns the
-        observer's true score."""
-        d_rollout = (
-            self._d_rollout_override
-            if self._d_rollout_override is not None
-            else self.config.d_rollout
-        )
-        obs_plays = 0
-        while not world.is_done():
-            for player in world.players:
-                valid = player.get_valid_action_ids()
-                while valid:
-                    is_obs = player.position == observer
-                    obs_play_here = is_obs and _valid_has_play(valid)
-                    if obs_play_here and obs_plays >= d_rollout:
-                        return self._discount(
-                            self._critic_value(world, observer), obs_plays
-                        )
-                    a, _, _ = self._controller(player.position).act(
-                        player.get_state_dict(), valid, player.position
-                    )
-                    if obs_play_here:
-                        obs_plays += 1
-                    player.act(a)
-                    valid = player.get_valid_action_ids()
-                    self._after_action(world)
-        return self._terminal_value(world, observer, max(obs_plays - 1, 0))
-
-    def _critic_value(self, world, observer) -> float:
-        player = world.players[observer - 1]
-        state = player.get_state_dict()
-        mem_in = self.agent.get_recurrent_memory(observer, device=DEV)
-        enc = self.agent.encoder.encode_batch(
-            [state], memory_in=mem_in.unsqueeze(0), device=DEV
-        )
-        self.agent.set_recurrent_memory(observer, enc["memory_out"][0])
-        with torch.no_grad():
-            v = self.agent.critic(enc)
-        return float(v.item())
-
-    # ------------------------------------------------------------------
     # World advancement helpers
     # ------------------------------------------------------------------
-    def _advance_opponents(self, world, observer):
-        """Sample non-observer seats from their controllers until the observer is
-        to act again or the game ends."""
-        while not world.is_done():
-            for player in world.players:
-                valid = player.get_valid_action_ids()
-                while valid:
-                    if player.position == observer:
-                        return
-                    a, _, _ = self._controller(player.position).act(
-                        player.get_state_dict(), valid, player.position
-                    )
-                    player.act(a)
-                    valid = player.get_valid_action_ids()
-                    self._after_action(world)
-            # No seat acted and observer not pending -> guard against a stall.
-            if not any(world.players[s].get_valid_action_ids() for s in range(5)):
-                return
-
     def _after_action(self, world):
         if world.was_trick_just_completed:
             for seat in world.players:
                 self._controller(seat.position).observe(
                     seat.get_last_trick_state_dict(), player_id=seat.position
                 )
-
-    def _observer_probs(self, world, observer) -> np.ndarray:
-        player = world.players[observer - 1]
-        valid = player.get_valid_action_ids()
-        probs_t, _ = self.agent.get_action_probs_with_logits(
-            player.get_state_dict(), valid, player_id=observer
-        )
-        return probs_t[0].detach().cpu().numpy()
 
     @staticmethod
     def _is_following(world, observer) -> bool:
