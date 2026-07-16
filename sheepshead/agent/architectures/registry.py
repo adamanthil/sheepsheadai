@@ -10,6 +10,16 @@ import torch.nn as nn
 
 from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
 
+from .actors import (
+    MultiHeadRecurrentActorNetwork,
+    PerceiverActorNetwork,
+    TokenReadActorNetwork,
+)
+from .critics import (
+    PerceiverAuxCriticNetwork,
+    PerceiverCriticNetwork,
+    RecurrentCriticNetwork,
+)
 from .encoders import (
     PerceiverCtxMemEncoder,
     PerceiverEncoder,
@@ -24,9 +34,10 @@ from .onehot import FlatHeadActorNetwork, OneHotFeedForwardEncoder
 class ArchitectureSpec:
     """Named bundle of network factories consumed by PPOAgent.__init__.
 
-    Factories import from ppo lazily (inside the function bodies) so this
-    module can be imported by ppo.py without a cycle. They must not perform
-    any RNG-consuming work beyond the network constructions themselves:
+    The actor/critic network classes live in .actors / .critics (imported
+    at module top, no cycle with ppo.py — ppo.py imports the registry, the
+    registry never imports ppo). Factories must not perform any
+    RNG-consuming work beyond the network constructions themselves:
     PPOAgent relies on construction order (encoder -> actor -> critic) for
     seeded reproducibility.
     """
@@ -48,8 +59,6 @@ class ArchitectureSpec:
 
 
 def _pointer_actor(action_size, action_groups, encoder, mappings):
-    from sheepshead.agent.ppo import MultiHeadRecurrentActorNetwork
-
     return MultiHeadRecurrentActorNetwork(
         action_size,
         action_groups,
@@ -61,8 +70,6 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
 
 
 def _tokenread_actor(action_size, action_groups, encoder, mappings):
-    from sheepshead.agent.ppo import TokenReadActorNetwork
-
     return TokenReadActorNetwork(
         action_size,
         action_groups,
@@ -74,8 +81,6 @@ def _tokenread_actor(action_size, action_groups, encoder, mappings):
 
 
 def _perceiver_actor(action_size, action_groups, encoder, mappings):
-    from sheepshead.agent.ppo import PerceiverActorNetwork
-
     return PerceiverActorNetwork(
         action_size,
         action_groups,
@@ -87,8 +92,6 @@ def _perceiver_actor(action_size, action_groups, encoder, mappings):
 
 
 def _perceiver_critic(encoder):
-    from sheepshead.agent.ppo import PerceiverCriticNetwork
-
     return PerceiverCriticNetwork(
         d_token=encoder.d_token_dim,
         d_model=encoder.d_model,
@@ -96,8 +99,6 @@ def _perceiver_critic(encoder):
 
 
 def _perceiver_aux_critic(encoder):
-    from sheepshead.agent.ppo import PerceiverAuxCriticNetwork
-
     return PerceiverAuxCriticNetwork(
         d_token=encoder.d_token_dim,
         d_model=encoder.d_model,
@@ -106,14 +107,10 @@ def _perceiver_aux_critic(encoder):
 
 
 def _aux_critic(encoder):
-    from sheepshead.agent.ppo import RecurrentCriticNetwork
-
     return RecurrentCriticNetwork(d_card=encoder.d_card_dim, d_model=encoder.d_model)
 
 
 def _no_aux_critic(encoder):
-    from sheepshead.agent.ppo import RecurrentCriticNetwork
-
     d_card = getattr(encoder, "d_card_dim", 0) or None
     return RecurrentCriticNetwork(
         d_card=d_card,
@@ -163,8 +160,6 @@ def _perceiver_size_variant(
     """
 
     def build_actor(action_size, action_groups, encoder, mappings):
-        from sheepshead.agent.ppo import PerceiverActorNetwork
-
         return PerceiverActorNetwork(
             action_size,
             action_groups,
@@ -177,8 +172,6 @@ def _perceiver_size_variant(
         )
 
     def build_critic(encoder):
-        from sheepshead.agent.ppo import PerceiverCriticNetwork
-
         return PerceiverCriticNetwork(
             d_token=encoder.d_token_dim,
             d_model=encoder.d_model,

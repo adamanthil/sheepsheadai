@@ -482,8 +482,9 @@ class ISMCTSTeacher:
         det_buries = [deque(deal["bury"]) for deal in deals]
         det_unders = [deal["under_card"] for deal in deals]
         public_actions = deque(forced_public)
+        mem_width = self.agent.state_size
         seat_memories = {
-            seat: torch.zeros((n_worlds, 256), device=DEV) for seat in range(1, 6)
+            seat: torch.zeros((n_worlds, mem_width), device=DEV) for seat in range(1, 6)
         }
         log_weights = torch.zeros(n_worlds, device=DEV)
 
@@ -678,7 +679,7 @@ class ISMCTSTeacher:
             for pool_idx in chunk:
                 world = copy.deepcopy(pool[pool_idx][0])
                 memory_snapshot = pool[pool_idx][1]
-                mem = torch.zeros((5, 256), device=DEV)
+                mem = torch.zeros((5, self.agent.state_size), device=DEV)
                 for seat in range(1, 6):
                     if seat in memory_snapshot:
                         mem[seat - 1] = memory_snapshot[seat]
