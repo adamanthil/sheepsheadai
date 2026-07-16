@@ -1,6 +1,6 @@
 {
  "full-limited": {
-  "state_hash": "34377715a23512e914d3a2e496dbd7be85083783f63ee923619bd36446d1bdfc",
+  "state_hash": "314b8e7548b0cbe0ae73a84267a7f411b8c255f7af92210c2081c6446f654aad",
   "stats": {
    "advantage_stats": {
     "head_n": {
@@ -25,13 +25,13 @@
     "kl": 0.0,
     "loss": 0.0
    },
-   "approx_kl": 0.001460330211557448,
+   "approx_kl": 0.0014603290474042296,
    "critic_losses": {
     "points": 0.1161097526550293,
-    "return": 0.0060773642733693125,
-    "secret_partner": 0.09285645186901093,
+    "return": 0.0060773644596338276,
+    "secret_partner": 0.09285645484924317,
     "seen_trump_mask": 0.14897853136062622,
-    "unseen_trump_higher_than_hand": 0.05883589088916779,
+    "unseen_trump_higher_than_hand": 0.05883588790893555,
     "value": 0.5188489519059658,
     "win": 0.0351134866476059
    },
@@ -43,10 +43,10 @@
    },
    "early_stop": false,
    "head_entropy": {
-    "bury": 0.1169767826795578,
+    "bury": 0.1169767752289772,
     "partner": 0.02359691634774208,
-    "pick": 0.017161723226308823,
-    "play": 0.6115606725215912
+    "pick": 0.017161724157631397,
+    "play": 0.6115607023239136
    },
    "num_transitions": 204,
    "oracle": null,
@@ -65,7 +65,7 @@
   }
  },
  "full-oracle": {
-  "state_hash": "c9fe341353600ce208296713eceedca6a9a36b9ef9940f93fd02ed08476640b7",
+  "state_hash": "35514323db1854a5b96c720a039b65bef298a980ae55326d298f41d5256f4dd4",
   "stats": {
    "advantage_stats": {
     "head_n": {
@@ -90,11 +90,11 @@
     "kl": 0.0,
     "loss": 0.0
    },
-   "approx_kl": 0.003923806827515364,
+   "approx_kl": 0.003923808224499226,
    "critic_losses": {
     "points": 0.1277629554271698,
     "return": 0.015770912170410156,
-    "secret_partner": 0.0848323941230774,
+    "secret_partner": 0.08483240008354187,
     "seen_trump_mask": 0.15244582295417786,
     "unseen_trump_higher_than_hand": 0.05677321255207062,
     "value": 0.29531143605709076,
@@ -109,15 +109,15 @@
    "early_stop": false,
    "head_entropy": {
     "bury": 0.11398749053478241,
-    "partner": 0.023671990260481834,
+    "partner": 0.02367199119180441,
     "pick": 0.028311312198638916,
-    "play": 0.601684033870697
+    "play": 0.6016840636730194
    },
    "num_transitions": 208,
    "oracle": {
     "ev_limited": -0.09308156702561021,
     "ev_oracle": -0.07603299254722318,
-    "value_loss": 0.4297760184854269
+    "value_loss": 0.4297760780900717
    },
    "pick_pass_adv": {
     "pass_count": 8,
@@ -134,7 +134,7 @@
   }
  },
  "perceiver-shared-v2-oracle": {
-  "state_hash": "a4ec0a5198e52bd1dfa083a285ccca5c4a8c06224abfa9122c1c3a68d0a48afc",
+  "state_hash": "ab14f1eaebd40d859f024bcfd84c0afed74b5b6c3708c57aa948eafaf6c8ca77",
   "stats": {
    "advantage_stats": {
     "head_n": {
@@ -159,7 +159,7 @@
     "kl": 0.0,
     "loss": 0.0
    },
-   "approx_kl": 0.0020674928091466427,
+   "approx_kl": 0.0020674930419772863,
    "critic_losses": {
     "points": 0.14658185243606567,
     "return": 0.006522020697593689,
@@ -167,7 +167,7 @@
     "seen_trump_mask": 0.12591075301170349,
     "unseen_trump_higher_than_hand": 0.06772426366806031,
     "value": 0.9109183074906468,
-    "win": 0.0353007048368454
+    "win": 0.03530070334672928
    },
    "distill": {
     "loss": 0.0,
@@ -177,7 +177,7 @@
    },
    "early_stop": false,
    "head_entropy": {
-    "bury": 0.11120405793190002,
+    "bury": 0.11120406538248062,
     "partner": 0.01635088725015521,
     "pick": 0.04207736253738403,
     "play": 0.5284551084041595

@@ -134,6 +134,9 @@ def _normalized_stats(stats: dict) -> dict:
 
 def run_config(name: str) -> dict:
     config = CONFIGS[name]
+    # Float reduction order depends on the intra-op thread count; pin it so
+    # the pinned hashes hold regardless of what ran earlier in the process.
+    torch.set_num_threads(1)
     _seed_all(SEED)
     agent = PPOAgent(len(ACTIONS), arch=config["arch"], critic_mode=config["critic_mode"])
     _play_episodes(agent, N_EPISODES, config["collect_oracle"], seed0=SEED * 10)

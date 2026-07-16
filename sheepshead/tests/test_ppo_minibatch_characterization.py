@@ -169,6 +169,7 @@ def _prepare_minibatch_inputs(agent: PPOAgent):
 
 
 def _capture() -> dict:
+    torch.set_num_threads(1)
     _seed_all(SEED)
     agent = PPOAgent(len(ACTIONS), arch="full", critic_mode="limited")
     _play_episodes(agent, N_EPISODES, collect_oracle=False, seed0=SEED * 10)
