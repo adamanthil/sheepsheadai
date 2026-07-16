@@ -54,7 +54,7 @@ export type GameView = {
   last_trick_points?: number;
   was_trick_just_completed: boolean;
   is_done: boolean;
-  final?: FinalState;
+  final?: FinalState | null;
   called_card: string | null;
   called_card_display: string | null;
   called_under: boolean;
