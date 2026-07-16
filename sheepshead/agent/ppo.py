@@ -1,5 +1,5 @@
 import time
-from typing import Dict
+from typing import Dict, List, NamedTuple
 
 import numpy as np
 import torch
@@ -762,6 +762,55 @@ class PerceiverAuxCriticNetwork(_TokenReadoutValueMixin, RecurrentCriticNetwork)
         return self.critic_adapter(
             self._readout(encoder_out["all_tokens"], encoder_out["all_mask"])
         )
+
+
+class MinibatchTensors(NamedTuple):
+    """Return type of PPOAgent._build_minibatch_tensors: per-segment,
+    batch-time-major (B, T, ...) tensors for one minibatch."""
+
+    states_seqs: List[list]
+    masks_bt: torch.Tensor
+    is_action_bt: torch.Tensor
+    actions_bt: torch.Tensor
+    old_log_probs_bt: torch.Tensor
+    old_value_bt: torch.Tensor
+    returns_bt: torch.Tensor
+    advantages_bt: torch.Tensor
+    lengths_bt: torch.Tensor
+    win_bt: torch.Tensor
+    final_returns_bt: torch.Tensor
+    secret_bt: torch.Tensor
+    points_bt: torch.Tensor
+    seen_trump_mask_bt: torch.Tensor
+    unseen_trump_higher_than_hand_bt: torch.Tensor
+    search_target_bt: torch.Tensor
+    has_search_bt: torch.Tensor
+
+
+class FlattenedActionSteps(NamedTuple):
+    """Return type of PPOAgent._flatten_action_steps: the (B, T, ...)
+    minibatch/forward-pass tensors flattened down to just the action rows."""
+
+    logits_flat: torch.Tensor
+    values_flat: torch.Tensor
+    actions_flat: torch.Tensor
+    old_log_probs_flat: torch.Tensor
+    old_value_flat: torch.Tensor
+    returns_flat: torch.Tensor
+    advantages_flat: torch.Tensor
+    win_logits_flat: torch.Tensor
+    returns_pred_flat: torch.Tensor
+    win_labels_flat: torch.Tensor
+    final_returns_labels_flat: torch.Tensor
+    secret_logits_flat: torch.Tensor
+    secret_labels_flat: torch.Tensor
+    mask_flat: torch.Tensor
+    seen_trump_mask_logits_flat: torch.Tensor
+    seen_trump_mask_labels_flat: torch.Tensor
+    unseen_trump_higher_than_hand_logits_flat: torch.Tensor
+    unseen_trump_higher_than_hand_labels_flat: torch.Tensor
+    search_target_flat: torch.Tensor
+    has_search_flat: torch.Tensor
 
 
 class PPOAgent:
@@ -1674,7 +1723,7 @@ class PPOAgent:
         has_search_bt, _ = self._pad_to_bt(has_search_list_all, lengths, 0.0)
         lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
-        return (
+        return MinibatchTensors(
             states_seqs,
             masks_bt,
             is_action_bt,
@@ -1874,7 +1923,7 @@ class PPOAgent:
         flat_mask = is_action_bt.view(-1)
         if flat_mask.sum() == 0:
             return None
-        return (
+        return FlattenedActionSteps(
             logits_bt.view(-1, logits_bt.size(-1))[flat_mask],
             values_bt.view(-1)[flat_mask],
             actions_bt.view(-1)[flat_mask],
@@ -2246,25 +2295,9 @@ class PPOAgent:
                 if len(batch) == 0:
                     continue
 
-                (
-                    states_bt,
-                    masks_bt,
-                    is_action_bt,
-                    actions_bt,
-                    old_lp_bt,
-                    old_value_bt,
-                    returns_bt,
-                    adv_bt,
-                    lengths_bt,
-                    win_bt,
-                    final_ret_bt,
-                    secret_bt,
-                    points_bt,
-                    seen_trump_mask_bt,
-                    unseen_trump_higher_than_hand_bt,
-                    search_target_bt,
-                    has_search_bt,
-                ) = self._build_minibatch_tensors(batch, states, masks_t, kinds)
+                minibatch = self._build_minibatch_tensors(
+                    batch, states, masks_t, kinds
+                )
 
                 # Vectorized forward
                 t_fwd = time.time()
@@ -2277,56 +2310,36 @@ class PPOAgent:
                     points_pred_bt,
                     seen_trump_mask_logits_bt,
                     unseen_trump_higher_than_hand_logits_bt,
-                ) = self._forward_vectorized(states_bt, masks_bt, lengths_bt)
+                ) = self._forward_vectorized(
+                    minibatch.states_seqs, minibatch.masks_bt, minibatch.lengths_bt
+                )
                 forward_time += time.time() - t_fwd
 
                 flat = self._flatten_action_steps(
-                    is_action_bt,
+                    minibatch.is_action_bt,
                     logits_bt,
                     values_bt,
-                    actions_bt,
-                    old_lp_bt,
-                    old_value_bt,
-                    returns_bt,
-                    adv_bt,
+                    minibatch.actions_bt,
+                    minibatch.old_log_probs_bt,
+                    minibatch.old_value_bt,
+                    minibatch.returns_bt,
+                    minibatch.advantages_bt,
                     win_logits_bt,
                     ret_pred_bt,
-                    win_bt,
-                    final_ret_bt,
+                    minibatch.win_bt,
+                    minibatch.final_returns_bt,
                     secret_logits_bt,
-                    secret_bt,
-                    masks_bt,
+                    minibatch.secret_bt,
+                    minibatch.masks_bt,
                     seen_trump_mask_logits_bt,
-                    seen_trump_mask_bt,
+                    minibatch.seen_trump_mask_bt,
                     unseen_trump_higher_than_hand_logits_bt,
-                    unseen_trump_higher_than_hand_bt,
-                    search_target_bt,
-                    has_search_bt,
+                    minibatch.unseen_trump_higher_than_hand_bt,
+                    minibatch.search_target_bt,
+                    minibatch.has_search_bt,
                 )
                 if flat is None:
                     continue
-                (
-                    logits_flat,
-                    values_flat,
-                    actions_flat,
-                    old_lp_flat,
-                    old_value_flat,
-                    returns_flat,
-                    adv_flat,
-                    win_logits_flat,
-                    ret_pred_flat,
-                    win_labels_flat,
-                    final_ret_labels_flat,
-                    secret_logits_flat,
-                    secret_labels_flat,
-                    mask_flat,
-                    seen_trump_mask_logits_flat,
-                    seen_trump_mask_labels_flat,
-                    unseen_trump_higher_than_hand_logits_flat,
-                    unseen_trump_higher_than_hand_labels_flat,
-                    search_target_flat,
-                    has_search_flat,
-                ) = flat
 
                 # Bidding-head KL anchor: frozen-reference logits on the same
                 # minibatch (no grad), flattened to the action rows like the
@@ -2335,21 +2348,27 @@ class PPOAgent:
                 if anchor_active:
                     with torch.no_grad():
                         ref_logits_bt = self._anchor_agent._forward_vectorized(
-                            states_bt, masks_bt, lengths_bt
+                            minibatch.states_seqs,
+                            minibatch.masks_bt,
+                            minibatch.lengths_bt,
                         )[0]
                     anchor_logits_flat = ref_logits_bt.view(-1, ref_logits_bt.size(-1))[
-                        is_action_bt.view(-1)
+                        minibatch.is_action_bt.view(-1)
                     ]
 
                 # Record PICK/PASS advantages across minibatches
                 with torch.no_grad():
-                    pick_mask_specific = actions_flat == self.pick_action_index
+                    pick_mask_specific = flat.actions_flat == self.pick_action_index
                     if pick_mask_specific.any():
-                        pick_adv_sum += adv_flat[pick_mask_specific].sum().item()
+                        pick_adv_sum += (
+                            flat.advantages_flat[pick_mask_specific].sum().item()
+                        )
                         pick_adv_count += int(pick_mask_specific.sum().item())
-                    pass_mask_specific = actions_flat == self.pass_action_index
+                    pass_mask_specific = flat.actions_flat == self.pass_action_index
                     if pass_mask_specific.any():
-                        pass_adv_sum += adv_flat[pass_mask_specific].sum().item()
+                        pass_adv_sum += (
+                            flat.advantages_flat[pass_mask_specific].sum().item()
+                        )
                         pass_adv_count += int(pass_mask_specific.sum().item())
 
                 # Losses and metrics
@@ -2361,20 +2380,20 @@ class PPOAgent:
                     search_distill_loss,
                     search_distill_metrics,
                 ) = self._actor_critic_losses(
-                    logits_flat,
-                    mask_flat,
-                    actions_flat,
-                    old_lp_flat,
-                    old_value_flat,
-                    values_flat,
-                    returns_flat,
-                    adv_flat,
+                    flat.logits_flat,
+                    flat.mask_flat,
+                    flat.actions_flat,
+                    flat.old_log_probs_flat,
+                    flat.old_value_flat,
+                    flat.values_flat,
+                    flat.returns_flat,
+                    flat.advantages_flat,
                     pick_idx_tensor_static,
                     partner_idx_tensor_static,
                     bury_idx_tensor_static,
                     play_idx_tensor_static,
-                    search_target_flat,
-                    has_search_flat,
+                    flat.search_target_flat,
+                    flat.has_search_flat,
                     anchor_logits_flat=anchor_logits_flat,
                 )
                 last_approx_kl = float(approx_kl_t.item())
@@ -2407,36 +2426,36 @@ class PPOAgent:
                 # losses would be meaningless constants anyway).
                 if self.critic.has_aux_heads:
                     win_loss = F.binary_cross_entropy_with_logits(
-                        win_logits_flat, win_labels_flat
+                        flat.win_logits_flat, flat.win_labels_flat
                     )
                     return_loss = F.smooth_l1_loss(
-                        ret_pred_flat / RETURN_SCALE,
-                        final_ret_labels_flat / RETURN_SCALE,
+                        flat.returns_pred_flat / RETURN_SCALE,
+                        flat.final_returns_labels_flat / RETURN_SCALE,
                     )
                     secret_loss = F.binary_cross_entropy_with_logits(
-                        secret_logits_flat, secret_labels_flat
+                        flat.secret_logits_flat, flat.secret_labels_flat
                     )
                     # Per-player points auxiliary loss (regression on per-seat totals, 0–120)
                     # points_pred_flat and labels are (N, 5); smooth L1 stabilizes training.
                     points_pred_flat = points_pred_bt.view(-1, points_pred_bt.size(-1))[
-                        is_action_bt.view(-1)
+                        minibatch.is_action_bt.view(-1)
                     ]
-                    points_labels_flat = points_bt.view(-1, points_bt.size(-1))[
-                        is_action_bt.view(-1)
-                    ]
+                    points_labels_flat = minibatch.points_bt.view(
+                        -1, minibatch.points_bt.size(-1)
+                    )[minibatch.is_action_bt.view(-1)]
                     points_loss = F.smooth_l1_loss(
                         points_pred_flat / POINTS_SCALE,
                         points_labels_flat / POINTS_SCALE,
                     )
 
                     seen_trump_mask_loss = F.binary_cross_entropy_with_logits(
-                        seen_trump_mask_logits_flat,
-                        seen_trump_mask_labels_flat,
+                        flat.seen_trump_mask_logits_flat,
+                        flat.seen_trump_mask_labels_flat,
                     )
                     unseen_trump_higher_than_hand_loss = (
                         F.binary_cross_entropy_with_logits(
-                            unseen_trump_higher_than_hand_logits_flat,
-                            unseen_trump_higher_than_hand_labels_flat,
+                            flat.unseen_trump_higher_than_hand_logits_flat,
+                            flat.unseen_trump_higher_than_hand_labels_flat,
                         )
                     )
                 else:
@@ -2480,7 +2499,7 @@ class PPOAgent:
                         oracle_seqs, device=device
                     )
                     forward_time += time.time() - t_fwd
-                    flat_idx = is_action_bt.view(-1)
+                    flat_idx = minibatch.is_action_bt.view(-1)
                     v_o = values_oracle_bt.reshape(-1)[flat_idx]
                     ret_o = returns_oracle_bt.reshape(-1)[flat_idx]
                     old_o = old_value_oracle_bt.reshape(-1)[flat_idx]
