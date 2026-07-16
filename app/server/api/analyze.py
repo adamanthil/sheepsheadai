@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Request
 from server.api.ratelimit import ANALYZE, limiter
 from server.api.schemas import (
     AnalyzeModelResponse,
+    AnalyzePickRequest,
+    AnalyzePickResponse,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
 )
@@ -50,6 +52,26 @@ def analyze_simulate(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logging.exception("analyze_simulate failed: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        _sim_slots.release()
+
+
+@router.post("/api/analyze/pick")
+@limiter.limit(ANALYZE)
+def analyze_pick(request: Request, req: AnalyzePickRequest) -> AnalyzePickResponse:
+    """Analyze the pre-play decisions (pick/pass, call, bury) for a chosen
+    seat, hand, and blind."""
+    if not _sim_slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="analyze_busy")
+    try:
+        from server.services.pick_analysis import analyze_pick as run_pick
+
+        return run_pick(req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.exception("analyze_pick failed: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         _sim_slots.release()

@@ -316,6 +316,47 @@ class AnalyzeGameSummary(BaseModel):
     scores: List[int]  # indexed by seat-1
 
 
+class AnalyzePickRequest(BaseModel):
+    # extra="forbid" for the same reason as AnalyzeSimulateRequest.
+    model_config = ConfigDict(extra="forbid")
+    seed: Optional[int] = None
+    partnerMode: int = 1  # 0 = JD, 1 = Called Ace
+    seat: int = 1  # 1..5; seats before it are forced to pass
+    hand: Optional[List[str]] = None  # exactly 6 cards, or None for random
+    blind: Optional[List[str]] = None  # exactly 2 cards, or None for random
+    deterministic: bool = True
+
+
+class AnalyzePickScenario(BaseModel):
+    seat: int
+    seatName: str
+    hand: List[str]  # the 6 cards the target seat holds at the pick decision
+    blind: List[str]
+
+
+class AnalyzePickOutcome(BaseModel):
+    """Where the pre-play phases ended up once play was about to start."""
+
+    pickerSeat: Optional[int] = None  # None = everyone passed (leaster)
+    pickerName: Optional[str] = None
+    isLeaster: bool
+    aloneCalled: bool
+    calledCard: Optional[str] = None
+    calledUnder: bool
+    underCard: Optional[str] = None
+    bury: List[str]
+
+
+class AnalyzePickResponse(BaseModel):
+    meta: Dict[str, Any]
+    scenario: AnalyzePickScenario
+    # One entry per pre-play decision (pick/pass, call, under, bury), same
+    # shape as the simulate trace; reward/return fields stay None since no
+    # full game is played.
+    decisions: List[AnalyzeActionDetail]
+    outcome: AnalyzePickOutcome
+
+
 class AnalyzeSimulateResponse(BaseModel):
     meta: Dict[str, Any]
     summary: Optional[AnalyzeGameSummary] = None

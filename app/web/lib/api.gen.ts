@@ -45,6 +45,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analyze/pick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze Pick
+         * @description Analyze the pre-play decisions (pick/pass, call, bury) for a chosen
+         *     seat, hand, and blind.
+         */
+        post: operations["analyze_pick_api_analyze_pick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analyze/simulate": {
         parameters: {
             query?: never;
@@ -474,6 +495,74 @@ export interface components {
             /** Seatname */
             seatName: string;
         };
+        /**
+         * AnalyzePickOutcome
+         * @description Where the pre-play phases ended up once play was about to start.
+         */
+        AnalyzePickOutcome: {
+            /** Alonecalled */
+            aloneCalled: boolean;
+            /** Bury */
+            bury: string[];
+            /** Calledcard */
+            calledCard?: string | null;
+            /** Calledunder */
+            calledUnder: boolean;
+            /** Isleaster */
+            isLeaster: boolean;
+            /** Pickername */
+            pickerName?: string | null;
+            /** Pickerseat */
+            pickerSeat?: number | null;
+            /** Undercard */
+            underCard?: string | null;
+        };
+        /** AnalyzePickRequest */
+        AnalyzePickRequest: {
+            /** Blind */
+            blind?: string[] | null;
+            /**
+             * Deterministic
+             * @default true
+             */
+            deterministic: boolean;
+            /** Hand */
+            hand?: string[] | null;
+            /**
+             * Partnermode
+             * @default 1
+             */
+            partnerMode: number;
+            /**
+             * Seat
+             * @default 1
+             */
+            seat: number;
+            /** Seed */
+            seed?: number | null;
+        };
+        /** AnalyzePickResponse */
+        AnalyzePickResponse: {
+            /** Decisions */
+            decisions: components["schemas"]["AnalyzeActionDetail"][];
+            /** Meta */
+            meta: {
+                [key: string]: unknown;
+            };
+            outcome: components["schemas"]["AnalyzePickOutcome"];
+            scenario: components["schemas"]["AnalyzePickScenario"];
+        };
+        /** AnalyzePickScenario */
+        AnalyzePickScenario: {
+            /** Blind */
+            blind: string[];
+            /** Hand */
+            hand: string[];
+            /** Seat */
+            seat: number;
+            /** Seatname */
+            seatName: string;
+        };
         /** AnalyzePointEstimate */
         AnalyzePointEstimate: {
             /** Points */
@@ -784,6 +873,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyzeModelResponse"];
+                };
+            };
+        };
+    };
+    analyze_pick_api_analyze_pick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyzePickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyzePickResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -17,6 +17,7 @@ import numpy as np
 import torch
 
 from server.api.schemas import (
+    AnalyzeActionDetail,
     AnalyzeObservation,
     AnalyzeObservationTrickSlot,
     AnalyzeProbability,
@@ -120,6 +121,30 @@ def build_probability_list(
     ]
     probabilities.sort(key=lambda x: x.prob, reverse=True)
     return probabilities
+
+
+def compute_oracle_values(
+    agent: Any,
+    oracle_events: Dict[int, List[Dict[str, Any]]],
+    oracle_decision_pos: List[tuple[int, int]],
+    trace: List[AnalyzeActionDetail],
+    device: torch.device,
+) -> None:
+    """Attach privileged critic values to the trace (mutated in place).
+
+    Mirrors PPOAgent._fill_oracle_values: each seat's full event stream
+    (decisions + trick observes, chronological) goes through the recurrent
+    oracle critic with fresh zero memory, and values are read off at the
+    decision positions."""
+    if not oracle_decision_pos:
+        return
+    values_by_seat: Dict[int, List[float]] = {}
+    with torch.no_grad():
+        for seat, events in oracle_events.items():
+            vals = agent.oracle_critic.forward_sequences([events], device=device)
+            values_by_seat[seat] = [float(v) for v in vals[0].cpu().tolist()]
+    for action_detail, (seat, idx) in zip(trace, oracle_decision_pos):
+        action_detail.oracleValue = values_by_seat[seat][idx]
 
 
 @dataclass

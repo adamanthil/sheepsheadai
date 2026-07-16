@@ -18,6 +18,7 @@ from server.services.ai_loader import load_agent
 from server.services.analysis_common import (
     build_observation,
     build_probability_list,
+    compute_oracle_values,
     infer_phase_from_action_id,
     run_inference_step,
     set_seed,
@@ -69,30 +70,6 @@ def _setup_simulation(
         )
 
     return agent, settings, game, initial_hands
-
-
-def _compute_oracle_values(
-    agent: Any,
-    oracle_events: Dict[int, List[Dict[str, Any]]],
-    oracle_decision_pos: List[tuple[int, int]],
-    trace: List[AnalyzeActionDetail],
-    device: torch.device,
-) -> None:
-    """Attach privileged critic values to the trace (mutated in place).
-
-    Mirrors PPOAgent._fill_oracle_values: each seat's full event stream
-    (decisions + trick observes, chronological) goes through the recurrent
-    oracle critic with fresh zero memory, and values are read off at the
-    decision positions."""
-    if not oracle_decision_pos:
-        return
-    values_by_seat: Dict[int, List[float]] = {}
-    with torch.no_grad():
-        for seat, events in oracle_events.items():
-            vals = agent.oracle_critic.forward_sequences([events], device=device)
-            values_by_seat[seat] = [float(v) for v in vals[0].cpu().tolist()]
-    for action_detail, (seat, idx) in zip(trace, oracle_decision_pos):
-        action_detail.oracleValue = values_by_seat[seat][idx]
 
 
 def _compute_discounted_returns(
@@ -494,7 +471,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     _compute_discounted_returns(trace, episode_transitions, game, agent)
 
     if has_oracle:
-        _compute_oracle_values(
+        compute_oracle_values(
             agent, oracle_events, oracle_decision_pos, trace, device
         )
 

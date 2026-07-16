@@ -679,6 +679,207 @@
         "title": "AnalyzeObservationTrickSlot",
         "type": "object"
       },
+      "AnalyzePickOutcome": {
+        "description": "Where the pre-play phases ended up once play was about to start.",
+        "properties": {
+          "aloneCalled": {
+            "title": "Alonecalled",
+            "type": "boolean"
+          },
+          "bury": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bury",
+            "type": "array"
+          },
+          "calledCard": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calledcard"
+          },
+          "calledUnder": {
+            "title": "Calledunder",
+            "type": "boolean"
+          },
+          "isLeaster": {
+            "title": "Isleaster",
+            "type": "boolean"
+          },
+          "pickerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickername"
+          },
+          "pickerSeat": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickerseat"
+          },
+          "underCard": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undercard"
+          }
+        },
+        "required": [
+          "isLeaster",
+          "aloneCalled",
+          "calledUnder",
+          "bury"
+        ],
+        "title": "AnalyzePickOutcome",
+        "type": "object"
+      },
+      "AnalyzePickRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "blind": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blind"
+          },
+          "deterministic": {
+            "default": true,
+            "title": "Deterministic",
+            "type": "boolean"
+          },
+          "hand": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hand"
+          },
+          "partnerMode": {
+            "default": 1,
+            "title": "Partnermode",
+            "type": "integer"
+          },
+          "seat": {
+            "default": 1,
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "title": "AnalyzePickRequest",
+        "type": "object"
+      },
+      "AnalyzePickResponse": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzeActionDetail"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "title": "Meta",
+            "type": "object"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AnalyzePickOutcome"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/AnalyzePickScenario"
+          }
+        },
+        "required": [
+          "meta",
+          "scenario",
+          "decisions",
+          "outcome"
+        ],
+        "title": "AnalyzePickResponse",
+        "type": "object"
+      },
+      "AnalyzePickScenario": {
+        "properties": {
+          "blind": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blind",
+            "type": "array"
+          },
+          "hand": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hand",
+            "type": "array"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seatName": {
+            "title": "Seatname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat",
+          "seatName",
+          "hand",
+          "blind"
+        ],
+        "title": "AnalyzePickScenario",
+        "type": "object"
+      },
       "AnalyzePointEstimate": {
         "properties": {
           "points": {
@@ -1429,6 +1630,45 @@
           }
         },
         "summary": "Analyze Model"
+      }
+    },
+    "/api/analyze/pick": {
+      "post": {
+        "description": "Analyze the pre-play decisions (pick/pass, call, bury) for a chosen\nseat, hand, and blind.",
+        "operationId": "analyze_pick_api_analyze_pick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzePickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzePickResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Pick"
       }
     },
     "/api/analyze/simulate": {
