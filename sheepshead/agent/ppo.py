@@ -1579,115 +1579,78 @@ class PPOAgent:
             search_target_bt = []
             has_search_bt = []
             for i in ev_range:
-                if kinds[i] == "action":
-                    act_bt.append(
-                        torch.tensor(
-                            self.events[i]["action"], dtype=torch.long, device=device
-                        )
+                is_act = kinds[i] == "action"
+                ev = self.events[i]
+                action_lbl = ev["action"] if is_act else -1
+                act_bt.append(
+                    torch.tensor(action_lbl, dtype=torch.long, device=device)
+                )
+                log_prob_lbl = ev["log_prob"] if is_act else 0.0
+                olp_bt.append(
+                    torch.tensor(log_prob_lbl, dtype=torch.float32, device=device)
+                )
+                value_lbl = ev["value"] if is_act else 0.0
+                old_value_bt.append(
+                    torch.tensor(value_lbl, dtype=torch.float32, device=device)
+                )
+                return_lbl = ev["return"] if is_act else 0.0
+                ret_bt.append(
+                    torch.tensor(return_lbl, dtype=torch.float32, device=device)
+                )
+                advantage_lbl = ev["advantage"] if is_act else 0.0
+                adv_bt.append(
+                    torch.tensor(advantage_lbl, dtype=torch.float32, device=device)
+                )
+                win_lbl = (ev.get("win", 0.0) or 0.0) if is_act else 0.0
+                final_return_lbl = (
+                    (ev.get("final_return", 0.0) or 0.0) if is_act else 0.0
+                )
+                secret_lbl = (ev.get("secret_partner", 0.0) or 0.0) if is_act else 0.0
+                win_bt.append(
+                    torch.tensor(float(win_lbl), dtype=torch.float32, device=device)
+                )
+                final_ret_bt.append(
+                    torch.tensor(
+                        float(final_return_lbl), dtype=torch.float32, device=device
                     )
-                    olp_bt.append(
-                        torch.tensor(
-                            self.events[i]["log_prob"],
-                            dtype=torch.float32,
-                            device=device,
-                        )
-                    )
-                    old_value_bt.append(
-                        torch.tensor(
-                            self.events[i]["value"],
-                            dtype=torch.float32,
-                            device=device,
-                        )
-                    )
-                    ret_bt.append(
-                        torch.tensor(
-                            self.events[i]["return"], dtype=torch.float32, device=device
-                        )
-                    )
-                    adv_bt.append(
-                        torch.tensor(
-                            self.events[i]["advantage"],
-                            dtype=torch.float32,
-                            device=device,
-                        )
-                    )
-                    win_lbl = self.events[i].get("win", 0.0) or 0.0
-                    final_return_lbl = self.events[i].get("final_return", 0.0) or 0.0
-                    secret_lbl = self.events[i].get("secret_partner", 0.0) or 0.0
-                    win_bt.append(
-                        torch.tensor(float(win_lbl), dtype=torch.float32, device=device)
-                    )
-                    final_ret_bt.append(
-                        torch.tensor(
-                            float(final_return_lbl), dtype=torch.float32, device=device
-                        )
-                    )
-                    secret_bt.append(
-                        torch.tensor(
-                            float(secret_lbl), dtype=torch.float32, device=device
-                        )
-                    )
-                    pts_lbl = self.events[i].get("points_rel", [0.0] * 5)
-                    points_bt.append(
-                        torch.tensor(pts_lbl, dtype=torch.float32, device=device)
-                    )
-                    seen_mask_lbl = self.events[i].get("seen_trump_mask") or [
-                        0.0
-                    ] * len(TRUMP)
-                    seen_trump_mask_bt.append(
-                        torch.tensor(seen_mask_lbl, dtype=torch.float32, device=device)
-                    )
-                    unseen_higher_lbl = float(
-                        self.events[i].get("unseen_trump_higher_than_hand", 0.0) or 0.0
-                    )
-                    unseen_trump_higher_than_hand_bt.append(
-                        torch.tensor(
-                            unseen_higher_lbl, dtype=torch.float32, device=device
-                        )
-                    )
-                    search_tgt_lbl = (
-                        self.events[i].get("search_target") or [0.0] * self.action_size
-                    )
-                    search_target_bt.append(
-                        torch.tensor(search_tgt_lbl, dtype=torch.float32, device=device)
-                    )
-                    has_search_bt.append(
-                        torch.tensor(
-                            1.0 if self.events[i].get("has_search_target") else 0.0,
-                            dtype=torch.float32,
-                            device=device,
-                        )
-                    )
-                else:
-                    act_bt.append(torch.tensor(-1, dtype=torch.long, device=device))
-                    olp_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                    old_value_bt.append(
-                        torch.tensor(0.0, dtype=torch.float32, device=device)
-                    )
-                    ret_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                    adv_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                    win_bt.append(torch.tensor(0.0, dtype=torch.float32, device=device))
-                    final_ret_bt.append(
-                        torch.tensor(0.0, dtype=torch.float32, device=device)
-                    )
-                    secret_bt.append(
-                        torch.tensor(0.0, dtype=torch.float32, device=device)
-                    )
-                    points_bt.append(torch.zeros(5, dtype=torch.float32, device=device))
-                    seen_trump_mask_bt.append(
-                        torch.zeros(len(TRUMP), dtype=torch.float32, device=device)
-                    )
-                    unseen_trump_higher_than_hand_bt.append(
-                        torch.tensor(0.0, dtype=torch.float32, device=device)
-                    )
-                    search_target_bt.append(
-                        torch.zeros(
-                            self.action_size, dtype=torch.float32, device=device
-                        )
-                    )
-                    has_search_bt.append(
-                        torch.tensor(0.0, dtype=torch.float32, device=device)
-                    )
+                )
+                secret_bt.append(
+                    torch.tensor(float(secret_lbl), dtype=torch.float32, device=device)
+                )
+                pts_lbl = ev.get("points_rel", [0.0] * 5) if is_act else [0.0] * 5
+                points_bt.append(
+                    torch.tensor(pts_lbl, dtype=torch.float32, device=device)
+                )
+                seen_mask_lbl = (
+                    (ev.get("seen_trump_mask") or [0.0] * len(TRUMP))
+                    if is_act
+                    else [0.0] * len(TRUMP)
+                )
+                seen_trump_mask_bt.append(
+                    torch.tensor(seen_mask_lbl, dtype=torch.float32, device=device)
+                )
+                unseen_higher_lbl = (
+                    float(ev.get("unseen_trump_higher_than_hand", 0.0) or 0.0)
+                    if is_act
+                    else 0.0
+                )
+                unseen_trump_higher_than_hand_bt.append(
+                    torch.tensor(unseen_higher_lbl, dtype=torch.float32, device=device)
+                )
+                search_tgt_lbl = (
+                    (ev.get("search_target") or [0.0] * self.action_size)
+                    if is_act
+                    else [0.0] * self.action_size
+                )
+                search_target_bt.append(
+                    torch.tensor(search_tgt_lbl, dtype=torch.float32, device=device)
+                )
+                has_search_lbl = (
+                    (1.0 if ev.get("has_search_target") else 0.0) if is_act else 0.0
+                )
+                has_search_bt.append(
+                    torch.tensor(has_search_lbl, dtype=torch.float32, device=device)
+                )
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             old_value_list.append(torch.stack(old_value_bt, dim=0))
