@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import type { components } from "../../../lib/api.gen";
 import type { AnalyzeActionDetail } from "../../../lib/analyzeTypes";
 import { apiFetch } from "../../../lib/api";
+import { apiErrorMessage, fetchFailureMessage } from "../../../lib/apiError";
 import { CardText, PlayingCard } from "../../../lib/ds";
 import ProbabilityBar from "../ProbabilityBar";
 import ActionInsights from "../ActionInsights";
@@ -142,28 +143,14 @@ export default function PickAnalysisPage() {
       });
 
       if (!res.ok) {
-        let errorMessage = `Request failed: ${res.status} ${res.statusText}`;
-        try {
-          const errorData = await res.json();
-          if (errorData.detail) {
-            errorMessage =
-              typeof errorData.detail === "string"
-                ? errorData.detail
-                : JSON.stringify(errorData.detail);
-          }
-        } catch {
-          // Ignore JSON parsing errors for error response
-        }
-        throw new Error(errorMessage);
+        throw new Error(await apiErrorMessage(res, "/api/analyze/pick"));
       }
 
       setResponse(await res.json());
     } catch (err) {
       console.error("Pick analysis error:", err);
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to analyze scenario. Please try again.",
+        fetchFailureMessage(err, "Failed to analyze scenario. Please try again."),
       );
     } finally {
       setLoading(false);

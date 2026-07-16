@@ -11,6 +11,7 @@ import CalibrationSummary from "./CalibrationSummary";
 import MemoryDriftChart from "./MemoryDriftChart";
 import CardEmbeddingsPanel from "./CardEmbeddingsPanel";
 import { apiFetch } from "../../lib/api";
+import { apiErrorMessage, fetchFailureMessage } from "../../lib/apiError";
 import styles from "./page.module.css";
 
 /** Shape of the untyped `final` payload (server: runtime/views.py). */
@@ -57,27 +58,16 @@ export default function AnalyzePage() {
       });
 
       if (!res.ok) {
-        let errorMessage = `Request failed: ${res.status} ${res.statusText}`;
-        try {
-          const errorData = await res.json();
-          if (errorData.detail) {
-            errorMessage = errorData.detail;
-          }
-        } catch {
-          // Ignore JSON parsing errors for error response
-        }
-        throw new Error(errorMessage);
+        throw new Error(await apiErrorMessage(res, "/api/analyze/simulate"));
       }
 
       const data = await res.json();
       setResponse(data);
     } catch (err) {
       console.error("Simulate error:", err);
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : "Failed to simulate game. Please try again.";
-      setError(errorMessage);
+      setError(
+        fetchFailureMessage(err, "Failed to simulate game. Please try again."),
+      );
     } finally {
       setLoading(false);
     }
@@ -262,8 +252,6 @@ export default function AnalyzePage() {
 
           <MemoryDriftChart trace={response.trace} />
 
-          <CardEmbeddingsPanel />
-
           {/* Decision timeline */}
           <section className={styles.resultsPanel}>
             <div className={styles.resultsHeader}>
@@ -324,6 +312,9 @@ export default function AnalyzePage() {
           </section>
         </>
       )}
+
+      {/* Model-level panel: independent of any simulation run */}
+      <CardEmbeddingsPanel />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { AnalyzeModelResponse } from "../../lib/analyzeTypes";
 import { apiFetch } from "../../lib/api";
+import { apiErrorMessage, fetchFailureMessage } from "../../lib/apiError";
 import { parseCard, isRedSuit } from "../../lib/ds";
 import styles from "./CardEmbeddingsPanel.module.css";
 
@@ -47,14 +48,12 @@ export default function CardEmbeddingsPanel() {
     try {
       const res = await apiFetch("/api/analyze/model");
       if (!res.ok) {
-        throw new Error(`Request failed: ${res.status} ${res.statusText}`);
+        throw new Error(await apiErrorMessage(res, "/api/analyze/model"));
       }
       const json = (await res.json()) as AnalyzeModelResponse;
       setData(json);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load model info.",
-      );
+      setError(fetchFailureMessage(err, "Failed to load model info."));
     } finally {
       setLoading(false);
     }
