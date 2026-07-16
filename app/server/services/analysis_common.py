@@ -242,7 +242,11 @@ def run_inference_step(
             win_prob_val, expected_final_val, secret_partner_prob, point_vector = (
                 agent.critic.aux_predictions(encoder_out)
             )
-            aux_feat = agent.critic.critic_adapter(encoder_out["features"])
+            # _aux_features_single is the critic's overridable seam for aux
+            # features: adapter(features) on the pooled critics, but a token
+            # readout on perceiver critics — reading critic_adapter(features)
+            # directly would feed those archs the vestigial memory vector.
+            aux_feat = agent.critic._aux_features_single(encoder_out)
             seen_trump_mask_logits = agent.critic.seen_trump_mask_logits(
                 aux_feat, agent.encoder.card
             ).squeeze(0)

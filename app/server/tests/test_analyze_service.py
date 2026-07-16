@@ -127,6 +127,66 @@ def test_simulate_with_oracle_critic(analyze_env, monkeypatch):
         assert step.oracleValue == step.oracleValue  # not NaN
 
 
+def test_simulate_with_perceiver_shared_v2(analyze_env, monkeypatch):
+    """Token-readout critics source their aux features from a cross-attention
+    readout, not critic_adapter(features) — the simulate path must go through
+    the critic's _aux_features_single seam so perceiver archs get real
+    trump-tracking numbers instead of the vestigial memory vector."""
+    from sheepshead import ACTIONS
+    from sheepshead.agent.ppo import PPOAgent
+
+    import server.services.analyze as analyze_mod
+
+    agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2")
+    monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
+
+    resp = analyze_mod.simulate_game(
+        AnalyzeSimulateRequest(seed=13, deterministic=True)
+    )
+
+    assert resp.trace
+    for step in resp.trace:
+        assert step.winProb is not None
+        assert step.trumpSeenMask is not None
+        assert step.unseenTrumpHigherThanHandProb is not None
+        assert step.probabilities
+    assert resp.calibration is not None
+
+
+def test_pick_with_perceiver_shared_v2(analyze_env, monkeypatch):
+    from sheepshead import ACTIONS
+    from sheepshead.agent.ppo import PPOAgent
+
+    import server.services.pick_analysis as pick_mod
+    from server.api.schemas import AnalyzePickRequest
+
+    agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2")
+    monkeypatch.setattr(pick_mod, "load_agent", lambda path: agent)
+
+    resp = pick_mod.analyze_pick(AnalyzePickRequest(seat=2, seed=3))
+    assert resp.decisions
+    assert resp.decisions[0].seat == 2
+    assert resp.decisions[0].phase == "pick"
+    assert resp.decisions[0].winProb is not None
+
+
+def test_model_info_with_perceiver_shared_v2(analyze_env, monkeypatch):
+    from sheepshead import ACTIONS
+    from sheepshead.agent.ppo import PPOAgent
+
+    import server.services.model_info as model_info_mod
+
+    agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2")
+    monkeypatch.setattr(model_info_mod, "load_agent", lambda path: agent)
+    model_info_mod._model_info.cache_clear()
+
+    info = model_info_mod.get_model_info()
+    assert info.arch == "perceiver-shared-v2"
+    assert info.hasAuxHeads is True
+    assert info.cardEmbeddings is not None
+    assert len(info.cardEmbeddings.cards) == 33
+
+
 def test_model_info_card_embeddings(analyze_env, monkeypatch):
     """The model-info payload must describe the full card table (32 cards +
     UNDER, pad row dropped) with consistent geometry shapes."""
