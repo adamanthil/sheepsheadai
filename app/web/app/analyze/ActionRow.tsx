@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
 import ActionDetails from "./ActionDetails";
 import ActionInsights from "./ActionInsights";
+import ObservationView from "./ObservationView";
 import { CardText } from "../../lib/ds";
 import styles from "./ActionRow.module.css";
 
@@ -92,6 +93,8 @@ export default function ActionRow({
     stepHue,
     winPct,
     expectedFinal,
+    oracleValue,
+    memoryCosineDistance,
   }: {
     value: number;
     valueHue: number;
@@ -101,6 +104,8 @@ export default function ActionRow({
     stepHue?: number;
     winPct?: number;
     expectedFinal?: number;
+    oracleValue?: number;
+    memoryCosineDistance?: number;
   }) {
     return (
       <div className={styles.metricsBar}>
@@ -110,6 +115,30 @@ export default function ActionRow({
           colorStyle={getHueStyle(valueHue)}
           tooltip="Value estimate (critic)"
         />
+
+        {typeof oracleValue === "number" && (
+          <div
+            className={`${styles.metricChip} ${styles.metricChipNeutral}`}
+            title={`Oracle (full-information) value (Δ ${formatSigned(oracleValue - value)} vs V)`}
+          >
+            <span className={styles.metricLabel}>V*</span>
+            <span className={styles.metricValue}>
+              {formatSigned(oracleValue)}
+            </span>
+          </div>
+        )}
+
+        {typeof memoryCosineDistance === "number" && (
+          <div
+            className={`${styles.metricChip} ${styles.metricChipNeutral}`}
+            title="Recurrent memory update at this decision (cosine distance)"
+          >
+            <span className={styles.metricLabel}>memΔ</span>
+            <span className={styles.metricValue}>
+              {memoryCosineDistance.toFixed(3)}
+            </span>
+          </div>
+        )}
 
         {typeof discounted === "number" && (
           <MetricChip
@@ -210,6 +239,16 @@ export default function ActionRow({
                 ? action.expectedFinalReturn
                 : undefined
             }
+            oracleValue={
+              typeof action.oracleValue === "number"
+                ? action.oracleValue
+                : undefined
+            }
+            memoryCosineDistance={
+              typeof action.memoryCosineDistance === "number"
+                ? action.memoryCosineDistance
+                : undefined
+            }
           />
 
           <div
@@ -224,6 +263,7 @@ export default function ActionRow({
         <>
           <ActionDetails action={action} />
           <ActionInsights action={action} />
+          <ObservationView observation={action.observation} />
         </>
       )}
     </div>
