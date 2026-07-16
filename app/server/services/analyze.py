@@ -333,6 +333,30 @@ def _run_inference_step(
     )
 
 
+def _compute_oracle_values(
+    agent: Any,
+    oracle_events: Dict[int, List[Dict[str, Any]]],
+    oracle_decision_pos: List[tuple[int, int]],
+    trace: List[AnalyzeActionDetail],
+    device: torch.device,
+) -> None:
+    """Attach privileged critic values to the trace (mutated in place).
+
+    Mirrors PPOAgent._fill_oracle_values: each seat's full event stream
+    (decisions + trick observes, chronological) goes through the recurrent
+    oracle critic with fresh zero memory, and values are read off at the
+    decision positions."""
+    if not oracle_decision_pos:
+        return
+    values_by_seat: Dict[int, List[float]] = {}
+    with torch.no_grad():
+        for seat, events in oracle_events.items():
+            vals = agent.oracle_critic.forward_sequences([events], device=device)
+            values_by_seat[seat] = [float(v) for v in vals[0].cpu().tolist()]
+    for action_detail, (seat, idx) in zip(trace, oracle_decision_pos):
+        action_detail.oracleValue = values_by_seat[seat][idx]
+
+
 def _compute_discounted_returns(
     trace: List[AnalyzeActionDetail],
     episode_transitions: List[Dict[str, Any]],
@@ -492,6 +516,8 @@ def _assemble_response(
             "seed": req.seed,
             "model": settings.sheepshead_model_label,
             "gamma": float(agent.gamma),
+            "criticMode": getattr(agent, "critic_mode", "limited"),
+            "hasOracle": getattr(agent, "oracle_critic", None) is not None,
         },
         summary=game_summary,
         trace=trace,
@@ -517,6 +543,11 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # For reward shaping and discounted return computation
     episode_transitions: List[Dict[str, Any]] = []
     current_trick_transitions: List[Dict[str, Any]] = []
+    # Oracle critic event streams (per seat, chronological), collected the
+    # same way the trainer does with collect_oracle=True.
+    has_oracle = getattr(agent, "oracle_critic", None) is not None
+    oracle_events: Dict[int, List[Dict[str, Any]]] = {}
+    oracle_decision_pos: List[tuple[int, int]] = []  # aligned with trace
 
     # Simulation loop
     while not game.is_done() and step_index < req.maxSteps:
@@ -535,6 +566,12 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             break
 
         inference = _run_inference_step(agent, actor_player, actor_seat, players, device)
+
+        if has_oracle:
+            # Must be captured at decision time: hands shrink as cards play.
+            seq = oracle_events.setdefault(actor_seat, [])
+            oracle_decision_pos.append((actor_seat, len(seq)))
+            seq.append(actor_player.get_oracle_state_dict())
 
         # Choose action
         if req.deterministic:
@@ -634,6 +671,11 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             # Propagate an observation for the just-completed trick to all seats
             for seat in game.players:
                 agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                # Trainer protocol: no observation event after the final trick.
+                if has_oracle and not game.is_done():
+                    oracle_events.setdefault(seat.position, []).append(
+                        seat.get_last_trick_oracle_state_dict()
+                    )
 
         step_index += 1
 
@@ -642,6 +684,11 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
     # Compute discounted returns per action if we have any transitions
     _compute_discounted_returns(trace, episode_transitions, game, agent)
+
+    if has_oracle:
+        _compute_oracle_values(
+            agent, oracle_events, oracle_decision_pos, trace, device
+        )
 
     # Build response
     return _assemble_response(

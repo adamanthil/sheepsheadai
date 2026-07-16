@@ -221,6 +221,10 @@ class AnalyzeActionDetail(BaseModel):
     actionId: int
     action: str
     valueEstimate: float
+    # Privileged (full-information) critic value, only when the loaded
+    # checkpoint was trained with critic_mode="oracle". Diagnostic: the gap
+    # to valueEstimate shows how much hidden information changes the value.
+    oracleValue: Optional[float] = None
     discountedReturn: Optional[float] = None
     stepReward: Optional[float] = None
     stepRewardBase: Optional[float] = None

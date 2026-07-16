@@ -70,6 +70,30 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
     assert resp.trace[0].memoryCosineDistance is None
 
 
+def test_simulate_with_oracle_critic(analyze_env, monkeypatch):
+    """An oracle-mode agent must report a privileged value on every
+    decision; a limited agent must not (covered by the no-aux test's
+    schema default)."""
+    from sheepshead import ACTIONS
+    from sheepshead.agent.ppo import PPOAgent
+
+    import server.services.analyze as analyze_mod
+
+    agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
+    monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
+
+    resp = analyze_mod.simulate_game(
+        AnalyzeSimulateRequest(seed=11, deterministic=True)
+    )
+
+    assert resp.meta["hasOracle"] is True
+    assert resp.meta["criticMode"] == "oracle"
+    assert resp.trace
+    for step in resp.trace:
+        assert step.oracleValue is not None
+        assert step.oracleValue == step.oracleValue  # not NaN
+
+
 def test_build_observation_decodes_state():
     """_build_observation must mirror the acting player's state dict:
     their own cards, relative trick order anchored on their seat, and

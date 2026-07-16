@@ -92,6 +92,17 @@
           "observation": {
             "$ref": "#/components/schemas/AnalyzeObservation"
           },
+          "oracleValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oraclevalue"
+          },
           "phase": {
             "title": "Phase",
             "type": "string"

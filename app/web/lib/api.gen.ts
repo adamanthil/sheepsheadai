@@ -273,6 +273,8 @@ export interface components {
             /** Memorynorm */
             memoryNorm?: number | null;
             observation: components["schemas"]["AnalyzeObservation"];
+            /** Oraclevalue */
+            oracleValue?: number | null;
             /** Phase */
             phase: string;
             /** Pointactuals */
