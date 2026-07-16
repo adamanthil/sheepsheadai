@@ -656,7 +656,6 @@ class TestPerceiver:
         assert tuple(enc.readout_query.shape) == (16, enc.d_token_dim)
         assert isinstance(enc.readout_proj, torch.nn.Sequential)
         assert isinstance(enc.readout_proj[1], torch.nn.LayerNorm)
-        assert not enc.memory_token_driver
         assert agent.critic.has_aux_heads
         game = Game(seed=145)
         s = game.players[0].get_state_dict()
@@ -684,7 +683,6 @@ class TestPerceiver:
         v1 = architectures.SharedReadoutEncoder()
         assert isinstance(v1.readout_proj, torch.nn.Linear)
         assert v1.readout_n_queries == 4
-        assert not v1.memory_token_driver
 
     def test_ctxmem_context_token_drives_recurrence(self):
         _seed_all(20)

@@ -262,14 +262,12 @@ class SharedReadoutEncoder(PerceiverEncoder):
         n_readout_queries: int = 4,
         n_readout_heads: int = 4,
         normed_readout: bool = False,
-        memory_token_driver: bool = False,
         **encoder_kwargs,
     ):
         super().__init__(card_config=card_config, **encoder_kwargs)
         d_token = self.d_token_dim
         d_model = self.d_model
         self.readout_n_queries = int(n_readout_queries)
-        self.memory_token_driver = bool(memory_token_driver)
         # Torch-default MHA init + randn queries: the AttentionPool
         # convention (matches the modules this readout replaces).
         self.readout_query = nn.Parameter(torch.randn(self.readout_n_queries, d_token))
@@ -316,13 +314,8 @@ class SharedReadoutEncoder(PerceiverEncoder):
         all_tokens,
         all_mask,
     ):
-        # Memory write: context token by default (as in the base
-        # architecture); v2 drives recurrence from the post-reasoning
-        # MEMORY token instead (the original perceiver design — the
-        # transformer learns what the GRU needs to see).
-        driver = (
-            all_tokens[:, 1, :] if self.memory_token_driver else all_tokens[:, 0, :]
-        )
+        # Memory write: context token, as in the base architecture.
+        driver = all_tokens[:, 0, :]
         memory_out = self.memory_gru(driver, memory_in)
         B = all_tokens.size(0)
         q = self.readout_query.unsqueeze(0).expand(B, -1, -1)

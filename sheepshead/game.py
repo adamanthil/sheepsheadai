@@ -239,18 +239,6 @@ def pretty_card_list(card_list):
     return " ".join([colorize_card(c) for c in card_list])
 
 
-def get_monte_carlo_pick_score(hand):
-    """Returns the expected score for a player picking from a hand
-    using a monte-carlo simulation of 30 random games."""
-
-    scores = []
-    for _ in range(30):
-        game = Game(picking_hand=hand, double_on_the_bump=False)
-        game.play_random(verbose=False)
-        scores.append(game.get_picker().get_score())
-    return sum(scores) / len(scores)
-
-
 class Game:
     def __init__(
         self,
@@ -341,8 +329,6 @@ class Game:
         while not self.is_done():
             for player in self.players:
                 actions = player.get_valid_action_ids()
-                # print(f"PLAYER {player.position}")
-                # print([ACTION_LOOKUP[a] for a in actions])
                 while actions:
                     action = self.rng.sample(list(actions), 1)[0]
 
@@ -1372,8 +1358,6 @@ class Player:
 
                 if self.current_trick < 5:
                     self.game.leaders[self.current_trick + 1] = winner
-                # print("Trick points: %i" % get_trick_points(trick))
-                # print("Winner %i" % get_trick_winner(trick, self.game.current_suit))
 
                 # Next trick must start with winner
                 self.game.leader = winner

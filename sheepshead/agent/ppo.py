@@ -74,13 +74,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         # scalar for PLAY UNDER which is not a hand-slot action
         self.play_under_head = nn.Linear(d_model, 1)
 
-        # Per-head temperatures (τ): logits will be divided by τ before softmax
-        # τ > 1.0 softens (higher entropy), τ < 1.0 sharpens. Defaults to 1.0.
-        self.temperature_pick = 1.0
-        self.temperature_partner = 1.0
-        self.temperature_bury = 1.0
-        self.temperature_play = 1.0
-
         # Init (generic weights)
         self.apply(self._init_weights)
 
@@ -190,13 +183,11 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         feat = self._adapt_features(actor_features, all_tokens, all_mask)
 
         # PICK / PASS
-        pick_logits = self.pick_head(feat) / max(self.temperature_pick, 1e-6)
+        pick_logits = self.pick_head(feat)
         logits[:, self.action_groups["pick"]] = pick_logits
 
         # PARTNER: basic (ALONE, JD PARTNER)
-        partner_basic = self.partner_basic_head(feat) / max(
-            self.temperature_partner, 1e-6
-        )
+        partner_basic = self.partner_basic_head(feat)
         idx_alone = ACTION_IDS["ALONE"] - 1
         idx_jd = ACTION_IDS["JD PARTNER"] - 1
         logits[:, idx_alone] = partner_basic[:, 0]
@@ -204,9 +195,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # PARTNER: CALL actions via two-tower card scoring
         card_scores = self._score_cards_two_tower(feat, card_embedding)  # (K, 34)
-        call_scores = card_scores[:, self._call_card_ids.to(device)] / max(
-            self.temperature_partner, 1e-6
-        )
+        call_scores = card_scores[:, self._call_card_ids.to(device)]
         logits[:, self._call_action_global_indices.to(device)] = call_scores
 
         # Pointer scores over hand tokens (compute once, reuse for bury/under/play)
@@ -228,11 +217,11 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             if valid_b.any():
                 logits.view(K_, -1)[valid_b, b_idx[valid_b]] = slot_scores[
                     valid_b, i
-                ] / max(self.temperature_bury, 1e-6)
+                ]
             if valid_u.any():
                 logits.view(K_, -1)[valid_u, u_idx[valid_u]] = slot_scores[
                     valid_u, i
-                ] / max(self.temperature_bury, 1e-6)
+                ]
 
         # PLAY scatter
         idx_play = self._map_cid_to_play_action_index.to(device)[cids]  # (K, N)
@@ -242,13 +231,11 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             if valid_p.any():
                 logits.view(K_, -1)[valid_p, p_idx[valid_p]] = slot_scores[
                     valid_p, i
-                ] / max(self.temperature_play, 1e-6)
+                ]
 
         # PLAY UNDER scalar
         if self._play_under_action_index is not None:
-            play_under_logit = self.play_under_head(feat).squeeze(-1) / max(
-                self.temperature_play, 1e-6
-            )
+            play_under_logit = self.play_under_head(feat).squeeze(-1)
             logits[:, self._play_under_action_index] = play_under_logit
 
         # Apply action mask if provided
@@ -258,34 +245,6 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             logits = logits.masked_fill(~action_mask, -1e8)
 
         return logits
-
-    # ------------------------------------------------------------
-    # Public helpers
-    # ------------------------------------------------------------
-    def set_temperatures(
-        self,
-        pick: float | None = None,
-        partner: float | None = None,
-        bury: float | None = None,
-        play: float | None = None,
-    ):
-        """Set per-head softmax temperatures.
-
-        Parameters
-        ----------
-        pick, partner, bury, play : float | None
-            If provided, sets the corresponding head's temperature τ. Values are
-            clamped to a small positive minimum to avoid divide-by-zero.
-        """
-        eps = 1e-6
-        if pick is not None:
-            self.temperature_pick = max(float(pick), eps)
-        if partner is not None:
-            self.temperature_partner = max(float(partner), eps)
-        if bury is not None:
-            self.temperature_bury = max(float(bury), eps)
-        if play is not None:
-            self.temperature_play = max(float(play), eps)
 
     # ------------------------------------------------------------
     # Forward
@@ -1060,16 +1019,6 @@ class PPOAgent:
             call_card_ids,
             play_under_index,
         )
-
-    def set_head_temperatures(
-        self,
-        pick: float | None = None,
-        partner: float | None = None,
-        bury: float | None = None,
-        play: float | None = None,
-    ):
-        """Convenience proxy to set per-head temperatures on the actor."""
-        self.actor.set_temperatures(pick=pick, partner=partner, bury=bury, play=play)
 
     def _capture_actor_lr_ratios(self, base_lr: float | None = None) -> list[float]:
         """Return per-param-group LR ratios for the actor optimizer.
