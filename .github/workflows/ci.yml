@@ -24,7 +24,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -35,7 +35,7 @@ jobs:
       - run: uv run python -m compileall -q app/server
       # Apply migrations to the service container (exercises graphile-migrate)
       # so the API-flow tests run against the real schema.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm ci --no-audit --no-fund
@@ -55,7 +55,7 @@ jobs:
   training:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -71,8 +71,8 @@ jobs:
       run:
         working-directory: app/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
