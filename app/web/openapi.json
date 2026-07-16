@@ -125,20 +125,6 @@
             ],
             "title": "Secretpartnerprob"
           },
-          "state": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "State"
-          },
           "stepIndex": {
             "title": "Stepindex",
             "type": "integer"
@@ -432,13 +418,6 @@
       },
       "AnalyzeSimulateResponse": {
         "properties": {
-          "actionLookup": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Actionlookup",
-            "type": "object"
-          },
           "final": {
             "anyOf": [
               {
@@ -455,13 +434,6 @@
             "additionalProperties": true,
             "title": "Meta",
             "type": "object"
-          },
-          "players": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Players",
-            "type": "array"
           },
           "summary": {
             "anyOf": [
@@ -483,8 +455,6 @@
         },
         "required": [
           "meta",
-          "actionLookup",
-          "players",
           "trace"
         ],
         "title": "AnalyzeSimulateResponse",

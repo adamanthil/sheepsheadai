@@ -282,8 +282,6 @@ export interface components {
             seatName: string;
             /** Secretpartnerprob */
             secretPartnerProb?: number | null;
-            /** State */
-            state?: number[] | null;
             /** Stepindex */
             stepIndex: number;
             /** Stepreward */
@@ -376,10 +374,6 @@ export interface components {
         };
         /** AnalyzeSimulateResponse */
         AnalyzeSimulateResponse: {
-            /** Actionlookup */
-            actionLookup: {
-                [key: string]: string;
-            };
             /** Final */
             final?: {
                 [key: string]: unknown;
@@ -388,8 +382,6 @@ export interface components {
             meta: {
                 [key: string]: unknown;
             };
-            /** Players */
-            players: string[];
             summary?: components["schemas"]["AnalyzeGameSummary"] | null;
             /** Trace */
             trace: components["schemas"]["AnalyzeActionDetail"][];

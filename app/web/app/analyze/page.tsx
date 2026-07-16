@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import {
   AnalyzeSimulateRequest,
   AnalyzeSimulateResponse,
-  AnalyzeGameSummary,
 } from "../../lib/analyzeTypes";
 import ActionTimeline from "./ActionTimeline";
 import GameSummary from "./GameSummary";

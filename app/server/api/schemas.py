@@ -207,7 +207,6 @@ class AnalyzeActionDetail(BaseModel):
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]
-    state: Optional[List[float]] = None
 
 
 class AnalyzeGameSummary(BaseModel):
@@ -223,8 +222,6 @@ class AnalyzeGameSummary(BaseModel):
 
 class AnalyzeSimulateResponse(BaseModel):
     meta: Dict[str, Any]
-    actionLookup: Dict[int, str]
-    players: List[str]
     summary: Optional[AnalyzeGameSummary] = None
     trace: List[AnalyzeActionDetail]
     final: Optional[Dict[str, Any]] = None

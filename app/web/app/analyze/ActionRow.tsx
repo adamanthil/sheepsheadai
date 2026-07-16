@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
 import ActionDetails from "./ActionDetails";
 import ActionInsights from "./ActionInsights";
-import ActionStateVector from "./ActionStateVector";
 import { CardText } from "../../lib/ds";
 import styles from "./ActionRow.module.css";
 
@@ -225,7 +224,6 @@ export default function ActionRow({
         <>
           <ActionDetails action={action} />
           <ActionInsights action={action} />
-          <ActionStateVector action={action} />
         </>
       )}
     </div>

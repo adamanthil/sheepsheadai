@@ -424,8 +424,6 @@ def _assemble_response(
             "model": settings.sheepshead_model_label,
             "gamma": float(agent.gamma),
         },
-        actionLookup={k: v for k, v in ACTION_LOOKUP.items()},
-        players=players,
         summary=game_summary,
         trace=trace,
         final=final_payload,
@@ -517,9 +515,6 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             validActionIds=inference.valid_actions,
             probabilities=probabilities,
             view=player_state["view"],
-            # Provide encoded 256-d feature vector as a plain float list for schema compatibility
-            # TODO: Update annotations to match new state and/or drop this in favor of state dict
-            state=inference.encoder_out["features"].squeeze(0).detach().cpu().tolist(),
             winProb=float(inference.win_prob_val)
             if inference.win_prob_val is not None
             else None,
