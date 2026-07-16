@@ -10,6 +10,8 @@ import torch
 from server.api.schemas import (
     AnalyzeActionDetail,
     AnalyzeGameSummary,
+    AnalyzeObservation,
+    AnalyzeObservationTrickSlot,
     AnalyzeProbability,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
@@ -17,7 +19,8 @@ from server.api.schemas import (
 from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
-from sheepshead import ACTION_LOOKUP, DECK, TRUMP, Game
+from sheepshead import ACTION_LOOKUP, DECK, DECK_IDS, TRUMP, Game
+from sheepshead.game import UNDER_CARD_ID, UNDER_TOKEN
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -51,6 +54,54 @@ def infer_phase_from_action_id(
             return phase
 
     return "unknown"
+
+
+# Card id -> card code (0 = empty stays unmapped; 33 = face-down under).
+_ID_TO_CARD: Dict[int, str] = {v: k for k, v in DECK_IDS.items()}
+_ID_TO_CARD[UNDER_CARD_ID] = UNDER_TOKEN
+
+
+def _build_observation(
+    state: Dict[str, Any], actor_seat: int, players: List[str]
+) -> AnalyzeObservation:
+    """Decode the acting player's state dict (the model's actual input)
+    into card codes for display."""
+
+    def cards(ids) -> List[str]:
+        return [_ID_TO_CARD[int(i)] for i in ids if int(i) != 0]
+
+    trick_slots: List[AnalyzeObservationTrickSlot] = []
+    for rel_idx in range(1, 6):
+        abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
+        trick_slots.append(
+            AnalyzeObservationTrickSlot(
+                seat=abs_seat,
+                seatName=players[abs_seat - 1],
+                relativePosition=rel_idx,
+                card=_ID_TO_CARD.get(int(state["trick_card_ids"][rel_idx - 1])),
+                isPicker=bool(state["trick_is_picker"][rel_idx - 1]),
+                isPartnerKnown=bool(state["trick_is_partner_known"][rel_idx - 1]),
+            )
+        )
+
+    called_id = int(state["called_card_id"])
+    return AnalyzeObservation(
+        partnerMode=int(state["partner_mode"]),
+        isLeaster=bool(state["is_leaster"]),
+        playStarted=bool(state["play_started"]),
+        currentTrick=int(state["current_trick"]),
+        aloneCalled=bool(state["alone_called"]),
+        calledUnder=bool(state["called_under"]),
+        calledCard=_ID_TO_CARD.get(called_id) if called_id else None,
+        pickerRel=int(state["picker_rel"]),
+        partnerRel=int(state["partner_rel"]),
+        leaderRel=int(state["leader_rel"]),
+        pickerPosition=int(state["picker_position"]),
+        hand=cards(state["hand_ids"]),
+        blind=cards(state["blind_ids"]),
+        bury=cards(state["bury_ids"]),
+        trick=trick_slots,
+    )
 
 
 def _setup_simulation(
@@ -515,6 +566,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             validActionIds=inference.valid_actions,
             probabilities=probabilities,
             view=player_state["view"],
+            observation=_build_observation(inference.state, actor_seat, players),
             winProb=float(inference.win_prob_val)
             if inference.win_prob_val is not None
             else None,

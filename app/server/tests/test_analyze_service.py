@@ -55,3 +55,32 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
         # Non-aux essentials still populated
         assert step.probabilities
         assert step.valueEstimate == step.valueEstimate  # not NaN
+        assert step.observation.hand
+
+
+def test_build_observation_decodes_state():
+    """_build_observation must mirror the acting player's state dict:
+    their own cards, relative trick order anchored on their seat, and
+    hidden blind/bury for non-pickers."""
+    from sheepshead import Game
+
+    from server.runtime.seating import ANALYZE_SEAT_NAMES
+    from server.services.analyze import _build_observation
+
+    game = Game(partner_selection_mode=1, seed=42)
+    player = game.players[2]  # seat 3, pre-pick
+
+    obs = _build_observation(player.get_state_dict(), 3, ANALYZE_SEAT_NAMES)
+
+    assert sorted(obs.hand) == sorted(player.hand)
+    assert obs.blind == []  # not the picker: blind is hidden
+    assert obs.bury == []
+    assert obs.pickerPosition == 0
+    assert obs.pickerRel == 0
+    assert not obs.playStarted
+    assert not obs.isLeaster
+    assert obs.partnerMode == 1
+    assert obs.calledCard is None
+    assert [slot.relativePosition for slot in obs.trick] == [1, 2, 3, 4, 5]
+    assert [slot.seat for slot in obs.trick] == [3, 4, 5, 1, 2]
+    assert all(slot.card is None for slot in obs.trick)

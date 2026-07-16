@@ -67,6 +67,9 @@
             ],
             "title": "Expectedfinalreturn"
           },
+          "observation": {
+            "$ref": "#/components/schemas/AnalyzeObservation"
+          },
           "phase": {
             "title": "Phase",
             "type": "string"
@@ -247,7 +250,8 @@
           "valueEstimate",
           "validActionIds",
           "probabilities",
-          "view"
+          "view",
+          "observation"
         ],
         "title": "AnalyzeActionDetail",
         "type": "object"
@@ -325,6 +329,152 @@
           "scores"
         ],
         "title": "AnalyzeGameSummary",
+        "type": "object"
+      },
+      "AnalyzeObservation": {
+        "description": "The observation the model actually received (Player.get_state_dict),\ndecoded from card ids to card codes. Blind/bury are empty unless the\nactor is the picker \u2014 this mirrors exactly what the actor sees, unlike\nthe omniscient `view`.",
+        "properties": {
+          "aloneCalled": {
+            "title": "Alonecalled",
+            "type": "boolean"
+          },
+          "blind": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blind",
+            "type": "array"
+          },
+          "bury": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bury",
+            "type": "array"
+          },
+          "calledCard": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calledcard"
+          },
+          "calledUnder": {
+            "title": "Calledunder",
+            "type": "boolean"
+          },
+          "currentTrick": {
+            "title": "Currenttrick",
+            "type": "integer"
+          },
+          "hand": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hand",
+            "type": "array"
+          },
+          "isLeaster": {
+            "title": "Isleaster",
+            "type": "boolean"
+          },
+          "leaderRel": {
+            "title": "Leaderrel",
+            "type": "integer"
+          },
+          "partnerMode": {
+            "title": "Partnermode",
+            "type": "integer"
+          },
+          "partnerRel": {
+            "title": "Partnerrel",
+            "type": "integer"
+          },
+          "pickerPosition": {
+            "title": "Pickerposition",
+            "type": "integer"
+          },
+          "pickerRel": {
+            "title": "Pickerrel",
+            "type": "integer"
+          },
+          "playStarted": {
+            "title": "Playstarted",
+            "type": "boolean"
+          },
+          "trick": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzeObservationTrickSlot"
+            },
+            "title": "Trick",
+            "type": "array"
+          }
+        },
+        "required": [
+          "partnerMode",
+          "isLeaster",
+          "playStarted",
+          "currentTrick",
+          "aloneCalled",
+          "calledUnder",
+          "pickerRel",
+          "partnerRel",
+          "leaderRel",
+          "pickerPosition",
+          "hand",
+          "blind",
+          "bury",
+          "trick"
+        ],
+        "title": "AnalyzeObservation",
+        "type": "object"
+      },
+      "AnalyzeObservationTrickSlot": {
+        "properties": {
+          "card": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card"
+          },
+          "isPartnerKnown": {
+            "title": "Ispartnerknown",
+            "type": "boolean"
+          },
+          "isPicker": {
+            "title": "Ispicker",
+            "type": "boolean"
+          },
+          "relativePosition": {
+            "title": "Relativeposition",
+            "type": "integer"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seatName": {
+            "title": "Seatname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat",
+          "seatName",
+          "relativePosition",
+          "isPicker",
+          "isPartnerKnown"
+        ],
+        "title": "AnalyzeObservationTrickSlot",
         "type": "object"
       },
       "AnalyzePointEstimate": {

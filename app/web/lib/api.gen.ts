@@ -268,6 +268,7 @@ export interface components {
             discountedReturn?: number | null;
             /** Expectedfinalreturn */
             expectedFinalReturn?: number | null;
+            observation: components["schemas"]["AnalyzeObservation"];
             /** Phase */
             phase: string;
             /** Pointactuals */
@@ -329,6 +330,60 @@ export interface components {
             pickerPoints: number;
             /** Scores */
             scores: number[];
+        };
+        /**
+         * AnalyzeObservation
+         * @description The observation the model actually received (Player.get_state_dict),
+         *     decoded from card ids to card codes. Blind/bury are empty unless the
+         *     actor is the picker — this mirrors exactly what the actor sees, unlike
+         *     the omniscient `view`.
+         */
+        AnalyzeObservation: {
+            /** Alonecalled */
+            aloneCalled: boolean;
+            /** Blind */
+            blind: string[];
+            /** Bury */
+            bury: string[];
+            /** Calledcard */
+            calledCard?: string | null;
+            /** Calledunder */
+            calledUnder: boolean;
+            /** Currenttrick */
+            currentTrick: number;
+            /** Hand */
+            hand: string[];
+            /** Isleaster */
+            isLeaster: boolean;
+            /** Leaderrel */
+            leaderRel: number;
+            /** Partnermode */
+            partnerMode: number;
+            /** Partnerrel */
+            partnerRel: number;
+            /** Pickerposition */
+            pickerPosition: number;
+            /** Pickerrel */
+            pickerRel: number;
+            /** Playstarted */
+            playStarted: boolean;
+            /** Trick */
+            trick: components["schemas"]["AnalyzeObservationTrickSlot"][];
+        };
+        /** AnalyzeObservationTrickSlot */
+        AnalyzeObservationTrickSlot: {
+            /** Card */
+            card?: string | null;
+            /** Ispartnerknown */
+            isPartnerKnown: boolean;
+            /** Ispicker */
+            isPicker: boolean;
+            /** Relativeposition */
+            relativePosition: number;
+            /** Seat */
+            seat: number;
+            /** Seatname */
+            seatName: string;
         };
         /** AnalyzePointEstimate */
         AnalyzePointEstimate: {
