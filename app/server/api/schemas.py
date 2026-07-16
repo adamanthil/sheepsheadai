@@ -252,6 +252,31 @@ class AnalyzeActionDetail(BaseModel):
     observation: AnalyzeObservation
 
 
+class AnalyzeSeatCalibration(BaseModel):
+    seat: int
+    seatName: str
+    won: bool  # final score > 0
+    decisionCount: int
+    firstWinProb: float
+    lastWinProb: float
+    meanWinProb: float
+    brierScore: float  # mean (winProb - won)^2 over this seat's decisions
+    pointsMae: float  # mean |predicted - final| of predictions ABOUT this seat
+
+
+class AnalyzeCalibrationSummary(BaseModel):
+    """Game-level rollup of aux-head prediction quality, computed from the
+    trace once the game is done. Absent for no-aux architectures."""
+
+    seats: List[AnalyzeSeatCalibration]
+    overallBrier: float
+    overallPointsMae: float
+    # Fraction of (decision x trump card) predictions where
+    # (probabilitySeen > 0.5) matches the seen/unseen ground truth.
+    trumpMaskAccuracy: Optional[float] = None
+    trumpMaskCount: int = 0
+
+
 class AnalyzeGameSummary(BaseModel):
     hands: Dict[str, List[str]]  # player name -> cards
     blind: List[str]
@@ -266,5 +291,6 @@ class AnalyzeGameSummary(BaseModel):
 class AnalyzeSimulateResponse(BaseModel):
     meta: Dict[str, Any]
     summary: Optional[AnalyzeGameSummary] = None
+    calibration: Optional[AnalyzeCalibrationSummary] = None
     trace: List[AnalyzeActionDetail]
     final: Optional[Dict[str, Any]] = None

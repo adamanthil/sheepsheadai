@@ -69,6 +69,39 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
     # The very first decision of the game always starts from zero memory.
     assert resp.trace[0].memoryCosineDistance is None
 
+    # No aux heads -> no calibration rollup.
+    assert resp.calibration is None
+
+
+def test_simulate_calibration_summary(analyze_env, monkeypatch):
+    """With aux heads, a finished game gets a calibration rollup covering
+    every seat that acted, with sane metric ranges."""
+    from sheepshead import ACTIONS
+    from sheepshead.agent.ppo import PPOAgent
+
+    import server.services.analyze as analyze_mod
+
+    agent = PPOAgent(len(ACTIONS), arch="full")
+    monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
+
+    resp = analyze_mod.simulate_game(
+        AnalyzeSimulateRequest(seed=3, deterministic=True)
+    )
+
+    cal = resp.calibration
+    assert cal is not None
+    acting_seats = {step.seat for step in resp.trace}
+    assert {s.seat for s in cal.seats} == acting_seats
+    assert 0.0 <= cal.overallBrier <= 1.0
+    assert cal.overallPointsMae >= 0.0
+    assert cal.trumpMaskCount > 0
+    assert cal.trumpMaskAccuracy is not None
+    assert 0.0 <= cal.trumpMaskAccuracy <= 1.0
+    for seat_cal in cal.seats:
+        assert 0.0 <= seat_cal.brierScore <= 1.0
+        assert 0.0 <= seat_cal.meanWinProb <= 1.0
+        assert seat_cal.decisionCount > 0
+
 
 def test_simulate_with_oracle_critic(analyze_env, monkeypatch):
     """An oracle-mode agent must report a privileged value on every

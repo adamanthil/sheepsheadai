@@ -289,6 +289,49 @@
         "title": "AnalyzeActionDetail",
         "type": "object"
       },
+      "AnalyzeCalibrationSummary": {
+        "description": "Game-level rollup of aux-head prediction quality, computed from the\ntrace once the game is done. Absent for no-aux architectures.",
+        "properties": {
+          "overallBrier": {
+            "title": "Overallbrier",
+            "type": "number"
+          },
+          "overallPointsMae": {
+            "title": "Overallpointsmae",
+            "type": "number"
+          },
+          "seats": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzeSeatCalibration"
+            },
+            "title": "Seats",
+            "type": "array"
+          },
+          "trumpMaskAccuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trumpmaskaccuracy"
+          },
+          "trumpMaskCount": {
+            "default": 0,
+            "title": "Trumpmaskcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seats",
+          "overallBrier",
+          "overallPointsMae"
+        ],
+        "title": "AnalyzeCalibrationSummary",
+        "type": "object"
+      },
       "AnalyzeGameSummary": {
         "properties": {
           "blind": {
@@ -566,6 +609,59 @@
         "title": "AnalyzeProbability",
         "type": "object"
       },
+      "AnalyzeSeatCalibration": {
+        "properties": {
+          "brierScore": {
+            "title": "Brierscore",
+            "type": "number"
+          },
+          "decisionCount": {
+            "title": "Decisioncount",
+            "type": "integer"
+          },
+          "firstWinProb": {
+            "title": "Firstwinprob",
+            "type": "number"
+          },
+          "lastWinProb": {
+            "title": "Lastwinprob",
+            "type": "number"
+          },
+          "meanWinProb": {
+            "title": "Meanwinprob",
+            "type": "number"
+          },
+          "pointsMae": {
+            "title": "Pointsmae",
+            "type": "number"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seatName": {
+            "title": "Seatname",
+            "type": "string"
+          },
+          "won": {
+            "title": "Won",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "seat",
+          "seatName",
+          "won",
+          "decisionCount",
+          "firstWinProb",
+          "lastWinProb",
+          "meanWinProb",
+          "brierScore",
+          "pointsMae"
+        ],
+        "title": "AnalyzeSeatCalibration",
+        "type": "object"
+      },
       "AnalyzeSimulateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -601,6 +697,16 @@
       },
       "AnalyzeSimulateResponse": {
         "properties": {
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzeCalibrationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "final": {
             "anyOf": [
               {

@@ -9,10 +9,12 @@ import torch
 
 from server.api.schemas import (
     AnalyzeActionDetail,
+    AnalyzeCalibrationSummary,
     AnalyzeGameSummary,
     AnalyzeObservation,
     AnalyzeObservationTrickSlot,
     AnalyzeProbability,
+    AnalyzeSeatCalibration,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
 )
@@ -434,6 +436,89 @@ def _compute_discounted_returns(
             action_detail.stepRewardTerminal = float(terminal_rewards[i])
 
 
+def _build_calibration_summary(
+    trace: List[AnalyzeActionDetail], game: Game, players: List[str]
+) -> Optional[AnalyzeCalibrationSummary]:
+    """Roll the per-step aux-head predictions up into game-level calibration
+    metrics against the final outcome. None when the game didn't finish or
+    the model has no aux heads (no winProb anywhere in the trace)."""
+    if not game.is_done():
+        return None
+    if not any(step.winProb is not None for step in trace):
+        return None
+
+    final_scores = [p.get_score() for p in game.players]
+    final_points = list(game.points_taken)
+
+    # Point-prediction errors, grouped by the seat being predicted ABOUT.
+    point_errors_about: Dict[int, List[float]] = {s: [] for s in range(1, 6)}
+    for step in trace:
+        for est in step.pointEstimates or []:
+            seat = int(est["seat"] if isinstance(est, dict) else est.seat)
+            points = float(est["points"] if isinstance(est, dict) else est.points)
+            point_errors_about[seat].append(abs(points - float(final_points[seat - 1])))
+
+    trump_correct = 0
+    trump_total = 0
+    for step in trace:
+        for entry in step.trumpSeenMask or []:
+            prob = float(
+                entry["probabilitySeen"]
+                if isinstance(entry, dict)
+                else entry.probabilitySeen
+            )
+            actual = bool(
+                entry["actualSeen"] if isinstance(entry, dict) else entry.actualSeen
+            )
+            trump_total += 1
+            if (prob > 0.5) == actual:
+                trump_correct += 1
+
+    seats: List[AnalyzeSeatCalibration] = []
+    all_sq_errors: List[float] = []
+    for seat in range(1, 6):
+        win_probs = [
+            float(step.winProb)
+            for step in trace
+            if step.seat == seat and step.winProb is not None
+        ]
+        if not win_probs:
+            continue
+        won = final_scores[seat - 1] > 0
+        target = 1.0 if won else 0.0
+        sq_errors = [(p - target) ** 2 for p in win_probs]
+        all_sq_errors.extend(sq_errors)
+        errors_about = point_errors_about[seat]
+        seats.append(
+            AnalyzeSeatCalibration(
+                seat=seat,
+                seatName=players[seat - 1],
+                won=won,
+                decisionCount=len(win_probs),
+                firstWinProb=win_probs[0],
+                lastWinProb=win_probs[-1],
+                meanWinProb=sum(win_probs) / len(win_probs),
+                brierScore=sum(sq_errors) / len(sq_errors),
+                pointsMae=(
+                    sum(errors_about) / len(errors_about) if errors_about else 0.0
+                ),
+            )
+        )
+
+    all_point_errors = [e for errs in point_errors_about.values() for e in errs]
+    return AnalyzeCalibrationSummary(
+        seats=seats,
+        overallBrier=(
+            sum(all_sq_errors) / len(all_sq_errors) if all_sq_errors else 0.0
+        ),
+        overallPointsMae=(
+            sum(all_point_errors) / len(all_point_errors) if all_point_errors else 0.0
+        ),
+        trumpMaskAccuracy=(trump_correct / trump_total) if trump_total else None,
+        trumpMaskCount=trump_total,
+    )
+
+
 def _build_final_summary(
     game: Game, initial_hands: Dict[str, List[str]], players: List[str]
 ) -> tuple[Optional[Dict[str, Any]], Optional[AnalyzeGameSummary]]:
@@ -502,6 +587,7 @@ def _assemble_response(
     agent: Any,
     players: List[str],
     game_summary: Optional[AnalyzeGameSummary],
+    calibration: Optional[AnalyzeCalibrationSummary],
     trace: List[AnalyzeActionDetail],
     final_payload: Optional[Dict[str, Any]],
 ) -> AnalyzeSimulateResponse:
@@ -520,6 +606,7 @@ def _assemble_response(
             "hasOracle": getattr(agent, "oracle_critic", None) is not None,
         },
         summary=game_summary,
+        calibration=calibration,
         trace=trace,
         final=final_payload,
     )
@@ -690,7 +777,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             agent, oracle_events, oracle_decision_pos, trace, device
         )
 
+    calibration = _build_calibration_summary(trace, game, players)
+
     # Build response
     return _assemble_response(
-        req, settings, agent, players, game_summary, trace, final_payload
+        req, settings, agent, players, game_summary, calibration, trace, final_payload
     )

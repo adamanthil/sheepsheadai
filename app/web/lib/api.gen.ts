@@ -316,6 +316,26 @@ export interface components {
             /** Winprob */
             winProb?: number | null;
         };
+        /**
+         * AnalyzeCalibrationSummary
+         * @description Game-level rollup of aux-head prediction quality, computed from the
+         *     trace once the game is done. Absent for no-aux architectures.
+         */
+        AnalyzeCalibrationSummary: {
+            /** Overallbrier */
+            overallBrier: number;
+            /** Overallpointsmae */
+            overallPointsMae: number;
+            /** Seats */
+            seats: components["schemas"]["AnalyzeSeatCalibration"][];
+            /** Trumpmaskaccuracy */
+            trumpMaskAccuracy?: number | null;
+            /**
+             * Trumpmaskcount
+             * @default 0
+             */
+            trumpMaskCount: number;
+        };
         /** AnalyzeGameSummary */
         AnalyzeGameSummary: {
             /** Blind */
@@ -413,6 +433,27 @@ export interface components {
             /** Prob */
             prob: number;
         };
+        /** AnalyzeSeatCalibration */
+        AnalyzeSeatCalibration: {
+            /** Brierscore */
+            brierScore: number;
+            /** Decisioncount */
+            decisionCount: number;
+            /** Firstwinprob */
+            firstWinProb: number;
+            /** Lastwinprob */
+            lastWinProb: number;
+            /** Meanwinprob */
+            meanWinProb: number;
+            /** Pointsmae */
+            pointsMae: number;
+            /** Seat */
+            seat: number;
+            /** Seatname */
+            seatName: string;
+            /** Won */
+            won: boolean;
+        };
         /** AnalyzeSimulateRequest */
         AnalyzeSimulateRequest: {
             /**
@@ -435,6 +476,7 @@ export interface components {
         };
         /** AnalyzeSimulateResponse */
         AnalyzeSimulateResponse: {
+            calibration?: components["schemas"]["AnalyzeCalibrationSummary"] | null;
             /** Final */
             final?: {
                 [key: string]: unknown;
