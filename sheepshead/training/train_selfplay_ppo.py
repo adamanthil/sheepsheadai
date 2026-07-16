@@ -5,14 +5,12 @@ Extended long-term PPO training for Sheepshead.
 
 import csv
 import os
-import random
 import time
 from argparse import ArgumentParser
 from collections import deque
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 
 from sheepshead.agent import architectures
 from sheepshead.training.config import SelfPlayHyperparams
@@ -32,14 +30,15 @@ from sheepshead.training.training_utils import (
     handle_trick_completion,
     process_episode_rewards,
     save_training_plot,
+    set_all_seeds,
     update_intermediate_rewards_for_action,
 )
 
-_HP = SelfPlayHyperparams()  # fixed LRs + entropy decay schedule (bootstrap run)
+SELFPLAY_HYPERPARAMS = SelfPlayHyperparams()  # fixed LRs + entropy decay schedule (bootstrap run)
 
 # Frozen seed for the in-training anchored CRN probe: identical across all
 # ablation arms, so every run's eval curve is paired on the same deal sets.
-ANCHOR_EVAL_SEED = 20260703
+SELFPLAY_ANCHOR_EVAL_SEED = 20260703
 
 # Fixed external yardsticks for the anchored eval curve (never trained on):
 # the conventions ScriptedAgent, the historical self-play reference at 100k
@@ -103,7 +102,7 @@ def _run_anchored_eval(
     results = {}
     for name, anchor in yardsticks.items():
         results[name] = paired_edge(
-            agent, anchor, anchor, n_deals, seed=ANCHOR_EVAL_SEED, log_every=0
+            agent, anchor, anchor, n_deals, seed=SELFPLAY_ANCHOR_EVAL_SEED, log_every=0
         )
     return results
 
@@ -145,8 +144,8 @@ def train_ppo(
     # Create agent with optimized hyperparameters
     agent = PPOAgent(
         len(ACTIONS),
-        lr_actor=_HP.lr_actor,
-        lr_critic=_HP.lr_critic,
+        lr_actor=SELFPLAY_HYPERPARAMS.lr_actor,
+        lr_critic=SELFPLAY_HYPERPARAMS.lr_critic,
         arch=arch,
     )
     n_enc = sum(p.numel() for p in agent.encoder.parameters())
@@ -211,7 +210,7 @@ def train_ppo(
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Anchored CRN eval: fixed external yardsticks, paired deals across all
-    # probes (and across runs) via ANCHOR_EVAL_SEED. Eval wall-clock is
+    # probes (and across runs) via SELFPLAY_ANCHOR_EVAL_SEED. Eval wall-clock is
     # tracked separately so throughput comparisons exclude probe time.
     anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
     yardsticks = {}
@@ -445,20 +444,20 @@ def train_ppo(
             # Separate entropy decay schedules (config.SelfPlayHyperparams).
             decay_fraction = min(episode / num_episodes, 1.0)
             agent.entropy_coeff_play = (
-                _HP.entropy_play_start
-                + (_HP.entropy_play_end - _HP.entropy_play_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_play_start
+                + (SELFPLAY_HYPERPARAMS.entropy_play_end - SELFPLAY_HYPERPARAMS.entropy_play_start) * decay_fraction
             )
             agent.entropy_coeff_pick = (
-                _HP.entropy_pick_start
-                + (_HP.entropy_pick_end - _HP.entropy_pick_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_pick_start
+                + (SELFPLAY_HYPERPARAMS.entropy_pick_end - SELFPLAY_HYPERPARAMS.entropy_pick_start) * decay_fraction
             )
             agent.entropy_coeff_partner = (
-                _HP.entropy_partner_start
-                + (_HP.entropy_partner_end - _HP.entropy_partner_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_partner_start
+                + (SELFPLAY_HYPERPARAMS.entropy_partner_end - SELFPLAY_HYPERPARAMS.entropy_partner_start) * decay_fraction
             )
             agent.entropy_coeff_bury = (
-                _HP.entropy_bury_start
-                + (_HP.entropy_bury_end - _HP.entropy_bury_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_bury_start
+                + (SELFPLAY_HYPERPARAMS.entropy_bury_end - SELFPLAY_HYPERPARAMS.entropy_bury_start) * decay_fraction
             )
 
             if watchdog is not None:
@@ -827,9 +826,7 @@ def main():
     args = parser.parse_args()
 
     # Set random seed for reproducibility
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    set_all_seeds(args.seed)
     print(f"🎲 Seed: {args.seed}")
 
     # Ensure matplotlib uses a non-interactive backend

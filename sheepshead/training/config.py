@@ -4,13 +4,13 @@
 Consumers:
 
 * ``train_league_ppo.py`` reads ``PFSPHyperparams`` (instantiated once as
-  ``_SCHED``) for the entropy + learning-rate decay schedules and the
+  ``PFSP_HYPERPARAMS``) for the entropy + learning-rate decay schedules and the
   greedy-health collapse gates. Everything else the league trainer needs is a
   per-run CLI flag (workers, anchor, eval cadence), not a tuning constant.
 * ``train_selfplay_ppo.py`` reads ``SelfPlayHyperparams`` (instantiated once as
-  ``_HP``) for the bootstrap run's fixed learning rates and entropy schedule.
-  Its values intentionally differ from the league trainer's, hence a separate
-  dataclass.
+  ``SELFPLAY_HYPERPARAMS``) for the bootstrap run's fixed learning rates and
+  entropy schedule. Its values intentionally differ from the league trainer's,
+  hence a separate dataclass.
 * The deploy/audit ISMCTS search path (``pfsp_runtime.play_population_game`` +
   ``ismcts.py``) reads ``SearchConfig`` for the per-head search coverage and the
   rollout-depth schedule. The league/exploiter trainers run terminal-reward only

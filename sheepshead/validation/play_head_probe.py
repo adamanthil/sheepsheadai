@@ -24,14 +24,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import random
 
 import numpy as np
-import torch
 
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
-from sheepshead.training.training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 
 def _load(model: str) -> PPOAgent:
@@ -59,9 +57,7 @@ def _play_stats(agent, state, valid, pid):
 
 
 def run(model, deals, seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    set_all_seeds(seed)
     agent = _load(model)
 
     rows = []  # (trick, n_valid, spread, margin, entropy, top1p)

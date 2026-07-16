@@ -578,13 +578,13 @@ class Game:
         played_by = self._cards_played_by_seat()
 
         known = set(observer.initial_hand) | {
-            c for cards in played_by.values() for c in cards
+            card for cards in played_by.values() for card in cards
         }
         if is_obs_picker:
             known |= set(self.blind) | set(self.bury)
             if under_card is not None:
                 known |= {under_card}
-        unseen = [c for c in DECK if c not in known]
+        unseen = [card for card in DECK if card not in known]
 
         # A called card constrains placement only while still hidden from the
         # observer (called-ace mode, not alone, partner unrevealed, not yet
@@ -606,15 +606,15 @@ class Game:
         # where that seat held the called ace.
         partner_forbidden = set()
         if called is not None:
-            for t in range(len(self.history)):
-                ldr = self.leaders[t]
+            for trick_index in range(len(self.history)):
+                ldr = self.leaders[trick_index]
                 if not ldr:
                     continue
-                lc = self.history[t][ldr - 1]
+                lc = self.history[trick_index][ldr - 1]
                 if lc and lc != UNDER_TOKEN and get_card_suit(lc) == called_suit:
                     partner_forbidden.add(ldr)
 
-        fill_seats = [s for s in range(1, 6) if s != obs]
+        fill_seats = [seat for seat in range(1, 6) if seat != obs]
         return {
             "obs": obs,
             "picker": picker,
@@ -637,31 +637,35 @@ class Game:
                 and not self.alone_called
             ),
             "fill_seats": fill_seats,
-            "counts": {s: len(self.players[s - 1].hand) for s in fill_seats},
+            "counts": {seat: len(self.players[seat - 1].hand) for seat in fill_seats},
             "leftover_needed": 0 if is_obs_picker else (2 + n_under),
             "observer_initial": list(observer.initial_hand),
         }
 
-    def _sample_deal_attempt(self, ctx, rng):
+    def _sample_deal_attempt(self, context, rng):
         """One shuffle+partition attempt. Returns a deal dict or None if this
         shuffle cannot be completed into a consistent, legal deal."""
-        picker, obs = ctx["picker"], ctx["obs"]
-        called, called_suit = ctx["called"], ctx["called_suit"]
-        voids, counts, played_by = ctx["voids"], ctx["counts"], ctx["played_by"]
+        picker, obs = context["picker"], context["obs"]
+        called, called_suit = context["called"], context["called_suit"]
+        voids, counts, played_by = (
+            context["voids"],
+            context["counts"],
+            context["played_by"],
+        )
 
-        pool = ctx["unseen"][:]
+        pool = context["unseen"][:]
         rng.shuffle(pool)
 
         # Place the still-hidden called card with an eligible secret partner.
         forced = {}
         if called is not None:
             cands = [
-                s
-                for s in ctx["fill_seats"]
-                if s != picker
-                and counts[s] >= 1
-                and called_suit not in voids[s]
-                and s not in ctx["partner_forbidden"]
+                seat
+                for seat in context["fill_seats"]
+                if seat != picker
+                and counts[seat] >= 1
+                and called_suit not in voids[seat]
+                and seat not in context["partner_forbidden"]
             ]
             if not cands:
                 return None
@@ -669,28 +673,32 @@ class Game:
             pool.remove(called)
 
         # Deal each hidden seat its current hand, respecting voids.
-        cur = {}
-        for s in ctx["fill_seats"]:
-            seed = [forced[s]] if s in forced else []
-            drawn, pool = self._draw_avoiding(pool, counts[s] - len(seed), voids[s])
+        dealt_by_seat = {}
+        for seat in context["fill_seats"]:
+            seed = [forced[seat]] if seat in forced else []
+            drawn, pool = self._draw_avoiding(pool, counts[seat] - len(seed), voids[seat])
             if drawn is None:
                 return None
-            cur[s] = seed + drawn
-        if len(pool) != ctx["leftover_needed"]:
+            dealt_by_seat[seat] = seed + drawn
+        if len(pool) != context["leftover_needed"]:
             return None
 
         # Resolve the picker's bury/under (known if the observer is the picker).
-        if ctx["is_obs_picker"]:
-            blind, bury, under = list(self.blind), list(self.bury), ctx["under_card"]
+        if context["is_obs_picker"]:
+            blind, bury, under = (
+                list(self.blind),
+                list(self.bury),
+                context["under_card"],
+            )
         else:
-            under = pool[0] if ctx["n_under"] else None
-            bury = pool[ctx["n_under"] : ctx["n_under"] + 2]
-            eight = played_by[picker] + cur[picker] + bury
+            under = pool[0] if context["n_under"] else None
+            bury = pool[context["n_under"] : context["n_under"] + 2]
+            eight = played_by[picker] + dealt_by_seat[picker] + bury
             if under is not None:
                 eight = eight + [under]
             if called is not None and called in eight:
                 return None  # the still-hidden ace cannot sit with the picker
-            if ctx["validate_call"] and not self._call_is_legal(
+            if context["validate_call"] and not self._call_is_legal(
                 eight, self.called_card
             ):
                 return None
@@ -701,16 +709,16 @@ class Game:
 
         # Assemble the dealt (pre-pick) hands.
         initial_hands = {}
-        for s in range(1, 6):
-            if s == obs:
-                initial_hands[s] = ctx["observer_initial"][:]
-            elif s == picker:
-                eight = played_by[picker] + cur[picker] + bury
+        for seat in range(1, 6):
+            if seat == obs:
+                initial_hands[seat] = context["observer_initial"][:]
+            elif seat == picker:
+                eight = played_by[picker] + dealt_by_seat[picker] + bury
                 if under is not None:
                     eight = eight + [under]
-                initial_hands[s] = [c for c in eight if c not in blind]
+                initial_hands[seat] = [card for card in eight if card not in blind]
             else:
-                initial_hands[s] = played_by[s] + cur[s]
+                initial_hands[seat] = played_by[seat] + dealt_by_seat[seat]
 
         return {
             "initial_hands": initial_hands,

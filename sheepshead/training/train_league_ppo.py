@@ -74,14 +74,15 @@ from sheepshead.training.training_utils import (
     get_partner_selection_mode,
     greedy_health_probe,
     paired_edge,
+    set_all_seeds,
 )
 
-_PARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
+PFSP_HYPERPARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
 
 # Fixed deal-set seed for the anchored strength probe: every probe replays the
 # SAME deals, so consecutive probe values are paired and the trend line is
 # policy movement, not deal luck.
-ANCHOR_EVAL_SEED = 20260701
+LEAGUE_ANCHOR_EVAL_SEED = 20260701
 
 
 class _Seat:
@@ -113,7 +114,7 @@ class _Job:
 _LWORKER: dict = {}
 
 
-def _lw_init(init_args: dict) -> None:
+def _league_worker_init(init_args: dict) -> None:
     import torch as _torch
 
     _torch.set_num_threads(1)
@@ -132,7 +133,7 @@ def _lw_init(init_args: dict) -> None:
     )
 
 
-def _lw_get_member(member_id: str) -> _Seat:
+def _league_worker_get_member(member_id: str) -> _Seat:
     cache = _LWORKER["cache"]
     seat = cache.get(member_id)
     if seat is None:
@@ -144,7 +145,7 @@ def _lw_get_member(member_id: str) -> _Seat:
     return seat
 
 
-def _lw_play(job: _Job) -> dict:
+def _league_worker_play(job: _Job) -> dict:
     import torch as _torch
 
     g = _LWORKER
@@ -156,7 +157,9 @@ def _lw_play(job: _Job) -> dict:
         g["version"] = job.weight_version
 
     opponents = [
-        _Seat(g["agent"], SELF_PLAY) if mid == SELF_PLAY else _lw_get_member(mid)
+        _Seat(g["agent"], SELF_PLAY)
+        if mid == SELF_PLAY
+        else _league_worker_get_member(mid)
         for mid in job.opponent_ids
     ]
     game, episode_events, final_scores, training_data_single, pos_to_seat = (
@@ -246,24 +249,24 @@ def run_main_phase(
         pct = min(100.0, 100.0 * episode / max(args.schedule_horizon, 1))
         decay = 1.0 - pct / 100.0
         training_agent.entropy_coeff_pick = (
-            _PARAMS.entropy_pick_end
-            + (_PARAMS.entropy_pick_start - _PARAMS.entropy_pick_end) * decay
+            PFSP_HYPERPARAMS.entropy_pick_end
+            + (PFSP_HYPERPARAMS.entropy_pick_start - PFSP_HYPERPARAMS.entropy_pick_end) * decay
         )
         training_agent.entropy_coeff_partner = (
-            _PARAMS.entropy_partner_end
-            + (_PARAMS.entropy_partner_start - _PARAMS.entropy_partner_end) * decay
+            PFSP_HYPERPARAMS.entropy_partner_end
+            + (PFSP_HYPERPARAMS.entropy_partner_start - PFSP_HYPERPARAMS.entropy_partner_end) * decay
         )
         training_agent.entropy_coeff_bury = (
-            _PARAMS.entropy_bury_end
-            + (_PARAMS.entropy_bury_start - _PARAMS.entropy_bury_end) * decay
+            PFSP_HYPERPARAMS.entropy_bury_end
+            + (PFSP_HYPERPARAMS.entropy_bury_start - PFSP_HYPERPARAMS.entropy_bury_end) * decay
         )
         training_agent.entropy_coeff_play = (
-            _PARAMS.entropy_play_end
-            + (_PARAMS.entropy_play_start - _PARAMS.entropy_play_end) * decay
+            PFSP_HYPERPARAMS.entropy_play_end
+            + (PFSP_HYPERPARAMS.entropy_play_start - PFSP_HYPERPARAMS.entropy_play_end) * decay
         )
         training_agent.set_learning_rates(
-            interpolated_weight(_PARAMS.lr_schedule_actor, pct),
-            interpolated_weight(_PARAMS.lr_schedule_critic, pct),
+            interpolated_weight(PFSP_HYPERPARAMS.lr_schedule_actor, pct),
+            interpolated_weight(PFSP_HYPERPARAMS.lr_schedule_critic, pct),
         )
 
     # -------------------- episode streams --------------------
@@ -276,7 +279,7 @@ def run_main_phase(
                 else _Seat(entry.agent, entry.member_id)
                 for entry in table
             ]
-            game, events, scores, tds, pos_to_seat = play_population_game(
+            game, events, scores, training_data_single, pos_to_seat = play_population_game(
                 training_agent=training_agent,
                 opponents=opponents,
                 partner_mode=mode,
@@ -290,7 +293,7 @@ def run_main_phase(
                 position,
                 events,
                 scores,
-                tds,
+                training_data_single,
                 make_game_summary(game),
                 {pos: s.metadata.agent_id for pos, s in pos_to_seat.items()},
             )
@@ -342,7 +345,7 @@ def run_main_phase(
                         collect_oracle=collect_oracle,
                     )
                 )
-            for r in pool.imap(_lw_play, jobs):
+            for r in pool.imap(_league_worker_play, jobs):
                 yield (
                     r["episode"],
                     r["partner_mode"],
@@ -360,7 +363,7 @@ def run_main_phase(
         ctx = get_context("spawn")
         pool = ctx.Pool(
             processes=args.num_workers,
-            initializer=_lw_init,
+            initializer=_league_worker_init,
             initargs=(
                 {
                     "arch": getattr(args, "arch", "full"),
@@ -382,7 +385,7 @@ def run_main_phase(
             position,
             events,
             scores,
-            tds,
+            training_data_single,
             summary,
             seat_to_id,
         ) in stream:
@@ -391,9 +394,9 @@ def run_main_phase(
             transitions_since_update += sum(
                 1 for ev in events if ev["kind"] == "action"
             )
-            if tds["was_picker"]:
-                picker_scores.append(tds["score"])
-            pick_window.append(1 if tds["was_picker"] else 0)
+            if training_data_single["was_picker"]:
+                picker_scores.append(training_data_single["score"])
+            pick_window.append(1 if training_data_single["was_picker"] else 0)
             leaster_window.append(1 if summary["is_leaster"] else 0)
 
             members_by_pos = {
@@ -523,25 +526,25 @@ def run_main_phase(
                     f"play-spread {probe['play_logit_spread_med']:.2f}",
                     flush=True,
                 )
-                if probe["pick_rate"] < _PARAMS.greedy_gate_min_pick:
+                if probe["pick_rate"] < PFSP_HYPERPARAMS.greedy_gate_min_pick:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: PICK rate < "
-                        f"{_PARAMS.greedy_gate_min_pick:.0f}%"
+                        f"{PFSP_HYPERPARAMS.greedy_gate_min_pick:.0f}%"
                     )
-                if probe["alone_rate"] > _PARAMS.greedy_gate_max_alone:
+                if probe["alone_rate"] > PFSP_HYPERPARAMS.greedy_gate_max_alone:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
-                        f"{_PARAMS.greedy_gate_max_alone:.0f}%"
+                        f"{PFSP_HYPERPARAMS.greedy_gate_max_alone:.0f}%"
                     )
-                if probe["t0_trump_lead_rate"] > _PARAMS.greedy_gate_max_trump_lead:
+                if probe["t0_trump_lead_rate"] > PFSP_HYPERPARAMS.greedy_gate_max_trump_lead:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: trump-lead > "
-                        f"{_PARAMS.greedy_gate_max_trump_lead:.0f}%"
+                        f"{PFSP_HYPERPARAMS.greedy_gate_max_trump_lead:.0f}%"
                     )
-                if probe["play_logit_spread_med"] < _PARAMS.greedy_gate_min_play_spread:
+                if probe["play_logit_spread_med"] < PFSP_HYPERPARAMS.greedy_gate_min_play_spread:
                     print(
                         "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
-                        f"{_PARAMS.greedy_gate_min_play_spread} "
+                        f"{PFSP_HYPERPARAMS.greedy_gate_min_play_spread} "
                         "(play head collapsing toward uniform)"
                     )
                 write_header = not os.path.exists(greedy_csv)
@@ -587,7 +590,7 @@ def run_main_phase(
                     anchor_eval["agent"],
                     anchor_eval["agent"],
                     n_deals=anchor_eval["deals"],
-                    seed=ANCHOR_EVAL_SEED,
+                    seed=LEAGUE_ANCHOR_EVAL_SEED,
                     log_every=0,
                 )
                 training_agent._player_memories = saved_mem
@@ -770,9 +773,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    set_all_seeds(args.seed)
 
     run_dir = os.path.join("runs", args.run_name)
     checkpoint_dir = os.path.join(run_dir, "checkpoints")
@@ -841,10 +842,10 @@ def main():
     # the same cadence/numbering and only trains the remainder to the next
     # boundary (rather than resetting the counter to the resume point).
     first_gen = episode // main_ep + 1
-    for g in range(first_gen, first_gen + args.generations):
-        boundary = g * main_ep
+    for generation in range(first_gen, first_gen + args.generations):
+        boundary = generation * main_ep
         print(
-            f"\n{'=' * 70}\n🏁 GENERATION {g}: main phase "
+            f"\n{'=' * 70}\n🏁 GENERATION {generation}: main phase "
             f"({episode:,} -> {boundary:,})\n{'=' * 70}"
         )
         episode = run_main_phase(
@@ -864,7 +865,7 @@ def main():
         if not os.path.exists(main_ckpt):
             training_agent.save(main_ckpt)
 
-        gate = run_exploiter_generation(args, g, main_ckpt)
+        gate = run_exploiter_generation(args, generation, main_ckpt)
         write_header = not os.path.exists(exploitability_csv)
         with open(exploitability_csv, "a", newline="") as f:
             w = csv.writer(f)
@@ -882,7 +883,7 @@ def main():
                 )
             w.writerow(
                 [
-                    g,
+                    generation,
                     episode,
                     f"{gate['edge']:.4f}",
                     f"{gate['se']:.4f}",
@@ -892,14 +893,14 @@ def main():
                 ]
             )
         print(
-            f"📊 Exploitability gen {g}: edge {gate['edge']:+.3f} ± {gate['se']:.3f} "
+            f"📊 Exploitability gen {generation}: edge {gate['edge']:+.3f} ± {gate['se']:.3f} "
             f"({'inserted' if gate['passed'] else 'below gate'})"
         )
         # Reload league to pick up the subprocess insertion
         league = League(args.league_dir, league.config)
         # Advance the generation clock (pass or fail) so exploiter
         # retirement runs on elapsed generations, not on insertions.
-        league.note_generation(g)
+        league.note_generation(generation)
         if not gate["passed"]:
             # Certified robust: no best response cleared the gate against this
             # main, so its boundary snapshot becomes a HOF anchor (the
@@ -912,7 +913,7 @@ def main():
             if snaps:
                 league.promote_to_hof(snaps[-1].member_id)
                 print(
-                    f"🏛️  Gen {g} main survived its exploiter gate; "
+                    f"🏛️  Gen {generation} main survived its exploiter gate; "
                     f"{snaps[-1].member_id} promoted to HOF anchor"
                 )
 

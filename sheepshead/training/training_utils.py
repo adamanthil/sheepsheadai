@@ -31,6 +31,19 @@ TRICK_POINT_RATIO = 360.0
 RETURN_SCALE = 12.0
 
 
+def set_all_seeds(seed: int) -> None:
+    """Seed ``random``, ``numpy``, and ``torch`` with the same value.
+
+    Consolidates the copy-pasted ``random.seed(s); np.random.seed(s);
+    torch.manual_seed(s)`` triple that recurred across the trainers and
+    analysis/validation scripts. Order matters for exact reproducibility
+    with existing runs: random, then numpy, then torch.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
 def estimate_hand_strength_score(cards: List[str]) -> int:
     """Return a simple strength score for a hand based on trump density.
 

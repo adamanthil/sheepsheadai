@@ -383,13 +383,13 @@ class CardReasoningEncoder(nn.Module):
             mask: (B, 8) boolean
         """
         mask = ids.ne(PAD_CARD_ID)
-        c = self.card(ids)  # (B, 8, d_card)
+        card_emb = self.card(ids)  # (B, 8, d_card)
         B, N = ids.size(0), ids.size(1)
         role_idx = actor_role_id.view(B, 1).expand(B, N)  # (B, 8)
-        r = self.role(role_idx)  # (B, 8, 4)
-        tok = torch.cat([c, r], dim=-1)
-        tok = self.token_mlp_hand(tok)
-        return tok, mask
+        role_emb = self.role(role_idx)  # (B, 8, 4)
+        token = torch.cat([card_emb, role_emb], dim=-1)
+        token = self.token_mlp_hand(token)
+        return token, mask
 
     def _embed_simple_bag(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Embed blind/bury cards (no role conditioning)."""
@@ -413,12 +413,12 @@ class CardReasoningEncoder(nn.Module):
         )
         role_ids = picker_bits.long() * 1 + partner_bits.long() * 2
         mask = card_ids.ne(PAD_CARD_ID)
-        c = self.card(card_ids)
-        s = self.seat(seat_rel)
-        r = self.role(role_ids)
-        tok = torch.cat([c, s, r], dim=-1)
-        tok = self.token_mlp_trick(tok)
-        return tok, mask
+        card_emb = self.card(card_ids)
+        seat_emb = self.seat(seat_rel)
+        role_emb = self.role(role_ids)
+        token = torch.cat([card_emb, seat_emb, role_emb], dim=-1)
+        token = self.token_mlp_trick(token)
+        return token, mask
 
     def encode_batch(
         self,

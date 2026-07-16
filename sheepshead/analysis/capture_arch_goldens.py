@@ -33,7 +33,6 @@ import hashlib
 import json
 import os
 import platform
-import random
 import sys
 
 import numpy as np
@@ -44,6 +43,7 @@ from sheepshead.agent import architectures
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead import ACTIONS, Game
+from sheepshead.training.training_utils import set_all_seeds
 
 SEED = 42
 FIXTURE_DIR = os.path.join(
@@ -55,9 +55,7 @@ FIXTURE_DIR = os.path.join(
 
 
 def _seed_all(s: int) -> None:
-    random.seed(s)
-    np.random.seed(s)
-    torch.manual_seed(s)
+    set_all_seeds(s)
 
 
 def _advance_deterministically(game: Game, n_actions: int) -> None:
