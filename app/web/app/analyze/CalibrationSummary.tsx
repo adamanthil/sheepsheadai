@@ -1,5 +1,6 @@
 import React from "react";
 import { AnalyzeCalibrationSummary } from "../../lib/analyzeTypes";
+import Term from "./TermHelp";
 import styles from "./CalibrationSummary.module.css";
 
 interface CalibrationSummaryProps {
@@ -74,11 +75,17 @@ export default function CalibrationSummary({
           <div className={styles.cellCount}>Decisions</div>
           <div className={styles.cellTrend}>Win % (first &rarr; last)</div>
           <div className={styles.cellNum}>Mean Win %</div>
-          <div
-            className={styles.cellNum}
-            title="Brier score: 0 = perfect, 0.25 = uninformed"
-          >
-            Brier
+          <div className={styles.cellNum}>
+            <Term
+              label="Brier"
+              align="right"
+              wiki="https://en.wikipedia.org/wiki/Brier_score"
+            >
+              The average of (predicted win probability − what happened)²,
+              counting a win as 1 and a loss as 0. It punishes confident
+              wrong predictions the most. 0 means perfect foresight, 0.25 is
+              what you get by always guessing 50/50 — lower is better.
+            </Term>
           </div>
         </div>
 
@@ -111,23 +118,46 @@ export default function CalibrationSummary({
       </div>
 
       <div className={styles.footer}>
-        <div
-          className={styles.footerStat}
-          title="Brier score: 0 = perfect, 0.25 = uninformed"
-        >
-          <span className={styles.footerLabel}>Overall Brier</span>
+        <div className={styles.footerStat}>
+          <span className={styles.footerLabel}>
+            <Term
+              label="Overall Brier"
+              wiki="https://en.wikipedia.org/wiki/Brier_score"
+            >
+              The Brier score pooled over every decision by every seat: the
+              average of (predicted win probability − what happened)², with a
+              win counting as 1 and a loss as 0. 0 means perfect foresight,
+              0.25 is always guessing 50/50 — lower is better.
+            </Term>
+          </span>
           <span className={styles.footerValue}>{overallBrier.toFixed(3)}</span>
         </div>
         <div className={styles.footerStat}>
           <span className={styles.footerLabel}>
-            Point prediction MAE (pts)
+            <Term
+              label="Point prediction MAE (pts)"
+              wiki="https://en.wikipedia.org/wiki/Mean_absolute_error"
+            >
+              Mean absolute error: at every decision the model predicts how
+              many points (0–120) each seat will end the game with. This is
+              the average size of the miss versus the seats&rsquo; actual
+              final points, ignoring direction — 0 would be perfect.
+            </Term>
           </span>
           <span className={styles.footerValue}>
             {overallPointsMae.toFixed(1)}
           </span>
         </div>
         <div className={styles.footerStat}>
-          <span className={styles.footerLabel}>Trump-mask accuracy</span>
+          <span className={styles.footerLabel}>
+            <Term label="Trump-mask accuracy">
+              At every decision the model guesses, for each of the 14 trump
+              cards, whether the acting player has already seen it (in their
+              own hand or played). This is the share of those guesses —
+              counting &ldquo;seen&rdquo; as predicted probability above 50%
+              — that matched reality; n is the number of guesses.
+            </Term>
+          </span>
           <span className={styles.footerValue}>
             {typeof trumpMaskAccuracy === "number"
               ? `${(trumpMaskAccuracy * 100).toFixed(1)}%`

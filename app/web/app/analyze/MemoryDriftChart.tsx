@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
+import Term from "./TermHelp";
 import styles from "./MemoryDriftChart.module.css";
 
 interface MemoryDriftChartProps {
@@ -103,7 +104,21 @@ export default function MemoryDriftChart({ trace }: MemoryDriftChartProps) {
   return (
     <div className={styles.memoryDriftChart}>
       <div className={styles.header}>
-        <div className={styles.title}>Memory Drift</div>
+        <div className={styles.title}>
+          <Term
+            label="Memory Drift"
+            wiki="https://en.wikipedia.org/wiki/Gated_recurrent_unit"
+          >
+            The model carries a running memory of each game: 256 numbers per
+            seat that a small neural unit (a GRU) rewrites every time that
+            seat takes in new information. Each point shows how much a
+            seat&rsquo;s memory changed at one of its decisions, measured as
+            cosine distance (0 = the new information barely changed the
+            model&rsquo;s picture of the game; higher = it substantially
+            revised its beliefs). Early decisions usually move the memory
+            most; a late spike means something surprising happened.
+          </Term>
+        </div>
         <div className={styles.legend}>
           {seats.map((s, i) => (
             <div key={s.seat} className={styles.legendItem}>

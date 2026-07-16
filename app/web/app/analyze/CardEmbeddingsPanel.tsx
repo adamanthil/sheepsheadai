@@ -3,6 +3,7 @@ import { AnalyzeModelResponse } from "../../lib/analyzeTypes";
 import { apiFetch } from "../../lib/api";
 import { apiErrorMessage, fetchFailureMessage } from "../../lib/apiError";
 import { parseCard, isRedSuit } from "../../lib/ds";
+import Term from "./TermHelp";
 import styles from "./CardEmbeddingsPanel.module.css";
 
 const TRUMP_COUNT = 14;
@@ -116,6 +117,21 @@ export default function CardEmbeddingsPanel() {
 
           {!loading && !error && data && emb && scatter && (
             <>
+              <p className={styles.intro}>
+                The model never sees suits or ranks directly — it learns an{" "}
+                <Term
+                  label="embedding"
+                  wiki="https://en.wikipedia.org/wiki/Embedding_(machine_learning)"
+                >
+                  A learned list of numbers ({emb.dims} of them here) that
+                  stands in for each card inside the network. The model
+                  adjusts these numbers during training, so cards it treats
+                  as playing similar roles end up with similar numbers.
+                </Term>{" "}
+                for each card. The two views below show which cards the model
+                has learned to treat as similar.
+              </p>
+
               <div className={styles.metaLine}>
                 <span>
                   Arch: <strong>{data.arch}</strong>
@@ -127,7 +143,17 @@ export default function CardEmbeddingsPanel() {
                   Dims: <strong>{emb.dims}</strong>
                 </span>
                 <span>
-                  PCA explained variance:{" "}
+                  <Term
+                    label="PCA explained variance"
+                    wiki="https://en.wikipedia.org/wiki/Principal_component_analysis"
+                  >
+                    How much of the cards&rsquo; original spread survives the
+                    compression to 2 axes (see PCA Projection below). E.g.
+                    PC1 40% means the first axis alone captures 40% of how
+                    the embeddings differ; the rest is invisible in the 2-D
+                    picture.
+                  </Term>
+                  :{" "}
                   <strong>
                     {emb.pcaExplainedVariance
                       .map((v, i) => `PC${i + 1} ${(v * 100).toFixed(1)}%`)
@@ -136,7 +162,19 @@ export default function CardEmbeddingsPanel() {
                 </span>
               </div>
 
-              <div className={styles.sectionTitle}>PCA Projection</div>
+              <div className={styles.sectionTitle}>
+                <Term
+                  label="PCA Projection"
+                  wiki="https://en.wikipedia.org/wiki/Principal_component_analysis"
+                >
+                  Each card&rsquo;s embedding is {emb.dims} numbers — too
+                  many to draw. Principal component analysis finds the 2
+                  directions along which the cards differ most and plots
+                  every card on just those axes. Cards that sit close
+                  together are ones the model represents similarly; the axes
+                  themselves have no built-in meaning.
+                </Term>
+              </div>
               <div className={styles.scatterWrap}>
                 <svg
                   className={styles.scatterSvg}
@@ -214,7 +252,19 @@ export default function CardEmbeddingsPanel() {
                 </span>
               </div>
 
-              <div className={styles.sectionTitle}>Cosine Similarity</div>
+              <div className={styles.sectionTitle}>
+                <Term
+                  label="Cosine Similarity"
+                  wiki="https://en.wikipedia.org/wiki/Cosine_similarity"
+                >
+                  How closely two cards&rsquo; embeddings point in the same
+                  direction, ignoring their size: +1 means the model treats
+                  the two cards near-identically, 0 means unrelated, −1
+                  means opposite. Each cell compares the row card with the
+                  column card; the bright diagonal is every card compared
+                  with itself.
+                </Term>
+              </div>
               <div className={styles.heatmapWrap}>
                 <div
                   className={styles.heatmapGrid}

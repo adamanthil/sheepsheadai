@@ -112,13 +112,13 @@ export default function ActionRow({
           label={<>V</>}
           value={formatSigned(value)}
           colorStyle={getHueStyle(valueHue)}
-          tooltip="Value estimate (critic)"
+          tooltip="Value estimate: the critic's prediction, from this seat's point of view, of the reward it will end the game with"
         />
 
         {typeof oracleValue === "number" && (
           <div
             className={`${styles.metricChip} ${styles.metricChipNeutral}`}
-            title={`Oracle (full-information) value (Δ ${formatSigned(oracleValue - value)} vs V)`}
+            title={`Oracle value: the same prediction from a privileged critic that sees every hidden card (Δ ${formatSigned(oracleValue - value)} vs V — the gap is what hidden information is worth here)`}
           >
             <span className={styles.metricLabel}>V*</span>
             <span className={styles.metricValue}>
@@ -130,7 +130,7 @@ export default function ActionRow({
         {typeof memoryCosineDistance === "number" && (
           <div
             className={`${styles.metricChip} ${styles.metricChipNeutral}`}
-            title="Recurrent memory update at this decision (cosine distance)"
+            title="How much this seat's running memory of the game changed at this decision (cosine distance: 0 = no change; see the Memory Drift chart)"
           >
             <span className={styles.metricLabel}>memΔ</span>
             <span className={styles.metricValue}>
@@ -150,7 +150,7 @@ export default function ActionRow({
             colorStyle={getHueStyle(
               typeof discountedHue === "number" ? discountedHue : 0.5,
             )}
-            tooltip="Discounted return"
+            tooltip="Discounted return: the reward actually accumulated from this point to the end of the game, with later rewards weighted down by gamma per step"
           />
         )}
 
@@ -180,7 +180,7 @@ export default function ActionRow({
         {typeof expectedFinal === "number" && (
           <div
             className={`${styles.metricChip} ${styles.metricChipNeutral}`}
-            title="Expected final return (undiscounted)"
+            title="The model's prediction of this seat's final game score (undiscounted, from an auxiliary head)"
           >
             <span className={styles.metricLabel}>E[Ret]</span>
             <span className={styles.metricValue}>

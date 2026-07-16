@@ -78,6 +78,14 @@
   flex-shrink: 0;
 }
 
+.intro {
+  margin: 1.1rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--an-ink-soft);
+  max-width: 62ch;
+}
+
 .metaLine {
   display: flex;
   flex-wrap: wrap;
