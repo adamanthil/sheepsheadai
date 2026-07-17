@@ -7,6 +7,7 @@ import torch
 from server.api.schemas import (
     AnalyzeActionDetail,
     AnalyzeCalibrationSummary,
+    AnalyzeMemoryObserve,
     AnalyzeSeatCalibration,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
@@ -18,6 +19,7 @@ from server.services.analysis_common import (
     build_probability_list,
     compute_oracle_values,
     infer_phase_from_action_id,
+    memory_drift,
     run_inference_step,
     set_seed,
 )
@@ -253,6 +255,7 @@ def _assemble_response(
     agent: Any,
     calibration: Optional[AnalyzeCalibrationSummary],
     trace: List[AnalyzeActionDetail],
+    memory_observes: List[AnalyzeMemoryObserve],
     final_payload: Optional[Dict[str, Any]],
 ) -> AnalyzeSimulateResponse:
     """Assemble the final ``AnalyzeSimulateResponse``.
@@ -271,6 +274,7 @@ def _assemble_response(
         },
         calibration=calibration,
         trace=trace,
+        memoryObserves=memory_observes,
         final=final_payload,
     )
 
@@ -298,6 +302,10 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     has_oracle = getattr(agent, "oracle_critic", None) is not None
     oracle_events: Dict[int, List[Dict[str, Any]]] = {}
     oracle_decision_pos: List[tuple[int, int]] = []  # aligned with trace
+    # Trick-completion observes are memory updates too; measure their drift
+    # so the memory chart shows the full update sequence.
+    memory_observes: List[AnalyzeMemoryObserve] = []
+    tricks_observed = 0
 
     # Simulation loop
     while not game.is_done() and step_index < req.maxSteps:
@@ -404,12 +412,30 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         if trick_completed:
             # Propagate an observation for the just-completed trick to all seats
             for seat in game.players:
+                memory_before = agent.get_recurrent_memory(
+                    seat.position, device=device
+                )
                 agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                memory_after = agent.get_recurrent_memory(
+                    seat.position, device=device
+                )
+                distance, norm = memory_drift(memory_before, memory_after)
+                memory_observes.append(
+                    AnalyzeMemoryObserve(
+                        afterStepIndex=step_index,
+                        trick=tricks_observed,
+                        seat=seat.position,
+                        seatName=players[seat.position - 1],
+                        memoryCosineDistance=distance,
+                        memoryNorm=norm,
+                    )
+                )
                 # Trainer protocol: no observation event after the final trick.
                 if has_oracle and not game.is_done():
                     oracle_events.setdefault(seat.position, []).append(
                         seat.get_last_trick_oracle_state_dict()
                     )
+            tricks_observed += 1
 
         step_index += 1
 
@@ -428,5 +454,5 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
     # Build response
     return _assemble_response(
-        req, settings, agent, calibration, trace, final_payload
+        req, settings, agent, calibration, trace, memory_observes, final_payload
     )

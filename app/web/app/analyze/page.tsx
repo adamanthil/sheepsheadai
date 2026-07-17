@@ -329,7 +329,10 @@ export default function AnalyzePage() {
             <CalibrationSummary calibration={response.calibration} />
           )}
 
-          <MemoryDriftChart trace={response.trace} />
+          <MemoryDriftChart
+            trace={response.trace}
+            observes={response.memoryObserves}
+          />
         </>
       )}
     </div>

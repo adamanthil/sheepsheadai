@@ -68,6 +68,17 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
     # The very first decision of the game always starts from zero memory.
     assert resp.trace[0].memoryCosineDistance is None
 
+    # Trick-completion observes are tracked for every seat on every
+    # completed trick (a finished game has 6 tricks x 5 seats), and by the
+    # first observe every seat has already encoded at least once (it played
+    # a card), so the distance is always measurable.
+    assert len(resp.memoryObserves) == 30
+    assert {o.trick for o in resp.memoryObserves} == set(range(6))
+    for obs in resp.memoryObserves:
+        assert obs.memoryCosineDistance is not None
+        assert obs.memoryNorm > 0
+        assert resp.trace[obs.afterStepIndex].phase == "play"
+
     # No aux heads -> no calibration rollup.
     assert resp.calibration is None
 

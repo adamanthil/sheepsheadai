@@ -403,6 +403,29 @@ export interface components {
             /** Pcaexplainedvariance */
             pcaExplainedVariance: number[];
         };
+        /**
+         * AnalyzeMemoryObserve
+         * @description Memory update from a trick-completion observation.
+         *
+         *     After every completed trick, all five seats fold the finished trick
+         *     into their recurrent memory via agent.observe — the same GRU update as
+         *     a decision encode, but without an action. These carry the trick's
+         *     outcome, so they are often the largest belief revisions.
+         */
+        AnalyzeMemoryObserve: {
+            /** Afterstepindex */
+            afterStepIndex: number;
+            /** Memorycosinedistance */
+            memoryCosineDistance?: number | null;
+            /** Memorynorm */
+            memoryNorm: number;
+            /** Seat */
+            seat: number;
+            /** Seatname */
+            seatName: string;
+            /** Trick */
+            trick: number;
+        };
         /** AnalyzeModelResponse */
         AnalyzeModelResponse: {
             /** Arch */
@@ -557,6 +580,11 @@ export interface components {
             final?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Memoryobserves
+             * @default []
+             */
+            memoryObserves: components["schemas"]["AnalyzeMemoryObserve"][];
             /** Meta */
             meta: {
                 [key: string]: unknown;

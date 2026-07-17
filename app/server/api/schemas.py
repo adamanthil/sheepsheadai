@@ -316,8 +316,25 @@ class AnalyzePickResponse(BaseModel):
     outcome: AnalyzePickOutcome
 
 
+class AnalyzeMemoryObserve(BaseModel):
+    """Memory update from a trick-completion observation.
+
+    After every completed trick, all five seats fold the finished trick
+    into their recurrent memory via agent.observe — the same GRU update as
+    a decision encode, but without an action. These carry the trick's
+    outcome, so they are often the largest belief revisions."""
+
+    afterStepIndex: int  # the observe happened right after this trace step
+    trick: int  # 0-indexed completed trick
+    seat: int
+    seatName: str
+    memoryCosineDistance: Optional[float] = None  # None if memory was zeros
+    memoryNorm: float
+
+
 class AnalyzeSimulateResponse(BaseModel):
     meta: Dict[str, Any]
     calibration: Optional[AnalyzeCalibrationSummary] = None
     trace: List[AnalyzeActionDetail]
+    memoryObserves: List[AnalyzeMemoryObserve] = []
     final: Optional[Dict[str, Any]] = None

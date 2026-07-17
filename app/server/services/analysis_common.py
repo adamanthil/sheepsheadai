@@ -49,6 +49,27 @@ def infer_phase_from_action_id(
     return "unknown"
 
 
+def memory_drift(
+    memory_before: torch.Tensor, memory_after: torch.Tensor
+) -> tuple[Optional[float], float]:
+    """(cosine distance, norm) across one recurrent-memory update.
+
+    Distance is None when the incoming memory is all zeros (a seat's first
+    encode): there is no previous belief state to drift from."""
+    norm = float(memory_after.detach().norm().item())
+    if not bool(torch.any(memory_before != 0)):
+        return None, norm
+    distance = float(
+        1.0
+        - torch.nn.functional.cosine_similarity(
+            memory_before.detach().flatten(),
+            memory_after.detach().flatten(),
+            dim=0,
+        ).item()
+    )
+    return distance, norm
+
+
 def build_probability_list(
     action_probs: torch.Tensor,
     logits: torch.Tensor,
@@ -142,18 +163,7 @@ def run_inference_step(
     memory_out = encoder_out["memory_out"][0]
     agent.set_recurrent_memory(actor_player.position, memory_out)
 
-    # Memory drift across this encode. A zero memory_in is the seat's first
-    # encode: there is no previous belief state to drift from, so leave None.
-    memory_norm = float(memory_out.detach().norm().item())
-    if bool(torch.any(memory_in != 0)):
-        memory_cosine_distance = float(
-            1.0
-            - torch.nn.functional.cosine_similarity(
-                memory_in.detach().flatten(), memory_out.detach().flatten(), dim=0
-            ).item()
-        )
-    else:
-        memory_cosine_distance = None
+    memory_cosine_distance, memory_norm = memory_drift(memory_in, memory_out)
 
     with torch.no_grad():
         # Build mask and hand ids for actor

@@ -406,6 +406,51 @@
         "title": "AnalyzeCardEmbeddings",
         "type": "object"
       },
+      "AnalyzeMemoryObserve": {
+        "description": "Memory update from a trick-completion observation.\n\nAfter every completed trick, all five seats fold the finished trick\ninto their recurrent memory via agent.observe \u2014 the same GRU update as\na decision encode, but without an action. These carry the trick's\noutcome, so they are often the largest belief revisions.",
+        "properties": {
+          "afterStepIndex": {
+            "title": "Afterstepindex",
+            "type": "integer"
+          },
+          "memoryCosineDistance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memorycosinedistance"
+          },
+          "memoryNorm": {
+            "title": "Memorynorm",
+            "type": "number"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seatName": {
+            "title": "Seatname",
+            "type": "string"
+          },
+          "trick": {
+            "title": "Trick",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "afterStepIndex",
+          "trick",
+          "seat",
+          "seatName",
+          "memoryNorm"
+        ],
+        "title": "AnalyzeMemoryObserve",
+        "type": "object"
+      },
       "AnalyzeModelResponse": {
         "properties": {
           "arch": {
@@ -820,6 +865,14 @@
               }
             ],
             "title": "Final"
+          },
+          "memoryObserves": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AnalyzeMemoryObserve"
+            },
+            "title": "Memoryobserves",
+            "type": "array"
           },
           "meta": {
             "additionalProperties": true,
