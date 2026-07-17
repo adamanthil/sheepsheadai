@@ -21,3 +21,5 @@ CREATE_JOIN = "10/minute"  # table creation / join: cheap to abuse, rare in play
 HOST_ACTIONS = "30/minute"  # start, rules, seat, fill_ai, redeal, close, rename
 GAME_ACTIONS = "120/minute"  # in-game moves; several humans can share a NAT
 ANALYZE = "5/minute"  # each call runs a full torch simulation
+ANALYZE_PICK = "20/minute"  # pre-play only (~10 inference steps); built for
+# iterative lock-and-reroll use, so it gets a looser, separate budget

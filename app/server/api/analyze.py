@@ -5,7 +5,7 @@ import threading
 
 from fastapi import APIRouter, HTTPException, Request
 
-from server.api.ratelimit import ANALYZE, limiter
+from server.api.ratelimit import ANALYZE, ANALYZE_PICK, limiter
 from server.api.schemas import (
     AnalyzeModelResponse,
     AnalyzePickRequest,
@@ -58,7 +58,7 @@ def analyze_simulate(
 
 
 @router.post("/api/analyze/pick")
-@limiter.limit(ANALYZE)
+@limiter.limit(ANALYZE_PICK)
 def analyze_pick(request: Request, req: AnalyzePickRequest) -> AnalyzePickResponse:
     """Analyze the pre-play decisions (pick/pass, call, bury) for a chosen
     seat, hand, and blind."""
