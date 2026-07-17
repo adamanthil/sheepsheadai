@@ -281,8 +281,10 @@ class AnalyzePickRequest(BaseModel):
     seed: Optional[int] = None
     partnerMode: int = 1  # 0 = JD, 1 = Called Ace
     seat: int = 1  # 1..5; seats before it are forced to pass
-    hand: Optional[List[str]] = None  # exactly 6 cards, or None for random
-    blind: Optional[List[str]] = None  # exactly 2 cards, or None for random
+    # Cards guaranteed to be in the target seat's hand / the blind (up to
+    # 6 / 2); the remainder is dealt randomly. None or [] = fully random.
+    hand: Optional[List[str]] = None
+    blind: Optional[List[str]] = None
     deterministic: bool = True
 
 

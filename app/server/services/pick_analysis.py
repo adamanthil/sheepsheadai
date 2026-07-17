@@ -43,9 +43,9 @@ from sheepshead import ACTION_LOOKUP, DECK, Game
 _MAX_DECISIONS = 16
 
 
-def _validate_cards(cards: List[str], what: str, count: int) -> None:
-    if len(cards) != count:
-        raise ValueError(f"{what} must contain exactly {count} cards")
+def _validate_cards(cards: List[str], what: str, max_count: int) -> None:
+    if len(cards) > max_count:
+        raise ValueError(f"{what} can contain at most {max_count} cards")
     unknown = [c for c in cards if c not in DECK]
     if unknown:
         raise ValueError(f"{what} contains unknown cards: {', '.join(unknown)}")
@@ -57,8 +57,11 @@ def _apply_scenario(
     game: Game, seat: int, hand: Optional[List[str]], blind: Optional[List[str]]
 ) -> None:
     """Re-deal the game so `seat` holds `hand`, the blind is `blind`, and
-    the pick decision is on `seat` (earlier seats have passed)."""
-    fixed = (hand or []) + (blind or [])
+    the pick decision is on `seat` (earlier seats have passed). Partial
+    hand/blind selections are completed randomly from the remaining deck."""
+    hand_fixed = list(hand or [])
+    blind_fixed = list(blind or [])
+    fixed = hand_fixed + blind_fixed
     pool = [c for c in DECK if c not in fixed]
     game.rng.shuffle(pool)
 
@@ -66,8 +69,8 @@ def _apply_scenario(
         taken, pool[:] = pool[:n], pool[n:]
         return taken
 
-    hand_cards = list(hand) if hand else draw(6)
-    blind_cards = list(blind) if blind else draw(2)
+    hand_cards = hand_fixed + draw(6 - len(hand_fixed))
+    blind_cards = blind_fixed + draw(2 - len(blind_fixed))
 
     game.blind = blind_cards
     for player in game.players:
@@ -84,9 +87,9 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
     would begin (or the hand goes to leaster)."""
     if not 1 <= req.seat <= 5:
         raise ValueError("seat must be between 1 and 5")
-    if req.hand is not None:
+    if req.hand:
         _validate_cards(req.hand, "hand", 6)
-    if req.blind is not None:
+    if req.blind:
         _validate_cards(req.blind, "blind", 2)
     if req.hand and req.blind:
         overlap = set(req.hand) & set(req.blind)

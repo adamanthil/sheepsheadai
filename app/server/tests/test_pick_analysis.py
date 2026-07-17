@@ -44,20 +44,53 @@ def _run(req: AnalyzePickRequest):
 def test_pick_validation_errors(analyze_env, pick_agent):
     with pytest.raises(ValueError, match="seat"):
         _run(AnalyzePickRequest(seat=6))
-    with pytest.raises(ValueError, match="exactly 6"):
-        _run(AnalyzePickRequest(hand=["QC"]))
+    with pytest.raises(ValueError, match="at most 6"):
+        _run(
+            AnalyzePickRequest(
+                hand=["QC", "QS", "QH", "QD", "JC", "JS", "JH"]
+            )
+        )
     with pytest.raises(ValueError, match="unknown"):
         _run(AnalyzePickRequest(hand=["QC", "QS", "QH", "QD", "JC", "XX"]))
     with pytest.raises(ValueError, match="duplicate"):
         _run(AnalyzePickRequest(hand=["QC", "QC", "QH", "QD", "JC", "JS"]))
-    with pytest.raises(ValueError, match="exactly 2"):
-        _run(AnalyzePickRequest(blind=["7C"]))
+    with pytest.raises(ValueError, match="at most 2"):
+        _run(AnalyzePickRequest(blind=["7C", "8C", "9C"]))
     with pytest.raises(ValueError, match="overlap"):
         _run(
             AnalyzePickRequest(
                 hand=["QC", "QS", "QH", "QD", "JC", "JS"], blind=["QC", "7C"]
             )
         )
+
+
+def test_pick_partial_hand_and_blind_filled_randomly(analyze_env, pick_agent):
+    """A partial selection locks those cards and deals the rest; the fill
+    respects the seed and never reuses a locked card."""
+    locked_hand = ["QC", "QS"]
+    locked_blind = ["7C"]
+    resp = _run(
+        AnalyzePickRequest(
+            seat=4, hand=locked_hand, blind=locked_blind, seed=21
+        )
+    )
+
+    assert len(resp.scenario.hand) == 6
+    assert len(resp.scenario.blind) == 2
+    assert set(locked_hand) <= set(resp.scenario.hand)
+    assert set(locked_blind) <= set(resp.scenario.blind)
+    assert not set(resp.scenario.hand) & set(resp.scenario.blind)
+    assert resp.decisions[0].seat == 4
+    assert resp.decisions[0].phase == "pick"
+
+    # Same seed -> same fill; the locked cards stay put either way.
+    again = _run(
+        AnalyzePickRequest(
+            seat=4, hand=locked_hand, blind=locked_blind, seed=21
+        )
+    )
+    assert again.scenario.hand == resp.scenario.hand
+    assert again.scenario.blind == resp.scenario.blind
 
 
 def test_pick_scenario_targets_requested_seat(analyze_env, pick_agent):
