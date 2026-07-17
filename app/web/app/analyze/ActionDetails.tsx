@@ -72,9 +72,11 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
 
           {/* Additional game context */}
           <div className={styles.gameContext}>
-            {view.picker && <div>Picker: Seat {view.picker}</div>}
-            {view.partner && <div>Partner: Seat {view.partner}</div>}
-            {view.called_card && <div>Called Card: {view.called_card}</div>}
+            {/* Ternaries, not &&: picker/partner are 0 before they exist
+                (and in leasters), and React renders a bare 0. */}
+            {view.picker ? <div>Picker: Seat {view.picker}</div> : null}
+            {view.partner ? <div>Partner: Seat {view.partner}</div> : null}
+            {view.called_card ? <div>Called Card: {view.called_card}</div> : null}
             {view.is_leaster && <div>Mode: Leaster</div>}
             {view.current_trick_index !== undefined && (
               <div>Trick: {view.current_trick_index + 1}/6</div>
