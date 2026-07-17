@@ -65,8 +65,28 @@
 }
 
 /* Mirrors .homeLink's flex share so the title stays optically centered. */
-.homeSpacer {
+.mastheadActions {
   flex: 1 0 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.embeddingsButton {
+  background: none;
+  border: 1px solid var(--an-rule-strong);
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 550;
+  color: var(--an-ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.embeddingsButton:hover {
+  border-color: var(--an-accent);
+  color: var(--an-accent-strong);
 }
 
 .title {

@@ -79,6 +79,13 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
             {view.current_trick_index !== undefined && (
               <div>Trick: {view.current_trick_index + 1}/6</div>
             )}
+            {typeof action.memoryCosineDistance === "number" && (
+              <div
+                title="How much this seat's memory vector changed at this decision (cosine distance: 0 = no change; see the Memory Drift chart)"
+              >
+                Memory Δ: {action.memoryCosineDistance.toFixed(3)}
+              </div>
+            )}
           </div>
         </div>
 

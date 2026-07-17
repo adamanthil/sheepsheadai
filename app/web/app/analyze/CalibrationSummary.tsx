@@ -138,10 +138,12 @@ export default function CalibrationSummary({
               label="Point prediction MAE (pts)"
               wiki="https://en.wikipedia.org/wiki/Mean_absolute_error"
             >
-              Mean absolute error: at every decision the model predicts how
-              many points (0–120) each seat will end the game with. This is
-              the average size of the miss versus the seats&rsquo; actual
-              final points, ignoring direction — 0 would be perfect.
+              Mean absolute error of the model&rsquo;s per-seat point
+              estimates. At every decision the model predicts how many
+              points (0–120) each seat has taken <em>so far</em> — a
+              quantity fully determined by public information, so this
+              measures how precisely the model tracks the game state rather
+              than how well it forecasts. 0 = perfect tracking.
             </Term>
           </span>
           <span className={styles.footerValue}>

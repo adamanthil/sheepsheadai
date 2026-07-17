@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyzeModelResponse } from "../../lib/analyzeTypes";
 import { apiFetch } from "../../lib/api";
 import { apiErrorMessage, fetchFailureMessage } from "../../lib/apiError";
 import { parseCard, isRedSuit } from "../../lib/ds";
 import Term from "./TermHelp";
-import styles from "./CardEmbeddingsPanel.module.css";
+import styles from "./CardEmbeddingsModal.module.css";
 
 const TRUMP_COUNT = 14;
 const SCATTER_VB = 420;
@@ -37,13 +37,20 @@ function cardKind(index: number, total: number): "trump" | "fail" | "under" {
   return "fail";
 }
 
-export default function CardEmbeddingsPanel() {
-  const [expanded, setExpanded] = useState(false);
+interface CardEmbeddingsModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function CardEmbeddingsModal({
+  open,
+  onClose,
+}: CardEmbeddingsModalProps) {
   const [data, setData] = useState<AnalyzeModelResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -58,15 +65,22 @@ export default function CardEmbeddingsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleToggle = () => {
-    const next = !expanded;
-    setExpanded(next);
-    if (next && data === null && !loading && error === null) {
+  useEffect(() => {
+    if (open && data === null && !loading && error === null) {
       void load();
     }
-  };
+  }, [open, data, loading, error, load]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   const emb = data?.cardEmbeddings ?? null;
 
@@ -87,16 +101,29 @@ export default function CardEmbeddingsPanel() {
     return { x, y };
   }, [emb]);
 
-  return (
-    <div className={styles.panel}>
-      <div className={styles.summary} onClick={handleToggle}>
-        <div className={styles.title}>Card Embeddings</div>
-        <div className={`${styles.expandIcon} ${expanded ? styles.expanded : ""}`}>
-          ▼
-        </div>
-      </div>
+  if (!open) return null;
 
-      {expanded && (
+  return (
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Card embeddings"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={styles.dialogHeader}>
+          <div className={styles.title}>Card Embeddings</div>
+          <button
+            type="button"
+            className={styles.closeButton}
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
         <div className={styles.body}>
           {loading && <div className={styles.status}>Loading model info…</div>}
 
@@ -117,20 +144,21 @@ export default function CardEmbeddingsPanel() {
 
           {!loading && !error && data && emb && scatter && (
             <>
-              <p className={styles.intro}>
+              <div className={styles.intro}>
                 The model never sees suits or ranks directly — it learns an{" "}
                 <Term
                   label="embedding"
                   wiki="https://en.wikipedia.org/wiki/Embedding_(machine_learning)"
                 >
-                  A learned list of numbers ({emb.dims} of them here) that
-                  stands in for each card inside the network. The model
-                  adjusts these numbers during training, so cards it treats
-                  as playing similar roles end up with similar numbers.
+                  A learned vector ({emb.dims} dimensions here) that stands
+                  in for each card inside the network. Training adjusts these
+                  vectors, so cards that play similar roles in the game end
+                  up with similar embeddings.
                 </Term>{" "}
-                for each card. The two views below show which cards the model
-                has learned to treat as similar.
-              </p>
+                for each card. These are static per checkpoint — independent
+                of any simulated game. The two views below show which cards
+                the model has learned to treat as similar.
+              </div>
 
               <div className={styles.metaLine}>
                 <span>
@@ -147,11 +175,11 @@ export default function CardEmbeddingsPanel() {
                     label="PCA explained variance"
                     wiki="https://en.wikipedia.org/wiki/Principal_component_analysis"
                   >
-                    How much of the cards&rsquo; original spread survives the
-                    compression to 2 axes (see PCA Projection below). E.g.
-                    PC1 40% means the first axis alone captures 40% of how
-                    the embeddings differ; the rest is invisible in the 2-D
-                    picture.
+                    How much of the embeddings&rsquo; total variance the two
+                    principal components capture. PC1 40% means the first
+                    axis alone accounts for 40% of the variance across
+                    cards; whatever the two axes don&rsquo;t capture is
+                    invisible in the 2-D projection below.
                   </Term>
                   :{" "}
                   <strong>
@@ -167,12 +195,12 @@ export default function CardEmbeddingsPanel() {
                   label="PCA Projection"
                   wiki="https://en.wikipedia.org/wiki/Principal_component_analysis"
                 >
-                  Each card&rsquo;s embedding is {emb.dims} numbers — too
-                  many to draw. Principal component analysis finds the 2
-                  directions along which the cards differ most and plots
-                  every card on just those axes. Cards that sit close
-                  together are ones the model represents similarly; the axes
-                  themselves have no built-in meaning.
+                  Each card&rsquo;s embedding lives in {emb.dims} dimensions
+                  — too many to draw. Principal component analysis projects
+                  the vectors onto the two orthogonal directions of greatest
+                  variance. Cards that sit close together have similar
+                  embeddings; the axes themselves carry no intrinsic
+                  meaning.
                 </Term>
               </div>
               <div className={styles.scatterWrap}>
@@ -257,12 +285,11 @@ export default function CardEmbeddingsPanel() {
                   label="Cosine Similarity"
                   wiki="https://en.wikipedia.org/wiki/Cosine_similarity"
                 >
-                  How closely two cards&rsquo; embeddings point in the same
-                  direction, ignoring their size: +1 means the model treats
-                  the two cards near-identically, 0 means unrelated, −1
-                  means opposite. Each cell compares the row card with the
-                  column card; the bright diagonal is every card compared
-                  with itself.
+                  The cosine of the angle between two cards&rsquo; embedding
+                  vectors, ignoring magnitude: +1 = pointing the same way
+                  (treated near-identically), 0 = orthogonal (unrelated),
+                  −1 = opposite. Each cell compares the row card with the
+                  column card; the diagonal is every card with itself.
                 </Term>
               </div>
               <div className={styles.heatmapWrap}>
@@ -314,7 +341,7 @@ export default function CardEmbeddingsPanel() {
             </>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

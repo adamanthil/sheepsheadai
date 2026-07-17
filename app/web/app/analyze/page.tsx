@@ -8,7 +8,6 @@ import {
 import ActionTimeline from "./ActionTimeline";
 import CalibrationSummary from "./CalibrationSummary";
 import MemoryDriftChart from "./MemoryDriftChart";
-import CardEmbeddingsPanel from "./CardEmbeddingsPanel";
 import { apiFetch } from "../../lib/api";
 import { apiErrorMessage, fetchFailureMessage } from "../../lib/apiError";
 import styles from "./page.module.css";
@@ -267,12 +266,6 @@ export default function AnalyzePage() {
             </section>
           )}
 
-          {response.calibration && (
-            <CalibrationSummary calibration={response.calibration} />
-          )}
-
-          <MemoryDriftChart trace={response.trace} />
-
           {/* Decision timeline */}
           <section className={styles.resultsPanel}>
             <div className={styles.resultsHeader}>
@@ -331,11 +324,14 @@ export default function AnalyzePage() {
               gamma={response.meta.gamma}
             />
           </section>
+
+          {response.calibration && (
+            <CalibrationSummary calibration={response.calibration} />
+          )}
+
+          <MemoryDriftChart trace={response.trace} />
         </>
       )}
-
-      {/* Model-level panel: independent of any simulation run */}
-      <CardEmbeddingsPanel />
     </div>
   );
 }

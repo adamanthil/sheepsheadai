@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import CardEmbeddingsModal from "./CardEmbeddingsModal";
 import styles from "./layout.module.css";
 
 const TABS = [
@@ -18,6 +19,7 @@ export default function AnalyzeLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [embeddingsOpen, setEmbeddingsOpen] = useState(false);
 
   return (
     <div className={styles.shell}>
@@ -28,7 +30,16 @@ export default function AnalyzeLayout({
               ← Sheepshead
             </Link>
             <h1 className={styles.title}>AI Model Analysis</h1>
-            <span className={styles.homeSpacer} aria-hidden />
+            {/* Model-level view, independent of any simulated game. */}
+            <span className={styles.mastheadActions}>
+              <button
+                type="button"
+                className={styles.embeddingsButton}
+                onClick={() => setEmbeddingsOpen(true)}
+              >
+                Card embeddings
+              </button>
+            </span>
           </div>
           <nav className={styles.tabs} aria-label="Analysis tools">
             {TABS.map((tab) => (
@@ -49,6 +60,11 @@ export default function AnalyzeLayout({
         </div>
       </header>
       <div className={styles.content}>{children}</div>
+
+      <CardEmbeddingsModal
+        open={embeddingsOpen}
+        onClose={() => setEmbeddingsOpen(false)}
+      />
     </div>
   );
 }

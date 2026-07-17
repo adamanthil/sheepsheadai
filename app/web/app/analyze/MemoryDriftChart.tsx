@@ -20,54 +20,109 @@ const SEAT_COLORS = [
 ];
 
 const VB_WIDTH = 640;
-const VB_HEIGHT = 180;
-const MARGIN = { top: 12, right: 16, bottom: 26, left: 42 };
+const VB_HEIGHT = 214;
+const MARGIN = { top: 18, right: 16, bottom: 56, left: 42 };
 const PLOT_WIDTH = VB_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VB_HEIGHT - MARGIN.top - MARGIN.bottom;
+
+// Sheepshead always has exactly 5 players.
+const PLAYERS_PER_TRICK = 5;
+
+/** Compact per-step label: the card for plays, prefixed forms otherwise. */
+function shortAction(action: string): string {
+  if (action.startsWith("PLAY ")) return action.slice(5);
+  if (action.startsWith("BURY ")) return `B·${action.slice(5)}`;
+  if (action.startsWith("CALL ")) return `C·${action.slice(5)}`;
+  if (action.startsWith("UNDER ")) return `U·${action.slice(6)}`;
+  if (action === "JD PARTNER") return "JD P";
+  return action; // PICK / PASS / ALONE
+}
+
+interface Boundary {
+  beforeStep: number; // the boundary sits just before this stepIndex
+  label: string;
+}
 
 export default function MemoryDriftChart({ trace }: MemoryDriftChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverStep, setHoverStep] = useState<number | null>(null);
 
-  const { seats, allSteps, minStep, maxStep, maxValue } = useMemo(() => {
-    const bySeat = new Map<number, { seat: number; seatName: string; points: Map<number, number> }>();
-    let minS = Infinity;
-    let maxS = -Infinity;
-    let maxV = 0;
+  const { seats, colorBySeat, stepInfo, boundaries, minStep, maxStep, maxValue } =
+    useMemo(() => {
+      const bySeat = new Map<
+        number,
+        { seat: number; seatName: string; points: Map<number, number> }
+      >();
+      const info = new Map<number, AnalyzeActionDetail>();
+      let minS = Infinity;
+      let maxS = -Infinity;
+      let maxV = 0;
 
-    for (const action of trace) {
-      if (action.stepIndex < minS) minS = action.stepIndex;
-      if (action.stepIndex > maxS) maxS = action.stepIndex;
-      if (typeof action.memoryCosineDistance !== "number") continue;
-      if (!bySeat.has(action.seat)) {
-        bySeat.set(action.seat, {
-          seat: action.seat,
-          seatName: action.seatName,
-          points: new Map(),
-        });
+      for (const action of trace) {
+        info.set(action.stepIndex, action);
+        if (action.stepIndex < minS) minS = action.stepIndex;
+        if (action.stepIndex > maxS) maxS = action.stepIndex;
+        if (typeof action.memoryCosineDistance !== "number") continue;
+        if (!bySeat.has(action.seat)) {
+          bySeat.set(action.seat, {
+            seat: action.seat,
+            seatName: action.seatName,
+            points: new Map(),
+          });
+        }
+        bySeat
+          .get(action.seat)!
+          .points.set(action.stepIndex, action.memoryCosineDistance);
+        if (action.memoryCosineDistance > maxV) {
+          maxV = action.memoryCosineDistance;
+        }
       }
-      bySeat.get(action.seat)!.points.set(
-        action.stepIndex,
-        action.memoryCosineDistance,
+
+      // Stable seat -> color mapping over ALL acting seats (not only the
+      // ones with drift points) so labels and lines agree.
+      const actingSeats = [...new Set(trace.map((a) => a.seat))].sort(
+        (a, b) => a - b,
       );
-      if (action.memoryCosineDistance > maxV) maxV = action.memoryCosineDistance;
-    }
+      const colors = new Map<number, string>();
+      actingSeats.forEach((seat, i) =>
+        colors.set(seat, SEAT_COLORS[i % SEAT_COLORS.length]),
+      );
 
-    const seatList = [...bySeat.values()].sort((a, b) => a.seat - b.seat);
-    const stepSet = new Set<number>();
-    seatList.forEach((s) => s.points.forEach((_v, step) => stepSet.add(step)));
-    const stepsSorted = [...stepSet].sort((a, b) => a - b);
+      // Phase / trick boundaries, mirroring the timeline's dividers.
+      const bounds: Boundary[] = [];
+      let playActionsBefore = 0;
+      for (let i = 0; i < trace.length; i++) {
+        const current = trace[i];
+        const prev = i > 0 ? trace[i - 1] : null;
+        if (prev && current.phase !== prev.phase) {
+          bounds.push({ beforeStep: current.stepIndex, label: current.phase });
+        } else if (
+          prev &&
+          current.phase === "play" &&
+          prev.phase === "play" &&
+          playActionsBefore > 0 &&
+          playActionsBefore % PLAYERS_PER_TRICK === 0
+        ) {
+          bounds.push({
+            beforeStep: current.stepIndex,
+            label: `T${Math.floor(playActionsBefore / PLAYERS_PER_TRICK) + 1}`,
+          });
+        }
+        if (current.phase === "play") playActionsBefore += 1;
+      }
 
-    return {
-      seats: seatList,
-      allSteps: stepsSorted,
-      minStep: Number.isFinite(minS) ? minS : 0,
-      maxStep: Number.isFinite(maxS) ? maxS : 1,
-      maxValue: maxV,
-    };
-  }, [trace]);
+      return {
+        seats: [...bySeat.values()].sort((a, b) => a.seat - b.seat),
+        colorBySeat: colors,
+        stepInfo: info,
+        boundaries: bounds,
+        minStep: Number.isFinite(minS) ? minS : 0,
+        maxStep: Number.isFinite(maxS) ? maxS : 1,
+        maxValue: maxV,
+      };
+    }, [trace]);
 
-  const hasData = seats.length > 0 && allSteps.length > 0;
+  const hasData = seats.length > 0;
 
   const xScale = (step: number) => {
     const span = maxStep - minStep || 1;
@@ -83,23 +138,17 @@ export default function MemoryDriftChart({ trace }: MemoryDriftChartProps) {
     const rect = svgRef.current.getBoundingClientRect();
     const relX = ((e.clientX - rect.left) / rect.width) * VB_WIDTH;
     const span = maxStep - minStep || 1;
-    const approxStep = minStep + ((relX - MARGIN.left) / PLOT_WIDTH) * span;
-    let nearest = allSteps[0];
-    let bestDist = Infinity;
-    for (const s of allSteps) {
-      const d = Math.abs(s - approxStep);
-      if (d < bestDist) {
-        bestDist = d;
-        nearest = s;
-      }
-    }
-    setHoverStep(nearest);
+    const approx = Math.round(
+      minStep + ((relX - MARGIN.left) / PLOT_WIDTH) * span,
+    );
+    const clamped = Math.max(minStep, Math.min(maxStep, approx));
+    setHoverStep(stepInfo.has(clamped) ? clamped : null);
   };
 
   if (!hasData) return null;
 
   const yTicks = [0, yMax / 2, yMax];
-  const xTickSteps = [minStep, Math.round((minStep + maxStep) / 2), maxStep];
+  const hoverAction = hoverStep !== null ? stepInfo.get(hoverStep) : undefined;
 
   return (
     <div className={styles.memoryDriftChart}>
@@ -109,22 +158,26 @@ export default function MemoryDriftChart({ trace }: MemoryDriftChartProps) {
             label="Memory Drift"
             wiki="https://en.wikipedia.org/wiki/Gated_recurrent_unit"
           >
-            The model carries a running memory of each game: 256 numbers per
-            seat that a small neural unit (a GRU) rewrites every time that
-            seat takes in new information. Each point shows how much a
-            seat&rsquo;s memory changed at one of its decisions, measured as
-            cosine distance (0 = the new information barely changed the
-            model&rsquo;s picture of the game; higher = it substantially
-            revised its beliefs). Early decisions usually move the memory
-            most; a late spike means something surprising happened.
+            Each seat carries a memory vector (256 dimensions) that a
+            recurrent unit (GRU) updates whenever that seat receives new
+            information: once at each of its own decisions — the encoder
+            folds the current observation (its hand, the trick so far, and
+            the public flags, which reflect everything other seats did since
+            its last update) into the memory — and once after every
+            completed trick (those updates are not plotted). Each point is
+            the cosine distance between a seat&rsquo;s memory before and
+            after its decision update: near 0 = the observation barely
+            changed the model&rsquo;s internal state; higher = a substantial
+            revision. Vertical lines mark phase changes and trick
+            boundaries, and each step is labeled with the action taken.
           </Term>
         </div>
         <div className={styles.legend}>
-          {seats.map((s, i) => (
+          {seats.map((s) => (
             <div key={s.seat} className={styles.legendItem}>
               <span
                 className={styles.legendSwatch}
-                style={{ background: SEAT_COLORS[i % SEAT_COLORS.length] }}
+                style={{ background: colorBySeat.get(s.seat) }}
               />
               {s.seatName}
             </div>
@@ -171,7 +224,31 @@ export default function MemoryDriftChart({ trace }: MemoryDriftChartProps) {
             memory Δ (cosine)
           </text>
 
-          {/* x baseline + tick labels */}
+          {/* phase / trick boundaries */}
+          {boundaries.map((b, i) => {
+            const x =
+              (xScale(b.beforeStep - 1) + xScale(b.beforeStep)) / 2;
+            return (
+              <g key={i}>
+                <line
+                  x1={x}
+                  x2={x}
+                  y1={MARGIN.top - 4}
+                  y2={MARGIN.top + PLOT_HEIGHT}
+                  className={styles.boundary}
+                />
+                <text
+                  x={x + 3}
+                  y={MARGIN.top + 2}
+                  className={styles.boundaryLabel}
+                >
+                  {b.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* x baseline */}
           <line
             x1={MARGIN.left}
             x2={VB_WIDTH - MARGIN.right}
@@ -179,21 +256,28 @@ export default function MemoryDriftChart({ trace }: MemoryDriftChartProps) {
             y2={MARGIN.top + PLOT_HEIGHT}
             className={styles.axisLine}
           />
-          {xTickSteps.map((t, i) => (
+
+          {/* per-step action labels, colored by the acting seat */}
+          {[...stepInfo.values()].map((action) => (
             <text
-              key={i}
-              x={xScale(t)}
-              y={VB_HEIGHT - 6}
-              className={styles.axisLabel}
-              textAnchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
+              key={action.stepIndex}
+              className={styles.actionLabel}
+              transform={`translate(${xScale(action.stepIndex)}, ${
+                MARGIN.top + PLOT_HEIGHT + 8
+              }) rotate(-55)`}
+              textAnchor="end"
+              fill={colorBySeat.get(action.seat)}
+              opacity={
+                hoverStep === null || hoverStep === action.stepIndex ? 1 : 0.55
+              }
             >
-              step {t + 1}
+              {shortAction(action.action)}
             </text>
           ))}
 
           {/* series */}
-          {seats.map((s, i) => {
-            const color = SEAT_COLORS[i % SEAT_COLORS.length];
+          {seats.map((s) => {
+            const color = colorBySeat.get(s.seat);
             const pts = [...s.points.entries()].sort((a, b) => a[0] - b[0]);
             const path = pts
               .map(
@@ -232,29 +316,28 @@ export default function MemoryDriftChart({ trace }: MemoryDriftChartProps) {
           )}
         </svg>
 
-        {hoverStep !== null && (
+        {hoverAction && (
           <div
             className={styles.tooltip}
             style={{
-              left: `${(xScale(hoverStep) / VB_WIDTH) * 100}%`,
+              left: `${(xScale(hoverAction.stepIndex) / VB_WIDTH) * 100}%`,
             }}
           >
-            <div className={styles.tooltipHeader}>Step {hoverStep + 1}</div>
-            {seats.map((s, i) => {
-              const value = s.points.get(hoverStep);
-              return (
-                <div key={s.seat} className={styles.tooltipRow}>
-                  <span
-                    className={styles.tooltipKey}
-                    style={{ background: SEAT_COLORS[i % SEAT_COLORS.length] }}
-                  />
-                  <span className={styles.tooltipSeat}>{s.seatName}</span>
-                  <span className={styles.tooltipValue}>
-                    {typeof value === "number" ? value.toFixed(3) : "—"}
-                  </span>
-                </div>
-              );
-            })}
+            <div className={styles.tooltipHeader}>
+              Step {hoverAction.stepIndex + 1} · {hoverAction.seatName}
+            </div>
+            <div className={styles.tooltipRow}>
+              <span
+                className={styles.tooltipKey}
+                style={{ background: colorBySeat.get(hoverAction.seat) }}
+              />
+              <span className={styles.tooltipSeat}>{hoverAction.action}</span>
+              <span className={styles.tooltipValue}>
+                {typeof hoverAction.memoryCosineDistance === "number"
+                  ? hoverAction.memoryCosineDistance.toFixed(3)
+                  : "first update"}
+              </span>
+            </div>
           </div>
         )}
       </div>

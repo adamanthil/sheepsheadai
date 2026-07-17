@@ -1,48 +1,67 @@
-/* CardEmbeddingsPanel: self-fetching collapsible panel — PCA scatter +
+/* CardEmbeddingsModal: self-fetching modal — PCA scatter +
    cosine-similarity heatmap of the model's learned card-embedding table.
-   Palette tokens (--an-*) are inherited from page.module.css .container. */
+   Palette tokens (--an-*) are inherited from the analyze layout shell. */
 
-.panel {
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(20, 28, 40, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1rem;
+  overflow-y: auto;
+}
+
+.dialog {
   background: var(--an-panel);
   border-radius: 14px;
   border: 1px solid var(--an-rule);
-  box-shadow: var(--an-shadow-sm);
+  box-shadow: var(--an-shadow);
+  width: min(760px, 100%);
+  max-height: calc(100vh - 6rem);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.summary {
-  padding: 1.25rem 1.75rem;
+.dialogHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.summary:hover {
-  background: var(--an-sunk);
+  padding: 1.1rem 1.75rem;
+  border-bottom: 1px solid var(--an-rule);
+  flex: 0 0 auto;
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: 1.15rem;
+  font-size: 1.35rem;
   font-weight: 400;
   color: var(--an-ink);
 }
 
-.expandIcon {
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
   color: var(--an-muted);
-  transition: transform 0.2s ease;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
 }
 
-.expandIcon.expanded {
-  transform: rotate(180deg);
+.closeButton:hover {
+  color: var(--an-ink);
+  background: var(--an-sunk);
 }
 
 .body {
   padding: 0 1.75rem 1.75rem 1.75rem;
-  border-top: 1px solid var(--an-rule);
   background: var(--an-sunk);
+  overflow-y: auto;
 }
 
 .status {

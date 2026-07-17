@@ -93,7 +93,6 @@ export default function ActionRow({
     winPct,
     expectedFinal,
     oracleValue,
-    memoryCosineDistance,
   }: {
     value: number;
     valueHue: number;
@@ -104,7 +103,6 @@ export default function ActionRow({
     winPct?: number;
     expectedFinal?: number;
     oracleValue?: number;
-    memoryCosineDistance?: number;
   }) {
     return (
       <div className={styles.metricsBar}>
@@ -123,18 +121,6 @@ export default function ActionRow({
             <span className={styles.metricLabel}>V*</span>
             <span className={styles.metricValue}>
               {formatSigned(oracleValue)}
-            </span>
-          </div>
-        )}
-
-        {typeof memoryCosineDistance === "number" && (
-          <div
-            className={`${styles.metricChip} ${styles.metricChipNeutral}`}
-            title="How much this seat's running memory of the game changed at this decision (cosine distance: 0 = no change; see the Memory Drift chart)"
-          >
-            <span className={styles.metricLabel}>memΔ</span>
-            <span className={styles.metricValue}>
-              {memoryCosineDistance.toFixed(3)}
             </span>
           </div>
         )}
@@ -241,11 +227,6 @@ export default function ActionRow({
             oracleValue={
               typeof action.oracleValue === "number"
                 ? action.oracleValue
-                : undefined
-            }
-            memoryCosineDistance={
-              typeof action.memoryCosineDistance === "number"
-                ? action.memoryCosineDistance
                 : undefined
             }
           />
