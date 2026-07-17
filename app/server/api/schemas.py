@@ -256,7 +256,10 @@ class AnalyzeSeatCalibration(BaseModel):
     lastWinProb: float
     meanWinProb: float
     brierScore: float  # mean (winProb - won)^2 over this seat's decisions
-    pointsMae: float  # mean |predicted - final| of predictions ABOUT this seat
+    # Mean |predicted - actual| of predictions ABOUT this seat, against the
+    # points known at each decision (the head's training target), not the
+    # final totals.
+    pointsMae: float
 
 
 class AnalyzeCalibrationSummary(BaseModel):

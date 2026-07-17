@@ -151,15 +151,25 @@ def _build_calibration_summary(
         return None
 
     final_scores = [p.get_score() for p in game.players]
-    final_points = list(game.points_taken)
 
     # Point-prediction errors, grouped by the seat being predicted ABOUT.
+    # The points head's training target is the points known at decision time
+    # (compute_known_points_rel) — a deterministic state-tracking task — so
+    # errors are measured against each step's own pointActuals, not the
+    # final totals.
     point_errors_about: Dict[int, List[float]] = {s: [] for s in range(1, 6)}
     for step in trace:
+        actual_by_seat: Dict[int, float] = {}
+        for act in step.pointActuals or []:
+            seat = int(act["seat"] if isinstance(act, dict) else act.seat)
+            actual_by_seat[seat] = float(
+                act["points"] if isinstance(act, dict) else act.points
+            )
         for est in step.pointEstimates or []:
             seat = int(est["seat"] if isinstance(est, dict) else est.seat)
             points = float(est["points"] if isinstance(est, dict) else est.points)
-            point_errors_about[seat].append(abs(points - float(final_points[seat - 1])))
+            if seat in actual_by_seat:
+                point_errors_about[seat].append(abs(points - actual_by_seat[seat]))
 
     trump_correct = 0
     trump_total = 0
