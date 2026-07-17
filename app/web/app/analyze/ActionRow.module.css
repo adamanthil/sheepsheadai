@@ -93,7 +93,13 @@
   text-transform: capitalize;
 }
 
-/* Metric strip: compact display of V / G_t / r / Win% / E[Ret].
+.summaryRight {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Metric strip: compact display of V / V* / G_t / r / Win% / E[Ret].
    --value-hue is set inline (0deg red .. 120deg green) to encode quality. */
 .metricsBar {
   display: flex;
