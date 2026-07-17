@@ -443,6 +443,22 @@ export interface components {
             modelLabel: string;
         };
         /**
+         * AnalyzePickMeta
+         * @description Echo of the pick request plus the serving model's label.
+         */
+        AnalyzePickMeta: {
+            /** Deterministic */
+            deterministic: boolean;
+            /** Model */
+            model: string;
+            /** Partnermode */
+            partnerMode: number;
+            /** Seat */
+            seat: number;
+            /** Seed */
+            seed?: number | null;
+        };
+        /**
          * AnalyzePickOutcome
          * @description Where the pre-play phases ended up once play was about to start.
          */
@@ -492,10 +508,7 @@ export interface components {
         AnalyzePickResponse: {
             /** Decisions */
             decisions: components["schemas"]["AnalyzeActionDetail"][];
-            /** Meta */
-            meta: {
-                [key: string]: unknown;
-            };
+            meta: components["schemas"]["AnalyzePickMeta"];
             outcome: components["schemas"]["AnalyzePickOutcome"];
             scenario: components["schemas"]["AnalyzePickScenario"];
         };
@@ -553,6 +566,27 @@ export interface components {
             /** Won */
             won: boolean;
         };
+        /**
+         * AnalyzeSimulateMeta
+         * @description Echo of the simulate request plus the model attributes the UI needs
+         *     to interpret the trace.
+         */
+        AnalyzeSimulateMeta: {
+            /** Criticmode */
+            criticMode: string;
+            /** Deterministic */
+            deterministic: boolean;
+            /** Gamma */
+            gamma: number;
+            /** Hasoracle */
+            hasOracle: boolean;
+            /** Model */
+            model: string;
+            /** Partnermode */
+            partnerMode: number;
+            /** Seed */
+            seed?: number | null;
+        };
         /** AnalyzeSimulateRequest */
         AnalyzeSimulateRequest: {
             /**
@@ -585,10 +619,7 @@ export interface components {
              * @default []
              */
             memoryObserves: components["schemas"]["AnalyzeMemoryObserve"][];
-            /** Meta */
-            meta: {
-                [key: string]: unknown;
-            };
+            meta: components["schemas"]["AnalyzeSimulateMeta"];
             /** Trace */
             trace: components["schemas"]["AnalyzeActionDetail"][];
         };

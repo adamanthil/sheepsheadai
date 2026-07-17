@@ -129,8 +129,8 @@ def test_simulate_with_oracle_critic(analyze_env, monkeypatch):
         AnalyzeSimulateRequest(seed=11, deterministic=True)
     )
 
-    assert resp.meta["hasOracle"] is True
-    assert resp.meta["criticMode"] == "oracle"
+    assert resp.meta.hasOracle is True
+    assert resp.meta.criticMode == "oracle"
     assert resp.trace
     for step in resp.trace:
         assert step.oracleValue is not None

@@ -21,6 +21,7 @@ import torch
 
 from server.api.schemas import (
     AnalyzeActionDetail,
+    AnalyzePickMeta,
     AnalyzePickOutcome,
     AnalyzePickRequest,
     AnalyzePickResponse,
@@ -164,13 +165,13 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
     )
 
     return AnalyzePickResponse(
-        meta={
-            "partnerMode": req.partnerMode,
-            "seat": req.seat,
-            "seed": req.seed,
-            "deterministic": req.deterministic,
-            "model": settings.sheepshead_model_label,
-        },
+        meta=AnalyzePickMeta(
+            partnerMode=req.partnerMode,
+            seat=req.seat,
+            seed=req.seed,
+            deterministic=req.deterministic,
+            model=settings.sheepshead_model_label,
+        ),
         scenario=scenario,
         decisions=decisions,
         outcome=outcome,

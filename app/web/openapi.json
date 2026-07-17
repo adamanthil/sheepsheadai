@@ -499,6 +499,46 @@
         "title": "AnalyzeModelResponse",
         "type": "object"
       },
+      "AnalyzePickMeta": {
+        "description": "Echo of the pick request plus the serving model's label.",
+        "properties": {
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "partnerMode": {
+            "title": "Partnermode",
+            "type": "integer"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "partnerMode",
+          "seat",
+          "deterministic",
+          "model"
+        ],
+        "title": "AnalyzePickMeta",
+        "type": "object"
+      },
       "AnalyzePickOutcome": {
         "description": "Where the pre-play phases ended up once play was about to start.",
         "properties": {
@@ -646,9 +686,7 @@
             "type": "array"
           },
           "meta": {
-            "additionalProperties": true,
-            "title": "Meta",
-            "type": "object"
+            "$ref": "#/components/schemas/AnalyzePickMeta"
           },
           "outcome": {
             "$ref": "#/components/schemas/AnalyzePickOutcome"
@@ -809,6 +847,56 @@
         "title": "AnalyzeSeatCalibration",
         "type": "object"
       },
+      "AnalyzeSimulateMeta": {
+        "description": "Echo of the simulate request plus the model attributes the UI needs\nto interpret the trace.",
+        "properties": {
+          "criticMode": {
+            "title": "Criticmode",
+            "type": "string"
+          },
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "boolean"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "number"
+          },
+          "hasOracle": {
+            "title": "Hasoracle",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "partnerMode": {
+            "title": "Partnermode",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "partnerMode",
+          "deterministic",
+          "model",
+          "gamma",
+          "criticMode",
+          "hasOracle"
+        ],
+        "title": "AnalyzeSimulateMeta",
+        "type": "object"
+      },
       "AnalyzeSimulateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -875,9 +963,7 @@
             "type": "array"
           },
           "meta": {
-            "additionalProperties": true,
-            "title": "Meta",
-            "type": "object"
+            "$ref": "#/components/schemas/AnalyzeSimulateMeta"
           },
           "trace": {
             "items": {

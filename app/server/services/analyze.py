@@ -9,6 +9,7 @@ from server.api.schemas import (
     AnalyzeCalibrationSummary,
     AnalyzeMemoryObserve,
     AnalyzeSeatCalibration,
+    AnalyzeSimulateMeta,
     AnalyzeSimulateRequest,
     AnalyzeSimulateResponse,
 )
@@ -252,15 +253,15 @@ def _assemble_response(
     Stage (d) of ``simulate_game`` (part 2): response assembly.
     """
     return AnalyzeSimulateResponse(
-        meta={
-            "partnerMode": req.partnerMode,
-            "deterministic": req.deterministic,
-            "seed": req.seed,
-            "model": settings.sheepshead_model_label,
-            "gamma": float(agent.gamma),
-            "criticMode": getattr(agent, "critic_mode", "limited"),
-            "hasOracle": getattr(agent, "oracle_critic", None) is not None,
-        },
+        meta=AnalyzeSimulateMeta(
+            partnerMode=req.partnerMode,
+            deterministic=req.deterministic,
+            seed=req.seed,
+            model=settings.sheepshead_model_label,
+            gamma=float(agent.gamma),
+            criticMode=getattr(agent, "critic_mode", "limited"),
+            hasOracle=getattr(agent, "oracle_critic", None) is not None,
+        ),
         calibration=calibration,
         trace=trace,
         memoryObserves=memory_observes,

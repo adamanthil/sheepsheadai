@@ -178,6 +178,33 @@ class AnalyzeModelResponse(BaseModel):
     cardEmbeddings: Optional[AnalyzeCardEmbeddings] = None
 
 
+class AnalyzeSimulateMeta(BaseModel):
+    """Echo of the simulate request plus the model attributes the UI needs
+    to interpret the trace."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    partnerMode: int
+    deterministic: bool
+    seed: Optional[int] = None
+    model_label: str = Field(alias="model")
+    gamma: float
+    criticMode: str
+    hasOracle: bool
+
+
+class AnalyzePickMeta(BaseModel):
+    """Echo of the pick request plus the serving model's label."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    partnerMode: int
+    seat: int
+    seed: Optional[int] = None
+    deterministic: bool
+    model_label: str = Field(alias="model")
+
+
 class AnalyzeSimulateRequest(BaseModel):
     # extra="forbid" so removed fields (e.g. the old client-supplied
     # modelPath, which let callers point torch.load at arbitrary files)
@@ -310,7 +337,7 @@ class AnalyzePickOutcome(BaseModel):
 
 
 class AnalyzePickResponse(BaseModel):
-    meta: Dict[str, Any]
+    meta: AnalyzePickMeta
     scenario: AnalyzePickScenario
     # One entry per pre-play decision (pick/pass, call, under, bury), same
     # shape as the simulate trace; reward/return fields stay None since no
@@ -336,7 +363,7 @@ class AnalyzeMemoryObserve(BaseModel):
 
 
 class AnalyzeSimulateResponse(BaseModel):
-    meta: Dict[str, Any]
+    meta: AnalyzeSimulateMeta
     calibration: Optional[AnalyzeCalibrationSummary] = None
     trace: List[AnalyzeActionDetail]
     memoryObserves: List[AnalyzeMemoryObserve] = []

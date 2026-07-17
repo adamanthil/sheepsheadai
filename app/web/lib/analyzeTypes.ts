@@ -38,17 +38,6 @@ export type AnalyzeView = {
   [key: string]: unknown;
 };
 
-export type AnalyzeMeta = {
-  partnerMode?: number;
-  deterministic?: boolean;
-  seed?: number | null;
-  model?: string;
-  gamma?: number;
-  criticMode?: string;
-  hasOracle?: boolean;
-  [key: string]: unknown;
-};
-
 export type AnalyzeActionDetail = Omit<
   components["schemas"]["AnalyzeActionDetail"],
   "view"
@@ -56,5 +45,5 @@ export type AnalyzeActionDetail = Omit<
 
 export type AnalyzeSimulateResponse = Omit<
   components["schemas"]["AnalyzeSimulateResponse"],
-  "meta" | "trace"
-> & { meta: AnalyzeMeta; trace: AnalyzeActionDetail[] };
+  "trace"
+> & { trace: AnalyzeActionDetail[] };
