@@ -16,7 +16,12 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
-from server.api.schemas import AnalyzeActionDetail, AnalyzeProbability
+from server.api.schemas import (
+    AnalyzeActionDetail,
+    AnalyzePointEstimate,
+    AnalyzeProbability,
+    AnalyzeTrumpSeenMaskEntry,
+)
 from sheepshead import ACTION_LOOKUP, TRUMP
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
@@ -115,6 +120,30 @@ def compute_oracle_values(
         action_detail.oracleValue = values_by_seat[seat][idx]
 
 
+def _point_entries(
+    values_rel: List[float], actor_seat: int, players: List[str]
+) -> List[AnalyzePointEstimate]:
+    """Convert a per-seat point vector in relative order (index 1 = the actor)
+    into entries labeled with absolute seats."""
+    entries: List[AnalyzePointEstimate] = []
+    for rel_idx, points in enumerate(values_rel, start=1):
+        abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
+        seat_label = (
+            players[abs_seat - 1]
+            if 0 < abs_seat <= len(players)
+            else f"Seat {abs_seat}"
+        )
+        entries.append(
+            AnalyzePointEstimate(
+                seat=abs_seat,
+                seatName=seat_label,
+                points=float(points),
+                relativePosition=rel_idx,
+            )
+        )
+    return entries
+
+
 @dataclass
 class StepInference:
     """Encoder/actor/critic forward pass results and aux-head extraction for
@@ -129,9 +158,9 @@ class StepInference:
     win_prob_val: Optional[float]
     expected_final_val: Optional[float]
     secret_partner_prob: Optional[float]
-    trump_seen_mask: List[Dict[str, Any]]
-    point_estimates: List[Dict[str, Any]]
-    point_actuals: List[Dict[str, Any]]
+    trump_seen_mask: List[AnalyzeTrumpSeenMaskEntry]
+    point_estimates: List[AnalyzePointEstimate]
+    point_actuals: List[AnalyzePointEstimate]
     unseen_trump_higher_than_hand_prob: Optional[float]
     unseen_trump_higher_than_hand_actual: Optional[bool]
     memory_cosine_distance: Optional[float]
@@ -217,7 +246,7 @@ def run_inference_step(
                 torch.sigmoid(unseen_trump_higher_than_hand_logit).item()
             )
 
-    trump_seen_mask: List[Dict[str, Any]] = []
+    trump_seen_mask: List[AnalyzeTrumpSeenMaskEntry] = []
     unseen_trump_higher_than_hand_actual: Optional[bool] = None
     if seen_trump_mask_probs is not None:
         seen_trump_mask_actual = compute_seen_trump_mask(actor_player)
@@ -225,54 +254,22 @@ def run_inference_step(
             compute_any_unseen_trump_higher_than_hand(actor_player)
         )
         trump_seen_mask = [
-            {
-                "card": TRUMP[i],
-                "probabilitySeen": float(seen_trump_mask_probs[i]),
-                "actualSeen": bool(seen_trump_mask_actual[i]),
-            }
+            AnalyzeTrumpSeenMaskEntry(
+                card=TRUMP[i],
+                probabilitySeen=float(seen_trump_mask_probs[i]),
+                actualSeen=bool(seen_trump_mask_actual[i]),
+            )
             for i in range(len(TRUMP))
         ]
 
-    point_estimates: List[Dict[str, Any]] = []
-    if point_vector:
-        for rel_idx, rel_val in enumerate(point_vector, start=1):
-            abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-            seat_label = (
-                players[abs_seat - 1]
-                if 0 < abs_seat <= len(players)
-                else f"Seat {abs_seat}"
-            )
-            point_estimates.append(
-                {
-                    "seat": abs_seat,
-                    "seatName": seat_label,
-                    "points": rel_val,
-                    "relativePosition": rel_idx,
-                }
-            )
+    point_estimates = _point_entries(point_vector or [], actor_seat, players)
 
     # Actuals exist only to be compared against the aux-head estimates, so
     # they are omitted whenever the estimates are.
-    point_actuals: List[Dict[str, Any]] = []
     known_points_rel = (
         compute_known_points_rel(actor_player) if agent.critic.has_aux_heads else None
     )
-    if known_points_rel:
-        for rel_idx, rel_val in enumerate(known_points_rel, start=1):
-            abs_seat = ((actor_seat + rel_idx - 2) % 5) + 1
-            seat_label = (
-                players[abs_seat - 1]
-                if 0 < abs_seat <= len(players)
-                else f"Seat {abs_seat}"
-            )
-            point_actuals.append(
-                {
-                    "seat": abs_seat,
-                    "seatName": seat_label,
-                    "points": rel_val,
-                    "relativePosition": rel_idx,
-                }
-            )
+    point_actuals = _point_entries(known_points_rel or [], actor_seat, players)
 
     return StepInference(
         state=state,

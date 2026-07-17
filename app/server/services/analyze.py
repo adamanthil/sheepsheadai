@@ -161,32 +161,21 @@ def _build_calibration_summary(
     # final totals.
     point_errors_about: Dict[int, List[float]] = {s: [] for s in range(1, 6)}
     for step in trace:
-        actual_by_seat: Dict[int, float] = {}
-        for act in step.pointActuals or []:
-            seat = int(act["seat"] if isinstance(act, dict) else act.seat)
-            actual_by_seat[seat] = float(
-                act["points"] if isinstance(act, dict) else act.points
-            )
+        actual_by_seat: Dict[int, float] = {
+            act.seat: act.points for act in step.pointActuals or []
+        }
         for est in step.pointEstimates or []:
-            seat = int(est["seat"] if isinstance(est, dict) else est.seat)
-            points = float(est["points"] if isinstance(est, dict) else est.points)
-            if seat in actual_by_seat:
-                point_errors_about[seat].append(abs(points - actual_by_seat[seat]))
+            if est.seat in actual_by_seat:
+                point_errors_about[est.seat].append(
+                    abs(est.points - actual_by_seat[est.seat])
+                )
 
     trump_correct = 0
     trump_total = 0
     for step in trace:
         for entry in step.trumpSeenMask or []:
-            prob = float(
-                entry["probabilitySeen"]
-                if isinstance(entry, dict)
-                else entry.probabilitySeen
-            )
-            actual = bool(
-                entry["actualSeen"] if isinstance(entry, dict) else entry.actualSeen
-            )
             trump_total += 1
-            if (prob > 0.5) == actual:
+            if (entry.probabilitySeen > 0.5) == entry.actualSeen:
                 trump_correct += 1
 
     seats: List[AnalyzeSeatCalibration] = []
