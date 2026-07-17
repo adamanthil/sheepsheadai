@@ -73,15 +73,29 @@
 .selectedCard {
   padding: 0.25rem 0.5rem;
   background: var(--an-panel);
-  border: 1px solid var(--an-rule-strong);
   border-radius: 6px;
   font-size: 0.85rem;
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
 
-.selectedCard:hover {
+.selectedLocked {
+  border: 1px solid var(--an-accent);
+  background: color-mix(in oklab, var(--an-accent) 12%, var(--an-panel));
+  font-weight: 600;
+}
+
+.selectedLocked:hover {
   border-color: var(--an-neg);
+}
+
+.selectedDealt {
+  border: 1px dashed var(--an-rule-strong);
+  color: var(--an-ink-soft);
+}
+
+.selectedDealt:hover {
+  border-color: var(--an-accent);
 }
 
 .targetActions {
@@ -158,14 +172,30 @@
   outline-offset: 1px;
 }
 
+/* Dealt (unlocked) cards: dashed outline, light tint — they will be
+   re-dealt on the next analysis. Locked cards: solid, saturated. */
 .cardInHand {
-  background: color-mix(in oklab, var(--an-accent) 14%, var(--an-panel));
-  border-color: var(--an-accent);
+  background: color-mix(in oklab, var(--an-accent) 8%, var(--an-panel));
+  border: 1px dashed var(--an-accent);
 }
 
 .cardInBlind {
-  background: color-mix(in oklab, var(--an-actual) 16%, var(--an-panel));
-  border-color: var(--an-actual);
+  background: color-mix(in oklab, var(--an-actual) 9%, var(--an-panel));
+  border: 1px dashed var(--an-actual);
+}
+
+.cardLocked.cardInHand {
+  background: color-mix(in oklab, var(--an-accent) 22%, var(--an-panel));
+  border-style: solid;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--an-accent) 28%, transparent);
+  font-weight: 600;
+}
+
+.cardLocked.cardInBlind {
+  background: color-mix(in oklab, var(--an-actual) 24%, var(--an-panel));
+  border-style: solid;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--an-actual) 30%, transparent);
+  font-weight: 600;
 }
 
 .cardDim {
@@ -176,6 +206,12 @@
 .cardDim:hover {
   transform: none;
   border-color: var(--an-rule-strong);
+}
+
+.pickerHint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--an-muted);
 }
 
 @media (max-width: 640px) {

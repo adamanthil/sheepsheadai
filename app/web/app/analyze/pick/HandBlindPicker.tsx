@@ -2,73 +2,111 @@
 
 import React, { useState } from "react";
 import { CardText } from "../../../lib/ds";
-import { DECK, FAIL_BY_SUIT, TRUMP, sortByDeckOrder } from "./deck";
+import { FAIL_BY_SUIT, TRUMP, sortByDeckOrder } from "./deck";
 import styles from "./HandBlindPicker.module.css";
 
 export type CardTarget = "hand" | "blind";
 
-interface HandBlindPickerProps {
-  hand: string[];
-  blind: string[];
-  onChange: (hand: string[], blind: string[]) => void;
+/** Locked cards are the user's fixed choices (sent to the server); dealt
+ * cards are the full hand/blind the engine actually used on the last
+ * analysis (locked ⊆ dealt). Null dealt = no analysis run yet. */
+export interface PickerState {
+  lockedHand: string[];
+  lockedBlind: string[];
+  dealtHand: string[] | null;
+  dealtBlind: string[] | null;
+}
+
+interface HandBlindPickerProps extends PickerState {
+  onChange: (next: PickerState) => void;
 }
 
 const LIMITS: Record<CardTarget, number> = { hand: 6, blind: 2 };
 
-/** Scenario deal builder: click cards in the deck grid to assign them to
- * the hand or the blind. Leaving a set empty means "deal it randomly". */
+/** Scenario deal builder: lock any subset of cards into the hand or blind;
+ * the engine deals the rest randomly on each analysis and the dealt cards
+ * show up here, clickable to lock them for the next run. */
 export default function HandBlindPicker({
-  hand,
-  blind,
+  lockedHand,
+  lockedBlind,
+  dealtHand,
+  dealtBlind,
   onChange,
 }: HandBlindPickerProps) {
   const [target, setTarget] = useState<CardTarget>("hand");
 
-  const assignment = (card: string): CardTarget | null =>
-    hand.includes(card) ? "hand" : blind.includes(card) ? "blind" : null;
+  const locked: Record<CardTarget, string[]> = {
+    hand: lockedHand,
+    blind: lockedBlind,
+  };
+  const dealt: Record<CardTarget, string[] | null> = {
+    hand: dealtHand,
+    blind: dealtBlind,
+  };
+  const display: Record<CardTarget, string[]> = {
+    hand: dealtHand ?? lockedHand,
+    blind: dealtBlind ?? lockedBlind,
+  };
+
+  const zoneOf = (card: string): CardTarget | null =>
+    display.hand.includes(card)
+      ? "hand"
+      : display.blind.includes(card)
+        ? "blind"
+        : null;
+
+  const set = (
+    which: CardTarget,
+    nextLocked: string[],
+    nextDealt: string[] | null,
+  ) => {
+    onChange({
+      lockedHand: which === "hand" ? nextLocked : lockedHand,
+      lockedBlind: which === "blind" ? nextLocked : lockedBlind,
+      dealtHand: which === "hand" ? nextDealt : dealtHand,
+      dealtBlind: which === "blind" ? nextDealt : dealtBlind,
+    });
+  };
 
   const toggleCard = (card: string) => {
-    const current = assignment(card);
-    if (current === "hand") {
-      onChange(
-        hand.filter((c) => c !== card),
-        blind,
-      );
+    const zone = zoneOf(card);
+    if (zone) {
+      // Toggle the lock. An unlocked card stays visible only while a deal
+      // backs it; before the first analysis it simply leaves the zone.
+      const next = locked[zone].includes(card)
+        ? locked[zone].filter((c) => c !== card)
+        : sortByDeckOrder([...locked[zone], card]);
+      set(zone, next, dealt[zone]);
       return;
     }
-    if (current === "blind") {
-      onChange(
-        hand,
-        blind.filter((c) => c !== card),
-      );
+
+    // Free card -> lock it into the active target.
+    const zoneLocked = locked[target];
+    if (zoneLocked.length >= LIMITS[target]) return;
+    const zoneDealt = dealt[target];
+    const nextLocked = sortByDeckOrder([...zoneLocked, card]);
+    if (zoneDealt === null) {
+      set(target, nextLocked, null);
       return;
     }
-    const sets = { hand, blind };
-    if (sets[target].length >= LIMITS[target]) return;
-    const next = sortByDeckOrder([...sets[target], card]);
-    onChange(
-      target === "hand" ? next : hand,
-      target === "blind" ? next : blind,
+    // The zone is already full from the last deal: swap out the weakest
+    // unlocked dealt card so it stays full.
+    const evict = [...zoneDealt]
+      .reverse()
+      .find((c) => !zoneLocked.includes(c));
+    if (!evict) return;
+    set(
+      target,
+      nextLocked,
+      sortByDeckOrder([...zoneDealt.filter((c) => c !== evict), card]),
     );
   };
 
-  const randomize = (which: CardTarget) => {
-    const taken = new Set(which === "hand" ? blind : hand);
-    const pool = DECK.filter((c) => !taken.has(c));
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    const drawn = sortByDeckOrder(pool.slice(0, LIMITS[which]));
-    onChange(which === "hand" ? drawn : hand, which === "blind" ? drawn : blind);
-  };
-
-  const clear = (which: CardTarget) => {
-    onChange(which === "hand" ? [] : hand, which === "blind" ? [] : blind);
-  };
+  const clear = (which: CardTarget) => set(which, [], null);
 
   const targetButton = (which: CardTarget, label: string) => {
-    const cards = which === "hand" ? hand : blind;
+    const cards = display[which];
+    const zoneLocked = locked[which];
     return (
       <div
         className={`${styles.targetGroup} ${
@@ -83,35 +121,37 @@ export default function HandBlindPicker({
         >
           <span className={styles.targetLabel}>{label}</span>
           <span className={styles.targetCount}>
-            {cards.length}/{LIMITS[which]}
+            {zoneLocked.length}/{LIMITS[which]} locked
           </span>
         </button>
         <div className={styles.targetCards}>
           {cards.length === 0 ? (
             <span className={styles.randomNote}>dealt randomly</span>
           ) : (
-            cards.map((card) => (
-              <button
-                key={card}
-                type="button"
-                className={styles.selectedCard}
-                onClick={() => toggleCard(card)}
-                title={`Remove ${card}`}
-              >
-                <CardText>{card}</CardText>
-              </button>
-            ))
+            cards.map((card) => {
+              const isLocked = zoneLocked.includes(card);
+              return (
+                <button
+                  key={card}
+                  type="button"
+                  className={`${styles.selectedCard} ${
+                    isLocked ? styles.selectedLocked : styles.selectedDealt
+                  }`}
+                  onClick={() => toggleCard(card)}
+                  title={
+                    isLocked
+                      ? `${card} is locked — click to unlock`
+                      : `${card} was dealt randomly — click to lock it`
+                  }
+                >
+                  <CardText>{card}</CardText>
+                </button>
+              );
+            })
           )}
         </div>
         <div className={styles.targetActions}>
-          <button
-            type="button"
-            className={styles.miniButton}
-            onClick={() => randomize(which)}
-          >
-            Randomize
-          </button>
-          {cards.length > 0 && (
+          {(zoneLocked.length > 0 || dealt[which] !== null) && (
             <button
               type="button"
               className={styles.miniButton}
@@ -126,14 +166,15 @@ export default function HandBlindPicker({
   };
 
   const cardButton = (card: string) => {
-    const current = assignment(card);
+    const zone = zoneOf(card);
+    const isLocked = zone !== null && locked[zone].includes(card);
     const targetFull =
-      current === null &&
-      (target === "hand" ? hand.length >= 6 : blind.length >= 2);
+      zone === null && locked[target].length >= LIMITS[target];
     const className = [
       styles.card,
-      current === "hand" ? styles.cardInHand : "",
-      current === "blind" ? styles.cardInBlind : "",
+      zone === "hand" ? styles.cardInHand : "",
+      zone === "blind" ? styles.cardInBlind : "",
+      isLocked ? styles.cardLocked : "",
       targetFull ? styles.cardDim : "",
     ]
       .filter(Boolean)
@@ -145,9 +186,11 @@ export default function HandBlindPicker({
         className={className}
         onClick={() => toggleCard(card)}
         title={
-          current
-            ? `In ${current} — click to remove`
-            : `Add ${card} to ${target}`
+          zone
+            ? isLocked
+              ? `Locked in ${zone} — click to unlock`
+              : `Dealt into ${zone} — click to lock it there`
+            : `Lock ${card} into the ${target}`
         }
       >
         <CardText>{card}</CardText>
@@ -174,6 +217,11 @@ export default function HandBlindPicker({
           </div>
         ))}
       </div>
+
+      <p className={styles.pickerHint}>
+        Locked cards (solid outline) are kept on every analysis; the rest are
+        re-dealt each run. Click a dealt card to lock it.
+      </p>
     </div>
   );
 }
