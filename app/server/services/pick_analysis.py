@@ -28,14 +28,16 @@ from server.api.schemas import (
 )
 from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
+from server.runtime.tables import build_player_state
 from server.services.ai_loader import load_agent
 from server.services.analysis_common import (
-    build_probability_list,
-    infer_phase_from_action_id,
+    build_action_detail,
+    find_actor,
     run_inference_step,
+    select_action_id,
     set_seed,
 )
-from sheepshead import ACTION_LOOKUP, DECK, Game
+from sheepshead import DECK, Game
 
 # Pre-play is at most 5 picks/passes + call + under + 2 buries; anything
 # past this indicates a bug rather than a legal phase sequence.
@@ -119,8 +121,6 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
         blind=list(game.blind),
     )
 
-    from server.runtime.tables import build_player_state
-
     decisions: List[AnalyzeActionDetail] = []
     while (
         not game.play_started
@@ -128,45 +128,23 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
         and not game.is_done()
         and len(decisions) < _MAX_DECISIONS
     ):
-        actor_player = next(
-            (p for p in game.players if p.get_valid_action_ids()), None
-        )
+        actor_player = find_actor(game)
         if actor_player is None:
             break
         actor_seat = actor_player.position
 
         inference = run_inference_step(agent, actor_player, actor_seat, players, device)
-
-        if req.deterministic:
-            action_id = torch.argmax(inference.action_probs, dim=1).item() + 1
-        else:
-            dist = torch.distributions.Categorical(inference.action_probs)
-            action_id = dist.sample().item() + 1
+        action_id = select_action_id(inference.action_probs, req.deterministic)
 
         decisions.append(
-            AnalyzeActionDetail(
-                stepIndex=len(decisions),
-                seat=actor_seat,
-                seatName=players[actor_seat - 1],
-                phase=infer_phase_from_action_id(action_id, agent.action_groups),
-                actionId=action_id,
-                action=ACTION_LOOKUP[action_id],
-                valueEstimate=float(inference.value.item()),
-                validActionIds=inference.valid_actions,
-                probabilities=build_probability_list(
-                    inference.action_probs, inference.logits, inference.valid_actions
-                ),
-                view=build_player_state(actor_player)["view"],
-                winProb=inference.win_prob_val,
-                expectedFinalReturn=inference.expected_final_val,
-                secretPartnerProb=inference.secret_partner_prob,
-                pointEstimates=inference.point_estimates or None,
-                pointActuals=inference.point_actuals or None,
-                trumpSeenMask=inference.trump_seen_mask or None,
-                unseenTrumpHigherThanHandProb=inference.unseen_trump_higher_than_hand_prob,
-                unseenTrumpHigherThanHandActual=inference.unseen_trump_higher_than_hand_actual,
-                memoryCosineDistance=inference.memory_cosine_distance,
-                memoryNorm=inference.memory_norm,
+            build_action_detail(
+                len(decisions),
+                actor_seat,
+                players,
+                agent,
+                inference,
+                action_id,
+                build_player_state(actor_player)["view"],
             )
         )
 

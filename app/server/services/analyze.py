@@ -15,15 +15,17 @@ from server.api.schemas import (
 from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
+from server.runtime.tables import build_player_state
 from server.services.analysis_common import (
-    build_probability_list,
+    build_action_detail,
     compute_oracle_values,
-    infer_phase_from_action_id,
+    find_actor,
     memory_drift,
     run_inference_step,
+    select_action_id,
     set_seed,
 )
-from sheepshead import ACTION_LOOKUP, Game
+from sheepshead import Game
 from sheepshead.training.reward_shaping import (
     handle_trick_completion,
     process_episode_rewards,
@@ -231,8 +233,6 @@ def _build_final_payload(game: Game) -> Optional[Dict[str, Any]]:
     """
     if not game.is_done():
         return None
-    from server.runtime.tables import build_player_state
-
     # Use any player to get the final state
     final_state = build_player_state(game.players[0])
     return final_state["view"].get("final")
@@ -276,8 +276,6 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     # Player display names
     players = ANALYZE_SEAT_NAMES
 
-    from server.runtime.tables import build_player_state
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Trace storage
@@ -298,19 +296,11 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
 
     # Simulation loop
     while not game.is_done() and step_index < req.maxSteps:
-        # Find the current actor seat
-        actor_seat = None
-        actor_player = None
-        for player in game.players:
-            valid_actions = player.get_valid_action_ids()
-            if valid_actions:
-                actor_seat = player.position
-                actor_player = player
-                break
-
+        actor_player = find_actor(game)
         if actor_player is None:
             # No valid actions found, game should be done
             break
+        actor_seat = actor_player.position
 
         inference = run_inference_step(agent, actor_player, actor_seat, players, device)
 
@@ -320,56 +310,19 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             oracle_decision_pos.append((actor_seat, len(seq)))
             seq.append(actor_player.get_oracle_state_dict())
 
-        # Choose action
-        if req.deterministic:
-            action_id = (
-                torch.argmax(inference.action_probs, dim=1).item() + 1
-            )  # Convert to 1-indexed
-        else:
-            dist = torch.distributions.Categorical(inference.action_probs)
-            action_id = dist.sample().item() + 1  # Convert to 1-indexed
+        action_id = select_action_id(inference.action_probs, req.deterministic)
 
-        # Per-valid-action probabilities, sorted descending
-        probabilities = build_probability_list(
-            inference.action_probs, inference.logits, inference.valid_actions
+        trace.append(
+            build_action_detail(
+                step_index,
+                actor_seat,
+                players,
+                agent,
+                inference,
+                action_id,
+                build_player_state(actor_player)["view"],
+            )
         )
-
-        # Get player state/view
-        player_state = build_player_state(actor_player)
-
-        # Infer phase
-        phase = infer_phase_from_action_id(action_id, agent.action_groups)
-
-        # Create action detail
-        action_detail = AnalyzeActionDetail(
-            stepIndex=step_index,
-            seat=actor_seat,
-            seatName=players[actor_seat - 1],  # Convert to 0-indexed for array access
-            phase=phase,
-            actionId=action_id,
-            action=ACTION_LOOKUP[action_id],
-            valueEstimate=float(inference.value.item()),
-            discountedReturn=None,
-            validActionIds=inference.valid_actions,
-            probabilities=probabilities,
-            view=player_state["view"],
-            winProb=float(inference.win_prob_val)
-            if inference.win_prob_val is not None
-            else None,
-            expectedFinalReturn=inference.expected_final_val,
-            secretPartnerProb=float(inference.secret_partner_prob)
-            if inference.secret_partner_prob is not None
-            else None,
-            pointEstimates=inference.point_estimates or None,
-            pointActuals=inference.point_actuals or None,
-            trumpSeenMask=inference.trump_seen_mask or None,
-            unseenTrumpHigherThanHandProb=inference.unseen_trump_higher_than_hand_prob,
-            unseenTrumpHigherThanHandActual=inference.unseen_trump_higher_than_hand_actual,
-            memoryCosineDistance=inference.memory_cosine_distance,
-            memoryNorm=inference.memory_norm,
-        )
-
-        trace.append(action_detail)
 
         # Build training-like transition for reward shaping
         transition = {

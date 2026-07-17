@@ -22,7 +22,7 @@ from server.api.schemas import (
     AnalyzeProbability,
     AnalyzeTrumpSeenMaskEntry,
 )
-from sheepshead import ACTION_LOOKUP, TRUMP
+from sheepshead import ACTION_LOOKUP, TRUMP, Game
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -38,6 +38,20 @@ def set_seed(seed: int) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
+
+
+def find_actor(game: Game) -> Optional[Any]:
+    """The player whose turn it is (the one with valid actions), or None."""
+    return next((p for p in game.players if p.get_valid_action_ids()), None)
+
+
+def select_action_id(action_probs: torch.Tensor, deterministic: bool) -> int:
+    """Pick a 1-indexed action from the policy: argmax when deterministic,
+    otherwise a sample from the distribution."""
+    if deterministic:
+        return int(torch.argmax(action_probs, dim=1).item()) + 1
+    dist = torch.distributions.Categorical(action_probs)
+    return int(dist.sample().item()) + 1
 
 
 def infer_phase_from_action_id(
@@ -165,6 +179,45 @@ class StepInference:
     unseen_trump_higher_than_hand_actual: Optional[bool]
     memory_cosine_distance: Optional[float]
     memory_norm: float
+
+
+def build_action_detail(
+    step_index: int,
+    actor_seat: int,
+    players: List[str],
+    agent: Any,
+    inference: StepInference,
+    action_id: int,
+    view: Dict[str, Any],
+) -> AnalyzeActionDetail:
+    """Assemble the per-decision trace entry shared by the full-game
+    simulation and the pick-scenario analysis. Fields that only exist after
+    a finished game (rewards, returns, oracle values) stay None; the callers
+    that have them fill them in afterwards."""
+    return AnalyzeActionDetail(
+        stepIndex=step_index,
+        seat=actor_seat,
+        seatName=players[actor_seat - 1],
+        phase=infer_phase_from_action_id(action_id, agent.action_groups),
+        actionId=action_id,
+        action=ACTION_LOOKUP[action_id],
+        valueEstimate=float(inference.value.item()),
+        validActionIds=inference.valid_actions,
+        probabilities=build_probability_list(
+            inference.action_probs, inference.logits, inference.valid_actions
+        ),
+        view=view,
+        winProb=inference.win_prob_val,
+        expectedFinalReturn=inference.expected_final_val,
+        secretPartnerProb=inference.secret_partner_prob,
+        pointEstimates=inference.point_estimates or None,
+        pointActuals=inference.point_actuals or None,
+        trumpSeenMask=inference.trump_seen_mask or None,
+        unseenTrumpHigherThanHandProb=inference.unseen_trump_higher_than_hand_prob,
+        unseenTrumpHigherThanHandActual=inference.unseen_trump_higher_than_hand_actual,
+        memoryCosineDistance=inference.memory_cosine_distance,
+        memoryNorm=inference.memory_norm,
+    )
 
 
 def run_inference_step(
