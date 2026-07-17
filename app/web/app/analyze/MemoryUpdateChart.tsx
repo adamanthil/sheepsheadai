@@ -4,9 +4,9 @@ import {
   AnalyzeMemoryObserve,
 } from "../../lib/analyzeTypes";
 import Term from "./TermHelp";
-import styles from "./MemoryDriftChart.module.css";
+import styles from "./MemoryUpdateChart.module.css";
 
-interface MemoryDriftChartProps {
+interface MemoryUpdateChartProps {
   trace: AnalyzeActionDetail[];
   /** Trick-completion memory updates (all seats), plotted as hollow
    * markers on the trick boundaries. */
@@ -55,10 +55,10 @@ interface Boundary {
   label: string;
 }
 
-export default function MemoryDriftChart({
+export default function MemoryUpdateChart({
   trace,
   observes = [],
-}: MemoryDriftChartProps) {
+}: MemoryUpdateChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
 
@@ -219,11 +219,11 @@ export default function MemoryDriftChart({
       : undefined;
 
   return (
-    <div className={styles.memoryDriftChart}>
+    <div className={styles.memoryUpdateChart}>
       <div className={styles.header}>
         <div className={styles.title}>
           <Term
-            label="Memory Drift"
+            label="Memory Update Magnitude"
             wiki="https://en.wikipedia.org/wiki/Gated_recurrent_unit"
           >
             Each seat carries a memory vector (256 dimensions) that a

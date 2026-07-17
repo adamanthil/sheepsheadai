@@ -7,7 +7,7 @@ import {
 } from "../../lib/analyzeTypes";
 import ActionTimeline from "./ActionTimeline";
 import CalibrationSummary from "./CalibrationSummary";
-import MemoryDriftChart from "./MemoryDriftChart";
+import MemoryUpdateChart from "./MemoryUpdateChart";
 import { apiFetch } from "../../lib/api";
 import { apiErrorMessage, fetchFailureMessage } from "../../lib/apiError";
 import styles from "./page.module.css";
@@ -329,7 +329,7 @@ export default function AnalyzePage() {
             <CalibrationSummary calibration={response.calibration} />
           )}
 
-          <MemoryDriftChart
+          <MemoryUpdateChart
             trace={response.trace}
             observes={response.memoryObserves}
           />

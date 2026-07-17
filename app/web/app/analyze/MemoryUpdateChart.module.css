@@ -1,7 +1,7 @@
-/* MemoryDriftChart: memory-cosine-distance vs step, one line per seat.
+/* MemoryUpdateChart: memory-cosine-distance vs step, one line per seat.
    Palette tokens (--an-*) are inherited from page.module.css .container. */
 
-.memoryDriftChart {
+.memoryUpdateChart {
   background: var(--an-panel);
   border-radius: 12px;
   border: 1px solid var(--an-rule);

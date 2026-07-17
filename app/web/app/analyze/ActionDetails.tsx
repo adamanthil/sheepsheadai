@@ -81,7 +81,7 @@ export default function ActionDetails({ action }: ActionDetailsProps) {
             )}
             {typeof action.memoryCosineDistance === "number" && (
               <div
-                title="How much this seat's memory vector changed at this decision (cosine distance: 0 = no change; see the Memory Drift chart)"
+                title="How much this seat's memory vector changed at this decision (cosine distance: 0 = no change; see the Memory Update Magnitude chart)"
               >
                 Memory Δ: {action.memoryCosineDistance.toFixed(3)}
               </div>
