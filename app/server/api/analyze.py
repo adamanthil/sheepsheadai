@@ -22,6 +22,22 @@ router = APIRouter()
 _sim_slots = threading.BoundedSemaphore(2)
 
 
+def _run_simulation(name, fn):
+    """Shared guard for the inference-bearing endpoints: a concurrency slot,
+    ValueError -> 400, anything else -> logged 500."""
+    if not _sim_slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="analyze_busy")
+    try:
+        return fn()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.exception("%s failed: %s", name, e)
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        _sim_slots.release()
+
+
 @router.get("/api/analyze/model")
 @limiter.limit(ANALYZE)
 def analyze_model(request: Request) -> AnalyzeModelResponse:
@@ -42,19 +58,9 @@ def analyze_simulate(
     request: Request, req: AnalyzeSimulateRequest
 ) -> AnalyzeSimulateResponse:
     """Simulate a full Sheepshead game and return detailed analysis trace."""
-    if not _sim_slots.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="analyze_busy")
-    try:
-        from server.services.analyze import simulate_game
+    from server.services.analyze import simulate_game
 
-        return simulate_game(req)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logging.exception("analyze_simulate failed: %s", e)
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        _sim_slots.release()
+    return _run_simulation("analyze_simulate", lambda: simulate_game(req))
 
 
 @router.post("/api/analyze/pick")
@@ -62,16 +68,6 @@ def analyze_simulate(
 def analyze_pick(request: Request, req: AnalyzePickRequest) -> AnalyzePickResponse:
     """Analyze the pre-play decisions (pick/pass, call, bury) for a chosen
     seat, hand, and blind."""
-    if not _sim_slots.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="analyze_busy")
-    try:
-        from server.services.pick_analysis import analyze_pick as run_pick
+    from server.services.pick_analysis import analyze_pick as run_pick
 
-        return run_pick(req)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logging.exception("analyze_pick failed: %s", e)
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        _sim_slots.release()
+    return _run_simulation("analyze_pick", lambda: run_pick(req))
