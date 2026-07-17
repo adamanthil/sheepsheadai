@@ -24,7 +24,7 @@ export const FAIL_BY_SUIT: Record<string, string[]> = {
   Hearts: ["AH", "10H", "KH", "9H", "8H", "7H"],
 };
 
-export const DECK: string[] = [
+const DECK: string[] = [
   ...TRUMP,
   ...FAIL_BY_SUIT.Clubs,
   ...FAIL_BY_SUIT.Spades,

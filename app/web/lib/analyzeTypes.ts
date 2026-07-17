@@ -38,6 +38,17 @@ export type AnalyzeView = {
   [key: string]: unknown;
 };
 
+/** Shape of the untyped `final` payload (server: runtime/views.py). */
+export type AnalyzeFinal = {
+  mode?: string;
+  winner?: number;
+  picker?: number;
+  partner?: number;
+  picker_score?: number;
+  defender_score?: number;
+  scores?: number[];
+};
+
 export type AnalyzeActionDetail = Omit<
   components["schemas"]["AnalyzeActionDetail"],
   "view"
@@ -47,3 +58,10 @@ export type AnalyzeSimulateResponse = Omit<
   components["schemas"]["AnalyzeSimulateResponse"],
   "trace"
 > & { trace: AnalyzeActionDetail[] };
+
+export type AnalyzePickRequest = components["schemas"]["AnalyzePickRequest"];
+
+export type AnalyzePickResponse = Omit<
+  components["schemas"]["AnalyzePickResponse"],
+  "decisions"
+> & { decisions: AnalyzeActionDetail[] };

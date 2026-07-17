@@ -1,19 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import type { components } from "../../../lib/api.gen";
-import type { AnalyzeActionDetail } from "../../../lib/analyzeTypes";
+import type {
+  AnalyzePickRequest,
+  AnalyzePickResponse,
+} from "../../../lib/analyzeTypes";
 import { apiFetch } from "../../../lib/api";
 import { apiErrorMessage, fetchFailureMessage } from "../../../lib/apiError";
 import DecisionFlow from "./DecisionFlow";
 import HandBlindPicker, { PickerState } from "./HandBlindPicker";
 import styles from "./page.module.css";
-
-type AnalyzePickRequest = components["schemas"]["AnalyzePickRequest"];
-type AnalyzePickResponse = Omit<
-  components["schemas"]["AnalyzePickResponse"],
-  "decisions"
-> & { decisions: AnalyzeActionDetail[] };
 
 export default function PickAnalysisPage() {
   const [partnerMode, setPartnerMode] = useState<number>(1);

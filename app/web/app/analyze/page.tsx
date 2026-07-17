@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import {
+  AnalyzeFinal,
   AnalyzeSimulateRequest,
   AnalyzeSimulateResponse,
 } from "../../lib/analyzeTypes";
@@ -11,17 +12,6 @@ import MemoryUpdateChart from "./MemoryUpdateChart";
 import { apiFetch } from "../../lib/api";
 import { apiErrorMessage, fetchFailureMessage } from "../../lib/apiError";
 import styles from "./page.module.css";
-
-/** Shape of the untyped `final` payload (server: runtime/views.py). */
-type AnalyzeFinal = {
-  mode?: string;
-  winner?: number;
-  picker?: number;
-  partner?: number;
-  picker_score?: number;
-  defender_score?: number;
-  scores?: number[];
-};
 
 export default function AnalyzePage() {
   // Form state
