@@ -4,6 +4,7 @@ import {
   AnalyzeMemoryObserve,
 } from "../../lib/analyzeTypes";
 import Term from "./TermHelp";
+import { traceBoundaries } from "./traceBoundaries";
 import styles from "./MemoryUpdateChart.module.css";
 
 interface MemoryUpdateChartProps {
@@ -30,9 +31,6 @@ const VB_HEIGHT = 260;
 const MARGIN = { top: 20, right: 18, bottom: 62, left: 48 };
 const PLOT_WIDTH = VB_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VB_HEIGHT - MARGIN.top - MARGIN.bottom;
-
-// Sheepshead always has exactly 5 players.
-const PLAYERS_PER_TRICK = 5;
 
 /** Compact per-step label: the card for plays, prefixed forms otherwise. */
 function shortAction(action: string): string {
@@ -132,28 +130,11 @@ export default function MemoryUpdateChart({
 
     bySeat.forEach((s) => s.points.sort((a, b) => a.x - b.x));
 
-    // Phase / trick boundaries, mirroring the timeline's dividers.
-    const bounds: Boundary[] = [];
-    let playActionsBefore = 0;
-    for (let i = 0; i < trace.length; i++) {
-      const current = trace[i];
-      const prev = i > 0 ? trace[i - 1] : null;
-      if (prev && current.phase !== prev.phase) {
-        bounds.push({ beforeStep: current.stepIndex, label: current.phase });
-      } else if (
-        prev &&
-        current.phase === "play" &&
-        prev.phase === "play" &&
-        playActionsBefore > 0 &&
-        playActionsBefore % PLAYERS_PER_TRICK === 0
-      ) {
-        bounds.push({
-          beforeStep: current.stepIndex,
-          label: `T${Math.floor(playActionsBefore / PLAYERS_PER_TRICK) + 1}`,
-        });
-      }
-      if (current.phase === "play") playActionsBefore += 1;
-    }
+    // Phase / trick boundaries, shared with the timeline's dividers.
+    const bounds: Boundary[] = traceBoundaries(trace).map((b) => ({
+      beforeStep: trace[b.beforeIndex].stepIndex,
+      label: b.kind === "phase" ? b.toPhase : `T${b.trickNumber}`,
+    }));
 
     const xs = new Set<number>();
     info.forEach((_a, step) => xs.add(step));
