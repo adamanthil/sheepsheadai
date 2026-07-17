@@ -15,7 +15,7 @@ behaviorally identical for the target seat.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import torch
 
@@ -31,7 +31,6 @@ from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.services.ai_loader import load_agent
 from server.services.analysis_common import (
     build_probability_list,
-    compute_oracle_values,
     infer_phase_from_action_id,
     run_inference_step,
     set_seed,
@@ -120,10 +119,6 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
         blind=list(game.blind),
     )
 
-    has_oracle = getattr(agent, "oracle_critic", None) is not None
-    oracle_events: Dict[int, List[Dict[str, Any]]] = {}
-    oracle_decision_pos: List[tuple[int, int]] = []
-
     from server.runtime.tables import build_player_state
 
     decisions: List[AnalyzeActionDetail] = []
@@ -141,11 +136,6 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
         actor_seat = actor_player.position
 
         inference = run_inference_step(agent, actor_player, actor_seat, players, device)
-
-        if has_oracle:
-            seq = oracle_events.setdefault(actor_seat, [])
-            oracle_decision_pos.append((actor_seat, len(seq)))
-            seq.append(actor_player.get_oracle_state_dict())
 
         if req.deterministic:
             action_id = torch.argmax(inference.action_probs, dim=1).item() + 1
@@ -182,11 +172,6 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
 
         actor_player.act(action_id)
 
-    if has_oracle:
-        compute_oracle_values(
-            agent, oracle_events, oracle_decision_pos, decisions, device
-        )
-
     picker_seat = game.picker or None
     bury = list(game.bury) if picker_seat else []
     outcome = AnalyzePickOutcome(
@@ -207,8 +192,6 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
             "seed": req.seed,
             "deterministic": req.deterministic,
             "model": settings.sheepshead_model_label,
-            "criticMode": getattr(agent, "critic_mode", "limited"),
-            "hasOracle": has_oracle,
         },
         scenario=scenario,
         decisions=decisions,
