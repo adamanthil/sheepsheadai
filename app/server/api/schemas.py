@@ -150,6 +150,61 @@ class HealthResponse(BaseModel):
 
 
 # Analyze AI Model schemas
+class AnalyzeCardEmbeddingEntry(BaseModel):
+    id: int  # card id (1..32 real cards in DECK order, 33 = UNDER)
+    card: str  # card code, or "UNDER"
+    vector: List[float]
+
+
+class AnalyzeCardEmbeddings(BaseModel):
+    """The model's learned card-embedding table and precomputed geometry.
+    Row order is DECK order (all trump first, then fail), UNDER last."""
+
+    dims: int
+    cards: List[AnalyzeCardEmbeddingEntry]
+    cosineSim: List[List[float]]  # (n, n), order matches `cards`
+    pcaCoords: List[List[float]]  # (n, 2) projection onto top-2 PCs
+    pcaExplainedVariance: List[float]  # variance ratio of the 2 PCs
+
+
+class AnalyzeModelResponse(BaseModel):
+    modelLabel: str
+    arch: str
+    criticMode: str
+    hasAuxHeads: bool
+    hasOracle: bool
+    gamma: float
+    # None for architectures without a card-embedding table (onehot-ff).
+    cardEmbeddings: Optional[AnalyzeCardEmbeddings] = None
+
+
+class AnalyzeSimulateMeta(BaseModel):
+    """Echo of the simulate request plus the model attributes the UI needs
+    to interpret the trace."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    partnerMode: int
+    deterministic: bool
+    seed: Optional[int] = None
+    model_label: str = Field(alias="model")
+    gamma: float
+    criticMode: str
+    hasOracle: bool
+
+
+class AnalyzePickMeta(BaseModel):
+    """Echo of the pick request plus the serving model's label."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    partnerMode: int
+    seat: int
+    seed: Optional[int] = None
+    deterministic: bool
+    model_label: str = Field(alias="model")
+
+
 class AnalyzeSimulateRequest(BaseModel):
     # extra="forbid" so removed fields (e.g. the old client-supplied
     # modelPath, which let callers point torch.load at arbitrary files)
@@ -175,11 +230,6 @@ class AnalyzePointEstimate(BaseModel):
     relativePosition: int
 
 
-class AnalyzeTrumpProbability(BaseModel):
-    card: str
-    probability: float
-
-
 class AnalyzeTrumpSeenMaskEntry(BaseModel):
     card: str
     probabilitySeen: float
@@ -194,6 +244,10 @@ class AnalyzeActionDetail(BaseModel):
     actionId: int
     action: str
     valueEstimate: float
+    # Privileged (full-information) critic value, only when the loaded
+    # checkpoint was trained with critic_mode="oracle". Diagnostic: the gap
+    # to valueEstimate shows how much hidden information changes the value.
+    oracleValue: Optional[float] = None
     discountedReturn: Optional[float] = None
     stepReward: Optional[float] = None
     stepRewardBase: Optional[float] = None
@@ -209,41 +263,108 @@ class AnalyzeActionDetail(BaseModel):
     trumpSeenMask: Optional[List[AnalyzeTrumpSeenMaskEntry]] = None
     unseenTrumpHigherThanHandProb: Optional[float] = None  # [0,1]
     unseenTrumpHigherThanHandActual: Optional[bool] = None
+    # Recurrent-memory update magnitude at this decision: cosine distance
+    # between the actor's GRU memory before and after their own encode.
+    # Measured only at the actor's decisions (trick-completion observes
+    # update memory too but are not sampled here). None on the seat's first
+    # encode (memory is zeros).
+    memoryCosineDistance: Optional[float] = None
+    memoryNorm: Optional[float] = None
     validActionIds: List[int]
     probabilities: List[AnalyzeProbability]
     view: Dict[str, Any]
-    state: Optional[List[float]] = None
 
 
-class AnalyzeGameSummary(BaseModel):
-    hands: Dict[str, List[str]]  # player name -> cards
+class AnalyzeSeatCalibration(BaseModel):
+    seat: int
+    seatName: str
+    won: bool  # final score > 0
+    decisionCount: int
+    firstWinProb: float
+    lastWinProb: float
+    meanWinProb: float
+    brierScore: float  # mean (winProb - won)^2 over this seat's decisions
+    # Mean |predicted - actual| of predictions ABOUT this seat, against the
+    # points known at each decision (the head's training target), not the
+    # final totals.
+    pointsMae: float
+
+
+class AnalyzeCalibrationSummary(BaseModel):
+    """Game-level rollup of aux-head prediction quality, computed from the
+    trace once the game is done. Absent for no-aux architectures."""
+
+    seats: List[AnalyzeSeatCalibration]
+    overallBrier: float
+    overallPointsMae: float
+    # Fraction of (decision x trump card) predictions where
+    # (probabilitySeen > 0.5) matches the seen/unseen ground truth.
+    trumpMaskAccuracy: Optional[float] = None
+    trumpMaskCount: int = 0
+
+
+class AnalyzePickRequest(BaseModel):
+    # extra="forbid" for the same reason as AnalyzeSimulateRequest.
+    model_config = ConfigDict(extra="forbid")
+    seed: Optional[int] = None
+    partnerMode: int = 1  # 0 = JD, 1 = Called Ace
+    seat: int = 1  # 1..5; seats before it are forced to pass
+    # Cards guaranteed to be in the target seat's hand / the blind (up to
+    # 6 / 2); the remainder is dealt randomly. None or [] = fully random.
+    hand: Optional[List[str]] = None
+    blind: Optional[List[str]] = None
+    deterministic: bool = True
+
+
+class AnalyzePickScenario(BaseModel):
+    seat: int
+    seatName: str
+    hand: List[str]  # the 6 cards the target seat holds at the pick decision
     blind: List[str]
-    picker: Optional[str] = None
-    partner: Optional[str] = None
+
+
+class AnalyzePickOutcome(BaseModel):
+    """Where the pre-play phases ended up once play was about to start."""
+
+    pickerSeat: Optional[int] = None  # None = everyone passed (leaster)
+    pickerName: Optional[str] = None
+    isLeaster: bool
+    aloneCalled: bool
+    calledCard: Optional[str] = None
+    calledUnder: bool
+    underCard: Optional[str] = None
     bury: List[str]
-    pickerPoints: int
-    defenderPoints: int
-    scores: List[int]  # indexed by seat-1
+
+
+class AnalyzePickResponse(BaseModel):
+    meta: AnalyzePickMeta
+    scenario: AnalyzePickScenario
+    # One entry per pre-play decision (pick/pass, call, under, bury), same
+    # shape as the simulate trace; reward/return fields stay None since no
+    # full game is played.
+    decisions: List[AnalyzeActionDetail]
+    outcome: AnalyzePickOutcome
+
+
+class AnalyzeMemoryObserve(BaseModel):
+    """Memory update from a trick-completion observation.
+
+    After every completed trick, all five seats fold the finished trick
+    into their recurrent memory via agent.observe — the same GRU update as
+    a decision encode, but without an action. These carry the trick's
+    outcome, so they are often the largest belief revisions."""
+
+    afterStepIndex: int  # the observe happened right after this trace step
+    trick: int  # 0-indexed completed trick
+    seat: int
+    seatName: str
+    memoryCosineDistance: Optional[float] = None  # None if memory was zeros
+    memoryNorm: float
 
 
 class AnalyzeSimulateResponse(BaseModel):
-    meta: Dict[str, Any]
-    actionLookup: Dict[int, str]
-    players: List[str]
-    summary: Optional[AnalyzeGameSummary] = None
+    meta: AnalyzeSimulateMeta
+    calibration: Optional[AnalyzeCalibrationSummary] = None
     trace: List[AnalyzeActionDetail]
+    memoryObserves: List[AnalyzeMemoryObserve] = []
     final: Optional[Dict[str, Any]] = None
-
-
-class ChatMessage(BaseModel):
-    id: str
-    table_id: str
-    type: str  # "player" | "system"
-    author: Optional[str] = None  # player display name for player messages
-    body: str
-    timestamp: float
-
-
-class ChatSendRequest(BaseModel):
-    client_id: str
-    message: str

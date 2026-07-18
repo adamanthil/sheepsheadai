@@ -1,0 +1,357 @@
+/* CardEmbeddingsModal: self-fetching tabbed modal — raw embedding heatmap,
+   PCA scatter, and cosine-similarity matrix of the model's learned
+   card-embedding table.
+   Palette tokens (--an-*) are inherited from the analyze layout shell. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(20, 28, 40, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1rem;
+  overflow-y: auto;
+}
+
+.dialog {
+  background: var(--an-panel);
+  border-radius: 14px;
+  border: 1px solid var(--an-rule);
+  box-shadow: var(--an-shadow);
+  width: min(860px, 100%);
+  max-height: calc(100vh - 6rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.75rem;
+  border-bottom: 1px solid var(--an-rule);
+  flex: 0 0 auto;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 400;
+  color: var(--an-ink);
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--an-muted);
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+}
+
+.closeButton:hover {
+  color: var(--an-ink);
+  background: var(--an-sunk);
+}
+
+.body {
+  padding: 0 1.75rem 1.75rem 1.75rem;
+  background: var(--an-sunk);
+  overflow-y: auto;
+}
+
+.status {
+  padding: 1.5rem 0;
+  color: var(--an-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.errorBox {
+  margin-top: 1.25rem;
+  background: #fdecec;
+  border: 1px solid #f6c9c9;
+  color: var(--an-neg);
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+
+.retryButton {
+  background: var(--an-neg);
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.intro {
+  margin: 1.1rem 0 1rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--an-ink-soft);
+}
+
+/* --- Tabs ------------------------------------------------------------ */
+
+.tabBar {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--an-rule);
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--an-muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--an-ink-soft);
+}
+
+.tabActive {
+  color: var(--an-accent);
+  border-bottom-color: var(--an-accent);
+}
+
+.tabPane {
+  padding-top: 1rem;
+}
+
+.paneExplain {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--an-ink-soft);
+  margin-bottom: 1rem;
+}
+
+/* --- Diverging color scale ------------------------------------------- */
+
+.scaleWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--an-muted);
+}
+
+.scaleBar {
+  height: 10px;
+  width: 160px;
+  border-radius: 5px;
+  border: 1px solid var(--an-rule);
+}
+
+/* --- Raw embedding heatmap (cards × dims) ----------------------------- */
+
+.vecGrid {
+  display: grid;
+  width: 100%;
+}
+
+.vecCorner {
+  background: var(--an-sunk);
+}
+
+.vecColLabel {
+  writing-mode: vertical-rl;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 82px;
+  padding-bottom: 4px;
+  font-size: 0.68rem;
+  color: var(--an-muted);
+  background: var(--an-panel);
+  white-space: nowrap;
+}
+
+.vecRowLabel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 5px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--an-muted);
+  background: var(--an-panel);
+  white-space: nowrap;
+}
+
+.vecCell {
+  height: 15px;
+  box-sizing: border-box;
+}
+
+/* --- PCA scatter ------------------------------------------------------ */
+
+.scatterWrap {
+  width: 100%;
+}
+
+.scatterSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule);
+  border-radius: 10px;
+}
+
+.pointLabel {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  fill: var(--an-ink-soft);
+}
+
+.pointLabelUnder {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-style: italic;
+  fill: var(--an-muted);
+}
+
+.pointUnder {
+  fill: var(--an-muted);
+  opacity: 0.6;
+}
+
+.scatterLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--an-muted);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legendDotFilled {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--an-ink-soft);
+  flex-shrink: 0;
+}
+
+.legendDotHollow {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--an-ink-soft);
+  background: var(--an-panel);
+  flex-shrink: 0;
+}
+
+.legendSwatchRed {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--card-red);
+  flex-shrink: 0;
+}
+
+.legendSwatchBlack {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--card-black);
+  flex-shrink: 0;
+}
+
+.legendSwatchUnder {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--an-muted);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* --- Cosine similarity heatmap (cards × cards) ------------------------ */
+
+.heatmapGrid {
+  display: grid;
+  width: 100%;
+}
+
+.heatCorner {
+  background: var(--an-sunk);
+}
+
+.heatColLabel,
+.heatRowLabel {
+  font-size: 8px;
+  font-family: var(--font-mono);
+  color: var(--an-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--an-panel);
+}
+
+.heatColLabel {
+  writing-mode: vertical-rl;
+  align-items: center;
+  justify-content: flex-end;
+  height: 34px;
+  padding-bottom: 2px;
+}
+
+.heatRowLabel {
+  justify-content: flex-end;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+
+.heatCell {
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+}
+
+.boundaryRight {
+  border-right: 2px solid var(--an-ink-soft);
+}
+
+.boundaryBottom {
+  border-bottom: 2px solid var(--an-ink-soft);
+}
+
+@media (max-width: 768px) {
+  .body {
+    padding: 0 1rem 1.25rem 1rem;
+  }
+
+  .vecColLabel {
+    font-size: 0.6rem;
+    height: 70px;
+  }
+}

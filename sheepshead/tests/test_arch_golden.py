@@ -85,8 +85,14 @@ class TestNumericalGoldens:
 
     @pytest.mark.parametrize("arch", architectures.available_architectures())
     def test_all_archs_bit_identical(self, arch):
+        # Goldens were captured single-threaded; restore afterwards so later
+        # tests in the same process keep their own numeric environment.
+        previous_threads = torch.get_num_threads()
         torch.set_num_threads(1)
-        problems = check_arch(arch)
+        try:
+            problems = check_arch(arch)
+        finally:
+            torch.set_num_threads(previous_threads)
         assert problems == [], f"{arch}: {problems}"
 
 

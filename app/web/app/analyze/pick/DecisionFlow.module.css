@@ -1,0 +1,165 @@
+/* DecisionFlow: proportional action bars chained by elbow arrows.
+   Palette tokens (--an-*) come from the analyze layout shell. */
+
+.flowPanel {
+  display: flex;
+  flex-direction: column;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--an-shadow-sm);
+}
+
+.flowTitle {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--an-ink);
+  margin: 0 0 1rem;
+}
+
+/* --- Decision row -------------------------------------------------------- */
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.rowHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.rowLabel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+}
+
+.rowMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.metricChip {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--an-ink-soft);
+  padding: 0.2rem 0.5rem;
+  background: var(--an-sunk);
+  border: 1px solid var(--an-rule);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* --- Proportional segments ------------------------------------------------ */
+
+.segments {
+  display: flex;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--an-rule-strong);
+}
+
+.segment {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: 3.6rem;
+  padding: 0.4rem 0.3rem;
+  box-sizing: border-box;
+  background: var(--an-sunk);
+  color: var(--an-ink-soft);
+  overflow: hidden;
+}
+
+.segment + .segment {
+  border-left: 2px solid var(--an-panel);
+}
+
+.segmentChosen {
+  background: linear-gradient(
+    135deg,
+    var(--an-accent) 0%,
+    var(--an-accent-strong) 100%
+  );
+  color: #ffffff;
+}
+
+.segmentAction {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.segmentProb {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* --- Connector arrows ------------------------------------------------------ */
+
+.connector {
+  position: relative;
+  height: 44px;
+  width: 100%;
+}
+
+.connectorSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.connectorPath {
+  fill: none;
+  stroke: var(--an-accent);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.connectorHead {
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 8px solid var(--an-accent);
+}
+
+.passNote {
+  margin: 0.85rem 0 0;
+  font-size: 0.85rem;
+  color: var(--an-muted);
+}
+
+@media (max-width: 640px) {
+  .rowMetrics {
+    margin-left: 0;
+  }
+
+  .segmentAction {
+    font-size: 0.72rem;
+  }
+}

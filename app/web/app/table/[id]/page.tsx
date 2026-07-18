@@ -4,21 +4,35 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { STORAGE_KEYS } from "../../../lib/storage";
-import { useIsMobile, useMediaQuery, parseCard } from "../../../lib/ds";
+import { useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
-import { nameForSeat, isAiSeat } from "./utils/seatMath";
-import { relSeat } from "./lib/seatLayout";
+import { nameForSeat } from "./utils/seatMath";
 import {
   derivePhase,
-  getSeatRole,
   playStarted as playStartedFn,
   interludeMode,
 } from "./lib/phase";
+import {
+  rulesBadgeText,
+  buildCallOptions,
+  computeIsYourTurn,
+  computeIsHost,
+  computeValidActionStrings,
+  computeActionIdByString,
+  computeKind,
+  buildSeats,
+  computeDisplayCards,
+  computeWinnerSeat,
+  computeHandNumber,
+  computeHasLastTrick,
+  computePrevText,
+  computeLastMessage,
+} from "./lib/tableSelectors";
 import { useTableSocket, useTrickAnimation, useCallout } from "./hooks";
 import GameOverBanner from "./components/GameOverBanner";
 import ScoresOverlay from "./components/ScoresOverlay";
 import TableHeader from "./components/TableHeader";
-import Stage, { type SeatView, type CallOption } from "./components/Stage";
+import Stage from "./components/Stage";
 import PlayerHand from "./components/PlayerHand";
 import ActionBar from "./components/ActionBar";
 import RightRail from "./components/RightRail";
@@ -43,53 +57,6 @@ const HELPER = {
   setup: "Setting up the hand…",
   done: "Hand complete.",
 } as const;
-
-function rulesBadgeText(
-  rules: Record<string, unknown> | undefined,
-): string | null {
-  if (!rules) return null;
-  const partner = rules.partnerMode === 0 ? "Jack of Diamonds" : "Called Ace";
-  const scoring = rules.doubleOnTheBump ? "Double on Bump" : "Symmetric";
-  return `${partner} · ${scoring}`;
-}
-
-const SUIT_NAME: Record<string, string> = {
-  C: "Clubs",
-  S: "Spades",
-  H: "Hearts",
-  D: "Diamonds",
-};
-
-function buildCallOptions(
-  validActions: number[],
-  actionLookup: Record<string, string>,
-): CallOption[] {
-  const out: CallOption[] = [];
-  for (const aid of validActions) {
-    const label = actionLookup[String(aid)];
-    if (!label) continue;
-    if (label.startsWith("CALL ")) {
-      const rest = label.slice(5); // e.g. "AC" or "AC UNDER"
-      const [code, ...mods] = rest.split(" ");
-      const { rank, suit } = parseCard(code);
-      const under = mods.includes("UNDER");
-      const display = suit
-        ? `${rank === "A" ? "Ace" : rank} of ${SUIT_NAME[suit] ?? suit}${under ? " (under)" : ""}`
-        : label;
-      out.push({ actionId: aid, label, code, display });
-    } else if (label === "ALONE") {
-      out.push({ actionId: aid, label, code: null, display: "Go alone" });
-    } else if (label.startsWith("JD")) {
-      out.push({
-        actionId: aid,
-        label,
-        code: null,
-        display: "Jack of Diamonds",
-      });
-    }
-  }
-  return out;
-}
 
 export default function TablePage() {
   const params = useParams<{ id: string }>();
@@ -151,27 +118,18 @@ export default function TablePage() {
   const [confirmClose, setConfirmClose] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
 
-  const isYourTurn = lastState?.actorSeat === lastState?.yourSeat;
-  const isHost = lastState?.isHost ?? false;
+  const isYourTurn = !!lastState && computeIsYourTurn(lastState);
+  const isHost = lastState ? computeIsHost(lastState) : false;
 
-  const validActionStrings = useMemo(() => {
-    const s = new Set<string>();
-    if (!lastState) return s;
-    for (const id of lastState.valid_actions) {
-      const label = actionLookup[String(id)];
-      if (label) s.add(label);
-    }
-    return s;
-  }, [lastState, actionLookup]);
+  const validActionStrings = useMemo(
+    () => computeValidActionStrings(lastState, actionLookup),
+    [lastState, actionLookup],
+  );
 
-  const actionIdByString = useMemo(() => {
-    const m: Record<string, number> = {};
-    Object.entries(actionLookup).forEach(([id, label]) => {
-      const n = Number(id);
-      if (Number.isFinite(n)) m[label] = n;
-    });
-    return m;
-  }, [actionLookup]);
+  const actionIdByString = useMemo(
+    () => computeActionIdByString(actionLookup),
+    [actionLookup],
+  );
 
   const handleCardClick = useCallback(
     (card: string) => {
@@ -205,43 +163,19 @@ export default function TablePage() {
   const yourMode = interludeMode(validActionStrings);
 
   // The "kind" used for labels/helper text.
-  const kind: keyof typeof PHASE_LABEL =
-    phase === "pick"
-      ? "pick"
-      : phase === "play"
-        ? "play"
-        : phase === "done"
-          ? "done"
-          : yourMode === "bury"
-            ? "bury"
-            : yourMode === "call"
-              ? "call"
-              : "setup";
+  const kind = computeKind(phase, yourMode);
 
-  const seats: SeatView[] = [1, 2, 3, 4, 5].map((absSeat) => ({
-    absSeat,
-    rel: relSeat(absSeat, yourSeat),
-    name: nameForSeat(absSeat, table),
-    isAI: isAiSeat(absSeat, table),
-    role: getSeatRole(lastState, absSeat, started),
-    you: absSeat === yourSeat,
-  }));
+  const seats = buildSeats(lastState, table, yourSeat, started);
 
-  const displayCards =
-    showPrev && view.last_trick ? view.last_trick : view.current_trick;
-  const winnerSeat = showPrev ? view.last_trick_winner : null;
+  const displayCards = computeDisplayCards(showPrev, view);
+  const winnerSeat = computeWinnerSeat(showPrev, view);
   const callOptions = buildCallOptions(lastState.valid_actions, actionLookup);
-  const handNumber = (table.resultsHistory?.length ?? 0) + 1;
+  const handNumber = computeHandNumber(table);
   const rulesBadge = rulesBadgeText(table.rules);
-  const hasLastTrick = view.last_trick?.length === 5;
-  const prevText =
-    showPrev && hasLastTrick
-      ? `Trick to ${nameForSeat(view.last_trick_winner, table)} · ${view.last_trick_points ?? 0} pts`
-      : null;
+  const hasLastTrick = computeHasLastTrick(view);
+  const prevText = computePrevText(showPrev, hasLastTrick, view, table);
 
-  const lastMessage = chatMessages.length
-    ? chatMessages[chatMessages.length - 1].body
-    : "Hand in progress";
+  const lastMessage = computeLastMessage(chatMessages);
 
   const stage = (
     <Stage
@@ -352,6 +286,19 @@ export default function TablePage() {
     </>
   );
 
+  const header = (
+    <TableHeader
+      roomName={table.name}
+      rulesBadge={rulesBadge}
+      handNumber={handNumber}
+      phaseLabel={PHASE_LABEL[kind]}
+      connected={connected}
+      isMobile={isMobile}
+      onLeave={() => router.push("/")}
+      onShowScores={() => setShowScores(true)}
+    />
+  );
+
   // ---------- Mobile ----------
   if (isMobile) {
     if (showMobileLog) {
@@ -370,16 +317,7 @@ export default function TablePage() {
     }
     return (
       <div className={styles.root}>
-        <TableHeader
-          roomName={table.name}
-          rulesBadge={rulesBadge}
-          handNumber={handNumber}
-          phaseLabel={PHASE_LABEL[kind]}
-          connected={connected}
-          isMobile
-          onLeave={() => router.push("/")}
-          onShowScores={() => setShowScores(true)}
-        />
+        {header}
         <div className={styles.mobBody}>
           {stage}
           <div className={styles.ribbon} onClick={() => setShowMobileLog(true)}>
@@ -398,16 +336,7 @@ export default function TablePage() {
   // ---------- Desktop ----------
   return (
     <div className={styles.root}>
-      <TableHeader
-        roomName={table.name}
-        rulesBadge={rulesBadge}
-        handNumber={handNumber}
-        phaseLabel={PHASE_LABEL[kind]}
-        connected={connected}
-        isMobile={false}
-        onLeave={() => router.push("/")}
-        onShowScores={() => setShowScores(true)}
-      />
+      {header}
       <div className={styles.deskMain}>
         <div className={styles.deskPlay}>
           <span

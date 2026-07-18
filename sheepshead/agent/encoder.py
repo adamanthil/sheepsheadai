@@ -1,70 +1,24 @@
 import torch
 import torch.nn as nn
-from typing import List, Dict, Any, Protocol
+from typing import List, Dict, Any
 import itertools
 from dataclasses import dataclass
-from sheepshead import DECK_IDS, TRUMP
+from sheepshead import DECK_IDS, TRUMP, UNDER_CARD_ID
+from sheepshead.agent.token_layout import (
+    BASE_TYPE_COUNT,
+    BLIND_TOKENS,
+    BLIND_TYPE_ID,
+    BURY_TOKENS,
+    BURY_TYPE_ID,
+    CONTEXT_TOKEN,
+    HAND_TOKENS,
+    HAND_TYPE_ID,
+    TRICK_TOKENS,
+    TRICK_TYPE_ID,
+)
 
 
 PAD_CARD_ID = 0
-UNDER_CARD_ID = 33
-
-
-class EncoderInterface(Protocol):
-    """Structural contract every PPOAgent encoder implements.
-
-    Implementers: CardReasoningEncoder (and its architectures.encoders subclasses
-    PooledMemoryEncoder / TokenReadEncoder / PerceiverEncoder /
-    PerceiverCtxMemEncoder / SharedReadoutEncoder) and the token-free
-    OneHotFeedForwardEncoder baseline, which satisfies this Protocol by
-    hand. Documentation-only typing: nothing inherits from it, so existing
-    classes (and their state_dicts) are untouched.
-
-    Required attributes
-    -------------------
-    d_model : int
-        Width of 'features' and 'memory_out' (PPOAgent.state_size).
-    d_card_dim, d_token_dim : int
-        Card-embedding and post-reasoning token widths (0 when the encoder
-        emits no card tokens, e.g. the onehot baseline).
-    card : nn.Embedding | None
-        Card-id embedding table shared with pointer actors, or None for
-        token-free encoders (actors must then ignore it).
-
-    Output-dict contract
-    --------------------
-    encode_batch returns at least {'features': (B, d_model),
-    'memory_out': (B, d_model)}; token encoders add 'hand_tokens'
-    (B, 8, d_token) and 'context_token', and readout architectures add
-    'all_tokens' (B, 19, d_token) + 'all_mask' (B, 19) bool.
-    encode_sequences returns the same keys with a (B, T, ...) leading shape
-    for per-step tensors and final-step 'memory_out' (B, d_model).
-    """
-
-    d_model: int
-    d_card_dim: int
-    d_token_dim: int
-    card: "nn.Embedding | None"
-
-    def param_groups(
-        self, base_lr: float, card_lr_scale: float = 0.1
-    ) -> List[Dict[str, Any]]:
-        """Optimizer param groups (the card table may get a scaled LR)."""
-        ...
-
-    def encode_batch(
-        self,
-        batch: List[Dict[str, Any]],
-        memory_in: "torch.Tensor | None" = None,
-        device: "torch.device | None" = None,
-    ) -> Dict[str, torch.Tensor]: ...
-
-    def encode_sequences(
-        self,
-        sequences: List[List[Dict[str, Any]]],
-        memory_in: "torch.Tensor | None" = None,
-        device: "torch.device | None" = None,
-    ) -> Dict[str, torch.Tensor]: ...
 
 
 @dataclass
@@ -240,7 +194,7 @@ class CardReasoningEncoder(nn.Module):
         self.seat = nn.Embedding(6, 4)  # 0=unknown, 1-5=relative positions
         self.role = nn.Embedding(4, 4)  # 0=none, 1=picker, 2=partner, 3=both
         self.card_type = nn.Embedding(
-            6, d_token
+            BASE_TYPE_COUNT, d_token
         )  # 0=context, 1=memory, 2=hand, 3=trick, 4=blind, 5=bury
 
         # Optional informed initialization for card embeddings
@@ -429,13 +383,13 @@ class CardReasoningEncoder(nn.Module):
             mask: (B, 8) boolean
         """
         mask = ids.ne(PAD_CARD_ID)
-        c = self.card(ids)  # (B, 8, d_card)
+        card_emb = self.card(ids)  # (B, 8, d_card)
         B, N = ids.size(0), ids.size(1)
         role_idx = actor_role_id.view(B, 1).expand(B, N)  # (B, 8)
-        r = self.role(role_idx)  # (B, 8, 4)
-        tok = torch.cat([c, r], dim=-1)
-        tok = self.token_mlp_hand(tok)
-        return tok, mask
+        role_emb = self.role(role_idx)  # (B, 8, 4)
+        token = torch.cat([card_emb, role_emb], dim=-1)
+        token = self.token_mlp_hand(token)
+        return token, mask
 
     def _embed_simple_bag(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Embed blind/bury cards (no role conditioning)."""
@@ -459,12 +413,12 @@ class CardReasoningEncoder(nn.Module):
         )
         role_ids = picker_bits.long() * 1 + partner_bits.long() * 2
         mask = card_ids.ne(PAD_CARD_ID)
-        c = self.card(card_ids)
-        s = self.seat(seat_rel)
-        r = self.role(role_ids)
-        tok = torch.cat([c, s, r], dim=-1)
-        tok = self.token_mlp_trick(tok)
-        return tok, mask
+        card_emb = self.card(card_ids)
+        seat_emb = self.seat(seat_rel)
+        role_emb = self.role(role_ids)
+        token = torch.cat([card_emb, seat_emb, role_emb], dim=-1)
+        token = self.token_mlp_trick(token)
+        return token, mask
 
     def encode_batch(
         self,
@@ -612,16 +566,16 @@ class CardReasoningEncoder(nn.Module):
                     (B, 1), dtype=torch.long, device=device_actual
                 ),  # memory = 1
                 torch.full(
-                    (B, 8), 2, dtype=torch.long, device=device_actual
+                    (B, 8), HAND_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # hand = 2
                 torch.full(
-                    (B, 5), 3, dtype=torch.long, device=device_actual
+                    (B, 5), TRICK_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # trick = 3
                 torch.full(
-                    (B, 2), 4, dtype=torch.long, device=device_actual
+                    (B, 2), BLIND_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # blind = 4
                 torch.full(
-                    (B, 2), 5, dtype=torch.long, device=device_actual
+                    (B, 2), BURY_TYPE_ID, dtype=torch.long, device=device_actual
                 ),  # bury = 5
             ],
             dim=1,
@@ -632,11 +586,11 @@ class CardReasoningEncoder(nn.Module):
         all_tokens = self.card_reasoner(all_tokens, all_mask)
 
         # 8. Extract post-attention tokens
-        context_out = all_tokens[:, 0, :]  # (B, d_token)
-        hand_tok_out = all_tokens[:, 2:10, :]  # (B, 8, d_token)
-        trick_tok_out = all_tokens[:, 10:15, :]
-        blind_tok_out = all_tokens[:, 15:17, :]
-        bury_tok_out = all_tokens[:, 17:19, :]
+        context_out = all_tokens[:, CONTEXT_TOKEN, :]  # (B, d_token)
+        hand_tok_out = all_tokens[:, HAND_TOKENS, :]  # (B, 8, d_token)
+        trick_tok_out = all_tokens[:, TRICK_TOKENS, :]
+        blind_tok_out = all_tokens[:, BLIND_TOKENS, :]
+        bury_tok_out = all_tokens[:, BURY_TOKENS, :]
 
         # 9-11. Pool bags, update memory, fuse features. Overridable seam:
         # pool-free variants (PerceiverEncoder in architectures.encoders) replace
@@ -681,7 +635,7 @@ class CardReasoningEncoder(nn.Module):
         PerceiverCtxMemEncoder, SharedReadoutEncoder in architectures.encoders)
         override THIS seam to skip the bag pools entirely.
 
-        Contract for overrides: return the EncoderInterface output dict
+        Contract for overrides: return the encoder output dict
         ('features'/'memory_out' (B, d_model) at minimum), consume no RNG,
         and construct no modules. The base implementation is byte-identical
         to the historical inline code.
@@ -724,7 +678,7 @@ class CardReasoningEncoder(nn.Module):
         output dict exposes (PooledMemoryEncoder drives the GRU with the
         fused features; TokenReadEncoder additionally emits
         'all_tokens'/'all_mask'). Same override contract as
-        _pool_fuse_update: return the EncoderInterface output dict, no RNG,
+        _pool_fuse_update: return the encoder output dict, no RNG,
         no module construction; the base implementation is byte-identical
         to the historical inline code.
         """

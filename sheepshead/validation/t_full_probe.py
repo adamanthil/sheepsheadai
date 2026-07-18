@@ -19,7 +19,6 @@ bootstrap after).
 from __future__ import annotations
 
 import argparse
-import random
 
 import numpy as np
 import torch
@@ -28,7 +27,11 @@ from sheepshead.agent import ppo
 from sheepshead.validation.critic_probe import encode_decide, r2, train_head
 from sheepshead.agent.ppo import load_agent
 from sheepshead import Game
-from sheepshead.training.training_utils import RETURN_SCALE, get_partner_selection_mode
+from sheepshead.training.training_utils import (
+    RETURN_SCALE,
+    get_partner_selection_mode,
+    set_all_seeds,
+)
 
 DEV = ppo.device
 
@@ -36,9 +39,7 @@ DEV = ppo.device
 def collect_terminal(agent, n_games, seed):
     """Per play decision: (features, terminal return, trick, lead,
     defender, leaster, game id)."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    set_all_seeds(seed)
     feats, targets, gid, trick, is_lead, is_def, leaster = [], [], [], [], [], [], []
     for g in range(n_games):
         game = Game(partner_selection_mode=get_partner_selection_mode(g))

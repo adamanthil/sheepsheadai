@@ -2,15 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import styles from "./ChatPanel.module.css";
+import type { ChatMessage } from "../../../lib/types";
 
-export interface ChatMessage {
-  id: string;
-  table_id: string;
-  type: "player" | "system";
-  author: string | null;
-  body: string;
-  timestamp: number;
-}
+export type { ChatMessage };
 
 interface ChatPanelProps {
   messages: ChatMessage[];

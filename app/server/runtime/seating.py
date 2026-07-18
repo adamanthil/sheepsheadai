@@ -11,19 +11,25 @@ from server.realtime.broadcast import broadcast_table_event, broadcast_table_upd
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import schedule_ai_turns
 
+# Name pool for auto-generated AI occupants (disconnect replacement here,
+# and table auto-fill in server.api.games). Content and order are shared;
+# each call site keeps its own indexing scheme (time-indexed here,
+# seat-indexed in games.py) so behavior is unchanged.
+AI_NAME_POOL = ("Dan", "Kyle", "John", "Trevor", "Tim", "Tom")
+
+# Fixed seat-label names for the /analyze simulate trace (server.services.
+# analyze). This list has different content/order than AI_NAME_POOL above
+# (it includes "Andrew" and is always exactly 5 long, one per seat) -- kept
+# as a separate constant rather than unified, since changing it would alter
+# user-visible analyze output.
+ANALYZE_SEAT_NAMES = ["Dan", "Kyle", "Trevor", "John", "Andrew"]
+
 
 def is_ai_occupant(table: Table, occ_id: Optional[str]) -> bool:
     if not occ_id:
         return False
     occ = table.occupants.get(occ_id)
     return bool(occ and occ.is_ai)
-
-
-def first_ai_seat(table: Table) -> Optional[int]:
-    for i in range(1, 6):
-        if is_ai_occupant(table, table.seats.get(i)):
-            return i
-    return None
 
 
 def reserved_ai_ids(table: Table) -> Set[str]:
@@ -67,10 +73,10 @@ def find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
 
 def allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
     occ_id = str(uuid.uuid4())
-    name_pool = ["Dan", "Kyle", "John", "Trevor", "Tim", "Tom"]
     return Occupant(
         id=occ_id,
-        display_name=display_name or name_pool[int(time.time()) % len(name_pool)],
+        display_name=display_name
+        or AI_NAME_POOL[int(time.time()) % len(AI_NAME_POOL)],
         is_ai=True,
     )
 

@@ -36,12 +36,11 @@ import random
 import time
 
 import numpy as np
-import torch
 
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTIONS, TRUMP, Game
-from sheepshead.training.training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 
 def _is_private(valid) -> bool:
@@ -117,9 +116,7 @@ def main():
     )
     args = ap.parse_args()
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    set_all_seeds(args.seed)
 
     print(f"Loading {args.model} ...")
     agent = load_agent(args.model)
@@ -172,14 +169,11 @@ def main():
                         and any(c not in TRUMP for c in player.hand)
                     )
                     if is_t0_def_lead and len(rows) < args.nodes:
-                        saved_mem = {
-                            pid: t.detach().clone()
-                            for pid, t in agent._player_memories.items()
-                        }
+                        saved_mem = agent.snapshot_player_memories()
                         probs, _ = agent.get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
-                        agent._player_memories = saved_mem
+                        agent.restore_player_memories(saved_mem)
                         prior = probs[0].detach().cpu().numpy()
                         prior_mass = _trump_mass(prior, valid)
                         if args.only_leak_nodes:

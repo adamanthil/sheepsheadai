@@ -88,6 +88,7 @@ export default function PlayerHand({
               key={card + i}
               className={`${styles.cardSlot} ${clickable ? styles.clickable : ""}`}
               style={{ marginLeft: i === 0 ? 0 : -overlap, zIndex: i }}
+              data-clickable={clickable || undefined}
               onClick={() => clickable && onCardClick(card)}
             >
               <PlayingCard code={card} w={w} playable={clickable} />

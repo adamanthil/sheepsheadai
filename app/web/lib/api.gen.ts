@@ -24,6 +24,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analyze/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Analyze Model
+         * @description Describe the deployed model: architecture, capabilities, and its
+         *     card-embedding geometry. Cached per checkpoint.
+         */
+        get: operations["analyze_model_api_analyze_model_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analyze/pick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze Pick
+         * @description Analyze the pre-play decisions (pick/pass, call, bury) for a chosen
+         *     seat, hand, and blind.
+         */
+        post: operations["analyze_pick_api_analyze_pick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analyze/simulate": {
         parameters: {
             query?: never;
@@ -268,6 +310,12 @@ export interface components {
             discountedReturn?: number | null;
             /** Expectedfinalreturn */
             expectedFinalReturn?: number | null;
+            /** Memorycosinedistance */
+            memoryCosineDistance?: number | null;
+            /** Memorynorm */
+            memoryNorm?: number | null;
+            /** Oraclevalue */
+            oracleValue?: number | null;
             /** Phase */
             phase: string;
             /** Pointactuals */
@@ -282,8 +330,6 @@ export interface components {
             seatName: string;
             /** Secretpartnerprob */
             secretPartnerProb?: number | null;
-            /** State */
-            state?: number[] | null;
             /** Stepindex */
             stepIndex: number;
             /** Stepreward */
@@ -311,26 +357,171 @@ export interface components {
             /** Winprob */
             winProb?: number | null;
         };
-        /** AnalyzeGameSummary */
-        AnalyzeGameSummary: {
-            /** Blind */
-            blind: string[];
+        /**
+         * AnalyzeCalibrationSummary
+         * @description Game-level rollup of aux-head prediction quality, computed from the
+         *     trace once the game is done. Absent for no-aux architectures.
+         */
+        AnalyzeCalibrationSummary: {
+            /** Overallbrier */
+            overallBrier: number;
+            /** Overallpointsmae */
+            overallPointsMae: number;
+            /** Seats */
+            seats: components["schemas"]["AnalyzeSeatCalibration"][];
+            /** Trumpmaskaccuracy */
+            trumpMaskAccuracy?: number | null;
+            /**
+             * Trumpmaskcount
+             * @default 0
+             */
+            trumpMaskCount: number;
+        };
+        /** AnalyzeCardEmbeddingEntry */
+        AnalyzeCardEmbeddingEntry: {
+            /** Card */
+            card: string;
+            /** Id */
+            id: number;
+            /** Vector */
+            vector: number[];
+        };
+        /**
+         * AnalyzeCardEmbeddings
+         * @description The model's learned card-embedding table and precomputed geometry.
+         *     Row order is DECK order (all trump first, then fail), UNDER last.
+         */
+        AnalyzeCardEmbeddings: {
+            /** Cards */
+            cards: components["schemas"]["AnalyzeCardEmbeddingEntry"][];
+            /** Cosinesim */
+            cosineSim: number[][];
+            /** Dims */
+            dims: number;
+            /** Pcacoords */
+            pcaCoords: number[][];
+            /** Pcaexplainedvariance */
+            pcaExplainedVariance: number[];
+        };
+        /**
+         * AnalyzeMemoryObserve
+         * @description Memory update from a trick-completion observation.
+         *
+         *     After every completed trick, all five seats fold the finished trick
+         *     into their recurrent memory via agent.observe — the same GRU update as
+         *     a decision encode, but without an action. These carry the trick's
+         *     outcome, so they are often the largest belief revisions.
+         */
+        AnalyzeMemoryObserve: {
+            /** Afterstepindex */
+            afterStepIndex: number;
+            /** Memorycosinedistance */
+            memoryCosineDistance?: number | null;
+            /** Memorynorm */
+            memoryNorm: number;
+            /** Seat */
+            seat: number;
+            /** Seatname */
+            seatName: string;
+            /** Trick */
+            trick: number;
+        };
+        /** AnalyzeModelResponse */
+        AnalyzeModelResponse: {
+            /** Arch */
+            arch: string;
+            cardEmbeddings?: components["schemas"]["AnalyzeCardEmbeddings"] | null;
+            /** Criticmode */
+            criticMode: string;
+            /** Gamma */
+            gamma: number;
+            /** Hasauxheads */
+            hasAuxHeads: boolean;
+            /** Hasoracle */
+            hasOracle: boolean;
+            /** Modellabel */
+            modelLabel: string;
+        };
+        /**
+         * AnalyzePickMeta
+         * @description Echo of the pick request plus the serving model's label.
+         */
+        AnalyzePickMeta: {
+            /** Deterministic */
+            deterministic: boolean;
+            /** Model */
+            model: string;
+            /** Partnermode */
+            partnerMode: number;
+            /** Seat */
+            seat: number;
+            /** Seed */
+            seed?: number | null;
+        };
+        /**
+         * AnalyzePickOutcome
+         * @description Where the pre-play phases ended up once play was about to start.
+         */
+        AnalyzePickOutcome: {
+            /** Alonecalled */
+            aloneCalled: boolean;
             /** Bury */
             bury: string[];
-            /** Defenderpoints */
-            defenderPoints: number;
-            /** Hands */
-            hands: {
-                [key: string]: string[];
-            };
-            /** Partner */
-            partner?: string | null;
-            /** Picker */
-            picker?: string | null;
-            /** Pickerpoints */
-            pickerPoints: number;
-            /** Scores */
-            scores: number[];
+            /** Calledcard */
+            calledCard?: string | null;
+            /** Calledunder */
+            calledUnder: boolean;
+            /** Isleaster */
+            isLeaster: boolean;
+            /** Pickername */
+            pickerName?: string | null;
+            /** Pickerseat */
+            pickerSeat?: number | null;
+            /** Undercard */
+            underCard?: string | null;
+        };
+        /** AnalyzePickRequest */
+        AnalyzePickRequest: {
+            /** Blind */
+            blind?: string[] | null;
+            /**
+             * Deterministic
+             * @default true
+             */
+            deterministic: boolean;
+            /** Hand */
+            hand?: string[] | null;
+            /**
+             * Partnermode
+             * @default 1
+             */
+            partnerMode: number;
+            /**
+             * Seat
+             * @default 1
+             */
+            seat: number;
+            /** Seed */
+            seed?: number | null;
+        };
+        /** AnalyzePickResponse */
+        AnalyzePickResponse: {
+            /** Decisions */
+            decisions: components["schemas"]["AnalyzeActionDetail"][];
+            meta: components["schemas"]["AnalyzePickMeta"];
+            outcome: components["schemas"]["AnalyzePickOutcome"];
+            scenario: components["schemas"]["AnalyzePickScenario"];
+        };
+        /** AnalyzePickScenario */
+        AnalyzePickScenario: {
+            /** Blind */
+            blind: string[];
+            /** Hand */
+            hand: string[];
+            /** Seat */
+            seat: number;
+            /** Seatname */
+            seatName: string;
         };
         /** AnalyzePointEstimate */
         AnalyzePointEstimate: {
@@ -354,6 +545,48 @@ export interface components {
             /** Prob */
             prob: number;
         };
+        /** AnalyzeSeatCalibration */
+        AnalyzeSeatCalibration: {
+            /** Brierscore */
+            brierScore: number;
+            /** Decisioncount */
+            decisionCount: number;
+            /** Firstwinprob */
+            firstWinProb: number;
+            /** Lastwinprob */
+            lastWinProb: number;
+            /** Meanwinprob */
+            meanWinProb: number;
+            /** Pointsmae */
+            pointsMae: number;
+            /** Seat */
+            seat: number;
+            /** Seatname */
+            seatName: string;
+            /** Won */
+            won: boolean;
+        };
+        /**
+         * AnalyzeSimulateMeta
+         * @description Echo of the simulate request plus the model attributes the UI needs
+         *     to interpret the trace.
+         */
+        AnalyzeSimulateMeta: {
+            /** Criticmode */
+            criticMode: string;
+            /** Deterministic */
+            deterministic: boolean;
+            /** Gamma */
+            gamma: number;
+            /** Hasoracle */
+            hasOracle: boolean;
+            /** Model */
+            model: string;
+            /** Partnermode */
+            partnerMode: number;
+            /** Seed */
+            seed?: number | null;
+        };
         /** AnalyzeSimulateRequest */
         AnalyzeSimulateRequest: {
             /**
@@ -376,21 +609,17 @@ export interface components {
         };
         /** AnalyzeSimulateResponse */
         AnalyzeSimulateResponse: {
-            /** Actionlookup */
-            actionLookup: {
-                [key: string]: string;
-            };
+            calibration?: components["schemas"]["AnalyzeCalibrationSummary"] | null;
             /** Final */
             final?: {
                 [key: string]: unknown;
             } | null;
-            /** Meta */
-            meta: {
-                [key: string]: unknown;
-            };
-            /** Players */
-            players: string[];
-            summary?: components["schemas"]["AnalyzeGameSummary"] | null;
+            /**
+             * Memoryobserves
+             * @default []
+             */
+            memoryObserves: components["schemas"]["AnalyzeMemoryObserve"][];
+            meta: components["schemas"]["AnalyzeSimulateMeta"];
             /** Trace */
             trace: components["schemas"]["AnalyzeActionDetail"][];
         };
@@ -606,6 +835,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionsLookupResponse"];
+                };
+            };
+        };
+    };
+    analyze_model_api_analyze_model_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyzeModelResponse"];
+                };
+            };
+        };
+    };
+    analyze_pick_api_analyze_pick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyzePickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyzePickResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

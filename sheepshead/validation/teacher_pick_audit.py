@@ -35,7 +35,6 @@ import argparse
 import random
 
 import numpy as np
-import torch
 
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.agent.ppo import load_agent
@@ -43,6 +42,7 @@ from sheepshead import ACTIONS, Game
 from sheepshead.training.training_utils import (
     estimate_hand_strength_score,
     get_partner_selection_mode,
+    set_all_seeds,
 )
 
 PICK_ID = ACTIONS.index("PICK") + 1
@@ -84,9 +84,7 @@ def audit(agent, n_games, seed):
 
     for g in range(n_games):
         gseed = (seed * 1_000_003 + g) % (2**32)
-        random.seed(gseed)
-        np.random.seed(gseed)
-        torch.manual_seed(gseed)
+        set_all_seeds(gseed)
         rng = random.Random(gseed ^ 0x9E3779B9)
 
         mode = get_partner_selection_mode(g)

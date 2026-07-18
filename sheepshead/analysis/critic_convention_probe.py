@@ -62,12 +62,11 @@ from sheepshead import (
     ACTIONS,
     FAIL,
     PARTNER_BY_CALLED_ACE,
-    TRUMP,
+    TRUMP_SET,
     Game,
 )
 
 DEV = ppo.device
-_TRUMP_SET = set(TRUMP)
 _FAIL_SET = set(FAIL)
 
 
@@ -76,7 +75,7 @@ def _lead_cards(player) -> list[str]:
         ACTIONS[a - 1][5:]
         for a in player.get_valid_action_ids()
         if ACTIONS[a - 1].startswith("PLAY ")
-        and ACTIONS[a - 1][5:] in _TRUMP_SET | _FAIL_SET
+        and ACTIONS[a - 1][5:] in TRUMP_SET | _FAIL_SET
     ]
 
 
@@ -167,7 +166,7 @@ def _c1_eligibility(game, leader) -> tuple[list[str], list[str]] | None:
         return None
     cards = _lead_cards(leader)
     conv = [c for c in cards if c in _FAIL_SET]
-    alt = [c for c in cards if c in _TRUMP_SET]
+    alt = [c for c in cards if c in TRUMP_SET]
     if not conv or not alt:
         return None
     return conv, alt

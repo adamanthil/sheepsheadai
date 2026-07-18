@@ -126,8 +126,8 @@ FAIL_POWER = {k: len(FAIL) - v for v, k in enumerate(FAIL)}
 # and state encode; the old `card in TRUMP` list scan and substring-test chain
 # showed up directly in profiles. The functions fall back for non-deck tokens
 # (UNDER, "") so semantics are identical to the original definitions.
-_TRUMP_SET = set(TRUMP)
-CARD_SUIT = {c: ("T" if c in _TRUMP_SET else c[-1]) for c in DECK}
+TRUMP_SET = {*TRUMP}
+CARD_SUIT = {c: ("T" if c in TRUMP_SET else c[-1]) for c in DECK}
 CARD_POINTS = {
     c: (
         11
@@ -239,18 +239,6 @@ def pretty_card_list(card_list):
     return " ".join([colorize_card(c) for c in card_list])
 
 
-def get_monte_carlo_pick_score(hand):
-    """Returns the expected score for a player picking from a hand
-    using a monte-carlo simulation of 30 random games."""
-
-    scores = []
-    for _ in range(30):
-        game = Game(picking_hand=hand, double_on_the_bump=False)
-        game.play_random(verbose=False)
-        scores.append(game.get_picker().get_score())
-    return sum(scores) / len(scores)
-
-
 class Game:
     def __init__(
         self,
@@ -341,8 +329,6 @@ class Game:
         while not self.is_done():
             for player in self.players:
                 actions = player.get_valid_action_ids()
-                # print(f"PLAYER {player.position}")
-                # print([ACTION_LOOKUP[a] for a in actions])
                 while actions:
                     action = self.rng.sample(list(actions), 1)[0]
 
@@ -505,6 +491,58 @@ class Game:
             return self._leaster_winner
         return False
 
+    def _complete_trick_if_done(self):
+        if self.cards_played == 5:
+            if self.current_trick == 5:
+                # Handle buried partner card on final play (JD only)
+                if self.partner_mode_flag == PARTNER_BY_JD and "JD" in self.bury:
+                    self.partner = self.picker
+
+            trick = self.history[self.current_trick]
+
+            is_called_10_suit = (
+                self.called_card
+                and self.called_card in CALLED_10S
+                and not self.was_called_suit_played
+                and self.current_suit == self.called_suit
+            )
+            winner = get_trick_winner(trick, self.current_suit, is_called_10_suit)
+            winner_index = winner - 1
+            trick_points = get_trick_points(trick)
+
+            # In leaster mode, give blind to winner of first trick
+            if self.is_leaster and self.current_trick == 0:
+                trick_points += get_trick_points(self.blind)
+
+            # Add under points to trick if it was played
+            if self.is_called_under and UNDER_TOKEN in trick:
+                trick_points += get_card_points(self.under_card)
+
+            self.trick_points[self.current_trick] = trick_points
+            self.trick_winners[self.current_trick] = winner
+            self.points_taken[winner_index] += trick_points
+
+            if (
+                self.called_card
+                and not self.was_called_suit_played
+                and self.called_suit == self.current_suit
+            ):
+                self.was_called_suit_played = True
+
+            if self.current_trick < 5:
+                self.leaders[self.current_trick + 1] = winner
+
+            # Next trick must start with winner
+            self.leader = winner
+            self.last_player = winner - 1
+            self.current_suit = ""
+            self.cards_played = 0
+            self.was_trick_just_completed = True
+
+            self.current_trick += 1
+        elif self.was_trick_just_completed:
+            self.was_trick_just_completed = False
+
     def _play_revealed_voids(self):
         """Infer, from the public play record, the suits each seat is known void
         in: a seat that discarded off-suit when a suit was led must hold no card
@@ -592,13 +630,13 @@ class Game:
         played_by = self._cards_played_by_seat()
 
         known = set(observer.initial_hand) | {
-            c for cards in played_by.values() for c in cards
+            card for cards in played_by.values() for card in cards
         }
         if is_obs_picker:
             known |= set(self.blind) | set(self.bury)
             if under_card is not None:
                 known |= {under_card}
-        unseen = [c for c in DECK if c not in known]
+        unseen = [card for card in DECK if card not in known]
 
         # A called card constrains placement only while still hidden from the
         # observer (called-ace mode, not alone, partner unrevealed, not yet
@@ -620,15 +658,15 @@ class Game:
         # where that seat held the called ace.
         partner_forbidden = set()
         if called is not None:
-            for t in range(len(self.history)):
-                ldr = self.leaders[t]
+            for trick_index in range(len(self.history)):
+                ldr = self.leaders[trick_index]
                 if not ldr:
                     continue
-                lc = self.history[t][ldr - 1]
+                lc = self.history[trick_index][ldr - 1]
                 if lc and lc != UNDER_TOKEN and get_card_suit(lc) == called_suit:
                     partner_forbidden.add(ldr)
 
-        fill_seats = [s for s in range(1, 6) if s != obs]
+        fill_seats = [seat for seat in range(1, 6) if seat != obs]
         return {
             "obs": obs,
             "picker": picker,
@@ -651,31 +689,35 @@ class Game:
                 and not self.alone_called
             ),
             "fill_seats": fill_seats,
-            "counts": {s: len(self.players[s - 1].hand) for s in fill_seats},
+            "counts": {seat: len(self.players[seat - 1].hand) for seat in fill_seats},
             "leftover_needed": 0 if is_obs_picker else (2 + n_under),
             "observer_initial": list(observer.initial_hand),
         }
 
-    def _sample_deal_attempt(self, ctx, rng):
+    def _sample_deal_attempt(self, context, rng):
         """One shuffle+partition attempt. Returns a deal dict or None if this
         shuffle cannot be completed into a consistent, legal deal."""
-        picker, obs = ctx["picker"], ctx["obs"]
-        called, called_suit = ctx["called"], ctx["called_suit"]
-        voids, counts, played_by = ctx["voids"], ctx["counts"], ctx["played_by"]
+        picker, obs = context["picker"], context["obs"]
+        called, called_suit = context["called"], context["called_suit"]
+        voids, counts, played_by = (
+            context["voids"],
+            context["counts"],
+            context["played_by"],
+        )
 
-        pool = ctx["unseen"][:]
+        pool = context["unseen"][:]
         rng.shuffle(pool)
 
         # Place the still-hidden called card with an eligible secret partner.
         forced = {}
         if called is not None:
             cands = [
-                s
-                for s in ctx["fill_seats"]
-                if s != picker
-                and counts[s] >= 1
-                and called_suit not in voids[s]
-                and s not in ctx["partner_forbidden"]
+                seat
+                for seat in context["fill_seats"]
+                if seat != picker
+                and counts[seat] >= 1
+                and called_suit not in voids[seat]
+                and seat not in context["partner_forbidden"]
             ]
             if not cands:
                 return None
@@ -683,28 +725,32 @@ class Game:
             pool.remove(called)
 
         # Deal each hidden seat its current hand, respecting voids.
-        cur = {}
-        for s in ctx["fill_seats"]:
-            seed = [forced[s]] if s in forced else []
-            drawn, pool = self._draw_avoiding(pool, counts[s] - len(seed), voids[s])
+        dealt_by_seat = {}
+        for seat in context["fill_seats"]:
+            seed = [forced[seat]] if seat in forced else []
+            drawn, pool = self._draw_avoiding(pool, counts[seat] - len(seed), voids[seat])
             if drawn is None:
                 return None
-            cur[s] = seed + drawn
-        if len(pool) != ctx["leftover_needed"]:
+            dealt_by_seat[seat] = seed + drawn
+        if len(pool) != context["leftover_needed"]:
             return None
 
         # Resolve the picker's bury/under (known if the observer is the picker).
-        if ctx["is_obs_picker"]:
-            blind, bury, under = list(self.blind), list(self.bury), ctx["under_card"]
+        if context["is_obs_picker"]:
+            blind, bury, under = (
+                list(self.blind),
+                list(self.bury),
+                context["under_card"],
+            )
         else:
-            under = pool[0] if ctx["n_under"] else None
-            bury = pool[ctx["n_under"] : ctx["n_under"] + 2]
-            eight = played_by[picker] + cur[picker] + bury
+            under = pool[0] if context["n_under"] else None
+            bury = pool[context["n_under"] : context["n_under"] + 2]
+            eight = played_by[picker] + dealt_by_seat[picker] + bury
             if under is not None:
                 eight = eight + [under]
             if called is not None and called in eight:
                 return None  # the still-hidden ace cannot sit with the picker
-            if ctx["validate_call"] and not self._call_is_legal(
+            if context["validate_call"] and not self._call_is_legal(
                 eight, self.called_card
             ):
                 return None
@@ -715,16 +761,16 @@ class Game:
 
         # Assemble the dealt (pre-pick) hands.
         initial_hands = {}
-        for s in range(1, 6):
-            if s == obs:
-                initial_hands[s] = ctx["observer_initial"][:]
-            elif s == picker:
-                eight = played_by[picker] + cur[picker] + bury
+        for seat in range(1, 6):
+            if seat == obs:
+                initial_hands[seat] = context["observer_initial"][:]
+            elif seat == picker:
+                eight = played_by[picker] + dealt_by_seat[picker] + bury
                 if under is not None:
                     eight = eight + [under]
-                initial_hands[s] = [c for c in eight if c not in blind]
+                initial_hands[seat] = [card for card in eight if card not in blind]
             else:
-                initial_hands[s] = played_by[s] + cur[s]
+                initial_hands[seat] = played_by[seat] + dealt_by_seat[seat]
 
         return {
             "initial_hands": initial_hands,
@@ -1155,6 +1201,9 @@ class Player:
         if self.play_started and self.last_player != self.position - 1:
             return set()
 
+        return self._valid_play_actions()
+
+    def _valid_play_actions(self):
         actions = set()
 
         # Determine which cards are valid to play
@@ -1266,7 +1315,7 @@ class Player:
                 self.game.leader = 1
                 self.game.leaders[0] = 1
 
-        if "BURY" in action:
+        if action.startswith("BURY "):
             card = action[5:]
             self.game.bury.append(card)
             self.hand.remove(card)
@@ -1280,7 +1329,7 @@ class Player:
             self.game.alone_called = True
             self.game.partner = self.position
 
-        if "CALL" in action:
+        if action.startswith("CALL "):
             parts = action.split()
             called_card = parts[1]
 
@@ -1299,7 +1348,7 @@ class Player:
             self.game.under_card = under_card
             self.hand.remove(under_card)
 
-        if "PLAY" in action:
+        if action.startswith("PLAY "):
             card = action[5:]
 
             # Set suit lead if we are the first to play this trick
@@ -1328,63 +1377,7 @@ class Player:
             if self.game.last_player == 5:
                 self.game.last_player = 0
 
-            if self.game.cards_played == 5:
-                if self.current_trick == 5:
-                    # Handle buried partner card on final play (JD only)
-                    if (
-                        self.game.partner_mode_flag == PARTNER_BY_JD
-                        and "JD" in self.bury
-                    ):
-                        self.game.partner = self.game.picker
-
-                trick = self.game.history[self.current_trick]
-
-                is_called_10_suit = (
-                    self.game.called_card
-                    and self.game.called_card in CALLED_10S
-                    and not self.game.was_called_suit_played
-                    and self.game.current_suit == self.game.called_suit
-                )
-                winner = get_trick_winner(
-                    trick, self.game.current_suit, is_called_10_suit
-                )
-                winner_index = winner - 1
-                trick_points = get_trick_points(trick)
-
-                # In leaster mode, give blind to winner of first trick
-                if self.game.is_leaster and self.current_trick == 0:
-                    trick_points += get_trick_points(self.game.blind)
-
-                # Add under points to trick if it was played
-                if self.game.is_called_under and UNDER_TOKEN in trick:
-                    trick_points += get_card_points(self.game.under_card)
-
-                self.game.trick_points[self.current_trick] = trick_points
-                self.game.trick_winners[self.current_trick] = winner
-                self.game.points_taken[winner_index] += trick_points
-
-                if (
-                    self.game.called_card
-                    and not self.game.was_called_suit_played
-                    and self.game.called_suit == self.game.current_suit
-                ):
-                    self.game.was_called_suit_played = True
-
-                if self.current_trick < 5:
-                    self.game.leaders[self.current_trick + 1] = winner
-                # print("Trick points: %i" % get_trick_points(trick))
-                # print("Winner %i" % get_trick_winner(trick, self.game.current_suit))
-
-                # Next trick must start with winner
-                self.game.leader = winner
-                self.game.last_player = winner - 1
-                self.game.current_suit = ""
-                self.game.cards_played = 0
-                self.game.was_trick_just_completed = True
-
-                self.game.current_trick += 1
-            elif self.game.was_trick_just_completed:
-                self.game.was_trick_just_completed = False
+            self.game._complete_trick_if_done()
 
         return True
 

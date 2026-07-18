@@ -29,7 +29,7 @@ export default function ProbabilityBar({
         {(probability.prob * 100).toFixed(1)}%
         <span
           className={styles.probabilityLogit}
-          title={`logit: ${probability.logit.toFixed(4)}`}
+          title={`Logit ${probability.logit.toFixed(4)}: the model's raw score for this action before scores are converted to probabilities (softmax). A gap of 1 between two logits ≈ one action being ~2.7x as likely as the other.`}
         >
           ℓ {probability.logit.toFixed(2)}
         </span>

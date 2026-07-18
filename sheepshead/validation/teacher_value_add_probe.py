@@ -40,12 +40,11 @@ import random
 import time
 
 import numpy as np
-import torch
 
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
-from sheepshead.training.training_utils import get_partner_selection_mode
+from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 T_FULL = 1  # production rollout-depth schedule (config.SearchConfig)
 D_SHORT = 2
@@ -143,9 +142,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    set_all_seeds(args.seed)
 
     print(f"Loading {args.model} (challenger + field) ...")
     challenger = _load(args.model)

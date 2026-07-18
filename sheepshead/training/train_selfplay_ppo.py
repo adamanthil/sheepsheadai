@@ -3,16 +3,14 @@
 Extended long-term PPO training for Sheepshead.
 """
 
-import csv
 import os
-import random
 import time
 from argparse import ArgumentParser
 from collections import deque
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 
 from sheepshead.agent import architectures
 from sheepshead.training.config import SelfPlayHyperparams
@@ -25,6 +23,7 @@ from sheepshead import (
 )
 from sheepshead.training.training_utils import (
     analyze_strategic_decisions,
+    append_csv_row,
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,
@@ -32,14 +31,15 @@ from sheepshead.training.training_utils import (
     handle_trick_completion,
     process_episode_rewards,
     save_training_plot,
+    set_all_seeds,
     update_intermediate_rewards_for_action,
 )
 
-_HP = SelfPlayHyperparams()  # fixed LRs + entropy decay schedule (bootstrap run)
+SELFPLAY_HYPERPARAMS = SelfPlayHyperparams()  # fixed LRs + entropy decay schedule (bootstrap run)
 
 # Frozen seed for the in-training anchored CRN probe: identical across all
 # ablation arms, so every run's eval curve is paired on the same deal sets.
-ANCHOR_EVAL_SEED = 20260703
+SELFPLAY_ANCHOR_EVAL_SEED = 20260703
 
 # Fixed external yardsticks for the anchored eval curve (never trained on):
 # the conventions ScriptedAgent, the historical self-play reference at 100k
@@ -103,33 +103,53 @@ def _run_anchored_eval(
     results = {}
     for name, anchor in yardsticks.items():
         results[name] = paired_edge(
-            agent, anchor, anchor, n_deals, seed=ANCHOR_EVAL_SEED, log_every=0
+            agent, anchor, anchor, n_deals, seed=SELFPLAY_ANCHOR_EVAL_SEED, log_every=0
         )
     return results
 
 
-def train_ppo(
-    num_episodes=300000,
-    update_interval=2048,
-    save_interval=5000,
-    strategic_eval_interval=10000,
-    resume_model=None,
-    run_name="selfplay_ppo",
-    arch="full",
-    anchor_eval_interval=5000,
-    anchor_eval_deals=300,
-    anchor_100k=DEFAULT_ANCHOR_100K,
-    anchor_pfsp=DEFAULT_ANCHOR_PFSP,
-    seed=None,
-    leaster_watchdog=False,
-):
-    """
-    PPO training with strategic evaluation metrics.
+@dataclass
+class EpisodeWindows:
+    """Rolling per-episode outcome trackers threaded through the reporting
+    and finalization helpers below (was a handful of closed-over locals in
+    train_ppo's body; the main episode loop still appends to these directly,
+    it just also hands the bundle to the extracted reporting functions)."""
 
-    All artifacts (checkpoints, best/final model, plots) are written under
-    runs/<run_name>/ so nothing collides with committed/frozen files at the
-    repo root.
-    """
+    picker_scores: deque
+    pick_decisions: list
+    pass_decisions: list
+    leaster_window: deque
+    alone_call_window: deque
+    called_ace_window: deque
+    called_under_window: deque
+    called_10_window: deque
+    team_point_differences: deque
+
+
+@dataclass
+class AnchoredEvalConfig:
+    """Static config for the periodic anchored-eval probe (constant for the
+    duration of a training run; only ``episode``/``eval_wall_s``/etc. change
+    call to call, so those stay as plain function parameters)."""
+
+    agent: PPOAgent
+    yardsticks: dict
+    anchor_eval_deals: int
+    anchored_csv: str
+    start_time: float
+
+
+def _setup_agent(
+    num_episodes,
+    update_interval,
+    save_interval,
+    strategic_eval_interval,
+    arch,
+    leaster_watchdog,
+    resume_model,
+):
+    """Print the run header, construct the PPO agent, and (if requested)
+    resume from a checkpoint. Returns ``(agent, watchdog, start_episode)``."""
     print("🚀 Starting PPO training...")
     print("=" * 60)
     print("TRAINING CONFIGURATION:")
@@ -145,8 +165,8 @@ def train_ppo(
     # Create agent with optimized hyperparameters
     agent = PPOAgent(
         len(ACTIONS),
-        lr_actor=_HP.lr_actor,
-        lr_critic=_HP.lr_critic,
+        lr_actor=SELFPLAY_HYPERPARAMS.lr_actor,
+        lr_critic=SELFPLAY_HYPERPARAMS.lr_critic,
         arch=arch,
     )
     n_enc = sum(p.numel() for p in agent.encoder.parameters())
@@ -172,6 +192,324 @@ def train_ppo(
     else:
         print("🆕 Starting fresh training")
 
+    return agent, watchdog, start_episode
+
+
+def _setup_anchored_eval_yardsticks(anchor_eval_interval, anchor_100k, anchor_pfsp):
+    """Build the fixed-yardstick dict for the anchored CRN probe (empty/
+    disabled when ``anchor_eval_interval`` is falsy)."""
+    yardsticks = {}
+    if anchor_eval_interval:
+        from sheepshead.scripted_agent import ScriptedAgent
+
+        yardsticks["scripted"] = ScriptedAgent()
+        for name, path in (("selfplay100k", anchor_100k), ("final_pfsp", anchor_pfsp)):
+            if path and os.path.exists(path):
+                yardsticks[name] = load_agent(path)
+            else:
+                print(f"⚠️  Anchored-eval yardstick missing, skipping: {path}")
+    return yardsticks
+
+
+def _log_anchored_eval(
+    cfg: AnchoredEvalConfig,
+    episode,
+    eval_wall_s,
+    updates_done,
+    transitions_done,
+):
+    """Run the anchored CRN probe, append a row to ``anchored_eval.csv``, and
+    print the per-yardstick edges. Returns the updated ``eval_wall_s``."""
+    t_eval = time.time()
+    print(f"⚓ Anchored eval... (Episode {episode:,})")
+    results = _run_anchored_eval(cfg.agent, cfg.yardsticks, cfg.anchor_eval_deals)
+    eval_wall_s += time.time() - t_eval
+    train_wall_s = (time.time() - cfg.start_time) - eval_wall_s
+    row = {
+        "episode": episode,
+        "train_wall_s": round(train_wall_s, 1),
+        "eval_wall_s": round(eval_wall_s, 1),
+        "updates_done": updates_done,
+        "transitions_done": transitions_done,
+    }
+    for name in ("scripted", "selfplay100k", "final_pfsp"):
+        r = results.get(name)
+        row[f"edge_{name}"] = round(r["edge"], 4) if r else ""
+        row[f"se_{name}"] = round(r["se"], 4) if r else ""
+    append_csv_row(cfg.anchored_csv, list(row.keys()), row)
+    for name, r in results.items():
+        print(f"   edge vs {name}: {r['edge']:+.3f} ± {r['se']:.3f}")
+    return eval_wall_s
+
+
+def _run_strategic_eval(agent, episode, training_data):
+    """Sample strategic decisions, log the metrics, and record them into
+    ``training_data`` (mutated in place)."""
+    print(f"🧠 Analyzing strategic decisions... (Episode {episode:,})")
+    strategic_metrics = analyze_strategic_decisions(agent, num_samples=200)
+
+    # Store strategic metrics
+    training_data["strategic_episodes"].append(episode)
+    training_data["pick_hand_correlation"].append(
+        strategic_metrics["pick_hand_correlation"]
+    )
+    training_data["picker_trump_rate"].append(strategic_metrics["picker_trump_rate"])
+    training_data["defender_trump_rate"].append(
+        strategic_metrics["defender_trump_rate"]
+    )
+    training_data["bury_quality_rate"].append(strategic_metrics["bury_quality_rate"])
+
+    print(
+        f"   Pick-Hand Correlation: {strategic_metrics['pick_hand_correlation']:.3f}"
+    )
+    print(f"   Picker Trump Rate: {strategic_metrics['picker_trump_rate']:.1f}%")
+    print(f"   Defender Trump Rate: {strategic_metrics['defender_trump_rate']:.1f}%")
+    print(f"   Bury Quality Rate: {strategic_metrics['bury_quality_rate']:.1f}%")
+
+
+def _report_progress(
+    episode,
+    num_episodes,
+    agent,
+    checkpoint_dir,
+    arch,
+    training_data,
+    windows: EpisodeWindows,
+    start_time,
+    best_team_difference,
+):
+    """Every-1000-episode progress report: rolling-window rates, training
+    plot data collection, and the best-team-point-difference checkpoint
+    save. Returns the (possibly updated) ``best_team_difference``."""
+    current_avg_picker_score = (
+        np.mean(windows.picker_scores) if windows.picker_scores else 0
+    )
+    # Compute pick-rate over all individual decisions (weighting games by the number of decisions they contributed)
+    total_called_picks = sum(windows.pick_decisions[PARTNER_BY_CALLED_ACE])
+    total_called_passes = sum(windows.pass_decisions[PARTNER_BY_CALLED_ACE])
+    total_jd_picks = sum(windows.pick_decisions[PARTNER_BY_JD])
+    total_jd_passes = sum(windows.pass_decisions[PARTNER_BY_JD])
+    current_called_pick_rate = (
+        (100 * total_called_picks / (total_called_picks + total_called_passes))
+        if (total_called_picks + total_called_passes) > 0
+        else 0
+    )
+    current_jd_pick_rate = (
+        (100 * total_jd_picks / (total_jd_picks + total_jd_passes))
+        if (total_jd_picks + total_jd_passes) > 0
+        else 0
+    )
+    current_team_diff = (
+        np.mean(windows.team_point_differences) if windows.team_point_differences else 0
+    )
+    # --- Rolling-window rates ---
+    current_leaster_rate = (
+        (sum(windows.leaster_window) / len(windows.leaster_window)) * 100
+        if windows.leaster_window
+        else 0
+    )
+    current_alone_rate = (
+        (sum(windows.alone_call_window) / len(windows.alone_call_window)) * 100
+        if windows.alone_call_window
+        else 0
+    )
+
+    ca_denominator = sum(windows.called_ace_window) or 1  # avoid divide-by-zero
+    current_called_under_rate = (
+        sum(windows.called_under_window) / ca_denominator
+    ) * 100
+    current_called_10s_rate = (
+        sum(windows.called_10_window) / ca_denominator
+    ) * 100
+    elapsed = time.time() - start_time
+
+    # Collect data for plotting
+    training_data["episodes"].append(episode)
+    training_data["picker_avg"].append(current_avg_picker_score)
+    training_data["called_pick_rate"].append(current_called_pick_rate)
+    training_data["jd_pick_rate"].append(current_jd_pick_rate)
+    training_data["learning_rate"].append(
+        agent.actor_optimizer.param_groups[0]["lr"]
+    )
+    training_data["time_elapsed"].append(elapsed)
+    training_data["team_point_diff"].append(current_team_diff)
+    training_data["alone_rate"].append(current_alone_rate)
+    training_data["leaster_rate"].append(current_leaster_rate)
+
+    # Strategic metrics are collected separately during strategic evaluation intervals
+    # Don't try to collect them here as they're not always available
+
+    # Calculate training speed
+    games_per_min = episode / (elapsed / 60) if elapsed > 0 else 0
+
+    print(
+        f"📊 Episode {episode:,}/{num_episodes:,} ({episode / num_episodes * 100:.1f}%)"
+    )
+    print("   " + "-" * 40)
+    print(f"   Picker avg: {current_avg_picker_score:+.3f}")
+    print(f"   Team point diff: {current_team_diff:+.1f}")
+    print(f"   Called Ace Pick rate: {current_called_pick_rate:.1f}%")
+    print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
+    print("   " + "-" * 20)
+    print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
+    print(f"   Alone Call Rate: {current_alone_rate:.2f}%")
+    print(f"   Called Under Rate: {current_called_under_rate:.2f}%")
+    print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
+    print("   " + "-" * 40)
+    print(f"   Training speed: {games_per_min:.1f} games/min")
+    print(f"   Time elapsed: {elapsed / 60:.1f} min")
+    print("   " + "-" * 40)
+
+    # Save best model based on team point difference (lower is better)
+    # We want the absolute value to be as small as possible
+    if current_team_diff < best_team_difference:
+        best_team_difference = current_team_diff
+        agent.save(os.path.join(checkpoint_dir, f"best_{arch}.pt"))
+        print(
+            f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved."
+        )
+
+    return best_team_difference
+
+
+def _save_checkpoint(
+    episode,
+    agent,
+    checkpoint_dir,
+    arch,
+    save_interval,
+    training_data,
+    num_episodes,
+    last_checkpoint_time,
+):
+    """Periodic checkpoint + training-plot save. Returns the updated
+    ``last_checkpoint_time``."""
+    checkpoint_path = f"{checkpoint_dir}/{arch}_checkpoint_{episode}.pt"
+    agent.save(checkpoint_path)
+
+    # Save enhanced training plot
+    if len(training_data["episodes"]) > 10:
+        plot_path = f"{checkpoint_dir}/training_progress_{episode}.png"
+        save_training_plot(training_data, plot_path)
+
+    # Calculate time since last checkpoint
+    checkpoint_time = time.time()
+    time_since_last = checkpoint_time - last_checkpoint_time
+    last_checkpoint_time = checkpoint_time
+
+    print(f"💾 Checkpoint saved at episode {episode:,}")
+    print(
+        f"   Time for last {save_interval:,} episodes: {time_since_last / 60:.1f} min"
+    )
+    remaining_episodes = num_episodes - episode
+    if remaining_episodes > 0:
+        estimated_time = (
+            remaining_episodes * (time_since_last / save_interval) / 60
+        )
+        print(f"   Estimated time remaining: {estimated_time:.1f} min")
+
+    return last_checkpoint_time
+
+
+def _finalize_training(
+    agent,
+    checkpoint_dir,
+    arch,
+    training_data,
+    start_time,
+    start_episode,
+    num_episodes,
+    windows: EpisodeWindows,
+    best_team_difference,
+):
+    """Discard leftover buffered events, save the final checkpoint/plot, and
+    print the end-of-run summary."""
+    # Final save. Leftover buffered transitions (< update_interval) are
+    # intentionally discarded: a flush update would train on a smaller
+    # sample than every other update (and at update()'s default epochs),
+    # so the saved weights would not be the product of the specified
+    # hyperparameters. final_<arch>.pt therefore equals the last
+    # threshold update's weights (== the last checkpoint when episodes
+    # is a multiple of save_interval).
+    if agent.events:
+        n_leftover = len(agent.events)
+        agent.events.clear()
+        print(f"   Discarding {n_leftover} leftover buffered events (no flush update)")
+
+    agent.save(os.path.join(checkpoint_dir, f"final_{arch}.pt"))
+
+    # Save final enhanced training plot
+    if len(training_data["episodes"]) > 0:
+        save_training_plot(
+            training_data,
+            os.path.join(checkpoint_dir, f"final_{arch}_training.png"),
+        )
+
+    total_time = time.time() - start_time
+    print("\n🎉 Training completed!")
+    print(
+        f"   Total time: {total_time / 60:.1f} minutes ({total_time / 3600:.1f} hours)"
+    )
+    print(
+        f"   Final picker average: {np.mean(windows.picker_scores) if windows.picker_scores else 0:.3f}"
+    )
+    print(
+        f"   Final team point difference: {np.mean(windows.team_point_differences) if windows.team_point_differences else 0:.1f}"
+    )
+    print(f"   Best team point difference: {best_team_difference:.1f}")
+    total_called_picks = sum(windows.pick_decisions[PARTNER_BY_CALLED_ACE])
+    total_called_passes = sum(windows.pass_decisions[PARTNER_BY_CALLED_ACE])
+    total_jd_picks = sum(windows.pick_decisions[PARTNER_BY_JD])
+    total_jd_passes = sum(windows.pass_decisions[PARTNER_BY_JD])
+    final_called_pick_rate = (
+        (100 * total_called_picks / (total_called_picks + total_called_passes))
+        if (total_called_picks + total_called_passes) > 0
+        else 0
+    )
+    final_jd_pick_rate = (
+        (100 * total_jd_picks / (total_jd_picks + total_jd_passes))
+        if (total_jd_picks + total_jd_passes) > 0
+        else 0
+    )
+    print(f"   Final called Ace Pick rate: {final_called_pick_rate:.1f}%")
+    print(f"   Final JD Pick rate: {final_jd_pick_rate:.1f}%")
+    print(
+        f"   Training speed: {(num_episodes - start_episode) / (total_time / 60):.1f} episodes/min"
+    )
+
+
+def train_ppo(
+    num_episodes=300000,
+    update_interval=2048,
+    save_interval=5000,
+    strategic_eval_interval=10000,
+    resume_model=None,
+    run_name="selfplay_ppo",
+    arch="full",
+    anchor_eval_interval=5000,
+    anchor_eval_deals=300,
+    anchor_100k=DEFAULT_ANCHOR_100K,
+    anchor_pfsp=DEFAULT_ANCHOR_PFSP,
+    seed=None,
+    leaster_watchdog=False,
+):
+    """
+    PPO training with strategic evaluation metrics.
+
+    All artifacts (checkpoints, best/final model, plots) are written under
+    runs/<run_name>/ so nothing collides with committed/frozen files at the
+    repo root.
+    """
+    agent, watchdog, start_episode = _setup_agent(
+        num_episodes,
+        update_interval,
+        save_interval,
+        strategic_eval_interval,
+        arch,
+        leaster_watchdog,
+        resume_model,
+    )
+
     picker_scores = deque(maxlen=3000)
     pick_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
     pass_decisions = [deque(maxlen=3000), deque(maxlen=3000)]
@@ -183,7 +521,6 @@ def train_ppo(
     called_10_window = deque(maxlen=3000)  # 1 ⇒ called-10s occurred that game
     team_point_differences = deque(maxlen=3000)
     best_team_difference = float("inf")  # Lower is better (smaller point difference)
-    current_avg_picker_score = float("-inf")
 
     training_data = {
         "episodes": [],
@@ -211,19 +548,12 @@ def train_ppo(
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Anchored CRN eval: fixed external yardsticks, paired deals across all
-    # probes (and across runs) via ANCHOR_EVAL_SEED. Eval wall-clock is
+    # probes (and across runs) via SELFPLAY_ANCHOR_EVAL_SEED. Eval wall-clock is
     # tracked separately so throughput comparisons exclude probe time.
     anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
-    yardsticks = {}
-    if anchor_eval_interval:
-        from sheepshead.scripted_agent import ScriptedAgent
-
-        yardsticks["scripted"] = ScriptedAgent()
-        for name, path in (("selfplay100k", anchor_100k), ("final_pfsp", anchor_pfsp)):
-            if path and os.path.exists(path):
-                yardsticks[name] = load_agent(path)
-            else:
-                print(f"⚠️  Anchored-eval yardstick missing, skipping: {path}")
+    yardsticks = _setup_anchored_eval_yardsticks(
+        anchor_eval_interval, anchor_100k, anchor_pfsp
+    )
     eval_wall_s = 0.0
     updates_done = 0
     transitions_done = 0
@@ -445,20 +775,20 @@ def train_ppo(
             # Separate entropy decay schedules (config.SelfPlayHyperparams).
             decay_fraction = min(episode / num_episodes, 1.0)
             agent.entropy_coeff_play = (
-                _HP.entropy_play_start
-                + (_HP.entropy_play_end - _HP.entropy_play_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_play_start
+                + (SELFPLAY_HYPERPARAMS.entropy_play_end - SELFPLAY_HYPERPARAMS.entropy_play_start) * decay_fraction
             )
             agent.entropy_coeff_pick = (
-                _HP.entropy_pick_start
-                + (_HP.entropy_pick_end - _HP.entropy_pick_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_pick_start
+                + (SELFPLAY_HYPERPARAMS.entropy_pick_end - SELFPLAY_HYPERPARAMS.entropy_pick_start) * decay_fraction
             )
             agent.entropy_coeff_partner = (
-                _HP.entropy_partner_start
-                + (_HP.entropy_partner_end - _HP.entropy_partner_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_partner_start
+                + (SELFPLAY_HYPERPARAMS.entropy_partner_end - SELFPLAY_HYPERPARAMS.entropy_partner_start) * decay_fraction
             )
             agent.entropy_coeff_bury = (
-                _HP.entropy_bury_start
-                + (_HP.entropy_bury_end - _HP.entropy_bury_start) * decay_fraction
+                SELFPLAY_HYPERPARAMS.entropy_bury_start
+                + (SELFPLAY_HYPERPARAMS.entropy_bury_end - SELFPLAY_HYPERPARAMS.entropy_bury_start) * decay_fraction
             )
 
             if watchdog is not None:
@@ -521,227 +851,81 @@ def train_ppo(
 
         # Anchored CRN eval at intervals (fixed yardsticks, paired deals)
         if anchor_eval_interval and yardsticks and episode % anchor_eval_interval == 0:
-            t_eval = time.time()
-            print(f"⚓ Anchored eval... (Episode {episode:,})")
-            results = _run_anchored_eval(agent, yardsticks, anchor_eval_deals)
-            eval_wall_s += time.time() - t_eval
-            train_wall_s = (time.time() - start_time) - eval_wall_s
-            row = {
-                "episode": episode,
-                "train_wall_s": round(train_wall_s, 1),
-                "eval_wall_s": round(eval_wall_s, 1),
-                "updates_done": updates_done,
-                "transitions_done": transitions_done,
-            }
-            for name in ("scripted", "selfplay100k", "final_pfsp"):
-                r = results.get(name)
-                row[f"edge_{name}"] = round(r["edge"], 4) if r else ""
-                row[f"se_{name}"] = round(r["se"], 4) if r else ""
-            write_header = not os.path.exists(anchored_csv)
-            with open(anchored_csv, "a", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=list(row.keys()))
-                if write_header:
-                    w.writeheader()
-                w.writerow(row)
-            for name, r in results.items():
-                print(f"   edge vs {name}: {r['edge']:+.3f} ± {r['se']:.3f}")
+            anchor_cfg = AnchoredEvalConfig(
+                agent=agent,
+                yardsticks=yardsticks,
+                anchor_eval_deals=anchor_eval_deals,
+                anchored_csv=anchored_csv,
+                start_time=start_time,
+            )
+            eval_wall_s = _log_anchored_eval(
+                anchor_cfg, episode, eval_wall_s, updates_done, transitions_done
+            )
 
             # Strategic evaluation at intervals
         if episode % strategic_eval_interval == 0:
-            print(f"🧠 Analyzing strategic decisions... (Episode {episode:,})")
-            strategic_metrics = analyze_strategic_decisions(agent, num_samples=200)
+            _run_strategic_eval(agent, episode, training_data)
 
-            # Store strategic metrics
-            training_data["strategic_episodes"].append(episode)
-            training_data["pick_hand_correlation"].append(
-                strategic_metrics["pick_hand_correlation"]
-            )
-            training_data["picker_trump_rate"].append(
-                strategic_metrics["picker_trump_rate"]
-            )
-            training_data["defender_trump_rate"].append(
-                strategic_metrics["defender_trump_rate"]
-            )
-            training_data["bury_quality_rate"].append(
-                strategic_metrics["bury_quality_rate"]
-            )
-
-            print(
-                f"   Pick-Hand Correlation: {strategic_metrics['pick_hand_correlation']:.3f}"
-            )
-            print(
-                f"   Picker Trump Rate: {strategic_metrics['picker_trump_rate']:.1f}%"
-            )
-            print(
-                f"   Defender Trump Rate: {strategic_metrics['defender_trump_rate']:.1f}%"
-            )
-            print(
-                f"   Bury Quality Rate: {strategic_metrics['bury_quality_rate']:.1f}%"
-            )
+        windows = EpisodeWindows(
+            picker_scores=picker_scores,
+            pick_decisions=pick_decisions,
+            pass_decisions=pass_decisions,
+            leaster_window=leaster_window,
+            alone_call_window=alone_call_window,
+            called_ace_window=called_ace_window,
+            called_under_window=called_under_window,
+            called_10_window=called_10_window,
+            team_point_differences=team_point_differences,
+        )
 
         # Progress reporting and data collection
         if episode % 1000 == 0:
-            current_avg_picker_score = np.mean(picker_scores) if picker_scores else 0
-            # Compute pick-rate over all individual decisions (weighting games by the number of decisions they contributed)
-            total_called_picks = sum(pick_decisions[PARTNER_BY_CALLED_ACE])
-            total_called_passes = sum(pass_decisions[PARTNER_BY_CALLED_ACE])
-            total_jd_picks = sum(pick_decisions[PARTNER_BY_JD])
-            total_jd_passes = sum(pass_decisions[PARTNER_BY_JD])
-            current_called_pick_rate = (
-                (100 * total_called_picks / (total_called_picks + total_called_passes))
-                if (total_called_picks + total_called_passes) > 0
-                else 0
+            best_team_difference = _report_progress(
+                episode,
+                num_episodes,
+                agent,
+                checkpoint_dir,
+                arch,
+                training_data,
+                windows,
+                start_time,
+                best_team_difference,
             )
-            current_jd_pick_rate = (
-                (100 * total_jd_picks / (total_jd_picks + total_jd_passes))
-                if (total_jd_picks + total_jd_passes) > 0
-                else 0
-            )
-            current_team_diff = (
-                np.mean(team_point_differences) if team_point_differences else 0
-            )
-            # --- Rolling-window rates ---
-            current_leaster_rate = (
-                (sum(leaster_window) / len(leaster_window)) * 100
-                if leaster_window
-                else 0
-            )
-            current_alone_rate = (
-                (sum(alone_call_window) / len(alone_call_window)) * 100
-                if alone_call_window
-                else 0
-            )
-
-            ca_denominator = sum(called_ace_window) or 1  # avoid divide-by-zero
-            current_called_under_rate = (
-                sum(called_under_window) / ca_denominator
-            ) * 100
-            current_called_10s_rate = (sum(called_10_window) / ca_denominator) * 100
-            elapsed = time.time() - start_time
-
-            # Collect data for plotting
-            training_data["episodes"].append(episode)
-            training_data["picker_avg"].append(current_avg_picker_score)
-            training_data["called_pick_rate"].append(current_called_pick_rate)
-            training_data["jd_pick_rate"].append(current_jd_pick_rate)
-            training_data["learning_rate"].append(
-                agent.actor_optimizer.param_groups[0]["lr"]
-            )
-            training_data["time_elapsed"].append(elapsed)
-            training_data["team_point_diff"].append(current_team_diff)
-            training_data["alone_rate"].append(current_alone_rate)
-            training_data["leaster_rate"].append(current_leaster_rate)
-
-            # Strategic metrics are collected separately during strategic evaluation intervals
-            # Don't try to collect them here as they're not always available
-
-            # Calculate training speed
-            games_per_min = episode / (elapsed / 60) if elapsed > 0 else 0
-
-            print(
-                f"📊 Episode {episode:,}/{num_episodes:,} ({episode / num_episodes * 100:.1f}%)"
-            )
-            print("   " + "-" * 40)
-            print(f"   Picker avg: {current_avg_picker_score:+.3f}")
-            print(f"   Team point diff: {current_team_diff:+.1f}")
-            print(f"   Called Ace Pick rate: {current_called_pick_rate:.1f}%")
-            print(f"   JD Pick rate: {current_jd_pick_rate:.1f}%")
-            print("   " + "-" * 20)
-            print(f"   Leaster Rate: {current_leaster_rate:.2f}%")
-            print(f"   Alone Call Rate: {current_alone_rate:.2f}%")
-            print(f"   Called Under Rate: {current_called_under_rate:.2f}%")
-            print(f"   Called 10s Rate: {current_called_10s_rate:.2f}%")
-            print("   " + "-" * 40)
-            print(f"   Training speed: {games_per_min:.1f} games/min")
-            print(f"   Time elapsed: {elapsed / 60:.1f} min")
-            print("   " + "-" * 40)
-
-            # Save best model based on team point difference (lower is better)
-            # We want the absolute value to be as small as possible
-            if current_team_diff < best_team_difference:
-                best_team_difference = current_team_diff
-                agent.save(os.path.join(checkpoint_dir, f"best_{arch}.pt"))
-                print(
-                    f"   🏆 New best team point difference: {best_team_difference:.1f}! Model saved."
-                )
 
         # Save regular checkpoints
         if episode % save_interval == 0:
-            checkpoint_path = f"{checkpoint_dir}/{arch}_checkpoint_{episode}.pt"
-            agent.save(checkpoint_path)
-
-            # Save enhanced training plot
-            if len(training_data["episodes"]) > 10:
-                plot_path = f"{checkpoint_dir}/training_progress_{episode}.png"
-                save_training_plot(training_data, plot_path)
-
-            # Calculate time since last checkpoint
-            checkpoint_time = time.time()
-            time_since_last = checkpoint_time - last_checkpoint_time
-            last_checkpoint_time = checkpoint_time
-
-            print(f"💾 Checkpoint saved at episode {episode:,}")
-            print(
-                f"   Time for last {save_interval:,} episodes: {time_since_last / 60:.1f} min"
+            last_checkpoint_time = _save_checkpoint(
+                episode,
+                agent,
+                checkpoint_dir,
+                arch,
+                save_interval,
+                training_data,
+                num_episodes,
+                last_checkpoint_time,
             )
-            remaining_episodes = num_episodes - episode
-            if remaining_episodes > 0:
-                estimated_time = (
-                    remaining_episodes * (time_since_last / save_interval) / 60
-                )
-                print(f"   Estimated time remaining: {estimated_time:.1f} min")
 
-    # Final save. Leftover buffered transitions (< update_interval) are
-    # intentionally discarded: a flush update would train on a smaller
-    # sample than every other update (and at update()'s default epochs),
-    # so the saved weights would not be the product of the specified
-    # hyperparameters. final_<arch>.pt therefore equals the last
-    # threshold update's weights (== the last checkpoint when episodes
-    # is a multiple of save_interval).
-    if agent.events:
-        n_leftover = len(agent.events)
-        agent.events.clear()
-        print(f"   Discarding {n_leftover} leftover buffered events (no flush update)")
-
-    agent.save(os.path.join(checkpoint_dir, f"final_{arch}.pt"))
-
-    # Save final enhanced training plot
-    if len(training_data["episodes"]) > 0:
-        save_training_plot(
-            training_data,
-            os.path.join(checkpoint_dir, f"final_{arch}_training.png"),
-        )
-
-    total_time = time.time() - start_time
-    print("\n🎉 Training completed!")
-    print(
-        f"   Total time: {total_time / 60:.1f} minutes ({total_time / 3600:.1f} hours)"
+    windows = EpisodeWindows(
+        picker_scores=picker_scores,
+        pick_decisions=pick_decisions,
+        pass_decisions=pass_decisions,
+        leaster_window=leaster_window,
+        alone_call_window=alone_call_window,
+        called_ace_window=called_ace_window,
+        called_under_window=called_under_window,
+        called_10_window=called_10_window,
+        team_point_differences=team_point_differences,
     )
-    print(
-        f"   Final picker average: {np.mean(picker_scores) if picker_scores else 0:.3f}"
-    )
-    print(
-        f"   Final team point difference: {np.mean(team_point_differences) if team_point_differences else 0:.1f}"
-    )
-    print(f"   Best team point difference: {best_team_difference:.1f}")
-    total_called_picks = sum(pick_decisions[PARTNER_BY_CALLED_ACE])
-    total_called_passes = sum(pass_decisions[PARTNER_BY_CALLED_ACE])
-    total_jd_picks = sum(pick_decisions[PARTNER_BY_JD])
-    total_jd_passes = sum(pass_decisions[PARTNER_BY_JD])
-    final_called_pick_rate = (
-        (100 * total_called_picks / (total_called_picks + total_called_passes))
-        if (total_called_picks + total_called_passes) > 0
-        else 0
-    )
-    final_jd_pick_rate = (
-        (100 * total_jd_picks / (total_jd_picks + total_jd_passes))
-        if (total_jd_picks + total_jd_passes) > 0
-        else 0
-    )
-    print(f"   Final called Ace Pick rate: {final_called_pick_rate:.1f}%")
-    print(f"   Final JD Pick rate: {final_jd_pick_rate:.1f}%")
-    print(
-        f"   Training speed: {(num_episodes - start_episode) / (total_time / 60):.1f} episodes/min"
+    _finalize_training(
+        agent,
+        checkpoint_dir,
+        arch,
+        training_data,
+        start_time,
+        start_episode,
+        num_episodes,
+        windows,
+        best_team_difference,
     )
 
 
@@ -827,9 +1011,7 @@ def main():
     args = parser.parse_args()
 
     # Set random seed for reproducibility
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    set_all_seeds(args.seed)
     print(f"🎲 Seed: {args.seed}")
 
     # Ensure matplotlib uses a non-interactive backend

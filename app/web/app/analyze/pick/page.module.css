@@ -1,0 +1,203 @@
+/* Pick-decision analysis page. Palette (--an-*) comes from the analyze
+   layout shell. Flow: scenario builder -> decision flow (DecisionFlow). */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* --- Scenario builder --------------------------------------------------- */
+
+.builderPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  background: var(--an-panel);
+  border: 1px solid var(--an-rule);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--an-shadow-sm);
+}
+
+.builderHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1.25rem;
+}
+
+.builderTitle {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--an-ink);
+  margin: 0;
+}
+
+.builderHint {
+  font-size: 0.85rem;
+  color: var(--an-muted);
+  margin: 0;
+}
+
+.dials {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.85rem;
+}
+
+.controlGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.label {
+  font-weight: 500;
+  color: var(--an-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.select,
+.input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--an-rule-strong);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: var(--an-panel);
+  color: var(--an-ink);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input {
+  width: 7rem;
+  font-family: var(--font-mono);
+}
+
+.select:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--an-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--an-accent) 18%, transparent);
+}
+
+.checkboxWrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--an-sunk);
+  border-radius: 8px;
+  border: 1px solid var(--an-rule);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.checkbox {
+  margin: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+  accent-color: var(--an-accent);
+}
+
+.checkboxLabel {
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.875rem;
+  color: var(--an-ink-soft);
+}
+
+.analyzeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.85rem;
+  border-top: 1px solid var(--an-rule);
+  padding-top: 1rem;
+}
+
+.analyzeButton {
+  background: linear-gradient(
+    135deg,
+    var(--an-accent) 0%,
+    var(--an-accent-strong) 100%
+  );
+  color: #ffffff;
+  border: none;
+  padding: 0.7rem 1.6rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 6px 16px -6px
+    color-mix(in oklab, var(--an-accent) 70%, transparent);
+}
+
+.analyzeButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px -6px
+    color-mix(in oklab, var(--an-accent) 75%, transparent);
+}
+
+.analyzeButton:disabled {
+  background: var(--an-rule-strong);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* --- Feedback ------------------------------------------------------------ */
+
+.error {
+  background: #fdecec;
+  border: 1px solid #f6c9c9;
+  color: var(--an-neg);
+  padding: 1rem;
+  border-radius: 10px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: var(--an-muted);
+}
+
+.spinner {
+  border: 2px solid var(--an-track);
+  border-radius: 50%;
+  border-top: 2px solid var(--an-accent);
+  width: 18px;
+  height: 18px;
+  animation: spin 1s linear infinite;
+  flex: 0 0 auto;
+}
+
+.analyzeButton .spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+

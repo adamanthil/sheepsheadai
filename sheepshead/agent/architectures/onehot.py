@@ -1,9 +1,8 @@
 """Legacy-style one-hot baseline (the onehot-ff rung).
 
 Self-contained flat-state encoder + flat-head actor that satisfy the
-encoder.EncoderInterface / actor four-method contracts by hand — no
-card embeddings, no tokens. Moved verbatim from the original
-single-file architectures.py."""
+encoder / actor contracts by hand — no card embeddings, no tokens.
+Moved verbatim from the original single-file architectures.py."""
 
 from typing import Any, Dict, List
 
@@ -185,10 +184,10 @@ class OneHotFeedForwardEncoder(nn.Module):
 class FlatHeadActorNetwork(nn.Module):
     """Legacy-style actor: per-phase flat linear heads over global action ids.
 
-    Implements the same four-method surface as MultiHeadRecurrentActorNetwork
-    (forward / forward_with_logits / _build_logits_from_features /
-    set_temperatures) but ignores hand_ids, card embeddings, and hand tokens —
-    card actions are scored by absolute action id, not by hand slot.
+    Implements the same three-method surface as MultiHeadRecurrentActorNetwork
+    (forward / forward_with_logits / _build_logits_from_features) but ignores
+    hand_ids, card embeddings, and hand tokens — card actions are scored by
+    absolute action id, not by hand slot.
     """
 
     def __init__(self, action_size, action_groups):
@@ -216,11 +215,6 @@ class FlatHeadActorNetwork(nn.Module):
                 persistent=False,
             )
 
-        self.temperature_pick = 1.0
-        self.temperature_partner = 1.0
-        self.temperature_bury = 1.0
-        self.temperature_play = 1.0
-
         self.apply(self._init_weights)
 
     @staticmethod
@@ -228,17 +222,6 @@ class FlatHeadActorNetwork(nn.Module):
         if isinstance(m, nn.Linear):
             nn.init.orthogonal_(m.weight, gain=1.0)
             nn.init.constant_(m.bias, 0.0)
-
-    def set_temperatures(self, pick=None, partner=None, bury=None, play=None):
-        eps = 1e-6
-        if pick is not None:
-            self.temperature_pick = max(float(pick), eps)
-        if partner is not None:
-            self.temperature_partner = max(float(partner), eps)
-        if bury is not None:
-            self.temperature_bury = max(float(bury), eps)
-        if play is not None:
-            self.temperature_play = max(float(play), eps)
 
     def _build_logits_from_features(
         self,
@@ -255,15 +238,9 @@ class FlatHeadActorNetwork(nn.Module):
         K = actor_features.size(0)
         logits = torch.full((K, self.action_size), -1e8, device=actor_features.device)
         feat = self.actor_adapter(actor_features)
-        temps = {
-            "pick": self.temperature_pick,
-            "partner": self.temperature_partner,
-            "bury": self.temperature_bury,
-            "play": self.temperature_play,
-        }
         for name in self.action_groups:
             idx = getattr(self, f"_idx_{name}")
-            logits[:, idx] = self.heads[name](feat) / max(temps[name], 1e-6)
+            logits[:, idx] = self.heads[name](feat)
         if action_mask is not None:
             if action_mask.dim() == 1:
                 action_mask = action_mask.unsqueeze(0)

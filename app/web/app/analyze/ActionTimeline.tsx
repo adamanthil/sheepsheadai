@@ -2,6 +2,7 @@ import React from "react";
 import { AnalyzeActionDetail } from "../../lib/analyzeTypes";
 import ActionRow from "./ActionRow";
 import Divider from "./Divider";
+import { traceBoundaries } from "./traceBoundaries";
 import styles from "./ActionTimeline.module.css";
 
 interface ActionTimelineProps {
@@ -110,58 +111,28 @@ export default function ActionTimeline({
     return (value - min) / (max - min);
   };
 
-  // Sheepshead always has exactly 5 players
-  const PLAYERS_PER_TRICK = 5;
-
-  // Helper function to check if we need a divider before this action
-  const needsDivider = (currentIndex: number) => {
-    if (currentIndex === 0) return false;
-
-    const currentAction = trace[currentIndex];
-    const prevAction = trace[currentIndex - 1];
-
-    // Phase change divider
-    if (currentAction.phase !== prevAction.phase) {
-      return {
-        type: "phase",
-        fromPhase: prevAction.phase,
-        toPhase: currentAction.phase,
-      };
-    }
-
-    // Trick divider (only in play phase)
-    if (currentAction.phase === "play" && prevAction.phase === "play") {
-      // Count how many play actions have occurred before this one
-      const playActionsBefore = trace
-        .slice(0, currentIndex)
-        .filter((action) => action.phase === "play").length;
-
-      // If we have a multiple of 5 actions, this starts a new trick
-      if (
-        playActionsBefore > 0 &&
-        playActionsBefore % PLAYERS_PER_TRICK === 0
-      ) {
-        const trickNumber =
-          Math.floor(playActionsBefore / PLAYERS_PER_TRICK) + 1;
-        return { type: "trick", trickNumber };
-      }
-    }
-
-    return false;
-  };
+  const boundaryByIndex = new Map(
+    traceBoundaries(trace).map((b) => [b.beforeIndex, b]),
+  );
 
   return (
     <div>
       {displayedTrace.map((action, index) => {
-        const dividerInfo = needsDivider(index);
+        const boundary = boundaryByIndex.get(index);
         return (
           <React.Fragment key={index}>
-            {dividerInfo && (
+            {boundary && (
               <Divider
-                type={dividerInfo.type as "phase" | "trick"}
-                fromPhase={dividerInfo.fromPhase}
-                toPhase={dividerInfo.toPhase}
-                trickNumber={dividerInfo.trickNumber}
+                type={boundary.kind}
+                fromPhase={
+                  boundary.kind === "phase" ? boundary.fromPhase : undefined
+                }
+                toPhase={
+                  boundary.kind === "phase" ? boundary.toPhase : undefined
+                }
+                trickNumber={
+                  boundary.kind === "trick" ? boundary.trickNumber : undefined
+                }
               />
             )}
             <ActionRow

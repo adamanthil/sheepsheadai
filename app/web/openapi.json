@@ -67,6 +67,39 @@
             ],
             "title": "Expectedfinalreturn"
           },
+          "memoryCosineDistance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memorycosinedistance"
+          },
+          "memoryNorm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memorynorm"
+          },
+          "oracleValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oraclevalue"
+          },
           "phase": {
             "title": "Phase",
             "type": "string"
@@ -124,20 +157,6 @@
               }
             ],
             "title": "Secretpartnerprob"
-          },
-          "state": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "State"
           },
           "stepIndex": {
             "title": "Stepindex",
@@ -266,14 +285,266 @@
         "title": "AnalyzeActionDetail",
         "type": "object"
       },
-      "AnalyzeGameSummary": {
+      "AnalyzeCalibrationSummary": {
+        "description": "Game-level rollup of aux-head prediction quality, computed from the\ntrace once the game is done. Absent for no-aux architectures.",
         "properties": {
-          "blind": {
+          "overallBrier": {
+            "title": "Overallbrier",
+            "type": "number"
+          },
+          "overallPointsMae": {
+            "title": "Overallpointsmae",
+            "type": "number"
+          },
+          "seats": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/AnalyzeSeatCalibration"
             },
-            "title": "Blind",
+            "title": "Seats",
             "type": "array"
+          },
+          "trumpMaskAccuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trumpmaskaccuracy"
+          },
+          "trumpMaskCount": {
+            "default": 0,
+            "title": "Trumpmaskcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seats",
+          "overallBrier",
+          "overallPointsMae"
+        ],
+        "title": "AnalyzeCalibrationSummary",
+        "type": "object"
+      },
+      "AnalyzeCardEmbeddingEntry": {
+        "properties": {
+          "card": {
+            "title": "Card",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "vector": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Vector",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "card",
+          "vector"
+        ],
+        "title": "AnalyzeCardEmbeddingEntry",
+        "type": "object"
+      },
+      "AnalyzeCardEmbeddings": {
+        "description": "The model's learned card-embedding table and precomputed geometry.\nRow order is DECK order (all trump first, then fail), UNDER last.",
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzeCardEmbeddingEntry"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "cosineSim": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Cosinesim",
+            "type": "array"
+          },
+          "dims": {
+            "title": "Dims",
+            "type": "integer"
+          },
+          "pcaCoords": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Pcacoords",
+            "type": "array"
+          },
+          "pcaExplainedVariance": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Pcaexplainedvariance",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dims",
+          "cards",
+          "cosineSim",
+          "pcaCoords",
+          "pcaExplainedVariance"
+        ],
+        "title": "AnalyzeCardEmbeddings",
+        "type": "object"
+      },
+      "AnalyzeMemoryObserve": {
+        "description": "Memory update from a trick-completion observation.\n\nAfter every completed trick, all five seats fold the finished trick\ninto their recurrent memory via agent.observe \u2014 the same GRU update as\na decision encode, but without an action. These carry the trick's\noutcome, so they are often the largest belief revisions.",
+        "properties": {
+          "afterStepIndex": {
+            "title": "Afterstepindex",
+            "type": "integer"
+          },
+          "memoryCosineDistance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memorycosinedistance"
+          },
+          "memoryNorm": {
+            "title": "Memorynorm",
+            "type": "number"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seatName": {
+            "title": "Seatname",
+            "type": "string"
+          },
+          "trick": {
+            "title": "Trick",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "afterStepIndex",
+          "trick",
+          "seat",
+          "seatName",
+          "memoryNorm"
+        ],
+        "title": "AnalyzeMemoryObserve",
+        "type": "object"
+      },
+      "AnalyzeModelResponse": {
+        "properties": {
+          "arch": {
+            "title": "Arch",
+            "type": "string"
+          },
+          "cardEmbeddings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzeCardEmbeddings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criticMode": {
+            "title": "Criticmode",
+            "type": "string"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "number"
+          },
+          "hasAuxHeads": {
+            "title": "Hasauxheads",
+            "type": "boolean"
+          },
+          "hasOracle": {
+            "title": "Hasoracle",
+            "type": "boolean"
+          },
+          "modelLabel": {
+            "title": "Modellabel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelLabel",
+          "arch",
+          "criticMode",
+          "hasAuxHeads",
+          "hasOracle",
+          "gamma"
+        ],
+        "title": "AnalyzeModelResponse",
+        "type": "object"
+      },
+      "AnalyzePickMeta": {
+        "description": "Echo of the pick request plus the serving model's label.",
+        "properties": {
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "partnerMode": {
+            "title": "Partnermode",
+            "type": "integer"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "partnerMode",
+          "seat",
+          "deterministic",
+          "model"
+        ],
+        "title": "AnalyzePickMeta",
+        "type": "object"
+      },
+      "AnalyzePickOutcome": {
+        "description": "Where the pre-play phases ended up once play was about to start.",
+        "properties": {
+          "aloneCalled": {
+            "title": "Alonecalled",
+            "type": "boolean"
           },
           "bury": {
             "items": {
@@ -282,21 +553,7 @@
             "title": "Bury",
             "type": "array"
           },
-          "defenderPoints": {
-            "title": "Defenderpoints",
-            "type": "integer"
-          },
-          "hands": {
-            "additionalProperties": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "title": "Hands",
-            "type": "object"
-          },
-          "partner": {
+          "calledCard": {
             "anyOf": [
               {
                 "type": "string"
@@ -305,9 +562,17 @@
                 "type": "null"
               }
             ],
-            "title": "Partner"
+            "title": "Calledcard"
           },
-          "picker": {
+          "calledUnder": {
+            "title": "Calledunder",
+            "type": "boolean"
+          },
+          "isLeaster": {
+            "title": "Isleaster",
+            "type": "boolean"
+          },
+          "pickerName": {
             "anyOf": [
               {
                 "type": "string"
@@ -316,29 +581,161 @@
                 "type": "null"
               }
             ],
-            "title": "Picker"
+            "title": "Pickername"
           },
-          "pickerPoints": {
-            "title": "Pickerpoints",
-            "type": "integer"
+          "pickerSeat": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickerseat"
           },
-          "scores": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Scores",
-            "type": "array"
+          "underCard": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undercard"
           }
         },
         "required": [
-          "hands",
-          "blind",
-          "bury",
-          "pickerPoints",
-          "defenderPoints",
-          "scores"
+          "isLeaster",
+          "aloneCalled",
+          "calledUnder",
+          "bury"
         ],
-        "title": "AnalyzeGameSummary",
+        "title": "AnalyzePickOutcome",
+        "type": "object"
+      },
+      "AnalyzePickRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "blind": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blind"
+          },
+          "deterministic": {
+            "default": true,
+            "title": "Deterministic",
+            "type": "boolean"
+          },
+          "hand": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hand"
+          },
+          "partnerMode": {
+            "default": 1,
+            "title": "Partnermode",
+            "type": "integer"
+          },
+          "seat": {
+            "default": 1,
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "title": "AnalyzePickRequest",
+        "type": "object"
+      },
+      "AnalyzePickResponse": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzeActionDetail"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AnalyzePickMeta"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AnalyzePickOutcome"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/AnalyzePickScenario"
+          }
+        },
+        "required": [
+          "meta",
+          "scenario",
+          "decisions",
+          "outcome"
+        ],
+        "title": "AnalyzePickResponse",
+        "type": "object"
+      },
+      "AnalyzePickScenario": {
+        "properties": {
+          "blind": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blind",
+            "type": "array"
+          },
+          "hand": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hand",
+            "type": "array"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seatName": {
+            "title": "Seatname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat",
+          "seatName",
+          "hand",
+          "blind"
+        ],
+        "title": "AnalyzePickScenario",
         "type": "object"
       },
       "AnalyzePointEstimate": {
@@ -397,6 +794,109 @@
         "title": "AnalyzeProbability",
         "type": "object"
       },
+      "AnalyzeSeatCalibration": {
+        "properties": {
+          "brierScore": {
+            "title": "Brierscore",
+            "type": "number"
+          },
+          "decisionCount": {
+            "title": "Decisioncount",
+            "type": "integer"
+          },
+          "firstWinProb": {
+            "title": "Firstwinprob",
+            "type": "number"
+          },
+          "lastWinProb": {
+            "title": "Lastwinprob",
+            "type": "number"
+          },
+          "meanWinProb": {
+            "title": "Meanwinprob",
+            "type": "number"
+          },
+          "pointsMae": {
+            "title": "Pointsmae",
+            "type": "number"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seatName": {
+            "title": "Seatname",
+            "type": "string"
+          },
+          "won": {
+            "title": "Won",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "seat",
+          "seatName",
+          "won",
+          "decisionCount",
+          "firstWinProb",
+          "lastWinProb",
+          "meanWinProb",
+          "brierScore",
+          "pointsMae"
+        ],
+        "title": "AnalyzeSeatCalibration",
+        "type": "object"
+      },
+      "AnalyzeSimulateMeta": {
+        "description": "Echo of the simulate request plus the model attributes the UI needs\nto interpret the trace.",
+        "properties": {
+          "criticMode": {
+            "title": "Criticmode",
+            "type": "string"
+          },
+          "deterministic": {
+            "title": "Deterministic",
+            "type": "boolean"
+          },
+          "gamma": {
+            "title": "Gamma",
+            "type": "number"
+          },
+          "hasOracle": {
+            "title": "Hasoracle",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "partnerMode": {
+            "title": "Partnermode",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "partnerMode",
+          "deterministic",
+          "model",
+          "gamma",
+          "criticMode",
+          "hasOracle"
+        ],
+        "title": "AnalyzeSimulateMeta",
+        "type": "object"
+      },
       "AnalyzeSimulateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -432,12 +932,15 @@
       },
       "AnalyzeSimulateResponse": {
         "properties": {
-          "actionLookup": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Actionlookup",
-            "type": "object"
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzeCalibrationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "final": {
             "anyOf": [
@@ -451,27 +954,16 @@
             ],
             "title": "Final"
           },
-          "meta": {
-            "additionalProperties": true,
-            "title": "Meta",
-            "type": "object"
-          },
-          "players": {
+          "memoryObserves": {
+            "default": [],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/AnalyzeMemoryObserve"
             },
-            "title": "Players",
+            "title": "Memoryobserves",
             "type": "array"
           },
-          "summary": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AnalyzeGameSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "meta": {
+            "$ref": "#/components/schemas/AnalyzeSimulateMeta"
           },
           "trace": {
             "items": {
@@ -483,8 +975,6 @@
         },
         "required": [
           "meta",
-          "actionLookup",
-          "players",
           "trace"
         ],
         "title": "AnalyzeSimulateResponse",
@@ -1025,6 +1515,64 @@
           }
         },
         "summary": "Get Actions"
+      }
+    },
+    "/api/analyze/model": {
+      "get": {
+        "description": "Describe the deployed model: architecture, capabilities, and its\ncard-embedding geometry. Cached per checkpoint.",
+        "operationId": "analyze_model_api_analyze_model_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeModelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Analyze Model"
+      }
+    },
+    "/api/analyze/pick": {
+      "post": {
+        "description": "Analyze the pre-play decisions (pick/pass, call, bury) for a chosen\nseat, hand, and blind.",
+        "operationId": "analyze_pick_api_analyze_pick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzePickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzePickResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Pick"
       }
     },
     "/api/analyze/simulate": {

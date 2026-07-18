@@ -20,9 +20,10 @@ from server.realtime.broadcast import (
     broadcast_table_state,
     broadcast_table_update,
 )
-from server.realtime.chat import add_chat_message, broadcast_chat_append
+from server.realtime.chat import emit_bid_chat_message
 from server.runtime.ai_loop import ai_observe_all, schedule_ai_turns
 from server.runtime.lifecycle import is_draining
+from server.runtime.seating import AI_NAME_POOL
 from server.runtime.tables import (
     Occupant,
     _try_int,
@@ -40,7 +41,7 @@ from server.services.persistence.games import (
     persist_started_game,
 )
 from server.services.persistence.pool import get_db_pool
-from sheepshead import ACTION_LOOKUP, CARD_FULL_NAMES, Game
+from sheepshead import ACTION_LOOKUP, Game
 
 router = APIRouter()
 
@@ -68,15 +69,12 @@ def build_table_agent(settings, table_id: str):
     return agent
 
 
-_AI_NAME_POOL = ("Dan", "Kyle", "John", "Trevor", "Tim", "Tom")
-
-
 def _fill_empty_seats_with_ai(table) -> None:
     """Populate every empty seat with a fresh AI occupant."""
     for i in range(1, 6):
         if not table.seats[i]:
             occ_id = str(uuid.uuid4())
-            display_name = _AI_NAME_POOL[(i - 1) % len(_AI_NAME_POOL)]
+            display_name = AI_NAME_POOL[(i - 1) % len(AI_NAME_POOL)]
             table.occupants[occ_id] = Occupant(
                 id=occ_id, display_name=display_name, is_ai=True
             )
@@ -257,31 +255,7 @@ async def post_action(
         await fire_game_hooks(table, pre, post)
 
     action_str = ACTION_LOOKUP.get(req.action_id, "")
-    display_name = conn.display_name
-    if action_str == "PICK":
-        msg_dict = await add_chat_message(table, "system", f"{display_name} picked")
-        await broadcast_chat_append(table, msg_dict)
-    elif action_str == "PASS":
-        msg_dict = await add_chat_message(table, "system", f"{display_name} passed")
-        await broadcast_chat_append(table, msg_dict)
-    elif action_str == "ALONE":
-        msg_dict = await add_chat_message(table, "system", f"{display_name} goes alone")
-        await broadcast_chat_append(table, msg_dict)
-    elif action_str == "JD PARTNER":
-        msg_dict = await add_chat_message(
-            table, "system", f"{display_name} chose JD partner"
-        )
-        await broadcast_chat_append(table, msg_dict)
-    elif action_str.startswith("CALL "):
-        parts = action_str.split()
-        called_card = parts[1] if len(parts) > 1 else ""
-        under = "under" if len(parts) > 2 and parts[2] == "UNDER" else ""
-        card_display = CARD_FULL_NAMES.get(called_card, called_card)
-        call_msg = f"{display_name} calls {card_display}"
-        if under:
-            call_msg += " under"
-        msg_dict = await add_chat_message(table, "system", call_msg)
-        await broadcast_chat_append(table, msg_dict)
+    await emit_bid_chat_message(table, action_str, conn.display_name)
 
     await ai_observe_all(table, except_seat=conn.seat)
     await broadcast_table_state(table)

@@ -55,9 +55,7 @@ def sequential_pool(teacher, real_game, deals, fp, observer):
         if world is None:
             pool.append(None)
             continue
-        mem = {
-            pid: t.detach().clone() for pid, t in teacher.agent._player_memories.items()
-        }
+        mem = teacher.agent.snapshot_player_memories()
         pool.append((world, mem, log_w))
     return pool
 

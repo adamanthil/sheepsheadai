@@ -3,6 +3,8 @@
 Training utilities shared across training scripts.
 """
 
+import csv
+import os
 import random
 from typing import List, Dict
 import matplotlib.pyplot as plt
@@ -17,38 +19,44 @@ from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
-    get_card_suit,
-    get_trick_points,
+)
+
+# Reward-shaping / auxiliary-target math lives in reward_shaping.py so that
+# consumers who only need that pure math (e.g. the web server's /analyze
+# service) don't have to import the rest of this trainer-internals module.
+# Re-exported here, unchanged, as a permanent compatibility shim: this
+# module's existing 20+ importers (trainers, analysis/validation scripts,
+# tests) keep working without modification.
+from sheepshead.training.reward_shaping import (  # noqa: F401
+    LEASTER_FINAL_REWARD_BONUS,
+    TRICK_POINT_RATIO,
+    RETURN_SCALE,
+    estimate_hand_strength_score,
+    compute_known_points_rel,
+    compute_seen_trump_mask,
+    compute_any_unseen_trump_higher_than_hand,
+    calculate_trick_reward,
+    is_same_team_as_winner,
+    apply_trick_rewards,
+    apply_leaster_trick_rewards,
+    update_intermediate_rewards_for_action,
+    handle_trick_completion,
+    process_episode_rewards,
+    process_terminal_rewards,
 )
 
 
-LEASTER_FINAL_REWARD_BONUS = 0.08
-TRICK_POINT_RATIO = 360.0
+def set_all_seeds(seed: int) -> None:
+    """Seed ``random``, ``numpy``, and ``torch`` with the same value.
 
-# Episode-return scale shared across trainers: PPO trains the value head on
-# final_score / RETURN_SCALE (~[-1, 1]), and ismcts.py bootstraps terminal
-# scores by the same factor. Single source of truth (was duplicated inline).
-RETURN_SCALE = 12.0
-
-
-def estimate_hand_strength_score(cards: List[str]) -> int:
-    """Return a simple strength score for a hand based on trump density.
-
-    Scoring heuristic:
-      - +3 per Queen
-      - +2 per Jack
-      - +1 per other trump
+    Consolidates the copy-pasted ``random.seed(s); np.random.seed(s);
+    torch.manual_seed(s)`` triple that recurred across the trainers and
+    analysis/validation scripts. Order matters for exact reproducibility
+    with existing runs: random, then numpy, then torch.
     """
-    score = 0
-    for card in cards:
-        if card in TRUMP:
-            if card.startswith("Q"):
-                score += 3
-            elif card.startswith("J"):
-                score += 2
-            else:
-                score += 1
-    return score
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 
 def get_partner_selection_mode(episode: int) -> int:
@@ -123,346 +131,6 @@ def paired_edge(
         "n_deals": n,
         "deviating_frac": float(np.mean(arr != 0.0)),
     }
-
-
-def compute_known_points_rel(player):
-    """Return known point totals (0–120) for all seats from the acting player's perspective.
-
-    Known points include:
-      - Public trick points in game.points_taken (including blind/UNDER handling).
-      - Bury card points, but only for the picker in non-leaster games once the bury is fixed.
-
-    The result is a length-5 list ordered by relative seat:
-      1 = self, 2 = left-hand opponent, ..., 5 = right-hand opponent.
-    Values are raw point totals (0–120).
-    """
-    game = player.game
-    base_points = list(getattr(game, "points_taken", [0, 0, 0, 0, 0]))
-
-    # In standard games, the picker uniquely knows the bury card identities and their points.
-    # We expose those points only to the picker, and only once the bury is fixed.
-    if not game.is_leaster:
-        if player.is_picker:
-            base_points[player.position - 1] += get_trick_points(game.bury)
-
-    rel_points = []
-    for rel in range(1, 6):
-        abs_seat = ((player.position + rel - 2) % 5) + 1
-        rel_points.append(base_points[abs_seat - 1])
-    return rel_points
-
-
-def compute_seen_trump_mask(player) -> List[int]:
-    """Return a length-len(TRUMP) 0/1 mask where 1 indicates the trump is seen/known.
-
-    "Seen" is from the player's perspective:
-      - Cards currently in hand
-      - Cards already played to tricks (public history)
-      - Blind / bury / under cards known only to the picker
-    """
-
-    def mark_seen(card: str, seen: set[str]) -> None:
-        if card in TRUMP:
-            seen.add(card)
-
-    seen_trumps: set[str] = set()
-
-    for card in player.hand:
-        mark_seen(card, seen_trumps)
-
-    if player.is_picker:
-        for card in player.blind:
-            mark_seen(card, seen_trumps)
-        for card in player.bury:
-            mark_seen(card, seen_trumps)
-        if player.game.under_card:
-            mark_seen(player.game.under_card, seen_trumps)
-
-    for trick in player.game.history:
-        for card in trick:
-            if card:
-                mark_seen(card, seen_trumps)
-
-    return [1 if c in seen_trumps else 0 for c in TRUMP]
-
-
-def compute_any_unseen_trump_higher_than_hand(player) -> int:
-    """Return 1 if there exists an *unseen* trump higher than the player's best trump in hand.
-
-    Interprets "highest card in my hand" as "highest trump in my hand" since trump-tracking
-    is the intended subtask. If the player has no trump in hand, this reduces to:
-      - 1 iff there exists any unseen trump.
-    """
-    seen_mask = compute_seen_trump_mask(player)
-
-    best_trump_idx_in_hand = len(TRUMP)
-    for card in player.hand:
-        if card in TRUMP:
-            best_trump_idx_in_hand = min(best_trump_idx_in_hand, TRUMP.index(card))
-
-    highest_unseen_idx = len(TRUMP)
-    for idx, seen in enumerate(seen_mask):
-        if not seen:
-            highest_unseen_idx = idx
-            break
-
-    return 1 if highest_unseen_idx < best_trump_idx_in_hand else 0
-
-
-def calculate_trick_reward(trick_points: int) -> float:
-    """Intermediate reward for trick points."""
-    return trick_points / TRICK_POINT_RATIO
-
-
-def is_same_team_as_winner(player, winner_pos: int, game) -> bool:
-    if game.is_leaster:
-        return False
-    player_picker_team = (
-        player.is_picker or player.is_partner or player.is_secret_partner
-    )
-    winner_player = game.players[winner_pos - 1]
-    winner_picker_team = (
-        winner_player.is_picker
-        or winner_player.is_partner
-        or winner_player.is_secret_partner
-    )
-    return player_picker_team == winner_picker_team
-
-
-def apply_trick_rewards(
-    trick_transitions: List[Dict], trick_winner_pos: int, trick_reward: float, game
-) -> None:
-    for transition in trick_transitions:
-        player = transition["player"]
-        reward_multiplier = (
-            1.0 if is_same_team_as_winner(player, trick_winner_pos, game) else -1.0
-        )
-        transition["intermediate_reward"] += trick_reward * reward_multiplier
-
-
-def apply_leaster_trick_rewards(
-    trick_transitions: List[Dict], trick_winner_pos: int, trick_reward: float
-) -> None:
-    for transition in trick_transitions:
-        player = transition["player"]
-        if player.position == trick_winner_pos:
-            transition["intermediate_reward"] -= trick_reward
-
-
-def update_intermediate_rewards_for_action(
-    game,
-    player,
-    action,
-    transition,
-    current_trick_transitions,
-    pick_weight=1.0,  # Multiplier for pick head shaping
-    partner_weight=1.0,  # Multiplier for partner head shaping
-    bury_weight=1.0,  # Multiplier for bury head shaping
-    play_weight=1.0,  # Multiplier for play head shaping
-):
-    """Apply shared intermediate reward shaping and trick tracking.
-    Uses game engine state to detect leads and trick phase; no counter needed.
-    """
-    action_name = ACTIONS[action - 1]
-
-    # Hand-conditioned PICK/PASS shaping (small human-like nudges)
-    if action_name in ("PICK", "PASS"):
-        score = estimate_hand_strength_score(player.hand)
-        if score <= 4:
-            pick_bonus, pass_bonus = -0.1, +0.1
-        elif score <= 6:
-            pick_bonus, pass_bonus = 0, 0
-        elif score <= 7:
-            pick_bonus, pass_bonus = +0.02, -0.02
-        elif score >= 8:
-            pick_bonus, pass_bonus = +0.15, -0.15
-        transition["intermediate_reward"] += (
-            pick_bonus if action_name == "PICK" else pass_bonus
-        )
-        transition["intermediate_reward"] *= pick_weight
-
-    # ALONE shaping: discourage going alone with weak hands
-    elif action_name == "ALONE":
-        score = estimate_hand_strength_score(player.hand)
-        if score <= 8:
-            transition["intermediate_reward"] += -0.1
-        transition["intermediate_reward"] *= partner_weight
-
-    # Bury penalty: discourage burying trump if not required
-    elif "BURY" in action_name:
-        card = action_name[5:]
-        # Derive allowed bury actions from this step's valid_actions
-        valid_actions = transition.get("valid_actions", set())
-        allowed_bury_cards = [ACTIONS[id - 1][5:] for id in valid_actions]
-        has_allowed_fail_bury = any(get_card_suit(c) != "T" for c in allowed_bury_cards)
-        has_allowed_trump_bury = any(
-            get_card_suit(c) == "T" for c in allowed_bury_cards
-        )
-
-        if card in TRUMP and has_allowed_fail_bury:
-            transition["intermediate_reward"] += -0.1
-        elif card not in TRUMP and has_allowed_trump_bury:
-            # Small preference when both options exist
-            transition["intermediate_reward"] += 0.02
-        elif not has_allowed_fail_bury and card.startswith("Q"):
-            # Even if we have to bury trump, we should not bury queens.
-            transition["intermediate_reward"] += -0.1
-        elif not has_allowed_fail_bury and card.startswith("J"):
-            # Even if we have to bury trump, unlikely we should bury jacks.
-            transition["intermediate_reward"] += -0.02
-        transition["intermediate_reward"] *= bury_weight
-
-    elif "PLAY" in action_name:
-        is_lead = (game.cards_played == 0) and (game.leader == player.position)
-        if is_lead:
-            valid_actions = transition.get("valid_actions", set())
-            allowed_play_cards = [ACTIONS[id - 1][5:] for id in valid_actions]
-            has_allowed_fail_play = any(
-                get_card_suit(c) != "T" for c in allowed_play_cards
-            )
-
-            if game.called_card:
-                has_called_suit = any(
-                    get_card_suit(c) == get_card_suit(game.called_card)
-                    for c in allowed_play_cards
-                )
-            else:
-                has_called_suit = False
-
-            card = action_name[5:]
-            if (
-                not game.is_leaster
-                and not player.is_picker
-                and not player.is_partner
-                and not player.is_secret_partner
-                and has_allowed_fail_play
-                and card in TRUMP
-            ):
-                # Discourage defenders from leading trump
-                transition["intermediate_reward"] += -0.06
-            elif (
-                game.called_card
-                and not player.is_picker
-                and not player.is_partner
-                and not player.is_secret_partner
-                and not game.was_called_suit_played
-                and game.called_suit == get_card_suit(card)
-            ):
-                # Encourage defenders to lead called suit (early)
-                transition["intermediate_reward"] += 0.1 - (0.02 * game.current_trick)
-            elif (
-                game.called_card
-                and not player.is_picker
-                and not player.is_partner
-                and not player.is_secret_partner
-                and not game.was_called_suit_played
-                and has_called_suit
-                and game.called_suit != get_card_suit(card)
-            ):
-                # Discourage defenders from not leading called suit if they can
-                transition["intermediate_reward"] += -0.01
-            elif (
-                not game.is_leaster
-                and not player.is_picker
-                and not player.is_partner
-                and not player.is_secret_partner
-                and card not in TRUMP
-            ):
-                # Nudge defenders toward leading fail
-                transition["intermediate_reward"] += 0.03
-            elif (
-                not game.is_leaster
-                and (player.is_partner or player.is_secret_partner)
-                and card in TRUMP
-            ):
-                # Encourage partners to lead trump
-                transition["intermediate_reward"] += 0.08
-            elif not game.is_leaster and player.is_picker and card in TRUMP:
-                # Nudge picker toward leading trump
-                transition["intermediate_reward"] += 0.03
-        transition["intermediate_reward"] *= play_weight
-
-        current_trick_transitions.append(transition)
-
-    transition["head_shaping_reward"] = transition["intermediate_reward"]
-
-
-def handle_trick_completion(game, current_trick_transitions):
-    """If a trick has completed, apply trick-based rewards and reset tracking.
-
-    Returns True if the trick just completed, else False.
-    """
-    if game.was_trick_just_completed:
-        trick_points = game.trick_points[game.current_trick - 1]
-        trick_winner = game.trick_winners[game.current_trick - 1]
-        trick_reward = calculate_trick_reward(trick_points)
-
-        if not game.is_leaster:
-            apply_trick_rewards(
-                current_trick_transitions, trick_winner, trick_reward, game
-            )
-        else:
-            apply_leaster_trick_rewards(
-                current_trick_transitions, trick_winner, trick_reward
-            )
-
-        # Reset tracking for next trick
-        current_trick_transitions.clear()
-        return True
-
-    return False
-
-
-def process_episode_rewards(episode_transitions, final_scores, is_leaster):
-    """Compute per-action rewards for a single player's episode.
-
-    The input must be a chronological list of action transitions for one player only.
-    The final action in the list is considered the terminal step for assigning
-    the episode-level final reward.
-    """
-    last_index = len(episode_transitions) - 1
-    for i, transition in enumerate(episode_transitions):
-        player = transition["player"]
-        player_pos = player.position
-        final_score = final_scores[player_pos - 1]
-        is_episode_done = i == last_index
-
-        if is_leaster:
-            # Increase final reward for leasters to compensate for negative trick rewards.
-            # Agent should dislike playing leasters most of the time (similar to human behavior)
-            # but without this the bias is a bit too strong.
-            leaster_reward = final_score / RETURN_SCALE + LEASTER_FINAL_REWARD_BONUS
-            final_reward = leaster_reward if is_episode_done else 0.0
-        else:
-            final_reward = (final_score / RETURN_SCALE) if is_episode_done else 0.0
-
-        total_reward = final_reward + transition["intermediate_reward"]
-        yield {
-            "transition": transition,
-            "reward": total_reward,
-        }
-
-
-def process_terminal_rewards(episode_transitions, final_scores, is_leaster=False):
-    """Terminal-only return for the ExIt/ISMCTS regime (mirrors the
-    ``process_episode_rewards`` interface so the PFSP runtime can swap them).
-
-    The full episode return ``final_score / RETURN_SCALE`` is placed on the
-    player's LAST action; every other step gets 0 and is bridged by GAE/critic.
-    No per-trick reward and no leaster bonus — ``get_score()`` already scores
-    leasters correctly, so pass->leaster EV is win-likelihood driven with zero
-    hand-tuning (``is_leaster`` is accepted for interface parity and ignored).
-    See notebooks/ISMCTS_Teacher_Refactor_Plan.md §2.
-    """
-    last_index = len(episode_transitions) - 1
-    for i, transition in enumerate(episode_transitions):
-        player = transition["player"]
-        final_score = final_scores[player.position - 1]
-        reward = (final_score / RETURN_SCALE) if i == last_index else 0.0
-        yield {
-            "transition": transition,
-            "reward": reward,
-        }
 
 
 def analyze_strategic_decisions(agent, num_samples=100):
@@ -759,7 +427,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     does not write into the training buffer.
     """
     rng_state = random.getstate()
-    saved_mem = {pid: t.detach().clone() for pid, t in agent._player_memories.items()}
+    saved_mem = agent.snapshot_player_memories()
     random.seed(seed)
     picks = passes = 0
     alone = partner_decisions = 0
@@ -836,7 +504,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
             if game.is_leaster:
                 leasters += 1
     finally:
-        agent._player_memories = saved_mem
+        agent.restore_player_memories(saved_mem)
         random.setstate(rng_state)
     return {
         "games": n_games,
@@ -853,3 +521,26 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         ),
         "play_nodes": len(play_spreads),
     }
+
+
+def append_csv_row(path: str, fieldnames: List[str], row: Dict) -> None:
+    """Append one row to the CSV at ``path``, writing ``fieldnames`` as a
+    header first if the file doesn't exist yet.
+
+    Both PPO trainers periodically append a row to their own
+    ``anchored_eval.csv`` (and train_league_ppo has a few sibling logs with
+    the same idiom): check whether the file exists, open in append mode,
+    write the header once, then write the row. The two trainers' anchored-
+    eval schemas differ (different columns entirely), so this only factors
+    out that shared mechanism -- callers still supply their own header list
+    and row dict, so each trainer's exact byte-for-byte schema is unchanged.
+    Uses ``csv.DictWriter`` regardless of whether the caller's original code
+    used ``csv.writer`` with a plain list: given the same fieldnames order
+    and matching dict keys, the emitted bytes are identical either way.
+    """
+    write_header = not os.path.exists(path)
+    with open(path, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            w.writeheader()
+        w.writerow(row)

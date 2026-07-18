@@ -98,14 +98,11 @@ def selfplay_metrics(agent, n_games, seed, deterministic):
                         # correctly-advanced encode). Historical greedy-rate
                         # numbers from this harness (baseline 4.8%, run-2
                         # 48.6%) carry the perturbation; mass and h2h do not.
-                        saved_mem = {
-                            pid: t.detach().clone()
-                            for pid, t in agent._player_memories.items()
-                        }
+                        saved_mem = agent.snapshot_player_memories()
                         probs, _ = agent.get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
-                        agent._player_memories = saved_mem
+                        agent.restore_player_memories(saved_mem)
                         p = probs[0].detach().cpu().numpy()
                         tmass = sum(
                             float(p[a - 1])

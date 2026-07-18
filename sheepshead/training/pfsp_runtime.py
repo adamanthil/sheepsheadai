@@ -84,6 +84,168 @@ def interpolated_weight(schedule: dict, progress_pct: float) -> float:
     return points[-1][1]
 
 
+def _setup_seats(
+    training_agent: PPOAgent,
+    opponents: list,
+    training_agent_position: int,
+) -> tuple[list, dict, dict]:
+    """Build the position-to-agent seat mapping (shuffling which opponent sits
+    where) and derive the search-seat-policies and position->pop-agent maps
+    from it."""
+    # Create position-to-agent mapping; all five seats must be populated by training + 4 opponents
+    agents = [None] * 5
+    agents[training_agent_position - 1] = training_agent
+
+    # Randomize which opponent sits in which non-training seat to reduce seat-assignment bias
+    opponent_seat_positions = [
+        pos for pos in range(1, 6) if pos != training_agent_position
+    ]
+    random.shuffle(opponent_seat_positions)
+    for opponent, seat_pos in zip(opponents[:4], opponent_seat_positions):
+        agents[seat_pos - 1] = opponent.agent
+
+    # Population grounding for the teacher: model each non-training seat in the
+    # search with the agent ACTUALLY controlling it this game, so teacher Q is
+    # the EV against the real field (a self-modeled rollout field can't punish
+    # information-revealing play; see notebooks/Population_Grounded_Teacher_Plan.md).
+    search_seat_policies = {
+        pos: agents[pos - 1]
+        for pos in range(1, 6)
+        if agents[pos - 1] is not None and agents[pos - 1] is not training_agent
+    }
+
+    # Map positions to population opponents (returned for the caller's bookkeeping)
+    pos_to_pop_agent = {}
+    opp_positions = opponent_seat_positions.copy()
+    for opp, seat_pos in zip(opponents[: len(opp_positions)], opp_positions):
+        pos_to_pop_agent[seat_pos] = opp
+
+    return agents, search_seat_policies, pos_to_pop_agent
+
+
+def _attach_search_target(
+    game,
+    player,
+    valid_actions,
+    transition: dict,
+    teacher: "ISMCTSTeacher",
+    determinization_rng: "random.Random",
+    search_config: "SearchConfig",
+    forced_public: list[tuple[int, int]],
+    search_seat_policies: dict,
+    search_diagnostics: dict,
+) -> None:
+    # ISMCTS soft-teacher target on a per-head fraction of
+    # decisions (teacher-only; agent acted on-policy above;
+    # search() is memory-neutral — snapshots/restores). Leaster
+    # PLAY decisions ARE searched: with the per-trick reward +
+    # leaster bonus gone, the pass->leaster branch the bidding
+    # EV rides on is only well-valued if the agent plays
+    # leasters well, which needs a teacher signal there.
+    # sample_determinization handles the no-picker leaster
+    # state (Game._sample_leaster_deal).
+    head = _search_head(valid_actions)
+    head_fraction = search_config.head_search_fractions.get(
+        head, 0.0
+    )
+    if (
+        head_fraction > 0.0
+        and determinization_rng.random() < head_fraction
+    ):
+        current_trick = game.current_trick
+        # Trick-indexed rollout depth: roll (near) to terminal
+        # in the early tricks where the critic is blind, then
+        # bootstrap d_short plies later (validated by the t_full
+        # probe: a search at trick t bootstraps at ~t+d_short,
+        # so t_full=1 + d_short=2 lands every bootstrap at
+        # trick >= 4 where R^2 >= 0.73). Leasters ALWAYS roll to
+        # terminal: the critic never calibrates on leaster
+        # outcomes (R^2 <= 0.21 even at trick 5), so a bootstrap
+        # there is noise.
+        if game.is_leaster or current_trick <= search_config.t_full:
+            rollout_depth = 6 - current_trick
+        else:
+            rollout_depth = search_config.d_short
+        res = teacher.search(
+            game,
+            player.position,
+            list(forced_public),
+            determinization_rng,
+            d_rollout=rollout_depth,
+            seat_policies=search_seat_policies,
+        )
+        target_accepted = res["ok"] and float(res["pi"].sum()) > 0.0
+        if target_accepted:
+            transition["search_target"] = res["pi"].tolist()
+            transition["has_search_target"] = True
+        # Diagnostics: ESS-abort fraction and pi' sharpness.
+        head_diag = search_diagnostics[head]
+        head_diag["count"] += 1
+        head_diag["ess_sum"] += float(res["ess"])
+        if target_accepted:
+            head_diag["accepted"] += 1
+            pi = res["pi"]
+            nonzero = pi[pi > 0]
+            head_diag["entropy_sum"] += float(
+                -(nonzero * np.log(nonzero)).sum()
+            )
+
+
+def _finalize_rewards(
+    episode_transitions: list,
+    final_scores: list,
+    is_leaster: bool,
+    shaped: bool,
+) -> list:
+    # Compute rewards for training agent actions. Shaped: intermediate + final
+    # (+ leaster bonus). Terminal: final_score-only on the last action, no shaping
+    # and no leaster bonus (get_score scores leasters correctly).
+    reward_fn = process_episode_rewards if shaped else process_terminal_rewards
+    reward_map = {}
+    for reward_data in reward_fn(
+        [t for t in episode_transitions if t["kind"] == "action"],
+        final_scores,
+        is_leaster,
+    ):
+        reward_map[id(reward_data["transition"])] = reward_data["reward"]
+
+    # Build final episode event stream for storage
+    episode_events = []
+    for ev in episode_transitions:
+        if ev["kind"] == "observation":
+            out = {
+                "kind": "observation",
+                "state": ev["state"],
+                "player_id": ev["player"].position,
+            }
+        else:
+            seat_pos = ev["player"].position
+            out = {
+                "kind": "action",
+                "state": ev["state"],
+                "action": ev["action"],
+                "log_prob": ev["log_prob"],
+                "value": ev["value"],
+                "valid_actions": ev["valid_actions"],
+                "reward": reward_map[id(ev)],
+                "player_id": seat_pos,
+                "win_label": 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
+                "final_return_label": float(final_scores[seat_pos - 1]),
+                "secret_partner_label": ev.get("secret_partner_label", 0.0),
+                "points_label": ev.get("points_label", None),
+                "seen_trump_mask_label": ev.get("seen_trump_mask_label", None),
+                "unseen_trump_higher_than_hand_label": ev.get(
+                    "unseen_trump_higher_than_hand_label", None
+                ),
+                "search_target": ev.get("search_target"),
+                "has_search_target": ev.get("has_search_target", False),
+            }
+        if ev.get("oracle_state") is not None:
+            out["oracle_state"] = ev["oracle_state"]
+        episode_events.append(out)
+    return episode_events
+
+
 def play_population_game(
     training_agent: PPOAgent,
     opponents: list,
@@ -141,37 +303,13 @@ def play_population_game(
     for opponent in opponents:
         opponent.agent.reset_recurrent_state()
 
-    # Create position-to-agent mapping; all five seats must be populated by training + 4 opponents
-    agents = [None] * 5
-    agents[training_agent_position - 1] = training_agent
-
-    # Randomize which opponent sits in which non-training seat to reduce seat-assignment bias
-    opponent_seat_positions = [
-        pos for pos in range(1, 6) if pos != training_agent_position
-    ]
-    random.shuffle(opponent_seat_positions)
-    for opponent, seat_pos in zip(opponents[:4], opponent_seat_positions):
-        agents[seat_pos - 1] = opponent.agent
-
-    # Population grounding for the teacher: model each non-training seat in the
-    # search with the agent ACTUALLY controlling it this game, so teacher Q is
-    # the EV against the real field (a self-modeled rollout field can't punish
-    # information-revealing play; see notebooks/Population_Grounded_Teacher_Plan.md).
-    search_seat_policies = {
-        pos: agents[pos - 1]
-        for pos in range(1, 6)
-        if agents[pos - 1] is not None and agents[pos - 1] is not training_agent
-    }
+    agents, search_seat_policies, pos_to_pop_agent = _setup_seats(
+        training_agent, opponents, training_agent_position
+    )
 
     # Store transitions only for the training agent
     episode_transitions = []
     current_trick_transitions = []
-
-    # Map positions to population opponents (returned for the caller's bookkeeping)
-    pos_to_pop_agent = {}
-    opp_positions = opponent_seat_positions.copy()
-    for opp, seat_pos in zip(opponents[: len(opp_positions)], opp_positions):
-        pos_to_pop_agent[seat_pos] = opp
 
     while not game.is_done():
         for player in game.players:
@@ -227,60 +365,18 @@ def play_population_game(
                             play_weight=weights["play"],
                         )
                     elif search_enabled:
-                        # ISMCTS soft-teacher target on a per-head fraction of
-                        # decisions (teacher-only; agent acted on-policy above;
-                        # search() is memory-neutral — snapshots/restores). Leaster
-                        # PLAY decisions ARE searched: with the per-trick reward +
-                        # leaster bonus gone, the pass->leaster branch the bidding
-                        # EV rides on is only well-valued if the agent plays
-                        # leasters well, which needs a teacher signal there.
-                        # sample_determinization handles the no-picker leaster
-                        # state (Game._sample_leaster_deal).
-                        head = _search_head(valid_actions)
-                        head_fraction = search_config.head_search_fractions.get(
-                            head, 0.0
+                        _attach_search_target(
+                            game,
+                            player,
+                            valid_actions,
+                            transition,
+                            teacher,
+                            determinization_rng,
+                            search_config,
+                            forced_public,
+                            search_seat_policies,
+                            search_diagnostics,
                         )
-                        if (
-                            head_fraction > 0.0
-                            and determinization_rng.random() < head_fraction
-                        ):
-                            current_trick = game.current_trick
-                            # Trick-indexed rollout depth: roll (near) to terminal
-                            # in the early tricks where the critic is blind, then
-                            # bootstrap d_short plies later (validated by the t_full
-                            # probe: a search at trick t bootstraps at ~t+d_short,
-                            # so t_full=1 + d_short=2 lands every bootstrap at
-                            # trick >= 4 where R^2 >= 0.73). Leasters ALWAYS roll to
-                            # terminal: the critic never calibrates on leaster
-                            # outcomes (R^2 <= 0.21 even at trick 5), so a bootstrap
-                            # there is noise.
-                            if game.is_leaster or current_trick <= search_config.t_full:
-                                rollout_depth = 6 - current_trick
-                            else:
-                                rollout_depth = search_config.d_short
-                            res = teacher.search(
-                                game,
-                                player.position,
-                                list(forced_public),
-                                determinization_rng,
-                                d_rollout=rollout_depth,
-                                seat_policies=search_seat_policies,
-                            )
-                            target_accepted = res["ok"] and float(res["pi"].sum()) > 0.0
-                            if target_accepted:
-                                transition["search_target"] = res["pi"].tolist()
-                                transition["has_search_target"] = True
-                            # Diagnostics: ESS-abort fraction and pi' sharpness.
-                            head_diag = search_diagnostics[head]
-                            head_diag["count"] += 1
-                            head_diag["ess_sum"] += float(res["ess"])
-                            if target_accepted:
-                                head_diag["accepted"] += 1
-                                pi = res["pi"]
-                                nonzero = pi[pi > 0]
-                                head_diag["entropy_sum"] += float(
-                                    -(nonzero * np.log(nonzero)).sum()
-                                )
 
                 else:
                     # Opponent action (stochastic for diversity)
@@ -338,52 +434,9 @@ def play_population_game(
         "search_diagnostics": search_diagnostics,
     }
 
-    # Compute rewards for training agent actions. Shaped: intermediate + final
-    # (+ leaster bonus). Terminal: final_score-only on the last action, no shaping
-    # and no leaster bonus (get_score scores leasters correctly).
-    reward_fn = process_episode_rewards if shaped else process_terminal_rewards
-    reward_map = {}
-    for reward_data in reward_fn(
-        [t for t in episode_transitions if t["kind"] == "action"],
-        final_scores,
-        game.is_leaster,
-    ):
-        reward_map[id(reward_data["transition"])] = reward_data["reward"]
-
-    # Build final episode event stream for storage
-    episode_events = []
-    for ev in episode_transitions:
-        if ev["kind"] == "observation":
-            out = {
-                "kind": "observation",
-                "state": ev["state"],
-                "player_id": ev["player"].position,
-            }
-        else:
-            seat_pos = ev["player"].position
-            out = {
-                "kind": "action",
-                "state": ev["state"],
-                "action": ev["action"],
-                "log_prob": ev["log_prob"],
-                "value": ev["value"],
-                "valid_actions": ev["valid_actions"],
-                "reward": reward_map[id(ev)],
-                "player_id": seat_pos,
-                "win_label": 1.0 if final_scores[seat_pos - 1] > 0 else 0.0,
-                "final_return_label": float(final_scores[seat_pos - 1]),
-                "secret_partner_label": ev.get("secret_partner_label", 0.0),
-                "points_label": ev.get("points_label", None),
-                "seen_trump_mask_label": ev.get("seen_trump_mask_label", None),
-                "unseen_trump_higher_than_hand_label": ev.get(
-                    "unseen_trump_higher_than_hand_label", None
-                ),
-                "search_target": ev.get("search_target"),
-                "has_search_target": ev.get("has_search_target", False),
-            }
-        if ev.get("oracle_state") is not None:
-            out["oracle_state"] = ev["oracle_state"]
-        episode_events.append(out)
+    episode_events = _finalize_rewards(
+        episode_transitions, final_scores, game.is_leaster, shaped
+    )
 
     return (
         game,

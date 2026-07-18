@@ -35,9 +35,8 @@ from typing import List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-from sheepshead import ACTION_LOOKUP, FAIL, TRUMP  # noqa: E402
+from sheepshead import ACTION_LOOKUP, FAIL, TRUMP_SET  # noqa: E402
 
-TRUMP_SET = set(TRUMP)
 FAIL_SET = set(FAIL)
 
 DEFAULT_MODEL = str(REPO_ROOT / "final_pfsp_swish_ppo.pt")

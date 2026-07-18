@@ -37,13 +37,13 @@ from __future__ import annotations
 import argparse
 
 import numpy as np
-import torch
 
 from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTIONS, Game
 from sheepshead.training.training_utils import (
     estimate_hand_strength_score,
     get_partner_selection_mode,
+    set_all_seeds,
 )
 
 PICK_ID = ACTIONS.index("PICK") + 1
@@ -60,8 +60,6 @@ def forced_pick_eval(agent, make_field, n_games, seed, min_strength, determinist
     score stats. ``make_field(mode, pos) -> (ctrl, reset_list)`` where ``ctrl(seat)``
     is the PPOAgent controlling a non-picker seat and ``reset_list`` is the agents to
     reset per game."""
-    import random
-
     scores: list[float] = []
     strengths: list[int] = []
 
@@ -70,9 +68,7 @@ def forced_pick_eval(agent, make_field, n_games, seed, min_strength, determinist
         # of how much RNG play consumes -> challenger and reference see identical
         # deals/fields (paired delta). Set BEFORE the deal and field construction.
         gseed = (seed * 1_000_003 + g) % (2**32)
-        random.seed(gseed)
-        np.random.seed(gseed)
-        torch.manual_seed(gseed)
+        set_all_seeds(gseed)
 
         mode = get_partner_selection_mode(g)
         pos = (g % 5) + 1

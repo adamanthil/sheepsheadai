@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import type { TableStateMsg, TableView } from "../types";
+import type { ChatMessage, TableStateMsg, TableView } from "../types";
 import { apiFetch, wsSubprotocols, wsUrl } from "../api";
 import { parseWsMessage } from "../wsMessages";
+import { diffCallouts } from "../callouts";
 
 export interface TableSocketCallbacks {
   onTrickComplete?: (cards: string[], winner: number) => void;
@@ -26,15 +27,6 @@ export type ConnectionState =
 /** Close codes the server uses for auth/authorization failures — retrying
  * cannot help, so the client must not hammer the server. */
 const TERMINAL_WS_CODES = new Set([4401, 4403, 4404, 4429]);
-
-export interface ChatMessage {
-  id: string;
-  table_id: string;
-  type: "player" | "system";
-  author: string | null;
-  body: string;
-  timestamp: number;
-}
 
 export interface UseTableSocketReturn {
   connected: boolean;
@@ -117,68 +109,24 @@ export function useTableSocket(
         if (!data) return;
 
       if (data.type === "state") {
-        const msg = data as unknown as TableStateMsg;
+        const msg: TableStateMsg = data;
 
         setLastState((prev: TableStateMsg | null) => {
           const cbs = callbacksRef.current;
+          const { trickComplete, phase } = diffCallouts(prev, msg);
 
-          // Detect trick completion
-          const prevWas = prev?.view?.was_trick_just_completed;
-          const curWas = msg.view?.was_trick_just_completed;
-          if (curWas && !prevWas && cbs?.onTrickComplete) {
-            const last = msg.view?.last_trick as string[] | null;
-            const win = msg.view?.last_trick_winner as number;
-            if (last && win) {
-              cbs.onTrickComplete(last, win);
-            }
+          if (trickComplete) {
+            cbs?.onTrickComplete?.(trickComplete.cards, trickComplete.winner);
           }
 
-          // Detect game phase callouts
-          const prevPicker = prev?.view?.picker || 0;
-          const curPicker = msg.view?.picker || 0;
-          const prevLeaster = !!prev?.view?.is_leaster;
-          const curLeaster = !!msg.view?.is_leaster;
-          const prevCalled = prev?.view?.called_card || null;
-          const curCalled = msg.view?.called_card || null;
-          const curCalledDisplay = msg.view?.called_card_display || curCalled;
-          const curCalledUnder = !!msg.view?.called_under;
-          const prevAlone = !!prev?.view?.alone;
-          const curAlone = !!msg.view?.alone;
-
-          const playStarted =
-            !!(msg.state?.play_started === 1) ||
-            msg.view?.current_trick_index > 0 ||
-            msg.view?.current_trick?.some((c: string) => c !== "");
-
-          const getPickerName = () => {
-            const seat = msg.view?.picker;
-            return msg.table?.seats?.[String(seat)] || `Seat ${seat}`;
-          };
-
-          if (curPicker > 0 && prevPicker === 0 && cbs?.onPickerAnnounced) {
-            cbs.onPickerAnnounced(getPickerName());
-          } else if (!prevLeaster && curLeaster && cbs?.onLeaster) {
-            cbs.onLeaster();
-          } else if (
-            curPicker > 0 &&
-            !playStarted &&
-            !prevAlone &&
-            curAlone &&
-            cbs?.onAlone
-          ) {
-            cbs.onAlone(getPickerName());
-          } else if (
-            curPicker > 0 &&
-            !playStarted &&
-            curCalled &&
-            prevCalled !== curCalled &&
-            cbs?.onCall
-          ) {
-            cbs.onCall(
-              getPickerName(),
-              curCalledDisplay ?? curCalled ?? "",
-              curCalledUnder,
-            );
+          if (phase?.kind === "picker") {
+            cbs?.onPickerAnnounced?.(phase.pickerName);
+          } else if (phase?.kind === "leaster") {
+            cbs?.onLeaster?.();
+          } else if (phase?.kind === "alone") {
+            cbs?.onAlone?.(phase.pickerName);
+          } else if (phase?.kind === "call") {
+            cbs?.onCall?.(phase.pickerName, phase.cardDisplay, phase.under);
           }
 
           return msg;
@@ -192,19 +140,16 @@ export function useTableSocket(
           callbacksRef.current?.onLobbyEvent?.(data.message);
         }
       } else if (data.type === "table_update") {
-        const tbl = data.table as unknown as TableView;
+        const tbl = data.table;
         callbacksRef.current?.onTableUpdate?.(tbl, data.isHost);
         setLastState((prev: TableStateMsg | null) =>
           prev ? { ...prev, table: tbl } : prev,
         );
       } else if (data.type === "chat:init") {
         // Initialize chat with full history
-        setChatMessages(data.messages as unknown as ChatMessage[]);
+        setChatMessages(data.messages);
       } else if (data.type === "chat:append") {
-        setChatMessages((prev) => [
-          ...prev,
-          data.message as unknown as ChatMessage,
-        ]);
+        setChatMessages((prev) => [...prev, data.message]);
       } else if (data.type === "server_restart") {
         // Deploy in progress: the socket is about to drop; the reconnect
         // loop keeps retrying until the server is back.
