@@ -22,18 +22,20 @@ same policy as the arch golden fixtures.
 
 import hashlib
 import json
-import platform
-import random
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.training import pfsp_runtime
+from sheepshead.tests.ppo_test_helpers import (
+    play_episodes,
+    runtime_environment,
+    seed_all,
+    skip_unless_fixture_environment,
+)
 
 # Plays seeded episodes and runs real optimizer updates for three configs (~1min).
 pytestmark = pytest.mark.slow
@@ -61,43 +63,6 @@ CONFIGS = {
         "collect_oracle": True,
     },
 }
-
-
-def _seed_all(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-
-def _play_episodes(agent: PPOAgent, n: int, collect_oracle: bool, seed0: int) -> None:
-    opponents = [
-        SimpleNamespace(agent=agent, metadata=SimpleNamespace(agent_id="self"))
-        for _ in range(4)
-    ]
-    original_game = pfsp_runtime.Game
-    deal_counter = {"n": 0}
-
-    class _SeededGame(original_game):
-        def __init__(self, *args, **kwargs):
-            deal_counter["n"] += 1
-            kwargs.setdefault("seed", seed0 + deal_counter["n"])
-            super().__init__(*args, **kwargs)
-
-    pfsp_runtime.Game = _SeededGame
-    try:
-        for episode in range(n):
-            mode = PARTNER_BY_CALLED_ACE if episode % 2 == 0 else PARTNER_BY_JD
-            _, events, _, _, _ = pfsp_runtime.play_population_game(
-                training_agent=agent,
-                opponents=opponents,
-                partner_mode=mode,
-                training_agent_position=(episode % 5) + 1,
-                reward_mode="terminal",
-                collect_oracle=collect_oracle,
-            )
-            agent.store_episode_events(events)
-    finally:
-        pfsp_runtime.Game = original_game
 
 
 def _agent_networks(agent: PPOAgent):
@@ -143,31 +108,16 @@ def run_config(name: str) -> dict:
     # Float reduction order depends on the intra-op thread count; pin it so
     # the pinned hashes hold regardless of what ran earlier in the process.
     torch.set_num_threads(1)
-    _seed_all(SEED)
+    seed_all(SEED)
     agent = PPOAgent(len(ACTIONS), arch=config["arch"], critic_mode=config["critic_mode"])
-    _play_episodes(agent, N_EPISODES, config["collect_oracle"], seed0=SEED * 10)
+    play_episodes(agent, N_EPISODES, config["collect_oracle"], seed0=SEED * 10)
     stats = agent.update(**UPDATE_KWARGS)
     return {"state_hash": _weights_sha256(agent), "stats": _normalized_stats(stats)}
-
-
-def _environment() -> dict:
-    return {"torch": torch.__version__, "platform": platform.platform()}
 
 
 def _load_fixture() -> dict:
     with open(FIXTURE_PATH) as f:
         return json.load(f)
-
-
-def skip_unless_fixture_environment(fixture: dict) -> None:
-    recorded = fixture.get("environment")
-    if recorded != _environment():
-        pytest.skip(
-            "runtime differs from fixture environment "
-            f"({recorded}); bit-identity is only meaningful on the "
-            "machine that captured the fixture -- regenerate with "
-            "python -m to gate refactors here"
-        )
 
 
 @pytest.mark.parametrize("name", list(CONFIGS))
@@ -183,7 +133,7 @@ def test_update_is_bit_identical(name):
 
 
 def _regenerate() -> None:
-    fixture = {"environment": _environment()}
+    fixture = {"environment": runtime_environment()}
     for name in CONFIGS:
         first = run_config(name)
         second = run_config(name)

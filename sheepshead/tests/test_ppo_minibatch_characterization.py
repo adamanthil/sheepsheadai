@@ -50,10 +50,11 @@ import torch
 
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.tests.test_ppo_update_characterization import (
-    _environment,
-    _play_episodes,
-    _seed_all,
+from sheepshead.tests.ppo_test_helpers import (
+    play_episodes,
+    prepare_minibatch_inputs,
+    runtime_environment,
+    seed_all,
     skip_unless_fixture_environment,
 )
 
@@ -153,33 +154,13 @@ def _pin_tuple(values, fields) -> list:
     ]
 
 
-def _prepare_minibatch_inputs(agent: PPOAgent):
-    """Mirror update()'s preprocessing up to (not including) the epoch loop.
-
-    Same code, same order, run on the same agent/events: GAE (limited-critic
-    path, since this config is critic_mode="limited"), advantage
-    normalization written back into self.events, then the static views and
-    segment boundaries that feed _build_minibatch_tensors.
-    """
-    advantages, _returns = agent.compute_gae()
-    if advantages.size:
-        adv_mean = advantages.mean()
-        adv_std = advantages.std() + 1e-8
-        for e in agent.events:
-            if e.get("kind") == "action":
-                e["advantage"] = float((e["advantage"] - adv_mean) / adv_std)
-    states, masks_t, kinds = agent._prepare_training_views()
-    segments = agent._segments_from_events(kinds)
-    return states, masks_t, kinds, segments
-
-
 def _capture() -> dict:
     torch.set_num_threads(1)
-    _seed_all(SEED)
+    seed_all(SEED)
     agent = PPOAgent(len(ACTIONS), arch="full", critic_mode="limited")
-    _play_episodes(agent, N_EPISODES, collect_oracle=False, seed0=SEED * 10)
+    play_episodes(agent, N_EPISODES, collect_oracle=False, seed0=SEED * 10)
 
-    states, masks_t, kinds, segments = _prepare_minibatch_inputs(agent)
+    states, masks_t, kinds, segments = prepare_minibatch_inputs(agent)
     batch = segments  # every segment as a single batch -- see module docstring
 
     build_out = agent._build_minibatch_tensors(batch, states, masks_t, kinds)
@@ -285,7 +266,7 @@ def _regenerate() -> None:
             "_build_minibatch_tensors/_flatten_action_steps are not "
             "deterministic in-process"
         )
-    first_json["environment"] = _environment()
+    first_json["environment"] = runtime_environment()
     FIXTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(FIXTURE_PATH, "w") as f:
         json.dump(first_json, f, indent=1, sort_keys=True)
