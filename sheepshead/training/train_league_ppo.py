@@ -62,6 +62,7 @@ import torch
 
 from sheepshead.agent import architectures
 from sheepshead.training.config import LeagueConfig, PFSPHyperparams
+from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
 from sheepshead.training.pfsp_runtime import (
     interpolated_weight,
@@ -385,6 +386,11 @@ def run_main_phase(
     picker_scores = deque(maxlen=3000)
     pick_window = deque(maxlen=3000)
     leaster_window = deque(maxlen=3000)
+    # getattr: the exploiter's SimpleNamespace args has no leaster_watchdog
+    # field, so best-response training always runs without the kick.
+    watchdog = (
+        LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
+    )
     t0 = time.time()
 
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
@@ -467,6 +473,8 @@ def run_main_phase(
 
             if tx_counter.count >= args.update_interval:
                 apply_schedules(episode, ctx)
+                if watchdog is not None:
+                    watchdog.tick(training_agent, leaster_window)
                 stats = training_agent.update(epochs=4, batch_size=256)
                 tx_counter.count = 0
                 if pool is not None:
@@ -743,7 +751,7 @@ def _seed_league_from_checkpoints(league: League, spec: str) -> None:
     print(f"🌱 Seeded league with {len(paths)} checkpoints as past_mains")
 
 
-def main():
+def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="League training (main/exploiter generations)"
     )
@@ -815,7 +823,20 @@ def main():
         "snapshots, and the exploiter phase (see the architectures package)",
     )
     ap.add_argument("--seed", type=int, default=42)
-    args = ap.parse_args()
+    ap.add_argument(
+        "--leaster-watchdog",
+        action="store_true",
+        help="pick-entropy kick against the always-PASS/leaster collapse "
+        "(seen re-entered from a trained policy in anchor-free stage-1 "
+        "generations; see leaster_watchdog.py). Main phases only — the "
+        "exploiter phase never runs it. Enable uniformly across the arms "
+        "of any comparison.",
+    )
+    return ap
+
+
+def main():
+    args = build_arg_parser().parse_args()
 
     set_all_seeds(args.seed)
 
@@ -844,6 +865,8 @@ def main():
         print(f"🧬 Architecture: {args.arch}")
     if args.critic_mode == "oracle":
         print("🔮 Oracle critic ON: privileged full-information GAE baseline")
+    if args.leaster_watchdog:
+        print("🐶 Leaster watchdog ON (main phases)")
     start_episode = 0
     if "checkpoint_" in args.resume:
         start_episode = int(args.resume.split("_")[-1].split(".")[0])

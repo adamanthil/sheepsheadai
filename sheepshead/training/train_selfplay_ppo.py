@@ -14,6 +14,7 @@ import numpy as np
 
 from sheepshead.agent import architectures
 from sheepshead.training.config import SelfPlayHyperparams
+from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import (
     ACTIONS,
@@ -49,47 +50,6 @@ DEFAULT_ANCHOR_100K = (
     "runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt"
 )
 DEFAULT_ANCHOR_PFSP = "final_pfsp_swish_ppo.pt"
-
-
-class LeasterWatchdog:
-    """Selective pick-entropy kick against the always-PASS collapse.
-
-    Every from-scratch shaped-reward self-play run collapses to ~100%
-    leasters within the first few thousand episodes: play skill is
-    terrible at init, so picking has negative EV and every seat learns to
-    PASS (see the leaster-rate scan in
-    notebooks/Architecture_Ablation_202607.md; `analysis/leaster_scan.py`).
-    The scheduled entropy bonus cannot prevent the freeze because its
-    gradient vanishes as the pick head approaches determinism — so this
-    watchdog fires EARLY, at the 90% leaster crossing while pick entropy
-    is still alive, and multiplies the pick head's scheduled entropy
-    coefficient until the rolling rate falls back below 30% (hysteresis).
-    Bidding rewards are untouched, and the kick is inert outside the
-    pathological region — the pick head anneals normally once released.
-    """
-
-    ENGAGE_RATE = 0.90
-    RELEASE_RATE = 0.30
-    KICK = 10.0
-    MIN_SAMPLES = 1000
-
-    def __init__(self):
-        self.engaged = False
-        self.engaged_updates = 0
-
-    def observe(self, leaster_window) -> str | None:
-        """Advance state from the rolling 0/1 leaster window. Returns
-        "engaged"/"released" on a transition, else None."""
-        if len(leaster_window) < self.MIN_SAMPLES:
-            return None
-        rate = sum(leaster_window) / len(leaster_window)
-        if not self.engaged and rate >= self.ENGAGE_RATE:
-            self.engaged = True
-            return "engaged"
-        if self.engaged and rate < self.RELEASE_RATE:
-            self.engaged = False
-            return "released"
-        return None
 
 
 def _run_anchored_eval(
@@ -792,23 +752,7 @@ def train_ppo(
             )
 
             if watchdog is not None:
-                transition = watchdog.observe(leaster_window)
-                if transition is not None:
-                    rate = sum(leaster_window) / len(leaster_window)
-                    if transition == "engaged":
-                        print(
-                            f"🚨 Leaster watchdog ENGAGED (rate {rate:.0%}): "
-                            f"pick entropy coeff ×{LeasterWatchdog.KICK:g} "
-                            f"until rate < {LeasterWatchdog.RELEASE_RATE:.0%}"
-                        )
-                    else:
-                        print(
-                            f"✅ Leaster watchdog released (rate {rate:.0%}) "
-                            f"after {watchdog.engaged_updates} kicked updates"
-                        )
-                if watchdog.engaged:
-                    agent.entropy_coeff_pick *= LeasterWatchdog.KICK
-                    watchdog.engaged_updates += 1
+                watchdog.tick(agent, leaster_window)
 
             update_stats = agent.update(epochs=4, batch_size=256)
 

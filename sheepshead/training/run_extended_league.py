@@ -495,6 +495,8 @@ class Orchestrator:
             "--num-workers",
             str(a.num_workers),
         ]
+        if a.leaster_watchdog:
+            cmd.append("--leaster-watchdog")
         if a.smoke:
             cmd += ["--anchor-eval-ckpt", ""]
         if g == 1:
@@ -950,6 +952,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--schedule-horizon", type=int, default=20_000_000)
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--leaster-watchdog",
+        action="store_true",
+        help="forward --leaster-watchdog to every generation's trainer "
+        "(anchor-free PASS-collapse guard; see leaster_watchdog.py)",
+    )
     # Calibration
     p.add_argument("--anchor-coeffs", type=float, nargs="+", default=[0.3, 1.0, 3.0])
     p.add_argument(

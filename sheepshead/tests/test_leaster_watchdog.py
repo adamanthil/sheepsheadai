@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """LeasterWatchdog invariants: min-sample gating, engage/release hysteresis,
-re-engagement, and default-off wiring in the trainer."""
+re-engagement, the tick() kick application, and default-off wiring in both
+trainers."""
 
 import inspect
 from collections import deque
+from types import SimpleNamespace
 
-from sheepshead.training.train_selfplay_ppo import LeasterWatchdog, train_ppo
+from sheepshead.training.leaster_watchdog import LeasterWatchdog
+from sheepshead.training.train_league_ppo import build_arg_parser
+from sheepshead.training.train_selfplay_ppo import train_ppo
 
 
 def _window(rate, n=3000):
@@ -43,9 +47,44 @@ class TestLeasterWatchdog:
             assert wd.observe(_window(rate)) is None
             assert not wd.engaged
 
-    def test_trainer_default_off(self):
+    def test_tick_kicks_only_while_engaged(self):
+        wd = LeasterWatchdog()
+        agent = SimpleNamespace(entropy_coeff_pick=0.02)
+
+        wd.tick(agent, _window(0.50))
+        assert agent.entropy_coeff_pick == 0.02
+        assert wd.engaged_updates == 0
+
+        # Engaged: each tick applies a flat ×KICK to the freshly scheduled
+        # coefficient (the schedules reset it before every tick in the
+        # trainers, so re-assign here to mirror that).
+        wd.tick(agent, _window(0.95))
+        assert agent.entropy_coeff_pick == 0.02 * LeasterWatchdog.KICK
+        assert wd.engaged_updates == 1
+        agent.entropy_coeff_pick = 0.02
+        wd.tick(agent, _window(0.50))
+        assert agent.entropy_coeff_pick == 0.02 * LeasterWatchdog.KICK
+        assert wd.engaged_updates == 2
+
+        # Released: coefficient left at its scheduled value again.
+        agent.entropy_coeff_pick = 0.02
+        wd.tick(agent, _window(0.10))
+        assert agent.entropy_coeff_pick == 0.02
+        assert wd.engaged_updates == 2
+
+    def test_selfplay_trainer_default_off(self):
         sig = inspect.signature(train_ppo)
         assert sig.parameters["leaster_watchdog"].default is False
+
+    def test_league_trainer_default_off(self):
+        args = build_arg_parser().parse_args(
+            ["--resume", "x.pt", "--league-dir", "y"]
+        )
+        assert args.leaster_watchdog is False
+        on = build_arg_parser().parse_args(
+            ["--resume", "x.pt", "--league-dir", "y", "--leaster-watchdog"]
+        )
+        assert on.leaster_watchdog is True
 
 
 if __name__ == "__main__":
