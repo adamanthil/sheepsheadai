@@ -187,6 +187,10 @@
    "type": "Tensor"
   }
  ],
+ "environment": {
+  "platform": "macOS-14.8.4-arm64-arm-64bit-Mach-O",
+  "torch": "2.11.0"
+ },
  "flatten_action_steps": [
   {
    "dtype": "torch.float32",

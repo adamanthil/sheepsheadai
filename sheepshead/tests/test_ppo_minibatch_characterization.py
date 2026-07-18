@@ -50,7 +50,12 @@ import torch
 
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.tests.test_ppo_update_characterization import _play_episodes, _seed_all
+from sheepshead.tests.test_ppo_update_characterization import (
+    _environment,
+    _play_episodes,
+    _seed_all,
+    skip_unless_fixture_environment,
+)
 
 SEED = 20260716
 N_EPISODES = 6
@@ -247,13 +252,17 @@ def _load_fixture() -> dict:
 
 
 def test_build_minibatch_tensors_is_bit_identical():
-    expected = _load_fixture()["build_minibatch_tensors"]
+    fixture = _load_fixture()
+    skip_unless_fixture_environment(fixture)
+    expected = fixture["build_minibatch_tensors"]
     actual = json.loads(json.dumps(_capture()["build_minibatch_tensors"]))
     assert actual == expected
 
 
 def test_flatten_action_steps_is_bit_identical():
-    expected = _load_fixture()["flatten_action_steps"]
+    fixture = _load_fixture()
+    skip_unless_fixture_environment(fixture)
+    expected = fixture["flatten_action_steps"]
     actual = json.loads(json.dumps(_capture()["flatten_action_steps"]))
     assert actual == expected
 
@@ -276,6 +285,7 @@ def _regenerate() -> None:
             "_build_minibatch_tensors/_flatten_action_steps are not "
             "deterministic in-process"
         )
+    first_json["environment"] = _environment()
     FIXTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(FIXTURE_PATH, "w") as f:
         json.dump(first_json, f, indent=1, sort_keys=True)

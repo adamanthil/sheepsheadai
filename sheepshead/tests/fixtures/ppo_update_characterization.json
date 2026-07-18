@@ -1,4 +1,8 @@
 {
+ "environment": {
+  "platform": "macOS-14.8.4-arm64-arm-64bit-Mach-O",
+  "torch": "2.11.0"
+ },
  "full-limited": {
   "state_hash": "314b8e7548b0cbe0ae73a84267a7f411b8c255f7af92210c2081c6446f654aad",
   "stats": {

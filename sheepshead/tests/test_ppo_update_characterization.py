@@ -13,10 +13,16 @@ regenerating the fixture:
 
 Regeneration runs each config twice in-process and refuses to write a
 fixture that does not reproduce itself.
+
+Bit-identity only holds on the environment that captured the fixture
+(float reduction order is BLAS/kernel dependent), so the tests skip when
+torch version or platform differ from the recorded environment -- the
+same policy as the arch golden fixtures.
 """
 
 import hashlib
 import json
+import platform
 import random
 from pathlib import Path
 from types import SimpleNamespace
@@ -144,14 +150,31 @@ def run_config(name: str) -> dict:
     return {"state_hash": _weights_sha256(agent), "stats": _normalized_stats(stats)}
 
 
+def _environment() -> dict:
+    return {"torch": torch.__version__, "platform": platform.platform()}
+
+
 def _load_fixture() -> dict:
     with open(FIXTURE_PATH) as f:
         return json.load(f)
 
 
+def skip_unless_fixture_environment(fixture: dict) -> None:
+    recorded = fixture.get("environment")
+    if recorded != _environment():
+        pytest.skip(
+            "runtime differs from fixture environment "
+            f"({recorded}); bit-identity is only meaningful on the "
+            "machine that captured the fixture -- regenerate with "
+            "python -m to gate refactors here"
+        )
+
+
 @pytest.mark.parametrize("name", list(CONFIGS))
 def test_update_is_bit_identical(name):
-    expected = _load_fixture()[name]
+    fixture = _load_fixture()
+    skip_unless_fixture_environment(fixture)
+    expected = fixture[name]
     actual = run_config(name)
     # Round-trip through JSON so float representations match the fixture's.
     actual = json.loads(json.dumps(actual))
@@ -160,7 +183,7 @@ def test_update_is_bit_identical(name):
 
 
 def _regenerate() -> None:
-    fixture = {}
+    fixture = {"environment": _environment()}
     for name in CONFIGS:
         first = run_config(name)
         second = run_config(name)
