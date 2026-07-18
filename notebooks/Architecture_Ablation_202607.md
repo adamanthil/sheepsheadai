@@ -142,6 +142,64 @@ share 0.00 (exploiter phases fire at generation boundaries), `ev_oracle`
 above `ev_limited` in both arms (oracle critic healthy; the warm-start
 shock sim predicted no burn-in needed — confirmed).
 
+**Run log, consolidated 2026-07-18 — training COMPLETE both arms;
+panels running.** (Consolidates the 07-15…07-18 health checks;
+extends the 07-14 snapshot above.)
+
+- **Timeline:** gen-1 ends Jul-15 (v2 07:19, full 11:49); gen-2 ends
+  Jul-18 (v2 07:55, full 14:16); all four rc=0. Endpoint probes done
+  Jul-18 ~14:24; called-mode PANEL-A running since 14:24, jd follows →
+  `STAGE1 COMPLETE` expected late Jul-18.
+- **Gen 1 (anchored): clean in both arms.** anchor_kl ≈ 0.01, leaster
+  0.7–1.5%, no warm-start shock; oracle critic healthy throughout both
+  generations (ev_oracle 0.3–0.5 vs ev_limited ≈ 0). Anchored-eval
+  300-deal probes (noisy, non-decision): full improved −0.32 → −0.087
+  at 1M (last-3 mean −0.17); v2 flat ~−0.30 (last-3 mean −0.32).
+- **Gen-1 exploiter gates: PASSED both arms** at near-identical gated
+  edges — full +0.100 ± 0.037, v2 +0.111 ± 0.045 (3000 deals, ≥2 SE
+  over the 0.1 floor); exploiters inserted, seat share 0.10–0.11
+  through gen 2, so exploiter pressure was live (unlike the inert
+  repro-league gens 1–11). Directional only: v2 looked the softer
+  target (screen edges up to 0.475 vs full's 0.185; deviating_frac
+  0.31 vs 0.21).
+- **Gen 2 (anchor-free): full COLLAPSED into the leaster attractor;
+  v2 stayed healthy.** Both arms wobbled right after anchor release
+  (~1.05–1.1M). v2's transient resolved and it oscillated in a normal
+  band thereafter (greedy PICK 21–41%; operator read 07-17: within the
+  30M run's own training oscillation, ~30–40% final ideal; endpoint
+  rows 1.9M/1.95M/2M = PICK 41.5/36.3/22.1%, leaster 3.5/4.5/25%).
+  full's deepened into the §1.3 dead-arm criterion — first hit at 1.5M
+  (greedy PICK 0.10%, leaster 99.5%), partial rebound 1.6–1.75M (PICK
+  9–15%), then terminal relapse: **endpoint rows = PICK 1.0/0.6/0.0%,
+  leaster 95/97/100%**. Classic ExIt PASS-collapse signature. Chronic
+  ALONE>20% greedy-gate violations in both arms throughout (full
+  16–27%, v2 23–36%) — behavioral quirk, not a stopper.
+- **Endpoint probes @2M (Jul-18):** scripted (500 deals): v2
+  **+0.150 ± 0.119** (above the sanity floor), full −0.116 ± 0.130
+  (below it — collapsed policy). Trump-lead canary (2000 deals): clean
+  in both modes for both arms (v2 zero leads in ~1800 defender
+  opportunities per mode; full 1/~2100, though full's read is of a
+  leaster-locked policy and carries little information).
+- **Read-ahead of §1.3/§5.11** (final numbers await
+  `panel_stage1_{called,jd}.csv`): full is a dead arm per rule 1 and
+  decides nothing ⇒ the P1 rule adopts **perceiver-shared-v2 by
+  default**; the panels' remaining job is quantifying v2's endpoint vs
+  its −0.115 self-play@400k start (league-regime lift). The PRIMARY
+  residual finding is the anchor-free gen-2 instability itself, and it
+  is full-specific in this run (v2 survived the same transient).
+  Arch-linked fragility vs seed luck is unresolved at n=1 seed;
+  candidate mechanisms (07-17 discussion): aux-forced shared readout
+  as representational ballast (supervised aux grads keep the
+  actor-read vector grounded during policy degeneracy — discriminator
+  = v2-noaux arm under anchor release), soft capacity reallocation vs
+  hard bag-scoped pools under opponent shift, residual plasticity
+  (v2 still out-sloping full at stage-0 end), normed readout scale
+  bounding; cheap falsifier for seed luck = rerun full gen-2 from its
+  1M boundary on a new seed. CONSEQUENCE for the extended-league
+  continuation (anchor-free from gen 3 on): consider a guardrail
+  before launch — leaster watchdog on the league trainer, a weak
+  retained anchor, or a gen-boundary greedy-health gate.
+
 - Warm-start shock: none observed (as predicted by the shock sim, §4.7).
 - Oracle cost: expect ~1.5–2× wall clock vs limited (measured 2.7× update
   cost); knob if needed = oracle loss on 1 of 4 epochs.
