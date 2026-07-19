@@ -20,6 +20,7 @@ from sheepshead.analysis.league_stopping import (
     decide_stop,
     flat_verdict,
     pick_anchor_coeff,
+    resume_from_cap,
 )
 
 N_DEALS = 4000
@@ -150,6 +151,22 @@ class TestSafetyCap:
         assert d.stop_candidate
         assert d.forced_by_cap
         assert not decisions[CFG.max_generations - 1].forced_by_cap
+
+
+class TestResumeFromCap:
+    def test_cap_reopens_only_with_raised_cap(self):
+        # Concluded at the 12-gen cap; relaunching with a higher cap resumes.
+        assert resume_from_cap("cap", 12, 16)
+        # Same or lower cap: still concluded, nothing to do.
+        assert not resume_from_cap("cap", 12, 12)
+        assert not resume_from_cap("cap", 12, 8)
+
+    def test_confirmed_plateau_never_auto_resumes(self):
+        # "stopped" is the learning-completion verdict; a raised cap must
+        # not reopen it (override = deliberate flat_history reset).
+        assert not resume_from_cap("stopped", 6, 16)
+        assert not resume_from_cap("running", 3, 12)
+        assert not resume_from_cap("needs_review", 3, 12)
 
 
 class TestDecideStopValidation:

@@ -314,6 +314,23 @@ def confirmation_verdict(
     )
 
 
+def resume_from_cap(
+    status: str, recorded_generations: int, max_generations: int
+) -> bool:
+    """Whether a concluded run should reopen on relaunch.
+
+    Only a "cap" conclusion is resumable, and only when the operator
+    relaunched with --max-generations above the generations already
+    recorded — the raised cap IS the operator's continue signal, and the
+    cap is a budget checkpoint, not a completion claim. A "stopped"
+    conclusion is the confirmed learning-completion verdict and never
+    auto-resumes; overriding it is a deliberate state edit (reset the
+    trailing flat_history flags, the confirmation-contradiction
+    mechanism) plus a pre-registration note.
+    """
+    return status == "cap" and max_generations > recorded_generations
+
+
 # --------------------------------------------------------------------------- #
 # Anchor-coefficient calibration
 # --------------------------------------------------------------------------- #

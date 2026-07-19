@@ -75,6 +75,7 @@ from sheepshead.analysis.league_stopping import (
     decide_stop,
     flat_verdict,
     pick_anchor_coeff,
+    resume_from_cap,
     verdict_to_dict,
 )
 from sheepshead.analysis.panels import PANEL_A
@@ -889,10 +890,27 @@ class Orchestrator:
     # Main loop
     # ------------------------------------------------------------------ #
     def run(self) -> int:
+        if resume_from_cap(
+            self.state["status"],
+            len(self.state["flat_history"]),
+            self.args.max_generations,
+        ):
+            self._event(
+                f"cap raised: {len(self.state['flat_history'])} generations "
+                f"recorded, max_generations now {self.args.max_generations}; "
+                "resuming"
+            )
+            self.state["status"] = "running"
+            self._save_state()
         if self.state["status"] in ("stopped", "cap"):
+            hint = (
+                " — relaunch with a higher --max-generations to continue"
+                if self.state["status"] == "cap"
+                else ""
+            )
             self.log(
                 f"run already concluded (status={self.state['status']}); see "
-                f"{os.path.join(self.orch_dir, 'report.md')}"
+                f"{os.path.join(self.orch_dir, 'report.md')}{hint}"
             )
             return 0
         self.preflight()
