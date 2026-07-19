@@ -1628,12 +1628,25 @@ default off; commit 369880c8).
   `run_extended_league` (gens 3+, same run-name; lineage remains
   "from scratch on the current repo": selfplay 0→400k + league
   0.4→2.4M), 8 workers, `--leaster-watchdog` ON (documented regime
-  addition), save-interval 50k. 4-gen floor (~8–10 days), explicit
-  continue/stop review every 2 generations on the 4-instrument
-  battery — historical slopes are context only. Endpoint claim =
-  exceed 30M-as-candidate panel score; final confirmation via CRN
-  h2h vs final_pfsp + fresh-deal run, deals sized to the observed
-  edge (1000 ⇒ MDE ≈ 0.07; smaller edge ⇒ scale up).
+  addition), save-interval 50k. **Stopping condition = the
+  pre-registered learning-completion estimate, never an external
+  target** (operator amendment 07-18): the orchestrator's
+  `league_stopping` rule decides from the run's own trajectory only
+  — a generation is flat when none of (A) gain vs previous BEST
+  ≥ 0.035 with bootstrap lo > 0 on the 4000-deal composite,
+  (B) h2h vs previous gen ≥ 0.05 at 2 SE, (C) paired 3-endpoint
+  slope ≥ 0.0175/gen with lo > 0 fire; stop candidate = 2
+  consecutive flats after the 4-gen floor; fresh-deal confirmation
+  (seed 20260706) must agree, else the streak resets. The 12-gen
+  cap is a BUDGET checkpoint (forces confirmation + operator
+  review; extendable by a new pre-registration if signals still
+  fire), not a completion claim. The convention/aux battery informs
+  the operator review at confirmation; residual type-II risk
+  (sub-MDE rare-situation learning) is accepted and documented in
+  the validity-limits section above. Comparison vs the 30M final
+  (CRN h2h vs final_pfsp + fresh-deal run, deals sized to the
+  observed edge) is POST-HOC measurement of whatever agent the
+  rule produces — it is never a stop input.
 - **Phase C — reserve lever (convention holes + sample efficiency):**
   search distillation (ISMCTS offline-grade trump-lead edge +0.16 @
   4096 iters; blitz/crack/recrack plan now unblocked by the stage-1
