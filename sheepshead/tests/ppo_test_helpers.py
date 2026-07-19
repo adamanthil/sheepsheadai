@@ -2,17 +2,14 @@
 
 ``play_episodes`` fills an agent's event storage with seeded self-play
 episodes (deals seeded deterministically, both partner modes, rotating
-seats). ``skip_unless_fixture_environment`` guards bit-exact fixtures:
-float reduction order is BLAS/kernel dependent, so byte-identity is only
-meaningful on the environment that captured the fixture.
+seats); ``prepare_minibatch_inputs`` mirrors update()'s preprocessing so
+the minibatch builders can be tested on realistic events.
 """
 
-import platform
 import random
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
 import torch
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
@@ -74,18 +71,3 @@ def prepare_minibatch_inputs(agent: PPOAgent):
     states, masks_t, kinds = agent._prepare_training_views()
     segments = agent._segments_from_events(kinds)
     return states, masks_t, kinds, segments
-
-
-def runtime_environment() -> dict:
-    return {"torch": torch.__version__, "platform": platform.platform()}
-
-
-def skip_unless_fixture_environment(fixture: dict) -> None:
-    recorded = fixture.get("environment")
-    if recorded != runtime_environment():
-        pytest.skip(
-            "runtime differs from fixture environment "
-            f"({recorded}); bit-identity is only meaningful on the "
-            "machine that captured the fixture -- regenerate with "
-            "python -m to gate refactors here"
-        )
