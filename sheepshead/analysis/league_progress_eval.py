@@ -373,16 +373,24 @@ def h2h_duplicate(
     )
 
     mode_edges: Dict[str, Dict[str, float]] = {}
+    deal_scores = []
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
         rep = run_gauntlet([cand], [anchor], deal_seeds, mode, boot_idx)[0]
         mode_edges[name] = {"edge": rep.score.mean, "se": rep.score.se}
+        deal_scores.append(rep.deal_score)
     edge = (mode_edges["called"]["edge"] + mode_edges["jd"]["edge"]) / 2.0
     se = 0.5 * float(
         np.sqrt(mode_edges["called"]["se"] ** 2 + mode_edges["jd"]["se"] ** 2)
     )
+    pooled = np.concatenate(deal_scores)
     return {
         "edge": edge,
         "se": se,
+        # paired_edge-compatible analogs (ties get half credit; a nonzero
+        # duplicate deal score means the candidate's presence changed the
+        # outcome vs the anchor's symmetric 0).
+        "win_frac": float(((pooled > 0) + 0.5 * (pooled == 0)).mean()),
+        "deviating_frac": float((pooled != 0).mean()),
         "n_deals": 2 * n_deals_per_mode,
         "instrument": "duplicate_bridge",
         "modes": mode_edges,
