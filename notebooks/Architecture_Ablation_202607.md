@@ -1858,10 +1858,16 @@ recovery**, mechanism = bid-discrimination restructuring (stream B).
 
 **Stop-rule correction** (supersedes the §5.11 aside "the stop rule
 would read 2 consecutive flats already", which was panel-only
-reasoning): criterion **B fires for gen 2** (+0.081 ≥ h2h_min 0.05 at
-> 2 SE) ⇒ gen 2 = IMPROVING, flat_history = [flat, improving], no stop
-candidate. The pre-registered rule, run on its actual instruments,
-says **CONTINUE**.
+reasoning): with the battery's duplicate-bridge instrument, criterion
+**B fires for gen 2** (+0.081 ≥ h2h_min 0.05 at > 2 SE) ⇒ gen 2 =
+IMPROVING, no stop candidate. *Post-launch correction (07-19 pm)*: the
+orchestrator's original paired_edge instrument realized se 0.055, so as
+first instrumented B could NOT fire below +0.11 and the live run read
+gen 2 flat (edge +0.104, missing 2·se by 0.007 — point estimates
+agree). Resolved by the Extended_League **amendment 2026-07-19**:
+criterion B's instrument upgraded to `h2h_duplicate` (same pipeline and
+seed as the battery), gens 1–2 values adopted from the battery, flat
+streak at gen-3 entry = 0.
 
 ### Consolidated Phase A verdict (morning summary)
 

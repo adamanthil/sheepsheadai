@@ -99,6 +99,34 @@ as "stopped while still exploitable".
   greedy-gate violations of the same gate, or leaster rate > 0.30 and rising
   > +0.10 within a generation → `needs_review`.
 
+## Amendment 2026-07-19 (mid-run, pre-gen-3-verdict): criterion B instrument
+
+Measurement-power fix; thresholds unchanged. Motivation, documented
+before any gen-3 evidence exists: the pre-registered h2h instrument
+(`training_utils.paired_edge`, 2000 deals) realized se ≈ 0.055 in the
+perceiver-shared-v2 continuation — criterion B (edge ≥ 0.05 AND ≥ 2·se)
+therefore cannot fire below +0.11, making B inert at its intended
+threshold (h2h_min 0.05 implicitly assumed se ≈ 0.025). Observed gen-2
+edge +0.104 failed B by 0.007 despite being a decisive gain on the
+higher-powered instrument.
+
+1. **Instrument replaced** by `league_progress_eval.h2h_duplicate`: the
+   candidate seated in all 5 seats per CRN deal vs a field of the
+   previous checkpoint (rigorous_eval gauntlet, one-member panel),
+   2000 deals per mode, seed 42, deterministic play; edge = both-modes
+   mean (anchor's self-field score is 0 by symmetry). Realized se
+   ≈ 0.015 — B now fires at its designed threshold. `--h2h-deals` is
+   per-mode.
+2. **Gens 1–2 values adopted from the already-collected 2026-07-19
+   hypothesis battery** (identical pipeline and seed): gen 1
+   −0.086 ± 0.013, gen 2 +0.081 ± 0.015. The superseded paired_edge
+   measurements (−0.089 ± 0.050 / +0.104 ± 0.055 — consistent point
+   estimates) are preserved as `h2h_gen{1,2}.paired_edge.json.bak`.
+   Consequence: gen 2's verdict becomes IMPROVING via B; flat streak
+   at gen-3 entry is 0, not 2.
+3. Orchestrator restarted to load the change (crash-resume path;
+   gen-3 trainer resumed from its latest 50k checkpoint).
+
 ## Amendment 2026-07-18 (pre-launch): portability + calibration retirement
 
 Recorded before the real run starts; the stopping rule is unchanged.

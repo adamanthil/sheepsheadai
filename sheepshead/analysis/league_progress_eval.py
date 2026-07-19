@@ -325,10 +325,68 @@ def h2h(
 ) -> Dict:
     """CRN paired edge of this generation over the previous one, measured in
     the previous generation's field (training_utils.paired_edge). The frozen
-    seed keeps the deal set constant across generations."""
+    seed keeps the deal set constant across generations.
+
+    SUPERSEDED for the extended-league stop rule by h2h_duplicate (amendment
+    2026-07-19): at 2000 deals this instrument's se ≈ 0.055, which makes
+    criterion B (edge >= 0.05 at 2 se) unreachable below +0.11. Kept for
+    comparability with earlier recorded numbers."""
     challenger = load_agent(gen_ckpt)
     incumbent = load_agent(prev_ckpt)
     return paired_edge(challenger, incumbent, incumbent, n_deals, seed=seed)
+
+
+def h2h_duplicate(
+    gen_ckpt: str,
+    prev_ckpt: str,
+    n_deals_per_mode: int = 2000,
+    seed: int = 42,
+    n_boot: int = 5000,
+) -> Dict:
+    """Duplicate-bridge h2h (Extended_League amendment 2026-07-19).
+
+    The candidate is seated in all 5 seats per CRN deal against a field made
+    entirely of the previous checkpoint (rigorous_eval gauntlet with a
+    one-member panel), both partner modes. The anchor's score in its own
+    field is 0 by symmetry, so the candidate's score/hand IS the paired
+    edge — at ~3.5x less deal noise than training_utils.paired_edge at
+    equal deals (se ~0.015 combined vs ~0.055). Pipeline and seed (42)
+    match the 2026-07-19 hypothesis-battery runs exactly, so gens 1-2 of
+    the perceiver-shared-v2 continuation carry those recorded values.
+    """
+    import random as _random
+
+    from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+    from sheepshead.analysis.rigorous_eval import (
+        ModelRegistry,
+        _bootstrap_deal_indices,
+        run_gauntlet,
+    )
+
+    registry = ModelRegistry()
+    cand = registry.get(Path(gen_ckpt))
+    anchor = registry.get(Path(prev_ckpt))
+    seed_rng = _random.Random(seed)
+    deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(n_deals_per_mode)]
+    boot_idx = _bootstrap_deal_indices(
+        n_deals_per_mode, n_boot, np.random.default_rng(seed)
+    )
+
+    mode_edges: Dict[str, Dict[str, float]] = {}
+    for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
+        rep = run_gauntlet([cand], [anchor], deal_seeds, mode, boot_idx)[0]
+        mode_edges[name] = {"edge": rep.score.mean, "se": rep.score.se}
+    edge = (mode_edges["called"]["edge"] + mode_edges["jd"]["edge"]) / 2.0
+    se = 0.5 * float(
+        np.sqrt(mode_edges["called"]["se"] ** 2 + mode_edges["jd"]["se"] ** 2)
+    )
+    return {
+        "edge": edge,
+        "se": se,
+        "n_deals": 2 * n_deals_per_mode,
+        "instrument": "duplicate_bridge",
+        "modes": mode_edges,
+    }
 
 
 # --------------------------------------------------------------------------- #

@@ -78,7 +78,7 @@ from sheepshead.analysis.league_progress_eval import (
     Endpoint,
     _endpoint_boot_idx,
     eval_endpoint,
-    h2h,
+    h2h_duplicate,
     load_endpoint,
 )
 from sheepshead.training.league_stopping import (
@@ -577,8 +577,13 @@ class Orchestrator:
             with open(path) as f:
                 return json.load(f)
         prev = self.args.resume if g == 1 else self.boundary_ckpt(g - 1)
-        self.log(f"h2h gen {g} vs gen {g - 1}: {self.args.h2h_deals} deals ...")
-        res = h2h(self.boundary_ckpt(g), prev, n_deals=self.args.h2h_deals)
+        self.log(
+            f"h2h gen {g} vs gen {g - 1} (duplicate-bridge): "
+            f"{self.args.h2h_deals} deals/mode ..."
+        )
+        res = h2h_duplicate(
+            self.boundary_ckpt(g), prev, n_deals_per_mode=self.args.h2h_deals
+        )
         with open(path, "w") as f:
             json.dump(res, f, indent=2)
         return res
@@ -912,7 +917,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     # 3996, not 4000: must divide evenly over 2 modes x 3 composite ckpts
     p.add_argument("--panel-deals", type=int, default=3996)
-    p.add_argument("--h2h-deals", type=int, default=2000)
+    p.add_argument(
+        "--h2h-deals",
+        type=int,
+        default=2000,
+        help="deals PER MODE for the duplicate-bridge h2h (amendment 2026-07-19)",
+    )
     p.add_argument("--min-generations", type=int, default=4)
     p.add_argument("--max-generations", type=int, default=12)
     p.add_argument("--ignore-health-halt", action="store_true")
