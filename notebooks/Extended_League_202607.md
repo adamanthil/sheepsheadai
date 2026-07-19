@@ -121,6 +121,20 @@ Recorded before the real run starts; the stopping rule is unchanged.
    deals over 2 modes × 3 checkpoints and requires divisibility by 6;
    4000 was never launchable (the loader rejects it) and no recorded
    number used it. MDE ≈ 0.035 is unchanged.
+5. **Health halts narrowed to the leaster trend; verdicts one-shot.**
+   The ≥3-consecutive greedy-gate streaks (pick/ALONE/trump-lead/
+   play-spread) are demoted to recorded warnings: they are 200-game
+   diagnostic probes that the endpoint instruments routinely contradict
+   (stage-1 gen 2 trips the trump-lead streak at 1.6–1.7M on ~80-lead
+   denominators while its 2M trump-lead probe is clean), and the
+   PASS-collapse attractor is now guarded in-loop by the leaster
+   watchdog. Only the leaster-trend check still halts (`needs_review`).
+   Each generation's health verdict is recorded once in state.json and
+   never re-litigated, so relaunching after a halt continues past it
+   (previously the replay loop re-tripped the same historical streak on
+   every launch, and the only escape — `--ignore-health-halt` — also
+   disabled checking for future generations; the flag now merely
+   suppresses the halt while still recording the verdict).
 
 ## Amendment 2026-07-09 (pre-launch): baseline-relative ALONE gate
 

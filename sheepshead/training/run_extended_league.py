@@ -584,9 +584,21 @@ class Orchestrator:
         return res
 
     def health_checks(self, g: int) -> None:
-        """Post-generation collapse guards (the trainer only warns)."""
-        if self.args.ignore_health_halt:
+        """Post-generation health verdict, recorded once per generation.
+
+        Greedy-gate streaks (pick/alone/trump-lead/play-spread) are
+        diagnostic-grade signals from 200-game probes — the higher-powered
+        endpoint instruments routinely contradict them — so they are recorded
+        as warnings, never halts. Only the leaster trend halts: it targets
+        the documented PASS-collapse attractor. The verdict is one-shot: a
+        halt fires when the verdict is first recorded, and relaunching
+        continues past it with the verdict on record (the run loop replays
+        every generation, so re-checking would otherwise block forever).
+        """
+        rec = self.gen_record(g)
+        if "health" in rec:
             return
+        health: dict = {"warnings": [], "halt": None}
         lo, hi = self.boundary(g - 1), self.boundary(g)
         greedy_csv = os.path.join(self.ckpt_dir, "greedy_health.csv")
         if os.path.exists(greedy_csv):
@@ -605,17 +617,19 @@ class Orchestrator:
                 ),
             }
             streaks = {k: 0 for k in gates}
+            worst = {k: 0 for k in gates}
             with open(greedy_csv) as f:
                 for row in csv.DictReader(f):
                     if not (lo < int(row["episode"]) <= hi):
                         continue
                     for k, bad in gates.items():
                         streaks[k] = streaks[k] + 1 if bad(row) else 0
-                        if streaks[k] >= 3:
-                            raise NeedsReview(
-                                f"gen {g}: >=3 consecutive greedy-health "
-                                f"violations of gate '{k}'"
-                            )
+                        worst[k] = max(worst[k], streaks[k])
+            for k, n in worst.items():
+                if n >= 3:
+                    health["warnings"].append(
+                        f"{k}: {n} consecutive greedy-probe violations"
+                    )
         progress_csv = os.path.join(self.ckpt_dir, "league_training_progress.csv")
         if os.path.exists(progress_csv):
             leasters = []
@@ -627,10 +641,25 @@ class Orchestrator:
                 start = float(np.mean(leasters[:20]))
                 end = float(np.mean(leasters[-20:]))
                 if end > 0.30 and end > start + 0.10:
-                    raise NeedsReview(
-                        f"gen {g}: leaster rate climbing toward PASS-collapse "
+                    health["halt"] = (
+                        f"leaster rate climbing toward PASS-collapse "
                         f"({start:.2f} -> {end:.2f})"
                     )
+        rec["health"] = health
+        self._save_state()
+        for w in health["warnings"]:
+            self._event(f"gen {g} health warning: {w}")
+        if health["halt"]:
+            if self.args.ignore_health_halt:
+                self._event(
+                    f"gen {g} health halt IGNORED (--ignore-health-halt): "
+                    f"{health['halt']}"
+                )
+            else:
+                raise NeedsReview(
+                    f"gen {g}: {health['halt']} — verdict recorded; "
+                    "relaunching continues past this halt"
+                )
 
     # ------------------------------------------------------------------ #
     # Stop check

@@ -262,6 +262,14 @@ def write_report_md(state: dict, args, cfg, alone_limit: float, orch_dir: str) -
                 f"- Gen {g}: slope statistically positive but below "
                 "SLOPE_MIN — learning may be continuing slowly."
             )
+    for g in sorted(int(k) for k in s["generations"]):
+        h = s["generations"][str(g)].get("health")
+        if not h:
+            continue
+        for w in h["warnings"]:
+            caveats.append(f"- Gen {g} health warning: {w}.")
+        if h.get("halt"):
+            caveats.append(f"- Gen {g} health **HALT**: {h['halt']}.")
     last = max((int(k) for k in s["generations"]), default=0)
     gate = s["generations"].get(str(last), {}).get("exploiter")
     if s["status"] in ("stopped", "cap") and gate and gate["passed"]:
