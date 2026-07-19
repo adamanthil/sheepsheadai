@@ -6,18 +6,41 @@ per-action-state aux predictions (same extraction path as
 server/services/analyze.py) plus the same ground-truth labels the
 trainer stores, and reports per-head accuracy metrics.
 
-Heads audited:
-  win           P(final score > 0)             -> AUC, acc@0.5, base rate
-  return        expected final score           -> corr, MAE (score units)
-  partner       P(this player is secret ptnr)  -> AUC, acc@0.5, base rate
-  points        per-seat known points (0-120)  -> MAE (points)
-  seen_trump    per-card seen mask             -> per-bit acc, F1
-  unseen_higher any unseen trump beats hand    -> AUC, acc@0.5, base rate
+Heads audited (and the scale that makes each actionable):
+
+  win           P(final score > 0)            -> AUC, Brier, base rate
+  return        expected final score          -> corr, MAE (score units)
+  partner       P(this player is secret ptnr) -> AUC. NOTE: this head
+                predicts the player's OWN partner status, which is
+                deterministic from their own hand (called card / JD in
+                hand) — expect AUC ~1 early; kept for continuity only.
+  points        per-seat known points (0-120) -> MAE, P(err<=5),
+                P(err<=10), early/late-trick MAE. Point tracking needs
+                single-digit precision to change decisions.
+  seen_trump    per-card seen mask            -> per-bit Brier +
+                positive-class F1, early/late splits. Raw per-bit
+                accuracy saturates (most bits are easy 0s early).
+  unseen_higher any unseen trump beats hand   -> AUC, Brier, plus
+                trick-0/1 splits — the window where the answer is
+                uncertain and decisions (leads, bury) actually hinge
+                on it.
+
+Trick buckets: t01 = prediction made during tricks 0-1 (hard, actionable),
+t45 = tricks 4-5 (mostly bookkeeping). A head can be "accurate" overall
+while useless at t01; the stratified numbers are the ones that bear on
+whether aux quality changed in a way play can exploit.
+
+Usage:
+  PYTHONPATH=. python -m sheepshead.analysis.diagnostics.aux_audit \
+    --ckpt selfplay400k=runs/.../warmstart_perceiver-shared-v2_400k.pt \
+    --ckpt league2M=runs/.../pfsp_perceiver-shared-v2_checkpoint_2000000.pt \
+    --out aux_ladder.csv
 """
 
+import argparse
 import csv
 import random
-import sys
+import re
 
 import numpy as np
 import torch
@@ -32,7 +55,6 @@ from sheepshead.training.training_utils import (
 )
 
 DEVICE = torch.device("cpu")
-N_GAMES = 200
 BASE_SEED = 20260708
 
 
@@ -61,7 +83,22 @@ def auc(labels: np.ndarray, scores: np.ndarray) -> float:
     return float((r_pos - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg)))
 
 
-def audit_checkpoint(ckpt_path: str) -> dict:
+def brier(labels: np.ndarray, probs: np.ndarray) -> float:
+    return float(np.mean((probs - labels) ** 2)) if len(labels) else float("nan")
+
+
+def pos_f1(labels: np.ndarray, probs: np.ndarray) -> float:
+    pred = probs > 0.5
+    truth = labels > 0.5
+    denom = pred.sum() + truth.sum()
+    return float(2 * (pred & truth).sum() / denom) if denom else float("nan")
+
+
+def _bucket(tricks: np.ndarray, lo: int, hi: int) -> np.ndarray:
+    return (tricks >= lo) & (tricks <= hi)
+
+
+def audit_checkpoint(ckpt_path: str, n_games: int) -> dict:
     agent = load_agent(ckpt_path)
     if not getattr(agent.critic, "has_aux_heads", False):
         raise SystemExit(f"{ckpt_path}: no aux heads")
@@ -69,11 +106,11 @@ def audit_checkpoint(ckpt_path: str) -> dict:
     win_p, win_y = [], []
     ret_p, ret_y = [], []
     par_p, par_y = [], []
-    pts_err = []
-    stm_p, stm_y = [], []
-    uns_p, uns_y = [], []
+    pts_err, pts_trick = [], []  # pooled per-seat absolute errors
+    stm_p, stm_y, stm_trick = [], [], []  # pooled per-bit
+    uns_p, uns_y, uns_trick = [], [], []
 
-    for g in range(N_GAMES):
+    for g in range(n_games):
         mode = PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD
         torch.manual_seed(BASE_SEED + g)
         random.seed(BASE_SEED + g)
@@ -85,6 +122,7 @@ def audit_checkpoint(ckpt_path: str) -> dict:
             for player in game.players:
                 valid_actions = player.get_valid_action_ids()
                 while valid_actions:
+                    trick = int(game.current_trick)
                     state = player.get_state_dict()
                     memory_in = agent.get_recurrent_memory(
                         player.position, device=DEVICE
@@ -125,17 +163,21 @@ def audit_checkpoint(ckpt_path: str) -> dict:
                         compute_known_points_rel(player), dtype=float
                     )
                     pts_pred = np.asarray(points_vec, dtype=float).reshape(-1)
-                    pts_err.append(np.abs(pts_pred - pts_label).mean())
+                    err = np.abs(pts_pred - pts_label)
+                    pts_err.extend(err.tolist())
+                    pts_trick.extend([trick] * len(err))
                     stm_label = np.asarray(compute_seen_trump_mask(player), dtype=float)
                     stm_prob = torch.sigmoid(stm_logits).cpu().numpy().reshape(-1)
-                    stm_p.append(stm_prob)
-                    stm_y.append(stm_label)
+                    stm_p.extend(stm_prob.tolist())
+                    stm_y.extend(stm_label.tolist())
+                    stm_trick.extend([trick] * len(stm_label))
                     uns_p.append(float(torch.sigmoid(uns_logit)))
                     uns_y.append(
                         1.0
                         if compute_any_unseen_trump_higher_than_hand(player)
                         else 0.0
                     )
+                    uns_trick.append(trick)
                     per_state.append((player.position, float(win_prob), float(exp_ret)))
 
                     action = (
@@ -165,80 +207,88 @@ def audit_checkpoint(ckpt_path: str) -> dict:
     win_p, win_y = np.array(win_p), np.array(win_y)
     ret_p, ret_y = np.array(ret_p), np.array(ret_y)
     par_p, par_y = np.array(par_p), np.array(par_y)
-    stm_p, stm_y = np.concatenate(stm_p), np.concatenate(stm_y)
-    uns_p, uns_y = np.array(uns_p), np.array(uns_y)
+    pts_err, pts_trick = np.array(pts_err), np.array(pts_trick)
+    stm_p, stm_y, stm_trick = np.array(stm_p), np.array(stm_y), np.array(stm_trick)
+    uns_p, uns_y, uns_trick = np.array(uns_p), np.array(uns_y), np.array(uns_trick)
+
+    p_t01, p_t45 = _bucket(pts_trick, 0, 1), _bucket(pts_trick, 4, 5)
+    s_t01, s_t45 = _bucket(stm_trick, 0, 1), _bucket(stm_trick, 4, 5)
+    u_t01 = _bucket(uns_trick, 0, 1)
 
     return {
         "n_states": len(win_p),
         "win_auc": auc(win_y, win_p),
-        "win_acc": float(((win_p > 0.5) == (win_y > 0.5)).mean()),
+        "win_brier": brier(win_y, win_p),
         "win_base": float(win_y.mean()),
         "ret_corr": float(np.corrcoef(ret_p, ret_y)[0, 1]),
         "ret_mae": float(np.abs(ret_p - ret_y).mean()),
         "partner_auc": auc(par_y, par_p),
-        "partner_acc": float(((par_p > 0.5) == (par_y > 0.5)).mean()),
-        "partner_base": float(par_y.mean()),
-        "points_mae": float(np.mean(pts_err)),
-        "seen_trump_acc": float(((stm_p > 0.5) == (stm_y > 0.5)).mean()),
-        "seen_trump_f1": float(
-            2
-            * ((stm_p > 0.5) & (stm_y > 0.5)).sum()
-            / max(1, ((stm_p > 0.5).sum() + (stm_y > 0.5).sum()))
-        ),
+        "points_mae": float(pts_err.mean()),
+        "points_p_le5": float((pts_err <= 5).mean()),
+        "points_p_le10": float((pts_err <= 10).mean()),
+        "points_mae_t01": float(pts_err[p_t01].mean()),
+        "points_mae_t45": float(pts_err[p_t45].mean()),
+        "seen_brier": brier(stm_y, stm_p),
+        "seen_pos_f1": pos_f1(stm_y, stm_p),
+        "seen_brier_t01": brier(stm_y[s_t01], stm_p[s_t01]),
+        "seen_pos_f1_t01": pos_f1(stm_y[s_t01], stm_p[s_t01]),
+        "seen_pos_f1_t45": pos_f1(stm_y[s_t45], stm_p[s_t45]),
         "unseen_auc": auc(uns_y, uns_p),
-        "unseen_acc": float(((uns_p > 0.5) == (uns_y > 0.5)).mean()),
+        "unseen_brier": brier(uns_y, uns_p),
         "unseen_base": float(uns_y.mean()),
+        "unseen_auc_t01": auc(uns_y[u_t01], uns_p[u_t01]),
+        "unseen_brier_t01": brier(uns_y[u_t01], uns_p[u_t01]),
     }
 
 
-def main():
-    ckpts = []
-    for seed in (42, 1042, 2042):
-        for ep in (100000, 200000):
-            ckpts.append(
-                (
-                    f"full_s{seed}",
-                    ep,
-                    f"runs/ablate_full_s{seed}/full_checkpoint_{ep}.pt",
-                )
-            )
-            ckpts.append(
-                (
-                    f"shared_s{seed}",
-                    ep,
-                    f"runs/ablate_perceiver-shared_s{seed}/perceiver-shared_checkpoint_{ep}.pt",
-                )
-            )
-        ckpts.append(
-            (
-                f"full_s{seed}",
-                300000,
-                f"runs/ablate_full400_s{seed}/full_checkpoint_300000.pt",
-            )
-        )
+def _episodes_from_path(path: str) -> int:
+    m = re.search(r"checkpoint_(\d+)", path)
+    return int(m.group(1)) if m else 0
 
-    out_path = sys.argv[1] if len(sys.argv) > 1 else "aux_audit.csv"
-    fields = None
-    with open(out_path, "w", newline="") as f:
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Aux-head prediction-quality audit")
+    ap.add_argument(
+        "--ckpt",
+        action="append",
+        required=True,
+        metavar="LABEL=PATH",
+        help="checkpoint to audit (repeatable); rows keep the given order",
+    )
+    ap.add_argument("--games", type=int, default=200)
+    ap.add_argument("--out", default="aux_audit.csv")
+    args = ap.parse_args(argv)
+
+    ckpts = []
+    for spec in args.ckpt:
+        label, _, path = spec.partition("=")
+        if not path:
+            ap.error(f"--ckpt needs LABEL=PATH, got {spec!r}")
+        ckpts.append((label, path))
+
+    with open(args.out, "w", newline="") as f:
         writer = None
-        for name, ep, path in ckpts:
-            row = {"model": name, "episodes": ep}
-            row.update(audit_checkpoint(path))
+        for label, path in ckpts:
+            row = {"model": label, "episodes": _episodes_from_path(path)}
+            row.update(audit_checkpoint(path, args.games))
             if writer is None:
-                fields = list(row)
-                writer = csv.DictWriter(f, fieldnames=fields)
+                writer = csv.DictWriter(f, fieldnames=list(row))
                 writer.writeheader()
             writer.writerow(row)
             f.flush()
             print(
-                f"{name}@{ep}: partner_auc={row['partner_auc']:.3f} "
-                f"win_auc={row['win_auc']:.3f} ret_corr={row['ret_corr']:.3f} "
-                f"points_mae={row['points_mae']:.1f} "
-                f"seen_trump_acc={row['seen_trump_acc']:.3f} "
-                f"unseen_acc={row['unseen_acc']:.3f} (n={row['n_states']})",
+                f"{label}: points_mae_t01={row['points_mae_t01']:.2f} "
+                f"points_p_le5={row['points_p_le5']:.3f} "
+                f"seen_pos_f1_t01={row['seen_pos_f1_t01']:.3f} "
+                f"unseen_auc_t01={row['unseen_auc_t01']:.3f} "
+                f"unseen_brier_t01={row['unseen_brier_t01']:.3f} "
+                f"ret_corr={row['ret_corr']:.3f} (n={row['n_states']})",
                 flush=True,
             )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    sys.exit(main())
