@@ -411,6 +411,49 @@ def save_training_plot(training_data, save_path="training_progress.png"):
     plt.close()
 
 
+def truncate_csv_rows_past_episode(
+    path: str, episode: int, column: str = "episode"
+) -> int:
+    """Drop telemetry rows recorded past ``episode``; return the count dropped.
+
+    Crash-resume dedupe: a trainer resumed from checkpoint_N replays episodes
+    N+1.. and appends them again, so any rows the crashed run wrote past N
+    would duplicate episode numbers. Called at trainer startup with the
+    resume episode; a clean (non-crash) start finds nothing to drop. Rows
+    with a malformed ``column`` value are kept. Atomic rewrite.
+    """
+    if episode <= 0 or not os.path.exists(path):
+        return 0
+    with open(path, newline="") as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+    if len(rows) <= 1:
+        return 0
+    header, body = rows[0], rows[1:]
+    try:
+        col = header.index(column)
+    except ValueError:
+        return 0
+
+    def keep(row: List[str]) -> bool:
+        try:
+            return float(row[col]) <= episode
+        except (ValueError, IndexError):
+            return True
+
+    kept = [r for r in body if keep(r)]
+    dropped = len(body) - len(kept)
+    if dropped == 0:
+        return 0
+    tmp = path + ".tmp"
+    with open(tmp, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(kept)
+    os.replace(tmp, path)
+    return dropped
+
+
 def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     """Deterministic-greedy self-play health metrics for the collapse guard.
 

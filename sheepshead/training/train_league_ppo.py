@@ -77,6 +77,7 @@ from sheepshead.training.training_utils import (
     greedy_health_probe,
     paired_edge,
     set_all_seeds,
+    truncate_csv_rows_past_episode,
 )
 
 PFSP_HYPERPARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
@@ -396,6 +397,15 @@ def run_main_phase(
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
     greedy_csv = os.path.join(checkpoint_dir, "greedy_health.csv")
     anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
+    # Crash-resume dedupe: drop telemetry a crashed run wrote past the
+    # resume episode, or the replayed episodes would duplicate rows.
+    for _csv in (progress_csv, greedy_csv, anchored_csv):
+        _n = truncate_csv_rows_past_episode(_csv, start_episode)
+        if _n:
+            print(
+                f"🧹 Trimmed {_n} stale rows past episode {start_episode:,} "
+                f"from {os.path.basename(_csv)}"
+            )
 
     weight_sync = {
         "version": 0,

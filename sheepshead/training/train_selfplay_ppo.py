@@ -33,6 +33,7 @@ from sheepshead.training.training_utils import (
     process_episode_rewards,
     save_training_plot,
     set_all_seeds,
+    truncate_csv_rows_past_episode,
     update_intermediate_rewards_for_action,
 )
 
@@ -511,6 +512,14 @@ def train_ppo(
     # probes (and across runs) via SELFPLAY_ANCHOR_EVAL_SEED. Eval wall-clock is
     # tracked separately so throughput comparisons exclude probe time.
     anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
+    # Crash-resume dedupe: drop rows a crashed run wrote past the resume
+    # episode, or the replayed episodes would duplicate them.
+    _n = truncate_csv_rows_past_episode(anchored_csv, start_episode)
+    if _n:
+        print(
+            f"🧹 Trimmed {_n} stale rows past episode {start_episode:,} "
+            "from anchored_eval.csv"
+        )
     yardsticks = _setup_anchored_eval_yardsticks(
         anchor_eval_interval, anchor_100k, anchor_pfsp
     )
