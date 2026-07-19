@@ -3,17 +3,13 @@
 Stopping-rule and calibration decisions for the extended league run.
 
 Pre-registered in notebooks/Extended_League_202607.md; consumed by
-sheepshead/training/run_extended_league.py. Pure numpy on purpose: every
-decision the orchestrator makes about *when training is over* lives here as a
-deterministic function of recorded numbers, so the whole rule is unit-testable
-on synthetic curves without loading torch or playing a single game.
-
-Placement note: this is training-control *policy*, but it lives in analysis/
-deliberately — analysis is the lower layer (see analysis/__init__.py:
-instruments never import trainers/orchestrators), league_progress_eval (an
-instrument) shares this module's bootstrap primitives, and the analysis
-placement protects the torch-free testability. analysis = deterministic math
-over recorded numbers; training = side effects on training state.
+run_extended_league.py next door. Pure numpy on purpose: every decision the
+orchestrator makes about *when training is over* lives here as a deterministic
+function of recorded numbers, so the whole rule is unit-testable on synthetic
+curves without loading torch or playing a single game (training/__init__ is
+import-light, so this module stays torch-free despite the package). The
+bootstrap-over-deals primitives it shares with the analysis instruments live
+in sheepshead/analysis/bootstrap.py.
 
 The rule tightens the pre-registered recipe in
 notebooks/Architecture_Ablation_202607.md ("Continuing league generations"):
@@ -32,10 +28,6 @@ A generation g is *flat* when none of three improvement signals fire:
 Stop candidate: two consecutive flat generations (the onehot-ff false-plateau
 lesson) after a minimum-generations floor, confirmed by a fresh-deal panel
 (seed 20260706) before the run actually ends.
-
-Bootstrap math mirrors analysis/rigorous_eval.py (bootstrap over deals, the
-independent unit; boot_idx arrays are interchangeable between the two modules)
-but is reimplemented here to keep this module import-light.
 """
 
 from __future__ import annotations
@@ -44,6 +36,12 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Sequence
 
 import numpy as np
+
+from sheepshead.analysis.bootstrap import (
+    IntervalStat,
+    bootstrap_interval,
+    interval_to_dict,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -69,44 +67,6 @@ class StopRuleConfig:
     ci: float = 0.95
     min_generations: int = 4
     max_generations: int = 12
-
-
-# --------------------------------------------------------------------------- #
-# Bootstrap primitives (deal = independent unit; see rigorous_eval.py)
-# --------------------------------------------------------------------------- #
-def bootstrap_deal_indices(
-    n_deals: int, n_boot: int, rng: np.random.Generator
-) -> np.ndarray:
-    """(n_boot, n_deals) array of resampled deal indices (with replacement)."""
-    return rng.integers(0, n_deals, size=(n_boot, n_deals))
-
-
-@dataclass
-class IntervalStat:
-    """A per-deal mean with its bootstrap interval."""
-
-    mean: float
-    lo: float
-    hi: float
-    se: float
-    p_value: float  # two-sided bootstrap p that the mean == 0
-
-
-def bootstrap_interval(
-    per_deal: np.ndarray, boot_idx: np.ndarray, ci: float = 0.95
-) -> IntervalStat:
-    boots = per_deal[boot_idx].mean(axis=1)
-    alpha = (1.0 - ci) / 2.0
-    lo, hi = np.quantile(boots, [alpha, 1.0 - alpha])
-    frac_le = float(np.mean(boots <= 0.0))
-    frac_ge = float(np.mean(boots >= 0.0))
-    return IntervalStat(
-        mean=float(per_deal.mean()),
-        lo=float(lo),
-        hi=float(hi),
-        se=float(boots.std(ddof=1)),
-        p_value=min(1.0, 2.0 * min(frac_le, frac_ge)),
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -407,10 +367,6 @@ def pick_anchor_coeff(
 # --------------------------------------------------------------------------- #
 # Serialization helpers (state.json round-trip)
 # --------------------------------------------------------------------------- #
-def interval_to_dict(s: IntervalStat) -> Dict[str, float]:
-    return {"mean": s.mean, "lo": s.lo, "hi": s.hi, "se": s.se, "p_value": s.p_value}
-
-
 def verdict_to_dict(v: FlatVerdict) -> Dict[str, object]:
     out: Dict[str, object] = {
         "generation": v.generation,

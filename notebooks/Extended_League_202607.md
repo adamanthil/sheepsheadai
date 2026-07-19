@@ -1,8 +1,10 @@
 # Extended League Run — pre-registration (July 2026)
 
 Pre-registered BEFORE the run starts, per repo practice. Orchestrated by
-`sheepshead/training/run_extended_league.py`; decision math in `sheepshead/analysis/league_stopping.py`
-(unit-tested on synthetic curves in `tests/test_league_stopping.py`); endpoint
+`sheepshead/training/run_extended_league.py`; decision math in `sheepshead/training/league_stopping.py`
+(moved from `sheepshead/analysis/` 2026-07-18 — path amendment only, rule unchanged;
+bootstrap primitives now shared via `sheepshead/analysis/bootstrap.py`; unit-tested
+on synthetic curves in `tests/test_league_stopping.py`); endpoint
 machinery in `sheepshead/analysis/league_progress_eval.py`.
 
 ## Design

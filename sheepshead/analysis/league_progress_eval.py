@@ -56,7 +56,7 @@ from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
-from sheepshead.analysis.league_stopping import IntervalStat, bootstrap_interval
+from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
 from sheepshead.analysis.rigorous_eval import (
     DecisionProbe,
     Model,

@@ -11,11 +11,11 @@ decide_stop over the accumulated flat history.
 import numpy as np
 import pytest
 
-from sheepshead.analysis.league_stopping import (
+from sheepshead.analysis.bootstrap import bootstrap_deal_indices
+from sheepshead.training.league_stopping import (
     CalibrationChoice,
     ProbeSummary,
     StopRuleConfig,
-    bootstrap_deal_indices,
     confirmation_verdict,
     decide_stop,
     flat_verdict,

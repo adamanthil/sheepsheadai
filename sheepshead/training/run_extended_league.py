@@ -68,7 +68,7 @@ from sheepshead.analysis.league_progress_eval import (
     h2h,
     load_endpoint,
 )
-from sheepshead.analysis.league_stopping import (
+from sheepshead.training.league_stopping import (
     ProbeSummary,
     StopRuleConfig,
     confirmation_verdict,
