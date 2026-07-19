@@ -99,6 +99,22 @@ as "stopped while still exploitable".
   greedy-gate violations of the same gate, or leaster rate > 0.30 and rising
   > +0.10 within a generation → `needs_review`.
 
+## Candidate amendments (recorded, NOT in force — decide at an operator review)
+
+- **Duplicate-bridge exploiter gate** (noted 2026-07-19, prompted by the
+  criterion-B fix below): the gate (`exploiter.py`, edge ≥ 0.10 AND
+  ≥ 2·se, 3000 paired_edge deals, se ≈ 0.04) is near coin-flip for
+  marginal exploiters — every stage-1 gate landed at the threshold
+  (gen 1: +0.100±0.037 / +0.111±0.045 passes; gen 2 v2: +0.064±0.042
+  fail, plausibly a soft false "main survived"). Switching the gate
+  measurement to the duplicate-bridge design (candidate seated all 5
+  seats vs a main-only field) would cut se to ~0.015–0.02 at
+  comparable wall-clock (5 seatings/deal; halve deals to compensate),
+  making pass/fail crisp. Not urgent: gate errors are population-
+  diversity noise (insert-vs-HOF), not verdict corruption. If adopted,
+  apply from the next generation boundary and tag `exploitability.csv`
+  rows with the instrument.
+
 ## Amendment 2026-07-19 (mid-run, pre-gen-3-verdict): criterion B instrument
 
 Measurement-power fix; thresholds unchanged. Motivation, documented
