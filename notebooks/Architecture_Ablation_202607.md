@@ -1660,6 +1660,102 @@ default off; commit 369880c8).
   recipe** — same-or-better endpoint under a cleaner, instrumented,
   guard-minimal methodology.
 
+## 5.12 Phase A results + gen-adaptation hypothesis battery (2026-07-19)
+
+Retro-eval batch landed 07-19 00:05 (`runs/rigorous_baseline_202607/
+reference_lineage_early_{called,jd}.csv`, `runs/stage1_202607/
+h2h_v2_2M_vs_400k_{called,jd}.csv`). Grounded-era extension
+(20/25/30M rungs + 30M-as-candidate target bar) chained and running.
+
+### H2H gate (pre-registered go/diagnose input): FLAT
+
+v2 league 2M vs its own 400k warm start (2000 deals/mode, 5 seatings,
+warmstart-only field): called **−0.023 ± 0.021**, jd **+0.045 ± 0.024**,
+both-modes **+0.011 ± 0.016** score/hand. 2M league episodes (oracle
+critic) added no measurable head-to-head strength — confirms the flat
+panel lift by direct paired measurement. Gate verdict: **diagnose before
+Phase B launch**. Note the 2M hero's pick rate in this field is 8.7–9.3%
+(vs the warm start's ~53% greedy self-play pick) — role mix shifted
+heavily toward defender (~75%).
+
+### Original-run early lineage (context, NOT calibration — shaped ≤15M)
+
+Both-modes score/hand vs PANEL-A (1000 deals/mode, single rungs, field
+contains own lineage relatives):
+
+| eps | 0.5M | 1M | 2M | 3M | 4M | 5M† | 15M† |
+|---|---|---|---|---|---|---|---|
+| score | −0.21 | −0.16 | +0.06 | −0.03 | +0.11 | +0.05 | +0.12 |
+
+† earlier ladder rows, same instrument. Read: the successful run's
+panel-visible climb was ~all in the first ~2M shaped episodes (~0.17/M);
+2M→15M realized ≈ **0.005/M** with ±0.08 adjacent-rung oscillation —
+*below the extended-league stop rule's slope_min (0.0175/M) and MDE
+(0.035)*. The rule as pre-registered would have stopped the original run
+around gen 4–6. Implication recorded: either the rule's floor encodes
+unrealistic optimism, or post-formative league grind genuinely isn't
+worth the compute without a stronger mechanism — the 30M target bar
+(extension, pending) discriminates.
+
+### Operator hypothesis (recorded pre-battery)
+
+Gen 1 = adjusting to terminal reward with bidding anchored; gen 2 =
+adjusting to release; net ≈ 0 panel movement but much-improved aux
+tracking (poor at 400k) and newly-reliable partner trump leads ⇒
+training would resume producing gains in gens 3+. Also: with pick rate
+down at 2M, holding total score constant implies improved defender play.
+
+Telemetry forensics (free, from `league_training_progress.csv`):
+
+- **Supports**: oracle critic EV climbed 0.12→0.37 across gen 1 then
+  plateaued (gen 1 substantially = building the fresh critic; GAE noisy
+  meanwhile). Gen-2 tail: leaster peaked 1.6–1.8M (10.9%) then declined
+  (9.3%), pick recovering, lowest within-block variance of the gen —
+  consistent with settling.
+- **Revises**: gen-1 anchor_kl flat at ~0.011 nats (≪ 0.05 cap) — the
+  anchor was never binding; bidding sat still voluntarily. The bidding
+  renegotiation happened entirely in gen 2 (greedy pick 53%→low-20s
+  after release). Two-phase adaptation is real but sequential:
+  gen 1 = critic, gen 2 = bidding.
+
+### Pre-registered battery (queued behind the extension; scratchpad
+`hypothesis_battery.sh` → `runs/stage1_202607/hypothesis_battery.log`)
+
+1. **Per-gen h2h decomposition** (stream A): 1M-vs-400k and 2M-vs-1M,
+   2000 deals/mode, same instrument as the gate. Hypothesis predicts
+   gen-1 edge ≈ 0/negative, gen-2 edge modestly positive, summing to
+   +0.011. Both ≈ 0 = weak support; gen1 > 0 > gen2 inverts the story.
+   → `h2h_v2_1M_vs_400k_*.csv`, `h2h_v2_2M_vs_1M_*.csv`.
+2. **Aux precision ladder** (stream B): reworked `aux_audit.py`
+   (2026-07-19) with precision-scaled, phase-stratified metrics —
+   points MAE + P(err≤5)/P(err≤10) and trick-0/1 splits, seen-trump
+   per-bit Brier + positive-class F1 by phase, unseen-higher AUC/Brier
+   at tricks 0–1. Rationale: prior audit's AUC/acc saturate (partner
+   head predicts OWN partner status = deterministic from own hand;
+   late-game states dominate pooled metrics). Ladder: selfplay
+   200k/400k + league 0.5M/1M/1.5M/2M. Hypothesis predicts material
+   early-trick precision gains across the league phase.
+   → `aux_ladder_v2.csv`.
+3. **Partner-convention ladder** (stream B): new
+   `partner_trump_lead_probe.py` — secret-partner trump-lead rate,
+   tricks 0–2, scripted field, CRN seed 20260719; scripted self-check
+   = high anchor (smoke: rate 1.0). Hypothesis predicts the switch
+   turns on late in gen 2. → `partner_lead_ladder/*.json`.
+4. **Role decomposition** (stream B): new `role_score_probe.py` —
+   heroes {400k, 1M, 2M} vs constant 400k field, 600 deals/mode, long
+   (deal,seat,role,score) table; decompose flat total into role-mix
+   shift + within-role deltas (endogenous-role caveat recorded in the
+   script docstring; paired same-role cells are the clean cut).
+   Tests the defender-improvement corollary. → `role_scores_v2.csv`.
+
+**What the battery cannot do**: verify "gains resume in gens 3+" — only
+training tests that; the orchestrator's gen 3 (h2h + composite panel
+built in, 4-gen floor, two-flat stop) is the designated forward test.
+The battery sets the prior and decides how a flat gen 3–4 should be
+read (falsified vs still-adapting).
+
+*(Results to be appended here as each stream lands.)*
+
 ---
 
 # Appendix A — SUPERSEDED PLANS (kept for the record; do not act on)
