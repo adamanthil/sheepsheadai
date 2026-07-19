@@ -197,7 +197,7 @@ class Endpoint:
 
 def eval_endpoint(
     ckpt_paths: Sequence[str],
-    n_deals: int = 4000,
+    n_deals: int = 3996,  # nearest multiple of 2 modes x 3 ckpts to 4000
     seed: int = PANEL_SEED,
     field_seed: int = FIELD_SEED,
     panel_paths: Sequence[str] = tuple(PANEL_A),
@@ -338,7 +338,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(description="League generation endpoint evaluation")
     p.add_argument("--ckpts", nargs=3, help="last three checkpoints, oldest first")
     p.add_argument("--out", type=str, default=None, help="output .npz path")
-    p.add_argument("--deals", type=int, default=4000)
+    p.add_argument("--deals", type=int, default=3996)
     p.add_argument("--seed", type=int, default=PANEL_SEED)
     p.add_argument("--h2h", nargs=2, metavar=("GEN", "PREV"), default=None)
     p.add_argument("--h2h-deals", type=int, default=2000)
