@@ -127,7 +127,6 @@ def naive_build_minibatch_tensors(agent, batch, states, masks_t, kinds):
         old_values,
         returns,
         advantages,
-        torch.tensor(lengths, dtype=torch.long, device=device),
         win,
         final_returns,
         secret,
@@ -220,9 +219,7 @@ def test_flatten_action_steps_matches_naive_reference(prepared):
     tensors = agent._build_minibatch_tensors(segments, states, masks_t, kinds)
 
     with torch.no_grad():
-        forward = agent._forward_vectorized(
-            tensors.states_seqs, tensors.masks_bt, tensors.lengths_bt
-        )
+        forward = agent._forward_vectorized(tensors.states_seqs, tensors.masks_bt)
 
     actual = agent._flatten_action_steps(tensors, forward)
     assert actual is not None

@@ -61,7 +61,6 @@ class MinibatchTensors(NamedTuple):
     old_value_bt: torch.Tensor
     returns_bt: torch.Tensor
     advantages_bt: torch.Tensor
-    lengths_bt: torch.Tensor
     win_bt: torch.Tensor
     final_returns_bt: torch.Tensor
     secret_bt: torch.Tensor
@@ -1058,7 +1057,6 @@ class PPOAgent:
         )
         search_target_bt, _ = self._pad_to_bt(search_target_list_all, lengths, 0.0)
         has_search_bt, _ = self._pad_to_bt(has_search_list_all, lengths, 0.0)
-        lengths_bt = torch.tensor(lengths, dtype=torch.long, device=device)
 
         return MinibatchTensors(
             states_seqs,
@@ -1069,7 +1067,6 @@ class PPOAgent:
             old_value_bt,
             returns_bt,
             adv_bt,
-            lengths_bt,
             win_bt,
             final_ret_bt,
             secret_bt,
@@ -1120,13 +1117,16 @@ class PPOAgent:
         old_value_oracle_bt, _ = self._pad_to_bt(old_v_list, lengths, 0.0)
         return oracle_seqs, returns_oracle_bt, old_value_oracle_bt
 
-    def _forward_vectorized(self, states_input, masks_bt, lengths_bt):
+    def _forward_vectorized(self, states_input, masks_bt):
         """Vectorized forward pass for training with recurrent memory.
+
+        Ragged segment lengths are handled by encode_sequences (it reads each
+        sequence's true length); outputs at padded (b, t) positions are
+        meaningless and every consumer must select rows via is_action_bt.
 
         Args:
             states_input: List of B sequences, each a list of observation dicts
             masks_bt: (B, T, action_size) action masks
-            lengths_bt: (B,) sequence lengths
 
         Returns:
             ForwardOutputs of (B, T, ...) actor/critic/aux-head tensors
@@ -1582,7 +1582,6 @@ class PPOAgent:
                 ref_logits_bt = self._anchor_agent._forward_vectorized(
                     minibatch.states_seqs,
                     minibatch.masks_bt,
-                    minibatch.lengths_bt,
                 ).logits_bt
             anchor_logits_flat = ref_logits_bt.view(-1, ref_logits_bt.size(-1))[
                 minibatch.is_action_bt.view(-1)
@@ -1832,7 +1831,7 @@ class PPOAgent:
                 # Vectorized forward
                 t_fwd = time.time()
                 forward = self._forward_vectorized(
-                    minibatch.states_seqs, minibatch.masks_bt, minibatch.lengths_bt
+                    minibatch.states_seqs, minibatch.masks_bt
                 )
                 acc.forward_time += time.time() - t_fwd
 
