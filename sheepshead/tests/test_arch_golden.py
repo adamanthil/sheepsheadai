@@ -79,8 +79,9 @@ class TestNumericalGoldens:
             pytest.skip(
                 "runtime differs from fixture manifest "
                 f"(torch {manifest['torch']}, {manifest['platform']}); "
-                "re-capture with sheepshead/analysis/capture_arch_goldens.py to gate "
-                "refactors on this machine"
+                "expected on CI, but on the dev machine (e.g. after a torch "
+                "upgrade) the bit-exact gate is now silently OFF -- re-capture "
+                "with sheepshead/analysis/capture_arch_goldens.py to restore it"
             )
 
     @pytest.mark.parametrize("arch", architectures.available_architectures())
