@@ -182,70 +182,55 @@ def test_build_minibatch_tensors_matches_naive_reference(prepared):
         assert torch.equal(actual_tensor, expected_tensor), field
 
 
+FLAT_FIELD_SOURCES = {
+    "logits_flat": "forward.logits_bt",
+    "values_flat": "forward.values_bt",
+    "actions_flat": "minibatch.actions_bt",
+    "old_log_probs_flat": "minibatch.old_log_probs_bt",
+    "old_value_flat": "minibatch.old_value_bt",
+    "returns_flat": "minibatch.returns_bt",
+    "advantages_flat": "minibatch.advantages_bt",
+    "win_logits_flat": "forward.win_logits_bt",
+    "returns_pred_flat": "forward.returns_pred_bt",
+    "win_labels_flat": "minibatch.win_bt",
+    "final_returns_labels_flat": "minibatch.final_returns_bt",
+    "secret_logits_flat": "forward.secret_logits_bt",
+    "secret_labels_flat": "minibatch.secret_bt",
+    "mask_flat": "minibatch.masks_bt",
+    "seen_trump_mask_logits_flat": "forward.seen_trump_mask_logits_bt",
+    "seen_trump_mask_labels_flat": "minibatch.seen_trump_mask_bt",
+    "unseen_trump_higher_than_hand_logits_flat": (
+        "forward.unseen_trump_higher_than_hand_logits_bt"
+    ),
+    "unseen_trump_higher_than_hand_labels_flat": (
+        "minibatch.unseen_trump_higher_than_hand_bt"
+    ),
+    "search_target_flat": "minibatch.search_target_bt",
+    "has_search_flat": "minibatch.has_search_bt",
+}
+
+
+def _resolve_source(minibatch, forward, source_path):
+    struct_name, field = source_path.split(".")
+    return getattr({"minibatch": minibatch, "forward": forward}[struct_name], field)
+
+
 def test_flatten_action_steps_matches_naive_reference(prepared):
     agent, states, masks_t, kinds, segments = prepared
     tensors = agent._build_minibatch_tensors(segments, states, masks_t, kinds)
 
     with torch.no_grad():
-        (
-            logits_bt,
-            values_bt,
-            win_logits_bt,
-            returns_pred_bt,
-            secret_logits_bt,
-            _points_pred_bt,
-            seen_trump_mask_logits_bt,
-            unseen_trump_higher_logits_bt,
-        ) = agent._forward_vectorized(
+        forward = agent._forward_vectorized(
             tensors.states_seqs, tensors.masks_bt, tensors.lengths_bt
         )
 
-    actual = agent._flatten_action_steps(
-        tensors.is_action_bt,
-        logits_bt,
-        values_bt,
-        tensors.actions_bt,
-        tensors.old_log_probs_bt,
-        tensors.old_value_bt,
-        tensors.returns_bt,
-        tensors.advantages_bt,
-        win_logits_bt,
-        returns_pred_bt,
-        tensors.win_bt,
-        tensors.final_returns_bt,
-        secret_logits_bt,
-        tensors.secret_bt,
-        tensors.masks_bt,
-        seen_trump_mask_logits_bt,
-        tensors.seen_trump_mask_bt,
-        unseen_trump_higher_logits_bt,
-        tensors.unseen_trump_higher_than_hand_bt,
-        tensors.search_target_bt,
-        tensors.has_search_bt,
-    )
+    actual = agent._flatten_action_steps(tensors, forward)
     assert actual is not None
 
+    assert list(FLAT_FIELD_SOURCES) == list(FlattenedActionSteps._fields)
     sources_in_field_order = [
-        logits_bt,
-        values_bt,
-        tensors.actions_bt,
-        tensors.old_log_probs_bt,
-        tensors.old_value_bt,
-        tensors.returns_bt,
-        tensors.advantages_bt,
-        win_logits_bt,
-        returns_pred_bt,
-        tensors.win_bt,
-        tensors.final_returns_bt,
-        secret_logits_bt,
-        tensors.secret_bt,
-        tensors.masks_bt,
-        seen_trump_mask_logits_bt,
-        tensors.seen_trump_mask_bt,
-        unseen_trump_higher_logits_bt,
-        tensors.unseen_trump_higher_than_hand_bt,
-        tensors.search_target_bt,
-        tensors.has_search_bt,
+        _resolve_source(tensors, forward, source_path)
+        for source_path in FLAT_FIELD_SOURCES.values()
     ]
     expected = naive_flatten_action_steps(tensors.is_action_bt, sources_in_field_order)
 
