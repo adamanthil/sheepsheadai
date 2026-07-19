@@ -118,7 +118,13 @@ def write_generations_csv(
                 "gain_best_gen": v["gain"]["best_generation"],
                 "h2h_edge": f"{v['h2h']['edge']:.4f}",
                 "h2h_se": f"{v['h2h']['se']:.4f}",
-                "h2h_win_frac": f"{rec['h2h']['win_frac']:.4f}",
+                # paired_edge rows carried win_frac; the duplicate-bridge
+                # instrument (amendment 2026-07-19) does not.
+                "h2h_win_frac": (
+                    f"{rec['h2h']['win_frac']:.4f}"
+                    if "win_frac" in rec.get("h2h", {})
+                    else ""
+                ),
                 "slope": f"{v['slope']['mean']:.4f}" if v["slope"] else "",
                 "slope_lo": f"{v['slope']['lo']:.4f}" if v["slope"] else "",
                 "slope_hi": f"{v['slope']['hi']:.4f}" if v["slope"] else "",
