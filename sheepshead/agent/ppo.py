@@ -910,7 +910,7 @@ class PPOAgent:
                 out.append(torch.cat([lst[i], pad_tensor], dim=0))
             else:
                 out.append(lst[i])
-        return torch.stack(out, dim=0), T
+        return torch.stack(out, dim=0)
 
     def _build_minibatch_tensors(self, batch, states, masks_t, kinds):
         lengths = []
@@ -1039,23 +1039,23 @@ class PPOAgent:
             search_target_list_all.append(torch.stack(search_target_bt, dim=0))
             has_search_list_all.append(torch.stack(has_search_bt, dim=0))
 
-        masks_bt, _ = self._pad_to_bt(masks_list, lengths, True)
-        is_action_bt, _ = self._pad_to_bt(is_action_list, lengths, False)
-        actions_bt, _ = self._pad_to_bt(actions_list, lengths, -1)
-        old_lp_bt, _ = self._pad_to_bt(old_lp_list, lengths, 0.0)
-        old_value_bt, _ = self._pad_to_bt(old_value_list, lengths, 0.0)
-        returns_bt, _ = self._pad_to_bt(returns_list, lengths, 0.0)
-        adv_bt, _ = self._pad_to_bt(adv_list, lengths, 0.0)
-        win_bt, _ = self._pad_to_bt(win_list_all, lengths, 0.0)
-        final_ret_bt, _ = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
-        secret_bt, _ = self._pad_to_bt(secret_list_all, lengths, 0.0)
-        points_bt, _ = self._pad_to_bt(points_list_all, lengths, 0.0)
-        seen_trump_mask_bt, _ = self._pad_to_bt(seen_trump_mask_list_all, lengths, 0.0)
-        unseen_trump_higher_than_hand_bt, _ = self._pad_to_bt(
+        masks_bt = self._pad_to_bt(masks_list, lengths, True)
+        is_action_bt = self._pad_to_bt(is_action_list, lengths, False)
+        actions_bt = self._pad_to_bt(actions_list, lengths, -1)
+        old_lp_bt = self._pad_to_bt(old_lp_list, lengths, 0.0)
+        old_value_bt = self._pad_to_bt(old_value_list, lengths, 0.0)
+        returns_bt = self._pad_to_bt(returns_list, lengths, 0.0)
+        adv_bt = self._pad_to_bt(adv_list, lengths, 0.0)
+        win_bt = self._pad_to_bt(win_list_all, lengths, 0.0)
+        final_ret_bt = self._pad_to_bt(final_ret_list_all, lengths, 0.0)
+        secret_bt = self._pad_to_bt(secret_list_all, lengths, 0.0)
+        points_bt = self._pad_to_bt(points_list_all, lengths, 0.0)
+        seen_trump_mask_bt = self._pad_to_bt(seen_trump_mask_list_all, lengths, 0.0)
+        unseen_trump_higher_than_hand_bt = self._pad_to_bt(
             unseen_trump_higher_than_hand_list_all, lengths, 0.0
         )
-        search_target_bt, _ = self._pad_to_bt(search_target_list_all, lengths, 0.0)
-        has_search_bt, _ = self._pad_to_bt(has_search_list_all, lengths, 0.0)
+        search_target_bt = self._pad_to_bt(search_target_list_all, lengths, 0.0)
+        has_search_bt = self._pad_to_bt(has_search_list_all, lengths, 0.0)
 
         return MinibatchTensors(
             states_seqs,
@@ -1112,8 +1112,8 @@ class PPOAgent:
                     device=device,
                 )
             )
-        returns_oracle_bt, _ = self._pad_to_bt(ret_list, lengths, 0.0)
-        old_value_oracle_bt, _ = self._pad_to_bt(old_v_list, lengths, 0.0)
+        returns_oracle_bt = self._pad_to_bt(ret_list, lengths, 0.0)
+        old_value_oracle_bt = self._pad_to_bt(old_v_list, lengths, 0.0)
         return oracle_seqs, returns_oracle_bt, old_value_oracle_bt
 
     def _forward_vectorized(self, states_input, masks_bt):
