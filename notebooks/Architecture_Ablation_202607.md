@@ -76,7 +76,7 @@ Decision ledger (details in §4 / §5):
 | 07-11 | stage-1 generations 750k → **1M** (extended-league alignment) | calibration argument, §5.10 |
 | 07-11 | stage 1 LAUNCHED: full vs perceiver-shared-v2, oracle league | §1.2 |
 
-## 1.2 Running now: stage 1 — paired oracle-critic league arms **[CURRENT]**
+## 1.2 Stage 1 — paired oracle-critic league arms **[COMPLETE 2026-07-18; verdict §5.11]**
 
 The regime that matters (P3). Two arms, identical protocol, CRN seed 42,
 concurrent, 4 workers each.
@@ -148,8 +148,8 @@ extends the 07-14 snapshot above.)
 
 - **Timeline:** gen-1 ends Jul-15 (v2 07:19, full 11:49); gen-2 ends
   Jul-18 (v2 07:55, full 14:16); all four rc=0. Endpoint probes done
-  Jul-18 ~14:24; called-mode PANEL-A running since 14:24, jd follows →
-  `STAGE1 COMPLETE` expected late Jul-18.
+  Jul-18 14:24; panels 14:24–17:17; `STAGE1 COMPLETE` logged
+  Jul-18 17:17.
 - **Gen 1 (anchored): clean in both arms.** anchor_kl ≈ 0.01, leaster
   0.7–1.5%, no warm-start shock; oracle critic healthy throughout both
   generations (ev_oracle 0.3–0.5 vs ev_limited ≈ 0). Anchored-eval
@@ -206,7 +206,7 @@ extends the 07-14 snapshot above.)
 - Instruments per generation: PANEL-A both modes (last-3-ckpt rule) +
   gen-vs-gen h2h + trump-lead probe.
 
-## 1.3 When stage 1 lands: the mechanical playbook **[CURRENT]**
+## 1.3 When stage 1 lands: the mechanical playbook **[EXECUTED 07-18; results §5.11]**
 
 1. Confirm `STAGE1 COMPLETE` in `runs/stage1_202607/stage1.log`; check
    both arms' `runs/league_arch_<ARCH>/checkpoints/greedy_health.csv` for
@@ -1529,7 +1529,123 @@ sections). Launched 20:31; both arms verified healthy at launch (episode
 0 parse correct, oracle ON, anchor_kl ≈ 0.005, ev_oracle ≥ ev_limited
 immediately, ~2.3–2.6 eps/s initially, later ~3.3).
 
-## 5.11 Results — stage 1 *(pending; paste per §1.3 step 5)*
+## 5.11 Results — stage 1 (2026-07-18, STAGE1 COMPLETE 17:17)
+
+Shared-CRN PANEL-A gauntlets (1000 deals, seed 42, four PANEL-A
+anchors) over both arms' last-3 checkpoints,
+`runs/stage1_202607/panel_stage1_{called,jd}.csv`. Rule-1 endpoints
+(mean of 1.9M/1.95M/2M rows; per-row SE ≈ 0.029–0.036):
+
+| arm  | called | jd | both-modes |
+|------|--------|-----|-----------|
+| perceiver-shared-v2 | −0.178 | −0.054 | **−0.116** |
+| full | −0.227 | −0.095 | **−0.161** |
+
+**VERDICT (P1): ADOPT `perceiver-shared-v2`.** full does not win by
+> 0.07 and > 2 SE — it *loses* by 0.045 both-modes — and per §1.3
+rule 1 it is a dead arm regardless: its panel pick_rate is 0.02–1.1%
+(called) / 0.02–0.24% (jd) across all three endpoint checkpoints
+(greedy PICK 0.0–1.0%, leaster 95–100% in greedy health). The full
+rows measure a never-picking policy whose play skill alone still
+scores −0.16 both-modes; they carry no adoption information beyond
+confirming the collapse.
+
+Secondary reads (per §1.3 step 4):
+
+- **Exploiter gates** (gen 1): both passed at near-identical edges
+  (full +0.100 ± 0.037, v2 +0.111 ± 0.045); exploiters live at seat
+  share 0.10–0.11 through gen 2.
+- **Trump-lead probe @2M** (2000 deals): CLEAN both arms, both modes
+  (v2 0 leads / ~1800 defender opportunities per mode; full 1/~2100)
+  — no defender trump leak at deploy in the adopted arm.
+- **Scripted probe @2M** (500 deals): v2 +0.150 ± 0.119 (above the
+  sanity floor); full −0.116 ± 0.130 (below — collapsed).
+- **League-regime lift vs the 400k warm start: FLAT on this
+  instrument — but not yet a conclusion.** v2 both-modes endpoint
+  −0.116 vs its stage-0 rule-1 endpoint −0.115 (same instrument).
+  The difference carries ~±0.1 uncertainty (two noisy readings;
+  jd rows swing −0.195 → +0.017 across 50k eps, the known
+  perceiver-family ±0.2/50k volatility), and the panel has known
+  blind spots (below). The decisive read is the direct paired h2h
+  (2M ckpt vs warm start, 2000 deals, both modes — the
+  pre-registered gen-vs-gen h2h instrument; launched 07-18 eve).
+  full went −0.065 → −0.161 (net −0.096, all collapse damage).
+
+**Panel validity limits (operator review 07-18).** PANEL-A stays the
+headline absolute-strength instrument (outcome-grounded, CRN-paired,
+frozen field, the final claim's currency) but is NOT a sufficient
+progress signal alone: (1) rare-situation dilution — convention-scale
+skills (e.g. v2's newly reliable secret-partner trump leads;
+near-perfect aux heads by 2M) plausibly aggregate to +0.005–0.05,
+below the 1000-deal MDE ≈ 0.07; (2) noise floor + checkpoint
+volatility make short-window slope reads unreliable; (3) fixed-field
+relativity — all four anchors are 30M-lineage, skills vs other styles
+invisible; (4) `deterministic=True` play hides sub-argmax
+distributional learning; (5) role-mix confound — score/hand
+marginalizes over a pick/partner/defender mixture that shifted
+sharply during the league phase (panel pick_rate ~50% shaped
+warm start → 10–20% at 2M). ⇒ **Gen-boundary decision battery = 4
+instruments:** anchored panel + paired h2h vs previous gen +
+targeted convention/trump-lead probes + aux audit.
+
+**Historical comparators are ALL confounded (operator, 07-18):**
+original run ≤15M trained under heavy reward shaping + ad-hoc guards
+(epsilon mixing, entropy bumps) — slope and smoothness both regime
+artifacts; original >15M has logits entrenched by 15M shaped episodes
+— oscillation dampened AND slope plasticity-limited; the repro-league
+run was degraded per League_Run_Review_202607 (sliding-window roster,
+exploiter pressure inert gens 1–11 — "effectively the PFSP-only
+control trajectory"), a soft floor at best (~+0.027/1M climb after
+7M). ⇒ no clean historical slope yardstick exists; **v2's own forward
+instruments are primary.** This is the fresh terminal-only-agent
+thesis in measurement terms — only a fresh run can exhibit
+grounded-regime learning dynamics — and belongs in the writeup.
+
+**Collapse reframed (07-18):** the original run never trained
+unguarded; stage 1 ran with zero guards (no shaping, no epsilon
+floor, no entropy bumps, anchor released). full's death is evidence
+about the unguarded regime at least as much as the architecture, and
+v2 surviving unguarded is a *stronger* stability result than the
+original's smooth guarded history. Arch-linked vs seed-luck stays
+unresolved at n=1 (hypotheses + falsifiers in §1.2 run log). Writeup
+narrative: replace the ad-hoc stabilizer stack with one principled,
+inert-when-healthy guard — LeasterWatchdog, extracted to
+`sheepshead/training/leaster_watchdog.py` and wired into
+train_league_ppo + run_extended_league (`--leaster-watchdog`,
+default off; commit 369880c8).
+
+**Path forward (agreed 07-18; modest single-machine budget):**
+
+- **Phase A — retro-eval, RUNNING 07-18 eve** (eval-only): original
+  lineage on the standard instrument — early rungs 0.5/1/2/3/4M
+  (shaped-era absolute timeline + oscillation-under-damping context)
+  and grounded rungs 20/25/30M (30M-as-candidate pins the
+  "exceed 30M" target bar) →
+  `runs/rigorous_baseline_202607/reference_lineage_{early,grounded}_*`;
+  plus the v2 2M-vs-400k h2h →
+  `runs/stage1_202607/h2h_v2_2M_vs_400k_*`.
+- **Phase B — main run:** continue the v2 lineage via
+  `run_extended_league` (gens 3+, same run-name; lineage remains
+  "from scratch on the current repo": selfplay 0→400k + league
+  0.4→2.4M), 8 workers, `--leaster-watchdog` ON (documented regime
+  addition), save-interval 50k. 4-gen floor (~8–10 days), explicit
+  continue/stop review every 2 generations on the 4-instrument
+  battery — historical slopes are context only. Endpoint claim =
+  exceed 30M-as-candidate panel score; final confirmation via CRN
+  h2h vs final_pfsp + fresh-deal run, deals sized to the observed
+  edge (1000 ⇒ MDE ≈ 0.07; smaller edge ⇒ scale up).
+- **Phase C — reserve lever (convention holes + sample efficiency):**
+  search distillation (ISMCTS offline-grade trump-lead edge +0.16 @
+  4096 iters; blitz/crack/recrack plan now unblocked by the stage-1
+  winner) targeted at the residual convention holes rather than more
+  league episodes if the league slope stalls.
+- **Deferred, non-blocking:** v2-noaux ~1M anchor-free stress test
+  (aux-ballast stability discriminator + the P2 aux measurement at a
+  quarter of league-arm cost); full gen-2 seed rerun (seed-luck
+  falsifier). Both writeup-valuable.
+- **Goal framing for the writeup: reproduce the CAPABILITY, not the
+  recipe** — same-or-better endpoint under a cleaner, instrumented,
+  guard-minimal methodology.
 
 ---
 
