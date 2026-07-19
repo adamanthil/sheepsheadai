@@ -99,6 +99,29 @@ as "stopped while still exploitable".
   greedy-gate violations of the same gate, or leaster rate > 0.30 and rising
   > +0.10 within a generation → `needs_review`.
 
+## Amendment 2026-07-18 (pre-launch): portability + calibration retirement
+
+Recorded before the real run starts; the stopping rule is unchanged.
+
+1. **Calibration phase removed.** Stage 1 of the architecture ablation ran
+   its gen-1 anchor at coefficient 1.0 and validated it directly (gen 1
+   trained through the shaped→terminal transition without collapse), so the
+   probe-based calibration machinery (§"Anchor-coefficient calibration"
+   above, `pick_anchor_coeff`) is retired unexecuted. `--anchor-coeff` is
+   now a plain flag, **default 1.0**, 0 disables. The calibration criterion
+   section above is retained for the record but is no longer executable.
+2. **Arch derived from the resume checkpoint** (`--arch` flag removed);
+   reproduction runs cannot mismatch it.
+3. **`--panel` flag added.** The frozen PANEL-A remains the default;
+   reproductions without the research-run checkpoints supply their own
+   fixed >=4-checkpoint panel. Panel scores are field-relative, so the
+   stopping rule (within-run comparisons only) is unaffected; longitudinal
+   comparability to PANEL-A numbers is only claimed for PANEL-A runs.
+4. **Endpoint deal count 4000 → 3996.** The composite design interleaves
+   deals over 2 modes × 3 checkpoints and requires divisibility by 6;
+   4000 was never launchable (the loader rejects it) and no recorded
+   number used it. MDE ≈ 0.035 is unchanged.
+
 ## Amendment 2026-07-09 (pre-launch): baseline-relative ALONE gate
 
 Recorded before the real run starts. The smoke run showed a selfplay-lineage

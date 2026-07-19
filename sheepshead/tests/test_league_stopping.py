@@ -13,13 +13,10 @@ import pytest
 
 from sheepshead.analysis.bootstrap import bootstrap_deal_indices
 from sheepshead.training.league_stopping import (
-    CalibrationChoice,
-    ProbeSummary,
     StopRuleConfig,
     confirmation_verdict,
     decide_stop,
     flat_verdict,
-    pick_anchor_coeff,
     resume_from_cap,
 )
 
@@ -173,55 +170,6 @@ class TestDecideStopValidation:
     def test_history_length_must_match_generation(self):
         with pytest.raises(ValueError):
             decide_stop([True, True], 3, CFG)
-
-
-class TestPickAnchorCoeff:
-    BASELINE_PICK = 30.0  # percent, greedy_health_probe units
-
-    @staticmethod
-    def probe(coeff, kl_last, kl_max, violations=0, pick=30.0):
-        return ProbeSummary(
-            coeff=coeff,
-            kl_last=kl_last,
-            kl_max=kl_max,
-            gate_violations=violations,
-            final_pick_rate=pick,
-        )
-
-    def test_smallest_qualifying_wins(self):
-        probes = [
-            self.probe(0.3, kl_last=0.20, kl_max=0.40),  # exploding KL
-            self.probe(1.0, kl_last=0.03, kl_max=0.06),
-            self.probe(3.0, kl_last=0.01, kl_max=0.02),
-        ]
-        choice = pick_anchor_coeff(probes, self.BASELINE_PICK)
-        assert isinstance(choice, CalibrationChoice)
-        assert choice.coeff == 1.0
-        assert choice.qualified
-
-    def test_gate_violation_disqualifies(self):
-        probes = [
-            self.probe(0.3, kl_last=0.02, kl_max=0.04, violations=2),
-            self.probe(1.0, kl_last=0.02, kl_max=0.04),
-        ]
-        assert pick_anchor_coeff(probes, self.BASELINE_PICK).coeff == 1.0
-
-    def test_pick_rate_drift_disqualifies(self):
-        probes = [
-            self.probe(0.3, kl_last=0.02, kl_max=0.04, pick=45.0),  # +15 pts
-            self.probe(1.0, kl_last=0.02, kl_max=0.04, pick=33.0),
-        ]
-        assert pick_anchor_coeff(probes, self.BASELINE_PICK).coeff == 1.0
-
-    def test_fallback_is_largest_and_flagged(self):
-        probes = [
-            self.probe(0.3, kl_last=0.30, kl_max=0.50),
-            self.probe(1.0, kl_last=0.20, kl_max=0.40),
-        ]
-        choice = pick_anchor_coeff(probes, self.BASELINE_PICK)
-        assert choice.coeff == 1.0
-        assert not choice.qualified
-        assert "fallback" in choice.reason
 
 
 if __name__ == "__main__":

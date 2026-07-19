@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Stopping-rule and calibration decisions for the extended league run.
+Stopping-rule decisions for the extended league run.
 
 Pre-registered in notebooks/Extended_League_202607.md; consumed by
 run_extended_league.py next door. Pure numpy on purpose: every decision the
@@ -296,72 +296,6 @@ def resume_from_cap(
     mechanism) plus a pre-registration note.
     """
     return status == "cap" and max_generations > recorded_generations
-
-
-# --------------------------------------------------------------------------- #
-# Anchor-coefficient calibration
-# --------------------------------------------------------------------------- #
-@dataclass
-class ProbeSummary:
-    """Distilled telemetry of one ~15k-episode calibration probe."""
-
-    coeff: float
-    kl_last: float  # mean anchor_kl over the final 3 PPO updates
-    kl_max: float  # max anchor_kl over the whole probe
-    gate_violations: int  # greedy-health gate violations during the probe
-    final_pick_rate: float  # last greedy-health probe pick rate, PERCENT (0-100)
-
-
-@dataclass
-class CalibrationChoice:
-    coeff: float
-    qualified: bool
-    reason: str
-
-
-def pick_anchor_coeff(
-    probes: Sequence[ProbeSummary],
-    baseline_pick_rate: float,
-    *,
-    kl_last_limit: float = 0.05,
-    kl_max_limit: float = 0.10,
-    pick_rate_tolerance: float = 10.0,
-) -> CalibrationChoice:
-    """Choose the smallest coefficient that anchors without freezing.
-
-    Qualifying probe: anchor-KL bounded (settled below kl_last_limit nats with
-    no excursion past kl_max_limit), zero greedy gate violations, and a final
-    pick rate within pick_rate_tolerance PERCENTAGE POINTS of the resume
-    checkpoint's baseline (rates are percent, 0-100, matching
-    training_utils.greedy_health_probe). Smallest wins because the anchor caps
-    bidding improvement -- we want the minimum sufficient restraint.
-
-    If nothing qualifies, fall back to the LARGEST candidate (strongest
-    anchoring is the safe failure mode for a warm start) and flag it.
-    """
-    if not probes:
-        raise ValueError("pick_anchor_coeff needs at least one probe")
-    qualifying = [
-        p
-        for p in probes
-        if p.kl_last <= kl_last_limit
-        and p.kl_max <= kl_max_limit
-        and p.gate_violations == 0
-        and abs(p.final_pick_rate - baseline_pick_rate) <= pick_rate_tolerance
-    ]
-    if qualifying:
-        best = min(qualifying, key=lambda p: p.coeff)
-        return CalibrationChoice(
-            coeff=best.coeff,
-            qualified=True,
-            reason=f"smallest qualifying coefficient of {len(qualifying)}",
-        )
-    fallback = max(probes, key=lambda p: p.coeff)
-    return CalibrationChoice(
-        coeff=fallback.coeff,
-        qualified=False,
-        reason="fallback_largest: no probe met the KL/health criteria",
-    )
 
 
 # --------------------------------------------------------------------------- #

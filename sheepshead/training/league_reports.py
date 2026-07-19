@@ -179,23 +179,6 @@ def write_report_md(state: dict, args, cfg, alone_limit: float, orch_dir: str) -
             f"{alone_limit:.1f}% (baseline-relative)"
         )
     lines.append("")
-    if s.get("calibration"):
-        c = s["calibration"]
-        lines += [
-            "## Anchor calibration",
-            "",
-            f"Baseline greedy pick rate {c['baseline_pick_rate']:.1f}%. "
-            f"Chosen coeff **{c['chosen']}** ({c['reason']}).",
-            "",
-            "| coeff | kl_last | kl_max | violations | pick % |",
-            "|---|---|---|---|---|",
-        ]
-        for k, p in sorted(c["probes"].items(), key=lambda kv: float(kv[0])):
-            lines.append(
-                f"| {k} | {p['kl_last']:.4f} | {p['kl_max']:.4f} | "
-                f"{p['gate_violations']} | {p['final_pick_rate']:.1f} |"
-            )
-        lines.append("")
     lines += [
         "## Generations",
         "",

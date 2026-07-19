@@ -2,42 +2,55 @@
 """
 Extended league training orchestrator with a quantitative stopping rule.
 
-Runs the full recipe pre-registered in notebooks/Extended_League_202607.md:
+Trains the strongest agent train_league_ppo.py can produce from a selfplay
+warm start, deciding for itself when learning is complete. The full recipe
+(pre-registered in notebooks/Extended_League_202607.md):
 
-  1. CALIBRATION  pick the gen-1 bidding-anchor coefficient by probing 2-3
-                  candidates for ~15k episodes each (in-process run_main_phase;
-                  no exploiter). Criterion: league_stopping.pick_anchor_coeff.
-  2. GEN 1        train_league_ppo.py subprocess, KL-anchored to the ORIGINAL
-                  resume checkpoint, league seeded from --seed-checkpoints.
-  3. GEN 2..N     unanchored generations, resume-chained from each boundary
+  1. GEN 1        train_league_ppo.py subprocess, KL-anchored to the ORIGINAL
+                  resume checkpoint (--anchor-coeff, default 1.0; guards the
+                  warm-start transition against PASS-collapse), league seeded
+                  from --seed-checkpoints.
+  2. GEN 2..N     unanchored generations, resume-chained from each boundary
                   checkpoint (--generations 1 per invocation; the trainer's
                   absolute-episode boundary math keeps numbering/cadence).
-  4. After each generation: composite PANEL-A endpoint + gen-vs-prev h2h
+  3. After each generation: composite fixed-panel endpoint + gen-vs-prev h2h
                   (league_progress_eval), stop-rule verdict (league_stopping),
                   telemetry (generations.csv, report.md, generations_curve.png).
-  5. STOP         after two consecutive flat generations (post min-generations
+  4. STOP         after two consecutive flat generations (post min-generations
                   floor) confirmed by a fresh-deal panel (seed 20260706), or at
-                  the max-generations safety cap. A confirmation contradiction
-                  resumes training instead.
+                  the max-generations budget cap (relaunch with a higher cap to
+                  continue). A confirmation contradiction resumes training.
+
+The stopping rule measures learning completion only — it never compares
+against an external target. The architecture is read from the resume
+checkpoint; there is no --arch flag.
+
+Reproducing from scratch (no artifacts from this repo's research runs):
+
+  1. Train a selfplay warm start, e.g. ~400k episodes:
+       uv run python -m sheepshead.training.train_selfplay_ppo \
+         --arch perceiver-shared-v2 --run-name my_selfplay ...
+  2. Run the orchestrator, seeding the league from the selfplay ladder.
+     The default evaluation panel (analysis/panels.PANEL_A) references
+     research-run checkpoints not shipped with the repo — pass your own
+     fixed panel of >=4 checkpoints instead (e.g. your selfplay ladder;
+     panel scores are relative to the field, so they are comparable only
+     within one run, which is all the stopping rule needs):
+       uv run python -m sheepshead.training.run_extended_league \
+         --resume runs/my_selfplay/checkpoints/perceiver-shared-v2_checkpoint_400000.pt \
+         --seed-checkpoints 'runs/my_selfplay/checkpoints/*.pt' \
+         --panel runs/my_selfplay/checkpoints/perceiver-shared-v2_checkpoint_{100000,200000,300000,400000}.pt \
+         --run-name my_league
+
+Resume a standard CHECKPOINT, not final_*.pt — pre-2026-07-08 finals carry an
+out-of-spec flush update (ablation notebook standing rule 5).
 
 Crash-resumable: all phases are keyed to on-disk artifacts (checkpoints,
 exploitability.csv rows, .npz/.json eval outputs) plus an atomic state.json in
 runs/<run>/orchestrator/, so re-invoking with the same arguments always
 converges to where it left off. Exit codes: 0 stopped cleanly, 2 needs_review.
 
-Example (fill in the ablation winner; resume a standard CHECKPOINT, not
-final_*.pt — pre-2026-07-08 finals carry an out-of-spec flush update, see
-the ablation notebook's standing rule 5):
-  uv run python analysis/run_extended_league.py \
-    --arch full --resume runs/ablate_full400_s42/full_checkpoint_400000.pt \
-    --seed-checkpoints 'runs/ablate_full_s42/full_checkpoint_*.pt' \
-    --run-name ext_league_202607 --critic-mode oracle
-
-Smoke test of the whole loop in minutes:
-  uv run python analysis/run_extended_league.py --smoke \
-    --arch full --resume runs/ablate_full400_s42/full_checkpoint_400000.pt \
-    --seed-checkpoints 'runs/ablate_full_s42/full_checkpoint_*.pt' \
-    --run-name smoke_ext_league
+Smoke test of the whole loop in minutes: add --smoke.
 """
 
 from __future__ import annotations
@@ -69,12 +82,10 @@ from sheepshead.analysis.league_progress_eval import (
     load_endpoint,
 )
 from sheepshead.training.league_stopping import (
-    ProbeSummary,
     StopRuleConfig,
     confirmation_verdict,
     decide_stop,
     flat_verdict,
-    pick_anchor_coeff,
     resume_from_cap,
     verdict_to_dict,
 )
@@ -140,7 +151,6 @@ class Orchestrator:
             },
             "resume_episode": None,
             "anchor_coeff": self.args.anchor_coeff,
-            "calibration": None,
             "generations": {},  # str(g) -> record
             "flat_history": [],  # flat flag per generation 1..
             "status": "running",
@@ -205,12 +215,12 @@ class Orchestrator:
         import torch
 
         ckpt = torch.load(a.resume, map_location="cpu", weights_only=False)
-        ck_arch = ckpt.get("arch", "full")
-        if ck_arch != a.arch:
-            raise SystemExit(
-                f"--arch {a.arch} but resume checkpoint records arch={ck_arch}"
-            )
+        # The architecture is whatever the resume checkpoint says it is —
+        # it names every downstream artifact (pfsp_<arch>_checkpoint_*.pt).
+        a.arch = ckpt.get("arch", "full")
+        self.state["config"]["arch"] = a.arch
         del ckpt
+        self.log(f"arch from resume checkpoint: {a.arch}")
 
         resume_episode = 0
         if "checkpoint_" in os.path.basename(a.resume):
@@ -228,9 +238,20 @@ class Orchestrator:
                 "raise --main-episodes or rename the checkpoint"
             )
 
-        missing = [p for p in PANEL_A if not os.path.exists(p)]
+        if len(a.panel) < 4:
+            raise SystemExit(
+                "--panel needs at least 4 checkpoints (each panel game seats "
+                "the hero with 4 field members drawn without replacement)"
+            )
+        missing = [p for p in a.panel if not os.path.exists(p)]
         if missing:
-            raise SystemExit(f"PANEL_A members missing: {missing}")
+            raise SystemExit(
+                f"evaluation panel members missing: {missing}\n"
+                "The default panel (analysis/panels.PANEL_A) references frozen "
+                "research-run checkpoints. Reproducing from scratch: pass "
+                "--panel with any >=4 fixed checkpoints (e.g. your selfplay "
+                "ladder) — the stopping rule only compares within one run."
+            )
 
         if a.seed_checkpoints:
             spec = a.seed_checkpoints
@@ -263,28 +284,22 @@ class Orchestrator:
     def dry_run(self) -> None:
         self.log("DRY RUN — planned sequence:")
         self.log(
-            f"  1. calibration probes at coeffs {self.args.anchor_coeffs} "
-            f"({self.args.probe_episodes} eps each)"
-            if self.args.anchor_coeff is None
-            else f"  1. calibration SKIPPED (--anchor-coeff {self.args.anchor_coeff})"
-        )
-        self.log(
-            f"  2. baseline endpoint: {self.args.resume} x3, "
+            f"  1. baseline endpoint: {self.args.resume} x3, "
             f"{self.args.panel_deals} deals, seed {PANEL_SEED}"
         )
         self.log(
-            "  3. gen-1 trainer: "
-            + " ".join(self.trainer_cmd(1, self.args.anchor_coeff or 1.0))
+            "  2. gen-1 trainer: "
+            + " ".join(self.trainer_cmd(1, self.args.anchor_coeff))
         )
         self.log(
-            "  4. gen-g>=2 trainer: same minus seeding/anchor flags, resuming "
+            "  3. gen-g>=2 trainer: same minus seeding/anchor flags, resuming "
             f"from {os.path.basename(self.boundary_ckpt(1))}-style boundary ckpts"
         )
-        self.log(f"  5. stop rule: {self.cfg}")
-        self.log(f"  6. confirmation panel seed {CONFIRM_SEED}")
+        self.log(f"  4. stop rule: {self.cfg}")
+        self.log(f"  5. confirmation panel seed {CONFIRM_SEED}")
 
     # ------------------------------------------------------------------ #
-    # Baseline health (shared by calibration and the per-generation halts)
+    # Baseline health (anchors the relative ALONE gate for the halts)
     # ------------------------------------------------------------------ #
     def ensure_baseline_health(self) -> dict:
         """Greedy-health probe of the resume checkpoint, measured once."""
@@ -322,133 +337,6 @@ class Orchestrator:
         gate = PFSPHyperparams().greedy_gate_max_alone
         base = self.state.get("baseline_health", {}).get("alone_rate", 0.0)
         return max(gate, base + ALONE_BASELINE_MARGIN)
-
-    # ------------------------------------------------------------------ #
-    # Calibration
-    # ------------------------------------------------------------------ #
-    def ensure_calibration(self) -> float:
-        if self.state.get("anchor_coeff") is not None:
-            return float(self.state["anchor_coeff"])
-
-        from sheepshead.agent.ppo import PPOAgent, load_agent
-        from sheepshead import ACTIONS
-        import sheepshead.training.train_league_ppo as tlp
-        from sheepshead.training.config import LeagueConfig
-        from sheepshead.training.league import League
-
-        a = self.args
-        self.log(f"CALIBRATION: coeffs {a.anchor_coeffs}, {a.probe_episodes} eps each")
-        baseline = self.ensure_baseline_health()
-
-        greedy_interval = max(1, a.probe_episodes // 3)
-        probes: List[ProbeSummary] = []
-        cal_table = {}
-        for coeff in a.anchor_coeffs:
-            cal_dir = os.path.join(self.orch_dir, "calibration", f"c{coeff}")
-            league_dir = os.path.join(cal_dir, "league")
-            os.makedirs(cal_dir, exist_ok=True)
-            progress_csv = os.path.join(cal_dir, "league_training_progress.csv")
-            if not os.path.exists(progress_csv):
-                self.log(f"  probe coeff={coeff} ...")
-                league = League(league_dir, LeagueConfig())
-                if len(league) == 0 and a.seed_checkpoints:
-                    tlp._seed_league_from_checkpoints(league, a.seed_checkpoints)
-                agent = PPOAgent(len(ACTIONS), critic_mode=a.critic_mode, arch=a.arch)
-                agent.load(a.resume, load_optimizers=True)
-                agent.set_anchor(load_agent(a.resume), coeff)
-                ns = SimpleNamespace(
-                    seed=a.seed,
-                    schedule_horizon=a.schedule_horizon,
-                    update_interval=a.update_interval,
-                    save_interval=10**9,
-                    snapshot_interval=10**9,
-                    greedy_eval_interval=greedy_interval,
-                    greedy_eval_games=a.greedy_eval_games,
-                    num_workers=a.num_workers,
-                    run_name=f"{a.run_name}_cal_c{coeff}",
-                    critic_mode=a.critic_mode,
-                    arch=a.arch,
-                )
-                # Worker weight-sync files land in runs/<run_name>/ — the real
-                # trainer's main() creates it; the probe must too.
-                os.makedirs(os.path.join("runs", ns.run_name), exist_ok=True)
-                ratings = {m: league.rating_model.rating() for m in (0, 1)}
-                tlp.run_main_phase(
-                    agent,
-                    league,
-                    ratings,
-                    ns,
-                    start_episode=self.state["resume_episode"],
-                    n_episodes=a.probe_episodes,
-                    checkpoint_dir=cal_dir,
-                )
-                del agent
-            summary = self._summarize_probe(coeff, cal_dir)
-            probes.append(summary)
-            cal_table[str(coeff)] = vars(summary)
-            self.log(
-                f"  coeff={coeff}: kl_last {summary.kl_last:.4f}, "
-                f"kl_max {summary.kl_max:.4f}, violations {summary.gate_violations}, "
-                f"pick {summary.final_pick_rate:.1f}%"
-            )
-
-        choice = pick_anchor_coeff(probes, baseline["pick_rate"])
-        self.state["calibration"] = {
-            "baseline_pick_rate": baseline["pick_rate"],
-            "probes": cal_table,
-            "chosen": choice.coeff,
-            "qualified": choice.qualified,
-            "reason": choice.reason,
-        }
-        self.state["anchor_coeff"] = choice.coeff
-        self._save_state()
-        self._event(f"calibration chose coeff={choice.coeff} ({choice.reason})")
-        if not choice.qualified and not self.args.allow_calibration_fallback:
-            raise NeedsReview(
-                "no anchor coefficient met the calibration criteria "
-                "(rerun with --allow-calibration-fallback to accept the largest)"
-            )
-        return choice.coeff
-
-    def _summarize_probe(self, coeff: float, cal_dir: str) -> ProbeSummary:
-        from sheepshead.training.config import PFSPHyperparams
-
-        hp = PFSPHyperparams()
-        kls: List[float] = []
-        with open(os.path.join(cal_dir, "league_training_progress.csv")) as f:
-            for row in csv.DictReader(f):
-                v = row.get("anchor_kl", "")
-                if v:
-                    kls.append(float(v))
-        if not kls:
-            raise NeedsReview(
-                f"calibration probe c{coeff} logged no anchor_kl values "
-                "(is the anchor active and the trainer patched?)"
-            )
-        violations = 0
-        final_pick = float("nan")
-        alone_limit = self._alone_limit()  # baseline-relative
-        greedy_csv = os.path.join(cal_dir, "greedy_health.csv")
-        if os.path.exists(greedy_csv):
-            with open(greedy_csv) as f:
-                for row in csv.DictReader(f):
-                    final_pick = float(row["pick_rate"])
-                    if (
-                        float(row["pick_rate"]) < hp.greedy_gate_min_pick
-                        or float(row["alone_rate"]) > alone_limit
-                        or float(row["t0_trump_lead_rate"])
-                        > hp.greedy_gate_max_trump_lead
-                        or float(row["play_logit_spread_med"])
-                        < hp.greedy_gate_min_play_spread
-                    ):
-                        violations += 1
-        return ProbeSummary(
-            coeff=coeff,
-            kl_last=float(np.mean(kls[-3:])),
-            kl_max=float(np.max(kls)),
-            gate_violations=violations,
-            final_pick_rate=final_pick,
-        )
 
     # ------------------------------------------------------------------ #
     # Training
@@ -675,6 +563,7 @@ class Orchestrator:
             ckpts,
             n_deals=self.args.panel_deals,
             seed=PANEL_SEED,
+            panel_paths=tuple(self.args.panel),
             out_npz=Path(npz),
         )
         if g > 0:
@@ -811,6 +700,7 @@ class Orchestrator:
                 ckpts,
                 n_deals=self.args.panel_deals,
                 seed=CONFIRM_SEED,
+                panel_paths=tuple(self.args.panel),
                 out_npz=Path(npz),
             )
 
@@ -922,7 +812,6 @@ class Orchestrator:
             self.state["status"] = "running"
         try:
             self.ensure_baseline_health()  # anchors the relative ALONE gate
-            self.ensure_calibration()
             self.ensure_endpoint(0)  # baseline
             g = 1
             while True:
@@ -943,12 +832,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Extended league training with automatic stopping"
     )
-    p.add_argument("--arch", default="full")
     p.add_argument(
         "--resume",
         required=True,
-        help="checkpoint to resume (the ablation winner's final "
-        "selfplay checkpoint; prefer a name without 'checkpoint_')",
+        help="selfplay warm-start checkpoint to resume; the architecture is "
+        "read from it (prefer a name without 'checkpoint_')",
     )
     p.add_argument(
         "--seed-checkpoints",
@@ -976,19 +864,25 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="forward --leaster-watchdog to every generation's trainer "
         "(anchor-free PASS-collapse guard; see leaster_watchdog.py)",
     )
-    # Calibration
-    p.add_argument("--anchor-coeffs", type=float, nargs="+", default=[0.3, 1.0, 3.0])
     p.add_argument(
         "--anchor-coeff",
         type=float,
-        default=None,
-        help="skip calibration and use this coefficient for gen 1",
+        default=1.0,
+        help="gen-1 bidding-head KL anchor to the resume checkpoint "
+        "(0 disables; 1.0 validated by the July-2026 ablation stage 1)",
     )
-    p.add_argument("--probe-episodes", type=int, default=15_000)
     p.add_argument("--baseline-probe-games", type=int, default=400)
-    p.add_argument("--allow-calibration-fallback", action="store_true")
     # Evaluation / stop rule
-    p.add_argument("--panel-deals", type=int, default=4000)
+    p.add_argument(
+        "--panel",
+        nargs="+",
+        default=list(PANEL_A),
+        help="fixed evaluation-panel checkpoints (>=4); default is the frozen "
+        "PANEL-A research anchors — reproductions without those files should "
+        "pass their own selfplay ladder here",
+    )
+    # 3996, not 4000: must divide evenly over 2 modes x 3 composite ckpts
+    p.add_argument("--panel-deals", type=int, default=3996)
     p.add_argument("--h2h-deals", type=int, default=2000)
     p.add_argument("--min-generations", type=int, default=4)
     p.add_argument("--max-generations", type=int, default=12)
@@ -1001,8 +895,6 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
     if args.smoke:
         args.main_episodes = 3000
-        args.probe_episodes = 1000
-        args.anchor_coeffs = [1.0]
         args.baseline_probe_games = 50
         args.greedy_eval_games = 50
         args.panel_deals = 60
