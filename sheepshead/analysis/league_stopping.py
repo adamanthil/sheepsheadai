@@ -3,10 +3,17 @@
 Stopping-rule and calibration decisions for the extended league run.
 
 Pre-registered in notebooks/Extended_League_202607.md; consumed by
-analysis/run_extended_league.py. Pure numpy on purpose: every decision the
-orchestrator makes about *when training is over* lives here as a deterministic
-function of recorded numbers, so the whole rule is unit-testable on synthetic
-curves without loading torch or playing a single game.
+sheepshead/training/run_extended_league.py. Pure numpy on purpose: every
+decision the orchestrator makes about *when training is over* lives here as a
+deterministic function of recorded numbers, so the whole rule is unit-testable
+on synthetic curves without loading torch or playing a single game.
+
+Placement note: this is training-control *policy*, but it lives in analysis/
+deliberately — analysis is the lower layer (see analysis/__init__.py:
+instruments never import trainers/orchestrators), league_progress_eval (an
+instrument) shares this module's bootstrap primitives, and the analysis
+placement protects the torch-free testability. analysis = deterministic math
+over recorded numbers; training = side effects on training state.
 
 The rule tightens the pre-registered recipe in
 notebooks/Architecture_Ablation_202607.md ("Continuing league generations"):
