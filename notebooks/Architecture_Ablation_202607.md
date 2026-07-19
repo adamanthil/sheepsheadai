@@ -1695,7 +1695,32 @@ panel-visible climb was ~all in the first ~2M shaped episodes (~0.17/M);
 around gen 4–6. Implication recorded: either the rule's floor encodes
 unrealistic optimism, or post-formative league grind genuinely isn't
 worth the compute without a stronger mechanism — the 30M target bar
-(extension, pending) discriminates.
+discriminates.
+
+**Grounded-era rungs + target bar (landed 07-19 01:20,
+`reference_lineage_grounded_{called,jd}.csv`):** both-modes 20M
+**+0.196**, 25M **+0.150**, 30M **+0.203** (±0.020 each; ckpt_30000000
+stands in for the final — provenance: KL≈0, 98.6% argmax agreement).
+Late-era slope 15M→30M ≈ **0.006/M** — the same slow grind as 2M→15M;
+the post-formative rate held ~0.005–0.006/M for the entire 28M episodes,
+oscillation ±0.05 between 5M-spaced rungs.
+
+Full lineage curve (both-modes): −0.21 (0.5M) → −0.16 → +0.06 (2M) →
+−0.03 → +0.11 (4M) → +0.05 (5M) → +0.12 (15M) → +0.20 (20M) → +0.15
+(25M) → +0.20 (30M).
+
+**Target-bar arithmetic** (with the fixed-field caveat: the reference
+lineage is evaluated in a field containing its own relatives, which may
+flatter it vs an outsider like v2): the goal bar on this instrument is
+**+0.20**; v2's league-2M composite sits at **−0.116** — a gap of
+~0.32 score/hand. At the historically realized post-formative rate that
+is ~50–60M episodes of league grind; the gap is NOT closable at modest
+budget by more-of-the-same league episodes unless the adaptation
+hypothesis is right that v2's post-warmstart rate substantially exceeds
+the reference's post-formative rate. Also noted: at matched total
+episodes (~2.4M) the reference (shaped throughout) was at +0.06 vs v2's
+−0.116 — the terminal-only path is behind at this point, which is the
+cost the cleaner methodology has to make up.
 
 ### Operator hypothesis (recorded pre-battery)
 
