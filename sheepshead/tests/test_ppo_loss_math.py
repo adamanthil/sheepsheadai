@@ -75,7 +75,6 @@ def call_losses(
     zeros = torch.zeros(n_rows)
     return agent._actor_critic_losses(
         torch.log(probs),
-        torch.ones_like(probs, dtype=torch.bool),
         torch.tensor(actions, dtype=torch.long),
         torch.tensor(old_log_probs, dtype=torch.float32),
         zeros if old_values is None else torch.tensor(old_values),
@@ -274,7 +273,6 @@ class TestEntropyBonus:
         actor_loss, _critic, _kl, entropies, _distill, _diag = (
             agent._actor_critic_losses(
                 torch.log(probs),
-                torch.ones_like(probs, dtype=torch.bool),
                 torch.tensor([3]),
                 torch.log(torch.tensor([0.3])),
                 zeros,

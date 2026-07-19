@@ -102,7 +102,6 @@ class FlattenedActionSteps(NamedTuple):
     final_returns_labels_flat: torch.Tensor
     secret_logits_flat: torch.Tensor
     secret_labels_flat: torch.Tensor
-    mask_flat: torch.Tensor
     seen_trump_mask_logits_flat: torch.Tensor
     seen_trump_mask_labels_flat: torch.Tensor
     unseen_trump_higher_than_hand_logits_flat: torch.Tensor
@@ -1258,7 +1257,6 @@ class PPOAgent:
             final_returns_labels_flat=action_rows(minibatch.final_returns_bt),
             secret_logits_flat=action_rows(forward.secret_logits_bt),
             secret_labels_flat=action_rows(minibatch.secret_bt),
-            mask_flat=action_rows(minibatch.masks_bt),
             seen_trump_mask_logits_flat=action_rows(forward.seen_trump_mask_logits_bt),
             seen_trump_mask_labels_flat=action_rows(minibatch.seen_trump_mask_bt),
             unseen_trump_higher_than_hand_logits_flat=action_rows(
@@ -1340,7 +1338,6 @@ class PPOAgent:
     def _actor_critic_losses(
         self,
         logits_flat,
-        mask_flat,
         actions_flat,
         old_lp_flat,
         old_value_flat,
@@ -1612,7 +1609,6 @@ class PPOAgent:
             search_distill_metrics,
         ) = self._actor_critic_losses(
             flat.logits_flat,
-            flat.mask_flat,
             flat.actions_flat,
             flat.old_log_probs_flat,
             flat.old_value_flat,

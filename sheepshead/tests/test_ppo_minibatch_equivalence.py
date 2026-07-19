@@ -195,7 +195,6 @@ FLAT_FIELD_SOURCES = {
     "final_returns_labels_flat": "minibatch.final_returns_bt",
     "secret_logits_flat": "forward.secret_logits_bt",
     "secret_labels_flat": "minibatch.secret_bt",
-    "mask_flat": "minibatch.masks_bt",
     "seen_trump_mask_logits_flat": "forward.seen_trump_mask_logits_bt",
     "seen_trump_mask_labels_flat": "minibatch.seen_trump_mask_bt",
     "unseen_trump_higher_than_hand_logits_flat": (
