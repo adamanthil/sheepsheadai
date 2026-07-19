@@ -1840,7 +1840,52 @@ concretely. Open question for the morning: why doesn't the league
 field (own snapshots + exploiters) punish the partner-convention
 loss?
 
-*(Stream A h2h decomposition to be appended when it lands.)*
+### Stream A results (landed 07-19 02:46) — hypothesis CONFIRMED in structure
+
+Per-generation h2h (2000 deals/mode, previous checkpoint's field):
+
+| pair | called | jd | both-modes |
+|---|---|---|---|
+| gen 1: 1M vs 400k | −0.104 ± 0.018 | −0.069 ± 0.019 | **−0.086 ± 0.013** (6.6 SE) |
+| gen 2: 2M vs 1M | +0.089 ± 0.021 | +0.074 ± 0.023 | **+0.081 ± 0.015** (5.3 SE) |
+
+The role probe's blind prediction (−0.06 / +0.08 from an independent
+instrument and deal set) hit within noise. Sum −0.005 ≈ the direct
+2M-vs-400k +0.011 (transitivity holds). The two-phase adaptation
+structure is decisively established: **gen 1 (anchored, fresh oracle
+critic) = net strength loss; gen 2 (released) = comparably sized
+recovery**, mechanism = bid-discrimination restructuring (stream B).
+
+**Stop-rule correction** (supersedes the §5.11 aside "the stop rule
+would read 2 consecutive flats already", which was panel-only
+reasoning): criterion **B fires for gen 2** (+0.081 ≥ h2h_min 0.05 at
+> 2 SE) ⇒ gen 2 = IMPROVING, flat_history = [flat, improving], no stop
+candidate. The pre-registered rule, run on its actual instruments,
+says **CONTINUE**.
+
+### Consolidated Phase A verdict (morning summary)
+
+1. League training was never stalled: gen 1 paid an adaptation cost
+   (−0.086) that gen 2 earned back (+0.081). The flat 0→2M total is
+   two decisive opposite moves, not noise, and within gen 2 the flat
+   panel further decomposes into pick-discrimination gains vs
+   partner-convention/defense regressions.
+2. Forward question, now sharp: is +0.08/gen the new post-adaptation
+   rate (target gap 0.32 closes in ~4 generations) or was gen 2 a
+   one-time recovery to baseline (back to the reference run's
+   0.005/M grind, gap unclosable at budget)? Retrospect cannot
+   distinguish; **gen 3's h2h is the designated discriminator**
+   (≥ +0.05 ⇒ adaptation-continues; ≈ 0 ⇒ one-time recovery).
+3. Known headroom for gens 3+ either way: the unlearned partner
+   trump-lead convention (0.89→0.06, worth ~−0.19/hand in the
+   partner seat) — a diagnosable defect the league field apparently
+   does not punish; candidate mechanisms for a fix if gen 3 comes
+   back flat: exploiter targeting, convention-aware probes in the
+   gate, or Phase C distillation.
+4. The panel remains a valid *stop* instrument only alongside the
+   h2h (criterion B is what saw gen 2); single-number panel reads
+   must never again be summarized as "no learning" without the
+   role/behavior decomposition.
 
 ---
 
