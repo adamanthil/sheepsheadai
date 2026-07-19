@@ -1779,7 +1779,68 @@ built in, 4-gen floor, two-flat stop) is the designated forward test.
 The battery sets the prior and decides how a flat gen 3–4 should be
 read (falsified vs still-adapting).
 
-*(Results to be appended here as each stream lands.)*
+### Stream B results (landed 07-19 02:11)
+
+**Aux precision ladder** (`aux_ladder_v2.csv`) — hypothesis PARTIALLY
+supported, one head only:
+
+| ckpt | seen-trump F1 t01 | seen Brier t01 | points MAE t01 | points P(≤5) | unseen AUC t01 |
+|---|---|---|---|---|---|
+| sp200k | 0.699 | 0.115 | 0.39 | 0.976 | 1.000 |
+| sp400k | 0.840 | 0.066 | 0.35 | 0.993 | 1.000 |
+| lg1M | 0.984 | 0.007 | 0.36 | 0.984 | 1.000 |
+| lg2M | **0.995** | **0.002** | 0.36 | 0.981 | 1.000 |
+
+Early-trick **trump memory genuinely improved across the league phase**
+(F1 0.84→0.995, Brier 0.066→0.002 — good→near-perfect). But points
+tracking was already precise at 400k (MAE 0.75 pts, P(err≤5) 0.993) and
+didn't move, and unseen-higher was saturated by 200k. Not a wholesale
+poor→perfect story; one head improved materially, in the actionable
+window.
+
+**Partner-convention ladder** (`partner_lead_ladder/`) — direction
+REVERSED from the qualitative read: scripted anchor 1.000; sp200k 0.535
+(called 0.00 / jd 0.97); **sp400k 0.893** (the warm start led trump as
+secret partner nearly like the convention agent); lg500k 0.537; lg1M
+0.086; **lg2M 0.057**. The league phase *unlearned* the partner
+trump-lead convention — a convention the 30M study (E2/E3) found
+genuinely good. Probe context: scripted field, deterministic, tricks
+0–2; the qualitative in-game observation needs reconciling against this
+(different field/temperature, or a different behavior was seen).
+
+**Role decomposition** (`role_scores_v2.csv`, heroes vs constant 400k
+field, 600 deals/mode, paired same-role cells) — the flat total is a
+**sum of large opposing changes**, not stasis:
+
+- Role mix: lg2M picks **8.9%** vs sp400k's 20.0% (534 paired cells
+  flipped picker→defender); defender share 66→75%.
+- **Bid discrimination is a large REAL gain**: on the 534 folded deals
+  the warm start's picker EV was **−1.09/hand**; lg2M defending the
+  same cells scored −0.10 — paired fold-vs-pick value **+0.99 ± 0.23**.
+  The warm start's picks were ~half losers (kept half: +1.72; folded
+  half: −1.09); lg2M keeps almost exactly the winning half (paired
+  common-pick Δ +0.011 — equal play quality on shared picks).
+- **Partner play regressed −0.186 ± 0.050** (consistent with the
+  convention loss above). Defender play **−0.047 ± 0.019** — the
+  defender-improvement corollary is REFUTED (slightly worse, not
+  better).
+- Gen decomposition on this instrument: lg1M uniformly worse than the
+  warm start (picker/partner/defender all ≈ −0.06) ⇒ gen 1 = net
+  strength LOSS; gen 2 = recovery via the bid-selectivity
+  restructuring. Predicts stream A: h2h 1M-vs-400k ≈ −0.06,
+  2M-vs-1M ≈ +0.08.
+
+**Net reading**: league training is NOT stalled — it made one large
+genuine improvement (pick discrimination, worth ~+0.05/hand at the
+role-mix level) and paid for it with a diagnosable regression
+(partner convention, ~−0.03/hand weighted) plus a small defender slip
+(~−0.035 weighted). The panel total ≈ 0 is exactly blind spot #5
+(role-mix/Simpson's) from the validity-limits section, now observed
+concretely. Open question for the morning: why doesn't the league
+field (own snapshots + exploiters) punish the partner-convention
+loss?
+
+*(Stream A h2h decomposition to be appended when it lands.)*
 
 ---
 
