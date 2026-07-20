@@ -1,6 +1,8 @@
 # Convention Erosion Under Terminal-Reward League Play (July 2026)
 
-**Status (2026-07-20): pre-registered; instruments built; rung-1 runs queued.**
+**Status (2026-07-20 evening): rung-1 COMPLETE — all 4 value cells + decay
+curve recorded; consolidated verdict below (§Verdict). All falsifiers
+passed.**
 Companion to [Convention_Optimality_202607.md](Convention_Optimality_202607.md)
 (which asked *are the conventions good and learned* for the 30M lineage; this
 notebook asks *why did the v2 league lineage lose them*), and to
@@ -326,6 +328,62 @@ at tricks 0–2). Rung 1.
   C2's behavior isn't coupled to the destabilized trump-lead feature
   (I1: corr(defender_trump, c2) = −0.76 is displacement, not coupling),
   so it parks at partial adherence instead of oscillating.
+
+### I2 — C2 value @ 400k ecology (DONE 2026-07-20, exit 0; `cf_called_suit_400k.json`)
+
+800 seeds → 300 AGREE / 273 DISAGREE / 283 partner-mirror (adherence ≈ 52%).
+AGREE +0.097 ± 0.058; **DISAGREE +0.130 ± 0.052 (2.5σ)**; falsifier passes
+(−0.122 ± 0.057). Count-weighted pool ≈ **+0.113 ± 0.039**.
+
+## Verdict (rung 1, 2026-07-20)
+
+Complete 2×2 (pooled true-deal-MC value; adherence at eligible nodes):
+
+| Convention | 400k value | 2M value | 400k adherence | 2M adherence |
+|---|---|---|---|---|
+| partner-trump | +0.237 ± 0.040 | +0.236 ± 0.058 | 0.73 | 0.007 (oscillating 0–0.9) |
+| C2 called-suit | +0.113 ± 0.039 | +0.097 ± 0.033 | 0.52 | 0.48 |
+
+All 4 falsifier cells negative; both populated AGREE-sanity cells positive.
+Value is **ecology-invariant** for both conventions; behavior differs only
+in stability (partner oscillates on the role-coupled trump-lead feature;
+C2 parks at half-adherence).
+
+**Q1 — is the league structure specifically degrading convention play,
+rectifiable with more self-play? NO in its strong form.** The league's
+partner mixture does not deny convention value (identical value at both
+lineage endpoints ⇒ any pool partner realizes it). "Erosion" itself was
+mischaracterized: partner-trump is an unpinned oscillator from episode 50k
+onward (subsidy withdrawal explains only the first 50k), and C2 never
+degraded. Consequence: the **intervention arm is demoted** from Q1-decider
+to optional — the mechanism it would test (partner identity) has been
+answered by the value data. League simplification (table-level self-play
+share, uniform recency window, keep exploiter/HOF) proceeds on its own
+merits as operational hygiene, not as the convention fix.
+
+**Q2 — are the conventions optimal and learnable under terminal-only
+reward? Optimal: YES** (positive terminal-grounded value in every cell;
+partner at 4σ, C2 at ~2.5σ pooled — C2's DISAGREE cell alone straddles the
+2σ bar, rung-2b/3 escalation optional for magnitude). **Learnable:
+demonstrated transiently but not reliably MAINTAINED** at current SNR: the
+signals (0.10–0.24 score/node ≈ 0.008–0.02 reward units) sit under a
+measured playout-noise floor of σ ≈ 1.0 at nodes comprising a few % of
+steps; partner-trump additionally suffers the suspected role-coupled
+lead-trump feature (net-negative frequency-weighted gradient). Defenders-
+lead-fail (3rd convention) remains the existence proof that terminal
+reward CAN pin a lead behavior when the signal is unilateral and the
+node is common. **Terminal-only reward is not indicted by any cell.**
+
+**Decided next steps** (cheapest-first tree, per operator's decision
+framing): (1) phase-stratified EV + limited-head sanity (queued task);
+(2) NEW: role-coupling logit probe across the existing ladder (partner-
+vs defender-node lead-trump logits — is the coupling parametric or
+correlational?); (3) league simplification (operational, decided);
+(4) contingent on 1+2: critic-training emphasis at early nodes / lead-node
+upsampling / targeted τ≈0.5 top@Q distillation at harvested lead nodes
+(June ExIt components validated; teacher sighted at offline budget for all
+three conventions pending C2 magnitude de-bias); (5) E4-style wrapper
+gauntlet on any deploy candidate (deploy goal; unpriced fallback).
 
 ## Inherited limitations (Convention_Optimality table incomplete)
 
