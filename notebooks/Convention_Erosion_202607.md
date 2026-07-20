@@ -167,6 +167,59 @@ Convention_Optimality runbook probes). Outputs under
 *(appended as runs land; nothing gets buried — every completed instrument gets
 its numbers recorded here even if null/awkward)*
 
+### I1 — decay curve (DONE 2026-07-20, exit 0; `decay_curve.csv`)
+
+52 ladder entries (scripted anchor, warmstart@0, 50k→2.5M), called mode,
+400 deals each. **The "erosion" framing is wrong: the curve is not a decay.**
+
+| Stat (league ckpts 50k–2.5M) | mean ± sd | range | anchors (scripted / warmstart) |
+|---|---|---|---|
+| partner_trump | 0.19 ± 0.24 | 0.00 – **0.90** | 1.00 / 0.77 |
+| defender_trump (control) | 0.09 ± 0.13 | 0.00 – 0.50 | 0.00 / 0.03 |
+| c2_called_suit | **0.41 ± 0.06** | 0.21 – 0.50 | 0.77 / 0.48 |
+
+Findings:
+
+1. **Initial collapse is immediate**: 0.766 (warmstart) → 0.057 within the
+   FIRST 50k league episodes (play heads were never anchored). Consistent
+   with subsidy withdrawal (+0.08/lead removed) driving the initial removal.
+2. **Then oscillation, not erosion**: ≥11 excursions above 0.35 across gens
+   1–2, repeatedly reaching 0.55–0.90 (550k, 750k, 1.25M, 1.6–1.7M, 2.1M,
+   2.2M) and repeatedly returning to ≈0 within 50–100k episodes. The
+   battery's 0.89→0.06 was a two-endpoint sample of an oscillator — episode
+   2,000,000 measures exactly 0.000; 1.65M measures 0.895.
+3. **The oscillation is substantially a GLOBAL trump-leading mode**:
+   corr(partner_trump, defender_trump) = **+0.75** across the ladder. Some
+   high-partner states discriminate partner vs defender (1.25M: 0.73 vs
+   0.10 — convention-like), others don't (750k: 0.54 vs 0.50 — the C1 leak
+   returned wholesale). corr(defender_trump, c2) = −0.76: trump-lead spikes
+   mechanically displace called-suit leads.
+4. **C2 did NOT degrade.** Stable 0.41 ± 0.06 through the entire league
+   phase, ≈ its warmstart level (0.48); the shaped regime itself never got
+   C2 above ~0.48 (scripted anchor 0.77). The Q2 scope narrows: the open
+   convention questions are partner-trump (unstable) and *why C2 sits at
+   0.4*, not a C2 erosion.
+5. The trainer's greedy trump-lead gate streak at 1.6–1.7M (dismissed as
+   probe noise in the 07-18 health-gate demotion) coincides with the
+   1.6–1.7M excursion here — those 200-game probes were detecting a real
+   behavior excursion.
+
+Reading vs hypotheses: H1's cascade predicts decay-to-floor and staying
+there — contradicted by recurrent 0.9 excursions. The shape says **nothing
+pins lead behavior under the league/terminal regime**: it either cycles
+(population-dynamics story: trump-leading grows, gets punished, collapses,
+regrows) or drifts on near-tied logits that the greedy probe amplifies.
+Subsidy withdrawal explains the *first* 50k; the value probes must now
+explain the oscillation: persistent positive partner-lead value would mean
+the gradient repeatedly finds and then loses it (variance/instability);
+value that itself flips sign with the ecology would mean the cycling is
+locally rational.
+
+Caveats: deterministic-argmax probe amplifies near-tie policy shifts; 50k
+checkpoint spacing may alias faster cycles; called mode only; behavior only
+(value pending). Warmstart partner rate reads 0.766 here vs 0.89 in the
+battery probe (called-mode-only + eligibility differences; same seed).
+
 ## Inherited limitations (Convention_Optimality table incomplete)
 
 The original study's pending rows (recorded 2026-07-20, before rung-1
