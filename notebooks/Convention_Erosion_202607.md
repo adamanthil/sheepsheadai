@@ -305,6 +305,28 @@ self-partner consistency but the value data says partner identity was
 not the binding issue). Rung-2b/3 escalation optional for magnitude
 de-biasing; signs and the cross-ecology null are 4σ-grade at rung 1.
 
+### I2 — C2 value @ 2M ecology (DONE 2026-07-20, exit 0; `cf_called_suit_2000k.json`)
+
+800 seeds → 142 AGREE / 154 DISAGREE / 176 partner-mirror (adherence at
+eligible nodes ≈ 48%, tricks 0–5; consistent with the decay curve's ~0.41
+at tricks 0–2). Rung 1.
+
+- AGREE sanity passes: +0.119 ± 0.050. Partner-mirror falsifier right
+  sign: −0.079 ± 0.056.
+- **DISAGREE +0.076 ± 0.044 (1.7σ)** — positive but BELOW the
+  pre-registered 2σ support bar on its own; trick-0 subset +0.104 ± 0.052
+  (2.0σ). Count-weighted pool ≈ **+0.10 ± 0.033**.
+- Reading: C2's per-node value in this lineage (~+0.10) is well below the
+  partner convention's (+0.24) and below the 30M-ecology E2 AGREE (+0.49,
+  rung-2-biased). The 2M policy's ~50% adherence with mildly-costly
+  exceptions looks like **stable under-adoption of a weak-signal
+  convention**, not erosion — matching I1 (C2 flat at 0.41 throughout).
+  Consistent with the SNR frame: a 0.10-score signal (~0.008 reward units)
+  is even deeper under noise than the partner signal; the difference is
+  C2's behavior isn't coupled to the destabilized trump-lead feature
+  (I1: corr(defender_trump, c2) = −0.76 is displacement, not coupling),
+  so it parks at partial adherence instead of oscillating.
+
 ## Inherited limitations (Convention_Optimality table incomplete)
 
 The original study's pending rows (recorded 2026-07-20, before rung-1
