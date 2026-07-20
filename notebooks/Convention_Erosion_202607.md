@@ -167,6 +167,28 @@ Convention_Optimality runbook probes). Outputs under
 *(appended as runs land; nothing gets buried — every completed instrument gets
 its numbers recorded here even if null/awkward)*
 
+## Inherited limitations (Convention_Optimality table incomplete)
+
+The original study's pending rows (recorded 2026-07-20, before rung-1
+results) constrain interpretation here:
+
+- **E2 step 2 (rung 2b/3 de-biasing) never ran** → the 30M reference
+  magnitudes (AGREE +0.49) and every rung-1/2 number in this study carry an
+  unquantified hindsight correction. Differential/sign readings are robust
+  (same instrument both ecologies; shared bias cancels), but any value cell
+  reading **≈ 0 is not concludable at rung 1** — escalate (2b/3) before it
+  enters the decision table.
+- **E3 step 2 (exception frontier) never ran** → the *optimal* adherence rate
+  for each convention is unknown and is NOT 1.0 (ScriptedAgent's own C2 rate
+  = 0.77; the 0.89 partner rate at 400k was subsidy-inflated and plausibly
+  above terminal-optimal). Intervention-arm "recovery" is therefore defined
+  as returning to the exception-aware band (≈ scripted-anchor region), not
+  re-hitting the shaped-era rate.
+- **E4 (wrapper gauntlet) never ran** → the deploy fallback ("wrap
+  conventions on at deploy") is unpriced on any lineage. Given the deploy
+  goal, an E4-style `rigorous_eval` gauntlet (raw vs `@c1c2`) on the eventual
+  deploy candidate is part of this study's endgame regardless of verdict.
+
 ## Caveats
 
 - Rung 1 rollouts are the probed policy's own continuations: an eroded policy
