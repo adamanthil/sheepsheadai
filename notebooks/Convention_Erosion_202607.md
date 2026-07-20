@@ -250,6 +250,61 @@ mixture-field probe variant) would expose. Hindsight-bias caveat on the
 magnitude (rung 2b/3 pending per inherited limitations); the sign at 4σ
 with a passing falsifier is the load-bearing part.
 
+### I2 — partner convention value @ 400k ecology (DONE 2026-07-20, exit 0; `cf_partner_trump_400k.json`)
+
+800 seeds → 158 AGREE / 58 DISAGREE / 664 defender-mirror (adherence
+158/216 = 73%, matching the decay curve's 0.766). Rung 1 as above.
+
+- **AGREE sanity PASSES**: +0.212 ± 0.049 (the guardrail the 2M cell
+  couldn't provide). Falsifier passes again: −0.251 ± 0.069.
+- DISAGREE +0.307 ± 0.066 — even the convention-following policy's
+  *exceptions* are bad at these nodes (if they were skilled exceptions,
+  Δ ≤ 0). The optimal adherence rate at eligible nodes is near 1.0, not
+  ~0.77 — the "subsidy-inflated overshoot" concern was backwards.
+- Pooled: **+0.237 ± 0.040**.
+
+### Partner-convention row verdict (rung 1)
+
+| Ecology | behavior rate | pooled value |
+|---|---|---|
+| 400k (conventions intact) | 0.73–0.77 | **+0.237 ± 0.040** |
+| 2M (eroded) | 0.00–0.007 | **+0.236 ± 0.058** |
+
+**Value is ecology-invariant; behavior is not. This is the pre-registered
+H2 cell**: the convention pays +0.24/opportunity in BOTH fields, the
+gradient just doesn't hold it. Two sharpenings beyond the table:
+
+1. **H1 is effectively dead for this convention, and so is the
+   "coordination-contingent" theory of its value.** If the value routed
+   through partners interpreting a signal, it should have shrunk in the
+   eroded ecology. It didn't move (Δ of Δ ≈ 0.00 ± 0.07). The trump lead's
+   value appears to be largely *material* (developing picker-team trump
+   control), like the defender-fail-lead logic — which also removes the
+   main reason to expect league-mixture tables to deny it (any pool member
+   as partner is from this same lineage, whose both endpoints deliver
+   +0.24).
+2. **Gradient arithmetic explains the oscillation without any exotic
+   mechanism**: +0.24 score = 0.02 in reward units (score/12) against
+   advantage σ ≈ 0.12 — a 0.17σ signal — at nodes ~4.5× rarer than
+   defender leads (58+158 vs 664 per 800 games). The I1 co-movement
+   (r = +0.75 partner-vs-defender trump-leading) suggests the play head
+   partially couples "lead trump" across roles: the coupled feature gets
+   +0.24 pressure at rare partner nodes and −0.25 pressure at common
+   defender nodes → net weakly negative with noise-driven cycling. The
+   1.25M excursion (0.73 vs 0.10) shows the representation CAN decouple
+   them; it just isn't pinned. Testable later via role-conditioned logit
+   probes across the ladder.
+
+Implication for Q1/Q2 (partner convention): terminal-only reward is NOT
+indicted — the value is present and large; the failure is maintenance at
+rare nodes under gradient noise. Levers, in order of fit: variance
+reduction at early/rare nodes (phase-stratified EV diagnostic already
+queued), targeted gradient traffic at partner-lead nodes (upsampling /
+search-distillation at those nodes), THEN table composition (helps
+self-partner consistency but the value data says partner identity was
+not the binding issue). Rung-2b/3 escalation optional for magnitude
+de-biasing; signs and the cross-ecology null are 4σ-grade at rung 1.
+
 ## Inherited limitations (Convention_Optimality table incomplete)
 
 The original study's pending rows (recorded 2026-07-20, before rung-1
