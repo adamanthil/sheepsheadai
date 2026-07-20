@@ -34,6 +34,46 @@ league run), so the erosion is confounded:
    holder) is a roster member ~85% of the time — a snapshot with its own,
    possibly drifted, conventions.
 
+## Decision framing (operator, 2026-07-20)
+
+Recorded before any rung-1 results. Priority order and stakes:
+
+1. **Q1 (primary): is the league structure specifically degrading convention
+   play, such that more self-play samples would rectify it?** Bears on league
+   architecture — operator is willing to change it. The 2×2 value probes give
+   the *necessary condition* (positive value in the 2M self-field ⇒ league
+   tables deny realizable value); the *sufficient* answer — recovery actually
+   happens — is a training-dynamics claim, so the *intervention arm* below is
+   promoted from contingency to the Q1 decider.
+2. **Q2: are the three conventions optimal AND learnable under terminal-only
+   reward, in this lineage/ecology** (separate from the 30M optimality study)?
+   Bears on the terminal-only reward decision — operator is resistant to
+   changing it. "Optimal" must be ecology-indexed (coordination behaviors):
+   the decomposition is (a) optimal when the table follows them (≈ 400k
+   field), (b) optimal in the eroded ecology (2M field), (c) gradient-
+   reachable/holdable. Terminal-only reward is threatened **only** by the cell
+   "value positive in the right ecology but gradient can't find/hold it even
+   with self-play-heavy tables" — and even there, escalations that preserve
+   terminal-only reward (variance reduction, search-teacher distillation,
+   deploy-time convention wrapper) come before shaping. Note Q2 is already
+   answered YES for defenders-lead-fail (shaped-installed, subsidy withdrawn,
+   persisted 2M terminal league episodes); the open cases are the two
+   coordination-contingent conventions.
+
+Deploy context: the operator wants to ship a convention-following agent, so
+per-convention value/learnability data is product-relevant regardless of
+verdict (train it in vs wrap it on).
+
+**Intervention arm (Q1 decider, post-rung-1):** two short fine-tunes from the
+SAME 2M checkpoint under terminal reward — (A) table-level self-play forced
+high (needs a new trainer knob: the current `self_play_share = 0.15` is
+per-seat, so an all-self table almost never occurs), (B) standard league
+tables — tracking `convention_decay_curve` stats on their checkpoints.
+A-recovers/B-doesn't ⇒ Q1 yes, league restructure indicated; neither recovers
+while value probes say the value is there ⇒ Q2's hard cell (gradient can't
+re-select the equilibrium); both recover ⇒ erosion was transient dynamics, no
+structural indictment.
+
 ## Hypotheses
 
 - **H1 — coordination-equilibrium collapse.** Convention value routes through
