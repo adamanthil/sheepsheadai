@@ -220,6 +220,36 @@ checkpoint spacing may alias faster cycles; called mode only; behavior only
 (value pending). Warmstart partner rate reads 0.766 here vs 0.89 in the
 battery probe (called-mode-only + eligibility differences; same seed).
 
+### I2 — partner convention value @ 2M ecology (DONE 2026-07-20, exit 0; `cf_partner_trump_2000k.json`)
+
+800 seeds → 1 AGREE / 140 DISAGREE / 601 defender-mirror; caps 120/60;
+rung 1 (det + 50-rollout true-deal MC).
+
+- **DISAGREE (n=120): forcing the trump lead beats the eroded policy's fail
+  lead by +0.239 ± 0.059 (4.0σ)**, trump better at 64% of nodes; trick-0
+  subset +0.171 ± 0.062; defender win rate −4.2 ± 1.7 pts. Pooled
+  (scan-mix reweighted): **+0.236 ± 0.058**.
+- **Falsifier PASSES**: defender-mirror −0.220 ± 0.082 (right sign, ≈ C1's
+  −0.13 within noise). The machinery is not rubber-stamping trump leads.
+- AGREE cell empty (n=1): the 2M policy essentially never trump-leads as
+  partner in its own self-play (0.7% of eligible nodes) — consistent with
+  the decay curve's 0.000 at exactly 2M.
+
+Reading: **the partner convention has large positive value in the eroded
+ecology itself** — the agent's own 2M partner responds well enough that the
+convention pays +0.24/opportunity NOW. Combined with I1's oscillation, this
+is the "gradient repeatedly finds and loses a positive-value behavior"
+signature (H2/instability), NOT H3 (removal was not correct learning) and
+not the strong form of H1 (the value is not gone in the current ecology —
+at least not in the self-play field). Open before verdict: (a) the 400k
+cell (AGREE-sanity guardrail + cross-ecology comparison); (b) H1's live
+variant — value at *league-mixture* tables (mixed partners) is NOT measured
+by the self-field 2×2; if it is negative there, the league gradient locally
+opposes a behavior that pays in self-play, which the intervention arm (or a
+mixture-field probe variant) would expose. Hindsight-bias caveat on the
+magnitude (rung 2b/3 pending per inherited limitations); the sign at 4σ
+with a passing falsifier is the load-bearing part.
+
 ## Inherited limitations (Convention_Optimality table incomplete)
 
 The original study's pending rows (recorded 2026-07-20, before rung-1
