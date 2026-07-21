@@ -194,21 +194,26 @@ boundary (all normal). In-trainer anchored eval vs final_pfsp_swish_ppo:
 −0.707 ± 0.164 (n=300; noisy instrument, recorded for continuity).
 
 **Exploitability audit (gen-1 exploiter, 50k eps + duplicate-bridge gate,
-3000 deals):** the exploiter **PASSED its gate — the first gate pass in
-program history** — edge +0.106 ± 0.022 score/deal vs the frozen Phase-A
-endpoint (win frac 0.587, 83.3% of deals perturbed; best screen ckpt
-2140000). Historically exploiters were inert against healthy checkpoints
-(League_Run_Review gens 1–11), so a passing exploiter is an independent
-confirmation that the endpoint is degraded, consistent with A2.
+3000 deals):** the exploiter passed its gate — edge +0.106 ± 0.022
+score/deal vs the frozen Phase-A endpoint (win frac 0.587, 83.3% of deals
+perturbed; best screen ckpt 2140000). *Correction (operator, 2026-07-21):
+an earlier draft called this "the first gate pass in program history" —
+wrong; that record belongs to the old repro-run league (inert gens 1–11).
+In THIS lineage the v2 gen-1 exploiter passed (+0.111 ± 0.045 vs the 1M
+ckpt) and both `full`-arm exploiters passed.* Against the 2M start's own
+gen-2 audit (+0.064 ± 0.042, fail), the Phase-A endpoint's +0.106 ± 0.022
+is directionally worse but NOT significant (Δ ≈ +0.04 ± 0.05). The audit
+is therefore only weakly consistent with degradation — A2 carries the
+verdict on its own.
 
 ### PHASE A VERDICT (2026-07-21): FAIL — stop for operator review
 
 A1 FAIL (early-node EV regressed; sole gain: secret-partner ×1.9),
 A2 FAIL (−0.300 ± 0.015 vs 2M start), A3 pass-with-flag (ALONE streak
 26→32%), behavior probes: no ratchet, coupling intact, fresh coupled
-defender-trump excursion, C2 mild dip. Exploiter audit: endpoint
-exploitable (+0.106, first-ever gate pass). Per pre-registration, Phase B
-is NOT launched. The 2M start checkpoint remains the lineage reference;
+defender-trump excursion, C2 mild dip. Exploiter audit: gate pass
+(+0.106; lineage-normal — see correction above, not additional evidence).
+Per pre-registration, Phase B is NOT launched. The 2M start checkpoint remains the lineage reference;
 the Phase-A endpoint is not a candidate for anything.
 
 Candidate mechanisms for the regression (not yet discriminated):
@@ -237,6 +242,58 @@ Discriminating experiments for review (cheap → expensive):
   each gated on A2 non-inferiority alone.
 - Longer Phase A (300–500k, stratified probe every ~100k) only if a
   single-change arm looks healthy.
+
+### Post-Phase-A operator directives (2026-07-21)
+
+1. **Decision-weighting machinery REVERTED** (commit af9614a): the
+   `decision_weighting` flag and all loss-path machinery removed from
+   PPOAgent and the trainer — a mostly-failed experiment is not worth its
+   codebase complexity. Table-level sampling (`--table-self-play`) and the
+   `--gae-lambda` override remain (tests moved to test_table_sampling.py).
+   Goldens 34/34 bit-identical, fast suite green after removal.
+2. **Offline oracle bake-off commissioned** (below) as the next
+   discriminating experiment, replacing in-loop allocation probes.
+
+### Offline oracle bake-off: shared vs per-phase experts (pre-registered
+2026-07-21, before any full run; tool
+`diagnostics/oracle_moe_offline.py`)
+
+**Question:** how much of the early-node oracle EV gap is shared-capacity
+interference (architecture-fixable) vs effective-sample starvation (not)?
+Phase A showed in-loop allocation probes are expensive and confounded;
+this measures the allocation question as supervised regression on frozen
+data with zero RL-loop risk.
+
+**Design:** 36,000 self-play episodes from the 2M league checkpoint
+(stochastic acting, oracle observations, empirical discounted G — the
+`critic_stratified_ev` semantics; seed 20260721), split 80/10/10
+train/val/test by episode. Arms trained from scratch on identical data,
+early-stopped on val MSE (patience 2, max 15 epochs, Adam 3e-4 = the
+trainer's critic LR):
+- `ref` — the 2M checkpoint's online-trained oracle head, eval-only
+  (anchors the offline numbers to the online lineage).
+- `shared` — one production-shape OracleValueNetwork.
+- `moe` — five fresh OracleValueNetworks hard-routed by phase (operator
+  spec): pick, partner-call, bury, play tricks 0–2, play tricks 3–5.
+  Observable routing (head + trick), so per-phase heads, not learned-gate
+  MoE; each expert consumes episode prefixes up to its last routed step.
+  Capacity deliberately unmatched (5×): the production question is
+  "beat the production critic on identical data", and oracle capacity is
+  deploy-free. Precedent: backgammon phase nets (GNU BG/Snowie),
+  Stockfish NNUE material buckets, Suphx per-action-type models.
+
+**Endpoints (measurement study, not a gated phase):** per-stratum test EV
+per arm, same strata as the stratified probe. Interpretation guide fixed
+in advance: (i) `moe` ≳ closes half the shared-vs-ceiling gap at
+pick/play_lead_t02 ⇒ interference is the dominant mechanism — justifies
+wiring per-phase experts into the trainer as the next Phase-A variant;
+(ii) `moe` ≈ `shared` at those strata ⇒ starvation/rarity dominates —
+the search/expectation lane (contingency) moves up the queue;
+(iii) `shared` (offline, converged) ≫ `ref` would additionally indicate
+the ONLINE oracle is undertrained at the trainer's incidental budget,
+independent of architecture. Secondary: val-MSE convergence curves
+(epochs-to-best) per arm; per-expert n (partner/bury experts train on
+~15–20% of episodes — their EVs carry that caveat).
 
 **Phase B — λ harvest** (fine-tune continues or restarts from A's best):
 λ 0.95 → 0.85 → 0.80, stepped.
