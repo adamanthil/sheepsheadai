@@ -385,6 +385,63 @@ upsampling / targeted τ≈0.5 top@Q distillation at harvested lead nodes
 three conventions pending C2 magnitude de-bias); (5) E4-style wrapper
 gauntlet on any deploy candidate (deploy goal; unpriced fallback).
 
+## Critic diagnostics (verdict next-steps 1+2; DONE 2026-07-20 21:21)
+
+Tools: `diagnostics/critic_stratified_ev.py` (3000 self-play episodes from
+the 2M ckpt, both critic heads vs empirical discounted G, per stratum) and
+`role_coupling_probe.py` (54-ckpt ladder, fixed scripted-replay node set,
+trump-lead prob mass, partner vs defender nodes).
+
+### Stratified EV (`critic_stratified_ev_2000k.json`)
+
+| stratum | n | sd(G) | EV_lim | EV_ora | ~ceiling |
+|---|---|---|---|---|---|
+| all | 21,331 | 0.215 | 0.368 | 0.436 | — |
+| pick | 2,037 | 0.211 | 0.091 | **0.140** | — |
+| play_lead_t02 | 1,320 | 0.267 | 0.399 | **0.458** | **≈0.91** |
+| …secret_partner | 152 | 0.204 | 0.128 | **0.187** | **≈0.85** |
+| …defender | 554 | 0.337 | 0.467 | 0.498 | — |
+| play_t3plus | 6,564 | 0.215 | 0.640 | 0.711 | — |
+
+Ceiling estimate: measured playout noise at lead nodes (I2 probes,
+σ ≈ 1.0 score = 0.083 reward units) ⇒ EV ceiling 1 − (0.083/sd(G))².
+
+1. **Early-node headroom CONFIRMED, largest exactly at the target nodes.**
+   The oracle realizes ~half its ceiling at early leads (0.458 vs ~0.91)
+   and barely a fifth at secret-partner leads (0.187 vs ~0.85) — the
+   worst stratum in the table is the one the convention lives at. Pooled
+   EV (0.436) is carried by late play (0.711). Allocation, not
+   information: at pick the oracle sees the entire deal yet scores 0.140.
+2. **Limited-head sanity: undertrained, and field-dependent.** At pick,
+   the limited head (0.091) barely beats a one-feature linear
+   hand-strength regression (0.077). Pooled self-play EV_lim = 0.368 vs
+   the trainer's logged ≈ 0.00 against the league mixture: the limited
+   head collapses when opponent identity (hidden to it, varying per
+   table) enters the return variance. Deploy/analyze implication: its
+   value displays are only meaningful for self-play-like tables.
+
+### Role coupling (`role_coupling.json`)
+
+**corr(levels) = 0.806, corr(first differences) = 0.790** (n=54
+checkpoints, identical node set, probability mass — no argmax
+amplification). The partner-node and defender-node trump-lead masses move
+together step-by-step across the ladder: **parametric coupling CONFIRMED**
+per the pre-registered reading. Role-decoupled credit is required; per-role
+variance fixes alone cannot pin the partner convention while defender
+pressure pushes the shared feature down.
+
+### Combined implication
+
+Both branches of the decision tree fired: the fix stack for the partner
+convention is **(a) critic allocation at early nodes** (phase-weighted
+value loss, early-node critic replay — large confirmed headroom) **AND
+(b) role-decoupled node-local credit** (lead-node upsampling or targeted
+τ≈0.5 top@Q distillation — coupling is parametric). λ reduction (currently
+0.95, ~70% MC at 7-decision horizons ⇒ GAE absorbs almost no downstream
+noise today) is the harvest step once mid-game EV is trustworthy. All are
+trainer changes: next-run or generation-boundary amendments, validated by
+the 50–100k fine-tune → stratified-EV → decay-curve loop.
+
 ## Inherited limitations (Convention_Optimality table incomplete)
 
 The original study's pending rows (recorded 2026-07-20, before rung-1
