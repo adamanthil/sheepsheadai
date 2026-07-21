@@ -223,3 +223,22 @@ class TestTableLevelSampling:
         league.config.table_self_play_prob = None
         seats = league.sample_table(0, random.Random(3))
         assert len(seats) == 4
+
+
+class TestEntropyScaleInvariance:
+    def test_entropy_terms_ignore_decision_mask(self, agent):
+        """Entropy coefficients are tuned against the all-rows average; the
+        decision flag must not rescale them (attempt-1 collapse lesson)."""
+        configure(
+            agent,
+            entropy_coeff_pick=0.1,
+            entropy_coeff_partner=0.1,
+            entropy_coeff_bury=0.1,
+            entropy_coeff_play=0.1,
+        )
+        agent.decision_weighting = True
+        flag_on = call_losses(agent, ROWS, ACTS, OLD_LP, ADVS, decision=DECISION)
+        agent.decision_weighting = False
+        flag_off = call_losses(agent, ROWS, ACTS, OLD_LP, ADVS)
+        for on_e, off_e in zip(flag_on[3], flag_off[3]):
+            assert torch.allclose(on_e, off_e, atol=1e-7)

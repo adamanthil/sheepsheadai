@@ -1401,13 +1401,15 @@ class PPOAgent:
         kl_elements = torch.exp(log_ratio) - 1 - log_ratio
         approx_kl_t = kl_elements[dw].mean() if dw is not None else kl_elements.mean()
 
+        # Entropy stays averaged over ALL action rows even under decision
+        # weighting: the per-head entropy coefficients were tuned against that
+        # (diluted) scale, and filtering to decision rows silently raised the
+        # effective entropy pressure ~1.5x — enough to push the play head
+        # toward uniform (observed as the 2026-07-21 Phase A attempt-1
+        # leaster collapse; see Learning_System_Redesign_202607).
         pick_entropy, partner_entropy, bury_entropy, play_entropy = (
             self._head_entropies(
-                probs_all[dw] if dw is not None else probs_all,
-                pick_idx_t,
-                partner_idx_t,
-                bury_idx_t,
-                play_idx_t,
+                probs_all, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
             )
         )
         entropy_term = (
