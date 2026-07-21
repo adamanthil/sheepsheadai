@@ -823,6 +823,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "0.25 weight in the value losses (default: historical behavior)",
     )
     ap.add_argument(
+        "--gae-lambda",
+        type=float,
+        default=None,
+        help="Override GAE lambda (default: agent's 0.95). Phase B of "
+        "Learning_System_Redesign_202607 lowers this toward 0.8 once the "
+        "stratified-EV gate shows trustworthy mid-game values.",
+    )
+    ap.add_argument(
         "--table-self-play",
         type=float,
         default=None,
@@ -903,6 +911,9 @@ def main():
             "|valid|>1 rows; forced-row value weight "
             f"{training_agent.value_forced_weight}"
         )
+    if args.gae_lambda is not None:
+        training_agent.gae_lambda = float(args.gae_lambda)
+        print(f"λ  GAE lambda override: {training_agent.gae_lambda}")
     if args.arch != "full":
         print(f"🧬 Architecture: {args.arch}")
     if args.critic_mode == "oracle":
