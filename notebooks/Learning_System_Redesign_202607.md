@@ -96,6 +96,11 @@ existing v2 2M checkpoint as testbed)
 
 **Phase A — allocation + table composition** (~100k-episode fine-tune):
 loss hygiene + decision-content weights + `p_self_table = 0.65`, λ = 0.95.
+*LAUNCHED 2026-07-21 (run `runs/redesign_phaseA/`, commit 8bf7a56 +
+λ-flag): resumed checkpoint_2000000, window = copy of the league roster,
+gen boundary 2.1M then exploiter audit; gen-3 league run killed first
+(artifacts kept). First updates: ~3.2 eps/s; ev O/L dipped to 0.19/−0.49
+at start (new 65%-self field mix — critic re-adapting; watch).*
 - GATE A1 (primary): stratified-EV early-node movement — `play_lead_t02`
   EV_ora ≥ 0.60 (from 0.458) and `pick` EV_ora ≥ 0.25 (from 0.140).
 - GATE A2 (non-inferiority): duplicate-bridge h2h vs the 2M start ≥ −0.02.
