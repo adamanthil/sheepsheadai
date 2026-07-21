@@ -96,11 +96,30 @@ existing v2 2M checkpoint as testbed)
 
 **Phase A — allocation + table composition** (~100k-episode fine-tune):
 loss hygiene + decision-content weights + `p_self_table = 0.65`, λ = 0.95.
-*LAUNCHED 2026-07-21 (run `runs/redesign_phaseA/`, commit 8bf7a56 +
-λ-flag): resumed checkpoint_2000000, window = copy of the league roster,
-gen boundary 2.1M then exploiter audit; gen-3 league run killed first
-(artifacts kept). First updates: ~3.2 eps/s; ev O/L dipped to 0.19/−0.49
-at start (new 65%-self field mix — critic re-adapting; watch).*
+*ATTEMPT 1 (2026-07-21 early, run `runs/redesign_phaseA/`, commit
+8bf7a56): resumed checkpoint_2000000, NO anchor (launch error — the
+design's own scaffolding section requires the Arm-A bidding anchor on
+warm starts). **COLLAPSED into the leaster attractor within 50k
+episodes**: 2.025M pick 14%/leaster 21% (lineage-normal) → 2.05M pick
+0%/leaster 72.5%, greedy gates firing on PICK < 15% AND play-head logit
+spread < 0.5. Killed at ~2.05M; log kept. **Mechanism identified**: the
+decision flag originally filtered the per-head ENTROPY means to decision
+rows — but the entropy coefficients were tuned against the historical
+all-rows (diluted) scale, so effective entropy pressure rose ~1.5× and
+pushed the play head toward uniform (exactly the failing gate), dragging
+picker EV down into the pass/leaster spiral; the missing anchor removed
+the bidding-head brake. Head-balanced PG gradients were NOT amplified by
+the flag (the total/count normalization cancels the dilution — verified
+arithmetically). Fixes (commit 2ceb778): entropy stays at the all-rows
+scale under the flag (+ regression test); anchor made mandatory for all
+warm-started fine-tunes in this program, per the design's own rule.
+Lesson recorded: the greedy-gate warnings + quarter-mark monitor caught
+the collapse in one wall-clock hour — the scaffolding works when used.*
+
+*ATTEMPT 2 (2026-07-21, run `runs/redesign_phaseA_r2/`): same config +
+`--anchor-coeff 1.0` (ref = the 2M resume ckpt), fresh league-window
+copy (attempt 1's collapsed 2.05M snapshot discarded with its run dir's
+league).*
 - GATE A1 (primary): stratified-EV early-node movement — `play_lead_t02`
   EV_ora ≥ 0.60 (from 0.458) and `pick` EV_ora ≥ 0.25 (from 0.140).
 - GATE A2 (non-inferiority): duplicate-bridge h2h vs the 2M start ≥ −0.02.
