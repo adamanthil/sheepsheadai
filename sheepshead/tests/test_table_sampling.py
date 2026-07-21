@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Unit tests for table-level league sampling
+(Learning_System_Redesign_202607: table_self_play_prob)."""
+
+import random
+
+import pytest
+
+from sheepshead import ACTIONS
+from sheepshead.agent.ppo import PPOAgent
+
+pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
+
+
+class TestTableLevelSampling:
+    @pytest.fixture()
+    def league(self, tmp_path):
+        from sheepshead.training.config import LeagueConfig
+        from sheepshead.training.league import (
+            ROLE_HOF_ANCHOR,
+            ROLE_MAIN_EXPLOITER,
+            ROLE_PAST_MAIN,
+            League,
+        )
+
+        cfg = LeagueConfig()
+        cfg.table_self_play_prob = 0.0
+        lg = League(str(tmp_path), cfg)
+        agent = PPOAgent(len(ACTIONS))
+        for i in range(4):
+            lg.add_member(agent, ROLE_PAST_MAIN, training_episodes=1000 * (i + 1))
+        lg.add_member(agent, ROLE_HOF_ANCHOR, training_episodes=9000)
+        lg.add_member(
+            agent,
+            ROLE_MAIN_EXPLOITER,
+            training_episodes=5000,
+            generation=1,
+            gate_edge=0.3,
+            initial_ema=0.6,
+        )
+        return lg
+
+    def test_prob_one_gives_pure_self_table(self, league):
+        from sheepshead.training.league import SELF_PLAY
+
+        league.config.table_self_play_prob = 1.0
+        seats = league.sample_table(0, random.Random(7))
+        assert seats == [SELF_PLAY] * 4
+
+    def test_prob_zero_seats_window_members_never_exploiters(self, league):
+        from sheepshead.training.league import ROLE_MAIN_EXPLOITER, SELF_PLAY
+
+        league.config.table_self_play_prob = 0.0
+        rng = random.Random(11)
+        for _ in range(50):
+            seats = league.sample_table(0, rng)
+            assert len(seats) == 4
+            ids = set()
+            for s in seats:
+                assert s is not SELF_PLAY
+                assert s.role != ROLE_MAIN_EXPLOITER
+                ids.add(s.member_id)
+            assert len(ids) == 4  # without replacement
+
+    def test_historical_sampling_untouched_when_none(self, league):
+        league.config.table_self_play_prob = None
+        seats = league.sample_table(0, random.Random(3))
+        assert len(seats) == 4

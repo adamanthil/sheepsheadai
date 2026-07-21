@@ -108,11 +108,6 @@ class FlattenedActionSteps(NamedTuple):
     unseen_trump_higher_than_hand_labels_flat: torch.Tensor
     search_target_flat: torch.Tensor
     has_search_flat: torch.Tensor
-    # True where the action row had a genuine choice (|valid actions| > 1).
-    # Forced rows carry zero policy gradient by construction (masked softmax
-    # over one action) but historically still sat in loss denominators and
-    # advantage-normalization stats; decision_weighting excludes them.
-    decision_flat: torch.Tensor
 
 
 class UpdateTargets(NamedTuple):
@@ -184,15 +179,7 @@ class PPOAgent:
         lr_critic=3e-4,
         critic_mode="limited",
         arch="full",
-        decision_weighting=False,
     ):
-        # Decision-content loss allocation (Learning_System_Redesign_202607):
-        # when True, policy/entropy/KL losses and advantage normalization run
-        # over decision rows only (|valid| > 1) and the value loss weights
-        # forced rows at value_forced_weight. Default False = historical
-        # behavior, bit-identical.
-        self.decision_weighting = bool(decision_weighting)
-        self.value_forced_weight = 0.25
         # Networks are built from a named ArchitectureSpec (architectures.registry).
         # The default "full" spec constructs exactly the pre-registry
         # networks, in the same order, so seeded runs are bit-identical.
@@ -1280,7 +1267,6 @@ class PPOAgent:
             ),
             search_target_flat=action_rows(minibatch.search_target_bt),
             has_search_flat=action_rows(minibatch.has_search_bt),
-            decision_flat=action_rows(minibatch.masks_bt.sum(-1)) > 1,
         )
 
     @staticmethod
@@ -1309,26 +1295,16 @@ class PPOAgent:
         partner_idx_t,
         bury_idx_t,
         template,
-        decision_mask=None,
     ):
         is_pick = torch.isin(actions_flat, pick_idx_t)
         is_partner = torch.isin(actions_flat, partner_idx_t)
         is_bury = torch.isin(actions_flat, bury_idx_t)
         is_play = ~(is_pick | is_partner | is_bury)
 
-        # Decision weighting: head counts over genuine decisions only, so
-        # forced rows (mostly play) no longer dilute their head's per-row
-        # weight; forced rows themselves get weight 0.
-        if decision_mask is not None:
-            count_pick = (is_pick & decision_mask).sum().item()
-            count_partner = (is_partner & decision_mask).sum().item()
-            count_bury = (is_bury & decision_mask).sum().item()
-            count_play = (is_play & decision_mask).sum().item()
-        else:
-            count_pick = is_pick.sum().item()
-            count_partner = is_partner.sum().item()
-            count_bury = is_bury.sum().item()
-            count_play = is_play.sum().item()
+        count_pick = is_pick.sum().item()
+        count_partner = is_partner.sum().item()
+        count_bury = is_bury.sum().item()
+        count_play = is_play.sum().item()
         total_count = float(count_pick + count_partner + count_bury + count_play)
         heads_present = int(
             (count_pick > 0) + (count_partner > 0) + (count_bury > 0) + (count_play > 0)
@@ -1345,8 +1321,6 @@ class PPOAgent:
         w_play = per_head_weight(count_play)
 
         head_weight = torch.ones_like(template)
-        if decision_mask is not None:
-            head_weight = head_weight * decision_mask.to(template.dtype)
         if w_pick > 0.0:
             head_weight[is_pick] = head_weight[is_pick] * w_pick
         else:
@@ -1382,31 +1356,16 @@ class PPOAgent:
         search_target_flat,
         has_search_flat,
         anchor_logits_flat=None,
-        decision_flat=None,
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
         probs_all = F.softmax(logits_flat, dim=-1)
-
-        # Decision-content weighting: forced rows (|valid| == 1) leave the
-        # policy/entropy/KL means; the historical path (dw None) is untouched.
-        dw = None
-        if self.decision_weighting and decision_flat is not None:
-            dw = decision_flat
-            if not bool(dw.any()):
-                dw = None  # degenerate batch: fall back to historical means
 
         dist = torch.distributions.Categorical(probs_all.clamp(min=1e-12))
         new_lp_flat = dist.log_prob(actions_flat)
         log_ratio = new_lp_flat - old_lp_flat
         kl_elements = torch.exp(log_ratio) - 1 - log_ratio
-        approx_kl_t = kl_elements[dw].mean() if dw is not None else kl_elements.mean()
+        approx_kl_t = kl_elements.mean()
 
-        # Entropy stays averaged over ALL action rows even under decision
-        # weighting: the per-head entropy coefficients were tuned against that
-        # (diluted) scale, and filtering to decision rows silently raised the
-        # effective entropy pressure ~1.5x — enough to push the play head
-        # toward uniform (observed as the 2026-07-21 Phase A attempt-1
-        # leaster collapse; see Learning_System_Redesign_202607).
         pick_entropy, partner_entropy, bury_entropy, play_entropy = (
             self._head_entropies(
                 probs_all, pick_idx_t, partner_idx_t, bury_idx_t, play_idx_t
@@ -1421,8 +1380,7 @@ class PPOAgent:
 
         ratios = torch.exp(new_lp_flat - old_lp_flat)
         head_weight, is_pick, is_partner, is_bury = self._per_head_weights(
-            actions_flat, pick_idx_t, partner_idx_t, bury_idx_t, ratios,
-            decision_mask=dw,
+            actions_flat, pick_idx_t, partner_idx_t, bury_idx_t, ratios
         )
 
         eps_flat = torch.full_like(ratios, self.clip_epsilon_play)
@@ -1450,12 +1408,7 @@ class PPOAgent:
             torch.ones_like(pg_loss_elements),
         )
         pg_loss_elements = pg_loss_elements * pg_keep
-        if dw is not None:
-            # Mean over decision rows only (head_weight already zeroes forced
-            # rows): removes the ~1.5x gradient dilution from forced moves.
-            policy_loss = (pg_loss_elements * head_weight).sum() / dw.sum()
-        else:
-            policy_loss = (pg_loss_elements * head_weight).mean()
+        policy_loss = (pg_loss_elements * head_weight).mean()
 
         # Forward-KL distillation toward pi' on the searched transitions:
         #   L_distill = mean_searched( sum_a pi'(a) * (log pi'(a) - log pi_theta(a)) )
@@ -1483,8 +1436,6 @@ class PPOAgent:
         anchor_kl = logits_flat.new_zeros(())
         if anchor_logits_flat is not None:
             bidding_rows = is_pick | is_partner | is_bury
-            if dw is not None:
-                bidding_rows = bidding_rows & dw
             if bidding_rows.any():
                 p_ref = F.softmax(anchor_logits_flat[bidding_rows], dim=-1)
                 logp_ref = torch.log(p_ref.clamp(min=1e-12))
@@ -1501,16 +1452,7 @@ class PPOAgent:
         )
         critic_loss_clipped = F.mse_loss(v_clipped, returns_target, reduction="none")
         critic_elements = torch.max(critic_loss_unclipped, critic_loss_clipped)
-        if dw is not None:
-            # Forced rows stay as (downweighted) bootstrap anchors.
-            w_v = torch.where(
-                dw,
-                torch.ones_like(critic_elements),
-                torch.full_like(critic_elements, self.value_forced_weight),
-            )
-            critic_loss = (critic_elements * w_v).sum() / w_v.sum()
-        else:
-            critic_loss = critic_elements.mean()
+        critic_loss = critic_elements.mean()
 
         actor_loss = (
             policy_loss
@@ -1603,35 +1545,11 @@ class PPOAgent:
 
         # Normalize advantages and write back into events so the loss uses normalized values
         if advantages.size:
-            if self.decision_weighting:
-                # Stats over genuine decisions only; forced rows (zero policy
-                # gradient) get advantage 0 so they cannot skew anything
-                # downstream. Falls back to global stats if a batch is
-                # (degenerately) all-forced.
-                decision_advs = np.array(
-                    [
-                        e["advantage"]
-                        for e in self.events
-                        if e.get("kind") == "action" and int(e["mask"].sum()) > 1
-                    ]
-                )
-                base = decision_advs if decision_advs.size else advantages
-                adv_mean = base.mean()
-                adv_std = base.std() + 1e-8
-                for e in self.events:
-                    if e.get("kind") == "action":
-                        if int(e["mask"].sum()) > 1:
-                            e["advantage"] = float(
-                                (e["advantage"] - adv_mean) / adv_std
-                            )
-                        else:
-                            e["advantage"] = 0.0
-            else:
-                adv_mean = advantages.mean()
-                adv_std = advantages.std() + 1e-8
-                for e in self.events:
-                    if e.get("kind") == "action":
-                        e["advantage"] = float((e["advantage"] - adv_mean) / adv_std)
+            adv_mean = advantages.mean()
+            adv_std = advantages.std() + 1e-8
+            for e in self.events:
+                if e.get("kind") == "action":
+                    e["advantage"] = float((e["advantage"] - adv_mean) / adv_std)
 
         return UpdateTargets(
             oracle_active=oracle_active,
@@ -1711,7 +1629,6 @@ class PPOAgent:
             flat.search_target_flat,
             flat.has_search_flat,
             anchor_logits_flat=anchor_logits_flat,
-            decision_flat=flat.decision_flat,
         )
         acc.last_approx_kl = float(approx_kl_t.item())
 
@@ -1827,15 +1744,7 @@ class PPOAgent:
                 F.mse_loss(v_o, ret_o, reduction="none"),
                 F.mse_loss(v_o_clipped, ret_o, reduction="none"),
             )
-            if self.decision_weighting and bool(flat.decision_flat.any()):
-                w_o = torch.where(
-                    flat.decision_flat,
-                    torch.ones_like(oracle_elements),
-                    torch.full_like(oracle_elements, self.value_forced_weight),
-                )
-                oracle_loss = (oracle_elements * w_o).sum() / w_o.sum()
-            else:
-                oracle_loss = oracle_elements.mean()
+            oracle_loss = oracle_elements.mean()
             acc.oracle_loss_sum += oracle_loss.detach().item()
             acc.oracle_loss_count += 1
 

@@ -816,13 +816,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--anchor-coeff", type=float, default=0.0)
     ap.add_argument(
-        "--decision-weighting",
-        action="store_true",
-        help="Learning_System_Redesign_202607: policy/entropy/KL losses and "
-        "advantage normalization over |valid|>1 rows only; forced rows get "
-        "0.25 weight in the value losses (default: historical behavior)",
-    )
-    ap.add_argument(
         "--gae-lambda",
         type=float,
         default=None,
@@ -902,15 +895,8 @@ def main():
         len(ACTIONS),
         critic_mode=args.critic_mode,
         arch=args.arch,
-        decision_weighting=args.decision_weighting,
     )
     training_agent.load(args.resume, load_optimizers=True)
-    if args.decision_weighting:
-        print(
-            "⚖️  Decision-content loss allocation ON: policy/adv-norm over "
-            "|valid|>1 rows; forced-row value weight "
-            f"{training_agent.value_forced_weight}"
-        )
     if args.gae_lambda is not None:
         training_agent.gae_lambda = float(args.gae_lambda)
         print(f"λ  GAE lambda override: {training_agent.gae_lambda}")
