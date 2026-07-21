@@ -815,6 +815,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "limited critic, and all aux heads train identically in both modes.",
     )
     ap.add_argument("--anchor-coeff", type=float, default=0.0)
+    ap.add_argument(
+        "--decision-weighting",
+        action="store_true",
+        help="Learning_System_Redesign_202607: policy/entropy/KL losses and "
+        "advantage normalization over |valid|>1 rows only; forced rows get "
+        "0.25 weight in the value losses (default: historical behavior)",
+    )
+    ap.add_argument(
+        "--table-self-play",
+        type=float,
+        default=None,
+        help="Learning_System_Redesign_202607 table composition: probability "
+        "a table is ALL frozen current-self; remainder drawn uniformly from "
+        "the recency window + HOF floor (default: historical per-seat "
+        "PFSP/self/exploiter sampling)",
+    )
     ap.add_argument("--anchor-ref", default=None)
     ap.add_argument(
         "--anchor-eval-ckpt",
@@ -854,7 +870,14 @@ def main():
     checkpoint_dir = os.path.join(run_dir, "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    league = League(args.league_dir, LeagueConfig())
+    league_config = LeagueConfig()
+    if args.table_self_play is not None:
+        league_config.table_self_play_prob = args.table_self_play
+        print(
+            f"🎲 Table-level composition ON: {args.table_self_play:.0%} pure-self "
+            "tables, remainder uniform window (PFSP/EMA/exploiter seating off)"
+        )
+    league = League(args.league_dir, league_config)
     if len(league) == 0 and args.migrate_from:
         print(f"🏗️  Empty league; migrating legacy population from {args.migrate_from}")
         league = League.migrate_legacy(args.migrate_from, args.league_dir)
@@ -868,9 +891,18 @@ def main():
     print(league.summary())
 
     training_agent = PPOAgent(
-        len(ACTIONS), critic_mode=args.critic_mode, arch=args.arch
+        len(ACTIONS),
+        critic_mode=args.critic_mode,
+        arch=args.arch,
+        decision_weighting=args.decision_weighting,
     )
     training_agent.load(args.resume, load_optimizers=True)
+    if args.decision_weighting:
+        print(
+            "⚖️  Decision-content loss allocation ON: policy/adv-norm over "
+            "|valid|>1 rows; forced-row value weight "
+            f"{training_agent.value_forced_weight}"
+        )
     if args.arch != "full":
         print(f"🧬 Architecture: {args.arch}")
     if args.critic_mode == "oracle":

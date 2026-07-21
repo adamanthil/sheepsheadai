@@ -145,8 +145,8 @@ def naive_flatten_action_steps(is_action_bt, sources):
         for t in range(is_action_bt.size(1))
         if is_action_bt[b, t]
     ]
-    return FlattenedActionSteps(
-        *(torch.stack([source[b, t] for b, t in action_rows]) for source in sources)
+    return tuple(
+        torch.stack([source[b, t] for b, t in action_rows]) for source in sources
     )
 
 
@@ -205,6 +205,8 @@ FLAT_FIELD_SOURCES = {
     ),
     "search_target_flat": "minibatch.search_target_bt",
     "has_search_flat": "minibatch.has_search_bt",
+    # Derived field (|valid| > 1 per action row); checked explicitly below.
+    "decision_flat": None,
 }
 
 
@@ -224,16 +226,36 @@ def test_flatten_action_steps_matches_naive_reference(prepared):
     assert actual is not None
 
     assert list(FLAT_FIELD_SOURCES) == list(FlattenedActionSteps._fields)
+    direct_fields = [f for f, src in FLAT_FIELD_SOURCES.items() if src is not None]
     sources_in_field_order = [
         _resolve_source(tensors, forward, source_path)
         for source_path in FLAT_FIELD_SOURCES.values()
+        if source_path is not None
     ]
-    expected = naive_flatten_action_steps(tensors.is_action_bt, sources_in_field_order)
+    expected = dict(
+        zip(
+            direct_fields,
+            naive_flatten_action_steps(tensors.is_action_bt, sources_in_field_order),
+        )
+    )
 
     n_action_rows = int(tensors.is_action_bt.sum())
-    for field in FlattenedActionSteps._fields:
+    for field in direct_fields:
         actual_tensor = getattr(actual, field)
-        expected_tensor = getattr(expected, field)
+        expected_tensor = expected[field]
         assert actual_tensor.size(0) == n_action_rows, field
         assert actual_tensor.dtype == expected_tensor.dtype, field
         assert torch.equal(actual_tensor, expected_tensor), field
+
+    # decision_flat: True exactly where the action row's mask has >1 valid.
+    expected_decision = torch.stack(
+        [
+            tensors.masks_bt[b, t].sum() > 1
+            for b in range(tensors.is_action_bt.size(0))
+            for t in range(tensors.is_action_bt.size(1))
+            if tensors.is_action_bt[b, t]
+        ]
+    )
+    assert actual.decision_flat.size(0) == n_action_rows
+    assert actual.decision_flat.dtype == torch.bool
+    assert torch.equal(actual.decision_flat, expected_decision)

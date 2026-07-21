@@ -159,3 +159,9 @@ class LeagueConfig:
     # Exploiter retirement: demote to past_main purely on age. Guarantees every
     # inserted exploiter exploiter_retire_generations of seat time (the floor).
     exploiter_retire_generations: int = 3
+    # Learning_System_Redesign_202607 table composition: when set, replaces the
+    # per-seat PFSP/self-play/exploiter mixture entirely — with this
+    # probability a table is ALL frozen current-self; otherwise all four seats
+    # are drawn uniformly from past_mains+HOF (hof_floor_prob floor kept, no
+    # PFSP/EMA weighting, exploiters not seated). None = historical sampling.
+    table_self_play_prob: float | None = None

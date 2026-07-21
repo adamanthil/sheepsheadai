@@ -270,6 +270,8 @@ class League:
         Returns a list of length ``n_seats`` whose entries are LeagueMembers
         or the SELF_PLAY sentinel (driver substitutes a frozen copy of the
         current training agent). Members are sampled without replacement."""
+        if self.config.table_self_play_prob is not None:
+            return self._sample_table_level(partner_mode, rng, n_seats)
         p_exp = self.exploiter_share()
         p_self = self.config.self_play_share
         pool_past = self.by_role(ROLE_PAST_MAIN) + self.by_role(ROLE_HOF_ANCHOR)
@@ -289,6 +291,32 @@ class League:
             if isinstance(pick, LeagueMember):
                 used.add(pick.member_id)
             seats.append(pick)
+        return seats
+
+    def _sample_table_level(self, partner_mode: int, rng, n_seats: int) -> list:
+        """Learning_System_Redesign_202607 table composition: whole-table
+        draws. With ``table_self_play_prob`` the table is pure current-self
+        (all seats SELF_PLAY); otherwise every seat is drawn uniformly
+        (without replacement) from past_mains + HOF anchors, keeping only the
+        ``hof_floor_prob`` anti-forgetting floor. No PFSP/EMA weighting; no
+        exploiter seating (exploiters are audit-only in this regime)."""
+        if rng.random() < self.config.table_self_play_prob:
+            return [SELF_PLAY] * n_seats
+        pool = self.by_role(ROLE_PAST_MAIN) + self.by_role(ROLE_HOF_ANCHOR)
+        seats: list = []
+        used: set[str] = set()
+        for _ in range(n_seats):
+            avail = [m for m in pool if m.member_id not in used]
+            pick = None
+            if avail:
+                if rng.random() < self.config.hof_floor_prob:
+                    hof = [m for m in avail if m.role == ROLE_HOF_ANCHOR]
+                    if hof:
+                        pick = hof[rng.randrange(len(hof))]
+                if pick is None:
+                    pick = avail[rng.randrange(len(avail))]
+                used.add(pick.member_id)
+            seats.append(pick if pick is not None else SELF_PLAY)
         return seats
 
     def _sample_exploiter(self, pool, used, rng) -> Optional[LeagueMember]:
