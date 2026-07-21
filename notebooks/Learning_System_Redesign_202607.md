@@ -127,6 +127,117 @@ league).*
 - Exploratory (not gates): partner-rate ratchet behavior on the decay curve;
   coupling diff-corr trend.
 
+### Attempt-2 results (2026-07-21; run completed 2.0M → 2.1M cleanly)
+
+**GATE A1: FAIL** (`critic_stratified_ev_2100k.json`, matched instrument:
+3000 self-play episodes, seed 20260720, vs the 2000k baseline probe).
+EV_oracle by stratum, 2M → 2.1M:
+
+| stratum | 2M | 2.1M | gate |
+|---|---|---|---|
+| play_lead_t02 | 0.458 | **0.368** | ≥ 0.60 FAIL |
+| pick | 0.140 | **0.036** | ≥ 0.25 FAIL |
+| play_lead_t02_secret_partner | 0.187 | **0.361** | — (near-doubled) |
+| play_lead_t02_partner | 0.382 | 0.228 | — |
+| play_lead_t02_defender | 0.498 | 0.438 | — |
+| partner_call | 0.222 | 0.152 | — |
+| bury | 0.242 | 0.159 | — |
+| play_follow_t02 | 0.373 | 0.372 | — |
+| play_t3plus | 0.711 | 0.693 | — |
+| leaster | 0.225 | 0.166 | — |
+| pooled | 0.436 | 0.384 | — |
+
+Limited head dropped in every stratum as well (pooled 0.368 → 0.305);
+trainer-pooled `ev_limited` went **negative** in late updates (−0.3..−0.6).
+The single mover in the intended direction is the rarest and most
+program-relevant stratum (secret-partner leads), consistent with the
+value-loss decision weighting shifting critic capacity toward rare decision
+nodes — but the broad EV regression says the 100k fine-tune left the critic
+mid-transient (field shift from p_self_table 0.65 + reweighted value loss),
+or worse, that the allocation change degrades the critic at this budget.
+Per pre-registration: **A1 fail ⇒ no Phase B launch; stop for operator
+review** (A2/A3 + exploratory probes still recorded below for the review).
+
+**GATE A2: FAIL** (`h2h_duplicate_2100k_vs_2000k.json`; duplicate-bridge
+instrument, 2×2000 deals, seed 42): edge **−0.300 ± 0.015** score/hand vs
+the 2M start (gate: ≥ −0.02; called −0.287, jd −0.313 — modes agree).
+A ~20σ strength regression in 100k episodes. Corroborated by the noisy
+in-trainer anchored eval vs final_pfsp_swish_ppo: −0.23 ± 0.13 at the 2M
+league checkpoint → −0.707 ± 0.16 at the Phase-A endpoint. Trainer-batch
+pooled ev_oracle also dropped 0.38 → ~0.21 within the FIRST 10k episodes
+and stayed flat all 100k (no recovery slope), with ev_limited going
+negative (−0.3..−0.5). For calibration: the from-scratch oracle head took
+~1.0–1.2M episodes to plateau (0.30 by ~600k), so the 100k window likely
+could not complete any re-convergence transient — but the flat (not
+recovering) EV plus the large strength drop reads as genuine disruption,
+not a benign transient passing through.
+
+**Exploratory behavior probes** (`decay_curve_r2.csv`,
+`role_coupling_r2.json`; same instruments/seeds as the erosion study):
+no partner ratchet — partner_trump rate 0.000 @2.05M → 0.013 @2.1M (low
+phase of the known oscillation). Role coupling INTACT: partner/defender
+node masses rose together ~10× between the two r2 checkpoints (0.0025 →
+0.026 partner, 0.0067 → 0.079 defender) — a fresh SHARED excursion, echoed
+behaviorally by greedy defender trump-lead 0.000 → 0.097 (above the
+0.03–0.08 historical band). C2 dipped mildly (0.392 → 0.333, ~2σ below
+the 0.41 ± 0.06 band; n=219, watch-only). Net: 100k of Phase-A config did
+not decouple roles or start a ratchet — expected at this budget (the
+design's mechanism for decoupling is Phase B λ-harvest on top of a
+TRUSTED critic; A1 shows the critic is not yet trustworthy post-change).
+
+**GATE A3: PASS with flag.** No leaster-watchdog halt; training leaster
+stable 21–24%, pick 12–15%, picker_avg +1.07 → +1.21, anchor_kl
+0.007–0.024 throughout. Flag: greedy ALONE rate exceeded the 20% warn gate
+on both probes and is rising — 26.2% @2.05M → 31.7% @2.1M (lineage-normal
+band 18–27%); greedy PICK 21.4%, leaster 27.5%, play-spread 0.84 at the
+boundary (all normal). In-trainer anchored eval vs final_pfsp_swish_ppo:
+−0.707 ± 0.164 (n=300; noisy instrument, recorded for continuity).
+
+**Exploitability audit (gen-1 exploiter, 50k eps + duplicate-bridge gate,
+3000 deals):** the exploiter **PASSED its gate — the first gate pass in
+program history** — edge +0.106 ± 0.022 score/deal vs the frozen Phase-A
+endpoint (win frac 0.587, 83.3% of deals perturbed; best screen ckpt
+2140000). Historically exploiters were inert against healthy checkpoints
+(League_Run_Review gens 1–11), so a passing exploiter is an independent
+confirmation that the endpoint is degraded, consistent with A2.
+
+### PHASE A VERDICT (2026-07-21): FAIL — stop for operator review
+
+A1 FAIL (early-node EV regressed; sole gain: secret-partner ×1.9),
+A2 FAIL (−0.300 ± 0.015 vs 2M start), A3 pass-with-flag (ALONE streak
+26→32%), behavior probes: no ratchet, coupling intact, fresh coupled
+defender-trump excursion, C2 mild dip. Exploiter audit: endpoint
+exploitable (+0.106, first-ever gate pass). Per pre-registration, Phase B
+is NOT launched. The 2M start checkpoint remains the lineage reference;
+the Phase-A endpoint is not a candidate for anything.
+
+Candidate mechanisms for the regression (not yet discriminated):
+1. **Critic disruption from the reweighted value loss** — trainer-batch
+   pooled ev_oracle fell 0.38 → ~0.21 within 10k eps and stayed flat
+   (no recovery slope in 100k); ev_limited went negative (−0.3..−0.5).
+   For scale: the from-scratch oracle took ~1.0–1.2M eps to plateau, so
+   100k could not complete a re-convergence transient even if benign.
+2. **Advantage-scale shift from decision-only normalization** — raw
+   adv_std fell (all 0.119 → 0.086; pick 0.124 → 0.056 — pick rows are
+   genuine decisions, so this is not the mechanical forced-zeroing
+   effect), changing the effective policy step size.
+3. **Opponent-diversity loss** (p_self_table 0.65) — least likely to
+   produce −0.30 in 100k on its own, but plausibly compounds 1–2.
+
+Discriminating experiments for review (cheap → expensive):
+- **Offline critic-fit bake-off (no RL loop, zero risk):** frozen
+  self-play dataset from the 2M ckpt; fit (a) current shared oracle,
+  (b) decision-weighted variant, (c) per-phase expert heads (precedent:
+  backgammon phase nets, NNUE material buckets, Suphx per-action
+  models) to convergence; compare stratified EV. Directly measures the
+  interference/allocation gap and tests the value-loss reweighting in
+  isolation, with convergence-time constants as a bonus.
+- **Single-change 100k arms:** table-composition-only (no decision
+  weighting) and decision-weighting-only (historical PFSP field),
+  each gated on A2 non-inferiority alone.
+- Longer Phase A (300–500k, stratified probe every ~100k) only if a
+  single-change arm looks healthy.
+
 **Phase B — λ harvest** (fine-tune continues or restarts from A's best):
 λ 0.95 → 0.85 → 0.80, stepped.
 - GATE B0 (precondition): `play_follow_t02` + `play_t3plus` EV_ora ≥ 0.60
