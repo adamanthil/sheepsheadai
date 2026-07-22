@@ -406,7 +406,10 @@ partner/defender lead strategy still fails to decouple and pin. Rationale
 recorded in Convention_Erosion_202607 (distillation = zero-noise
 role-conditional credit + off-policy-in-action re-ignition at mass 0.004).
 
-## Batch+λ SNR arm (pre-registered 2026-07-21, operator-approved; not yet launched)
+## Batch+λ SNR arm (pre-registered 2026-07-21, operator-approved;
+LAUNCHED 2026-07-21 22:57 — `runs/league_snr_batchlam/`, historical
+league path per operator decision, launch log
+`runs/league_snr_batchlam_launch.log`)
 
 **Hypothesis under test:** rare-node policy-gradient SNR is the binding
 constraint on role differentiation (partner-vs-defender lead conventions
