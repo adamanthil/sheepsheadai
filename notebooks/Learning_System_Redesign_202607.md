@@ -415,11 +415,17 @@ current levers compose to; a fail is therefore close to a falsification,
 not an underdose (the reason the operator chose the composed arm over
 batch-only at ~2 days / 1M episodes).
 
-Dose arithmetic (2026-07-21 conversation, recorded): per-row SNR at
-partner-lead nodes ≈ Δ/σ = 0.24/1.0; at update-interval 2048 (~80 eps,
-~3.4 partner-lead rows/update) an update is ~0.45σ. 8× (16,384, ~640
-eps) ⇒ ~1.3σ; composed with λ-harvest (σ 1.0 → ~0.6 via critic
-bootstrap) ⇒ ~2σ-equivalent (≈ the 20× batch-only threshold). Values at
+Dose arithmetic (2026-07-21; CORRECTED pre-launch by an empirical probe —
+the trainer's transition counter counts hero ACTION rows only, ~7.05/ep
+measured over 2,325 episodes, so update-interval 2048 ≈ **290 episodes**
+per update, not the ~80 quoted in earlier conversation, and the
+historical 256-episode minibatch cap DID bind mildly: 2 steps/epoch of
+256+~34 episodes). Per-row SNR at partner-lead nodes ≈ Δ/σ = 0.24/1.0;
+at 2048 (~12.5 partner-lead rows/update) an update is ~0.85σ. 8×
+(16,384 ≈ 2,325 eps, ~100 partner-lead rows) ⇒ ~2.4σ; composed with
+λ-harvest (σ 1.0 → ~0.6 via critic bootstrap) ⇒ ~4σ-equivalent. The
+correction strengthens the falsification framing: the composed dose sits
+well past the 2σ threshold. Values at
 these nodes are already correct and ecology-invariant (Convention-Erosion
 rung 1); the failure mode is noisy-overwrite oscillation, which per-step
 averaging attacks directly. The bake-off (above) additionally certified
@@ -433,13 +439,14 @@ as sound as it gets short of expectation-based targets.
   all cadences as the v2 orchestrator invocation (main-episodes 1M,
   schedule-horizon 20M, workers 8).
 - Changes vs that baseline (all flags, no code defaults touched):
-  1. `--update-interval 16384` (transitions; ~640 episodes/update).
-  2. `--trainer-args "--minibatch-episodes 1024 …"` — keeps every
-     optimizer step full-buffer. The historical 256-episode cap never
-     bound at 2048 but WOULD bind at 16,384, silently reintroducing
-     minibatching and cutting the per-step gain to ~3.2×/√≈1.8
-     (noise between applied steps does not cancel: Adam renormalizes
-     small noisy gradients and the PPO clip freezes early moves).
+  1. `--update-interval 16384` (hero action rows; ~2,325 episodes/update
+     at the measured ~7.05 rows/ep).
+  2. `--trainer-args "--minibatch-episodes 4096 …"` — keeps every
+     optimizer step full-buffer (1024 as originally drafted would bind
+     at ~2,325-episode buffers and reintroduce minibatching; noise
+     between applied steps does not cancel: Adam renormalizes small
+     noisy gradients and the PPO clip freezes early moves). Probe:
+     full-size update = 41s / ~7–15 GB peak on 64 GB — both fine.
   3. λ stays at the default 0.95 (= v2) for the first ~250k, then a
      DECLARED restart with `--gae-lambda 0.85` gated on: duplicate h2h
      vs the 400k seed ≥ −0.05 AND a recorded lead-node adv_std baseline.
@@ -463,8 +470,10 @@ as sound as it gets short of expectation-based targets.
   `python -m sheepshead.training.run_extended_league --resume <400k seed>
   --run-name league_snr_batchlam --update-interval 16384 --critic-mode
   oracle --leaster-watchdog --seed 42 --trainer-args "--minibatch-episodes
-  1024 --exploiter-full-table --exploiter-patched-ema 0.35"` (+ the v2
-  cadence flags and league seeding).
+  4096 --exploiter-full-table --exploiter-patched-ema 0.35"` (all other
+  flags at defaults = the v2 invocation: main-episodes 1M, anchor-coeff
+  1.0, panel A, min/max generations 4/12, workers 8, empty-league
+  bootstrap identical to v2's `seed_checkpoints: null`).
 
 **Comparison protocol — matched-endpoint, NOT matched-machinery:** the
 current league differs from the v2 run's (duplicate-bridge gate
