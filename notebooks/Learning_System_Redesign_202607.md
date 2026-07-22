@@ -455,6 +455,18 @@ as sound as it gets short of expectation-based targets.
      vs the 400k seed ≥ −0.05 AND a recorded lead-node adv_std baseline.
      Post-step check: lead-node adv_std down ≥ 20% within 2 probes,
      else revert to 0.95 (λ-harvest inert ⇒ batch-only continuation).
+     **AMENDED 2026-07-22 (declared at 100k, before the gate fires):**
+     additional precondition — trainer pooled ev_ora ≥ 0.30 sustained
+     over 3 consecutive updates. Mechanism: 8× batch means 8× fewer
+     optimizer steps at matched episodes, and the FRESH oracle head's
+     transient is step-count-limited, not sample-limited — observed
+     ev_ora 0.00 at 100k vs the ~0.12 from-scratch reference, i.e. the
+     ~1M-episode transient stretches toward ~a full generation.
+     Stepping λ onto an immature critic would inject bootstrap bias
+     exactly when the critic is least trustworthy (the bake-off
+     certified the TRAINED head, not a mid-transient one). Expected λ
+     step therefore lands late gen 1 or gen 2, not 250k. The h2h and
+     adv_std conditions are unchanged.
   4. Exploiter re-entry amendment (operator, 2026-07-21; commits
      0db57fc/d647404): `--exploiter-full-table --exploiter-patched-ema
      0.35` in trainer-args. Gated exploiters re-enter sampling as WHOLE
