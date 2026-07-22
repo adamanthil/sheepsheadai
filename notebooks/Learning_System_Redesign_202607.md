@@ -295,6 +295,91 @@ independent of architecture. Secondary: val-MSE convergence curves
 (epochs-to-best) per arm; per-expert n (partner/bury experts train on
 ~15–20% of episodes — their EVs carry that caveat).
 
+### Offline oracle bake-off: RESULTS (2026-07-21; `runs/oracle_moe_offline/`)
+
+Run exactly as pre-registered: 36,000 episodes generated (28,800 train /
+3,600 val / 3,600 test; 26,421 test action rows), all three arms trained
+and evaluated (`results.json`). A paired episode-level bootstrap (1,000
+resamples; `bootstrap` subcommand added to the tool, output
+`bootstrap.json`) supplies 95% CIs; arm deltas are paired on identical
+test rows, so deal-sampling noise cancels and the delta CIs are tight.
+
+Test EV per stratum (point [95% CI]); Δ = moe − shared (paired):
+
+| stratum | n | ref (online 2M) | shared (offline) | moe (offline) | Δ moe−shared |
+|---|---|---|---|---|---|
+| all | 26,421 | 0.434 [.41,.46] | 0.338 [.30,.37] | 0.260 [.23,.29] | **−0.078 [−.09,−.06]** |
+| pick | 3,143 | 0.126 [.10,.15] | 0.139 [.10,.18] | 0.001 [.00,.00] | **−0.138 [−.18,−.10]** |
+| partner_call | 562 | 0.191 [.15,.23] | 0.194 [.15,.24] | 0.001 [.00,.00] | **−0.193 [−.24,−.15]** |
+| bury | 1,116 | 0.222 [.18,.26] | 0.242 [.18,.30] | 0.083 [.01,.14] | **−0.159 [−.19,−.12]** |
+| play_lead_t02 | 2,546 | 0.429 [.38,.47] | 0.374 [.31,.43] | 0.234 [.16,.31] | **−0.140 [−.17,−.11]** |
+| … secret_partner | 366 | 0.284 [.21,.36] | 0.152 [.07,.21] | −0.135 [−.23,−.04] | **−0.286 [−.36,−.20]** |
+| … partner | 1,369 | 0.368 [.31,.41] | 0.287 [.23,.34] | 0.136 [.07,.19] | **−0.151 [−.19,−.11]** |
+| … defender | 811 | 0.515 [.45,.58] | 0.507 [.41,.60] | 0.423 [.31,.53] | **−0.083 [−.12,−.05]** |
+| play_follow_t02 | 5,143 | 0.482 [.44,.53] | 0.328 [.30,.36] | 0.137 [.10,.18] | **−0.191 [−.22,−.16]** |
+| play_t3plus | 7,689 | 0.749 [.71,.78] | 0.524 [.48,.56] | 0.563 [.53,.60] | +0.039 [+.02,+.06] |
+| leaster | 6,222 | 0.176 [.14,.21] | 0.130 [.09,.16] | 0.167 [.14,.19] | +0.037 [+.02,+.06] |
+
+**VERDICT: pre-registered outcome (ii), in amplified form.** The per-phase
+experts did not close the shared-vs-ceiling gap at pick/play_lead_t02
+(criterion (i) required ≈0.49 and ≈0.64; they scored 0.001 and 0.234) —
+they lost to the single shared network at *every* minority stratum, with
+all delta CIs excluding zero. The only strata where routing won are the
+majority stratum (play_t3plus, whose expert got 86,400 routed rows and all
+15 epochs) and leaster, both by a marginal +0.04. This is the mirror image
+of the interference prediction, which said routing's gains should
+concentrate at exactly the strata that lose the shared trunk's gradient
+tug-of-war.
+
+**Mechanism: cross-phase representation transfer outweighs interference at
+this data scale.** The GRU encoder is causal, so the shared net's value at
+a pick step uses exactly the same information the pick expert sees — the
+comparison is information-matched by construction. What routing removes is
+transfer: the shared trunk's features, learned mostly from the abundant
+play rows, evidently transfer to pick/partner/bury value estimation
+(shared 0.139 vs expert 0.001 on identical pick rows). Experts trade
+interference relief for transfer loss, and transfer wins — despite moe
+holding a deliberate 5× capacity advantage.
+
+Caveats, none verdict-threatening:
+- **Small-expert optimization stalls.** The pick expert collapsed to the
+  stratum mean in epoch 1 (val MSE 0.0431 ≈ Var(G) = 0.042) and
+  patience-2 stopped it at epoch 4; partner similar (val 0.122 ≈ Var
+  0.134). These are stalls, not converged failures. But the play_t02
+  expert trained healthily (86k rows, best at epoch 7 of 10, real val
+  descent) and still lost at its own strata by −0.14 (lead) and −0.19
+  (follow) — the decision-relevant comparison does not rest on the
+  stalled experts. A declared re-run with higher patience/LR for the
+  small experts is available but not decision-relevant.
+- **Shared under-converged at cap.** Its best val MSE came at epoch 15
+  (the max), so shared's numbers are lower bounds — which only widens
+  the verdict.
+
+**Secondary finding — interpretation (iii) resolved against
+"undertrained online oracle", with a sharper twist.** Pooled, ref ≫
+shared (−0.096 [−.120,−.068] shared−ref): 36k frozen episodes cannot
+recreate the 2M-episode online head. But the deficit is entirely
+concentrated in the play strata (play_t3plus −0.225, follow −0.154);
+at pick (+0.013 [−.004,+.030]), partner_call (+0.003) and bury (+0.020)
+the 15-epoch from-scratch fit already *matches* the online oracle. The
+online head's low early-node EVs (~0.13–0.24) are therefore reproduced by
+supervised regression on 230k rows — the early-node gap is a property of
+the data (playout-noise floor + conditional-outcome spread), not of the
+online training regime or its budget. "Train the oracle more/better" is
+off the candidate list for the early nodes.
+
+**Consequences (per the pre-registered guide):**
+1. Per-phase experts are NOT wired into the trainer. If routing loses
+   transfer with 230k rows and near-converged offline updates, it loses
+   worse at the trainer's ~560 action rows per update.
+2. Interference is not the dominant mechanism at the early strata;
+   starvation + the noise floor is. The **search/expectation lane**
+   (privileged-search teacher / expectation-based targets, the
+   selective-distillation contingency below) **moves up the queue**.
+3. The batch-scale arm (raise `--update-interval`, SNR-maintenance
+   arithmetic recorded 2026-07-21 in conversation) remains the cheapest
+   in-loop lever consistent with these results; not yet commissioned.
+
 **Phase B — λ harvest** (fine-tune continues or restarts from A's best):
 λ 0.95 → 0.85 → 0.80, stepped.
 - GATE B0 (precondition): `play_follow_t02` + `play_t3plus` EV_ora ≥ 0.60
