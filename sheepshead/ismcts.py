@@ -141,6 +141,28 @@ class ISMCTSConfig:
     # the PUCT-best path.
     batch_size: int = 32
     virtual_loss: float = 1.0
+    # --- Root readout / selection experiments (Search_Readout_Comparison_202607) ---
+    # ``root_selection``: "puct" (default; legacy path, bit-identical) or "rm"
+    # (regret-matching root: after one forced visit per action, the root action
+    # is SAMPLED from the RM+ policy mixed with ``rm_gamma`` uniform, and the
+    # emitted ``pi_rm`` is the linearly-weighted average RM strategy). Interior
+    # nodes keep PUCT either way. RM's exploration never enters its target:
+    # forced/gamma visits update Q but ``pi_rm`` accumulates only sigma(regret+).
+    # Bandit-grade property only (opponent models are fixed): converges toward
+    # best response, not equilibrium.
+    root_selection: str = "puct"
+    rm_gamma: float = 0.10
+    # Gumbel-style completed-Q readout, emitted as ``pi_gumbel`` on every search
+    # (readout-only; never affects selection or ``pi``):
+    #   pi_gumbel(a) ∝ exp(log P_raw(a) + (c_visit + max_b N(b)) * c_scale * qhat(a))
+    # with qhat min-max normalized over root actions, unvisited actions completed
+    # with the visit-weighted mean Q, and P_raw the UNMIXED network prior
+    # (root_explore_frac never contaminates it). Adapted from Danihelka et al.
+    # 2022 to the belief-averaged determinized root. Visit counts enter only
+    # through the sigma scale (more visits -> sharper), so the forced-exploration
+    # floor cannot leak into the target mass.
+    gumbel_c_visit: float = 50.0
+    gumbel_c_scale: float = 0.1
 
 
 class _Node:
@@ -159,6 +181,41 @@ class _Node:
         self.visited: bool = False
         # In-flight virtual-loss visit counts per action (leaf-parallel batching).
         self.vloss: dict[int, int] = {}
+
+
+class _RootRM:
+    """Regret-matching (RM+) root state: cumulative positive regrets plus the
+    linearly-weighted average strategy (CFR+-style averaging). Updated once per
+    completed simulation from the root's current mean-Q table (all actions
+    visited); the average strategy is the ``pi_rm`` readout."""
+
+    __slots__ = ("regret", "strat_sum", "t")
+
+    def __init__(self, valid):
+        self.regret = {a: 0.0 for a in valid}
+        self.strat_sum = {a: 0.0 for a in valid}
+        self.t = 0
+
+    def sigma(self):
+        total = sum(self.regret.values())
+        if total <= 0.0:
+            n = len(self.regret)
+            return {a: 1.0 / n for a in self.regret}
+        return {a: r / total for a, r in self.regret.items()}
+
+    def update(self, q_norm):
+        sig = self.sigma()
+        self.t += 1
+        v_bar = sum(sig[a] * q_norm[a] for a in sig)
+        for a in sig:
+            self.regret[a] = max(self.regret[a] + q_norm[a] - v_bar, 0.0)
+            self.strat_sum[a] += self.t * sig[a]
+
+    def average(self):
+        total = sum(self.strat_sum.values())
+        if total <= 0.0:
+            return self.sigma()
+        return {a: s / total for a, s in self.strat_sum.items()}
 
 
 class _Sim:
@@ -215,6 +272,13 @@ class ISMCTSTeacher:
         # Per-search non-observer seat controllers (population grounding); None
         # or a missing seat -> self.agent (pure self-play).
         self._seat_policies: dict | None = None
+        # Root-readout transient state (reset in ``_search_inner``): the root
+        # node, the RM state (root_selection == "rm" only), and the running sum
+        # of RAW root priors for the pi_gumbel readout.
+        self._root: _Node | None = None
+        self._root_rm: _RootRM | None = None
+        self._root_praw: dict = {}
+        self._root_praw_writes = 0
         self.fail = defaultdict(int)
 
     def _controller(self, seat: int):
@@ -318,6 +382,12 @@ class ISMCTSTeacher:
         self._nodes = [root]
         self._qmin = math.inf
         self._qmax = -math.inf
+        self._root = root
+        self._root_rm = (
+            _RootRM(valid_real) if config.root_selection == "rm" else None
+        )
+        self._root_praw = {a: 0.0 for a in valid_real}
+        self._root_praw_writes = 0
         self.fail = defaultdict(int)
 
         # Build a belief-weighted pool of determinized worlds, then run the tree
@@ -606,6 +676,15 @@ class ISMCTSTeacher:
             )
             for action_id in valid_real
         }
+        root_prior = (
+            {
+                action_id: self._root_praw.get(action_id, 0.0)
+                / self._root_praw_writes
+                for action_id in valid_real
+            }
+            if self._root_praw_writes > 0
+            else None
+        )
         if counts.sum() <= 0.0:
             return dict(
                 pi=pi,
@@ -616,12 +695,20 @@ class ISMCTSTeacher:
                 valid=valid_real,
                 root_n=root_n,
                 root_q=root_q,
+                root_prior=root_prior,
+                pi_gumbel=None,
+                pi_rm=None,
             )
         powered = np.power(counts, 1.0 / self.config.tau_target)
         powered /= powered.sum()
         for action_id, prob in zip(valid_real, powered):
             pi[action_id - 1] = prob
         ok = ess >= self.config.ess_floor
+        pi_rm = None
+        if self._root_rm is not None:
+            pi_rm = np.zeros(self.action_size, dtype=np.float32)
+            for action_id, prob in self._root_rm.average().items():
+                pi_rm[action_id - 1] = prob
         return dict(
             pi=pi,
             ess=ess,
@@ -631,7 +718,45 @@ class ISMCTSTeacher:
             valid=valid_real,
             root_n=root_n,
             root_q=root_q,
+            root_prior=root_prior,
+            pi_gumbel=self._gumbel_readout(valid_real, counts, root_q, root_prior),
+            pi_rm=pi_rm,
         )
+
+    def _gumbel_readout(self, valid_real, counts, root_q, root_prior):
+        """Completed-Q root readout (``pi_gumbel``): softmax(log P_raw +
+        (c_visit + max N) * c_scale * qhat) over the legal set. Unvisited
+        actions are completed with the visit-weighted mean Q; qhat is min-max
+        normalized over the root actions (this codebase's Q convention; the
+        mctx transform differs slightly). Forced-exploration visits never enter
+        the target mass — only the sharpness scale."""
+        if root_prior is None:
+            return None
+        praw = np.array(
+            [root_prior[action_id] for action_id in valid_real], dtype=np.float64
+        )
+        q = np.array([root_q[action_id] for action_id in valid_real], dtype=np.float64)
+        visited = counts > 0.0
+        if not visited.any():
+            return None
+        v_mix = float((counts[visited] * q[visited]).sum() / counts[visited].sum())
+        q_completed = np.where(visited, q, v_mix)
+        qlo, qhi = float(q_completed.min()), float(q_completed.max())
+        qhat = (
+            (q_completed - qlo) / (qhi - qlo)
+            if qhi > qlo
+            else np.full_like(q_completed, 0.5)
+        )
+        scale = (
+            self.config.gumbel_c_visit + float(counts.max())
+        ) * self.config.gumbel_c_scale
+        logits = np.log(np.clip(praw, 1e-12, None)) + scale * qhat
+        z = np.exp(logits - logits.max())
+        z /= z.sum()
+        pi = np.zeros(self.action_size, dtype=np.float32)
+        for action_id, prob in zip(valid_real, z):
+            pi[action_id - 1] = prob
+        return pi
 
     @staticmethod
     def _infer_head(valid) -> str:
@@ -829,8 +954,16 @@ class ISMCTSTeacher:
             is_root = sim.depth == 0
             explore_frac = self.config.root_explore_frac
             n_legal = len(valid)
+            if is_root:
+                self._root_praw_writes += 1
             for action_id in valid:
                 prior = float(probs[action_id - 1])
+                if is_root:
+                    # Accumulate the UNMIXED prior for the pi_gumbel readout
+                    # before the explore_frac mix touches it.
+                    self._root_praw[action_id] = (
+                        self._root_praw.get(action_id, 0.0) + prior
+                    )
                 if is_root and explore_frac > 0.0:
                     prior = (1.0 - explore_frac) * prior + explore_frac / n_legal
                 node.P[action_id] = prior
@@ -846,7 +979,10 @@ class ISMCTSTeacher:
                 sim.phase = "rollout"
                 return
             following = self._is_following(sim.world, observer)
-            action_id = self._select_vl(node, valid, following)
+            if is_root and self._root_rm is not None:
+                action_id = self._select_root_rm(node, valid)
+            else:
+                action_id = self._select_vl(node, valid, following)
             node.vloss[action_id] = node.vloss.get(action_id, 0) + 1
             sim.path.append((node, action_id))
             sim.pending_action = action_id
@@ -863,6 +999,41 @@ class ISMCTSTeacher:
             completers.append(sim)
         if sim.world.is_done():
             self._finish_terminal(sim, observer)
+
+    def _select_root_rm(self, node, valid) -> int:
+        """RM+ root selection: force one visit per action first (a Q estimate
+        must exist for every action), then SAMPLE from the gamma-mixed RM
+        policy. Sampling is inherently diversifying, so root virtual loss is
+        moot here (still charged; harmless). Interior nodes always use PUCT."""
+        unvisited = [
+            a for a in valid if node.N.get(a, 0.0) + node.vloss.get(a, 0) <= 0
+        ]
+        if unvisited:
+            return unvisited[self._rng.randrange(len(unvisited))]
+        sigma = self._root_rm.sigma()
+        gamma = self.config.rm_gamma
+        n = len(valid)
+        draw = self._rng.random()
+        cum = 0.0
+        for action_id in valid:
+            cum += (1.0 - gamma) * sigma.get(action_id, 0.0) + gamma / n
+            if draw <= cum:
+                return action_id
+        return valid[-1]
+
+    def _rm_observe(self):
+        """One RM+ update from the root's current mean-Q table, min-max
+        normalized over the root actions. Called once per completed simulation;
+        no-op until every root action has a visit."""
+        root, rm = self._root, self._root_rm
+        if any(root.N.get(a, 0.0) <= 0.0 for a in rm.regret):
+            return
+        q = {a: root.W[a] / root.N[a] for a in rm.regret}
+        qlo, qhi = min(q.values()), max(q.values())
+        span = qhi - qlo
+        rm.update(
+            {a: ((v - qlo) / span if span > 0.0 else 0.5) for a, v in q.items()}
+        )
 
     def _select_vl(self, node, valid, following) -> int:
         """PUCT selection with virtual loss: an in-flight selected edge is charged
@@ -952,6 +1123,8 @@ class ISMCTSTeacher:
             backed *= self._gamma()
         sim.phase = "done"
         sim.value = value
+        if self._root_rm is not None and sim.path:
+            self._rm_observe()
 
     def _observe_completers_batched(self, completers):
         """Batched end-of-trick observe (advance every seat's memory) across the
