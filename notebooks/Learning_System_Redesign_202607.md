@@ -450,6 +450,11 @@ as sound as it gets short of expectation-based targets.
      between applied steps does not cancel: Adam renormalizes small
      noisy gradients and the PPO clip freezes early moves). Probe:
      full-size update = 41s / ~7–15 GB peak on 64 GB — both fine.
+     **AMENDED 2026-07-22 after OOM incident (see below): now
+     `--minibatch-episodes 128 --grad-accum`** — gradient accumulation
+     applies the SAME full-buffer step once per epoch with per-forward
+     memory bounded at 128 episodes. Step semantics of the design are
+     preserved exactly; only activation memory changes.
   3. λ stays at the default 0.95 (= v2) for the first ~250k, then a
      DECLARED restart with `--gae-lambda 0.85` gated on: duplicate h2h
      vs the 400k seed ≥ −0.05 AND a recorded lead-node adv_std baseline.
@@ -489,6 +494,27 @@ as sound as it gets short of expectation-based targets.
   flags at defaults = the v2 invocation: main-episodes 1M, anchor-coeff
   1.0, panel A, min/max generations 4/12, workers 8, empty-league
   bootstrap identical to v2's `seed_checkpoints: null`).
+
+**Incident 2026-07-22 — OOM at ~240k, root-caused and fixed.** The gen-1
+trainer was SIGKILLed at ~240k episodes (≈18h in) and on every resume
+(~2 min in, at the first update). Diagnosis (RSS tracing + faulthandler
+stack at the spike): the first full-buffer update in oracle+anchor mode
+peaks ~40 GB — the with-grad oracle forward (51 tokens/step) plus the
+anchor reference forward over a max-length-padded minibatch whose
+segment lengths turned heterogeneous once tables mixed (mostly
+~35-event hero streams + occasional ~175-event self-table streams:
+B×T_max jumped ~5×, from ~80k to ~400k padded steps — exactly at the
+episode where 4-member mixed tables appeared, explaining the original
+death location). The pre-launch memory probe missed it by testing
+limited-mode/no-anchor/homogeneous lengths (14.2 GB). The user's
+concurrent analysis job likely set the final tipping point at 18:03 but
+the peak was marginal-to-fatal on 64 GB regardless. FIX: gradient
+accumulation (`update(grad_accum=True)`) — row-fraction-scaled
+minibatch backwards, ONE optimizer step per epoch: the design's
+full-buffer step exactly, memory bounded by `--minibatch-episodes 128`.
+Default-off, historical path bit-identical (test + 34/34 goldens).
+Verified live: post-fix first update completed at Ep 201,430, 10 GB
+peak, 4.5 eps/s. ~40k episodes lost to the 200k checkpoint on resume.
 
 **Comparison protocol — matched-endpoint, NOT matched-machinery:** the
 current league differs from the v2 run's (duplicate-bridge gate
