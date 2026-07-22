@@ -406,6 +406,90 @@ partner/defender lead strategy still fails to decouple and pin. Rationale
 recorded in Convention_Erosion_202607 (distillation = zero-noise
 role-conditional credit + off-policy-in-action re-ignition at mass 0.004).
 
+## Batch+λ SNR arm (pre-registered 2026-07-21, operator-approved; not yet launched)
+
+**Hypothesis under test:** rare-node policy-gradient SNR is the binding
+constraint on role differentiation (partner-vs-defender lead conventions
+decoupling and pinning). This arm tests it at the strongest dose the
+current levers compose to; a fail is therefore close to a falsification,
+not an underdose (the reason the operator chose the composed arm over
+batch-only at ~2 days / 1M episodes).
+
+Dose arithmetic (2026-07-21 conversation, recorded): per-row SNR at
+partner-lead nodes ≈ Δ/σ = 0.24/1.0; at update-interval 2048 (~80 eps,
+~3.4 partner-lead rows/update) an update is ~0.45σ. 8× (16,384, ~640
+eps) ⇒ ~1.3σ; composed with λ-harvest (σ 1.0 → ~0.6 via critic
+bootstrap) ⇒ ~2σ-equivalent (≈ the 20× batch-only threshold). Values at
+these nodes are already correct and ecology-invariant (Convention-Erosion
+rung 1); the failure mode is noisy-overwrite oscillation, which per-step
+averaging attacks directly. The bake-off (above) additionally certified
+the critic's early-node EV as data-supported — λ bootstrapping from it is
+as sound as it gets short of expectation-based targets.
+
+**Design (single arm, matched-endpoint comparison):**
+- Start: `runs/league_arch_perceiver-shared-v2/warmstart_perceiver-shared-v2_400k.pt`
+  — the SAME 400k selfplay seed as the v2 league, arch
+  perceiver-shared-v2, critic-mode oracle, seed 42, leaster-watchdog on,
+  all cadences as the v2 orchestrator invocation (main-episodes 1M,
+  schedule-horizon 20M, workers 8).
+- Changes vs that baseline (all flags, no code defaults touched):
+  1. `--update-interval 16384` (transitions; ~640 episodes/update).
+  2. `--trainer-args "--minibatch-episodes 1024 …"` — keeps every
+     optimizer step full-buffer. The historical 256-episode cap never
+     bound at 2048 but WOULD bind at 16,384, silently reintroducing
+     minibatching and cutting the per-step gain to ~3.2×/√≈1.8
+     (noise between applied steps does not cancel: Adam renormalizes
+     small noisy gradients and the PPO clip freezes early moves).
+  3. λ stays at the default 0.95 (= v2) for the first ~250k, then a
+     DECLARED restart with `--gae-lambda 0.85` gated on: duplicate h2h
+     vs the 400k seed ≥ −0.05 AND a recorded lead-node adv_std baseline.
+     Post-step check: lead-node adv_std down ≥ 20% within 2 probes,
+     else revert to 0.95 (λ-harvest inert ⇒ batch-only continuation).
+  4. Exploiter re-entry amendment (operator, 2026-07-21; commits
+     0db57fc/d647404): `--exploiter-full-table --exploiter-patched-ema
+     0.35` in trainer-args. Gated exploiters re-enter sampling as WHOLE
+     tables — one edge-weighted exploiter in all four opponent seats at
+     the historical edge-scaled share (cap 0.30 × edge/0.30), so
+     role/coordination exploits express against the hero regardless of
+     seat assignment; expected exploiter seat mass unchanged vs per-seat
+     mixing, only concentrated. Patched retirement: live outcome EMA
+     < 0.35 with ≥ 200 samples demotes to past_main (checked at PPO-update
+     cadence), so a patched exploit stops burning its frozen-edge share
+     before the 3-generation age floor. Expression check pre-registered:
+     if realized hero deficit on exploiter tables sits far below the gate
+     edge, the all-exploiter field is muting the exploit (it was gated in
+     a main-only field) ⇒ fall back to per-seat seating.
+- Launch shape (orchestrator):
+  `python -m sheepshead.training.run_extended_league --resume <400k seed>
+  --run-name league_snr_batchlam --update-interval 16384 --critic-mode
+  oracle --leaster-watchdog --seed 42 --trainer-args "--minibatch-episodes
+  1024 --exploiter-full-table --exploiter-patched-ema 0.35"` (+ the v2
+  cadence flags and league seeding).
+
+**Comparison protocol — matched-endpoint, NOT matched-machinery:** the
+current league differs from the v2 run's (duplicate-bridge gate
+instruments, this amendment), and v2's single seed makes trajectory
+pairing illusory regardless. Comparisons are offline at matched episode
+counts: duplicate h2h vs the 400k seed and vs v2 checkpoints
+(1M/2M), stratified critic EV, role-coupling probe.
+
+**Endpoints & rules:**
+- Primary (the B2 criterion): partner trump-lead reaches AND HOLDS ≥ 0.5
+  (exception-aware band) with defender ≤ 0.10 across ≥ 150k episodes —
+  decoupled pinning, not a shared excursion — judged on the
+  role-coupling-probe trajectory by 2M.
+- Secondary: duplicate h2h vs v2 at matched episodes ≥ 0.00 − 0.02
+  (non-inferiority: SNR machinery must not cost strength); oscillation
+  half-life of convention excursions vs v2's telemetry.
+- Kill rules: duplicate h2h vs the 400k seed ≤ −0.10 at the 500k probe;
+  leaster-watchdog trip + failure to recover within 100k; greedy-health
+  gate streaks (orchestrator default).
+- Outcome mapping: pin ⇒ SNR hypothesis confirmed, campaign config found.
+  Improved half-life without pinning ⇒ SNR necessary-not-sufficient ⇒
+  selective-distillation contingency activates (its trigger condition —
+  "SNR demonstrably improved but B2 fails" — is exactly this branch).
+  No improvement ⇒ SNR falsified at 2σ dose ⇒ search/expectation lane.
+
 ## Implementation notes
 
 - All loss/sampling changes behind config flags defaulting to historical
