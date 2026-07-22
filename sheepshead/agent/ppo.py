@@ -1572,11 +1572,21 @@ class PPOAgent:
         bury_idx_tensor_static,
         play_idx_tensor_static,
         acc,
+        defer_step=False,
+        loss_scale=1.0,
     ):
         """Per-minibatch body of the stage-(b) epoch loop in
         _run_update_epochs: losses, then backward + grad clip + optimizer
         step for up to three optimizers. Mutates ``acc`` in place; the
-        caller owns the early-stop check."""
+        caller owns the early-stop check.
+
+        ``defer_step`` (gradient accumulation): backward WITHOUT zeroing
+        or stepping — the caller zeroes once per epoch and steps once
+        after the minibatch loop, so the applied step is the full-buffer
+        gradient while per-forward activation memory stays bounded by
+        ``batch_size``. ``loss_scale`` (rows in this minibatch / rows in
+        the buffer) converts the sum of per-minibatch mean losses into
+        the full-buffer mean."""
         # Bidding-head KL anchor: frozen-reference logits on the same
         # minibatch (no grad), flattened to the action rows like the
         # policy logits above.
@@ -1764,6 +1774,10 @@ class PPOAgent:
         )
         if oracle_loss is not None:
             total_loss = total_loss + self.oracle_value_loss_coeff * oracle_loss
+        if defer_step:
+            (total_loss * loss_scale).backward()
+            acc.backward_time += time.time() - t_bwd
+            return
         self.actor_optimizer.zero_grad()
         self.critic_optimizer.zero_grad()
         if oracle_active:
@@ -1772,6 +1786,11 @@ class PPOAgent:
         acc.backward_time += time.time() - t_bwd
 
         t_step = time.time()
+        self._clip_and_step(oracle_active)
+        acc.step_time += time.time() - t_step
+        acc.optimizer_steps += 1
+
+    def _clip_and_step(self, oracle_active):
         torch.nn.utils.clip_grad_norm_(
             self.actor.parameters(), self.max_grad_norm
         )
@@ -1788,15 +1807,20 @@ class PPOAgent:
                 self.oracle_critic.parameters(), self.max_grad_norm
             )
             self.oracle_optimizer.step()
-        acc.step_time += time.time() - t_step
-        acc.optimizer_steps += 1
 
     def _run_update_epochs(
-        self, epochs, batch_size, oracle_active
+        self, epochs, batch_size, oracle_active, grad_accum=False
     ) -> "_UpdateEpochAccumulator":
         """Stage (b) of update(): static index tensors + segment prep, then
         the epoch/minibatch loop (forward, per-minibatch losses/backward/
-        step via _update_minibatch). Returns the accumulated scalars."""
+        step via _update_minibatch). Returns the accumulated scalars.
+
+        ``grad_accum``: accumulate minibatch gradients (row-fraction
+        scaled) across the epoch and apply ONE optimizer step per epoch —
+        the full-buffer step of the batch-SNR design with activation
+        memory bounded by ``batch_size``. The KL early-stop is then
+        evaluated between epochs (a mid-epoch break would abandon
+        accumulated gradients)."""
         # Build static views and segments
         t_build_start = time.time()
         states, masks_t, kinds = self._prepare_training_views()
@@ -1818,10 +1842,18 @@ class PPOAgent:
         anchor_active = self._anchor_agent is not None and self.anchor_coeff > 0.0
         acc.anchor_active = anchor_active
 
+        total_rows = sum(1 for k in kinds if k == "action")
+
         for _ in range(epochs):
             if not segments:
                 break
             perm = torch.randperm(len(segments))
+            if grad_accum:
+                self.actor_optimizer.zero_grad()
+                self.critic_optimizer.zero_grad()
+                if oracle_active:
+                    self.oracle_optimizer.zero_grad()
+            stepped_any = False
             for mb_start in range(0, len(segments), batch_size):
                 batch_idxs = perm[mb_start : mb_start + batch_size].tolist()
                 batch = [segments[i] for i in batch_idxs]
@@ -1843,6 +1875,7 @@ class PPOAgent:
                 if flat is None:
                     continue
 
+                mb_rows = int(minibatch.is_action_bt.sum().item())
                 self._update_minibatch(
                     batch,
                     kinds,
@@ -1856,12 +1889,29 @@ class PPOAgent:
                     bury_idx_tensor_static,
                     play_idx_tensor_static,
                     acc,
+                    defer_step=grad_accum,
+                    loss_scale=(mb_rows / max(total_rows, 1)) if grad_accum else 1.0,
                 )
+                stepped_any = True
 
-                # Early stop further updates in this epoch if KL exceeds threshold
-                if self.target_kl is not None and acc.last_approx_kl > self.target_kl:
+                # Early stop further updates in this epoch if KL exceeds
+                # threshold (per-step mode only; in grad-accum mode a
+                # mid-epoch break would abandon accumulated gradients).
+                if (
+                    not grad_accum
+                    and self.target_kl is not None
+                    and acc.last_approx_kl > self.target_kl
+                ):
                     acc.early_stop_triggered = True
                     break
+
+            if grad_accum and stepped_any:
+                t_step = time.time()
+                self._clip_and_step(oracle_active)
+                acc.step_time += time.time() - t_step
+                acc.optimizer_steps += 1
+                if self.target_kl is not None and acc.last_approx_kl > self.target_kl:
+                    acc.early_stop_triggered = True
 
             if acc.early_stop_triggered:
                 break
@@ -1964,16 +2014,22 @@ class PPOAgent:
             },
         }
 
-    def update(self, epochs=6, batch_size=256):
+    def update(self, epochs=6, batch_size=256, grad_accum=False):
         """Update actor and critic networks using PPO with recurrent unrolling.
         Includes performance optimisations and per-update timing logs.
+
+        ``grad_accum``: accumulate gradients across the epoch's minibatches
+        and step once per epoch (full-buffer step, bounded memory). Default
+        False preserves the historical per-minibatch stepping exactly.
         """
         t_update_start = time.time()
         if len(self.events) == 0:
             return {}
 
         targets = self._compute_update_targets()
-        acc = self._run_update_epochs(epochs, batch_size, targets.oracle_active)
+        acc = self._run_update_epochs(
+            epochs, batch_size, targets.oracle_active, grad_accum=grad_accum
+        )
         return self._collect_update_stats(t_update_start, targets, acc)
 
     def save(self, filepath):
