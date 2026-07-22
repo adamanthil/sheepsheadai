@@ -39,6 +39,13 @@ Usage (from repo root):
     uv run python -m sheepshead.analysis.diagnostics.oracle_moe_offline \\
         train --dataset runs/oracle_moe_offline/dataset.pt --ckpt <ckpt> \\
         --out runs/oracle_moe_offline/results.json
+    uv run python -m sheepshead.analysis.diagnostics.oracle_moe_offline \\
+        bootstrap --run-dir runs/oracle_moe_offline
+
+``bootstrap`` (requires ``train --save-nets``) evaluates every arm on the
+same test rows and paired-bootstraps episodes for 95% CIs on per-stratum
+EV and on the arm deltas — the deal-sampling noise is common to all arms,
+so the deltas are much tighter than the EVs themselves.
 """
 
 from __future__ import annotations
@@ -524,6 +531,133 @@ def cmd_train(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------- #
+# bootstrap: paired episode-level CIs over the saved arms
+# ------------------------------------------------------------------------- #
+
+
+def cmd_bootstrap(args) -> int:
+    from collections import defaultdict
+
+    from sheepshead.agent.oracle import OracleValueNetwork
+    from sheepshead.agent.ppo import device, load_agent
+
+    run_dir = Path(args.run_dir)
+    data = torch.load(run_dir / "dataset.pt", weights_only=False)
+    test = [ep for i, ep in enumerate(data["episodes"]) if i % 10 == 0]
+    print(f"test episodes: {len(test)}", flush=True)
+
+    agent = load_agent(data["ckpt"] if args.ckpt is None else args.ckpt)
+    ref_net = agent.oracle_critic
+    ref_net.eval()
+    shared_net = OracleValueNetwork().to(device)
+    shared_net.load_state_dict(
+        torch.load(run_dir / "shared.pt", weights_only=True)
+    )
+    shared_net.eval()
+    experts = []
+    for g in GROUPS:
+        net = OracleValueNetwork().to(device)
+        net.load_state_dict(
+            torch.load(run_dir / f"moe_{g}.pt", weights_only=True)
+        )
+        net.eval()
+        experts.append(net)
+
+    arms = ("ref", "shared", "moe")
+    rows = []  # (ep_idx, g, {arm: v}, strata)
+    with torch.no_grad():
+        for i in range(0, len(test), args.batch_size):
+            chunk = test[i : i + args.batch_size]
+            seqs = [ep["obs"] for ep in chunk]
+            v_ref = ref_net.forward_sequences(seqs, device=device)
+            v_sh = shared_net.forward_sequences(seqs, device=device)
+            v_ex = [n.forward_sequences(seqs, device=device) for n in experts]
+            for b, ep in enumerate(chunk):
+                for t, is_a in enumerate(ep["is_action"]):
+                    if is_a:
+                        gr = ep["group"][t]
+                        rows.append((
+                            i + b,
+                            ep["g"][t],
+                            {
+                                "ref": float(v_ref[b, t]),
+                                "shared": float(v_sh[b, t]),
+                                "moe": float(v_ex[gr][b, t]),
+                            },
+                            ep["strata"][t],
+                        ))
+    print(f"{len(rows)} action rows", flush=True)
+
+    strata_names = [s for s in ORDER if any(s in r[3] for r in rows)]
+    by_stratum, stratum_ep_rows = {}, {}
+    for s in strata_names:
+        idx = [r for r in rows if s in r[3]]
+        by_stratum[s] = (
+            np.array([r[1] for r in idx]),
+            {a: np.array([r[2][a] for r in idx]) for a in arms},
+        )
+        d = defaultdict(list)
+        for j, r in enumerate(idx):
+            d[r[0]].append(j)
+        stratum_ep_rows[s] = {e: np.array(js) for e, js in d.items()}
+    ep_index = np.array(sorted({r[0] for r in rows}))
+
+    def ev(g, v):
+        if len(g) < 20 or np.var(g) < 1e-9:
+            return float("nan")
+        return float(1.0 - np.var(g - v) / np.var(g))
+
+    rng = np.random.default_rng(args.seed)
+    boot = {s: {a: [] for a in arms} for s in strata_names}
+    for _ in range(args.resamples):
+        sample = rng.choice(ep_index, size=len(ep_index), replace=True)
+        for s in strata_names:
+            er = stratum_ep_rows[s]
+            js = [er[e] for e in sample if e in er]
+            g, vals = by_stratum[s]
+            if not js:
+                for a in arms:
+                    boot[s][a].append(float("nan"))
+                continue
+            js = np.concatenate(js)
+            for a in arms:
+                boot[s][a].append(ev(g[js], vals[a][js]))
+
+    def ci(xs):
+        return [
+            float(np.nanpercentile(xs, 2.5)),
+            float(np.nanpercentile(xs, 97.5)),
+        ]
+
+    out = {}
+    for s in strata_names:
+        g, vals = by_stratum[s]
+        entry = {"n": len(g)}
+        for a in arms:
+            entry[a] = {"ev": ev(g, vals[a]), "ci95": ci(np.array(boot[s][a]))}
+        for a1, a2 in (("moe", "shared"), ("shared", "ref"), ("moe", "ref")):
+            d = np.array(boot[s][a1]) - np.array(boot[s][a2])
+            entry[f"d_{a1}_minus_{a2}"] = {
+                "delta": entry[a1]["ev"] - entry[a2]["ev"],
+                "ci95": ci(d),
+            }
+        out[s] = entry
+
+    (run_dir / "bootstrap.json").write_text(json.dumps(out, indent=2))
+    print(f"\n{'stratum':<30}{'n':>7}{'moe-shared':>24}{'shared-ref':>24}")
+    for s in strata_names:
+        e = out[s]
+        d1, d2 = e["d_moe_minus_shared"], e["d_shared_minus_ref"]
+        print(
+            f"{s:<30}{e['n']:>7}"
+            f"  {d1['delta']:+.3f} [{d1['ci95'][0]:+.3f},{d1['ci95'][1]:+.3f}]"
+            f"  {d2['delta']:+.3f} [{d2['ci95'][0]:+.3f},{d2['ci95'][1]:+.3f}]"
+        )
+    print(f"\nwrote {run_dir / 'bootstrap.json'}")
+    return 0
+
+
 def _print_report(rep: dict):
     print(f"  {'stratum':<28}{'n':>7}{'EV':>8}")
     for s in ORDER:
@@ -559,6 +693,14 @@ def main() -> int:
     t.add_argument("--save-nets", action="store_true")
     t.add_argument("--out", required=True)
     t.set_defaults(fn=cmd_train)
+
+    b = sub.add_parser("bootstrap", help="paired episode-level CIs")
+    b.add_argument("--run-dir", required=True)
+    b.add_argument("--ckpt", default=None, help="override ref checkpoint")
+    b.add_argument("--batch-size", type=int, default=48)
+    b.add_argument("--resamples", type=int, default=1000)
+    b.add_argument("--seed", type=int, default=20260721)
+    b.set_defaults(fn=cmd_bootstrap)
 
     args = ap.parse_args()
     return args.fn(args)
