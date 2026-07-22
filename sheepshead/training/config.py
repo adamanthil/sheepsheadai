@@ -159,6 +159,22 @@ class LeagueConfig:
     # Exploiter retirement: demote to past_main purely on age. Guarantees every
     # inserted exploiter exploiter_retire_generations of seat time (the floor).
     exploiter_retire_generations: int = 3
+    # Whole-table exploiter pressure (Learning_System_Redesign batch-λ arm,
+    # 2026-07-21): when True, the per-seat exploiter component of the
+    # historical mixture is replaced — with the same exploiter_share()
+    # probability the table is ALL one edge-weighted exploiter, so a role- or
+    # coordination-based exploit expresses against the hero from every
+    # relative seat whenever the exploiter is seated at all. Expected
+    # exploiter seat mass is unchanged (share × 4 seats either way); only the
+    # correlation structure concentrates. False = historical per-seat mixing.
+    exploiter_full_table: bool = False
+    # Exploit-patched retirement: demote an exploiter to past_main once its
+    # live outcome EMA vs the training agent shows the exploit no longer wins
+    # (EMA below this with >= exploiter_patched_min_samples). Without it the
+    # FROZEN gate-edge seat share keeps burning episodes for the full age
+    # floor after the hero adapts. None = disabled (historical behavior).
+    exploiter_patched_ema: float | None = None
+    exploiter_patched_min_samples: int = 200
     # Learning_System_Redesign_202607 table composition: when set, replaces the
     # per-seat PFSP/self-play/exploiter mixture entirely — with this
     # probability a table is ALL frozen current-self; otherwise all four seats

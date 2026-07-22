@@ -231,6 +231,7 @@ class League:
             if old:
                 m.meta.role = ROLE_PAST_MAIN
                 self._save_member(m)
+        self.retire_patched_exploiters()
 
         past = sorted(
             self.by_role(ROLE_PAST_MAIN),
@@ -250,6 +251,26 @@ class League:
         for m in past:
             if id(m) not in keep:
                 self._delete_member(m)
+
+    def retire_patched_exploiters(self) -> list[str]:
+        """Demote exploiters whose live outcome EMA vs the training agent
+        shows the exploit no longer wins (config.exploiter_patched_ema;
+        None = disabled). Runs inside _manage_size, and the trainer also
+        calls it at PPO-update cadence so a patched exploiter stops burning
+        its frozen-edge seat share mid-generation rather than waiting for
+        the age floor."""
+        if self.config.exploiter_patched_ema is None:
+            return []
+        retired = []
+        for m in self.by_role(ROLE_MAIN_EXPLOITER):
+            if (
+                m.exploitation_samples >= self.config.exploiter_patched_min_samples
+                and m.exploitation_win_rate_ema < self.config.exploiter_patched_ema
+            ):
+                m.meta.role = ROLE_PAST_MAIN
+                self._save_member(m)
+                retired.append(m.member_id)
+        return retired
 
     # ------------------------------------------------------------------
     # Table sampling (plan §3.3)
@@ -276,6 +297,16 @@ class League:
         p_self = self.config.self_play_share
         pool_past = self.by_role(ROLE_PAST_MAIN) + self.by_role(ROLE_HOF_ANCHOR)
         pool_exp = self.by_role(ROLE_MAIN_EXPLOITER)
+        if self.config.exploiter_full_table:
+            # Whole-table exploiter pressure: same share, concentrated — one
+            # edge-weighted exploiter fills every opponent seat, so the hero
+            # is the only main-like player and role-based exploits land on it
+            # regardless of seat assignment. Per-seat mixing is disabled.
+            if pool_exp and rng.random() < p_exp:
+                pick = self._sample_exploiter(pool_exp, set(), rng)
+                if pick is not None:
+                    return [pick] * n_seats
+            p_exp = 0.0
         seats: list = []
         used: set[str] = set()
         for _ in range(n_seats):
