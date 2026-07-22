@@ -63,6 +63,7 @@ import argparse
 import csv
 import glob
 import json
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -386,6 +387,8 @@ class Orchestrator:
         ]
         if a.leaster_watchdog:
             cmd.append("--leaster-watchdog")
+        if a.trainer_args:
+            cmd += shlex.split(a.trainer_args)
         if a.smoke:
             cmd += ["--anchor-eval-ckpt", ""]
         if g == 1:
@@ -897,6 +900,13 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="forward --leaster-watchdog to every generation's trainer "
         "(anchor-free PASS-collapse guard; see leaster_watchdog.py)",
+    )
+    p.add_argument(
+        "--trainer-args",
+        default="",
+        help="extra flags appended verbatim to every generation's "
+        "train_league_ppo invocation (e.g. '--minibatch-episodes 1024 "
+        "--exploiter-full-table --exploiter-patched-ema 0.35')",
     )
     p.add_argument(
         "--anchor-coeff",
