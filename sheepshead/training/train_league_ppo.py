@@ -488,6 +488,7 @@ def run_main_phase(
                 stats = training_agent.update(
                     epochs=4,
                     batch_size=getattr(args, "minibatch_episodes", 256),
+                    grad_accum=getattr(args, "grad_accum", False),
                 )
                 tx_counter.count = 0
                 for mid in league.retire_patched_exploiters():
@@ -853,6 +854,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "the training agent falls below this (with enough samples) — the "
         "exploit is patched, stop paying its seat share (default: age-based "
         "retirement only)",
+    )
+    ap.add_argument(
+        "--grad-accum",
+        action="store_true",
+        help="accumulate minibatch gradients (row-fraction scaled) and step "
+        "once per epoch: the full-buffer optimizer step of the batch-SNR "
+        "design with activation memory bounded by --minibatch-episodes. "
+        "Required at large --update-interval — a single full-buffer forward "
+        "in oracle+anchor mode OOMs (observed ~40GB at 16,384 rows with "
+        "mixed-length segments)",
     )
     ap.add_argument(
         "--minibatch-episodes",
