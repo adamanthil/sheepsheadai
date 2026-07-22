@@ -485,8 +485,13 @@ def run_main_phase(
                 apply_schedules(episode, ctx)
                 if watchdog is not None:
                     watchdog.tick(training_agent, leaster_window)
-                stats = training_agent.update(epochs=4, batch_size=256)
+                stats = training_agent.update(
+                    epochs=4,
+                    batch_size=getattr(args, "minibatch_episodes", 256),
+                )
                 tx_counter.count = 0
+                for mid in league.retire_patched_exploiters():
+                    print(f"🩹 Exploiter {mid} patched (EMA collapsed); retired")
                 if pool is not None:
                     publish_weights(ctx)
                 if stats:
@@ -832,6 +837,33 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "the recency window + HOF floor (default: historical per-seat "
         "PFSP/self/exploiter sampling)",
     )
+    ap.add_argument(
+        "--exploiter-full-table",
+        action="store_true",
+        help="whole-table exploiter pressure (Learning_System_Redesign batch-λ "
+        "arm): with the usual edge-scaled share a table is ALL one gated "
+        "exploiter instead of per-seat mixing, so role-based exploits land on "
+        "the hero every time the exploiter is seated at all",
+    )
+    ap.add_argument(
+        "--exploiter-patched-ema",
+        type=float,
+        default=None,
+        help="retire an exploiter to past_main once its live outcome EMA vs "
+        "the training agent falls below this (with enough samples) — the "
+        "exploit is patched, stop paying its seat share (default: age-based "
+        "retirement only)",
+    )
+    ap.add_argument(
+        "--minibatch-episodes",
+        type=int,
+        default=256,
+        help="episodes per PPO optimizer step (PPOAgent.update batch_size). "
+        "The historical 256 never binds at update-interval 2048 (~80-episode "
+        "buffers), making every step full-buffer; when raising "
+        "--update-interval, raise this too or the cap silently reintroduces "
+        "minibatching and forfeits the per-step SNR the bigger buffer buys",
+    )
     ap.add_argument("--anchor-ref", default=None)
     ap.add_argument(
         "--anchor-eval-ckpt",
@@ -877,6 +909,19 @@ def main():
         print(
             f"🎲 Table-level composition ON: {args.table_self_play:.0%} pure-self "
             "tables, remainder uniform window (PFSP/EMA/exploiter seating off)"
+        )
+    if args.exploiter_full_table:
+        league_config.exploiter_full_table = True
+        print(
+            "🥷 Whole-table exploiter pressure ON: edge-scaled share of tables "
+            "are ALL one gated exploiter (per-seat exploiter mixing off)"
+        )
+    if args.exploiter_patched_ema is not None:
+        league_config.exploiter_patched_ema = args.exploiter_patched_ema
+        print(
+            f"🩹 Exploit-patched retirement ON: EMA < {args.exploiter_patched_ema} "
+            f"with ≥ {league_config.exploiter_patched_min_samples} samples "
+            "demotes to past_main"
         )
     league = League(args.league_dir, league_config)
     if len(league) == 0 and args.migrate_from:
