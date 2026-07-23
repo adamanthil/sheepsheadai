@@ -516,6 +516,16 @@ Default-off, historical path bit-identical (test + 34/34 goldens).
 Verified live: post-fix first update completed at Ep 201,430, 10 GB
 peak, 4.5 eps/s. ~40k episodes lost to the 200k checkpoint on resume.
 
+**500k kill probe (2026-07-23): PASS.** Duplicate-bridge h2h of the 500k
+checkpoint vs the 400k seed: edge **−0.068 ± 0.018** (called −0.070 / jd
+−0.066, 2,000 deals; `orchestrator/killprobe_500k_vs_seed.json`) — clear
+of the ≤ −0.10 kill rule, and lineage-normal: v2's gen-1 ENDPOINT (1M)
+measured −0.086 ± 0.013 vs this same seed on this same instrument, so
+the arm at 500k is tracking the ordinary anchored-gen-1 dip, slightly
+ahead of v2's pace. Run state at probe: ev_ora 0.14–0.16 (climbing),
+ev_lim ≈ −0.02 (see limited-critic variance-composition note in
+conversation record), leaster 0.3–0.5%, ALONE 25–32%, 4.4 eps/s.
+
 **Comparison protocol — matched-endpoint, NOT matched-machinery:** the
 current league differs from the v2 run's (duplicate-bridge gate
 instruments, this amendment), and v2's single seed makes trajectory
