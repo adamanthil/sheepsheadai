@@ -582,11 +582,15 @@ own. Team-points format decision: loss MASKED on leaster and pre-pick
 rows — leaster "teams" are 5 singletons, so the target degenerates to
 `points_taken_rel`, which is already an explicit context input (identity
 task, no binding value, and a 5-vs-2 format mismatch); alone hands kept
-(picker team = picker alone, well-defined). Bury excluded from the
-picker-team total (constant known input all game — teaches nothing
-about assembly; the head's value is forcing the transformer to assemble
-current team point state at every timestamp, which translates directly
-to terminal score). Coefficients mirror the limited critic's
+(picker team = picker alone, well-defined). Bury INCLUDED in the
+picker-team total, as it stands at the timestamp (operator amendment
+2026-07-24, before any results seen — first launch was killed ~1 epoch
+in and restarted with the corrected label): the target should be the
+quantity that determines who is/will be winning, and the bury's points
+are the picker team's from the moment they're buried; the head's value
+is forcing the transformer to assemble current team point state at
+every timestamp, which translates directly to terminal score. Defender
+total stays trick-based. Coefficients mirror the limited critic's
 (partner 0.1, points 0.2); early stop selects on val value-MSE only
 (heads are scaffolding, not the objective). Protocol otherwise
 IDENTICAL to the shared arm (same dataset/splits/lr/batch/patience) so

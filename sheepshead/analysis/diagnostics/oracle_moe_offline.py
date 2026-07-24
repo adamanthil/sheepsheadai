@@ -32,7 +32,8 @@ oracle observations, empirical discounted return G — identical semantics to
              picker/defender team points-so-far (2-dim, /120). Team loss
              is masked on leaster and pre-pick rows — leaster "teams" are
              singletons, so the target degenerates to points_taken_rel,
-             an explicit input. Bury excluded (constant known input).
+             an explicit input. The picker team INCLUDES the bury as it
+             stands at the timestamp (it determines who is winning).
              Coefficients mirror the limited critic (0.1 / 0.2); early
              stopping selects on val value-MSE only.
 
@@ -74,6 +75,12 @@ import numpy as np
 import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead.game import CARD_POINTS, DECK_IDS
+
+# Card id -> point value (id 0 = pad -> 0), for bury points in aux labels.
+_ID_POINTS = np.zeros(max(DECK_IDS.values()) + 1)
+for _card, _cid in DECK_IDS.items():
+    _ID_POINTS[_cid] = CARD_POINTS.get(_card, 0)
 
 GROUPS = ["pick", "partner", "bury", "play_t02", "play_t3plus"]
 
@@ -308,7 +315,10 @@ def _forward_aux_batch(net, eps: list[dict], device):
 def _aux_label_tensors(eps: list[dict], B: int, T: int, device):
     """Exact labels from the full-info obs: partner seat (6-way) and
     picker/defender team points-so-far (/120, masked on leaster and
-    pre-pick rows where teams are degenerate or undefined)."""
+    pre-pick rows where teams are degenerate or undefined). The picker
+    team includes the bury as it stands at the timestamp (operator
+    amendment 2026-07-24: the bury matters for who is/will be winning);
+    the defender total stays trick-based."""
     partner = torch.zeros((B, T), dtype=torch.long, device=device)
     team = torch.zeros((B, T, 2), device=device)
     team_mask = torch.zeros((B, T), dtype=torch.bool, device=device)
@@ -319,11 +329,14 @@ def _aux_label_tensors(eps: list[dict], B: int, T: int, device):
             partner[b, t] = sp
             if pk > 0 and not bool(ob["is_leaster"]):
                 pts = np.asarray(ob["points_taken_rel"], dtype=np.float64)
-                tp = float(pts[pk - 1])
+                tp_tricks = float(pts[pk - 1])
                 if sp > 0 and sp != pk:
-                    tp += float(pts[sp - 1])
-                team[b, t, 0] = tp / 120.0
-                team[b, t, 1] = (float(pts.sum()) - tp) / 120.0
+                    tp_tricks += float(pts[sp - 1])
+                bury_pts = float(
+                    _ID_POINTS[np.asarray(ob["bury_ids"]).ravel()].sum()
+                )
+                team[b, t, 0] = (tp_tricks + bury_pts) / 120.0
+                team[b, t, 1] = (float(pts.sum()) - tp_tricks) / 120.0
                 team_mask[b, t] = True
     return partner, team, team_mask
 
