@@ -115,13 +115,16 @@ def collect(agent, frozen, episodes: int, chunk: int) -> list[dict]:
             for t, a in enumerate(ep_actions):
                 st = a["state"]
                 trick_ids = np.asarray(st["trick_card_ids"]).ravel()
+                # rel-seat convention: 0 = none/unknown, 1 = SELF (fixed
+                # 2026-07-24; the old 0-means-self reading scrambled the
+                # partner/defender substrata).
                 picker_rel = int(st["picker_rel"])
                 partner_rel = int(st["partner_rel"])
-                if picker_rel == 0:
+                if picker_rel == 1:
                     role = "picker"
                 elif float(a.get("secret_partner", 0.0)) > 0.5:
                     role = "secret_partner"
-                elif partner_rel == 0:
+                elif partner_rel == 1:
                     role = "partner"
                 else:
                     role = "defender"

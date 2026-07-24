@@ -133,12 +133,15 @@ def _strata_of(row: dict) -> list[str]:
 _W: dict = {}
 
 
-def _worker_init(ckpt: str):
+def _worker_init(init_args):
     from sheepshead.agent.ppo import load_agent
 
+    ckpt, gamma = init_args
     torch.set_num_threads(1)
     _W["agent"] = load_agent(ckpt)
     _W["frozen"] = load_agent(ckpt)
+    if gamma is not None:
+        _W["agent"].gamma = float(gamma)
 
 
 def _worker_episodes(task) -> list[dict]:
@@ -186,13 +189,17 @@ def _worker_episodes(task) -> list[dict]:
                     continue
                 st = ev["state"]
                 trick_ids = np.asarray(st["trick_card_ids"]).ravel()
+                # rel-seat convention: 0 = none/unknown, 1 = SELF (fixed
+                # 2026-07-24 — the old 0-means-self reading scrambled the
+                # partner/defender role substrata; secret_partner was
+                # always clean via the label flag).
                 picker_rel = int(st["picker_rel"])
                 partner_rel = int(st["partner_rel"])
-                if picker_rel == 0:
+                if picker_rel == 1:
                     role = "picker"
                 elif float(ev.get("secret_partner", 0.0)) > 0.5:
                     role = "secret_partner"
-                elif partner_rel == 0:
+                elif partner_rel == 1:
                     role = "partner"
                 else:
                     role = "defender"
@@ -232,7 +239,11 @@ def cmd_generate(args) -> int:
             start += count
     t0 = time.time()
     episodes: list[dict] = []
-    with Pool(args.workers, initializer=_worker_init, initargs=(args.ckpt,)) as pool:
+    with Pool(
+        args.workers,
+        initializer=_worker_init,
+        initargs=((args.ckpt, getattr(args, "gamma", None)),),
+    ) as pool:
         for i, chunk in enumerate(pool.imap_unordered(_worker_episodes, tasks)):
             episodes.extend(chunk)
             print(
@@ -249,6 +260,7 @@ def cmd_generate(args) -> int:
             "ckpt": args.ckpt,
             "episodes_requested": args.episodes,
             "seed": args.seed,
+            "gamma": getattr(args, "gamma", None),
             "episodes": episodes,
         },
         out,
@@ -785,6 +797,155 @@ def cmd_train(args) -> int:
 
 
 # ------------------------------------------------------------------------- #
+# pretrain: supervised warm start for the trainer's oracle (--oracle-init)
+# ------------------------------------------------------------------------- #
+
+
+def cmd_pretrain(args) -> int:
+    """Train the OFFICIAL headed OracleValueNetwork on a frozen-policy
+    dataset and save its state_dict for train_league_ppo --oracle-init.
+
+    Same protocol as the shared_aux study arm (value MSE + membership BCE
+    + team-points smooth-L1 at the limited critic's coefficients; model
+    selection on val value-MSE) but built on the production class so the
+    checkpoint loads 1:1 into the trainer."""
+    from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels
+    from sheepshead.agent.ppo import device
+
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
+    data = torch.load(args.dataset, weights_only=False)
+    episodes = data["episodes"]
+    test = [ep for i, ep in enumerate(episodes) if i % 10 == 0]
+    val = [ep for i, ep in enumerate(episodes) if i % 10 == 1]
+    train = [ep for i, ep in enumerate(episodes) if i % 10 >= 2]
+    print(
+        f"{len(episodes)} episodes (gamma={data.get('gamma')}): "
+        f"train {len(train)}, val {len(val)}, test {len(test)}"
+    )
+
+    net = OracleValueNetwork(use_aux_heads=True).to(device)
+    opt = torch.optim.Adam(net.param_groups(args.lr))
+    rng = random.Random(args.seed)
+
+    def batch_forward(eps):
+        seqs = [ep["obs"] for ep in eps]
+        vals, trunk = net.forward_sequences_full(seqs, device=device)
+        B, T = vals.shape
+        target = torch.zeros((B, T), device=vals.device)
+        mask = torch.zeros((B, T), dtype=torch.bool, device=vals.device)
+        for b, ep in enumerate(eps):
+            for t, (is_a, g) in enumerate(zip(ep["is_action"], ep["g"])):
+                if is_a:
+                    target[b, t] = g
+                    mask[b, t] = True
+        return seqs, vals, trunk, target, mask
+
+    best_val, best_state, bad, curve = float("inf"), None, 0, []
+    for epoch in range(args.max_epochs):
+        t0 = time.time()
+        net.train()
+        for batch_idx in _batches(list(range(len(train))), args.batch_size, rng):
+            eps = [train[i] for i in batch_idx]
+            seqs, vals, trunk, target, mask = batch_forward(eps)
+            m_loss, p_loss = net.aux_losses(trunk, seqs, mask)
+            loss = (
+                _masked_mse(vals, target, mask)
+                + args.aux_partner_coeff * m_loss
+                + args.aux_points_coeff * p_loss
+            )
+            opt.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(net.parameters(), 0.5)
+            opt.step()
+        net.eval()
+        with torch.no_grad():
+            se, n = 0.0, 0
+            for batch_idx in _batches(
+                list(range(len(val))), args.batch_size, None
+            ):
+                eps = [val[i] for i in batch_idx]
+                _, vals, _, target, mask = batch_forward(eps)
+                if bool(mask.any()):
+                    se += float(((vals - target) ** 2)[mask].sum())
+                    n += int(mask.sum())
+            val_mse = se / max(n, 1)
+        curve.append(val_mse)
+        print(
+            f"  [pretrain] epoch {epoch + 1}: val MSE {val_mse:.5f} "
+            f"({time.time() - t0:.0f}s)",
+            flush=True,
+        )
+        if val_mse < best_val - 1e-6:
+            best_val, bad = val_mse, 0
+            best_state = copy.deepcopy(net.state_dict())
+        else:
+            bad += 1
+            if bad > args.patience:
+                break
+    if best_state is not None:
+        net.load_state_dict(best_state)
+    net.eval()
+
+    rows = _eval_values(
+        lambda eps: net.forward_sequences(
+            [ep["obs"] for ep in eps], device=device
+        ),
+        test,
+        args.batch_size,
+    )
+    report = _stratum_report(rows)
+    print("\n[pretrain] per-stratum EV (test):")
+    _print_report(report)
+
+    n_ok = n_rows = 0
+    mae_sum = mae_n = 0.0
+    with torch.no_grad():
+        for i in range(0, len(test), args.batch_size):
+            eps = test[i : i + args.batch_size]
+            seqs, vals, trunk, _, mask = batch_forward(eps)
+            B, T = vals.shape
+            member, team, team_mask = team_aux_labels(seqs, B, T, vals.device)
+            tm = mask & team_mask
+            if not bool(tm.any()):
+                continue
+            pred = net.team_membership(trunk).gt(0.0).float()
+            n_ok += int(pred.eq(member).all(-1)[tm].sum())
+            n_rows += int(tm.sum())
+            diff = (net.team_points(trunk) - team).abs() * 120.0
+            mae_sum += float(diff[tm].sum())
+            mae_n += int(tm.sum()) * 2
+    head_metrics = {
+        "membership_acc_exact": n_ok / max(n_rows, 1),
+        "team_points_mae": mae_sum / max(mae_n, 1),
+    }
+    print(f"  head metrics: {head_metrics}")
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(net.state_dict(), out)
+    report_path = out.with_suffix(".report.json")
+    report_path.write_text(
+        json.dumps(
+            {
+                "dataset": args.dataset,
+                "gamma": data.get("gamma"),
+                "seed": args.seed,
+                "best_val_mse": best_val,
+                "val_curve": curve,
+                "test": report,
+                "head_metrics": head_metrics,
+            },
+            indent=2,
+        )
+    )
+    print(f"\nwrote {out} and {report_path}")
+    return 0
+
+
+# ------------------------------------------------------------------------- #
 # bootstrap: paired episode-level CIs over the saved arms
 # ------------------------------------------------------------------------- #
 
@@ -975,6 +1136,13 @@ def main() -> int:
     g.add_argument("--episodes", type=int, default=36000)
     g.add_argument("--workers", type=int, default=8)
     g.add_argument("--seed", type=int, default=20260721)
+    g.add_argument(
+        "--gamma",
+        type=float,
+        default=None,
+        help="override the agent's discount for the return targets "
+        "(e.g. 1.0 for undiscounted terminal returns)",
+    )
     g.add_argument("--out", required=True)
     g.set_defaults(fn=cmd_generate)
 
@@ -992,6 +1160,20 @@ def main() -> int:
     t.add_argument("--save-nets", action="store_true")
     t.add_argument("--out", required=True)
     t.set_defaults(fn=cmd_train)
+
+    p = sub.add_parser(
+        "pretrain", help="supervised oracle warm start for --oracle-init"
+    )
+    p.add_argument("--dataset", required=True)
+    p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--batch-size", type=int, default=48)
+    p.add_argument("--max-epochs", type=int, default=25)
+    p.add_argument("--patience", type=int, default=3)
+    p.add_argument("--seed", type=int, default=20260721)
+    p.add_argument("--aux-partner-coeff", type=float, default=0.1)
+    p.add_argument("--aux-points-coeff", type=float, default=0.2)
+    p.add_argument("--out", required=True)
+    p.set_defaults(fn=cmd_pretrain)
 
     b = sub.add_parser("bootstrap", help="paired episode-level CIs")
     b.add_argument("--run-dir", required=True)
