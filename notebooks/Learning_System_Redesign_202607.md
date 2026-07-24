@@ -683,6 +683,65 @@ New mapping, replacing the original where they conflict:
   NOT falsify SNR-as-binding-constraint and does NOT by itself activate
   the search/expectation lane.
 
+**Review round 2 (2026-07-24): dose arithmetic + endpoint measurement.**
+Two further critiques, assessed against code and telemetry:
+
+*Numerator (Δ = +0.237) — ACCEPTED in full.* The partner-lead gap is
+max-over-trump-branches − max-over-fail-branches selected on the SAME
+50 rollouts that score them (per-branch SE ≈ 0.14): winner's-curse
+inflation, flagged in the original study but never de-biased (rung-2b
+pre-registered, never ran). PRE-REGISTERED FIX, to run before any B2
+interpretation: hold the branch selection FIXED as made by the June
+data and re-evaluate the selected branches only, on fresh independent
+rollouts (new seed, same nodes, same belief-MC machinery). This is a
+pure evaluation-of-a-fixed-hypothesis — no selection on the new data —
+and yields an unbiased estimate of the selected-branch gap at ~one
+evaluation pass of compute. Every downstream σ-dose statement inherits
+whatever correction results.
+
+*Denominator (σ ≈ 1.0 score) — conclusion accepted, mechanism
+corrected.* Verified: advantages ARE globally normalized before the
+loss (ppo.py ~1552). But a global scalar divides the rare-node signal
+and its within-node noise identically, so per-row resolvability
+(σ_node/Δ)² is scale-invariant — normalization per se cannot halve the
+dose. The live issue is different: 1.0 is the PLAYOUT σ, while the
+optimizer resolves against the realized ADVANTAGE noise at lead rows —
+never measured (shrunk by baseline EV, inflated by baseline error,
+λ-bootstrap variance, within-stratum heterogeneity). Logged global
+adv_std ≈ 0.15 reward ≈ 1.8 score says realized scatter overall is
+~1.8× the playout assumption; if lead rows match, per-row SNR ≈ 0.13
+and the dose halves. The committed GNS instrumentation measures
+exactly this (B_noise at partner-lead rows = the aggregated
+(σ/Δ)² question, answered from real gradients); stratified lead-row
+adv_std joins the boundary baseline. Post-amendment the per-update
+dose is demoted anyway; the σ question survives as the temperature
+(hold-dose) calibration.
+
+*Endpoint not measured — ACCEPTED; probe launched.* Verified: no
+convention_decay_curve / role_coupling_probe output exists for the arm;
+greedy_health tracks the DEFENDER t0 trump-lead only, 0.00 at all 18
+probes (n ≈ 90 each). Context the critique lacked: v2 was ALSO
+dead-flat 0.00 through 450k and only began oscillating at 500k
+(0→27→13→0→33% …) — so the arm's flatness is discriminating only over
+500k–900k, where v2 oscillated and the arm did not. Two readings:
+temperature reduction holding the defender at the correct equilibrium
+(B2 wants ≤ 0.10), or global pinning of the shared lead-trump feature
+with the partner rate collapsed alongside (re-ignition regime, where
+on-policy PG at action mass ~0.004 cannot relearn at any batch size —
+the pi_gumbel search-readout finding is the contingency for exactly
+that state). The partner_trump column of convention_decay_curve
+distinguishes; launched over the arm's full 50k ladder + 400k seed
+(400 CRN deals/ckpt, scripted field) → orchestrator/decay_curve.csv.
+
+*Outcome map addendum (operator-confirmed):* new cell — **oscillation
+eliminated but pinned at the WRONG equilibrium** (defender flat-zero
+AND partner flat-zero): the hold mechanism works, the reach mechanism
+is dead at this temperature, and the arm cannot deliver B2 from inside
+the run; branch = search-distillation re-ignition contingency
+(selective distill at lead nodes per pre-registration), not the
+search/expectation lane and not a temperature increase alone.
+Stability is not correctness.
+
 Gen-2 boundary package (pre-registered now, activated at the declared
 boundary relaunch; all default-off / measurement-only before then):
 optimizer-step telemetry column; gradient-noise-scale logging (global +
