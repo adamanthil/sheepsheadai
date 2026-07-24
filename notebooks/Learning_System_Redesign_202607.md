@@ -894,6 +894,16 @@ evaluation rollouts, so no winner's curse; independent cross-checkpoint
 reproduction +0.236 at 2M; fresh-population replication running), so
 correct advantages defend it on merit.
 
+**Δ validation RESULT (2026-07-24,
+cf_partner_trump_400k_replication.json): fresh-population replication
++0.358 ± 0.039** (171 agree / 62 disagree, seeds 100000+) vs the
+original +0.237 ± 0.040 — the estimate is NOT selection-inflated; the
+fresh population reads HIGHER. The ~2σ between-population spread
+exceeds nominal SE (node-population heterogeneity), so the working
+figure is "≈ +0.24 to +0.36 score, robustly positive": the convention
+the retention design protects is unambiguously terminal-optimal at the
+seed.
+
 **Design (all committed 1494902/d888062/7c413ca; flags default-off):**
 1. Oracle SUPERVISED PRETRAINING: 40k frozen-seed self-play episodes
    (γ=1.0 terminal returns), official OracleValueNetwork with the two
