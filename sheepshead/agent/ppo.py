@@ -179,6 +179,7 @@ class PPOAgent:
         lr_critic=3e-4,
         critic_mode="limited",
         arch="full",
+        oracle_aux_heads=False,
     ):
         # Networks are built from a named ArchitectureSpec (architectures.registry).
         # The default "full" spec constructs exactly the pre-registry
@@ -269,11 +270,17 @@ class PPOAgent:
         self.oracle_critic = None
         self.oracle_optimizer = None
         self.oracle_value_loss_coeff = 1.0
+        # Oracle aux-head loss coefficients (mirror the limited critic's
+        # secret/points coefficients; inert without oracle aux heads).
+        self.oracle_membership_coeff = 0.1
+        self.oracle_points_coeff = 0.2
         self._oracle_lr_ratios = [0.2, 1.0]  # card embeddings, rest
         if critic_mode == "oracle":
             from sheepshead.agent.oracle import OracleValueNetwork
 
-            self.oracle_critic = OracleValueNetwork().to(device)
+            self.oracle_critic = OracleValueNetwork(
+                use_aux_heads=oracle_aux_heads
+            ).to(device)
             self.oracle_optimizer = optim.Adam(
                 self.oracle_critic.param_groups(
                     base_lr=lr_critic, card_lr_scale=self._oracle_lr_ratios[0]
@@ -1745,8 +1752,10 @@ class PPOAgent:
                 old_value_oracle_bt,
             ) = self._build_oracle_minibatch(batch, kinds)
             t_fwd = time.time()
-            values_oracle_bt = self.oracle_critic.forward_sequences(
-                oracle_seqs, device=device
+            values_oracle_bt, oracle_trunk_bt = (
+                self.oracle_critic.forward_sequences_full(
+                    oracle_seqs, device=device
+                )
             )
             acc.forward_time += time.time() - t_fwd
             flat_idx = minibatch.is_action_bt.view(-1)
@@ -1761,6 +1770,14 @@ class PPOAgent:
                 F.mse_loss(v_o_clipped, ret_o, reduction="none"),
             )
             oracle_loss = oracle_elements.mean()
+            if self.oracle_critic.has_aux_heads:
+                membership_loss, points_loss = self.oracle_critic.aux_losses(
+                    oracle_trunk_bt, oracle_seqs, minibatch.is_action_bt
+                )
+                oracle_loss = oracle_loss + (
+                    self.oracle_membership_coeff * membership_loss
+                    + self.oracle_points_coeff * points_loss
+                )
             acc.oracle_loss_sum += oracle_loss.detach().item()
             acc.oracle_loss_count += 1
 
@@ -1962,8 +1979,10 @@ class PPOAgent:
                     for t in range(lengths[b]):
                         if kinds[s + t] == "action":
                             is_action_bt[b, t] = True
-                values_oracle_bt = self.oracle_critic.forward_sequences(
-                    oracle_seqs, device=device
+                values_oracle_bt, oracle_trunk_bt = (
+                    self.oracle_critic.forward_sequences_full(
+                        oracle_seqs, device=device
+                    )
                 )
                 flat_idx = is_action_bt.view(-1)
                 v_o = values_oracle_bt.reshape(-1)[flat_idx]
@@ -1978,6 +1997,16 @@ class PPOAgent:
                     F.mse_loss(v_o, ret_o, reduction="none"),
                     F.mse_loss(v_o_clipped, ret_o, reduction="none"),
                 ).mean()
+                if self.oracle_critic.has_aux_heads:
+                    membership_loss, points_loss = (
+                        self.oracle_critic.aux_losses(
+                            oracle_trunk_bt, oracle_seqs, is_action_bt
+                        )
+                    )
+                    oracle_loss = oracle_loss + (
+                        self.oracle_membership_coeff * membership_loss
+                        + self.oracle_points_coeff * points_loss
+                    )
                 self.oracle_optimizer.zero_grad()
                 oracle_loss.backward()
                 torch.nn.utils.clip_grad_norm_(
@@ -1995,13 +2024,14 @@ class PPOAgent:
             if ev["kind"] == "action":
                 st = ev["state"]
                 trick_ids = np.asarray(st["trick_card_ids"]).ravel()
+                # rel-seat convention: 0 = none/unknown, 1 = self.
                 f = (
                     bool(st["play_started"])
                     and bool((trick_ids == 0).all())
                     and not bool(st["is_leaster"])
-                    and int(st["picker_rel"]) != 0
+                    and int(st["picker_rel"]) >= 2
                     and (
-                        int(st["partner_rel"]) == 0
+                        int(st["partner_rel"]) == 1
                         or float(ev.get("secret_partner", 0.0)) > 0.5
                     )
                 )
@@ -2326,6 +2356,7 @@ class PPOAgent:
             payload["critic_mode"] = self.critic_mode
             payload["oracle_state_dict"] = self.oracle_critic.state_dict()
             payload["oracle_optimizer"] = self.oracle_optimizer.state_dict()
+            payload["oracle_aux_heads"] = self.oracle_critic.has_aux_heads
         torch.save(payload, filepath)
 
     def _apply_legacy_value_trunk_shim(self, critic_state_dict, missing) -> bool:
@@ -2437,7 +2468,23 @@ class PPOAgent:
         # expected baseline→oracle warm start. Limited agents ignore the keys.
         if self.oracle_critic is not None:
             if "oracle_state_dict" in checkpoint:
-                self.oracle_critic.load_state_dict(checkpoint["oracle_state_dict"])
+                missing, unexpected = self.oracle_critic.load_state_dict(
+                    checkpoint["oracle_state_dict"], strict=False
+                )
+                # A headed oracle may warm-start from a pre-head checkpoint
+                # (fresh-init heads); anything else missing is a real error,
+                # as is any unexpected key.
+                bad = [k for k in missing if not k.startswith("team_")]
+                if bad or unexpected:
+                    raise RuntimeError(
+                        f"oracle checkpoint mismatch: missing={bad} "
+                        f"unexpected={list(unexpected)}"
+                    )
+                if missing:
+                    print(
+                        "Note: oracle checkpoint has no aux heads; heads "
+                        "start fresh."
+                    )
             else:
                 print(
                     f"Note: {filepath} has no oracle critic; warm-starting the "
@@ -2485,6 +2532,11 @@ def load_agent(
         checkpoint = torch.load(filepath, map_location=device)
     arch = checkpoint.get("arch", "full")
     critic_mode = checkpoint.get("critic_mode", "limited")
-    agent = PPOAgent(len(ACTIONS), critic_mode=critic_mode, arch=arch)
+    agent = PPOAgent(
+        len(ACTIONS),
+        critic_mode=critic_mode,
+        arch=arch,
+        oracle_aux_heads=bool(checkpoint.get("oracle_aux_heads", False)),
+    )
     agent.load(filepath, load_optimizers=load_optimizers, checkpoint=checkpoint)
     return agent

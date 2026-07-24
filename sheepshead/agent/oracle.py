@@ -37,8 +37,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+import numpy as np
 import torch
 import torch.nn as nn
+
+from sheepshead.game import CARD_POINTS, DECK_IDS
 
 from sheepshead.agent.encoder import (
     CardEmbeddingConfig,
@@ -319,6 +322,52 @@ class OracleCriticEncoder(CardReasoningEncoder):
         }
 
 
+# Card id -> point value (id 0 = pad -> 0), for bury points in aux labels.
+_ID_POINTS = np.zeros(max(DECK_IDS.values()) + 1)
+for _card, _cid in DECK_IDS.items():
+    _ID_POINTS[_cid] = CARD_POINTS.get(_card, 0)
+
+
+def team_aux_labels(
+    sequences: List[List[Dict[str, Any]]],
+    B: int,
+    T: int,
+    device: torch.device,
+) -> tuple:
+    """Exact deterministic aux targets from full-info oracle observations.
+
+    Returns (member (B,T,5), team (B,T,2), team_mask (B,T)): per-relative-
+    seat picker-team membership (multi-label; alone / JD-self-partner /
+    pre-call collapse to picker-only) and picker/defender team
+    points-so-far in /120 units, the picker team including the bury as it
+    stands at the timestamp. team_mask is False on leaster and pre-pick
+    rows, where no team partition exists (leaster "teams" are singletons
+    whose points equal the explicit points_taken_rel input).
+    """
+    member = torch.zeros((B, T, 5), device=device)
+    team = torch.zeros((B, T, 2), device=device)
+    team_mask = torch.zeros((B, T), dtype=torch.bool, device=device)
+    for b, seq in enumerate(sequences):
+        for t, ob in enumerate(seq):
+            sp = int(ob["secret_partner_rel"])
+            pk = int(ob["picker_rel"])
+            if pk > 0 and not bool(ob["is_leaster"]):
+                member[b, t, pk - 1] = 1.0
+                if sp > 0:
+                    member[b, t, sp - 1] = 1.0
+                pts = np.asarray(ob["points_taken_rel"], dtype=np.float64)
+                tp_tricks = float(pts[pk - 1])
+                if sp > 0 and sp != pk:
+                    tp_tricks += float(pts[sp - 1])
+                bury_pts = float(
+                    _ID_POINTS[np.asarray(ob["bury_ids"]).ravel()].sum()
+                )
+                team[b, t, 0] = (tp_tricks + bury_pts) / 120.0
+                team[b, t, 1] = (float(pts.sum()) - tp_tricks) / 120.0
+                team_mask[b, t] = True
+    return member, team, team_mask
+
+
 class OracleValueNetwork(nn.Module):
     """Recurrent U(h, s) value network over full-information observations.
 
@@ -337,6 +386,7 @@ class OracleValueNetwork(nn.Module):
         d_model: int = 256,
         n_readout_queries: int = 4,
         n_readout_heads: int = 4,
+        use_aux_heads: bool = False,
     ):
         super().__init__()
         self.encoder = OracleCriticEncoder(
@@ -360,10 +410,24 @@ class OracleValueNetwork(nn.Module):
             act(),
         )
         self.value_head = nn.Linear(d_model, 1)
+        # Deterministic auxiliary heads at the trunk output (operator
+        # decision 2026-07-24 after the offline shared_aux study): per-seat
+        # picker-team membership (5, multi-label) and picker/defender team
+        # points-so-far (/120, bury included for the picker team). Optional
+        # so historical no-head checkpoints stay loadable; heads shape the
+        # oracle's own representation only — the isolation guarantee above
+        # is untouched.
+        self.has_aux_heads = bool(use_aux_heads)
+        if self.has_aux_heads:
+            self.team_membership = nn.Linear(d_model, 5)
+            self.team_points = nn.Linear(d_model, 2)
         # Orthogonal init for the dense stack (critic convention); the MHA
         # keeps torch defaults (encoder AttentionPool convention).
         for mod in (self.readout_proj, self.value_trunk, self.value_head):
             mod.apply(self._init_weights)
+        if self.has_aux_heads:
+            self.team_membership.apply(self._init_weights)
+            self.team_points.apply(self._init_weights)
 
     @staticmethod
     def _init_weights(m):
@@ -394,12 +458,46 @@ class OracleValueNetwork(nn.Module):
         """Encode B sequences of oracle observations (fresh zero memory per
         sequence, the same protocol as the limited critic's training
         forward) and return values of shape (B, T)."""
+        return self.forward_sequences_full(sequences, device=device)[0]
+
+    def forward_sequences_full(
+        self,
+        sequences: List[List[Dict[str, Any]]],
+        device: torch.device | None = None,
+    ) -> tuple:
+        """forward_sequences plus the trunk-output features (B, T, d_model)
+        the auxiliary heads read."""
         out = self.encoder.encode_sequences(sequences, memory_in=None, device=device)
         at = out["all_tokens"]  # (B, T, 51, d_token)
         am = out["all_mask"]  # (B, T, 51)
         B, T, N, d = at.shape
         r = self._readout(at.reshape(B * T, N, d), am.reshape(B * T, N))
-        return self.value_head(self.value_trunk(r)).view(B, T)
+        trunk = self.value_trunk(r)
+        return self.value_head(trunk).view(B, T), trunk.view(B, T, -1)
+
+    def aux_losses(
+        self,
+        trunk_bt: torch.Tensor,
+        sequences: List[List[Dict[str, Any]]],
+        row_mask_bt: torch.Tensor,
+    ) -> tuple:
+        """(membership BCE, team-points smooth-L1) on ``row_mask_bt`` rows
+        further restricted to rows where a team partition exists (leaster
+        and pre-pick masked). Zero-tensors when nothing qualifies."""
+        member, team, team_mask = team_aux_labels(
+            sequences, trunk_bt.size(0), trunk_bt.size(1), trunk_bt.device
+        )
+        tm = row_mask_bt & team_mask
+        zero = trunk_bt.new_zeros(())
+        if not bool(tm.any()):
+            return zero, zero
+        membership_loss = nn.functional.binary_cross_entropy_with_logits(
+            self.team_membership(trunk_bt)[tm], member[tm]
+        )
+        points_loss = nn.functional.smooth_l1_loss(
+            self.team_points(trunk_bt)[tm], team[tm]
+        )
+        return membership_loss, points_loss
 
     def param_groups(self, base_lr: float, card_lr_scale: float = 0.2):
         """Card embeddings at scaled LR, everything else at base LR.
