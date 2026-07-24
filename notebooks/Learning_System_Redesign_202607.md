@@ -872,6 +872,84 @@ regression on the oracle's own encoder — no PPO staleness cost, no
 policy-side perturbation) to pull the λ-gate crossing forward. λ gate
 itself unchanged.
 
+## Reconstituted run: retention-first pure-PG (pre-registered 2026-07-24,
+## operator-approved; the last pure-policy-gradient attempt before the
+## search-teacher lane)
+
+**Diagnosis this design answers** (decay-curve + review rounds 1–3): the
+batch arm proved the low-temperature regime can HOLD an equilibrium for
+850k episodes but was handed the wrong one — the seed's conventions
+(partner trump-lead 0.766, defender 0.033: already B2-compliant) died in
+the first ~21 updates, during the fresh-oracle burn-in (ev_ora ≈ 0) and
+the shaped→terminal objective switch (verified: the 400k selfplay seed
+was trained with intermediate trick rewards + leaster bonus; the league
+trains terminal-only). Retention, not acquisition, is the task. The
+operator chose supervised oracle pretraining + a fully UNANCHORED gen 1
+over a play-head anchor: the anchor's reference forward is a real
+throughput/memory cost, and with an accurate terminal baseline from
+update 1 the collapse driver it would fight is largely gone; the
+convention is terminal-optimal (+0.237 ± 0.040 at the seed, mechanism-
+checked — branch selection is by policy logits, independent of the
+evaluation rollouts, so no winner's curse; independent cross-checkpoint
+reproduction +0.236 at 2M; fresh-population replication running), so
+correct advantages defend it on merit.
+
+**Design (all committed 1494902/d888062/7c413ca; flags default-off):**
+1. Oracle SUPERVISED PRETRAINING: 40k frozen-seed self-play episodes
+   (γ=1.0 terminal returns), official OracleValueNetwork with the two
+   offline-validated aux heads (team membership 5-way multi-label +
+   team points w/ bury; coefficients 0.1/0.2), trained to plateau;
+   loaded via --oracle-init. Removes the burn-in window entirely.
+2. Aux heads stay on ONLINE (--oracle-aux-heads): same losses in the
+   oracle update path and the extra-epoch pass.
+3. --oracle-extra-epochs 4: ~0.033 oracle steps/episode, restoring v2's
+   oracle step rate at the 16384 interval.
+4. Seat-rotated collection (--seat-rotation): each sampled deal played
+   5×, hero in every seat, same table/cards — role-exposure
+   equalization + train-time deal pairing. Instruments judge the
+   realized variance benefit (the oracle already conditions on the
+   deal).
+5. γ = 1.0 (--gamma 1.0): kills the 0.99^7 ≈ 0.93 early-node tilt;
+   consistent across dataset, pretraining, and trainer.
+6. UNANCHORED gen 1+ (anchor-coeff 0). Bidding drift under the terminal
+   objective is expected and partially correct; guarded by
+   leaster-watchdog + greedy gates + the contingency below.
+7. Low-temperature regime kept: --update-interval 16384,
+   --minibatch-episodes 128, --grad-accum; λ gate as registered
+   (pretrained oracle may satisfy ev_ora ≥ 0.30 early — follow the
+   gate); exploiter full-table + patched-EMA amendments carried over.
+8. Instrumentation from episode 0: --gns-log (GNS global + partner-lead,
+   lead_adv_mean/std, lead_trump_mass), opt_steps; greedy probe now
+   reports partner trump-lead (tricks 0–2) every 50k; decay-curve
+   probes at gen boundaries. NOTE: rel-seat role-label bug fixed
+   7c413ca (0-means-self misread) — historical partner/defender lead
+   SUBSTRATA in offline studies were scrambled mixtures;
+   secret_partner substrata were always clean.
+
+**Tripwires & kill rules (pre-registered):**
+- RETENTION: greedy partner trump-lead < 50% at BOTH the 50k and 100k
+  probes ⇒ NEEDS REVIEW (retention failing; low temperature is holding
+  the wrong thing again).
+- MECHANISM DISCRIMINATOR: lead_adv_mean (normalized units) persistently
+  negative across the first ~20 updates while lead_trump_mass falls ⇒
+  the anti-convention force is systematic, not noise ⇒ stop early;
+  search-teacher lane (do not burn 1M episodes).
+- Bidding: leaster-watchdog trip or greedy PICK-gate streak ⇒ re-engage
+  the bidding anchor at a declared restart (contingency, not a kill).
+- Strength: duplicate h2h vs the 400k seed ≤ −0.10 at 500k (unchanged).
+- B2 endpoint, comparison protocol, and outcome mapping otherwise as
+  amended 2026-07-24 (retention framing: reach = keep what the seed
+  has; hold = keep it through gen 2's ecology churn).
+
+**Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
+with the ordinary strength trajectory ⇒ retention-first on-policy PG is
+sufficient; the search teacher stays shelved. Retention holds through
+gen 1 but breaks when exploiters/ecology churn arrives ⇒ hold-dose
+insufficient against ecology pressure ⇒ selective distillation at lead
+nodes composes next. Retention fails in the first 100k despite the
+accurate baseline ⇒ the collapse force is systematic ⇒ search-teacher
+lane with the mechanism identified.
+
 ## Implementation notes
 
 - All loss/sampling changes behind config flags defaulting to historical
