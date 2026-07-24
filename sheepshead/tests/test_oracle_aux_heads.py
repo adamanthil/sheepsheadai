@@ -49,6 +49,19 @@ def test_headed_agent_warm_starts_headless_checkpoint(tmp_path):
     )
 
 
+def test_headless_agent_loads_headed_checkpoint(tmp_path):
+    headed = _agent(oracle_aux_heads=True)
+    ckpt = str(tmp_path / "headed.pt")
+    headed.save(ckpt)
+    headless = _agent()
+    headless.load(ckpt, load_optimizers=False)  # heads dropped, no error
+    sd_a = headed.oracle_critic.state_dict()
+    sd_b = headless.oracle_critic.state_dict()
+    assert all(
+        torch.equal(sd_a[k], sd_b[k]) for k in sd_b
+    )  # every non-head weight copied
+
+
 def test_headless_default_is_unchanged(tmp_path):
     agent = _agent()
     assert not agent.oracle_critic.has_aux_heads

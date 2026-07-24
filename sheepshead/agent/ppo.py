@@ -2472,18 +2472,26 @@ class PPOAgent:
                     checkpoint["oracle_state_dict"], strict=False
                 )
                 # A headed oracle may warm-start from a pre-head checkpoint
-                # (fresh-init heads); anything else missing is a real error,
-                # as is any unexpected key.
-                bad = [k for k in missing if not k.startswith("team_")]
-                if bad or unexpected:
+                # (fresh-init heads) and a headless one may consume a headed
+                # checkpoint (heads dropped); anything else is a real error.
+                bad_missing = [k for k in missing if not k.startswith("team_")]
+                bad_unexpected = [
+                    k for k in unexpected if not k.startswith("team_")
+                ]
+                if bad_missing or bad_unexpected:
                     raise RuntimeError(
-                        f"oracle checkpoint mismatch: missing={bad} "
-                        f"unexpected={list(unexpected)}"
+                        f"oracle checkpoint mismatch: missing={bad_missing} "
+                        f"unexpected={bad_unexpected}"
                     )
                 if missing:
                     print(
                         "Note: oracle checkpoint has no aux heads; heads "
                         "start fresh."
+                    )
+                if unexpected:
+                    print(
+                        "Note: dropping oracle aux-head weights (agent "
+                        "built without heads)."
                     )
             else:
                 print(
