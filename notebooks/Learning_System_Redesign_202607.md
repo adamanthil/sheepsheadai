@@ -683,6 +683,40 @@ New mapping, replacing the original where they conflict:
   NOT falsify SNR-as-binding-constraint and does NOT by itself activate
   the search/expectation lane.
 
+**Aux-head offline RESULT (2026-07-24, results_aux.json +
+bootstrap.json): pre-registered primary NULL; theory-predicted
+substratum and global fit POSITIVE; harm checks pass.** Paired deltas
+`shared_aux − shared` (95% CI):
+
+- PRIMARY play_lead_t02 (pooled): +0.010 [−0.011, +0.032] — NULL.
+  Secondary partner_call: −0.004 [−0.020, +0.011] — null.
+- play_lead_t02_secret_partner: **+0.064 [+0.025, +0.103]** — POSITIVE
+  (post-hoc subgroup by pre-registration standards, but it is the
+  hidden-info-heaviest role stratum the probe motivation targeted: EV
+  0.152 → 0.216, closing ~48% of the shared→ref gap there).
+- Broad fit wins: all +0.025 [+0.011, +0.038]; play_follow_t02 +0.040
+  [+0.011, +0.065]; play_t3plus +0.077 [+0.049, +0.103] (the
+  no-regression harm check passes by improving). Best val MSE 0.0282
+  vs shared 0.0296, both at the 15-epoch cap (protocol-matched).
+- Costs: pick −0.013 [−0.023, −0.002], bury −0.028 [−0.053, −0.003] —
+  small, marginal CIs.
+- Secondary criteria: membership head 99.99% exact-set accuracy
+  (ceiling — the representation IS forced through the trunk when
+  supervised, confirming the probe's attenuation was demand-driven,
+  not capacity-driven); team-points MAE 7.4 points.
+- Notable: with heads, the 15-epoch/36k-episode offline oracle MATCHES
+  the 2M-episode online ref at every early stratum (pick/partner_call/
+  bury deltas ≈ 0.000); ref's remaining edge is confined to play
+  strata where its data advantage lives.
+
+Verdict per the pre-registered map: NOT the automatic-amendment win
+(pooled-lead CI spans zero) — the trainer is not amended on this
+alone. But the inert-branch reading is also excluded (global and
+secret-partner-stratum CIs > 0). Status: **amendment candidate for the
+next config**, where the composed inject+hold design makes the oracle
+baseline's quality at partner-lead nodes directly load-bearing;
+operator decision at a boundary, alongside the round-3 levers.
+
 **Review round 2 (2026-07-24): dose arithmetic + endpoint measurement.**
 Two further critiques, assessed against code and telemetry:
 
