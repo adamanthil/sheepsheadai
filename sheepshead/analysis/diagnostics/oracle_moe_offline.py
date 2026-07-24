@@ -28,12 +28,15 @@ oracle observations, empirical discounted return G — identical semantics to
              value-trunk OUTPUT (operator spec 2026-07-24, after the 850k
              representation probe showed partner identity decoding at only
              79.5% there and the trunk attenuating role structure):
-             partner-seat 6-way (0 = none yet/alone/leaster) and
-             picker/defender team points-so-far (2-dim, /120). Team loss
-             is masked on leaster and pre-pick rows — leaster "teams" are
-             singletons, so the target degenerates to points_taken_rel,
-             an explicit input. The picker team INCLUDES the bury as it
-             stands at the timestamp (it determines who is winning).
+             per-seat picker-team membership (5-dim multi-label — the
+             partition the value composes over; partner identity is
+             recoverable, alone = picker-only, pre-call = picker-only)
+             and picker/defender team points-so-far (2-dim, /120). Both
+             masked on leaster and pre-pick rows — no team partition
+             exists there, and leaster "teams" are singletons whose
+             points equal points_taken_rel, an explicit input. The picker
+             team INCLUDES the bury as it stands at the timestamp (it
+             determines who is winning).
              Coefficients mirror the limited critic (0.1 / 0.2); early
              stopping selects on val value-MSE only.
 
@@ -284,11 +287,19 @@ def _forward_batch(net, eps: list[dict], device) -> tuple[torch.Tensor, torch.Te
 
 
 class _AuxHeads(torch.nn.Module):
-    """Deterministic auxiliary heads read from the value-trunk output."""
+    """Deterministic auxiliary heads read from the value-trunk output.
+
+    team_membership: per-relative-seat "is this seat on the picker's
+    team?" logits (5, multi-label sigmoid) — supervises the partition
+    the value composes over; partner identity is recoverable as the
+    member that isn't the picker, alone = picker-only, and the pre-call
+    window labels the true current team (picker alone).
+    team_points: [picker team incl. bury, defenders] points-so-far /120.
+    """
 
     def __init__(self, d_model: int = 256):
         super().__init__()
-        self.partner = torch.nn.Linear(d_model, 6)
+        self.team_membership = torch.nn.Linear(d_model, 5)
         self.team_points = torch.nn.Linear(d_model, 2)
 
 
@@ -313,21 +324,24 @@ def _forward_aux_batch(net, eps: list[dict], device):
 
 
 def _aux_label_tensors(eps: list[dict], B: int, T: int, device):
-    """Exact labels from the full-info obs: partner seat (6-way) and
-    picker/defender team points-so-far (/120, masked on leaster and
-    pre-pick rows where teams are degenerate or undefined). The picker
-    team includes the bury as it stands at the timestamp (operator
-    amendment 2026-07-24: the bury matters for who is/will be winning);
-    the defender total stays trick-based."""
-    partner = torch.zeros((B, T), dtype=torch.long, device=device)
+    """Exact labels from the full-info obs: per-seat picker-team
+    membership (5-dim multi-label) and picker/defender team
+    points-so-far (/120). Both masked (shared team_mask) on leaster and
+    pre-pick rows where no team partition exists. The picker team
+    includes the bury as it stands at the timestamp (operator amendment
+    2026-07-24: the bury matters for who is/will be winning); the
+    defender total stays trick-based."""
+    member = torch.zeros((B, T, 5), device=device)
     team = torch.zeros((B, T, 2), device=device)
     team_mask = torch.zeros((B, T), dtype=torch.bool, device=device)
     for b, ep in enumerate(eps):
         for t, ob in enumerate(ep["obs"]):
             sp = int(ob["secret_partner_rel"])
             pk = int(ob["picker_rel"])
-            partner[b, t] = sp
             if pk > 0 and not bool(ob["is_leaster"]):
+                member[b, t, pk - 1] = 1.0
+                if sp > 0:
+                    member[b, t, sp - 1] = 1.0
                 pts = np.asarray(ob["points_taken_rel"], dtype=np.float64)
                 tp_tricks = float(pts[pk - 1])
                 if sp > 0 and sp != pk:
@@ -338,7 +352,7 @@ def _aux_label_tensors(eps: list[dict], B: int, T: int, device):
                 team[b, t, 0] = (tp_tricks + bury_pts) / 120.0
                 team[b, t, 1] = (float(pts.sum()) - tp_tricks) / 120.0
                 team_mask[b, t] = True
-    return partner, team, team_mask
+    return member, team, team_mask
 
 
 def _train_net_aux(
@@ -371,17 +385,18 @@ def _train_net_aux(
             eps = [train_eps[i] for i in batch_idx]
             vals, trunk, target, mask = _forward_aux_batch(net, eps, device)
             B, T = vals.shape
-            partner, team, team_mask = _aux_label_tensors(
+            member, team, team_mask = _aux_label_tensors(
                 eps, B, T, vals.device
             )
             loss = _masked_mse(vals, target, mask)
-            if bool(mask.any()):
-                logits = heads.partner(trunk)
-                loss = loss + partner_coeff * torch.nn.functional.cross_entropy(
-                    logits[mask], partner[mask]
-                )
             tm = mask & team_mask
             if bool(tm.any()):
+                logits = heads.team_membership(trunk)
+                loss = loss + partner_coeff * (
+                    torch.nn.functional.binary_cross_entropy_with_logits(
+                        logits[tm], member[tm]
+                    )
+                )
                 pred = heads.team_points(trunk)
                 loss = loss + points_coeff * torch.nn.functional.smooth_l1_loss(
                     pred[tm], team[tm]
@@ -426,33 +441,39 @@ def _train_net_aux(
 
 
 def _eval_aux_heads(net, heads, eps: list[dict], batch_size: int, device):
-    """Test-set diagnostics for the heads themselves: partner accuracy
-    (overall and partner-present) and team-points MAE in points."""
-    n_all = n_all_ok = n_has = n_has_ok = 0
+    """Test-set diagnostics for the heads themselves: team-membership
+    exact-set and per-bit accuracy (overall and on rows where a partner
+    exists, i.e. 2 team bits set) and team-points MAE in points."""
+    n_all = n_all_ok = n_bit = n_bit_ok = n_has = n_has_ok = 0
     mae_sum = mae_n = 0.0
     with torch.no_grad():
         for i in range(0, len(eps), batch_size):
             chunk = eps[i : i + batch_size]
             vals, trunk, _, mask = _forward_aux_batch(net, chunk, device)
             B, T = vals.shape
-            partner, team, team_mask = _aux_label_tensors(
+            member, team, team_mask = _aux_label_tensors(
                 chunk, B, T, vals.device
             )
-            pred = heads.partner(trunk).argmax(-1)
-            ok = pred.eq(partner) & mask
-            n_all += int(mask.sum())
-            n_all_ok += int(ok.sum())
-            has = mask & partner.gt(0)
-            n_has += int(has.sum())
-            n_has_ok += int((pred.eq(partner) & has).sum())
             tm = mask & team_mask
-            if bool(tm.any()):
-                diff = (heads.team_points(trunk) - team).abs() * 120.0
-                mae_sum += float(diff[tm].sum())
-                mae_n += int(tm.sum()) * 2
+            if not bool(tm.any()):
+                continue
+            pred = heads.team_membership(trunk).gt(0.0).float()
+            bit_ok = pred.eq(member)
+            exact = bit_ok.all(-1)
+            n_all += int(tm.sum())
+            n_all_ok += int(exact[tm].sum())
+            n_bit += int(tm.sum()) * 5
+            n_bit_ok += int(bit_ok[tm].sum())
+            has = tm & member.sum(-1).gt(1.5)
+            n_has += int(has.sum())
+            n_has_ok += int(exact[has].sum())
+            diff = (heads.team_points(trunk) - team).abs() * 120.0
+            mae_sum += float(diff[tm].sum())
+            mae_n += int(tm.sum()) * 2
     return {
-        "partner_acc": n_all_ok / max(n_all, 1),
-        "partner_acc_haspartner": n_has_ok / max(n_has, 1),
+        "membership_acc_exact": n_all_ok / max(n_all, 1),
+        "membership_acc_bit": n_bit_ok / max(n_bit, 1),
+        "membership_acc_exact_haspartner": n_has_ok / max(n_has, 1),
         "team_points_mae": mae_sum / max(mae_n, 1),
     }
 

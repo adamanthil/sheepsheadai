@@ -572,9 +572,16 @@ win, and only at a generation boundary.
 **Oracle aux-head offline test (pre-registered 2026-07-24, launched
 before results seen; harness commit 85d5730).** Operator design after
 the representation probe: `shared_aux` arm = shared oracle + TWO
-deterministic heads at the value-trunk output — partner-seat 6-way
-(class 0 = none-yet/alone/leaster) and picker/defender team
-points-so-far (2-dim, /120). Trump-counts head EXCLUDED by operator
+deterministic heads at the value-trunk output — per-seat picker-team
+MEMBERSHIP (5-dim multi-label sigmoid; operator redesign 2026-07-24,
+third pre-results amendment, prior launches killed within ~2 epochs:
+supervise the full team split rather than classify the secret partner,
+because the partition is the feature the value composes over — partner
+identity is recoverable as the non-picker member, alone = picker-only,
+and the pre-call window labels the true current team; this also unifies
+the two heads around one membership concept, since team points is a
+membership-weighted sum) and picker/defender team points-so-far
+(2-dim, /120). Trump-counts head EXCLUDED by operator
 choice: imposing a count-summary target could anchor the trump
 representation to exactly the crude statistic we don't want; the net
 should learn a richer remaining-trump-strength representation on its
@@ -604,9 +611,9 @@ declared in advance:
   no majority-stratum harm ⇒ heads are inert offline ⇒ do NOT amend the
   trainer on speculation; the sub-ceiling probe result would then read
   as "attenuation is real but not value-binding at this data scale."
-- Secondary: partner head test accuracy ~ceiling (it had better be —
-  supervised deterministic target); team-points MAE; no EV regression
-  at play_t3plus (CI must not exclude zero from below).
+- Secondary: team-membership exact-set test accuracy ~ceiling (it had
+  better be — supervised deterministic target); team-points MAE; no EV
+  regression at play_t3plus (CI must not exclude zero from below).
 - Caveat carried from the probe: offline-15-epochs ≠ online 850k-episode
   regime; an offline null does not rule out an online transient-speed
   benefit, but an offline win is necessary evidence before touching the
