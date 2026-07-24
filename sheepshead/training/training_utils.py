@@ -454,6 +454,36 @@ def truncate_csv_rows_past_episode(
     return dropped
 
 
+def ensure_csv_columns(path: str, header: List[str]) -> int:
+    """Migrate a telemetry CSV to a wider schema; return columns added.
+
+    Schemas are append-only (columns added at the end, never renamed): when
+    an existing file's header is a strict prefix of ``header``, rewrite it
+    with the new header and pad old rows with empty fields so positional
+    writers stay aligned. A missing file, an up-to-date file, or a header
+    that is not a prefix (foreign/newer schema) is left untouched. Atomic
+    rewrite.
+    """
+    if not os.path.exists(path):
+        return 0
+    with open(path, newline="") as f:
+        rows = list(csv.reader(f))
+    if not rows:
+        return 0
+    old_header = rows[0]
+    if old_header == header or old_header != header[: len(old_header)]:
+        return 0
+    tmp = path + ".tmp"
+    with open(tmp, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(
+            r + [""] * max(0, len(header) - len(r)) for r in rows[1:]
+        )
+    os.replace(tmp, path)
+    return len(header) - len(old_header)
+
+
 def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     """Deterministic-greedy self-play health metrics for the collapse guard.
 

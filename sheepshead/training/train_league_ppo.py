@@ -73,12 +73,34 @@ from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS
 from sheepshead.training.training_utils import (
     append_csv_row,
+    ensure_csv_columns,
     get_partner_selection_mode,
     greedy_health_probe,
     paired_edge,
     set_all_seeds,
     truncate_csv_rows_past_episode,
 )
+
+# league_training_progress.csv schema (append-only: add at the end, never
+# rename; ensure_csv_columns migrates pre-existing files on resume).
+PROGRESS_CSV_HEADER = [
+    "episode",
+    "picker_avg",
+    "pick_rate",
+    "leaster_rate",
+    "exploiter_share",
+    "mu_jd",
+    "mu_ca",
+    "adv_std_all",
+    "adv_std_pick",
+    "adv_std_play",
+    "ev_oracle",
+    "ev_limited",
+    "anchor_kl",
+    "opt_steps",
+    "gns_global",
+    "gns_lead",
+]
 
 PFSP_HYPERPARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
 
@@ -399,6 +421,8 @@ def run_main_phase(
     anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
     # Crash-resume dedupe: drop telemetry a crashed run wrote past the
     # resume episode, or the replayed episodes would duplicate rows.
+    if ensure_csv_columns(progress_csv, PROGRESS_CSV_HEADER):
+        print("📊 Migrated league_training_progress.csv to wider schema")
     for _csv in (progress_csv, greedy_csv, anchored_csv):
         _n = truncate_csv_rows_past_episode(_csv, start_episode)
         if _n:
@@ -486,6 +510,9 @@ def run_main_phase(
                 if watchdog is not None:
                     watchdog.tick(training_agent, leaster_window)
                 stats = training_agent.update(
+                    oracle_extra_epochs=getattr(
+                        args, "oracle_extra_epochs", 0
+                    ),
                     epochs=4,
                     batch_size=getattr(args, "minibatch_episodes", 256),
                     grad_accum=getattr(args, "grad_accum", False),
@@ -527,27 +554,12 @@ def run_main_phase(
                         f"{eps_s:.1f} eps/s{anchor_str}{oracle_str}",
                         flush=True,
                     )
+                    gns = stats.get("gns") or {}
                     write_header = not os.path.exists(progress_csv)
                     with open(progress_csv, "a", newline="") as f:
                         w = csv.writer(f)
                         if write_header:
-                            w.writerow(
-                                [
-                                    "episode",
-                                    "picker_avg",
-                                    "pick_rate",
-                                    "leaster_rate",
-                                    "exploiter_share",
-                                    "mu_jd",
-                                    "mu_ca",
-                                    "adv_std_all",
-                                    "adv_std_pick",
-                                    "adv_std_play",
-                                    "ev_oracle",
-                                    "ev_limited",
-                                    "anchor_kl",
-                                ]
-                            )
+                            w.writerow(PROGRESS_CSV_HEADER)
                         w.writerow(
                             [
                                 episode,
@@ -564,6 +576,13 @@ def run_main_phase(
                                 f"{ostats['ev_limited']:.4f}" if ostats else "",
                                 f"{anchor.get('kl', 0.0):.5f}"
                                 if anchor.get("active")
+                                else "",
+                                stats.get("optimizer_steps_total", ""),
+                                f"{gns['global']:.0f}"
+                                if gns.get("global") is not None
+                                else "",
+                                f"{gns['lead']:.0f}"
+                                if gns.get("lead") is not None
                                 else "",
                             ]
                         )
@@ -875,6 +894,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--update-interval, raise this too or the cap silently reintroduces "
         "minibatching and forfeits the per-step SNR the bigger buffer buys",
     )
+    ap.add_argument(
+        "--gns-log",
+        action="store_true",
+        help="log the gradient noise scale each update (global + partner-"
+        "lead stratum, units = action rows) to the progress CSV. One extra "
+        "epoch-equivalent of compute per update; measurement only — the "
+        "applied updates are bit-identical",
+    )
+    ap.add_argument(
+        "--oracle-extra-epochs",
+        type=int,
+        default=0,
+        help="extra oracle-regression-only epochs after each update "
+        "(per-minibatch oracle optimizer steps). The oracle has its own "
+        "encoder, so this touches no policy/limited-critic parameter — a "
+        "step-count lever for the fresh-oracle transient at large "
+        "--update-interval. 0 = historical behavior",
+    )
     ap.add_argument("--anchor-ref", default=None)
     ap.add_argument(
         "--anchor-eval-ckpt",
@@ -960,6 +997,14 @@ def main():
         print(f"🧬 Architecture: {args.arch}")
     if args.critic_mode == "oracle":
         print("🔮 Oracle critic ON: privileged full-information GAE baseline")
+    if getattr(args, "gns_log", False):
+        training_agent.gns_log = True
+        print("📡 GNS logging ON (global + partner-lead, rows)")
+    if getattr(args, "oracle_extra_epochs", 0) > 0:
+        print(
+            f"🔮+ Oracle extra epochs: {args.oracle_extra_epochs} "
+            "regression-only passes per update"
+        )
     if args.leaster_watchdog:
         print("🐶 Leaster watchdog ON (main phases)")
     start_episode = 0
