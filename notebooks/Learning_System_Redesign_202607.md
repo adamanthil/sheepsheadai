@@ -643,6 +643,56 @@ counts: duplicate h2h vs the 400k seed and vs v2 checkpoints
   "SNR demonstrably improved but B2 fails" — is exactly this branch).
   No improvement ⇒ SNR falsified at 2σ dose ⇒ search/expectation lane.
 
+**AMENDED OUTCOME MAPPING (2026-07-24, operator-confirmed, before any
+endpoint read).** External review (Opus 5) identified a flaw in the
+pre-registered dose arithmetic, verified against code and telemetry:
+
+- The "8× ≈ 2.4σ" dose was a PER-UPDATE statement. Accumulated
+  signal-to-noise over E episodes is √E·Δ/σ, invariant to batch size at
+  fixed LR (checked robust under Adam normalization and PPO clip-bounded
+  steps — E episodes contain √E·Δ/σ of signal, no batching extracts
+  more). Batch is therefore NOT an acquisition-SNR lever; at fixed LR it
+  is a displacement reducer.
+- Verified: `apply_schedules` keys LR to EPISODE (train_league_ppo.py:250)
+  — the arm walks the same LR decay with ~16× fewer optimizer steps
+  than v2 at matched episodes (~1,550 vs ~25,000 at 900k; grad-accum =
+  1 step/epoch, v2 = ~2 minibatch steps/epoch × 8× more updates; the
+  review said 8× — the truth is worse). anchor_kl ~0.0045 vs v2
+  ~0.008–0.012 at matched episodes confirms suppressed displacement
+  (equilibrium vs anchor, not 16×, and deviating_frac 0.59 @500k shows
+  real movement — but direction confirmed).
+- Verified: λ gate cannot fire at the 1M boundary. ev_ora 0.084/0.176/
+  0.212 @300k/600k/900k (v2: 0.26/0.40/0.39); concave trend crosses
+  0.30 ≥ ~1.6M. Gen 1 delivered the batch half only.
+- The frame the displacement math misses (and the arm's remaining
+  design intent): ACQUISITION vs RETENTION. Stationary policy jitter
+  scales with SGD temperature η·σ²/B — batch ×8 at fixed LR cuts
+  equilibrium rare-node jitter ~8×, a real dose for the HOLD half of B2
+  (the erosion/oscillation mechanism from convention-erosion rung-1),
+  while under-dosing REACH (the new partner/defender differentiation).
+
+New mapping, replacing the original where they conflict:
+- Pin (reach AND hold) ⇒ STRONGER evidence than originally registered
+  for the temperature/oscillation mechanism — linear theory says the
+  arm should under-acquire, so pinning is informative, not expected.
+- Hold-improvement without reach (oscillation half-life up, no
+  decoupled pinning) ⇒ temperature mechanism supported on retention;
+  acquisition starved ⇒ gen-3 decision is a corrected-displacement
+  config (LR/epochs per GNS readout), NOT the search/expectation lane.
+- B2 fail ⇒ CONFOUNDED (displacement starvation vs SNR falsity). Does
+  NOT falsify SNR-as-binding-constraint and does NOT by itself activate
+  the search/expectation lane.
+
+Gen-2 boundary package (pre-registered now, activated at the declared
+boundary relaunch; all default-off / measurement-only before then):
+optimizer-step telemetry column; gradient-noise-scale logging (global +
+partner-lead stratum, from the per-minibatch gradients grad-accum
+already computes) — the GNS readout, not guesswork, decides any
+policy-LR/epoch correction; oracle-only extra epochs (supervised
+regression on the oracle's own encoder — no PPO staleness cost, no
+policy-side perturbation) to pull the λ-gate crossing forward. λ gate
+itself unchanged.
+
 ## Implementation notes
 
 - All loss/sampling changes behind config flags defaulting to historical
