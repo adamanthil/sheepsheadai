@@ -742,6 +742,50 @@ the run; branch = search-distillation re-ignition contingency
 search/expectation lane and not a temperature increase alone.
 Stability is not correctness.
 
+**Review round 3 (2026-07-24): variance levers + direct SNR
+measurement.** Assessment of three further suggestions:
+
+- *Deal-paired/antithetic collection at train time — ACCEPTED as
+  first-order; pre-registered for the NEXT config, not mid-arm.* The
+  duplicate-bridge eval instrument (se 0.045→0.017, ≈7× variance) has
+  no train-time analog. K-replaying each deal and subtracting the
+  deal-level mean return is a valid baseline (the replays are
+  independent of the gradient episode's actions given the deal ⇒
+  unbiased) that removes deal-conditional variance INCLUDING the part
+  the oracle critic misses — the oracle (ev ~0.4 plateau) is the
+  LEARNED version of this control variate, and the empirical version
+  composes with it. At fixed compute, K=2 halves unique deals but, if
+  the eval variance split carries over (~6/7 deal-conditional), nets
+  roughly 3× cleaner advantages per episode. Seat-rotated antithetic
+  (hero in all 5 seats of one deal) is the exact train-time duplicate
+  instrument. Costs: episode-generation restructuring, replay
+  correlation reduces deal diversity per episode, and a mid-arm switch
+  would confound the batch read — hence next-config. Cheap validation
+  first: offline probe measuring realized lead-row advantage std with
+  vs without deal-mean subtraction on K-replayed deals (no trainer
+  change).
+- *γ = 1.0 — ACCEPTED; pre-registered for the next config.* With
+  purely terminal reward and ≤9-decision horizon, γ=0.99 shrinks
+  early-node targets by 0.99^7 ≈ 0.93 — a systematic ~7% objective
+  tilt against exactly the early nodes at issue, with no variance
+  benefit at this horizon. Near-free to change (small critic re-fit
+  transient) but touches the policy objective, so NOT at the gen-2
+  boundary (kept measurement-only + oracle-side by design). Program-
+  wide consistency required on flip: gamma also enters GAE recursion
+  and every offline dataset built with agent.gamma.
+- *Measure gradient SNR directly — ACCEPTED and IMPLEMENTED
+  immediately* (extends the committed GNS instrument, which already
+  isolates partner-lead rows with logits in hand): per update, at
+  partner-lead rows, log sampled count, realized advantage mean/std
+  (normalized units — the scale the loss consumes), and mean policy
+  mass on trump-lead plays (legality-masked softmax over the 14
+  PLAY-trump actions; the direct re-ignition-regime detector). CSV
+  columns lead_rows/lead_adv_mean/lead_adv_std/lead_trump_mass.
+  Concurred with the critique's process point: this instrument before
+  launch would have caught both §2 errors; it is exactly the
+  operator's standing cheap-gating-diagnostics-first preference and
+  should have been step one.
+
 Gen-2 boundary package (pre-registered now, activated at the declared
 boundary relaunch; all default-off / measurement-only before then):
 optimizer-step telemetry column; gradient-noise-scale logging (global +
