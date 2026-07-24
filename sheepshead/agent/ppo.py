@@ -304,6 +304,12 @@ class PPOAgent:
         self.clip_epsilon_play = 0.20
         self.value_clip_epsilon = 0.20
 
+        # Lifetime optimizer-step count (actor/critic steps; persisted in
+        # checkpoints so step-matched comparisons survive crash-resume).
+        self.optimizer_steps_total = 0
+        # Gradient-noise-scale diagnostic per update (off = zero overhead).
+        self.gns_log = False
+
         # PPO early stopping target for approximate KL (per update)
         self.target_kl = None
         # KL regularization coefficient (added to actor loss)
@@ -1791,6 +1797,7 @@ class PPOAgent:
         acc.optimizer_steps += 1
 
     def _clip_and_step(self, oracle_active):
+        self.optimizer_steps_total += 1
         torch.nn.utils.clip_grad_norm_(
             self.actor.parameters(), self.max_grad_norm
         )
@@ -1918,6 +1925,215 @@ class PPOAgent:
 
         return acc
 
+    def _oracle_extra_epochs(self, extra_epochs, batch_size):
+        """Oracle-regression-only passes after the main update epochs.
+
+        The oracle critic has its own encoder, so these steps touch no
+        policy or limited-critic parameter — a pure step-count lever for
+        the fresh-oracle transient at large update intervals, free of PPO
+        staleness concerns (supervised regression on this buffer's
+        lambda-return targets). Per-minibatch oracle optimizer steps;
+        deliberately NOT counted in ``optimizer_steps_total``, which
+        tracks policy-path steps for step-matched comparisons."""
+        _, _, kinds = self._prepare_training_views()
+        segments = self._segments_from_events(kinds)
+        if not segments:
+            return
+        for _ in range(extra_epochs):
+            perm = torch.randperm(len(segments))
+            for mb_start in range(0, len(segments), batch_size):
+                batch_idxs = perm[mb_start : mb_start + batch_size].tolist()
+                batch = [segments[i] for i in batch_idxs]
+                if not batch:
+                    continue
+                (
+                    oracle_seqs,
+                    returns_oracle_bt,
+                    old_value_oracle_bt,
+                ) = self._build_oracle_minibatch(batch, kinds)
+                lengths = [t_end - s + 1 for (s, t_end) in batch]
+                t_max = returns_oracle_bt.size(1)
+                is_action_bt = torch.zeros(
+                    (len(batch), t_max),
+                    dtype=torch.bool,
+                    device=returns_oracle_bt.device,
+                )
+                for b, (s, t_end) in enumerate(batch):
+                    for t in range(lengths[b]):
+                        if kinds[s + t] == "action":
+                            is_action_bt[b, t] = True
+                values_oracle_bt = self.oracle_critic.forward_sequences(
+                    oracle_seqs, device=device
+                )
+                flat_idx = is_action_bt.view(-1)
+                v_o = values_oracle_bt.reshape(-1)[flat_idx]
+                ret_o = returns_oracle_bt.reshape(-1)[flat_idx]
+                old_o = old_value_oracle_bt.reshape(-1)[flat_idx]
+                v_o_clipped = old_o + torch.clamp(
+                    v_o - old_o,
+                    -self.value_clip_epsilon,
+                    self.value_clip_epsilon,
+                )
+                oracle_loss = torch.max(
+                    F.mse_loss(v_o, ret_o, reduction="none"),
+                    F.mse_loss(v_o_clipped, ret_o, reduction="none"),
+                ).mean()
+                self.oracle_optimizer.zero_grad()
+                oracle_loss.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    self.oracle_critic.parameters(), self.max_grad_norm
+                )
+                self.oracle_optimizer.step()
+
+    def _partner_lead_flags(self) -> list:
+        """Per-event flag: an action row where the hero, as the picker's
+        (secret or announced) partner, leads a trick in a non-leaster hand.
+        The rare-node stratum of the SNR program."""
+        flags = []
+        for ev in self.events:
+            f = False
+            if ev["kind"] == "action":
+                st = ev["state"]
+                trick_ids = np.asarray(st["trick_card_ids"]).ravel()
+                f = (
+                    bool(st["play_started"])
+                    and bool((trick_ids == 0).all())
+                    and not bool(st["is_leaster"])
+                    and int(st["picker_rel"]) != 0
+                    and (
+                        int(st["partner_rel"]) == 0
+                        or float(ev.get("secret_partner", 0.0)) > 0.5
+                    )
+                )
+            flags.append(f)
+        return flags
+
+    def _gns_diagnostic(self, batch_size) -> dict | None:
+        """Gradient noise scale (McCandlish et al. 2018), global and at
+        partner-lead rows, measured on the post-update policy.
+
+        Per minibatch: one forward, then actor-surrogate-only backwards
+        (global rows, then partner-lead rows) over actor+encoder params.
+        The surrogate is the clipped PPO policy loss alone — entropy,
+        distillation and anchor terms are deterministic pulls whose
+        noise-free gradients would deflate the estimate, and per-head
+        entropy means are undefined on single-head row subsets. Paired
+        estimator: E[|g_B|^2] = |G|^2 + tr(Sigma)/B across minibatch
+        sizes vs the row-weighted full-buffer mean. Units of the returned
+        noise scales are action ROWS. No optimizer state is touched;
+        grads are zeroed before and after. Runs only when ``gns_log`` is
+        set — one extra epoch-equivalent of compute per update."""
+        states, masks_t, kinds = self._prepare_training_views()
+        segments = self._segments_from_events(kinds)
+        if len(segments) < 2:
+            return None
+        flags = self._partner_lead_flags()
+        total_rows = sum(1 for k in kinds if k == "action")
+        total_lead = sum(1 for f in flags if f)
+
+        idx_tensors = {
+            head: torch.tensor(self.action_groups[head], device=device)
+            for head in ("pick", "partner", "bury")
+        }
+        clip_by_head = {
+            "pick": self.clip_epsilon_pick,
+            "partner": self.clip_epsilon_partner,
+            "bury": self.clip_epsilon_bury,
+        }
+        params = [
+            p
+            for p in list(self.actor.parameters())
+            + list(self.encoder.parameters())
+            if p.requires_grad
+        ]
+
+        def zero_grads():
+            for p in params:
+                p.grad = None
+
+        def surrogate(flat, row_mask):
+            if row_mask is not None:
+                flat = FlattenedActionSteps(*[x[row_mask] for x in flat])
+            probs = F.softmax(flat.logits_flat, dim=-1)
+            dist = torch.distributions.Categorical(probs.clamp(min=1e-12))
+            new_lp = dist.log_prob(flat.actions_flat)
+            ratios = torch.exp(new_lp - flat.old_log_probs_flat)
+            eps_row = torch.full_like(
+                flat.advantages_flat, self.clip_epsilon_play
+            )
+            for head, idx_t in idx_tensors.items():
+                m = torch.isin(flat.actions_flat, idx_t)
+                if m.any():
+                    eps_row[m] = clip_by_head[head]
+            adv = flat.advantages_flat
+            surr1 = ratios * adv
+            surr2 = torch.clamp(ratios, 1.0 - eps_row, 1.0 + eps_row) * adv
+            return -torch.min(surr1, surr2).mean()
+
+        keys = ["global"] + (["lead"] if total_lead > 0 else [])
+        totals = {"global": total_rows, "lead": total_lead}
+        g_acc = {
+            k: [torch.zeros_like(p) for p in params] for k in keys
+        }
+        per = {k: {"sq_sum": 0.0, "inv_b_sum": 0.0, "n": 0} for k in keys}
+
+        for mb_start in range(0, len(segments), batch_size):
+            batch = segments[mb_start : mb_start + batch_size]
+            minibatch = self._build_minibatch_tensors(
+                batch, states, masks_t, kinds
+            )
+            forward = self._forward_vectorized(
+                minibatch.states_seqs, minibatch.masks_bt
+            )
+            flat = self._flatten_action_steps(minibatch, forward)
+            if flat is None:
+                continue
+            row_flags = [
+                flags[t]
+                for (s, t_end) in batch
+                for t in range(s, t_end + 1)
+                if kinds[t] == "action"
+            ]
+            lead_mask = torch.tensor(
+                row_flags, dtype=torch.bool, device=flat.advantages_flat.device
+            )
+            for key in keys:
+                mask = None if key == "global" else lead_mask
+                b_m = len(row_flags) if mask is None else int(mask.sum())
+                if b_m == 0 or b_m >= totals[key]:
+                    continue
+                loss = surrogate(flat, mask)
+                zero_grads()
+                loss.backward(retain_graph=True)
+                sq = 0.0
+                for i, p in enumerate(params):
+                    if p.grad is not None:
+                        sq += float((p.grad.detach() ** 2).sum())
+                        g_acc[key][i] += p.grad.detach() * (b_m / totals[key])
+                per[key]["sq_sum"] += sq
+                per[key]["inv_b_sum"] += 1.0 / b_m
+                per[key]["n"] += 1
+            del forward, flat
+        zero_grads()
+
+        out = {"lead_rows": total_lead}
+        for key in ("global", "lead"):
+            out[key] = None
+            p = per.get(key)
+            if p is None or p["n"] < 2:
+                continue
+            big_sq = sum(float((g**2).sum()) for g in g_acc[key])
+            mean_sq = p["sq_sum"] / p["n"]
+            inv_b = p["inv_b_sum"] / p["n"]
+            denom = inv_b - 1.0 / totals[key]
+            if denom <= 0:
+                continue
+            s_tr = (mean_sq - big_sq) / denom
+            g2 = big_sq - s_tr / totals[key]
+            if s_tr > 0 and g2 > 0:
+                out[key] = s_tr / g2
+        return out
+
     def _collect_update_stats(self, t_update_start, targets, acc) -> dict:
         """Stage (c) of update(): assemble the returned stats dict from the
         stage-(a) diagnostics (``targets``) and the stage-(b) accumulated
@@ -1948,6 +2164,7 @@ class PPOAgent:
             "value_target_stats": targets.value_target_stats,
             "oracle": oracle_stats,
             "num_transitions": transitions,
+            "optimizer_steps_total": self.optimizer_steps_total,
             "approx_kl": acc.last_approx_kl,
             "early_stop": acc.early_stop_triggered,
             "timing": timing,
@@ -2014,13 +2231,17 @@ class PPOAgent:
             },
         }
 
-    def update(self, epochs=6, batch_size=256, grad_accum=False):
+    def update(
+        self, epochs=6, batch_size=256, grad_accum=False, oracle_extra_epochs=0
+    ):
         """Update actor and critic networks using PPO with recurrent unrolling.
         Includes performance optimisations and per-update timing logs.
 
         ``grad_accum``: accumulate gradients across the epoch's minibatches
         and step once per epoch (full-buffer step, bounded memory). Default
         False preserves the historical per-minibatch stepping exactly.
+        ``oracle_extra_epochs``: additional oracle-regression-only passes
+        after the main epochs (see _oracle_extra_epochs). Default 0.
         """
         t_update_start = time.time()
         if len(self.events) == 0:
@@ -2030,14 +2251,22 @@ class PPOAgent:
         acc = self._run_update_epochs(
             epochs, batch_size, targets.oracle_active, grad_accum=grad_accum
         )
-        return self._collect_update_stats(t_update_start, targets, acc)
+        if oracle_extra_epochs > 0 and targets.oracle_active:
+            self._oracle_extra_epochs(oracle_extra_epochs, batch_size)
+        gns = self._gns_diagnostic(batch_size) if self.gns_log else None
+        stats = self._collect_update_stats(t_update_start, targets, acc)
+        if gns is not None:
+            stats["gns"] = gns
+        return stats
 
     def save(self, filepath):
         """Save model parameters.
 
         Oracle-mode agents additionally persist the privileged critic under
-        OPTIONAL keys; every existing checkpoint consumer ignores them, and
-        limited-mode saves are byte-compatible with the historical format."""
+        OPTIONAL keys; every existing checkpoint consumer ignores them.
+        ``optimizer_steps_total`` is likewise optional (0 when absent), so
+        limited-mode saves stay load-compatible with every historical
+        consumer."""
         critic_state = self.critic.state_dict()
         if self.critic.value_trunk is getattr(self.critic, "critic_adapter", None):
             # Shim-aliased agent (see _apply_legacy_value_trunk_shim): the
@@ -2057,6 +2286,7 @@ class PPOAgent:
             "critic_state_dict": critic_state,
             "actor_optimizer": self.actor_optimizer.state_dict(),
             "critic_optimizer": self.critic_optimizer.state_dict(),
+            "optimizer_steps_total": self.optimizer_steps_total,
         }
         if self.oracle_critic is not None:
             payload["critic_mode"] = self.critic_mode
@@ -2164,6 +2394,9 @@ class PPOAgent:
             )
 
         self.load_network_states(checkpoint, source=str(filepath))
+        self.optimizer_steps_total = int(
+            checkpoint.get("optimizer_steps_total", 0)
+        )
 
         # Oracle critic: optional checkpoint keys. An oracle-mode agent
         # resuming a limited checkpoint keeps its fresh-init oracle — the
