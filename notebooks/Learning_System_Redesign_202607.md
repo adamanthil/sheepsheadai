@@ -786,6 +786,48 @@ measurement.** Assessment of three further suggestions:
   operator's standing cheap-gating-diagnostics-first preference and
   should have been step one.
 
+**DECAY CURVE RESULT (2026-07-24, orchestrator/decay_curve.csv): the
+arm is in the pinned-at-wrong-equilibrium branch.** 400 CRN deals per
+checkpoint, called-ace mode, scripted field, seed prepended:
+
+- partner_trump: **0.766 at the 400k seed → 0.012 by 50k**, then ~0.00–
+  0.05 for 850k episodes (single excursion 0.124 @750k, back to 0.01).
+- defender_trump: 0.00–0.065 throughout (B2's ≤ 0.10 satisfied — the
+  greedy probe's flat zero was this, masking the partner collapse).
+- c2_called_suit: stable ~0.45–0.53 across the whole run (control).
+
+v2 comparison at matched episodes (convention_erosion decay curve):
+v2 collapsed IDENTICALLY (0.766 → 0.057 @50k) — the collapse is
+lineage-normal for an anchored league start from this seed (the anchor
+protects bidding heads only; play conventions are exposed) — but v2
+then re-ignited repeatedly at high temperature (0.21 @400k, 0.35
+@500k, 0.46 @550k, 0.54 @750k) and lost it each time (the documented
+oscillation). The arm never re-ignited: the low-temperature regime
+suppressed the noise-driven excursions in BOTH directions, holding the
+near-zero equilibrium the collapse left it in. Two corollaries: (1)
+the reviewer's "PG cannot re-ignite at mass ~0.004" is too strong as
+stated — v2's excursions prove noise+entropy CAN re-ignite from ~0 at
+high temperature — but the excursions never stabilized, and the arm
+removed exactly the noise that powered them; (2) the arm's collapse
+happened in the FIRST 50k, before any batch/temperature property could
+matter — the hold mechanism then preserved the wrong fixed point,
+exactly as the amended outcome map's new cell describes. Stability
+confirmed; correctness not achieved; B2 unreachable from inside the
+run.
+
+Per the operator-confirmed outcome map, this outcome's designated
+branch is the **search-distillation re-ignition contingency**:
+node-selective distillation at partner-lead nodes (pi_gumbel readout —
+the instrument measured to re-ignite from a zero floor in the
+search-readout study) to INJECT the convention, composed with the
+low-temperature regime to HOLD it — the two mechanisms this program
+has now separately validated (hold: this arm; inject: v2's excursions
+show the ecology accepts the convention transiently; the oracle
+counterfactuals say it is value-correct). Design decision at the gen-1
+boundary is the operator's: continue gen 2 as pre-registered (mostly
+confirmatory now), hold for the composed config, or relaunch gen 2
+with instrumentation while the composed config is designed.
+
 Gen-2 boundary package (pre-registered now, activated at the declared
 boundary relaunch; all default-off / measurement-only before then):
 optimizer-step telemetry column; gradient-noise-scale logging (global +
