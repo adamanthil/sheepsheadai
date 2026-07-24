@@ -257,6 +257,7 @@ def play_population_game(
     determinization_rng: "random.Random | None" = None,
     search_config: "SearchConfig | None" = None,
     collect_oracle: bool = False,
+    game_seed: int | None = None,
 ) -> tuple:
     """Play a single game with the training agent and population opponents.
 
@@ -277,7 +278,11 @@ def play_population_game(
     Returns:
         tuple: (game, episode_events, final_scores, training_agent_data, opponents_by_position)
     """
-    game = Game(partner_selection_mode=partner_mode)
+    game = (
+        Game(partner_selection_mode=partner_mode, seed=game_seed)
+        if game_seed is not None
+        else Game(partner_selection_mode=partner_mode)
+    )
     weights = shaping_weights or {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 1.0}
     shaped = reward_mode == "shaped"
     search_enabled = (

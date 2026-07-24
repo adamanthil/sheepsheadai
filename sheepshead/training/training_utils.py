@@ -507,6 +507,8 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     leasters = 0
     t0_def_leads = 0  # trick-0 defender leads holding both trump and fail
     t0_def_trump = 0  # ...that led trump (greedy)
+    ptn_leads = 0  # secret-partner leads, tricks 0-2, both classes legal
+    ptn_trump = 0  # ...that led trump (the partner convention)
     play_spreads = []  # legal-play logit spread (max-min) at multi-legal nodes
     try:
         for g in range(n_games):
@@ -527,6 +529,17 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                                 or player.is_partner
                                 or player.is_secret_partner
                             )
+                            and any(c in TRUMP for c in player.hand)
+                            and any(c not in TRUMP for c in player.hand)
+                        )
+                        is_partner_lead = (
+                            game.play_started
+                            and not game.is_leaster
+                            and game.cards_played == 0
+                            and game.current_trick <= 2
+                            and game.leader == player.position
+                            and player.is_secret_partner
+                            and not player.is_picker
                             and any(c in TRUMP for c in player.hand)
                             and any(c not in TRUMP for c in player.hand)
                         )
@@ -566,6 +579,10 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                             t0_def_leads += 1
                             if name.startswith("PLAY ") and name[5:] in TRUMP:
                                 t0_def_trump += 1
+                        if is_partner_lead:
+                            ptn_leads += 1
+                            if name.startswith("PLAY ") and name[5:] in TRUMP:
+                                ptn_trump += 1
                         player.act(a)
                         valid = player.get_valid_action_ids()
                         if game.was_trick_just_completed:
@@ -586,6 +603,10 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         "leaster_rate": 100.0 * leasters / max(n_games, 1),
         "t0_trump_lead_rate": 100.0 * t0_def_trump / max(t0_def_leads, 1),
         "t0_def_leads": t0_def_leads,
+        # The partner convention (B2's other half; its absence from this
+        # probe hid the 2026-07 batch-arm convention collapse for 850k eps).
+        "partner_trump_lead_rate": 100.0 * ptn_trump / max(ptn_leads, 1),
+        "partner_leads": ptn_leads,
         # Median legal-play logit spread (max-min). A healthy play head is well
         # separated (baseline ~6.5); a collapsed/uniform head reads ~0. This is
         # the cheap canary for the terminal-only play-head collapse.

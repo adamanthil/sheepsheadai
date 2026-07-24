@@ -106,6 +106,22 @@ PROGRESS_CSV_HEADER = [
     "lead_trump_mass",
 ]
 
+# greedy_health.csv schema (append-only; migrated on resume like the
+# progress CSV).
+GREEDY_CSV_HEADER = [
+    "episode",
+    "pick_rate",
+    "alone_rate",
+    "leaster_rate",
+    "t0_trump_lead_rate",
+    "t0_def_leads",
+    "play_logit_spread_med",
+    "play_nodes",
+    "games",
+    "partner_trump_lead_rate",
+    "partner_leads",
+]
+
 PFSP_HYPERPARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
 
 # Fixed deal-set seed for the anchored strength probe: every probe replays the
@@ -133,6 +149,7 @@ class _Job:
     opponent_ids: list  # member_id strings; SELF_PLAY for self seats
     weight_version: int
     collect_oracle: bool = False  # attach oracle_state to events (critic_mode=oracle)
+    game_seed: int | None = None  # fixed deal for seat-rotated collection
 
 
 # ----------------------------------------------------------------------------
@@ -199,6 +216,7 @@ def _league_worker_play(job: _Job) -> dict:
             training_agent_position=job.training_position,
             reward_mode="terminal",
             collect_oracle=job.collect_oracle,
+            game_seed=job.game_seed,
         )
     )
     return {
@@ -300,8 +318,29 @@ def apply_schedules(episode: int, ctx: MainPhaseContext):
 
 # -------------------- episode streams --------------------
 def sequential_stream(ctx: MainPhaseContext):
+    # Seat rotation (deal-paired collection): groups of 5 consecutive
+    # episodes share one sampled (mode, table, deal); the hero plays every
+    # seat of the same deal against the same opponents — the train-time
+    # duplicate instrument. The deal seed is drawn once per group so the
+    # cards are identical across the 5 rotations.
+    rotate = bool(getattr(ctx.args, "seat_rotation", False))
+    rot_state = {}
     for episode in range(ctx.start_episode + 1, ctx.end_episode + 1):
-        mode, table, position = setup_episode(episode, ctx)
+        game_seed = None
+        if rotate:
+            phase = (episode - ctx.start_episode - 1) % 5
+            if phase == 0 or not rot_state:
+                mode, table, _ = setup_episode(episode, ctx)
+                rot_state = {
+                    "mode": mode,
+                    "table": table,
+                    "seed": random.randrange(2**31),
+                }
+            mode, table = rot_state["mode"], rot_state["table"]
+            position = phase + 1
+            game_seed = rot_state["seed"]
+        else:
+            mode, table, position = setup_episode(episode, ctx)
         opponents = [
             _Seat(ctx.training_agent, SELF_PLAY)
             if entry == SELF_PLAY
@@ -315,6 +354,7 @@ def sequential_stream(ctx: MainPhaseContext):
             training_agent_position=position,
             reward_mode="terminal",
             collect_oracle=ctx.collect_oracle,
+            game_seed=game_seed,
         )
         yield (
             episode,
@@ -357,8 +397,27 @@ def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
         window = max(num_workers, min(256, int(remaining_tx / avg_tx_per_game) + 1))
         end = min(ctx.end_episode, episode + window - 1)
         jobs = []
+        rotate = bool(getattr(ctx.args, "seat_rotation", False))
+        rot_state = getattr(ctx, "_rot_state", None)
         for ep in range(episode, end + 1):
-            mode, table, position = setup_episode(ep, ctx)
+            game_seed = None
+            if rotate:
+                # Same 5-episode grouping as sequential_stream: one sampled
+                # (mode, table, deal) per group, hero seat = group phase + 1.
+                phase = (ep - ctx.start_episode - 1) % 5
+                if phase == 0 or rot_state is None:
+                    mode, table, _ = setup_episode(ep, ctx)
+                    rot_state = {
+                        "mode": mode,
+                        "table": table,
+                        "seed": random.randrange(2**31),
+                    }
+                    ctx._rot_state = rot_state
+                mode, table = rot_state["mode"], rot_state["table"]
+                position = phase + 1
+                game_seed = rot_state["seed"]
+            else:
+                mode, table, position = setup_episode(ep, ctx)
             jobs.append(
                 _Job(
                     episode=ep,
@@ -369,6 +428,7 @@ def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
                     ],
                     weight_version=ctx.weight_sync["version"],
                     collect_oracle=ctx.collect_oracle,
+                    game_seed=game_seed,
                 )
             )
         for r in pool.imap(_league_worker_play, jobs):
@@ -427,6 +487,8 @@ def run_main_phase(
     # resume episode, or the replayed episodes would duplicate rows.
     if ensure_csv_columns(progress_csv, PROGRESS_CSV_HEADER):
         print("📊 Migrated league_training_progress.csv to wider schema")
+    if ensure_csv_columns(greedy_csv, GREEDY_CSV_HEADER):
+        print("📊 Migrated greedy_health.csv to wider schema")
     for _csv in (progress_csv, greedy_csv, anchored_csv):
         _n = truncate_csv_rows_past_episode(_csv, start_episode)
         if _n:
@@ -630,6 +692,8 @@ def run_main_phase(
                     f"leaster {probe['leaster_rate']:.1f}%, "
                     f"t0 trump-lead {probe['t0_trump_lead_rate']:.1f}% "
                     f"(n={probe['t0_def_leads']}), "
+                    f"partner trump-lead {probe['partner_trump_lead_rate']:.1f}% "
+                    f"(n={probe['partner_leads']}), "
                     f"play-spread {probe['play_logit_spread_med']:.2f}",
                     flush=True,
                 )
@@ -658,19 +722,7 @@ def run_main_phase(
                 with open(greedy_csv, "a", newline="") as f:
                     w = csv.writer(f)
                     if write_header:
-                        w.writerow(
-                            [
-                                "episode",
-                                "pick_rate",
-                                "alone_rate",
-                                "leaster_rate",
-                                "t0_trump_lead_rate",
-                                "t0_def_leads",
-                                "play_logit_spread_med",
-                                "play_nodes",
-                                "games",
-                            ]
-                        )
+                        w.writerow(GREEDY_CSV_HEADER)
                     w.writerow(
                         [
                             episode,
@@ -682,6 +734,8 @@ def run_main_phase(
                             f"{probe['play_logit_spread_med']:.3f}",
                             probe["play_nodes"],
                             probe["games"],
+                            f"{probe['partner_trump_lead_rate']:.2f}",
+                            probe["partner_leads"],
                         ]
                     )
 
@@ -909,6 +963,39 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "minibatching and forfeits the per-step SNR the bigger buffer buys",
     )
     ap.add_argument(
+        "--gamma",
+        type=float,
+        default=None,
+        help="override the discount factor (e.g. 1.0: undiscounted terminal "
+        "returns — removes the ~7%% depth tilt against early nodes on this "
+        "finite-horizon terminal-reward game). Default keeps the agent's "
+        "historical 0.99",
+    )
+    ap.add_argument(
+        "--oracle-aux-heads",
+        action="store_true",
+        help="build the oracle critic with deterministic aux heads "
+        "(per-seat team membership + team points; offline-validated "
+        "2026-07-24). Historical checkpoints without heads still load "
+        "(heads start fresh)",
+    )
+    ap.add_argument(
+        "--oracle-init",
+        default=None,
+        help="path to a pretrained oracle state_dict (e.g. from "
+        "oracle_moe_offline pretrain) loaded into the oracle critic after "
+        "--resume — the supervised warm start that removes the fresh-"
+        "oracle burn-in window",
+    )
+    ap.add_argument(
+        "--seat-rotation",
+        action="store_true",
+        help="deal-paired collection: each sampled deal is played 5 times "
+        "with the hero rotating through all seats against the same table "
+        "(train-time duplicate instrument; equalizes role exposure per "
+        "deal)",
+    )
+    ap.add_argument(
         "--gns-log",
         action="store_true",
         help="log the gradient noise scale each update (global + partner-"
@@ -1002,11 +1089,23 @@ def main():
         len(ACTIONS),
         critic_mode=args.critic_mode,
         arch=args.arch,
+        oracle_aux_heads=getattr(args, "oracle_aux_heads", False),
     )
     training_agent.load(args.resume, load_optimizers=True)
     if args.gae_lambda is not None:
         training_agent.gae_lambda = float(args.gae_lambda)
         print(f"λ  GAE lambda override: {training_agent.gae_lambda}")
+    if getattr(args, "gamma", None) is not None:
+        training_agent.gamma = float(args.gamma)
+        print(f"γ  discount override: {training_agent.gamma}")
+    if getattr(args, "oracle_init", None):
+        sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
+        training_agent.oracle_critic.load_state_dict(sd, strict=True)
+        print(f"🔮⚡ Oracle warm-started from {args.oracle_init}")
+    if getattr(args, "oracle_aux_heads", False):
+        print("🔮🧩 Oracle aux heads ON (team membership + team points)")
+    if getattr(args, "seat_rotation", False):
+        print("🔄 Seat rotation ON: each deal played once per hero seat")
     if args.arch != "full":
         print(f"🧬 Architecture: {args.arch}")
     if args.critic_mode == "oracle":
