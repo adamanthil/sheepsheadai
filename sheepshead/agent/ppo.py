@@ -2077,6 +2077,25 @@ class PPOAgent:
         }
         per = {k: {"sq_sum": 0.0, "inv_b_sum": 0.0, "n": 0} for k in keys}
 
+        # Direct per-update SNR readout at partner-lead rows (operator
+        # request 2026-07-24): realized advantage mean/std (NORMALIZED
+        # units — the scale the loss consumes) and mean policy mass on
+        # trump-lead plays, the convention action whose mass detects the
+        # re-ignition regime.
+        from sheepshead import ACTIONS as _ACTIONS
+        from sheepshead.game import TRUMP as _TRUMP
+
+        trump_play_ids = torch.tensor(
+            [
+                i
+                for i, a in enumerate(_ACTIONS)
+                if a.startswith("PLAY ") and a.split()[-1] in set(_TRUMP)
+            ],
+            device=device,
+        )
+        lead_adv_sum = lead_adv_sq = lead_mass_sum = 0.0
+        lead_n = 0
+
         for mb_start in range(0, len(segments), batch_size):
             batch = segments[mb_start : mb_start + batch_size]
             minibatch = self._build_minibatch_tensors(
@@ -2097,6 +2116,15 @@ class PPOAgent:
             lead_mask = torch.tensor(
                 row_flags, dtype=torch.bool, device=flat.advantages_flat.device
             )
+            if bool(lead_mask.any()):
+                with torch.no_grad():
+                    adv_l = flat.advantages_flat[lead_mask]
+                    probs_l = F.softmax(flat.logits_flat[lead_mask], dim=-1)
+                    mass_l = probs_l[:, trump_play_ids].sum(-1)
+                lead_adv_sum += float(adv_l.sum())
+                lead_adv_sq += float((adv_l**2).sum())
+                lead_mass_sum += float(mass_l.sum())
+                lead_n += int(lead_mask.sum())
             for key in keys:
                 mask = None if key == "global" else lead_mask
                 b_m = len(row_flags) if mask is None else int(mask.sum())
@@ -2117,6 +2145,12 @@ class PPOAgent:
         zero_grads()
 
         out = {"lead_rows": total_lead}
+        if lead_n > 0:
+            mean = lead_adv_sum / lead_n
+            var = max(lead_adv_sq / lead_n - mean**2, 0.0)
+            out["lead_adv_mean"] = mean
+            out["lead_adv_std"] = var**0.5
+            out["lead_trump_mass"] = lead_mass_sum / lead_n
         for key in ("global", "lead"):
             out[key] = None
             p = per.get(key)

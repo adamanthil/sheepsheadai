@@ -100,6 +100,10 @@ PROGRESS_CSV_HEADER = [
     "opt_steps",
     "gns_global",
     "gns_lead",
+    "lead_rows",
+    "lead_adv_mean",
+    "lead_adv_std",
+    "lead_trump_mass",
 ]
 
 PFSP_HYPERPARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
@@ -583,6 +587,16 @@ def run_main_phase(
                                 else "",
                                 f"{gns['lead']:.0f}"
                                 if gns.get("lead") is not None
+                                else "",
+                                gns.get("lead_rows", ""),
+                                f"{gns['lead_adv_mean']:.4f}"
+                                if "lead_adv_mean" in gns
+                                else "",
+                                f"{gns['lead_adv_std']:.4f}"
+                                if "lead_adv_std" in gns
+                                else "",
+                                f"{gns['lead_trump_mass']:.4f}"
+                                if "lead_trump_mass" in gns
                                 else "",
                             ]
                         )

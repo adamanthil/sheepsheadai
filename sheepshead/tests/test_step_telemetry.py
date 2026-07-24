@@ -73,6 +73,10 @@ def test_gns_diagnostic_measures_without_touching_training_state():
     assert set(gns) >= {"global", "lead", "lead_rows"}
     # global estimate should be computable on a 10-episode buffer
     assert gns["global"] is None or gns["global"] > 0
+    # partner-lead SNR readout rides along whenever lead rows were sampled
+    if gns["lead_rows"] > 0:
+        assert gns["lead_adv_std"] >= 0
+        assert 0.0 <= gns["lead_trump_mass"] <= 1.0
     # diagnostic leaves no gradients behind
     assert all(
         p.grad is None or not p.grad.abs().any()
