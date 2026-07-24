@@ -569,6 +569,45 @@ bootstrap per-stratum EV vs shared baseline, partner/lead strata
 primary); promote to trainer amendment only on an offline per-stratum EV
 win, and only at a generation boundary.
 
+**Oracle aux-head offline test (pre-registered 2026-07-24, launched
+before results seen; harness commit 85d5730).** Operator design after
+the representation probe: `shared_aux` arm = shared oracle + TWO
+deterministic heads at the value-trunk output — partner-seat 6-way
+(class 0 = none-yet/alone/leaster) and picker/defender team
+points-so-far (2-dim, /120). Trump-counts head EXCLUDED by operator
+choice: imposing a count-summary target could anchor the trump
+representation to exactly the crude statistic we don't want; the net
+should learn a richer remaining-trump-strength representation on its
+own. Team-points format decision: loss MASKED on leaster and pre-pick
+rows — leaster "teams" are 5 singletons, so the target degenerates to
+`points_taken_rel`, which is already an explicit context input (identity
+task, no binding value, and a 5-vs-2 format mismatch); alone hands kept
+(picker team = picker alone, well-defined). Bury excluded from the
+picker-team total (constant known input all game — teaches nothing
+about assembly; the head's value is forcing the transformer to assemble
+current team point state at every timestamp, which translates directly
+to terminal score). Coefficients mirror the limited critic's
+(partner 0.1, points 0.2); early stop selects on val value-MSE only
+(heads are scaffolding, not the objective). Protocol otherwise
+IDENTICAL to the shared arm (same dataset/splits/lr/batch/patience) so
+the existing `shared.pt` is the paired baseline. Interpretation guide,
+declared in advance:
+
+- Primary: paired-bootstrap per-stratum EV, `shared_aux − shared`, at
+  partner/lead strata (play_lead_t02 primary, partner_call secondary).
+  CI > 0 there ⇒ representation-forcing works ⇒ trainer amendment
+  candidate (gen boundary only). CI spanning zero at role strata with
+  no majority-stratum harm ⇒ heads are inert offline ⇒ do NOT amend the
+  trainer on speculation; the sub-ceiling probe result would then read
+  as "attenuation is real but not value-binding at this data scale."
+- Secondary: partner head test accuracy ~ceiling (it had better be —
+  supervised deterministic target); team-points MAE; no EV regression
+  at play_t3plus (CI must not exclude zero from below).
+- Caveat carried from the probe: offline-15-epochs ≠ online 850k-episode
+  regime; an offline null does not rule out an online transient-speed
+  benefit, but an offline win is necessary evidence before touching the
+  trainer.
+
 **Comparison protocol — matched-endpoint, NOT matched-machinery:** the
 current league differs from the v2 run's (duplicate-bridge gate
 instruments, this amendment), and v2's single seed makes trajectory
