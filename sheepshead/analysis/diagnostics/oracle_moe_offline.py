@@ -24,6 +24,17 @@ oracle observations, empirical discounted return G — identical semantics to
              material buckets, Suphx per-action-type models.
   * ref    — the checkpoint's own online-trained oracle head, evaluated
              untouched on the same test episodes (no training).
+  * shared_aux — shared arm plus deterministic auxiliary heads at the
+             value-trunk OUTPUT (operator spec 2026-07-24, after the 850k
+             representation probe showed partner identity decoding at only
+             79.5% there and the trunk attenuating role structure):
+             partner-seat 6-way (0 = none yet/alone/leaster) and
+             picker/defender team points-so-far (2-dim, /120). Team loss
+             is masked on leaster and pre-pick rows — leaster "teams" are
+             singletons, so the target degenerates to points_taken_rel,
+             an explicit input. Bury excluded (constant known input).
+             Coefficients mirror the limited critic (0.1 / 0.2); early
+             stopping selects on val value-MSE only.
 
 All arms report per-stratum EV on a held-out test split (same strata as
 ``critic_stratified_ev``). The MoE arm's capacity is 5x the shared arm's —
@@ -265,6 +276,174 @@ def _forward_batch(net, eps: list[dict], device) -> tuple[torch.Tensor, torch.Te
     return vals, target, mask
 
 
+class _AuxHeads(torch.nn.Module):
+    """Deterministic auxiliary heads read from the value-trunk output."""
+
+    def __init__(self, d_model: int = 256):
+        super().__init__()
+        self.partner = torch.nn.Linear(d_model, 6)
+        self.team_points = torch.nn.Linear(d_model, 2)
+
+
+def _forward_aux_batch(net, eps: list[dict], device):
+    """Like _forward_batch but also returns trunk-output features (B,T,d)."""
+    out = net.encoder.encode_sequences(
+        [ep["obs"] for ep in eps], memory_in=None, device=device
+    )
+    at, am = out["all_tokens"], out["all_mask"]
+    B, T, N, d = at.shape
+    r = net._readout(at.reshape(B * T, N, d), am.reshape(B * T, N))
+    trunk = net.value_trunk(r)
+    vals = net.value_head(trunk).view(B, T)
+    target = torch.zeros((B, T), device=vals.device)
+    mask = torch.zeros((B, T), dtype=torch.bool, device=vals.device)
+    for b, ep in enumerate(eps):
+        for t, (is_a, g) in enumerate(zip(ep["is_action"], ep["g"])):
+            if is_a:
+                target[b, t] = g
+                mask[b, t] = True
+    return vals, trunk.view(B, T, -1), target, mask
+
+
+def _aux_label_tensors(eps: list[dict], B: int, T: int, device):
+    """Exact labels from the full-info obs: partner seat (6-way) and
+    picker/defender team points-so-far (/120, masked on leaster and
+    pre-pick rows where teams are degenerate or undefined)."""
+    partner = torch.zeros((B, T), dtype=torch.long, device=device)
+    team = torch.zeros((B, T, 2), device=device)
+    team_mask = torch.zeros((B, T), dtype=torch.bool, device=device)
+    for b, ep in enumerate(eps):
+        for t, ob in enumerate(ep["obs"]):
+            sp = int(ob["secret_partner_rel"])
+            pk = int(ob["picker_rel"])
+            partner[b, t] = sp
+            if pk > 0 and not bool(ob["is_leaster"]):
+                pts = np.asarray(ob["points_taken_rel"], dtype=np.float64)
+                tp = float(pts[pk - 1])
+                if sp > 0 and sp != pk:
+                    tp += float(pts[sp - 1])
+                team[b, t, 0] = tp / 120.0
+                team[b, t, 1] = (float(pts.sum()) - tp) / 120.0
+                team_mask[b, t] = True
+    return partner, team, team_mask
+
+
+def _train_net_aux(
+    net,
+    heads,
+    train_eps: list[dict],
+    val_eps: list[dict],
+    device,
+    label: str,
+    lr: float,
+    batch_size: int,
+    max_epochs: int,
+    patience: int,
+    seed: int,
+    partner_coeff: float,
+    points_coeff: float,
+) -> tuple[dict, list[float]]:
+    """_train_net with the composite aux loss. Early stop / model selection
+    on val VALUE MSE only — the heads are representation scaffolding."""
+    opt = torch.optim.Adam(
+        net.param_groups(lr) + [{"params": heads.parameters(), "lr": lr}]
+    )
+    rng = random.Random(seed)
+    best_val, best_state, bad, curve = float("inf"), None, 0, []
+    for epoch in range(max_epochs):
+        t0 = time.time()
+        net.train()
+        heads.train()
+        for batch_idx in _batches(list(range(len(train_eps))), batch_size, rng):
+            eps = [train_eps[i] for i in batch_idx]
+            vals, trunk, target, mask = _forward_aux_batch(net, eps, device)
+            B, T = vals.shape
+            partner, team, team_mask = _aux_label_tensors(
+                eps, B, T, vals.device
+            )
+            loss = _masked_mse(vals, target, mask)
+            if bool(mask.any()):
+                logits = heads.partner(trunk)
+                loss = loss + partner_coeff * torch.nn.functional.cross_entropy(
+                    logits[mask], partner[mask]
+                )
+            tm = mask & team_mask
+            if bool(tm.any()):
+                pred = heads.team_points(trunk)
+                loss = loss + points_coeff * torch.nn.functional.smooth_l1_loss(
+                    pred[tm], team[tm]
+                )
+            opt.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                list(net.parameters()) + list(heads.parameters()), 0.5
+            )
+            opt.step()
+        net.eval()
+        heads.eval()
+        with torch.no_grad():
+            se, n = 0.0, 0
+            for batch_idx in _batches(list(range(len(val_eps))), batch_size, None):
+                eps = [val_eps[i] for i in batch_idx]
+                vals, _, target, mask = _forward_aux_batch(net, eps, device)
+                if bool(mask.any()):
+                    se += float(((vals - target) ** 2)[mask].sum())
+                    n += int(mask.sum())
+            val_mse = se / max(n, 1)
+        curve.append(val_mse)
+        print(
+            f"    [{label}] epoch {epoch + 1}: val MSE {val_mse:.5f} "
+            f"({time.time() - t0:.0f}s)",
+            flush=True,
+        )
+        if val_mse < best_val - 1e-6:
+            best_val, bad = val_mse, 0
+            best_state = (
+                copy.deepcopy(net.state_dict()),
+                copy.deepcopy(heads.state_dict()),
+            )
+        else:
+            bad += 1
+            if bad > patience:
+                break
+    if best_state is not None:
+        net.load_state_dict(best_state[0])
+        heads.load_state_dict(best_state[1])
+    return {"best_val_mse": best_val, "epochs": len(curve)}, curve
+
+
+def _eval_aux_heads(net, heads, eps: list[dict], batch_size: int, device):
+    """Test-set diagnostics for the heads themselves: partner accuracy
+    (overall and partner-present) and team-points MAE in points."""
+    n_all = n_all_ok = n_has = n_has_ok = 0
+    mae_sum = mae_n = 0.0
+    with torch.no_grad():
+        for i in range(0, len(eps), batch_size):
+            chunk = eps[i : i + batch_size]
+            vals, trunk, _, mask = _forward_aux_batch(net, chunk, device)
+            B, T = vals.shape
+            partner, team, team_mask = _aux_label_tensors(
+                chunk, B, T, vals.device
+            )
+            pred = heads.partner(trunk).argmax(-1)
+            ok = pred.eq(partner) & mask
+            n_all += int(mask.sum())
+            n_all_ok += int(ok.sum())
+            has = mask & partner.gt(0)
+            n_has += int(has.sum())
+            n_has_ok += int((pred.eq(partner) & has).sum())
+            tm = mask & team_mask
+            if bool(tm.any()):
+                diff = (heads.team_points(trunk) - team).abs() * 120.0
+                mae_sum += float(diff[tm].sum())
+                mae_n += int(tm.sum()) * 2
+    return {
+        "partner_acc": n_all_ok / max(n_all, 1),
+        "partner_acc_haspartner": n_has_ok / max(n_has, 1),
+        "team_points_mae": mae_sum / max(mae_n, 1),
+    }
+
+
 def _masked_mse(vals, target, mask) -> torch.Tensor:
     if not bool(mask.any()):
         return vals.new_zeros(())
@@ -476,6 +655,46 @@ def cmd_train(args) -> int:
         if args.save_nets:
             torch.save(net.state_dict(), Path(args.out).parent / "shared.pt")
 
+    # --- shared_aux: shared + deterministic heads at trunk output -------- #
+    if "shared_aux" in arms:
+        print("\n[shared_aux] training…", flush=True)
+        net = OracleValueNetwork().to(device)
+        heads = _AuxHeads(d_model=256).to(device)
+        fit, curve = _train_net_aux(
+            net, heads, train, val, device, "shared_aux", args.lr,
+            args.batch_size, args.max_epochs, args.patience, args.seed,
+            args.aux_partner_coeff, args.aux_points_coeff,
+        )
+        rows = _eval_values(
+            lambda eps: net.forward_sequences(
+                [ep["obs"] for ep in eps], device=device
+            ),
+            test,
+            args.batch_size,
+        )
+        head_metrics = _eval_aux_heads(net, heads, test, args.batch_size, device)
+        results["arms"]["shared_aux"] = {
+            "fit": fit,
+            "val_curve": curve,
+            "aux_coeffs": {
+                "partner": args.aux_partner_coeff,
+                "points": args.aux_points_coeff,
+            },
+            "head_metrics": head_metrics,
+            "test": _stratum_report(rows),
+        }
+        print("\n[shared_aux] per-stratum EV:")
+        _print_report(results["arms"]["shared_aux"]["test"])
+        print(f"  head metrics: {head_metrics}")
+        if args.save_nets:
+            torch.save(
+                net.state_dict(), Path(args.out).parent / "shared_aux.pt"
+            )
+            torch.save(
+                heads.state_dict(),
+                Path(args.out).parent / "shared_aux_heads.pt",
+            )
+
     # --- moe: five per-phase experts, hard-routed ------------------------ #
     if "moe" in arms:
         experts: list = []
@@ -555,16 +774,27 @@ def cmd_bootstrap(args) -> int:
         torch.load(run_dir / "shared.pt", weights_only=True)
     )
     shared_net.eval()
+    arms = ["ref", "shared"]
     experts = []
-    for g in GROUPS:
-        net = OracleValueNetwork().to(device)
-        net.load_state_dict(
-            torch.load(run_dir / f"moe_{g}.pt", weights_only=True)
+    if all((run_dir / f"moe_{g}.pt").exists() for g in GROUPS):
+        for g in GROUPS:
+            net = OracleValueNetwork().to(device)
+            net.load_state_dict(
+                torch.load(run_dir / f"moe_{g}.pt", weights_only=True)
+            )
+            net.eval()
+            experts.append(net)
+        arms.append("moe")
+    aux_net = None
+    if (run_dir / "shared_aux.pt").exists():
+        aux_net = OracleValueNetwork().to(device)
+        aux_net.load_state_dict(
+            torch.load(run_dir / "shared_aux.pt", weights_only=True)
         )
-        net.eval()
-        experts.append(net)
-
-    arms = ("ref", "shared", "moe")
+        aux_net.eval()
+        arms.append("shared_aux")
+    arms = tuple(arms)
+    print(f"arms: {arms}", flush=True)
     rows = []  # (ep_idx, g, {arm: v}, strata)
     with torch.no_grad():
         for i in range(0, len(test), args.batch_size):
@@ -572,21 +802,28 @@ def cmd_bootstrap(args) -> int:
             seqs = [ep["obs"] for ep in chunk]
             v_ref = ref_net.forward_sequences(seqs, device=device)
             v_sh = shared_net.forward_sequences(seqs, device=device)
-            v_ex = [n.forward_sequences(seqs, device=device) for n in experts]
+            v_ex = (
+                [n.forward_sequences(seqs, device=device) for n in experts]
+                if experts
+                else None
+            )
+            v_aux = (
+                aux_net.forward_sequences(seqs, device=device)
+                if aux_net is not None
+                else None
+            )
             for b, ep in enumerate(chunk):
                 for t, is_a in enumerate(ep["is_action"]):
                     if is_a:
-                        gr = ep["group"][t]
-                        rows.append((
-                            i + b,
-                            ep["g"][t],
-                            {
-                                "ref": float(v_ref[b, t]),
-                                "shared": float(v_sh[b, t]),
-                                "moe": float(v_ex[gr][b, t]),
-                            },
-                            ep["strata"][t],
-                        ))
+                        vals_t = {
+                            "ref": float(v_ref[b, t]),
+                            "shared": float(v_sh[b, t]),
+                        }
+                        if v_ex is not None:
+                            vals_t["moe"] = float(v_ex[ep["group"][t]][b, t])
+                        if v_aux is not None:
+                            vals_t["shared_aux"] = float(v_aux[b, t])
+                        rows.append((i + b, ep["g"][t], vals_t, ep["strata"][t]))
     print(f"{len(rows)} action rows", flush=True)
 
     strata_names = [s for s in ORDER if any(s in r[3] for r in rows)]
@@ -636,7 +873,18 @@ def cmd_bootstrap(args) -> int:
         entry = {"n": len(g)}
         for a in arms:
             entry[a] = {"ev": ev(g, vals[a]), "ci95": ci(np.array(boot[s][a]))}
-        for a1, a2 in (("moe", "shared"), ("shared", "ref"), ("moe", "ref")):
+        pairs = [
+            (a1, a2)
+            for a1, a2 in (
+                ("moe", "shared"),
+                ("shared", "ref"),
+                ("moe", "ref"),
+                ("shared_aux", "shared"),
+                ("shared_aux", "ref"),
+            )
+            if a1 in arms and a2 in arms
+        ]
+        for a1, a2 in pairs:
             d = np.array(boot[s][a1]) - np.array(boot[s][a2])
             entry[f"d_{a1}_minus_{a2}"] = {
                 "delta": entry[a1]["ev"] - entry[a2]["ev"],
@@ -645,15 +893,30 @@ def cmd_bootstrap(args) -> int:
         out[s] = entry
 
     (run_dir / "bootstrap.json").write_text(json.dumps(out, indent=2))
-    print(f"\n{'stratum':<30}{'n':>7}{'moe-shared':>24}{'shared-ref':>24}")
+    cols = [
+        (a1, a2)
+        for a1, a2 in (
+            ("moe", "shared"),
+            ("shared", "ref"),
+            ("shared_aux", "shared"),
+            ("shared_aux", "ref"),
+        )
+        if a1 in arms and a2 in arms
+    ]
+    header = f"\n{'stratum':<30}{'n':>7}"
+    for a1, a2 in cols:
+        header += f"{a1 + '-' + a2:>26}"
+    print(header)
     for s in strata_names:
         e = out[s]
-        d1, d2 = e["d_moe_minus_shared"], e["d_shared_minus_ref"]
-        print(
-            f"{s:<30}{e['n']:>7}"
-            f"  {d1['delta']:+.3f} [{d1['ci95'][0]:+.3f},{d1['ci95'][1]:+.3f}]"
-            f"  {d2['delta']:+.3f} [{d2['ci95'][0]:+.3f},{d2['ci95'][1]:+.3f}]"
-        )
+        line = f"{s:<30}{e['n']:>7}"
+        for a1, a2 in cols:
+            d = e[f"d_{a1}_minus_{a2}"]
+            line += (
+                f"  {d['delta']:+.3f} "
+                f"[{d['ci95'][0]:+.3f},{d['ci95'][1]:+.3f}]"
+            )
+        print(line)
     print(f"\nwrote {run_dir / 'bootstrap.json'}")
     return 0
 
@@ -690,6 +953,8 @@ def main() -> int:
     t.add_argument("--max-epochs", type=int, default=15)
     t.add_argument("--patience", type=int, default=2)
     t.add_argument("--seed", type=int, default=20260721)
+    t.add_argument("--aux-partner-coeff", type=float, default=0.1)
+    t.add_argument("--aux-points-coeff", type=float, default=0.2)
     t.add_argument("--save-nets", action="store_true")
     t.add_argument("--out", required=True)
     t.set_defaults(fn=cmd_train)
