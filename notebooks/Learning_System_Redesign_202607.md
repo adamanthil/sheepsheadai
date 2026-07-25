@@ -1035,6 +1035,61 @@ Consequences for the record:
   counterfactuals, h2h/decay measurements. Transfer caveat: bake-off
   "ref" was a braided-trained head evaluated on clean streams.
 
+**Reproduction commands (verbatim; final relaunch verified against the
+live process command line).**
+
+Oracle pretraining dataset (40k frozen-seed self-play episodes, γ=1.0
+terminal returns; ~1.5h at 6 workers):
+
+```bash
+uv run python -m sheepshead.analysis.diagnostics.oracle_moe_offline generate \
+  --ckpt runs/league_arch_perceiver-shared-v2/warmstart_perceiver-shared-v2_400k.pt \
+  --episodes 40000 --workers 6 --gamma 1.0 --seed 20260725 \
+  --out runs/oracle_pretrain_400k/dataset.pt \
+  > runs/oracle_pretrain_400k/generate.log 2>&1
+```
+
+Supervised pretraining of the official headed OracleValueNetwork (γ is
+read from the dataset; aux coefficients default 0.1/0.2; early stop on
+val value-MSE, best epoch 20 of 24):
+
+```bash
+uv run python -m sheepshead.analysis.diagnostics.oracle_moe_offline pretrain \
+  --dataset runs/oracle_pretrain_400k/dataset.pt \
+  --max-epochs 25 --patience 3 --seed 20260725 \
+  --out runs/oracle_pretrain_400k/oracle_init.pt \
+  > runs/oracle_pretrain_400k/pretrain.log 2>&1
+```
+
+Seed pool (4 copies of the 400k warmstart, because `sample_table`
+samples members without replacement — one member can fill only one
+seat):
+
+```bash
+mkdir -p runs/retention_seeds
+for s in a b c d; do
+  cp runs/league_arch_perceiver-shared-v2/warmstart_perceiver-shared-v2_400k.pt \
+     runs/retention_seeds/seed400k_$s.pt
+done
+```
+
+Run launch (final relaunch, post-fix, default self-play share; the
+glob in --seed-checkpoints is quoted — the orchestrator expands it):
+
+```bash
+nohup uv run python -m sheepshead.training.run_extended_league \
+  --resume runs/league_arch_perceiver-shared-v2/warmstart_perceiver-shared-v2_400k.pt \
+  --seed-checkpoints "runs/retention_seeds/*.pt" \
+  --run-name league_retention_pg \
+  --critic-mode oracle --update-interval 16384 --num-workers 8 --seed 42 \
+  --leaster-watchdog --anchor-coeff 0 \
+  --trainer-args "--minibatch-episodes 128 --grad-accum --gamma 1.0 \
+    --oracle-aux-heads --oracle-init runs/oracle_pretrain_400k/oracle_init.pt \
+    --seat-rotation --gns-log --oracle-extra-epochs 4 \
+    --exploiter-full-table --exploiter-patched-ema 0.35" \
+  > runs/league_retention_pg_launch.log 2>&1 &
+```
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
