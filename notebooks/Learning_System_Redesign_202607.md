@@ -1320,6 +1320,19 @@ Strength: **picker_avg ~2.0** (1.10 → 1.5 → 2.0 across 200k), ev_ora
 0.54–0.63 / ev_lim 0.45–0.53 sustained. Watcher re-armed to 300k
 (early-fire: partner < 50%, pick < 20%, or greedy leaster > 8%).
 
+**250k/300k PROBES (2026-07-25): both watch items RESOLVED BENIGN.**
+partner_trump_lead 78.57% @250k → **84.29%** @300k (highest reading
+yet) — the 200k dip at 62% was probe noise, as the flat sampled
+lead_trump_mass predicted. Greedy leaster 1.5% → 3.5% (oscillation
+1.5–5.5%, no trend; watchdog quiet). Pick oscillating 35.5–43.2%,
+alone under limit, picker_avg ~1.8 sustained, ev_ora 0.60–0.66 /
+ev_lim 0.48–0.55 (best yet). NEW MILD WATCH: defender t0 trump-lead
+0.00 → 1.11% @250k → 4.81% @300k — rising from zero toward the 30M-era
+level (4.8%), still under the B2 ≤10% bound; tiny counts (~5 leads/
+probe, SE ≈ 2%), could be noise around 2–3%. Watcher re-armed to 400k
+(early-fire: partner < 50%, pick < 20%, leaster > 8%, defender t0 >
+10%); 500k duplicate h2h vs seed is the next hard milestone.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
