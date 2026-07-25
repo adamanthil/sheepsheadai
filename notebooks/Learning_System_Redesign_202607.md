@@ -1006,6 +1006,35 @@ self-play share 0.15 + the 4-seed pool + full config. Two earlier
 same-day relaunches (single-seed without-replacement fallback; p_self
 composition) are recorded in the run log; all pre-fix data discarded.
 
+**Braided-bug impact assessment (2026-07-24).** Exposure: league-path
+training only (incl. exploiters); ~48% of episodes ⇒ **~67% of
+training ROWS** braided at historical p_self 0.15 (braided episodes
+carry more rows); 100% during empty-league bootstraps; **~90% of rows
+under Phase A's p_self_table 0.65**. Clean: selfplay trainer (always
+per-player), all offline diagnostics (frozen distinct opponents ⇒ hero
+streams), all eval instruments (act-time per-player memories).
+Consequences for the record:
+- Phase A's gate-fail verdict is CONFOUNDED: the design change also
+  raised braided rows 67%→90%, and the observed oracle disruption
+  (0.38→0.21, flat) is what a 90% frame-hopping diet predicts
+  independent of decision weighting. Design-vs-bug split unrecoverable
+  from that run; verdict demoted to "failed under confound."
+- The chronic ev_limited ≈ 0/negative pattern across all league runs
+  is plausibly primarily this bug (critic TRAINED on braided
+  update-forward features, EVALUATED on coherent rollout values). The
+  earlier two-mechanism decline analysis gains braiding as the leading
+  third candidate; the fixed run is the discriminating test.
+- The arch-ablation "league lift ≈ zero over selfplay start" finding is
+  now confounded with the league trainer's ~67% corrupted-context
+  gradients (selfplay trainer was clean) — reinterpretation open.
+- Batch-arm decay-curve facts stand (measurement-side); the 0–50k
+  collapse window gains braided bootstrap gradients as a third
+  co-factor. Aborted-launch GNS readings (7,200/230) VOID — measured
+  on braided buffers.
+- Unaffected: MoE bake-off, aux-head study, oracle pretraining, Δ
+  counterfactuals, h2h/decay measurements. Transfer caveat: bake-off
+  "ref" was a braided-trained head evaluated on clean streams.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
