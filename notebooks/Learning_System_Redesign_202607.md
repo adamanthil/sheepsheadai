@@ -962,6 +962,27 @@ integration bug pre-launch (exploiter × headed-oracle checkpoints,
 8a5d1b4). All banners verified at launch; first-update and 50k-probe
 watchers armed.
 
+**LAUNCH AMENDMENT (2026-07-24 ~21:15, before 5k episodes; relaunched
+from scratch).** First-update telemetry showed ev_ora −0.65 → ~0.05:
+the pretrained oracle was NOT expressing during the empty-league
+bootstrap. Direct probe isolated the cause: the pretrained oracle
+scores **EV 0.556 on hero-stream segments** (its training
+distribution: 12-step, frozen distinct opponents) but **EV ≈ −0.9 on
+the 60-step all-seat segments** that pure-self tables produce — the
+bootstrap phase was recreating the burn-in window the design exists to
+remove. Fix: **--seed-checkpoints = the 400k seed itself**, so the
+league is non-empty from episode 0 and tables are mixed (hero +
+frozen-seed opponents) — behaviorally identical to self-play, exactly
+per the design premise, but structurally hero-stream data. Residual
+p_self 0.15 self-tables stay initially OOD for the oracle; online
+oracle training (8 passes/update) absorbs them. The ~4.7k episodes and
+6 policy updates made against the garbage baseline were discarded with
+the restart. Also recorded from the aborted run's instruments: GNS
+global ≈ 7,200 rows / lead ≈ 230 rows at update 1 (single-update
+estimates; the lead noise scale reading BELOW global is contrary to
+the rare-node-noise assumption and worth tracking), lead_trump_mass
+0.485 at the seed.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
