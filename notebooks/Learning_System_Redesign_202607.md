@@ -1333,6 +1333,21 @@ probe, SE ≈ 2%), could be noise around 2–3%. Watcher re-armed to 400k
 (early-fire: partner < 50%, pick < 20%, leaster > 8%, defender t0 >
 10%); 500k duplicate h2h vs seed is the next hard milestone.
 
+**350k/400k PROBES (2026-07-25): convention SHARPENING, not just
+held.** partner_trump_lead 84.29% → **94.64%** @350k → **97.59%**
+@400k (83 leads) — the gradient is pushing the convention toward
+near-determinism, the opposite of every pre-fix run. Pick settled at
+**32.2%** — inside the operator's ~30% optimal band — with picker_avg
+~1.8 sustained and play_logit_spread sharpening (0.81 → 0.91). ev_ora
+0.60–0.63 / ev_lim 0.49–0.51. Two rising-noise items, neither
+tripped: defender t0 trump-lead 1.79% @350k → **9.00%** @400k (9
+leads of 100; SE ≈ 2.9%; B2 bound ≤10% — bouncy small-n but the
+watcher fires >10%); greedy leaster 3.0% → 7.0% (sampled 3.0–3.7%,
+highest of run; early-fire 8%, watchdog owns the halt). NEXT: the
+pre-registered **500k kill probe** — duplicate h2h vs the 400k seed
+(kill ≤ −0.10) — runs MANUALLY when checkpoint_500000 lands (the
+orchestrator's own h2h fires only at the 1M gen boundary).
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
