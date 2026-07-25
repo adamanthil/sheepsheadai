@@ -1267,6 +1267,21 @@ preferred over global λ.
 sweep arms the contingency only (fires on unclosable convention
 leaks, per the amendment above).
 
+**50k RETENTION PROBE — GATE 1 PASSED (2026-07-25).** Greedy probe at
+ep 50,000: **partner_trump_lead_rate 75.81%** (62 partner leads) vs
+seed 76.6% and the <50% tripwire — the convention is INTACT at the
+exact horizon where the batch arm was at 0.012 and v2 at ~0. First
+league configuration in the lineage to hold it through the terminal-
+reward transition. Defender side: t0_trump_lead_rate **0.00%** (94
+trick-0 defender leads; B2 wants ≤0.10). Supporting state: ev_ora
+0.55–0.59 and ev_lim 0.45–0.51 both RISING at update ~34; picker_avg
+1.53–1.58 and climbing; lead_trump_mass stable ~0.49–0.54;
+lead_adv_mean fluctuating mildly positive. Watch items (no gates
+tripped): greedy pick 41.7% vs baseline 47.7% (unanchored bidding
+drift, expected direction); greedy leaster 2.0% vs baseline 0.25%
+(sampled 0.6–1.3%, watchdog armed); alone 27.6% under the 32.7%
+limit. Second half of the retention tripwire pair is the 100k probe.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
