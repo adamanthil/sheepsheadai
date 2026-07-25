@@ -1168,6 +1168,28 @@ oracle_gap_probe.json):
   discarded with the relaunch; run relaunched from scratch with both
   fixes active.
 
+**RELAUNCH WITH BOTH FIXES: first-update telemetry (2026-07-25,
+updates 1–3 / ep 4,386).** Zero-shot prediction CONFIRMED — with
+correct per-seat targets the pretrained oracle expresses immediately:
+- **ev_oracle 0.52 / 0.55 / 0.55 from update 1** (predicted 0.4–0.5
+  from the probe's trainer-path control). The live trainer
+  distribution IS the pretraining distribution; the earlier 0.11 was
+  entirely the zeroed-targets bug.
+- **ev_limited 0.35 / 0.38 / 0.44 — positive from update 1**,
+  unprecedented in the league lineage; the chronic ev_lim disease is
+  now conclusively attributed to the bug pair.
+- GNS global 15.3k/16.5k rows ≈ the 16,384-row batch (B ≈ B_noise:
+  critically sized). gns_lead now RESOLVES (458/792 rows updates 1–2;
+  16k at update 3 — single-update estimates are high-variance): with
+  real targets the lead-stratum mean gradient is measurable.
+- lead_adv_mean −0.14 → −0.011 → −0.008 (quiet), lead_trump_mass
+  0.50–0.58 (seed level), adv_std_pick 0.21 (up from 0.16 under
+  zeroed targets — real signal variance restored), leaster ≤0.3%,
+  6.4 eps/s, opt_steps 4/update. Gen-0 endpoint served from the new
+  content-hash cache (2b0a77c): trainer handoff 49s after launch.
+- 50k retention watcher armed (first greedy partner_trump_lead_rate
+  probe).
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
