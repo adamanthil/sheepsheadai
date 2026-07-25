@@ -951,6 +951,17 @@ seed.
   amended 2026-07-24 (retention framing: reach = keep what the seed
   has; hold = keep it through gen 2's ecology churn).
 
+**LAUNCHED 2026-07-24 ~19:33 (`runs/league_retention_pg/`).** Oracle
+pretraining result (oracle_init.report.json): held-out pooled EV
+**0.508** — above the online oracle's ~0.40 all-time plateau and the
+0.30 λ-gate threshold before the run begins; early strata pick 0.268 /
+partner_call 0.398 / bury 0.402 / lead 0.477; membership head 99.99%,
+team-points MAE 4.6 (γ=1.0 seed-policy data; EVs not directly
+comparable to v2-2M numbers). Smoke test caught and fixed one
+integration bug pre-launch (exploiter × headed-oracle checkpoints,
+8a5d1b4). All banners verified at launch; first-update and 50k-probe
+watchers armed.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
