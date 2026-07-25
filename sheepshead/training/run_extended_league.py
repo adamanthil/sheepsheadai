@@ -62,8 +62,10 @@ import sys
 import argparse
 import csv
 import glob
+import hashlib
 import json
 import shlex
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -98,6 +100,30 @@ from sheepshead.training.league_reports import (
 )
 
 BASELINE_PROBE_SEED = 20260709  # greedy-health baseline of the resume ckpt
+
+# Cross-run cache for the gen-0 endpoint eval. Gen 0 evaluates the FROZEN
+# resume checkpoint against the frozen panel — a pure function of file
+# contents + (deals, seed) — so a relaunch into a fresh run dir can reuse
+# it instead of repeating the ~50-minute panel pass. Content-hash keyed:
+# a changed seed or panel file misses cleanly.
+ENDPOINT_CACHE_DIR = "runs/endpoint_eval_cache"
+
+
+def _file_md5(path: str) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def gen0_cache_path(resume: str, panel, panel_deals: int) -> str:
+    h = hashlib.md5()
+    h.update(_file_md5(resume).encode())
+    for p in panel:
+        h.update(_file_md5(p).encode())
+    h.update(f"{panel_deals}:{PANEL_SEED}".encode())
+    return os.path.join(ENDPOINT_CACHE_DIR, f"gen0_{h.hexdigest()[:16]}.npz")
 # The ALONE gate is applied relative to the resume checkpoint's own baseline:
 # effective limit = max(config gate, baseline + this margin). A high-alone
 # warm start (weak defender-field collaboration, which league training itself
@@ -559,6 +585,15 @@ class Orchestrator:
         npz = self.panel_npz(g)
         if os.path.exists(npz):
             return load_endpoint(Path(npz))
+        cache = (
+            gen0_cache_path(self.args.resume, self.args.panel, self.args.panel_deals)
+            if g == 0
+            else None
+        )
+        if cache is not None and os.path.exists(cache):
+            shutil.copyfile(cache, npz)
+            self.log(f"endpoint eval gen 0: reusing cached panel ({cache})")
+            return load_endpoint(Path(npz))
         ckpts = [self.args.resume] * 3 if g == 0 else self.composite_ckpts(g)
         self.log(f"endpoint eval gen {g}: {self.args.panel_deals} deals ...")
         t0 = time.time()
@@ -572,6 +607,9 @@ class Orchestrator:
         if g > 0:
             rec = self.gen_record(g)
             rec["eval_hours"] = rec.get("eval_hours", 0.0) + (time.time() - t0) / 3600.0
+        elif cache is not None:
+            os.makedirs(ENDPOINT_CACHE_DIR, exist_ok=True)
+            shutil.copyfile(npz, cache)
         return e
 
     def ensure_h2h(self, g: int) -> dict:
