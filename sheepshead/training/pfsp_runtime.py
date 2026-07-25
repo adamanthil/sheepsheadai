@@ -201,13 +201,19 @@ def _finalize_rewards(
     # (+ leaster bonus). Terminal: final_score-only on the last action, no shaping
     # and no leaster bonus (get_score scores leasters correctly).
     reward_fn = process_episode_rewards if shaped else process_terminal_rewards
+    # Both reward functions require "a chronological list of action
+    # transitions for one player only" — the terminal return belongs on each
+    # player's own last action. Group the merged multi-seat list per player:
+    # feeding it whole put the single terminal reward on the globally-last
+    # actor and left every other collecting seat's stream all-zero.
     reward_map = {}
-    for reward_data in reward_fn(
-        [t for t in episode_transitions if t["kind"] == "action"],
-        final_scores,
-        is_leaster,
-    ):
-        reward_map[id(reward_data["transition"])] = reward_data["reward"]
+    by_player: dict[int, list] = {}
+    for t in episode_transitions:
+        if t["kind"] == "action":
+            by_player.setdefault(t["player"].position, []).append(t)
+    for group in by_player.values():
+        for reward_data in reward_fn(group, final_scores, is_leaster):
+            reward_map[id(reward_data["transition"])] = reward_data["reward"]
 
     # Build final episode event stream for storage
     episode_events = []

@@ -7,6 +7,7 @@ forward ran a single memory across perspective switches (train/act
 mismatch; non-unit PPO ratios at theta_old). store_events_by_seat restores
 the selfplay trainer's per-player stream semantics."""
 
+import numpy as np
 import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
@@ -14,6 +15,7 @@ from sheepshead.agent.ppo import PPOAgent
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.pfsp_runtime import play_population_game
+from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.train_league_ppo import _Seat, store_events_by_seat
 
 SEED = 20260726
@@ -28,19 +30,19 @@ def _agent():
 def _play_self_table(agent, seed_offset=0, mode=PARTNER_BY_JD):
     opponents = [_Seat(agent, SELF_PLAY) for _ in range(4)]
     seed_all(SEED + 100 + seed_offset)
-    _, events, _, _, _ = play_population_game(
+    _, events, scores, _, _ = play_population_game(
         training_agent=agent,
         opponents=opponents,
         partner_mode=mode,
         training_agent_position=1,
         reward_mode="terminal",
     )
-    return events
+    return events, scores
 
 
 def test_self_table_episode_stores_one_segment_per_seat():
     agent = _agent()
-    events = _play_self_table(agent)
+    events, _ = _play_self_table(agent)
     n_players = len({ev["player_id"] for ev in events})
     assert n_players == 5  # all seats collect on a self table
 
@@ -60,7 +62,7 @@ def test_braided_storage_was_the_bug():
     # Control: the historical single-call path produces ONE braided segment
     # for the same episode.
     agent = _agent()
-    events = _play_self_table(agent, seed_offset=1)
+    events, _ = _play_self_table(agent, seed_offset=1)
     agent.store_episode_events(events)
     kinds = [ev["kind"] for ev in agent.events]
     segments = agent._segments_from_events(kinds)
@@ -112,7 +114,7 @@ def test_update_ratios_are_unit_at_theta_old_after_fix():
     with fresh memory must reproduce the act-time log-probs (PPO ratio = 1
     at theta_old) — true only when segments are single-perspective."""
     agent = _agent()
-    events = _play_self_table(agent, seed_offset=2, mode=PARTNER_BY_CALLED_ACE)
+    events, _ = _play_self_table(agent, seed_offset=2, mode=PARTNER_BY_CALLED_ACE)
     store_events_by_seat(agent, events)
 
     from sheepshead.tests.ppo_test_helpers import prepare_minibatch_inputs
@@ -132,4 +134,54 @@ def test_update_ratios_are_unit_at_theta_old_after_fix():
     assert max_dev < 1e-4, (
         f"update-forward log-probs deviate from act-time by {max_dev}"
     )
+    agent.reset_storage()
+
+
+def test_terminal_reward_lands_on_every_seats_last_action():
+    """The sibling bug: _finalize_rewards fed the merged multi-seat action
+    list to process_terminal_rewards, whose contract is one player's
+    chronological transitions — so the single terminal reward landed on the
+    globally-last actor and every other collecting seat's stream was
+    all-zero. Per-player grouping restores each seat's own final_score on
+    its own last action."""
+    agent = _agent()
+    events, scores = _play_self_table(agent, seed_offset=3)
+    assert sum(scores) == 0  # zero-sum sanity
+
+    by_pid: dict[int, list] = {}
+    for ev in events:
+        if ev["kind"] == "action":
+            by_pid.setdefault(ev["player_id"], []).append(ev)
+    assert len(by_pid) == 5
+    for pid, acts in by_pid.items():
+        expected = scores[pid - 1] / RETURN_SCALE
+        assert acts[-1]["reward"] == expected, (
+            f"seat {pid}: last-action reward {acts[-1]['reward']} != "
+            f"own return {expected}"
+        )
+        assert all(a["reward"] == 0.0 for a in acts[:-1])
+
+
+def test_per_seat_returns_flow_through_storage():
+    """Integration through the trainer path: after store_events_by_seat,
+    the gamma=1 empirical return of every stored row equals that row's own
+    seat's final score — the target the oracle/limited critics regress to
+    (this was zero for non-last-actor seats before the reward fix, and the
+    LAST actor's return for every braided row before the storage fix)."""
+    agent = _agent()
+    agent.gamma = 1.0
+    events, scores = _play_self_table(agent, seed_offset=4)
+    store_events_by_seat(agent, events)
+
+    acts = [e for e in agent.events if e["kind"] == "action"]
+    rew = np.array([e["reward"] for e in acts])
+    dns = np.array([e["done"] for e in acts] + [False])
+    zeros = np.zeros(len(acts) + 1)
+    _, g_emp = agent._gae_1d(rew, zeros, dns, agent.gamma, 1.0)
+
+    for g, e in zip(g_emp, acts):
+        expected = scores[e["player_id"] - 1] / RETURN_SCALE
+        assert abs(float(g) - expected) < 1e-9, (
+            f"row of seat {e['player_id']}: return {g} != own {expected}"
+        )
     agent.reset_storage()
