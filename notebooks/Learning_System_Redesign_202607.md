@@ -1304,6 +1304,22 @@ leaster-watchdog trip (greedy leaster 2.5%, sampled ~1%, quiet).
 Next pre-registered milestones: 500k duplicate h2h vs seed (kill ≤
 −0.10), B2 through gen-2 ecology churn.
 
+**150k/200k PROBES (2026-07-25): no gates tripped; two watch items
+opened.** partner_trump_lead 79.76% (84 leads) @150k → **62.07%** (58
+leads) @200k — still 12 points above the 50% tripwire but ~2.3σ below
+the 76–81% plateau (SE ≈ 6.4% at n=58): EITHER probe noise or erosion
+onset; the 250k probe discriminates. Counter-evidence for noise:
+sampled lead_trump_mass is flat (0.49–0.54, no decline), and greedy
+argmax can flip near the boundary while underlying mass holds.
+Defender t0 leak 0.00% at both probes. Second watch item: greedy
+leaster 2.5% → 5.5% → 5.5% (sampled 1.4–2.3%) — PASS-collapse
+attractor direction, but pick is STABLE at 36.8–37.4% (settling
+toward the operator's ~30% optimum, not collapsing) and alone
+recovered to 29.1%; leaster-watchdog owns the halt decision.
+Strength: **picker_avg ~2.0** (1.10 → 1.5 → 2.0 across 200k), ev_ora
+0.54–0.63 / ev_lim 0.45–0.53 sustained. Watcher re-armed to 300k
+(early-fire: partner < 50%, pick < 20%, or greedy leaster > 8%).
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
