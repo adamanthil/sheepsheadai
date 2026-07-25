@@ -1293,12 +1293,16 @@ first-100k collapse that killed every prior league arm did not occur
 under correct per-seat targets + pretrained oracle + unanchored
 low-temperature PG. ev_ora 0.54–0.63 / ev_lim 0.41–0.52 (both
 sustained), picker_avg ~1.5, lead_trump_mass 0.48–0.56.
-WATCH: greedy pick 47.7% → 41.7% → 37.4% (~5 pts/50k unanchored
-drift; the registered bidding contingency — re-engage anchor at a
-declared restart — arms if the PICK-gate streak or leaster watchdog
-trips; greedy leaster 2.5%, sampled ~1%, watchdog quiet). Next
-pre-registered milestones: 500k duplicate h2h vs seed (kill ≤ −0.10),
-B2 through gen-2 ecology churn.
+Greedy pick 47.7% → 41.7% → 37.4% (~5 pts/50k unanchored drift).
+**Operator calibration (2026-07-25): this decline is HEALTHY — ~50%
+is far too high, ~30% is near-optimal, and down to ~20% is defensible
+and may be where the gradient leads.** Concern threshold is therefore
+~20%, not the drift itself; the formal greedy gate (min_pick 15%,
+warning-only) sits below that. The bidding contingency (re-engage
+anchor at a declared restart) remains armed on PICK-gate streak or
+leaster-watchdog trip (greedy leaster 2.5%, sampled ~1%, quiet).
+Next pre-registered milestones: 500k duplicate h2h vs seed (kill ≤
+−0.10), B2 through gen-2 ecology churn.
 
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
