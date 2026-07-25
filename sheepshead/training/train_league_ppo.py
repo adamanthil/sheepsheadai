@@ -988,6 +988,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "oracle burn-in window",
     )
     ap.add_argument(
+        "--self-play-share",
+        type=float,
+        default=None,
+        help="override LeagueConfig.self_play_share (per-seat SELF "
+        "probability; historical 0.15). 0 keeps every opponent seat on "
+        "league members — with a seeded league this makes all collection "
+        "hero-stream, matching an --oracle-init pretrained on hero streams",
+    )
+    ap.add_argument(
         "--seat-rotation",
         action="store_true",
         help="deal-paired collection: each sampled deal is played 5 times "
@@ -1053,6 +1062,12 @@ def main():
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     league_config = LeagueConfig()
+    if getattr(args, "self_play_share", None) is not None:
+        league_config.self_play_share = float(args.self_play_share)
+        print(
+            f"🪞 Per-seat self-play share override: "
+            f"{league_config.self_play_share:.0%}"
+        )
     if args.table_self_play is not None:
         league_config.table_self_play_prob = args.table_self_play
         print(
