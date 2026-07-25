@@ -75,6 +75,7 @@ def test_action_event_full_label_mapping(agent):
         "reward": 1.5,
         "value": 0.25,
         "log_prob": -0.5,
+        "player_id": None,
         "done": True,
         "win": 1.0,
         "final_return": 2.5,
@@ -135,7 +136,7 @@ def test_observation_record_keeps_state_and_gets_all_ones_mask(agent):
     state = {"obs": "watching"}
     agent.store_episode_events([{"kind": "observation", "state": state}])
     record, mask = stored_record_and_mask(agent)
-    assert record == {"kind": "observation", "state": state}
+    assert record == {"kind": "observation", "state": state, "player_id": None}
     assert record["state"] is state
     assert mask.dtype == torch.bool
     assert bool(mask.all())

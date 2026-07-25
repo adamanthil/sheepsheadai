@@ -316,6 +316,33 @@ def apply_schedules(episode: int, ctx: MainPhaseContext):
     )
 
 
+def store_events_by_seat(agent: PPOAgent, events: list) -> int:
+    """Store one episode's events as one coherent stream PER COLLECTING SEAT.
+
+    play_population_game returns all collecting players' events in a single
+    temporally-interleaved list. Storing that list whole produced ONE
+    braided multi-perspective segment per self-seat episode (done is set
+    only on the final action), so the recurrent update forward ran a single
+    memory across perspective switches — a train/act mismatch for every
+    SELF-seat row (act-time memories are per-player), non-unit PPO ratios
+    at theta_old, and the max-length padding blowups behind the 2026-07
+    OOM. The selfplay trainer that produced the seeds always stored
+    per-player streams; this restores the same semantics on the league
+    path (bug fix, 2026-07-24 operator directive; a sibling of the
+    pre-30M interleaving bug). Hero-only episodes are unaffected (single
+    group == the historical call). Returns the number of action rows
+    stored.
+    """
+    by_player: dict[int, list] = {}
+    for ev in events:
+        by_player.setdefault(ev["player_id"], []).append(ev)
+    n_actions = 0
+    for pid in sorted(by_player):
+        agent.store_episode_events(by_player[pid])
+        n_actions += sum(1 for ev in by_player[pid] if ev["kind"] == "action")
+    return n_actions
+
+
 # -------------------- episode streams --------------------
 def sequential_stream(ctx: MainPhaseContext):
     # Seat rotation (deal-paired collection): groups of 5 consecutive
@@ -546,10 +573,7 @@ def run_main_phase(
             seat_to_id,
         ) in stream:
             last_episode = episode
-            training_agent.store_episode_events(events)
-            tx_counter.count += sum(
-                1 for ev in events if ev["kind"] == "action"
-            )
+            tx_counter.count += store_events_by_seat(training_agent, events)
             if training_data_single["was_picker"]:
                 picker_scores.append(training_data_single["score"])
             pick_window.append(1 if training_data_single["was_picker"] else 0)

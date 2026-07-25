@@ -729,6 +729,7 @@ class PPOAgent:
                     "reward": float(ev["reward"]),
                     "value": float(ev["value"]),
                     "log_prob": float(ev["log_prob"]),
+                    "player_id": ev.get("player_id"),
                     "done": (idx == last_action_idx),
                     "win": float(ev.get("win_label", 0.0) or 0.0),
                     "final_return": float(ev.get("final_return_label", 0.0) or 0.0),
@@ -754,6 +755,7 @@ class PPOAgent:
                     "kind": "observation",
                     "state": ev["state"],
                     "mask": mask,
+                    "player_id": ev.get("player_id"),
                 }
                 if ev.get("oracle_state") is not None:
                     record["oracle_state"] = ev["oracle_state"]
