@@ -983,6 +983,29 @@ estimates; the lead noise scale reading BELOW global is contrary to
 the rare-node-noise assumption and worth tracking), lead_trump_mass
 0.485 at the seed.
 
+**BRAIDED-STORAGE BUG FOUND AND FIXED (2026-07-24, ea1914d; operator
+directive — a sibling of the pre-30M interleaving bug).** Chasing the
+oracle's non-expression exposed the root cause: the league path stored
+ALL collecting seats' events as one temporally-interleaved list with a
+single done flag, so every self-seat episode became ONE braided multi-
+perspective recurrent segment. Consequences, all verified: (1)
+train/act mismatch — act-time memories are per-player, the update
+forward ran one memory across perspective switches, giving NON-UNIT
+PPO ratios at theta_old for self-seat rows (every league run in the
+lineage carried this silently; the selfplay trainer that produced the
+seeds always stored per-player streams); (2) the pretrained oracle
+scored EV −0.9 on braided segments vs 0.556 on coherent ones; (3) the
+~175-event braided outliers drove the July OOM padding blowup. Fix:
+store_events_by_seat groups by player_id, one coherent stream + done
+flag per seat (segments now ≤ 10 actions + own-perspective observation
+frames). Test coverage: per-seat segmentation, braided control,
+hero-only byte-equivalence, and ratio-at-theta_old ≈ 1 on a self-table
+episode (<1e-4; the coherence property the bug broke). Interim
+workarounds (--self-play-share 0) retired; relaunched with DEFAULT
+self-play share 0.15 + the 4-seed pool + full config. Two earlier
+same-day relaunches (single-seed without-replacement fallback; p_self
+composition) are recorded in the run log; all pre-fix data discarded.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
