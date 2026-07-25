@@ -1122,6 +1122,52 @@ miss:
   (unanchored confirmed), 6.4 eps/s. 50k greedy probe (first
   partner_trump_lead_rate gate) expected ~2h in.
 
+**TERMINAL-REWARD ATTACHMENT BUG FOUND AND FIXED (2026-07-25,
+45570ff; exposed by chasing the ev_oracle zero-shot gap).** The
+operator asked why live buffers differ from the pretraining
+distribution at all. Code-diffing eliminated every candidate
+(same collection call, γ, sequence structure, no dropout, no
+normalization), so a decomposition probe rebuilt a live-like buffer
+offline and ran oracle_init.pt zero-shot (scratchpad
+oracle_gap_probe.json):
+- dataset-test control EV 0.49 (harness valid); trainer-path
+  frozen-only control EV 0.42, MSE 0.035 = held-out ⇒ trainer path
+  fine.
+- live-like buffer pooled EV −0.001, but **MSE uniform across ALL row
+  classes (0.034–0.040 = held-out)** — the oracle predicts equally
+  well everywhere; the EV collapse is in the TARGETS: hero rows on
+  mixed tables sd_g 0.140 and self-seat rows 0.157 vs 0.262 on pure
+  tables — the signature of zeroed returns.
+- Root cause (pfsp_runtime._finalize_rewards): the merged multi-seat
+  action list was fed to process_terminal_rewards, whose documented
+  contract is ONE player's chronological transitions. The single
+  terminal reward landed on the globally-last actor; every other
+  collecting seat's stream was ALL-ZERO. Fix: group transitions by
+  player position (no-op for hero-only episodes; also fixes shaped
+  mode's identical contract violation). Tests: per-seat reward
+  placement + γ=1 returns through storage matching each row's own
+  score.
+- **Corrected historical interpretation (deepens the braided-bug
+  impact assessment):** pre-storage-fix, the braid's single done flag
+  propagated that one reward backward through the WHOLE braid — every
+  seat in a self-containing episode trained toward the LAST ACTOR's
+  return, not its own (wrong-player targets on ~67% of rows at
+  p_self 0.15, ~90% under Phase A), on top of the incoherent
+  recurrent features. Post-storage-fix (the 2026-07-24 relaunch),
+  non-last-actor seats trained toward zero returns (~46% of rows).
+  The chronic ev_limited disease and the Phase A oracle-disruption
+  numbers now have wrong-player/zeroed TARGETS as a co-mechanism
+  alongside braided features. The pretraining dataset, offline
+  studies, and exploiter training (single-collector episodes) were
+  never exposed.
+- The first-update telemetry above is reinterpreted: ev_ora 0.11→0.24
+  was the pretrained oracle being GRADED against ~46% zeroed targets
+  (and online-trained toward them — the climb was partly it learning
+  to predict zeros); ev_limited's +0.147 recovery is real but was
+  measured against the same corrupted targets. All pre-fix telemetry
+  discarded with the relaunch; run relaunched from scratch with both
+  fixes active.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
