@@ -1228,6 +1228,45 @@ search-teacher/selective-distillation lane is the leak remedy.
 Node-selective λ (lead nodes only) is the preferred adoption form if
 λ* qualifies (echoes the pi_gumbel node-selective constraint).
 
+**λ-SWEEP PROBE RESULTS (2026-07-25;
+runs/oracle_pretrain_400k/lambda_sweep.{json,probe.py}; 4,992
+episodes, 755 partner-lead rows, 385 trump / 370 fail).** Raw
+advantage units; paired rows across λ; signal = on-policy trump−fail
+lead contrast (λ=1 value +0.0208 ± 0.0073 independently reproduces
+the +0.24–0.36-score counterfactual prior at /12 scale):
+
+| λ | sd_lead | signal | Δsignal vs λ=1 (paired) | SNR | bias_pick | corr_lead |
+|------|--------|---------|------------------|-------|--------|------|
+| 1.0 | 0.101 | +0.0208 | — | 0.206 | — | 1.000 |
+| 0.95 | 0.091 | +0.0203 | −0.0005 ± 0.0009 | 0.222 | −0.013 | 0.997 |
+| 0.9 | 0.083 | +0.0198 | −0.0010 ± 0.0017 | 0.238 | −0.021 | 0.988 |
+| 0.7 | 0.062 | +0.0179 | −0.0029 ± 0.0040 | 0.288 | −0.036 | 0.894 |
+| 0.5 | 0.052 | +0.0165 | −0.0043 ± 0.0053 | 0.316 | −0.040 | 0.753 |
+| 0.0 | 0.045 | +0.0153 | −0.0055 ± 0.0068 | 0.338 | −0.043 | 0.453 |
+
+Findings: (1) **the pretrained oracle DOES encode the convention
+edge** — at λ=0 the pure one-step oracle judgment retains ~74% of the
+MC signal; the 48-episode smoke's contrary hint did not replicate.
+(2) σ at lead nodes halves from λ=1→0 while signal falls only ~26%,
+so estimator SNR rises monotonically, 1.64× at λ=0. (3) All λ pass
+the pre-registered constraints (signal same sign, paired Δ within
+1σ; bias_pick under the 0.071 = 0.25×sd_pickhead bound), so the
+formal adopt-candidate is **λ* = 0.0**. POWER CAVEAT, recorded
+against overreach: the paired-Δ SE grows with λ distance (±0.0068 at
+λ=0), so the "within 1σ" test is weakest exactly where attenuation is
+largest; point estimates suggest real ~15–26% signal loss below
+λ≈0.7. Conservative contingency candidate: **λ ≈ 0.5–0.7,
+node-selective (lead nodes only)** — 1.4–1.5× SNR with corr_lead
+0.75–0.89 and pick bias ≤ 14% of pick-head σ. (4) bias_pick grows
+monotonically negative (bootstrap systematically deflates PICK
+advantages — consistent with the critic's weak pick stratum, EV
+0.27); within bound but the reason node-selective adoption is
+preferred over global λ.
+
+**Operator policy unchanged:** λ = 0.95 for this entire run; the
+sweep arms the contingency only (fires on unclosable convention
+leaks, per the amendment above).
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
