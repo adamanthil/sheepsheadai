@@ -1090,6 +1090,38 @@ nohup uv run python -m sheepshead.training.run_extended_league \
   > runs/league_retention_pg_launch.log 2>&1 &
 ```
 
+**First-update telemetry, fixed run (2026-07-25, updates 1–4 / ep
+5,829).** The run is healthy; two headline readings and one prediction
+miss:
+- **ev_limited: −0.65 → −0.50 → −0.05 → +0.147.** First league run in
+  the lineage where the limited critic crosses POSITIVE within four
+  updates — early confirming evidence that the chronic ev_lim disease
+  was the braided bug (the free discriminator identified in the impact
+  assessment).
+- **ev_oracle: 0.11 → 0.19 → 0.21 → 0.24**, climbing ~+0.03/update.
+  NOT the predicted instant 0.4–0.5: the update-1 pre-training reading
+  (0.11) shows a residual distribution gap between generate-path
+  pretraining data and live trainer buffers, absorbed steadily by the
+  online passes (8 + 4 extra/update). No burn-in disaster (pre-fix
+  launches: −0.65/−0.86, pinned). WATCH: should cross ~0.4 by ~update
+  10; a plateau below 0.30 blocks the λ-gate and warrants diagnosis.
+- GNS global: 33k / 22k / 45k rows vs the 16,384-row update — B_noise
+  ≈ 1.5–3× batch, so the batch is NOT oversized (noise-dominated
+  regime; the hold-dose is not wasted compute). Replaces the VOID
+  braided reading (7,200).
+- GNS lead: BLANK by guard, and that is itself the measurement — the
+  paired estimator cannot distinguish the mean gradient at ~350
+  lead rows/update from zero (g2 ≤ 0 guard), consistent with
+  lead_adv_mean ≈ 0.01 vs lead_adv_std ≈ 0.62 (normalized units):
+  per-row SNR at partner-lead nodes ~1–2%. The convention's protection
+  here is temperature, not signal — the design premise, now measured.
+- Tripwire status: lead_adv_mean −0.07 → +0.007 → +0.114 (NOT
+  persistently negative — mechanism discriminator quiet);
+  lead_trump_mass 0.53–0.57, stable at seed level. leaster ≤0.4%,
+  sampled pick ~20%, opt_steps 4/update as designed, anchor_kl blank
+  (unanchored confirmed), 6.4 eps/s. 50k greedy probe (first
+  partner_trump_lead_rate gate) expected ~2h in.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
