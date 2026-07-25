@@ -1190,6 +1190,44 @@ correct per-seat targets the pretrained oracle expresses immediately:
 - 50k retention watcher armed (first greedy partner_trump_lead_rate
   probe).
 
+**λ POLICY AMENDMENT + λ-SWEEP PROBE (pre-registered 2026-07-25,
+operator-approved).** Operator decision: **λ stays 0.95 for the entire
+retention run** unless (a) health degrades, or (b) convention leaks
+appear that additional training under λ=0.95 cannot close. The
+registered Phase-B λ schedule is DECOUPLED from its gate: ev_ora ≥
+0.30 passes trivially from update 1 with the pretrained oracle, so
+gate passage is a precondition, not a trigger. Rationale recorded:
+the unbiased variance levers (oracle baseline ~3× advantage-variance
+cut, seat-rotation deal pairing, γ=1.0) now carry the load the λ
+schedule was registered for; λ<1 is the only lever that pays in bias
+∝ critic error, and the critic is weakest exactly at early nodes
+(pick EV 0.27 vs lead 0.48). Accumulated-SNR view: variance washes
+out as √E; persistent bias does not.
+
+*Probe (offline, no training impact):* 5,000 fresh seed-policy
+episodes (hero + 4 frozen-seed opponents, terminal, γ=1.0), V_ora
+from oracle_init.pt via the trainer's own _fill_oracle_values;
+per-episode A(λ) via the trainer's _gae_1d for λ ∈ {1.0, 0.95, 0.9,
+0.7, 0.5, 0.0} — SAME rows across λ (paired). Metrics, raw advantage
+units (per-update normalization is scale-invariant for SNR):
+1. At partner-lead rows (agent._partner_lead_flags, the live
+   instrument's own definition): sd of A(λ); on-policy contrast
+   signal(λ) = mean A over trump-lead rows − mean A over fail-lead
+   rows (the force the gradient actually integrates at those nodes;
+   ground-truth prior: +0.24–0.36 score ≈ +0.02–0.03 return units);
+   SNR(λ) = signal/sd, with paired episode-bootstrap SEs.
+2. Bias checks where the critic is weakest: mean[A(λ) − A(1)] on
+   PICK rows and on PASS rows separately (does bootstrap tilt pick
+   propensity?), and corr(A(λ), A(1)) globally + at lead rows.
+*Decision rule (contingency arm only — fires only if the operator's
+(b) condition is met later):* adopt-candidate λ* = argmax SNR subject
+to signal(λ*) same sign and within 1 bootstrap-σ of signal(1.0), and
+|pick-row bias| < 0.25 × adv_std_pick. If no λ qualifies, the
+convention signal lives in realized outcomes, λ stays 0.95, and the
+search-teacher/selective-distillation lane is the leak remedy.
+Node-selective λ (lead nodes only) is the preferred adoption form if
+λ* qualifies (echoes the pi_gumbel node-selective constraint).
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
