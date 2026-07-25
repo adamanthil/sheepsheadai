@@ -1282,6 +1282,24 @@ drift, expected direction); greedy leaster 2.0% vs baseline 0.25%
 (sampled 0.6–1.3%, watchdog armed); alone 27.6% under the 32.7%
 limit. Second half of the retention tripwire pair is the 100k probe.
 
+**100k RETENTION PROBE — GATE 2 PASSED (2026-07-25); TRIPWIRE PAIR
+CLEARED.** Greedy probe at ep 100,000: **partner_trump_lead_rate
+80.95%** (63 partner leads) — ABOVE both the 50k reading (75.81%) and
+the seed itself (76.6%); defender t0 trump-lead still **0.00%** (113
+leads). The pre-registered NEEDS-REVIEW condition (<50% at BOTH
+probes) is cleared with ~30-point margin: **the retention-first
+hypothesis survived its designated falsification window** — the
+first-100k collapse that killed every prior league arm did not occur
+under correct per-seat targets + pretrained oracle + unanchored
+low-temperature PG. ev_ora 0.54–0.63 / ev_lim 0.41–0.52 (both
+sustained), picker_avg ~1.5, lead_trump_mass 0.48–0.56.
+WATCH: greedy pick 47.7% → 41.7% → 37.4% (~5 pts/50k unanchored
+drift; the registered bidding contingency — re-engage anchor at a
+declared restart — arms if the PICK-gate streak or leaster watchdog
+trips; greedy leaster 2.5%, sampled ~1%, watchdog quiet). Next
+pre-registered milestones: 500k duplicate h2h vs seed (kill ≤ −0.10),
+B2 through gen-2 ecology churn.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
