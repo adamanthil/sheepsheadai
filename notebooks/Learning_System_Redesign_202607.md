@@ -1348,6 +1348,23 @@ pre-registered **500k kill probe** — duplicate h2h vs the 400k seed
 (kill ≤ −0.10) — runs MANUALLY when checkpoint_500000 lands (the
 orchestrator's own h2h fires only at the 1M gen boundary).
 
+**500k KILL PROBE — PASSED WITH STRENGTH GAIN (2026-07-25;
+runs/league_retention_pg/h2h_500k_vs_seed.json).** Duplicate h2h,
+500k checkpoint vs 400k seed, 4,000 deals: **edge +0.0885 ± 0.0139
+score/hand (+6.4σ)**; called +0.0731 ± 0.0191, JD +0.1040 ± 0.0202;
+win_frac 0.524. Kill rule (≤ −0.10) not merely cleared — INVERTED.
+Historical contrast: the arch-ablation found v2's league lift over
+this same 400k selfplay start ≈ ZERO after 2M episodes; the fixed
+trainer delivers +0.089 in 500k WHILE the partner convention
+sharpened to the 84–98% band — first league configuration in the
+lineage to show real strength lift over its selfplay seed,
+consistent with "league lift ≈ zero" having been the bugs. 450k/500k
+greedy: partner 86.7%/86.8%, leaster 1.0%/1.5% (defused again),
+defender t0 0.91%/8.91% (bouncing under the 10% bound), pick
+41.6%/42.2%, ev_ora ~0.62 / ev_lim ~0.51. Next: gen-1 boundary at 1M
+(orchestrator endpoint + h2h + exploiter gen), B2 through gen-2
+churn.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
