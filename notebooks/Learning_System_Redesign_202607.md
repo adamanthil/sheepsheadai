@@ -1365,6 +1365,17 @@ defender t0 0.91%/8.91% (bouncing under the 10% bound), pick
 (orchestrator endpoint + h2h + exploiter gen), B2 through gen-2
 churn.
 
+**550k–700k PROBES (2026-07-26): steady state, no gates.** partner
+89.0 / 82.8 / 84.0 / 78.4% (stable high band); defender t0 bouncing
+1.1–6.3% then 0.0% @700k (no trend, never crossed 10%); leaster
+oscillating 1.5–4.5% greedy (watchdog quiet); pick 38–43%; picker_avg
+1.72–1.87; ev_ora 0.56–0.64 / ev_lim 0.46–0.53. One note: ALONE
+36.2% @650k and 34.0% @700k exceed this run's effective alone limit
+(32.7% = baseline 27.7 + 5) — greedy-gate WARNINGS (never halts)
+will be on record; alone is rising alongside picker_avg, consistent
+with growing picker confidence rather than pathology. Next: 1M gen-1
+boundary (orchestrator endpoint + h2h + first exploiter gen).
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
