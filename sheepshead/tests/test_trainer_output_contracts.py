@@ -29,11 +29,12 @@ LIMITED_CHECKPOINT_KEYS = sorted(
         "critic_state_dict",
         "actor_optimizer",
         "critic_optimizer",
+        "optimizer_steps_total",
     ]
 )
 ORACLE_CHECKPOINT_KEYS = sorted(
     LIMITED_CHECKPOINT_KEYS
-    + ["critic_mode", "oracle_state_dict", "oracle_optimizer"]
+    + ["critic_mode", "oracle_state_dict", "oracle_optimizer", "oracle_aux_heads"]
 )
 
 LEAGUE_ANCHORED_HEADER = ["episode", "edge", "se", "win_frac", "n_deals"]
@@ -158,6 +159,12 @@ class TestLeagueExploitabilityCSV:
             "train_league_ppo.py",
             "--resume",
             str(resume_ckpt),
+            # Pinned rather than left to --arch's default: the resume
+            # checkpoint above is written at PPOAgent's own default, and the
+            # loader rejects a mismatch. Keeping both ends explicit isolates
+            # this schema test from league config-default changes.
+            "--arch",
+            "full",
             "--league-dir",
             str(tmp_path / "league"),
             "--run-name",
