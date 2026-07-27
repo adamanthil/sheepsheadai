@@ -174,12 +174,26 @@ uv run python app/scripts/export_openapi.py   # refresh app/web/openapi.json
 cd app/web && npm run gen:api                 # refresh lib/api.gen.ts
 ```
 
-CI (`.github/workflows/ci.yml`) runs three jobs — `server` (ruff + server
-tests against Postgres + schema drift), `training` (ruff over the package +
-the full training suite), and `web` (typecheck/lint/build + generated-type
-drift).
+CI (`.github/workflows/ci.yml`) runs three jobs — `server` (ruff lint +
+format + server tests against Postgres + schema drift), `training` (ruff
+lint + format over the package + the full training suite), and `web`
+(typecheck/lint/build + generated-type drift).
 
-### 5. Deployment
+### 5. Pre-commit hook (optional)
+
+`git clone` does not install hooks, so enable the ruff gate once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.githooks/pre-commit` then runs `ruff format --check` and `ruff check` over
+the Python files in each commit, reading them from the index so a partially
+staged file is judged by what is actually being committed. It only reports —
+nothing is rewritten under you — and `git commit --no-verify` skips it. CI is
+the real backstop; the hook just catches drift before it is pushed.
+
+### 6. Deployment
 
 See [docs/deploy.md](docs/deploy.md) — single-VPS Docker Compose stack
 (Caddy TLS + web + api + Postgres + nightly backups). The API is a single

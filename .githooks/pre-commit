@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# Pre-commit gate: ruff format + lint over the Python files in this commit.
+#
+# Enable once per clone (hooks are not installed by `git clone`):
+#
+#     git config core.hooksPath .githooks
+#
+# Only staged files are checked, and their content is read from the index
+# rather than from the working tree, so a partially staged file is judged by
+# what is actually being committed and not by unstaged edits sitting beside
+# it. Nothing is rewritten -- a failing commit tells you the command to run.
+#
+# Bypass for a single commit with `git commit --no-verify`.
+
+set -uo pipefail
+
+root=$(git rev-parse --show-toplevel) || exit 1
+cd "$root" || exit 1
+
+if [ -x ".venv/bin/ruff" ]; then
+	RUFF=".venv/bin/ruff"
+elif command -v ruff >/dev/null 2>&1; then
+	RUFF="ruff"
+elif command -v uv >/dev/null 2>&1; then
+	RUFF="uv run --quiet ruff"
+else
+	echo "pre-commit: ruff not found (.venv/bin/ruff, ruff, or uv) -- skipping." >&2
+	exit 0
+fi
+
+# Added/Copied/Modified/Renamed only: a deleted path has no index blob.
+staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$')
+[ -n "$staged" ] || exit 0
+
+unformatted=""   # newline-separated: paths may contain spaces
+lint_output=""
+lint_failed=0
+
+while IFS= read -r f; do
+	[ -n "$f" ] || continue
+	# $RUFF is intentionally unquoted: it may be "uv run --quiet ruff".
+	if ! git show ":$f" | $RUFF format --check --stdin-filename "$f" - >/dev/null 2>&1; then
+		unformatted="$unformatted$f
+"
+	fi
+	if ! out=$(git show ":$f" | $RUFF check --stdin-filename "$f" - 2>&1); then
+		lint_output="$lint_output$out
+"
+		lint_failed=1
+	fi
+done <<EOF
+$staged
+EOF
+
+status=0
+
+if [ -n "$unformatted" ]; then
+	# Shell-quote each path so the suggested commands survive spaces.
+	args=""
+	while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		args="$args $(printf '%q' "$f")"
+	done <<EOF
+$unformatted
+EOF
+	{
+		echo "pre-commit: staged Python is not ruff-formatted:"
+		printf '%s' "$unformatted" | sed 's/^/    /'
+		echo
+		echo "  fix:  uv run ruff format$args"
+		echo "  then: git add$args"
+	} >&2
+	status=1
+fi
+
+if [ "$lint_failed" -ne 0 ]; then
+	[ "$status" -eq 0 ] || echo >&2
+	echo "pre-commit: ruff lint failed on staged Python:" >&2
+	printf '%s' "$lint_output" >&2
+	echo "  many rules autofix with: uv run ruff check --fix <file>" >&2
+	status=1
+fi
+
+exit $status

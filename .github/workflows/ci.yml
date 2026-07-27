@@ -32,6 +32,7 @@ jobs:
       # code uses PEP 758 syntax, so older interpreters cannot parse it.
       - run: uv sync --extra server --extra dev
       - run: uv run ruff check app/server
+      - run: uv run ruff format --check app/server
       - run: uv run python -m compileall -q app/server
       # Apply migrations to the service container (exercises graphile-migrate)
       # so the API-flow tests run against the real schema.
@@ -63,6 +64,7 @@ jobs:
       # extra is not needed for the training suite.
       - run: uv sync --extra dev
       - run: uv run ruff check sheepshead play.py
+      - run: uv run ruff format --check sheepshead play.py
       - run: uv run pytest sheepshead/tests -q
 
   web:
