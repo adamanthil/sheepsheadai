@@ -1450,6 +1450,34 @@ Verified: live gen-2 trainer command line lacks the flag; gen2 log
 shows the old trainer's 🥷 banner and the new trainer's banner set
 without it.
 
+**DEFAULTS ADOPTION + C2 BASELINE (2026-07-27).** Operator: the
+retention-run configuration is now the DEFAULT for train_league_ppo
+and run_extended_league (51a81ac; label args excluded; --no-* opt-outs
+for the boolean flags; PPOAgent internals untouched). grad-accum /
+minibatch-episodes reassessed on request: the braided-segment OOM that
+motivated them is gone (T_max ~175 → ~40 post per-seat fix, anchor
+off), but they are RETAINED as defaults because grad-accum is now the
+mechanism of the validated low-temperature design — one full-buffer
+optimizer step per epoch with peak memory bounded by
+minibatch-episodes, bit-equivalent gradients (test_grad_accum). Their
+role changed from memory workaround to step-size semantics.
+
+**C2 (defender called-suit lead) baseline from the backfill sweep
+(runs/league_retention_pg/c2_adherence_sweep.json, 1000 CRN deals per
+checkpoint):** the scripted conventions agent reads 69.7% overall
+(t0 100% by construction); the 400k seed reads **47.6%** — C2 was
+only ever HALF-learned, unlike partner trump-lead (77%). Retention
+run trajectory 46.9 / 46.3 / 48.9 / 47.6 / **40.9% @1M** (n=668,
+binomial SE ≈ 1.9% ⇒ the 1M reading is ~2.5σ below the seed — mild
+erosion signal or noise; the live greedy column now tracks it every
+50k from 1.05M). C1 defender trump-lead stays 0.1–4.8% across all
+checkpoints (convention intact). Note E2's +0.49 @4.4σ says agreeing
+with C2 is terminal-optimal on average — at 47% adherence there is
+real unclaimed headroom; C2 is therefore an ACQUISITION metric for
+this program, not a retention one. Watch: C2 < ~35% sustained
+(erosion below seed) or a climb toward the scripted 70% (the terminal
+objective claiming the headroom).
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
