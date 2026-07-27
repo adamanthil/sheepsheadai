@@ -1415,6 +1415,23 @@ driving partner trump-lead down is a legitimate B2-relevant finding.
 If the exploiter FAILS its gate, pressure is moot for gen 2; the
 amendment still applies to all future generations.
 
+**GEN-1 EXPLOITER GATE: FAILED (2026-07-26; exploitability.csv).**
+Edge **−0.0279 ± 0.0166**, win_frac 0.460 over 3,000 gate deals — the
+50k PPO exploiter LOSES to the 1M main. First exploiter in the
+program trained on the FIXED path (coherent streams, correct
+rewards), so unlike the old inert exploiters this is a fair probe:
+the unanchored 1M main presents no PPO-findable hole at this budget
+(echoes the 30M gen-0 "not PPO-exploitable" finding; consistent with
+the +0.089 h2h strength gain rather than degenerate drift).
+Consequences: exploiter is NOT seated in gen 2 (x-share stays 0), so
+`--exploiter-full-table` is DORMANT in gen 2; per the operator
+directive the seating amendment was conditional on a pass and is NOT
+applied at this boundary — it takes effect at the next orchestrator
+restart, which must happen before any future passed exploiter's
+pressure generation (gen-2's exploiter gates at the 2M boundary ⇒
+apply amendment no later than that restart). Gen-1 endpoint eval
+running (3,996 deals); h2h gen 1 vs seed follows.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
