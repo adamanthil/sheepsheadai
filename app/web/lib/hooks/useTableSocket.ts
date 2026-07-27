@@ -19,10 +19,7 @@ export interface TableSocketCallbacks {
 }
 
 export type ConnectionState =
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "failed";
+  "connecting" | "connected" | "reconnecting" | "failed";
 
 /** Close codes the server uses for auth/authorization failures — retrying
  * cannot help, so the client must not hammer the server. */
@@ -108,53 +105,53 @@ export function useTableSocket(
         const data = parseWsMessage(ev.data);
         if (!data) return;
 
-      if (data.type === "state") {
-        const msg: TableStateMsg = data;
+        if (data.type === "state") {
+          const msg: TableStateMsg = data;
 
-        setLastState((prev: TableStateMsg | null) => {
-          const cbs = callbacksRef.current;
-          const { trickComplete, phase } = diffCallouts(prev, msg);
+          setLastState((prev: TableStateMsg | null) => {
+            const cbs = callbacksRef.current;
+            const { trickComplete, phase } = diffCallouts(prev, msg);
 
-          if (trickComplete) {
-            cbs?.onTrickComplete?.(trickComplete.cards, trickComplete.winner);
+            if (trickComplete) {
+              cbs?.onTrickComplete?.(trickComplete.cards, trickComplete.winner);
+            }
+
+            if (phase?.kind === "picker") {
+              cbs?.onPickerAnnounced?.(phase.pickerName);
+            } else if (phase?.kind === "leaster") {
+              cbs?.onLeaster?.();
+            } else if (phase?.kind === "alone") {
+              cbs?.onAlone?.(phase.pickerName);
+            } else if (phase?.kind === "call") {
+              cbs?.onCall?.(phase.pickerName, phase.cardDisplay, phase.under);
+            }
+
+            return msg;
+          });
+        } else if (data.type === "table_closed") {
+          callbacksRef.current?.onTableClosed?.();
+          socket.close();
+          window.location.href = "/";
+        } else if (data.type === "lobby_event") {
+          if (data.message) {
+            callbacksRef.current?.onLobbyEvent?.(data.message);
           }
-
-          if (phase?.kind === "picker") {
-            cbs?.onPickerAnnounced?.(phase.pickerName);
-          } else if (phase?.kind === "leaster") {
-            cbs?.onLeaster?.();
-          } else if (phase?.kind === "alone") {
-            cbs?.onAlone?.(phase.pickerName);
-          } else if (phase?.kind === "call") {
-            cbs?.onCall?.(phase.pickerName, phase.cardDisplay, phase.under);
-          }
-
-          return msg;
-        });
-      } else if (data.type === "table_closed") {
-        callbacksRef.current?.onTableClosed?.();
-        socket.close();
-        window.location.href = "/";
-      } else if (data.type === "lobby_event") {
-        if (data.message) {
-          callbacksRef.current?.onLobbyEvent?.(data.message);
+        } else if (data.type === "table_update") {
+          const tbl = data.table;
+          callbacksRef.current?.onTableUpdate?.(tbl, data.isHost);
+          setLastState((prev: TableStateMsg | null) =>
+            prev ? { ...prev, table: tbl } : prev,
+          );
+        } else if (data.type === "chat:init") {
+          // Initialize chat with full history
+          setChatMessages(data.messages);
+        } else if (data.type === "chat:append") {
+          setChatMessages((prev) => [...prev, data.message]);
+        } else if (data.type === "server_restart") {
+          // Deploy in progress: the socket is about to drop; the reconnect
+          // loop keeps retrying until the server is back.
+          callbacksRef.current?.onError?.("Server restarting…");
         }
-      } else if (data.type === "table_update") {
-        const tbl = data.table;
-        callbacksRef.current?.onTableUpdate?.(tbl, data.isHost);
-        setLastState((prev: TableStateMsg | null) =>
-          prev ? { ...prev, table: tbl } : prev,
-        );
-      } else if (data.type === "chat:init") {
-        // Initialize chat with full history
-        setChatMessages(data.messages);
-      } else if (data.type === "chat:append") {
-        setChatMessages((prev) => [...prev, data.message]);
-      } else if (data.type === "server_restart") {
-        // Deploy in progress: the socket is about to drop; the reconnect
-        // loop keeps retrying until the server is back.
-        callbacksRef.current?.onError?.("Server restarting…");
-      }
       };
     };
 

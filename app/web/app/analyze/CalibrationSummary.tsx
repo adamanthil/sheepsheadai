@@ -54,8 +54,13 @@ function Trajectory({ first, last }: { first: number; last: number }) {
 export default function CalibrationSummary({
   calibration,
 }: CalibrationSummaryProps) {
-  const { overallBrier, overallPointsMae, seats, trumpMaskAccuracy, trumpMaskCount } =
-    calibration;
+  const {
+    overallBrier,
+    overallPointsMae,
+    seats,
+    trumpMaskAccuracy,
+    trumpMaskCount,
+  } = calibration;
   const sortedSeats = [...seats].sort((a, b) => a.seat - b.seat);
 
   return (
@@ -82,9 +87,9 @@ export default function CalibrationSummary({
               wiki="https://en.wikipedia.org/wiki/Brier_score"
             >
               The average of (predicted win probability − what happened)²,
-              counting a win as 1 and a loss as 0. It punishes confident
-              wrong predictions the most. 0 means perfect foresight, 0.25 is
-              what you get by always guessing 50/50 — lower is better.
+              counting a win as 1 and a loss as 0. It punishes confident wrong
+              predictions the most. 0 means perfect foresight, 0.25 is what you
+              get by always guessing 50/50 — lower is better.
             </Term>
           </div>
         </div>
@@ -126,8 +131,8 @@ export default function CalibrationSummary({
             >
               The Brier score pooled over every decision by every seat: the
               average of (predicted win probability − what happened)², with a
-              win counting as 1 and a loss as 0. 0 means perfect foresight,
-              0.25 is always guessing 50/50 — lower is better.
+              win counting as 1 and a loss as 0. 0 means perfect foresight, 0.25
+              is always guessing 50/50 — lower is better.
             </Term>
           </span>
           <span className={styles.footerValue}>{overallBrier.toFixed(3)}</span>
@@ -138,12 +143,12 @@ export default function CalibrationSummary({
               label="Point prediction MAE (pts)"
               wiki="https://en.wikipedia.org/wiki/Mean_absolute_error"
             >
-              Mean absolute error of the model&rsquo;s per-seat point
-              estimates. At every decision the model predicts how many
-              points (0–120) each seat has taken <em>so far</em> — a
-              quantity fully determined by public information, so this
-              measures how precisely the model tracks the game state rather
-              than how well it forecasts. 0 = perfect tracking.
+              Mean absolute error of the model&rsquo;s per-seat point estimates.
+              At every decision the model predicts how many points (0–120) each
+              seat has taken <em>so far</em> — a quantity fully determined by
+              public information, so this measures how precisely the model
+              tracks the game state rather than how well it forecasts. 0 =
+              perfect tracking.
             </Term>
           </span>
           <span className={styles.footerValue}>
@@ -154,10 +159,10 @@ export default function CalibrationSummary({
           <span className={styles.footerLabel}>
             <Term label="Trump-mask accuracy">
               At every decision the model guesses, for each of the 14 trump
-              cards, whether the acting player has already seen it (in their
-              own hand or played). This is the share of those guesses —
-              counting &ldquo;seen&rdquo; as predicted probability above 50%
-              — that matched reality; n is the number of guesses.
+              cards, whether the acting player has already seen it (in their own
+              hand or played). This is the share of those guesses — counting
+              &ldquo;seen&rdquo; as predicted probability above 50% — that
+              matched reality; n is the number of guesses.
             </Term>
           </span>
           <span className={styles.footerValue}>

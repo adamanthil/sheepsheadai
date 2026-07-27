@@ -62,7 +62,10 @@ export default function PickAnalysisPage() {
     } catch (err) {
       console.error("Pick analysis error:", err);
       setError(
-        fetchFailureMessage(err, "Failed to analyze scenario. Please try again."),
+        fetchFailureMessage(
+          err,
+          "Failed to analyze scenario. Please try again.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -88,8 +91,8 @@ export default function PickAnalysisPage() {
         <div className={styles.builderHeader}>
           <h2 className={styles.builderTitle}>Scenario</h2>
           <p className={styles.builderHint}>
-            The chosen seat faces the pick decision — earlier seats have
-            passed. Lock any subset of cards; the rest are dealt randomly.
+            The chosen seat faces the pick decision — earlier seats have passed.
+            Lock any subset of cards; the rest are dealt randomly.
           </p>
         </div>
 

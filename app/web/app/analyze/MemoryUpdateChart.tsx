@@ -18,13 +18,7 @@ interface MemoryUpdateChartProps {
 // all-pairs CVD-safe with secondary encoding (legend + line-key), see the
 // dataviz skill. Sheepshead never has more than 5 seats, so this never runs
 // out.
-const SEAT_COLORS = [
-  "#2a78d6",
-  "#008300",
-  "#e87ba4",
-  "#eda100",
-  "#1baf7a",
-];
+const SEAT_COLORS = ["#2a78d6", "#008300", "#e87ba4", "#eda100", "#1baf7a"];
 
 const VB_WIDTH = 1000;
 const VB_HEIGHT = 260;
@@ -207,18 +201,17 @@ export default function MemoryUpdateChart({
             label="Memory Update Magnitude"
             wiki="https://en.wikipedia.org/wiki/Gated_recurrent_unit"
           >
-            Each seat carries a memory vector (256 dimensions) that a
-            recurrent unit (GRU) rewrites at two kinds of update: filled
-            markers are the seat&rsquo;s own decisions, where the encoder
-            folds the current observation (its hand, the trick so far, and
-            the public flags) into the memory; hollow markers on the trick
-            boundaries are trick-completion observations, where all five
-            seats fold the finished trick&rsquo;s outcome into memory. Each
-            point is the cosine distance between the memory before and after
-            that update: near 0 = little revision of the model&rsquo;s
-            internal state; higher = a substantial one. Dashed vertical
-            lines mark phase changes and trick boundaries, and each step is
-            labeled with the action taken.
+            Each seat carries a memory vector (256 dimensions) that a recurrent
+            unit (GRU) rewrites at two kinds of update: filled markers are the
+            seat&rsquo;s own decisions, where the encoder folds the current
+            observation (its hand, the trick so far, and the public flags) into
+            the memory; hollow markers on the trick boundaries are
+            trick-completion observations, where all five seats fold the
+            finished trick&rsquo;s outcome into memory. Each point is the cosine
+            distance between the memory before and after that update: near 0 =
+            little revision of the model&rsquo;s internal state; higher = a
+            substantial one. Dashed vertical lines mark phase changes and trick
+            boundaries, and each step is labeled with the action taken.
           </Term>
         </div>
         <div className={styles.legend}>
@@ -365,8 +358,16 @@ export default function MemoryUpdateChart({
                     // turn the observe rings white-on-white.
                     style={
                       p.kind === "decision"
-                        ? { fill: color, stroke: "var(--an-panel)", strokeWidth: 1.5 }
-                        : { fill: "var(--an-panel)", stroke: color, strokeWidth: 1.6 }
+                        ? {
+                            fill: color,
+                            stroke: "var(--an-panel)",
+                            strokeWidth: 1.5,
+                          }
+                        : {
+                            fill: "var(--an-panel)",
+                            stroke: color,
+                            strokeWidth: 1.6,
+                          }
                     }
                     className={styles.marker}
                   />

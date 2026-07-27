@@ -34,7 +34,9 @@ test("create table, start with AI, play a card", async ({ page }) => {
 
   const actionButton = page
     .locator("button")
-    .filter({ hasText: /^(PICK|PASS|ALONE|JD PARTNER|CALL |BURY |UNDER |PLAY )/ })
+    .filter({
+      hasText: /^(PICK|PASS|ALONE|JD PARTNER|CALL |BURY |UNDER |PLAY )/,
+    })
     .first();
   const clickableCard = page.locator("[data-clickable='true']").first();
 

@@ -282,7 +282,10 @@ export default function AnalyzePage() {
                   className={styles.shapingControl}
                   style={{ opacity: terminalRewards ? 0.45 : 1 }}
                 >
-                  <label htmlFor="shapingWeight" className={styles.shapingLabel}>
+                  <label
+                    htmlFor="shapingWeight"
+                    className={styles.shapingLabel}
+                  >
                     Shaping weight
                   </label>
                   <input

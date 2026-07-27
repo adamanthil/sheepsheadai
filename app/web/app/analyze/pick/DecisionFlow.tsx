@@ -149,8 +149,7 @@ export default function DecisionFlow({
   if (rows.length === 0) return null;
 
   const buryCount = rows.filter(
-    (d) =>
-      d.phase === "bury" && d.probabilities[0]?.action.startsWith("BURY "),
+    (d) => d.phase === "bury" && d.probabilities[0]?.action.startsWith("BURY "),
   ).length;
   let buryIndex = 0;
 

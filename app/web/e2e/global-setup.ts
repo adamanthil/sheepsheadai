@@ -6,7 +6,10 @@ import { E2E_DATABASE_URL } from "../playwright.config";
 const CONTAINER = "sheepshead-e2e-pg";
 const dbDir = path.resolve(__dirname, "../../db");
 
-function sh(command: string, options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
+function sh(
+  command: string,
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+) {
   execSync(command, { stdio: "inherit", ...options });
 }
 
@@ -40,10 +43,16 @@ export default async function globalSetup() {
     startedContainer = true;
     for (let attempt = 0; ; attempt++) {
       const ready =
-        spawnSync("docker", ["exec", CONTAINER, "pg_isready", "-U", "sheepshead"])
-          .status === 0;
+        spawnSync("docker", [
+          "exec",
+          CONTAINER,
+          "pg_isready",
+          "-U",
+          "sheepshead",
+        ]).status === 0;
       if (ready) break;
-      if (attempt >= 60) throw new Error("postgres container never became ready");
+      if (attempt >= 60)
+        throw new Error("postgres container never became ready");
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }

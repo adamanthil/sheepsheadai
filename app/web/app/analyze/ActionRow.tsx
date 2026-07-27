@@ -102,7 +102,11 @@ function MetricsBar({
         <MetricChip
           label="r"
           value={formatSigned(stepReward)}
-          hue={typeof normalizedStepReward === "number" ? normalizedStepReward : 0.5}
+          hue={
+            typeof normalizedStepReward === "number"
+              ? normalizedStepReward
+              : 0.5
+          }
           tooltip="Immediate step reward"
         />
       )}

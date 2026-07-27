@@ -1,0 +1,12 @@
+# Build output and dependencies.
+.next/
+node_modules/
+
+# Generated from openapi.json by `npm run gen:api`. openapi-typescript emits
+# its own style (4-space indent); reformatting it here would make CI's
+# regenerate-and-diff check fail on every run.
+lib/api.gen.ts
+
+# Machine-managed.
+package-lock.json
+openapi.json

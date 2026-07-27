@@ -31,7 +31,7 @@ const HOBBIT_NAMES = [
   "Belladonna",
 ] as const;
 
-const getRandomItem = <T,>(items: readonly T[]) =>
+const getRandomItem = <T>(items: readonly T[]) =>
   items[Math.floor(Math.random() * items.length)];
 
 export interface UseIdentityReturn {
@@ -42,10 +42,7 @@ export interface UseIdentityReturn {
   setDisplayNameInput: (value: string) => void;
   displayName: string;
   playerId: string | null;
-  persistTypedName: (
-    id: string | null,
-    typedName: string,
-  ) => Promise<void>;
+  persistTypedName: (id: string | null, typedName: string) => Promise<void>;
   persistIdentityFromJoin: (
     joined: { player_id?: string },
     typedName: string,

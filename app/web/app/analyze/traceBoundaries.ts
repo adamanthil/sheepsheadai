@@ -12,9 +12,7 @@ export type TraceBoundary =
  * appear between consecutive play-phase steps — the phase change into
  * "play" already marks the first trick. Shared by the decision timeline
  * (dividers) and the memory update chart (dashed rules). */
-export function traceBoundaries(
-  trace: AnalyzeActionDetail[],
-): TraceBoundary[] {
+export function traceBoundaries(trace: AnalyzeActionDetail[]): TraceBoundary[] {
   const bounds: TraceBoundary[] = [];
   let playActionsBefore = 0;
   for (let i = 0; i < trace.length; i++) {

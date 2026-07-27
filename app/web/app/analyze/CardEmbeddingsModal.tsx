@@ -179,7 +179,10 @@ export default function CardEmbeddingsModal({
           {error && !loading && (
             <div className={styles.errorBox}>
               <span>{error}</span>
-              <button className={styles.retryButton} onClick={() => void load()}>
+              <button
+                className={styles.retryButton}
+                onClick={() => void load()}
+              >
                 Retry
               </button>
             </div>
@@ -199,13 +202,13 @@ export default function CardEmbeddingsModal({
                   label="embedding"
                   wiki="https://en.wikipedia.org/wiki/Embedding_(machine_learning)"
                 >
-                  A learned vector ({emb.dims} dimensions here) that stands
-                  in for each card inside the network. Training adjusts these
-                  vectors, so cards that play similar roles in the game end
-                  up with similar embeddings.
+                  A learned vector ({emb.dims} dimensions here) that stands in
+                  for each card inside the network. Training adjusts these
+                  vectors, so cards that play similar roles in the game end up
+                  with similar embeddings.
                 </Term>{" "}
-                for each card. These are static per checkpoint — independent
-                of any simulated game.
+                for each card. These are static per checkpoint — independent of
+                any simulated game.
               </div>
 
               <div className={styles.tabBar} role="tablist">
@@ -226,12 +229,12 @@ export default function CardEmbeddingsModal({
               {tab === "vectors" && (
                 <div className={styles.tabPane} role="tabpanel">
                   <div className={styles.paneExplain}>
-                    Every value in the table — one row per card, one column
-                    per embedding dimension. Column labels show each
+                    Every value in the table — one row per card, one column per
+                    embedding dimension. Column labels show each
                     dimension&rsquo;s <em>informed initialization</em>: the
-                    meaning it started training with. That is only the
-                    starting point — the model adjusts all dimensions freely,
-                    so their learned meanings drift and mix over time.
+                    meaning it started training with. That is only the starting
+                    point — the model adjusts all dimensions freely, so their
+                    learned meanings drift and mix over time.
                   </div>
                   <div
                     className={styles.vecGrid}
@@ -260,7 +263,9 @@ export default function CardEmbeddingsModal({
                             className={`${styles.vecCell} ${
                               i === TRUMP_COUNT - 1 ? styles.boundaryBottom : ""
                             }`}
-                            style={{ background: divergingColor(v / vecMaxAbs) }}
+                            style={{
+                              background: divergingColor(v / vecMaxAbs),
+                            }}
                             title={`${entry.card} · ${labels[d]}: ${v.toFixed(3)}`}
                           />
                         ))}
@@ -285,23 +290,23 @@ export default function CardEmbeddingsModal({
                       label="PCA projection"
                       wiki="https://en.wikipedia.org/wiki/Principal_component_analysis"
                     >
-                      Each card&rsquo;s embedding lives in {emb.dims}{" "}
-                      dimensions — too many to draw. Principal component
-                      analysis projects the vectors onto the two orthogonal
-                      directions of greatest variance. Cards that sit close
-                      together have similar embeddings; the axes themselves
-                      carry no intrinsic meaning.
+                      Each card&rsquo;s embedding lives in {emb.dims} dimensions
+                      — too many to draw. Principal component analysis projects
+                      the vectors onto the two orthogonal directions of greatest
+                      variance. Cards that sit close together have similar
+                      embeddings; the axes themselves carry no intrinsic
+                      meaning.
                     </Term>{" "}
                     of all {emb.cards.length} embeddings.{" "}
                     <Term
                       label="Explained variance"
                       wiki="https://en.wikipedia.org/wiki/Principal_component_analysis"
                     >
-                      How much of the embeddings&rsquo; total variance the
-                      two principal components capture. PC1 40% means the
-                      first axis alone accounts for 40% of the variance
-                      across cards; whatever the two axes don&rsquo;t
-                      capture is invisible in this 2-D projection.
+                      How much of the embeddings&rsquo; total variance the two
+                      principal components capture. PC1 40% means the first axis
+                      alone accounts for 40% of the variance across cards;
+                      whatever the two axes don&rsquo;t capture is invisible in
+                      this 2-D projection.
                     </Term>
                     :{" "}
                     <strong>
@@ -404,15 +409,14 @@ export default function CardEmbeddingsModal({
                       label="Cosine similarity"
                       wiki="https://en.wikipedia.org/wiki/Cosine_similarity"
                     >
-                      The cosine of the angle between two cards&rsquo;
-                      embedding vectors, ignoring magnitude: +1 = pointing
-                      the same way (treated near-identically), 0 = orthogonal
-                      (unrelated), −1 = opposite. Each cell compares the row
-                      card with the column card; the diagonal is every card
-                      with itself.
+                      The cosine of the angle between two cards&rsquo; embedding
+                      vectors, ignoring magnitude: +1 = pointing the same way
+                      (treated near-identically), 0 = orthogonal (unrelated), −1
+                      = opposite. Each cell compares the row card with the
+                      column card; the diagonal is every card with itself.
                     </Term>{" "}
-                    between every pair of cards. The heavy rule marks the
-                    trump / fail boundary.
+                    between every pair of cards. The heavy rule marks the trump
+                    / fail boundary.
                   </div>
                   <div
                     className={styles.heatmapGrid}

@@ -91,9 +91,7 @@ export default function HandBlindPicker({
     }
     // The zone is already full from the last deal: swap out the weakest
     // unlocked dealt card so it stays full.
-    const evict = [...zoneDealt]
-      .reverse()
-      .find((c) => !zoneLocked.includes(c));
+    const evict = [...zoneDealt].reverse().find((c) => !zoneLocked.includes(c));
     if (!evict) return;
     set(
       target,
@@ -168,8 +166,7 @@ export default function HandBlindPicker({
   const cardButton = (card: string) => {
     const zone = zoneOf(card);
     const isLocked = zone !== null && locked[zone].includes(card);
-    const targetFull =
-      zone === null && locked[target].length >= LIMITS[target];
+    const targetFull = zone === null && locked[target].length >= LIMITS[target];
     const className = [
       styles.card,
       zone === "hand" ? styles.cardInHand : "",

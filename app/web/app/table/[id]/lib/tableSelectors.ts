@@ -1,4 +1,9 @@
-import type { ChatMessage, GameView, TableStateMsg, TableView } from "../../../../lib/types";
+import type {
+  ChatMessage,
+  GameView,
+  TableStateMsg,
+  TableView,
+} from "../../../../lib/types";
 import { parseCard } from "../../../../lib/ds";
 import { nameForSeat, isAiSeat } from "../utils/seatMath";
 import { relSeat } from "./seatLayout";
@@ -6,12 +11,7 @@ import { getSeatRole, type InterludeMode, type TablePhase } from "./phase";
 import type { CallOption, SeatView } from "../components/stage/types";
 
 export type PhaseLabelKind =
-  | "pick"
-  | "bury"
-  | "call"
-  | "setup"
-  | "play"
-  | "done";
+  "pick" | "bury" | "call" | "setup" | "play" | "done";
 
 const SUIT_NAME: Record<string, string> = {
   C: "Clubs",

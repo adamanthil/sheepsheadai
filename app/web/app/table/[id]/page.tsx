@@ -246,8 +246,7 @@ export default function TablePage() {
 
   const overlays = (
     <>
-      {(connectionState === "reconnecting" ||
-        connectionState === "failed") && (
+      {(connectionState === "reconnecting" || connectionState === "failed") && (
         <div
           role="alert"
           style={{
