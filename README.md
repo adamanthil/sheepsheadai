@@ -181,17 +181,19 @@ lint + format over the package + the full training suite), and `web`
 
 ### 5. Pre-commit hook (optional)
 
-`git clone` does not install hooks, so enable the ruff gate once per clone:
+`git clone` does not install hooks, so enable the lint gate once per clone:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-`.githooks/pre-commit` then runs `ruff format --check` and `ruff check` over
-the Python files in each commit, reading them from the index so a partially
-staged file is judged by what is actually being committed. It only reports —
-nothing is rewritten under you — and `git commit --no-verify` skips it. CI is
-the real backstop; the hook just catches drift before it is pushed.
+`.githooks/pre-commit` then checks the files in each commit — `ruff format
+--check` plus `ruff check` on Python, and `eslint` on `app/web` TypeScript —
+reading them from the index so a partially staged file is judged by what is
+actually being committed. It only reports; nothing is rewritten under you,
+and `git commit --no-verify` skips it. Either half is skipped rather than
+failed when its toolchain is missing (no `.venv`, no `node_modules`), so CI
+is the real backstop; the hook just catches drift before it is pushed.
 
 ### 6. Deployment
 

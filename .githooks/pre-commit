@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 #
-# Pre-commit gate: ruff format + lint over the Python files in this commit.
+# Pre-commit gate over the files in this commit:
+#
+#   Python (*.py)                 ruff format --check + ruff check
+#   Frontend (app/web/*.ts,tsx…)  eslint
 #
 # Enable once per clone (hooks are not installed by `git clone`):
 #
@@ -11,6 +14,10 @@
 # what is actually being committed and not by unstaged edits sitting beside
 # it. Nothing is rewritten -- a failing commit tells you the command to run.
 #
+# Either section is skipped (not failed) when its toolchain is absent, so a
+# checkout with no .venv or no node_modules can still commit. CI is the real
+# backstop.
+#
 # Bypass for a single commit with `git commit --no-verify`.
 
 set -uo pipefail
@@ -18,68 +25,163 @@ set -uo pipefail
 root=$(git rev-parse --show-toplevel) || exit 1
 cd "$root" || exit 1
 
-if [ -x ".venv/bin/ruff" ]; then
-	RUFF=".venv/bin/ruff"
-elif command -v ruff >/dev/null 2>&1; then
-	RUFF="ruff"
-elif command -v uv >/dev/null 2>&1; then
-	RUFF="uv run --quiet ruff"
-else
-	echo "pre-commit: ruff not found (.venv/bin/ruff, ruff, or uv) -- skipping." >&2
-	exit 0
-fi
+WEB_DIR="app/web"
+status=0
 
-# Added/Copied/Modified/Renamed only: a deleted path has no index blob.
-staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$')
-[ -n "$staged" ] || exit 0
+# Blank line between sections when more than one reports.
+separate() { [ "$status" -eq 0 ] || echo >&2; }
 
-unformatted=""   # newline-separated: paths may contain spaces
-lint_output=""
-lint_failed=0
+# --------------------------------------------------------------- python ---
+check_python() {
+	local RUFF staged unformatted lint_output lint_failed f out args rc
 
-while IFS= read -r f; do
-	[ -n "$f" ] || continue
-	# $RUFF is intentionally unquoted: it may be "uv run --quiet ruff".
-	if ! git show ":$f" | $RUFF format --check --stdin-filename "$f" - >/dev/null 2>&1; then
-		unformatted="$unformatted$f
-"
+	if [ -x ".venv/bin/ruff" ]; then
+		RUFF=".venv/bin/ruff"
+	elif command -v ruff >/dev/null 2>&1; then
+		RUFF="ruff"
+	elif command -v uv >/dev/null 2>&1; then
+		RUFF="uv run --quiet ruff"
+	else
+		return 0
 	fi
-	if ! out=$(git show ":$f" | $RUFF check --stdin-filename "$f" - 2>&1); then
-		lint_output="$lint_output$out
+
+	# Added/Copied/Modified/Renamed only: a deleted path has no index blob.
+	staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$')
+	[ -n "$staged" ] || return 0
+
+	unformatted=""   # newline-separated: paths may contain spaces
+	lint_output=""
+	lint_failed=0
+
+	while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		# $RUFF is intentionally unquoted: it may be "uv run --quiet ruff".
+		if ! git show ":$f" | $RUFF format --check --stdin-filename "$f" - >/dev/null 2>&1; then
+			unformatted="$unformatted$f
 "
-		lint_failed=1
-	fi
-done <<EOF
+		fi
+		if ! out=$(git show ":$f" | $RUFF check --stdin-filename "$f" - 2>&1); then
+			lint_output="$lint_output$out
+"
+			lint_failed=1
+		fi
+	done <<EOF
 $staged
 EOF
 
-status=0
+	rc=0
 
-if [ -n "$unformatted" ]; then
-	# Shell-quote each path so the suggested commands survive spaces.
-	args=""
-	while IFS= read -r f; do
-		[ -n "$f" ] || continue
-		args="$args $(printf '%q' "$f")"
-	done <<EOF
+	if [ -n "$unformatted" ]; then
+		# Shell-quote each path so the suggested commands survive spaces.
+		args=""
+		while IFS= read -r f; do
+			[ -n "$f" ] || continue
+			args="$args $(printf '%q' "$f")"
+		done <<EOF
 $unformatted
 EOF
-	{
-		echo "pre-commit: staged Python is not ruff-formatted:"
-		printf '%s' "$unformatted" | sed 's/^/    /'
-		echo
-		echo "  fix:  uv run ruff format$args"
-		echo "  then: git add$args"
-	} >&2
-	status=1
-fi
+		separate
+		{
+			echo "pre-commit: staged Python is not ruff-formatted:"
+			printf '%s' "$unformatted" | sed 's/^/    /'
+			echo
+			echo "  fix:  uv run ruff format$args"
+			echo "  then: git add$args"
+		} >&2
+		rc=1
+		status=1
+	fi
 
-if [ "$lint_failed" -ne 0 ]; then
-	[ "$status" -eq 0 ] || echo >&2
-	echo "pre-commit: ruff lint failed on staged Python:" >&2
-	printf '%s' "$lint_output" >&2
-	echo "  many rules autofix with: uv run ruff check --fix <file>" >&2
-	status=1
-fi
+	if [ "$lint_failed" -ne 0 ]; then
+		separate
+		echo "pre-commit: ruff lint failed on staged Python:" >&2
+		printf '%s' "$lint_output" >&2
+		echo "  many rules autofix with: uv run ruff check --fix <file>" >&2
+		rc=1
+		status=1
+	fi
+
+	return $rc
+}
+
+# ------------------------------------------------------------- frontend ---
+check_frontend() {
+	local eslint staged f rel batch stdin_files out o rc
+	local -a argv
+
+	eslint="$WEB_DIR/node_modules/.bin/eslint"
+	[ -x "$eslint" ] || return 0
+
+	staged=$(git diff --cached --name-only --diff-filter=ACMR |
+		grep -E "^$WEB_DIR/.*\.(ts|tsx|js|jsx|mjs|cjs)$")
+	[ -n "$staged" ] || return 0
+
+	# eslint resolves its flat config, plugins and tsconfig relative to
+	# app/web, so every path below is made relative to that directory.
+	#
+	# Startup dominates eslint's cost (~0.6s, vs a few ms per extra file), so
+	# files whose index content already matches the working tree are linted in
+	# one batch. Only partially staged files -- where the two differ -- pay for
+	# an individual --stdin run that sees the staged content.
+	batch=""
+	stdin_files=""
+	while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		rel=${f#"$WEB_DIR/"}
+		if git diff --quiet -- "$f"; then
+			batch="$batch$rel
+"
+		else
+			stdin_files="$stdin_files$rel
+"
+		fi
+	done <<EOF
+$staged
+EOF
+
+	rc=0
+	out=""
+
+	if [ -n "$batch" ]; then
+		argv=()
+		while IFS= read -r rel; do
+			[ -n "$rel" ] || continue
+			argv+=("$rel")
+		done <<EOF
+$batch
+EOF
+		if ! o=$(cd "$WEB_DIR" && ./node_modules/.bin/eslint --no-warn-ignored "${argv[@]}" 2>&1); then
+			out="$out$o
+"
+			rc=1
+		fi
+	fi
+
+	while IFS= read -r rel; do
+		[ -n "$rel" ] || continue
+		if ! o=$(git show ":$WEB_DIR/$rel" |
+			(cd "$WEB_DIR" && ./node_modules/.bin/eslint --no-warn-ignored \
+				--stdin --stdin-filename "$rel" 2>&1)); then
+			out="$out$o
+"
+			rc=1
+		fi
+	done <<EOF
+$stdin_files
+EOF
+
+	if [ "$rc" -ne 0 ]; then
+		separate
+		echo "pre-commit: eslint failed on staged frontend files:" >&2
+		printf '%s' "$out" | sed '/^$/d' >&2
+		echo "  fix:  (cd $WEB_DIR && npx eslint --fix <file>)" >&2
+		status=1
+	fi
+
+	return $rc
+}
+
+check_python
+check_frontend
 
 exit $status
