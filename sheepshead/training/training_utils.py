@@ -509,6 +509,8 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     t0_def_trump = 0  # ...that led trump (greedy)
     ptn_leads = 0  # secret-partner leads, tricks 0-2, both classes legal
     ptn_trump = 0  # ...that led trump (the partner convention)
+    cs_leads = 0  # defender leads, called-ace mode, called suit not yet led
+    cs_adherent = 0  # ...that led a called-suit fail (convention C2)
     play_spreads = []  # legal-play logit spread (max-min) at multi-legal nodes
     try:
         for g in range(n_games):
@@ -542,6 +544,33 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                             and not player.is_picker
                             and any(c in TRUMP for c in player.hand)
                             and any(c not in TRUMP for c in player.hand)
+                        )
+                        # Convention C2 (called_suit_probe.py is the calibrated
+                        # instrument; this is the cheap in-training canary, no
+                        # under-call split): a true defender leading in
+                        # called-ace mode before the called suit has been led,
+                        # holding a called-suit fail AND an alternative.
+                        called = game.called_card
+                        is_called_suit_lead = (
+                            game.play_started
+                            and not game.is_leaster
+                            and game.cards_played == 0
+                            and game.leader == player.position
+                            and bool(called)
+                            and not game.was_called_suit_played
+                            and not (
+                                player.is_picker
+                                or player.is_partner
+                                or player.is_secret_partner
+                            )
+                            and any(
+                                c not in TRUMP and c[-1] == called[-1]
+                                for c in player.hand
+                            )
+                            and any(
+                                c in TRUMP or c[-1] != called[-1]
+                                for c in player.hand
+                            )
                         )
                         state = player.get_state_dict()
                         is_play = game.play_started and all(
@@ -583,6 +612,15 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                             ptn_leads += 1
                             if name.startswith("PLAY ") and name[5:] in TRUMP:
                                 ptn_trump += 1
+                        if is_called_suit_lead:
+                            cs_leads += 1
+                            card = name[5:] if name.startswith("PLAY ") else ""
+                            if (
+                                card
+                                and card not in TRUMP
+                                and card[-1] == called[-1]
+                            ):
+                                cs_adherent += 1
                         player.act(a)
                         valid = player.get_valid_action_ids()
                         if game.was_trick_just_completed:
@@ -607,6 +645,10 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         # probe hid the 2026-07 batch-arm convention collapse for 850k eps).
         "partner_trump_lead_rate": 100.0 * ptn_trump / max(ptn_leads, 1),
         "partner_leads": ptn_leads,
+        # Convention C2: defender leads the called suit while it hasn't been
+        # led (called-ace mode). Convention says 100% at eligible nodes.
+        "called_suit_lead_rate": 100.0 * cs_adherent / max(cs_leads, 1),
+        "called_leads": cs_leads,
         # Median legal-play logit spread (max-min). A healthy play head is well
         # separated (baseline ~6.5); a collapsed/uniform head reads ~0. This is
         # the cheap canary for the terminal-only play-head collapse.

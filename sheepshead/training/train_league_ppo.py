@@ -120,6 +120,8 @@ GREEDY_CSV_HEADER = [
     "games",
     "partner_trump_lead_rate",
     "partner_leads",
+    "called_suit_lead_rate",
+    "called_leads",
 ]
 
 PFSP_HYPERPARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-health gates
@@ -718,6 +720,8 @@ def run_main_phase(
                     f"(n={probe['t0_def_leads']}), "
                     f"partner trump-lead {probe['partner_trump_lead_rate']:.1f}% "
                     f"(n={probe['partner_leads']}), "
+                    f"called-suit lead {probe['called_suit_lead_rate']:.1f}% "
+                    f"(n={probe['called_leads']}), "
                     f"play-spread {probe['play_logit_spread_med']:.2f}",
                     flush=True,
                 )
@@ -760,6 +764,8 @@ def run_main_phase(
                             probe["games"],
                             f"{probe['partner_trump_lead_rate']:.2f}",
                             probe["partner_leads"],
+                            f"{probe['called_suit_lead_rate']:.2f}",
+                            probe["called_leads"],
                         ]
                     )
 

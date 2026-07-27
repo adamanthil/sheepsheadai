@@ -120,3 +120,7 @@ def test_greedy_probe_reports_partner_convention():
     assert "partner_trump_lead_rate" in probe
     assert "partner_leads" in probe
     assert 0.0 <= probe["partner_trump_lead_rate"] <= 100.0
+    # Convention C2 canary (defender leads the called suit while unled)
+    assert "called_suit_lead_rate" in probe
+    assert "called_leads" in probe
+    assert 0.0 <= probe["called_suit_lead_rate"] <= 100.0
