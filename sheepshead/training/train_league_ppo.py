@@ -923,7 +923,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="paired deals per exploiter checkpoint for best-of-checkpoints "
         "selection before the full gate (0 = gate the final save only)",
     )
-    ap.add_argument("--update-interval", type=int, default=2048)
+    ap.add_argument("--update-interval", type=int, default=16_384)
     ap.add_argument("--save-interval", type=int, default=50_000)
     ap.add_argument("--snapshot-interval", type=int, default=50_000)
     ap.add_argument("--greedy-eval-interval", type=int, default=50_000)
@@ -932,7 +932,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--critic-mode",
         choices=["limited", "oracle"],
-        default="limited",
+        default="oracle",
         help="'oracle' trains a privileged full-information critic as the GAE "
         "baseline (asymmetric actor-critic; see oracle.py). The actor, the "
         "limited critic, and all aux heads train identically in both modes.",
@@ -966,7 +966,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--exploiter-patched-ema",
         type=float,
-        default=None,
+        default=0.35,
         help="retire an exploiter to past_main once its live outcome EMA vs "
         "the training agent falls below this (with enough samples) — the "
         "exploit is patched, stop paying its seat share (default: age-based "
@@ -974,36 +974,38 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--grad-accum",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="accumulate minibatch gradients (row-fraction scaled) and step "
-        "once per epoch: the full-buffer optimizer step of the batch-SNR "
-        "design with activation memory bounded by --minibatch-episodes. "
-        "Required at large --update-interval — a single full-buffer forward "
-        "in oracle+anchor mode OOMs (observed ~40GB at 16,384 rows with "
-        "mixed-length segments)",
+        "once per epoch: the single full-buffer optimizer step of the "
+        "validated low-temperature design, with activation memory bounded "
+        "by --minibatch-episodes. (Historically also the fix for the ~40GB "
+        "braided-segment OOM; post per-seat storage fix it is kept for the "
+        "step-size semantics, not memory.)",
     )
     ap.add_argument(
         "--minibatch-episodes",
         type=int,
-        default=256,
-        help="episodes per PPO optimizer step (PPOAgent.update batch_size). "
-        "The historical 256 never binds at update-interval 2048 (~80-episode "
-        "buffers), making every step full-buffer; when raising "
-        "--update-interval, raise this too or the cap silently reintroduces "
-        "minibatching and forfeits the per-step SNR the bigger buffer buys",
+        default=128,
+        help="episodes per forward/backward chunk (PPOAgent.update "
+        "batch_size). Under --grad-accum this bounds peak activation "
+        "memory only — the optimizer still steps once per epoch over the "
+        "whole buffer; with --no-grad-accum it becomes the per-step "
+        "minibatch size",
     )
     ap.add_argument(
         "--gamma",
         type=float,
-        default=None,
-        help="override the discount factor (e.g. 1.0: undiscounted terminal "
-        "returns — removes the ~7%% depth tilt against early nodes on this "
-        "finite-horizon terminal-reward game). Default keeps the agent's "
-        "historical 0.99",
+        default=1.0,
+        help="discount factor. Default 1.0: undiscounted terminal returns "
+        "— removes the ~7%% depth tilt against early nodes on this "
+        "finite-horizon terminal-reward game (retention-run validated). "
+        "The agent's historical value was 0.99",
     )
     ap.add_argument(
         "--oracle-aux-heads",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="build the oracle critic with deterministic aux heads "
         "(per-seat team membership + team points; offline-validated "
         "2026-07-24). Historical checkpoints without heads still load "
@@ -1028,7 +1030,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--seat-rotation",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="deal-paired collection: each sampled deal is played 5 times "
         "with the hero rotating through all seats against the same table "
         "(train-time duplicate instrument; equalizes role exposure per "
@@ -1036,7 +1039,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--gns-log",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="log the gradient noise scale each update (global + partner-"
         "lead stratum, units = action rows) to the progress CSV. One extra "
         "epoch-equivalent of compute per update; measurement only — the "
@@ -1045,7 +1049,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--oracle-extra-epochs",
         type=int,
-        default=0,
+        default=4,
         help="extra oracle-regression-only epochs after each update "
         "(per-minibatch oracle optimizer steps). The oracle has its own "
         "encoder, so this touches no policy/limited-critic parameter — a "
@@ -1064,7 +1068,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument(
         "--arch",
-        default="full",
+        default="perceiver-shared-v2",
         choices=architectures.available_architectures(),
         help="Network architecture variant for the training agent, its "
         "snapshots, and the exploiter phase (see the architectures package)",
@@ -1072,7 +1076,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument(
         "--leaster-watchdog",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="pick-entropy kick against the always-PASS/leaster collapse "
         "(seen re-entered from a trained policy in anchor-free stage-1 "
         "generations; see leaster_watchdog.py). Main phases only — the "

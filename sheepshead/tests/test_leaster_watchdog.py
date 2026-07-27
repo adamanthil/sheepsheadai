@@ -76,15 +76,17 @@ class TestLeasterWatchdog:
         sig = inspect.signature(train_ppo)
         assert sig.parameters["leaster_watchdog"].default is False
 
-    def test_league_trainer_default_off(self):
+    def test_league_trainer_default_on(self):
+        # Retention-run defaults adoption (2026-07-27): the league trainer
+        # watchdog is now default-ON, opt-out via --no-leaster-watchdog.
         args = build_arg_parser().parse_args(
             ["--resume", "x.pt", "--league-dir", "y"]
         )
-        assert args.leaster_watchdog is False
-        on = build_arg_parser().parse_args(
-            ["--resume", "x.pt", "--league-dir", "y", "--leaster-watchdog"]
+        assert args.leaster_watchdog is True
+        off = build_arg_parser().parse_args(
+            ["--resume", "x.pt", "--league-dir", "y", "--no-leaster-watchdog"]
         )
-        assert on.leaster_watchdog is True
+        assert off.leaster_watchdog is False
 
 
 if __name__ == "__main__":

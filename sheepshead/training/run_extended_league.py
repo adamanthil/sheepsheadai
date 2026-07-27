@@ -6,10 +6,10 @@ Trains the strongest agent train_league_ppo.py can produce from a selfplay
 warm start, deciding for itself when learning is complete. The full recipe
 (pre-registered in notebooks/Extended_League_202607.md):
 
-  1. GEN 1        train_league_ppo.py subprocess, KL-anchored to the ORIGINAL
-                  resume checkpoint (--anchor-coeff, default 1.0; guards the
-                  warm-start transition against PASS-collapse), league seeded
-                  from --seed-checkpoints.
+  1. GEN 1        train_league_ppo.py subprocess (league seeded from
+                  --seed-checkpoints). Default UNANCHORED (--anchor-coeff 0,
+                  retention-run validated with a pretrained oracle); pass
+                  --anchor-coeff 1.0 for the legacy warm-start KL guard.
   2. GEN 2..N     unanchored generations, resume-chained from each boundary
                   checkpoint (--generations 1 per invocation; the trainer's
                   absolute-episode boundary math keeps numbering/cadence).
@@ -925,7 +925,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--exploiter-episodes", type=int, default=50_000)
     p.add_argument("--gate-deals", type=int, default=3000)
     p.add_argument("--screen-deals", type=int, default=200)
-    p.add_argument("--update-interval", type=int, default=2048)
+    p.add_argument("--update-interval", type=int, default=16_384)
     p.add_argument("--save-interval", type=int, default=50_000)
     p.add_argument("--snapshot-interval", type=int, default=50_000)
     p.add_argument("--greedy-eval-interval", type=int, default=50_000)
@@ -935,7 +935,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
         "--leaster-watchdog",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="forward --leaster-watchdog to every generation's trainer "
         "(anchor-free PASS-collapse guard; see leaster_watchdog.py)",
     )
@@ -949,9 +950,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument(
         "--anchor-coeff",
         type=float,
-        default=1.0,
+        default=0.0,
         help="gen-1 bidding-head KL anchor to the resume checkpoint "
-        "(0 disables; 1.0 validated by the July-2026 ablation stage 1)",
+        "(default 0: fully unanchored, validated by the July-2026 "
+        "retention run with a pretrained oracle; 1.0 was the ablation "
+        "stage-1 warm-start guard)",
     )
     p.add_argument("--baseline-probe-games", type=int, default=400)
     # Evaluation / stop rule
