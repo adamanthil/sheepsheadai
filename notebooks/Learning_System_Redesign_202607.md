@@ -1432,6 +1432,24 @@ pressure generation (gen-2's exploiter gates at the 2M boundary ⇒
 apply amendment no later than that restart). Gen-1 endpoint eval
 running (3,996 deals); h2h gen 1 vs seed follows.
 
+**GEN-1 BOUNDARY RESULTS + SEATING AMENDMENT APPLIED (2026-07-26).**
+Orchestrator gen-1 verdict: **panel +0.0425 [+0.0100, +0.0752] vs
+gen 0** (CI excludes zero — the same instrument that read ≈ 0 league
+lift after 2M episodes in the arch ablation) and **h2h gen1-vs-gen0
++0.078 ± 0.013**; flat=False, streak=0, continues (min_generations
+4). End-of-gen probes: partner 93.7/93.2/80.8% (900k/950k/1M),
+defender t0 0.0% at 1M ⇒ **gen-1 B2 reading HELD**. Per operator
+directive the per-seat exploiter amendment was applied at this
+boundary regardless of the gate failure: orchestrator killed after
+h2h, relaunched 23:01 WITHOUT `--exploiter-full-table` (patched-EMA
+kept). Resume machinery replayed gen 1 from artifacts in 1s (gen-0
+cache + panel_gen1.npz + h2h_gen1.json + exploitability row); gen 2
+restarted from the 1M boundary checkpoint (~6min of whole-table gen-2
+episodes discarded; flag was dormant anyway — no gated exploiter).
+Verified: live gen-2 trainer command line lacks the flag; gen2 log
+shows the old trainer's 🥷 banner and the new trainer's banner set
+without it.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
