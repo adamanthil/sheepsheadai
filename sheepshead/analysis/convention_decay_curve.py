@@ -42,7 +42,6 @@ from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
-    TRUMP_SET,
     Game,
 )
 

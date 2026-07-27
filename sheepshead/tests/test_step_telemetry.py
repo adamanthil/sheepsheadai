@@ -3,7 +3,6 @@ optimizer-step counter, the gradient-noise-scale diagnostic, oracle-only
 extra epochs, and the append-only CSV schema migration."""
 
 import csv
-import os
 
 import torch
 

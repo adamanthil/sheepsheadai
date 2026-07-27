@@ -5,7 +5,7 @@ extended greedy probe."""
 import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE
-from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels
+from sheepshead.agent.oracle import team_aux_labels
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.tests.ppo_test_helpers import play_episodes, seed_all
 from sheepshead.training.training_utils import greedy_health_probe

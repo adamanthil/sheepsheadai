@@ -188,7 +188,10 @@ def main() -> int:
     dp, dd = np.diff(ps[ok]), np.diff(ds[ok])
     corr_diff = float(np.corrcoef(dp, dd)[0, 1]) if len(dp) > 2 else None
     corr_level = float(np.corrcoef(ps[ok], ds[ok])[0, 1]) if ok.sum() > 2 else None
-    fmt = lambda v: f"{v:.3f}" if v is not None else "n/a"
+
+    def fmt(v):
+        return f"{v:.3f}" if v is not None else "n/a"
+
     print(
         f"\ncoupling: corr(levels) = {fmt(corr_level)}  "
         f"corr(first differences) = {fmt(corr_diff)}  (n={ok.sum()} ckpts)"
