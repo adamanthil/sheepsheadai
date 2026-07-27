@@ -1376,6 +1376,45 @@ will be on record; alone is rising alongside picker_avg, consistent
 with growing picker confidence rather than pathology. Next: 1M gen-1
 boundary (orchestrator endpoint + h2h + first exploiter gen).
 
+**EXPLOITER-SEATING AMENDMENT (pre-registered 2026-07-26,
+operator-approved; applies at the gen-2 boundary IF the gen-1
+exploiter passes its gate).** Drop `--exploiter-full-table` for gen 2
+onward (keep `--exploiter-patched-ema 0.35` — retirement logic is
+orthogonal); exploiter pressure reverts to per-seat single-exploiter
+seating. Rationale on record BEFORE the gate result:
+1. Seat rotation now supplies the role coverage whole-table was
+   compensating for: the table is fixed per rotation group, so one
+   exploiter seat meets the hero from all 5 relative offsets on the
+   SAME deal (matched-pair role sweep). The July finding that
+   per-seat pressure was "inert" predates rotation AND is confounded
+   by both training bugs (exploiters trained on the corrupted league
+   path; main's gradients ~67% corrupted).
+2. Certified-configuration match: the exploiter trains and gates as
+   1 exploiter vs 4 mains. Whole-table deploys the MIRROR (1 main vs
+   4 exploiter copies) — uncertified pressure dosed by a certified
+   edge (units mismatch in exploiter_share heat scaling). Per-seat +
+   rotation restores the certified configuration from every role.
+3. Collusion artifact: 4 parameter-shared exploiter copies form an
+   implicit coalition with no evaluation analog. For THIS run it
+   would confound B2: retention breaking under 4-way anti-convention
+   collusion ≠ conventions not robust to realistic exploitation.
+   Per-seat keeps gen 2's churn test interpretable.
+4. Literature: AlphaStar main-exploiters = 2p best responses into
+   PFSP mixtures; PSRO deploys BRs per-seat from the meta-strategy;
+   multi-seat poker practice = one learner seat + position rotation.
+   No precedent for whole-table; nothing certified is lost (a
+   1-vs-4-trained exploiter cannot express coordinated multi-seat
+   exploits anyway).
+Mechanics: flag affects main-phase table sampling only ⇒ kill
+orchestrator at the boundary, relaunch with amended --trainer-args;
+state/league/endpoint caches persist (gen-0 cache + panel_gen1.npz
+idempotency), partial gen-2 episodes under the old flag are
+discarded by the boundary restart. Readout: greedy partner probes
+remain the exploitation instrument — a certified per-seat exploiter
+driving partner trump-lead down is a legitimate B2-relevant finding.
+If the exploiter FAILS its gate, pressure is moot for gen 2; the
+amendment still applies to all future generations.
+
 **Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
 with the ordinary strength trajectory ⇒ retention-first on-policy PG is
 sufficient; the search teacher stays shelved. Retention holds through
