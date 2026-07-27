@@ -177,7 +177,14 @@ cd app/web && npm run gen:api                 # refresh lib/api.gen.ts
 CI (`.github/workflows/ci.yml`) runs three jobs — `server` (ruff lint +
 format + server tests against Postgres + schema drift), `training` (ruff
 lint + format over the package + the full training suite), and `web`
-(typecheck/lint/build + generated-type drift).
+(typecheck/lint/prettier/build + generated-type drift).
+
+Frontend formatting is prettier, scoped to `app/web` TypeScript and
+JavaScript (`npm run format` to fix, `npm run format:check` to verify).
+`lib/api.gen.ts` is excluded because `npm run gen:api` regenerates it in
+openapi-typescript's own style; `design/` and `visualizations/vendor/` are
+outside the scope on purpose — the former carries `EDITMODE` markers that
+tooling rewrites, the latter is vendored upstream code.
 
 ### 5. Pre-commit hook (optional)
 
@@ -188,9 +195,9 @@ git config core.hooksPath .githooks
 ```
 
 `.githooks/pre-commit` then checks the files in each commit — `ruff format
---check` plus `ruff check` on Python, and `eslint` on `app/web` TypeScript —
-reading them from the index so a partially staged file is judged by what is
-actually being committed. It only reports; nothing is rewritten under you,
+--check` plus `ruff check` on Python, and `eslint` plus `prettier --check` on
+`app/web` TypeScript — reading them from the index so a partially staged file
+is judged by what is actually being committed. It only reports; nothing is rewritten under you,
 and `git commit --no-verify` skips it. Either half is skipped rather than
 failed when its toolchain is missing (no `.venv`, no `node_modules`), so CI
 is the real backstop; the hook just catches drift before it is pushed.

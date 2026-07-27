@@ -106,10 +106,12 @@ EOF
 
 # ------------------------------------------------------------- frontend ---
 check_frontend() {
-	local eslint staged f rel batch stdin_files out o rc
+	local eslint prettier staged f rel batch stdin_files out o rc
+	local unformatted args
 	local -a argv
 
 	eslint="$WEB_DIR/node_modules/.bin/eslint"
+	prettier="$WEB_DIR/node_modules/.bin/prettier"
 	[ -x "$eslint" ] || return 0
 
 	staged=$(git diff --cached --name-only --diff-filter=ACMR |
@@ -175,6 +177,51 @@ EOF
 		echo "pre-commit: eslint failed on staged frontend files:" >&2
 		printf '%s' "$out" | sed '/^$/d' >&2
 		echo "  fix:  (cd $WEB_DIR && npx eslint --fix <file>)" >&2
+		status=1
+	fi
+
+	# --- prettier, over the same partition ---------------------------------
+	[ -x "$prettier" ] || return $rc
+
+	unformatted=""
+	if [ -n "$batch" ]; then
+		# --list-different prints one differing path per line, which is what
+		# --check only says in prose.
+		o=$(cd "$WEB_DIR" && ./node_modules/.bin/prettier --list-different "${argv[@]}" 2>/dev/null)
+		[ -n "$o" ] && unformatted="$unformatted$o
+"
+	fi
+	while IFS= read -r rel; do
+		[ -n "$rel" ] || continue
+		# Over stdin prettier reports the path as "(stdin)", so the filename
+		# has to be recorded here instead of read out of its output.
+		if ! git show ":$WEB_DIR/$rel" |
+			(cd "$WEB_DIR" && ./node_modules/.bin/prettier --check \
+				--stdin-filepath "$rel" >/dev/null 2>&1); then
+			unformatted="$unformatted$rel
+"
+		fi
+	done <<EOF
+$stdin_files
+EOF
+
+	if [ -n "$unformatted" ]; then
+		args=""
+		while IFS= read -r rel; do
+			[ -n "$rel" ] || continue
+			args="$args $(printf '%q' "$rel")"
+		done <<EOF
+$unformatted
+EOF
+		separate
+		{
+			echo "pre-commit: staged frontend files are not prettier-formatted:"
+			printf '%s' "$unformatted" | sed "s|^|    $WEB_DIR/|"
+			echo
+			echo "  fix:  (cd $WEB_DIR && npx prettier --write$args)"
+			echo "  then: git add <files>"
+		} >&2
+		rc=1
 		status=1
 	fi
 
