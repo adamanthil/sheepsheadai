@@ -728,7 +728,9 @@ class Game:
         dealt_by_seat = {}
         for seat in context["fill_seats"]:
             seed = [forced[seat]] if seat in forced else []
-            drawn, pool = self._draw_avoiding(pool, counts[seat] - len(seed), voids[seat])
+            drawn, pool = self._draw_avoiding(
+                pool, counts[seat] - len(seed), voids[seat]
+            )
             if drawn is None:
                 return None
             dealt_by_seat[seat] = seed + drawn

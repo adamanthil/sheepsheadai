@@ -90,11 +90,14 @@ async def test_create_join_start_flow(db_app):
         auth = {"Authorization": f"Bearer {token}"}
 
         # The minted identity is real DB state.
-        assert await pool.fetchval(
-            "SELECT count(*) FROM session s JOIN player p USING (player_id) "
-            "WHERE p.player_id = $1",
-            __import__("uuid").UUID(player_id),
-        ) == 1
+        assert (
+            await pool.fetchval(
+                "SELECT count(*) FROM session s JOIN player p USING (player_id) "
+                "WHERE p.player_id = $1",
+                __import__("uuid").UUID(player_id),
+            )
+            == 1
+        )
 
         # Re-joining with the token is idempotent: same player, same
         # connection — never a second seat for one player.

@@ -26,8 +26,7 @@ def main():
     template = TEMPLATE_PATH.read_text()
     embedded = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     out = (
-        template
-        .replace("__THREE_SRC_JSON__", js_string(THREE_PATH.read_text()))
+        template.replace("__THREE_SRC_JSON__", js_string(THREE_PATH.read_text()))
         .replace("__ORBIT_SRC_JSON__", js_string(ORBIT_PATH.read_text()))
         .replace("__ADDONS_SRC_JSON__", js_string(ADDONS_PATH.read_text()))
         .replace("__DATA_JSON__", embedded)

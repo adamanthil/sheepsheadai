@@ -122,9 +122,7 @@ def test_update_ratios_are_unit_at_theta_old_after_fix():
     states, masks_t, kinds, segments = prepare_minibatch_inputs(agent)
     minibatch = agent._build_minibatch_tensors(segments, states, masks_t, kinds)
     with torch.no_grad():
-        forward = agent._forward_vectorized(
-            minibatch.states_seqs, minibatch.masks_bt
-        )
+        forward = agent._forward_vectorized(minibatch.states_seqs, minibatch.masks_bt)
     flat = agent._flatten_action_steps(minibatch, forward)
     probs = torch.softmax(flat.logits_flat, dim=-1)
     new_lp = torch.distributions.Categorical(probs.clamp(min=1e-12)).log_prob(

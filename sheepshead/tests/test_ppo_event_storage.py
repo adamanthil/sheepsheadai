@@ -98,16 +98,23 @@ def test_action_event_full_label_mapping(agent):
     assert torch.equal(mask, expected_mask)
 
 
-@pytest.mark.parametrize("labels", [{}, {
-    "win_label": None,
-    "final_return_label": None,
-    "secret_partner_label": None,
-    "points_label": None,
-    "seen_trump_mask_label": None,
-    "unseen_trump_higher_than_hand_label": None,
-    "search_target": None,
-    "has_search_target": None,
-}], ids=["absent", "none"])
+@pytest.mark.parametrize(
+    "labels",
+    [
+        {},
+        {
+            "win_label": None,
+            "final_return_label": None,
+            "secret_partner_label": None,
+            "points_label": None,
+            "seen_trump_mask_label": None,
+            "unseen_trump_higher_than_hand_label": None,
+            "search_target": None,
+            "has_search_target": None,
+        },
+    ],
+    ids=["absent", "none"],
+)
 def test_optional_labels_default_to_zeros(agent, labels):
     agent.store_episode_events([action_event(**labels)])
     record, _mask = stored_record_and_mask(agent)
@@ -156,9 +163,7 @@ def test_oracle_state_passes_through_on_both_kinds(agent):
 
 
 def test_no_oracle_key_when_not_collected(agent):
-    agent.store_episode_events(
-        [{"kind": "observation", "state": {}}, action_event()]
-    )
+    agent.store_episode_events([{"kind": "observation", "state": {}}, action_event()])
     assert all("oracle_state" not in e for e in agent.events)
 
 

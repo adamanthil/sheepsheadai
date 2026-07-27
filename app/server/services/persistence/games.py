@@ -57,6 +57,7 @@ __all__ = [
     "persist_trick_completed",
 ]
 
+
 async def fire_game_hooks(
     table: "Table", pre: Dict[str, Any], post: Dict[str, Any]
 ) -> None:
@@ -94,4 +95,3 @@ async def fire_game_hooks(
     # Hook 6: game done (fires on the same action as hook 5 for the last trick)
     if post["is_done"]:
         await persist_finalize_game(pool, table, post["scores"])
-

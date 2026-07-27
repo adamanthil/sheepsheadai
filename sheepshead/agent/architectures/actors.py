@@ -199,13 +199,9 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             valid_b = b_idx.ge(0)
             valid_u = u_idx.ge(0)
             if valid_b.any():
-                logits.view(K_, -1)[valid_b, b_idx[valid_b]] = slot_scores[
-                    valid_b, i
-                ]
+                logits.view(K_, -1)[valid_b, b_idx[valid_b]] = slot_scores[valid_b, i]
             if valid_u.any():
-                logits.view(K_, -1)[valid_u, u_idx[valid_u]] = slot_scores[
-                    valid_u, i
-                ]
+                logits.view(K_, -1)[valid_u, u_idx[valid_u]] = slot_scores[valid_u, i]
 
         # PLAY scatter
         idx_play = self._map_cid_to_play_action_index.to(device)[cids]  # (K, N)
@@ -213,9 +209,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             p_idx = idx_play[:, i]
             valid_p = p_idx.ge(0)
             if valid_p.any():
-                logits.view(K_, -1)[valid_p, p_idx[valid_p]] = slot_scores[
-                    valid_p, i
-                ]
+                logits.view(K_, -1)[valid_p, p_idx[valid_p]] = slot_scores[valid_p, i]
 
         # PLAY UNDER scalar
         if self._play_under_action_index is not None:

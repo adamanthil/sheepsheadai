@@ -383,9 +383,7 @@ class ISMCTSTeacher:
         self._qmin = math.inf
         self._qmax = -math.inf
         self._root = root
-        self._root_rm = (
-            _RootRM(valid_real) if config.root_selection == "rm" else None
-        )
+        self._root_rm = _RootRM(valid_real) if config.root_selection == "rm" else None
         self._root_praw = {a: 0.0 for a in valid_real}
         self._root_praw_writes = 0
         self.fail = defaultdict(int)
@@ -678,8 +676,7 @@ class ISMCTSTeacher:
         }
         root_prior = (
             {
-                action_id: self._root_praw.get(action_id, 0.0)
-                / self._root_praw_writes
+                action_id: self._root_praw.get(action_id, 0.0) / self._root_praw_writes
                 for action_id in valid_real
             }
             if self._root_praw_writes > 0
@@ -1005,9 +1002,7 @@ class ISMCTSTeacher:
         must exist for every action), then SAMPLE from the gamma-mixed RM
         policy. Sampling is inherently diversifying, so root virtual loss is
         moot here (still charged; harmless). Interior nodes always use PUCT."""
-        unvisited = [
-            a for a in valid if node.N.get(a, 0.0) + node.vloss.get(a, 0) <= 0
-        ]
+        unvisited = [a for a in valid if node.N.get(a, 0.0) + node.vloss.get(a, 0) <= 0]
         if unvisited:
             return unvisited[self._rng.randrange(len(unvisited))]
         sigma = self._root_rm.sigma()
@@ -1031,9 +1026,7 @@ class ISMCTSTeacher:
         q = {a: root.W[a] / root.N[a] for a in rm.regret}
         qlo, qhi = min(q.values()), max(q.values())
         span = qhi - qlo
-        rm.update(
-            {a: ((v - qlo) / span if span > 0.0 else 0.5) for a, v in q.items()}
-        )
+        rm.update({a: ((v - qlo) / span if span > 0.0 else 0.5) for a, v in q.items()})
 
     def _select_vl(self, node, valid, following) -> int:
         """PUCT selection with virtual loss: an in-flight selected edge is charged

@@ -104,9 +104,7 @@ class ConventionWrapper:
             and not int(state["called_under"])
         ):
             called_suit = _ID_TO_CARD[called_id][-1]
-            conv = [
-                a for a, c in plays if c in _FAIL_SET and c[-1] == called_suit
-            ]
+            conv = [a for a, c in plays if c in _FAIL_SET and c[-1] == called_suit]
             if conv and len(conv) < len(plays):
                 return conv
 

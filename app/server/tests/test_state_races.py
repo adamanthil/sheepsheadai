@@ -22,8 +22,12 @@ from server.runtime.tables import (
 async def test_concurrent_seat_grab_yields_one_winner(app):
     table = Table(id="t1", name="race")
     p1, p2 = uuid.uuid4(), uuid.uuid4()
-    table.clients["c1"] = ClientConn(client_id="c1", display_name="a", player_id=str(p1))
-    table.clients["c2"] = ClientConn(client_id="c2", display_name="b", player_id=str(p2))
+    table.clients["c1"] = ClientConn(
+        client_id="c1", display_name="a", player_id=str(p1)
+    )
+    table.clients["c2"] = ClientConn(
+        client_id="c2", display_name="b", player_id=str(p2)
+    )
     tables.tables["t1"] = table
 
     def fake_player(request: Request) -> PlayerIdentity:
@@ -64,9 +68,13 @@ def test_prune_table_state_sweeps_stale_bookkeeping():
     table.reserved_ai_by_human["gone"] = "ai-1"
     table.occupants["ai-1"] = Occupant(id="ai-1", display_name="AI", is_ai=True)
     # An orphaned AI occupant (no seat, no reservation).
-    table.occupants["ai-orphan"] = Occupant(id="ai-orphan", display_name="AI", is_ai=True)
+    table.occupants["ai-orphan"] = Occupant(
+        id="ai-orphan", display_name="AI", is_ai=True
+    )
     # A seated AI and a recently-disconnected client must both survive.
-    table.occupants["ai-seated"] = Occupant(id="ai-seated", display_name="AI", is_ai=True)
+    table.occupants["ai-seated"] = Occupant(
+        id="ai-seated", display_name="AI", is_ai=True
+    )
     table.seats[1] = "ai-seated"
     recent = ClientConn(client_id="recent", display_name="r", player_id="p2")
     recent.disconnected_at = time.time() - 5

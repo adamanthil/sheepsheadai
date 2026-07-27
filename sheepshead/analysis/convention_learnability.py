@@ -114,9 +114,7 @@ def main() -> int:
     c1_layout = "groups" not in payload
     conv_adv = -mean_delta if c1_layout else mean_delta
     delta = abs(mean_delta)
-    sigma = math.sqrt(
-        sum(r["sd_a"] ** 2 + r["sd_b"] ** 2 for r in rows) / (2 * n)
-    )
+    sigma = math.sqrt(sum(r["sd_a"] ** 2 + r["sd_b"] ** 2 for r in rows) / (2 * n))
     if delta == 0:
         raise SystemExit("mean Δ is exactly 0; nothing to detect")
 

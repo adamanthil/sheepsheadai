@@ -124,6 +124,8 @@ def gen0_cache_path(resume: str, panel, panel_deals: int) -> str:
         h.update(_file_md5(p).encode())
     h.update(f"{panel_deals}:{PANEL_SEED}".encode())
     return os.path.join(ENDPOINT_CACHE_DIR, f"gen0_{h.hexdigest()[:16]}.npz")
+
+
 # The ALONE gate is applied relative to the resume checkpoint's own baseline:
 # effective limit = max(config gate, baseline + this margin). A high-alone
 # warm start (weak defender-field collaboration, which league training itself
@@ -846,7 +848,9 @@ class Orchestrator:
         )
 
     def _write_report_md(self) -> None:
-        write_report_md(self.state, self.args, self.cfg, self._alone_limit(), self.orch_dir)
+        write_report_md(
+            self.state, self.args, self.cfg, self._alone_limit(), self.orch_dir
+        )
 
     def _write_curve_png(self) -> None:
         write_curve_png(self.orch_dir, self.state)

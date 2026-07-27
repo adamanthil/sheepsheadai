@@ -57,7 +57,9 @@ async def broadcast_chat_append(table: Table, msg_dict: Dict[str, Any]) -> None:
     )
 
 
-async def emit_bid_chat_message(table: Table, action_str: str, display_name: str) -> None:
+async def emit_bid_chat_message(
+    table: Table, action_str: str, display_name: str
+) -> None:
     """Post + broadcast a system chat message for a bid/partner-call action.
 
     Covers PICK / PASS / ALONE / JD PARTNER / CALL <card> [UNDER]. No-op for

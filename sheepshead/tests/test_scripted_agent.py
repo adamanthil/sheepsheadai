@@ -71,9 +71,9 @@ class TestScriptedAgent:
                                 card_played = name.split(" ", 1)[1]
                             has_fail = any(c not in trump_set for c in player.hand)
                             if card_played and has_fail:
-                                assert (
-                                    card_played not in trump_set
-                                ), f"game {g}: led trump"
+                                assert card_played not in trump_set, (
+                                    f"game {g}: led trump"
+                                )
                                 checked += 1
                         player.act(a)
                         valid = player.get_valid_action_ids()

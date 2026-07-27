@@ -37,7 +37,9 @@ from sheepshead.training.training_utils import (
     update_intermediate_rewards_for_action,
 )
 
-SELFPLAY_HYPERPARAMS = SelfPlayHyperparams()  # fixed LRs + entropy decay schedule (bootstrap run)
+SELFPLAY_HYPERPARAMS = (
+    SelfPlayHyperparams()
+)  # fixed LRs + entropy decay schedule (bootstrap run)
 
 # Frozen seed for the in-training anchored CRN probe: identical across all
 # ablation arms, so every run's eval curve is paired on the same deal sets.
@@ -220,9 +222,7 @@ def _run_strategic_eval(agent, episode, training_data):
     )
     training_data["bury_quality_rate"].append(strategic_metrics["bury_quality_rate"])
 
-    print(
-        f"   Pick-Hand Correlation: {strategic_metrics['pick_hand_correlation']:.3f}"
-    )
+    print(f"   Pick-Hand Correlation: {strategic_metrics['pick_hand_correlation']:.3f}")
     print(f"   Picker Trump Rate: {strategic_metrics['picker_trump_rate']:.1f}%")
     print(f"   Defender Trump Rate: {strategic_metrics['defender_trump_rate']:.1f}%")
     print(f"   Bury Quality Rate: {strategic_metrics['bury_quality_rate']:.1f}%")
@@ -279,9 +279,7 @@ def _report_progress(
     current_called_under_rate = (
         sum(windows.called_under_window) / ca_denominator
     ) * 100
-    current_called_10s_rate = (
-        sum(windows.called_10_window) / ca_denominator
-    ) * 100
+    current_called_10s_rate = (sum(windows.called_10_window) / ca_denominator) * 100
     elapsed = time.time() - start_time
 
     # Collect data for plotting
@@ -289,9 +287,7 @@ def _report_progress(
     training_data["picker_avg"].append(current_avg_picker_score)
     training_data["called_pick_rate"].append(current_called_pick_rate)
     training_data["jd_pick_rate"].append(current_jd_pick_rate)
-    training_data["learning_rate"].append(
-        agent.actor_optimizer.param_groups[0]["lr"]
-    )
+    training_data["learning_rate"].append(agent.actor_optimizer.param_groups[0]["lr"])
     training_data["time_elapsed"].append(elapsed)
     training_data["team_point_diff"].append(current_team_diff)
     training_data["alone_rate"].append(current_alone_rate)
@@ -364,9 +360,7 @@ def _save_checkpoint(
     )
     remaining_episodes = num_episodes - episode
     if remaining_episodes > 0:
-        estimated_time = (
-            remaining_episodes * (time_since_last / save_interval) / 60
-        )
+        estimated_time = remaining_episodes * (time_since_last / save_interval) / 60
         print(f"   Estimated time remaining: {estimated_time:.1f} min")
 
     return last_checkpoint_time
@@ -745,19 +739,35 @@ def train_ppo(
             decay_fraction = min(episode / num_episodes, 1.0)
             agent.entropy_coeff_play = (
                 SELFPLAY_HYPERPARAMS.entropy_play_start
-                + (SELFPLAY_HYPERPARAMS.entropy_play_end - SELFPLAY_HYPERPARAMS.entropy_play_start) * decay_fraction
+                + (
+                    SELFPLAY_HYPERPARAMS.entropy_play_end
+                    - SELFPLAY_HYPERPARAMS.entropy_play_start
+                )
+                * decay_fraction
             )
             agent.entropy_coeff_pick = (
                 SELFPLAY_HYPERPARAMS.entropy_pick_start
-                + (SELFPLAY_HYPERPARAMS.entropy_pick_end - SELFPLAY_HYPERPARAMS.entropy_pick_start) * decay_fraction
+                + (
+                    SELFPLAY_HYPERPARAMS.entropy_pick_end
+                    - SELFPLAY_HYPERPARAMS.entropy_pick_start
+                )
+                * decay_fraction
             )
             agent.entropy_coeff_partner = (
                 SELFPLAY_HYPERPARAMS.entropy_partner_start
-                + (SELFPLAY_HYPERPARAMS.entropy_partner_end - SELFPLAY_HYPERPARAMS.entropy_partner_start) * decay_fraction
+                + (
+                    SELFPLAY_HYPERPARAMS.entropy_partner_end
+                    - SELFPLAY_HYPERPARAMS.entropy_partner_start
+                )
+                * decay_fraction
             )
             agent.entropy_coeff_bury = (
                 SELFPLAY_HYPERPARAMS.entropy_bury_start
-                + (SELFPLAY_HYPERPARAMS.entropy_bury_end - SELFPLAY_HYPERPARAMS.entropy_bury_start) * decay_fraction
+                + (
+                    SELFPLAY_HYPERPARAMS.entropy_bury_end
+                    - SELFPLAY_HYPERPARAMS.entropy_bury_start
+                )
+                * decay_fraction
             )
 
             if watchdog is not None:

@@ -359,9 +359,7 @@ def team_aux_labels(
                 tp_tricks = float(pts[pk - 1])
                 if sp > 0 and sp != pk:
                     tp_tricks += float(pts[sp - 1])
-                bury_pts = float(
-                    _ID_POINTS[np.asarray(ob["bury_ids"]).ravel()].sum()
-                )
+                bury_pts = float(_ID_POINTS[np.asarray(ob["bury_ids"]).ravel()].sum())
                 team[b, t, 0] = (tp_tricks + bury_pts) / 120.0
                 team[b, t, 1] = (float(pts.sum()) - tp_tricks) / 120.0
                 team_mask[b, t] = True

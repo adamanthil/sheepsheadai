@@ -375,14 +375,14 @@ def _print_group(name: str, blurb: str, results: List[C2CaseResult]) -> None:
             continue
         m, se = _mean_se(vals)
         pos = sum(1 for v in vals if v > 0) / len(vals)
-        print(
-            f"  {label:<16}: Δscore {m:+.3f} (SE {se:.3f})  conv better in {pos:.0%}"
-        )
+        print(f"  {label:<16}: Δscore {m:+.3f} (SE {se:.3f})  conv better in {pos:.0%}")
     pts = [r.mcDeltaPoints for r in results]
     wins = [r.mcDeltaWin for r in results]
     m_p, se_p = _mean_se(pts)
     m_w, se_w = _mean_se(wins)
-    print(f"  true-deal MC    : Δpts {m_p:+.2f} (SE {se_p:.2f})  Δwin {m_w * 100:+.1f}% (SE {se_w * 100:.1f})")
+    print(
+        f"  true-deal MC    : Δpts {m_p:+.2f} (SE {se_p:.2f})  Δwin {m_w * 100:+.1f}% (SE {se_w * 100:.1f})"
+    )
     t0 = [r for r in results if r.trickIndex == 0]
     if t0:
         m0, se0 = _mean_se([r.mcDeltaScore for r in t0])
@@ -508,9 +508,7 @@ def main() -> int:
                 "rolloutDepth": args.rollout_depth,
                 "maxCasesPerGroup": args.max_cases_per_group,
             },
-            "groups": {
-                name: [asdict(r) for r in results[name]] for name in results
-            },
+            "groups": {name: [asdict(r) for r in results[name]] for name in results},
         }
         out_path.write_text(json.dumps(payload, indent=2))
         print(f"Wrote report -> {out_path}")

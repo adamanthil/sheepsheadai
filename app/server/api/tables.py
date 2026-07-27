@@ -133,11 +133,7 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         # seating the same player twice — one player at two seats also
         # breaks hand persistence's (game, player) uniqueness.
         existing = next(
-            (
-                c
-                for c in table.clients.values()
-                if c.player_id == str(player_uuid)
-            ),
+            (c for c in table.clients.values() if c.player_id == str(player_uuid)),
             None,
         )
         if existing is not None:
@@ -165,9 +161,7 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         else:
             seat_to_take: Optional[int] = None
             if table.host_client_id == client_id:
-                if not table.seats.get(5) or is_ai_occupant(
-                    table, table.seats.get(5)
-                ):
+                if not table.seats.get(5) or is_ai_occupant(table, table.seats.get(5)):
                     seat_to_take = 5
             if seat_to_take is None:
                 seat_to_take = lowest_non_human_seat(table)

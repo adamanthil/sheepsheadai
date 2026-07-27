@@ -60,7 +60,9 @@ GROUPS = ("agree", "disagree", "defender_mirror")
 # ---------------------------------------------------------------------------
 # Case detection
 # ---------------------------------------------------------------------------
-def _classify_cp_spots(resp, seed: int, partner_mode: int, max_trick: int) -> List[dict]:
+def _classify_cp_spots(
+    resp, seed: int, partner_mode: int, max_trick: int
+) -> List[dict]:
     """CP-eligible secret-partner leads (agree/disagree) and defender-mirror
     leads in one simulated game's trace."""
     spots: List[dict] = []
@@ -82,7 +84,9 @@ def _classify_cp_spots(resp, seed: int, partner_mode: int, max_trick: int) -> Li
         if seat == picker or seat == partner:
             continue  # picker and REVEALED partner are out for both groups
 
-        legal = [cf._card_of(v) for v in ad.validActionIds if cf._card_of(v) is not None]
+        legal = [
+            cf._card_of(v) for v in ad.validActionIds if cf._card_of(v) is not None
+        ]
         has_trump = any(c in TRUMP_SET for c in legal)
         has_fail = any(c in cf.FAIL_SET for c in legal)
         if not (has_trump and has_fail):
@@ -284,7 +288,9 @@ def _print_group(name: str, blurb: str, results: List[cf.CaseResult]) -> None:
             continue
         m, se = _mean_se(vals)
         pos = sum(1 for v in vals if v > 0) / len(vals)
-        print(f"  {label:<16}: Δscore {m:+.3f} (SE {se:.3f})  trump better in {pos:.0%}")
+        print(
+            f"  {label:<16}: Δscore {m:+.3f} (SE {se:.3f})  trump better in {pos:.0%}"
+        )
     m_w, se_w = _mean_se([r.mcDeltaWin for r in results])
     print(f"  true-deal MC    : Δwin {m_w * 100:+.1f}% (SE {se_w * 100:.1f})")
     t0 = [r for r in results if r.trickIndex == 0]
@@ -315,13 +321,19 @@ def _pooled(results: Dict[str, List[cf.CaseResult]], scanned: Dict[str, int]) ->
     tot = sum(p[3] for p in parts.values())
     mean = sum(p[0] * p[3] / tot for p in parts.values())
     se = float(np.sqrt(sum((p[1] * p[3] / tot) ** 2 for p in parts.values())))
-    return {"mcDeltaScore": mean, "se": se, "weights": {g: p[3] for g, p in parts.items()}}
+    return {
+        "mcDeltaScore": mean,
+        "se": se,
+        "weights": {g: p[3] for g, p in parts.items()},
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--partner-mode", type=int, default=1, help="1=called ace, 0=JD")
+    parser.add_argument(
+        "--partner-mode", type=int, default=1, help="1=called ace, 0=JD"
+    )
     parser.add_argument("--start-seed", type=int, default=0)
     parser.add_argument("--num-seeds", type=int, default=800)
     parser.add_argument("--max-steps", type=int, default=200)

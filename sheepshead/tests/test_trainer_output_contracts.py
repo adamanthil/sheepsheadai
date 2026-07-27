@@ -70,7 +70,9 @@ def _read_csv(path):
 # ----------------------------------------------------------------------------
 # train_league_ppo
 # ----------------------------------------------------------------------------
-def _run_league_main_phase(tmp_path, critic_mode, anchor_eval=None, save_interval=1_000_000_000):
+def _run_league_main_phase(
+    tmp_path, critic_mode, anchor_eval=None, save_interval=1_000_000_000
+):
     league = League(str(tmp_path / "league"))
     agent = PPOAgent(len(ACTIONS), critic_mode=critic_mode)
     args = SimpleNamespace(
@@ -131,7 +133,9 @@ class TestLeagueCheckpointPayload:
             tmp_path, critic_mode, save_interval=2
         )
         ckpt_path = ckpt_dir / f"pfsp_full_checkpoint_{end}.pt"
-        assert ckpt_path.exists(), f"expected filename pattern pfsp_<arch>_checkpoint_<episode>.pt, found {list(ckpt_dir.iterdir())}"
+        assert ckpt_path.exists(), (
+            f"expected filename pattern pfsp_<arch>_checkpoint_<episode>.pt, found {list(ckpt_dir.iterdir())}"
+        )
         payload = torch.load(ckpt_path, map_location="cpu")
         assert sorted(payload.keys()) == expected_keys
 
@@ -191,10 +195,20 @@ class TestLeagueExploitabilityCSV:
         monkeypatch.setattr("sys.argv", argv)
         train_league_ppo.main()
 
-        exploitability_csv = tmp_path / "runs" / "charcap_main" / "checkpoints" / "exploitability.csv"
+        exploitability_csv = (
+            tmp_path / "runs" / "charcap_main" / "checkpoints" / "exploitability.csv"
+        )
         rows = _read_csv(exploitability_csv)
         assert rows[0] == LEAGUE_EXPLOITABILITY_HEADER
-        assert rows[1] == ["1", "2", "0.1250", "0.0625", "0.550", "True", "fake_exploiter.pt"]
+        assert rows[1] == [
+            "1",
+            "2",
+            "0.1250",
+            "0.0625",
+            "0.550",
+            "True",
+            "fake_exploiter.pt",
+        ]
 
 
 # ----------------------------------------------------------------------------
@@ -246,7 +260,9 @@ class TestSelfplayCheckpointPayload:
         checkpoint_dir = tmp_path / "runs" / "charcap_selfplay_ckpt"
         ckpt_path = checkpoint_dir / "full_checkpoint_2.pt"
         final_path = checkpoint_dir / "final_full.pt"
-        assert ckpt_path.exists(), f"expected <arch>_checkpoint_<episode>.pt, found {list(checkpoint_dir.iterdir())}"
+        assert ckpt_path.exists(), (
+            f"expected <arch>_checkpoint_<episode>.pt, found {list(checkpoint_dir.iterdir())}"
+        )
         assert final_path.exists(), "expected final_<arch>.pt"
 
         for path in (ckpt_path, final_path):

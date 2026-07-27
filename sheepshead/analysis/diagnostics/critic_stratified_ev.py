@@ -128,7 +128,9 @@ def collect(agent, frozen, episodes: int, chunk: int) -> list[dict]:
                     role = "partner"
                 else:
                     role = "defender"
-                hand = [DECK[i - 1] for i in np.asarray(st["hand_ids"]).ravel() if i > 0]
+                hand = [
+                    DECK[i - 1] for i in np.asarray(st["hand_ids"]).ravel() if i > 0
+                ]
                 rows.append(
                     {
                         "action": a["action"],

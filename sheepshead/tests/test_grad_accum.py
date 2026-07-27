@@ -48,9 +48,7 @@ def test_single_minibatch_accum_is_bit_identical():
 
 def test_multi_minibatch_accum_steps_once_per_epoch():
     agent = _fresh_agent_with_buffer()
-    n_segments = len(
-        agent._segments_from_events([e["kind"] for e in agent.events])
-    )
+    n_segments = len(agent._segments_from_events([e["kind"] for e in agent.events]))
     assert n_segments >= 4  # batch_size=2 gives >= 2 minibatches per epoch
 
     seed_all(SEED + 2)
@@ -60,9 +58,7 @@ def test_multi_minibatch_accum_steps_once_per_epoch():
 
 def test_multi_minibatch_per_step_mode_unchanged():
     agent = _fresh_agent_with_buffer()
-    n_segments = len(
-        agent._segments_from_events([e["kind"] for e in agent.events])
-    )
+    n_segments = len(agent._segments_from_events([e["kind"] for e in agent.events]))
 
     seed_all(SEED + 3)
     stats = agent.update(epochs=1, batch_size=2)

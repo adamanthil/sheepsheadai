@@ -75,8 +75,7 @@ def allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
     occ_id = str(uuid.uuid4())
     return Occupant(
         id=occ_id,
-        display_name=display_name
-        or AI_NAME_POOL[int(time.time()) % len(AI_NAME_POOL)],
+        display_name=display_name or AI_NAME_POOL[int(time.time()) % len(AI_NAME_POOL)],
         is_ai=True,
     )
 

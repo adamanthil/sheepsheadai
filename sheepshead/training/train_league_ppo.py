@@ -298,19 +298,26 @@ def apply_schedules(episode: int, ctx: MainPhaseContext):
     decay = 1.0 - pct / 100.0
     ctx.training_agent.entropy_coeff_pick = (
         PFSP_HYPERPARAMS.entropy_pick_end
-        + (PFSP_HYPERPARAMS.entropy_pick_start - PFSP_HYPERPARAMS.entropy_pick_end) * decay
+        + (PFSP_HYPERPARAMS.entropy_pick_start - PFSP_HYPERPARAMS.entropy_pick_end)
+        * decay
     )
     ctx.training_agent.entropy_coeff_partner = (
         PFSP_HYPERPARAMS.entropy_partner_end
-        + (PFSP_HYPERPARAMS.entropy_partner_start - PFSP_HYPERPARAMS.entropy_partner_end) * decay
+        + (
+            PFSP_HYPERPARAMS.entropy_partner_start
+            - PFSP_HYPERPARAMS.entropy_partner_end
+        )
+        * decay
     )
     ctx.training_agent.entropy_coeff_bury = (
         PFSP_HYPERPARAMS.entropy_bury_end
-        + (PFSP_HYPERPARAMS.entropy_bury_start - PFSP_HYPERPARAMS.entropy_bury_end) * decay
+        + (PFSP_HYPERPARAMS.entropy_bury_start - PFSP_HYPERPARAMS.entropy_bury_end)
+        * decay
     )
     ctx.training_agent.entropy_coeff_play = (
         PFSP_HYPERPARAMS.entropy_play_end
-        + (PFSP_HYPERPARAMS.entropy_play_start - PFSP_HYPERPARAMS.entropy_play_end) * decay
+        + (PFSP_HYPERPARAMS.entropy_play_start - PFSP_HYPERPARAMS.entropy_play_end)
+        * decay
     )
     ctx.training_agent.set_learning_rates(
         interpolated_weight(PFSP_HYPERPARAMS.lr_schedule_actor, pct),
@@ -504,9 +511,7 @@ def run_main_phase(
     leaster_window = deque(maxlen=3000)
     # getattr: the exploiter's SimpleNamespace args has no leaster_watchdog
     # field, so best-response training always runs without the kick.
-    watchdog = (
-        LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
-    )
+    watchdog = LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
     t0 = time.time()
 
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
@@ -602,9 +607,7 @@ def run_main_phase(
                 if watchdog is not None:
                     watchdog.tick(training_agent, leaster_window)
                 stats = training_agent.update(
-                    oracle_extra_epochs=getattr(
-                        args, "oracle_extra_epochs", 0
-                    ),
+                    oracle_extra_epochs=getattr(args, "oracle_extra_epochs", 0),
                     epochs=4,
                     batch_size=getattr(args, "minibatch_episodes", 256),
                     grad_accum=getattr(args, "grad_accum", False),
@@ -735,12 +738,18 @@ def run_main_phase(
                         f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
                         f"{PFSP_HYPERPARAMS.greedy_gate_max_alone:.0f}%"
                     )
-                if probe["t0_trump_lead_rate"] > PFSP_HYPERPARAMS.greedy_gate_max_trump_lead:
+                if (
+                    probe["t0_trump_lead_rate"]
+                    > PFSP_HYPERPARAMS.greedy_gate_max_trump_lead
+                ):
                     print(
                         f"🚨 GREEDY GATE VIOLATION: trump-lead > "
                         f"{PFSP_HYPERPARAMS.greedy_gate_max_trump_lead:.0f}%"
                     )
-                if probe["play_logit_spread_med"] < PFSP_HYPERPARAMS.greedy_gate_min_play_spread:
+                if (
+                    probe["play_logit_spread_med"]
+                    < PFSP_HYPERPARAMS.greedy_gate_min_play_spread
+                ):
                     print(
                         "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
                         f"{PFSP_HYPERPARAMS.greedy_gate_min_play_spread} "
@@ -1100,8 +1109,7 @@ def main():
     if getattr(args, "self_play_share", None) is not None:
         league_config.self_play_share = float(args.self_play_share)
         print(
-            f"🪞 Per-seat self-play share override: "
-            f"{league_config.self_play_share:.0%}"
+            f"🪞 Per-seat self-play share override: {league_config.self_play_share:.0%}"
         )
     if args.table_self_play is not None:
         league_config.table_self_play_prob = args.table_self_play

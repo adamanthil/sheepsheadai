@@ -110,9 +110,7 @@ class TestLeagueRoster:
         m = reloaded.get(mid)
         assert m.ratings[PARTNER_BY_JD].mu == pytest.approx(-3.0, abs=10**-5)
         assert m.ratings[PARTNER_BY_CALLED_ACE].mu == pytest.approx(-5.0, abs=10**-5)
-        assert m.ratings[PARTNER_BY_CALLED_ACE].sigma == pytest.approx(
-            4.0, abs=10**-5
-        )
+        assert m.ratings[PARTNER_BY_CALLED_ACE].sigma == pytest.approx(4.0, abs=10**-5)
 
     def test_inherited_ratings_scale_and_sigma_floor(self):
         from sheepshead.training.train_league_ppo import _inherited_ratings
@@ -130,9 +128,7 @@ class TestLeagueRoster:
         assert inherited[PARTNER_BY_JD].sigma == pytest.approx(
             default_sigma / 2.0, abs=10**-5
         )
-        assert inherited[PARTNER_BY_CALLED_ACE].sigma == pytest.approx(
-            9.0, abs=10**-5
-        )
+        assert inherited[PARTNER_BY_CALLED_ACE].sigma == pytest.approx(9.0, abs=10**-5)
         # Fresh objects, not aliases of the live training ratings.
         assert inherited[PARTNER_BY_JD] is not training_ratings[PARTNER_BY_JD]
 
@@ -224,8 +220,7 @@ class TestSampling:
             s for _ in range(200) for s in self.league.sample_table(PARTNER_BY_JD, rng)
         ]
         assert not any(
-            isinstance(s, LeagueMember) and s.role == ROLE_MAIN_EXPLOITER
-            for s in seats
+            isinstance(s, LeagueMember) and s.role == ROLE_MAIN_EXPLOITER for s in seats
         )
 
     def test_mixture_shares_and_cap(self):
@@ -425,9 +420,7 @@ class TestMigration:
         assert len(league) == 3  # twins merged, not 6
         # Per-mode ratings preserved from each twin
         strongest = max(league.members, key=lambda m: m.skill())
-        assert strongest.ratings[PARTNER_BY_JD].mu == pytest.approx(
-            30.0, abs=10**-4
-        )
+        assert strongest.ratings[PARTNER_BY_JD].mu == pytest.approx(30.0, abs=10**-4)
         assert strongest.ratings[PARTNER_BY_CALLED_ACE].mu == pytest.approx(
             32.0, abs=10**-4
         )

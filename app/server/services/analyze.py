@@ -355,13 +355,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
         if trick_completed:
             # Propagate an observation for the just-completed trick to all seats
             for seat in game.players:
-                memory_before = agent.get_recurrent_memory(
-                    seat.position, device=device
-                )
+                memory_before = agent.get_recurrent_memory(seat.position, device=device)
                 agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
-                memory_after = agent.get_recurrent_memory(
-                    seat.position, device=device
-                )
+                memory_after = agent.get_recurrent_memory(seat.position, device=device)
                 distance, norm = memory_drift(memory_before, memory_after)
                 memory_observes.append(
                     AnalyzeMemoryObserve(
@@ -389,9 +385,7 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
     _compute_discounted_returns(trace, episode_transitions, game, agent)
 
     if has_oracle:
-        compute_oracle_values(
-            agent, oracle_events, oracle_decision_pos, trace, device
-        )
+        compute_oracle_values(agent, oracle_events, oracle_decision_pos, trace, device)
 
     calibration = _build_calibration_summary(trace, game, players)
 

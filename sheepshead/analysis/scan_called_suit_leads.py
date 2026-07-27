@@ -151,9 +151,7 @@ def _called_suit_already_led(view: dict) -> bool:
     return False
 
 
-def scan_game(
-    resp, seed: int, stats: CalledSuitScanStats
-) -> List[CalledSuitLeadNode]:
+def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLeadNode]:
     """Find all C2-eligible defender leads in one simulated game's trace."""
     nodes: List[CalledSuitLeadNode] = []
     seats_with_opportunity: set[int] = set()
@@ -356,9 +354,7 @@ def main() -> int:
         default=None,
         help="Optional path to write a JSON report (nodes + stats).",
     )
-    parser.add_argument(
-        "--quiet", action="store_true", help="Suppress per-node lines."
-    )
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-node lines.")
     args = parser.parse_args()
 
     scan.set_scan_model(args.model)

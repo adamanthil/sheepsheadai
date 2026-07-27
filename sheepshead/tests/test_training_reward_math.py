@@ -314,40 +314,56 @@ class TestUpdateIntermediateRewardsPickPass:
         game = deal_with_p1_hand(["AC", "10C", "KC", "9C", "8C", "7C"])  # score 0
         player = game.players[0]
         t_pick = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PICK"], t_pick, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PICK"], t_pick, []
+        )
         assert t_pick["intermediate_reward"] == -0.1
         t_pass = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PASS"], t_pass, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PASS"], t_pass, []
+        )
         assert t_pass["intermediate_reward"] == 0.1
 
     def test_mid_hand_score_5_to_6_is_neutral(self):
         game = deal_with_p1_hand(["QC", "JC", "AC", "10C", "KC", "9C"])  # score 5
         player = game.players[0]
         t_pick = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PICK"], t_pick, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PICK"], t_pick, []
+        )
         assert t_pick["intermediate_reward"] == 0.0
         t_pass = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PASS"], t_pass, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PASS"], t_pass, []
+        )
         assert t_pass["intermediate_reward"] == 0.0
 
     def test_score_7_lightly_favors_pick(self):
         game = deal_with_p1_hand(["QC", "JC", "JS", "AC", "10C", "KC"])  # score 7
         player = game.players[0]
         t_pick = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PICK"], t_pick, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PICK"], t_pick, []
+        )
         assert t_pick["intermediate_reward"] == 0.02
         t_pass = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PASS"], t_pass, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PASS"], t_pass, []
+        )
         assert t_pass["intermediate_reward"] == -0.02
 
     def test_strong_hand_rewards_pick_and_penalizes_pass(self):
         game = deal_with_p1_hand(["QC", "QS", "JC", "AC", "10C", "KC"])  # score 8
         player = game.players[0]
         t_pick = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PICK"], t_pick, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PICK"], t_pick, []
+        )
         assert t_pick["intermediate_reward"] == 0.15
         t_pass = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PASS"], t_pass, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PASS"], t_pass, []
+        )
         assert t_pass["intermediate_reward"] == -0.15
 
     def test_pick_weight_scales_the_shaped_reward(self):
@@ -367,19 +383,25 @@ class TestUpdateIntermediateRewardsAlone:
     def test_alone_with_weak_hand_is_penalized(self):
         game = deal_with_p1_hand(["AC", "10C", "KC", "9C", "8C", "7C"])  # score 0
         t = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, game.players[0], ACTION_IDS["ALONE"], t, [])
+        update_intermediate_rewards_for_action(
+            game, game.players[0], ACTION_IDS["ALONE"], t, []
+        )
         assert t["intermediate_reward"] == -0.1
 
     def test_alone_at_the_score_8_boundary_is_still_penalized(self):
         game = deal_with_p1_hand(["QC", "QS", "JC", "AC", "10C", "KC"])  # score 8 (<=8)
         t = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, game.players[0], ACTION_IDS["ALONE"], t, [])
+        update_intermediate_rewards_for_action(
+            game, game.players[0], ACTION_IDS["ALONE"], t, []
+        )
         assert t["intermediate_reward"] == -0.1
 
     def test_alone_above_score_8_has_no_penalty(self):
         game = deal_with_p1_hand(["QC", "QS", "QH", "AC", "10C", "KC"])  # score 9
         t = {"intermediate_reward": 0.0}
-        update_intermediate_rewards_for_action(game, game.players[0], ACTION_IDS["ALONE"], t, [])
+        update_intermediate_rewards_for_action(
+            game, game.players[0], ACTION_IDS["ALONE"], t, []
+        )
         assert t["intermediate_reward"] == 0.0
 
 
@@ -409,7 +431,9 @@ class TestUpdateIntermediateRewardsBury:
         valid = player.get_valid_action_ids()
         assert "BURY 8C" in valid_action_names(game, 1)  # fail still available
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["BURY QC"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["BURY QC"], t, []
+        )
         assert t["intermediate_reward"] == -0.1
 
     def test_burying_fail_when_trump_available_is_rewarded(self):
@@ -419,7 +443,9 @@ class TestUpdateIntermediateRewardsBury:
         player = game.players[0]
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["BURY 8C"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["BURY 8C"], t, []
+        )
         assert t["intermediate_reward"] == 0.02
 
     def test_forced_trump_bury_of_a_queen_is_penalized(self):
@@ -427,7 +453,9 @@ class TestUpdateIntermediateRewardsBury:
         player = game.players[0]
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["BURY QC"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["BURY QC"], t, []
+        )
         assert t["intermediate_reward"] == -0.1
 
     def test_forced_trump_bury_of_a_jack_is_mildly_penalized(self):
@@ -435,7 +463,9 @@ class TestUpdateIntermediateRewardsBury:
         player = game.players[0]
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["BURY JC"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["BURY JC"], t, []
+        )
         assert t["intermediate_reward"] == -0.02
 
     def test_forced_trump_bury_of_a_plain_trump_is_unshaped(self):
@@ -443,7 +473,9 @@ class TestUpdateIntermediateRewardsBury:
         player = game.players[0]
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["BURY 7D"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["BURY 7D"], t, []
+        )
         assert t["intermediate_reward"] == 0.0
 
 
@@ -470,7 +502,9 @@ class TestUpdateIntermediateRewardsPlayLead:
         force_lead(game, 3)
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PLAY QH"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PLAY QH"], t, []
+        )
         assert t["intermediate_reward"] == -0.06
 
     def test_defender_leading_called_suit_early_is_encouraged(self):
@@ -479,7 +513,9 @@ class TestUpdateIntermediateRewardsPlayLead:
         force_lead(game, 4, current_trick=2)
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PLAY 9C"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PLAY 9C"], t, []
+        )
         assert t["intermediate_reward"] == 0.1 - 0.02 * 2
 
     def test_defender_leading_off_called_suit_while_holding_it_is_discouraged(self):
@@ -488,7 +524,9 @@ class TestUpdateIntermediateRewardsPlayLead:
         force_lead(game, 4)
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PLAY AS"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PLAY AS"], t, []
+        )
         assert t["intermediate_reward"] == -0.01
 
     def test_defender_leading_fail_with_no_called_suit_in_hand_is_nudged(self):
@@ -497,7 +535,9 @@ class TestUpdateIntermediateRewardsPlayLead:
         force_lead(game, 3)
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PLAY KS"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PLAY KS"], t, []
+        )
         assert t["intermediate_reward"] == 0.03
 
     def test_secret_partner_leading_trump_is_encouraged(self):
@@ -507,7 +547,9 @@ class TestUpdateIntermediateRewardsPlayLead:
         force_lead(game, 2)
         valid = player.get_valid_action_ids()
         t = {"intermediate_reward": 0.0, "valid_actions": valid}
-        update_intermediate_rewards_for_action(game, player, ACTION_IDS["PLAY JC"], t, [])
+        update_intermediate_rewards_for_action(
+            game, player, ACTION_IDS["PLAY JC"], t, []
+        )
         assert t["intermediate_reward"] == 0.08
 
     def test_non_lead_play_is_unshaped_but_still_tracked(self):
@@ -659,7 +701,11 @@ class TestProcessTerminalRewards:
             {"player": player, "intermediate_reward": 0.1},
         ]
         for is_leaster in (False, True):
-            out = list(process_terminal_rewards(transitions, final_scores, is_leaster=is_leaster))
+            out = list(
+                process_terminal_rewards(
+                    transitions, final_scores, is_leaster=is_leaster
+                )
+            )
             assert [o["reward"] for o in out[:-1]] == [0.0, 0.0]
             assert out[-1]["reward"] == final_scores[1] / RETURN_SCALE
 

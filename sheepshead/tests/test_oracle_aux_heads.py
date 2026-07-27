@@ -44,9 +44,7 @@ def test_headed_agent_warm_starts_headless_checkpoint(tmp_path):
     # non-head oracle weights copied exactly
     sd_a = headless.oracle_critic.state_dict()
     sd_b = headed.oracle_critic.state_dict()
-    assert all(
-        torch.equal(sd_a[k], sd_b[k]) for k in sd_a if not k.startswith("team_")
-    )
+    assert all(torch.equal(sd_a[k], sd_b[k]) for k in sd_a if not k.startswith("team_"))
 
 
 def test_headless_agent_loads_headed_checkpoint(tmp_path):
@@ -102,13 +100,21 @@ def test_game_seed_reproduces_deal():
         for _ in range(4)
     ]
     g1, *_ = play_population_game(
-        agent, opp, PARTNER_BY_CALLED_ACE,
-        training_agent_position=1, reward_mode="terminal", game_seed=777,
+        agent,
+        opp,
+        PARTNER_BY_CALLED_ACE,
+        training_agent_position=1,
+        reward_mode="terminal",
+        game_seed=777,
     )
     agent.reset_storage()
     g2, *_ = play_population_game(
-        agent, opp, PARTNER_BY_CALLED_ACE,
-        training_agent_position=4, reward_mode="terminal", game_seed=777,
+        agent,
+        opp,
+        PARTNER_BY_CALLED_ACE,
+        training_agent_position=4,
+        reward_mode="terminal",
+        game_seed=777,
     )
     agent.reset_storage()
     assert g1.blind == g2.blind  # same shuffle => same deal

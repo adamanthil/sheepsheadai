@@ -155,9 +155,14 @@ def test_scenario_exercises_ragged_padding_and_search_targets(prepared):
     lengths = {seg_end - seg_start + 1 for seg_start, seg_end in segments}
     assert len(segments) >= 2
     assert len(lengths) >= 2, "all segments same length -- padding not exercised"
-    assert sum(
-        1 for e in agent.events if e["kind"] == "action" and e.get("has_search_target")
-    ) == N_SYNTHETIC_SEARCH_TARGETS
+    assert (
+        sum(
+            1
+            for e in agent.events
+            if e["kind"] == "action" and e.get("has_search_target")
+        )
+        == N_SYNTHETIC_SEARCH_TARGETS
+    )
     assert any(kind == "observation" for kind in kinds)
 
 
@@ -166,9 +171,7 @@ def test_build_minibatch_tensors_matches_naive_reference(prepared):
     actual = agent._build_minibatch_tensors(segments, states, masks_t, kinds)
     expected = naive_build_minibatch_tensors(agent, segments, states, masks_t, kinds)
 
-    for actual_states, expected_states in zip(
-        actual.states_seqs, expected.states_seqs
-    ):
+    for actual_states, expected_states in zip(actual.states_seqs, expected.states_seqs):
         assert len(actual_states) == len(expected_states)
         assert all(a is e for a, e in zip(actual_states, expected_states))
 

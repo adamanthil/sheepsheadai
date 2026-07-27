@@ -158,7 +158,9 @@ def analyze_node(agent, spot: dict, args, device) -> Optional[dict]:
     torch.manual_seed(0xA11CE ^ (seed << 4) ^ step)
     vals: Dict[int, dict] = {}
     for card, aid in zip(lead_cards, lead_aids):
-        mc = cf._mc_branch(agent, node_game, node_mem, seat, card, args.rollouts, device)
+        mc = cf._mc_branch(
+            agent, node_game, node_mem, seat, card, args.rollouts, device
+        )
         vals[aid] = {
             "card": card,
             "scoreMean": mc.leaderScoreMean,
@@ -277,9 +279,7 @@ def summarize(records: List[dict]) -> dict:
                 "trumpMass": round(tm, 4),
                 "trumpMassSE": round(tm_se, 4),
                 "modeTrumpRate": round(
-                    float(
-                        np.mean([r["policies"][name]["modeIsTrump"] for r in rows])
-                    ),
+                    float(np.mean([r["policies"][name]["modeIsTrump"] for r in rows])),
                     4,
                 ),
                 "entropy": round(ent, 4),

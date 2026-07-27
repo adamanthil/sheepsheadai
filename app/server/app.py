@@ -124,9 +124,7 @@ def create_app() -> FastAPI:
 
                 for table in list(tables.tables.values()):
                     try:
-                        await broadcast_table_event(
-                            table, {"type": "server_restart"}
-                        )
+                        await broadcast_table_event(table, {"type": "server_restart"})
                     except Exception:
                         logging.exception(
                             "server_restart broadcast failed for %s", table.id
@@ -140,7 +138,7 @@ def create_app() -> FastAPI:
             asyncio.get_running_loop().add_signal_handler(
                 signal.SIGTERM, _handle_sigterm
             )
-        except (NotImplementedError, RuntimeError):
+        except NotImplementedError, RuntimeError:
             pass  # non-unix / non-main-thread (tests)
 
         pool = await open_pool(settings.database_url)

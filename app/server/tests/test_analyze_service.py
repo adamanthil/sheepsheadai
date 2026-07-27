@@ -38,9 +38,7 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
     agent = PPOAgent(len(ACTIONS), arch="no-aux")
     monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
 
-    resp = analyze_mod.simulate_game(
-        AnalyzeSimulateRequest(seed=7, deterministic=True)
-    )
+    resp = analyze_mod.simulate_game(AnalyzeSimulateRequest(seed=7, deterministic=True))
 
     assert resp.trace, "expected at least one simulated decision"
     for step in resp.trace:
@@ -94,9 +92,7 @@ def test_simulate_calibration_summary(analyze_env, monkeypatch):
     agent = PPOAgent(len(ACTIONS), arch="full")
     monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
 
-    resp = analyze_mod.simulate_game(
-        AnalyzeSimulateRequest(seed=3, deterministic=True)
-    )
+    resp = analyze_mod.simulate_game(AnalyzeSimulateRequest(seed=3, deterministic=True))
 
     cal = resp.calibration
     assert cal is not None
@@ -225,5 +221,3 @@ def test_model_info_card_embeddings(analyze_env, monkeypatch):
     assert len(emb.pcaCoords) == 33 and len(emb.pcaCoords[0]) == 2
     assert len(emb.pcaExplainedVariance) == 2
     assert 0.0 < sum(emb.pcaExplainedVariance) <= 1.0 + 1e-6
-
-

@@ -207,9 +207,7 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
             while valid_actions:
                 state = player.get_state_dict()
                 # Privileged state must be captured pre-action (hands shrink).
-                ostate = (
-                    player.get_oracle_state_dict() if oracle is not None else None
-                )
+                ostate = player.get_oracle_state_dict() if oracle is not None else None
                 names = [ACTION_LOOKUP[a] for a in sorted(valid_actions)]
                 kind = classify_decision(names, state)
                 snap = None
@@ -227,9 +225,7 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
                     if oracle is not None:
                         snap["oracle_state"] = copy.deepcopy(ostate)
                         # Clone BEFORE the decision advance below.
-                        snap["oracle_memory_in"] = oracle_mem[
-                            player.position
-                        ].clone()
+                        snap["oracle_memory_in"] = oracle_mem[player.position].clone()
 
                 forced = (
                     force_pick
@@ -291,6 +287,7 @@ def select_snapshots(game, snapshots):
     picked["call"] = snapshots["call"][0] if snapshots["call"] else None
     picked["bury"] = snapshots["bury"][0] if snapshots["bury"] else None
     picked["lead"] = snapshots["lead"][0] if snapshots["lead"] else None
+
     # Prefer a defender follow with the most live tokens on screen;
     # tie-break toward later tricks (richer memory state).
     def follow_richness(s):
@@ -880,8 +877,7 @@ def capture_oracle_forward(oracle, ostate, memory_in):
         },
         "encoder_readout": {
             "attn": [
-                [round4(row) for row in per_query]
-                for per_query in ro_w[0].tolist()
+                [round4(row) for row in per_query] for per_query in ro_w[0].tolist()
             ],  # (H, M, 51)
             "features": round4(features[0].tolist()),
         },
@@ -900,14 +896,11 @@ def describe_scenario(kind, snap, game):
         if seat == game.picker
         else ("the partner" if seat == game.partner else "a defender")
     )
-    hand_codes = [
-        ID_TO_CODE[int(c)] for c in snap["state"]["hand_ids"] if int(c) != 0
-    ]
+    hand_codes = [ID_TO_CODE[int(c)] for c in snap["state"]["hand_ids"] if int(c) != 0]
     hand_str = ", ".join(hand_codes)
     if kind == "pick":
         forced_note = (
-            " (Forced to pick for this capture — the checkpoint preferred "
-            "PASS here.)"
+            " (Forced to pick for this capture — the checkpoint preferred PASS here.)"
             if snap.get("forced")
             else " (This seat goes on to pick.)"
         )
@@ -940,7 +933,7 @@ def build_sample_block(kind, snap, game):
     valid_sorted = sorted(snap["valid_actions"])
     hand_ids = [int(c) for c in state["hand_ids"]]
     callable_cards = [
-        {"code": n[len("CALL "):].replace(" UNDER", ""), "under": n.endswith(" UNDER")}
+        {"code": n[len("CALL ") :].replace(" UNDER", ""), "under": n.endswith(" UNDER")}
         for n in (ACTION_LOOKUP[a] for a in valid_sorted)
         if n.startswith("CALL ")
     ]
@@ -950,9 +943,7 @@ def build_sample_block(kind, snap, game):
         "trick": snap["trick"],
         "hand_cards": [ID_TO_CODE[c] for c in hand_ids if c != 0],
         "hand_ids": hand_ids,
-        "trick_card_codes": [
-            ID_TO_CODE[int(c)] for c in state["trick_card_ids"]
-        ],
+        "trick_card_codes": [ID_TO_CODE[int(c)] for c in state["trick_card_ids"]],
         "valid_actions": [ACTION_LOOKUP[a] for a in valid_sorted],
         "chosen_action": snap["chosen_action"],
         "callable_cards": callable_cards,
@@ -1057,9 +1048,7 @@ def main():
         )
         scenarios.append(payload)
         probs = payload["actor"]["full_probs"]
-        top_idx = max(
-            payload["actor"]["valid_action_indices"], key=lambda i: probs[i]
-        )
+        top_idx = max(payload["actor"]["valid_action_indices"], key=lambda i: probs[i])
         print(
             f"  [{kind:6s}] seat {snap['seat']} chose {snap['chosen_action']:12s} "
             f"argmax={ACTIONS[top_idx]} ({probs[top_idx]:.3f}) "

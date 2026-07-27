@@ -85,7 +85,9 @@ def call_losses(
         PARTNER_IDX,
         BURY_IDX,
         PLAY_IDX,
-        torch.zeros((n_rows, 4)) if search_target is None else torch.tensor(search_target),
+        torch.zeros((n_rows, 4))
+        if search_target is None
+        else torch.tensor(search_target),
         zeros if has_search is None else torch.tensor(has_search),
     )
 

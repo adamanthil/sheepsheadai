@@ -96,9 +96,7 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
     if req.hand and req.blind:
         overlap = set(req.hand) & set(req.blind)
         if overlap:
-            raise ValueError(
-                f"hand and blind overlap: {', '.join(sorted(overlap))}"
-            )
+            raise ValueError(f"hand and blind overlap: {', '.join(sorted(overlap))}")
 
     if req.seed is not None:
         set_seed(req.seed)
@@ -116,9 +114,7 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
     scenario = AnalyzePickScenario(
         seat=req.seat,
         seatName=players[req.seat - 1],
-        hand=sorted(
-            game.players[req.seat - 1].hand, key=lambda card: DECK.index(card)
-        ),
+        hand=sorted(game.players[req.seat - 1].hand, key=lambda card: DECK.index(card)),
         blind=list(game.blind),
     )
 

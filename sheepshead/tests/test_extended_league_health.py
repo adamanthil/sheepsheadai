@@ -94,7 +94,9 @@ class TestGateStreaksWarn:
         orch.health_checks(1)  # must not raise
         health = orch.state["generations"]["1"]["health"]
         assert health["halt"] is None
-        assert health["warnings"] == ["trump_lead: 3 consecutive greedy-probe violations"]
+        assert health["warnings"] == [
+            "trump_lead: 3 consecutive greedy-probe violations"
+        ]
 
     def test_short_streaks_and_other_generations_ignored(self, tmp_path, monkeypatch):
         orch = make_orch(tmp_path, monkeypatch)

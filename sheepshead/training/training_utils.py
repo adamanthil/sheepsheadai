@@ -438,7 +438,7 @@ def truncate_csv_rows_past_episode(
     def keep(row: List[str]) -> bool:
         try:
             return float(row[col]) <= episode
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return True
 
     kept = [r for r in body if keep(r)]
@@ -477,9 +477,7 @@ def ensure_csv_columns(path: str, header: List[str]) -> int:
     with open(tmp, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(header)
-        w.writerows(
-            r + [""] * max(0, len(header) - len(r)) for r in rows[1:]
-        )
+        w.writerows(r + [""] * max(0, len(header) - len(r)) for r in rows[1:])
     os.replace(tmp, path)
     return len(header) - len(old_header)
 
@@ -568,8 +566,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                                 for c in player.hand
                             )
                             and any(
-                                c in TRUMP or c[-1] != called[-1]
-                                for c in player.hand
+                                c in TRUMP or c[-1] != called[-1] for c in player.hand
                             )
                         )
                         state = player.get_state_dict()
@@ -615,11 +612,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                         if is_called_suit_lead:
                             cs_leads += 1
                             card = name[5:] if name.startswith("PLAY ") else ""
-                            if (
-                                card
-                                and card not in TRUMP
-                                and card[-1] == called[-1]
-                            ):
+                            if card and card not in TRUMP and card[-1] == called[-1]:
                                 cs_adherent += 1
                         player.act(a)
                         valid = player.get_valid_action_ids()

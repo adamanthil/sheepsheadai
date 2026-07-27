@@ -78,6 +78,4 @@ def _model_info(model_path: str, mtime: float, label: str) -> AnalyzeModelRespon
 def get_model_info() -> AnalyzeModelResponse:
     settings = get_settings()
     path = settings.sheepshead_model_path
-    return _model_info(
-        path, os.path.getmtime(path), settings.sheepshead_model_label
-    )
+    return _model_info(path, os.path.getmtime(path), settings.sheepshead_model_label)

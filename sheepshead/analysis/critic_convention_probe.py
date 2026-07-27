@@ -117,8 +117,9 @@ def _sample_action(probs: np.ndarray, rng: random.Random) -> int:
 class _EligibleNode:
     """Snapshot of one convention decision plus everything both critics need."""
 
-    def __init__(self, game, mem, leader_pos, trick, conv_card, alt_card, group,
-                 oracle_prefix):
+    def __init__(
+        self, game, mem, leader_pos, trick, conv_card, alt_card, group, oracle_prefix
+    ):
         self.game = game
         self.mem = mem  # post-node-forward (cf._replay_to_node protocol)
         self.leader = leader_pos
@@ -172,8 +173,9 @@ def _c1_eligibility(game, leader) -> tuple[list[str], list[str]] | None:
     return conv, alt
 
 
-def collect_nodes(agent, convention: str, n_nodes: int, max_games: int,
-                  seed: int, want_oracle: bool) -> list[_EligibleNode]:
+def collect_nodes(
+    agent, convention: str, n_nodes: int, max_games: int, seed: int, want_oracle: bool
+) -> list[_EligibleNode]:
     """Stochastic self-play; capture eligible lead nodes with post-forward
     memory snapshots and (if needed) per-seat oracle event streams."""
     eligibility = _c2_eligibility if convention == "c2" else _c1_eligibility
@@ -190,9 +192,7 @@ def collect_nodes(agent, convention: str, n_nodes: int, max_games: int,
         agent.reset_recurrent_state()
         oracle_events: dict[int, list[dict]] = {p: [] for p in range(1, 6)}
         while not game.is_done():
-            actor = next(
-                (p for p in game.players if p.get_valid_action_ids()), None
-            )
+            actor = next((p for p in game.players if p.get_valid_action_ids()), None)
             if actor is None:
                 break
             pos = actor.position
@@ -214,9 +214,7 @@ def collect_nodes(agent, convention: str, n_nodes: int, max_games: int,
                 pools = eligibility(game, actor)
                 if pools is not None:
                     conv_pool, alt_pool = pools
-                    card_p = {
-                        ACTIONS[a - 1][5:]: float(probs[a - 1]) for a in valid
-                    }
+                    card_p = {ACTIONS[a - 1][5:]: float(probs[a - 1]) for a in valid}
                     conv_card = max(conv_pool, key=lambda c: card_p.get(c, 0.0))
                     alt_card = max(alt_pool, key=lambda c: card_p.get(c, 0.0))
                     argmax_card = max(card_p, key=card_p.get)
@@ -253,8 +251,9 @@ def collect_nodes(agent, convention: str, n_nodes: int, max_games: int,
     return nodes
 
 
-def probe_branch(agent, node: _EligibleNode, card: str, R: int, seed: int,
-                 want_oracle: bool) -> dict:
+def probe_branch(
+    agent, node: _EligibleNode, card: str, R: int, seed: int, want_oracle: bool
+) -> dict:
     """R forced rollouts of one branch. Returns realized returns and bootstrap
     readouts (limited + oracle) per rollout."""
     realized, boot_lim, boot_orc = [], [], []
@@ -263,9 +262,7 @@ def probe_branch(agent, node: _EligibleNode, card: str, R: int, seed: int,
         rng = random.Random(seed ^ (r_idx << 8) ^ 0x5EED)
         g = copy.deepcopy(node.game)
         restore_memory(agent, node.mem)
-        orc_events = (
-            copy.deepcopy(node.oracle_prefix) if want_oracle else None
-        )
+        orc_events = copy.deepcopy(node.oracle_prefix) if want_oracle else None
         g.players[node.leader - 1].act(ACTION_IDS[f"PLAY {card}"])
 
         v_next_lim = None
@@ -332,7 +329,12 @@ def _agg(pairs: list[tuple[float, float]], label: str) -> dict:
         f"  {label:<22}: gap {cg.mean():+.4f} (SE {se:.4f})  "
         f"sign-agree {sign:.0%}  r(critic,realized) {pear:+.3f}"
     )
-    return {"gapMean": float(cg.mean()), "gapSe": se, "signAgree": sign, "pearson": pear}
+    return {
+        "gapMean": float(cg.mean()),
+        "gapSe": se,
+        "signAgree": sign,
+        "pearson": pear,
+    }
 
 
 def main() -> int:
@@ -356,17 +358,23 @@ def main() -> int:
     nodes = collect_nodes(
         agent, args.convention, args.nodes, args.max_games, args.seed, want_oracle
     )
-    print(f"collected {len(nodes)} eligible nodes "
-          f"({sum(1 for n in nodes if n.group == 'agree')} agree / "
-          f"{sum(1 for n in nodes if n.group == 'disagree')} disagree)")
+    print(
+        f"collected {len(nodes)} eligible nodes "
+        f"({sum(1 for n in nodes if n.group == 'agree')} agree / "
+        f"{sum(1 for n in nodes if n.group == 'disagree')} disagree)"
+    )
     if not nodes:
         return 1
 
     rows = []
     for i, node in enumerate(nodes):
         base = args.seed ^ (i << 16)
-        conv = probe_branch(agent, node, node.conv_card, args.rollouts, base, want_oracle)
-        alt = probe_branch(agent, node, node.alt_card, args.rollouts, base ^ 0xA17, want_oracle)
+        conv = probe_branch(
+            agent, node, node.conv_card, args.rollouts, base, want_oracle
+        )
+        alt = probe_branch(
+            agent, node, node.alt_card, args.rollouts, base ^ 0xA17, want_oracle
+        )
         row = {
             "trick": node.trick,
             "group": node.group,

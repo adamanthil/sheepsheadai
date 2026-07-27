@@ -56,7 +56,9 @@ def main() -> int:
         metavar="LABEL=PATH",
         help="hero checkpoint (repeatable; same deals for every hero)",
     )
-    ap.add_argument("--field", required=True, help="checkpoint filling all non-hero seats")
+    ap.add_argument(
+        "--field", required=True, help="checkpoint filling all non-hero seats"
+    )
     ap.add_argument("--deals", type=int, default=400, help="deals per partner mode")
     ap.add_argument("--seed", type=int, default=PROBE_SEED)
     ap.add_argument("--out-csv", required=True)

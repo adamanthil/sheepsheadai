@@ -145,13 +145,8 @@ def _attach_search_target(
     # sample_determinization handles the no-picker leaster
     # state (Game._sample_leaster_deal).
     head = _search_head(valid_actions)
-    head_fraction = search_config.head_search_fractions.get(
-        head, 0.0
-    )
-    if (
-        head_fraction > 0.0
-        and determinization_rng.random() < head_fraction
-    ):
+    head_fraction = search_config.head_search_fractions.get(head, 0.0)
+    if head_fraction > 0.0 and determinization_rng.random() < head_fraction:
         current_trick = game.current_trick
         # Trick-indexed rollout depth: roll (near) to terminal
         # in the early tricks where the critic is blind, then
@@ -186,9 +181,7 @@ def _attach_search_target(
             head_diag["accepted"] += 1
             pi = res["pi"]
             nonzero = pi[pi > 0]
-            head_diag["entropy_sum"] += float(
-                -(nonzero * np.log(nonzero)).sum()
-            )
+            head_diag["entropy_sum"] += float(-(nonzero * np.log(nonzero)).sum())
 
 
 def _finalize_rewards(

@@ -18,7 +18,12 @@ import sys
 
 import numpy as np
 
-from sheepshead.tests.game_test_utils import act, make_game, run_script, valid_action_names
+from sheepshead.tests.game_test_utils import (
+    act,
+    make_game,
+    run_script,
+    valid_action_names,
+)
 from sheepshead import (
     ACTION_IDS,
     ACTION_LOOKUP,

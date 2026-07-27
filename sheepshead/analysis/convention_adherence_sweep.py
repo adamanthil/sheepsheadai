@@ -51,7 +51,9 @@ def _episodes_from_name(path: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _row(label: str, episodes: int | None, c1_called: dict, c1_jd: dict | None, c2: dict) -> dict:
+def _row(
+    label: str, episodes: int | None, c1_called: dict, c1_jd: dict | None, c2: dict
+) -> dict:
     return {
         "label": label,
         "episodes": episodes,
@@ -96,7 +98,9 @@ def _print_table(rows: list[dict]) -> None:
     )
 
 
-def probe_hero(hero, deals: int, seed: int, both_modes: bool) -> tuple[dict, dict | None, dict]:
+def probe_hero(
+    hero, deals: int, seed: int, both_modes: bool
+) -> tuple[dict, dict | None, dict]:
     c1_called = trump_lead_probe.probe_agent(
         hero, deals, PARTNER_BY_CALLED_ACE, seed=seed
     )
@@ -153,8 +157,10 @@ def main() -> int:
         t0 = time.time()
         hero = load_agent(ckpt)
         c1_called, c1_jd, c2 = probe_hero(hero, args.deals, args.seed, args.both_modes)
-        label = Path(ckpt).stem.replace("pfsp_swish_checkpoint_", "pfsp_").replace(
-            "swish_checkpoint_", "selfplay_"
+        label = (
+            Path(ckpt)
+            .stem.replace("pfsp_swish_checkpoint_", "pfsp_")
+            .replace("swish_checkpoint_", "selfplay_")
         )
         rows.append(_row(label, _episodes_from_name(ckpt), c1_called, c1_jd, c2))
         print(f"[{label}] done ({time.time() - t0:.0f}s)", flush=True)

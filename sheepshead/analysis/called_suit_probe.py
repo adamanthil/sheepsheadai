@@ -82,9 +82,7 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
     for d in range(n_deals):
         deal_seed = seed * 1_000_003 + d
         for hero_seat in range(1, 6):
-            game = Game(
-                partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=deal_seed
-            )
+            game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=deal_seed)
             hero.reset_recurrent_state()
             field.reset_recurrent_state()
             stats["hero_hands"] += 1
@@ -187,7 +185,9 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Defender called-suit-lead adherence probe")
+    ap = argparse.ArgumentParser(
+        description="Defender called-suit-lead adherence probe"
+    )
     ap.add_argument("--ckpt", default=None, help="PPO checkpoint to probe")
     ap.add_argument(
         "--scripted",

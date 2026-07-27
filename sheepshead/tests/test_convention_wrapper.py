@@ -52,9 +52,7 @@ def _decisions(partner_mode, max_seeds):
         game = Game(partner_selection_mode=partner_mode, seed=seed)
         field.reset_recurrent_state()
         while not game.is_done():
-            actor = next(
-                (p for p in game.players if p.get_valid_action_ids()), None
-            )
+            actor = next((p for p in game.players if p.get_valid_action_ids()), None)
             if actor is None:
                 break
             valid = actor.get_valid_action_ids()
@@ -73,10 +71,7 @@ def _leads(partner_mode, max_seeds):
 
 def _true_defender(game, p):
     return not (
-        p.is_picker
-        or p.is_partner
-        or game.partner == p.position
-        or p.is_secret_partner
+        p.is_picker or p.is_partner or game.partner == p.position or p.is_secret_partner
     )
 
 
@@ -109,11 +104,7 @@ def _c2_shape(game, p, valid):
 
 
 def _conv_ids(game, valid):
-    return [
-        a
-        for a, c in _lead_cards(valid)
-        if _called_suit_fail(c, game.called_card)
-    ]
+    return [a for a, c in _lead_cards(valid) if _called_suit_fail(c, game.called_card)]
 
 
 def _collect(nodes_iter, predicate, n):
@@ -183,10 +174,12 @@ class TestC2MaskRules:
         # Under calls: the picker is void by rule; the premise doesn't hold.
         under = _collect(
             _leads(PARTNER_BY_CALLED_ACE, 800),
-            lambda g, p, v: g.is_called_under
-            and g.current_trick == 0
-            and _true_defender(g, p)
-            and not g.is_leaster,
+            lambda g, p, v: (
+                g.is_called_under
+                and g.current_trick == 0
+                and _true_defender(g, p)
+                and not g.is_leaster
+            ),
             2,
         )
         assert len(under) >= 1
@@ -198,13 +191,15 @@ class TestC2MaskRules:
         w = ConventionWrapper(ScriptedAgent(), c1=False, c2=True)
         nodes = _collect(
             _leads(PARTNER_BY_CALLED_ACE, 800),
-            lambda g, p, v: g.current_trick == 0
-            and not g.is_leaster
-            and not g.alone_called
-            and bool(g.called_card)
-            and _true_defender(g, p)
-            and len(_conv_ids(g, v)) == len(_lead_cards(v))
-            and len(_lead_cards(v)) > 0,
+            lambda g, p, v: (
+                g.current_trick == 0
+                and not g.is_leaster
+                and not g.alone_called
+                and bool(g.called_card)
+                and _true_defender(g, p)
+                and len(_conv_ids(g, v)) == len(_lead_cards(v))
+                and len(_lead_cards(v)) > 0
+            ),
             2,
         )
         for _, _, state, valid in nodes:
@@ -227,9 +222,7 @@ class TestC1MaskRules:
         if g.is_leaster or not _true_defender(g, p):
             return False
         plays = _lead_cards(v)
-        return any(c in _TRUMP for _, c in plays) and any(
-            c in _FAIL for _, c in plays
-        )
+        return any(c in _TRUMP for _, c in plays) and any(c in _FAIL for _, c in plays)
 
     def test_masks_trump_leads_on_tricks_0_and_1(self):
         w = ConventionWrapper(ScriptedAgent(), c1=True, c2=False)
@@ -242,17 +235,13 @@ class TestC1MaskRules:
             assert len(nodes) == 8
             for game, p, state, valid in nodes:
                 restricted = w._restrict(state, list(valid))
-                expected = [
-                    a for a in valid if ACTIONS[a - 1][5:] not in _TRUMP
-                ]
+                expected = [a for a in valid if ACTIONS[a - 1][5:] not in _TRUMP]
                 assert restricted == expected
                 assert restricted
 
     def test_respects_c1_max_trick(self):
         default = ConventionWrapper(ScriptedAgent(), c1=True, c2=False)
-        extended = ConventionWrapper(
-            ScriptedAgent(), c1=True, c2=False, c1_max_trick=5
-        )
+        extended = ConventionWrapper(ScriptedAgent(), c1=True, c2=False, c1_max_trick=5)
         nodes = _collect(
             _leads(PARTNER_BY_CALLED_ACE, 400),
             lambda g, p, v: g.current_trick >= 2 and self._c1_shape(g, p, v),
@@ -268,12 +257,14 @@ class TestC1MaskRules:
         w = ConventionWrapper(ScriptedAgent(), c1=True, c2=False)
         nodes = _collect(
             _leads(PARTNER_BY_CALLED_ACE, 400),
-            lambda g, p, v: g.current_trick <= 1
-            and not g.is_leaster
-            and _true_defender(g, p)
-            and (
-                all(c in _TRUMP for _, c in _lead_cards(v))
-                or all(c in _FAIL for _, c in _lead_cards(v))
+            lambda g, p, v: (
+                g.current_trick <= 1
+                and not g.is_leaster
+                and _true_defender(g, p)
+                and (
+                    all(c in _TRUMP for _, c in _lead_cards(v))
+                    or all(c in _FAIL for _, c in _lead_cards(v))
+                )
             ),
             5,
         )
@@ -285,7 +276,9 @@ class TestC1MaskRules:
         w = ConventionWrapper(ScriptedAgent(), c1=True, c2=True)
         nodes = _collect(
             _leads(PARTNER_BY_JD, 500),
-            lambda g, p, v: p.is_secret_partner and self._c1_shape_ignoring_defender(g, p, v),
+            lambda g, p, v: (
+                p.is_secret_partner and self._c1_shape_ignoring_defender(g, p, v)
+            ),
             3,
         )
         assert len(nodes) >= 1
@@ -296,9 +289,7 @@ class TestC1MaskRules:
         if g.is_leaster:
             return False
         plays = _lead_cards(v)
-        return any(c in _TRUMP for _, c in plays) and any(
-            c in _FAIL for _, c in plays
-        )
+        return any(c in _TRUMP for _, c in plays) and any(c in _FAIL for _, c in plays)
 
 
 class TestNonLeadPassthrough:

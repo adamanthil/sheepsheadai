@@ -278,9 +278,9 @@ class PPOAgent:
         if critic_mode == "oracle":
             from sheepshead.agent.oracle import OracleValueNetwork
 
-            self.oracle_critic = OracleValueNetwork(
-                use_aux_heads=oracle_aux_heads
-            ).to(device)
+            self.oracle_critic = OracleValueNetwork(use_aux_heads=oracle_aux_heads).to(
+                device
+            )
             self.oracle_optimizer = optim.Adam(
                 self.oracle_critic.param_groups(
                     base_lr=lr_critic, card_lr_scale=self._oracle_lr_ratios[0]
@@ -384,9 +384,7 @@ class PPOAgent:
 
     def restore_player_memories(self, snapshot: dict) -> None:
         """Replace per-player memories with detached clones from a snapshot."""
-        self._player_memories = {
-            pid: t.detach().clone() for pid, t in snapshot.items()
-        }
+        self._player_memories = {pid: t.detach().clone() for pid, t in snapshot.items()}
 
     def clear_player_memories(self) -> None:
         """Reset all per-player memories to empty."""
@@ -969,9 +967,7 @@ class PPOAgent:
                 is_act = kinds[i] == "action"
                 ev = self.events[i]
                 action_lbl = ev["action"] if is_act else -1
-                act_bt.append(
-                    torch.tensor(action_lbl, dtype=torch.long, device=device)
-                )
+                act_bt.append(torch.tensor(action_lbl, dtype=torch.long, device=device))
                 log_prob_lbl = ev["log_prob"] if is_act else 0.0
                 olp_bt.append(
                     torch.tensor(log_prob_lbl, dtype=torch.float32, device=device)
@@ -1667,9 +1663,7 @@ class PPOAgent:
         # Stage C distillation accumulation
         acc.search_distill_loss_sum += search_distill_loss.detach().item()
         acc.teacher_kl_sum += search_distill_metrics["teacher_kl"].item()
-        acc.pi_target_entropy_sum += search_distill_metrics[
-            "pi_target_entropy"
-        ].item()
+        acc.pi_target_entropy_sum += search_distill_metrics["pi_target_entropy"].item()
         acc.masked_fraction_sum += search_distill_metrics["masked_fraction"].item()
         acc.search_distill_batches += 1
 
@@ -1711,11 +1705,9 @@ class PPOAgent:
                 flat.seen_trump_mask_logits_flat,
                 flat.seen_trump_mask_labels_flat,
             )
-            unseen_trump_higher_than_hand_loss = (
-                F.binary_cross_entropy_with_logits(
-                    flat.unseen_trump_higher_than_hand_logits_flat,
-                    flat.unseen_trump_higher_than_hand_labels_flat,
-                )
+            unseen_trump_higher_than_hand_loss = F.binary_cross_entropy_with_logits(
+                flat.unseen_trump_higher_than_hand_logits_flat,
+                flat.unseen_trump_higher_than_hand_labels_flat,
             )
         else:
             aux_zero = torch.zeros((), device=device)
@@ -1755,9 +1747,7 @@ class PPOAgent:
             ) = self._build_oracle_minibatch(batch, kinds)
             t_fwd = time.time()
             values_oracle_bt, oracle_trunk_bt = (
-                self.oracle_critic.forward_sequences_full(
-                    oracle_seqs, device=device
-                )
+                self.oracle_critic.forward_sequences_full(oracle_seqs, device=device)
             )
             acc.forward_time += time.time() - t_fwd
             flat_idx = minibatch.is_action_bt.view(-1)
@@ -1817,15 +1807,9 @@ class PPOAgent:
 
     def _clip_and_step(self, oracle_active):
         self.optimizer_steps_total += 1
-        torch.nn.utils.clip_grad_norm_(
-            self.actor.parameters(), self.max_grad_norm
-        )
-        torch.nn.utils.clip_grad_norm_(
-            self.encoder.parameters(), self.max_grad_norm
-        )
-        torch.nn.utils.clip_grad_norm_(
-            self.critic.parameters(), self.max_grad_norm
-        )
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(self.encoder.parameters(), self.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
         self.actor_optimizer.step()
         self.critic_optimizer.step()
         if oracle_active:
@@ -1886,9 +1870,7 @@ class PPOAgent:
                 if len(batch) == 0:
                     continue
 
-                minibatch = self._build_minibatch_tensors(
-                    batch, states, masks_t, kinds
-                )
+                minibatch = self._build_minibatch_tensors(batch, states, masks_t, kinds)
 
                 # Vectorized forward
                 t_fwd = time.time()
@@ -2000,10 +1982,8 @@ class PPOAgent:
                     F.mse_loss(v_o_clipped, ret_o, reduction="none"),
                 ).mean()
                 if self.oracle_critic.has_aux_heads:
-                    membership_loss, points_loss = (
-                        self.oracle_critic.aux_losses(
-                            oracle_trunk_bt, oracle_seqs, is_action_bt
-                        )
+                    membership_loss, points_loss = self.oracle_critic.aux_losses(
+                        oracle_trunk_bt, oracle_seqs, is_action_bt
                     )
                     oracle_loss = oracle_loss + (
                         self.oracle_membership_coeff * membership_loss
@@ -2074,8 +2054,7 @@ class PPOAgent:
         }
         params = [
             p
-            for p in list(self.actor.parameters())
-            + list(self.encoder.parameters())
+            for p in list(self.actor.parameters()) + list(self.encoder.parameters())
             if p.requires_grad
         ]
 
@@ -2090,9 +2069,7 @@ class PPOAgent:
             dist = torch.distributions.Categorical(probs.clamp(min=1e-12))
             new_lp = dist.log_prob(flat.actions_flat)
             ratios = torch.exp(new_lp - flat.old_log_probs_flat)
-            eps_row = torch.full_like(
-                flat.advantages_flat, self.clip_epsilon_play
-            )
+            eps_row = torch.full_like(flat.advantages_flat, self.clip_epsilon_play)
             for head, idx_t in idx_tensors.items():
                 m = torch.isin(flat.actions_flat, idx_t)
                 if m.any():
@@ -2104,9 +2081,7 @@ class PPOAgent:
 
         keys = ["global"] + (["lead"] if total_lead > 0 else [])
         totals = {"global": total_rows, "lead": total_lead}
-        g_acc = {
-            k: [torch.zeros_like(p) for p in params] for k in keys
-        }
+        g_acc = {k: [torch.zeros_like(p) for p in params] for k in keys}
         per = {k: {"sq_sum": 0.0, "inv_b_sum": 0.0, "n": 0} for k in keys}
 
         # Direct per-update SNR readout at partner-lead rows (operator
@@ -2130,9 +2105,7 @@ class PPOAgent:
 
         for mb_start in range(0, len(segments), batch_size):
             batch = segments[mb_start : mb_start + batch_size]
-            minibatch = self._build_minibatch_tensors(
-                batch, states, masks_t, kinds
-            )
+            minibatch = self._build_minibatch_tensors(batch, states, masks_t, kinds)
             forward = self._forward_vectorized(
                 minibatch.states_seqs, minibatch.masks_bt
             )
@@ -2297,9 +2270,7 @@ class PPOAgent:
             },
         }
 
-    def update(
-        self, epochs=6, batch_size=256, grad_accum=False, oracle_extra_epochs=0
-    ):
+    def update(self, epochs=6, batch_size=256, grad_accum=False, oracle_extra_epochs=0):
         """Update actor and critic networks using PPO with recurrent unrolling.
         Includes performance optimisations and per-update timing logs.
 
@@ -2341,9 +2312,7 @@ class PPOAgent:
             # reload. Strip them so the re-save is canonical legacy format,
             # which the shim recognizes.
             critic_state = {
-                k: v
-                for k, v in critic_state.items()
-                if not k.startswith("value_trunk")
+                k: v for k, v in critic_state.items() if not k.startswith("value_trunk")
             }
         payload = {
             "arch": self.arch_name,
@@ -2461,9 +2430,7 @@ class PPOAgent:
             )
 
         self.load_network_states(checkpoint, source=str(filepath))
-        self.optimizer_steps_total = int(
-            checkpoint.get("optimizer_steps_total", 0)
-        )
+        self.optimizer_steps_total = int(checkpoint.get("optimizer_steps_total", 0))
 
         # Oracle critic: optional checkpoint keys. An oracle-mode agent
         # resuming a limited checkpoint keeps its fresh-init oracle — the
@@ -2477,9 +2444,7 @@ class PPOAgent:
                 # (fresh-init heads) and a headless one may consume a headed
                 # checkpoint (heads dropped); anything else is a real error.
                 bad_missing = [k for k in missing if not k.startswith("team_")]
-                bad_unexpected = [
-                    k for k in unexpected if not k.startswith("team_")
-                ]
+                bad_unexpected = [k for k in unexpected if not k.startswith("team_")]
                 if bad_missing or bad_unexpected:
                     raise RuntimeError(
                         f"oracle checkpoint mismatch: missing={bad_missing} "
@@ -2487,8 +2452,7 @@ class PPOAgent:
                     )
                 if missing:
                     print(
-                        "Note: oracle checkpoint has no aux heads; heads "
-                        "start fresh."
+                        "Note: oracle checkpoint has no aux heads; heads start fresh."
                     )
                 if unexpected:
                     print(

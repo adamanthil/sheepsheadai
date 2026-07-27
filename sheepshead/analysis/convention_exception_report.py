@@ -133,9 +133,7 @@ def main() -> int:
 
             dist = Counter(r[key] for r in exceptions)
             base = Counter(r[key] for r in rows)
-            parts = [
-                f"{v}: {dist[v]}/{base[v]}" for v in sorted(dist)
-            ]
+            parts = [f"{v}: {dist[v]}/{base[v]}" for v in sorted(dist)]
             print(f"  by {key:<15}: {'  '.join(parts)}")
         print("\nTop exceptions (for ladder re-runs with search):")
         for r in sorted(exceptions, key=lambda r: r["delta"], reverse=True)[:10]:
