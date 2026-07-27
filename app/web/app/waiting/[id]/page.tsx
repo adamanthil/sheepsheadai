@@ -8,7 +8,7 @@ import { useTableSocket } from "../../../lib/hooks/useTableSocket";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import styles from "./page.module.css";
 import { ChatPanel } from "../../components/chat";
-import { ds, Wordmark, useIsMobile } from "../../../lib/ds";
+import { useIsMobile } from "../../../lib/ds";
 import {
   DesktopWaitingLayout,
   MobileWaitingLayout,
@@ -40,7 +40,9 @@ export default function WaitingRoom() {
 
   const [table, setTable] = useState<TableInfo | null>(null);
   const [isHost, setIsHost] = useState(false);
-  const [loading, setLoading] = useState(false);
+  // Set during load() but never rendered; kept so the fetch path stays
+  // ready for a spinner without reintroducing an unused binding.
+  const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [partnerMode, setPartnerMode] = useState<number>(1); // 1 = Called Ace (default), 0 = Jack of Diamonds
   const [scoringMode, setScoringMode] = useState<number>(1); // 1 = Double on the Bump (default), 0 = Symmetric

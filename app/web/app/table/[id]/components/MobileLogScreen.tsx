@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { ChatPanel, type ChatMessage } from "../../../components/chat";
-import { ds } from "../../../../lib/ds";
 import type { TableView } from "../../../../lib/types";
 import Scoreboard from "./Scoreboard";
 import styles from "./MobileLogScreen.module.css";

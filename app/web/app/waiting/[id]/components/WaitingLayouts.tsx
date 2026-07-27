@@ -26,6 +26,10 @@ export interface WaitingLayoutProps {
 
 function leaveLinkFor(onLeave: () => void) {
   const leaveLink = (label: string, className: string) => (
+    // Not a navigation: onClick always preventDefault()s and delegates to
+    // onLeave(). The href only supplies link semantics (status bar,
+    // middle-click), so next/link would add a router it never uses.
+    // eslint-disable-next-line @next/next/no-html-link-for-pages
     <a
       className={className}
       href="/"

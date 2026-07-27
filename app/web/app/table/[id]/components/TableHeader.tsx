@@ -19,7 +19,6 @@ export default function TableHeader({
   rulesBadge,
   handNumber,
   phaseLabel,
-  connected,
   isMobile,
   onLeave,
   onShowScores,

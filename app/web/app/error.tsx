@@ -34,6 +34,10 @@ export default function GlobalError({
         <button onClick={reset} style={{ padding: "8px 16px" }}>
           Try again
         </button>
+        {/* Deliberately a hard navigation, not next/link: this is an error
+            boundary, so a full document load is what discards the crashed
+            client state instead of routing out of it. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a href="/" style={{ padding: "8px 16px" }}>
           Back to lobby
         </a>
