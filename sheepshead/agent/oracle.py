@@ -369,9 +369,9 @@ def team_aux_labels(
 class OracleValueNetwork(nn.Module):
     """Recurrent U(h, s) value network over full-information observations.
 
-    Own encoder, own trunk, no auxiliary heads, no parameter sharing with
-    the policy stack. Trained only at update time on lambda-returns; used
-    only to supply the GAE baseline (see module docstring).
+    Own encoder, own trunk, no parameter sharing with the policy stack.
+    Trained only at update time on lambda-returns; used only to supply
+    the GAE baseline (see module docstring).
 
     Reads the encoder's post-reasoning token set through its own
     cross-attention readout (M learned queries over all 51 tokens — the
