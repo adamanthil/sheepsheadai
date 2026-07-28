@@ -64,6 +64,10 @@ from sheepshead import ACTIONS
 from sheepshead.agent import architectures
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.training.config import LeagueConfig, PFSPHyperparams
+from sheepshead.training.entropy_controller import (
+    EntropyControllerConfig,
+    EntropyTargetController,
+)
 from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
 from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.pfsp_runtime import (
@@ -564,6 +568,35 @@ def run_main_phase(
         end_episode=end_episode,
     )
 
+    # Adaptive entropy (Phase 2): target-entropy controller replaces the
+    # clock schedule's entropy coefficients (LR keeps its clock). Bumpless
+    # handoff: seed alpha from the legacy schedule's value at the current
+    # episode, and let un-set targets adopt the first update's measurement.
+    # getattr keeps the exploiter's SimpleNamespace args on the schedule path.
+    entropy_ctrl = None
+    entropy_ctrl_path = os.path.join(checkpoint_dir, "entropy_controller.json")
+    if getattr(args, "entropy_mode", "schedule") == "target":
+        if os.path.exists(entropy_ctrl_path):
+            entropy_ctrl = EntropyTargetController.load(entropy_ctrl_path)
+            print(
+                f"🎯 Entropy controller resumed: targets "
+                f"{entropy_ctrl.targets}  alphas {entropy_ctrl.alphas}"
+            )
+        else:
+            entropy_ctrl = EntropyTargetController(
+                config=EntropyControllerConfig(
+                    floors={"play": getattr(args, "entropy_play_floor", 0.28)}
+                ),
+                targets={
+                    h: v
+                    for h in ("pick", "partner", "bury", "play")
+                    if (v := getattr(args, f"entropy_target_{h}", None)) is not None
+                },
+            )
+            print("🎯 Entropy controller fresh (bumpless targets pending)")
+        apply_schedules(start_episode, ctx)
+        entropy_ctrl.attach(training_agent)
+
     pool = None
     if args.num_workers > 1:
         mp_ctx = get_context("spawn")
@@ -620,6 +653,11 @@ def run_main_phase(
 
             if tx_counter.count >= args.update_interval:
                 apply_schedules(episode, ctx)
+                if entropy_ctrl is not None:
+                    # Controller owns the entropy coefficients (overrides the
+                    # schedule's); the watchdog kick below still multiplies
+                    # on top — it stays the upward override.
+                    entropy_ctrl.apply(training_agent)
                 if watchdog is not None:
                     watchdog.tick(training_agent, leaster_window)
                 stats = training_agent.update(
@@ -629,6 +667,24 @@ def run_main_phase(
                     grad_accum=getattr(args, "grad_accum", False),
                 )
                 tx_counter.count = 0
+                if entropy_ctrl is not None and stats:
+                    had_pending = any(
+                        entropy_ctrl.targets[h] is None
+                        for h in ("pick", "partner", "bury", "play")
+                    )
+                    entropy_ctrl.observe(stats.get("head_entropy_norm") or {})
+                    if had_pending and not any(
+                        entropy_ctrl.targets[h] is None
+                        for h in ("pick", "partner", "bury", "play")
+                    ):
+                        print(
+                            "🎯 Entropy targets initialized (bumpless): "
+                            + "  ".join(
+                                f"{h} {entropy_ctrl.targets[h]:.3f}"
+                                for h in ("pick", "partner", "bury", "play")
+                            )
+                        )
+                    entropy_ctrl.save(entropy_ctrl_path)
                 for mid in league.retire_patched_exploiters():
                     print(f"🩹 Exploiter {mid} patched (EMA collapsed); retired")
                 if pool is not None:
@@ -979,6 +1035,36 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--greedy-eval-interval", type=int, default=50_000)
     ap.add_argument("--greedy-eval-games", type=int, default=200)
     ap.add_argument("--schedule-horizon", type=int, default=20_000_000)
+    # Adaptive entropy (Phase 2, 2026-07-28): "target" replaces the clock
+    # schedule's entropy coefficients with the SAC-style target-entropy
+    # controller (entropy_controller.py; the LR schedule keeps its clock).
+    # Targets initialize bumplessly from the first update's measurement
+    # unless given explicitly (fresh runs: derive from a validated run's
+    # entropy_backfill.json). State persists in
+    # <checkpoint-dir>/entropy_controller.json; the orchestrator steps the
+    # play target there at flat generation boundaries.
+    ap.add_argument(
+        "--entropy-mode",
+        choices=("schedule", "target"),
+        default="schedule",
+        help="entropy coefficients: legacy clock schedule (default) or "
+        "target-entropy feedback control",
+    )
+    for _h in ("pick", "partner", "bury", "play"):
+        ap.add_argument(
+            f"--entropy-target-{_h}",
+            type=float,
+            default=None,
+            help=f"explicit initial H_norm target for the {_h} head "
+            "(default: bumpless from first measurement)",
+        )
+    ap.add_argument(
+        "--entropy-play-floor",
+        type=float,
+        default=0.28,
+        help="play-head target floor (mixed-equilibrium reserve, ~37%% of "
+        "the retention run's 1.8M operating point)",
+    )
     ap.add_argument(
         "--critic-mode",
         choices=["limited", "oracle"],

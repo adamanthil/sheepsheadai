@@ -20,6 +20,10 @@ warm start, deciding for itself when learning is complete. The full recipe
                   floor) confirmed by a fresh-deal panel (seed 20260706), or at
                   the max-generations budget cap (relaunch with a higher cap to
                   continue). A confirmation contradiction resumes training.
+                  Under --adaptive-entropy, a flat generation with entropy
+                  targets above floor is ABSORBED: it steps the play target
+                  down (entropy_controller.py) and resets the streak; flats
+                  count only once targets sit at floor.
 
 The stopping rule measures learning completion only — it never compares
 against an external target. The architecture is read from the resume
@@ -83,6 +87,7 @@ from sheepshead.analysis.league_progress_eval import (
     load_endpoint,
 )
 from sheepshead.analysis.panels import PANEL_A
+from sheepshead.training.entropy_controller import EntropyTargetController
 from sheepshead.training.league_reports import (
     write_curve_png,
     write_generations_csv,
@@ -413,6 +418,13 @@ class Orchestrator:
         ]
         if a.leaster_watchdog:
             cmd.append("--leaster-watchdog")
+        if a.adaptive_entropy:
+            cmd += [
+                "--entropy-mode",
+                "target",
+                "--entropy-play-floor",
+                str(a.entropy_play_floor),
+            ]
         if a.trainer_args:
             cmd += shlex.split(a.trainer_args)
         if a.smoke:
@@ -710,6 +722,31 @@ class Orchestrator:
     # ------------------------------------------------------------------ #
     # Stop check
     # ------------------------------------------------------------------ #
+    def _absorb_flat_with_entropy_step(self, g: int) -> bool:
+        """Outer loop of the target-entropy controller (Phase 2): on a flat
+        generation, step every anneal-head target geometrically toward its
+        floor in the trainer's controller sidecar. Returns True when a step
+        was taken (the flat is absorbed and the streak resets); False when
+        the controller is at floor / not yet initialized (the flat stands).
+        """
+        path = os.path.join(self.ckpt_dir, "entropy_controller.json")
+        if not os.path.exists(path):
+            self.log(f"gen {g}: flat, but no entropy controller state — not absorbed")
+            return False
+        ctrl = EntropyTargetController.load(path)
+        moved = ctrl.step_targets()
+        if not moved:
+            self._event(
+                f"gen {g}: flat with entropy targets AT FLOOR — counts toward stopping"
+            )
+            return False
+        ctrl.save(path)
+        self._event(
+            f"gen {g}: flat ABSORBED by entropy target step: "
+            + ", ".join(f"{h} {o:.3f}->{n:.3f}" for h, (o, n) in moved.items())
+        )
+        return True
+
     def stop_check(self, g: int) -> bool:
         """Verdict + decision for generation g. Returns True when the run is
         over (stop confirmed or cap reached without contradiction)."""
@@ -743,10 +780,25 @@ class Orchestrator:
         )
         rec["verdict"] = verdict_to_dict(v)
 
+        # Adaptive-entropy stop-rule amendment: a flat generation with
+        # entropy targets still above floor is ambiguous (entropy-limited vs
+        # converged), so it triggers an outer-loop target step and is
+        # ABSORBED — recorded as not-flat so the streak resets. Flats count
+        # toward stopping only once targets sit at floor. Replay-idempotent:
+        # a generation whose stop_verdict was already recorded reuses its
+        # recorded absorption instead of stepping targets again.
+        flat_effective = v.flat
+        if v.flat and self.args.adaptive_entropy:
+            if "stop_verdict" in rec:
+                flat_effective = not rec.get("flat_absorbed_by_entropy_step", False)
+            elif self._absorb_flat_with_entropy_step(g):
+                flat_effective = False
+                rec["flat_absorbed_by_entropy_step"] = True
+
         if len(self.state["flat_history"]) < g:
-            self.state["flat_history"].append(v.flat)
+            self.state["flat_history"].append(flat_effective)
         else:
-            self.state["flat_history"][g - 1] = v.flat
+            self.state["flat_history"][g - 1] = flat_effective
         decision = decide_stop(self.state["flat_history"][:g], g, self.cfg)
         rec["stop_verdict"] = decision.reason
         self._save_state()
@@ -933,6 +985,21 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--greedy-eval-interval", type=int, default=50_000)
     p.add_argument("--greedy-eval-games", type=int, default=200)
     p.add_argument("--schedule-horizon", type=int, default=20_000_000)
+    # Adaptive entropy (Phase 2, 2026-07-28): trainers run --entropy-mode
+    # target (SAC-style controller, entropy_controller.py) and the stop rule
+    # is amended — a flat generation first steps the play-head entropy
+    # target toward its floor and RESETS the flat streak; flats only count
+    # toward stopping once targets sit at floor. This removes the
+    # converged-vs-entropy-limited confound: under the legacy 20M clock the
+    # coefficients never anneal within a realistic 4-10M run, so a plateau
+    # could be a regularization ceiling rather than convergence.
+    p.add_argument("--adaptive-entropy", action="store_true")
+    p.add_argument(
+        "--entropy-play-floor",
+        type=float,
+        default=0.28,
+        help="play-head H_norm target floor (see trainer --entropy-play-floor)",
+    )
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
