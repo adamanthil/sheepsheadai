@@ -6,6 +6,16 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
+from sheepshead import (
+    ACTION_IDS,
+    BURY_ACTIONS,
+    CALL_ACTIONS,
+    DECK_IDS,
+    PLAY_ACTIONS,
+    TRUMP,
+    UNDER_ACTIONS,
+    UNDER_TOKEN,
+)
 from sheepshead.agent import architectures
 from sheepshead.agent.architectures.actors import (
     MultiHeadRecurrentActorNetwork,
@@ -17,16 +27,6 @@ from sheepshead.agent.architectures.critics import (
     PerceiverCriticNetwork,
     RecurrentCriticNetwork,
     _TokenReadoutValueMixin,
-)
-from sheepshead import (
-    ACTION_IDS,
-    BURY_ACTIONS,
-    CALL_ACTIONS,
-    DECK_IDS,
-    PLAY_ACTIONS,
-    TRUMP,
-    UNDER_ACTIONS,
-    UNDER_TOKEN,
 )
 from sheepshead.training.training_utils import RETURN_SCALE
 

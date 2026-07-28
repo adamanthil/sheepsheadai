@@ -17,9 +17,9 @@ import random
 import numpy as np
 import torch
 
+from sheepshead import TRUMP
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import load_agent
-from sheepshead import TRUMP
 from sheepshead.validation.gate0_determinizer import collect
 
 DEV = ppo.device

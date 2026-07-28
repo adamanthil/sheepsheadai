@@ -19,12 +19,10 @@ Safe to re-run at any time (e.g. mid-matrix for partial curves).
 
 from __future__ import annotations
 
-import os
-
-
 import argparse
 import csv
 import json
+import os
 
 import matplotlib
 

@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.config import LeagueConfig
 from sheepshead.training.league import (
     ROLE_HOF_ANCHOR,
@@ -21,8 +23,6 @@ from sheepshead.training.league import (
     League,
     LeagueMember,
 )
-from sheepshead.agent.ppo import PPOAgent
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 
 def _agent(seed: int) -> PPOAgent:

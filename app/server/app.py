@@ -17,14 +17,13 @@ from server.api import analyze as analyze_router
 from server.api import games as games_router
 from server.api import health as health_router
 from server.api import players as players_router
-from server.api.ratelimit import limiter
 from server.api import tables as tables_router
+from server.api.ratelimit import limiter
 from server.config import get_settings
-from server.runtime import lifecycle
 from server.realtime import websocket as websocket_router
+from server.runtime import lifecycle
 from server.services.ai_loader import load_agent
 from server.services.persistence.pool import close_pool, open_pool, set_db_state
-
 
 # Dev-only CORS: local Next.js dev servers. Anchored so hostile origins that
 # merely *contain* a local-looking suffix (e.g. http://evil.com:3000) never match.

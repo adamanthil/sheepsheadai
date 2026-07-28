@@ -17,11 +17,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from sheepshead.agent.ppo import PPOAgent
 from sheepshead import (
     ACTIONS,
     Game,
 )
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -33,8 +33,8 @@ from sheepshead.training.training_utils import (
 )
 
 if TYPE_CHECKING:
-    from sheepshead.training.config import SearchConfig
     from sheepshead.ismcts import ISMCTSTeacher
+    from sheepshead.training.config import SearchConfig
 
 
 def _is_private_decision(valid_actions) -> bool:

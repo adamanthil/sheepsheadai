@@ -15,8 +15,8 @@ independently checked there.
 
 import sys
 
-from sheepshead.tests.game_test_utils import act, make_game, valid_action_names
 from sheepshead import ACTION_IDS, DECK, TRUMP, Game, get_trick_points
+from sheepshead.tests.game_test_utils import act, make_game, valid_action_names
 from sheepshead.training.training_utils import (
     LEASTER_FINAL_REWARD_BONUS,
     RETURN_SCALE,

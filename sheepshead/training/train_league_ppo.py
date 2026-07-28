@@ -60,17 +60,17 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+from sheepshead import ACTIONS
 from sheepshead.agent import architectures
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.training.config import LeagueConfig, PFSPHyperparams
-from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
+from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.pfsp_runtime import (
     interpolated_weight,
     make_game_summary,
     play_population_game,
 )
-from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead import ACTIONS
 from sheepshead.training.training_utils import (
     append_csv_row,
     ensure_csv_columns,

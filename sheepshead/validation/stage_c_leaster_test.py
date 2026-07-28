@@ -18,16 +18,16 @@ import random
 
 import numpy as np
 
-from sheepshead.agent.ppo import load_agent
 from sheepshead import (
-    Game,
     ACTIONS,
     DECK,
-    UNDER_TOKEN,
     PARTNER_BY_JD,
+    UNDER_TOKEN,
+    Game,
     get_card_suit,
 )
-from sheepshead.ismcts import ISMCTSTeacher, ISMCTSConfig
+from sheepshead.agent.ppo import load_agent
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
 CKPT = "final_pfsp_swish_ppo.pt"
 PASS_ID = ACTIONS.index("PASS") + 1

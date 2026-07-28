@@ -12,16 +12,16 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 
-from sheepshead.agent import architectures
-from sheepshead.training.config import SelfPlayHyperparams
-from sheepshead.training.leaster_watchdog import LeasterWatchdog
-from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import (
     ACTIONS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     Game,
 )
+from sheepshead.agent import architectures
+from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.training.config import SelfPlayHyperparams
+from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.training_utils import (
     analyze_strategic_decisions,
     append_csv_row,

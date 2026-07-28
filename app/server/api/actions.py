@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 
 from server.api.schemas import ActionsLookupResponse
-
 from sheepshead import ACTION_LOOKUP
 
 router = APIRouter()

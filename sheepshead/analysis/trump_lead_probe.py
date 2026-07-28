@@ -36,12 +36,10 @@ Usage:
 
 from __future__ import annotations
 
-
 import argparse
 import json
 import time
 
-from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
@@ -49,6 +47,7 @@ from sheepshead import (
     TRUMP_SET,
     Game,
 )
+from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260702  # fixed CRN deal set: results comparable forever
 LEAK_COST_SCORE = 0.19  # −score per occurrence (investigation §5, belief-pool MC)

@@ -28,9 +28,9 @@ import random
 import numpy as np
 import torch
 
-from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTIONS, DECK, Game
-from sheepshead.ismcts import ISMCTSTeacher, ISMCTSConfig
+from sheepshead.agent.ppo import load_agent
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 CKPT = "final_pfsp_swish_ppo.pt"

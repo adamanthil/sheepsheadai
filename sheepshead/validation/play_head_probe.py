@@ -27,8 +27,8 @@ import argparse
 
 import numpy as np
 
-from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 

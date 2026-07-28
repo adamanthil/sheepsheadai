@@ -63,11 +63,11 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
-from sheepshead.agent import ppo
 from sheepshead import (
     ACTION_IDS,
     ACTIONS,
 )
+from sheepshead.agent import ppo
 from sheepshead.training.training_utils import RETURN_SCALE
 
 DEV = ppo.device

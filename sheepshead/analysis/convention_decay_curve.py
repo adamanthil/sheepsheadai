@@ -36,14 +36,14 @@ import re
 import time
 from pathlib import Path
 
-from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
-from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     Game,
 )
+from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
+from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260719  # same CRN deal set as partner_trump_lead_probe
 MAX_TRICK = 2

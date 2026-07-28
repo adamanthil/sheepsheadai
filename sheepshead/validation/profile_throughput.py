@@ -15,12 +15,12 @@ Run: .venv/bin/python profile_throughput.py [--games N] [--searches N]
 
 import argparse
 import cProfile
-import pstats
 import io
+import pstats
 import random
 import time
 
-from sheepshead import Game, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
+from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 
 def pure_game_workload(n_games, seed=0):
@@ -61,7 +61,7 @@ def time_pure_game(n_games):
 def time_ismcts(n_searches):
     # Imports here so pure-game timing isn't polluted by torch import cost.
     from sheepshead.agent.ppo import load_agent
-    from sheepshead.ismcts import ISMCTSTeacher, ISMCTSConfig
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     agent = load_agent("final_pfsp_swish_ppo.pt")
     cfg = ISMCTSConfig(

@@ -6,15 +6,15 @@ and log_w / per-seat memory matching to float tolerance (batched vs batch-1 matm
 differs only at ~1e-5). Also times both to report the speedup.
 """
 
+import copy
 import random
 import time
-import copy
 
 import torch
 
+from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent.ppo import load_agent
-from sheepshead import Game, ACTIONS, PARTNER_BY_JD, PARTNER_BY_CALLED_ACE
-from sheepshead.ismcts import ISMCTSTeacher, ISMCTSConfig
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
 CKPT = "final_pfsp_swish_ppo.pt"
 

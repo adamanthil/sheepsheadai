@@ -12,7 +12,6 @@ import torch.nn as nn
 from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
 from sheepshead.agent.token_layout import CONTEXT_TOKEN, MEMORY_TOKEN
 
-
 # ---------------------------------------------------------------------------
 # Pooled-memory encoder (the "no-transformer" rung)
 # ---------------------------------------------------------------------------

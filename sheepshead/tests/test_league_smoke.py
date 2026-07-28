@@ -18,9 +18,9 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from sheepshead.training.league import ROLE_PAST_MAIN, League
-from sheepshead.agent.ppo import PPOAgent
 from sheepshead import ACTIONS
+from sheepshead.agent.ppo import PPOAgent
+from sheepshead.training.league import ROLE_PAST_MAIN, League
 from sheepshead.training.train_league_ppo import run_main_phase
 
 # Exercises the real training loop end to end (~15s).

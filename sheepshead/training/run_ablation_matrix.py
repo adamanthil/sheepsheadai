@@ -26,13 +26,11 @@ Smoke test of the whole pipeline:
 
 from __future__ import annotations
 
-import os
-import sys
-
-
 import argparse
 import json
+import os
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed

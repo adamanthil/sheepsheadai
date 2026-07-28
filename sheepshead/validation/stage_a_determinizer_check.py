@@ -34,8 +34,6 @@ from collections import deque
 import numpy as np
 import torch
 
-from sheepshead.agent import ppo
-from sheepshead.agent.ppo import load_agent
 from sheepshead import (
     ACTION_IDS,
     ACTIONS,
@@ -43,17 +41,18 @@ from sheepshead import (
     TRUMP,
     UNDER_TOKEN,
     Game,
-    get_card_suit,
     get_callable_cards,
+    get_card_suit,
+)
+from sheepshead.agent import ppo
+from sheepshead.agent.ppo import load_agent
+from sheepshead.analysis.counterfactual_trump_leads import (
+    best_in_class,
+    play_out,
+    restore_memory,
+    snapshot_memory,
 )
 from sheepshead.training.training_utils import get_partner_selection_mode
-
-from sheepshead.analysis.counterfactual_trump_leads import (
-    snapshot_memory,
-    restore_memory,
-    play_out,
-    best_in_class,
-)
 
 DEV = ppo.device
 

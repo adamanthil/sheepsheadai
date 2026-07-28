@@ -10,9 +10,9 @@ from server.api.ratelimit import GAME_ACTIONS, HOST_ACTIONS, limiter
 from server.api.schemas import (
     ActionRequest,
     OkResponse,
-    TablePublic,
     RedealRequest,
     StartGameRequest,
+    TablePublic,
 )
 from server.api.tables import require_client, require_host
 from server.config import get_settings

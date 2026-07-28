@@ -1,8 +1,10 @@
-import torch
-import torch.nn as nn
-from typing import List, Dict, Any
 import itertools
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
+import torch
+import torch.nn as nn
+
 from sheepshead import DECK_IDS, TRUMP, UNDER_CARD_ID
 from sheepshead.agent.token_layout import (
     BASE_TYPE_COUNT,
@@ -16,7 +18,6 @@ from sheepshead.agent.token_layout import (
     TRICK_TOKENS,
     TRICK_TYPE_ID,
 )
-
 
 PAD_CARD_ID = 0
 

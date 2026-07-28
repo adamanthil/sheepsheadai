@@ -31,10 +31,7 @@ Two analyses
 
 from __future__ import annotations
 
-
 # Repo-root imports work regardless of invocation directory.
-
-
 import argparse
 import copy
 import random
@@ -42,9 +39,9 @@ import random
 import numpy as np
 import torch
 
+from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import load_agent
-from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from sheepshead.training.training_utils import (
     RETURN_SCALE,
     TRICK_POINT_RATIO,

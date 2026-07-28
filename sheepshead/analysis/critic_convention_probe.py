@@ -47,6 +47,14 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from sheepshead import (
+    ACTION_IDS,
+    ACTIONS,
+    FAIL,
+    PARTNER_BY_CALLED_ACE,
+    TRUMP_SET,
+    Game,
+)
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.called_suit_probe import _called_suit_fail
@@ -57,14 +65,6 @@ from sheepshead.analysis.critic_calibration import (
     snapshot_memory,
 )
 from sheepshead.training.training_utils import RETURN_SCALE, TRICK_POINT_RATIO
-from sheepshead import (
-    ACTION_IDS,
-    ACTIONS,
-    FAIL,
-    PARTNER_BY_CALLED_ACE,
-    TRUMP_SET,
-    Game,
-)
 
 DEV = ppo.device
 _FAIL_SET = set(FAIL)

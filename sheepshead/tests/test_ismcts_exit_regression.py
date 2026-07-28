@@ -592,8 +592,8 @@ def _make_pop_agent(agent, mode, i):
 
 
 def test_distill_pgmask_and_dormant():
-    from sheepshead.training.config import SearchConfig
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.training.config import SearchConfig
     from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
@@ -667,8 +667,8 @@ def test_distill_pgmask_and_dormant():
 def _generate_searched_events(n_games=5):
     """Play terminal-mode games with a teacher and return the concatenated event
     stream (with search targets on a fraction of transitions)."""
-    from sheepshead.training.config import SearchConfig
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.training.config import SearchConfig
     from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()

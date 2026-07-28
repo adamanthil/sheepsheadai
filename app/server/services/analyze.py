@@ -15,8 +15,8 @@ from server.api.schemas import (
 )
 from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
-from server.services.ai_loader import load_agent
 from server.runtime.tables import build_player_state
+from server.services.ai_loader import load_agent
 from server.services.analysis_common import (
     build_action_detail,
     compute_oracle_values,

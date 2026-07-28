@@ -41,9 +41,9 @@ import time
 
 import numpy as np
 
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 T_FULL = 1  # production rollout-depth schedule (config.SearchConfig)

@@ -40,9 +40,9 @@ from pathlib import Path
 
 import numpy as np
 
+from sheepshead import ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
 from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
 from sheepshead.scripted_agent import ScriptedAgent
-from sheepshead import ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
 
 PROBE_SEED = 20260719  # same CRN deal set as the decay curve / lead probes
 MAX_TRICK = 2

@@ -20,14 +20,6 @@ import random
 
 import pytest
 
-from sheepshead.agent.convention_wrapper import (
-    ConventionWrapper,
-    parse_wrap_spec,
-    wrap_agent,
-)
-from sheepshead.analysis.called_suit_probe import _called_suit_fail, probe_agent
-from sheepshead.analysis.trump_lead_probe import probe_agent as probe_trump
-from sheepshead.scripted_agent import ScriptedAgent, _card
 from sheepshead import (
     ACTIONS,
     FAIL,
@@ -36,6 +28,14 @@ from sheepshead import (
     TRUMP,
     Game,
 )
+from sheepshead.agent.convention_wrapper import (
+    ConventionWrapper,
+    parse_wrap_spec,
+    wrap_agent,
+)
+from sheepshead.analysis.called_suit_probe import _called_suit_fail, probe_agent
+from sheepshead.analysis.trump_lead_probe import probe_agent as probe_trump
+from sheepshead.scripted_agent import ScriptedAgent, _card
 
 _TRUMP = set(TRUMP)
 _FAIL = set(FAIL)

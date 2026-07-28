@@ -55,18 +55,16 @@ Smoke test of the whole loop in minutes: add --smoke.
 
 from __future__ import annotations
 
-import os
-import sys
-
-
 import argparse
 import csv
 import glob
 import hashlib
 import json
+import os
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -84,6 +82,12 @@ from sheepshead.analysis.league_progress_eval import (
     h2h_duplicate,
     load_endpoint,
 )
+from sheepshead.analysis.panels import PANEL_A
+from sheepshead.training.league_reports import (
+    write_curve_png,
+    write_generations_csv,
+    write_report_md,
+)
 from sheepshead.training.league_stopping import (
     StopRuleConfig,
     confirmation_verdict,
@@ -91,12 +95,6 @@ from sheepshead.training.league_stopping import (
     flat_verdict,
     resume_from_cap,
     verdict_to_dict,
-)
-from sheepshead.analysis.panels import PANEL_A
-from sheepshead.training.league_reports import (
-    write_curve_png,
-    write_generations_csv,
-    write_report_md,
 )
 
 BASELINE_PROBE_SEED = 20260709  # greedy-health baseline of the resume ckpt

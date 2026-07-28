@@ -6,19 +6,20 @@ Training utilities shared across training scripts.
 import csv
 import os
 import random
-from typing import List, Dict
+from typing import Dict, List
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
 from sheepshead import (
-    Game,
-    TRUMP,
-    ACTIONS,
     ACTION_IDS,
     ACTION_LOOKUP,
+    ACTIONS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
+    TRUMP,
+    Game,
 )
 
 # Reward-shaping / auxiliary-target math lives in reward_shaping.py so that
@@ -29,20 +30,20 @@ from sheepshead import (
 # tests) keep working without modification.
 from sheepshead.training.reward_shaping import (  # noqa: F401
     LEASTER_FINAL_REWARD_BONUS,
-    TRICK_POINT_RATIO,
     RETURN_SCALE,
-    estimate_hand_strength_score,
+    TRICK_POINT_RATIO,
+    apply_leaster_trick_rewards,
+    apply_trick_rewards,
+    calculate_trick_reward,
+    compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,
-    compute_any_unseen_trump_higher_than_hand,
-    calculate_trick_reward,
-    is_same_team_as_winner,
-    apply_trick_rewards,
-    apply_leaster_trick_rewards,
-    update_intermediate_rewards_for_action,
+    estimate_hand_strength_score,
     handle_trick_completion,
+    is_same_team_as_winner,
     process_episode_rewards,
     process_terminal_rewards,
+    update_intermediate_rewards_for_action,
 )
 
 

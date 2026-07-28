@@ -78,10 +78,10 @@ from sheepshead import (  # noqa: E402
     ACTION_LOOKUP,
     ACTIONS,
     FAIL,
-    Game,
     TRUMP,
     TRUMP_SET,
     UNDER_TOKEN,
+    Game,
 )
 
 FAIL_SET = set(FAIL)

@@ -30,10 +30,9 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
     """Architectures without auxiliary critic heads (e.g. "no-aux") must
     simulate cleanly with every aux-derived field left None, instead of
     crashing on the missing critic_adapter."""
+    import server.services.analyze as analyze_mod
     from sheepshead import ACTIONS
     from sheepshead.agent.ppo import PPOAgent
-
-    import server.services.analyze as analyze_mod
 
     agent = PPOAgent(len(ACTIONS), arch="no-aux")
     monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
@@ -84,10 +83,9 @@ def test_simulate_with_no_aux_critic(analyze_env, monkeypatch):
 def test_simulate_calibration_summary(analyze_env, monkeypatch):
     """With aux heads, a finished game gets a calibration rollup covering
     every seat that acted, with sane metric ranges."""
+    import server.services.analyze as analyze_mod
     from sheepshead import ACTIONS
     from sheepshead.agent.ppo import PPOAgent
-
-    import server.services.analyze as analyze_mod
 
     agent = PPOAgent(len(ACTIONS), arch="full")
     monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
@@ -113,10 +111,9 @@ def test_simulate_with_oracle_critic(analyze_env, monkeypatch):
     """An oracle-mode agent must report a privileged value on every
     decision; a limited agent must not (covered by the no-aux test's
     schema default)."""
+    import server.services.analyze as analyze_mod
     from sheepshead import ACTIONS
     from sheepshead.agent.ppo import PPOAgent
-
-    import server.services.analyze as analyze_mod
 
     agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
     monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
@@ -138,10 +135,9 @@ def test_simulate_with_perceiver_shared_v2(analyze_env, monkeypatch):
     readout, not critic_adapter(features) — the simulate path must go through
     the critic's _aux_features_single seam so perceiver archs get real
     trump-tracking numbers instead of the vestigial memory vector."""
+    import server.services.analyze as analyze_mod
     from sheepshead import ACTIONS
     from sheepshead.agent.ppo import PPOAgent
-
-    import server.services.analyze as analyze_mod
 
     agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2")
     monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
@@ -160,11 +156,10 @@ def test_simulate_with_perceiver_shared_v2(analyze_env, monkeypatch):
 
 
 def test_pick_with_perceiver_shared_v2(analyze_env, monkeypatch):
-    from sheepshead import ACTIONS
-    from sheepshead.agent.ppo import PPOAgent
-
     import server.services.pick_analysis as pick_mod
     from server.api.schemas import AnalyzePickRequest
+    from sheepshead import ACTIONS
+    from sheepshead.agent.ppo import PPOAgent
 
     agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2")
     monkeypatch.setattr(pick_mod, "load_agent", lambda path: agent)
@@ -177,10 +172,9 @@ def test_pick_with_perceiver_shared_v2(analyze_env, monkeypatch):
 
 
 def test_model_info_with_perceiver_shared_v2(analyze_env, monkeypatch):
+    import server.services.model_info as model_info_mod
     from sheepshead import ACTIONS
     from sheepshead.agent.ppo import PPOAgent
-
-    import server.services.model_info as model_info_mod
 
     agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2")
     monkeypatch.setattr(model_info_mod, "load_agent", lambda path: agent)
@@ -196,10 +190,9 @@ def test_model_info_with_perceiver_shared_v2(analyze_env, monkeypatch):
 def test_model_info_card_embeddings(analyze_env, monkeypatch):
     """The model-info payload must describe the full card table (32 cards +
     UNDER, pad row dropped) with consistent geometry shapes."""
+    import server.services.model_info as model_info_mod
     from sheepshead import ACTIONS, DECK
     from sheepshead.agent.ppo import PPOAgent
-
-    import server.services.model_info as model_info_mod
 
     agent = PPOAgent(len(ACTIONS), arch="full")
     monkeypatch.setattr(model_info_mod, "load_agent", lambda path: agent)

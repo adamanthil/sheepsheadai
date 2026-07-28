@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 
-import torch
 from argparse import ArgumentParser
 
-from sheepshead.agent.ppo import load_agent
+import torch
+
 from sheepshead import (
+    ACTION_IDS,
+    ACTIONS,
+    PARTNER_BY_CALLED_ACE,
+    PARTNER_BY_JD,
+    PLAY_ACTIONS,
     Game,
     Player,
-    ACTIONS,
-    ACTION_IDS,
-    PLAY_ACTIONS,
     colorize_card,
-    PARTNER_BY_JD,
-    PARTNER_BY_CALLED_ACE,
 )
-
+from sheepshead.agent.ppo import load_agent
 
 parser = ArgumentParser(
     prog="Play Sheepshead",

@@ -38,11 +38,9 @@ import sys
 import numpy as np
 import torch
 
-
-from sheepshead.agent import architectures
-from sheepshead.agent import ppo
-from sheepshead.agent.ppo import PPOAgent
 from sheepshead import ACTIONS, Game
+from sheepshead.agent import architectures, ppo
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.training_utils import set_all_seeds
 
 SEED = 42

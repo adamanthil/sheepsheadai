@@ -37,9 +37,9 @@ import time
 
 import numpy as np
 
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTIONS, TRUMP, Game
+from sheepshead.agent.ppo import load_agent
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 

@@ -18,12 +18,6 @@ import sys
 
 import numpy as np
 
-from sheepshead.tests.game_test_utils import (
-    act,
-    make_game,
-    run_script,
-    valid_action_names,
-)
 from sheepshead import (
     ACTION_IDS,
     ACTION_LOOKUP,
@@ -46,6 +40,12 @@ from sheepshead import (
     get_playable_called_picker_cards,
     get_trick_points,
     get_trick_winner,
+)
+from sheepshead.tests.game_test_utils import (
+    act,
+    make_game,
+    run_script,
+    valid_action_names,
 )
 
 

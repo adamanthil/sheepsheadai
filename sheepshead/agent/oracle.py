@@ -41,12 +41,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from sheepshead.game import CARD_POINTS, DECK_IDS
-
 from sheepshead.agent.encoder import (
+    PAD_CARD_ID,
     CardEmbeddingConfig,
     CardReasoningEncoder,
-    PAD_CARD_ID,
 )
 from sheepshead.agent.token_layout import (
     BLIND_TYPE_ID,
@@ -59,6 +57,7 @@ from sheepshead.agent.token_layout import (
     ORACLE_TYPE_COUNT,
     TRICK_TYPE_ID,
 )
+from sheepshead.game import CARD_POINTS, DECK_IDS
 
 
 class OracleCriticEncoder(CardReasoningEncoder):

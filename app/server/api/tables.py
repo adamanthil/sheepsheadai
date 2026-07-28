@@ -9,13 +9,13 @@ from server.api.auth import PlayerIdentity, current_player, optional_player
 from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, limiter
 from server.api.schemas import (
     CloseTableRequest,
+    CreateTableRequest,
+    JoinTableRequest,
     JoinTableResponse,
     OkResponse,
     RulesUpdateResponse,
-    TablePublic,
-    CreateTableRequest,
-    JoinTableRequest,
     SeatRequest,
+    TablePublic,
     UpdateTableRulesRequest,
 )
 from server.realtime.broadcast import broadcast_table_event, broadcast_table_update

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """ScriptedAgent invariants: legality, determinism, zero-sum self-play."""
 
-from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.scripted_agent import ScriptedAgent
 
 
 class TestScriptedAgent:

@@ -19,7 +19,6 @@ from sheepshead import (
     get_trick_points,
 )
 
-
 LEASTER_FINAL_REWARD_BONUS = 0.08
 TRICK_POINT_RATIO = 360.0
 

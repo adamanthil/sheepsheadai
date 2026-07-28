@@ -8,8 +8,8 @@ from typing import Any, Dict, Optional
 
 from fastapi import WebSocket
 
-from server.runtime.tables import ClientConn, Table, _json_default
 from server.realtime.broadcast import broadcast_table_event
+from server.runtime.tables import ClientConn, Table, _json_default
 from sheepshead import CARD_FULL_NAMES
 
 CHAT_MAX_LEN = 500

@@ -74,27 +74,25 @@ Example
 
 from __future__ import annotations
 
-import sys
-
 # Repo-root imports work regardless of invocation directory.
-
 import argparse
 import csv
 import random
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
-from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import (
-    Game,
-    PARTNER_BY_JD,
     PARTNER_BY_CALLED_ACE,
+    PARTNER_BY_JD,
+    Game,
 )
+from sheepshead.agent.ppo import PPOAgent, load_agent
 
 NUM_SEATS = 5
 

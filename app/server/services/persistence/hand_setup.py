@@ -13,10 +13,9 @@ from uuid import UUID
 
 import asyncpg
 
-from sheepshead import DECK_IDS, Game
-
 from server.services.persistence.cards import upsert_cardset
 from server.services.persistence.pool import get_ai_player_id
+from sheepshead import DECK_IDS, Game
 
 if TYPE_CHECKING:
     from server.runtime.tables import Table

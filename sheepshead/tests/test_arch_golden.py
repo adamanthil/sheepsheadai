@@ -14,18 +14,18 @@ import tempfile
 import pytest
 import torch
 
+from sheepshead import ACTIONS, Game
 from sheepshead.agent import architectures
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead.analysis.capture_arch_goldens import (
     FIXTURE_DIR,
+    _key_sha,
     build_agent,
     check_arch,
     load_manifest,
     manifest_path,
     runtime_matches_manifest,
-    _key_sha,
 )
-from sheepshead import ACTIONS, Game
-from sheepshead.agent.ppo import PPOAgent
 
 _HAVE_FIXTURES = os.path.exists(manifest_path())
 

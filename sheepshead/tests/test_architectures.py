@@ -17,9 +17,8 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead.agent import architectures
-from sheepshead.training import pfsp_runtime
-from sheepshead.agent import ppo
+from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.agent import architectures, ppo
 from sheepshead.agent.architectures import (
     ONEHOT_STATE_DIM,
     OneHotFeedForwardEncoder,
@@ -32,7 +31,7 @@ from sheepshead.agent.ppo import (
     PPOAgent,
     RecurrentCriticNetwork,
 )
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.training import pfsp_runtime
 
 # Builds, plays, and updates every registered architecture (~30s+).
 pytestmark = pytest.mark.slow

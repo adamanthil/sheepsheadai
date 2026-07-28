@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import WebSocket
 
-from sheepshead.agent.ppo import PPOAgent
 from sheepshead import Game
+from sheepshead.agent.ppo import PPOAgent
 
 
 @dataclass

@@ -25,9 +25,9 @@ import re
 import time
 from pathlib import Path
 
+from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.analysis import called_suit_probe, trump_lead_probe
 from sheepshead.scripted_agent import ScriptedAgent
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 # The reference lineage (PANEL-A members, oldest first). Stage-1 league gens
 # can be appended via --ckpts as they land.

@@ -4,8 +4,6 @@ import asyncio
 import logging
 from typing import Optional
 
-from sheepshead import ACTION_LOOKUP
-
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import emit_bid_chat_message
 from server.runtime.tables import (
@@ -19,6 +17,7 @@ from server.services.persistence.games import (
     capture_pre_state,
     fire_game_hooks,
 )
+from sheepshead import ACTION_LOOKUP
 
 
 def _observe_seats(agent, observations: list[tuple[dict, int]]) -> None:

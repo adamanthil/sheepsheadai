@@ -6,10 +6,10 @@ import time
 import uuid
 from typing import Optional, Set
 
-from server.runtime.tables import Table, Occupant
 from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import schedule_ai_turns
+from server.runtime.tables import Occupant, Table
 
 # Name pool for auto-generated AI occupants (disconnect replacement here,
 # and table auto-fill in server.api.games). Content and order are shared;

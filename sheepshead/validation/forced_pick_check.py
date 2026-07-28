@@ -38,8 +38,8 @@ import argparse
 
 import numpy as np
 
-from sheepshead.agent.ppo import load_agent
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import (
     estimate_hand_strength_score,
     get_partner_selection_mode,

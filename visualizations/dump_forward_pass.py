@@ -50,13 +50,6 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
-from sheepshead.agent.architectures import SharedReadoutEncoder  # noqa: E402
-from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels  # noqa: E402
-from sheepshead.agent.ppo import (  # noqa: E402
-    MultiHeadRecurrentActorNetwork,
-    RecurrentCriticNetwork,
-    load_agent,
-)
 from sheepshead import (  # noqa: E402
     ACTION_IDS,
     ACTION_LOOKUP,
@@ -65,6 +58,13 @@ from sheepshead import (  # noqa: E402
     PARTNER_BY_CALLED_ACE,
     TRUMP,
     Game,
+)
+from sheepshead.agent.architectures import SharedReadoutEncoder  # noqa: E402
+from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels  # noqa: E402
+from sheepshead.agent.ppo import (  # noqa: E402
+    MultiHeadRecurrentActorNetwork,
+    RecurrentCriticNetwork,
+    load_agent,
 )
 
 DEFAULT_CHECKPOINT = (

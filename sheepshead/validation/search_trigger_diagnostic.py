@@ -50,9 +50,9 @@ import time
 
 import numpy as np
 
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training.training_utils import (
     RETURN_SCALE,
     get_partner_selection_mode,

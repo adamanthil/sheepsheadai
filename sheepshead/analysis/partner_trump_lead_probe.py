@@ -26,13 +26,10 @@ Usage:
 
 from __future__ import annotations
 
-
 import argparse
 import json
 import time
 
-from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
-from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
@@ -40,6 +37,8 @@ from sheepshead import (
     TRUMP_SET,
     Game,
 )
+from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
+from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260719  # fixed CRN deal set: results comparable forever
 MAX_TRICK = 2  # partner conventions fire when the partner first gets the lead

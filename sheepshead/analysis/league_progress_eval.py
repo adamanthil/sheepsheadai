@@ -43,20 +43,26 @@ Example
 
 from __future__ import annotations
 
-import sys
-
-
 import argparse
 import hashlib
 import json
 import random
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
+from sheepshead import (
+    ACTION_LOOKUP,
+    PARTNER_BY_CALLED_ACE,
+    PARTNER_BY_JD,
+    TRUMP_SET,
+)
+from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
+from sheepshead.analysis.panels import PANEL_A
 from sheepshead.analysis.rigorous_eval import (
     DecisionProbe,
     Model,
@@ -64,15 +70,7 @@ from sheepshead.analysis.rigorous_eval import (
     evaluate_hero_in_field,
     make_panel_field_fn,
 )
-from sheepshead.analysis.panels import PANEL_A
 from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
-from sheepshead.agent.ppo import load_agent
-from sheepshead import (
-    ACTION_LOOKUP,
-    PARTNER_BY_CALLED_ACE,
-    PARTNER_BY_JD,
-    TRUMP_SET,
-)
 from sheepshead.training.training_utils import paired_edge
 
 # Frozen experiment constants (pre-registered in notebooks/Extended_League_202607.md)

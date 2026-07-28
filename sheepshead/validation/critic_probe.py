@@ -31,9 +31,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from sheepshead import ACTIONS, Game
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import load_agent
-from sheepshead import ACTIONS, Game
 from sheepshead.training.training_utils import (
     RETURN_SCALE,
     TRICK_POINT_RATIO,
