@@ -185,50 +185,39 @@ class TestWiring:
         assert args.adaptive_entropy is False
         assert args.entropy_play_floor == 0.28
 
-    def test_targets_from_backfill_loads_hold_heads_only(self, tmp_path):
-        """Fresh-from-seed recipe: --entropy-targets-from applies a
-        validated backfill's suggested_targets to the HOLD heads
-        (stabilization setpoints at the mature operating point) and leaves
-        PLAY bumpless (the seed's high-entropy early phase is preserved;
-        descent comes only from the plateau ladder). Explicit flags win."""
-        import json
+    def test_adaptive_entropy_defers_to_generation_two(self, tmp_path, monkeypatch):
+        """--adaptive-entropy leaves generation 1 on the legacy schedule
+        (the validated seed-transient phase: organic hold-head sharpening
+        and the high-entropy play window across the league transition) and
+        enables target mode from generation 2, where bumpless attachment
+        captures a settled operating point. This is what makes the single
+        flag correct for from-scratch reproductions — no target derivation
+        step exists in the flow."""
+        monkeypatch.chdir(tmp_path)
+        from sheepshead.training.run_extended_league import Orchestrator, parse_args
 
-        backfill = tmp_path / "entropy_backfill.json"
-        backfill.write_text(
-            json.dumps(
-                {
-                    "derived": {
-                        "suggested_targets": {
-                            "pick": 0.046,
-                            "partner": 0.127,
-                            "bury": 0.163,
-                            "play": 0.754,
-                        }
-                    }
-                }
-            )
-        )
-        from sheepshead.training.train_league_ppo import build_arg_parser
-
-        args = build_arg_parser().parse_args(
+        args = parse_args(
             [
                 "--resume",
-                "x.pt",
-                "--league-dir",
-                "y",
-                "--entropy-mode",
-                "target",
-                "--entropy-targets-from",
-                str(backfill),
-                "--entropy-target-bury",
-                "0.2",
+                "seed.pt",
+                "--run-name",
+                "t",
+                "--panel",
+                "a.pt",
+                "--adaptive-entropy",
             ]
         )
-        from sheepshead.training.train_league_ppo import fresh_entropy_targets
-
-        targets = fresh_entropy_targets(args)
-        assert targets == {"pick": 0.046, "partner": 0.127, "bury": 0.2}
-        assert "play" not in targets  # bumpless
+        args.arch = "perceiver-shared-v2"  # normally set by preflight
+        orch = Orchestrator(args)
+        # _resume_for(2) globs for the gen-1 boundary checkpoint by name.
+        ckpt_dir = tmp_path / "runs" / "t" / "checkpoints"
+        ckpt_dir.mkdir(parents=True)
+        (ckpt_dir / "pfsp_perceiver-shared-v2_checkpoint_1000000.pt").touch()
+        gen1 = " ".join(orch.trainer_cmd(1, None))
+        gen2 = " ".join(orch.trainer_cmd(2, None))
+        assert "--entropy-mode" not in gen1
+        assert "--entropy-mode target" in gen2
+        assert "--entropy-play-floor 0.28" in gen2
 
 
 if __name__ == "__main__":

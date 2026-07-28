@@ -511,31 +511,17 @@ def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
 
 
 def fresh_entropy_targets(args) -> dict:
-    """Initial targets for a FRESH entropy controller (no sidecar yet).
-
-    Explicit --entropy-target-* flags win. --entropy-targets-from loads a
-    validated run's entropy_backfill.json suggested_targets for the HOLD
-    heads only (pick/partner/bury): they are stabilization setpoints and
-    the mature operating point is the validated good place to sit —
-    holding a seed's own transient levels would fight the organic early
-    sharpening the validated run exhibited. PLAY is deliberately never
-    loaded from the backfill: it stays bumpless at the seed's measured
-    operating point so the (historically collapse-critical) high-entropy
-    early phase is preserved and all play-target descent comes from the
-    orchestrator's evidence-driven plateau ladder."""
-    targets = {
+    """Initial targets for a FRESH entropy controller (no sidecar yet):
+    the explicit --entropy-target-* flags, if any. The default (empty) is
+    bumpless adoption of the first update's measurement — correct because
+    the orchestrator only enables target mode from generation 2, at a
+    settled operating point (seed-transient entropy levels are never
+    captured as targets; see run_extended_league.trainer_cmd)."""
+    return {
         h: v
         for h in ("pick", "partner", "bury", "play")
         if (v := getattr(args, f"entropy_target_{h}", None)) is not None
     }
-    targets_from = getattr(args, "entropy_targets_from", None)
-    if targets_from:
-        with open(targets_from) as f:
-            suggested = json.load(f)["derived"]["suggested_targets"]
-        for h in ("pick", "partner", "bury"):
-            if h not in targets and suggested.get(h) is not None:
-                targets[h] = float(suggested[h])
-    return targets
 
 
 def run_main_phase(
@@ -1081,16 +1067,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # schedule's entropy coefficients with the SAC-style target-entropy
     # controller (entropy_controller.py; the LR schedule keeps its clock).
     # Targets initialize bumplessly from the first update's measurement
-    # unless given explicitly (fresh runs: derive from a validated run's
-    # entropy_backfill.json). State persists in
-    # <checkpoint-dir>/entropy_controller.json; the orchestrator steps the
-    # play target there at flat generation boundaries.
+    # unless given explicitly. State persists in
+    # <checkpoint-dir>/entropy_controller.json. Normally set by the
+    # orchestrator (run_extended_league --adaptive-entropy, from gen 2):
+    # target mode WITHOUT the orchestrator's outer loop pins targets at
+    # their initial operating point forever and leaves the stop rule
+    # unamended — a hold-only experiment, not the adaptive program.
     ap.add_argument(
         "--entropy-mode",
         choices=("schedule", "target"),
         default="schedule",
         help="entropy coefficients: legacy clock schedule (default) or "
-        "target-entropy feedback control",
+        "target-entropy feedback control (normally enabled via the "
+        "orchestrator's --adaptive-entropy; standalone = hold-only)",
     )
     for _h in ("pick", "partner", "bury", "play"):
         ap.add_argument(
@@ -1106,22 +1095,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=0.28,
         help="play-head target floor (mixed-equilibrium reserve, ~37%% of "
         "the retention run's 1.8M operating point)",
-    )
-    # Fresh-from-seed recipe (2026-07-28 amendment): load HOLD-head targets
-    # (pick/partner/bury) from a validated run's entropy_backfill.json
-    # suggested_targets — they are stabilization setpoints, and the mature
-    # operating point is the validated "good place to sit" (holding a
-    # seed's own transient levels would fight the organic early sharpening
-    # the validated run exhibited). The PLAY target is deliberately NOT
-    # loaded: it stays bumpless at the seed's operating point so the
-    # validated high-entropy early phase is preserved and all descent comes
-    # from the evidence-driven plateau ladder. Explicit --entropy-target-*
-    # flags override individual heads.
-    ap.add_argument(
-        "--entropy-targets-from",
-        default=None,
-        help="path to an entropy_backfill.json; loads pick/partner/bury "
-        "targets from derived.suggested_targets (play stays bumpless)",
     )
     ap.add_argument(
         "--critic-mode",

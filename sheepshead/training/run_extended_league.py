@@ -418,7 +418,15 @@ class Orchestrator:
         ]
         if a.leaster_watchdog:
             cmd.append("--leaster-watchdog")
-        if a.adaptive_entropy:
+        # Adaptive entropy defers to generation 2: gen 1 runs the legacy
+        # schedule so the seed's entropy transients (organic hold-head
+        # sharpening, the high-entropy play phase across the historically
+        # collapse-critical league transition) play out exactly as in the
+        # validated retention run; the controller then attaches bumplessly
+        # at the gen-1 boundary's settled operating point. This makes the
+        # single flag correct for from-scratch runs (no target derivation
+        # needed) and for resuming mature runs alike.
+        if a.adaptive_entropy and g >= 2:
             cmd += [
                 "--entropy-mode",
                 "target",
