@@ -14,6 +14,11 @@
     --accent-2: #b58bff;
     --pulse: #fffa9e;
     --good: #80ed99;
+    /* Bottom edge of #ui-top and height of #legend, measured at runtime — the
+       top bar wraps to 2-3 rows on narrow windows, so the panels below it
+       cannot use fixed offsets. Fallbacks match the widest-window layout. */
+    --top-bottom: 56px;
+    --legend-h: 180px;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -83,12 +88,12 @@
   }
 
   #ui-side {
-    position: fixed; top: 70px; right: 14px; width: 340px;
+    position: fixed; top: calc(var(--top-bottom) + 12px); right: 14px; width: 340px;
     z-index: 20; pointer-events: none;
   }
   #info {
     pointer-events: auto;
-    max-height: calc(100vh - 90px);
+    max-height: calc(100vh - var(--top-bottom) - 26px);
     overflow: auto;
   }
   #info h2 { margin: 0 0 4px 0; font-size: 14px; }
@@ -116,9 +121,9 @@
   #status .progress > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0%; transition: width 0.4s; }
 
   #stage-nav {
-    position: fixed; top: 126px; left: 14px;
+    position: fixed; top: calc(var(--top-bottom) + 12px); left: 14px;
     z-index: 20; width: 232px;
-    max-height: calc(100vh - 300px);
+    max-height: max(120px, calc(100vh - var(--top-bottom) - var(--legend-h) - 52px));
     overflow: auto;
     display: flex; flex-direction: column; gap: 2px;
   }
@@ -3463,9 +3468,29 @@ renderer.domElement.addEventListener("click", (e) => {
 });
 
 // ============================================================
+// Panel layout: keep the side/nav panels clear of the wrapping top bar
+// ============================================================
+// #ui-top wraps to 2-3 rows as the window narrows and the legend grows/shrinks
+// with the network mode, so both offsets are measured rather than hardcoded.
+function syncPanelOffsets() {
+  const root = document.documentElement.style;
+  const top = document.getElementById("ui-top");
+  const legend = document.getElementById("legend");
+  if (top) root.setProperty("--top-bottom", `${Math.round(top.getBoundingClientRect().bottom)}px`);
+  if (legend) root.setProperty("--legend-h", `${Math.round(legend.getBoundingClientRect().height)}px`);
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(syncPanelOffsets);
+  ro.observe(document.getElementById("ui-top"));
+  ro.observe(document.getElementById("legend"));
+}
+syncPanelOffsets();
+
+// ============================================================
 // Resize + render loop
 // ============================================================
 window.addEventListener("resize", () => {
+  syncPanelOffsets();
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
