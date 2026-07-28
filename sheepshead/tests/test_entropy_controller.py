@@ -178,12 +178,27 @@ class TestWiring:
         assert on.entropy_target_pick is None
         assert on.entropy_play_floor == 0.28
 
-    def test_orchestrator_default_off(self):
+    def test_orchestrator_default_on_with_opt_out(self):
+        # Operator adoption 2026-07-28: adaptive entropy is the default
+        # orchestrator behavior (still deferred past generation 1);
+        # --no-adaptive-entropy restores the pure legacy schedule.
         from sheepshead.training.run_extended_league import parse_args
 
         args = parse_args(["--resume", "x.pt", "--run-name", "t", "--panel", "a.pt"])
-        assert args.adaptive_entropy is False
+        assert args.adaptive_entropy is True
         assert args.entropy_play_floor == 0.28
+        off = parse_args(
+            [
+                "--resume",
+                "x.pt",
+                "--run-name",
+                "t",
+                "--panel",
+                "a.pt",
+                "--no-adaptive-entropy",
+            ]
+        )
+        assert off.adaptive_entropy is False
 
     def test_adaptive_entropy_defers_to_generation_two(self, tmp_path, monkeypatch):
         """--adaptive-entropy leaves generation 1 on the legacy schedule

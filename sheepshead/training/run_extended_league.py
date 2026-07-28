@@ -20,10 +20,12 @@ warm start, deciding for itself when learning is complete. The full recipe
                   floor) confirmed by a fresh-deal panel (seed 20260706), or at
                   the max-generations budget cap (relaunch with a higher cap to
                   continue). A confirmation contradiction resumes training.
-                  Under --adaptive-entropy, a flat generation with entropy
-                  targets above floor is ABSORBED: it steps the play target
-                  down (entropy_controller.py) and resets the streak; flats
-                  count only once targets sit at floor.
+                  Adaptive entropy (default; --no-adaptive-entropy opts out):
+                  from gen 2 trainers run the target-entropy controller, and
+                  a flat generation with entropy targets above floor is
+                  ABSORBED — it steps the play target down
+                  (entropy_controller.py) and resets the streak; flats count
+                  only once targets sit at floor.
 
 The stopping rule measures learning completion only — it never compares
 against an external target. The architecture is read from the resume
@@ -993,15 +995,22 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--greedy-eval-interval", type=int, default=50_000)
     p.add_argument("--greedy-eval-games", type=int, default=200)
     p.add_argument("--schedule-horizon", type=int, default=20_000_000)
-    # Adaptive entropy (Phase 2, 2026-07-28): trainers run --entropy-mode
+    # Adaptive entropy (Phase 2, 2026-07-28; DEFAULT ON since 2026-07-28
+    # operator adoption): from generation 2, trainers run --entropy-mode
     # target (SAC-style controller, entropy_controller.py) and the stop rule
     # is amended — a flat generation first steps the play-head entropy
     # target toward its floor and RESETS the flat streak; flats only count
     # toward stopping once targets sit at floor. This removes the
     # converged-vs-entropy-limited confound: under the legacy 20M clock the
     # coefficients never anneal within a realistic 4-10M run, so a plateau
-    # could be a regularization ceiling rather than convergence.
-    p.add_argument("--adaptive-entropy", action="store_true")
+    # could be a regularization ceiling rather than convergence. Generation
+    # 1 always runs the legacy schedule (validated seed-transient phase);
+    # opt out entirely with --no-adaptive-entropy.
+    p.add_argument(
+        "--adaptive-entropy",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     p.add_argument(
         "--entropy-play-floor",
         type=float,
