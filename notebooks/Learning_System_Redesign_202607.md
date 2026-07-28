@@ -1797,3 +1797,38 @@ plateaus persist ⇒ LR becomes the next pre-registered lever (boundary
 halving w/ streak reset). Phase-1 analog shipped instead: approx_kl +
 lr_actor progress-CSV columns (append-only, ride the boundary restart);
 read a generation before any control decision.
+
+### Amendment: deferred activation replaces target importation
+### (2026-07-28, commit 5546cf7; supersedes the fresh-from-seed recipe
+### two sections up) + OPERATOR GO for gen-2→3 activation
+
+Operator adopted the adaptive-entropy program for the live run at the
+gen 2→3 boundary. While reviewing the activation CLI, the fresh-run
+recipe was simplified structurally: `--adaptive-entropy` now DEFERS to
+generation 2 — gen 1 always runs the legacy schedule, so the seed's
+entropy transients play out exactly as in the validated retention run
+(organic hold-head sharpening; high-entropy play window across the
+collapse-critical league transition), and the controller attaches
+bumplessly at the gen-1 boundary's settled operating point. This is
+precisely the program the live run followed de facto (gens 1–2 under
+schedule, bumpless switch-on at a boundary), promoted to the built-in
+behavior. Consequences:
+
+- Reproduction flow from scratch = selfplay seed → orchestrator with
+  ONE added flag (`--adaptive-entropy`). No seed probing, no backfill
+  importation, no target flags. `--entropy-targets-from` deleted (its
+  motivating problem is solved structurally); per-head
+  `--entropy-target-*` flags remain as expert overrides only.
+- Surface semantics: orchestrator `--adaptive-entropy` is the ONLY
+  activation switch (it injects `--entropy-mode target` +
+  `--entropy-play-floor` into trainer commands from gen 2). Trainer
+  `--entropy-mode target` standalone = hold-only experiment (inner loop,
+  no ladder, unamended stop rule) — documented as such in its help.
+
+**Activation plan (GO given):** at the gen-2 boundary, once the
+boundary evals complete (watcher b5eg076cx fires on "endpoint eval
+gen 2:"), kill and relaunch the orchestrator with `--adaptive-entropy`
+appended — before gen-3 training accumulates episodes under the
+schedule, so gen 3 is cleanly single-regime. Bumpless predictions as
+pre-registered: switch-on changes nothing measurable in gen 3; first
+target step only on a flat boundary verdict.
