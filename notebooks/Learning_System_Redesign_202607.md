@@ -1645,3 +1645,65 @@ convergence) applies to.
   cannot be entropy-limited via pick/partner (not binding), but can be
   via play. The plateau→step→reset-streak rule therefore applies to the
   play target.
+
+### Phase 2 controller: implemented + pre-registered hyperparameters
+### (2026-07-28, commits 3117ca9 + 73dfdbd; ACTIVATION AWAITS OPERATOR GO)
+
+Code: `training/entropy_controller.py` (inner loop + persistence),
+trainer `--entropy-mode target` (default `schedule` — live run untouched),
+orchestrator `--adaptive-entropy` (default off) with the stop-rule
+absorption amendment (flat + targets above floor ⇒ play-target step +
+streak reset, replay-idempotent via the generation record). Soft-band
+fraction (share of nodes with H_norm > 0.3) added to both instruments
+(`softband_*` CSV columns) as the boundary-band collapse canary the mean
+hides. Tests: test_entropy_controller.py (11) + extended
+test_entropy_telemetry.py (3); end-to-end absorb ladder verified against
+a real sidecar (5 steps 0.754→0.392, then at-floor flats stand).
+
+**The three controller hyperparameters, as derived from the backfill:**
+
+1. **Starting targets — bumpless, measured, not chosen.** On this run:
+   omit explicit targets; each head adopts its first live measurement at
+   switch-on (the controller's first act is to hold the status quo). For
+   a FRESH run seeded from this lineage: pass the backfill's 1.8M
+   operating point explicitly (`--entropy-target-pick 0.046 …-partner
+   0.127 …-bury 0.163 …-play 0.754`). α initialization is also bumpless
+   (adopts the legacy schedule's value at the current episode).
+
+2. **Inner gain η = 1.0 (log-space), |Δlog α| ≤ 0.1/update.** Derivation:
+   the plant timescale is the backfill's organic play drift (0.057
+   H_norm/gen ≈ 0.001/update); at η=1 a sustained error the size of one
+   outer step (~0.12) moves α ~12%/update ⇒ settles in ~10–20 of a
+   generation's ~61 updates — fast relative to the outer cadence, slow
+   relative to per-update noise (SE ≈ 0.002–0.004 at 16k rows ⇒ ~0.3%
+   α-jitter, two orders under the clamp). The gain is deliberately
+   uncritical: targets move rarely and α has a whole generation to
+   settle; the clamp bounds any transient.
+
+3. **Outer step — geometric, retain 0.75, min_step 0.03, play only.**
+   `target ← floor + 0.75·(target − floor)`; first step 0.754 → 0.635
+   (Δ≈0.12 ≈ 2× organic drift ⇒ distinguishable from the null; PBT-scale
+   perturbation). At most one step per boundary, only on a flat h2h,
+   monotone (watchdog is the sole upward force). min_step 0.03 (probe
+   checkpoint-to-checkpoint noise ±0.02, rounded up) ends the ladder
+   after 5 steps at ~0.39 — HONEST NOTE: the effective terminal target is
+   ~0.39, not the nominal 0.28 floor; steps below noise are not worth a
+   1M-episode generation each. If post-ladder evidence favors going
+   lower, lowering min_step late is a one-line pre-registered amendment.
+   Floors: play 0.28 (mixed-equilibrium reserve; least-data-grounded
+   number, protected by per-step h2h gates), hold heads floor-at-target.
+
+**Coefficient bounds:** α ∈ [legacy end, 4× legacy start] per head — the
+legacy schedule's "small, not zero" endpoint becomes the hard floor;
+the cap leaves collapse-fighting headroom without runaway.
+
+**Activation plan (pre-registered, NOT yet executed):** relaunch the
+orchestrator with `--adaptive-entropy` at the gen-2 boundary (rides the
+same restart that activates the ent_norm/softband live columns).
+Prediction to falsify: switch-on changes nothing measurable in gen 3
+(bumpless); the first target step happens only after a flat boundary
+verdict, and if the entropy-limited hypothesis is right, post-step
+generations claw back CI-positive h2h until the ladder floors. Guards
+unchanged: watchdog, greedy gates, B2 bounds, soft-band canary
+(pick softband collapse ⇒ operator review — the hold target protects
+the boundary band, this verifies it).
