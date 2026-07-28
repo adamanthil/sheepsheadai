@@ -121,6 +121,15 @@ class UpdateTargets(NamedTuple):
     value_target_stats: dict
 
 
+# Soft-band threshold for the normalized-entropy telemetry: a node with
+# H/ln(n_legal) above this is counted as genuinely mixed. The per-head
+# soft-band FRACTION tracks whether the decision-boundary band is alive —
+# per-head mean H_norm hides it in a tail (backfill 2026-07-28: pick median
+# ~0.0001, mean ~0.05, all mass in the softest decile). Shared by the live
+# update telemetry and analysis/entropy_probe.py.
+SOFTBAND_HNORM = 0.3
+
+
 class _UpdateEpochAccumulator:
     """Mutable scalar accumulator for PPOAgent._run_update_epochs /
     _update_minibatch: gathered across the epoch/minibatch loop and
@@ -146,6 +155,11 @@ class _UpdateEpochAccumulator:
         # summed per head, over first-epoch rows with >=2 legal actions.
         self.ent_norm_sums = {"pick": 0.0, "partner": 0.0, "bury": 0.0, "play": 0.0}
         self.ent_norm_rows = {"pick": 0, "partner": 0, "bury": 0, "play": 0}
+        # ...and the soft-band row counts (H_norm > SOFTBAND_HNORM): the mean
+        # hides boundary structure in a tail (pick median ~0.0001 vs mean
+        # ~0.05), so the fraction of genuinely-mixed nodes is the collapse
+        # canary for the decision-boundary band.
+        self.ent_soft_rows = {"pick": 0, "partner": 0, "bury": 0, "play": 0}
         self.value_loss_sum = 0.0
         self.value_loss_count = 0
         self.oracle_loss_sum = 0.0
@@ -1720,6 +1734,9 @@ class PPOAgent:
                     if n:
                         acc.ent_norm_sums[head] += float(h_norm[sel].sum().item())
                         acc.ent_norm_rows[head] += n
+                        acc.ent_soft_rows[head] += int(
+                            (h_norm[sel] > SOFTBAND_HNORM).sum().item()
+                        )
 
         # Auxiliary losses (skipped entirely for no-aux architecture
         # variants: the placeholder logits carry no gradients, so the
@@ -2281,6 +2298,16 @@ class PPOAgent:
                 for head in ("pick", "partner", "bury", "play")
             },
             "head_entropy_norm_rows": dict(acc.ent_norm_rows),
+            # Fraction of eligible nodes with H_norm > SOFTBAND_HNORM: the
+            # decision-boundary-band health gauge (see constant docstring).
+            "head_softband": {
+                head: (
+                    (acc.ent_soft_rows[head] / acc.ent_norm_rows[head])
+                    if acc.ent_norm_rows[head] > 0
+                    else None
+                )
+                for head in ("pick", "partner", "bury", "play")
+            },
             "pick_pass_adv": {
                 "pick_mean": (acc.pick_adv_sum / acc.pick_adv_count)
                 if acc.pick_adv_count > 0

@@ -51,6 +51,7 @@ from typing import Dict
 import numpy as np
 
 from sheepshead import Game
+from sheepshead.agent.ppo import SOFTBAND_HNORM
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 PROBE_SEED = 20260728
@@ -76,13 +77,23 @@ def _ensure_head_index_sets(agent) -> None:
 
 def _summary(vals: list) -> Dict:
     if not vals:
-        return {"mean": None, "median": None, "p10": None, "p90": None, "rows": 0}
+        return {
+            "mean": None,
+            "median": None,
+            "p10": None,
+            "p90": None,
+            "softband": None,
+            "rows": 0,
+        }
     arr = np.asarray(vals, dtype=np.float64)
     return {
         "mean": float(arr.mean()),
         "median": float(np.median(arr)),
         "p10": float(np.percentile(arr, 10)),
         "p90": float(np.percentile(arr, 90)),
+        # Fraction of nodes above the shared soft-band threshold: the
+        # decision-boundary-band gauge (mean hides band structure in a tail).
+        "softband": float((arr > SOFTBAND_HNORM).mean()),
         "rows": int(arr.size),
     }
 

@@ -65,6 +65,15 @@ def test_update_stats_report_normalized_head_entropy():
     _assert_valid_norm_stats(
         stats["head_entropy_norm"], stats["head_entropy_norm_rows"]
     )
+    # Soft-band fractions: defined exactly when the mean is, bounded, and a
+    # fresh near-uniform policy has essentially every play node mixed.
+    soft = stats["head_softband"]
+    for head in HEADS:
+        if stats["head_entropy_norm"][head] is None:
+            assert soft[head] is None
+        else:
+            assert 0.0 <= soft[head] <= 1.0
+    assert soft["play"] > 0.5
 
 
 def test_measurement_is_first_epoch_only(monkeypatch):
@@ -117,6 +126,11 @@ def test_probe_bounds_determinism_and_no_side_effects():
                 f"{head}: {s1['mean']} vs {s2['mean']}"
             )
     assert res1["heads"]["play"]["rows"] >= 30  # the comparison is non-vacuous
+    for head in HEADS:
+        sb = res1["heads"][head]["softband"]
+        if res1["heads"][head]["rows"] > 0:
+            assert 0.0 <= sb <= 1.0
+    assert res1["heads"]["play"]["softband"] > 0.5  # fresh policy: band alive
     assert random.getstate() == rng_before  # global RNG restored
     hnorm = {h: res1["heads"][h]["mean"] for h in HEADS}
     rows = {h: res1["heads"][h]["rows"] for h in HEADS}

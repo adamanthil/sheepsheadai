@@ -113,6 +113,13 @@ PROGRESS_CSV_HEADER = [
     "ent_norm_partner",
     "ent_norm_bury",
     "ent_norm_play",
+    # Soft-band fractions (share of eligible nodes with H_norm > 0.3, see
+    # ppo.SOFTBAND_HNORM): boundary-band health per head — the mean H_norm
+    # hides band collapse in a tail.
+    "softband_pick",
+    "softband_partner",
+    "softband_bury",
+    "softband_play",
 ]
 
 # greedy_health.csv schema (append-only; migrated on resume like the
@@ -649,6 +656,7 @@ def run_main_phase(
                         else ""
                     )
                     hnorm = stats.get("head_entropy_norm") or {}
+                    hsoft = stats.get("head_softband") or {}
 
                     def _hn(head):
                         v = hnorm.get(head)
@@ -713,6 +721,12 @@ def run_main_phase(
                                 *[
                                     f"{hnorm[head]:.4f}"
                                     if hnorm.get(head) is not None
+                                    else ""
+                                    for head in ("pick", "partner", "bury", "play")
+                                ],
+                                *[
+                                    f"{hsoft[head]:.4f}"
+                                    if hsoft.get(head) is not None
                                     else ""
                                     for head in ("pick", "partner", "bury", "play")
                                 ],
