@@ -1498,3 +1498,96 @@ lane with the mechanism identified.
   old code (EMA fields dormant).
 - The live gen-3 extended-league run is unaffected until a decision is made
   about it; no mid-run changes.
+
+## Adaptive entropy, Phase 1: instrumentation + backfill (2026-07-28,
+## operator-directed)
+
+**Motivation.** The run trains under `--schedule-horizon 20_000_000`, a
+value calibrated for the docstring's 6×5M regime. This run is 1M-episode
+generations with auto-stop (min 4 gens; realistic total 4–10M), so the
+linear entropy decay never leaves its high region: at 1.78M the pick
+coefficient sits at 0.046 (92% of start) and even at 10M it would be 0.028
+vs the 0.005 end value. Two consequences: (1) the entropy bonus biases
+learned optima toward Boltzmann-flat wherever Q-gaps are small — pick is
+exactly such a head (greedy pick 42–45% vs the operator's ~30% optimum);
+(2) the flat-streak stop rule cannot distinguish "converged" from
+"entropy-limited", so the orchestrator could read a regularization ceiling
+as convergence and halt early. Operator has no fixed budget; wants the
+highest-quality model, with convergence driven by data rather than a
+clock.
+
+**Adopted design (operator-approved): SAC-style target-entropy control
+(inner loop) + plateau-gated target decay (outer loop).**
+
+- Inner: per-head coefficient becomes a feedback controller holding
+  measured normalized entropy at a target (Haarnoja et al.,
+  arXiv:1812.05905 §5; discrete form Christodoulou, arXiv:1910.07207 —
+  targets as fraction of max entropy). Coefficient floors + leaster
+  watchdog stay as collapse insurance (the watchdog is already a bang-bang
+  controller in the upward direction).
+- Outer: targets step down only at generation boundaries and only on a
+  flat h2h verdict (CI-positive ⇒ hold). A flat generation triggers a step
+  and RESETS the stop-rule streak; flatness only counts toward stopping
+  once targets sit at floor. This removes the converged-vs-entropy-limited
+  confound from the stop rule.
+- Alternatives surveyed and rejected for this program: meta-gradient
+  self-tuning (Xu et al. arXiv:1805.09801; Zahavy et al. STACX
+  arXiv:2002.12928) — most principled single-run option but requires
+  differentiating through the update on a freshly-validated recurrent PPO
+  path; PBT/PB2 (Jaderberg et al. arXiv:1711.09846; Parker-Holder et al.
+  arXiv:2002.02518) — population cost infeasible on one workstation;
+  KL-to-prior in place of entropy (AlphaStar, Vinyals et al. 2019,
+  doi:10.1038/s41586-019-1724-z) — held as node-selective contingency
+  only, since the retention run validated anchor-free training.
+- Entropy is annealed to a small floor, never zero: imperfect-info
+  equilibria are genuinely mixed and entropy regularization has
+  convergence support there (Sokota et al., arXiv:2206.05825 magnetic
+  mirror descent; quantal-response/regularized equilibria). End-values of
+  the legacy schedule (0.001–0.005) already encode this.
+
+**Phase 1 (this entry): pure instrumentation, zero behavior change.**
+Committed 2e60bc3 + 38824e8 + 2945ad6:
+
+- Measurement: per-node policy entropy over the LEGAL action set,
+  normalized by ln(n_legal), per head; forced moves (n_legal=1) excluded.
+- Live half: measured at θ_old (first-epoch minibatches; under grad-accum
+  no optimizer step lands inside epoch one) in `_update_minibatch`;
+  `stats["head_entropy_norm"]`; progress-CSV columns
+  `ent_norm_pick/partner/bury/play` (append-only; ensure_csv_columns
+  migrates); "Hn" field on the update log line. Goes live on the next
+  orchestrator restart (gen-2 boundary).
+- Offline half: `analysis/entropy_probe.py` (sampled self-play — the
+  on-policy distribution, unlike the argmax greedy probe — CRN deal panel,
+  side-effect-free) + `analysis/entropy_backfill.py` (checkpoint sweep →
+  trajectory + derived quantities + per-row scheduled coefficients for the
+  coefficient-vs-measured comparison). Tests:
+  `tests/test_entropy_telemetry.py` (bounds, first-epoch-only wiring,
+  probe reproducibility/side-effect freedom).
+
+**Phase 2 target/step derivation rules (pre-registered in principle;
+numbers to be fixed from the backfill before any pre-registration of the
+controller itself):**
+
+- Starting targets: bumpless — the measured per-head H_norm at switch-on
+  (for a fresh run: the backfill's final-checkpoint values from THIS run,
+  the most successful in the program; Åström & Wittenmark, *Adaptive
+  Control* 2e 1995 ch. 9).
+- Step: geometric on the gap to floor, `target ← floor + 0.75·(target −
+  floor)`, at most one step per generation boundary, monotone ratchet
+  (watchdog is the only upward force). Magnitude anchored by PBT's
+  0.8/1.2× perturbations and bounded below by (a) h2h detectability
+  (±0.013 SE) and (b) the organic per-generation drift the backfill
+  measures; bounded above by distance-to-collapse (backfill of collapse-era
+  checkpoints if available) and the ecology-churn tolerance already
+  demonstrated at boundaries.
+- Floors: pick from measured collapse margin; play reflecting
+  mixed-equilibrium optimality (~30–40% of current), both to be fixed from
+  backfill data.
+
+**Backfill running** (bg bi2owp3vy): seed400k_a + 36 checkpoints
+(50k→1.8M), 200 games each, seed 20260728 →
+`runs/league_retention_pg/entropy_backfill.json`. First reading (50k, 10
+games, smoke): pick Hn 0.16, partner 0.09, bury 0.28, play 0.82 — pick is
+already far sharper per-node than the aggregate 43% pick rate suggests;
+the play head carries most of the sampled stochasticity. Full-trajectory
+readout to be appended below.
