@@ -1770,3 +1770,30 @@ the play-target ladder has real room before the band thins. Canary
 thresholds (informal, operator review if breached sustained over ≥3
 probes): pick softband < 0.03; play softband < 0.5 while the ladder is
 above floor.
+
+### LR: assessment + diagnostics only (2026-07-28, commit 236d0b0)
+
+Question: should LR also be adaptive? Facts: actor+critic LR still ride
+the 20M clock (1.5e-4 → 5e-5; ~1.41e-4 now, ending a realistic 4–10M
+run at 1.3–1.0e-4 — i.e. nearly flat, which under Adam + PPO clip is a
+defensible default; Andrychowicz et al. arXiv:2006.05990 rate LR decay
+helpful but modest). The entropy controller deliberately left LR
+untouched. approx_kl is computed every update but was never logged;
+target_kl is None (the early-stop is dormant) — there is NO trust-region
+feedback and NO recorded evidence that LR is mis-set.
+
+Verdict: the justified adaptive scheme, when evidence supports one, is
+KL-targeted LR (banded feedback holding per-update approx KL near a
+target — rl_games/IsaacGym practice, kin of Schulman's adaptive-KL
+PPO), the structural analog of the entropy controller; GNS (already
+logged) is the complementary instrument (McCandlish eps_opt =
+eps_max/(1+B_noise/B): B_noise growth across generations = measured
+case for decay). NOT adopted now: (1) the evidence bar the entropy
+change met — a measured clock-binds mismatch — is unmet for LR; the
+lineage-best run climbs under effectively-flat LR; (2) the flat-boundary
+signal must stay single-lever while the entropy activation's
+predictions are being tested. Sequencing: entropy ladder → floor →
+plateaus persist ⇒ LR becomes the next pre-registered lever (boundary
+halving w/ streak reset). Phase-1 analog shipped instead: approx_kl +
+lr_actor progress-CSV columns (append-only, ride the boundary restart);
+read a generation before any control decision.
