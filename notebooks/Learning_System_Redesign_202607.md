@@ -1870,3 +1870,17 @@ league-trainer branching:
 The validated retention-run trainer invocation is unaffected (it passed
 neither flag). Tests: full-table sampling tests removed with the branch;
 per-seat mixing test retained (test_per_seat_exploiter_mixing).
+
+### Amendment: --table-self-play also STRIPPED (2026-07-28, operator —
+### this was the arg originally meant by "self-play-share")
+
+Removed outright: the trainer CLI flag, LeagueConfig.table_self_play_prob,
+and League._sample_table_level (the Phase-A-era table-level composition:
+pure-self tables with probability p, else uniform recency window, no
+PFSP/EMA weighting, exploiters audit-only). It was the p_self_table 0.65
+machinery of the failed Phase A design, kept after the revert as a knob;
+with the historical league-path bugs fixed and the per-seat pfsp mixture
+validated by the retention run, the alternative composition regime is
+dead code. League.sample_table now has exactly one sampling mode. The
+TestTableLevelSampling class went with it; per-seat mixing +
+exploit-patched retirement tests remain (TestExploiterSeating).

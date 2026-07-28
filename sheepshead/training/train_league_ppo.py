@@ -1114,15 +1114,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "stratified-EV gate shows trustworthy mid-game values.",
     )
     ap.add_argument(
-        "--table-self-play",
-        type=float,
-        default=None,
-        help="Learning_System_Redesign_202607 table composition: probability "
-        "a table is ALL frozen current-self; remainder drawn uniformly from "
-        "the recency window + HOF floor (default: historical per-seat "
-        "PFSP/self/exploiter sampling)",
-    )
-    ap.add_argument(
         "--exploiter-patched-ema",
         type=float,
         default=0.35,
@@ -1247,12 +1238,6 @@ def main():
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     league_config = LeagueConfig()
-    if args.table_self_play is not None:
-        league_config.table_self_play_prob = args.table_self_play
-        print(
-            f"🎲 Table-level composition ON: {args.table_self_play:.0%} pure-self "
-            "tables, remainder uniform window (PFSP/EMA/exploiter seating off)"
-        )
     if args.exploiter_patched_ema is not None:
         league_config.exploiter_patched_ema = args.exploiter_patched_ema
         print(

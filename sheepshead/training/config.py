@@ -166,9 +166,3 @@ class LeagueConfig:
     # floor after the hero adapts. None = disabled (historical behavior).
     exploiter_patched_ema: float | None = None
     exploiter_patched_min_samples: int = 200
-    # Learning_System_Redesign_202607 table composition: when set, replaces the
-    # per-seat PFSP/self-play/exploiter mixture entirely — with this
-    # probability a table is ALL frozen current-self; otherwise all four seats
-    # are drawn uniformly from past_mains+HOF (hof_floor_prob floor kept, no
-    # PFSP/EMA weighting, exploiters not seated). None = historical sampling.
-    table_self_play_prob: float | None = None
