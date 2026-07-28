@@ -5,6 +5,9 @@
 #   Python (*.py)                 ruff format --check + ruff check
 #   Frontend (app/web/*.ts,tsx…)  eslint
 #
+# Import order is part of `ruff check`, not of `ruff format`: it is the isort
+# rule set (`I`), enabled in pyproject.toml, and reported as I001.
+#
 # Enable once per clone (hooks are not installed by `git clone`):
 #
 #     git config core.hooksPath .githooks

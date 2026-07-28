@@ -179,6 +179,18 @@ format + server tests against Postgres + schema drift), `training` (ruff
 lint + format over the package + the full training suite), and `web`
 (typecheck/lint/prettier/build + generated-type drift).
 
+Python formatting is ruff. `ruff format` does the layout; import order is a
+separate concern it deliberately leaves alone, so isort (`I`) is enabled under
+`[tool.ruff.lint]` in `pyproject.toml` and rides along on the lint pass —
+`ruff check` reports unsorted imports as I001 and `ruff check --fix` sorts
+them. `sheepshead` and `server` are declared first-party there, since the
+latter is rooted at `app/` and cannot be inferred:
+
+```bash
+uv run ruff format .        # layout
+uv run ruff check --fix .   # lint + import order
+```
+
 Frontend formatting is prettier, scoped to `app/web` TypeScript and
 JavaScript (`npm run format` to fix, `npm run format:check` to verify).
 `lib/api.gen.ts` is excluded because `npm run gen:api` regenerates it in

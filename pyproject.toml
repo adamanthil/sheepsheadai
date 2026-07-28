@@ -44,6 +44,19 @@ dev = [
     "httpx>=0.28",
 ]
 
+# Ruff's default rule set (E4/E7/E9 + F) plus `I` -- isort. `ruff format` does
+# not touch import order, so import sorting rides on the lint pass instead:
+# `ruff check` flags it (I001) and `ruff check --fix` rewrites it. That is what
+# both CI and .githooks/pre-commit already run, so neither needed a new step.
+[tool.ruff.lint]
+extend-select = ["I"]
+
+# `server` is rooted at app/, not at the project root, so ruff cannot infer it
+# as first-party the way it does `sheepshead`. Name both explicitly to keep
+# server imports out of the third-party block.
+[tool.ruff.lint.isort]
+known-first-party = ["sheepshead", "server"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
