@@ -104,6 +104,15 @@ PROGRESS_CSV_HEADER = [
     "lead_adv_mean",
     "lead_adv_std",
     "lead_trump_mass",
+    # Adaptive-entropy Phase 1 (2026-07-28): theta_old per-node H/ln(n_legal)
+    # means per head (forced moves excluded). Instrumentation for a future
+    # SAC-style target-entropy controller (Haarnoja et al., arXiv:1812.05905;
+    # discrete: Christodoulou, arXiv:1910.07207) with bumpless initialization
+    # from measured values.
+    "ent_norm_pick",
+    "ent_norm_partner",
+    "ent_norm_bury",
+    "ent_norm_play",
 ]
 
 # greedy_health.csv schema (append-only; migrated on resume like the
@@ -639,6 +648,18 @@ def run_main_phase(
                         if ostats
                         else ""
                     )
+                    hnorm = stats.get("head_entropy_norm") or {}
+
+                    def _hn(head):
+                        v = hnorm.get(head)
+                        return f"{v:.2f}" if v is not None else "-"
+
+                    hnorm_str = (
+                        f" | Hn {_hn('pick')}/{_hn('partner')}/"
+                        f"{_hn('bury')}/{_hn('play')}"
+                        if hnorm
+                        else ""
+                    )
                     print(
                         f"Ep {episode:,} | picker_avg {picker_avg:+.2f} | "
                         f"pick {100 * np.mean(pick_window):.0f}% | "
@@ -646,7 +667,7 @@ def run_main_phase(
                         f"x-share {league.exploiter_share():.2f} | "
                         f"advσ all/pick/play "
                         f"{adv_std_all:.3f}/{adv_std_pick:.3f}/{adv_std_play:.3f} | "
-                        f"{eps_s:.1f} eps/s{anchor_str}{oracle_str}",
+                        f"{eps_s:.1f} eps/s{anchor_str}{oracle_str}{hnorm_str}",
                         flush=True,
                     )
                     gns = stats.get("gns") or {}
@@ -689,6 +710,12 @@ def run_main_phase(
                                 f"{gns['lead_trump_mass']:.4f}"
                                 if "lead_trump_mass" in gns
                                 else "",
+                                *[
+                                    f"{hnorm[head]:.4f}"
+                                    if hnorm.get(head) is not None
+                                    else ""
+                                    for head in ("pick", "partner", "bury", "play")
+                                ],
                             ]
                         )
 

@@ -142,6 +142,10 @@ class _UpdateEpochAccumulator:
         self.ent_bury_sum = 0.0
         self.ent_play_sum = 0.0
         self.ent_batches = 0
+        # Normalized-entropy telemetry (theta_old): per-node H/ln(n_legal)
+        # summed per head, over first-epoch rows with >=2 legal actions.
+        self.ent_norm_sums = {"pick": 0.0, "partner": 0.0, "bury": 0.0, "play": 0.0}
+        self.ent_norm_rows = {"pick": 0, "partner": 0, "bury": 0, "play": 0}
         self.value_loss_sum = 0.0
         self.value_loss_count = 0
         self.oracle_loss_sum = 0.0
@@ -1585,6 +1589,7 @@ class PPOAgent:
         acc,
         defer_step=False,
         loss_scale=1.0,
+        measure_norm_entropy=False,
     ):
         """Per-minibatch body of the stage-(b) epoch loop in
         _run_update_epochs: losses, then backward + grad clip + optimizer
@@ -1673,6 +1678,48 @@ class PPOAgent:
         acc.ent_bury_sum += bury_entropy.detach().item()
         acc.ent_play_sum += play_entropy.detach().item()
         acc.ent_batches += 1
+
+        # Normalized-entropy telemetry (adaptive-entropy Phase 1): per-node
+        # policy entropy over the LEGAL action set, normalized by its maximum
+        # ln(n_legal), grouped by the acting head. Measured only on the FIRST
+        # epoch (theta_old — the behavior policy), so the reading matches what
+        # an offline probe of the last checkpoint measures and can seed a
+        # target-entropy controller "bumplessly" (initialize the setpoint at
+        # the measured operating point; Astrom & Wittenmark, Adaptive Control,
+        # 2nd ed. 1995). Controlling measured entropy against a target rather
+        # than hand-scheduling the coefficient follows SAC's automatic
+        # temperature adjustment (Haarnoja et al., arXiv:1812.05905; discrete
+        # form Christodoulou, arXiv:1910.07207, where targets are naturally
+        # expressed as a fraction of max entropy). Forced moves
+        # (n_legal == 1) are excluded: their H/H_max is 0/0.
+        if measure_norm_entropy:
+            with torch.no_grad():
+                masks_flat = minibatch.masks_bt.view(-1, minibatch.masks_bt.size(-1))[
+                    minibatch.is_action_bt.view(-1)
+                ]
+                n_legal = masks_flat.sum(dim=1).float()
+                p = F.softmax(flat.logits_flat, dim=-1) * masks_flat.float()
+                h = -(p * torch.log(p.clamp(min=1e-12))).sum(dim=1)
+                eligible = n_legal >= 2
+                h_norm = torch.zeros_like(h)
+                h_norm[eligible] = h[eligible] / torch.log(n_legal[eligible])
+                is_pick_row = torch.isin(flat.actions_flat, pick_idx_tensor_static)
+                is_partner_row = torch.isin(
+                    flat.actions_flat, partner_idx_tensor_static
+                )
+                is_bury_row = torch.isin(flat.actions_flat, bury_idx_tensor_static)
+                head_rows = {
+                    "pick": is_pick_row,
+                    "partner": is_partner_row,
+                    "bury": is_bury_row,
+                    "play": ~(is_pick_row | is_partner_row | is_bury_row),
+                }
+                for head, rows in head_rows.items():
+                    sel = rows & eligible
+                    n = int(sel.sum().item())
+                    if n:
+                        acc.ent_norm_sums[head] += float(h_norm[sel].sum().item())
+                        acc.ent_norm_rows[head] += n
 
         # Auxiliary losses (skipped entirely for no-aux architecture
         # variants: the placeholder logits carry no gradients, so the
@@ -1854,7 +1901,7 @@ class PPOAgent:
 
         total_rows = sum(1 for k in kinds if k == "action")
 
-        for _ in range(epochs):
+        for epoch_idx in range(epochs):
             if not segments:
                 break
             perm = torch.randperm(len(segments))
@@ -1899,6 +1946,7 @@ class PPOAgent:
                     acc,
                     defer_step=grad_accum,
                     loss_scale=(mb_rows / max(total_rows, 1)) if grad_accum else 1.0,
+                    measure_norm_entropy=(epoch_idx == 0),
                 )
                 stepped_any = True
 
@@ -2221,6 +2269,18 @@ class PPOAgent:
                 if acc.ent_batches > 0
                 else 0.0,
             },
+            # theta_old per-node H/ln(n_legal) means (None when a head had no
+            # multi-legal rows this buffer); row-weighted, first epoch only —
+            # see the measurement block in _update_minibatch.
+            "head_entropy_norm": {
+                head: (
+                    (acc.ent_norm_sums[head] / acc.ent_norm_rows[head])
+                    if acc.ent_norm_rows[head] > 0
+                    else None
+                )
+                for head in ("pick", "partner", "bury", "play")
+            },
+            "head_entropy_norm_rows": dict(acc.ent_norm_rows),
             "pick_pass_adv": {
                 "pick_mean": (acc.pick_adv_sum / acc.pick_adv_count)
                 if acc.pick_adv_count > 0
