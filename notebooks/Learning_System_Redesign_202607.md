@@ -1,28 +1,97 @@
-# Learning System Redesign — pre-registration (July 2026)
+# Learning System Redesign — program notebook (July 2026)
 
-**Status (2026-07-20): design adopted by operator; validation phases not yet
-run.** Successor to the extended-league design
+Successor to the extended-league design
 ([Extended_League_202607.md](Extended_League_202607.md)) incorporating the
 convention-erosion findings
-([Convention_Erosion_202607.md](Convention_Erosion_202607.md)). Recorded
-before any implementation or validation runs.
+([Convention_Erosion_202607.md](Convention_Erosion_202607.md)).
 
-## Operator decisions (2026-07-20)
+> **Restructure note (2026-07-28):** reorganized from the original
+> chronological append-only form into the program-arc structure below, for
+> readability. No findings, numbers, dates, commits, or pre-registration
+> terms were altered; superseded intermediate designs are condensed with
+> their reasoning kept. The original chronological form — including the
+> as-written pre-registration entries — is preserved verbatim in git
+> history (through commit a4a40c9).
+
+## 0. Current status (2026-07-28)
+
+**Live run:** `runs/league_retention_pg` — retention-first pure-PG league
+(§7), gen 2 of ≥4, the healthiest run in the lineage: partner trump-lead
+convention SHARPENED to the 84–98% band (every prior league arm lost it in
+the first 50k), 500k h2h vs its own seed **+0.089 ± 0.014** (first real
+league lift in the lineage), gen-1 panel verdict CI-positive.
+
+**Root-cause context:** two league-path training bugs (braided storage +
+last-actor-only terminal rewards, §6) were found and fixed 2026-07-24/25.
+They retroactively explain the chronic ev_limited ≈ 0 disease, confound
+the Phase-A fail (§3) and the historical "league lift ≈ zero" finding, and
+are the reason this run behaves differently from everything before it.
+
+**Next actions (armed):**
+- **Gen-2→3 boundary activation (operator GO):** when watcher b5eg076cx
+  fires on "endpoint eval gen 2:", kill and relaunch the orchestrator
+  BEFORE gen-3 episodes accumulate. The plain relaunch activates the
+  adaptive-entropy program by default (§8.6); live entropy/KL telemetry
+  columns ride the same restart. Pre-registered prediction: bumpless
+  switch-on changes nothing measurable in gen 3; first play-target step
+  only on a flat boundary verdict.
+- At that boundary, read: gen-2 endpoint eval + h2h + stop verdict,
+  exploiter gate (first potential per-seat pressure test under the §7.7
+  seating amendment), B2 reading at 2M, C2 trajectory (§7.9).
+- Standing watch items and armed contingencies: appendix A.
+
+## 1. Program timeline
+
+| Date (2026) | Event | Outcome | § |
+|---|---|---|---|
+| 07-20 | Program pre-registered; design adopted by operator | — | 2 |
+| 07-21 | Phase A attempt 1 | Collapsed ~50k (entropy-scale bug + missing anchor) | 3.1 |
+| 07-21 | Phase A attempt 2 | A1 FAIL, A2 FAIL (−0.300); stop for review | 3.2–3.3 |
+| 07-21 | Decision-weighting reverted (af9614a); bake-off commissioned | — | 3.4 |
+| 07-21 | Offline oracle bake-off (shared vs per-phase experts) | Outcome (ii): transfer beats routing; search lane moves up | 4.1 |
+| 07-21 | Batch+λ SNR arm launched (`runs/league_snr_batchlam`) | — | 5 |
+| 07-22 | OOM at ~240k | Root-caused; grad-accum fix | 5.3 |
+| 07-23 | Batch arm 500k kill probe | PASS (−0.068, lineage-normal) | 5.4 |
+| 07-24 | Oracle representation probe; aux-head offline test | Primary null; secret-partner +0.064; amendment candidate | 4.2–4.3 |
+| 07-24 | External reviews 1–3; outcome map amended | Batch ≠ acquisition lever; acquisition-vs-retention frame | 5.5 |
+| 07-24 | Batch-arm decay curve | Pinned at WRONG equilibrium; B2 unreachable in-run | 5.6 |
+| 07-24 | Retention-first run pre-registered + launched | — | 7 |
+| 07-24 | **Braided-storage bug** found + fixed (ea1914d) | Reinterprets the whole league lineage | 6.1 |
+| 07-25 | **Terminal-reward attachment bug** found + fixed (45570ff) | Completes the bug pair | 6.2 |
+| 07-25 | Retention relaunch with both fixes | Pretrained oracle expresses from update 1 | 7.3 |
+| 07-25 | λ-sweep probe; λ policy amendment | λ stays 0.95; node-selective λ 0.5–0.7 armed as contingency | 7.5 |
+| 07-25 | 50k/100k retention gates | BOTH PASSED — falsification window survived | 7.6 |
+| 07-25 | 500k kill probe | +0.0885 ± 0.0139 — kill rule INVERTED | 7.6 |
+| 07-26 | Gen-1 exploiter gate | FAILED (exploiter loses; main not PPO-exploitable) | 7.7 |
+| 07-26 | Gen-1 boundary + per-seat seating amendment applied | Panel +0.043 CI>0; h2h +0.078; continue | 7.8 |
+| 07-27 | Retention config adopted as trainer/orchestrator defaults (51a81ac); C2 baseline | — | 7.9 |
+| 07-28 | Adaptive entropy Phase 1 + backfill | Entropy-inflated-pick hypothesis REFUTED; play = only binding head | 8.3–8.4 |
+| 07-28 | Adaptive entropy Phase 2 controller; operator GO; default-on | Activation rides gen-2→3 relaunch | 8.5–8.8 |
+| 07-28 | Legacy args stripped (exploiter-full-table, self-play-share, table-self-play) | `sample_table` single-mode | 9 |
+
+## 2. Original pre-registration (2026-07-20)
+
+Recorded before any implementation or validation runs; design adopted by
+operator.
+
+### 2.1 Operator decisions
 
 1. **No selective distillation in v1.** Pure policy-gradient with noise
-   reduction, testing whether improved SNR alone lets the policy distinguish
-   partner vs defender lead strategy. The search-teacher lane (τ=0.5, top@Q,
-   offline budget, ESS gates — June-validated components) is held as a
-   **contingency** with an explicit trigger (§Contingency).
+   reduction, testing whether improved SNR alone lets the policy
+   distinguish partner vs defender lead strategy. The search-teacher lane
+   (τ=0.5, top@Q, offline budget, ESS gates — June-validated components)
+   is held as a **contingency** with an explicit trigger (§2.5).
 2. **High table-level self-play share: 50–80%** (OpenAI-Five-flavored).
    Rationale: the studied conventions turned out ecology-invariant, but
    collaboration-dependent strategies (defender coordination, ALONE play)
    need consistent partners; the remainder keeps league diversity for
-   state-space coverage.
+   state-space coverage. *(Retrospective: this mechanism was Phase A's
+   `p_self_table`; reverted after Phase A and stripped from the codebase
+   2026-07-28, §9.)*
 3. Terminal-only reward stays (unchanged constraint; no erosion-study cell
    indicted it).
 
-## Evidence → design map
+### 2.2 Evidence → design map
 
 | Decision | Evidence |
 |---|---|
@@ -34,100 +103,128 @@ before any implementation or validation runs.
 | Keep exploiters as audits (duplicate-bridge gate) | pressure inert historically; only global-exploitability instrument; se 0.017 vs 0.045 |
 | Distillation deferred, not dropped | coupling is parametric (diff-corr 0.79) but representable (warmstart 0.77/0.03; 1.25M excursion 0.73/0.10); shaped era proves clean per-node signal at these frequencies pins behavior; open question is whether PG channel gets close enough to "clean" |
 
-Baseline reference numbers (all 2026-07-20, v2 lineage): partner-trump value
-+0.237/+0.236 (400k/2M), C2 +0.113/+0.097, defender-mirror −0.22..−0.25;
-partner-trump mass @2M = 0.004; playout noise at lead nodes σ ≈ 1.0 score
-(0.083 reward units); trainer pooled ev_oracle ≈ 0.38 / ev_limited ≈ 0.00
-(league field) vs 0.436/0.368 (self field).
+*(Retrospective note: the "league lift ≈ 0" and "pressure inert" rows are
+now known to be confounded by the §6 bugs.)*
 
-## The system
+Baseline reference numbers (all 2026-07-20, v2 lineage): partner-trump
+value +0.237/+0.236 (400k/2M), C2 +0.113/+0.097, defender-mirror
+−0.22..−0.25; partner-trump mass @2M = 0.004; playout noise at lead nodes
+σ ≈ 1.0 score (0.083 reward units); trainer pooled ev_oracle ≈ 0.38 /
+ev_limited ≈ 0.00 (league field) vs 0.436/0.368 (self field).
 
-### Core (unchanged)
-PPO, terminal-only reward (`final_score/12` at last action), oracle critic as
-GAE baseline (`--critic-mode oracle`, exploiters inherit), aux heads on
-(v2-noaux remains the ballast discriminator for a future ablation).
+### 2.3 The system as designed
 
-### Loss allocation (new; flags default to historical behavior, golden-gate
-checked)
-- **Policy loss + entropy + advantage normalization computed over
-  decision nodes only** (|valid| > 1). Forced nodes stay in GAE chains and
-  episode structure; they leave the denominators and normalization stats
-  (removes a ~1.5× hidden gradient dilution; zero objective change on
-  decisions — masked-softmax forced nodes already have zero gradient).
-- **Value loss weighted by decision content**: w = 1 for |valid| > 1,
-  w = 0.25 for forced nodes (kept as bootstrap anchors). Optional per-head
-  multipliers (pick / early-lead upweight) reserved for Phase A tuning if
-  stratified EV does not move.
+**Core (unchanged):** PPO, terminal-only reward (`final_score/12` at last
+action), oracle critic as GAE baseline (`--critic-mode oracle`, exploiters
+inherit), aux heads on (v2-noaux remains the ballast discriminator for a
+future ablation).
+
+**Loss allocation (new; flags defaulted to historical behavior,
+golden-gate checked; REVERTED after Phase A, §3.4):**
+- Policy loss + entropy + advantage normalization computed over decision
+  nodes only (|valid| > 1). Forced nodes stay in GAE chains and episode
+  structure; they leave the denominators and normalization stats (removes
+  a ~1.5× hidden gradient dilution; zero objective change on decisions —
+  masked-softmax forced nodes already have zero gradient).
+- Value loss weighted by decision content: w = 1 for |valid| > 1, w = 0.25
+  for forced nodes (kept as bootstrap anchors). Optional per-head
+  multipliers reserved for Phase A tuning if stratified EV does not move.
 - Theory note: state-dependent loss weights = interest-weighted objective
-  (emphatic weightings; Imani et al. 2018); per-state fixed points unchanged;
-  ratios/clipping intact; on-policy sampling untouched.
+  (emphatic weightings; Imani et al. 2018); per-state fixed points
+  unchanged; ratios/clipping intact; on-policy sampling untouched.
 
-### λ schedule (Phase B, gated)
-Start 0.95. Reduce toward 0.8 ONLY after stratified EV shows trustworthy
-mid-game values (gate below). Mechanism: with accurate successor values,
-lead-node advantages become ~1–2-trick innovations instead of ~70%-MC
-returns — the largest available SNR multiplier inside the PG channel.
+**λ schedule (Phase B, gated):** start 0.95; reduce toward 0.8 ONLY after
+stratified EV shows trustworthy mid-game values. Mechanism: with accurate
+successor values, lead-node advantages become ~1–2-trick innovations
+instead of ~70%-MC returns — the largest available SNR multiplier inside
+the PG channel. *(Superseded for the retention run by the §7.5 λ policy.)*
 
-### Table composition (new)
-- **Table-level self-play share `p_self_table` ∈ [0.5, 0.8]** (Phase A
-  default 0.65): with prob `p_self_table` ALL four opponent seats are a
-  frozen copy of the current agent; otherwise all four are drawn from the
-  **uniform recency window** (sliding max_past_mains, no PFSP weighting, no
-  exploitation EMA) with the existing `hof_floor_prob` HOF floor.
-- Replaces the per-seat `self_play_share`/PFSP mechanism. EMA bookkeeping
-  (`record_vs_training_outcome`, `exploitation_*`) removed from the sampling
-  path (fields may persist for schema compat).
-- Exploiters: unchanged cadence as **audits** — duplicate-bridge gate,
-  recorded, never a stop-rule input; HOF promotion semantics unchanged.
+**Table composition (new; REVERTED after Phase A, stripped §9):**
+table-level self-play share `p_self_table` ∈ [0.5, 0.8] (Phase A default
+0.65): with prob `p_self_table` ALL four opponent seats are a frozen copy
+of the current agent; otherwise all four drawn from the uniform recency
+window (no PFSP weighting, no exploitation EMA) with the existing
+`hof_floor_prob` HOF floor. Exploiters unchanged as audits.
 
-### Stability scaffolding (carried forward)
-Gen-1 bidding-head KL anchor on warm starts (Arm-A recipe), leaster
-watchdog, one-shot health verdicts (gates warn, leaster-trend halts),
-algorithm changes land only at generation boundaries.
+**Stability scaffolding (carried forward):** gen-1 bidding-head KL anchor
+on warm starts (Arm-A recipe), leaster watchdog, one-shot health verdicts
+(gates warn, leaster-trend halts), algorithm changes land only at
+generation boundaries.
 
-### Standing instrumentation (per generation)
-Panel endpoint + duplicate-bridge h2h + stopping rule (unchanged from
-Extended_League amendments); `convention_decay_curve` (3 rates);
-`role_coupling_probe` (diff-corr regression check); `critic_stratified_ev`
-(EV-by-stratum trend); exploitability audit.
+**Standing instrumentation (per generation):** panel endpoint +
+duplicate-bridge h2h + stopping rule (unchanged from Extended_League
+amendments); `convention_decay_curve` (3 rates); `role_coupling_probe`
+(diff-corr regression check); `critic_stratified_ev` (EV-by-stratum
+trend); exploitability audit.
 
-## Validation phases (pre-registered gates; all runs niced, from the
-existing v2 2M checkpoint as testbed)
+### 2.4 Pre-registered validation phases and gates
+
+All runs niced, from the existing v2 2M checkpoint as testbed.
 
 **Phase A — allocation + table composition** (~100k-episode fine-tune):
 loss hygiene + decision-content weights + `p_self_table = 0.65`, λ = 0.95.
-*ATTEMPT 1 (2026-07-21 early, run `runs/redesign_phaseA/`, commit
-8bf7a56): resumed checkpoint_2000000, NO anchor (launch error — the
-design's own scaffolding section requires the Arm-A bidding anchor on
-warm starts). **COLLAPSED into the leaster attractor within 50k
-episodes**: 2.025M pick 14%/leaster 21% (lineage-normal) → 2.05M pick
-0%/leaster 72.5%, greedy gates firing on PICK < 15% AND play-head logit
-spread < 0.5. Killed at ~2.05M; log kept. **Mechanism identified**: the
-decision flag originally filtered the per-head ENTROPY means to decision
-rows — but the entropy coefficients were tuned against the historical
-all-rows (diluted) scale, so effective entropy pressure rose ~1.5× and
-pushed the play head toward uniform (exactly the failing gate), dragging
-picker EV down into the pass/leaster spiral; the missing anchor removed
-the bidding-head brake. Head-balanced PG gradients were NOT amplified by
-the flag (the total/count normalization cancels the dilution — verified
-arithmetically). Fixes (commit 2ceb778): entropy stays at the all-rows
-scale under the flag (+ regression test); anchor made mandatory for all
-warm-started fine-tunes in this program, per the design's own rule.
-Lesson recorded: the greedy-gate warnings + quarter-mark monitor caught
-the collapse in one wall-clock hour — the scaffolding works when used.*
-
-*ATTEMPT 2 (2026-07-21, run `runs/redesign_phaseA_r2/`): same config +
-`--anchor-coeff 1.0` (ref = the 2M resume ckpt), fresh league-window
-copy (attempt 1's collapsed 2.05M snapshot discarded with its run dir's
-league).*
 - GATE A1 (primary): stratified-EV early-node movement — `play_lead_t02`
   EV_ora ≥ 0.60 (from 0.458) and `pick` EV_ora ≥ 0.25 (from 0.140).
 - GATE A2 (non-inferiority): duplicate-bridge h2h vs the 2M start ≥ −0.02.
 - GATE A3 (health): no leaster-trend halt; greedy gates may warn.
-- Exploratory (not gates): partner-rate ratchet behavior on the decay curve;
-  coupling diff-corr trend.
+- Exploratory (not gates): partner-rate ratchet behavior on the decay
+  curve; coupling diff-corr trend.
 
-### Attempt-2 results (2026-07-21; run completed 2.0M → 2.1M cleanly)
+**Phase B — λ harvest** (fine-tune continues or restarts from A's best):
+λ 0.95 → 0.85 → 0.80, stepped.
+- GATE B0 (precondition): `play_follow_t02` + `play_t3plus` EV_ora ≥ 0.60
+  at Phase-A endpoint.
+- GATE B1: `adv_std` at lead nodes drops materially (target ≥ 30%
+  reduction) with h2h non-inferiority (as A2).
+- **GATE B2 (the point): partner trump-lead rate reaches AND HOLDS ≥ 0.5**
+  (exception-aware band; NOT the subsidy-era 0.89) across ≥ 150k episodes
+  **with defender trump-lead ≤ 0.10** — i.e., decoupled pinning, not a
+  shared excursion. B2 is the program's standing convention endpoint,
+  referenced throughout.
+
+**Phase C — campaign:** winning config, fresh start from the 400k selfplay
+seed via the portable orchestrator (`run_extended_league.py` recipe: gen-1
+anchored, watchdog, stop rule as amended). The 2M-testbed lineage is NOT
+the campaign start (reproducibility goal).
+
+### 2.5 Contingency: selective-distillation trigger
+
+Activate the teacher lane (KataGo-style selective supervision at early
+lead nodes; τ = 0.5, top@Q, frac = 1.0, rollout-to-terminal, ESS gates,
+`seat_policies` grounding on window tables) IF Phase B completes its λ
+step with B0/B1 passing but **B2 fails** — i.e., SNR demonstrably improved
+but partner/defender lead strategy still fails to decouple and pin.
+Rationale recorded in Convention_Erosion_202607 (distillation = zero-noise
+role-conditional credit + off-policy-in-action re-ignition at mass 0.004).
+
+## 3. Phase A: allocation + table composition — FAILED (later demoted to "failed under confound")
+
+### 3.1 Attempt 1 (2026-07-21, `runs/redesign_phaseA/`, commit 8bf7a56): collapse
+
+Resumed checkpoint_2000000, NO anchor (launch error — the design's own
+scaffolding section requires the Arm-A bidding anchor on warm starts).
+**Collapsed into the leaster attractor within 50k episodes**: 2.025M pick
+14%/leaster 21% (lineage-normal) → 2.05M pick 0%/leaster 72.5%, greedy
+gates firing on PICK < 15% AND play-head logit spread < 0.5. Killed at
+~2.05M; log kept.
+
+**Mechanism identified:** the decision flag originally filtered the
+per-head ENTROPY means to decision rows — but the entropy coefficients
+were tuned against the historical all-rows (diluted) scale, so effective
+entropy pressure rose ~1.5× and pushed the play head toward uniform
+(exactly the failing gate), dragging picker EV down into the pass/leaster
+spiral; the missing anchor removed the bidding-head brake. Head-balanced
+PG gradients were NOT amplified by the flag (the total/count normalization
+cancels the dilution — verified arithmetically). Fixes (commit 2ceb778):
+entropy stays at the all-rows scale under the flag (+ regression test);
+anchor made mandatory for all warm-started fine-tunes in this program.
+Lesson recorded: the greedy-gate warnings + quarter-mark monitor caught
+the collapse in one wall-clock hour — the scaffolding works when used.
+
+### 3.2 Attempt 2 (2026-07-21, `runs/redesign_phaseA_r2/`): gate results
+
+Same config + `--anchor-coeff 1.0` (ref = the 2M resume ckpt), fresh
+league-window copy. Run completed 2.0M → 2.1M cleanly.
 
 **GATE A1: FAIL** (`critic_stratified_ev_2100k.json`, matched instrument:
 3000 self-play episodes, seed 20260720, vs the 2000k baseline probe).
@@ -151,50 +248,46 @@ Limited head dropped in every stratum as well (pooled 0.368 → 0.305);
 trainer-pooled `ev_limited` went **negative** in late updates (−0.3..−0.6).
 The single mover in the intended direction is the rarest and most
 program-relevant stratum (secret-partner leads), consistent with the
-value-loss decision weighting shifting critic capacity toward rare decision
-nodes — but the broad EV regression says the 100k fine-tune left the critic
-mid-transient (field shift from p_self_table 0.65 + reweighted value loss),
-or worse, that the allocation change degrades the critic at this budget.
-Per pre-registration: **A1 fail ⇒ no Phase B launch; stop for operator
-review** (A2/A3 + exploratory probes still recorded below for the review).
+value-loss decision weighting shifting critic capacity toward rare
+decision nodes — but the broad EV regression says the 100k fine-tune left
+the critic mid-transient, or worse, that the allocation change degrades
+the critic at this budget.
 
 **GATE A2: FAIL** (`h2h_duplicate_2100k_vs_2000k.json`; duplicate-bridge
 instrument, 2×2000 deals, seed 42): edge **−0.300 ± 0.015** score/hand vs
-the 2M start (gate: ≥ −0.02; called −0.287, jd −0.313 — modes agree).
-A ~20σ strength regression in 100k episodes. Corroborated by the noisy
+the 2M start (gate: ≥ −0.02; called −0.287, jd −0.313 — modes agree). A
+~20σ strength regression in 100k episodes. Corroborated by the noisy
 in-trainer anchored eval vs final_pfsp_swish_ppo: −0.23 ± 0.13 at the 2M
-league checkpoint → −0.707 ± 0.16 at the Phase-A endpoint. Trainer-batch
-pooled ev_oracle also dropped 0.38 → ~0.21 within the FIRST 10k episodes
-and stayed flat all 100k (no recovery slope), with ev_limited going
-negative (−0.3..−0.5). For calibration: the from-scratch oracle head took
-~1.0–1.2M episodes to plateau (0.30 by ~600k), so the 100k window likely
-could not complete any re-convergence transient — but the flat (not
-recovering) EV plus the large strength drop reads as genuine disruption,
-not a benign transient passing through.
-
-**Exploratory behavior probes** (`decay_curve_r2.csv`,
-`role_coupling_r2.json`; same instruments/seeds as the erosion study):
-no partner ratchet — partner_trump rate 0.000 @2.05M → 0.013 @2.1M (low
-phase of the known oscillation). Role coupling INTACT: partner/defender
-node masses rose together ~10× between the two r2 checkpoints (0.0025 →
-0.026 partner, 0.0067 → 0.079 defender) — a fresh SHARED excursion, echoed
-behaviorally by greedy defender trump-lead 0.000 → 0.097 (above the
-0.03–0.08 historical band). C2 dipped mildly (0.392 → 0.333, ~2σ below
-the 0.41 ± 0.06 band; n=219, watch-only). Net: 100k of Phase-A config did
-not decouple roles or start a ratchet — expected at this budget (the
-design's mechanism for decoupling is Phase B λ-harvest on top of a
-TRUSTED critic; A1 shows the critic is not yet trustworthy post-change).
+league checkpoint → −0.707 ± 0.164 (n=300) at the Phase-A endpoint.
+Trainer-batch
+pooled ev_oracle dropped 0.38 → ~0.21 within the FIRST 10k episodes and
+stayed flat all 100k (no recovery slope), with ev_limited negative
+(−0.3..−0.5). For calibration: the from-scratch oracle head took ~1.0–1.2M
+episodes to plateau (0.30 by ~600k), so the 100k window likely could not
+complete any re-convergence transient — but the flat (not recovering) EV
+plus the large strength drop reads as genuine disruption, not a benign
+transient passing through.
 
 **GATE A3: PASS with flag.** No leaster-watchdog halt; training leaster
 stable 21–24%, pick 12–15%, picker_avg +1.07 → +1.21, anchor_kl
 0.007–0.024 throughout. Flag: greedy ALONE rate exceeded the 20% warn gate
-on both probes and is rising — 26.2% @2.05M → 31.7% @2.1M (lineage-normal
+on both probes and rising — 26.2% @2.05M → 31.7% @2.1M (lineage-normal
 band 18–27%); greedy PICK 21.4%, leaster 27.5%, play-spread 0.84 at the
-boundary (all normal). In-trainer anchored eval vs final_pfsp_swish_ppo:
-−0.707 ± 0.164 (n=300; noisy instrument, recorded for continuity).
+boundary (all normal).
 
-**Exploitability audit (gen-1 exploiter, 50k eps + duplicate-bridge gate,
-3000 deals):** the exploiter passed its gate — edge +0.106 ± 0.022
+**Exploratory behavior probes** (`decay_curve_r2.csv`,
+`role_coupling_r2.json`; same instruments/seeds as the erosion study): no
+partner ratchet — partner_trump rate 0.000 @2.05M → 0.013 @2.1M (low phase
+of the known oscillation). Role coupling INTACT: partner/defender node
+masses rose together ~10× between the two r2 checkpoints (0.0025 → 0.026
+partner, 0.0067 → 0.079 defender) — a fresh SHARED excursion, echoed
+behaviorally by greedy defender trump-lead 0.000 → 0.097 (above the
+0.03–0.08 historical band). C2 dipped mildly (0.392 → 0.333, ~2σ below the
+0.41 ± 0.06 band; n=219, watch-only). Net: 100k of Phase-A config did not
+decouple roles or start a ratchet — expected at this budget.
+
+**Exploitability audit** (gen-1 exploiter, 50k eps + duplicate-bridge
+gate, 3000 deals): the exploiter passed its gate — edge +0.106 ± 0.022
 score/deal vs the frozen Phase-A endpoint (win frac 0.587, 83.3% of deals
 perturbed; best screen ckpt 2140000). *Correction (operator, 2026-07-21):
 an earlier draft called this "the first gate pass in program history" —
@@ -202,61 +295,53 @@ wrong; that record belongs to the old repro-run league (inert gens 1–11).
 In THIS lineage the v2 gen-1 exploiter passed (+0.111 ± 0.045 vs the 1M
 ckpt) and both `full`-arm exploiters passed.* Against the 2M start's own
 gen-2 audit (+0.064 ± 0.042, fail), the Phase-A endpoint's +0.106 ± 0.022
-is directionally worse but NOT significant (Δ ≈ +0.04 ± 0.05). The audit
-is therefore only weakly consistent with degradation — A2 carries the
-verdict on its own.
+is directionally worse but NOT significant (Δ ≈ +0.04 ± 0.05) — only
+weakly consistent with degradation; A2 carries the verdict on its own.
 
-### PHASE A VERDICT (2026-07-21): FAIL — stop for operator review
+### 3.3 Verdict (2026-07-21) and candidate mechanisms
 
-A1 FAIL (early-node EV regressed; sole gain: secret-partner ×1.9),
-A2 FAIL (−0.300 ± 0.015 vs 2M start), A3 pass-with-flag (ALONE streak
-26→32%), behavior probes: no ratchet, coupling intact, fresh coupled
-defender-trump excursion, C2 mild dip. Exploiter audit: gate pass
-(+0.106; lineage-normal — see correction above, not additional evidence).
-Per pre-registration, Phase B is NOT launched. The 2M start checkpoint remains the lineage reference;
-the Phase-A endpoint is not a candidate for anything.
+**PHASE A VERDICT: FAIL — stop for operator review.** A1 FAIL (early-node
+EV regressed; sole gain: secret-partner ×1.9), A2 FAIL (−0.300 ± 0.015 vs
+2M start), A3 pass-with-flag (ALONE streak 26→32%). Per pre-registration,
+Phase B was NOT launched. The 2M start checkpoint remains the lineage
+reference; the Phase-A endpoint is not a candidate for anything.
 
-Candidate mechanisms for the regression (not yet discriminated):
-1. **Critic disruption from the reweighted value loss** — trainer-batch
-   pooled ev_oracle fell 0.38 → ~0.21 within 10k eps and stayed flat
-   (no recovery slope in 100k); ev_limited went negative (−0.3..−0.5).
-   For scale: the from-scratch oracle took ~1.0–1.2M eps to plateau, so
-   100k could not complete a re-convergence transient even if benign.
+Candidate mechanisms recorded at the time (not discriminated):
+1. **Critic disruption from the reweighted value loss** — ev_oracle fell
+   0.38 → ~0.21 within 10k eps, flat all 100k; ev_limited negative.
 2. **Advantage-scale shift from decision-only normalization** — raw
    adv_std fell (all 0.119 → 0.086; pick 0.124 → 0.056 — pick rows are
    genuine decisions, so this is not the mechanical forced-zeroing
    effect), changing the effective policy step size.
 3. **Opponent-diversity loss** (p_self_table 0.65) — least likely to
-   produce −0.30 in 100k on its own, but plausibly compounds 1–2.
+   produce −0.30 in 100k alone, but plausibly compounds 1–2.
 
-Discriminating experiments for review (cheap → expensive):
-- **Offline critic-fit bake-off (no RL loop, zero risk):** frozen
-  self-play dataset from the 2M ckpt; fit (a) current shared oracle,
-  (b) decision-weighted variant, (c) per-phase expert heads (precedent:
-  backgammon phase nets, NNUE material buckets, Suphx per-action
-  models) to convergence; compare stratified EV. Directly measures the
-  interference/allocation gap and tests the value-loss reweighting in
-  isolation, with convergence-time constants as a bonus.
-- **Single-change 100k arms:** table-composition-only (no decision
-  weighting) and decision-weighting-only (historical PFSP field),
-  each gated on A2 non-inferiority alone.
-- Longer Phase A (300–500k, stratified probe every ~100k) only if a
-  single-change arm looks healthy.
+Discriminating experiments listed cheap → expensive: offline critic-fit
+bake-off (run, §4.1); single-change 100k arms; longer Phase A. **CONFOUND,
+established 2026-07-24 (§6.3): the design change also raised braided rows
+~67% → ~90%, and the observed oracle disruption is what a 90%
+frame-hopping diet predicts independent of decision weighting.
+Design-vs-bug split unrecoverable from that run; verdict demoted to
+"failed under confound."**
 
-### Post-Phase-A operator directives (2026-07-21)
+### 3.4 Post-Phase-A operator directives (2026-07-21)
 
 1. **Decision-weighting machinery REVERTED** (commit af9614a): the
    `decision_weighting` flag and all loss-path machinery removed from
    PPOAgent and the trainer — a mostly-failed experiment is not worth its
    codebase complexity. Table-level sampling (`--table-self-play`) and the
-   `--gae-lambda` override remain (tests moved to test_table_sampling.py).
-   Goldens 34/34 bit-identical, fast suite green after removal.
-2. **Offline oracle bake-off commissioned** (below) as the next
+   `--gae-lambda` override remained at the time (tests moved to
+   test_table_sampling.py; table-self-play later stripped too, §9).
+   Goldens 34/34 bit-identical, fast suite green.
+2. **Offline oracle bake-off commissioned** (§4.1) as the next
    discriminating experiment, replacing in-loop allocation probes.
 
-### Offline oracle bake-off: shared vs per-phase experts (pre-registered
-2026-07-21, before any full run; tool
-`diagnostics/oracle_moe_offline.py`)
+## 4. Offline oracle studies
+
+### 4.1 Bake-off: shared vs per-phase experts (pre-registered + run 2026-07-21)
+
+Tool `diagnostics/oracle_moe_offline.py`; results
+`runs/oracle_moe_offline/`.
 
 **Question:** how much of the early-node oracle EV gap is shared-capacity
 interference (architecture-fixable) vs effective-sample starvation (not)?
@@ -264,46 +349,33 @@ Phase A showed in-loop allocation probes are expensive and confounded;
 this measures the allocation question as supervised regression on frozen
 data with zero RL-loop risk.
 
-**Design:** 36,000 self-play episodes from the 2M league checkpoint
-(stochastic acting, oracle observations, empirical discounted G — the
-`critic_stratified_ev` semantics; seed 20260721), split 80/10/10
+**Design (pre-registered):** 36,000 self-play episodes from the 2M league
+checkpoint (stochastic acting, oracle observations, empirical discounted
+G — the `critic_stratified_ev` semantics; seed 20260721), split 80/10/10
 train/val/test by episode. Arms trained from scratch on identical data,
 early-stopped on val MSE (patience 2, max 15 epochs, Adam 3e-4 = the
 trainer's critic LR):
-- `ref` — the 2M checkpoint's online-trained oracle head, eval-only
-  (anchors the offline numbers to the online lineage).
+- `ref` — the 2M checkpoint's online-trained oracle head, eval-only.
 - `shared` — one production-shape OracleValueNetwork.
 - `moe` — five fresh OracleValueNetworks hard-routed by phase (operator
   spec): pick, partner-call, bury, play tricks 0–2, play tricks 3–5.
-  Observable routing (head + trick), so per-phase heads, not learned-gate
-  MoE; each expert consumes episode prefixes up to its last routed step.
-  Capacity deliberately unmatched (5×): the production question is
-  "beat the production critic on identical data", and oracle capacity is
-  deploy-free. Precedent: backgammon phase nets (GNU BG/Snowie),
-  Stockfish NNUE material buckets, Suphx per-action-type models.
+  Observable routing (head + trick); each expert consumes episode prefixes
+  up to its last routed step. Capacity deliberately unmatched (5×): the
+  production question is "beat the production critic on identical data",
+  and oracle capacity is deploy-free. Precedent: backgammon phase nets
+  (GNU BG/Snowie), Stockfish NNUE material buckets, Suphx per-action-type
+  models.
 
-**Endpoints (measurement study, not a gated phase):** per-stratum test EV
-per arm, same strata as the stratified probe. Interpretation guide fixed
-in advance: (i) `moe` ≳ closes half the shared-vs-ceiling gap at
-pick/play_lead_t02 ⇒ interference is the dominant mechanism — justifies
-wiring per-phase experts into the trainer as the next Phase-A variant;
-(ii) `moe` ≈ `shared` at those strata ⇒ starvation/rarity dominates —
-the search/expectation lane (contingency) moves up the queue;
-(iii) `shared` (offline, converged) ≫ `ref` would additionally indicate
-the ONLINE oracle is undertrained at the trainer's incidental budget,
-independent of architecture. Secondary: val-MSE convergence curves
-(epochs-to-best) per arm; per-expert n (partner/bury experts train on
-~15–20% of episodes — their EVs carry that caveat).
+**Interpretation guide fixed in advance:** (i) `moe` ≳ closes half the
+shared-vs-ceiling gap at pick/play_lead_t02 ⇒ interference dominant ⇒ wire
+per-phase experts into the trainer; (ii) `moe` ≈ `shared` there ⇒
+starvation/rarity dominates ⇒ the search/expectation lane moves up the
+queue; (iii) `shared` (offline, converged) ≫ `ref` ⇒ online oracle
+undertrained independent of architecture. Secondary: val-MSE convergence
+curves; per-expert n (partner/bury experts train on ~15–20% of episodes).
 
-### Offline oracle bake-off: RESULTS (2026-07-21; `runs/oracle_moe_offline/`)
-
-Run exactly as pre-registered: 36,000 episodes generated (28,800 train /
-3,600 val / 3,600 test; 26,421 test action rows), all three arms trained
-and evaluated (`results.json`). A paired episode-level bootstrap (1,000
-resamples; `bootstrap` subcommand added to the tool, output
-`bootstrap.json`) supplies 95% CIs; arm deltas are paired on identical
-test rows, so deal-sampling noise cancels and the delta CIs are tight.
-
+**Results** (`results.json`; paired episode-level bootstrap, 1,000
+resamples, `bootstrap.json`; 28,800/3,600/3,600 split, 26,421 test rows).
 Test EV per stratum (point [95% CI]); Δ = moe − shared (paired):
 
 | stratum | n | ref (online 2M) | shared (offline) | moe (offline) | Δ moe−shared |
@@ -321,722 +393,625 @@ Test EV per stratum (point [95% CI]); Δ = moe − shared (paired):
 | leaster | 6,222 | 0.176 [.14,.21] | 0.130 [.09,.16] | 0.167 [.14,.19] | +0.037 [+.02,+.06] |
 
 **VERDICT: pre-registered outcome (ii), in amplified form.** The per-phase
-experts did not close the shared-vs-ceiling gap at pick/play_lead_t02
-(criterion (i) required ≈0.49 and ≈0.64; they scored 0.001 and 0.234) —
-they lost to the single shared network at *every* minority stratum, with
-all delta CIs excluding zero. The only strata where routing won are the
-majority stratum (play_t3plus, whose expert got 86,400 routed rows and all
-15 epochs) and leaster, both by a marginal +0.04. This is the mirror image
-of the interference prediction, which said routing's gains should
-concentrate at exactly the strata that lose the shared trunk's gradient
-tug-of-war.
+experts lost to the single shared network at *every* minority stratum,
+all delta CIs excluding zero; the only routing wins are the majority
+stratum (play_t3plus) and leaster, both marginal +0.04. This is the mirror
+image of the interference prediction.
 
-**Mechanism: cross-phase representation transfer outweighs interference at
-this data scale.** The GRU encoder is causal, so the shared net's value at
-a pick step uses exactly the same information the pick expert sees — the
-comparison is information-matched by construction. What routing removes is
-transfer: the shared trunk's features, learned mostly from the abundant
-play rows, evidently transfer to pick/partner/bury value estimation
-(shared 0.139 vs expert 0.001 on identical pick rows). Experts trade
-interference relief for transfer loss, and transfer wins — despite moe
-holding a deliberate 5× capacity advantage.
+**Mechanism: cross-phase representation transfer outweighs interference
+at this data scale.** The GRU encoder is causal, so the comparison is
+information-matched by construction. What routing removes is transfer:
+the shared trunk's features, learned mostly from abundant play rows,
+transfer to pick/partner/bury value estimation (shared 0.139 vs expert
+0.001 on identical pick rows). Experts trade interference relief for
+transfer loss, and transfer wins — despite moe's 5× capacity advantage.
 
-Caveats, none verdict-threatening:
-- **Small-expert optimization stalls.** The pick expert collapsed to the
-  stratum mean in epoch 1 (val MSE 0.0431 ≈ Var(G) = 0.042) and
-  patience-2 stopped it at epoch 4; partner similar (val 0.122 ≈ Var
-  0.134). These are stalls, not converged failures. But the play_t02
-  expert trained healthily (86k rows, best at epoch 7 of 10, real val
-  descent) and still lost at its own strata by −0.14 (lead) and −0.19
-  (follow) — the decision-relevant comparison does not rest on the
-  stalled experts. A declared re-run with higher patience/LR for the
-  small experts is available but not decision-relevant.
-- **Shared under-converged at cap.** Its best val MSE came at epoch 15
-  (the max), so shared's numbers are lower bounds — which only widens
-  the verdict.
+Caveats, none verdict-threatening: the small experts stalled to stratum
+means — pick collapsed in epoch 1 (val MSE 0.0431 ≈ Var(G) = 0.042,
+patience-2 stopped at epoch 4), partner similar (val 0.122 ≈ Var 0.134);
+stalls, not converged failures. But the play_t02 expert trained healthily
+(86k rows, best at epoch 7 of 10, real val descent) and still lost at its
+own strata by −0.14 (lead) and −0.19 (follow), so the decision-relevant
+comparison does not rest on the stalled experts. `shared` was
+under-converged at the 15-epoch cap, which only widens the verdict.
 
-**Secondary finding — interpretation (iii) resolved against
-"undertrained online oracle", with a sharper twist.** Pooled, ref ≫
-shared (−0.096 [−.120,−.068] shared−ref): 36k frozen episodes cannot
-recreate the 2M-episode online head. But the deficit is entirely
-concentrated in the play strata (play_t3plus −0.225, follow −0.154);
-at pick (+0.013 [−.004,+.030]), partner_call (+0.003) and bury (+0.020)
-the 15-epoch from-scratch fit already *matches* the online oracle. The
-online head's low early-node EVs (~0.13–0.24) are therefore reproduced by
-supervised regression on 230k rows — the early-node gap is a property of
-the data (playout-noise floor + conditional-outcome spread), not of the
-online training regime or its budget. "Train the oracle more/better" is
-off the candidate list for the early nodes.
+**Secondary finding — interpretation (iii) resolved with a twist.**
+Pooled, ref ≫ shared (−0.096 [−.120,−.068] shared−ref), but the deficit is
+entirely in the play strata (play_t3plus −0.225, follow −0.154); at pick
+(+0.013), partner_call (+0.003) and bury (+0.020) the 15-epoch
+from-scratch fit already *matches* the online oracle. The online head's
+low early-node EVs (~0.13–0.24) are reproduced by supervised regression on
+230k rows — **the early-node gap is a property of the data (playout-noise
+floor + conditional-outcome spread), not of the online training regime**.
+"Train the oracle more/better" is off the candidate list for early nodes.
+*(Transfer caveat added 2026-07-24: `ref` was a braided-trained head
+evaluated on clean streams, §6.3.)*
 
-**Consequences (per the pre-registered guide):**
-1. Per-phase experts are NOT wired into the trainer. If routing loses
-   transfer with 230k rows and near-converged offline updates, it loses
-   worse at the trainer's ~560 action rows per update.
-2. Interference is not the dominant mechanism at the early strata;
-   starvation + the noise floor is. The **search/expectation lane**
-   (privileged-search teacher / expectation-based targets, the
-   selective-distillation contingency below) **moves up the queue**.
-3. The batch-scale arm (raise `--update-interval`, SNR-maintenance
-   arithmetic recorded 2026-07-21 in conversation) remains the cheapest
-   in-loop lever consistent with these results; not yet commissioned.
+**Consequences (per the pre-registered guide):** (1) per-phase experts NOT
+wired into the trainer; (2) starvation + noise floor dominate ⇒ the
+search/expectation lane moves up the queue; (3) the batch-scale arm
+(§5) remains the cheapest in-loop lever consistent with these results.
 
-**Phase B — λ harvest** (fine-tune continues or restarts from A's best):
-λ 0.95 → 0.85 → 0.80, stepped.
-- GATE B0 (precondition): `play_follow_t02` + `play_t3plus` EV_ora ≥ 0.60
-  at Phase-A endpoint.
-- GATE B1: `adv_std` at lead nodes drops materially (target ≥ 30% reduction)
-  with h2h non-inferiority (as A2).
-- GATE B2 (the point): partner trump-lead rate reaches AND HOLDS ≥ 0.5
-  (exception-aware band; NOT the subsidy-era 0.89) across ≥ 150k episodes
-  with defender trump-lead ≤ 0.10 — i.e., decoupled pinning, not a shared
-  excursion.
+### 4.2 Oracle representation probe (2026-07-24)
 
-**Phase C — campaign**: winning config, fresh start from the 400k selfplay
-seed via the portable orchestrator (`run_extended_league.py` recipe:
-gen-1 anchored, watchdog, stop rule as amended). The 2M-testbed lineage is
-NOT the campaign start (reproducibility goal).
-
-## Contingency: selective-distillation trigger
-
-Activate the teacher lane (KataGo-style selective supervision at early lead
-nodes; τ = 0.5, top@Q, frac = 1.0, rollout-to-terminal, ESS gates,
-`seat_policies` grounding on window tables) IF Phase B completes its λ step
-with B0/B1 passing but **B2 fails** — i.e., SNR demonstrably improved but
-partner/defender lead strategy still fails to decouple and pin. Rationale
-recorded in Convention_Erosion_202607 (distillation = zero-noise
-role-conditional credit + off-policy-in-action re-ignition at mass 0.004).
-
-## Batch+λ SNR arm (pre-registered 2026-07-21, operator-approved;
-LAUNCHED 2026-07-21 22:57 — `runs/league_snr_batchlam/`, historical
-league path per operator decision, launch log
-`runs/league_snr_batchlam_launch.log`)
-
-**Hypothesis under test:** rare-node policy-gradient SNR is the binding
-constraint on role differentiation (partner-vs-defender lead conventions
-decoupling and pinning). This arm tests it at the strongest dose the
-current levers compose to; a fail is therefore close to a falsification,
-not an underdose (the reason the operator chose the composed arm over
-batch-only at ~2 days / 1M episodes).
-
-Dose arithmetic (2026-07-21; CORRECTED pre-launch by an empirical probe —
-the trainer's transition counter counts hero ACTION rows only, ~7.05/ep
-measured over 2,325 episodes, so update-interval 2048 ≈ **290 episodes**
-per update, not the ~80 quoted in earlier conversation, and the
-historical 256-episode minibatch cap DID bind mildly: 2 steps/epoch of
-256+~34 episodes). Per-row SNR at partner-lead nodes ≈ Δ/σ = 0.24/1.0;
-at 2048 (~12.5 partner-lead rows/update) an update is ~0.85σ. 8×
-(16,384 ≈ 2,325 eps, ~100 partner-lead rows) ⇒ ~2.4σ; composed with
-λ-harvest (σ 1.0 → ~0.6 via critic bootstrap) ⇒ ~4σ-equivalent. The
-correction strengthens the falsification framing: the composed dose sits
-well past the 2σ threshold. Values at
-these nodes are already correct and ecology-invariant (Convention-Erosion
-rung 1); the failure mode is noisy-overwrite oscillation, which per-step
-averaging attacks directly. The bake-off (above) additionally certified
-the critic's early-node EV as data-supported — λ bootstrapping from it is
-as sound as it gets short of expectation-based targets.
-
-**Design (single arm, matched-endpoint comparison):**
-- Start: `runs/league_arch_perceiver-shared-v2/warmstart_perceiver-shared-v2_400k.pt`
-  — the SAME 400k selfplay seed as the v2 league, arch
-  perceiver-shared-v2, critic-mode oracle, seed 42, leaster-watchdog on,
-  all cadences as the v2 orchestrator invocation (main-episodes 1M,
-  schedule-horizon 20M, workers 8).
-- Changes vs that baseline (all flags, no code defaults touched):
-  1. `--update-interval 16384` (hero action rows; ~2,325 episodes/update
-     at the measured ~7.05 rows/ep).
-  2. `--trainer-args "--minibatch-episodes 4096 …"` — keeps every
-     optimizer step full-buffer (1024 as originally drafted would bind
-     at ~2,325-episode buffers and reintroduce minibatching; noise
-     between applied steps does not cancel: Adam renormalizes small
-     noisy gradients and the PPO clip freezes early moves). Probe:
-     full-size update = 41s / ~7–15 GB peak on 64 GB — both fine.
-     **AMENDED 2026-07-22 after OOM incident (see below): now
-     `--minibatch-episodes 128 --grad-accum`** — gradient accumulation
-     applies the SAME full-buffer step once per epoch with per-forward
-     memory bounded at 128 episodes. Step semantics of the design are
-     preserved exactly; only activation memory changes.
-  3. λ stays at the default 0.95 (= v2) for the first ~250k, then a
-     DECLARED restart with `--gae-lambda 0.85` gated on: duplicate h2h
-     vs the 400k seed ≥ −0.05 AND a recorded lead-node adv_std baseline.
-     Post-step check: lead-node adv_std down ≥ 20% within 2 probes,
-     else revert to 0.95 (λ-harvest inert ⇒ batch-only continuation).
-     **AMENDED 2026-07-22 (declared at 100k, before the gate fires):**
-     additional precondition — trainer pooled ev_ora ≥ 0.30 sustained
-     over 3 consecutive updates. Mechanism: 8× batch means 8× fewer
-     optimizer steps at matched episodes, and the FRESH oracle head's
-     transient is step-count-limited, not sample-limited — observed
-     ev_ora 0.00 at 100k vs the ~0.12 from-scratch reference, i.e. the
-     ~1M-episode transient stretches toward ~a full generation.
-     Stepping λ onto an immature critic would inject bootstrap bias
-     exactly when the critic is least trustworthy (the bake-off
-     certified the TRAINED head, not a mid-transient one). Expected λ
-     step therefore lands late gen 1 or gen 2, not 250k. The h2h and
-     adv_std conditions are unchanged.
-  4. Exploiter re-entry amendment (operator, 2026-07-21; commits
-     0db57fc/d647404): `--exploiter-full-table --exploiter-patched-ema
-     0.35` in trainer-args. Gated exploiters re-enter sampling as WHOLE
-     tables — one edge-weighted exploiter in all four opponent seats at
-     the historical edge-scaled share (cap 0.30 × edge/0.30), so
-     role/coordination exploits express against the hero regardless of
-     seat assignment; expected exploiter seat mass unchanged vs per-seat
-     mixing, only concentrated. Patched retirement: live outcome EMA
-     < 0.35 with ≥ 200 samples demotes to past_main (checked at PPO-update
-     cadence), so a patched exploit stops burning its frozen-edge share
-     before the 3-generation age floor. Expression check pre-registered:
-     if realized hero deficit on exploiter tables sits far below the gate
-     edge, the all-exploiter field is muting the exploit (it was gated in
-     a main-only field) ⇒ fall back to per-seat seating.
-- Launch shape (orchestrator):
-  `python -m sheepshead.training.run_extended_league --resume <400k seed>
-  --run-name league_snr_batchlam --update-interval 16384 --critic-mode
-  oracle --leaster-watchdog --seed 42 --trainer-args "--minibatch-episodes
-  4096 --exploiter-full-table --exploiter-patched-ema 0.35"` (all other
-  flags at defaults = the v2 invocation: main-episodes 1M, anchor-coeff
-  1.0, panel A, min/max generations 4/12, workers 8, empty-league
-  bootstrap identical to v2's `seed_checkpoints: null`).
-
-**Incident 2026-07-22 — OOM at ~240k, root-caused and fixed.** The gen-1
-trainer was SIGKILLed at ~240k episodes (≈18h in) and on every resume
-(~2 min in, at the first update). Diagnosis (RSS tracing + faulthandler
-stack at the spike): the first full-buffer update in oracle+anchor mode
-peaks ~40 GB — the with-grad oracle forward (51 tokens/step) plus the
-anchor reference forward over a max-length-padded minibatch whose
-segment lengths turned heterogeneous once tables mixed (mostly
-~35-event hero streams + occasional ~175-event self-table streams:
-B×T_max jumped ~5×, from ~80k to ~400k padded steps — exactly at the
-episode where 4-member mixed tables appeared, explaining the original
-death location). The pre-launch memory probe missed it by testing
-limited-mode/no-anchor/homogeneous lengths (14.2 GB). The user's
-concurrent analysis job likely set the final tipping point at 18:03 but
-the peak was marginal-to-fatal on 64 GB regardless. FIX: gradient
-accumulation (`update(grad_accum=True)`) — row-fraction-scaled
-minibatch backwards, ONE optimizer step per epoch: the design's
-full-buffer step exactly, memory bounded by `--minibatch-episodes 128`.
-Default-off, historical path bit-identical (test + 34/34 goldens).
-Verified live: post-fix first update completed at Ep 201,430, 10 GB
-peak, 4.5 eps/s. ~40k episodes lost to the 200k checkpoint on resume.
-
-**500k kill probe (2026-07-23): PASS.** Duplicate-bridge h2h of the 500k
-checkpoint vs the 400k seed: edge **−0.068 ± 0.018** (called −0.070 / jd
-−0.066, 2,000 deals; `orchestrator/killprobe_500k_vs_seed.json`) — clear
-of the ≤ −0.10 kill rule, and lineage-normal: v2's gen-1 ENDPOINT (1M)
-measured −0.086 ± 0.013 vs this same seed on this same instrument, so
-the arm at 500k is tracking the ordinary anchored-gen-1 dip, slightly
-ahead of v2's pace. Run state at probe: ev_ora 0.14–0.16 (climbing),
-ev_lim ≈ −0.02 (see limited-critic variance-composition note in
-conversation record), leaster 0.3–0.5%, ALONE 25–32%, 4.4 eps/s.
-
-**Oracle representation probe (2026-07-24): deterministic features NOT
-at ceiling; trunk attenuates them.** Question (operator): would
-deterministic aux heads (like the limited critic's) help the oracle, per
-the 30M-era secret-partner-head precedent? Linear probes on the 850k
-checkpoint's oracle at two taps — trunk input (post-readout 256-d) and
-trunk output (which the LINEAR value head reads, so linear decodability
-there is exactly the currency of value expressivity) — vs a random-init
-control of the same architecture; 6,000 episodes from the frozen offline
-dataset (policy-distribution caveat: dataset generated by v2 2M),
-episode-split 80/20, labels computed exactly from full-info obs
-(`scratchpad oracle_probe.py`, results JSON archived in conversation
-record). Findings:
+Question (operator): would deterministic aux heads (like the limited
+critic's) help the oracle, per the 30M-era secret-partner-head precedent?
+Linear probes on the batch arm's 850k checkpoint at two taps — trunk input
+(post-readout 256-d) and trunk output (which the LINEAR value head reads,
+so linear decodability there is exactly the currency of value
+expressivity) — vs a random-init control of the same architecture; 6,000
+episodes from the frozen offline dataset (policy-distribution caveat:
+dataset generated by v2 2M), episode-split 80/20, labels computed exactly
+from full-info obs (scratchpad `oracle_probe.py`). Findings:
 
 - Secret-partner seat (deterministic; injected into the encoder TWICE —
-  context scalar + role-embedding on every opp-hand token): partner-
-  present rows decode at **86.3%** at trunk input, degrading to
-  **79.5%** at trunk output (trained). Random-init control: 70.8/65.4.
-  So training added ~+15 pts over random but a *deterministic input
-  feature* sits far from ceiling in the representation the value head
-  reads — and the trunk compresses it AWAY (−6.8 pts through the trunk).
+  context scalar + role-embedding on every opp-hand token):
+  partner-present rows decode at **86.3%** at trunk input, degrading to
+  **79.5%** at trunk output (trained). Random-init control: 70.8/65.4. So
+  training added ~+15 pts over random but a *deterministic input feature*
+  sits far from ceiling in the representation the value head reads — and
+  the trunk compresses it AWAY (−6.8 pts through the trunk).
 - Opponent trump counts: R² 0.84 (trunk in) → 0.73 (trunk out);
-  random-init 0.82/0.79. Barely better than random features, attenuated
-  by the trunk. Hero trump: ~0.99 (trivially preserved).
+  random-init 0.82/0.79. Barely better than random features, attenuated by
+  the trunk. Hero trump: ~0.99 (trivially preserved).
 - Picker-team points-so-far (binding composite): R² 0.81/0.79 vs random
   0.76 — modest gain over random.
 
-Reading: explicit injection does most of the linear work (random-init is
-already high), value-loss gradients have NOT demanded crisp preservation
-of role/trump structure through the bottleneck, and the trunk actively
-attenuates it — the exact signature predicted by the "noisy scalar
-regression under-provisions representation" mechanism from the 30M-era
-policy-side precedent. Counterpoint kept honest: the value head needs
-only a value-relevant 1-d projection, not full class decodability, so
-sub-ceiling ≠ proof of harm. Consequence: deterministic aux heads on the
-oracle (partner-seat 5-way + per-seat trump counts + team points,
-attached at TRUNK OUTPUT so gradients force preservation through the
-whole path) upgrade from speculative to grounded amendment candidate.
-Next rung if pursued: offline test via the `oracle_moe_offline` harness
-(add heads to the shared arm, retrain on the frozen dataset, paired-
-bootstrap per-stratum EV vs shared baseline, partner/lead strata
-primary); promote to trainer amendment only on an offline per-stratum EV
-win, and only at a generation boundary.
+Reading: explicit injection does most of the linear work, value-loss
+gradients have NOT demanded crisp preservation of role/trump structure
+through the bottleneck, and the trunk actively attenuates it — the
+signature predicted by the "noisy scalar regression under-provisions
+representation" mechanism from the 30M-era policy-side precedent.
+Counterpoint kept honest: the value head needs only a value-relevant 1-d
+projection, not full class decodability, so sub-ceiling ≠ proof of harm.
+Consequence: deterministic aux heads on the oracle upgrade from
+speculative to grounded amendment candidate; offline test first (§4.3).
 
-**Oracle aux-head offline test (pre-registered 2026-07-24, launched
-before results seen; harness commit 85d5730).** Operator design after
-the representation probe: `shared_aux` arm = shared oracle + TWO
-deterministic heads at the value-trunk output — per-seat picker-team
-MEMBERSHIP (5-dim multi-label sigmoid; operator redesign 2026-07-24,
-third pre-results amendment, prior launches killed within ~2 epochs:
-supervise the full team split rather than classify the secret partner,
-because the partition is the feature the value composes over — partner
-identity is recoverable as the non-picker member, alone = picker-only,
-and the pre-call window labels the true current team; this also unifies
-the two heads around one membership concept, since team points is a
-membership-weighted sum) and picker/defender team points-so-far
-(2-dim, /120). Trump-counts head EXCLUDED by operator
-choice: imposing a count-summary target could anchor the trump
-representation to exactly the crude statistic we don't want; the net
-should learn a richer remaining-trump-strength representation on its
-own. Team-points format decision: loss MASKED on leaster and pre-pick
-rows — leaster "teams" are 5 singletons, so the target degenerates to
-`points_taken_rel`, which is already an explicit context input (identity
-task, no binding value, and a 5-vs-2 format mismatch); alone hands kept
-(picker team = picker alone, well-defined). Bury INCLUDED in the
-picker-team total, as it stands at the timestamp (operator amendment
-2026-07-24, before any results seen — first launch was killed ~1 epoch
-in and restarted with the corrected label): the target should be the
-quantity that determines who is/will be winning, and the bury's points
-are the picker team's from the moment they're buried; the head's value
-is forcing the transformer to assemble current team point state at
-every timestamp, which translates directly to terminal score. Defender
-total stays trick-based. Coefficients mirror the limited critic's
-(partner 0.1, points 0.2); early stop selects on val value-MSE only
-(heads are scaffolding, not the objective). Protocol otherwise
-IDENTICAL to the shared arm (same dataset/splits/lr/batch/patience) so
-the existing `shared.pt` is the paired baseline. Interpretation guide,
-declared in advance:
+### 4.3 Aux-head offline test (pre-registered 2026-07-24, launched before results seen; harness commit 85d5730)
 
-- Primary: paired-bootstrap per-stratum EV, `shared_aux − shared`, at
-  partner/lead strata (play_lead_t02 primary, partner_call secondary).
-  CI > 0 there ⇒ representation-forcing works ⇒ trainer amendment
-  candidate (gen boundary only). CI spanning zero at role strata with
-  no majority-stratum harm ⇒ heads are inert offline ⇒ do NOT amend the
-  trainer on speculation; the sub-ceiling probe result would then read
-  as "attenuation is real but not value-binding at this data scale."
-- Secondary: team-membership exact-set test accuracy ~ceiling (it had
-  better be — supervised deterministic target); team-points MAE; no EV
-  regression at play_t3plus (CI must not exclude zero from below).
-- Caveat carried from the probe: offline-15-epochs ≠ online 850k-episode
-  regime; an offline null does not rule out an online transient-speed
-  benefit, but an offline win is necessary evidence before touching the
-  trainer.
+`shared_aux` arm = shared oracle + TWO deterministic heads at the
+value-trunk output:
+- **Per-seat picker-team MEMBERSHIP** (5-dim multi-label sigmoid; operator
+  redesign 2026-07-24, third pre-results amendment, prior launches killed
+  within ~2 epochs: supervise the full team split rather than classify the
+  secret partner, because the partition is the feature the value composes
+  over — partner identity is recoverable as the non-picker member, alone =
+  picker-only, and the pre-call window labels the true current team; this
+  also unifies the two heads around one membership concept).
+- **Picker/defender team points-so-far** (2-dim, /120). Loss MASKED on
+  leaster and pre-pick rows (leaster "teams" are 5 singletons — the target
+  degenerates to `points_taken_rel`, already an explicit input; format
+  mismatch); alone hands kept. **Bury INCLUDED in the picker-team total**,
+  as it stands at the timestamp (operator amendment 2026-07-24, before any
+  results seen): the target should be the quantity that determines who
+  is/will be winning; the head's value is forcing the transformer to
+  assemble current team point state at every timestamp.
+- Trump-counts head EXCLUDED by operator choice: imposing a count-summary
+  target could anchor the trump representation to exactly the crude
+  statistic we don't want.
 
-**Comparison protocol — matched-endpoint, NOT matched-machinery:** the
-current league differs from the v2 run's (duplicate-bridge gate
-instruments, this amendment), and v2's single seed makes trajectory
-pairing illusory regardless. Comparisons are offline at matched episode
-counts: duplicate h2h vs the 400k seed and vs v2 checkpoints
-(1M/2M), stratified critic EV, role-coupling probe.
+Coefficients mirror the limited critic's (partner 0.1, points 0.2); early
+stop on val value-MSE only. Protocol otherwise IDENTICAL to the shared arm
+(same dataset/splits/lr/batch/patience) so `shared.pt` is the paired
+baseline. Interpretation guide declared in advance: primary =
+paired-bootstrap per-stratum EV `shared_aux − shared` at partner/lead
+strata (play_lead_t02 primary, partner_call secondary); CI > 0 ⇒ trainer
+amendment candidate (gen boundary only); CI spanning zero at role strata
+with no majority-stratum harm ⇒ heads inert offline, do NOT amend on
+speculation. Secondary: membership accuracy ~ceiling; team-points MAE; no
+play_t3plus regression. Caveat: offline-15-epochs ≠ online 850k regime;
+an offline null does not rule out an online transient-speed benefit, but
+an offline win is necessary evidence before touching the trainer.
 
-**Endpoints & rules:**
-- Primary (the B2 criterion): partner trump-lead reaches AND HOLDS ≥ 0.5
-  (exception-aware band) with defender ≤ 0.10 across ≥ 150k episodes —
-  decoupled pinning, not a shared excursion — judged on the
-  role-coupling-probe trajectory by 2M.
-- Secondary: duplicate h2h vs v2 at matched episodes ≥ 0.00 − 0.02
-  (non-inferiority: SNR machinery must not cost strength); oscillation
-  half-life of convention excursions vs v2's telemetry.
-- Kill rules: duplicate h2h vs the 400k seed ≤ −0.10 at the 500k probe;
-  leaster-watchdog trip + failure to recover within 100k; greedy-health
-  gate streaks (orchestrator default).
-- Outcome mapping: pin ⇒ SNR hypothesis confirmed, campaign config found.
-  Improved half-life without pinning ⇒ SNR necessary-not-sufficient ⇒
-  selective-distillation contingency activates (its trigger condition —
-  "SNR demonstrably improved but B2 fails" — is exactly this branch).
-  No improvement ⇒ SNR falsified at 2σ dose ⇒ search/expectation lane.
-
-**AMENDED OUTCOME MAPPING (2026-07-24, operator-confirmed, before any
-endpoint read).** External review (Opus 5) identified a flaw in the
-pre-registered dose arithmetic, verified against code and telemetry:
-
-- The "8× ≈ 2.4σ" dose was a PER-UPDATE statement. Accumulated
-  signal-to-noise over E episodes is √E·Δ/σ, invariant to batch size at
-  fixed LR (checked robust under Adam normalization and PPO clip-bounded
-  steps — E episodes contain √E·Δ/σ of signal, no batching extracts
-  more). Batch is therefore NOT an acquisition-SNR lever; at fixed LR it
-  is a displacement reducer.
-- Verified: `apply_schedules` keys LR to EPISODE (train_league_ppo.py:250)
-  — the arm walks the same LR decay with ~16× fewer optimizer steps
-  than v2 at matched episodes (~1,550 vs ~25,000 at 900k; grad-accum =
-  1 step/epoch, v2 = ~2 minibatch steps/epoch × 8× more updates; the
-  review said 8× — the truth is worse). anchor_kl ~0.0045 vs v2
-  ~0.008–0.012 at matched episodes confirms suppressed displacement
-  (equilibrium vs anchor, not 16×, and deviating_frac 0.59 @500k shows
-  real movement — but direction confirmed).
-- Verified: λ gate cannot fire at the 1M boundary. ev_ora 0.084/0.176/
-  0.212 @300k/600k/900k (v2: 0.26/0.40/0.39); concave trend crosses
-  0.30 ≥ ~1.6M. Gen 1 delivered the batch half only.
-- The frame the displacement math misses (and the arm's remaining
-  design intent): ACQUISITION vs RETENTION. Stationary policy jitter
-  scales with SGD temperature η·σ²/B — batch ×8 at fixed LR cuts
-  equilibrium rare-node jitter ~8×, a real dose for the HOLD half of B2
-  (the erosion/oscillation mechanism from convention-erosion rung-1),
-  while under-dosing REACH (the new partner/defender differentiation).
-
-New mapping, replacing the original where they conflict:
-- Pin (reach AND hold) ⇒ STRONGER evidence than originally registered
-  for the temperature/oscillation mechanism — linear theory says the
-  arm should under-acquire, so pinning is informative, not expected.
-- Hold-improvement without reach (oscillation half-life up, no
-  decoupled pinning) ⇒ temperature mechanism supported on retention;
-  acquisition starved ⇒ gen-3 decision is a corrected-displacement
-  config (LR/epochs per GNS readout), NOT the search/expectation lane.
-- B2 fail ⇒ CONFOUNDED (displacement starvation vs SNR falsity). Does
-  NOT falsify SNR-as-binding-constraint and does NOT by itself activate
-  the search/expectation lane.
-
-**Aux-head offline RESULT (2026-07-24, results_aux.json +
-bootstrap.json): pre-registered primary NULL; theory-predicted
-substratum and global fit POSITIVE; harm checks pass.** Paired deltas
-`shared_aux − shared` (95% CI):
+**RESULT (2026-07-24, results_aux.json + bootstrap.json): pre-registered
+primary NULL; theory-predicted substratum and global fit POSITIVE; harm
+checks pass.** Paired deltas `shared_aux − shared` (95% CI):
 
 - PRIMARY play_lead_t02 (pooled): +0.010 [−0.011, +0.032] — NULL.
   Secondary partner_call: −0.004 [−0.020, +0.011] — null.
 - play_lead_t02_secret_partner: **+0.064 [+0.025, +0.103]** — POSITIVE
-  (post-hoc subgroup by pre-registration standards, but it is the
+  (post-hoc subgroup by pre-registration standards, but the
   hidden-info-heaviest role stratum the probe motivation targeted: EV
   0.152 → 0.216, closing ~48% of the shared→ref gap there).
 - Broad fit wins: all +0.025 [+0.011, +0.038]; play_follow_t02 +0.040
   [+0.011, +0.065]; play_t3plus +0.077 [+0.049, +0.103] (the
-  no-regression harm check passes by improving). Best val MSE 0.0282
-  vs shared 0.0296, both at the 15-epoch cap (protocol-matched).
+  no-regression harm check passes by improving). Best val MSE 0.0282 vs
+  shared 0.0296, both at the 15-epoch cap.
 - Costs: pick −0.013 [−0.023, −0.002], bury −0.028 [−0.053, −0.003] —
   small, marginal CIs.
-- Secondary criteria: membership head 99.99% exact-set accuracy
-  (ceiling — the representation IS forced through the trunk when
-  supervised, confirming the probe's attenuation was demand-driven,
-  not capacity-driven); team-points MAE 7.4 points.
-- Notable: with heads, the 15-epoch/36k-episode offline oracle MATCHES
-  the 2M-episode online ref at every early stratum (pick/partner_call/
-  bury deltas ≈ 0.000); ref's remaining edge is confined to play
-  strata where its data advantage lives.
+- Membership head 99.99% exact-set accuracy (ceiling — the representation
+  IS forced through the trunk when supervised, confirming the probe's
+  attenuation was demand-driven, not capacity-driven); team-points MAE 7.4.
+- Notable: with heads, the 15-epoch/36k-episode offline oracle MATCHES the
+  2M-episode online ref at every early stratum; ref's remaining edge is
+  confined to play strata where its data advantage lives.
 
 Verdict per the pre-registered map: NOT the automatic-amendment win
-(pooled-lead CI spans zero) — the trainer is not amended on this
-alone. But the inert-branch reading is also excluded (global and
-secret-partner-stratum CIs > 0). Status: **amendment candidate for the
-next config**, where the composed inject+hold design makes the oracle
-baseline's quality at partner-lead nodes directly load-bearing;
-operator decision at a boundary, alongside the round-3 levers.
+(pooled-lead CI spans zero) — but the inert-branch reading is also
+excluded (global and secret-partner CIs > 0). Status: **amendment
+candidate for the next config** — and the heads were subsequently adopted
+in the retention run's pretrained oracle (§7.1), where the oracle
+baseline's quality at partner-lead nodes is directly load-bearing.
 
-**Review round 2 (2026-07-24): dose arithmetic + endpoint measurement.**
-Two further critiques, assessed against code and telemetry:
+## 5. Batch+λ SNR arm — pinned at the wrong equilibrium
 
-*Numerator (Δ = +0.237) — ACCEPTED in full.* The partner-lead gap is
-max-over-trump-branches − max-over-fail-branches selected on the SAME
-50 rollouts that score them (per-branch SE ≈ 0.14): winner's-curse
-inflation, flagged in the original study but never de-biased (rung-2b
-pre-registered, never ran). PRE-REGISTERED FIX, to run before any B2
-interpretation: hold the branch selection FIXED as made by the June
-data and re-evaluate the selected branches only, on fresh independent
-rollouts (new seed, same nodes, same belief-MC machinery). This is a
-pure evaluation-of-a-fixed-hypothesis — no selection on the new data —
-and yields an unbiased estimate of the selected-branch gap at ~one
-evaluation pass of compute. Every downstream σ-dose statement inherits
-whatever correction results.
+Pre-registered 2026-07-21, operator-approved; LAUNCHED 2026-07-21 22:57 —
+`runs/league_snr_batchlam/`, historical league path, launch log
+`runs/league_snr_batchlam_launch.log`.
 
-*Denominator (σ ≈ 1.0 score) — conclusion accepted, mechanism
-corrected.* Verified: advantages ARE globally normalized before the
-loss (ppo.py ~1552). But a global scalar divides the rare-node signal
-and its within-node noise identically, so per-row resolvability
-(σ_node/Δ)² is scale-invariant — normalization per se cannot halve the
-dose. The live issue is different: 1.0 is the PLAYOUT σ, while the
-optimizer resolves against the realized ADVANTAGE noise at lead rows —
-never measured (shrunk by baseline EV, inflated by baseline error,
-λ-bootstrap variance, within-stratum heterogeneity). Logged global
-adv_std ≈ 0.15 reward ≈ 1.8 score says realized scatter overall is
-~1.8× the playout assumption; if lead rows match, per-row SNR ≈ 0.13
-and the dose halves. The committed GNS instrumentation measures
-exactly this (B_noise at partner-lead rows = the aggregated
-(σ/Δ)² question, answered from real gradients); stratified lead-row
-adv_std joins the boundary baseline. Post-amendment the per-update
-dose is demoted anyway; the σ question survives as the temperature
-(hold-dose) calibration.
+### 5.1 Hypothesis and dose arithmetic (with corrections)
 
-*Endpoint not measured — ACCEPTED; probe launched.* Verified: no
-convention_decay_curve / role_coupling_probe output exists for the arm;
-greedy_health tracks the DEFENDER t0 trump-lead only, 0.00 at all 18
-probes (n ≈ 90 each). Context the critique lacked: v2 was ALSO
-dead-flat 0.00 through 450k and only began oscillating at 500k
-(0→27→13→0→33% …) — so the arm's flatness is discriminating only over
-500k–900k, where v2 oscillated and the arm did not. Two readings:
-temperature reduction holding the defender at the correct equilibrium
-(B2 wants ≤ 0.10), or global pinning of the shared lead-trump feature
-with the partner rate collapsed alongside (re-ignition regime, where
-on-policy PG at action mass ~0.004 cannot relearn at any batch size —
-the pi_gumbel search-readout finding is the contingency for exactly
-that state). The partner_trump column of convention_decay_curve
-distinguishes; launched over the arm's full 50k ladder + 400k seed
-(400 CRN deals/ckpt, scripted field) → orchestrator/decay_curve.csv.
+**Hypothesis under test:** rare-node policy-gradient SNR is the binding
+constraint on role differentiation (partner-vs-defender lead conventions
+decoupling and pinning). Tested at the strongest dose the current levers
+compose to; a fail is close to a falsification, not an underdose (why the
+operator chose the composed arm over batch-only at ~2 days / 1M episodes).
 
-*Outcome map addendum (operator-confirmed):* new cell — **oscillation
-eliminated but pinned at the WRONG equilibrium** (defender flat-zero
-AND partner flat-zero): the hold mechanism works, the reach mechanism
-is dead at this temperature, and the arm cannot deliver B2 from inside
-the run; branch = search-distillation re-ignition contingency
-(selective distill at lead nodes per pre-registration), not the
-search/expectation lane and not a temperature increase alone.
-Stability is not correctness.
+Original dose arithmetic (2026-07-21; corrected pre-launch by an empirical
+probe — the trainer's transition counter counts hero ACTION rows only,
+~7.05/ep measured over 2,325 episodes, so update-interval 2048 ≈ **290
+episodes** per update, not the ~80 quoted earlier; the historical
+256-episode minibatch cap DID bind mildly): per-row SNR at partner-lead
+nodes ≈ Δ/σ = 0.24/1.0; at 2048 (~12.5 partner-lead rows/update) an update
+is ~0.85σ; 8× (16,384 ≈ 2,325 eps, ~100 partner-lead rows) ⇒ ~2.4σ;
+composed with λ-harvest (σ 1.0 → ~0.6) ⇒ ~4σ-equivalent. Values at these
+nodes already correct and ecology-invariant (erosion rung 1); failure mode
+is noisy-overwrite oscillation, which per-step averaging attacks directly.
 
-**Review round 3 (2026-07-24): variance levers + direct SNR
-measurement.** Assessment of three further suggestions:
+**AMENDED OUTCOME MAPPING (2026-07-24, operator-confirmed, before any
+endpoint read).** External review (Opus 5) identified a flaw, verified
+against code and telemetry:
+- The "8× ≈ 2.4σ" dose was a PER-UPDATE statement. Accumulated
+  signal-to-noise over E episodes is √E·Δ/σ, invariant to batch size at
+  fixed LR (robust under Adam normalization and PPO clip-bounded steps).
+  **Batch is NOT an acquisition-SNR lever; at fixed LR it is a
+  displacement reducer.**
+- Verified: `apply_schedules` keys LR to EPISODE (train_league_ppo.py:250)
+  — the arm walks the same
+  LR decay with ~16× fewer optimizer steps than v2 at matched episodes
+  (~1,550 vs ~25,000 at 900k; the review said 8× — the truth is worse).
+  anchor_kl ~0.0045 vs v2 ~0.008–0.012 confirms suppressed displacement
+  (deviating_frac 0.59 @500k shows real movement — but direction
+  confirmed).
+- Verified: the λ gate could not fire at the 1M boundary. ev_ora
+  0.084/0.176/0.212 @300k/600k/900k (v2: 0.26/0.40/0.39); concave trend
+  crosses 0.30 ≥ ~1.6M. Gen 1 delivered the batch half only.
+- The frame the displacement math misses: **ACQUISITION vs RETENTION.**
+  Stationary policy jitter scales with SGD temperature η·σ²/B — batch ×8
+  at fixed LR cuts equilibrium rare-node jitter ~8×, a real dose for the
+  HOLD half of B2, while under-dosing REACH.
 
+New mapping, replacing the original where they conflict:
+- Pin (reach AND hold) ⇒ STRONGER evidence than originally registered for
+  the temperature/oscillation mechanism (linear theory says the arm should
+  under-acquire, so pinning is informative, not expected).
+- Hold-improvement without reach ⇒ temperature mechanism supported on
+  retention; acquisition starved ⇒ gen-3 decision is a
+  corrected-displacement config (LR/epochs per GNS readout), NOT the
+  search/expectation lane.
+- B2 fail ⇒ CONFOUNDED (displacement starvation vs SNR falsity); does NOT
+  falsify SNR-as-binding-constraint, does NOT activate the
+  search/expectation lane.
+- *Addendum (review round 2, operator-confirmed):* **oscillation
+  eliminated but pinned at the WRONG equilibrium** (defender flat-zero AND
+  partner flat-zero) ⇒ hold works, reach dead at this temperature, B2
+  unreachable from inside the run; branch = search-distillation
+  re-ignition contingency (selective distill at lead nodes), not a
+  temperature increase alone. Stability is not correctness.
+
+### 5.2 Design and launch
+
+Single arm, matched-endpoint comparison. Start:
+`runs/league_arch_perceiver-shared-v2/warmstart_perceiver-shared-v2_400k.pt`
+— the SAME 400k selfplay seed as the v2 league, arch perceiver-shared-v2,
+critic-mode oracle, seed 42, leaster-watchdog on, all cadences as the v2
+orchestrator invocation (main-episodes 1M, schedule-horizon 20M, workers
+8). Changes vs baseline (all flags):
+1. `--update-interval 16384` (hero action rows; ~2,325 episodes/update).
+2. `--minibatch-episodes 4096` — keeps every optimizer step full-buffer.
+   **AMENDED 2026-07-22 after the OOM (§5.3): `--minibatch-episodes 128
+   --grad-accum`** — gradient accumulation applies the SAME full-buffer
+   step once per epoch with per-forward memory bounded at 128 episodes;
+   step semantics preserved exactly.
+3. λ stays 0.95 for the first ~250k, then a DECLARED restart with
+   `--gae-lambda 0.85` gated on: duplicate h2h vs the 400k seed ≥ −0.05
+   AND a recorded lead-node adv_std baseline; post-step check lead-node
+   adv_std down ≥ 20% within 2 probes, else revert. **AMENDED 2026-07-22
+   (declared at 100k, before the gate fires):** additional precondition —
+   trainer pooled ev_ora ≥ 0.30 sustained over 3 consecutive updates
+   (8× batch ⇒ 8× fewer optimizer steps; the fresh oracle's transient is
+   step-count-limited: observed ev_ora 0.00 at 100k vs ~0.12 from-scratch
+   reference; stepping λ onto an immature critic injects bootstrap bias
+   exactly when least trustworthy).
+4. Exploiter re-entry amendment (operator, 2026-07-21; commits
+   0db57fc/d647404): `--exploiter-full-table --exploiter-patched-ema 0.35`
+   — gated exploiters re-enter sampling as WHOLE tables at the historical
+   edge-scaled share; patched retirement (live outcome EMA < 0.35 with
+   ≥ 200 samples ⇒ demote to past_main) so a patched exploit stops burning
+   its frozen-edge share. Expression check pre-registered: hero deficit on
+   exploiter tables far below the gate edge ⇒ fall back to per-seat.
+   *(Whole-table seating later retired for the retention run, §7.7, and
+   stripped from the codebase, §9.)*
+
+Launch shape (orchestrator): `python -m
+sheepshead.training.run_extended_league --resume <400k seed> --run-name
+league_snr_batchlam --update-interval 16384 --critic-mode oracle
+--leaster-watchdog --seed 42 --trainer-args "--minibatch-episodes 4096
+--exploiter-full-table --exploiter-patched-ema 0.35"` (all other flags at
+defaults = the v2 invocation).
+
+**Comparison protocol — matched-endpoint, NOT matched-machinery:**
+comparisons offline at matched episode counts: duplicate h2h vs the 400k
+seed and vs v2 checkpoints (1M/2M), stratified critic EV, role-coupling
+probe. **Endpoints:** primary = B2 by 2M, judged on the
+role-coupling-probe trajectory; secondary = duplicate h2h vs v2 at matched
+episodes ≥ 0.00 − 0.02, oscillation half-life vs v2. **Kill rules:**
+duplicate h2h vs the 400k seed ≤ −0.10 at the 500k probe;
+leaster-watchdog trip + failure to recover within 100k; greedy-health gate
+streaks.
+
+### 5.3 OOM incident (2026-07-22) — root-caused and fixed
+
+Gen-1 trainer SIGKILLed at ~240k episodes (≈18h in) and on every resume
+(~2 min in, at the first update). Diagnosis (RSS tracing + faulthandler
+stack at the spike): the first full-buffer update in oracle+anchor mode
+peaks ~40 GB — the with-grad oracle forward (51 tokens/step) plus the
+anchor reference forward over a max-length-padded minibatch whose segment
+lengths turned heterogeneous once tables mixed (mostly ~35-event hero
+streams + occasional ~175-event self-table streams: B×T_max jumped ~5×,
+from ~80k to ~400k padded steps — exactly at the episode where 4-member
+mixed tables appeared). The pre-launch memory probe missed it by testing
+limited-mode/no-anchor/homogeneous lengths (14.2 GB). The user's
+concurrent analysis job likely set the final tipping point but the peak
+was marginal-to-fatal on 64 GB regardless. FIX: gradient accumulation
+(`update(grad_accum=True)`) — row-fraction-scaled minibatch backwards, ONE
+optimizer step per epoch: the design's full-buffer step exactly, memory
+bounded by `--minibatch-episodes 128`. Default-off, historical path
+bit-identical (test + 34/34 goldens). Verified live: post-fix first update
+completed at Ep 201,430, 10 GB peak, 4.5 eps/s. ~40k episodes lost to the
+200k checkpoint on resume. *(Retrospective §6.1: the ~175-event braided
+outliers that drove the padding blowup were themselves the storage bug.)*
+
+### 5.4 500k kill probe (2026-07-23): PASS
+
+Duplicate-bridge h2h of the 500k checkpoint vs the 400k seed: edge
+**−0.068 ± 0.018** (called −0.070 / jd −0.066, 2,000 deals;
+`orchestrator/killprobe_500k_vs_seed.json`) — clear of the ≤ −0.10 kill
+rule, and lineage-normal: v2's gen-1 ENDPOINT (1M) measured −0.086 ± 0.013
+vs this same seed on this same instrument, so the arm at 500k tracked the
+ordinary anchored-gen-1 dip, slightly ahead of v2's pace. Run state at
+probe: ev_ora 0.14–0.16 (climbing), ev_lim ≈ −0.02, leaster 0.3–0.5%,
+ALONE 25–32%, 4.4 eps/s.
+
+### 5.5 External reviews, rounds 2–3 (2026-07-24)
+
+Round 1 was the amended outcome mapping (§5.1). Rounds 2–3, assessed
+against code and telemetry:
+
+**Numerator (Δ = +0.237) — ACCEPTED in full.** The partner-lead gap is
+max-over-trump-branches − max-over-fail-branches selected on the SAME 50
+rollouts that score them (per-branch SE ≈ 0.14): winner's-curse inflation,
+flagged in the original study but never de-biased. PRE-REGISTERED FIX, to
+run before any B2 interpretation: hold the branch selection FIXED as made
+by the June data and re-evaluate the selected branches only, on fresh
+independent rollouts — a pure evaluation-of-a-fixed-hypothesis, unbiased,
+~one evaluation pass of compute. *(Run for the retention design: §7.2 —
+fresh-population replication +0.358 ± 0.039; not selection-inflated.)*
+
+**Denominator (σ ≈ 1.0 score) — conclusion accepted, mechanism
+corrected.** Advantages ARE globally normalized before the loss (ppo.py
+~1552), but a
+global scalar divides rare-node signal and within-node noise identically —
+per-row resolvability (σ_node/Δ)² is scale-invariant; normalization per se
+cannot halve the dose. The live issue: 1.0 is the PLAYOUT σ, while the
+optimizer resolves against realized ADVANTAGE noise at lead rows — never
+measured (shrunk by baseline EV, inflated by baseline error, λ-bootstrap
+variance, within-stratum heterogeneity). Logged global adv_std ≈ 0.15
+reward ≈ 1.8 score suggests per-row SNR ≈ 0.13 if lead rows match. The GNS
+instrumentation measures exactly this; stratified lead-row adv_std joined
+the boundary baseline.
+
+**Endpoint not measured — ACCEPTED; probe launched.** No decay-curve /
+role-coupling output existed for the arm; greedy_health tracks only the
+DEFENDER t0 trump-lead, 0.00 at all 18 probes. Context the critique
+lacked: v2 was ALSO dead-flat 0.00 through 450k and only began oscillating
+at 500k — so the arm's flatness is discriminating only over 500k–900k.
+The partner_trump column of convention_decay_curve distinguishes
+(temperature holding the correct equilibrium vs global pinning with
+partner collapsed alongside); launched over the arm's full 50k ladder +
+seed → §5.6.
+
+**Round 3 — variance levers + direct SNR measurement:**
 - *Deal-paired/antithetic collection at train time — ACCEPTED as
-  first-order; pre-registered for the NEXT config, not mid-arm.* The
-  duplicate-bridge eval instrument (se 0.045→0.017, ≈7× variance) has
-  no train-time analog. K-replaying each deal and subtracting the
-  deal-level mean return is a valid baseline (the replays are
-  independent of the gradient episode's actions given the deal ⇒
-  unbiased) that removes deal-conditional variance INCLUDING the part
-  the oracle critic misses — the oracle (ev ~0.4 plateau) is the
-  LEARNED version of this control variate, and the empirical version
-  composes with it. At fixed compute, K=2 halves unique deals but, if
-  the eval variance split carries over (~6/7 deal-conditional), nets
-  roughly 3× cleaner advantages per episode. Seat-rotated antithetic
-  (hero in all 5 seats of one deal) is the exact train-time duplicate
-  instrument. Costs: episode-generation restructuring, replay
-  correlation reduces deal diversity per episode, and a mid-arm switch
-  would confound the batch read — hence next-config. Cheap validation
-  first: offline probe measuring realized lead-row advantage std with
-  vs without deal-mean subtraction on K-replayed deals (no trainer
-  change).
-- *γ = 1.0 — ACCEPTED; pre-registered for the next config.* With
-  purely terminal reward and ≤9-decision horizon, γ=0.99 shrinks
-  early-node targets by 0.99^7 ≈ 0.93 — a systematic ~7% objective
-  tilt against exactly the early nodes at issue, with no variance
-  benefit at this horizon. Near-free to change (small critic re-fit
-  transient) but touches the policy objective, so NOT at the gen-2
-  boundary (kept measurement-only + oracle-side by design). Program-
-  wide consistency required on flip: gamma also enters GAE recursion
-  and every offline dataset built with agent.gamma.
-- *Measure gradient SNR directly — ACCEPTED and IMPLEMENTED
-  immediately* (extends the committed GNS instrument, which already
-  isolates partner-lead rows with logits in hand): per update, at
-  partner-lead rows, log sampled count, realized advantage mean/std
-  (normalized units — the scale the loss consumes), and mean policy
-  mass on trump-lead plays (legality-masked softmax over the 14
-  PLAY-trump actions; the direct re-ignition-regime detector). CSV
-  columns lead_rows/lead_adv_mean/lead_adv_std/lead_trump_mass.
-  Concurred with the critique's process point: this instrument before
-  launch would have caught both §2 errors; it is exactly the
-  operator's standing cheap-gating-diagnostics-first preference and
-  should have been step one.
+  first-order; pre-registered for the NEXT config, not mid-arm.* K-replaying
+  each deal and subtracting the deal-level mean return is a valid,
+  unbiased baseline that removes deal-conditional variance INCLUDING the
+  part the oracle critic misses; seat-rotated antithetic (hero in all 5
+  seats of one deal) is the exact train-time analog of the
+  duplicate-bridge instrument (which cut eval se 0.045→0.017, ≈7×
+  variance). If the eval variance split carries over (~6/7
+  deal-conditional), K=2 nets ~3× cleaner advantages per episode. Costs:
+  episode-generation restructuring, replay correlation, mid-arm confound —
+  hence next-config. *(Adopted as `--seat-rotation` in §7.1.)*
+- *γ = 1.0 — ACCEPTED; pre-registered for the next config.* With purely
+  terminal reward and ≤9-decision horizon, γ=0.99 shrinks early-node
+  targets by 0.99^7 ≈ 0.93 — a systematic ~7% objective tilt against
+  exactly the early nodes at issue, no variance benefit at this horizon.
+  Program-wide consistency required on flip (GAE recursion, offline
+  datasets). *(Adopted as `--gamma 1.0` in §7.1.)*
+- *Measure gradient SNR directly — ACCEPTED and IMPLEMENTED immediately*
+  (extends the committed GNS instrument): per update, at partner-lead
+  rows: sampled count, realized advantage mean/std (normalized units),
+  mean policy mass on trump-lead plays (legality-masked softmax over the
+  14 PLAY-trump actions; the direct re-ignition-regime detector). CSV
+  columns lead_rows/lead_adv_mean/lead_adv_std/lead_trump_mass. Process
+  point concurred: this instrument before launch would have caught both
+  §5.1 errors — exactly the operator's standing
+  cheap-gating-diagnostics-first preference; should have been step one.
 
-**DECAY CURVE RESULT (2026-07-24, orchestrator/decay_curve.csv): the
-arm is in the pinned-at-wrong-equilibrium branch.** 400 CRN deals per
-checkpoint, called-ace mode, scripted field, seed prepended:
+### 5.6 Decay-curve result (2026-07-24): pinned at the wrong equilibrium
 
-- partner_trump: **0.766 at the 400k seed → 0.012 by 50k**, then ~0.00–
-  0.05 for 850k episodes (single excursion 0.124 @750k, back to 0.01).
+`orchestrator/decay_curve.csv`: 400 CRN deals per checkpoint, called-ace
+mode, scripted field, seed prepended:
+- partner_trump: **0.766 at the 400k seed → 0.012 by 50k**, then
+  ~0.00–0.05 for 850k episodes (single excursion 0.124 @750k, back to
+  0.01).
 - defender_trump: 0.00–0.065 throughout (B2's ≤ 0.10 satisfied — the
   greedy probe's flat zero was this, masking the partner collapse).
 - c2_called_suit: stable ~0.45–0.53 across the whole run (control).
 
-v2 comparison at matched episodes (convention_erosion decay curve):
-v2 collapsed IDENTICALLY (0.766 → 0.057 @50k) — the collapse is
-lineage-normal for an anchored league start from this seed (the anchor
-protects bidding heads only; play conventions are exposed) — but v2
-then re-ignited repeatedly at high temperature (0.21 @400k, 0.35
-@500k, 0.46 @550k, 0.54 @750k) and lost it each time (the documented
-oscillation). The arm never re-ignited: the low-temperature regime
-suppressed the noise-driven excursions in BOTH directions, holding the
-near-zero equilibrium the collapse left it in. Two corollaries: (1)
+v2 comparison at matched episodes: v2 collapsed IDENTICALLY (0.766 → 0.057
+@50k) — the collapse is lineage-normal for an anchored league start from
+this seed (the anchor protects bidding heads only; play conventions are
+exposed) — but v2 then re-ignited repeatedly at high temperature (0.21
+@400k, 0.35 @500k, 0.46 @550k, 0.54 @750k) and lost it each time (the
+documented oscillation). The arm never re-ignited: the low-temperature
+regime suppressed the noise-driven excursions in BOTH directions, holding
+the near-zero equilibrium the collapse left it in. Two corollaries: (1)
 the reviewer's "PG cannot re-ignite at mass ~0.004" is too strong as
-stated — v2's excursions prove noise+entropy CAN re-ignite from ~0 at
-high temperature — but the excursions never stabilized, and the arm
-removed exactly the noise that powered them; (2) the arm's collapse
-happened in the FIRST 50k, before any batch/temperature property could
-matter — the hold mechanism then preserved the wrong fixed point,
-exactly as the amended outcome map's new cell describes. Stability
-confirmed; correctness not achieved; B2 unreachable from inside the
-run.
+stated — v2's excursions prove noise+entropy CAN re-ignite from ~0 at high
+temperature — but the excursions never stabilized, and the arm removed
+exactly the noise that powered them; (2) the arm's collapse happened in
+the FIRST 50k, before any batch/temperature property could matter — the
+hold mechanism then preserved the wrong fixed point, exactly as the
+amended outcome map's new cell describes. **Stability confirmed;
+correctness not achieved; B2 unreachable from inside the run.**
 
-Per the operator-confirmed outcome map, this outcome's designated
-branch is the **search-distillation re-ignition contingency**:
-node-selective distillation at partner-lead nodes (pi_gumbel readout —
-the instrument measured to re-ignite from a zero floor in the
-search-readout study) to INJECT the convention, composed with the
-low-temperature regime to HOLD it — the two mechanisms this program
-has now separately validated (hold: this arm; inject: v2's excursions
-show the ecology accepts the convention transiently; the oracle
-counterfactuals say it is value-correct). Design decision at the gen-1
-boundary is the operator's: continue gen 2 as pre-registered (mostly
-confirmatory now), hold for the composed config, or relaunch gen 2
-with instrumentation while the composed config is designed.
+Designated branch per the operator-confirmed outcome map: the
+**search-distillation re-ignition contingency** — INJECT the convention
+(pi_gumbel readout, measured to re-ignite from a zero floor in the
+search-readout study) composed with the low-temperature regime to HOLD it;
+the two mechanisms now separately validated (hold: this arm; inject: v2's
+excursions show the ecology accepts the convention transiently; oracle
+counterfactuals say it is value-correct). *What actually happened next:
+the §6 bugs were found days later, adding braided bootstrap gradients as a
+third co-factor in the 0–50k collapse window, and the operator chose the
+retention-first design (§7) — protect the seed's conventions from update 1
+rather than re-ignite them after death.*
 
-Gen-2 boundary package (pre-registered now, activated at the declared
-boundary relaunch; all default-off / measurement-only before then):
-optimizer-step telemetry column; gradient-noise-scale logging (global +
-partner-lead stratum, from the per-minibatch gradients grad-accum
-already computes) — the GNS readout, not guesswork, decides any
-policy-LR/epoch correction; oracle-only extra epochs (supervised
-regression on the oracle's own encoder — no PPO staleness cost, no
-policy-side perturbation) to pull the λ-gate crossing forward. λ gate
-itself unchanged.
+A gen-2 boundary package was pre-registered for this arm (optimizer-step
+telemetry, GNS logging global + partner-lead, oracle-only extra epochs to
+pull the λ-gate crossing forward); it was absorbed into the retention-run
+design (§7.1 items 3 and 8) when that superseded the arm. Batch-arm
+decay-curve facts stand (measurement-side).
 
-## Reconstituted run: retention-first pure-PG (pre-registered 2026-07-24,
-## operator-approved; the last pure-policy-gradient attempt before the
-## search-teacher lane)
+## 6. The two league-path training bugs (2026-07-24/25)
 
-**Diagnosis this design answers** (decay-curve + review rounds 1–3): the
-batch arm proved the low-temperature regime can HOLD an equilibrium for
-850k episodes but was handed the wrong one — the seed's conventions
+Both found while chasing the retention run's oracle non-expression; both
+league-path only. Together they reinterpret most of the program's league
+history. The selfplay trainer (which produced the seeds), all offline
+diagnostics (frozen distinct opponents ⇒ hero streams), and all eval
+instruments (act-time per-player memories) were never exposed.
+
+### 6.1 Braided storage (fixed ea1914d, 2026-07-24; operator directive — a sibling of the pre-30M interleaving bug)
+
+The league path stored ALL collecting seats' events as one
+temporally-interleaved list with a single done flag, so every self-seat
+episode became ONE braided multi-perspective recurrent segment.
+Consequences, all verified:
+1. Train/act mismatch — act-time memories are per-player, the update
+   forward ran one memory across perspective switches, giving NON-UNIT PPO
+   ratios at θ_old for self-seat rows (every league run in the lineage
+   carried this silently).
+2. The pretrained oracle scored EV −0.9 on braided segments vs 0.556 on
+   coherent ones.
+3. The ~175-event braided outliers drove the July OOM padding blowup
+   (§5.3).
+
+Fix: `store_events_by_seat` groups by player_id, one coherent stream +
+done flag per seat (segments now ≤ 10 actions + own-perspective
+observation frames). Test coverage: per-seat segmentation, braided
+control, hero-only byte-equivalence, and ratio-at-θ_old ≈ 1 on a
+self-table episode (<1e-4 — the coherence property the bug broke).
+
+### 6.2 Terminal-reward attachment (fixed 45570ff, 2026-07-25; exposed by chasing the ev_oracle zero-shot gap)
+
+After the storage fix, the pretrained oracle still under-expressed
+(ev_ora 0.11 at update 1 vs the predicted 0.4–0.5). The operator asked why
+live buffers differ from the pretraining distribution at all. Code-diffing
+eliminated every candidate (same collection call, γ, sequence structure,
+no dropout, no normalization); a decomposition probe rebuilt a live-like
+buffer offline and ran oracle_init.pt zero-shot (scratchpad
+`oracle_gap_probe.json`):
+- dataset-test control EV 0.49 (harness valid); trainer-path frozen-only
+  control EV 0.42, MSE 0.035 = held-out ⇒ trainer path fine.
+- live-like buffer pooled EV −0.001, but **MSE uniform across ALL row
+  classes (0.034–0.040 = held-out)** — the oracle predicts equally well
+  everywhere; the EV collapse is in the TARGETS: hero rows on mixed tables
+  sd_g 0.140 and self-seat rows 0.157 vs 0.262 on pure tables — the
+  signature of zeroed returns.
+- Root cause (`pfsp_runtime._finalize_rewards`): the merged multi-seat
+  action list was fed to `process_terminal_rewards`, whose documented
+  contract is ONE player's chronological transitions. The single terminal
+  reward landed on the globally-last actor; every other collecting seat's
+  stream was ALL-ZERO. Fix: group transitions by player position (no-op
+  for hero-only episodes; also fixes shaped mode's identical contract
+  violation). Tests: per-seat reward placement + γ=1 returns through
+  storage matching each row's own score.
+
+Combined historical mechanics: pre-storage-fix, the braid's single done
+flag propagated that one reward backward through the WHOLE braid — every
+seat in a self-containing episode trained toward the LAST ACTOR's return,
+not its own (wrong-player targets on ~67% of rows at p_self 0.15, ~90%
+under Phase A), on top of incoherent recurrent features.
+Post-storage-fix only, non-last-actor seats trained toward zero returns
+(~46% of rows).
+
+### 6.3 Historical impact assessment
+
+Exposure: league-path training only (incl. exploiters); ~48% of episodes ⇒
+**~67% of training ROWS** braided at historical p_self 0.15 (braided
+episodes carry more rows); 100% during empty-league bootstraps; **~90% of
+rows under Phase A's p_self_table 0.65**. Consequences for the record:
+- **Phase A's gate-fail verdict is CONFOUNDED** (§3.3): the design change
+  also raised braided rows 67%→90%; the observed oracle disruption
+  (0.38→0.21, flat) is what a 90% frame-hopping diet predicts independent
+  of decision weighting. Design-vs-bug split unrecoverable; verdict
+  demoted to "failed under confound."
+- The **chronic ev_limited ≈ 0/negative pattern across all league runs**
+  is plausibly primarily this bug pair (critic trained on braided
+  update-forward features toward wrong-player/zeroed targets, evaluated on
+  coherent rollout values). The fixed retention run was the discriminating
+  test — and resolved it (§7.3: ev_lim positive from update 1).
+- The arch-ablation **"league lift ≈ zero over selfplay start"** finding
+  is confounded with ~67% corrupted-context gradients (selfplay trainer
+  was clean) — reinterpretation open; the retention run's +0.089 at 500k
+  (§7.6) is consistent with "league lift ≈ zero" having been the bugs.
+- The old **"exploiter pressure inert"** history predates the fixes;
+  exploiters trained on the corrupted path (also §7.7).
+- Batch-arm decay-curve facts stand (measurement-side); the 0–50k collapse
+  window gains braided bootstrap gradients as a third co-factor.
+  Aborted-launch GNS readings (7,200/230) VOID — measured on braided
+  buffers.
+- Unaffected: MoE bake-off, aux-head study, oracle pretraining, Δ
+  counterfactuals, h2h/decay measurements. Transfer caveat: bake-off "ref"
+  was a braided-trained head evaluated on clean streams.
+
+## 7. Retention-first pure-PG run (LIVE — `runs/league_retention_pg`)
+
+Pre-registered 2026-07-24, operator-approved; the last
+pure-policy-gradient attempt before the search-teacher lane.
+
+### 7.1 Diagnosis and design
+
+**Diagnosis this design answers** (decay-curve §5.6 + review rounds 1–3):
+the batch arm proved the low-temperature regime can HOLD an equilibrium
+for 850k episodes but was handed the wrong one — the seed's conventions
 (partner trump-lead 0.766, defender 0.033: already B2-compliant) died in
 the first ~21 updates, during the fresh-oracle burn-in (ev_ora ≈ 0) and
-the shaped→terminal objective switch (verified: the 400k selfplay seed
-was trained with intermediate trick rewards + leaster bonus; the league
-trains terminal-only). Retention, not acquisition, is the task. The
-operator chose supervised oracle pretraining + a fully UNANCHORED gen 1
-over a play-head anchor: the anchor's reference forward is a real
+the shaped→terminal objective switch (verified: the 400k selfplay seed was
+trained with intermediate trick rewards + leaster bonus; the league trains
+terminal-only). **Retention, not acquisition, is the task.** The operator
+chose supervised oracle pretraining + a fully UNANCHORED gen 1 over a
+play-head anchor: the anchor's reference forward is a real
 throughput/memory cost, and with an accurate terminal baseline from
 update 1 the collapse driver it would fight is largely gone; the
-convention is terminal-optimal (+0.237 ± 0.040 at the seed, mechanism-
-checked — branch selection is by policy logits, independent of the
-evaluation rollouts, so no winner's curse; independent cross-checkpoint
-reproduction +0.236 at 2M; fresh-population replication running), so
-correct advantages defend it on merit.
+convention is terminal-optimal (§7.2), so correct advantages defend it on
+merit.
 
-**Δ validation RESULT (2026-07-24,
-cf_partner_trump_400k_replication.json): fresh-population replication
-+0.358 ± 0.039** (171 agree / 62 disagree, seeds 100000+) vs the
-original +0.237 ± 0.040 — the estimate is NOT selection-inflated; the
-fresh population reads HIGHER. The ~2σ between-population spread
-exceeds nominal SE (node-population heterogeneity), so the working
-figure is "≈ +0.24 to +0.36 score, robustly positive": the convention
-the retention design protects is unambiguously terminal-optimal at the
-seed.
-
-**Design (all committed 1494902/d888062/7c413ca; flags default-off):**
+**Design (all committed 1494902/d888062/7c413ca; flags default-off at the
+time — adopted as defaults 2026-07-27, §7.9):**
 1. Oracle SUPERVISED PRETRAINING: 40k frozen-seed self-play episodes
    (γ=1.0 terminal returns), official OracleValueNetwork with the two
-   offline-validated aux heads (team membership 5-way multi-label +
-   team points w/ bury; coefficients 0.1/0.2), trained to plateau;
-   loaded via --oracle-init. Removes the burn-in window entirely.
-2. Aux heads stay on ONLINE (--oracle-aux-heads): same losses in the
+   offline-validated aux heads (§4.3: team membership 5-way multi-label +
+   team points w/ bury; coefficients 0.1/0.2), trained to plateau; loaded
+   via `--oracle-init`. Removes the burn-in window entirely.
+2. Aux heads stay on ONLINE (`--oracle-aux-heads`): same losses in the
    oracle update path and the extra-epoch pass.
-3. --oracle-extra-epochs 4: ~0.033 oracle steps/episode, restoring v2's
+3. `--oracle-extra-epochs 4`: ~0.033 oracle steps/episode, restoring v2's
    oracle step rate at the 16384 interval.
-4. Seat-rotated collection (--seat-rotation): each sampled deal played
-   5×, hero in every seat, same table/cards — role-exposure
-   equalization + train-time deal pairing. Instruments judge the
-   realized variance benefit (the oracle already conditions on the
-   deal).
-5. γ = 1.0 (--gamma 1.0): kills the 0.99^7 ≈ 0.93 early-node tilt;
+4. Seat-rotated collection (`--seat-rotation`): each sampled deal played
+   5×, hero in every seat, same table/cards — role-exposure equalization +
+   train-time deal pairing (§5.5 round 3).
+5. γ = 1.0 (`--gamma 1.0`): kills the 0.99^7 ≈ 0.93 early-node tilt;
    consistent across dataset, pretraining, and trainer.
 6. UNANCHORED gen 1+ (anchor-coeff 0). Bidding drift under the terminal
    objective is expected and partially correct; guarded by
-   leaster-watchdog + greedy gates + the contingency below.
-7. Low-temperature regime kept: --update-interval 16384,
-   --minibatch-episodes 128, --grad-accum; λ gate as registered
-   (pretrained oracle may satisfy ev_ora ≥ 0.30 early — follow the
-   gate); exploiter full-table + patched-EMA amendments carried over.
-8. Instrumentation from episode 0: --gns-log (GNS global + partner-lead,
-   lead_adv_mean/std, lead_trump_mass), opt_steps; greedy probe now
-   reports partner trump-lead (tricks 0–2) every 50k; decay-curve
-   probes at gen boundaries. NOTE: rel-seat role-label bug fixed
-   7c413ca (0-means-self misread) — historical partner/defender lead
-   SUBSTRATA in offline studies were scrambled mixtures;
-   secret_partner substrata were always clean.
+   leaster-watchdog + greedy gates + the bidding contingency (§7.10).
+7. Low-temperature regime kept: `--update-interval 16384`,
+   `--minibatch-episodes 128`, `--grad-accum`; λ gate as registered
+   (pretrained oracle may satisfy ev_ora ≥ 0.30 early — follow the gate;
+   later amended, §7.5); exploiter full-table + patched-EMA carried over
+   (full-table later dropped, §7.7).
+8. Instrumentation from episode 0: `--gns-log` (GNS global + partner-lead,
+   lead_adv_mean/std, lead_trump_mass), opt_steps; greedy probe reports
+   partner trump-lead (tricks 0–2) every 50k; decay-curve probes at gen
+   boundaries. NOTE: rel-seat role-label bug fixed 7c413ca (0-means-self
+   misread) — historical partner/defender lead SUBSTRATA in offline
+   studies were scrambled mixtures; secret_partner substrata were always
+   clean.
 
-**Tripwires & kill rules (pre-registered):**
-- RETENTION: greedy partner trump-lead < 50% at BOTH the 50k and 100k
-  probes ⇒ NEEDS REVIEW (retention failing; low temperature is holding
-  the wrong thing again).
-- MECHANISM DISCRIMINATOR: lead_adv_mean (normalized units) persistently
-  negative across the first ~20 updates while lead_trump_mass falls ⇒
-  the anti-convention force is systematic, not noise ⇒ stop early;
-  search-teacher lane (do not burn 1M episodes).
-- Bidding: leaster-watchdog trip or greedy PICK-gate streak ⇒ re-engage
-  the bidding anchor at a declared restart (contingency, not a kill).
-- Strength: duplicate h2h vs the 400k seed ≤ −0.10 at 500k (unchanged).
-- B2 endpoint, comparison protocol, and outcome mapping otherwise as
-  amended 2026-07-24 (retention framing: reach = keep what the seed
-  has; hold = keep it through gen 2's ecology churn).
+### 7.2 Δ validation (2026-07-24): the convention is terminal-optimal
 
-**LAUNCHED 2026-07-24 ~19:33 (`runs/league_retention_pg/`).** Oracle
-pretraining result (oracle_init.report.json): held-out pooled EV
-**0.508** — above the online oracle's ~0.40 all-time plateau and the
-0.30 λ-gate threshold before the run begins; early strata pick 0.268 /
-partner_call 0.398 / bury 0.402 / lead 0.477; membership head 99.99%,
-team-points MAE 4.6 (γ=1.0 seed-policy data; EVs not directly
-comparable to v2-2M numbers). Smoke test caught and fixed one
-integration bug pre-launch (exploiter × headed-oracle checkpoints,
-8a5d1b4). All banners verified at launch; first-update and 50k-probe
-watchers armed.
+Answering the §5.5 winner's-curse critique before relying on the number
+(`cf_partner_trump_400k_replication.json`): fresh-population replication
+**+0.358 ± 0.039** (171 agree / 62 disagree, seeds 100000+) vs the
+original +0.237 ± 0.040 — the estimate is NOT selection-inflated; the
+fresh population reads HIGHER. (Mechanism check: branch selection is by
+policy logits, independent of the evaluation rollouts, so no winner's
+curse; independent cross-checkpoint reproduction +0.236 at 2M.) The ~2σ
+between-population spread exceeds nominal SE (node-population
+heterogeneity), so the working figure is "≈ +0.24 to +0.36 score, robustly
+positive": the convention the retention design protects is unambiguously
+terminal-optimal at the seed.
 
-**LAUNCH AMENDMENT (2026-07-24 ~21:15, before 5k episodes; relaunched
-from scratch).** First-update telemetry showed ev_ora −0.65 → ~0.05:
-the pretrained oracle was NOT expressing during the empty-league
-bootstrap. Direct probe isolated the cause: the pretrained oracle
-scores **EV 0.556 on hero-stream segments** (its training
-distribution: 12-step, frozen distinct opponents) but **EV ≈ −0.9 on
-the 60-step all-seat segments** that pure-self tables produce — the
-bootstrap phase was recreating the burn-in window the design exists to
-remove. Fix: **--seed-checkpoints = the 400k seed itself**, so the
-league is non-empty from episode 0 and tables are mixed (hero +
-frozen-seed opponents) — behaviorally identical to self-play, exactly
-per the design premise, but structurally hero-stream data. Residual
-p_self 0.15 self-tables stay initially OOD for the oracle; online
-oracle training (8 passes/update) absorbs them. The ~4.7k episodes and
-6 policy updates made against the garbage baseline were discarded with
-the restart. Also recorded from the aborted run's instruments: GNS
-global ≈ 7,200 rows / lead ≈ 230 rows at update 1 (single-update
-estimates; the lead noise scale reading BELOW global is contrary to
-the rare-node-noise assumption and worth tracking), lead_trump_mass
-0.485 at the seed.
+### 7.3 Launch history (three launches, two bug fixes)
 
-**BRAIDED-STORAGE BUG FOUND AND FIXED (2026-07-24, ea1914d; operator
-directive — a sibling of the pre-30M interleaving bug).** Chasing the
-oracle's non-expression exposed the root cause: the league path stored
-ALL collecting seats' events as one temporally-interleaved list with a
-single done flag, so every self-seat episode became ONE braided multi-
-perspective recurrent segment. Consequences, all verified: (1)
-train/act mismatch — act-time memories are per-player, the update
-forward ran one memory across perspective switches, giving NON-UNIT
-PPO ratios at theta_old for self-seat rows (every league run in the
-lineage carried this silently; the selfplay trainer that produced the
-seeds always stored per-player streams); (2) the pretrained oracle
-scored EV −0.9 on braided segments vs 0.556 on coherent ones; (3) the
-~175-event braided outliers drove the July OOM padding blowup. Fix:
-store_events_by_seat groups by player_id, one coherent stream + done
-flag per seat (segments now ≤ 10 actions + own-perspective observation
-frames). Test coverage: per-seat segmentation, braided control,
-hero-only byte-equivalence, and ratio-at-theta_old ≈ 1 on a self-table
-episode (<1e-4; the coherence property the bug broke). Interim
-workarounds (--self-play-share 0) retired; relaunched with DEFAULT
-self-play share 0.15 + the 4-seed pool + full config. Two earlier
-same-day relaunches (single-seed without-replacement fallback; p_self
-composition) are recorded in the run log; all pre-fix data discarded.
+**Launch 1 (2026-07-24 ~19:33).** Oracle pretraining result
+(`oracle_init.report.json`): held-out pooled EV **0.508** — above the
+online oracle's ~0.40 all-time plateau and the 0.30 λ-gate threshold
+before the run begins; early strata pick 0.268 / partner_call 0.398 / bury
+0.402 / lead 0.477; membership head 99.99%, team-points MAE 4.6 (γ=1.0
+seed-policy data; EVs not directly comparable to v2-2M numbers). Smoke
+test caught one integration bug pre-launch (exploiter × headed-oracle
+checkpoints, 8a5d1b4).
 
-**Braided-bug impact assessment (2026-07-24).** Exposure: league-path
-training only (incl. exploiters); ~48% of episodes ⇒ **~67% of
-training ROWS** braided at historical p_self 0.15 (braided episodes
-carry more rows); 100% during empty-league bootstraps; **~90% of rows
-under Phase A's p_self_table 0.65**. Clean: selfplay trainer (always
-per-player), all offline diagnostics (frozen distinct opponents ⇒ hero
-streams), all eval instruments (act-time per-player memories).
-Consequences for the record:
-- Phase A's gate-fail verdict is CONFOUNDED: the design change also
-  raised braided rows 67%→90%, and the observed oracle disruption
-  (0.38→0.21, flat) is what a 90% frame-hopping diet predicts
-  independent of decision weighting. Design-vs-bug split unrecoverable
-  from that run; verdict demoted to "failed under confound."
-- The chronic ev_limited ≈ 0/negative pattern across all league runs
-  is plausibly primarily this bug (critic TRAINED on braided
-  update-forward features, EVALUATED on coherent rollout values). The
-  earlier two-mechanism decline analysis gains braiding as the leading
-  third candidate; the fixed run is the discriminating test.
-- The arch-ablation "league lift ≈ zero over selfplay start" finding is
-  now confounded with the league trainer's ~67% corrupted-context
-  gradients (selfplay trainer was clean) — reinterpretation open.
-- Batch-arm decay-curve facts stand (measurement-side); the 0–50k
-  collapse window gains braided bootstrap gradients as a third
-  co-factor. Aborted-launch GNS readings (7,200/230) VOID — measured
-  on braided buffers.
-- Unaffected: MoE bake-off, aux-head study, oracle pretraining, Δ
-  counterfactuals, h2h/decay measurements. Transfer caveat: bake-off
-  "ref" was a braided-trained head evaluated on clean streams.
+**Launch amendment (~21:15, before 5k episodes; relaunched).**
+First-update telemetry showed ev_ora −0.65 → ~0.05: the pretrained oracle
+was NOT expressing during the empty-league bootstrap. Direct probe: the
+oracle scores EV 0.556 on hero-stream segments (its training
+distribution) but EV ≈ −0.9 on the 60-step all-seat segments pure-self
+tables produce — the bootstrap was recreating the burn-in window the
+design exists to remove. Fix: **`--seed-checkpoints` = the 400k seed
+itself** (4 copies, since `sample_table` samples without replacement), so
+the league is non-empty from episode 0 and tables are mixed —
+behaviorally identical to self-play, structurally hero-stream data.
+Chasing WHY those braided segments existed at all led to the §6.1 storage
+bug (fixed ea1914d); interim workarounds (--self-play-share 0) retired
+and the run relaunched with default self-play share 0.15 + the 4-seed
+pool. Two same-day relaunches are in the run log; all pre-fix data
+discarded.
 
-**Reproduction commands (verbatim; final relaunch verified against the
-live process command line).**
+**Fixed-storage first-update telemetry (2026-07-25, updates 1–4):**
+ev_limited −0.65 → +0.147 (first league run in the lineage to cross
+positive within four updates; pre-fix launches −0.65/−0.86, pinned) but
+ev_oracle only 0.11 → 0.24, NOT the predicted instant 0.4–0.5 — the residual gap led to the §6.2
+terminal-reward bug. Reinterpretation on record: that ev_ora climb was
+the oracle being graded against (and partly learning to predict) ~46%
+zeroed targets; all pre-fix telemetry discarded with the final relaunch.
+Also from the aborted-launch instruments (VOID, braided buffers): GNS
+global ≈ 7,200 / lead ≈ 230 rows; lead_trump_mass 0.485 at the seed.
+
+**Launch 3 — both fixes active (2026-07-25). Zero-shot prediction
+CONFIRMED:**
+- **ev_oracle 0.52 / 0.55 / 0.55 from update 1** (predicted 0.4–0.5 from
+  the probe's trainer-path control). The live trainer distribution IS the
+  pretraining distribution; the earlier 0.11 was entirely the
+  zeroed-targets bug.
+- **ev_limited 0.35 / 0.38 / 0.44 — positive from update 1**,
+  unprecedented in the league lineage; the chronic ev_lim disease is
+  conclusively attributed to the bug pair.
+- GNS global 15.3k/16.5k rows ≈ the 16,384-row batch (B ≈ B_noise:
+  critically sized). gns_lead now RESOLVES (458/792 rows updates 1–2; 16k
+  at update 3 — single-update estimates are high-variance): with real
+  targets the lead-stratum mean gradient is measurable.
+- lead_adv_mean −0.14 → −0.011 → −0.008 (mechanism discriminator quiet),
+  lead_trump_mass 0.50–0.58 (seed level), adv_std_pick 0.21 (up from 0.16
+  under zeroed targets — real signal variance restored), leaster ≤0.3%,
+  6.4 eps/s, opt_steps 4/update as designed. Gen-0 endpoint served from
+  the new content-hash cache (2b0a77c): trainer handoff 49s after launch.
+
+### 7.4 Reproduction commands (verbatim; final relaunch verified against the live process command line)
 
 Oracle pretraining dataset (40k frozen-seed self-play episodes, γ=1.0
 terminal returns; ~1.5h at 6 workers):
@@ -1050,8 +1025,8 @@ uv run python -m sheepshead.analysis.diagnostics.oracle_moe_offline generate \
 ```
 
 Supervised pretraining of the official headed OracleValueNetwork (γ is
-read from the dataset; aux coefficients default 0.1/0.2; early stop on
-val value-MSE, best epoch 20 of 24):
+read from the dataset; aux coefficients default 0.1/0.2; early stop on val
+value-MSE, best epoch 20 of 24):
 
 ```bash
 uv run python -m sheepshead.analysis.diagnostics.oracle_moe_offline pretrain \
@@ -1061,9 +1036,8 @@ uv run python -m sheepshead.analysis.diagnostics.oracle_moe_offline pretrain \
   > runs/oracle_pretrain_400k/pretrain.log 2>&1
 ```
 
-Seed pool (4 copies of the 400k warmstart, because `sample_table`
-samples members without replacement — one member can fill only one
-seat):
+Seed pool (4 copies of the 400k warmstart, because `sample_table` samples
+members without replacement — one member can fill only one seat):
 
 ```bash
 mkdir -p runs/retention_seeds
@@ -1073,8 +1047,8 @@ for s in a b c d; do
 done
 ```
 
-Run launch (final relaunch, post-fix, default self-play share; the
-glob in --seed-checkpoints is quoted — the orchestrator expands it):
+Run launch (final relaunch, post-fix, default self-play share; the glob in
+--seed-checkpoints is quoted — the orchestrator expands it):
 
 ```bash
 nohup uv run python -m sheepshead.training.run_extended_league \
@@ -1090,150 +1064,39 @@ nohup uv run python -m sheepshead.training.run_extended_league \
   > runs/league_retention_pg_launch.log 2>&1 &
 ```
 
-**First-update telemetry, fixed run (2026-07-25, updates 1–4 / ep
-5,829).** The run is healthy; two headline readings and one prediction
-miss:
-- **ev_limited: −0.65 → −0.50 → −0.05 → +0.147.** First league run in
-  the lineage where the limited critic crosses POSITIVE within four
-  updates — early confirming evidence that the chronic ev_lim disease
-  was the braided bug (the free discriminator identified in the impact
-  assessment).
-- **ev_oracle: 0.11 → 0.19 → 0.21 → 0.24**, climbing ~+0.03/update.
-  NOT the predicted instant 0.4–0.5: the update-1 pre-training reading
-  (0.11) shows a residual distribution gap between generate-path
-  pretraining data and live trainer buffers, absorbed steadily by the
-  online passes (8 + 4 extra/update). No burn-in disaster (pre-fix
-  launches: −0.65/−0.86, pinned). WATCH: should cross ~0.4 by ~update
-  10; a plateau below 0.30 blocks the λ-gate and warrants diagnosis.
-- GNS global: 33k / 22k / 45k rows vs the 16,384-row update — B_noise
-  ≈ 1.5–3× batch, so the batch is NOT oversized (noise-dominated
-  regime; the hold-dose is not wasted compute). Replaces the VOID
-  braided reading (7,200).
-- GNS lead: BLANK by guard, and that is itself the measurement — the
-  paired estimator cannot distinguish the mean gradient at ~350
-  lead rows/update from zero (g2 ≤ 0 guard), consistent with
-  lead_adv_mean ≈ 0.01 vs lead_adv_std ≈ 0.62 (normalized units):
-  per-row SNR at partner-lead nodes ~1–2%. The convention's protection
-  here is temperature, not signal — the design premise, now measured.
-- Tripwire status: lead_adv_mean −0.07 → +0.007 → +0.114 (NOT
-  persistently negative — mechanism discriminator quiet);
-  lead_trump_mass 0.53–0.57, stable at seed level. leaster ≤0.4%,
-  sampled pick ~20%, opt_steps 4/update as designed, anchor_kl blank
-  (unanchored confirmed), 6.4 eps/s. 50k greedy probe (first
-  partner_trump_lead_rate gate) expected ~2h in.
+*(Historical note: `--exploiter-full-table` was dropped at the gen-1
+boundary relaunch (§7.8) and later removed from the CLI entirely (§9); as
+of 2026-07-27 the rest of this configuration is the trainer/orchestrator
+DEFAULT (§7.9), so a fresh reproduction needs almost none of these
+flags.)*
 
-**TERMINAL-REWARD ATTACHMENT BUG FOUND AND FIXED (2026-07-25,
-45570ff; exposed by chasing the ev_oracle zero-shot gap).** The
-operator asked why live buffers differ from the pretraining
-distribution at all. Code-diffing eliminated every candidate
-(same collection call, γ, sequence structure, no dropout, no
-normalization), so a decomposition probe rebuilt a live-like buffer
-offline and ran oracle_init.pt zero-shot (scratchpad
-oracle_gap_probe.json):
-- dataset-test control EV 0.49 (harness valid); trainer-path
-  frozen-only control EV 0.42, MSE 0.035 = held-out ⇒ trainer path
-  fine.
-- live-like buffer pooled EV −0.001, but **MSE uniform across ALL row
-  classes (0.034–0.040 = held-out)** — the oracle predicts equally
-  well everywhere; the EV collapse is in the TARGETS: hero rows on
-  mixed tables sd_g 0.140 and self-seat rows 0.157 vs 0.262 on pure
-  tables — the signature of zeroed returns.
-- Root cause (pfsp_runtime._finalize_rewards): the merged multi-seat
-  action list was fed to process_terminal_rewards, whose documented
-  contract is ONE player's chronological transitions. The single
-  terminal reward landed on the globally-last actor; every other
-  collecting seat's stream was ALL-ZERO. Fix: group transitions by
-  player position (no-op for hero-only episodes; also fixes shaped
-  mode's identical contract violation). Tests: per-seat reward
-  placement + γ=1 returns through storage matching each row's own
-  score.
-- **Corrected historical interpretation (deepens the braided-bug
-  impact assessment):** pre-storage-fix, the braid's single done flag
-  propagated that one reward backward through the WHOLE braid — every
-  seat in a self-containing episode trained toward the LAST ACTOR's
-  return, not its own (wrong-player targets on ~67% of rows at
-  p_self 0.15, ~90% under Phase A), on top of the incoherent
-  recurrent features. Post-storage-fix (the 2026-07-24 relaunch),
-  non-last-actor seats trained toward zero returns (~46% of rows).
-  The chronic ev_limited disease and the Phase A oracle-disruption
-  numbers now have wrong-player/zeroed TARGETS as a co-mechanism
-  alongside braided features. The pretraining dataset, offline
-  studies, and exploiter training (single-collector episodes) were
-  never exposed.
-- The first-update telemetry above is reinterpreted: ev_ora 0.11→0.24
-  was the pretrained oracle being GRADED against ~46% zeroed targets
-  (and online-trained toward them — the climb was partly it learning
-  to predict zeros); ev_limited's +0.147 recovery is real but was
-  measured against the same corrupted targets. All pre-fix telemetry
-  discarded with the relaunch; run relaunched from scratch with both
-  fixes active.
+### 7.5 λ policy and the λ-sweep contingency (2026-07-25, operator-approved)
 
-**RELAUNCH WITH BOTH FIXES: first-update telemetry (2026-07-25,
-updates 1–3 / ep 4,386).** Zero-shot prediction CONFIRMED — with
-correct per-seat targets the pretrained oracle expresses immediately:
-- **ev_oracle 0.52 / 0.55 / 0.55 from update 1** (predicted 0.4–0.5
-  from the probe's trainer-path control). The live trainer
-  distribution IS the pretraining distribution; the earlier 0.11 was
-  entirely the zeroed-targets bug.
-- **ev_limited 0.35 / 0.38 / 0.44 — positive from update 1**,
-  unprecedented in the league lineage; the chronic ev_lim disease is
-  now conclusively attributed to the bug pair.
-- GNS global 15.3k/16.5k rows ≈ the 16,384-row batch (B ≈ B_noise:
-  critically sized). gns_lead now RESOLVES (458/792 rows updates 1–2;
-  16k at update 3 — single-update estimates are high-variance): with
-  real targets the lead-stratum mean gradient is measurable.
-- lead_adv_mean −0.14 → −0.011 → −0.008 (quiet), lead_trump_mass
-  0.50–0.58 (seed level), adv_std_pick 0.21 (up from 0.16 under
-  zeroed targets — real signal variance restored), leaster ≤0.3%,
-  6.4 eps/s, opt_steps 4/update. Gen-0 endpoint served from the new
-  content-hash cache (2b0a77c): trainer handoff 49s after launch.
-- 50k retention watcher armed (first greedy partner_trump_lead_rate
-  probe).
+**Operator decision: λ stays 0.95 for the entire retention run** unless
+(a) health degrades, or (b) convention leaks appear that additional
+training under λ=0.95 cannot close. The registered Phase-B λ schedule is
+DECOUPLED from its gate: ev_ora ≥ 0.30 passes trivially from update 1 with
+the pretrained oracle, so gate passage is a precondition, not a trigger.
+Rationale: the unbiased variance levers (oracle baseline ~3×
+advantage-variance cut, seat-rotation deal pairing, γ=1.0) now carry the
+load the λ schedule was registered for; λ<1 is the only lever that pays in
+bias ∝ critic error, and the critic is weakest exactly at early nodes
+(pick EV 0.27 vs lead 0.48). Accumulated-SNR view: variance washes out as
+√E; persistent bias does not.
 
-**λ POLICY AMENDMENT + λ-SWEEP PROBE (pre-registered 2026-07-25,
-operator-approved).** Operator decision: **λ stays 0.95 for the entire
-retention run** unless (a) health degrades, or (b) convention leaks
-appear that additional training under λ=0.95 cannot close. The
-registered Phase-B λ schedule is DECOUPLED from its gate: ev_ora ≥
-0.30 passes trivially from update 1 with the pretrained oracle, so
-gate passage is a precondition, not a trigger. Rationale recorded:
-the unbiased variance levers (oracle baseline ~3× advantage-variance
-cut, seat-rotation deal pairing, γ=1.0) now carry the load the λ
-schedule was registered for; λ<1 is the only lever that pays in bias
-∝ critic error, and the critic is weakest exactly at early nodes
-(pick EV 0.27 vs lead 0.48). Accumulated-SNR view: variance washes
-out as √E; persistent bias does not.
-
-*Probe (offline, no training impact):* 5,000 fresh seed-policy
-episodes (hero + 4 frozen-seed opponents, terminal, γ=1.0), V_ora
-from oracle_init.pt via the trainer's own _fill_oracle_values;
-per-episode A(λ) via the trainer's _gae_1d for λ ∈ {1.0, 0.95, 0.9,
-0.7, 0.5, 0.0} — SAME rows across λ (paired). Metrics, raw advantage
-units (per-update normalization is scale-invariant for SNR):
-1. At partner-lead rows (agent._partner_lead_flags, the live
-   instrument's own definition): sd of A(λ); on-policy contrast
-   signal(λ) = mean A over trump-lead rows − mean A over fail-lead
-   rows (the force the gradient actually integrates at those nodes;
-   ground-truth prior: +0.24–0.36 score ≈ +0.02–0.03 return units);
-   SNR(λ) = signal/sd, with paired episode-bootstrap SEs.
-2. Bias checks where the critic is weakest: mean[A(λ) − A(1)] on
-   PICK rows and on PASS rows separately (does bootstrap tilt pick
-   propensity?), and corr(A(λ), A(1)) globally + at lead rows.
-*Decision rule (contingency arm only — fires only if the operator's
-(b) condition is met later):* adopt-candidate λ* = argmax SNR subject
-to signal(λ*) same sign and within 1 bootstrap-σ of signal(1.0), and
-|pick-row bias| < 0.25 × adv_std_pick. If no λ qualifies, the
-convention signal lives in realized outcomes, λ stays 0.95, and the
-search-teacher/selective-distillation lane is the leak remedy.
-Node-selective λ (lead nodes only) is the preferred adoption form if
-λ* qualifies (echoes the pi_gumbel node-selective constraint).
-
-**λ-SWEEP PROBE RESULTS (2026-07-25;
-runs/oracle_pretrain_400k/lambda_sweep.{json,probe.py}; 4,992
-episodes, 755 partner-lead rows, 385 trump / 370 fail).** Raw
-advantage units; paired rows across λ; signal = on-policy trump−fail
-lead contrast (λ=1 value +0.0208 ± 0.0073 independently reproduces
-the +0.24–0.36-score counterfactual prior at /12 scale):
+**Probe (offline, no training impact;
+`runs/oracle_pretrain_400k/lambda_sweep.{json,probe.py}`):** 4,992 fresh
+seed-policy episodes (hero + 4 frozen-seed opponents, terminal, γ=1.0),
+V_ora from oracle_init.pt via the trainer's own `_fill_oracle_values`;
+per-episode A(λ) via the trainer's `_gae_1d` for λ ∈ {1.0, 0.95, 0.9, 0.7,
+0.5, 0.0} — SAME rows across λ (paired); 755 partner-lead rows (385 trump
+/ 370 fail). Metrics in raw advantage units; signal = on-policy trump−fail
+lead contrast (λ=1 value +0.0208 ± 0.0073 independently reproduces the
++0.24–0.36-score counterfactual prior at /12 scale). Pre-registered
+decision rule: adopt-candidate λ* = argmax SNR subject to signal(λ*) same
+sign and within 1 bootstrap-σ of signal(1.0), and |pick-row bias| < 0.25 ×
+adv_std_pick; node-selective λ (lead nodes only) preferred if λ*
+qualifies.
 
 | λ | sd_lead | signal | Δsignal vs λ=1 (paired) | SNR | bias_pick | corr_lead |
 |------|--------|---------|------------------|-------|--------|------|
@@ -1244,318 +1107,261 @@ the +0.24–0.36-score counterfactual prior at /12 scale):
 | 0.5 | 0.052 | +0.0165 | −0.0043 ± 0.0053 | 0.316 | −0.040 | 0.753 |
 | 0.0 | 0.045 | +0.0153 | −0.0055 ± 0.0068 | 0.338 | −0.043 | 0.453 |
 
-Findings: (1) **the pretrained oracle DOES encode the convention
-edge** — at λ=0 the pure one-step oracle judgment retains ~74% of the
-MC signal; the 48-episode smoke's contrary hint did not replicate.
-(2) σ at lead nodes halves from λ=1→0 while signal falls only ~26%,
-so estimator SNR rises monotonically, 1.64× at λ=0. (3) All λ pass
-the pre-registered constraints (signal same sign, paired Δ within
-1σ; bias_pick under the 0.071 = 0.25×sd_pickhead bound), so the
-formal adopt-candidate is **λ* = 0.0**. POWER CAVEAT, recorded
-against overreach: the paired-Δ SE grows with λ distance (±0.0068 at
-λ=0), so the "within 1σ" test is weakest exactly where attenuation is
-largest; point estimates suggest real ~15–26% signal loss below
-λ≈0.7. Conservative contingency candidate: **λ ≈ 0.5–0.7,
-node-selective (lead nodes only)** — 1.4–1.5× SNR with corr_lead
-0.75–0.89 and pick bias ≤ 14% of pick-head σ. (4) bias_pick grows
-monotonically negative (bootstrap systematically deflates PICK
-advantages — consistent with the critic's weak pick stratum, EV
-0.27); within bound but the reason node-selective adoption is
-preferred over global λ.
+Findings: (1) **the pretrained oracle DOES encode the convention edge** —
+at λ=0 the pure one-step oracle judgment retains ~74% of the MC signal;
+the 48-episode smoke's contrary hint did not replicate. (2) σ at lead
+nodes halves λ=1→0 while signal falls only ~26%, so estimator SNR rises
+monotonically, 1.64× at λ=0. (3) All λ pass the pre-registered
+constraints (bias_pick under the 0.071 = 0.25×sd_pickhead bound), so the
+formal adopt-candidate is λ* = 0.0. POWER CAVEAT,
+recorded against overreach: the paired-Δ SE grows with λ distance (±0.0068
+at λ=0), so the "within 1σ" test is weakest exactly where attenuation is
+largest; point estimates suggest real ~15–26% signal loss below λ≈0.7.
+**Conservative contingency candidate: λ ≈ 0.5–0.7, node-selective (lead
+nodes only)** — 1.4–1.5× SNR with corr_lead 0.75–0.89 and pick bias ≤ 14%
+of pick-head σ. (4) bias_pick grows monotonically negative (bootstrap
+systematically deflates PICK advantages — consistent with the critic's
+weak pick stratum, EV 0.27); within bound but the reason node-selective
+adoption is preferred over global λ.
 
-**Operator policy unchanged:** λ = 0.95 for this entire run; the
-sweep arms the contingency only (fires on unclosable convention
-leaks, per the amendment above).
+**Operator policy unchanged:** λ = 0.95 for this entire run; the sweep
+arms the contingency only (fires on unclosable convention leaks).
 
-**50k RETENTION PROBE — GATE 1 PASSED (2026-07-25).** Greedy probe at
-ep 50,000: **partner_trump_lead_rate 75.81%** (62 partner leads) vs
-seed 76.6% and the <50% tripwire — the convention is INTACT at the
-exact horizon where the batch arm was at 0.012 and v2 at ~0. First
-league configuration in the lineage to hold it through the terminal-
-reward transition. Defender side: t0_trump_lead_rate **0.00%** (94
-trick-0 defender leads; B2 wants ≤0.10). Supporting state: ev_ora
-0.55–0.59 and ev_lim 0.45–0.51 both RISING at update ~34; picker_avg
-1.53–1.58 and climbing; lead_trump_mass stable ~0.49–0.54;
-lead_adv_mean fluctuating mildly positive. Watch items (no gates
-tripped): greedy pick 41.7% vs baseline 47.7% (unanchored bidding
-drift, expected direction); greedy leaster 2.0% vs baseline 0.25%
-(sampled 0.6–1.3%, watchdog armed); alone 27.6% under the 32.7%
-limit. Second half of the retention tripwire pair is the 100k probe.
+### 7.6 Gen-1 probe log
 
-**100k RETENTION PROBE — GATE 2 PASSED (2026-07-25); TRIPWIRE PAIR
-CLEARED.** Greedy probe at ep 100,000: **partner_trump_lead_rate
-80.95%** (63 partner leads) — ABOVE both the 50k reading (75.81%) and
-the seed itself (76.6%); defender t0 trump-lead still **0.00%** (113
-leads). The pre-registered NEEDS-REVIEW condition (<50% at BOTH
-probes) is cleared with ~30-point margin: **the retention-first
-hypothesis survived its designated falsification window** — the
-first-100k collapse that killed every prior league arm did not occur
-under correct per-seat targets + pretrained oracle + unanchored
-low-temperature PG. ev_ora 0.54–0.63 / ev_lim 0.41–0.52 (both
-sustained), picker_avg ~1.5, lead_trump_mass 0.48–0.56.
-Greedy pick 47.7% → 41.7% → 37.4% (~5 pts/50k unanchored drift).
-**Operator calibration (2026-07-25): this decline is HEALTHY — ~50%
-is far too high, ~30% is near-optimal, and down to ~20% is defensible
-and may be where the gradient leads.** Concern threshold is therefore
-~20%, not the drift itself; the formal greedy gate (min_pick 15%,
-warning-only) sits below that. The bidding contingency (re-engage
-anchor at a declared restart) remains armed on PICK-gate streak or
-leaster-watchdog trip (greedy leaster 2.5%, sampled ~1%, quiet).
-Next pre-registered milestones: 500k duplicate h2h vs seed (kill ≤
-−0.10), B2 through gen-2 ecology churn.
+**Pre-registered tripwires & kill rules:**
+- RETENTION: greedy partner trump-lead < 50% at BOTH the 50k and 100k
+  probes ⇒ NEEDS REVIEW (low temperature holding the wrong thing again).
+- MECHANISM DISCRIMINATOR: lead_adv_mean persistently negative across the
+  first ~20 updates while lead_trump_mass falls ⇒ the anti-convention
+  force is systematic ⇒ stop early; search-teacher lane.
+- Bidding: leaster-watchdog trip or greedy PICK-gate streak ⇒ re-engage
+  the bidding anchor at a declared restart (contingency, not a kill).
+- Strength: duplicate h2h vs the 400k seed ≤ −0.10 at 500k.
+- B2 endpoint, comparison protocol, outcome mapping as amended 2026-07-24
+  (retention framing: reach = keep what the seed has; hold = keep it
+  through gen 2's ecology churn).
 
-**150k/200k PROBES (2026-07-25): no gates tripped; two watch items
-opened.** partner_trump_lead 79.76% (84 leads) @150k → **62.07%** (58
-leads) @200k — still 12 points above the 50% tripwire but ~2.3σ below
-the 76–81% plateau (SE ≈ 6.4% at n=58): EITHER probe noise or erosion
-onset; the 250k probe discriminates. Counter-evidence for noise:
-sampled lead_trump_mass is flat (0.49–0.54, no decline), and greedy
-argmax can flip near the boundary while underlying mass holds.
-Defender t0 leak 0.00% at both probes. Second watch item: greedy
-leaster 2.5% → 5.5% → 5.5% (sampled 1.4–2.3%) — PASS-collapse
-attractor direction, but pick is STABLE at 36.8–37.4% (settling
-toward the operator's ~30% optimum, not collapsing) and alone
-recovered to 29.1%; leaster-watchdog owns the halt decision.
-Strength: **picker_avg ~2.0** (1.10 → 1.5 → 2.0 across 200k), ev_ora
-0.54–0.63 / ev_lim 0.45–0.53 sustained. Watcher re-armed to 300k
-(early-fire: partner < 50%, pick < 20%, or greedy leaster > 8%).
+**Probe trajectory (greedy probes every 50k; % of relevant leads; ev
+ranges over the surrounding updates):**
 
-**250k/300k PROBES (2026-07-25): both watch items RESOLVED BENIGN.**
-partner_trump_lead 78.57% @250k → **84.29%** @300k (highest reading
-yet) — the 200k dip at 62% was probe noise, as the flat sampled
-lead_trump_mass predicted. Greedy leaster 1.5% → 3.5% (oscillation
-1.5–5.5%, no trend; watchdog quiet). Pick oscillating 35.5–43.2%,
-alone under limit, picker_avg ~1.8 sustained, ev_ora 0.60–0.66 /
-ev_lim 0.48–0.55 (best yet). NEW MILD WATCH: defender t0 trump-lead
-0.00 → 1.11% @250k → 4.81% @300k — rising from zero toward the 30M-era
-level (4.8%), still under the B2 ≤10% bound; tiny counts (~5 leads/
-probe, SE ≈ 2%), could be noise around 2–3%. Watcher re-armed to 400k
-(early-fire: partner < 50%, pick < 20%, leaster > 8%, defender t0 >
-10%); 500k duplicate h2h vs seed is the next hard milestone.
+| ep | partner trump-lead | defender t0 | pick | leaster | ev_ora / ev_lim | note |
+|---|---|---|---|---|---|---|
+| seed | 76.6% | ~3.3% | 47.7% | 0.25% | — | baseline |
+| 50k | **75.81%** (62) | 0.00% (94) | 41.7% | 2.0% | 0.55–0.59 / 0.45–0.51 | **GATE 1 PASS** |
+| 100k | **80.95%** (63) | 0.00% (113) | 37.4% | 2.5% | 0.54–0.63 / 0.41–0.52 | **GATE 2 PASS — tripwire pair cleared** |
+| 150k | 79.76% (84) | 0.00% | ~37% | 5.5% | — | |
+| 200k | 62.07% (58) | 0.00% | ~37% | 5.5% | — | watch opened: dip ~2.3σ below plateau |
+| 250k | 78.57% | 1.11% | — | 1.5% | — | dip resolved: probe noise |
+| 300k | **84.29%** | 4.81% | 35.5–43.2% | 3.5% | 0.60–0.66 / 0.48–0.55 | both watches benign |
+| 350k | 94.64% | 1.79% | — | 3.0% | — | sharpening |
+| 400k | **97.59%** (83) | 9.00% (9/100) | 32.2% | 7.0% | 0.60–0.63 / 0.49–0.51 | play_logit_spread 0.81→0.91 |
+| 450k | 86.7% | 0.91% | 41.6% | 1.0% | ~0.62 / ~0.51 | |
+| 500k | 86.8% | 8.91% | 42.2% | 1.5% | — | **kill probe PASSED, see below** |
+| 550–700k | 89.0 / 82.8 / 84.0 / 78.4% | 1.1–6.3% → 0.0% | 38–43% | 1.5–4.5% | 0.56–0.64 / 0.46–0.53 | ALONE 36.2% @650k / 34.0% @700k warnings |
+| 900k/950k/1M | 93.7 / 93.2 / 80.8% | 0.0% @1M | — | — | — | **gen-1 B2 reading HELD** |
 
-**350k/400k PROBES (2026-07-25): convention SHARPENING, not just
-held.** partner_trump_lead 84.29% → **94.64%** @350k → **97.59%**
-@400k (83 leads) — the gradient is pushing the convention toward
-near-determinism, the opposite of every pre-fix run. Pick settled at
-**32.2%** — inside the operator's ~30% optimal band — with picker_avg
-~1.8 sustained and play_logit_spread sharpening (0.81 → 0.91). ev_ora
-0.60–0.63 / ev_lim 0.49–0.51. Two rising-noise items, neither
-tripped: defender t0 trump-lead 1.79% @350k → **9.00%** @400k (9
-leads of 100; SE ≈ 2.9%; B2 bound ≤10% — bouncy small-n but the
-watcher fires >10%); greedy leaster 3.0% → 7.0% (sampled 3.0–3.7%,
-highest of run; early-fire 8%, watchdog owns the halt). NEXT: the
-pre-registered **500k kill probe** — duplicate h2h vs the 400k seed
-(kill ≤ −0.10) — runs MANUALLY when checkpoint_500000 lands (the
-orchestrator's own h2h fires only at the 1M gen boundary).
+Notes carried from the probe entries:
+- **50k/100k: the retention-first hypothesis survived its designated
+  falsification window** — the first-100k collapse that killed every prior
+  league arm (batch arm 0.012 @50k; v2 ~0) did not occur under correct
+  per-seat targets + pretrained oracle + unanchored low-temperature PG.
+- The 200k partner dip (62%, SE ≈ 6.4% at n=58) was called
+  noise-vs-erosion at the time, with sampled lead_trump_mass flat
+  (0.49–0.54) as counter-evidence for noise; 250k/300k confirmed noise.
+- Greedy pick drift 47.7% → ~37% → low-40s oscillation. **Operator
+  calibration (2026-07-25): the decline is HEALTHY — ~50% is far too
+  high, ~30% near-optimal, down to ~20% defensible; concern threshold
+  ~20%**, below which the formal greedy gate (min_pick 15%, warning-only)
+  sits. Pick settled at 32.2% @400k — inside the optimal band.
+- picker_avg climbed 1.10 → 1.53–1.58 (50k) → ~2.0 (200k), sustained
+  1.72–1.87 through 700k.
+- Defender t0 trump-lead bounced 0–9% under the B2 ≤10% bound (tiny
+  counts, SE ≈ 2–3%); never crossed.
+- Greedy leaster oscillated 1.5–7.0% with no trend (early-fire 8%,
+  watchdog owns the halt; sampled 0.6–3.7%).
+- ALONE exceeded this run's effective limit (32.7% = baseline 27.7 + 5) at
+  650k/700k — greedy-gate WARNINGS on record (never halts); alone rising
+  alongside picker_avg is consistent with growing picker confidence, not
+  pathology.
+- Watcher early-fire conditions as re-armed through gen 1: partner < 50%,
+  pick < 20%, leaster > 8%, defender t0 > 10%.
 
 **500k KILL PROBE — PASSED WITH STRENGTH GAIN (2026-07-25;
-runs/league_retention_pg/h2h_500k_vs_seed.json).** Duplicate h2h,
-500k checkpoint vs 400k seed, 4,000 deals: **edge +0.0885 ± 0.0139
-score/hand (+6.4σ)**; called +0.0731 ± 0.0191, JD +0.1040 ± 0.0202;
-win_frac 0.524. Kill rule (≤ −0.10) not merely cleared — INVERTED.
-Historical contrast: the arch-ablation found v2's league lift over
-this same 400k selfplay start ≈ ZERO after 2M episodes; the fixed
-trainer delivers +0.089 in 500k WHILE the partner convention
-sharpened to the 84–98% band — first league configuration in the
-lineage to show real strength lift over its selfplay seed,
-consistent with "league lift ≈ zero" having been the bugs. 450k/500k
-greedy: partner 86.7%/86.8%, leaster 1.0%/1.5% (defused again),
-defender t0 0.91%/8.91% (bouncing under the 10% bound), pick
-41.6%/42.2%, ev_ora ~0.62 / ev_lim ~0.51. Next: gen-1 boundary at 1M
-(orchestrator endpoint + h2h + exploiter gen), B2 through gen-2
-churn.
+`runs/league_retention_pg/h2h_500k_vs_seed.json`).** Duplicate h2h, 500k checkpoint vs 400k seed,
+4,000 deals: **edge +0.0885 ± 0.0139 score/hand (+6.4σ)**; called +0.0731
+± 0.0191, JD +0.1040 ± 0.0202; win_frac 0.524. Kill rule (≤ −0.10) not
+merely cleared — INVERTED. Historical contrast: the arch ablation found
+v2's league lift over this same 400k selfplay start ≈ ZERO after 2M
+episodes; the fixed trainer delivers +0.089 in 500k WHILE the partner
+convention sharpened to the 84–98% band — first league configuration in
+the lineage to show real strength lift over its selfplay seed, consistent
+with "league lift ≈ zero" having been the bugs (§6.3).
 
-**550k–700k PROBES (2026-07-26): steady state, no gates.** partner
-89.0 / 82.8 / 84.0 / 78.4% (stable high band); defender t0 bouncing
-1.1–6.3% then 0.0% @700k (no trend, never crossed 10%); leaster
-oscillating 1.5–4.5% greedy (watchdog quiet); pick 38–43%; picker_avg
-1.72–1.87; ev_ora 0.56–0.64 / ev_lim 0.46–0.53. One note: ALONE
-36.2% @650k and 34.0% @700k exceed this run's effective alone limit
-(32.7% = baseline 27.7 + 5) — greedy-gate WARNINGS (never halts)
-will be on record; alone is rising alongside picker_avg, consistent
-with growing picker confidence rather than pathology. Next: 1M gen-1
-boundary (orchestrator endpoint + h2h + first exploiter gen).
+### 7.7 Exploiter: seating amendment + gen-1 gate
 
 **EXPLOITER-SEATING AMENDMENT (pre-registered 2026-07-26,
-operator-approved; applies at the gen-2 boundary IF the gen-1
-exploiter passes its gate).** Drop `--exploiter-full-table` for gen 2
-onward (keep `--exploiter-patched-ema 0.35` — retirement logic is
-orthogonal); exploiter pressure reverts to per-seat single-exploiter
-seating. Rationale on record BEFORE the gate result:
+operator-approved; applies at the gen-2 boundary IF the gen-1 exploiter
+passes its gate).** Drop `--exploiter-full-table` for gen 2 onward (keep
+`--exploiter-patched-ema 0.35` — retirement logic is orthogonal);
+exploiter pressure reverts to per-seat single-exploiter seating. Rationale
+recorded BEFORE the gate result:
 1. Seat rotation now supplies the role coverage whole-table was
    compensating for: the table is fixed per rotation group, so one
-   exploiter seat meets the hero from all 5 relative offsets on the
-   SAME deal (matched-pair role sweep). The July finding that
-   per-seat pressure was "inert" predates rotation AND is confounded
-   by both training bugs (exploiters trained on the corrupted league
-   path; main's gradients ~67% corrupted).
-2. Certified-configuration match: the exploiter trains and gates as
-   1 exploiter vs 4 mains. Whole-table deploys the MIRROR (1 main vs
-   4 exploiter copies) — uncertified pressure dosed by a certified
-   edge (units mismatch in exploiter_share heat scaling). Per-seat +
-   rotation restores the certified configuration from every role.
+   exploiter seat meets the hero from all 5 relative offsets on the SAME
+   deal (matched-pair role sweep). The July "per-seat pressure inert"
+   finding predates rotation AND is confounded by both §6 bugs.
+2. Certified-configuration match: the exploiter trains and gates as 1
+   exploiter vs 4 mains. Whole-table deploys the MIRROR (1 main vs 4
+   exploiter copies) — uncertified pressure dosed by a certified edge
+   (units mismatch in exploiter_share heat scaling). Per-seat + rotation
+   restores the certified configuration from every role.
 3. Collusion artifact: 4 parameter-shared exploiter copies form an
-   implicit coalition with no evaluation analog. For THIS run it
-   would confound B2: retention breaking under 4-way anti-convention
-   collusion ≠ conventions not robust to realistic exploitation.
-   Per-seat keeps gen 2's churn test interpretable.
-4. Literature: AlphaStar main-exploiters = 2p best responses into
-   PFSP mixtures; PSRO deploys BRs per-seat from the meta-strategy;
-   multi-seat poker practice = one learner seat + position rotation.
-   No precedent for whole-table; nothing certified is lost (a
-   1-vs-4-trained exploiter cannot express coordinated multi-seat
-   exploits anyway).
-Mechanics: flag affects main-phase table sampling only ⇒ kill
-orchestrator at the boundary, relaunch with amended --trainer-args;
-state/league/endpoint caches persist (gen-0 cache + panel_gen1.npz
-idempotency), partial gen-2 episodes under the old flag are
-discarded by the boundary restart. Readout: greedy partner probes
-remain the exploitation instrument — a certified per-seat exploiter
-driving partner trump-lead down is a legitimate B2-relevant finding.
-If the exploiter FAILS its gate, pressure is moot for gen 2; the
-amendment still applies to all future generations.
+   implicit coalition with no evaluation analog. For THIS run it would
+   confound B2: retention breaking under 4-way anti-convention collusion ≠
+   conventions not robust to realistic exploitation.
+4. Literature: AlphaStar main-exploiters = 2p best responses into PFSP
+   mixtures; PSRO deploys BRs per-seat from the meta-strategy; multi-seat
+   poker practice = one learner seat + position rotation. No precedent for
+   whole-table; nothing certified is lost (a 1-vs-4-trained exploiter
+   cannot express coordinated multi-seat exploits anyway).
 
-**GEN-1 EXPLOITER GATE: FAILED (2026-07-26; exploitability.csv).**
-Edge **−0.0279 ± 0.0166**, win_frac 0.460 over 3,000 gate deals — the
-50k PPO exploiter LOSES to the 1M main. First exploiter in the
-program trained on the FIXED path (coherent streams, correct
-rewards), so unlike the old inert exploiters this is a fair probe:
-the unanchored 1M main presents no PPO-findable hole at this budget
-(echoes the 30M gen-0 "not PPO-exploitable" finding; consistent with
-the +0.089 h2h strength gain rather than degenerate drift).
-Consequences: exploiter is NOT seated in gen 2 (x-share stays 0), so
-`--exploiter-full-table` is DORMANT in gen 2; per the operator
-directive the seating amendment was conditional on a pass and is NOT
-applied at this boundary — it takes effect at the next orchestrator
-restart, which must happen before any future passed exploiter's
-pressure generation (gen-2's exploiter gates at the 2M boundary ⇒
-apply amendment no later than that restart). Gen-1 endpoint eval
-running (3,996 deals); h2h gen 1 vs seed follows.
+Mechanics: flag affects main-phase table sampling only ⇒ kill orchestrator
+at the boundary, relaunch with amended --trainer-args; state/league/
+endpoint caches persist, partial episodes under the old flag discarded by
+the boundary restart. Readout: greedy partner probes remain the
+exploitation instrument — a certified per-seat exploiter driving partner
+trump-lead down is a legitimate B2-relevant finding.
 
-**GEN-1 BOUNDARY RESULTS + SEATING AMENDMENT APPLIED (2026-07-26).**
-Orchestrator gen-1 verdict: **panel +0.0425 [+0.0100, +0.0752] vs
-gen 0** (CI excludes zero — the same instrument that read ≈ 0 league
-lift after 2M episodes in the arch ablation) and **h2h gen1-vs-gen0
-+0.078 ± 0.013**; flat=False, streak=0, continues (min_generations
-4). End-of-gen probes: partner 93.7/93.2/80.8% (900k/950k/1M),
-defender t0 0.0% at 1M ⇒ **gen-1 B2 reading HELD**. Per operator
-directive the per-seat exploiter amendment was applied at this
-boundary regardless of the gate failure: orchestrator killed after
-h2h, relaunched 23:01 WITHOUT `--exploiter-full-table` (patched-EMA
-kept). Resume machinery replayed gen 1 from artifacts in 1s (gen-0
-cache + panel_gen1.npz + h2h_gen1.json + exploitability row); gen 2
-restarted from the 1M boundary checkpoint (~6min of whole-table gen-2
-episodes discarded; flag was dormant anyway — no gated exploiter).
-Verified: live gen-2 trainer command line lacks the flag; gen2 log
-shows the old trainer's 🥷 banner and the new trainer's banner set
-without it.
+**GEN-1 EXPLOITER GATE: FAILED (2026-07-26; exploitability.csv).** Edge
+**−0.0279 ± 0.0166**, win_frac 0.460 over 3,000 gate deals — the 50k PPO
+exploiter LOSES to the 1M main. First exploiter in the program trained on
+the FIXED path (coherent streams, correct rewards), so unlike the old
+inert exploiters this is a fair probe: the unanchored 1M main presents no
+PPO-findable hole at this budget (echoes the 30M gen-0 "not
+PPO-exploitable" finding; consistent with the +0.089 h2h strength gain
+rather than degenerate drift). Consequence: no exploiter seated in gen 2
+(x-share 0); per operator directive the seating amendment was applied at
+the gen-1 boundary restart anyway (§7.8), so it is in force for any future
+passed exploiter.
 
-**DEFAULTS ADOPTION + C2 BASELINE (2026-07-27).** Operator: the
-retention-run configuration is now the DEFAULT for train_league_ppo
-and run_extended_league (51a81ac; label args excluded; --no-* opt-outs
-for the boolean flags; PPOAgent internals untouched). grad-accum /
-minibatch-episodes reassessed on request: the braided-segment OOM that
-motivated them is gone (T_max ~175 → ~40 post per-seat fix, anchor
-off), but they are RETAINED as defaults because grad-accum is now the
-mechanism of the validated low-temperature design — one full-buffer
-optimizer step per epoch with peak memory bounded by
-minibatch-episodes, bit-equivalent gradients (test_grad_accum). Their
-role changed from memory workaround to step-size semantics.
+### 7.8 Gen-1 boundary results (2026-07-26)
 
-**C2 (defender called-suit lead) baseline from the backfill sweep
-(runs/league_retention_pg/c2_adherence_sweep.json, 1000 CRN deals per
-checkpoint):** the scripted conventions agent reads 69.7% overall
-(t0 100% by construction); the 400k seed reads **47.6%** — C2 was
-only ever HALF-learned, unlike partner trump-lead (77%). Retention
-run trajectory 46.9 / 46.3 / 48.9 / 47.6 / **40.9% @1M** (n=668,
-binomial SE ≈ 1.9% ⇒ the 1M reading is ~2.5σ below the seed — mild
-erosion signal or noise; the live greedy column now tracks it every
-50k from 1.05M). C1 defender trump-lead stays 0.1–4.8% across all
-checkpoints (convention intact). Note E2's +0.49 @4.4σ says agreeing
-with C2 is terminal-optimal on average — at 47% adherence there is
-real unclaimed headroom; C2 is therefore an ACQUISITION metric for
-this program, not a retention one. Watch: C2 < ~35% sustained
+Orchestrator gen-1 verdict: **panel +0.0425 [+0.0100, +0.0752] vs gen 0**
+(CI excludes zero — the same instrument that read ≈ 0 league lift after 2M
+episodes in the arch ablation) and **h2h gen1-vs-gen0 +0.078 ± 0.013**;
+flat=False, streak=0, continues (min_generations 4). End-of-gen probes:
+partner 93.7/93.2/80.8% (900k/950k/1M), defender t0 0.0% at 1M ⇒ **gen-1
+B2 reading HELD**.
+
+Seating amendment applied at this boundary regardless of the gate failure:
+orchestrator killed after h2h, relaunched 23:01 WITHOUT
+`--exploiter-full-table` (patched-EMA kept). Resume machinery replayed gen
+1 from artifacts in 1s (gen-0 cache + panel_gen1.npz + h2h_gen1.json +
+exploitability row); gen 2 restarted from the 1M boundary checkpoint
+(~6min of whole-table gen-2 episodes discarded; flag was dormant anyway —
+no gated exploiter). Verified: live gen-2 trainer command line lacks the
+flag.
+
+### 7.9 Defaults adoption + C2 baseline (2026-07-27)
+
+**Defaults adoption (51a81ac):** the retention-run configuration is now
+the DEFAULT for train_league_ppo and run_extended_league (label args
+excluded; `--no-*` opt-outs for the boolean flags; PPOAgent internals
+untouched). grad-accum / minibatch-episodes reassessed on request: the
+braided-segment OOM that motivated them is gone (T_max ~175 → ~40 post
+per-seat fix, anchor off), but they are RETAINED as defaults because
+grad-accum is now the mechanism of the validated low-temperature design —
+one full-buffer optimizer step per epoch with peak memory bounded by
+minibatch-episodes, bit-equivalent gradients (test_grad_accum). Their role
+changed from memory workaround to step-size semantics.
+
+**C2 (defender called-suit lead) baseline from the backfill sweep**
+(`runs/league_retention_pg/c2_adherence_sweep.json`, 1000 CRN deals per
+checkpoint): the scripted conventions agent reads 69.7% overall (t0 100%
+by construction); the 400k seed reads **47.6%** — C2 was only ever
+HALF-learned, unlike partner trump-lead (77%). Retention-run trajectory
+46.9 / 46.3 / 48.9 / 47.6 / **40.9% @1M** (n=668, binomial SE ≈ 1.9% ⇒ the
+1M reading is ~2.5σ below the seed — mild erosion signal or noise; the
+live greedy column tracks it every 50k from 1.05M). C1 defender trump-lead
+stays 0.1–4.8% across all checkpoints (convention intact). Note E2's +0.49
+@4.4σ says agreeing with C2 is terminal-optimal on average — at 47%
+adherence there is real unclaimed headroom; **C2 is an ACQUISITION metric
+for this program, not a retention one.** Watch: C2 < ~35% sustained
 (erosion below seed) or a climb toward the scripted 70% (the terminal
 objective claiming the headroom).
 
-**Success reading:** partner ≥ 0.5 AND defender ≤ 0.10 held through 2M
-with the ordinary strength trajectory ⇒ retention-first on-policy PG is
-sufficient; the search teacher stays shelved. Retention holds through
-gen 1 but breaks when exploiters/ecology churn arrives ⇒ hold-dose
-insufficient against ecology pressure ⇒ selective distillation at lead
-nodes composes next. Retention fails in the first 100k despite the
-accurate baseline ⇒ the collapse force is systematic ⇒ search-teacher
-lane with the mechanism identified.
+### 7.10 Success reading / outcome map
 
-## Implementation notes
+- Partner ≥ 0.5 AND defender ≤ 0.10 held through 2M with the ordinary
+  strength trajectory ⇒ retention-first on-policy PG is sufficient; the
+  search teacher stays shelved.
+- Retention holds through gen 1 but breaks when exploiters/ecology churn
+  arrives ⇒ hold-dose insufficient against ecology pressure ⇒ selective
+  distillation at lead nodes composes next.
+- Retention fails in the first 100k despite the accurate baseline ⇒ the
+  collapse force is systematic ⇒ search-teacher lane with the mechanism
+  identified. *(This branch is dead: gates 1–2 passed.)*
 
-- All loss/sampling changes behind config flags defaulting to historical
-  behavior; `capture_arch_goldens --check` + bit-exact fixture suite before
-  merge; new behavior activated per-run via CLI/PFSPHyperparams.
-- Trainer CSV schemas append-only (stratified adv/EV columns may be added,
-  never renamed).
-- `league.py` sampling simplification keeps member JSON schema readable by
-  old code (EMA fields dormant).
-- The live gen-3 extended-league run is unaffected until a decision is made
-  about it; no mid-run changes.
+## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
-## Adaptive entropy, Phase 1: instrumentation + backfill (2026-07-28,
-## operator-directed)
+### 8.1 Motivation
 
-**Motivation.** The run trains under `--schedule-horizon 20_000_000`, a
-value calibrated for the docstring's 6×5M regime. This run is 1M-episode
-generations with auto-stop (min 4 gens; realistic total 4–10M), so the
-linear entropy decay never leaves its high region: at 1.78M the pick
-coefficient sits at 0.046 (92% of start) and even at 10M it would be 0.028
-vs the 0.005 end value. Two consequences: (1) the entropy bonus biases
-learned optima toward Boltzmann-flat wherever Q-gaps are small — pick is
-exactly such a head (greedy pick 42–45% vs the operator's ~30% optimum);
+The run trains under `--schedule-horizon 20_000_000`, calibrated for the
+docstring's 6×5M regime. This run is 1M-episode generations with auto-stop
+(min 4 gens; realistic total 4–10M), so the linear entropy decay never
+leaves its high region: at 1.78M the pick coefficient sits at 0.046 (92%
+of start) and even at 10M it would be 0.028 vs the 0.005 end value. Two
+consequences as originally stated: (1) the entropy bonus biases learned
+optima toward Boltzmann-flat wherever Q-gaps are small — *this premise was
+REFUTED for pick by the backfill (§8.4): pick is near-deterministic per
+node; the 42–45% greedy pick rate is confident behavior, not flattening*;
 (2) the flat-streak stop rule cannot distinguish "converged" from
 "entropy-limited", so the orchestrator could read a regularization ceiling
-as convergence and halt early. Operator has no fixed budget; wants the
-highest-quality model, with convergence driven by data rather than a
-clock.
+as convergence and halt early — *this survives, narrowed to the play head
+(§8.4)*. Operator has no fixed budget; wants the highest-quality model,
+with convergence driven by data rather than a clock.
 
-**Adopted design (operator-approved): SAC-style target-entropy control
-(inner loop) + plateau-gated target decay (outer loop).**
+### 8.2 Adopted design: two-loop control (operator-approved)
 
-- Inner: per-head coefficient becomes a feedback controller holding
-  measured normalized entropy at a target (Haarnoja et al.,
-  arXiv:1812.05905 §5; discrete form Christodoulou, arXiv:1910.07207 —
-  targets as fraction of max entropy). Coefficient floors + leaster
-  watchdog stay as collapse insurance (the watchdog is already a bang-bang
-  controller in the upward direction).
-- Outer: targets step down only at generation boundaries and only on a
-  flat h2h verdict (CI-positive ⇒ hold). A flat generation triggers a step
-  and RESETS the stop-rule streak; flatness only counts toward stopping
-  once targets sit at floor. This removes the converged-vs-entropy-limited
-  confound from the stop rule.
-- Alternatives surveyed and rejected for this program: meta-gradient
-  self-tuning (Xu et al. arXiv:1805.09801; Zahavy et al. STACX
-  arXiv:2002.12928) — most principled single-run option but requires
-  differentiating through the update on a freshly-validated recurrent PPO
-  path; PBT/PB2 (Jaderberg et al. arXiv:1711.09846; Parker-Holder et al.
-  arXiv:2002.02518) — population cost infeasible on one workstation;
-  KL-to-prior in place of entropy (AlphaStar, Vinyals et al. 2019,
+- **Inner loop:** per-head coefficient becomes a feedback controller
+  holding measured normalized entropy at a target (SAC automatic
+  temperature adjustment, Haarnoja et al. arXiv:1812.05905 §5; discrete
+  form Christodoulou arXiv:1910.07207 — targets as fraction of max
+  entropy). Coefficient floors + leaster watchdog stay as collapse
+  insurance (the watchdog is already a bang-bang controller in the upward
+  direction; its kick multiplies ON TOP of the controller's α).
+- **Outer loop:** targets step down only at generation boundaries and only
+  on a flat h2h verdict (CI-positive ⇒ hold). A flat generation triggers a
+  step and RESETS the stop-rule streak; flatness only counts toward
+  stopping once targets sit at floor. This removes the
+  converged-vs-entropy-limited confound from the stop rule.
+- Entropy anneals to a small floor, never zero: imperfect-info equilibria
+  are genuinely mixed and entropy regularization has convergence support
+  there (Sokota et al. arXiv:2206.05825 magnetic mirror descent;
+  quantal-response/regularized equilibria). The legacy schedule's
+  end-values (0.001–0.005) already encode this.
+- Alternatives surveyed and rejected: meta-gradient self-tuning (Xu et al.
+  arXiv:1805.09801; Zahavy et al. STACX arXiv:2002.12928) — most
+  principled single-run option but requires differentiating through the
+  update on a freshly-validated recurrent PPO path; PBT/PB2 (Jaderberg et
+  al. arXiv:1711.09846; Parker-Holder et al. arXiv:2002.02518) —
+  population cost infeasible on one workstation; KL-to-prior in place of
+  entropy (AlphaStar, Vinyals et al. 2019,
   doi:10.1038/s41586-019-1724-z) — held as node-selective contingency
   only, since the retention run validated anchor-free training.
-- Entropy is annealed to a small floor, never zero: imperfect-info
-  equilibria are genuinely mixed and entropy regularization has
-  convergence support there (Sokota et al., arXiv:2206.05825 magnetic
-  mirror descent; quantal-response/regularized equilibria). End-values of
-  the legacy schedule (0.001–0.005) already encode this.
 
-**Phase 1 (this entry): pure instrumentation, zero behavior change.**
-Committed 2e60bc3 + 38824e8 + 2945ad6:
+### 8.3 Phase 1: instrumentation + backfill tooling (commits 2e60bc3 + 38824e8 + 2945ad6; zero behavior change)
 
 - Measurement: per-node policy entropy over the LEGAL action set,
   normalized by ln(n_legal), per head; forced moves (n_legal=1) excluded.
 - Live half: measured at θ_old (first-epoch minibatches; under grad-accum
-  no optimizer step lands inside epoch one) in `_update_minibatch`;
-  `stats["head_entropy_norm"]`; progress-CSV columns
+  no optimizer step lands inside epoch one — so live telemetry matches
+  offline checkpoint probes, required for bumpless target derivation) in
+  `_update_minibatch`; `stats["head_entropy_norm"]`; progress-CSV columns
   `ent_norm_pick/partner/bury/play` (append-only; ensure_csv_columns
-  migrates); "Hn" field on the update log line. Goes live on the next
-  orchestrator restart (gen-2 boundary).
+  migrates); "Hn" field on the update log line. Goes live on the gen-2→3
+  boundary restart.
 - Offline half: `analysis/entropy_probe.py` (sampled self-play — the
   on-policy distribution, unlike the argmax greedy probe — CRN deal panel,
   side-effect-free) + `analysis/entropy_backfill.py` (checkpoint sweep →
@@ -1563,39 +1369,14 @@ Committed 2e60bc3 + 38824e8 + 2945ad6:
   coefficient-vs-measured comparison). Tests:
   `tests/test_entropy_telemetry.py` (bounds, first-epoch-only wiring,
   probe reproducibility/side-effect freedom).
+- Soft-band fraction (share of eligible nodes with H_norm > 0.3,
+  `SOFTBAND_HNORM`) added to both instruments (`softband_*` CSV columns)
+  as the boundary-band collapse canary the mean hides.
 
-**Phase 2 target/step derivation rules (pre-registered in principle;
-numbers to be fixed from the backfill before any pre-registration of the
-controller itself):**
+### 8.4 Backfill results (2026-07-28, 37 ckpts × 200 games, seed 20260728; `runs/league_retention_pg/entropy_backfill.json`)
 
-- Starting targets: bumpless — the measured per-head H_norm at switch-on
-  (for a fresh run: the backfill's final-checkpoint values from THIS run,
-  the most successful in the program; Åström & Wittenmark, *Adaptive
-  Control* 2e 1995 ch. 9).
-- Step: geometric on the gap to floor, `target ← floor + 0.75·(target −
-  floor)`, at most one step per generation boundary, monotone ratchet
-  (watchdog is the only upward force). Magnitude anchored by PBT's
-  0.8/1.2× perturbations and bounded below by (a) h2h detectability
-  (±0.013 SE) and (b) the organic per-generation drift the backfill
-  measures; bounded above by distance-to-collapse (backfill of collapse-era
-  checkpoints if available) and the ecology-churn tolerance already
-  demonstrated at boundaries.
-- Floors: pick from measured collapse margin; play reflecting
-  mixed-equilibrium optimality (~30–40% of current), both to be fixed from
-  backfill data.
-
-**Backfill running** (bg bi2owp3vy): seed400k_a + 36 checkpoints
-(50k→1.8M), 200 games each, seed 20260728 →
-`runs/league_retention_pg/entropy_backfill.json`. First reading (50k, 10
-games, smoke): pick Hn 0.16, partner 0.09, bury 0.28, play 0.82 — pick is
-already far sharper per-node than the aggregate 43% pick rate suggests;
-the play head carries most of the sampled stochasticity. Full-trajectory
-readout to be appended below.
-
-### Backfill results (2026-07-28, 37 ckpts × 200 games, seed 20260728;
-### runs/league_retention_pg/entropy_backfill.json)
-
-Trajectory (per-head mean H_norm; seed row = seed400k_a warm start):
+Per-head mean H_norm (seed row = seed400k_a warm start; selected rows of
+the 37-checkpoint sweep):
 
 | ckpt | pick | partner | bury | play |
 |---|---|---|---|---|
@@ -1610,145 +1391,23 @@ Derived (bumpless targets = 1.8M values; organic drift per generation from
 OLS over all 36 in-run checkpoints): pick 0.046 / −0.0003, partner 0.127 /
 −0.0008, bury 0.163 / −0.0148, play **0.754 / −0.0569**.
 
-**Headline finding — the entropy-inflated-pick hypothesis is REFUTED.**
-The pick head reads H_norm ≈ 0.05–0.07 flat across the entire run: at
-actual pick nodes the policy is near-deterministic despite the 0.046–0.05
-coefficient. The 42–45% greedy pick rate is the policy's confident
-behavior, not Boltzmann flattening — the motivation bullet (1) in the
-section above is corrected accordingly. The pick-rate drift toward the
-operator's ~30% optimum, if it happens, must come from learning, not from
-annealing pick entropy. Partner and bury similarly sit at low, roughly
-trend-free levels (partner noisy 0.05–0.17 at n≈190/probe; bury
+**Headline — the entropy-inflated-pick hypothesis is REFUTED.** Pick reads
+H_norm ≈ 0.05–0.07 flat across the entire run: at actual pick nodes the
+policy is near-deterministic despite the 0.046–0.05 coefficient. The
+42–45% greedy pick rate is confident behavior, not Boltzmann flattening;
+the pick-rate drift toward the operator's ~30% optimum, if it happens,
+must come from learning, not annealing. Partner and bury sit at low,
+roughly trend-free levels (partner noisy 0.05–0.17 at n≈190/probe; bury
 0.26→0.16 in the first 200k, flat since).
 
 **Where entropy actually lives: the play head.** Clean monotone decline
 0.88 → 0.75 with organic drift −0.057/gen under the fixed 0.0138–0.015
-coefficient. This is the only head where (a) the regularizer is plausibly
-binding and (b) a target-entropy controller has real leverage; it is also
-the head the operator's original concern (sampling noise near
-convergence) applies to.
+coefficient. The only head where (a) the regularizer is plausibly binding
+and (b) a target-entropy controller has real leverage; also the head the
+operator's original concern (sampling noise near convergence) applies to.
 
-**Consequences for Phase 2 numbers:**
-- Starting targets (bumpless, from THIS run's 1.8M operating point): pick
-  0.046, partner 0.127, bury 0.163, play 0.754.
-- The outer loop's first and main lever is the PLAY target. Step
-  detectability: a 0.25-of-gap step from 0.754 toward a ~0.28 floor
-  (~37% of current, the mixed-equilibrium reserve) moves ~0.12 —
-  comfortably above the −0.057/gen organic drift, satisfying the
-  distinguishability bound.
-- Pick/partner/bury controllers exist mainly to HOLD their measured
-  operating points (insurance against collapse or drift), not to anneal;
-  their coefficients under the controller may fall to near the floor
-  since measured entropy already sits at target without help. The leaster
-  watchdog remains the upward override on pick.
-- The stop-rule confound is narrower than feared but real: a plateau
-  cannot be entropy-limited via pick/partner (not binding), but can be
-  via play. The plateau→step→reset-streak rule therefore applies to the
-  play target.
-
-### Phase 2 controller: implemented + pre-registered hyperparameters
-### (2026-07-28, commits 3117ca9 + 73dfdbd; ACTIVATION AWAITS OPERATOR GO)
-
-Code: `training/entropy_controller.py` (inner loop + persistence),
-trainer `--entropy-mode target` (default `schedule` — live run untouched),
-orchestrator `--adaptive-entropy` (default off) with the stop-rule
-absorption amendment (flat + targets above floor ⇒ play-target step +
-streak reset, replay-idempotent via the generation record). Soft-band
-fraction (share of nodes with H_norm > 0.3) added to both instruments
-(`softband_*` CSV columns) as the boundary-band collapse canary the mean
-hides. Tests: test_entropy_controller.py (11) + extended
-test_entropy_telemetry.py (3); end-to-end absorb ladder verified against
-a real sidecar (5 steps 0.754→0.392, then at-floor flats stand).
-
-**The three controller hyperparameters, as derived from the backfill:**
-
-1. **Starting targets — bumpless, measured, not chosen.** On this run:
-   omit explicit targets; each head adopts its first live measurement at
-   switch-on (the controller's first act is to hold the status quo). For
-   a FRESH run seeded from this lineage: pass the backfill's 1.8M
-   operating point explicitly (`--entropy-target-pick 0.046 …-partner
-   0.127 …-bury 0.163 …-play 0.754`). α initialization is also bumpless
-   (adopts the legacy schedule's value at the current episode).
-
-2. **Inner gain η = 1.0 (log-space), |Δlog α| ≤ 0.1/update.** Derivation:
-   the plant timescale is the backfill's organic play drift (0.057
-   H_norm/gen ≈ 0.001/update); at η=1 a sustained error the size of one
-   outer step (~0.12) moves α ~12%/update ⇒ settles in ~10–20 of a
-   generation's ~61 updates — fast relative to the outer cadence, slow
-   relative to per-update noise (SE ≈ 0.002–0.004 at 16k rows ⇒ ~0.3%
-   α-jitter, two orders under the clamp). The gain is deliberately
-   uncritical: targets move rarely and α has a whole generation to
-   settle; the clamp bounds any transient.
-
-3. **Outer step — geometric, retain 0.75, min_step 0.03, play only.**
-   `target ← floor + 0.75·(target − floor)`; first step 0.754 → 0.635
-   (Δ≈0.12 ≈ 2× organic drift ⇒ distinguishable from the null; PBT-scale
-   perturbation). At most one step per boundary, only on a flat h2h,
-   monotone (watchdog is the sole upward force). min_step 0.03 (probe
-   checkpoint-to-checkpoint noise ±0.02, rounded up) ends the ladder
-   after 5 steps at ~0.39 — HONEST NOTE: the effective terminal target is
-   ~0.39, not the nominal 0.28 floor; steps below noise are not worth a
-   1M-episode generation each. If post-ladder evidence favors going
-   lower, lowering min_step late is a one-line pre-registered amendment.
-   Floors: play 0.28 (mixed-equilibrium reserve; least-data-grounded
-   number, protected by per-step h2h gates), hold heads floor-at-target.
-
-**Coefficient bounds:** α ∈ [legacy end, 4× legacy start] per head — the
-legacy schedule's "small, not zero" endpoint becomes the hard floor;
-the cap leaves collapse-fighting headroom without runaway.
-
-**Activation plan (pre-registered, NOT yet executed):** relaunch the
-orchestrator with `--adaptive-entropy` at the gen-2 boundary (rides the
-same restart that activates the ent_norm/softband live columns).
-Prediction to falsify: switch-on changes nothing measurable in gen 3
-(bumpless); the first target step happens only after a flat boundary
-verdict, and if the entropy-limited hypothesis is right, post-step
-generations claw back CI-positive h2h until the ladder floors. Guards
-unchanged: watchdog, greedy gates, B2 bounds, soft-band canary
-(pick softband collapse ⇒ operator review — the hold target protects
-the boundary band, this verifies it).
-
-### Amendment: fresh-from-seed starting targets (2026-07-28; supersedes
-### item 1's fresh-run clause above)
-
-The earlier clause ("fresh runs pass all four targets explicitly,
-including play 0.754") was wrong on two counts, both visible in the
-backfill's seed-vs-mature comparison (seed: pick 0.053 / partner 0.166 /
-bury 0.256 / play 0.882; mature 1.8M: 0.046 / 0.127 / 0.163 / 0.754):
-
-- **Bumpless-everything is wrong for a seed**: holding bury at 0.256 and
-  partner at 0.166 would fight the organic early sharpening the
-  validated run exhibited (bury 0.26→0.16 and partner 0.17→0.10 in the
-  first 200k). Bumpless is for switching onto a MATURE run; seed entropy
-  levels are transients, not operating points.
-- **Importing the mature play target is also wrong**: play 0.754 at seed
-  start suppresses the validated high-entropy early phase (0.88→0.82
-  over the first 200k), which coincides with the historically
-  collapse-critical league-transition window, and play exploration is
-  where improvement search happens.
-
-**Recipe (implemented as `--entropy-targets-from <backfill.json>`,
-commit pending):** hold heads (pick/partner/bury) take the validated
-run's mature operating point as explicit stabilization setpoints — the
-switch-on transient is benign (measured>target ⇒ α to floor ⇒
-sharpening at the gradient's natural pace, as in the validated run
-minus the unneeded bonus) and two-sided control gives collapse
-insurance from update 1 (the SNR arm's partner head died at 50k and
-never re-ignited; a 0.127 setpoint preserves re-ignition capacity).
-PLAY stays bumpless at the seed's own measurement; every descent step
-comes from the plateau ladder, which in a healthy fresh run won't fire
-until h2h actually flattens. Explicit --entropy-target-* flags override
-per head. Lineage caveat: mature setpoints are validated for this
-arch/setup; a different lineage re-derives them from its own backfill
-or falls back to fully-bumpless with generation 1 as calibration.
-Portability note: pick barely moved seed→league (0.053→0.046) —
-plausibly a property of the game's pick structure, the most portable of
-the four numbers.
-
-### Soft-band backfill trajectory (2026-07-28 rerun, same 37 ckpts/200
-### games; canary baselines for the hold targets)
-
-Share of eligible nodes with H_norm > 0.3, per head:
+**Soft-band trajectory (same sweep; canary baselines for the hold
+targets):**
 
 | ckpt | pick | partner | bury | play |
 |---|---|---|---|---|
@@ -1759,128 +1418,225 @@ Share of eligible nodes with H_norm > 0.3, per head:
 | 1.4M | 0.088 | 0.101 | 0.305 | 0.925 |
 | 1.8M | 0.072 | 0.106 | 0.279 | 0.909 |
 
-Readings: **pick's boundary band is alive and remarkably stable — 5–9%
-of pick nodes genuinely mixed across the entire run** (the structure the
-hold target exists to protect; a collapse reads as a sustained fall
-toward 0 against this steady baseline). Partner oscillates 5–21%
-(n≈190/probe — noisy; the 800k dip to 0.047 recovered unaided). Bury
-declined 0.40→~0.28 with the early sharpening then stabilized. Play
-0.985→0.909: even at 1.8M, 9 in 10 play nodes remain genuinely mixed —
-the play-target ladder has real room before the band thins. Canary
-thresholds (informal, operator review if breached sustained over ≥3
-probes): pick softband < 0.03; play softband < 0.5 while the ladder is
-above floor.
+Readings: **pick's boundary band is alive and remarkably stable — 5–9% of
+pick nodes genuinely mixed across the entire run** (a committed core plus
+a thin soft boundary band; the structure the hold target exists to
+protect — a collapse reads as a sustained fall toward 0 against this
+steady baseline). Partner oscillates 5–21% (n≈190/probe — noisy; the 800k
+dip to 0.047 recovered unaided). Bury declined 0.40→~0.28 with the early
+sharpening then stabilized. Play 0.985→0.909: even at 1.8M, 9 in 10 play
+nodes remain genuinely mixed — the play-target ladder has real room before
+the band thins. **Canary thresholds** (informal, operator review if
+breached sustained over ≥3 probes): pick softband < 0.03; play softband
+< 0.5 while the ladder is above floor.
 
-### LR: assessment + diagnostics only (2026-07-28, commit 236d0b0)
+**Consequences for Phase 2:** the outer loop's first and main lever is the
+PLAY target (a 0.25-of-gap step from 0.754 toward a ~0.28 floor moves
+~0.12 — comfortably above the −0.057/gen organic drift). Pick/partner/bury
+controllers exist to HOLD their measured operating points (collapse/drift
+insurance), not to anneal; their coefficients may fall to near the floor
+since measured entropy already sits at target without help. The stop-rule
+confound is narrower than feared but real: a plateau cannot be
+entropy-limited via pick/partner (not binding), but can be via play — the
+plateau→step→reset-streak rule applies to the play target. (This
+hold-vs-anneal split also answers the "keep pick entropy high until play
+converges?" question: hold at the measured operating point — pick's thin
+boundary band migrates via generalization from play improvements, not via
+added entropy pressure.)
+
+### 8.5 Phase 2 controller (commits 3117ca9 + 73dfdbd) + pre-registered hyperparameters
+
+Code: `training/entropy_controller.py` (inner loop + JSON sidecar
+persistence, `checkpoints/entropy_controller.json`), trainer
+`--entropy-mode target`, orchestrator `--adaptive-entropy` with the
+stop-rule absorption amendment (flat + targets above floor ⇒ play-target
+step + streak reset, replay-idempotent via the generation record). Tests:
+test_entropy_controller.py + extended test_entropy_telemetry.py;
+end-to-end absorb ladder verified against a real sidecar (5 steps
+0.754→0.392, then at-floor flats stand).
+
+**The three controller hyperparameters, as derived from the backfill:**
+
+1. **Starting targets — bumpless, measured, not chosen.** Each head adopts
+   its first live measurement at switch-on (the controller's first act is
+   to hold the status quo; Åström & Wittenmark, *Adaptive Control* 2e 1995
+   ch. 9). α initialization is also bumpless (adopts the legacy schedule's
+   value at the current episode). Per-head `--entropy-target-*` flags
+   remain as expert overrides only.
+2. **Inner gain η = 1.0 (log-space), |Δlog α| ≤ 0.1/update.** Derivation:
+   the plant timescale is the backfill's organic play drift (0.057
+   H_norm/gen ≈ 0.001/update); at η=1 a sustained error the size of one
+   outer step (~0.12) moves α ~12%/update ⇒ settles in ~10–20 of a
+   generation's ~61 updates — fast relative to the outer cadence, slow
+   relative to per-update noise (SE ≈ 0.002–0.004 at 16k rows ⇒ ~0.3%
+   α-jitter, two orders under the clamp). The gain is deliberately
+   uncritical: targets move rarely and α has a whole generation to settle;
+   the clamp bounds any transient.
+3. **Outer step — geometric, retain 0.75, min_step 0.03, play only.**
+   `target ← floor + 0.75·(target − floor)`; first step 0.754 → 0.635
+   (Δ≈0.12 ≈ 2× organic drift ⇒ distinguishable from the null; PBT-scale
+   perturbation, Jaderberg 0.8/1.2×). At most one step per boundary, only
+   on a flat h2h, monotone (watchdog is the sole upward force). min_step
+   0.03 (probe checkpoint-to-checkpoint noise ±0.02, rounded up) ends the
+   ladder after 5 steps at ~0.39 — **HONEST NOTE: the effective terminal
+   target is ~0.39, not the nominal 0.28 floor**; steps below noise are
+   not worth a 1M-episode generation each. If post-ladder evidence favors
+   going lower, lowering min_step late is a one-line pre-registered
+   amendment. Floors: play 0.28 (mixed-equilibrium reserve;
+   least-data-grounded number, protected by per-step h2h gates), hold
+   heads floor-at-target.
+
+**Coefficient bounds:** α ∈ [legacy end, 4× legacy start] per head — the
+legacy schedule's "small, not zero" endpoint becomes the hard floor; the
+cap leaves collapse-fighting headroom without runaway.
+
+### 8.6 Activation semantics (final form: gen-1 deferral, default-on)
+
+Two intermediate recipes were designed and superseded the same day; the
+reasoning is kept because it shaped the final form:
+- *Explicit fresh-run targets* (pass all four backfill values) — wrong
+  twice over: bumpless-everything at a SEED would hold bury at 0.256 and
+  partner at 0.166 against the organic early sharpening the validated run
+  exhibited (bury 0.26→0.16, partner 0.17→0.10 in the first 200k; seed
+  entropy levels are transients, not operating points), and importing the
+  mature play target 0.754 would suppress the validated high-entropy early
+  play phase (0.88→0.82) across the historically collapse-critical league
+  transition.
+- *`--entropy-targets-from <backfill.json>`* (hold heads from the mature
+  operating point, play bumpless) — worked but required a backfill
+  artifact; deleted (commit 5546cf7) when the deferral made it
+  unnecessary.
+
+**Final semantics (commit 5546cf7; default flip b97d880):**
+- `--adaptive-entropy` (orchestrator) is the ONLY activation switch and is
+  now **BooleanOptionalAction default TRUE** (`--no-adaptive-entropy`
+  restores the pure legacy schedule). It injects `--entropy-mode target` +
+  `--entropy-play-floor` into trainer commands **from generation 2
+  onward**: gen 1 always runs the legacy schedule, so a seed's entropy
+  transients play out exactly as in the validated retention run, and the
+  controller attaches bumplessly at the gen-1 boundary's settled operating
+  point — precisely the program the live run followed de facto, promoted
+  to built-in behavior.
+- Reproduction flow from scratch = selfplay seed → orchestrator, zero
+  entropy-related flags. No seed probing, no backfill importation.
+- Trainer `--entropy-mode target` standalone = hold-only experiment (inner
+  loop, no ladder, unamended stop rule) — documented as such in its help.
+- Lineage caveat: the validated setpoints/floor are for this arch/setup; a
+  different lineage re-derives from its own backfill or relies on the
+  bumpless attach with generation 1 as calibration. (Portability note:
+  pick barely moved seed→league, 0.053→0.046 — plausibly a property of the
+  game's pick structure, the most portable of the four numbers.)
+
+### 8.7 LR: assessment — diagnostics only, not adopted (commit 236d0b0)
 
 Question: should LR also be adaptive? Facts: actor+critic LR still ride
-the 20M clock (1.5e-4 → 5e-5; ~1.41e-4 now, ending a realistic 4–10M
-run at 1.3–1.0e-4 — i.e. nearly flat, which under Adam + PPO clip is a
+the 20M clock (1.5e-4 → 5e-5; ~1.41e-4 now, ending a realistic 4–10M run
+at 1.3–1.0e-4 — i.e. nearly flat, which under Adam + PPO clip is a
 defensible default; Andrychowicz et al. arXiv:2006.05990 rate LR decay
-helpful but modest). The entropy controller deliberately left LR
-untouched. approx_kl is computed every update but was never logged;
-target_kl is None (the early-stop is dormant) — there is NO trust-region
-feedback and NO recorded evidence that LR is mis-set.
+helpful but modest). approx_kl is computed every update but was never
+logged; target_kl is None (the early-stop is dormant) — there is NO
+trust-region feedback and NO recorded evidence that LR is mis-set.
 
 Verdict: the justified adaptive scheme, when evidence supports one, is
 KL-targeted LR (banded feedback holding per-update approx KL near a
-target — rl_games/IsaacGym practice, kin of Schulman's adaptive-KL
-PPO), the structural analog of the entropy controller; GNS (already
-logged) is the complementary instrument (McCandlish eps_opt =
-eps_max/(1+B_noise/B): B_noise growth across generations = measured
-case for decay). NOT adopted now: (1) the evidence bar the entropy
-change met — a measured clock-binds mismatch — is unmet for LR; the
-lineage-best run climbs under effectively-flat LR; (2) the flat-boundary
-signal must stay single-lever while the entropy activation's
-predictions are being tested. Sequencing: entropy ladder → floor →
-plateaus persist ⇒ LR becomes the next pre-registered lever (boundary
-halving w/ streak reset). Phase-1 analog shipped instead: approx_kl +
-lr_actor progress-CSV columns (append-only, ride the boundary restart);
-read a generation before any control decision.
+target — rl_games/IsaacGym practice, kin of Schulman's adaptive-KL PPO),
+the structural analog of the entropy controller; GNS (already logged) is
+the complementary instrument (McCandlish eps_opt = eps_max/(1+B_noise/B):
+B_noise growth across generations = measured case for decay). NOT adopted
+now: (1) the evidence bar the entropy change met — a measured clock-binds
+mismatch — is unmet for LR; the lineage-best run climbs under
+effectively-flat LR; (2) the flat-boundary signal must stay single-lever
+while the entropy activation's predictions are being tested. Sequencing:
+entropy ladder → floor → plateaus persist ⇒ LR becomes the next
+pre-registered lever (boundary halving w/ streak reset). Phase-1 analog
+shipped instead: approx_kl + lr_actor progress-CSV columns (append-only,
+ride the boundary restart); read a generation before any control decision.
 
-### Amendment: deferred activation replaces target importation
-### (2026-07-28, commit 5546cf7; supersedes the fresh-from-seed recipe
-### two sections up) + OPERATOR GO for gen-2→3 activation
+### 8.8 Activation plan (operator GO, 2026-07-28)
 
-Operator adopted the adaptive-entropy program for the live run at the
-gen 2→3 boundary. While reviewing the activation CLI, the fresh-run
-recipe was simplified structurally: `--adaptive-entropy` now DEFERS to
-generation 2 — gen 1 always runs the legacy schedule, so the seed's
-entropy transients play out exactly as in the validated retention run
-(organic hold-head sharpening; high-entropy play window across the
-collapse-critical league transition), and the controller attaches
-bumplessly at the gen-1 boundary's settled operating point. This is
-precisely the program the live run followed de facto (gens 1–2 under
-schedule, bumpless switch-on at a boundary), promoted to the built-in
-behavior. Consequences:
+Operator adopted the program for the live run at the gen 2→3 boundary. At
+the boundary, once the boundary evals complete (watcher b5eg076cx fires on
+"endpoint eval gen 2:"), kill and relaunch the orchestrator — before gen-3
+training accumulates episodes under the schedule, so gen 3 is cleanly
+single-regime. With the default flip, the standard relaunch command
+activates the program with NO new flags. Bumpless predictions to falsify,
+pre-registered: switch-on changes nothing measurable in gen 3; the first
+target step happens only after a flat boundary verdict, and if the
+entropy-limited hypothesis is right, post-step generations claw back
+CI-positive h2h until the ladder floors. Guards unchanged: watchdog,
+greedy gates, B2 bounds, soft-band canaries (§8.4). Expected at first
+gen-3 update: "🎯 Entropy targets initialized (bumpless)" log line + the
+new ent_norm/softband/approx_kl/lr_actor columns.
 
-- Reproduction flow from scratch = selfplay seed → orchestrator with
-  ONE added flag (`--adaptive-entropy`). No seed probing, no backfill
-  importation, no target flags. `--entropy-targets-from` deleted (its
-  motivating problem is solved structurally); per-head
-  `--entropy-target-*` flags remain as expert overrides only.
-- Surface semantics: orchestrator `--adaptive-entropy` is the ONLY
-  activation switch (it injects `--entropy-mode target` +
-  `--entropy-play-floor` into trainer commands from gen 2). Trainer
-  `--entropy-mode target` standalone = hold-only experiment (inner loop,
-  no ladder, unamended stop rule) — documented as such in its help.
+## 9. Config simplifications: legacy args stripped (2026-07-28, operator decisions)
 
-**Activation plan (GO given):** at the gen-2 boundary, once the
-boundary evals complete (watcher b5eg076cx fires on "endpoint eval
-gen 2:"), kill and relaunch the orchestrator with `--adaptive-entropy`
-appended — before gen-3 training accumulates episodes under the
-schedule, so gen 3 is cleanly single-regime. Bumpless predictions as
-pre-registered: switch-on changes nothing measurable in gen 3; first
-target step only on a flat boundary verdict.
+All three removed outright (not deprecated), simplifying league-trainer
+branching; `League.sample_table` now has exactly ONE mode — the validated
+per-seat PFSP/self/exploiter mixture.
 
-### Amendment: adaptive entropy is now the orchestrator DEFAULT
-### (2026-07-28, operator decision; commit b97d880)
-
-`--adaptive-entropy` flipped to BooleanOptionalAction default True
-(`--no-adaptive-entropy` restores the pure legacy schedule); gen-1
-deferral unchanged. A bare `run_extended_league` invocation now runs the
-full validated recipe — legacy-schedule gen 1, bumpless controller from
-gen 2, plateau ladder + amended stop rule — with zero entropy-related
-flags. Consequence for the live-run activation: the gen-2→3 boundary
-relaunch needs NO new flags; the standard relaunch command activates the
-program by default.
-
-### Amendment: --exploiter-full-table and --self-play-share STRIPPED
-### (2026-07-28, operator decision)
-
-Both trainer arguments removed outright (not deprecated), simplifying
-league-trainer branching:
-
-- **--exploiter-full-table** (+ LeagueConfig.exploiter_full_table + the
+- **`--exploiter-full-table`** (+ LeagueConfig.exploiter_full_table + the
   whole-table branch in League.sample_table): the batch-λ-arm-era
   whole-table exploiter pressure deployed an uncertified
   1-main-vs-4-parameter-shared-copies mirror with no evaluation analog
   (the gate certifies 1-exploiter-vs-4-mains), and seat rotation now
-  supplies the role coverage it compensated for. Per-seat mixing within
-  the PFSP mixture is the only exploiter seating mode. (This finalizes
-  the Jul-26 seating amendment — the flag had already been dropped from
-  the live relaunch; now the code path is gone.)
-- **--self-play-share** (CLI override only): the per-seat SELF share
+  supplies the role coverage it compensated for (§7.7). This finalizes the
+  Jul-26 seating amendment — the flag had already been dropped from the
+  live relaunch; now the code path is gone. (b664e4c)
+- **`--self-play-share`** (CLI override only): the per-seat SELF share
   remains a code-level knob, LeagueConfig.self_play_share = 0.15 — the
   validated value of the current pfsp mixture. Operator rationale:
   adjusting it is a legitimate future experiment, but that knob belongs
   inside the validated pfsp regime (a LeagueConfig change with its own
-  pre-registration), not a per-run CLI surface.
+  pre-registration), not a per-run CLI surface. (b664e4c)
+- **`--table-self-play`** (+ LeagueConfig.table_self_play_prob +
+  League._sample_table_level — the arg the operator originally meant by
+  "self-play-share"): the Phase-A-era table-level composition (pure-self
+  tables with probability p, else uniform recency window, no PFSP/EMA
+  weighting, exploiters audit-only) — the p_self_table 0.65 machinery of
+  the failed Phase A design, kept after the revert as a knob; with the §6
+  bugs fixed and the per-seat pfsp mixture validated by the retention run,
+  the alternative composition regime was dead code. (a4a40c9)
 
 The validated retention-run trainer invocation is unaffected (it passed
-neither flag). Tests: full-table sampling tests removed with the branch;
-per-seat mixing test retained (test_per_seat_exploiter_mixing).
+none of these). Tests: full-table + table-level sampling tests removed
+with the branches; per-seat mixing + exploit-patched retirement tests
+remain (TestExploiterSeating).
 
-### Amendment: --table-self-play also STRIPPED (2026-07-28, operator —
-### this was the arg originally meant by "self-play-share")
+## 10. Implementation notes
 
-Removed outright: the trainer CLI flag, LeagueConfig.table_self_play_prob,
-and League._sample_table_level (the Phase-A-era table-level composition:
-pure-self tables with probability p, else uniform recency window, no
-PFSP/EMA weighting, exploiters audit-only). It was the p_self_table 0.65
-machinery of the failed Phase A design, kept after the revert as a knob;
-with the historical league-path bugs fixed and the per-seat pfsp mixture
-validated by the retention run, the alternative composition regime is
-dead code. League.sample_table now has exactly one sampling mode. The
-TestTableLevelSampling class went with it; per-seat mixing +
-exploit-patched retirement tests remain (TestExploiterSeating).
+- All loss/sampling changes behind config flags defaulting to historical
+  behavior at introduction; `capture_arch_goldens --check` + bit-exact
+  fixture suite before merge. (The validated retention config was later
+  promoted to defaults, §7.9.)
+- Trainer CSV schemas append-only (columns may be added, never renamed;
+  `ensure_csv_columns` migrates on resume).
+- `league.py` member JSON schema stays readable by old code (EMA fields
+  dormant where unused).
+
+## Appendix A: armed contingencies and standing watch items
+
+**Contingencies (armed, not active):**
+- **Search-teacher / selective-distillation lane** (§2.5): node-selective
+  distillation at partner-lead nodes, pi_gumbel readout, composed with the
+  low-temperature hold. Trigger: convention leaks additional training
+  cannot close, or B2 failure per the amended outcome maps.
+- **Node-selective λ ≈ 0.5–0.7 at lead nodes** (§7.5): fires only on
+  unclosable convention leaks, per operator policy; λ otherwise 0.95.
+- **Bidding anchor re-engagement** at a declared restart (§7.6): on
+  PICK-gate streak or leaster-watchdog trip.
+- **KL-targeted LR** (§8.7): sequenced strictly after the entropy ladder
+  floors; read a generation of approx_kl/lr_actor first.
+- **Oracle aux heads** are ALREADY adopted in the retention config; the
+  offline-null-at-pooled-lead caveat (§4.3) stands on the record.
+
+**Standing watch items:**
+- B2 bounds: partner trump-lead ≥ 0.5 held, defender t0 ≤ 0.10.
+- Greedy gates/tripwires: partner < 50%, pick < 20% (formal gate 15%,
+  warning-only), defender t0 > 10%, greedy leaster > 8% (watchdog owns
+  halts); ALONE warnings on record 650k/700k.
+- C2 adherence (§7.9): < ~35% sustained = erosion; climb toward ~70% =
+  headroom being claimed.
+- Soft-band canaries (§8.4): pick softband < 0.03 sustained ≥3 probes ⇒
+  operator review; play softband < 0.5 while ladder above floor.
+- Entropy activation predictions (§8.8): bumpless switch-on ⇒ no
+  measurable gen-3 change; targets step only on flat verdicts.
