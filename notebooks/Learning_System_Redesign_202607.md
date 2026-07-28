@@ -1832,3 +1832,15 @@ appended — before gen-3 training accumulates episodes under the
 schedule, so gen 3 is cleanly single-regime. Bumpless predictions as
 pre-registered: switch-on changes nothing measurable in gen 3; first
 target step only on a flat boundary verdict.
+
+### Amendment: adaptive entropy is now the orchestrator DEFAULT
+### (2026-07-28, operator decision; commit b97d880)
+
+`--adaptive-entropy` flipped to BooleanOptionalAction default True
+(`--no-adaptive-entropy` restores the pure legacy schedule); gen-1
+deferral unchanged. A bare `run_extended_league` invocation now runs the
+full validated recipe — legacy-schedule gen 1, bumpless controller from
+gen 2, plateau ladder + amended stop rule — with zero entropy-related
+flags. Consequence for the live-run activation: the gen-2→3 boundary
+relaunch needs NO new flags; the standard relaunch command activates the
+program by default.
