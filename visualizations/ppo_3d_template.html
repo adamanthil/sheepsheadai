@@ -644,6 +644,9 @@ function liveHead() {
 // ============================================================
 const N_LAYERS = DATA.dims.n_layers;   // transformer reasoning layers (4)
 const N_HEADS = DATA.dims.n_heads;     // attention heads per layer (4)
+// Whether the dumped oracle carries its deterministic aux heads; gates the
+// whole aux lane and its stage (older checkpoints were trained without).
+const ORACLE_AUX = !!DATA.oracle.aux_heads;
 const XS = {
   input: -74,
   embed: -56,
@@ -691,7 +694,7 @@ let connLines = [];
 let allChords = []; // every attention chord (tunnel + readouts), for styling
 let inputInfo, embedInfo, tokensInfo, xfInfo, memInfo, readoutInfo,
   actorInfo, pointerInfo, outputInfo, criticVInfo, criticAuxInfo,
-  oracleValueInfo;
+  oracleValueInfo, oracleAuxInfo;
 
 function group(name) {
   if (!stageGroups[name]) {
@@ -2667,7 +2670,7 @@ function buildOracleValue() {
     title: "oracle value_trunk",
     badge: "critic",
     kv: { "‖trunk out‖": SO.value.value_trunk_norm.toFixed(2) },
-    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU — the same trunk shape as the limited critic's, fed by the oracle readout. There is nothing else: no actor, no aux heads. This whole network exists to be the GAE baseline at training time.</p>`,
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU — the same trunk shape as the limited critic's, fed by the oracle readout. No actor hangs off it${ORACLE_AUX ? "; its output feeds the value head and the two deterministic team aux heads, nothing more" : " and nothing else reads it"}. This whole network exists to be the GAE baseline at training time.</p>`,
   });
   g.add(makeGlowLine(readoutInfo.hubPos.clone(), trunk.position.clone(), 0xd88fdd, 0.5));
 
@@ -2704,6 +2707,209 @@ function buildOracleValue() {
 }
 
 // ============================================================
+// ORACLE STAGE 8: AUX HEADS — the two deterministic team readouts
+// hanging off the same trunk output the value head reads. Unlike the
+// policy's aux stack, these sculpt only the oracle's own
+// representation: no gradient here can reach the actor.
+// ============================================================
+// The aux lane sits in FRONT of the value spine (+z). The policy critic
+// lanes went to −z, which leaves their ground stage labels mirrored under
+// their own cameras; on this side the labels read the right way round.
+const OAUX_Z = 26;
+const OAUX_MEM_Y = 7;  // membership orb row
+const OAUX_PTS_Y = -8; // team-points bar base (bars grow up toward the orbs)
+const AUX_VIOLET = 0xe0b8ff;
+const SEAT_NAMES = ["me", "+1", "+2", "+3", "+4"];
+
+function buildOracleAux() {
+  const g = group("oAux");
+  const aux = SO.aux;
+  const so = SO.sample;
+  // Leaster and pre-pick rows have no picker/defender partition, so the
+  // training loss drops them — the heads still fire, untrained on this row.
+  const live = aux.team_defined;
+  const lab = makeStageLabel("8 · ORACLE AUX · team heads", "#e0b8ff");
+  lab.position.set(XSA.trunk + 2, -9.7, OAUX_Z - 1);
+  g.add(lab);
+
+  const headMat = () => new THREE.MeshStandardMaterial({
+    color: AUX_VIOLET, emissive: AUX_VIOLET,
+    emissiveIntensity: live ? 0.35 : 0.12,
+    metalness: 0.35, roughness: 0.4,
+  });
+  const trunkPos = oracleValueInfo.trunk.position.clone();
+
+  // --- team_membership (256 → 5, multi-label BCE) -------------------
+  const memHead = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.8, 1.5), headMat());
+  memHead.position.set(XSA.trunk - 2, OAUX_MEM_Y, OAUX_Z);
+  g.add(memHead);
+  const memLab = makeLabel("team_membership (256→5)", "#f0dcff", 0.46);
+  memLab.position.set(XSA.trunk - 2, OAUX_MEM_Y - 2.6, OAUX_Z);
+  g.add(memLab);
+  registerPickable(memHead, {
+    title: "team_membership",
+    badge: "critic",
+    kv: { "shape": "Linear(256 → 5)", "loss": "BCE-with-logits × 0.1" },
+    body: `<p>One logit per <b>relative seat</b>: is that seat on the picker's team? Multi-label, so the picker and the partner light independently.</p>
+      <p>The label is exact rather than bootstrapped — <code>team_aux_labels</code> reads it straight off the privileged observation, which is only possible because this network already sees every hand.</p>`,
+  });
+  g.add(makeGlowLine(trunkPos.clone(), memHead.position.clone(), AUX_VIOLET, live ? 0.4 : 0.15));
+
+  for (let i = 0; i < 5; i++) {
+    const p = aux.membership_prob[i];
+    const isTrue = aux.membership_true[i] === 1;
+    const x = XSA.trunk + 4 + i * 3.4;
+    const hue = live ? 0.12 : 0.65;
+    const ocolor = new THREE.Color().setHSL(hue, live ? 0.2 + p * 0.6 : 0.12, 0.22 + p * 0.38);
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.6 + p * 0.55, 20, 16),
+      new THREE.MeshStandardMaterial({
+        color: ocolor, emissive: ocolor,
+        emissiveIntensity: (live ? 0.18 : 0.08) + p * (live ? 0.7 : 0.2),
+        metalness: 0.4, roughness: 0.3,
+      }),
+    );
+    orb.position.set(x, OAUX_MEM_Y, OAUX_Z);
+    g.add(orb);
+
+    // Ring = the label (gold when this seat really is on the picker team),
+    // fill = the prediction. Agreement reads as a filled gold ring.
+    const ringColor = live && isTrue ? PARTNER_GOLD : 0x3d4470;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.5, 0.075, 8, 36),
+      new THREE.MeshStandardMaterial({
+        color: ringColor, emissive: ringColor,
+        emissiveIntensity: live && isTrue ? 0.7 : 0.15,
+        roughness: 0.4,
+      }),
+    );
+    ring.position.set(x, OAUX_MEM_Y, OAUX_Z);
+    g.add(ring);
+
+    const role = i + 1 === so.picker_rel
+      ? "picker"
+      : i + 1 === so.secret_partner_rel ? "secret partner" : "";
+    const ol = makeLabel(`${SEAT_NAMES[i]} · ${(p * 100).toFixed(0)}%`,
+      p > 0.5 ? "#ffe9c4" : "#8e9bd1", 0.5);
+    ol.position.set(x, OAUX_MEM_Y + 2.6, OAUX_Z);
+    g.add(ol);
+    if (role) {
+      const rl = makeLabel(role, "#ffd166", 0.46);
+      rl.position.set(x, OAUX_MEM_Y - 2.5, OAUX_Z);
+      g.add(rl);
+    }
+    registerPickable(orb, {
+      title: `team_membership · seat ${SEAT_NAMES[i]}`,
+      badge: "critic",
+      kv: {
+        "P(picker team)": `${(p * 100).toFixed(1)}%`,
+        "label": live ? (isTrue ? "1 — on the picker team" : "0 — defender") : "masked",
+        "role": role || "—",
+      },
+      body: `<p>${i === 0 ? "The acting seat itself" : `The seat ${i} to the left`}${role ? ` — the <b>${role}</b> this hand` : ""}.</p>
+        ${live
+          ? `<p>Ring = the exact label, fill = the head's belief. ${
+              (p > 0.5) === isTrue
+                ? "They agree here."
+                : "<b>They disagree here</b> — worth noting on a head this well-fit."}</p>`
+          : `<p>No team partition exists on this row, so it is masked out of the aux loss entirely. The head still produces a number; nothing trains it here.</p>`}`,
+    });
+    g.add(makeGlowLine(memHead.position.clone(), orb.position.clone(), AUX_VIOLET, live ? 0.16 : 0.07));
+  }
+
+  // --- team_points (256 → 2, smooth-L1 on /120 units) ---------------
+  const ptsHead = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.8, 1.5), headMat());
+  ptsHead.position.set(XSA.trunk - 2, OAUX_PTS_Y + 3, OAUX_Z);
+  g.add(ptsHead);
+  const ptsHeadLab = makeLabel("team_points (256→2)", "#f0dcff", 0.46);
+  ptsHeadLab.position.set(XSA.trunk - 2, OAUX_PTS_Y + 5.4, OAUX_Z);
+  g.add(ptsHeadLab);
+  registerPickable(ptsHead, {
+    title: "team_points",
+    badge: "critic",
+    kv: { "shape": "Linear(256 → 2)", "loss": "smooth-L1 × 0.2", "units": "points / 120" },
+    body: `<p>Points taken <i>so far</i> by each side: picker team (the bury included, as it stands at this timestamp) and defenders. Regressed in /120 units so the scale matches the value head's.</p>
+      <p>Card points are the currency the terminal reward is made of — forcing the trunk to keep a running count is the cheapest way to make U(h,s) sensitive to it.</p>`,
+  });
+  g.add(makeGlowLine(trunkPos.clone(), ptsHead.position.clone(), AUX_VIOLET, live ? 0.4 : 0.15));
+
+  const teamDefs = [
+    { name: "picker team", color: PARTNER_GOLD, x: XSA.trunk + 7 },
+    { name: "defenders", color: 0x6f8dff, x: XSA.trunk + 14 },
+  ];
+  const BAR_MAX = 7.0; // full 120 points
+  for (let j = 0; j < 2; j++) {
+    const td = teamDefs[j];
+    const pred = aux.team_points_pred[j] * 120;
+    const truth = aux.team_points_true[j] * 120;
+    const h = 0.3 + clamp(pred / 120, 0, 1) * BAR_MAX;
+    const bcolor = new THREE.Color(live ? td.color : 0x4a4f78);
+    const bar = new THREE.Mesh(
+      new RoundedBoxGeometry(2.2, h, 2.2, 2, 0.1),
+      new THREE.MeshStandardMaterial({
+        color: bcolor, emissive: bcolor,
+        emissiveIntensity: live ? 0.22 + clamp(pred / 120, 0, 1) * 0.5 : 0.1,
+        roughness: 0.4,
+      }),
+    );
+    bar.position.set(td.x, OAUX_PTS_Y + h / 2, OAUX_Z);
+    g.add(bar);
+
+    // Tick beside the column at the exact label height — offset in z so it
+    // marks the target without hiding a short bar. The gap is the residual.
+    if (live) {
+      const th = 0.3 + clamp(truth / 120, 0, 1) * BAR_MAX;
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(3.4, 0.16, 0.6),
+        new THREE.MeshStandardMaterial({
+          color: 0xf0dcff, emissive: 0xf0dcff, emissiveIntensity: 0.35,
+          roughness: 0.35,
+        }),
+      );
+      plate.position.set(td.x, OAUX_PTS_Y + th, OAUX_Z + 1.9);
+      g.add(plate);
+      const tl = makeLabel(`label ${truth.toFixed(0)}`, "#e6ecff", 0.46);
+      tl.position.set(td.x, OAUX_PTS_Y + th + 1.0, OAUX_Z + 1.9);
+      g.add(tl);
+      registerPickable(plate, {
+        title: `team_points label · ${td.name}`,
+        badge: "critic",
+        kv: { "label": `${truth.toFixed(1)} pts`, "predicted": `${pred.toFixed(1)} pts` },
+        body: `<p>The exact points-so-far for the ${td.name} at this timestamp. The bar below is the head's estimate; the gap is the residual the smooth-L1 term is paying for.</p>`,
+      });
+    }
+
+    const bl = makeLabel(`${td.name} · ${pred.toFixed(0)} pts`,
+      live ? "#f0dcff" : "#7c85ad", 0.46);
+    bl.position.set(td.x, OAUX_PTS_Y - 1.7, OAUX_Z);
+    g.add(bl);
+    registerPickable(bar, {
+      title: `team_points · ${td.name}`,
+      badge: "critic",
+      kv: {
+        "predicted": `${pred.toFixed(1)} pts (${aux.team_points_pred[j].toFixed(3)})`,
+        "label": live ? `${truth.toFixed(1)} pts` : "masked",
+      },
+      body: live
+        ? `<p>Predicted points already taken by the ${td.name}${j === 0 ? " — the bury counts toward this side from the moment it is buried" : ""}. The white plate marks the exact label.</p>`
+        : `<p>No team partition on this row, so this output is untrained here and the loss skips it. Predictions outside [0, 120] are the giveaway.</p>`,
+    });
+    g.add(makeGlowLine(
+      ptsHead.position.clone(),
+      new THREE.Vector3(td.x, OAUX_PTS_Y, OAUX_Z),
+      AUX_VIOLET, live ? 0.18 : 0.07));
+  }
+
+  if (!live) {
+    const note = makeLabel("row masked · no picker/defender partition yet", "#8e9bd1", 0.5);
+    note.position.set(XSA.trunk + 8, OAUX_MEM_Y + 6.5, OAUX_Z);
+    g.add(note);
+  }
+
+  return { memHead, ptsHead, live };
+}
+
+// ============================================================
 // Scene build / rebuild
 // ============================================================
 function buildScene() {
@@ -2722,7 +2928,7 @@ function buildScene() {
     outputInfo = buildOutput();
     criticVInfo = buildCriticValue();
     criticAuxInfo = buildCriticAux();
-    oracleValueInfo = null;
+    oracleValueInfo = oracleAuxInfo = null;
   } else {
     inputInfo = buildOracleObservation();
     embedInfo = buildEmbeddingTable();
@@ -2731,6 +2937,9 @@ function buildScene() {
     memInfo = buildMemory();
     readoutInfo = buildSharedReadout();
     oracleValueInfo = buildOracleValue();
+    // Historical no-head oracle checkpoints (and the random init) simply
+    // have no aux lane — the stage list drops with it.
+    oracleAuxInfo = ORACLE_AUX ? buildOracleAux() : null;
     actorInfo = pointerInfo = outputInfo = criticVInfo = criticAuxInfo = null;
     outputAnim = null;
   }
@@ -2877,6 +3086,7 @@ const STAGE_GROUPS = {
   oGru: [`xf${N_LAYERS - 1}`, "gru"],
   oReadout: [`xf${N_LAYERS - 1}`, "readout"],
   oValue: ["readout", "oValue"],
+  oAux: ["oValue", "oAux"],
 };
 const chordDimMap = {}; // per-group chord dim factors, read by animate()
 function applyStageDim() {
@@ -3108,7 +3318,7 @@ function buildOracleStages() {
     body: () => `<p>The CTDE <b>privileged critic</b> (<code>oracle.py</code>) on the same decision: it sees every hand, the true blind/bury, the under card, and the secret partner — and estimates the history-state value <b>U(h,s)</b> used as the GAE baseline during league training. The deployed agent never runs it.</p>
       ${DATA.oracle.untrained ? `<p><span class="badge b-critic">untrained</span> This is a <b>random init</b> (seed ${DATA.oracle.init_seed}) — an architecture smoke test. Values and attention are meaningless; the structure is the point.</p>` : `<p>Loaded from <code>${DATA.oracle.checkpoint}</code>.</p>`}
       <p><b>${S.label}:</b> ${S.description}</p>
-      <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack. Toggle back with the <b>Network</b> buttons up top.</p>`,
+      <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack${ORACLE_AUX ? " — including two deterministic team aux heads that shape the oracle's own representation and nothing else (stage 8)" : ""}. Toggle back with the <b>Network</b> buttons up top.</p>`,
   },
   {
     title: "1 · Full-information observation",
@@ -3165,14 +3375,43 @@ function buildOracleStages() {
     badge: "critic",
     cam: { pos: [XSA.trunk + 8, RING_CY + 6, 28], target: [XSA.trunk + 4, RING_CY, 0] },
     body: () => `<p>Readout → deep value trunk → <b>U(h,s) = ${SO.value.value.toFixed(3)}</b>${DATA.oracle.untrained ? " (random init — meaningless by design)" : ""}.</p>
-      <p>No actor, no aux heads, no deployment: at league-training time this number replaces the limited critic's V(s) in GAE, removing hidden-card variance from the policy's advantages while the actor still learns from its own partial view.</p>`,
+      <p>No actor, no deployment: at league-training time this number replaces the limited critic's V(s) in GAE, removing hidden-card variance from the policy's advantages while the actor still learns from its own partial view.</p>
+      ${ORACLE_AUX ? "<p>The same trunk output also feeds two deterministic auxiliary heads — the next stage.</p>" : ""}`,
   },
+  ...(ORACLE_AUX ? [{
+    title: "8 · Oracle aux heads",
+    label: "oAux",
+    badge: "critic",
+    // Off-axis so the ground stage label reads at a slant rather than
+    // edge-on, and the value spine stays visible behind the lane. Note
+    // showStage multiplies this offset by ZOOM_OUT — keep it close enough
+    // that the small per-seat labels stay inside their fade distance.
+    cam: { pos: [XSA.trunk - 5, 9, OAUX_Z + 20], target: [XSA.trunk + 7, 1, OAUX_Z] },
+    body: () => {
+      const aux = SO.aux;
+      const memLine = aux.membership_prob
+        .map((p, i) => `${SEAT_NAMES[i]} ${(p * 100).toFixed(0)}%`).join(" · ");
+      return `<p>Two <b>deterministic</b> auxiliary heads read the same ${DATA.oracle.dims.d_model}-d trunk output as <code>value_head</code>:</p>
+      <ul>
+        <li><b>team_membership</b> (256→5, BCE ×0.1) — per relative seat: on the picker's team? <span class="pill">${memLine}</span></li>
+        <li><b>team_points</b> (256→2, smooth-L1 ×0.2) — picker-team (bury included) and defender points so far, in /120 units</li>
+      </ul>
+      <p>Their labels are <i>exact</i>, not bootstrapped: <code>team_aux_labels</code> reads them off the privileged observation, which only this network can do. Rings and white plates mark the label; fill and bar height mark the prediction.</p>
+      ${aux.team_defined
+        ? `<p>Note the membership label follows <code>secret_partner_rel</code>, which zeroes once the called card is played — after the reveal the label marks the picker alone${
+            SO.sample.partner_rel > 0 && SO.sample.secret_partner_rel === 0
+              ? ", as it does on this row" : ""}.</p>`
+        : `<p><b>This row is masked.</b> No picker/defender partition exists yet (${SO.sample.picker_rel === 0 ? "nobody has picked" : "leaster"}), so <code>team_mask</code> drops it from the aux loss entirely — the numbers you see are untrained on rows like this one.</p>`}
+      <p>Unlike the policy's aux stack, these gradients stay <i>inside</i> the oracle: they sharpen its own team representation and can never reach the actor, so the CTDE isolation guarantee is untouched.</p>`;
+    },
+  }] : []),
   {
     title: "Oracle architecture",
     label: "ooverview",
     badge: "critic",
-    cam: { pos: [30, 36, 76], target: [0, 5, 0] },
-    body: () => `<p>Zoomed out: full-information observation → own embedding table → ${DATA.oracle.dims.n_tokens} tokens → ${N_LAYERS}-layer tunnel → memory-token GRU + ${DATA.oracle.dims.n_readout_queries}-query readout → value trunk → U(h,s). ${DATA.oracle.n_params.toLocaleString()} params, all its own. Switch decisions up top, or flip back to the <b>Policy</b> network.</p>`,
+    // Re-centered right/forward so the aux lane at +x/+z stays in frame.
+    cam: { pos: [28, 38, 80], target: [6, 4, 6] },
+    body: () => `<p>Zoomed out: full-information observation → own embedding table → ${DATA.oracle.dims.n_tokens} tokens → ${N_LAYERS}-layer tunnel → memory-token GRU + ${DATA.oracle.dims.n_readout_queries}-query readout → value trunk → U(h,s)${ORACLE_AUX ? " + the two deterministic team aux heads" : ""}. ${DATA.oracle.n_params.toLocaleString()} params, all its own. Switch decisions up top, or flip back to the <b>Policy</b> network.</p>`,
   },
   ];
 }
@@ -3322,7 +3561,8 @@ const LEGEND_ORACLE = `
   </div>
   <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · U(h,s) recurrence</div>
   <div class="row"><span class="swatch" style="background:#8b6cff;color:#8b6cff"></span>Oracle readout</div>
-  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Value trunk · U(h,s)</div>`;
+  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Value trunk · U(h,s)</div>
+  ${ORACLE_AUX ? `<div class="row"><span class="swatch" style="background:#e0b8ff;color:#e0b8ff"></span>Team aux heads · training-only</div>` : ""}`;
 function renderLegend() {
   document.getElementById("legend").innerHTML =
     NETWORK_MODE === 1 ? LEGEND_ORACLE : LEGEND_POLICY;

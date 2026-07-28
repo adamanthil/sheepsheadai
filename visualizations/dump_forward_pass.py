@@ -27,11 +27,14 @@ The dump ALSO captures the ORACLE CRITIC (oracle.py: OracleValueNetwork, the
 CTDE privileged critic) on the same five decision states: its 51-token
 full-information forward pass (per-layer attention stored sparse top-K),
 memory-token GRU recurrence threaded over the same per-seat event stream the
-agent's memory sees, its 4-query readout, and U(h,s). With no trained oracle
-checkpoint yet, the default is a fresh seeded random init (--oracle-seed);
-the manual capture is cross-checked against the module's own encode_batch,
-so the dump doubles as an architecture smoke test. Pass --oracle-checkpoint
-to use a league checkpoint's `oracle_state_dict` once one exists.
+agent's memory sees, its 4-query readout, U(h,s), and — when the checkpoint
+was trained with them — the deterministic auxiliary heads at the trunk
+output (per-seat picker-team membership + picker/defender team points),
+each paired with its exact label from `team_aux_labels`. The oracle weights
+come from --oracle-checkpoint, or from --checkpoint itself when that carries
+an oracle_state_dict; only if neither does is a seeded random init used
+(--oracle-seed). The manual capture is cross-checked against the module's
+own encode_batch, so the dump doubles as an architecture smoke test.
 """
 
 import argparse
@@ -48,7 +51,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 from sheepshead.agent.architectures import SharedReadoutEncoder  # noqa: E402
-from sheepshead.agent.oracle import OracleValueNetwork  # noqa: E402
+from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels  # noqa: E402
 from sheepshead.agent.ppo import (  # noqa: E402
     MultiHeadRecurrentActorNetwork,
     RecurrentCriticNetwork,
@@ -67,12 +70,14 @@ from sheepshead import (  # noqa: E402
 DEFAULT_CHECKPOINT = (
     ROOT
     / "runs"
-    / "ablate_perceiver-shared-v2_s42"
-    / "perceiver-shared-v2_checkpoint_175000.pt"
+    / "league_retention_pg"
+    / "checkpoints"
+    / "pfsp_perceiver-shared-v2_checkpoint_1500000.pt"
 )
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
-# Oracle critic (untrained smoke test until the league run produces one).
+# Oracle critic: seed for the random-init fallback, used only when neither
+# --oracle-checkpoint nor --checkpoint carries an oracle_state_dict.
 ORACLE_INIT_SEED = 20260709
 ORACLE_ATTN_TOPK = 400
 # The oracle runs on CPU end-to-end: 5 captures + ~40 memory advances are
@@ -131,18 +136,32 @@ def sparse_attn_topk(attn_hnn: torch.Tensor, mask, k=ORACLE_ATTN_TOPK):
 
 
 def load_oracle(args):
-    """Instantiate the oracle critic: a league checkpoint's oracle_state_dict
-    when --oracle-checkpoint is given, else a fresh seeded random init."""
-    if args.oracle_checkpoint is not None:
-        ckpt = torch.load(
-            args.oracle_checkpoint, map_location="cpu", weights_only=False
-        )
+    """Instantiate the oracle critic.
+
+    Weights come from --oracle-checkpoint, or from --checkpoint itself when
+    that carries an oracle_state_dict (league checkpoints do, and dumping the
+    policy and its own oracle together is what the walkthrough shows). Only
+    when neither has one does this fall back to a seeded random init, which
+    makes the oracle pass an architecture smoke test rather than a portrait.
+    Returns (net, untrained, source_path)."""
+    src = args.oracle_checkpoint
+    explicit = src is not None
+    if not explicit and args.checkpoint is not None:
+        probe = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+        if "oracle_state_dict" in probe:
+            src = args.checkpoint
+    if src is not None:
+        ckpt = torch.load(src, map_location="cpu", weights_only=False)
         if "oracle_state_dict" not in ckpt:
             raise SystemExit(
-                f"{args.oracle_checkpoint} has no 'oracle_state_dict' — it was "
-                f"not saved by a --critic-mode oracle trainer."
+                f"{src} has no 'oracle_state_dict' — it was not saved by a "
+                f"--critic-mode oracle trainer."
             )
-        net = OracleValueNetwork()
+        # The aux heads are optional in the module, so the flag the trainer
+        # stamped decides whether they exist before the strict load.
+        net = OracleValueNetwork(
+            use_aux_heads=bool(ckpt.get("oracle_aux_heads", False))
+        )
         net.load_state_dict(ckpt["oracle_state_dict"])
         untrained = False
     else:
@@ -152,7 +171,7 @@ def load_oracle(args):
         net = OracleValueNetwork()
         untrained = True
     net.to(ORACLE_DEVICE).eval()
-    return net, untrained
+    return net, untrained, src
 
 
 def classify_decision(action_names, state):
@@ -507,11 +526,10 @@ def capture_forward(agent, state, valid_actions, memory_in):
         blind_tok_out = all_tokens_post[:, 15:17, :]
         bury_tok_out = all_tokens_post[:, 17:19, :]
 
-        # Memory write: v2 drives the GRU from the post-reasoning CONTEXT
-        # token (index 0, as in `full`); the original perceiver used the
-        # MEMORY token. Honor the encoder's flag so both wirings dump right.
-        driver_idx = 1 if enc.memory_token_driver else 0
-        memory_out = enc.memory_gru(all_tokens_post[:, driver_idx, :], memory_in)
+        # Memory write: the policy encoder drives the GRU from the
+        # post-reasoning CONTEXT token (index 0, as in `full`); only the
+        # oracle keeps the original perceiver's MEMORY-token wiring.
+        memory_out = enc.memory_gru(all_tokens_post[:, 0, :], memory_in)
 
         # ---- Shared encoder readout: one 16-query x 4-head cross-attention
         # over the token set produces the 256-d `features` vector that BOTH
@@ -606,7 +624,7 @@ def capture_forward(agent, state, valid_actions, memory_in):
         "memory": {
             "memory_in": tensor_to_py(memory_in[0]),
             "memory_out": tensor_to_py(memory_out[0]),
-            "driver": "memory" if enc.memory_token_driver else "context",
+            "driver": "context",
         },
         "encoder_readout": {
             "attn": tensor_to_py(ro_w[0]),  # (H, M, 19)
@@ -815,6 +833,29 @@ def capture_oracle_forward(oracle, ostate, memory_in):
         value_feat = oracle.value_trunk(features)
         value = oracle.value_head(value_feat).squeeze(-1)
 
+        # ---- Auxiliary heads at the trunk output (optional in the module).
+        # Each prediction is paired with the exact label the training loss
+        # uses, straight from team_aux_labels, so the viz can show the
+        # residual rather than a bare number.
+        aux = {"has_heads": bool(oracle.has_aux_heads)}
+        if oracle.has_aux_heads:
+            member_prob = torch.sigmoid(oracle.team_membership(value_feat))  # (1, 5)
+            team_pts = oracle.team_points(value_feat)  # (1, 2), /120 units
+            member_true, team_true, team_mask = team_aux_labels(
+                [[ostate]], 1, 1, device
+            )
+            aux.update(
+                {
+                    "membership_prob": round4(member_prob[0].tolist()),
+                    "membership_true": [int(v) for v in member_true[0, 0].tolist()],
+                    "team_points_pred": round4(team_pts[0].tolist()),
+                    "team_points_true": round4(team_true[0, 0].tolist()),
+                    # False on leaster / pre-pick rows, where no team
+                    # partition exists and the loss skips the row entirely.
+                    "team_defined": bool(team_mask[0, 0].item()),
+                }
+            )
+
         # ---- Smoke-test cross-check: the manual replication must match the
         # module's own forward exactly.
         ref = enc.encode_batch([ostate], memory_in=memory_in, device=device)
@@ -825,12 +866,22 @@ def capture_oracle_forward(oracle, ostate, memory_in):
         assert torch.allclose(memory_out, ref["memory_out"], atol=1e-5), (
             "oracle capture: memory_out diverges from encode_batch"
         )
-        ref_value = oracle.value_head(
-            oracle.value_trunk(oracle._readout(ref["all_tokens"], ref["all_mask"]))
-        ).squeeze(-1)
+        ref_trunk = oracle.value_trunk(
+            oracle._readout(ref["all_tokens"], ref["all_mask"])
+        )
+        ref_value = oracle.value_head(ref_trunk).squeeze(-1)
         assert torch.allclose(value, ref_value, atol=1e-5), (
             "oracle capture: U(h,s) diverges from the module forward"
         )
+        if oracle.has_aux_heads:
+            assert torch.allclose(
+                torch.sigmoid(oracle.team_membership(ref_trunk))[0],
+                member_prob[0],
+                atol=1e-5,
+            ), "oracle capture: team_membership diverges from the module forward"
+            assert torch.allclose(
+                oracle.team_points(ref_trunk)[0], team_pts[0], atol=1e-5
+            ), "oracle capture: team_points diverges from the module forward"
 
     mask_list = all_mask[0].tolist()
 
@@ -886,6 +937,7 @@ def capture_oracle_forward(oracle, ostate, memory_in):
             "value_trunk_norm": float(value_feat[0].norm().item()),
             "features_norm": float(features[0].norm().item()),
         },
+        "aux": aux,
     }
 
 
@@ -971,7 +1023,8 @@ def main():
         default=None,
         help=(
             "Checkpoint holding an 'oracle_state_dict' (saved by a "
-            "--critic-mode oracle trainer). Default: fresh random init."
+            "--critic-mode oracle trainer). Default: --checkpoint itself "
+            "when it has one, else a fresh random init."
         ),
     )
     parser.add_argument(
@@ -1001,14 +1054,17 @@ def main():
     n_layers = len(enc.card_reasoner.attn_layers)
     n_heads = enc.card_reasoner.attn_layers[0].num_heads
 
-    oracle_net, oracle_untrained = load_oracle(args)
+    oracle_net, oracle_untrained, oracle_ckpt = load_oracle(args)
     n_oracle_params = sum(p.numel() for p in oracle_net.parameters())
     oracle_src = (
         f"random init (untrained), seed {args.oracle_seed}"
         if oracle_untrained
-        else str(args.oracle_checkpoint)
+        else str(oracle_ckpt)
     )
-    print(f"Oracle critic: {oracle_src} · {n_oracle_params:,} params")
+    print(
+        f"Oracle critic: {oracle_src} · {n_oracle_params:,} params · "
+        f"aux heads {'on' if oracle_net.has_aux_heads else 'off'}"
+    )
 
     print("Scanning seeds for a hand with all five decision types...")
     seed, game, picked, forced_pick = find_hand(agent)
@@ -1095,14 +1151,15 @@ def main():
             "init_seed": args.oracle_seed if oracle_untrained else None,
             "checkpoint": (
                 None
-                if args.oracle_checkpoint is None
+                if oracle_ckpt is None
                 else str(
-                    args.oracle_checkpoint.resolve().relative_to(ROOT)
-                    if args.oracle_checkpoint.resolve().is_relative_to(ROOT)
-                    else args.oracle_checkpoint
+                    oracle_ckpt.resolve().relative_to(ROOT)
+                    if oracle_ckpt.resolve().is_relative_to(ROOT)
+                    else oracle_ckpt
                 )
             ),
             "n_params": n_oracle_params,
+            "aux_heads": bool(oracle_net.has_aux_heads),
             "dims": {
                 "d_card": oracle_net.encoder.d_card_dim,
                 "d_token": oracle_net.encoder.d_token_dim,
