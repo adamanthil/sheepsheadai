@@ -50,7 +50,9 @@ from pathlib import Path
 import numpy as np
 
 from sheepshead.analysis.entropy_probe import HEADS, PROBE_SEED, probe_agent
-from sheepshead.training.config import PFSP_HYPERPARAMS
+from sheepshead.training.config import PFSPHyperparams
+
+PFSP_HYPERPARAMS = PFSPHyperparams()
 
 DEFAULT_GLOB = (
     "runs/league_retention_pg/checkpoints/pfsp_perceiver-shared-v2_checkpoint_*.pt"
