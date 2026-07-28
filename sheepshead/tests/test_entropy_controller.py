@@ -185,6 +185,51 @@ class TestWiring:
         assert args.adaptive_entropy is False
         assert args.entropy_play_floor == 0.28
 
+    def test_targets_from_backfill_loads_hold_heads_only(self, tmp_path):
+        """Fresh-from-seed recipe: --entropy-targets-from applies a
+        validated backfill's suggested_targets to the HOLD heads
+        (stabilization setpoints at the mature operating point) and leaves
+        PLAY bumpless (the seed's high-entropy early phase is preserved;
+        descent comes only from the plateau ladder). Explicit flags win."""
+        import json
+
+        backfill = tmp_path / "entropy_backfill.json"
+        backfill.write_text(
+            json.dumps(
+                {
+                    "derived": {
+                        "suggested_targets": {
+                            "pick": 0.046,
+                            "partner": 0.127,
+                            "bury": 0.163,
+                            "play": 0.754,
+                        }
+                    }
+                }
+            )
+        )
+        from sheepshead.training.train_league_ppo import build_arg_parser
+
+        args = build_arg_parser().parse_args(
+            [
+                "--resume",
+                "x.pt",
+                "--league-dir",
+                "y",
+                "--entropy-mode",
+                "target",
+                "--entropy-targets-from",
+                str(backfill),
+                "--entropy-target-bury",
+                "0.2",
+            ]
+        )
+        from sheepshead.training.train_league_ppo import fresh_entropy_targets
+
+        targets = fresh_entropy_targets(args)
+        assert targets == {"pick": 0.046, "partner": 0.127, "bury": 0.2}
+        assert "play" not in targets  # bumpless
+
 
 if __name__ == "__main__":
     import sys

@@ -1707,3 +1707,40 @@ generations claw back CI-positive h2h until the ladder floors. Guards
 unchanged: watchdog, greedy gates, B2 bounds, soft-band canary
 (pick softband collapse ⇒ operator review — the hold target protects
 the boundary band, this verifies it).
+
+### Amendment: fresh-from-seed starting targets (2026-07-28; supersedes
+### item 1's fresh-run clause above)
+
+The earlier clause ("fresh runs pass all four targets explicitly,
+including play 0.754") was wrong on two counts, both visible in the
+backfill's seed-vs-mature comparison (seed: pick 0.053 / partner 0.166 /
+bury 0.256 / play 0.882; mature 1.8M: 0.046 / 0.127 / 0.163 / 0.754):
+
+- **Bumpless-everything is wrong for a seed**: holding bury at 0.256 and
+  partner at 0.166 would fight the organic early sharpening the
+  validated run exhibited (bury 0.26→0.16 and partner 0.17→0.10 in the
+  first 200k). Bumpless is for switching onto a MATURE run; seed entropy
+  levels are transients, not operating points.
+- **Importing the mature play target is also wrong**: play 0.754 at seed
+  start suppresses the validated high-entropy early phase (0.88→0.82
+  over the first 200k), which coincides with the historically
+  collapse-critical league-transition window, and play exploration is
+  where improvement search happens.
+
+**Recipe (implemented as `--entropy-targets-from <backfill.json>`,
+commit pending):** hold heads (pick/partner/bury) take the validated
+run's mature operating point as explicit stabilization setpoints — the
+switch-on transient is benign (measured>target ⇒ α to floor ⇒
+sharpening at the gradient's natural pace, as in the validated run
+minus the unneeded bonus) and two-sided control gives collapse
+insurance from update 1 (the SNR arm's partner head died at 50k and
+never re-ignited; a 0.127 setpoint preserves re-ignition capacity).
+PLAY stays bumpless at the seed's own measurement; every descent step
+comes from the plateau ladder, which in a healthy fresh run won't fire
+until h2h actually flattens. Explicit --entropy-target-* flags override
+per head. Lineage caveat: mature setpoints are validated for this
+arch/setup; a different lineage re-derives them from its own backfill
+or falls back to fully-bumpless with generation 1 as calibration.
+Portability note: pick barely moved seed→league (0.053→0.046) —
+plausibly a property of the game's pick structure, the most portable of
+the four numbers.

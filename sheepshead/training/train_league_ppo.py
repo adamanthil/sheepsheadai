@@ -501,6 +501,34 @@ def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
         episode = end + 1
 
 
+def fresh_entropy_targets(args) -> dict:
+    """Initial targets for a FRESH entropy controller (no sidecar yet).
+
+    Explicit --entropy-target-* flags win. --entropy-targets-from loads a
+    validated run's entropy_backfill.json suggested_targets for the HOLD
+    heads only (pick/partner/bury): they are stabilization setpoints and
+    the mature operating point is the validated good place to sit —
+    holding a seed's own transient levels would fight the organic early
+    sharpening the validated run exhibited. PLAY is deliberately never
+    loaded from the backfill: it stays bumpless at the seed's measured
+    operating point so the (historically collapse-critical) high-entropy
+    early phase is preserved and all play-target descent comes from the
+    orchestrator's evidence-driven plateau ladder."""
+    targets = {
+        h: v
+        for h in ("pick", "partner", "bury", "play")
+        if (v := getattr(args, f"entropy_target_{h}", None)) is not None
+    }
+    targets_from = getattr(args, "entropy_targets_from", None)
+    if targets_from:
+        with open(targets_from) as f:
+            suggested = json.load(f)["derived"]["suggested_targets"]
+        for h in ("pick", "partner", "bury"):
+            if h not in targets and suggested.get(h) is not None:
+                targets[h] = float(suggested[h])
+    return targets
+
+
 def run_main_phase(
     training_agent: PPOAgent,
     league: League,
@@ -583,17 +611,20 @@ def run_main_phase(
                 f"{entropy_ctrl.targets}  alphas {entropy_ctrl.alphas}"
             )
         else:
+            targets = fresh_entropy_targets(args)
             entropy_ctrl = EntropyTargetController(
                 config=EntropyControllerConfig(
                     floors={"play": getattr(args, "entropy_play_floor", 0.28)}
                 ),
-                targets={
-                    h: v
-                    for h in ("pick", "partner", "bury", "play")
-                    if (v := getattr(args, f"entropy_target_{h}", None)) is not None
-                },
+                targets=targets,
             )
-            print("🎯 Entropy controller fresh (bumpless targets pending)")
+            if targets:
+                print(
+                    "🎯 Entropy controller fresh, explicit targets: "
+                    + "  ".join(f"{h} {v:.3f}" for h, v in sorted(targets.items()))
+                )
+            else:
+                print("🎯 Entropy controller fresh (bumpless targets pending)")
         apply_schedules(start_episode, ctx)
         entropy_ctrl.attach(training_agent)
 
@@ -1064,6 +1095,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=0.28,
         help="play-head target floor (mixed-equilibrium reserve, ~37%% of "
         "the retention run's 1.8M operating point)",
+    )
+    # Fresh-from-seed recipe (2026-07-28 amendment): load HOLD-head targets
+    # (pick/partner/bury) from a validated run's entropy_backfill.json
+    # suggested_targets — they are stabilization setpoints, and the mature
+    # operating point is the validated "good place to sit" (holding a
+    # seed's own transient levels would fight the organic early sharpening
+    # the validated run exhibited). The PLAY target is deliberately NOT
+    # loaded: it stays bumpless at the seed's operating point so the
+    # validated high-entropy early phase is preserved and all descent comes
+    # from the evidence-driven plateau ladder. Explicit --entropy-target-*
+    # flags override individual heads.
+    ap.add_argument(
+        "--entropy-targets-from",
+        default=None,
+        help="path to an entropy_backfill.json; loads pick/partner/bury "
+        "targets from derived.suggested_targets (play stays bumpless)",
     )
     ap.add_argument(
         "--critic-mode",
