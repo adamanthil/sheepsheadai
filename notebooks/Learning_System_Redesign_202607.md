@@ -1744,3 +1744,29 @@ or falls back to fully-bumpless with generation 1 as calibration.
 Portability note: pick barely moved seed→league (0.053→0.046) —
 plausibly a property of the game's pick structure, the most portable of
 the four numbers.
+
+### Soft-band backfill trajectory (2026-07-28 rerun, same 37 ckpts/200
+### games; canary baselines for the hold targets)
+
+Share of eligible nodes with H_norm > 0.3, per head:
+
+| ckpt | pick | partner | bury | play |
+|---|---|---|---|---|
+| seed400k | 0.049 | 0.205 | 0.400 | 0.985 |
+| 200k | 0.072 | 0.144 | 0.279 | 0.961 |
+| 600k | 0.068 | 0.112 | 0.213 | 0.949 |
+| 1.0M | 0.074 | 0.097 | 0.293 | 0.926 |
+| 1.4M | 0.088 | 0.101 | 0.305 | 0.925 |
+| 1.8M | 0.072 | 0.106 | 0.279 | 0.909 |
+
+Readings: **pick's boundary band is alive and remarkably stable — 5–9%
+of pick nodes genuinely mixed across the entire run** (the structure the
+hold target exists to protect; a collapse reads as a sustained fall
+toward 0 against this steady baseline). Partner oscillates 5–21%
+(n≈190/probe — noisy; the 800k dip to 0.047 recovered unaided). Bury
+declined 0.40→~0.28 with the early sharpening then stabilized. Play
+0.985→0.909: even at 1.8M, 9 in 10 play nodes remain genuinely mixed —
+the play-target ladder has real room before the band thins. Canary
+thresholds (informal, operator review if breached sustained over ≥3
+probes): pick softband < 0.03; play softband < 0.5 while the ladder is
+above floor.
