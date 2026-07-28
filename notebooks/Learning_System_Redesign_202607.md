@@ -1591,3 +1591,57 @@ games, smoke): pick Hn 0.16, partner 0.09, bury 0.28, play 0.82 — pick is
 already far sharper per-node than the aggregate 43% pick rate suggests;
 the play head carries most of the sampled stochasticity. Full-trajectory
 readout to be appended below.
+
+### Backfill results (2026-07-28, 37 ckpts × 200 games, seed 20260728;
+### runs/league_retention_pg/entropy_backfill.json)
+
+Trajectory (per-head mean H_norm; seed row = seed400k_a warm start):
+
+| ckpt | pick | partner | bury | play |
+|---|---|---|---|---|
+| seed400k | 0.053 | 0.166 | 0.256 | 0.882 |
+| 200k | 0.052 | 0.099 | 0.162 | 0.818 |
+| 600k | 0.064 | 0.108 | 0.161 | 0.815 |
+| 1.0M | 0.050 | 0.055 | 0.170 | 0.758 |
+| 1.4M | 0.048 | 0.099 | 0.170 | 0.763 |
+| 1.8M | 0.046 | 0.127 | 0.163 | 0.754 |
+
+Derived (bumpless targets = 1.8M values; organic drift per generation from
+OLS over all 36 in-run checkpoints): pick 0.046 / −0.0003, partner 0.127 /
+−0.0008, bury 0.163 / −0.0148, play **0.754 / −0.0569**.
+
+**Headline finding — the entropy-inflated-pick hypothesis is REFUTED.**
+The pick head reads H_norm ≈ 0.05–0.07 flat across the entire run: at
+actual pick nodes the policy is near-deterministic despite the 0.046–0.05
+coefficient. The 42–45% greedy pick rate is the policy's confident
+behavior, not Boltzmann flattening — the motivation bullet (1) in the
+section above is corrected accordingly. The pick-rate drift toward the
+operator's ~30% optimum, if it happens, must come from learning, not from
+annealing pick entropy. Partner and bury similarly sit at low, roughly
+trend-free levels (partner noisy 0.05–0.17 at n≈190/probe; bury
+0.26→0.16 in the first 200k, flat since).
+
+**Where entropy actually lives: the play head.** Clean monotone decline
+0.88 → 0.75 with organic drift −0.057/gen under the fixed 0.0138–0.015
+coefficient. This is the only head where (a) the regularizer is plausibly
+binding and (b) a target-entropy controller has real leverage; it is also
+the head the operator's original concern (sampling noise near
+convergence) applies to.
+
+**Consequences for Phase 2 numbers:**
+- Starting targets (bumpless, from THIS run's 1.8M operating point): pick
+  0.046, partner 0.127, bury 0.163, play 0.754.
+- The outer loop's first and main lever is the PLAY target. Step
+  detectability: a 0.25-of-gap step from 0.754 toward a ~0.28 floor
+  (~37% of current, the mixed-equilibrium reserve) moves ~0.12 —
+  comfortably above the −0.057/gen organic drift, satisfying the
+  distinguishability bound.
+- Pick/partner/bury controllers exist mainly to HOLD their measured
+  operating points (insurance against collapse or drift), not to anneal;
+  their coefficients under the controller may fall to near the floor
+  since measured entropy already sits at target without help. The leaster
+  watchdog remains the upward override on pick.
+- The stop-rule confound is narrower than feared but real: a plateau
+  cannot be entropy-limited via pick/partner (not binding), but can be
+  via play. The plateau→step→reset-streak rule therefore applies to the
+  play target.
