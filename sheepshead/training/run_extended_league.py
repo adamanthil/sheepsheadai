@@ -1031,7 +1031,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default="",
         help="extra flags appended verbatim to every generation's "
         "train_league_ppo invocation (e.g. '--minibatch-episodes 1024 "
-        "--exploiter-full-table --exploiter-patched-ema 0.35')",
+        "--exploiter-patched-ema 0.35')",
     )
     p.add_argument(
         "--anchor-coeff",

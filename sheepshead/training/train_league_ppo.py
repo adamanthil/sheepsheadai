@@ -1123,14 +1123,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "PFSP/self/exploiter sampling)",
     )
     ap.add_argument(
-        "--exploiter-full-table",
-        action="store_true",
-        help="whole-table exploiter pressure (Learning_System_Redesign batch-λ "
-        "arm): with the usual edge-scaled share a table is ALL one gated "
-        "exploiter instead of per-seat mixing, so role-based exploits land on "
-        "the hero every time the exploiter is seated at all",
-    )
-    ap.add_argument(
         "--exploiter-patched-ema",
         type=float,
         default=0.35,
@@ -1185,15 +1177,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "oracle_moe_offline pretrain) loaded into the oracle critic after "
         "--resume — the supervised warm start that removes the fresh-"
         "oracle burn-in window",
-    )
-    ap.add_argument(
-        "--self-play-share",
-        type=float,
-        default=None,
-        help="override LeagueConfig.self_play_share (per-seat SELF "
-        "probability; historical 0.15). 0 keeps every opponent seat on "
-        "league members — with a seeded league this makes all collection "
-        "hero-stream, matching an --oracle-init pretrained on hero streams",
     )
     ap.add_argument(
         "--seat-rotation",
@@ -1264,22 +1247,11 @@ def main():
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     league_config = LeagueConfig()
-    if getattr(args, "self_play_share", None) is not None:
-        league_config.self_play_share = float(args.self_play_share)
-        print(
-            f"🪞 Per-seat self-play share override: {league_config.self_play_share:.0%}"
-        )
     if args.table_self_play is not None:
         league_config.table_self_play_prob = args.table_self_play
         print(
             f"🎲 Table-level composition ON: {args.table_self_play:.0%} pure-self "
             "tables, remainder uniform window (PFSP/EMA/exploiter seating off)"
-        )
-    if args.exploiter_full_table:
-        league_config.exploiter_full_table = True
-        print(
-            "🥷 Whole-table exploiter pressure ON: edge-scaled share of tables "
-            "are ALL one gated exploiter (per-seat exploiter mixing off)"
         )
     if args.exploiter_patched_ema is not None:
         league_config.exploiter_patched_ema = args.exploiter_patched_ema

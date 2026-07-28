@@ -96,28 +96,12 @@ class TestExploiterFullTable:
         )
         return lg
 
-    def test_full_table_is_one_exploiter_in_every_seat(self, league):
-        from sheepshead.training.league import ROLE_MAIN_EXPLOITER
-
-        league.config.exploiter_full_table = True
-        league.config.exploiter_seat_cap = 1.0  # share -> 1.0, table certain
-        seats = league.sample_table(0, random.Random(5))
-        assert len(seats) == 4
-        assert len({s.member_id for s in seats}) == 1
-        assert seats[0].role == ROLE_MAIN_EXPLOITER
-
-    def test_full_table_mode_never_seats_exploiters_per_seat(self, league):
-        from sheepshead.training.league import ROLE_MAIN_EXPLOITER, SELF_PLAY
-
-        league.config.exploiter_full_table = True
-        league.config.exploiter_seat_cap = 0.0  # share 0: no exploiter tables
-        rng = random.Random(11)
-        for _ in range(50):
-            for s in league.sample_table(0, rng):
-                if s is not SELF_PLAY:
-                    assert s.role != ROLE_MAIN_EXPLOITER
-
-    def test_flag_off_keeps_per_seat_mixing(self, league):
+    def test_per_seat_exploiter_mixing(self, league):
+        # Exploiters enter tables per-seat within the PFSP mixture — the
+        # only exploiter seating mode (whole-table pressure removed
+        # 2026-07-28: it deployed an uncertified 1-main-vs-4-copies mirror
+        # with no evaluation analog, and seat rotation supplies the role
+        # coverage it compensated for).
         from sheepshead.training.league import ROLE_MAIN_EXPLOITER, SELF_PLAY
 
         league.config.exploiter_seat_cap = 1.0  # per-seat exploiter draws hot

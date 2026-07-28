@@ -297,16 +297,6 @@ class League:
         p_self = self.config.self_play_share
         pool_past = self.by_role(ROLE_PAST_MAIN) + self.by_role(ROLE_HOF_ANCHOR)
         pool_exp = self.by_role(ROLE_MAIN_EXPLOITER)
-        if self.config.exploiter_full_table:
-            # Whole-table exploiter pressure: same share, concentrated — one
-            # edge-weighted exploiter fills every opponent seat, so the hero
-            # is the only main-like player and role-based exploits land on it
-            # regardless of seat assignment. Per-seat mixing is disabled.
-            if pool_exp and rng.random() < p_exp:
-                pick = self._sample_exploiter(pool_exp, set(), rng)
-                if pick is not None:
-                    return [pick] * n_seats
-            p_exp = 0.0
         seats: list = []
         used: set[str] = set()
         for _ in range(n_seats):

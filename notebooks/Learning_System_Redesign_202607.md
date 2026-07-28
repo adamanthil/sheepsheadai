@@ -1844,3 +1844,29 @@ gen 2, plateau ladder + amended stop rule — with zero entropy-related
 flags. Consequence for the live-run activation: the gen-2→3 boundary
 relaunch needs NO new flags; the standard relaunch command activates the
 program by default.
+
+### Amendment: --exploiter-full-table and --self-play-share STRIPPED
+### (2026-07-28, operator decision)
+
+Both trainer arguments removed outright (not deprecated), simplifying
+league-trainer branching:
+
+- **--exploiter-full-table** (+ LeagueConfig.exploiter_full_table + the
+  whole-table branch in League.sample_table): the batch-λ-arm-era
+  whole-table exploiter pressure deployed an uncertified
+  1-main-vs-4-parameter-shared-copies mirror with no evaluation analog
+  (the gate certifies 1-exploiter-vs-4-mains), and seat rotation now
+  supplies the role coverage it compensated for. Per-seat mixing within
+  the PFSP mixture is the only exploiter seating mode. (This finalizes
+  the Jul-26 seating amendment — the flag had already been dropped from
+  the live relaunch; now the code path is gone.)
+- **--self-play-share** (CLI override only): the per-seat SELF share
+  remains a code-level knob, LeagueConfig.self_play_share = 0.15 — the
+  validated value of the current pfsp mixture. Operator rationale:
+  adjusting it is a legitimate future experiment, but that knob belongs
+  inside the validated pfsp regime (a LeagueConfig change with its own
+  pre-registration), not a per-run CLI surface.
+
+The validated retention-run trainer invocation is unaffected (it passed
+neither flag). Tests: full-table sampling tests removed with the branch;
+per-seat mixing test retained (test_per_seat_exploiter_mixing).
