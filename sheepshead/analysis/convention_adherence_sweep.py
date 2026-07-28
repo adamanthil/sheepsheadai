@@ -9,7 +9,10 @@ the empirical half of Q2 (is the convention being learned under terminal-only
 reward?). See notebooks/Convention_Optimality_202607.md.
 
 The ScriptedAgent anchor doubles as the instrument self-check: C1 rate must be
-exactly 0 and C2 trick-0 adherence exactly 1.0, or the run is rejected.
+exactly 0 and C2 adherence exactly 1.0 (all tricks — the scripted agent leads
+the called suit through at any pre-called-suit lead since 2026-07-28; earlier
+sweeps ran a trick-0-only scripted agent and anchor rows are not comparable
+across that boundary), or the run is rejected.
 
 Usage (from repo root):
 
@@ -142,11 +145,11 @@ def main() -> int:
             ScriptedAgent(), args.deals, args.seed, args.both_modes
         )
         # Instrument self-check (the anchor is also the harness gate).
-        if c1_called["trump_leads"] != 0 or c2["adherence_rate_trick0"] != 1.0:
+        if c1_called["trump_leads"] != 0 or c2["adherence_rate"] != 1.0:
             raise SystemExit(
                 "ScriptedAgent anchor violated its by-construction rates "
                 f"(C1 leads {c1_called['trump_leads']}, "
-                f"C2 t0 {c2['adherence_rate_trick0']:.3f}); instrument broken."
+                f"C2 {c2['adherence_rate']:.3f}); instrument broken."
             )
         rows.append(_row("scripted-anchor", None, c1_called, c1_jd, c2))
         print(f"[scripted-anchor] ok ({time.time() - t0:.0f}s)", flush=True)

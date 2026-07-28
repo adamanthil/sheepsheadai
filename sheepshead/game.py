@@ -1038,6 +1038,11 @@ class Player:
         called_under = np.uint8(
             1 if getattr(self.game, "is_called_under", False) else 0
         )
+        # Public table fact (every seat knows it): has the called suit been
+        # led/resolved yet? Derivable from trick history, so it adds no hidden
+        # information for recurrent agents; stateless agents (ScriptedAgent)
+        # need it explicitly for the called-suit-through convention.
+        called_suit_played = np.uint8(1 if self.game.was_called_suit_played else 0)
         picker_rel = np.uint8(rel(self.game.picker))
         partner_rel = np.uint8(rel(self.game.partner) if self.game.partner else 0)
         leader_rel = np.uint8(rel(self.game.leader) if self.game.play_started else 0)
@@ -1081,6 +1086,7 @@ class Player:
             "alone_called": alone_called,
             "called_card_id": called_card_id,
             "called_under": called_under,
+            "called_suit_played": called_suit_played,
             "picker_rel": picker_rel,
             "partner_rel": partner_rel,
             "leader_rel": leader_rel,

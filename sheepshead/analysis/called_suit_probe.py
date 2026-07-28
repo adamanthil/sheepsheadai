@@ -19,8 +19,13 @@ are tallied separately — the "picker must follow" premise does not hold there.
 Games are abandoned once the called suit has been led (no further eligibility
 is possible), keeping the probe fast enough to run per-checkpoint.
 
-Self-checks: the ScriptedAgent leads the called suit through on trick 0 by
-construction, so its trick-0 adherence is exactly 1.0 (see tests).
+Self-checks: the ScriptedAgent leads the called suit through whenever it holds
+one and the suit has not been led (all tricks, since 2026-07-28; previously
+trick 0 only), so its adherence is exactly 1.0 on every split (see tests).
+NOTE the field-agent consequence: the ScriptedAgent also seats the OPPONENT
+field here and in the other CRN scripted-field instruments, so measurements
+taken before/after 2026-07-28 are different instrument versions even at the
+frozen PROBE_SEED.
 
 Usage:
   uv run python -m sheepshead.analysis.called_suit_probe --ckpt final_pfsp_swish_ppo.pt
@@ -192,7 +197,7 @@ def main() -> int:
     ap.add_argument(
         "--scripted",
         action="store_true",
-        help="probe the ScriptedAgent itself (trick-0 adherence must be 1.0)",
+        help="probe the ScriptedAgent itself (adherence must be 1.0 everywhere)",
     )
     ap.add_argument("--deals", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=PROBE_SEED)

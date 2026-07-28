@@ -13,8 +13,13 @@ card within the convention):
   * C2 — lead the called suit through: at a true defender's trick-0 lead in
     called-ace mode (non-alone, non-under) holding a called-suit fail with an
     alternative, the lead is restricted to called-suit fails. Trick 0 only:
-    that is the pre-registered primary slice, and it is the only trick where
-    "called suit not yet led" is provable from the observation dict alone.
+    that is the pre-registered primary slice the E-study results were
+    recorded under, so the instrument keeps it for comparability. (The
+    original secondary reason — "called suit not yet led" was not provable
+    from the observation dict — lapsed 2026-07-28 when ``called_suit_played``
+    was added to ``get_state_dict``; extending the wrapper to all
+    pre-called-suit tricks is now possible but would be a new instrument
+    version requiring its own pre-registration.)
 
 Everything else — non-lead plays, bidding, bury, leasters, picker/partner
 seats — passes through untouched. All logic reads the per-seat observation

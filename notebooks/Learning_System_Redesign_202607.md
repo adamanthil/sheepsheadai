@@ -1291,6 +1291,37 @@ for this program, not a retention one.** Watch: C2 < ~35% sustained
 (erosion below seed) or a climb toward the scripted 70% (the terminal
 objective claiming the headroom).
 
+**Amendment — ScriptedAgent C2 extended to all tricks (2026-07-28,
+operator directive).** The scripted agent's called-suit-through rule was
+trick-0-only — not by convention design but because "called suit not yet
+led" was not derivable from the observation dict (the agent is stateless
+across tricks). Fixed by adding the public table fact
+`called_suit_played` to `get_state_dict` (invisible to RL encoders —
+named-field selection; goldens 34/34 bit-identical; web WS schemas are
+deliberately loose) and switching the rule to "lead the called suit
+through whenever held and not yet led, any trick, all variants."
+Calibrated-probe self-check now 100.0% on every split (pooled/trick-0/
+first-opp/under; previously pooled 69.7%). Consequences for the record:
+- The "scripted 70%" reads above were the TRICK-0-ONLY agent, not a
+  structural ceiling — the watch item's upper reference is now ~100%.
+- Instrument version boundary: the ScriptedAgent also seats the OPPONENT
+  field in the CRN scripted-field instruments (called_suit_probe,
+  trump_lead_probe, adherence sweep, decay curve, role-coupling), so
+  pre/post-2026-07-28 measurements differ even at frozen seeds —
+  adherent field members resolve the called suit sooner, shrinking
+  later-trick eligibility (observed: eligible nodes per deal roughly
+  halve). Historical numbers stand as recorded under the old agent;
+  cross-boundary comparisons must rerun both sides.
+- Same-instrument same-day reads for context (2,000 CRN deals, old
+  field): retention 1.9M ckpt pooled 38.6% / trick-0 33.1%;
+  final_pfsp_swish_ppo (30M, the deployed app model) pooled 85.6% /
+  trick-0 93.7% — the C2 acquisition headroom between lineages is
+  ~47 points.
+- ConventionWrapper C2 (the E-study instrument) deliberately KEPT
+  trick-0-only for comparability with recorded results; extending it is
+  now possible but would be a new instrument version with its own
+  pre-registration.
+
 ### 7.10 Success reading / outcome map
 
 - Partner ≥ 0.5 AND defender ≤ 0.10 held through 2M with the ordinary

@@ -34,9 +34,10 @@ PLAY — LEADING
     ALWAYS lead trump while holding any, highest first; out of trump, cash
     the biggest fail (aces first by points).
   * Defender: NEVER lead trump while holding fail (the exact tell the 30M
-    RL lineage leaks); trick 0 in CA mode lead the called suit through if
-    held; otherwise fail aces, then highest fail; all-trump hand -> lowest
-    trump.
+    RL lineage leaks); in CA mode lead the called suit through whenever it
+    is held and has not been led yet (any trick — extended from trick-0-only
+    2026-07-28 once ``called_suit_played`` entered the observation dict);
+    otherwise fail aces, then highest fail; all-trump hand -> lowest trump.
   * Team membership is self-inferred from public info plus own hand: on the
     picker's team iff picker, revealed partner, or holding the called card /
     the JD in JD mode — void when ALONE was declared (no partner exists;
@@ -295,7 +296,7 @@ class ScriptedAgent:
         # 30M lineage leaks). Called suit through first, then fail aces.
         if fails:
             called = _card(int(state["called_card_id"]))
-            if called and int(state["current_trick"]) == 0:
+            if called and not int(state["called_suit_played"]):
                 through = [c for c in fails if c[-1] == called[-1]]
                 if through:
                     return max(through, key=lambda c: _fail_power(c))

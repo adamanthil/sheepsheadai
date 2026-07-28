@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """ScriptedAgent invariants: legality, determinism, zero-sum self-play."""
 
+import numpy as np
+
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.scripted_agent import ScriptedAgent
 
@@ -92,6 +94,7 @@ class TestTeamInference:
             "alone_called": np.uint8(alone),
             "called_card_id": np.uint8(0),
             "called_under": np.uint8(0),
+            "called_suit_played": np.uint8(0),
             "picker_rel": np.uint8(3),
             "partner_rel": np.uint8(0),
             "leader_rel": np.uint8(1),
@@ -103,6 +106,22 @@ class TestTeamInference:
             "trick_is_picker": np.zeros(5, dtype=np.uint8),
             "trick_is_partner_known": np.zeros(5, dtype=np.uint8),
         }
+
+    def test_defender_leads_called_suit_any_trick_until_played(self):
+        # C2 across tricks: a defender holding a called-suit fail leads it
+        # whenever the called suit has not yet been led — not just trick 0 —
+        # and reverts to normal fail leads once it has been played.
+        from sheepshead import DECK_IDS
+
+        ag = ScriptedAgent()
+        hand = [DECK_IDS["9H"], DECK_IDS["AS"], DECK_IDS["7C"]]
+        state = self._lead_state(1, alone=0, hand_ids=hand)
+        state["called_card_id"] = np.uint8(DECK_IDS["AH"])  # hearts called
+        state["current_trick"] = np.uint8(2)
+        cards = ["9H", "AS", "7C"]
+        assert ag._lead(state, cards) == "9H"  # through, even at trick 2
+        state["called_suit_played"] = np.uint8(1)
+        assert ag._lead(state, cards) == "AS"  # back to cashing fail aces
 
     def test_jd_holder_is_defender_when_picker_goes_alone(self):
         # JD-mode: holding the JD marks the secret partner — but not when

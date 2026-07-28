@@ -7,14 +7,17 @@ from sheepshead.scripted_agent import ScriptedAgent, _card
 
 
 class TestCalledSuitProbe:
-    def test_scripted_hero_trick0_adherence_is_total_and_deterministic(self):
+    def test_scripted_hero_adherence_is_total_and_deterministic(self):
         # Instrument self-check: the conventions agent leads the called suit
-        # through on trick 0 by construction, so its trick-0 adherence must be
-        # exactly 1.0 — and the probe must find real opportunities.
+        # through whenever it holds one and the suit hasn't been led (all
+        # tricks since 2026-07-28), so adherence must be exactly 1.0 on every
+        # split — and the probe must find real opportunities.
         r = probe_agent(ScriptedAgent(), n_deals=80)
         assert r["eligible_trick0"] > 10
+        assert r["adherent"] == r["eligible"]
+        assert r["adherence_rate"] == 1.0
         assert r["adherent_trick0"] == r["eligible_trick0"]
-        assert r["adherence_rate_trick0"] == 1.0
+        assert r["adherent_under"] == r["eligible_under"]
         # Fixed CRN deal set: an identical call reproduces identical counts.
         r2 = probe_agent(ScriptedAgent(), n_deals=80)
         assert r["eligible"] == r2["eligible"]
