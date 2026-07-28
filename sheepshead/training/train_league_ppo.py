@@ -124,6 +124,15 @@ PROGRESS_CSV_HEADER = [
     "softband_partner",
     "softband_bury",
     "softband_play",
+    # LR diagnostics (2026-07-28): per-update approx KL (computed since
+    # forever, never logged; target_kl is None so nothing acts on it) and
+    # the actor LR actually in force. Prerequisite evidence for any future
+    # KL-targeted LR adaptation (rl_games-style banded control) — the LR
+    # lever stays clock-scheduled until a generation of this data says the
+    # trust region binds, and any LR plateau-lever is sequenced strictly
+    # after the entropy ladder floors (single-lever attributability).
+    "approx_kl",
+    "lr_actor",
 ]
 
 # greedy_health.csv schema (append-only; migrated on resume like the
@@ -817,6 +826,8 @@ def run_main_phase(
                                     else ""
                                     for head in ("pick", "partner", "bury", "play")
                                 ],
+                                f"{stats.get('approx_kl', 0.0):.6f}",
+                                f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
                             ]
                         )
 
