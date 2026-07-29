@@ -16,10 +16,14 @@ convention-erosion findings
 ## 0. Current status (2026-07-28)
 
 **Live run:** `runs/league_retention_pg` — retention-first pure-PG league
-(§7), gen 2 of ≥4, the healthiest run in the lineage: partner trump-lead
-convention SHARPENED to the 84–98% band (every prior league arm lost it in
-the first 50k), 500k h2h vs its own seed **+0.089 ± 0.014** (first real
-league lift in the lineage), gen-1 panel verdict CI-positive.
+(§7), gen 3 of ≥4 running UNDER THE ADAPTIVE-ENTROPY CONTROLLER (activated
+at the gen-2→3 boundary per operator GO, §7.10), the healthiest run in the
+lineage: partner trump-lead convention SHARPENED to the 84–98% band (every
+prior league arm lost it in the first 50k), gen-1 panel +0.0425 CI>0, gen-2
+panel **+0.1323 [+0.1019, +0.1629]** (accelerating, 3× the gen-1 delta),
+h2h gen2-vs-gen1 +0.101 ± 0.013, both exploiter gates failed (the main is
+not PPO-exploitable at budget; gen 2 −0.184 ± 0.016, worse for the
+exploiter than gen 1).
 
 **Root-cause context:** two league-path training bugs (braided storage +
 last-actor-only terminal rewards, §6) were found and fixed 2026-07-24/25.
@@ -28,16 +32,16 @@ the Phase-A fail (§3) and the historical "league lift ≈ zero" finding, and
 are the reason this run behaves differently from everything before it.
 
 **Next actions (armed):**
-- **Gen-2→3 boundary activation (operator GO):** when watcher b5eg076cx
-  fires on "endpoint eval gen 2:", kill and relaunch the orchestrator
-  BEFORE gen-3 episodes accumulate. The plain relaunch activates the
-  adaptive-entropy program by default (§8.6); live entropy/KL telemetry
-  columns ride the same restart. Pre-registered prediction: bumpless
-  switch-on changes nothing measurable in gen 3; first play-target step
-  only on a flat boundary verdict.
-- At that boundary, read: gen-2 endpoint eval + h2h + stop verdict,
-  exploiter gate (first potential per-seat pressure test under the §7.7
-  seating amendment), B2 reading at 2M, C2 trajectory (§7.9).
+- Verify the bumpless-switch-on prediction across gen 3: no measurable
+  behavior change at controller attach; α tracks the schedule's value;
+  ent_norm/softband/approx_kl/lr_actor columns populate. First play-target
+  step only on a flat boundary verdict (gen 3 was NOT flat-checked yet —
+  first candidate is the gen-3→4 boundary).
+- Gen-3 exploiter gate at 3M: first potential per-seat pressure test under
+  the §7.7 seating amendment (gens 1–2 exploiters failed their gates, so
+  the amendment is still untested by live pressure).
+- B2 through gen-3 churn; C2 trajectory (recovered to 43–51% at 1.85–2.0M
+  from the 40.9% dip at 1M; §7.9 watch bounds unchanged).
 - Standing watch items and armed contingencies: appendix A.
 
 ## 1. Program timeline
@@ -68,6 +72,9 @@ are the reason this run behaves differently from everything before it.
 | 07-28 | Adaptive entropy Phase 1 + backfill | Entropy-inflated-pick hypothesis REFUTED; play = only binding head | 8.3–8.4 |
 | 07-28 | Adaptive entropy Phase 2 controller; operator GO; default-on | Activation rides gen-2→3 relaunch | 8.5–8.8 |
 | 07-28 | Legacy args stripped (exploiter-full-table, self-play-share, table-self-play) | `sample_table` single-mode | 9 |
+| 07-28 | ScriptedAgent C2 extended to all tricks (19e4028) | Instrument version boundary for scripted-field probes | 7.9 |
+| 07-28 | Orchestrator crash at gen-2 endpoint eval | torch venv-swap under long-running process; no data lost | 7.10 |
+| 07-28 | Gen-2 boundary: panel +0.1323 CI>0, h2h +0.101; exploiter gate FAILED (−0.184) | Continue; **adaptive entropy ACTIVATED for gen 3** | 7.10 |
 
 ## 2. Original pre-registration (2026-07-20)
 
@@ -927,7 +934,7 @@ time — adopted as defaults 2026-07-27, §7.9):**
    consistent across dataset, pretraining, and trainer.
 6. UNANCHORED gen 1+ (anchor-coeff 0). Bidding drift under the terminal
    objective is expected and partially correct; guarded by
-   leaster-watchdog + greedy gates + the bidding contingency (§7.10).
+   leaster-watchdog + greedy gates + the bidding contingency (§7.6).
 7. Low-temperature regime kept: `--update-interval 16384`,
    `--minibatch-episodes 128`, `--grad-accum`; λ gate as registered
    (pretrained oracle may satisfy ev_ora ≥ 0.30 early — follow the gate;
@@ -1322,7 +1329,60 @@ first-opp/under; previously pooled 69.7%). Consequences for the record:
   now possible but would be a new instrument version with its own
   pre-registration.
 
-### 7.10 Success reading / outcome map
+### 7.10 Gen-2 boundary + adaptive-entropy activation (2026-07-28)
+
+**Crash incident (environment, not code).** The orchestrator died at
+21:35:16 starting the gen-2 endpoint eval: `TypeError: Config() got an
+unexpected keyword argument 'deprecated'` inside a lazy `torch._dynamo`
+import, with garbled traceback line attributions. Root cause: commit
+79374e7 (torch security upgrade) changed the lock; an `uv run` re-synced
+the venv at Jul-27 00:21 — 80 minutes AFTER the orchestrator launched
+(Jul-26 23:01). The long-running process carried old torch in memory over
+the swapped install and survived all of gen-2 training (no poisoned
+imports on that path); the endpoint eval's fresh Adam construction
+triggered the first lazy `torch._dynamo` import, pulling new-version
+files into the old process. Fresh processes import cleanly (torch 2.13.0
+verified). No data lost: gen-2 training + exploiter phase were complete
+and no boundary artifact was half-written — the crash landed exactly at
+the pre-registered kill point. **Operational lesson: `uv run`/`uv sync`
+swaps the venv under live long-running trainers; on lockfile changes,
+either defer the sync or expect lazy-import deaths at phase boundaries.**
+
+**Relaunch (2026-07-28 21:56, `runs/league_retention_pg_relaunch_gen3.log`)
+= the pre-registered activation.** Same invocation minus the stripped
+`--exploiter-full-table` (patched-EMA kept); adaptive entropy now active
+by DEFAULT (§8.6). Resume replayed gen 1 from artifacts in <1s and reran
+the gen-2 boundary evals.
+
+**Gen-2 boundary results:**
+- **Panel endpoint: +0.1323 [+0.1019, +0.1629] vs gen 1** — CI excludes
+  zero with 3× the gen-1 delta (+0.0425): the run is ACCELERATING, not
+  flattening, at 2M episodes.
+- **h2h gen2-vs-gen1 (duplicate-bridge, 2000 deals/mode): +0.101 ± 0.013.**
+- Verdict: flat=False, streak=0 → continue (below min_generations 4). NO
+  entropy-target step (correct per design — steps fire only on flat
+  verdicts).
+- **Gen-2 exploiter gate: FAILED, worse than gen 1** — edge −0.1841 ±
+  0.0156, win_frac 0.420 over 3,000 gate deals (gen 1: −0.0279). The
+  fixed-path exploiter loses MORE decisively to the 2M main than to the
+  1M main: the unanchored main is hardening, consistent with the panel
+  acceleration and not with degenerate drift. No exploiter seated in gen
+  3; the §7.7 per-seat seating amendment remains untested by live
+  pressure.
+- **B2 through gen 2: HELD** — partner trump-lead 92.7/96.3/84.6/87.7% at
+  1.85–2.0M, defender t0 0.0–1.1%. C2 43.3–51.4% over the last four
+  probes (recovered from the 40.9% dip at 1M to at/above the 47.6% seed).
+  Pick 41.6–46.7%, greedy leaster 0.5–2.5%, picker_avg 1.35–1.59.
+
+**Gen-3 launch under the controller (23:30:46):** trainer command carries
+the injected `--entropy-mode target --entropy-play-floor 0.28` (gen-1
+deferral logic correct at g=3); trainer log shows "🎯 Entropy controller
+fresh (bumpless targets pending)". Bumpless target adoption lands at the
+first update (~16k episodes); the switch-on prediction (§8.8) is now
+live-testable. New telemetry columns (ent_norm_*, softband_*, approx_kl,
+lr_actor) populate from gen 3's first progress rows.
+
+### 7.11 Success reading / outcome map
 
 - Partner ≥ 0.5 AND defender ≤ 0.10 held through 2M with the ordinary
   strength trajectory ⇒ retention-first on-policy PG is sufficient; the
