@@ -5,7 +5,11 @@ import styles from "./PlayingCard.module.css";
 export interface PlayingCardProps {
   /** Card code: "QC", "10H", "AD", "__" (face down), "UNDER" (buried-under placeholder). */
   code: string;
-  /** Card width in px; height is derived as w * 1.45. */
+  /**
+   * Card width in px; height is derived as w * 1.45. Omit to size the card
+   * from CSS instead: it follows the inherited --pc-w custom property
+   * (default 64px), so an ancestor rule can drive the size responsively.
+   */
   w?: number;
   playable?: boolean;
   dim?: boolean;
@@ -15,14 +19,17 @@ export interface PlayingCardProps {
 
 export default function PlayingCard({
   code,
-  w = 64,
+  w,
   playable,
   dim,
   ariaHidden,
   className,
 }: PlayingCardProps) {
   const { rank, suit, faceDown, special } = parseCard(code);
-  const cssVars = { ["--pc-w" as string]: `${w}px` } as React.CSSProperties;
+  const cssVars =
+    w != null
+      ? ({ ["--pc-w" as string]: `${w}px` } as React.CSSProperties)
+      : undefined;
 
   if (special === "UNDER") {
     return (

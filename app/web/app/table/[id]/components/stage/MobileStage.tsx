@@ -8,17 +8,19 @@ import type { StageProps } from "./types";
 import styles from "../Stage.module.css";
 
 // ---------- Mobile ----------
+// Card sizing is CSS-driven: the stage is a size container and Stage.module.css
+// sets --pc-w on its children from the measured box, so the ring cards, chits
+// and collect animation all follow without any JS measurement. The mobStagePlay
+// class lets the played cards grow past the decision-phase chit size.
 export default function MobileStage(props: StageProps) {
   const { seats } = props;
-  const MOB_CARD = 66;
+  const playing = props.phase === "play" || props.phase === "done";
   const you = seats.find((s) => s.you);
   const youPlayed =
-    (props.phase === "play" || props.phase === "done") && you
-      ? props.displayCards[you.absSeat - 1] || ""
-      : "";
+    playing && you ? props.displayCards[you.absSeat - 1] || "" : "";
   return (
     <div
-      className={styles.mobStage}
+      className={`${styles.mobStage} ${playing ? styles.mobStagePlay : ""}`}
       ref={props.trickBoxRef as React.RefObject<HTMLDivElement>}
     >
       <svg
@@ -69,7 +71,7 @@ export default function MobileStage(props: StageProps) {
                 compact
                 badgeSide={badgeSide}
               />
-              <div>{seatCardContent(props, seat, MOB_CARD)}</div>
+              <div>{seatCardContent(props, seat)}</div>
             </div>
           );
         })}
@@ -82,7 +84,7 @@ export default function MobileStage(props: StageProps) {
             top: `${MOBILE_RING_ANCHORS[0].cardY}%`,
           }}
         >
-          <PlayingCard code={youPlayed} w={MOB_CARD} />
+          <PlayingCard code={youPlayed} />
           <span className={styles.youPlate}>You</span>
         </div>
       )}
@@ -92,7 +94,6 @@ export default function MobileStage(props: StageProps) {
           yourSeat={props.yourSeat}
           winner={props.animTrick.winner}
           cards={props.animTrick.cards}
-          cardW={MOB_CARD}
           anchors={MOBILE_RING_ANCHORS}
         />
       )}

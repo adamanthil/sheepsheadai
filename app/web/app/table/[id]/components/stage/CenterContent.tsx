@@ -4,8 +4,13 @@ import type { SeatView, StageProps } from "./types";
 import styles from "../Stage.module.css";
 
 // ---------- Card / chit content for a seat ----------
-export function seatCardContent(props: StageProps, seat: SeatView, w: number) {
-  const h = Math.round(w * 1.45);
+// `w` is the card width in px; omit it (mobile) to let the CSS-driven --pc-w
+// size the card, chit and empty slot alike.
+export function seatCardContent(props: StageProps, seat: SeatView, w?: number) {
+  const sizeVars =
+    w != null
+      ? ({ ["--pc-w" as string]: `${w}px` } as React.CSSProperties)
+      : undefined;
   const { phase } = props;
   if (phase === "play" || phase === "done") {
     const played = props.displayCards[seat.absSeat - 1] || "";
@@ -19,7 +24,7 @@ export function seatCardContent(props: StageProps, seat: SeatView, w: number) {
         />
       );
     }
-    return <div className={styles.emptyCard} style={{ width: w, height: h }} />;
+    return <div className={styles.emptyCard} style={sizeVars} />;
   }
   // pick / interlude → chits, driven by the seat's role so seats that
   // haven't acted yet don't falsely read "passed".
@@ -35,10 +40,8 @@ export function seatCardContent(props: StageProps, seat: SeatView, w: number) {
     text = "waiting";
   }
   return (
-    <div className={styles.chit} style={{ width: w, height: h }}>
-      <span className={styles.chitText} style={{ fontSize: w > 90 ? 11 : 9 }}>
-        {text}
-      </span>
+    <div className={styles.chit} style={sizeVars}>
+      <span className={styles.chitText}>{text}</span>
     </div>
   );
 }
@@ -132,7 +135,7 @@ export function CenterContent({
         </>
       );
     }
-    const w = mobile ? 56 : Math.round(104 * scale);
+    const w = mobile ? 64 : Math.round(104 * scale);
     return (
       <>
         <div
@@ -165,7 +168,7 @@ export function CenterContent({
 
   if (phase === "interlude" && yourMode === "bury") {
     const chosen = Math.max(0, 8 - handLen);
-    const w = mobile ? 48 : Math.round(104 * scale);
+    const w = mobile ? 56 : Math.round(104 * scale);
     return (
       <>
         <div className={styles.slotRow} style={{ gap: mobile ? 6 : 14 }}>

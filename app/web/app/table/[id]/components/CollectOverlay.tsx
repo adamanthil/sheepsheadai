@@ -7,7 +7,8 @@ interface CollectOverlayProps {
   yourSeat: number;
   winner: number;
   cards: string[];
-  cardW: number;
+  /** Card width in px; omit to size the cards via the inherited --pc-w. */
+  cardW?: number;
   // The ring anchors for the active layout (desktop vs mobile). Cards fly from
   // each seat's anchor to the winner's, so these must match the rendered ring.
   anchors: Record<number, RingAnchor>;

@@ -276,7 +276,11 @@
 }
 
 /* Chits */
+/* Chits and empty card slots keep card proportions, sized off the same --pc-w
+   the cards themselves follow. */
 .chit {
+  width: var(--pc-w, 64px);
+  height: calc(var(--pc-w, 64px) * 1.45);
   border: 1px dashed var(--rule-strong);
   border-radius: 4px;
   display: flex;
@@ -286,11 +290,14 @@
 }
 .chitText {
   font-family: var(--font-mono);
+  font-size: max(9px, calc(var(--pc-w, 64px) * 0.12));
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
 }
 .emptyCard {
+  width: var(--pc-w, 64px);
+  height: calc(var(--pc-w, 64px) * 1.45);
   border: 1px dashed var(--rule);
   border-radius: 4px;
 }
@@ -354,12 +361,37 @@
   flex: 1;
   min-height: 0;
   position: relative;
+  container-type: size;
   padding: 14px 10px;
   background: radial-gradient(
     ellipse 55% 65% at 50% 50%,
     color-mix(in oklab, var(--accent-2) 10%, transparent),
     transparent 70%
   );
+}
+/* Fit the ring cards to the stage. The stage is flex-sized — it gets whatever
+   the header, hand and action bar leave — so cards are sized off the container
+   itself. Tuned as a pair with MOBILE_RING_ANCHORS (seatLayout.ts): each term
+   is the widest card the fixed anchor rows can hold without touching.
+   - 29cqh - 35px: the top row (card centers at y=29%) must clear both its
+     name-plate above (~52px + edge) and the center trick/turn block below
+     (which starts around 50% - 31px).
+   - 40cqh - 72px: on a short stage the plate-above bound is the tighter one.
+   - 32cqw - 8px: the mid seats (x=16%/84%) must stay inside the side edges.
+   A tall phone gets markedly bigger cards; a short one falls back smoothly. */
+.mobStage > * {
+  --mob-card-fit: clamp(
+    44px,
+    min(29cqh - 35px, 40cqh - 72px, 32cqw - 8px),
+    92px
+  );
+  /* Only the played cards claim the extra room. In the decision phases the
+     ring holds placeholder chits and the center holds the pick / bury / call
+     UI, and a full-size ring would crowd those wide center rows. */
+  --pc-w: min(var(--mob-card-fit), 66px);
+}
+.mobStagePlay > * {
+  --pc-w: var(--mob-card-fit);
 }
 .mobEllipse {
   position: absolute;

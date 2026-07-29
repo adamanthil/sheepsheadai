@@ -38,8 +38,23 @@
   padding-top: 18px;
   padding-bottom: 12px;
 }
+/* On mobile the fan sizes its own cards: the widest card that fits a full
+   6-card hand at 32% overlap (1 + 5 * 0.68 = 4.4 card-widths), minus 8px so
+   the playable highlight ring clears the edges. Sized for the full hand so
+   picking up the blind doesn't resize it; capped at 74px so the hand doesn't
+   eat the room the table ring needs above it. Desktop sets --pc-w inline. */
+.mobWrap .fan {
+  container-type: inline-size;
+}
+.mobWrap .cardSlot {
+  --pc-w: clamp(60px, (100cqw - 8px) / 4.4, 74px);
+}
 .cardSlot {
   position: relative;
+}
+/* Each card covers 32% of the one before it. */
+.cardSlot + .cardSlot {
+  margin-left: calc(var(--pc-w, 64px) * -0.32);
 }
 .clickable {
   cursor: pointer;

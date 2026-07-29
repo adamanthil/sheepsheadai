@@ -1,8 +1,12 @@
-/* Playing card (classic style, broadsheet theme). Sized off --pc-w. */
+/* Playing card (classic style, broadsheet theme). Sized off --pc-w, which the
+   w prop sets inline; when the prop is omitted the card follows whatever
+   --pc-w it inherits, falling back to 64px. --pcw is the resolved value all
+   the internal rules derive from. */
 .pc {
+  --pcw: var(--pc-w, 64px);
   position: relative;
-  width: var(--pc-w);
-  height: calc(var(--pc-w) * 1.45);
+  width: var(--pcw);
+  height: calc(var(--pcw) * 1.45);
   background: var(--card-paper);
   border: 1px solid var(--card-edge);
   border-radius: 3px;
@@ -23,9 +27,9 @@
 .corner {
   /* Scales with the card, with a px floor so the rank stays legible on the
      very small table/hand cards. */
-  font-size: max(12px, calc(var(--pc-w) * 0.18));
+  font-size: max(12px, calc(var(--pcw) * 0.18));
   line-height: 1;
-  padding: calc(var(--pc-w) * 0.06);
+  padding: calc(var(--pcw) * 0.06);
   display: flex;
   flex-direction: column;
   /* Shrink to content and sit in the top-left corner (the grid cell would
@@ -46,13 +50,13 @@
   line-height: 0.9;
 }
 .suitSm {
-  font-size: max(10px, calc(var(--pc-w) * 0.14));
+  font-size: max(10px, calc(var(--pcw) * 0.14));
   line-height: 1;
 }
 .center {
   align-self: center;
   justify-self: center;
-  font-size: calc(var(--pc-w) * 0.5);
+  font-size: calc(var(--pcw) * 0.5);
   line-height: 1;
   opacity: 0.92;
   /* The suit glyphs' ink sits below their line-box center, and their pointed
@@ -114,5 +118,5 @@
   color: var(--muted);
 }
 .insetLabel {
-  font-size: calc(var(--pc-w) * 0.18);
+  font-size: calc(var(--pcw) * 0.18);
 }

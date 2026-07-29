@@ -32,8 +32,14 @@ export default function PlayerHand({
   isMobile,
   uiScale = 1,
 }: PlayerHandProps) {
-  const w = isMobile ? 60 : Math.round(96 * uiScale);
-  const overlap = Math.round(w * 0.32);
+  // Card size lives in --pc-w on the fan: desktop sets it from uiScale here,
+  // mobile leaves it to the container-query rule in PlayerHand.module.css.
+  // The overlap margins in the CSS derive from the same variable.
+  const fanVars = isMobile
+    ? undefined
+    : ({
+        ["--pc-w" as string]: `${Math.round(96 * uiScale)}px`,
+      } as React.CSSProperties);
 
   const isClickable = (card: string) =>
     isYourTurn &&
@@ -80,18 +86,18 @@ export default function PlayerHand({
         )}
       </div>
 
-      <div className={styles.fan}>
+      <div className={styles.fan} style={fanVars}>
         {hand.map((card, i) => {
           const clickable = isClickable(card);
           return (
             <div
               key={card + i}
               className={`${styles.cardSlot} ${clickable ? styles.clickable : ""}`}
-              style={{ marginLeft: i === 0 ? 0 : -overlap, zIndex: i }}
+              style={{ zIndex: i }}
               data-clickable={clickable || undefined}
               onClick={() => clickable && onCardClick(card)}
             >
-              <PlayingCard code={card} w={w} playable={clickable} />
+              <PlayingCard code={card} playable={clickable} />
             </div>
           );
         })}
