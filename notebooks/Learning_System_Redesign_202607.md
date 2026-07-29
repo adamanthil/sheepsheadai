@@ -19,11 +19,13 @@ convention-erosion findings
 (§7), gen 3 of ≥4 running UNDER THE ADAPTIVE-ENTROPY CONTROLLER (activated
 at the gen-2→3 boundary per operator GO, §7.10), the healthiest run in the
 lineage: partner trump-lead convention SHARPENED to the 84–98% band (every
-prior league arm lost it in the first 50k), gen-1 panel +0.0425 CI>0, gen-2
-panel **+0.1323 [+0.1019, +0.1629]** (accelerating, 3× the gen-1 delta),
-h2h gen2-vs-gen1 +0.101 ± 0.013, both exploiter gates failed (the main is
-not PPO-exploitable at budget; gen 2 −0.184 ± 0.016, worse for the
-exploiter than gen 1).
+prior league arm lost it in the first 50k). ABSOLUTE panel trajectory
+(PANEL-A mixed-anchor table): seed −0.077 → gen 1 +0.0425 → gen 2
+**+0.1323 [+0.1019, +0.1629]**; per-generation gains +0.120 then +0.090
+(both ≥5σ; mild deceleration, normal as the hero pulls away from a fixed
+field). h2h gen2-vs-gen1 +0.101 ± 0.013. Both exploiter gates failed (the
+main is not PPO-exploitable at budget; gen 2 −0.184 ± 0.016, worse for
+the exploiter than gen 1).
 
 **Root-cause context:** two league-path training bugs (braided storage +
 last-actor-only terminal rewards, §6) were found and fixed 2026-07-24/25.
@@ -1254,9 +1256,11 @@ passed exploiter.
 
 ### 7.8 Gen-1 boundary results (2026-07-26)
 
-Orchestrator gen-1 verdict: **panel +0.0425 [+0.0100, +0.0752] vs gen 0**
-(CI excludes zero — the same instrument that read ≈ 0 league lift after 2M
-episodes in the arch ablation) and **h2h gen1-vs-gen0 +0.078 ± 0.013**;
+Orchestrator gen-1 verdict: **panel +0.0425 [+0.0100, +0.0752]** (absolute
+vs PANEL-A; the seed's baseline was −0.0771, so the gain vs gen 0 is
++0.1196 [+0.0855, +0.1533] — labeling corrected 2026-07-28, see §7.10; the
+same instrument read ≈ 0 league lift after 2M episodes in the arch
+ablation) and **h2h gen1-vs-gen0 +0.078 ± 0.013**;
 flat=False, streak=0, continues (min_generations 4). End-of-gen probes:
 partner 93.7/93.2/80.8% (900k/950k/1M), defender t0 0.0% at 1M ⇒ **gen-1
 B2 reading HELD**.
@@ -1355,9 +1359,16 @@ by DEFAULT (§8.6). Resume replayed gen 1 from artifacts in <1s and reran
 the gen-2 boundary evals.
 
 **Gen-2 boundary results:**
-- **Panel endpoint: +0.1323 [+0.1019, +0.1629] vs gen 1** — CI excludes
-  zero with 3× the gen-1 delta (+0.0425): the run is ACCELERATING, not
-  flattening, at 2M episodes.
+- **Panel endpoint (ABSOLUTE, vs the PANEL-A mixed-anchor table):
+  +0.1323 [+0.1019, +0.1629]**, from +0.0425 at gen 1 and −0.0771 at the
+  seed. Per-generation gains: +0.1196 [+0.0855, +0.1533] (gen 1 vs seed)
+  and +0.0898 [+0.0617, +0.1176] (gen 2 vs gen 1) — both far clear of
+  zero (gain_p = 0.0000), mildly decelerating. *Correction (2026-07-28):
+  the first write-up of this boundary (and the gen-1 entry's "panel
+  +0.0425 vs gen 0" phrasing) misread panel_mean as a vs-previous-gen
+  delta and called gen 2 "accelerating, 3× the gen-1 delta"; panel_mean
+  is the absolute anchored edge, the deltas are the gain_vs_best column,
+  and the gain sequence is +0.120 → +0.090.*
 - **h2h gen2-vs-gen1 (duplicate-bridge, 2000 deals/mode): +0.101 ± 0.013.**
 - Verdict: flat=False, streak=0 → continue (below min_generations 4). NO
   entropy-target step (correct per design — steps fire only on flat
