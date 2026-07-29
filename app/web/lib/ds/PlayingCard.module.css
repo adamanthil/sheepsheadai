@@ -73,6 +73,20 @@
   transform: translateY(-0.05em);
 }
 
+/* Tiny cards (numeric w < 36): the legibility floors would make the corners
+   outgrow the card, so drop them and scale the whole face to fit — a
+   speck-sized but faithful miniature. The fractions are the largest that keep
+   two corner blocks plus the center pip inside the 1.45 aspect down to w=24. */
+.tiny .corner {
+  font-size: calc(var(--pcw) * 0.2);
+}
+.tiny .suitSm {
+  font-size: calc(var(--pcw) * 0.14);
+}
+.tiny .center {
+  font-size: calc(var(--pcw) * 0.45);
+}
+
 .playable {
   box-shadow:
     0 0 0 2px var(--accent-2),

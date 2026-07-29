@@ -56,6 +56,12 @@ export default function PlayingCard({
   const sym = suitSymbol(suit);
   const classNames = [
     styles.pc,
+    // Below ~36px the floored corner fonts (PlayingCard.module.css) would make
+    // the two corner blocks outgrow the card; .tiny drops the floors so the
+    // whole face scales down instead — speck-sized corners, real-card shape.
+    // Only reachable through the numeric w prop — CSS-sized cards never go
+    // this small.
+    w != null && w < 36 ? styles.tiny : "",
     isRedSuit(suit) ? styles.red : "",
     playable ? styles.playable : "",
     dim ? styles.dim : "",
@@ -63,6 +69,7 @@ export default function PlayingCard({
   ]
     .filter(Boolean)
     .join(" ");
+  const centerClass = `${styles.center} ${suit === "H" ? styles.centerHeart : suit === "D" ? styles.centerDiamond : ""}`;
 
   return (
     <div className={classNames} style={cssVars} aria-hidden={ariaHidden}>
@@ -70,11 +77,7 @@ export default function PlayingCard({
         <div className={styles.rank}>{rank}</div>
         <div className={styles.suitSm}>{sym}</div>
       </div>
-      <div
-        className={`${styles.center} ${suit === "H" ? styles.centerHeart : suit === "D" ? styles.centerDiamond : ""}`}
-      >
-        {sym}
-      </div>
+      <div className={centerClass}>{sym}</div>
       <div className={`${styles.corner} ${styles.cornerBr}`}>
         <div className={styles.rank}>{rank}</div>
         <div className={styles.suitSm}>{sym}</div>
