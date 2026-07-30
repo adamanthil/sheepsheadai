@@ -746,3 +746,26 @@ off-suit low fail / off-suit fat fail / trump); pooled exception rate with
 CI. No multivariate model at this n. This is a strategy atlas and wrapper/
 teacher design input (exception classifier for an E4-style wrapper; node
 list for the shelved distill teacher), NOT a training gate.
+
+**E6 amendment (2026-07-30, pre-unblinding — labeling run in progress, no
+atlas label inspected):** operator-added hand-shape hypotheses. Rationale:
+the leader's own suit distribution is the observable proxy for (a) the
+likelihood a *teammate* is void in the called suit and ruffs the surfaced
+ace (the convention's payoff case), and (b) whether the called-suit holding
+carries enough points to schmear into a teammate ruff vs donate to the ace.
+
+- **H7 schmear-capacity:** called-suit points held ≥ 10 AND a zero-point
+  called lead also held ⇒ exception ↓ (lead the low one, keep the fat for
+  the ruff; complements H2, which is the no-low-option case).
+- **H8 hand shape / suit count:** ≤ 2 distinct fail suits held ⇒ exception ↑
+  (concentrated hands imply own ruff plans that compete with the convention;
+  weaker prior — registered two-sided).
+- **H9 side-suit length:** longest non-called fail suit ≥ 3 ⇒ exception ↑
+  (a better own suit to develop/cash; consistent with the pilot's 5/5
+  same-suit-low replacement class).
+
+Registered tension, to be adjudicated by the atlas: H5 (called-suit length ⇒
+exception ↑, donation-repetition reading) vs the H7/teammate-void reading of
+the same holding (length ⇒ others short ⇒ ruff likelier ⇒ exception ↓). The
+report prints called-length and called-points cross-buckets so the two
+mechanisms separate.

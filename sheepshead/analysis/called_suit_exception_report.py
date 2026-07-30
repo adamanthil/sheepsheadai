@@ -13,9 +13,10 @@ non-called-suit lead marks the node an EXCEPTION. Tier A when the belief-MC
 the verdict); tier B otherwise. Skipped/ESS-low nodes are reported, never
 imputed.
 
-Per pre-registered hypothesis H1–H6 the report prints exception-rate splits
-with Wilson 95% CIs, plus replacement-class buckets of the search-preferred
-card and the AGREE-group sanity read.
+Per pre-registered hypothesis H1–H6 (plus the pre-unblinding hand-shape
+amendment H7–H9 and the H5×H7 cross-buckets) the report prints
+exception-rate splits with Wilson 95% CIs, plus replacement-class buckets of
+the search-preferred card and the AGREE-group sanity read.
 
 Usage:
 
@@ -117,6 +118,16 @@ def _row(case: dict) -> dict | None:
         "relPos": case["relPosFromPicker"],
         "calledLen": len(called_held),
         "trickIndex": case["trickIndex"],
+        # Hand-shape features (H7–H9, pre-unblinding amendment).
+        "calledSuitPoints": sum(CARD_POINTS.get(c, 0) for c in called_held),
+        "failSuitsHeld": len({c[-1] for c in hand if c in FAIL_SET}),
+        "longestSideSuit": max(
+            (
+                sum(1 for c in hand if c in FAIL_SET and c[-1] == suit)
+                for suit in {c[-1] for c in hand if c in FAIL_SET} - {called[-1]}
+            ),
+            default=0,
+        ),
     }
 
 
@@ -187,6 +198,32 @@ def main() -> int:
             rows, "void-and-late", lambda r: r["trumpVoid"] and r["trickIndex"] >= 2
         )
     )
+    print(
+        "  H7 "
+        + _split(
+            rows,
+            "fat+low-called",
+            lambda r: r["calledSuitPoints"] >= 10 and r["minDonation"] == 0,
+        )
+    )
+    print("  H8 " + _split(rows, "fail-suits<=2", lambda r: r["failSuitsHeld"] <= 2))
+    print("  H9 " + _split(rows, "side-suit>=3", lambda r: r["longestSideSuit"] >= 3))
+    print("  H5xH7 called-length x called-points cross-buckets:")
+    for len_lo, len_hi, len_lbl in ((1, 2, "len 1-2"), (3, 9, "len 3+")):
+        for pts_pred, pts_lbl in (
+            (lambda p: p == 0, "0 pts"),
+            (lambda p: 0 < p < 10, "1-9 pts"),
+            (lambda p: p >= 10, "10+ pts"),
+        ):
+            sub = [
+                r
+                for r in rows
+                if len_lo <= r["calledLen"] <= len_hi
+                and pts_pred(r["calledSuitPoints"])
+            ]
+            sk, sn = sum(r["exception"] for r in sub), len(sub)
+            rate = f"{sk / sn:.0%}" if sn else "n/a"
+            print(f"       {len_lbl:>8} x {pts_lbl:>7}: {sk}/{sn} = {rate}")
 
     exc = [r for r in rows if r["exception"]]
     print(f"\nReplacement classes among {len(exc)} exceptions:")
