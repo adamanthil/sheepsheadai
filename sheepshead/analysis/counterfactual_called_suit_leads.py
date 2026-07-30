@@ -539,8 +539,17 @@ def main() -> int:
             r = analyze_case(agent, teacher, spot, args, device)
             if r is not None:
                 out.append(r)
-            if (i + 1) % 20 == 0:
-                print(f"    ... {i + 1}/{len(spots)}")
+                verdict = (
+                    "conv"
+                    if r.searchGumbelIsConv
+                    else ("alt" if r.searchGumbelIsConv is not None else "-")
+                )
+                print(
+                    f"    [{i + 1}/{len(spots)}] seed={r.seed} step={r.stepIndex} "
+                    f"trick={r.trickIndex + 1} mc={r.mcDeltaScore:+.2f} "
+                    f"gumbel={verdict}",
+                    flush=True,
+                )
         results[name] = out
 
     _print_group(
