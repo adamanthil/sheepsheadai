@@ -1450,6 +1450,44 @@ C2 ceiling well below 100% but well above the current ~44%. No action
 taken mid-generation; rung-3 stratified counterfactuals (relPos gradient)
 remain the follow-up if C2 fails to climb once entropy steps land.
 
+### 7.13 Gen-3 boundary (2026-07-31): first null h2h; slope carries the verdict
+
+Gen-3 trainer (first generation under the active entropy controller) ran
+2M->3M clean; exploiter gen-3 gate FAIL (main survives): best candidate
+ckpt 3,030,000 edge -0.0258 +/- 0.0160 over 3000 duplicate-bridge deals.
+Gate trajectory gen-1/2/3: -0.028 / -0.184 / -0.026 - the gen-2 "hardening"
+did not repeat; exploiters are again near-even. Boundary (01:07):
+
+- Panel ABSOLUTE +0.1618 [+0.1303,+0.1931] (called +0.116, jd +0.207).
+- gain_vs_best (vs gen 2, paired) +0.0294 [+0.0011,+0.0572] p=0.043 ->
+  gain_improving FALSE (first sub-threshold gain; prior gains +0.120,
+  +0.090).
+- h2h gen3-vs-gen2 (duplicate-bridge) -0.005 +/- 0.013, win frac 0.513 ->
+  FIRST NULL h2h (prior: +0.078, +0.101).
+- slope +0.0596 [+0.0446,+0.0748] climbing=True -> flat=False on the slope
+  criterion ALONE; streak 0; below min_generations floor (4). NO entropy
+  step (absorption requires flat).
+- Entropy controller, first active generation: targets held (bumpless -
+  play 0.7453 throughout); inner loop reconfigured coefficients to hold
+  them: pick alpha 0.0455->0.0072, partner ->0.005 (ALPHA_MIN), bury
+  0.0362->0.0020, play 0.0136->0.0269 (~2x legacy - the controller pushes
+  UP against the organic -0.057/gen play-entropy drift, by design).
+- Gen 4 launched 01:07:01; controller resumed from sidecar with held
+  targets/alphas (log line confirms).
+
+Reading: the deceleration is now sharp (h2h null; gain sub-threshold;
+only the trailing 3-gen slope keeps flat=False). Interpretive caveat ON
+THE RECORD: gen 3 is also the first generation where the controller
+actively suppressed the organic play-entropy decline that accompanied
+gens 1-2 progress - the hold itself may contribute to the plateau. That
+confound is priced into the design: the response either way is the same
+gated mechanism (a flat verdict steps the play target 0.745->0.629 and
+resets the streak). Likeliest path: gen-4 boundary flat -> first ladder
+step fires. Watch items for gen 4: h2h recovery or confirmed plateau;
+exploiter gate (two near-even gates in a row would end the
+gate-trajectory-hardening story); C2/fat-fail motif at boundary ckpts
+(atlas E6 results due morning of 07-31).
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
