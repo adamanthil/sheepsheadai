@@ -1405,6 +1405,51 @@ lr_actor) populate from gen 3's first progress rows.
   collapse force is systematic ⇒ search-teacher lane with the mechanism
   identified. *(This branch is dead: gates 1–2 passed.)*
 
+### 7.12 Mid-gen-3 C2 violation audit @ 2.8M (2026-07-30)
+
+Operator-directed case inspection of the ~50% C2 plateau (probe band 43–51%
+through 2.8M). Tooling added: `scan_called_suit_leads --violations-only`
+(a37c6f3), `counterfactual_called_suit_leads --cases/--cases-limit` (bbc9152),
+and pi_gumbel promoted to the primary search verdict across all three
+counterfactual audits per the Search_Readout_Comparison adoption (2929531;
+top@Q retained for continuity).
+
+Scan (500 seeds via the /analyze path, self-play field, ckpt 2.8M;
+`runs/called_suit_nodes_2800k.json`): pooled adherence 43.9% (141/321) —
+matches the greedy probe. Structure: adherence RISES with trick (33% t1,
+45% t2, 55% t3–4); violations concentrate at tricks 1–2 (127/180). Late
+deviations look like judgment: 66% of late violators are trump-void (median
+0 trump) vs 6% of early violators (median 2). Positional gradient survives
+within tricks 1–2 (picker+1 52% → picker+4 30%, monotone; not a trick-mix
+confound). Violation margins are near-ties: median chosen−conv prob gap
+0.138, 37% within 0.10 — favorable for entropy-ladder conversion (§8).
+Motif: violators overwhelmingly lead a fat fail (10/A) over a low
+called-suit card — "cash points early" vs partner-identification tempo.
+
+Counterfactual ladder on the 10 highest-margin tricks-1–2 violations
+(4096 iters to terminal, 200 rollouts, 512 belief worlds, frac=1.0;
+`runs/cf_called_suit_top10_2800k.json`), all ESS-valid, gumbel/topQ verdicts
+agree 10/10 at this budget:
+
+- **Search rejects the policy's actual lead in 10/10 cases** (argmax
+  agreement 0%). The learned "lead fail points early" choice is never
+  endorsed at these nodes.
+- Replacement splits 5/5: half flip to the convention lead; the other half
+  to a LOW fail (often same suit as the spurned 10 — e.g. 10H→9H/7H):
+  probe the suit without donating the 10.
+- Verdicts track grounded value: search-says-conv cases mean true-deal
+  Δ +0.24 / belief Δ +0.08 vs +0.06 / −0.03 for search-says-alt.
+- Group value deltas are small (true-deal +0.150 ± 0.163, belief
+  +0.024 ± 0.047): at these extreme-margin nodes the conv-vs-best-alt edge
+  is modest; the clear error is the specific point-cashing lead, not
+  always the suit choice.
+
+Reading: consistent with §6/§8 mechanism (weak per-node signal, near-tied
+mass) and with the E-study's ~17.5% legitimate-exception rate — expected
+C2 ceiling well below 100% but well above the current ~44%. No action
+taken mid-generation; rung-3 stratified counterfactuals (relPos gradient)
+remain the follow-up if C2 fails to climb once entropy steps land.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
