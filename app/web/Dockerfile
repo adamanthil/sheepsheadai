@@ -23,5 +23,8 @@ ENV NODE_ENV=production \
     PORT=3000
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+# Standalone output does not bundle public/; without this the app icons that
+# metadata and the web manifest point at 404 in the deployed image.
+COPY --from=build /app/public ./public
 EXPOSE 3000
 CMD ["node", "server.js"]
