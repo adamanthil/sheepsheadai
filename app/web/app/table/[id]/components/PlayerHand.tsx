@@ -34,7 +34,7 @@ export default function PlayerHand({
 }: PlayerHandProps) {
   // Card size lives in --pc-w on the fan: desktop sets it from uiScale here,
   // mobile leaves it to the container-query rule in PlayerHand.module.css.
-  // The overlap margins in the CSS derive from the same variable.
+  // The fan spacing derives from the same variable.
   const fanVars = isMobile
     ? undefined
     : ({

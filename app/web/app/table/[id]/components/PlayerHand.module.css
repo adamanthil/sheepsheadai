@@ -40,7 +40,7 @@
 }
 /* On mobile the fan sizes its own cards: the widest card that fits a full
    6-card hand at 32% overlap (1 + 5 * 0.68 = 4.4 card-widths), minus 8px so
-   the playable highlight ring clears the edges. Sized for the full hand so
+   the playable highlight ring clears the edges. Sized for the 6-card hand so
    picking up the blind doesn't resize it; capped at 74px so the hand doesn't
    eat the room the table ring needs above it. Desktop sets --pc-w inline. */
 .mobWrap .fan {
@@ -49,12 +49,20 @@
 .mobWrap .cardSlot {
   --pc-w: clamp(60px, (100cqw - 8px) / 4.4, 74px);
 }
+/* Fan spacing: a slot is one card-step wide (68% of a card, so each card
+   covers 32% of the one before it) and its card overflows to the right, under
+   the next slot. Only the steps are allowed to shrink and only the last slot
+   holds a whole card, so a hand too wide for the row — 8 cards, while the
+   picker is holding the blind — closes up exactly enough to fit instead of
+   spilling off the edges, and the cards keep their size. Flexbox does that
+   division on its own; nothing here needs to know the card count. */
 .cardSlot {
   position: relative;
+  flex: 0 1 calc(var(--pc-w, 64px) * 0.68);
+  min-width: 0;
 }
-/* Each card covers 32% of the one before it. */
-.cardSlot + .cardSlot {
-  margin-left: calc(var(--pc-w, 64px) * -0.32);
+.cardSlot:last-child {
+  flex: 0 0 var(--pc-w, 64px);
 }
 .clickable {
   cursor: pointer;
