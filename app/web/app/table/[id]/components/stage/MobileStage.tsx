@@ -53,17 +53,23 @@ export default function MobileStage(props: StageProps) {
           if (!anchor) return null;
           // Inner top seats (plate above) float their badge to the outer side
           // so it never pushes the name up out of alignment.
-          const badgeSide =
-            anchor.plate === "above"
-              ? anchor.cardX < 50
-                ? "left"
-                : "right"
-              : undefined;
+          const topRow = anchor.plate === "above";
+          const badgeSide = topRow
+            ? anchor.cardX < 50
+              ? "left"
+              : "right"
+            : undefined;
           return (
             <div
               key={seat.absSeat}
-              className={styles.ringSeat}
-              style={{ left: `${anchor.cardX}%`, top: `${anchor.cardY}%` }}
+              // The top row's y comes from .mobRowTop (it slides down off the
+              // top edge on a short stage); the other rows sit at their anchor.
+              className={`${styles.ringSeat} ${topRow ? styles.mobRowTop : ""}`}
+              data-seat-rel={seat.rel}
+              style={{
+                left: `${anchor.cardX}%`,
+                ...(topRow ? null : { top: `${anchor.cardY}%` }),
+              }}
             >
               <RingChip
                 seat={seat}
@@ -79,6 +85,7 @@ export default function MobileStage(props: StageProps) {
       {youPlayed && (
         <div
           className={styles.ringSeat}
+          data-seat-rel={0}
           style={{
             left: `${MOBILE_RING_ANCHORS[0].cardX}%`,
             top: `${MOBILE_RING_ANCHORS[0].cardY}%`,

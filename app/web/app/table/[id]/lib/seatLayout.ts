@@ -41,15 +41,19 @@ export const RING_ANCHORS: Record<number, RingAnchor> = {
  * seats sit a touch lower with their plate above (toward the top edge), mid
  * seats keep their plate below their card. Card size is CSS-driven and these
  * rows are tuned as a pair with the --mob-card-fit formula in Stage.module.css:
- * the formula returns the widest card these fixed rows can hold, so moving a
- * row means rederiving it. Top row splits the room between its plate above and
- * the center block; mid row sits a full card below the top row; you sits
- * between the center block and the bottom edge (with the "You" label).
+ * the formula returns the widest card these rows can hold, so moving a row
+ * means rederiving it.
+ *
+ * The top seats' cardY is a MINIMUM, not the rendered position: .mobRowTop
+ * pushes that row further down when the stage is too short to fit its
+ * name-plate above 29%. Their x sits wide enough that a full-size card passes
+ * outside the center trick/turn block. Consumers that need the true rendered
+ * point (the collect animation) read it off the DOM instead of from here.
  */
 export const MOBILE_RING_ANCHORS: Record<number, RingAnchor> = {
   0: { cardX: 50, cardY: 75, plate: "below" }, // you (bottom center)
-  1: { cardX: 16, cardY: 60, plate: "below" }, // ml (mid-left)
-  2: { cardX: 30, cardY: 29, plate: "above" }, // tl (upper-left)
-  3: { cardX: 70, cardY: 29, plate: "above" }, // tr (upper-right)
-  4: { cardX: 84, cardY: 60, plate: "below" }, // mr (mid-right)
+  1: { cardX: 16, cardY: 62, plate: "below" }, // ml (mid-left)
+  2: { cardX: 26, cardY: 29, plate: "above" }, // tl (upper-left)
+  3: { cardX: 74, cardY: 29, plate: "above" }, // tr (upper-right)
+  4: { cardX: 84, cardY: 62, plate: "below" }, // mr (mid-right)
 };

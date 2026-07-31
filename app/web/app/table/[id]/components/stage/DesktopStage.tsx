@@ -54,6 +54,7 @@ export default function DesktopStage(props: StageProps) {
               <div
                 key={seat.absSeat}
                 className={styles.ringSeat}
+                data-seat-rel={seat.rel}
                 style={{ left: `${anchor.cardX}%`, top: `${anchor.cardY}%` }}
               >
                 <RingChip seat={seat} plate={anchor.plate} />
@@ -65,6 +66,7 @@ export default function DesktopStage(props: StageProps) {
         {youPlayed && (
           <div
             className={styles.ringSeat}
+            data-seat-rel={0}
             style={{
               left: `${RING_ANCHORS[0].cardX}%`,
               top: `${RING_ANCHORS[0].cardY}%`,

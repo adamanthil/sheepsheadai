@@ -357,12 +357,15 @@
 }
 
 /* ===== Mobile 2x2 grid ===== */
+/* No padding: every child is absolutely positioned, so padding bought nothing
+   visually but made 1cqh/1cqw measure the content box while the seat anchors
+   measure the padding box — a 28px discrepancy the card formula paid for. The
+   edge margins live in the formula constants instead. */
 .mobStage {
   flex: 1;
   min-height: 0;
   position: relative;
   container-type: size;
-  padding: 14px 10px;
   background: radial-gradient(
     ellipse 55% 65% at 50% 50%,
     color-mix(in oklab, var(--accent-2) 10%, transparent),
@@ -372,23 +375,43 @@
 /* Fit the ring cards to the stage. The stage is flex-sized — it gets whatever
    the header, hand and action bar leave — so cards are sized off the container
    itself. Tuned as a pair with MOBILE_RING_ANCHORS (seatLayout.ts): each term
-   is the widest card the fixed anchor rows can hold without touching.
-   - 29cqh - 35px: the top row (card centers at y=29%) must clear both its
-     name-plate above (~52px + edge) and the center trick/turn block below
-     (which starts around 50% - 31px).
-   - 40cqh - 72px: on a short stage the plate-above bound is the tighter one.
-   - 32cqw - 8px: the mid seats (x=16%/84%) must stay inside the side edges.
-   A tall phone gets markedly bigger cards; a short one falls back smoothly. */
+   is the widest card one clearance the ring has to keep allows, where a card is
+   1.45w tall, a top name-plate is 49px, a bottom one (with role badge) 65px,
+   and edges/neighbours want 6-8px of air.
+   - (62cqh - 63px) / 2.175: the two upper rows have to stack. The top row hangs
+     57px + half a card below the top edge (.mobRowTop) and the mid row is
+     anchored at 62%, so both cards plus a gap must fit in between. This is the
+     term that binds on a phone, where browser chrome eats the stage height.
+   - (38cqh - 73px) / 0.725: the mid row's name-plate must stay in the box.
+   - 32cqw - 12px: the mid seats (x=16%/84%) must stay inside the side edges.
+   - the max(): the top row must clear the center trick/turn block, which it can
+     do either by passing beside it (48cqw - 120px of room at x=26%/74%) or by
+     sitting above it ((50cqh - 83px) / 1.45) — whichever is roomier. */
 .mobStage > * {
   --mob-card-fit: clamp(
     44px,
-    min(29cqh - 35px, 40cqh - 72px, 32cqw - 8px),
+    min(
+      (62cqh - 63px) / 2.175,
+      (38cqh - 73px) / 0.725,
+      32cqw - 12px,
+      max(48cqw - 120px, (50cqh - 83px) / 1.45)
+    ),
     92px
   );
   /* Only the played cards claim the extra room. In the decision phases the
      ring holds placeholder chits and the center holds the pick / bury / call
-     UI, and a full-size ring would crowd those wide center rows. */
-  --pc-w: min(var(--mob-card-fit), 66px);
+     UI, so the chits stay small (and shrink further on a short stage) rather
+     than crowd those wide center rows. */
+  --pc-w: clamp(44px, min(var(--mob-card-fit), 20cqh - 20px), 66px);
+}
+/* The top ring row hangs off the top edge rather than off a fixed percentage
+   when the stage is short: it takes the lower of the 29% anchor and the first
+   position that leaves room for its own name-plate (49px) plus an 8px margin.
+   This is the one piece of the old JS solver's row-sliding worth keeping, and
+   in CSS it costs a line. The collect animation reads the rendered position
+   from the DOM, so it follows automatically. */
+.mobRowTop {
+  top: max(29%, calc(57px + 0.725 * var(--pc-w)));
 }
 .mobStagePlay > * {
   --pc-w: var(--mob-card-fit);

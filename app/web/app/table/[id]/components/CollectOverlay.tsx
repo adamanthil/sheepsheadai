@@ -9,16 +9,19 @@ interface CollectOverlayProps {
   cards: string[];
   /** Card width in px; omit to size the cards via the inherited --pc-w. */
   cardW?: number;
-  // The ring anchors for the active layout (desktop vs mobile). Cards fly from
-  // each seat's anchor to the winner's, so these must match the rendered ring.
+  // Fallback ring anchors for the active layout (desktop vs mobile), used for
+  // any seat that isn't currently on screen (your own, before you have played).
   anchors: Record<number, RingAnchor>;
 }
 
 /**
- * Animates the just-completed trick's cards flying to the winner's seat. The
- * overlay measures its own box (which fills the same positioned ancestor the
- * ring seats are placed in), so the percentage anchors convert against the
- * exact coordinate space the cards were rendered in.
+ * Animates the just-completed trick's cards flying to the winner's seat. Start
+ * and end points come from the rendered seats themselves: the overlay fills the
+ * same positioned ancestor the ring seats are placed in, so each seat's
+ * offsetLeft/offsetTop (its untransformed layout position, i.e. the anchor
+ * point) is already in the overlay's coordinate space. Reading the DOM rather
+ * than recomputing the anchors keeps the flight exact even where the row's
+ * position is a CSS expression (see .mobRowTop).
  */
 export default function CollectOverlay({
   yourSeat,
@@ -39,6 +42,10 @@ export default function CollectOverlay({
     const cw = root.clientWidth || 1;
     const ch = root.clientHeight || 1;
     const pToPx = (rel: number) => {
+      const seat = root.parentElement?.querySelector<HTMLElement>(
+        `[data-seat-rel="${rel}"]`,
+      );
+      if (seat?.offsetParent) return { x: seat.offsetLeft, y: seat.offsetTop };
       const a = anchors[rel] ?? { cardX: 50, cardY: 50 };
       return { x: (a.cardX / 100) * cw, y: (a.cardY / 100) * ch };
     };
