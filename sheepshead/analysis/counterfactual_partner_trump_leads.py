@@ -299,6 +299,14 @@ def _print_group(name: str, blurb: str, results: List[cf.CaseResult]) -> None:
         print(f"  trick-0 subset  : n={len(t0)}  MC Δscore {m0:+.3f} (SE {se0:.3f})")
     searched = [r for r in results if r.search is not None and r.search.ok]
     if searched:
+        gum = [r for r in searched if r.search.gumbelAction is not None]
+        if gum:
+            g_conv = sum(1 for r in gum if r.search.gumbelIsTrump) / len(gum)
+            g_agm = sum(1 for r in gum if r.search.gumbelIsArgmax) / len(gum)
+            print(
+                f"  ISMCTS pi_gumbel: n={len(gum)}  trump {g_conv:.0%}  "
+                f"argmax {g_agm:.0%}  (primary verdict)"
+            )
         conv_frac = sum(1 for r in searched if r.search.topQIsTrump) / len(searched)
         agm_frac = sum(1 for r in searched if r.search.topQIsArgmax) / len(searched)
         print(

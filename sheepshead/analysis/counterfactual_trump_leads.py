@@ -211,6 +211,17 @@ class SearchOutcome:
     bestTrumpCard: str
     bestFailCard: str
     ranking: List[Dict]
+    # ADOPTED verdict (Search_Readout_Comparison_202607): argmax of the
+    # completed-Q ``pi_gumbel`` readout — mass from the UNMIXED prior +
+    # completed Q only, so forced-exploration visits never enter it (zero
+    # floor mass; best control-harm profile of the compared readouts).
+    # top@Q above is retained for continuity with the June audits.
+    gumbelActionId: Optional[int] = None
+    gumbelAction: Optional[str] = None
+    gumbelProb: Optional[float] = None
+    gumbelIsArgmax: Optional[bool] = None
+    gumbelIsTrump: Optional[bool] = None
+    gumbelIsFail: Optional[bool] = None
 
 
 @dataclass
@@ -573,6 +584,12 @@ def _summarize_search(
         else argmax_aid
     )
 
+    gum = res.get("pi_gumbel")
+    gum_aid = None
+    if gum is not None and valid:
+        gum_aid = max(valid, key=lambda a: float(gum[a - 1]))
+    gum_card = _card_of(gum_aid) if gum_aid is not None else None
+
     ranking = sorted(
         (
             {
@@ -580,6 +597,7 @@ def _summarize_search(
                 "action": ACTION_LOOKUP[a],
                 "visits": round(float(root_n.get(a, 0.0)), 2),
                 "q": round(float(root_q.get(a, 0.0)), 4),
+                "gumbel": (round(float(gum[a - 1]), 4) if gum is not None else None),
             }
             for a in valid
         ),
@@ -613,6 +631,12 @@ def _summarize_search(
         bestTrumpCard=_card_of(trump_aid),
         bestFailCard=_card_of(fail_aid),
         ranking=ranking,
+        gumbelActionId=gum_aid,
+        gumbelAction=ACTION_LOOKUP[gum_aid] if gum_aid is not None else None,
+        gumbelProb=(round(float(gum[gum_aid - 1]), 4) if gum_aid is not None else None),
+        gumbelIsArgmax=(gum_aid == argmax_aid) if gum_aid is not None else None,
+        gumbelIsTrump=(gum_card in TRUMP_SET) if gum_aid is not None else None,
+        gumbelIsFail=(gum_card in FAIL_SET) if gum_aid is not None else None,
     )
 
 
@@ -920,7 +944,7 @@ def _fmt_case(r: CaseResult) -> str:
         def _verdict(card: str, is_t: bool, is_f: bool) -> str:
             return "TRUMP " + card if is_t else (("FAIL " + card) if is_f else card)
 
-        primary = _verdict(
+        by_q = _verdict(
             s.topQAction[5:] if s.topQAction.startswith("PLAY ") else s.topQAction,
             s.topQIsTrump,
             s.topQIsFail,
@@ -930,10 +954,23 @@ def _fmt_case(r: CaseResult) -> str:
             s.topIsTrump,
             s.topIsFail,
         )
+        if s.gumbelAction is not None:
+            gum_name = (
+                s.gumbelAction[5:]
+                if s.gumbelAction.startswith("PLAY ")
+                else s.gumbelAction
+            )
+            primary = (
+                f"{_verdict(gum_name, bool(s.gumbelIsTrump), bool(s.gumbelIsFail))}"
+                f" (p={s.gumbelProb:.2f})"
+            )
+        else:
+            primary = "n/a"
         lines.append(
             f"    ismcts({s.iters}it f{s.rootExploreFrac:g} ess {s.ess:.0f}"
-            f"{'' if s.ok else ' LOW'}): top@Q={primary} (Q={s.topQValue:+.3f})  "
-            f"[top@N={info}]  trump N={s.trumpVisits} Q={s.trumpQ:+.3f} | "
+            f"{'' if s.ok else ' LOW'}): pi_gumbel={primary}  "
+            f"top@Q={by_q} (Q={s.topQValue:+.3f})  [top@N={info}]  "
+            f"trump N={s.trumpVisits} Q={s.trumpQ:+.3f} | "
             f"fail N={s.failVisits} Q={s.failQ:+.3f}"
         )
     return "\n".join(lines)
@@ -1018,11 +1055,16 @@ def summarize_group(label: str, results: List[CaseResult], iters: int) -> None:
         ds = np.mean([r.mcDeltaScore for r in sub])
         print(f"    {nt} trump (n={len(sub):3d}): Δpts {dp:+6.2f}, Δscore {ds:+6.3f}")
 
-    # ISMCTS tallies. PRIMARY verdict is by Q (visit counts are prior-dominated).
+    # ISMCTS tallies. PRIMARY verdict is pi_gumbel argmax (adopted readout,
+    # Search_Readout_Comparison_202607); by-Q and by-visit kept for continuity.
     searched = [r for r in results if r.search is not None]
     if searched:
         ok = [r for r in searched if r.search.ok]
         frac = searched[0].search.rootExploreFrac
+        gum = [r for r in ok if r.search.gumbelAction is not None]
+        g_trump = sum(1 for r in gum if r.search.gumbelIsTrump)
+        g_fail = sum(1 for r in gum if r.search.gumbelIsFail)
+        g_agree = sum(1 for r in gum if r.search.gumbelIsArgmax)
         q_trump = sum(1 for r in ok if r.search.topQIsTrump)
         q_fail = sum(1 for r in ok if r.search.topQIsFail)
         q_other = len(ok) - q_trump - q_fail
@@ -1032,8 +1074,14 @@ def summarize_group(label: str, results: List[CaseResult], iters: int) -> None:
         print(
             f"  ISMCTS @ {iters}it frac {frac:g} (ESS-valid {len(ok)}/{len(searched)}):"
         )
+        if gum:
+            print(
+                f"    by pi_gumbel (primary): top is trump {g_trump}, fail {g_fail}, "
+                f"other {len(gum) - g_trump - g_fail}; "
+                f"agrees with policy argmax {g_agree}/{len(gum)}"
+            )
         print(
-            f"    by Q (primary): top is trump {q_trump}, fail {q_fail}, other {q_other}; "
+            f"    by Q: top is trump {q_trump}, fail {q_fail}, other {q_other}; "
             f"agrees with policy argmax {q_agree}/{len(ok)}"
         )
         print(
@@ -1049,8 +1097,20 @@ def print_examples(results: List[CaseResult], label: str, n: int = 6) -> None:
     for r in sorted(results, key=lambda r: -abs(r.mcDeltaScore))[:n]:
         s = ""
         if r.search is not None:
-            tag = "T" if r.search.topQIsTrump else ("F" if r.search.topQIsFail else "?")
-            s = f" | ismcts top@Q={tag}"
+            if r.search.gumbelAction is not None:
+                tag = (
+                    "T"
+                    if r.search.gumbelIsTrump
+                    else ("F" if r.search.gumbelIsFail else "?")
+                )
+                s = f" | ismcts pi_gumbel={tag}"
+            else:
+                tag = (
+                    "T"
+                    if r.search.topQIsTrump
+                    else ("F" if r.search.topQIsFail else "?")
+                )
+                s = f" | ismcts top@Q={tag}"
         print(
             f"  seed={r.seed} trick={r.trickIndex + 1} {r.node.bestTrumpCard} vs {r.node.bestFailCard} "
             f"| MC Δpts {r.mcDeltaPoints:+5.1f} Δscore {r.mcDeltaScore:+5.2f} "

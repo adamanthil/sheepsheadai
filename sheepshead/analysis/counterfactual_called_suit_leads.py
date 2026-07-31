@@ -8,7 +8,8 @@ than the best alternative lead? Answered with the same 3-rung ladder as the
 trump-lead study (``counterfactual_trump_leads``, whose primitives this reuses):
 
 1. single deterministic rollout, 2. paired true-deal MC, 2b. paired belief-pool
-MC, 3. ISMCTS search at the node (top@Q verdict).
+MC, 3. ISMCTS search at the node (pi_gumbel-argmax verdict, the readout adopted
+in Search_Readout_Comparison_202607; top@Q recorded alongside for continuity).
 
 Δ is always (convention branch − alternative branch): the convention card is the
 policy's best called-suit fail by logit, the alternative is its best
@@ -95,8 +96,11 @@ class C2CaseResult:
     beliefMcDeltaScore: Optional[float] = None
     beliefMcDeltaWin: Optional[float] = None
     search: Optional[cf.SearchOutcome] = None
-    # Search verdict in C2 terms: is the top@Q lead a convention lead?
+    # Search verdicts in C2 terms: is the search's preferred lead a convention
+    # lead? PRIMARY is the pi_gumbel argmax (adopted readout,
+    # Search_Readout_Comparison_202607); top@Q retained for continuity.
     searchTopQIsConv: Optional[bool] = None
+    searchGumbelIsConv: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -331,16 +335,26 @@ def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[C2CaseRes
         )
 
     top_q_is_conv = None
+    gumbel_is_conv = None
     if search is not None:
         top_q_card = (
             search.topQAction[5:] if search.topQAction.startswith("PLAY ") else None
         )
+        gum_card = (
+            search.gumbelAction[5:]
+            if search.gumbelAction and search.gumbelAction.startswith("PLAY ")
+            else None
+        )
         if spot["group"] == "partner":
             top_q_is_conv = top_q_card == spot["calledCard"]
+            if gum_card is not None:
+                gumbel_is_conv = gum_card == spot["calledCard"]
         else:
             top_q_is_conv = top_q_card is not None and _called_suit_fail(
                 top_q_card, spot["calledCard"]
             )
+            if gum_card is not None:
+                gumbel_is_conv = _called_suit_fail(gum_card, spot["calledCard"])
 
     return C2CaseResult(
         seed=seed,
@@ -382,6 +396,7 @@ def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[C2CaseRes
         ),
         search=search,
         searchTopQIsConv=top_q_is_conv,
+        searchGumbelIsConv=gumbel_is_conv,
     )
 
 
@@ -427,6 +442,14 @@ def _print_group(name: str, blurb: str, results: List[C2CaseResult]) -> None:
         print(f"  trick-0 subset  : n={len(t0)}  MC Δscore {m0:+.3f} (SE {se0:.3f})")
     searched = [r for r in results if r.search is not None and r.search.ok]
     if searched:
+        gum = [r for r in searched if r.searchGumbelIsConv is not None]
+        if gum:
+            g_conv = sum(1 for r in gum if r.searchGumbelIsConv) / len(gum)
+            g_agm = sum(1 for r in gum if r.search.gumbelIsArgmax) / len(gum)
+            print(
+                f"  ISMCTS pi_gumbel: n={len(gum)}  conv {g_conv:.0%}  "
+                f"argmax {g_agm:.0%}  (primary verdict)"
+            )
         conv_frac = sum(1 for r in searched if r.searchTopQIsConv) / len(searched)
         agm_frac = sum(1 for r in searched if r.search.topQIsArgmax) / len(searched)
         print(
