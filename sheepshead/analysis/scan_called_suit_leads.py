@@ -350,6 +350,11 @@ def main() -> int:
         help="Stop after collecting this many eligible nodes.",
     )
     parser.add_argument(
+        "--violations-only",
+        action="store_true",
+        help="Collect/print only non-adherent nodes (stats still count all).",
+    )
+    parser.add_argument(
         "--out",
         default=None,
         help="Optional path to write a JSON report (nodes + stats).",
@@ -374,6 +379,8 @@ def main() -> int:
 
         nodes = scan_game(resp, seed, stats)
         for n in nodes:
+            if args.violations_only and n.adhered:
+                continue
             all_nodes.append(n)
             if not args.quiet:
                 print(format_node(n))
@@ -394,6 +401,7 @@ def main() -> int:
                 "startSeed": args.start_seed,
                 "numSeeds": args.num_seeds,
                 "maxSteps": args.max_steps,
+                "violationsOnly": args.violations_only,
             },
             "stats": {
                 **asdict(stats),
