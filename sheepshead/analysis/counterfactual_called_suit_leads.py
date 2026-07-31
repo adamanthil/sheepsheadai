@@ -168,6 +168,44 @@ def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int
     return spots, skipped_under
 
 
+def _load_cases_file(args) -> Dict[str, List[dict]]:
+    """Build case groups from a scan_called_suit_leads JSON report instead of
+    scanning a seed range. Node order in the file is preserved (reports sorted
+    by margin thus analyze the most convention-contrary cases first); groups
+    are derived from each node's ``adhered`` flag."""
+    data = json.loads(Path(args.cases).read_text())
+    nodes = data["nodes"] if isinstance(data, dict) else data
+    if args.cases_limit is not None:
+        nodes = nodes[: args.cases_limit]
+    groups: Dict[str, List[dict]] = {"agree": [], "disagree": [], "partner": []}
+    skipped_under = 0
+    for n in nodes:
+        if n.get("underCall"):
+            skipped_under += 1
+            continue
+        group = "agree" if n.get("adhered") else "disagree"
+        groups[group].append(
+            {
+                "seed": n["seed"],
+                "partnerMode": PARTNER_MODE_CALLED_ACE,
+                "stepIndex": n["stepIndex"],
+                "trickIndex": n["trickIndex"],
+                "seat": n["seat"],
+                "seatName": n["seatName"],
+                "pickerSeat": n["pickerSeat"],
+                "calledCard": n["calledCard"],
+                "cardLed": n["cardLed"],
+                "group": group,
+            }
+        )
+    print(
+        f"Loaded {len(groups['agree']) + len(groups['disagree'])} case(s) from "
+        f"{args.cases} ({len(groups['agree'])} AGREE, "
+        f"{len(groups['disagree'])} DISAGREE; {skipped_under} under-call skipped)"
+    )
+    return groups
+
+
 def _find_cases(args) -> Dict[str, List[dict]]:
     scan.set_scan_model(args.model)
     groups: Dict[str, List[dict]] = {"agree": [], "disagree": [], "partner": []}
@@ -439,6 +477,18 @@ def main() -> int:
         help="Per-group case cap (seeded subsample) to bound the run budget.",
     )
     parser.add_argument("--subsample-seed", type=int, default=7)
+    parser.add_argument(
+        "--cases",
+        default=None,
+        help="Path to a scan_called_suit_leads JSON report; analyze exactly its "
+        "nodes (in file order) instead of scanning a seed range.",
+    )
+    parser.add_argument(
+        "--cases-limit",
+        type=int,
+        default=None,
+        help="With --cases: only take the first N nodes from the file.",
+    )
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
@@ -455,7 +505,7 @@ def main() -> int:
         cfg.root_explore_frac = args.root_explore_frac
         teacher = ISMCTSTeacher(agent, cfg)
 
-    groups = _find_cases(args)
+    groups = _load_cases_file(args) if args.cases else _find_cases(args)
 
     results: Dict[str, List[C2CaseResult]] = {}
     for name in ("agree", "disagree", "partner"):
@@ -507,6 +557,8 @@ def main() -> int:
                 "rootExploreFrac": args.root_explore_frac,
                 "rolloutDepth": args.rollout_depth,
                 "maxCasesPerGroup": args.max_cases_per_group,
+                "cases": args.cases,
+                "casesLimit": args.cases_limit,
             },
             "groups": {name: [asdict(r) for r in results[name]] for name in results},
         }
