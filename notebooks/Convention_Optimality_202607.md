@@ -769,3 +769,70 @@ exception ↑, donation-repetition reading) vs the H7/teammate-void reading of
 the same holding (length ⇒ others short ⇒ ruff likelier ⇒ exception ↓). The
 report prints called-length and called-points cross-buckets so the two
 mechanisms separate.
+
+### E6 results (2026-07-31; atlas run 321/321 labeled, 0 skips, 0 ESS drops; `e6_exception_atlas.json`)
+
+**Falsifier: PASSES.** AGREE cell belief-MC Δ **+0.112 ± 0.026 (4.3σ
+pro-convention)**, true-deal +0.158 ± 0.068 — the measurement is sound and
+E2's conv-where-followed value reproduces at 2.8M. Critically, search still
+flips 38% of AGREE verdicts — numerically matching the Search_Readout
+finding-5 Q-inversion rate (~40% of intact-adherence modes flip at ties).
+**Read: verdict-flip rates OVERSTATE true exceptions; flips concentrate at
+near-zero-Δ nodes. The pooled 49.2% [43.8, 54.7] verdict-exception rate is
+an upper bound; the value-weighted and feature-gradient results below are
+the load-bearing findings.**
+
+Pooled value: DISAGREE belief Δ −0.011 ± 0.014 (null) — where the policy
+deviates, conv-vs-best-alt is a wash on average; the convention's value
+lives where the policy already adheres (+0.112) and in the core cell below.
+
+**Hypothesis verdicts (exception rate; else-rate 44–51%):**
+
+| H | registered | result | verdict |
+|---|---|---|---|
+| H1 trump-void ↑ | 69% [57,79] vs 44% | **CONFIRMED** |
+| H1×H6 void+late ↑ | 72% [58,82] vs 45% | **CONFIRMED** (strongest cell) |
+| H2 forced-donation ↑ | 40% vs 51% | **REFUTED** — wrong direction |
+| H3 side-ace ↑ | 49% vs 49% | REFUTED (null) |
+| H4 pos +1/+4 ↑ | 52% vs 47% (per-pos: +2 35%, +3 56%, +4 55%, +1 47%) | PARTIAL — conv clearly best at +2; +3/+4 exception-heavy; +1 mid |
+| H5 called-len≥3 ↑ | 0/5 | REVERSED but n=5 (underpowered; policy rarely reaches these) |
+| H6 late ↑ | 53% vs 47% | WEAK alone — real signal is H1×H6 |
+| H7 fat+low-called ↓ | **22% [10,42] vs 51%** | **CONFIRMED** |
+| H8 ≤2 fail suits ↑ | 46% vs 55% | REFUTED (mild reverse) |
+| H9 side-suit≥3 ↑ | **81% [62,91] vs 46%** | **CONFIRMED** (strongest single feature) |
+
+Called-points gradient (H5×H7 cross-buckets, len 1-2): 0 pts → 57%
+exceptions, 1–9 pts → 51%, 10+ pts → **31%**. Holding called-suit points
+makes the convention MORE optimal, monotonically — the operator's
+schmear-capacity intuition confirmed; the donation-risk framing (H2) is
+dead. Value view by position matches the verdict view: AGREE MC Δ by pos
++0.29/+0.33/−0.04/+0.04 (picker+1..+4) — conv edge is a picker-plays-late
+(+1/+2) phenomenon.
+
+**Replacement classes (158 exceptions):** same-suit-low 51%, same-suit-fat
+24%, off-suit-low 15%, trump 9%, off-suit-fat 2%. Three-quarters keep the
+policy's alternative SUIT and mostly downgrade to a low card. The
+strongest exceptions (|belief Δ| 0.4–0.7) are ALL tricks 3–5, mostly
+void/late point-management; early exceptions are milder and 32% fat/trump.
+
+**The atlas in one split** (belief-Δ mean per cell):
+- **C2-core** (tricks 1–2, non-void, no 3+ side suit; n=178): conv-optimal
+  57% of verdicts, belief Δ **+0.082** (+0.133 on conv-optimal nodes) —
+  the human shortcut zone, genuinely right. Policy currently adheres
+  **41%** here — the real behavioral gap.
+- **Exception zone** (late OR void OR side-suit≥3; n=143): belief Δ
+  **−0.006** — convention worthless on average; policy adheres 48%
+  (over-adhering if anything).
+
+**Consequences:** (1) any E4-style wrapper should enforce C2 only in the
+core cell and leave void/late/long-side-suit nodes free — the exception
+classifier is three cheap features; (2) the C2 training watch metric
+should become conditional: core-cell adherence (now 41%) is the number
+that should climb toward high values under the entropy ladder; pooled
+adherence has a legitimate ceiling near ~60–70% and should NOT be pushed
+to 100%; (3) rung-3 per-node re-verification of specific strong
+exceptions stays available via `--cases` at higher budgets.
+
+Caveats (registered): labels are policy-relative (2.8M field), one
+checkpoint, verdict noise at ties (bounded by the AGREE falsifier),
+pilot-sighted H4/H7 disclosed.
