@@ -31,11 +31,22 @@ const csp = [
   "form-action 'self'",
 ].join("; ");
 
+// Hostnames (no scheme, no port) permitted to reach dev-server internals.
+// Next allows localhost only, so the HMR websocket -- the one dev request that
+// carries an Origin header -- 403s when a phone loads the app over the LAN.
+// Opt in with DEV_ALLOWED_ORIGINS=andrews-macbook-pro.local; dev-server-only,
+// with no effect on `next build` or production.
+const allowedDevOrigins = (process.env.DEV_ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   // Self-contained server bundle for the Docker image.
   output: "standalone",
+  allowedDevOrigins,
   experimental: {},
   async headers() {
     return [
