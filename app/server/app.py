@@ -30,6 +30,18 @@ from server.services.persistence.pool import close_pool, open_pool, set_db_state
 DEV_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
 
+def parse_cors_origins(raw: str) -> list[str]:
+    """Split the comma-separated SHEEPSHEAD_CORS_ORIGINS setting.
+
+    The setting means the same thing in both environments -- origins we
+    explicitly trust. In production it is the entire allowlist; in dev it is
+    additive on top of DEV_CORS_ORIGIN_REGEX, so listing a LAN hostname (e.g.
+    http://andrews-macbook-pro.local:3000) lets a phone on the same network
+    reach the API without loosening the default localhost-only posture.
+    """
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         data: dict = {
@@ -162,10 +174,8 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    origins = parse_cors_origins(settings.sheepshead_cors_origins)
     if settings.env == "production":
-        origins = [
-            o.strip() for o in settings.sheepshead_cors_origins.split(",") if o.strip()
-        ]
         if not origins:
             raise RuntimeError(
                 "SHEEPSHEAD_CORS_ORIGINS must be set in production (comma-separated list of allowed origins)"
@@ -177,8 +187,11 @@ def create_app() -> FastAPI:
             "allow_headers": ["*"],
         }
     else:
+        # Starlette checks the regex first, then the explicit list, so the two
+        # compose as OR: localhost always works, and `origins` is opt-in extra.
         cors_config = {
             "allow_origin_regex": DEV_CORS_ORIGIN_REGEX,
+            "allow_origins": origins,
             "allow_credentials": True,
             "allow_methods": ["*"],
             "allow_headers": ["*"],

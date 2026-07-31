@@ -11,6 +11,9 @@ node_modules/
 next-env.d.ts
 
 .env
+# Next.js per-developer overrides (app/web/.env.local); never commit these.
+.env.local
+.env.*.local
 app/db/node_modules/
 
 # Training run artifacts (checkpoints, final models, plots, CSVs, per-run population)
