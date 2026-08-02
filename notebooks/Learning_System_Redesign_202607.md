@@ -1488,6 +1488,43 @@ exploiter gate (two near-even gates in a row would end the
 gate-trajectory-hardening story); C2/fat-fail motif at boundary ckpts
 (atlas E6 results due morning of 07-31).
 
+### 7.14 Gen-4 boundary (2026-08-02): FIRST FLAT -> first entropy step fires
+
+Gen-4 (targets held at 0.745 throughout; live Hn 0.76-0.78): exploiter
+gate FAIL -0.0668 +/- 0.0164 (series -0.028/-0.184/-0.026/-0.067: bounded
+bouncing, no exploitability trend). C2 at 4M scan: pooled 40.7%, trick-0
+34.5%, core-proxy (early non-void) 39.9% - flat in band vs 2.8M, as
+predicted while entropy holds. Boundary (01:17):
+
+- Panel +0.1604 [+0.1288,+0.1916] (called +0.114, jd +0.207) - flat vs
+  gen-3's +0.1618.
+- gain_vs_best (vs gen 3) -0.0014 [-0.0287,+0.0258] p=0.918 - null.
+- h2h gen4-vs-gen3 +0.001 +/- 0.013 (win 0.511) - second consecutive null.
+- slope (gens 2-4) +0.0140 [-0.0000,+0.0280] climbing=False.
+- All three criteria quiet -> **flat=True, the run's first** ->
+  **ABSORBED by the first play-target step 0.745->0.629** (exactly the
+  pre-registered geometry: 0.28+0.75*(0.745-0.28)); streak RESET to 0
+  ("improvement signal within the last two generations" per stop rule).
+- Sidecar verified stepped (play 0.6290); gen-5 launched 01:17:51 and
+  resumed with the stepped target (log line confirms).
+
+This boundary opens the run's key experiment (the hold-confound test from
+7.13): gens 3-4 plateaued (h2h +0.078/+0.101 -> -0.005/+0.001) with the
+controller suppressing organic play-entropy decline. Gen 5 trains with
+0.116 of that entropy released in a controlled step. Pre-registered
+readings of the gen-5 boundary:
+- h2h gen5-vs-gen4 positive again => plateau was (at least partly)
+  entropy-hold-limited; ladder mechanism validated; expect another flat
+  ~gen 6-7 -> step 2 (0.629->0.542).
+- h2h null again => plateau is not entropy-binding at this rung; flats
+  keep stepping the ladder until floor (~0.39 after 5 steps), after which
+  flats count toward stopping (auto-stop path).
+Watch items: play Hn should transition sharply to ~0.63 in the first
+~10-20 updates (controller gain sizing 8.5) - verify early; C2 core-cell
+adherence (39.9% at 4M) is the predicted near-tie conversion metric;
+play softband < 0.5 canary now live-relevant; B2 bounds; exploiter gate
+under a sharper policy.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
