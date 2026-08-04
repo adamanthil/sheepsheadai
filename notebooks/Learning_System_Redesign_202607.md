@@ -1560,6 +1560,59 @@ point at SNR and the node-selective distill contingency.
 Picker stats at 5M: picker_avg +1.29-1.54 range late-gen (vs +1.22 gen
 4), pick% 13-18. Watch into gen 6.
 
+### 7.16 BUG (2026-08-04): limited points head FROZEN all run - oracle-aux variable shadowing
+
+Operator observation: aux audit shows the 5.3M league agent's per-seat
+points-prediction MAE at ~7-10 vs ~0.6-0.7 for the reference swish 5M
+agent (deterministic bookkeeping task; order-of-magnitude regression),
+seen-trump mask also worse.
+
+Diagnosis (ppo.py `_update_minibatch`): with `critic_mode=oracle` +
+`--oracle-aux-heads` (this run's config), the oracle aux block did
+`membership_loss, points_loss = self.oracle_critic.aux_losses(...)` -
+REUSING the name `points_loss`, which at that point held the limited
+critic's points aux loss. total_loss (assembled after) therefore added
+the ORACLE's points loss twice (effective oracle points coeff 0.4, not
+0.2) and the LIMITED critic's points loss never entered total_loss: the
+limited points head received ZERO gradient. Introduced 1494902
+(2026-07-24, "Add official oracle aux heads"); the entire retention run
+sits after it.
+
+Decisive evidence: `points_head.{weight,bias}` byte-identical from the
+50k to the 5.3M checkpoint; every other critic component moves (adapter
+0.30, secret 0.61, return 0.51 max-|dW|). Only points_head is frozen -
+it is the 400k-selfplay-warmstart-era head reading an adapter that has
+since rotated under it (hence MAE ~7-10, worse than merely stale).
+Telemetry gap: the trainer accumulates points_loss internally but
+league_training_progress.csv never exported aux losses, so a flat
+points_loss was invisible to run monitoring.
+
+The seen-trump gap is a SEPARATE, milder effect: that head trains
+(weights move), but the league path takes ~2.6x fewer optimizer steps
+per episode than the reference run (Adam step 54,660 vs 144,780 at 5M
+episodes - larger batches per update), and it is a cross-architecture
+comparison (v2 shared-readout vs full pools). Supervised bookkeeping
+converges with steps, not episodes. A knock-on from the bug is
+plausible too: the adapter lost the points-task shaping signal that the
+seen-trump head shares.
+
+Fix (same day): oracle losses renamed `oracle_membership_loss`/
+`oracle_points_loss` + regression test asserting the limited points
+head moves under an oracle-aux update (verified test FAILS on pre-fix
+code). Policy impact of the bug itself: no direct policy-gradient
+corruption (aux only), but the shared encoder lost the points-tracking
+auxiliary shaping for the whole run - possibly relevant to the C2
+point-donation gap (hypothesis only, not evidenced).
+
+DEPLOYMENT NOTE: the running gen-6 trainer keeps the OLD code (already
+imported); the fix takes effect when the orchestrator spawns the gen-7
+trainer at the next boundary (~Aug-5 late evening). At that point (a)
+the limited points head resumes training from its stale state and its
+gradient again shapes adapter+encoder (restores the pre-registered aux
+design), (b) effective oracle points coeff drops 0.4->0.2 (intended
+value). Operator to confirm before the boundary whether to let it ride
+into gen 7 or pin the old code for run purity.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
