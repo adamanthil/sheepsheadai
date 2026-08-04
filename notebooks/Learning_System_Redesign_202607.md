@@ -1641,6 +1641,14 @@ spot-check vs the frozen-era 3.47 t01 MAE). NOTE: this consumed gen 6's
 trainer retry; a later gen-6 crash raises NeedsReview and halts the
 orchestrator until manually resumed.
 
+CONFIRMED (first fixed snapshot, 5.05M, ~55 updates): points_head
+max|dW| 0.037 vs the boundary (old-code 5.05M: exactly 0); aux_audit
+60-game t01 points MAE 0.93 (frozen-era 5.3M: 3.47; even 1M was 1.70),
+pooled 2.20, P(err<=5) 0.855. One update-slice recovered most of the
+gap toward the reference (t01 0.28); mature trunk + supervised head =
+fast convergence, as expected. Aux-recovery watch item satisfied;
+remaining gen-6 boundary reads are h2h and C2.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
