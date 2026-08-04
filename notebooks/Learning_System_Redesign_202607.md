@@ -1610,8 +1610,13 @@ trainer at the next boundary (~Aug-5 late evening). At that point (a)
 the limited points head resumes training from its stale state and its
 gradient again shapes adapter+encoder (restores the pre-registered aux
 design), (b) effective oracle points coeff drops 0.4->0.2 (intended
-value). Operator to confirm before the boundary whether to let it ride
-into gen 7 or pin the old code for run purity.
+value).
+
+OPERATOR DECISION (2026-08-04): let gen 7 pick up the fix - no pin, no
+relaunch (training too expensive; trajectory mildly corrupted but
+progress strong, a few generations should re-train the head in place).
+Gen-7+ watch: points aux converging (aux_audit spot-check), no
+h2h/panel regression at the changepoint.
 
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
