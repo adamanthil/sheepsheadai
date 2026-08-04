@@ -1618,6 +1618,29 @@ progress strong, a few generations should re-train the head in place).
 Gen-7+ watch: points aux converging (aux_audit spot-check), no
 h2h/panel regression at the changepoint.
 
+REVISED (2026-08-04, ~30 min later): operator chose instead to RESTART
+GEN 6 from the gen-5 boundary with the fix (gen 6 was <40% done; the
+gen5->6 boundary is the natural changepoint). Executed 13:07: SIGSTOP
+orchestrator -> SIGTERM gen-6 trainer (rc=-15) -> archived the 6
+partial old-code checkpoints (5.05M-5.30M) + the 6 partial league
+snapshots to runs/league_retention_pg/gen6_oldcode_partial/ -> SIGCONT;
+the orchestrator's attempt-2 retry re-resolved _resume_for(6) to
+checkpoint_5000000 and spawned a fresh trainer (new process = fixed
+code). Verified: resumed at episode 5,000,000; telemetry trimmed
+(220/6/3 stale rows); entropy controller resumed targets incl. play
+0.6290. Accepted deviations, recorded: (a) the 6 gen-6 snapshot adds
+had evicted ~6 lowest-skill past_mains at the 30-cap - files deleted,
+not restorable, so restarted gen 6 opens with 24 past_mains and refills
+at 50k cadence; (b) surviving members' ratings/exploit-EMAs carry 0.35M
+episodes of abandoned-trajectory drift (self-correcting); (c) sidecar
+alphas are mid-gen-6 values (controller re-adapts in a few updates;
+targets unchanged). Gen 6 is therefore the FIRST generation with the
+limited points head training AND wholly at play target 0.629 - the
+gen-6 boundary reads h2h + C2 + points-aux recovery together (aux_audit
+spot-check vs the frozen-era 3.47 t01 MAE). NOTE: this consumed gen 6's
+trainer retry; a later gen-6 crash raises NeedsReview and halts the
+orchestrator until manually resumed.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
