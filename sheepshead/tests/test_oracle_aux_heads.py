@@ -35,6 +35,24 @@ def test_headed_oracle_update_and_roundtrip(tmp_path):
     assert all(torch.equal(sd_a[k], sd_b[k]) for k in sd_a)
 
 
+def test_limited_points_head_trains_under_oracle_aux():
+    # Regression: the oracle aux losses once shadowed the limited critic's
+    # ``points_loss`` before total_loss was assembled, so the limited points
+    # head received zero gradient whenever oracle aux heads were on (frozen
+    # for the whole league_retention_pg run through 5.3M episodes).
+    agent = _agent(oracle_aux_heads=True)
+    before = {
+        k: v.clone()
+        for k, v in agent.critic.state_dict().items()
+        if k.startswith("points_head")
+    }
+    assert before, "limited critic should expose a points head"
+    play_episodes(agent, 6, collect_oracle=True, seed0=SEED)
+    agent.update(epochs=1, batch_size=2)
+    after = agent.critic.state_dict()
+    assert any(not torch.equal(before[k], after[k]) for k in before)
+
+
 def test_headed_agent_warm_starts_headless_checkpoint(tmp_path):
     headless = _agent()
     ckpt = str(tmp_path / "headless.pt")

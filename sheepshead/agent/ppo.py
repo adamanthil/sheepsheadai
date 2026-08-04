@@ -1827,12 +1827,17 @@ class PPOAgent:
             )
             oracle_loss = oracle_elements.mean()
             if self.oracle_critic.has_aux_heads:
-                membership_loss, points_loss = self.oracle_critic.aux_losses(
-                    oracle_trunk_bt, oracle_seqs, minibatch.is_action_bt
+                # Distinct names: reusing ``points_loss`` here would shadow the
+                # limited critic's aux loss before total_loss is assembled,
+                # silently freezing the limited points head.
+                oracle_membership_loss, oracle_points_loss = (
+                    self.oracle_critic.aux_losses(
+                        oracle_trunk_bt, oracle_seqs, minibatch.is_action_bt
+                    )
                 )
                 oracle_loss = oracle_loss + (
-                    self.oracle_membership_coeff * membership_loss
-                    + self.oracle_points_coeff * points_loss
+                    self.oracle_membership_coeff * oracle_membership_loss
+                    + self.oracle_points_coeff * oracle_points_loss
                 )
             acc.oracle_loss_sum += oracle_loss.detach().item()
             acc.oracle_loss_count += 1
