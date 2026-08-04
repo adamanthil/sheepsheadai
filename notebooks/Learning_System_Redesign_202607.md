@@ -1525,6 +1525,41 @@ adherence (39.9% at 4M) is the predicted near-tie conversion metric;
 play softband < 0.5 canary now live-relevant; B2 bounds; exploiter gate
 under a sharper policy.
 
+### 7.15 Gen-5 boundary (2026-08-03): entropy step VALIDATED - progress re-ignites
+
+First generation after the 0.745->0.629 play-target step. TIMING
+CORRECTION to 8.5's gain sizing: measured play entropy descended
+0.740->~0.63 over ~the whole generation (603 updates), not 10-20 - alpha
+moves fast but the plant (policy entropy) integrates at the policy
+gradient's own pace. Gen 5 therefore trained while TRANSITIONING; gen 6
+is the first generation wholly at 0.629.
+
+Boundary (23:02): panel +0.2220 [+0.1930,+0.2505] - best of run by far
+(called +0.190, jd +0.254; called-mode edge nearly doubled);
+gain_vs_best (vs gen 3) +0.0602 [+0.0324,+0.0882] p=0.0000; h2h
+gen5-vs-gen4 +0.107 +/- 0.014 (7.9 sigma - gen-1/2-scale progress);
+slope climbing again; flat=False streak 0. Exploiter gate FAIL -0.1629
++/- 0.0146 (2nd-strongest main win; series -0.028/-0.184/-0.026/-0.067/
+-0.163) - the SHARPER policy is HARDER to exploit: removed mixing was
+regularization tail, not equilibrium content.
+
+**Hold-confound verdict (7.13/7.14 pre-registered): the gens 3-4 plateau
+WAS entropy-hold-limited.** h2h went null/null under the hold and +0.107
+immediately after release. Ladder mechanism validated as a progress
+lever; expect progress to continue then re-flatten -> step 2
+(0.629->0.542) at some later boundary.
+
+**C2 conversion prediction: NOT yet fired.** 5M scan: pooled 43.8%,
+core-proxy (early non-void) 38.2%, trick-0 34.9% - all still in the
+oscillation band despite the step and the big general gain. The near-tie
+conversion at C2 lead nodes either needs a full generation AT the lower
+target (gen 6 read) or is SNR-bound independent of entropy (the 7.12
+contingency). Two more null reads at gens 6-7 with h2h progressing would
+point at SNR and the node-selective distill contingency.
+
+Picker stats at 5M: picker_avg +1.29-1.54 range late-gen (vs +1.22 gen
+4), pick% 13-18. Watch into gen 6.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
