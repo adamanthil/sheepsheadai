@@ -48,7 +48,14 @@ export default function Scoreboard({
               alignItems: "center",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                minWidth: 0,
+              }}
+            >
               <SeatAvatar
                 name={r.name}
                 isAI={r.isAI}
@@ -56,11 +63,14 @@ export default function Scoreboard({
                 size={compact ? 24 : 26}
               />
               <div
+                className={ds.nameClamp}
+                title={r.name}
                 style={{
                   fontFamily: "var(--font-display)",
                   fontSize: compact ? 16 : 16,
                   color: r.you ? "var(--ink)" : "var(--ink-soft)",
                   fontWeight: r.you ? 500 : 400,
+                  ["--name-clamp" as string]: compact ? "12ch" : "14ch",
                 }}
               >
                 {r.name}

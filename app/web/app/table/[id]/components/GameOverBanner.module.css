@@ -33,6 +33,10 @@
 .sub strong {
   color: var(--ink);
 }
+/* Generous on desktop; the mobile block below tightens it. */
+.subName {
+  --name-clamp: 18ch;
+}
 
 .scoresGrid {
   display: grid;
@@ -90,6 +94,9 @@
   }
   .sub {
     font-size: 13px;
+  }
+  .subName {
+    --name-clamp: 11ch;
   }
   .scoresGrid {
     gap: 6px;

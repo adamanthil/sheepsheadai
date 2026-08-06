@@ -188,6 +188,22 @@
   border-color: var(--rule);
 }
 
+/* ---- Utilities ---- */
+/* Clamps a player/table name to a width so it ellipsizes instead of pushing
+   its neighbours around. Names are server-capped at 32 chars, which overruns
+   every fixed slot in the table UI. Set the limit per site:
+       .someName { composes: nameClamp from '.../ds.module.css'; }
+   or inline via the custom property: style={{ "--name-clamp": "10ch" }}.
+   Inline-block so it works inside running text as well as block layouts. */
+.nameClamp {
+  display: inline-block;
+  max-width: var(--name-clamp, 16ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 /* ---- Link ---- */
 .link {
   color: var(--ink);

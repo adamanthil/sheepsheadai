@@ -89,6 +89,7 @@ export function RingChip({
       <div className={styles.chipText}>
         <div
           className={`${styles.chipName} ${compact ? styles.chipNameSm : ""}`}
+          title={seat.name}
         >
           {seat.name}
         </div>

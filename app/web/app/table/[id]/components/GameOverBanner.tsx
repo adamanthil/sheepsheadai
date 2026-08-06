@@ -44,6 +44,17 @@ export default function GameOverBanner({
 
   const isLeaster = final.mode === "leaster";
 
+  // Names run inline here ("Picker: X · Partner: Y"); clamp them so a long
+  // one ellipsizes rather than wrapping the line.
+  const name = (seat: number) => {
+    const label = nameForSeat(seat, table);
+    return (
+      <strong className={`${ds.nameClamp} ${styles.subName}`} title={label}>
+        {label}
+      </strong>
+    );
+  };
+
   return (
     <div className={styles.overlay}>
       <div className={styles.banner}>
@@ -51,14 +62,12 @@ export default function GameOverBanner({
           {isLeaster ? "Game Over · Leaster" : "Game Over"}
         </div>
         {isLeaster ? (
-          <div className={styles.sub}>
-            Winner: <strong>{nameForSeat(final.winner || 0, table)}</strong>
-          </div>
+          <div className={styles.sub}>Winner: {name(final.winner || 0)}</div>
         ) : (
           <>
             <div className={styles.sub}>
-              Picker: <strong>{nameForSeat(final.picker || 0, table)}</strong> ·
-              Partner: <strong>{nameForSeat(final.partner || 0, table)}</strong>
+              Picker: {name(final.picker || 0)} · Partner:{" "}
+              {name(final.partner || 0)}
             </div>
             <div className={styles.sub}>
               Picker score: <strong>{final.picker_score}</strong> · Defenders:{" "}

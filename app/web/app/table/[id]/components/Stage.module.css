@@ -117,6 +117,8 @@
   align-items: center;
   gap: 2px;
   text-align: center;
+  min-width: 0;
+  max-width: 100%;
 }
 .chipName {
   font-family: var(--font-display);
@@ -124,6 +126,11 @@
   line-height: 1;
   color: var(--ink);
   white-space: nowrap;
+  /* .chip caps the plate at 104px but nowrap text ignores that on its own,
+     so a long name would spill across the ring into its neighbours. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chipNameSm {
   font-size: 13px;
