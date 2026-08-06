@@ -27,7 +27,15 @@ async def close_table(table: Table, reason: str = "closed") -> None:
     """Gracefully close a table: cancel AI, notify clients, close websockets, and remove from manager."""
     if table.ai_task and not table.ai_task.done():
         table.ai_task.cancel()
-    if table.autoclose_task and not table.autoclose_task.done():
+    # The idle path calls this from *inside* autoclose_task. Cancelling that
+    # task here would throw CancelledError into this coroutine at the next
+    # await and strand the table in the registry forever.
+    current = asyncio.current_task()
+    if (
+        table.autoclose_task
+        and table.autoclose_task is not current
+        and not table.autoclose_task.done()
+    ):
         table.autoclose_task.cancel()
     for cid, task in list(table.disconnect_tasks.items()):
         try:
@@ -43,32 +51,38 @@ async def close_table(table: Table, reason: str = "closed") -> None:
             table.disconnect_tasks.pop(cid, None)
     table.status = "finished"
     try:
-        await broadcast_table_event(
-            table, {"type": "table_closed", "reason": reason, "tableId": table.id}
-        )
-    except Exception:
-        logging.debug("failed to broadcast table_closed for table %s", table.id)
-    for cid, conn in list(table.clients.items()):
-        ws = conn.websocket
-        if not ws:
-            continue
         try:
-            await ws.send_text(
-                json.dumps(
-                    {"type": "table_closed", "reason": reason, "tableId": table.id}
-                )
+            await broadcast_table_event(
+                table, {"type": "table_closed", "reason": reason, "tableId": table.id}
             )
-            await ws.close()
         except Exception:
-            logging.debug(
-                "failed to close websocket for client %s on table %s", cid, table.id
-            )
-            conn.websocket = None
-    await close_game_table(get_db_pool(), table.id)
-    try:
-        tables.delete_table(table.id)
-    except Exception:
-        logging.exception("failed deleting table %s", table.id)
+            logging.debug("failed to broadcast table_closed for table %s", table.id)
+        for cid, conn in list(table.clients.items()):
+            ws = conn.websocket
+            if not ws:
+                continue
+            try:
+                await ws.send_text(
+                    json.dumps(
+                        {"type": "table_closed", "reason": reason, "tableId": table.id}
+                    )
+                )
+                await ws.close()
+            except Exception:
+                logging.debug(
+                    "failed to close websocket for client %s on table %s", cid, table.id
+                )
+                conn.websocket = None
+        await close_game_table(get_db_pool(), table.id)
+    finally:
+        # Registry removal is the one step that must not be skippable: a table
+        # left here is unreachable by every autoclose trigger (they all key off
+        # websocket edges on a table nobody can reach) and survives until the
+        # process restarts.
+        try:
+            tables.delete_table(table.id)
+        except Exception:
+            logging.exception("failed deleting table %s", table.id)
 
 
 def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -> None:
