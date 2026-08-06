@@ -215,6 +215,7 @@ export default function HomePage() {
                   placeholder={displayPlaceholder ?? "Your name"}
                   onChange={(e) => setDisplayNameInput(e.target.value)}
                   disabled={creating}
+                  maxLength={32}
                 />
               </div>
               <div className={styles.field}>
@@ -227,6 +228,7 @@ export default function HomePage() {
                   placeholder="Table name"
                   onChange={(e) => handleTableNameChange(e.target.value)}
                   disabled={creating}
+                  maxLength={48}
                 />
               </div>
             </div>
