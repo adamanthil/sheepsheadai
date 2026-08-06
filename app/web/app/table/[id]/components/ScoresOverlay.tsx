@@ -79,7 +79,9 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
                   <th className={styles.thLeft}>Hand</th>
                   {columns.map((c, idx) => (
                     <th key={idx} className={styles.thRight}>
-                      {c.label}
+                      <span className={styles.thName} title={c.label}>
+                        {c.label}
+                      </span>
                     </th>
                   ))}
                 </tr>

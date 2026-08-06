@@ -64,6 +64,15 @@
   color: var(--muted);
   font-weight: 500;
 }
+/* Caps a name column's width; the full name stays in the DOM (title attr). */
+.thName {
+  display: block;
+  margin-left: auto;
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tdHand {
   font-family: var(--font-mono);
   color: var(--muted);
@@ -85,4 +94,53 @@
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: var(--ink);
+}
+
+@media (max-width: 560px) {
+  .scoresOverlay {
+    padding: 12px;
+  }
+  .scoresHeader {
+    padding: 12px 14px;
+    font-size: 18px;
+  }
+  .scoresBody {
+    padding: 6px 14px 14px;
+  }
+  .scoresTable {
+    font-size: 13px;
+  }
+  .scoresTable th,
+  .scoresTable td {
+    padding: 7px 5px;
+  }
+  /* Sentence case without tracking: roughly halves each header's width,
+     which is what forces the horizontal scroll. */
+  .thLeft,
+  .thRight {
+    text-transform: none;
+    letter-spacing: 0.02em;
+    font-size: 11px;
+  }
+  .thName {
+    max-width: 8ch;
+  }
+  /* Keep the hand/total column to its content so names get the rest. */
+  .thLeft,
+  .tdHand,
+  .tdTotalLabel {
+    width: 1%;
+    white-space: nowrap;
+  }
+}
+
+/* Narrow phones: five long names still overflow at 8ch, so tighten further. */
+@media (max-width: 380px) {
+  .scoresTable th,
+  .scoresTable td {
+    padding: 6px 3px;
+  }
+  .thName {
+    max-width: 7ch;
+  }
 }
