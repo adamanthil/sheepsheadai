@@ -12,6 +12,7 @@ import asyncio
 
 import pytest
 
+import server.realtime.websocket as ws_module
 import server.runtime.lifecycle as lifecycle
 from server.runtime.tables import ClientConn, Table, tables
 
@@ -102,3 +103,42 @@ async def test_close_table_from_a_request_still_cancels_the_autoclose(
 
     assert table.id not in registry.tables
     assert pending.cancelled() or pending.cancelling()
+
+
+class _FakeWebSocket:
+    """Minimal WebSocket stand-in whose first send fails.
+
+    Models a client that vanishes during the post-accept handshake burst,
+    before the receive loop is ever entered.
+    """
+
+    def __init__(self):
+        self.closed = False
+
+    async def accept(self, subprotocol=None):
+        pass
+
+    async def send_text(self, text):
+        raise RuntimeError("client went away mid-handshake")
+
+    async def receive_text(self):
+        raise AssertionError("receive loop should never be reached")
+
+    async def close(self, code=1000):
+        self.closed = True
+
+
+async def test_failed_handshake_send_does_not_leave_a_phantom_connection(registry):
+    table = Table(id="phantom", name="phantom")
+    conn = ClientConn(client_id="c1", display_name="ghost", player_id="p1")
+    table.clients["c1"] = conn
+    registry.tables[table.id] = table
+
+    with pytest.raises(RuntimeError):
+        await ws_module._serve_connection(_FakeWebSocket(), table, "c1", None)
+
+    # A lingering websocket here reads as a connected human to
+    # any_human_connected(), which would suppress the idle autoclose forever.
+    assert conn.websocket is None
+    assert conn.disconnected_at is not None
+    assert table.autoclose_task is not None and not table.autoclose_task.done()

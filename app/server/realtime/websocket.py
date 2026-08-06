@@ -125,35 +125,41 @@ async def _serve_connection(
                 table.seats[seat_idx] = client_id
                 conn.seat = seat_idx
                 reclaimed_seat = seat_idx
-    if reclaimed_seat is not None:
-        await broadcast_table_event(
-            table,
-            {
-                "type": "lobby_event",
-                "message": f"{conn.display_name} reconnected and reclaimed seat {reclaimed_seat}",
-                "table": table.to_public_dict(),
-            },
-        )
-        await broadcast_table_update(table)
-        schedule_ai_turns(table)
-    # On connect, cancel any pending autoclose
-    schedule_autoclose_if_no_humans(table)
 
-    await broadcast_table_state(table)
-    await send_chat_init(table, websocket)
-    # Send a per-client table_update so the client knows their isHost status immediately
-    await websocket.send_text(
-        json.dumps(
-            {
-                "type": "table_update",
-                "table": table.to_public_dict(),
-                "isHost": client_id == table.host_client_id,
-            },
-            default=_json_default,
-        )
-    )
-
+    # Everything past the assignment of conn.websocket runs under this
+    # try/finally: a client that vanishes during the initial handshake burst
+    # (send_chat_init, the isHost table_update) must not leave a dead socket
+    # on the conn. Such a phantom reads as a connected human forever, which
+    # suppresses the idle autoclose and keeps the table alive with no players.
     try:
+        if reclaimed_seat is not None:
+            await broadcast_table_event(
+                table,
+                {
+                    "type": "lobby_event",
+                    "message": f"{conn.display_name} reconnected and reclaimed seat {reclaimed_seat}",
+                    "table": table.to_public_dict(),
+                },
+            )
+            await broadcast_table_update(table)
+            schedule_ai_turns(table)
+        # On connect, cancel any pending autoclose
+        schedule_autoclose_if_no_humans(table)
+
+        await broadcast_table_state(table)
+        await send_chat_init(table, websocket)
+        # Send a per-client table_update so the client knows their isHost status immediately
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "table_update",
+                    "table": table.to_public_dict(),
+                    "isHost": client_id == table.host_client_id,
+                },
+                default=_json_default,
+            )
+        )
+
         while True:
             try:
                 raw_text = await websocket.receive_text()
