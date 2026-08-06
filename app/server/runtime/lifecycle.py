@@ -57,22 +57,21 @@ async def close_table(table: Table, reason: str = "closed") -> None:
             )
         except Exception:
             logging.debug("failed to broadcast table_closed for table %s", table.id)
+        closed_msg = json.dumps(
+            {"type": "table_closed", "reason": reason, "tableId": table.id}
+        )
         for cid, conn in list(table.clients.items()):
-            ws = conn.websocket
-            if not ws:
-                continue
-            try:
-                await ws.send_text(
-                    json.dumps(
-                        {"type": "table_closed", "reason": reason, "tableId": table.id}
+            for ws in list(conn.sockets):
+                try:
+                    await ws.send_text(closed_msg)
+                    await ws.close()
+                except Exception:
+                    logging.debug(
+                        "failed to close websocket for client %s on table %s",
+                        cid,
+                        table.id,
                     )
-                )
-                await ws.close()
-            except Exception:
-                logging.debug(
-                    "failed to close websocket for client %s on table %s", cid, table.id
-                )
-                conn.websocket = None
+            conn.sockets.clear()
         await close_game_table(get_db_pool(), table.id)
     finally:
         # Registry removal is the one step that must not be skippable: a table
@@ -89,10 +88,9 @@ def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -
     """If there are no human players connected, schedule an auto-close after delay."""
 
     def any_human_connected() -> bool:
-        for cid, conn in table.clients.items():
-            if conn.websocket is not None:
-                return True
-        return False
+        # A client with any tab open counts, so closing one of several tabs
+        # never arms the autoclose.
+        return any(conn.connected for conn in table.clients.values())
 
     if any_human_connected():
         if table.autoclose_task and not table.autoclose_task.done():
@@ -102,9 +100,8 @@ def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -
     async def _auto():
         try:
             await asyncio.sleep(delay_seconds)
-            for _cid, _conn in table.clients.items():
-                if _conn.websocket is not None:
-                    return
+            if any_human_connected():
+                return
             await close_table(table, reason="idle_all_disconnected")
         except asyncio.CancelledError:
             return

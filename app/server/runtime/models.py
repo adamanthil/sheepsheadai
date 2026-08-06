@@ -18,13 +18,22 @@ class ClientConn:
     client_id: str
     display_name: str
     seat: Optional[int] = None
-    websocket: Optional[WebSocket] = None
+    # Every tab the player has open shares this one ClientConn -- /join is
+    # idempotent per player -- so connections are a set, not a slot. The
+    # player is "connected" while at least one socket is live; seat reclaim
+    # and AI replacement key off the 0->1 and 1->0 edges, never a single
+    # socket. Capped by MAX_SOCKETS_PER_CLIENT in server.realtime.websocket.
+    sockets: set[WebSocket] = field(default_factory=set)
     chat_timestamps: deque = field(default_factory=deque)
     # Long-lived cross-table identity (Phase 4). Set on /join.
     player_id: Optional[str] = None
-    # Wall-clock time of the last websocket disconnect; None while connected.
+    # Wall-clock time the *last* socket dropped; None while any tab is open.
     # Drives pruning of clients that never came back (prune_table_state).
     disconnected_at: Optional[float] = None
+
+    @property
+    def connected(self) -> bool:
+        return bool(self.sockets)
 
 
 @dataclass

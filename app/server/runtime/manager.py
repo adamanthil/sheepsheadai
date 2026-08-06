@@ -65,7 +65,7 @@ def prune_table_state(table: Table) -> None:
     now = time.time()
     for cid, conn in list(table.clients.items()):
         if (
-            conn.websocket is None
+            not conn.sockets
             and conn.seat is None
             and conn.disconnected_at is not None
             and now - conn.disconnected_at > STALE_CLIENT_SECONDS

@@ -140,7 +140,7 @@ def schedule_ai_replacement_for_disconnected_human(
                 conn = table.clients.get(client_id)
                 if not conn:
                     return
-                if conn.websocket is not None:
+                if conn.connected:
                     return
                 seat_idx: Optional[int] = None
                 for i in range(1, 6):

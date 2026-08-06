@@ -40,6 +40,12 @@ _TOKEN_SUBPROTO_PREFIX = "sheepshead.token."
 MAX_SOCKETS_PER_IP = 20
 _sockets_by_ip: dict[str, int] = {}
 
+# One player may have the table open in this many tabs at once. Each socket
+# multiplies the fan-out of every broadcast, so this is the backstop that
+# used to be implicit in "one socket per ClientConn". Rejected connections
+# close with 4429, which the client treats as terminal (no reconnect storm).
+MAX_SOCKETS_PER_CLIENT = 4
+
 
 def _release_ip_slot(ip: str) -> None:
     remaining = _sockets_by_ip.get(ip, 1) - 1
@@ -111,23 +117,42 @@ async def _serve_connection(
     await websocket.accept(subprotocol=chosen_subproto)
 
     conn = table.clients[client_id]
+    reclaimed_seat = None
     async with table.state_lock:
-        conn.websocket = websocket
-        conn.disconnected_at = None
-        # Cancel any pending replacement and attempt to reclaim reserved AI
-        # seat if needed.
-        cancel_disconnect_task(table, client_id)
-        ai_id = table.reserved_ai_by_human.get(client_id)
-        reclaimed_seat = None
-        if ai_id:
-            seat_idx = find_seat_of_occupant(table, ai_id)
-            if seat_idx:
-                table.seats[seat_idx] = client_id
-                conn.seat = seat_idx
-                reclaimed_seat = seat_idx
+        # Check and add under one lock hold so two tabs opening at once
+        # cannot both pass the cap.
+        over_cap = len(conn.sockets) >= MAX_SOCKETS_PER_CLIENT
+        if not over_cap:
+            # Reconnect bookkeeping is a 0->1 edge, not a per-socket event:
+            # re-running it for a second tab would cancel nothing useful and
+            # re-broadcast "reclaimed seat N" to the whole table on every
+            # tab the player opens.
+            first_socket = not conn.sockets
+            conn.sockets.add(websocket)
+            conn.disconnected_at = None
+            if first_socket:
+                # Cancel any pending replacement and attempt to reclaim
+                # reserved AI seat if needed.
+                cancel_disconnect_task(table, client_id)
+                ai_id = table.reserved_ai_by_human.get(client_id)
+                if ai_id:
+                    seat_idx = find_seat_of_occupant(table, ai_id)
+                    if seat_idx:
+                        table.seats[seat_idx] = client_id
+                        conn.seat = seat_idx
+                        reclaimed_seat = seat_idx
+    if over_cap:
+        logging.info(
+            "client %s on table %s refused: %d concurrent sockets",
+            client_id,
+            table.id,
+            MAX_SOCKETS_PER_CLIENT,
+        )
+        await websocket.close(code=4429)
+        return
 
-    # Everything past the assignment of conn.websocket runs under this
-    # try/finally: a client that vanishes during the initial handshake burst
+    # Everything past the socket joining the set runs under this try/finally:
+    # a client that vanishes during the initial handshake burst
     # (send_chat_init, the isHost table_update) must not leave a dead socket
     # on the conn. Such a phantom reads as a connected human forever, which
     # suppresses the idle autoclose and keeps the table alive with no players.
@@ -188,15 +213,19 @@ async def _serve_connection(
     finally:
         c = table.clients.get(client_id)
         if c:
-            c.websocket = None
-            c.disconnected_at = time.time()
-            try:
-                if c.seat is not None:
-                    schedule_ai_replacement_for_disconnected_human(table, client_id)
-            except Exception:
-                logging.exception(
-                    "failed to schedule AI replacement for client %s on table %s",
-                    client_id,
-                    table.id,
-                )
+            c.sockets.discard(websocket)
+            # Only the last tab closing means the player left: handing the
+            # seat to an AI because they closed one of several tabs would
+            # take the game away from someone still sitting at it.
+            if not c.sockets:
+                c.disconnected_at = time.time()
+                try:
+                    if c.seat is not None:
+                        schedule_ai_replacement_for_disconnected_human(table, client_id)
+                except Exception:
+                    logging.exception(
+                        "failed to schedule AI replacement for client %s on table %s",
+                        client_id,
+                        table.id,
+                    )
         schedule_autoclose_if_no_humans(table)
