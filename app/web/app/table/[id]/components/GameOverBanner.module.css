@@ -45,6 +45,7 @@
   border-radius: 3px;
   padding: 8px 6px;
   text-align: center;
+  min-width: 0;
 }
 .scoreName {
   font-family: var(--font-ui);
@@ -57,6 +58,7 @@
 .scoreValue {
   font-family: var(--font-mono);
   font-size: 20px;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
   margin-top: 2px;
 }
@@ -71,6 +73,48 @@
 
 .buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 18px;
+}
+
+@media (max-width: 560px) {
+  .overlay {
+    padding: 12px;
+  }
+  .banner {
+    padding: 22px 18px;
+  }
+  .header {
+    font-size: 28px;
+  }
+  .sub {
+    font-size: 13px;
+  }
+  .scoresGrid {
+    gap: 6px;
+    margin: 12px 0;
+  }
+  .scoreCell {
+    padding: 7px 3px;
+  }
+  .scoreName {
+    font-size: 10px;
+  }
+  .scoreValue {
+    font-size: 17px;
+  }
+  .buttons {
+    margin-top: 16px;
+  }
+  /* Wrap into rows instead of overflowing the card: accent action on its
+     own row, remaining actions two-up. */
+  .buttons > button {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+    padding: 11px 10px;
+  }
+  .buttons > button:first-child {
+    flex-basis: 100%;
+  }
 }
