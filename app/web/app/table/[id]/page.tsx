@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { STORAGE_KEYS } from "../../../lib/storage";
@@ -28,7 +28,12 @@ import {
   computePrevText,
   computeLastMessage,
 } from "./lib/tableSelectors";
-import { useTableSocket, useTrickAnimation, useCallout } from "./hooks";
+import {
+  useTableSocket,
+  useTrickAnimation,
+  useCallout,
+  useStagedActions,
+} from "./hooks";
 import GameOverBanner from "./components/GameOverBanner";
 import ScoresOverlay from "./components/ScoresOverlay";
 import TableHeader from "./components/TableHeader";
@@ -44,6 +49,7 @@ const PHASE_LABEL = {
   pick: "Pick or pass",
   bury: "Bury 2 cards",
   call: "Call partner",
+  under: "Tuck a card under",
   setup: "Setting up",
   play: "Play a card",
   done: "Hand over",
@@ -51,8 +57,9 @@ const PHASE_LABEL = {
 
 const HELPER = {
   pick: "Pick the blind, or pass the buck.",
-  bury: "Tap two cards to bury.",
+  bury: "Choose two cards to bury, then confirm.",
   call: "Choose your partner ace, or go alone.",
+  under: "Choose the card to tuck under, then confirm.",
   play: "Tap a highlighted card to play.",
   setup: "Setting up the hand…",
   done: "Hand complete.",
@@ -131,21 +138,24 @@ export default function TablePage() {
     [actionLookup],
   );
 
-  const handleCardClick = useCallback(
-    (card: string) => {
-      if (!isYourTurn || !card) return;
-      for (const lbl of [`PLAY ${card}`, `BURY ${card}`, `UNDER ${card}`]) {
-        if (validActionStrings.has(lbl)) {
-          const id = actionIdByString[lbl];
-          if (id !== undefined) {
-            void takeAction(id);
-            return;
-          }
-        }
-      }
-    },
-    [isYourTurn, validActionStrings, actionIdByString, takeAction],
-  );
+  // Bury/under staging: card taps only stage a local selection (shown face-up
+  // in the center, tappable to put back); nothing is sent to the server until
+  // the player confirms. PLAY stays a direct send.
+  const { staging, stagedCards, stageCard } = useStagedActions({
+    serverBury: lastState?.view.bury ?? [],
+    validActionStrings,
+    actionIdByString,
+    takeAction,
+  });
+
+  const handleCardClick = (card: string) => {
+    if (!isYourTurn || !card) return;
+    if (stageCard(card)) return;
+    if (validActionStrings.has(`PLAY ${card}`)) {
+      const id = actionIdByString[`PLAY ${card}`];
+      if (id !== undefined) void takeAction(id);
+    }
+  };
 
   if (!lastState) {
     return (
@@ -185,7 +195,6 @@ export default function TablePage() {
       isLeaster={isLeaster}
       yourMode={yourMode}
       isYourTurn={isYourTurn}
-      handLen={view.hand.length}
       trickIndex={view.current_trick_index}
       totalTricks={TOTAL_TRICKS}
       displayCards={displayCards}
@@ -195,6 +204,8 @@ export default function TablePage() {
       callOptions={callOptions}
       selectedCall={null}
       onAction={takeAction}
+      staging={staging}
+      calledCardDisplay={view.called_card_display}
       pickActionId={
         validActionStrings.has("PICK") ? actionIdByString["PICK"] : null
       }
@@ -217,6 +228,7 @@ export default function TablePage() {
       yourMode={yourMode}
       validActionStrings={validActionStrings}
       onCardClick={handleCardClick}
+      stagedCards={stagedCards}
       isMobile={isMobile}
       uiScale={uiScale}
     />

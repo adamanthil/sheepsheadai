@@ -59,6 +59,8 @@ export type GameView = {
   called_card_display: string | null;
   called_under: boolean;
   alone: boolean;
+  /** The buried cards. Masked server-side: non-pickers get []. */
+  bury?: string[];
 };
 
 export type TableStateMsg = {

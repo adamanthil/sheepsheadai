@@ -25,8 +25,9 @@ interface ActionBarProps {
 export default function ActionBar(props: ActionBarProps) {
   const { validActions, actionLookup } = props;
 
-  // Primary action buttons: everything that isn't a card PLAY/BURY (those are
-  // taken by tapping cards), plus the explicit PLAY UNDER.
+  // Primary action buttons: everything that isn't a card action (PLAY/BURY/
+  // UNDER are taken by tapping cards and confirming in the center), plus the
+  // explicit PLAY UNDER.
   const actionButtons = useMemo(
     () =>
       validActions
@@ -34,7 +35,9 @@ export default function ActionBar(props: ActionBarProps) {
         .filter(
           (a) =>
             a.label &&
-            ((!a.label.startsWith("PLAY") && !a.label.startsWith("BURY")) ||
+            ((!a.label.startsWith("PLAY") &&
+              !a.label.startsWith("BURY") &&
+              !a.label.startsWith("UNDER ")) ||
               a.label === "PLAY UNDER"),
         ),
     [validActions, actionLookup],

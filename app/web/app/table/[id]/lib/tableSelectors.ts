@@ -11,7 +11,7 @@ import { getSeatRole, type InterludeMode, type TablePhase } from "./phase";
 import type { CallOption, SeatView } from "../components/stage/types";
 
 export type PhaseLabelKind =
-  "pick" | "bury" | "call" | "setup" | "play" | "done";
+  "pick" | "bury" | "call" | "under" | "setup" | "play" | "done";
 
 const SUIT_NAME: Record<string, string> = {
   C: "Clubs",
@@ -102,6 +102,7 @@ export function computeKind(
   if (phase === "done") return "done";
   if (yourMode === "bury") return "bury";
   if (yourMode === "call") return "call";
+  if (yourMode === "under") return "under";
   return "setup";
 }
 

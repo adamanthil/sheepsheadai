@@ -65,6 +65,7 @@ const gameView = z.looseObject({
   called_card_display: z.string().nullable(),
   called_under: z.boolean(),
   alone: z.boolean(),
+  bury: z.array(z.string()).optional(),
 });
 
 const tableState = z.looseObject({

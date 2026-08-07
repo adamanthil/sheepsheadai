@@ -46,6 +46,74 @@ export function seatCardContent(props: StageProps, seat: SeatView, w?: number) {
   );
 }
 
+// ---------- Staging pieces shared by the bury and under branches ----------
+function EmptySlot({
+  label,
+  w,
+  mobile,
+}: {
+  label: string;
+  w: number;
+  mobile?: boolean;
+}) {
+  return (
+    <div
+      className={styles.slot}
+      style={{ width: w, height: Math.round(w * 1.45) }}
+    >
+      <span className={styles.slotLabel} style={{ fontSize: mobile ? 8 : 10 }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function PutBackButton({
+  card,
+  w,
+  onClick,
+}: {
+  card: string;
+  w: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={styles.callOption}
+      style={{ pointerEvents: "auto" }}
+      onClick={onClick}
+      aria-label={`Put ${card} back in your hand`}
+    >
+      <PlayingCard code={card} w={w} playable />
+    </button>
+  );
+}
+
+function ConfirmButton({
+  label,
+  busyLabel,
+  busy,
+  mobile,
+  onClick,
+}: {
+  label: string;
+  busyLabel: string;
+  busy: boolean;
+  mobile?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`${ds.btn} ${ds.btnAccent}`}
+      style={{ pointerEvents: "auto", marginTop: mobile ? 8 : 12 }}
+      disabled={busy}
+      onClick={onClick}
+    >
+      {busy ? busyLabel : label}
+    </button>
+  );
+}
+
 // ---------- Center content router ----------
 export function CenterContent({
   props,
@@ -54,8 +122,7 @@ export function CenterContent({
   props: StageProps;
   mobile?: boolean;
 }) {
-  const { phase, isYourTurn, yourMode, handLen, trickIndex, totalTricks } =
-    props;
+  const { phase, isYourTurn, yourMode, trickIndex, totalTricks } = props;
   const scale = mobile ? 1 : (props.uiScale ?? 1);
 
   if (phase === "pick") {
@@ -167,29 +234,41 @@ export function CenterContent({
   }
 
   if (phase === "interlude" && yourMode === "bury") {
-    const chosen = Math.max(0, 8 - handLen);
+    // Staged bury: cards committed on the server (reconnect / mid-confirm)
+    // render locked; the local selection renders face-up and tappable to put
+    // back. Nothing is sent until Confirm.
+    const { serverBury, burySelection, busy } = props.staging;
+    const staged = [
+      ...serverBury.map((card) => ({ card, locked: true })),
+      ...burySelection.map((card) => ({ card, locked: false })),
+    ].slice(0, 2);
     const w = mobile ? 56 : Math.round(104 * scale);
+    const ready = staged.length === 2 && burySelection.length > 0;
     return (
       <>
         <div className={styles.slotRow} style={{ gap: mobile ? 6 : 14 }}>
-          {[0, 1].map((i) =>
-            i < chosen ? (
-              <PlayingCard key={i} code="__" w={w} />
-            ) : (
-              <div
+          {[0, 1].map((i) => {
+            const s = staged[i];
+            if (!s) {
+              return (
+                <EmptySlot
+                  key={i}
+                  label={`slot ${i + 1}`}
+                  w={w}
+                  mobile={mobile}
+                />
+              );
+            }
+            if (s.locked) return <PlayingCard key={i} code={s.card} w={w} />;
+            return (
+              <PutBackButton
                 key={i}
-                className={styles.slot}
-                style={{ width: w, height: Math.round(w * 1.45) }}
-              >
-                <span
-                  className={styles.slotLabel}
-                  style={{ fontSize: mobile ? 8 : 10 }}
-                >
-                  slot {i + 1}
-                </span>
-              </div>
-            ),
-          )}
+                card={s.card}
+                w={w}
+                onClick={() => props.staging.onDeselectBury(s.card)}
+              />
+            );
+          })}
         </div>
         <div
           className={ds.overline}
@@ -199,8 +278,73 @@ export function CenterContent({
         </div>
         {!mobile && (
           <div className={styles.centerSub}>
-            {chosen} of 2 chosen · tap a hand card to bury
+            {staged.length === 2
+              ? "tap a card to put it back"
+              : `${staged.length} of 2 chosen · tap a hand card to bury`}
           </div>
+        )}
+        {ready && (
+          <ConfirmButton
+            label="Confirm bury"
+            busyLabel="Burying…"
+            busy={busy}
+            mobile={mobile}
+            onClick={props.staging.onConfirmBury}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (phase === "interlude" && yourMode === "under") {
+    // Called under: the picker must tuck one card face down for the called
+    // suit. Same stage-then-confirm flow as burying, so a stray tap can't
+    // lock in the wrong card.
+    const w = mobile ? 56 : Math.round(104 * scale);
+    const sel = props.staging.underSelection;
+    return (
+      <>
+        {!mobile && (
+          <div
+            className={ds.overline}
+            style={{ fontSize: 10, marginBottom: 12 }}
+          >
+            {props.calledCardDisplay
+              ? `Called ${props.calledCardDisplay} under`
+              : "Called under"}
+          </div>
+        )}
+        <div className={styles.slotRow}>
+          {sel ? (
+            <PutBackButton
+              card={sel}
+              w={w}
+              onClick={props.staging.onDeselectUnder}
+            />
+          ) : (
+            <EmptySlot label="under" w={w} mobile={mobile} />
+          )}
+        </div>
+        {mobile && (
+          <div className={ds.overline} style={{ fontSize: 8, marginTop: 6 }}>
+            Under card
+          </div>
+        )}
+        {!mobile && (
+          <div className={styles.centerSub}>
+            {sel
+              ? "tap the card to put it back"
+              : "tap a hand card to tuck under · it plays face down for the called suit"}
+          </div>
+        )}
+        {sel && (
+          <ConfirmButton
+            label="Confirm under"
+            busyLabel="Tucking under…"
+            busy={props.staging.busy}
+            mobile={mobile}
+            onClick={props.staging.onConfirmUnder}
+          />
         )}
       </>
     );

@@ -1,6 +1,7 @@
 import React from "react";
 import type { TablePhase, SeatRole, InterludeMode } from "../../lib/phase";
 import type { AnimTrick } from "../../hooks/useTrickAnimation";
+import type { StagedActions } from "../../hooks/useStagedActions";
 
 export interface SeatView {
   absSeat: number;
@@ -25,7 +26,6 @@ export interface StageProps {
   isLeaster: boolean;
   yourMode: InterludeMode;
   isYourTurn: boolean;
-  handLen: number;
   trickIndex: number;
   totalTricks: number;
   displayCards: string[]; // current_trick, or last_trick when showing prev
@@ -35,6 +35,9 @@ export interface StageProps {
   callOptions: CallOption[];
   selectedCall: string | null;
   onAction: (actionId: number) => void;
+  // Bury/under staging state + handlers, consumed by CenterContent.
+  staging: StagedActions;
+  calledCardDisplay: string | null;
   // Pick-phase decision: action ids for the centered Pick (the blind) / Pass
   // buttons, or null when it isn't your decision (the blind then shows as
   // context only, not as a button).

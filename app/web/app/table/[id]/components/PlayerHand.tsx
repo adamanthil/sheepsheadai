@@ -10,16 +10,26 @@ interface PlayerHandProps {
   yourMode: InterludeMode;
   validActionStrings: Set<string>;
   onCardClick: (card: string) => void;
+  // Cards staged in the center (bury/under selection): hidden from the fan
+  // until they are confirmed or put back.
+  stagedCards?: string[];
   isMobile: boolean;
   uiScale?: number;
 }
 
 const META: Record<string, string> = {
   pick: "Your starting hand · waiting on the blind",
-  bury: "Picked the blind · tap 2 cards to bury",
-  call: "Buried · now call your partner",
+  bury: "Choose 2 cards to bury, then confirm",
+  call: "Picked the blind · now call your partner",
+  under: "Called under · choose the card to tuck under",
   play: "Tap a highlighted card to play",
   done: "Hand complete",
+};
+
+// Prompt badge shown while an interlude mode wants card taps.
+const INTERLUDE_BADGE: Partial<Record<InterludeMode, string>> = {
+  bury: "tap to bury",
+  under: "choose under",
 };
 
 export default function PlayerHand({
@@ -29,6 +39,7 @@ export default function PlayerHand({
   yourMode,
   validActionStrings,
   onCardClick,
+  stagedCards,
   isMobile,
   uiScale = 1,
 }: PlayerHandProps) {
@@ -47,10 +58,14 @@ export default function PlayerHand({
       validActionStrings.has(`BURY ${card}`) ||
       validActionStrings.has(`UNDER ${card}`));
 
+  const staged = stagedCards ?? [];
+  const shownHand = hand.filter((card) => !staged.includes(card));
+
   const metaKey = phase === "interlude" ? yourMode : phase;
   const meta = META[metaKey] ?? META.play;
 
-  const buryChosen = phase === "interlude" && yourMode === "bury";
+  const interludeBadge =
+    phase === "interlude" ? INTERLUDE_BADGE[yourMode] : undefined;
 
   return (
     <div
@@ -59,7 +74,7 @@ export default function PlayerHand({
       <div className={styles.metaRow}>
         <div style={{ minWidth: 0 }}>
           <div className={ds.overline} style={{ fontSize: isMobile ? 9 : 11 }}>
-            Your hand · {hand.length} cards
+            Your hand · {shownHand.length} cards
           </div>
           <div
             className={styles.metaText}
@@ -68,26 +83,28 @@ export default function PlayerHand({
             {meta}
           </div>
         </div>
-        {isYourTurn && phase === "play" && (
-          <span
-            className={`${ds.badge} ${ds.badgeAccent2}`}
-            style={{ fontSize: 10 }}
-          >
-            ● Your turn
-          </span>
-        )}
-        {buryChosen && (
-          <span
-            className={`${ds.badge} ${ds.badgeAccent}`}
-            style={{ fontSize: 10 }}
-          >
-            tap to bury
-          </span>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {isYourTurn && phase === "play" && (
+            <span
+              className={`${ds.badge} ${ds.badgeAccent2}`}
+              style={{ fontSize: 10 }}
+            >
+              ● Your turn
+            </span>
+          )}
+          {interludeBadge && (
+            <span
+              className={`${ds.badge} ${ds.badgeAccent}`}
+              style={{ fontSize: 10 }}
+            >
+              {interludeBadge}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className={styles.fan} style={fanVars}>
-        {hand.map((card, i) => {
+        {shownHand.map((card, i) => {
           const clickable = isClickable(card);
           return (
             <div

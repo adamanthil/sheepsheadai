@@ -8,7 +8,7 @@ export type SeatRole = "PICKER" | "PARTNER" | "PASS" | "PENDING" | null;
 // Your sub-mode during the interlude (between picking and the first trick).
 // Derived from the set of valid action labels, since those tell us exactly
 // what the server is asking you to do right now.
-export type InterludeMode = "bury" | "call" | "waiting";
+export type InterludeMode = "bury" | "call" | "under" | "waiting";
 
 /**
  * Has the play (trick-taking) phase started? Mirrors the server's
@@ -74,6 +74,11 @@ export function getSeatRole(
 export function interludeMode(validActionStrings: Set<string>): InterludeMode {
   for (const label of validActionStrings) {
     if (label.startsWith("BURY")) return "bury";
+  }
+  // "UNDER <card>" only — "CALL <ace> UNDER" belongs to the call mode and
+  // "PLAY UNDER" only occurs during play.
+  for (const label of validActionStrings) {
+    if (label.startsWith("UNDER ")) return "under";
   }
   for (const label of validActionStrings) {
     if (label.startsWith("CALL") || label === "ALONE" || label.startsWith("JD"))

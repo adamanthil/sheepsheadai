@@ -9,3 +9,6 @@ export type { UseTrickAnimationReturn, AnimTrick } from "./useTrickAnimation";
 
 export { useCallout } from "./useCallout";
 export type { UseCalloutReturn, Callout, CalloutKind } from "./useCallout";
+
+export { useStagedActions } from "./useStagedActions";
+export type { StagedActions, UseStagedActionsReturn } from "./useStagedActions";

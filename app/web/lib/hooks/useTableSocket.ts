@@ -31,7 +31,8 @@ export interface UseTableSocketReturn {
   lastState: TableStateMsg | null;
   actionLookup: Record<string, string>;
   chatMessages: ChatMessage[];
-  takeAction: (actionId: number) => Promise<void>;
+  /** POST one action. Resolves true when the server accepted it. */
+  takeAction: (actionId: number) => Promise<boolean>;
   closeTable: () => Promise<void>;
   redeal: () => Promise<void>;
   sendChatMessage: (message: string) => void;
@@ -168,7 +169,7 @@ export function useTableSocket(
 
   const takeAction = useCallback(
     async (actionId: number) => {
-      if (!clientId || !tableId) return;
+      if (!clientId || !tableId) return false;
       try {
         const res = await apiFetch(`/api/tables/${tableId}/action`, {
           method: "POST",
@@ -179,10 +180,13 @@ export function useTableSocket(
           callbacksRef.current?.onError?.(
             `Action failed: ${j?.detail || res.status}`,
           );
+          return false;
         }
+        return true;
       } catch (err) {
         console.warn("action POST failed", err);
         callbacksRef.current?.onError?.("Action failed: network error");
+        return false;
       }
     },
     [tableId, clientId],
