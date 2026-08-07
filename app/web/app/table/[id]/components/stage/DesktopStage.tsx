@@ -3,7 +3,7 @@ import { PlayingCard } from "../../../../../lib/ds";
 import { RING_ANCHORS } from "../../lib/seatLayout";
 import CollectOverlay from "../CollectOverlay";
 import { CenterContent, seatCardContent } from "./CenterContent";
-import { RingChip } from "./chrome";
+import { RingChip, roleName } from "./chrome";
 import type { StageProps } from "./types";
 import styles from "../Stage.module.css";
 
@@ -73,7 +73,10 @@ export default function DesktopStage(props: StageProps) {
             }}
           >
             <PlayingCard code={youPlayed} w={cardW} />
-            <span className={styles.youPlate}>You</span>
+            <span className={styles.youPlate}>
+              You
+              {roleName(props.yourRole) ? ` · ${roleName(props.yourRole)}` : ""}
+            </span>
           </div>
         )}
 

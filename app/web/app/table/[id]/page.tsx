@@ -11,6 +11,7 @@ import {
   derivePhase,
   playStarted as playStartedFn,
   interludeMode,
+  getYourRole,
 } from "./lib/phase";
 import {
   rulesBadgeText,
@@ -176,6 +177,7 @@ export default function TablePage() {
   const kind = computeKind(phase, yourMode);
 
   const seats = buildSeats(lastState, table, yourSeat, started);
+  const yourRole = getYourRole(lastState);
 
   const displayCards = computeDisplayCards(showPrev, view);
   const winnerSeat = computeWinnerSeat(showPrev, view);
@@ -206,6 +208,7 @@ export default function TablePage() {
       onAction={takeAction}
       staging={staging}
       calledCardDisplay={view.called_card_display}
+      yourRole={yourRole}
       pickActionId={
         validActionStrings.has("PICK") ? actionIdByString["PICK"] : null
       }
@@ -229,6 +232,7 @@ export default function TablePage() {
       validActionStrings={validActionStrings}
       onCardClick={handleCardClick}
       stagedCards={stagedCards}
+      yourRole={yourRole}
       isMobile={isMobile}
       uiScale={uiScale}
     />
@@ -238,6 +242,7 @@ export default function TablePage() {
     <ActionBar
       yourName={nameForSeat(yourSeat, table)}
       yourSeat={yourSeat}
+      yourRole={yourRole}
       isYourTurn={isYourTurn}
       actorName={nameForSeat(lastState.actorSeat, table)}
       helper={HELPER[kind]}

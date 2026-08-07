@@ -1,10 +1,13 @@
 import React, { useMemo } from "react";
 import { CardText, SeatAvatar, ds } from "../../../../lib/ds";
+import type { YourRole } from "../lib/phase";
+import { roleBadge } from "./stage/chrome";
 import styles from "./ActionBar.module.css";
 
 interface ActionBarProps {
   yourName: string;
   yourSeat: number;
+  yourRole: YourRole;
   isYourTurn: boolean;
   actorName: string;
   helper: string;
@@ -126,6 +129,7 @@ export default function ActionBar(props: ActionBarProps) {
             <span className={ds.badge} style={{ fontSize: 9 }}>
               You
             </span>
+            {props.yourRole && roleBadge(props.yourRole, false, 9)}
           </div>
           <div className={styles.whoSub}>
             seat {props.yourSeat}

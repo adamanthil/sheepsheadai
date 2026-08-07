@@ -1,5 +1,10 @@
 import React from "react";
-import type { TablePhase, SeatRole, InterludeMode } from "../../lib/phase";
+import type {
+  TablePhase,
+  SeatRole,
+  InterludeMode,
+  YourRole,
+} from "../../lib/phase";
 import type { AnimTrick } from "../../hooks/useTrickAnimation";
 import type { StagedActions } from "../../hooks/useStagedActions";
 
@@ -38,6 +43,9 @@ export interface StageProps {
   // Bury/under staging state + handlers, consumed by CenterContent.
   staging: StagedActions;
   calledCardDisplay: string | null;
+  // Your own role from private info (e.g. you hold the called card) — shown on
+  // your seat plate. Ring seats use the public per-seat role instead.
+  yourRole: YourRole;
   // Pick-phase decision: action ids for the centered Pick (the blind) / Pass
   // buttons, or null when it isn't your decision (the blind then shows as
   // context only, not as a button).

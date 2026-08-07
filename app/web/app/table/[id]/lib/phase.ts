@@ -87,6 +87,31 @@ export function interludeMode(validActionStrings: Set<string>): InterludeMode {
   return "waiting";
 }
 
+// The local player's own role, from private information (see getYourRole).
+export type YourRole = "PICKER" | "PARTNER" | null;
+
+/**
+ * The local player's own role, from their private information. Unlike
+ * `getSeatRole` this doesn't wait for the partner to be publicly revealed:
+ * holding the called card (or the Jack of Diamonds in JD-partner mode) is
+ * proof enough for your own badge.
+ */
+export function getYourRole(msg: TableStateMsg): YourRole {
+  const view = msg.view;
+  const picker = view.picker || 0;
+  if (view.is_leaster || picker === 0) return null;
+  if (picker === msg.yourSeat) return "PICKER";
+  if (view.alone) return null;
+  if ((view.partner || 0) === msg.yourSeat) return "PARTNER";
+  if (view.partner) return null; // partner known publicly, and it isn't you
+  if (view.called_card) {
+    return view.hand.includes(view.called_card) ? "PARTNER" : null;
+  }
+  const jdMode = msg.table.rules?.partnerMode === 0;
+  if (jdMode && view.hand.includes("JD")) return "PARTNER";
+  return null;
+}
+
 export const PHASE_HELP: Record<TablePhase, string> = {
   pick: "Pick or pass",
   interlude: "Set up the hand",

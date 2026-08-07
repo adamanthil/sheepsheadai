@@ -4,18 +4,29 @@ import type { SeatRole } from "../../lib/phase";
 import type { SeatView } from "./types";
 import styles from "../Stage.module.css";
 
-export function roleBadge(role: SeatRole, small?: boolean) {
-  const fs = small ? { fontSize: 8, padding: "1px 5px" } : undefined;
+/** Display name for the picker/partner roles; null for the rest. */
+export function roleName(role: SeatRole): string | null {
+  if (role === "PICKER") return "Picker";
+  if (role === "PARTNER") return "Partner";
+  return null;
+}
+
+export function roleBadge(role: SeatRole, small?: boolean, fontSize?: number) {
+  const fs = small
+    ? { fontSize: 8, padding: "1px 5px" }
+    : fontSize != null
+      ? { fontSize }
+      : undefined;
   if (role === "PICKER")
     return (
       <span className={`${ds.badge} ${ds.badgeAccent}`} style={fs}>
-        Picker
+        {roleName(role)}
       </span>
     );
   if (role === "PARTNER")
     return (
       <span className={`${ds.badge} ${ds.badgeGold}`} style={fs}>
-        Partner
+        {roleName(role)}
       </span>
     );
   if (role === "PASS")

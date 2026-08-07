@@ -1,6 +1,7 @@
 import React from "react";
 import { PlayingCard, ds } from "../../../../lib/ds";
-import type { TablePhase, InterludeMode } from "../lib/phase";
+import type { TablePhase, InterludeMode, YourRole } from "../lib/phase";
+import { roleBadge } from "./stage/chrome";
 import styles from "./PlayerHand.module.css";
 
 interface PlayerHandProps {
@@ -13,6 +14,9 @@ interface PlayerHandProps {
   // Cards staged in the center (bury/under selection): hidden from the fan
   // until they are confirmed or put back.
   stagedCards?: string[];
+  // Your own role from private info; shown as a persistent badge so a player
+  // taking over mid-hand can tell at a glance which side they're on.
+  yourRole?: YourRole;
   isMobile: boolean;
   uiScale?: number;
 }
@@ -40,6 +44,7 @@ export default function PlayerHand({
   validActionStrings,
   onCardClick,
   stagedCards,
+  yourRole,
   isMobile,
   uiScale = 1,
 }: PlayerHandProps) {
@@ -100,6 +105,7 @@ export default function PlayerHand({
               {interludeBadge}
             </span>
           )}
+          {yourRole && roleBadge(yourRole)}
         </div>
       </div>
 
