@@ -1690,6 +1690,22 @@ UNDER-adheres; equal strength either way (consistent with E6's small
 per-node stakes at C2 nodes). Panel +0.206 measures edge over the
 mixed 4-anchor table, NOT superiority over the 30M itself.
 
+CORRECTION (2026-08-06, operator): the initial read of this comparison
+("C2 clearly learnable at this strength level, so the league's
+non-acquisition is SNR/equilibrium-path not capability") was WRONG as
+stated - the 30M's C2 came from ~15M episodes of explicit reward
+shaping for called-suit leads, so its adherence is evidence that
+shaping INSTALLS the convention, not that terminal-only rewards can
+discover it. Whether the optimal rate is discernible from terminal
+rewards alone is an OPEN question and this run is the experiment.
+Coherent picture: shaped lineage overshoots the E6 optimum by
+construction (paid to lead called suit -> 93% trick-0 incl.
+search-refuted nodes); terminal-only lineage stalls under it (~40%,
+where per-node SNR runs out); optimum ~60-70% sits between; NEITHER
+signal found it. Sharpens the contingency: node-selective pi_gumbel
+distill is the middle path - search-grounded rather than hand-shaped,
+targeting the rate itself rather than the action unconditionally.
+
 **C2: null read #1 at the settled target.** 500-seed scan @6M: pooled
 40.4% (5M 43.8%), core-proxy 34.1% (38.2%), trick-0 31.0% (34.9%) -
 all within the oscillation band, slightly down. The "gen 6 = cleaner
