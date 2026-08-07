@@ -44,8 +44,14 @@ test("create table, start with AI, play a card", async ({ page }) => {
   for (let turn = 0; turn < 40 && !playedCard; turn++) {
     if (await actionButton.isVisible().catch(() => false)) {
       const label = (await actionButton.textContent()) ?? "";
-      await actionButton.click();
-      if (label.trim().startsWith("PLAY ")) playedCard = true;
+      // A state frame can detach the button mid-click (AI turns resolve
+      // fast); bound the click and let the loop re-evaluate instead of
+      // retrying one click for the whole test timeout.
+      const clicked = await actionButton
+        .click({ timeout: 3000 })
+        .then(() => true)
+        .catch(() => false);
+      if (clicked && label.trim().startsWith("PLAY ")) playedCard = true;
       continue;
     }
     if (await clickableCard.isVisible().catch(() => false)) {
