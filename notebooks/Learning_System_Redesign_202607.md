@@ -1675,6 +1675,21 @@ t01 MAE 0.36 (frozen era 3.47; reference swish 5M 0.28), pooled 0.77
 0.0019. The order-of-magnitude deficit the operator caught is closed;
 7.16 fix validated end-to-end.
 
+CROSS-RUN COMPARISON vs 30M reference (final_pfsp_swish_ppo.pt,
+2026-08-06, operator-requested). Strength: duplicate-bridge h2h, 6M
+seated all seats vs all-30M table, 1000 CRN deals/mode: edge +0.011
++/- 0.019 (called +0.002+/-0.025, jd +0.019+/-0.029, win 50.1%) =
+STATISTICAL PARITY at ~5x fewer episodes (6.4M incl. warmstart vs
+30M). Conventions (matched-seed greedy probe + 500-seed sampled scan):
+partner trump lead 100% both; defender fail lead ~96% (t0 trump-lead
+4.0%) vs ~98% (2.2%) - both near the residual-leads-are-mildly-bad
+optimum; C2 called-suit lead pooled 40.4%/trick0 31.0% (6M) vs
+86.2%/93.4% (30M) - the ONE large behavioral divergence: 30M
+OVER-adheres relative to the E6 optimal ceiling (~60-70%), league
+UNDER-adheres; equal strength either way (consistent with E6's small
+per-node stakes at C2 nodes). Panel +0.206 measures edge over the
+mixed 4-anchor table, NOT superiority over the 30M itself.
+
 **C2: null read #1 at the settled target.** 500-seed scan @6M: pooled
 40.4% (5M 43.8%), core-proxy 34.1% (38.2%), trick-0 31.0% (34.9%) -
 all within the oscillation band, slightly down. The "gen 6 = cleaner
