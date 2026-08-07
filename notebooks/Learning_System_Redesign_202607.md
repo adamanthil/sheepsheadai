@@ -1649,6 +1649,42 @@ gap toward the reference (t01 0.28); mature trunk + supervised head =
 fast convergence, as expected. Aux-recovery watch item satisfied;
 remaining gen-6 boundary reads are h2h and C2.
 
+### 7.17 Gen-6 boundary (2026-08-06): consolidation gen; aux fully recovered; C2 null #1 at settled target
+
+Context: gen 6 = the RESTARTED generation (7.16: aux fix live, roster
+opened at 24 past_mains, first gen wholly at play target 0.629).
+
+Boundary (15:26): panel +0.2063 [+0.1766,+0.2351] (called +0.168, jd
++0.244); gain_vs_best (vs gen 5) -0.0157 [-0.0397,+0.0082] p=0.20 -
+first negative point estimate, statistically null; h2h gen6-vs-gen5
++0.018 +/- 0.011 (1.8 sigma; win_frac 0.507) - far below gen-5's
++0.107; slope +0.023 [+0.009,+0.037] still climbing (window includes
+the gen-5 jump) -> flat=False streak 0. Exploiter gate -0.098 +/- 0.013
+(series -0.028/-0.184/-0.026/-0.067/-0.163/-0.098: bounded bouncing).
+
+Reading: CONSOLIDATION. The step-release gain was concentrated in gen 5;
+gen 6 held it (panel overlap, h2h marginally positive) but did not
+extend it. If gen 7 posts h2h ~null with a quiet slope, that is the
+second flat -> step 2 (0.629->0.542) fires. Restart perturbations
+(roster hole, re-engaged points-aux gradient into the shared encoder)
+are a possible mild damper on this gen; not separable from plateau.
+
+**Aux recovery COMPLETE in one generation** (60-game audit, 6M): points
+t01 MAE 0.36 (frozen era 3.47; reference swish 5M 0.28), pooled 0.77
+(ref 0.59), P(err<=5) 0.991, P(err<=10) 1.000, t45 1.26, seen Brier
+0.0019. The order-of-magnitude deficit the operator caught is closed;
+7.16 fix validated end-to-end.
+
+**C2: null read #1 at the settled target.** 500-seed scan @6M: pooled
+40.4% (5M 43.8%), core-proxy 34.1% (38.2%), trick-0 31.0% (34.9%) -
+all within the oscillation band, slightly down. The "gen 6 = cleaner
+read" hope from 7.15 did not materialize as conversion. Per the 7.15
+decision tree, one more null at gen 7 points at SNR and the
+node-selective pi_gumbel distill contingency (target nodes from the
+scanner; E6 atlas classifier defines the conv-correct cells). Caveat:
+"h2h progressing" is only weakly met this gen (+0.018), so the
+entropy-vs-SNR attribution stays open until gen 7.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
