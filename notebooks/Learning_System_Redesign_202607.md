@@ -1716,6 +1716,43 @@ scanner; E6 atlas classifier defines the conv-correct cells). Caveat:
 "h2h progressing" is only weakly met this gen (+0.018), so the
 entropy-vs-SNR attribution stays open until gen 7.
 
+### 7.18 Gen-7 boundary (2026-08-08): SECOND FLAT -> step 2; C2 null #2 = SNR verdict, distill contingency ARMED
+
+Boundary (16:47): panel +0.2122 [+0.1825,+0.2410] (called +0.164, jd
++0.261); gain_vs_best (best = gen 5) -0.0098 p=0.42 null; h2h
+gen7-vs-gen6 +0.019 +/- 0.011 (win 0.512) - second consecutive
+marginal ~+0.019 read; slope -0.005 [-0.017,+0.007] QUIET (first
+non-climbing window). All three criteria False -> raw flat=True ->
+ABSORBED by entropy step 2: play 0.629->0.542. Per the 7.15 plant
+timing, gen 8 trains transitioning, gen 9 is the first generation
+wholly at 0.542. Exploiter gate -0.100 +/- 0.015 (series
+-0.028/-0.184/-0.026/-0.067/-0.163/-0.098/-0.100; bounded bouncing).
+
+Post-step-1 profile now complete: one surge generation (+0.107) then
+two marginal ones (+0.018, +0.019). If step 2 repeats it, gen 8/9
+posts a surge; if not, ladder value is diminishing and the at-floor
+endgame (7.17 stop-rule arithmetic) approaches.
+
+**C2: null #2 CONFIRMED - and directional.** Three consecutive
+declining reads as the ladder tightened: pooled 43.8 -> 40.4 -> 37.8,
+core-proxy 38.2 -> 34.1 -> 31.2, trick-0 34.9 -> 31.0 -> 26.3
+(SE ~2.5%/read; ~2 sigma pooled decline over two gens). The
+pre-registered 7.15 condition (gens 6-7 C2-null with h2h progressing)
+is met, with the caveat that "progressing" is weak (+0.019@1.8 sigma
+x2). VERDICT: terminal-reward PG at this SNR is not converging toward
+the E6 optimum at C2 nodes - it is SHARPENING ONTO the anti-convention
+mode (entropy reduction locks in the non-adherent argmax). The
+node-selective pi_gumbel distill contingency is formally ARMED
+(activation = operator decision; training-signal change).
+
+Pre-registered prediction for the step-2 window: if the
+sharpening-onto-wrong-mode mechanism is right, C2 keeps eroding at
+0.542 (pooled ~mid-30s or below by gen 9); a REVERSAL at lower entropy
+would falsify the SNR story and reopen the entropy-timing account.
+Recommendation recorded: hold distill activation until the gen-8/9
+step-2 read (a clean changepoint; if h2h re-surges the ladder still
+has value and the distill arm can target the post-ladder policy).
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
