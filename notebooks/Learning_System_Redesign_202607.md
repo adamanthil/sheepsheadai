@@ -1753,6 +1753,29 @@ Recommendation recorded: hold distill activation until the gen-8/9
 step-2 read (a clean changepoint; if h2h re-surges the ladder still
 has value and the distill arm can target the post-ladder policy).
 
+CORRECTION (2026-08-08, operator-prompted): the "directional erosion /
+sharpening onto the anti-convention mode" verdict above is
+UNSUPPORTED - it aliased an oscillation. Generation-POOLED greedy
+telemetry (20 probes/gen, n~1,500 leads/gen, SE ~1.3%): gen 5 41.8%,
+gen 6 48.9%, gen 7 40.7%, within-gen range 30-60% (operator flagged
+the 6.85M probe at 47.6% two reads before the 7M trough at 36.1%).
+Gen 6 - wholly at the stepped 0.629 target - was the HIGHEST pooled
+read of the run, directly contradicting the entropy-lock-in mechanism.
+Single-checkpoint boundary scans (n~300 nodes) cannot distinguish
+trend from oscillation phase at this amplitude; henceforth C2 trend
+calls use generation-pooled telemetry, boundary scans only for
+node-level structure (core-cell splits, seeds). What SURVIVES: three
+generations without conversion toward the E6 optimum (the state
+oscillates around ~42-45% pooled-greedy regardless of entropy), so
+null #2 = "no conversion" stands, the SNR-as-no-gradient-pressure
+account (7.12/erosion-study form: values near-tied, adherence
+wanders) stands, and the distill contingency stays ARMED. What is
+RETRACTED: the claim that the ladder is actively eroding C2, and the
+gen-9 "mid-30s or below" erosion prediction - replaced by: gen-8/9
+POOLED means outside 38-52% in either direction would be the first
+real trend signal; inside that band = oscillation confirmed,
+entropy-independent.
+
 ## 8. Adaptive entropy program (2026-07-28, operator-directed)
 
 ### 8.1 Motivation
