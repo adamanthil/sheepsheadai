@@ -397,19 +397,7 @@ def capture_forward(agent, state, valid_actions, memory_in):
         memory_in = memory_in.view(1, enc.d_model).to(device)
         batch = [state]
 
-        header_fields = [
-            "partner_mode",
-            "is_leaster",
-            "play_started",
-            "current_trick",
-            "alone_called",
-            "called_under",
-            "picker_rel",
-            "partner_rel",
-            "leader_rel",
-            "picker_position",
-        ]
-        header_cols = [enc._stack_scalar(batch, k) for k in header_fields]
+        header_cols = [enc._stack_scalar(batch, k) for k in HEADER_FIELDS]
         header_scalar = torch.cat(header_cols, dim=1).to(device)
         norm = torch.tensor(
             [1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
@@ -678,19 +666,7 @@ def capture_oracle_forward(oracle, ostate, memory_in):
 
         # Context token: base header (normalized) + privileged scalars +
         # called AND under card embeddings.
-        header_fields = [
-            "partner_mode",
-            "is_leaster",
-            "play_started",
-            "current_trick",
-            "alone_called",
-            "called_under",
-            "picker_rel",
-            "partner_rel",
-            "leader_rel",
-            "picker_position",
-        ]
-        header_cols = [enc._stack_scalar(batch, k) for k in header_fields]
+        header_cols = [enc._stack_scalar(batch, k) for k in HEADER_FIELDS]
         header_scalar = torch.cat(header_cols, dim=1).to(device)
         norm = torch.tensor(
             [1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
@@ -980,6 +956,20 @@ def describe_scenario(kind, snap, game):
     )
 
 
+HEADER_FIELDS = [
+    "partner_mode",
+    "is_leaster",
+    "play_started",
+    "current_trick",
+    "alone_called",
+    "called_under",
+    "picker_rel",
+    "partner_rel",
+    "leader_rel",
+    "picker_position",
+]
+
+
 def build_sample_block(kind, snap, game):
     state = snap["state"]
     valid_sorted = sorted(snap["valid_actions"])
@@ -990,6 +980,21 @@ def build_sample_block(kind, snap, game):
         if n.startswith("CALL ")
     ]
     return {
+        # The raw values behind the context token's 10 header scalars, plus
+        # the per-slot trick flags (slot i = relative seat +i, 0 = me) —
+        # surfaced so the viz can show real numbers, not just field names.
+        "header": {k: int(state[k]) for k in HEADER_FIELDS},
+        # Blind/bury contents AS THE POLICY SEES THEM: the state dict zeroes
+        # these for every seat but the picker, so exporting them leaks
+        # nothing — empty lists simply mean "hidden from this seat".
+        "blind_card_codes": [
+            ID_TO_CODE[int(c)] for c in state["blind_ids"] if int(c) != 0
+        ],
+        "bury_card_codes": [
+            ID_TO_CODE[int(c)] for c in state["bury_ids"] if int(c) != 0
+        ],
+        "trick_is_picker": [int(v) for v in state["trick_is_picker"]],
+        "trick_is_partner_known": [int(v) for v in state["trick_is_partner_known"]],
         "kind": kind,
         "seat": snap["seat"],
         "trick": snap["trick"],

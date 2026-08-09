@@ -476,6 +476,380 @@ function makeStageLabel(text, color = "#7cc4ff") {
   return mesh;
 }
 
+// ============================================================
+// Card visual language — copied from the product app's design system
+// (app/web/lib/ds/PlayingCard.tsx + .module.css), not imported: paper
+// face, serif corner rank with the small suit beneath, a big center
+// pip, hatched green back, 1.45 aspect. On top of the app look each
+// face adds a point badge (top right) and its 16-d embedding-table row
+// painted as a color barcode along the bottom — the card and its
+// vector in one object. Trump wears a gold rim.
+// ============================================================
+const CARD_STYLE = {
+  paper: "#faf7ee",
+  edge: "#d5d2c4",
+  black: "#0e0d0a",
+  red: "#b3331e",
+  back: "#1f3b2f",
+  backEdge: "#152920",
+  gold: "#d4af37",
+  serif: 'Georgia, "Times New Roman", serif',
+};
+const SUIT_SYMBOLS = { C: "♣", S: "♠", H: "♥", D: "♦" };
+const CARD_POINT_VALUES = { A: 11, "10": 10, K: 4, Q: 3, J: 2 };
+function parseCardCode(code) {
+  return code.startsWith("10")
+    ? { rank: "10", suit: code.slice(2) }
+    : { rank: code[0], suit: code[1] };
+}
+function cardPoints(code) {
+  return CARD_POINT_VALUES[parseCardCode(code).rank] || 0;
+}
+
+// The informed-init dim groups of the 34×16 embedding table. The barcode
+// leaves a wider gap between groups; group boundaries sit before these dims.
+const EMB_GROUP_BREAKS = new Set([4, 8, 9, 10]);
+function embRowFor(code) {
+  const cid = code === "UNDER" ? 33 : deckIds[code];
+  return cid === undefined ? null : curEmbedding().table[cid];
+}
+// Cell color for one embedding value — the same diverging map stage 2 uses.
+function embCellCss(v) {
+  const emb = curEmbedding();
+  const norm = (v - emb.min) / Math.max(1e-6, emb.max - emb.min);
+  return "#" + new THREE.Color().setHSL(0.6 - norm * 0.55, 0.9, 0.25 + norm * 0.45).getHexString();
+}
+// Inline-HTML rendering of a card's embedding row for the info panel.
+function embRowHtml(code) {
+  const row = embRowFor(code);
+  if (!row) return "";
+  const cells = row.map((v, d) =>
+    `<span title="d${d} = ${v.toFixed(3)}" style="flex:1;height:14px;border-radius:2px;background:${embCellCss(v)};${EMB_GROUP_BREAKS.has(d) ? "margin-left:5px" : ""}"></span>`
+  ).join("");
+  return `<div style="display:flex;gap:2px;margin:8px 0 2px">${cells}</div>
+    <div style="display:flex;font-size:9px;color:var(--muted);letter-spacing:0.3px">
+      <span style="flex:4;text-align:center">suit</span><span style="flex:4;text-align:center">rank</span><span style="flex:1;text-align:center">pt</span><span style="flex:1;text-align:center">u</span><span style="flex:6;text-align:center">learned</span>
+    </div>`;
+}
+
+// Inline card chip for HTML panels — the MiniCardMark idea from the app's
+// design system: paper chip, serif rank + suit glyph, red/black ink, gold
+// edge on trump.
+function cardChipHtml(code) {
+  if (code === "UNDER") {
+    return `<span style="display:inline-block;background:#141a2e;color:#8e9bd1;border:1px dashed #4a5490;border-radius:3px;padding:0 4px;font-size:11px;font-style:italic;font-family:Georgia,serif;line-height:1.5">under</span>`;
+  }
+  const { rank, suit } = parseCardCode(code);
+  const sym = SUIT_SYMBOLS[suit] || "";
+  const red = suit === "H" || suit === "D";
+  const isTrump = trumpCardCodes.includes(code);
+  return `<span style="display:inline-block;background:#f5f2e9;color:${red ? "#b3331e" : "#0e0d0a"};border:1px solid ${isTrump ? "#d4af37" : "#c9c4b4"};${isTrump ? "box-shadow:0 0 3px rgba(212,175,55,0.7);" : ""}border-radius:3px;padding:0 4px;font-size:11px;font-weight:600;font-family:Georgia,serif;line-height:1.5">${rank}${sym}</span>`;
+}
+function cardListHtml(codes) {
+  return codes.map(cardChipHtml).join(" ");
+}
+// Action name with its card code rendered as a chip ("PLAY QC" etc).
+function actionHtml(name) {
+  const m = name.match(/^(PLAY|BURY|UNDER|CALL)\s+(\S+)(.*)$/);
+  if (!m || (deckIds[m[2]] === undefined && m[2] !== "UNDER")) return `<b>${name}</b>`;
+  return `<b>${m[1]}</b> ${cardChipHtml(m[2])}${m[3] || ""}`;
+}
+
+// Human-readable kv of the 10 header scalars (raw values from the dump).
+// Relative-seat fields are 1-based (1 = me, k = k−1 seats to the left; 0 = —).
+function relSeatStr(v) {
+  return v === 0 ? "—" : v === 1 ? "me" : `+${v - 1}`;
+}
+function headerKv() {
+  const h = S.sample.header;
+  if (!h) return undefined;
+  return {
+    "partner_mode": h.partner_mode ? "1 · called ace" : "0 · JD partner",
+    "is_leaster": String(h.is_leaster),
+    "play_started": String(h.play_started),
+    "current_trick": String(h.current_trick),
+    "alone_called": String(h.alone_called),
+    "called_under": String(h.called_under),
+    "picker_rel": relSeatStr(h.picker_rel),
+    "partner_rel": relSeatStr(h.partner_rel),
+    "leader_rel": relSeatStr(h.leader_rel),
+    "picker_position": h.picker_position ? `seat ${h.picker_position}` : "—",
+  };
+}
+
+function rrPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+const CARD_TEX_W = 256, CARD_TEX_H = 372;
+// Cache per (mode, kind, code): many meshes share one texture. Cleared on
+// scene dispose (disposeScene disposes the textures out from under it).
+const cardTexCache = new Map();
+function cardTexture(kind, code) {
+  const key = `${NETWORK_MODE}|${kind}|${code}`;
+  let tex = cardTexCache.get(key);
+  if (tex) return tex;
+  const canvas = document.createElement("canvas");
+  canvas.width = CARD_TEX_W;
+  canvas.height = CARD_TEX_H;
+  const ctx = canvas.getContext("2d");
+  if (kind === "back") paintCardBack(ctx);
+  else if (kind === "under") paintCardUnder(ctx);
+  else paintCardFace(ctx, code, kind === "face-vec");
+  tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  cardTexCache.set(key, tex);
+  return tex;
+}
+
+function paintCardFace(ctx, code, withVec) {
+  const W = CARD_TEX_W, H = CARD_TEX_H;
+  const { rank, suit } = parseCardCode(code);
+  const sym = SUIT_SYMBOLS[suit] || "";
+  const isTrump = trumpCardCodes.includes(code);
+  const ink = suit === "H" || suit === "D" ? CARD_STYLE.red : CARD_STYLE.black;
+
+  rrPath(ctx, 2, 2, W - 4, H - 4, 14);
+  ctx.fillStyle = CARD_STYLE.paper;
+  ctx.fill();
+  ctx.lineWidth = isTrump ? 6 : 3;
+  ctx.strokeStyle = isTrump ? CARD_STYLE.gold : CARD_STYLE.edge;
+  ctx.stroke();
+  if (isTrump) {
+    rrPath(ctx, 9, 9, W - 18, H - 18, 9);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(212,175,55,0.45)";
+    ctx.stroke();
+  }
+
+  // Corner block: rank with the small suit centered beneath (the app's
+  // layout). The mirrored bottom-right corner is dropped when the barcode
+  // needs the bottom of the face.
+  const drawCorner = () => {
+    ctx.fillStyle = ink;
+    ctx.textBaseline = "alphabetic";
+    ctx.font = `500 46px ${CARD_STYLE.serif}`;
+    const rankW = ctx.measureText(rank).width;
+    ctx.font = `36px ${CARD_STYLE.serif}`;
+    const suitW = ctx.measureText(sym).width;
+    const cx = 16 + Math.max(rankW, suitW) / 2;
+    ctx.textAlign = "center";
+    ctx.font = `500 46px ${CARD_STYLE.serif}`;
+    ctx.fillText(rank, cx, 56);
+    ctx.font = `36px ${CARD_STYLE.serif}`;
+    ctx.fillText(sym, cx, 92);
+  };
+  drawCorner();
+  if (!withVec) {
+    ctx.save();
+    ctx.translate(W, H);
+    ctx.rotate(Math.PI);
+    drawCorner();
+    ctx.restore();
+  }
+
+  // Center pip, optically nudged per suit like the app's CSS.
+  const nudge = suit === "H" ? 4 : suit === "D" ? 6 : 15;
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `128px ${CARD_STYLE.serif}`;
+  ctx.fillText(sym, W / 2, H / 2 - nudge);
+  ctx.globalAlpha = 1;
+
+  // Point badge (a viz addition): the card's point value, gold on trump.
+  const pts = cardPoints(code);
+  const bx = W - 40, by = 40, br = 24;
+  ctx.beginPath();
+  ctx.arc(bx, by, br, 0, Math.PI * 2);
+  ctx.fillStyle = isTrump ? "rgba(212,175,55,0.16)" : "rgba(14,13,10,0.045)";
+  ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = isTrump ? CARD_STYLE.gold : "#c9c4b4";
+  ctx.stroke();
+  ctx.fillStyle = pts > 0 ? CARD_STYLE.black : "#a09b8c";
+  ctx.font = `600 26px ${CARD_STYLE.serif}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(pts), bx, by + 1);
+
+  // Embedding barcode: this card's 16-d row from the live table, in the
+  // same diverging colors as stage 2; wider gaps split the informed-init
+  // dim groups (suit | rank | pts | under | learned).
+  const row = withVec ? embRowFor(code) : null;
+  if (row) {
+    const x0 = 18, x1 = W - 18, y0 = H - 58, chh = 30;
+    ctx.strokeStyle = CARD_STYLE.edge;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 - 9);
+    ctx.lineTo(x1, y0 - 9);
+    ctx.stroke();
+    const gap = 2, extraGap = 5;
+    const cw = (x1 - x0 - 15 * gap - 4 * extraGap) / 16;
+    let x = x0;
+    for (let d = 0; d < 16; d++) {
+      if (d > 0) x += gap + (EMB_GROUP_BREAKS.has(d) ? extraGap : 0);
+      ctx.fillStyle = embCellCss(row[d]);
+      rrPath(ctx, x, y0, cw, chh, 2);
+      ctx.fill();
+      x += cw;
+    }
+    ctx.fillStyle = "#a09b8c";
+    ctx.font = "500 13px ui-sans-serif, system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText("16-d embedding row", W / 2, H - 10);
+  }
+}
+
+function paintCardBack(ctx) {
+  const W = CARD_TEX_W, H = CARD_TEX_H;
+  rrPath(ctx, 2, 2, W - 4, H - 4, 14);
+  const grad = ctx.createRadialGradient(W / 2, H / 2, 30, W / 2, H / 2, H * 0.62);
+  grad.addColorStop(0, CARD_STYLE.back);
+  grad.addColorStop(1, "#142a21");
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = CARD_STYLE.backEdge;
+  ctx.stroke();
+  ctx.save();
+  rrPath(ctx, 2, 2, W - 4, H - 4, 14);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(255,255,255,0.06)";
+  ctx.lineWidth = 4;
+  for (let d = -H; d < W + H; d += 18) {
+    ctx.beginPath();
+    ctx.moveTo(d, -4);
+    ctx.lineTo(d + H, H + 4);
+    ctx.stroke();
+  }
+  ctx.restore();
+  rrPath(ctx, W * 0.08, H * 0.08, W * 0.84, H * 0.84, 14);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(250,247,238,0.35)";
+  ctx.stroke();
+}
+
+// The UNDER placeholder — the app's inset card with an italic label.
+function paintCardUnder(ctx) {
+  const W = CARD_TEX_W, H = CARD_TEX_H;
+  rrPath(ctx, 2, 2, W - 4, H - 4, 14);
+  ctx.fillStyle = "#141a2e";
+  ctx.fill();
+  ctx.setLineDash([12, 9]);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#4a5490";
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#8e9bd1";
+  ctx.font = `italic 46px ${CARD_STYLE.serif}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("under", W / 2, H / 2);
+}
+
+// A physical playing card: thin rounded body (gold-edged for trump),
+// app-styled face on the front, hatched back on the rear. `w` is the card
+// width; height follows the app's 1.45 aspect.
+function makeCardMesh(code, w, { faceDown = false, withVec = true } = {}) {
+  const h = w * 1.45;
+  const d = Math.max(0.1, w * 0.032);
+  const grp = new THREE.Group();
+  const isUnder = code === "UNDER";
+  const isTrump = !faceDown && !isUnder && trumpCardCodes.includes(code);
+  const bodyColor = faceDown ? 0x152920 : isTrump ? 0xd4af37 : 0xcfccc0;
+  const body = new THREE.Mesh(
+    new RoundedBoxGeometry(w, h, d, 2, Math.min(0.14, w * 0.045)),
+    new THREE.MeshStandardMaterial({
+      color: bodyColor, emissive: bodyColor,
+      emissiveIntensity: isTrump ? 0.18 : 0.04,
+      metalness: 0.2, roughness: 0.55,
+    }),
+  );
+  grp.add(body);
+  const backTex = cardTexture("back", "__");
+  const faceTex = faceDown ? backTex
+    : isUnder ? cardTexture("under", "UNDER")
+    : cardTexture(withVec ? "face-vec" : "face", code);
+  const mkSide = (tex, zOff, flip) => {
+    // Unlit, and multiplied down so the paper sits just under the bloom
+    // pass's luminance threshold — lit white paper blooms into a blob.
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w * 0.995, h * 0.995),
+      new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, color: 0xc8c5bb,
+      }),
+    );
+    m.position.z = zOff;
+    if (flip) m.rotation.y = Math.PI;
+    grp.add(m);
+    return m;
+  };
+  const face = mkSide(faceTex, d / 2 + 0.012, false);
+  const back = mkSide(backTex, -d / 2 - 0.012, true);
+  grp.userData.pickMeshes = [body, face, back];
+  return grp;
+}
+// A card is three meshes; hovering any of them should hit the same info.
+function registerCardPickable(cardGrp, info) {
+  for (const m of cardGrp.userData.pickMeshes) registerPickable(m, info);
+}
+
+// Soft-gradient felt disc the table situation sits on.
+function feltTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const ctx = c.getContext("2d");
+  const grad = ctx.createRadialGradient(128, 128, 20, 128, 128, 130);
+  grad.addColorStop(0, "#1d4234");
+  grad.addColorStop(0.75, "#173427");
+  grad.addColorStop(1, "#10231b");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${0.008 + Math.random() * 0.02})`;
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// 256-d memory vector as a 2×128 heat strip (signed: warm +, cool −).
+function memoryStripTexture(vec) {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 16;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#1a2142";
+  ctx.fillRect(0, 0, 128, 16);
+  let amax = 0;
+  for (const v of vec) amax = Math.max(amax, Math.abs(v));
+  if (amax > 1e-9) {
+    const col = new THREE.Color();
+    for (let i = 0; i < 256; i++) {
+      const t = clamp(vec[i] / amax, -1, 1);
+      col.setHSL(t >= 0 ? 0.085 : 0.62, 0.85, 0.12 + Math.abs(t) * 0.45);
+      ctx.fillStyle = "#" + col.getHexString();
+      ctx.fillRect(i % 128, i < 128 ? 0 : 8, 1, 8);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+
 function vecMag(arr) {
   let s = 0;
   for (const v of arr) s += v * v;
@@ -606,9 +980,12 @@ function layerTriples(l) {
   return out;
 }
 
-// Which actual card (if any) a token carries. The oracle mode reveals the
-// privileged cards (true blind/bury, opponent hands); the policy mode must
-// keep hiding them — gate on NETWORK_MODE, not data presence.
+// Which actual card (if any) a token carries. Opponent hands are oracle-only
+// (NETWORK_MODE gate — the policy never sees them). Blind/bury need no gate
+// in policy mode: the dump exports blind_card_codes/bury_card_codes straight
+// from the policy state dict, which zeroes them for every seat but the
+// picker — data presence IS the permission check. The oracle payload always
+// carries the true cards.
 function tokenCardCode(i) {
   const info = TOKEN_INFO[i];
   if (info.type === "hand") {
@@ -619,14 +996,18 @@ function tokenCardCode(i) {
     const code = S.sample.trick_card_codes[info.idx];
     return code && code !== "PAD" ? code : null;
   }
-  if (NETWORK_MODE === 1 && SO) {
-    if (info.type === "opp") {
-      const cid = SO.sample.opp_hand_ids[info.seat][info.idx];
-      const code = idToCode[cid];
-      return cid && code && code !== "PAD" ? code : null;
-    }
-    if (info.type === "blind") return SO.sample.blind_cards[info.idx] || null;
-    if (info.type === "bury") return SO.sample.bury_cards[info.idx] || null;
+  if (info.type === "blind") {
+    if (NETWORK_MODE === 1 && SO) return SO.sample.blind_cards[info.idx] || null;
+    return (S.sample.blind_card_codes || [])[info.idx] || null;
+  }
+  if (info.type === "bury") {
+    if (NETWORK_MODE === 1 && SO) return SO.sample.bury_cards[info.idx] || null;
+    return (S.sample.bury_card_codes || [])[info.idx] || null;
+  }
+  if (NETWORK_MODE === 1 && SO && info.type === "opp") {
+    const cid = SO.sample.opp_hand_ids[info.seat][info.idx];
+    const code = idToCode[cid];
+    return cid && code && code !== "PAD" ? code : null;
   }
   return null;
 }
@@ -753,6 +1134,7 @@ function disposeScene() {
     }
   });
   scene.remove(sceneRoot);
+  cardTexCache.clear(); // the traverse above disposed the cached textures
   sceneRoot = null;
   stageGroups = {};
   PICKABLES = [];
@@ -832,7 +1214,7 @@ function styleConn() {
 }
 
 // ============================================================
-// STAGE 1: OBSERVATION (hand + trick on table + header + memory)
+// STAGE 1: OBSERVATION (hand fan + trick on the felt + header + memory)
 // ============================================================
 function buildInputCards() {
   const g = group("input");
@@ -840,119 +1222,250 @@ function buildInputCards() {
   handLabel.position.set(XS.input, -9.7, 0);
   g.add(handLabel);
 
+  // --- felt table: what's physically on the table sits on it -------
+  const FELT_Y = -6.2;
+  const feltGeom = new THREE.CircleGeometry(1, 64);
+  feltGeom.rotateX(-Math.PI / 2);
+  const felt = new THREE.Mesh(
+    feltGeom,
+    new THREE.MeshStandardMaterial({
+      map: feltTexture(), roughness: 0.96, metalness: 0,
+      emissive: 0x1d4234, emissiveIntensity: 0.14,
+    }),
+  );
+  felt.position.set(XS.input, FELT_Y, 1.5);
+  felt.scale.set(10.5, 1, 14);
+  g.add(felt);
+
+  // --- the hand: an arced fan of app-styled card faces -------------
   const n = handCardCodes.length;
-  const spacing = n <= 6 ? 2.0 : 1.75;
-  const topY = 8;
+  const FAN_TOP = 6.4;   // y of the center card
+  const FAN_R = 15.5;    // arc radius (pivot far below, like a held hand)
+  const FAN_STEP = 0.155;
+  const cardW = 3.4;
   const cardObjs = [];
+  const handAnchors = [];
+  const chosenMatch = S.sample.chosen_action.match(/^(?:PLAY|BURY|UNDER)\s+(\S+)$/);
+  const chosenCard = chosenMatch ? chosenMatch[1] : null;
+  let chosenUsed = false;
   for (let i = 0; i < n; i++) {
     const code = handCardCodes[i];
-    const cardGeom = new RoundedBoxGeometry(3.6, 5, 0.3, 3, 0.18);
     const isTrump = trumpCardCodes.includes(code);
-    const color = isTrump ? 0xd4af37 : 0x8aa0e0;
-    const mat = new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.15,
-      metalness: 0.4,
-      roughness: 0.35,
-    });
-    const card = new THREE.Mesh(cardGeom, mat);
-    // Fan the hand: slight z-stagger + a yaw that faces the stage camera,
-    // so the cards read as cards instead of edge-on slabs.
-    card.position.set(XS.input, topY - i * spacing, i * 0.32);
-    card.rotation.y = 0.45;
+    const theta = (i - (n - 1) / 2) * FAN_STEP;
+    let isChosen = false;
+    if (!chosenUsed && code === chosenCard) { isChosen = true; chosenUsed = true; }
+    const card = makeCardMesh(code, cardW);
+    // Fan arc: cards droop toward the edges, and the spread axis is curled
+    // toward the +x/+z stage camera (FAN_CURL) so each successive card sits
+    // nearer the camera — later cards overlap earlier ones the way a held
+    // hand does, keeping every top-left rank corner visible.
+    const FAN_CURL = 0.63;
+    const u = Math.sin(theta) * FAN_R;
+    card.position.set(
+      XS.input + Math.sin(FAN_CURL) * u,
+      FAN_TOP + (Math.cos(theta) - 1) * FAN_R + (isChosen ? 0.7 : 0),
+      -Math.cos(FAN_CURL) * u,
+    );
+    // Euler XYZ applies the z-roll in card-local space first, then the yaw
+    // that faces the stage camera — a fanned card, not a sheared one.
+    card.rotation.set(0, 0.45, -theta);
     card.userData.baseY = card.position.y; // idle bob anchors here
     g.add(card);
     cardObjs.push(card);
+    handAnchors.push(card.position.clone().add(new THREE.Vector3(1.8, 0, 0)));
 
-    const lab = makeLabel(code, isTrump ? "#ffe89c" : "#cdd9ff", 0.7);
-    lab.position.set(XS.input + 2.8, topY - i * spacing, i * 0.32 + 0.5);
-    g.add(lab);
-
-    registerPickable(card, {
-      title: code,
+    if (isChosen) {
+      const cl = makeLabel(`▶ ${S.sample.chosen_action}`, "#80ed99", 0.42);
+      cl.position.copy(card.position).add(new THREE.Vector3(0.4, cardW * 0.725 + 1.0, 0));
+      g.add(cl);
+    }
+    // Cards the picker took from the blind — knowledge the other seats
+    // don't have; the blind tokens carry the same two cards.
+    if ((S.sample.blind_card_codes || []).includes(code)) {
+      const fb = makeLabel("from blind", "#b9a8e8", 0.34);
+      fb.position.copy(card.position).add(new THREE.Vector3(0.3, -(cardW * 0.725) - 0.6, 0));
+      g.add(fb);
+    }
+    registerCardPickable(card, {
+      title: `${code}${isTrump ? " · trump" : ""} · ${cardPoints(code)} pts`,
       badge: "input",
-      body: `<p>${isTrump ? "<b>Trump.</b> " : ""}Card id ${handCardIds[i]} (DECK_IDS). Will be looked up in the 34×16 embedding table on the right.</p>`,
+      kv: {
+        "card id": String(handCardIds[i]),
+        "points": String(cardPoints(code)),
+        "trump": isTrump ? "yes (gold rim)" : "no",
+        ...(isChosen ? { "chosen": S.sample.chosen_action } : {}),
+      },
+      body: `<p>${isTrump ? "<b>Trump.</b> " : ""}Card id ${handCardIds[i]} (DECK_IDS) — looked up as one row of the 34×${curDims().d_card} embedding table (stage 2). The barcode on the face <i>is</i> that row, in the table's colors:</p>` + embRowHtml(code)
+        + `<p class="meta" style="margin-top:6px">dims 0–3 suit · 4–7 rank · 8 points/11 · 9 UNDER · 10–15 learned</p>`,
     });
   }
 
-  // Cards already on the table this trick (play scenarios)
+  // Who is holding this hand + what it amounts to.
+  const role = S.sample.is_picker ? "picker" : S.sample.is_partner ? "partner" : "defender";
+  const seatLab = makeLabel(
+    `seat ${S.sample.seat} · ${role} · ${S.sample.phase.toLowerCase()}`, "#cdd9ff", 0.6);
+  seatLab.position.set(XS.input, FAN_TOP + 4.7, 0);
+  g.add(seatLab);
+  const trumpCount = handCardCodes.filter(c => trumpCardCodes.includes(c)).length;
+  const heldPts = handCardCodes.reduce((a, c) => a + cardPoints(c), 0);
+  const FAIL_SUITS = ["C", "S", "H"];
+  const failHeld = FAIL_SUITS.filter(s =>
+    handCardCodes.some(c => !trumpCardCodes.includes(c) && parseCardCode(c).suit === s));
+  const voids = FAIL_SUITS.filter(s => !failHeld.includes(s));
+  const sumLab = makeLabel(
+    `${trumpCount} trump · ${heldPts} pts held · fail ${failHeld.map(s => SUIT_SYMBOLS[s]).join(" ") || "—"}${voids.length ? ` · void ${voids.map(s => SUIT_SYMBOLS[s]).join(" ")}` : ""}`,
+    "#8e9bd1", 0.48);
+  sumLab.position.set(XS.input, FAN_TOP + 3.6, 0);
+  g.add(sumLab);
+
+  // --- cards already played this trick, lying on the felt ----------
   const trickCodes = S.sample.trick_card_codes
     .map((code, seatOff) => ({ code, seatOff }))
     .filter(t => t.code !== "PAD");
   const trickObjs = [];
+  const trickAnchors = [];
   if (trickCodes.length) {
-    const tLab = makeLabel("on the table", "#b58bff", 0.55);
-    tLab.position.set(XS.input, topY + 2.2, 7);
+    const tLab = makeLabel("on the table", "#b58bff", 0.5);
+    tLab.position.set(XS.input, FELT_Y + 4.8, 8.5);
     g.add(tLab);
+    const tip = S.sample.trick_is_picker || [];
+    const tipk = S.sample.trick_is_partner_known || [];
     for (let i = 0; i < trickCodes.length; i++) {
-      const { code } = trickCodes[i];
-      const isTrump = trumpCardCodes.includes(code);
-      const color = isTrump ? 0xd4af37 : 0x7286c9;
-      const card = new THREE.Mesh(
-        new RoundedBoxGeometry(2.6, 3.6, 0.24, 3, 0.14),
-        new THREE.MeshStandardMaterial({
-          color, emissive: color, emissiveIntensity: 0.12,
-          metalness: 0.4, roughness: 0.4,
-        }),
-      );
-      card.position.set(XS.input, topY - 0.4 - i * 1.6, 7 + i * 0.28);
-      card.rotation.y = 0.45;
+      const { code, seatOff } = trickCodes[i];
+      const card = makeCardMesh(code, 2.5);
+      card.position.set(XS.input + i * 0.05, FELT_Y + 1.15, 3.4 + i * 2.9);
+      card.rotation.set(-Math.PI / 2 + 0.62, 0.4, 0); // leaning back on the felt
       g.add(card);
       trickObjs.push(card);
-      const lab = makeLabel(code, isTrump ? "#ffe89c" : "#b9c6f2", 0.5);
-      lab.position.set(XS.input + 2.1, topY - 0.4 - i * 1.6, 7.4);
-      g.add(lab);
-      registerPickable(card, {
+      trickAnchors.push({
+        code,
+        anchor: card.position.clone().add(new THREE.Vector3(1.6, 0.5, 0)),
+      });
+      // Trick slots are relative-seat indexed: 0 = the acting seat, +k = k
+      // seats to the left. Flag the picker / revealed partner right here.
+      const who = seatOff === 0 ? "me" : `+${seatOff}`;
+      const roleTag = tip[seatOff] ? " · picker" : tipk[seatOff] ? " · partner ★" : "";
+      const sl = makeLabel(`${who}${roleTag}`,
+        tipk[seatOff] ? "#ffe1a3" : "#b9c6f2", 0.38);
+      sl.position.set(XS.input, FELT_Y + 3.5, 3.4 + i * 2.9);
+      g.add(sl);
+      registerCardPickable(card, {
         title: `${code} (on table)`,
         badge: "input",
-        body: `<p>Played earlier this trick. Feeds a trick token (with is-picker / is-known-partner flags) so the network can reason about what it must beat.</p>`,
+        kv: {
+          "played by": `seat ${who}${roleTag.replace(" · ", " — ")}`,
+          "points": String(cardPoints(code)),
+          "trump": trumpCardCodes.includes(code) ? "yes" : "no",
+        },
+        body: `<p>Played earlier this trick by ${seatOff === 0 ? "this seat" : `the seat ${seatOff} to the left`}${tip[seatOff] ? " — <b>the picker</b>" : tipk[seatOff] ? " — <b>the revealed partner</b>" : ""}. Feeds trick token ${seatOff} (with is-picker / is-known-partner flags) so the network can reason about what it must beat.</p>` + embRowHtml(code),
       });
     }
   }
 
-  // header chip + memory chip
-  const chipY = topY - n * spacing - 0.6;
-  const headerGeom = new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14);
-  const headerMat = new THREE.MeshStandardMaterial({
-    color: 0x9d7bff, emissive: 0x9d7bff, emissiveIntensity: 0.2, roughness: 0.4
-  });
-  const headerChip = new THREE.Mesh(headerGeom, headerMat);
-  headerChip.position.set(XS.input, chipY, 0);
+  // --- the bury: once this seat has buried (picker, play phases), the two
+  // buried cards sit face up on the felt — this seat knows exactly where
+  // those points went, and the bury tokens carry them.
+  const buryCodes = S.sample.bury_card_codes || [];
+  if (buryCodes.length) {
+    const buLab = makeLabel("bury · yours", "#a6f0c1", 0.42);
+    buLab.position.set(XS.input, FELT_Y + 3.4, -6.4);
+    g.add(buLab);
+    for (let i = 0; i < buryCodes.length; i++) {
+      const bc = makeCardMesh(buryCodes[i], 2.3);
+      bc.position.set(XS.input + i * 0.06, FELT_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
+      bc.rotation.set(-Math.PI / 2 + 0.55, 0.35, 0);
+      g.add(bc);
+      registerCardPickable(bc, {
+        title: `${buryCodes[i]} · buried`,
+        badge: "input",
+        kv: { "points": String(cardPoints(buryCodes[i])) },
+        body: `<p>Buried by this seat — ${cardPoints(buryCodes[i])} points banked for the picker team. Feeds bury token ${i}; only the picker's observation carries it.</p>` + embRowHtml(buryCodes[i]),
+      });
+    }
+  }
+
+  // --- the blind: two face-down backs on the felt. Only shown while its
+  // contents are actually hidden from this seat (blind tokens masked);
+  // the oracle walkthrough shows the same cards face up.
+  const preMask = S.tokens_pre_attn.mask;
+  if (!preMask[15] && !preMask[16]) {
+    const bLab = makeLabel("blind · face down", "#8e9bd1", 0.42);
+    bLab.position.set(XS.input, FELT_Y + 3.4, -6.4);
+    g.add(bLab);
+    for (let i = 0; i < 2; i++) {
+      const back = makeCardMesh("__", 2.3, { faceDown: true });
+      back.position.set(XS.input + i * 0.06, FELT_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
+      back.rotation.set(-Math.PI / 2 + 0.55, 0.35, 0);
+      g.add(back);
+      registerCardPickable(back, {
+        title: "blind card (face down)",
+        badge: "input",
+        body: `<p>One of the two blind cards — hidden from every seat until someone picks, and hidden from this network always (its blind tokens are PAD here). Switch to the <b>Oracle critic</b> network up top to watch them flip face up.</p>`,
+      });
+    }
+  }
+
+  // --- header + memory chips, floating behind the felt --------------
+  const chipY = -1.2, chipZ = -10.5;
+  const headerChip = new THREE.Mesh(
+    new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14),
+    new THREE.MeshStandardMaterial({
+      color: 0x9d7bff, emissive: 0x9d7bff, emissiveIntensity: 0.2, roughness: 0.4,
+    }),
+  );
+  headerChip.position.set(XS.input, chipY, chipZ);
   headerChip.rotation.y = 0.45;
   g.add(headerChip);
   const headerLab = makeLabel("header (10)", "#e6ddff", 0.6);
-  headerLab.position.set(XS.input + 3, chipY, 0.5);
+  headerLab.position.set(XS.input + 3, chipY, chipZ + 0.5);
   g.add(headerLab);
   registerPickable(headerChip, {
     title: "Header scalars (10)",
     badge: "input",
-    body: `<p>partner_mode, is_leaster, play_started, current_trick, alone_called, called_under, picker_rel, partner_rel, leader_rel, picker_position — the game-phase context for this decision (trick ${S.sample.trick + 1}, ${S.sample.phase.toLowerCase()}).</p>`,
+    kv: headerKv(),
+    body: `<p>The game-phase context for this decision, normalized and fused (with the called-card embedding) into the context token. Relative seats count leftward from this seat.</p>`,
   });
+  const headerAnchor = new THREE.Vector3(XS.input + 2, chipY, chipZ);
 
   const memMag = vecMag(S.memory.memory_in);
-  const memGeom = new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14);
-  const memMat = new THREE.MeshStandardMaterial({
-    color: 0xf4a261, emissive: 0xf4a261,
-    emissiveIntensity: 0.15 + clamp(memMag / 10, 0, 1) * 0.5, roughness: 0.4
-  });
-  const memChip = new THREE.Mesh(memGeom, memMat);
-  memChip.position.set(XS.input, chipY - 2.2, 0);
+  const memChip = new THREE.Group();
+  const memBody = new THREE.Mesh(
+    new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14),
+    new THREE.MeshStandardMaterial({
+      color: 0xf4a261, emissive: 0xf4a261,
+      emissiveIntensity: 0.12 + clamp(memMag / 10, 0, 1) * 0.35, roughness: 0.4,
+    }),
+  );
+  const stripTex = memoryStripTexture(S.memory.memory_in);
+  const memStrip = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.3, 1.1),
+    new THREE.MeshStandardMaterial({
+      map: stripTex, emissive: 0xffffff, emissiveMap: stripTex,
+      emissiveIntensity: 0.55, metalness: 0, roughness: 0.6,
+    }),
+  );
+  memStrip.position.z = 0.17;
+  memChip.add(memBody, memStrip);
+  memChip.position.set(XS.input, chipY - 2.2, chipZ);
   memChip.rotation.y = 0.45;
   g.add(memChip);
   const memLab = makeLabel(`memory hₜ₋₁ (256) · ‖${memMag.toFixed(1)}‖`, "#ffd99c", 0.6);
-  memLab.position.set(XS.input + 3, chipY - 2.2, 0.5);
+  memLab.position.set(XS.input + 3, chipY - 2.2, chipZ + 0.5);
   g.add(memLab);
-  registerPickable(memChip, {
+  const memInfoPick = {
     title: "Prior memory hₜ₋₁",
     badge: "input",
     kv: { "‖memory_in‖": memMag.toFixed(2) },
-    body: memMag < 1e-6
-      ? `<p>256-d recurrent state from this player's previous decision. Zeros here — this is the seat's first decision of the hand. Carried via a GRU cell — see stage 5.</p>`
-      : `<p>256-d recurrent state carried from this seat's previous decisions — it has already seen the earlier phases of this hand. Updated by the GRU cell in stage 5.</p>`,
-  });
+    body: (memMag < 1e-6
+      ? `<p>256-d recurrent state from this player's previous decision. Zeros here — this is the seat's first decision of the hand (the strip is dark). Carried via a GRU cell — see stage 5.</p>`
+      : `<p>256-d recurrent state carried from this seat's previous decisions — it has already seen the earlier phases of this hand. Updated by the GRU cell in stage 5.</p>`)
+      + `<p>The strip paints all 256 dims (two rows of 128): warm = positive, cool = negative, dark = near zero.</p>`,
+  };
+  registerPickable(memBody, memInfoPick);
+  registerPickable(memStrip, memInfoPick);
+  const memAnchor = new THREE.Vector3(XS.input + 2, chipY - 2.2, chipZ);
 
-  return { cardObjs, trickObjs, chipY, spacing, topY };
+  return { cardObjs, trickObjs, handAnchors, trickAnchors, headerAnchor, memAnchor };
 }
 
 // ============================================================
@@ -973,13 +1486,21 @@ function buildEmbeddingTable() {
   const totalW = COLS * (cellW + gap);
   const totalH = ROWS * (cellH + gap);
 
-  // Rows referenced by this scenario: hand + cards on the table + called card
+  // Rows referenced by this scenario: hand + cards on the table + called
+  // card + the blind/bury contents when this seat legitimately knows them
+  // (the picker's own view — the dump zeroes these for other seats).
   const usedIds = new Set(handCardIds.filter(id => id !== 0));
   for (const code of S.sample.trick_card_codes) {
     if (code !== "PAD") usedIds.add(code === "UNDER" ? 33 : deckIds[code]);
   }
   if (S.sample.called_card && deckIds[S.sample.called_card]) {
     usedIds.add(deckIds[S.sample.called_card]);
+  }
+  for (const code of [
+    ...(S.sample.blind_card_codes || []),
+    ...(S.sample.bury_card_codes || []),
+  ]) {
+    if (deckIds[code]) usedIds.add(deckIds[code]);
   }
   if (NETWORK_MODE === 1 && SO) {
     // The oracle also embeds every hidden card it sees.
@@ -1033,15 +1554,29 @@ function buildEmbeddingTable() {
 
   g.add(inst);
 
-  // Row labels (only used rows)
+  // Row labels (only used rows) — suit-colored, gold for trump rows.
   const usedRowYs = {};
   for (const r of usedIds) {
     const yLocal = (ROWS / 2 - r) * (cellH + gap) - cellH / 2;
     const code = idToCode[r] || `id ${r}`;
-    const rowLab = makeLabel(`${code} (row ${r})`, "#ffe89c", 0.5);
+    const sym = SUIT_SYMBOLS[parseCardCode(code).suit] || "";
+    const isTrumpRow = trumpCardCodes.includes(code);
+    const labColor = isTrumpRow ? "#ffe89c"
+      : sym === "♥" || sym === "♦" ? "#ff9d9d" : "#cdd9ff";
+    const rowLab = makeLabel(`${code}${sym ? " " + sym : ""} · row ${r}`, labColor, 0.5);
     rowLab.position.set(XSA.embed, yLocal, totalW / 2 + 1.4);
     g.add(rowLab);
     usedRowYs[r] = yLocal;
+  }
+
+  // Informed-init dim groups as column headers along the top edge.
+  const colZ = (c) => (c - COLS / 2) * (cellW + gap) + cellW / 2;
+  for (const grp of [
+    ["suit", 0, 3], ["rank", 4, 7], ["pts", 8, 8], ["und", 9, 9], ["learned", 10, 15],
+  ]) {
+    const gl = makeLabel(grp[0], "#8e9bd1", 0.34);
+    gl.position.set(XSA.embed, totalH / 2 + 0.9, (colZ(grp[1]) + colZ(grp[2])) / 2);
+    g.add(gl);
   }
 
   // Connections: each input card → its row.
@@ -1049,22 +1584,16 @@ function buildEmbeddingTable() {
     for (let i = 0; i < handCardCodes.length; i++) {
       const cid = handCardIds[i];
       if (!(cid in usedRowYs)) continue;
-      const start = new THREE.Vector3(XS.input + 2, inputInfo.topY - i * inputInfo.spacing, 0);
       const end = new THREE.Vector3(XSA.embed - 0.1, usedRowYs[cid], 0);
-      g.add(makeGlowLine(start, end, C.input, 0.3));
+      g.add(makeGlowLine(inputInfo.handAnchors[i].clone(), end, C.input, 0.3));
     }
     // ... and each on-table card → its row
-    let trickIdx = 0;
-    for (const code of S.sample.trick_card_codes) {
-      if (code === "PAD") continue;
-      const cid = code === "UNDER" ? 33 : deckIds[code];
+    for (const t of inputInfo.trickAnchors) {
+      const cid = t.code === "UNDER" ? 33 : deckIds[t.code];
       if (cid in usedRowYs) {
-        const start = new THREE.Vector3(
-          XS.input + 2, inputInfo.topY - 0.4 - trickIdx * 1.6, 7);
         const end = new THREE.Vector3(XSA.embed - 0.1, usedRowYs[cid], 0);
-        g.add(makeGlowLine(start, end, C.input, 0.22));
+        g.add(makeGlowLine(t.anchor.clone(), end, C.input, 0.22));
       }
-      trickIdx++;
     }
   } else {
     // Oracle: one line per revealed fan (own + 4 opponents) into the table.
@@ -1145,6 +1674,13 @@ function buildTokens() {
       const tlab = makeLabel(labText, code ? "#e6dcff" : "#cfe9ff", labelScale);
       tlab.position.copy(pos).add(new THREE.Vector3(labelDX, 0, 0));
       g.add(tlab);
+      // Card-bearing tokens carry a mini face of their card.
+      if (code) {
+        const mini = makeCardMesh(code, NETWORK_MODE === 1 ? 0.56 : 0.72, { withVec: false });
+        mini.position.copy(pos).add(new THREE.Vector3(NETWORK_MODE === 1 ? -2.3 : -3.4, 0, 0));
+        mini.rotation.y = 0.45;
+        g.add(mini);
+      }
     }
 
     const isPartnerTok =
@@ -1199,13 +1735,11 @@ function buildTokens() {
   }
 
   // context ← header chip
-  const ctxStart = new THREE.Vector3(XSA.input + 2, inputInfo.chipY, 0);
   const ctxEnd = tokenObjs[0].pos.clone().add(new THREE.Vector3(-2.3, 0, 0));
-  g.add(makeGlowLine(ctxStart, ctxEnd, C.share, 0.4));
+  g.add(makeGlowLine(inputInfo.headerAnchor.clone(), ctxEnd, C.share, 0.4));
   // memory chip → token 1
-  const memStart = new THREE.Vector3(XSA.input + 2, inputInfo.chipY - 2.2, 0);
   const memEnd = tokenObjs[1].pos.clone().add(new THREE.Vector3(-2.3, 0, 0));
-  g.add(makeGlowLine(memStart, memEnd, C.share, 0.4));
+  g.add(makeGlowLine(inputInfo.memAnchor.clone(), memEnd, C.share, 0.4));
 
   // Card-bearing tokens ← their embedding rows (hand + trick in policy;
   // plus true blind/bury and all opp cards in oracle mode, where
@@ -1552,11 +2086,11 @@ function buildMemory() {
 
   // Feedback arc: from gru position back to the memory chip at input
   const start = new THREE.Vector3(XSA.gru - 1.5, GRU_Y, 0);
-  const end = new THREE.Vector3(XSA.input + 2, inputInfo.chipY - 2.2, 0);
+  const end = inputInfo.memAnchor.clone();
   const curve = new THREE.CubicBezierCurve3(
     start,
     new THREE.Vector3(start.x - 5, GRU_Y + 12, 0),
-    new THREE.Vector3(end.x + 5, GRU_Y + 12, 0),
+    new THREE.Vector3(end.x + 5, GRU_Y + 12, end.z),
     end,
   );
   const arc = registerConn(makeFatLine(curve.getPoints(80), 0xf4a261, 0.55, 2.2), 0.55);
@@ -1924,23 +2458,32 @@ function buildActor() {
     const s = cardScores[cid];
     const norm = (s - minCS) / Math.max(1e-6, maxCS - minCS);
     const x = XS.heads + i * 1.4;
-    const cardGeom = new RoundedBoxGeometry(1.0, 1.5, 0.18, 2, 0.08);
     const ccolor = new THREE.Color().setHSL(0.33, 0.6, 0.3 + norm * 0.4);
-    const cardMat = new THREE.MeshStandardMaterial({
-      color: ccolor, emissive: ccolor,
-      emissiveIntensity: (0.2 + norm * 0.7) * callStyle.emissiveBoost,
-      roughness: 0.4,
-      transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
-    });
-    const card = new THREE.Mesh(cardGeom, cardMat);
+    // The callable card itself; its score reads as the halo behind it.
+    const card = makeCardMesh(callable[i], 0.95, { withVec: false });
     card.position.set(x, ACTOR_BASE_Y + 5, 6);
     g.add(card);
-    const lab2 = makeLabel(callable[i], callStyle.labelColor, 0.4);
-    lab2.position.set(x, ACTOR_BASE_Y + 6.5, 6);
+    if (callStyle.opacity < 1) {
+      card.traverse(o => {
+        if (o.material) { o.material.transparent = true; o.material.opacity = callStyle.opacity; }
+      });
+    }
+    const halo = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.3, 1.9),
+      new THREE.MeshBasicMaterial({
+        color: ccolor, transparent: true,
+        opacity: (0.2 + norm * 0.5) * callStyle.opacity,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }),
+    );
+    halo.position.set(x, ACTOR_BASE_Y + 5, 5.9);
+    g.add(halo);
+    const lab2 = makeLabel(s.toFixed(1), callStyle.labelColor, 0.36);
+    lab2.position.set(x, ACTOR_BASE_Y + 6.6, 6);
     g.add(lab2);
     g.add(makeGlowLine(qNode.position, card.position, 0x80ed99,
       (0.15 + norm * 0.55) * (live === "call" ? 1 : 0.35)));
-    registerPickable(card, {
+    registerCardPickable(card, {
       title: `CALL ${callable[i]}`,
       badge: "actor",
       kv: { "score": s.toFixed(2), "live here": live === "call" ? "yes" : "no (illustrative)" },
@@ -2069,9 +2612,17 @@ function buildPointer() {
     ghost.position.copy(gp);
     g.add(ghost);
     const isTrump = !isPad && trumpCardCodes.includes(code);
-    const glab = makeLabel(code, isPad ? "#5d6790" : (isTrump ? "#ffe89c" : st.labelColor), 0.4);
-    glab.position.set(XS.pointer + 0.2, PY - 1.3, slotZ(i));
-    g.add(glab);
+    if (isPad) {
+      const glab = makeLabel(code, "#5d6790", 0.4);
+      glab.position.set(XS.pointer + 0.2, PY - 1.3, slotZ(i));
+      g.add(glab);
+    } else {
+      // The slot's actual card, as a mini face under its ghost token.
+      const mini = makeCardMesh(code, 1.0, { withVec: false });
+      mini.position.set(XS.pointer + 0.2, PY - 1.8, slotZ(i));
+      mini.rotation.y = 0.45;
+      g.add(mini);
+    }
     if (!isPad) {
       // Tether back to the final transformer ring — same token, same state.
       const src = xfInfo.exitPos[2 + i].clone();
@@ -2188,6 +2739,20 @@ function buildOutput() {
       chosen ? "#dffbe6" : "#cdd9ff", 0.55);
     labOut.position.set(XS.output, h + 0.8, z0 + i * barSpacing);
     g.add(labOut);
+    // Card actions wear their card above the bar.
+    const cm = e.name.match(/^(?:PLAY|BURY|UNDER|CALL)\s+(\S+)/);
+    if (cm && (deckIds[cm[1]] !== undefined || cm[1] === "UNDER")) {
+      const mini = makeCardMesh(cm[1], 1.25, { withVec: false });
+      mini.position.set(XS.output, h + 2.6, z0 + i * barSpacing);
+      mini.rotation.y = 0.35;
+      g.add(mini);
+      registerCardPickable(mini, {
+        title: `π(${e.name})`,
+        badge: "output",
+        kv: { "prob": e.prob.toFixed(4), "chosen": chosen ? "yes (argmax)" : "no" },
+        body: `<p>The card this action ${e.name.startsWith("BURY") ? "buries" : e.name.startsWith("CALL") ? "calls" : "plays"}.</p>`,
+      });
+    }
     registerPickable(m, {
       title: `π(${e.name})`,
       badge: "output",
@@ -2466,35 +3031,28 @@ function buildOracleObservation() {
   const makeFan = ({ codes, z, big, label, labelColor, holder }) => {
     const spacing = big ? (codes.length <= 6 ? 1.9 : 1.6) : 1.35;
     const topY = big ? 8 : 7;
-    const w = big ? 3.4 : 2.4, h = big ? 4.6 : 3.2;
+    const w = big ? 3.2 : 2.3;
     const fl = makeLabel(label, labelColor, 0.5);
-    fl.position.set(XSA.input, topY + 2.2, z);
+    fl.position.set(XSA.input, topY + 2.4, z);
     g.add(fl);
     for (let i = 0; i < codes.length; i++) {
       const code = codes[i];
       const isTrump = trumpCardCodes.includes(code);
-      const color = isTrump ? 0xd4af37 : (big ? 0x8aa0e0 : 0x8f7bff);
-      const card = new THREE.Mesh(
-        new RoundedBoxGeometry(w, h, 0.26, 3, 0.15),
-        new THREE.MeshStandardMaterial({
-          color, emissive: color, emissiveIntensity: 0.15,
-          metalness: 0.4, roughness: 0.38,
-        }),
-      );
-      card.position.set(XSA.input, topY - i * spacing, z + i * 0.22);
+      const card = makeCardMesh(code, w);
+      // Cascade the column so each card's top-left rank corner stays
+      // visible above the next card.
+      card.position.set(XSA.input, topY - i * spacing, z + i * 0.24);
       card.rotation.y = 0.45;
       card.userData.baseY = card.position.y;
       g.add(card);
       cardObjs.push(card);
-      const cl = makeLabel(code, isTrump ? "#ffe89c" : "#d5defa", big ? 0.6 : 0.45);
-      cl.position.set(XSA.input + (big ? 2.7 : 2.0), topY - i * spacing, z + i * 0.22 + 0.4);
-      g.add(cl);
-      registerPickable(card, {
-        title: `${code}${holder ? " · " + holder : ""}`,
+      registerCardPickable(card, {
+        title: `${code}${holder ? " · " + holder : ""}${isTrump ? " · trump" : ""}`,
         badge: "input",
+        kv: { "points": String(cardPoints(code)) },
         body: `<p>${isTrump ? "<b>Trump.</b> " : ""}${holder
           ? `In ${holder}'s hand — hidden from the acting player, visible only to the oracle.`
-          : "The acting seat's own card (also in the policy observation)."}</p>`,
+          : "The acting seat's own card (also in the policy observation)."}</p>` + embRowHtml(code),
       });
     }
     fanAnchors.push(new THREE.Vector3(
@@ -2548,23 +3106,18 @@ function buildOracleObservation() {
     for (let i = 0; i < priv.length; i++) {
       const { code, tag } = priv[i];
       const isTrump = trumpCardCodes.includes(code);
-      const chip = new THREE.Mesh(
-        new RoundedBoxGeometry(1.9, 2.6, 0.22, 3, 0.12),
-        new THREE.MeshStandardMaterial({
-          color: 0xb58bff, emissive: 0xb58bff, emissiveIntensity: 0.22,
-          metalness: 0.4, roughness: 0.4,
-        }),
-      );
-      chip.position.set(XSA.input, -4.4, -12.5 + i * 2.2);
+      const chip = makeCardMesh(code, 1.9);
+      chip.position.set(XSA.input, -4.4, -12.5 + i * 2.3);
       chip.rotation.y = 0.45;
       g.add(chip);
-      const cl = makeLabel(code, isTrump ? "#ffe89c" : "#e6dcff", 0.42);
-      cl.position.set(XSA.input + 1.5, -4.4, -12.3 + i * 2.2);
+      const cl = makeLabel(tag, "#b9a8e8", 0.34);
+      cl.position.set(XSA.input + 0.3, -6.3, -12.4 + i * 2.3);
       g.add(cl);
-      registerPickable(chip, {
-        title: `${code} · ${tag}`,
+      registerCardPickable(chip, {
+        title: `${code} · ${tag}${isTrump ? " · trump" : ""}`,
         badge: "input",
-        body: `<p>${tag === "under" ? "The face-down under card." : `In the ${tag.split(" ")[0]} — face down on the table.`} Only the oracle's observation carries it${tag.startsWith("blind") ? " for every seat (the policy sees the blind only as the picker)" : ""}.</p>`,
+        kv: { "points": String(cardPoints(code)) },
+        body: `<p>${tag === "under" ? "The face-down under card." : `In the ${tag.split(" ")[0]} — face down on the table.`} Only the oracle's observation carries it${tag.startsWith("blind") ? " for every seat (the policy sees the blind only as the picker)" : ""}.</p>` + embRowHtml(code),
       });
     }
   }
@@ -2616,6 +3169,11 @@ function buildOracleObservation() {
   registerPickable(headerChip, {
     title: "Context inputs",
     badge: "input",
+    kv: {
+      ...(headerKv() || {}),
+      "points_taken": so.points_taken_rel.join(" / "),
+      "secret_partner": relSeatStr(so.secret_partner_rel),
+    },
     body: `<p>The policy's 10 header scalars PLUS the privileged extras: per-seat points (5), the secret partner's seat, and the under-card embedding — all fused into the oracle's context token.</p>`,
   });
 
@@ -2641,7 +3199,11 @@ function buildOracleObservation() {
     body: `<p>The oracle's OWN 256-d recurrent state — threaded over the same per-seat event stream the agent's memory sees (decisions + end-of-trick observations), but through the oracle's separate GRU. It estimates U(h, s), not V(s): history in, state in.</p>`,
   });
 
-  return { cardObjs, chipY, topY: 8, spacing: 1.6, fanAnchors };
+  return {
+    cardObjs, fanAnchors,
+    headerAnchor: new THREE.Vector3(XSA.input + 2, chipY, 0),
+    memAnchor: new THREE.Vector3(XSA.input + 2, chipY - 2.2, 0),
+  };
 }
 
 // ============================================================
@@ -3131,7 +3693,7 @@ function seatRole() {
 }
 function topActionsHtml(k = 4) {
   return outputInfo.entries.slice(0, k)
-    .map(e => `<b>${e.name}</b> ${(e.prob * 100).toFixed(1)}%`)
+    .map(e => `${actionHtml(e.name)} ${(e.prob * 100).toFixed(1)}%`)
     .join(" · ");
 }
 
@@ -3164,9 +3726,15 @@ function buildPolicyStages() {
     title: "1 · Observation",
     label: "input",
     badge: "input",
-    cam: { pos: [XS.input + 22, 7, 24], target: [XS.input, 0, 2] },
-    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds <b>${S.sample.hand_cards.join(", ")}</b> (gold = trump)${S.sample.trick_card_codes.some(c => c !== "PAD") ? ", with cards already on the table this trick" : ""}. Plus the 10 header scalars and the ${DATA.dims.d_model}-d prior memory hₜ₋₁.</p>
-      <p>The lines on the right show each card being looked up in the embedding table.</p>`,
+    cam: { pos: [XS.input + 22, 6, 24], target: [XS.input, 0, 2] },
+    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds ${cardListHtml(S.sample.hand_cards)} — gold-rimmed cards are trump; the badge in each corner is the card's point value${S.sample.trick_card_codes.some(c => c !== "PAD") ? "; cards already played this trick lie on the felt" : ""}.</p>
+      <p>The barcode on each face is the card <i>as the network sees it</i>: its 16-d row of the stage-2 embedding table (dims 0–3 suit · 4–7 rank · 8 points · 9 UNDER · 10–15 learned). Click any card to inspect the values — the lines to the right are exactly these row lookups.</p>
+      ${(S.sample.blind_card_codes || []).length
+        ? `<p>This seat is the picker, so it knows the blind — ${cardListHtml(S.sample.blind_card_codes)}${(S.sample.bury_card_codes || []).length
+            ? ` — and its own bury (${cardListHtml(S.sample.bury_card_codes)}, face up on the felt)`
+            : " — tagged in the fan"}. The blind/bury tokens carry exactly these cards; no other seat's observation has them.</p>`
+        : ""}
+      <p>Alongside the cards: the 10 header scalars and the ${DATA.dims.d_model}-d prior memory hₜ₋₁ (its heat strip paints all 256 dims).</p>`,
   },
   {
     title: "2 · Card embedding lookup",
@@ -3257,7 +3825,7 @@ function buildPolicyStages() {
     cam: { pos: [XS.output + 14, 12, 24], target: [XS.output, 4, 0] },
     body: () => `<p>${outputInfo.entries.length} legal action${outputInfo.entries.length > 1 ? "s" : ""} after masking + softmax. The network's answer:</p>
       <p style="font-size:14px">${topActionsHtml()}</p>
-      <p>The agent played <b>${S.sample.chosen_action}</b> (✓ bar).</p>`,
+      <p>The agent played ${actionHtml(S.sample.chosen_action)} (✓ bar).</p>`,
   },
   {
     title: "10 · Critic · features → V(s)",
@@ -3325,7 +3893,7 @@ function buildOracleStages() {
     label: "oObs",
     badge: "input",
     cam: { pos: [XSA.input + 26, 9, 32], target: [XSA.input + 2, 2, 0] },
-    body: () => `<p>What the oracle sees: <b>all five hands face up</b> (gold halo = the secret partner's seat), the true blind and bury, the under card, and per-seat points taken — plus everything the acting player's own observation carries.</p>
+    body: () => `<p>What the oracle sees: <b>all five hands face up</b> (gold halo = the secret partner's seat), the true blind and bury, the under card, and per-seat points taken — plus everything the acting player's own observation carries. Gold-rimmed faces are trump; each face's barcode is its row of the oracle's own embedding table.</p>
       <p>This is a strict superset of the policy observation (<code>get_oracle_state_dict</code>), so U(h,s) conditions on history <i>and</i> state — the unbiased target under partial observability.</p>`,
   },
   {
@@ -3538,6 +4106,7 @@ function switchScenario(i) {
 // ============================================================
 const LEGEND_POLICY = `
   <div class="row"><span class="swatch" style="background:#b58bff;color:#b58bff"></span>Input / observation</div>
+  <div class="row"><span class="swatch" style="background:#d4af37;color:#d4af37"></span>Trump · gold card rim</div>
   <div class="row"><span class="swatch" style="background:#4cc9f0;color:#4cc9f0"></span>Encoder tokens</div>
   <div class="row">
     <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
@@ -3555,6 +4124,7 @@ const LEGEND_ORACLE = `
     Hidden hands · seats +1…+4
   </div>
   <div class="row"><span class="swatch" style="background:#ffd166;color:#ffd166"></span>Secret partner</div>
+  <div class="row"><span class="swatch" style="background:#d4af37;color:#d4af37"></span>Trump · gold card rim</div>
   <div class="row">
     <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
     Attention heads 1–4
