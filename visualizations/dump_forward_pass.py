@@ -74,7 +74,7 @@ DEFAULT_CHECKPOINT = (
     / "runs"
     / "league_retention_pg"
     / "checkpoints"
-    / "pfsp_perceiver-shared-v2_checkpoint_1500000.pt"
+    / "pfsp_perceiver-shared-v2_checkpoint_7000000.pt"
 )
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
