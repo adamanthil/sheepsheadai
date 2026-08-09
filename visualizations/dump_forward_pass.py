@@ -9,11 +9,13 @@ GRU memory state and trick context. Captured decision types:
   pick    - the eventual picker's PICK/PASS decision
   call    - the picker's partner-call decision (two-tower head live)
   bury    - the picker's first bury decision (pointer head live)
-  lead    - the opening lead of trick 0
-  follow  - a late-trick follow with cards on the table
+  lead    - the earliest trick the picker leads
+  follow  - the picker's latest multi-card follow
 
-A seed is scanned so the hand contains all five decision types (someone
-picks, calls a partner card, and the hand plays out to completion).
+All five scenarios come from the SAME seat — the eventual picker — so the
+walkthrough follows a single player's perspective through the whole hand.
+A seed is scanned until one hand contains all five decision types from
+that seat.
 
 Captured per decision: the whole transformer (per-layer, per-head attention
 maps, per-layer token norms, FFN hidden-activation norms), the encoder's
@@ -93,7 +95,7 @@ SCENARIO_LABELS = {
     "pick": "Pick or pass",
     "call": "Call a partner",
     "bury": "Bury two cards",
-    "lead": "Lead trick 1",
+    "lead": "Lead a trick",
     "follow": "Follow late in the hand",
 }
 
@@ -184,7 +186,11 @@ def classify_decision(action_names, state):
         return "bury"
     if any(n.startswith("PLAY ") for n in action_names):
         cards_on_table = sum(1 for c in state["trick_card_ids"] if int(c) != 0)
-        if cards_on_table == 0 and int(state["current_trick"]) == 0:
+        # Any empty-table play is a lead candidate (the selection step keeps
+        # the earliest one) — requiring trick 1 would force the walkthrough
+        # seat to also be the opening leader, which fights the
+        # single-perspective constraint below.
+        if cards_on_table == 0:
             return "lead"
         if cards_on_table >= 2 and int(state["current_trick"]) >= 2:
             return "follow"
@@ -295,31 +301,34 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
 
 
 def select_snapshots(game, snapshots):
-    """Pick one snapshot per scenario kind, or None if the hand lacks one."""
+    """Pick one snapshot per scenario kind, or None if the hand lacks one.
+
+    Every scenario comes from the SAME seat — the eventual picker — so the
+    walkthrough follows one player's perspective through the whole hand
+    (and the picker-only blind/bury tokens stay live into the play phases).
+    A seed only qualifies when the picker also leads some trick and has a
+    late multi-card follow."""
     if game.is_leaster or not game.picker or game.called_card is None:
         return None
+    seat = game.picker
     picked = {}
-    # The eventual picker's own PICK/PASS moment.
-    picked["pick"] = next(
-        (s for s in snapshots["pick"] if s["seat"] == game.picker), None
-    )
-    picked["call"] = snapshots["call"][0] if snapshots["call"] else None
-    picked["bury"] = snapshots["bury"][0] if snapshots["bury"] else None
-    picked["lead"] = snapshots["lead"][0] if snapshots["lead"] else None
+    picked["pick"] = next((s for s in snapshots["pick"] if s["seat"] == seat), None)
+    # call/bury only ever exist for the picker; filter anyway for safety.
+    picked["call"] = next((s for s in snapshots["call"] if s["seat"] == seat), None)
+    picked["bury"] = next((s for s in snapshots["bury"] if s["seat"] == seat), None)
+    # The earliest trick the picker leads (trick 1 when the picker starts).
+    leads = [s for s in snapshots["lead"] if s["seat"] == seat]
+    picked["lead"] = min(leads, key=lambda s: s["trick"]) if leads else None
 
-    # Prefer a defender follow with the most live tokens on screen;
-    # tie-break toward later tricks (richer memory state).
+    # Richest picker follow: most live tokens on screen, then latest trick
+    # (richer memory state).
     def follow_richness(s):
         hand_n = sum(1 for c in s["state"]["hand_ids"] if int(c) != 0)
         table_n = sum(1 for c in s["state"]["trick_card_ids"] if int(c) != 0)
         return (hand_n + table_n, s["trick"])
 
-    follows = snapshots["follow"]
-    defender_follows = [
-        s for s in follows if s["seat"] not in (game.picker, game.partner)
-    ]
-    pool = defender_follows or follows
-    picked["follow"] = max(pool, key=follow_richness) if pool else None
+    follows = [s for s in snapshots["follow"] if s["seat"] == seat]
+    picked["follow"] = max(follows, key=follow_richness) if follows else None
     if any(picked[k] is None for k in SCENARIO_ORDER):
         return None
     return picked
@@ -946,8 +955,9 @@ def describe_scenario(kind, snap, game):
         )
     if kind == "lead":
         return (
-            f"Seat {seat} ({role}) leads trick 1 with {hand_str}. The trick "
-            f"is empty; memory now carries the pick phase."
+            f"Seat {seat} ({role}) leads trick {snap['trick'] + 1} with "
+            f"{hand_str}. The trick is empty; memory carries everything up "
+            f"to this lead."
         )
     return (
         f"Trick {snap['trick'] + 1}: seat {seat} ({role}) follows with "
@@ -1101,7 +1111,12 @@ def main():
             agent, snap["state"], snap["valid_actions"], snap["memory_in"]
         )
         payload["id"] = kind
-        payload["label"] = SCENARIO_LABELS[kind]
+        # The picker doesn't necessarily lead trick 1 — name the trick.
+        payload["label"] = (
+            f"Lead trick {snap['trick'] + 1}"
+            if kind == "lead"
+            else SCENARIO_LABELS[kind]
+        )
         payload["description"] = describe_scenario(kind, snap, game)
         payload["sample"] = build_sample_block(kind, snap, game)
         payload["oracle"] = capture_oracle_forward(
