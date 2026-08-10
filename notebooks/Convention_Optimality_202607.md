@@ -908,3 +908,61 @@ current policy reaches); class maxima ignore within-class card context;
 logit gaps are not EV — sign/ordering is the object, not magnitude;
 paired endpoint drift controls node mix but not network-scale drift
 (LayerNorm'd trunk bounds this).
+
+### E7 results (2026-08-10; 600 seeds, 257 frozen nodes, 10-checkpoint ladder; `fail_lead_logit_ladder.json`)
+
+**VERDICT: NOT FORMING — and stronger: ANTI-FORMED.** The pre-registered
+endpoint drift (warmstart400k -> gen8@7.9M) is median per-node Δgap
+**−2.11 [−2.33, −1.87]** — decisively negative. The low-vs-fat ordering
+is not stalled; league training actively BUILT the fat preference:
+
+| ckpt | median gap | gap>0 | argmax-low | low-mass share (scale-free) |
+|---|---|---|---|---|
+| warmstart 400k | −0.11 | 38.5% | 21.0% | 0.557 |
+| 1M | −0.68 | 9.3% | 5.4% | 0.398 |
+| 2M | −0.81 | 4.3% | 3.5% | 0.380 |
+| 3M | −0.72 | 10.5% | 4.7% | 0.388 |
+| 4M | −0.78 | 7.0% | 6.6% | 0.381 |
+| 5M | −1.50 | 1.9% | 1.9% | 0.226 |
+| 6M | −1.03 | 2.3% | 1.9% | 0.317 |
+| 7M | −0.84 | 7.0% | 3.5% | 0.371 |
+| gen8 @7.9M | −2.18 | 1.2% | 1.2% | 0.108 |
+
+Three load-bearing observations:
+
+1. **The selfplay warmstart was nearly NEUTRAL** (median −0.11, 38.5%
+   of nodes low-preferring, low-mass share 0.557 — actually slightly
+   low-side). The fat preference is not a residue the league failed to
+   fix — league training CONSTRUCTED it, most of it in the first 600k
+   league episodes (400k->1M: −0.11 -> −0.68).
+2. **The entropy ladder amplifies the wrong-side ordering.** The two
+   deepest reads are exactly the two entropy-transition checkpoints
+   (5M: transitioning to 0.629, share 0.226; 7.9M: transitioning to
+   0.542, share 0.108), with partial relaxation at settled targets
+   (6M 0.317, 7M 0.371). Sharpening scales the existing ordering;
+   since the ordering is wrong-side, each step locks the behavior in
+   harder. (Logit-gap magnitudes are sharpness-confounded — the
+   scale-free mass share and sign fractions carry the trend.)
+3. **Cells are uniform**: trick0 vs trick1 and C2 vs non-C2 move
+   together at every rung — one shared preference, not a C2-specific
+   artifact. C2 and fail-lead-points are the same representation-level
+   object, as hypothesized in the E7 pre-registration's secondary read.
+
+**Interpretation (recorded as hypotheses, not verdicts).** The gradient
+is not silent at these nodes — it points the wrong way relative to the
+E6 search/belief-MC verdict. Two candidate mechanisms: (a)
+GENERALIZATION BLEED: the dominant fat-fail contexts (schmearing into a
+partner-won trick — frequent, sign-consistent, correctly rewarded)
+shape shared features that bleed "fat fail = good play" into the rare
+opposite-sign lead context; (b) IN-ECOLOGY PAYOFF: against the actual
+roster, fat leads may pay better than search estimates (E6 belief-MC
+used current-policy rollouts and still favored low by +0.08, which
+bounds but does not eliminate this). Discriminating (a) vs (b) is a
+rung-3 question (per-node counterfactuals vs roster opponents).
+
+**Pre-registered consequence fires:** the NOT-FORMING band's action —
+the search-teacher lane (node-selective pi_gumbel distill;
+V_oracle/ISMCTS escalation per the deploy-search plan) is the only
+mechanism on the table for BOTH C2 and fail-lead points, which E7 shows
+are one object. Patience is not a strategy: the gradient's sign is
+wrong, and the remaining entropy steps amplify it.
