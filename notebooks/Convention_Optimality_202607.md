@@ -836,3 +836,75 @@ exceptions stays available via `--cases` at higher budgets.
 Caveats (registered): labels are policy-relative (2.8M field), one
 checkpoint, verdict noise at ties (bounded by the AGREE falsifier),
 pilot-sighted H4/H7 disclosed.
+
+## E7 — Fail-lead logit-gap ladder: is the low-vs-fat ordering forming? (pre-registered 2026-08-10)
+
+**Motivation.** E6 established that early defender leads should probe
+with low/no-point fail rather than donate 10/11-point fail (replacement
+classes: same-suit-low dominant; the counterfactual top-10 all led 10/11
+points where search wanted low). The operator hypothesis was that this
+signal — larger-n and (assumed) more sign-consistent than C2 — would
+surface in the gradient as the entropy ladder descended. At 7.9M it has
+not: fat-fail-lead rate on early defender leads is flat at 58/62/59/57%
+(2.8M/5M/6M/7M scans, SE ~3.4%). Behavioral probes cannot say WHY: a
+formed logit ordering can be suppressed by a binding entropy target
+(sampled behavior) — but greedy/argmax behavior being fat-preferring
+already argues the ordering itself is absent. E7 measures the ordering
+directly and across training time.
+
+**Instrument.** `sheepshead/analysis/fail_lead_logit_probe.py`
+(committed 25fe50c). Frozen-trajectory design: one DRIVER checkpoint
+plays all seeds greedily (argmax, RNG-free, the /analyze
+deterministic=True convention); every probe checkpoint replays the
+IDENTICAL cached state stream through its own encoder (per-seat
+recurrent memory rebuilt exactly as in training: actor encodes on act,
+all five seats observe post-trick frames) and reports play-head logits
+at the frozen node set. The trend across the ladder is therefore free
+of sampling noise AND state-distribution drift — only the networks
+differ. Cost: read-only, no training impact.
+
+**Population.** Node = play-phase lead (current trick empty), trick 0-1,
+by a ground-truth defender (not picker, not revealed/secret partner),
+standard called-ace game (no leaster, no alone), legal leads include
+>=1 zero-point fail (7/8/9) AND >=1 fat fail (A=11/10=10). Kings
+(4 pts) in neither class. Cells recorded: trick 0/1, C2-context (holds
+legal called-suit fail, suit unled), underCall, relPos, handTrumpCount.
+
+**Metric.** Per node x checkpoint: gap = max logit over zero-point fail
+leads − max logit over fat fail leads (masked play head). gap > 0 =
+network orders probe above donation at that state. Summaries: median
+gap, frac(gap>0), argmax-class shares; 95% cluster bootstrap by deal
+seed; endpoint drift = median per-node Δgap (paired, same frozen
+nodes).
+
+**Design points (pre-registered).** Driver = gen-7 boundary
+`checkpoint_7000000` (current-era behavior policy; C2 scans and h2h
+already anchor to it). Seeds 0-599 (~260 nodes expected at ~0.44/seed
+from the 25-seed smoke). Ladder: warmstart 400k (selfplay origin), 1M,
+2M, 3M, 4M, 5M, 6M, 7M, latest gen-8. Smoke run (25 seeds, disclosed):
+1M and 7M both fat-preferring, median gap ≈ −1.0, argmax-fat 82-91% —
+consistent with behavior scans; too small to read trend.
+
+**Decision bands (pre-registered).**
+- FORMING (entropy/expression story): endpoint drift 400k→latest
+  positive with 95% CI excluding 0, AND the recent window (5M→latest,
+  spanning both entropy steps) also positive. Consequence: hold the
+  teacher lane; the ladder should surface the behavior as targets
+  descend; re-probe each boundary.
+- NOT FORMING: endpoint or recent-window drift CI contains 0 (or
+  negative). Consequence: logit-level stagnation confirmed on top of
+  behavioral flatness — terminal-PG at this SNR is not learning the
+  contrast in 7.5M episodes; the search-teacher lane (node-selective
+  pi_gumbel distill / V_oracle-vs-ISMCTS escalation per the
+  deploy-search plan) is the remaining mechanism, now for BOTH C2 and
+  the broader fail-lead-points preference (shared node family:
+  defender early leads).
+- Secondary read (either way): C2-context vs non-C2 cells — if the gap
+  drifts differently where the called-suit option exists, the two
+  conventions are coupled at the representation level.
+
+**Threats.** Driver-distribution states only (7M-argmax play; nodes the
+current policy reaches); class maxima ignore within-class card context;
+logit gaps are not EV — sign/ordering is the object, not magnitude;
+paired endpoint drift controls node mix but not network-scale drift
+(LayerNorm'd trunk bounds this).
