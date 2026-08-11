@@ -966,3 +966,47 @@ V_oracle/ISMCTS escalation per the deploy-search plan) is the only
 mechanism on the table for BOTH C2 and fail-lead points, which E7 shows
 are one object. Patience is not a strategy: the gradient's sign is
 wrong, and the remaining entropy steps amplify it.
+
+## E8 — In-ecology payoff probe: is fat actually better vs the roster? (pre-registered 2026-08-10)
+
+**Question.** E7 found the wrong-side gradient. Rung-3 discriminates its
+two candidate mechanisms: (a) generalization bleed vs (b) in-ecology
+payoff — fat leads genuinely paying against the actual training roster.
+Instrument-relevant fact confirmed in code first: EVERY existing search
+instrument (ismcts.py teacher, all counterfactual rungs incl. E6's
+belief-MC) rolls out with the TRAINING POLICY on all five seats. The
+population never enters search, so a real ecology effect would be
+invisible to all prior verdicts AND to the planned distill teacher
+as currently built.
+
+**Instrument.** `sheepshead/analysis/ecology_payoff_probe.py` (28d21b1).
+Same driver (7M) greedy replay as E7 => identical frozen node set. Per
+node: force best-low vs best-fat lead (by driver logits, matching E7's
+class maxima), roll each to terminal R=24 times under:
+  - self: actor model on all 5 seats (the search assumption);
+  - pop: actor keeps its seat; other 4 seats = league members sampled
+    uniformly per node (seeded) from league/members (36 at run time),
+    with recurrent memories rebuilt by replaying the prefix stream for
+    their seat.
+Estimands: per-node d = mean(actor score | low) − mean(score | fat)
+per ecology; pooled mean with by-deal cluster bootstrap; contrast
+dPop − dSelf.
+
+**Decision bands (pre-registered).**
+- ECOLOGY EFFECT: contrast CI excludes 0 on the negative side (fat
+  relatively better vs roster), or sign flip (dSelf > 0, dPop <= 0).
+  Consequence: E7's gradient is (partly) a REAL payoff signal — the
+  policy is correctly adapted to its ecology; the "wrongness" is
+  relative to self-play optimality only. Teacher lane must then decide
+  WHICH optimality to teach, and a population-aware teacher (roster
+  rollouts in search) becomes a design requirement.
+- NO ECOLOGY EFFECT: contrast CI contains 0, dSelf ≈ dPop.
+  Consequence: bleed/credit-assignment owns E7; self-play search
+  teachers are valid as built; distill lane proceeds unchanged.
+- Side read: dSelf itself re-tests E6's low-is-better at 7M/true-deal
+  (E6: +0.08 belief-MC at 2.8M); dSelf <= 0 would revise E6's
+  policy-relative verdict at the current policy.
+
+**Caveats.** Uniform roster sampling (training uses PFSP skill/exploit
+weighting); true-deal rollouts (perfect info variance instrument, not
+belief-marginalized); driver-greedy prefixes; actor = 7M not live gen-8.
