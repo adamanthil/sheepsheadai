@@ -135,3 +135,70 @@ under oracle leaves (now simply the default) on the same frozen
 nodes/reference — a clean leaf-evaluator A/B at zero extra design
 cost. Terminal arms and the 4096 reference are identical across both
 (never consult a critic), so the two matrices share ground truth.
+
+## 5. E9 Phase-1 results (legacy limited-critic leaves; read 2026-08-11)
+
+Run: driver checkpoint_8000000, seeds 0-499, quota 8 -> 240 nodes, all 30
+cells at full quota. Artifact:
+`runs/convention_optimality_202607/search_help_matrix_e9.json`. This is
+the LEGACY-LEAF baseline (process launched before oracle leaves landed).
+
+Operationalizations decided at read time (disclosed, not pre-registered
+numerically): "materially positive" headroom = mean >= 0.010 Q-units
+(same epsilon as the harm threshold); config cost order (cheapest
+first, iters x est. plies) = 128/2 < 384/2 < 128/term < 1024/2 <
+384/term < 1024/term. At n=8, harm rate <= 5% means 0/8 harmed.
+
+**Coverage map (pre-registered rule): 7 of 30 cells covered,**
+holding 53% of total mean-headroom mass:
+
+| cell | headroom | config | capture | harm |
+|---|---|---|---|---|
+| t0-partner-follow | +0.023 | 384/term | 82% | 0% |
+| t2-defender-follow | +0.013 | 384/2 | 94% | 0% |
+| t2-partner-follow | +0.014 | 128/2 | 73% | 0% |
+| t2-picker-follow | +0.026 | 1024/term | 71% | 0% |
+| t3-partner-follow | +0.015 | 128/2 | 71% | 0% |
+| t3-picker-follow | +0.012 | 128/2 | 100% | 0% |
+| t4-picker-lead | +0.039 | 128/2 | 89% | 0% |
+
+Sub-material cells (headroom 0.005-0.010) where a config would qualify:
+t1-partner-follow (128/2), t1-partner-lead (384/term), t1-picker-follow
+(1024/2), t1-picker-lead (128/2), t3-defender-lead (1024/term),
+t4-defender-follow (128/2), t4-partner-lead (384/2) — certification
+candidates at larger n.
+
+**Hard cells — material headroom NO grid config captures:**
+t1-defender-lead (+0.0101; best arm 384/term captures ~75% of nodes'
+agreement but only 0.008 mean uplift at 12% harm — fails the rule) and
+t0-defender-lead (+0.0090, no arm >= 60%). These are exactly the
+E7/E8 convention-target nodes: consistent with the E8 finding that the
+defender-lead edge exists only under improved continuations, budgets
+<= 1024 with limited-critic leaves don't resolve it (the 4096/term
+reference does). The Phase-2 oracle-leaf rerun is the live test of
+whether cheap search becomes adequate there.
+
+Priors vs outcome: "headroom concentrated at early leads" FALSIFIED —
+it concentrates at FOLLOWS (t0-partner, t2 all-roles, t3 partner/
+picker) plus t4-picker-lead (+0.039, the largest cell — also
+falsifying "late-trick ~zero"; likely endgame counting/schmear
+decisions). "Depth=2 adequate late but not early" roughly holds: the
+covered early cell needs terminal rollouts, mid/late cells go d=2.
+"384 sufficient under pi_gumbel" mostly holds (5/7 covered cells at
+<= 384 iters). Harm is MILD everywhere (worst mean uplift −0.014;
+no June-style catastrophic deploy-budget harm) — consistent with the
+pi_gumbel + mature-critic reassessment motivating E9.
+
+Structure: headroom is broad-based (2-6 of 8 nodes per cell nonzero),
+not single-node artifacts. Caveats stand: screening-grade n, reference
+self-consistency, driver-distribution nodes, single checkpoint.
+
+**Phase-2 launched (2026-08-11):** `--reuse-ref` mode added to the
+instrument (commit 08bd0ea) — freezes the 240 nodes and the stored
+4096/term reference root-Q, reruns ONLY the d=2 arms under the new
+oracle-leaf default with identical per-node RNG (world pools identical;
+arms differ only through leaf values). Smoke (5 nodes) matched all
+nodes with identical headroom; early signal: oracle 1024/2 captured
+reference actions legacy d=2 arms missed. Output:
+`runs/convention_optimality_202607/search_help_matrix_e9_oracle.json`.
+
