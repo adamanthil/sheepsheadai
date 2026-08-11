@@ -22,6 +22,7 @@ the environment and --check refuses to compare across a mismatch.
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -208,7 +209,63 @@ def capture() -> dict:
         ],
         "fail": repr(dict(sorted(teacher.fail.items()))),
     }
+
+    # Replay fixture: per-world outputs of BOTH replay executors (the
+    # sequential _build_world path via _build_pool_sequential, and the batched
+    # _build_worlds_lockstep) on the play and bury nodes, captured against the
+    # pre-unification dual implementation. Pins the Step-7b director bit-exactly
+    # to pre-refactor behavior for each executor independently — a control-flow
+    # bug mirrored into both executors cannot pass this fixture.
+    out["replay"] = {}
+    for head in ("play", "bury"):
+        game, observer, forced_public, game_seed = panel[head]
+        teacher = ISMCTSTeacher(agent, ISMCTSConfig(**dict(_BASE, batch_size=32)))
+        deal_rng = random.Random(SEED + 5000 + game_seed)
+        deals = [game.sample_determinization(observer, deal_rng) for _ in range(6)]
+        torch.manual_seed(SEED + game_seed)
+        seq_pool = teacher._build_pool_sequential(
+            game, [copy.deepcopy(d) for d in deals], list(forced_public), observer
+        )
+        torch.manual_seed(SEED + game_seed)
+        lock_pool = teacher._build_worlds_lockstep(
+            copy.deepcopy(game),
+            [copy.deepcopy(d) for d in deals],
+            list(forced_public),
+            observer,
+        )
+        out["replay"][head] = {
+            executor: [_replay_record(entry) for entry in pool_entries]
+            for executor, pool_entries in (("seq", seq_pool), ("lockstep", lock_pool))
+        }
+        out["replay"][head]["fail"] = repr(dict(sorted(teacher.fail.items())))
     return out
+
+
+def _replay_record(pool_entry) -> dict:
+    """Exact fingerprint of one built world: full game/weight state as repr,
+    per-seat memory tensor bytes as sha256."""
+    world, memory_snapshot, log_weight = pool_entry
+    return {
+        "state": repr(
+            {
+                "history": world.history,
+                "hands": {
+                    seat: (
+                        world.players[seat - 1].initial_hand,
+                        world.players[seat - 1].hand,
+                    )
+                    for seat in range(1, 6)
+                },
+                "bury": world.bury,
+                "under_card": world.under_card,
+                "log_weight": log_weight,
+            }
+        ),
+        "mem_sha": {
+            seat: _sha(memory_snapshot[seat].detach().cpu().numpy())
+            for seat in sorted(memory_snapshot)
+        },
+    }
 
 
 def _fixture_path(fixture_dir: str) -> str:
@@ -273,6 +330,31 @@ def check(fixture_dir: str = FIXTURE_DIR) -> list:
         problems.append("pool.history_sha: world histories drifted")
     if g_pool["fail"] != c_pool["fail"]:
         problems.append(f"pool.fail: {g_pool['fail']} -> {c_pool['fail']}")
+    g_replay, c_replay = golden.get("replay", {}), current.get("replay", {})
+    for head in sorted(set(g_replay) | set(c_replay)):
+        g_head, c_head = g_replay.get(head), c_replay.get(head)
+        if g_head is None or c_head is None:
+            problems.append(f"replay.{head}: present on only one side")
+            continue
+        if g_head["fail"] != c_head["fail"]:
+            problems.append(f"replay.{head}.fail: {g_head['fail']} -> {c_head['fail']}")
+        for executor in ("seq", "lockstep"):
+            g_worlds, c_worlds = g_head[executor], c_head[executor]
+            if len(g_worlds) != len(c_worlds):
+                problems.append(
+                    f"replay.{head}.{executor}: world count "
+                    f"{len(g_worlds)} -> {len(c_worlds)}"
+                )
+                continue
+            for i, (gw, cw) in enumerate(zip(g_worlds, c_worlds)):
+                if gw["state"] != cw["state"]:
+                    problems.append(
+                        f"replay.{head}.{executor}[{i}]: world state drifted"
+                    )
+                if gw["mem_sha"] != cw["mem_sha"]:
+                    problems.append(
+                        f"replay.{head}.{executor}[{i}]: memory bytes drifted"
+                    )
     return problems
 
 
