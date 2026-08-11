@@ -237,7 +237,16 @@ class ISMCTSConfig:
 class _Node:
     """Statistics-only ISMCTS node, keyed (implicitly, by tree position) on the
     observer's action sequence. All counts are *weighted* by the per-iteration
-    determinization importance weight."""
+    determinization importance weight.
+
+    Per-action dicts (standard MCTS notation, keyed by action id):
+      * ``N``     — visit count.
+      * ``W``     — total backed-up value (mean Q = W/N).
+      * ``P``     — network prior (root: explore_frac-mixed).
+      * ``avail`` — availability count: rounds this action was LEGAL in the
+        sim's determinized world (availability-count PUCT at follow nodes).
+      * ``vloss`` — in-flight virtual-loss visits (leaf-parallel batching).
+    """
 
     __slots__ = ("children", "N", "W", "P", "avail", "visited", "vloss")
 
@@ -583,10 +592,10 @@ class ISMCTSTeacher:
             self._controller(seat), encoded, states, valid_list
         )
 
-    def _after_action_batched(self, games, seat_memories):
+    def _observe_trick_lockstep(self, games, seat_memories):
         """End-of-trick observe for every seat (with its controller), batched over
-        worlds (the plays are forced identically, so trick completion is
-        synchronized across worlds)."""
+        worlds into the local ``seat_memories`` tensors (the plays are forced
+        identically, so trick completion is synchronized across worlds)."""
         if not games[0].was_trick_just_completed:
             return
         for seat in range(1, 6):
@@ -659,8 +668,8 @@ class ISMCTSTeacher:
                 self.fail["guard"] += 1
                 raise _ReplayInconsistency("batched pool build guard exceeded")
             acted = False
-            for pos in range(1, 6):
-                ref_player = games[0].players[pos - 1]
+            for seat in range(1, 6):
+                ref_player = games[0].players[seat - 1]
                 ref_valid = ref_player.get_valid_action_ids()
                 while ref_valid:
                     # Root reached: public record exhausted and it is the
@@ -669,7 +678,7 @@ class ISMCTSTeacher:
                     # at the same bury/under step as the live game.
                     if (
                         not public_actions
-                        and pos == observer
+                        and seat == observer
                         and _private_root_ready(real_game, games[0], ref_valid)
                     ):
                         pool = []
@@ -678,8 +687,8 @@ class ISMCTSTeacher:
                                 self.fail["hist_mismatch"] += 1
                                 continue
                             memory_snapshot = {
-                                seat: seat_memories[seat][i].detach().clone()
-                                for seat in range(1, 6)
+                                mem_seat: seat_memories[mem_seat][i].detach().clone()
+                                for mem_seat in range(1, 6)
                             }
                             if self._oracle_capture:
                                 self._oracle_prefix_by_world[id(game)] = (
@@ -693,9 +702,9 @@ class ISMCTSTeacher:
                     if any(_is_private_action(action_id) for action_id in ref_valid):
                         # Forced bury/under: encode (advance memory), then act each
                         # world with its own determinized card. Not weighted.
-                        self._encode_seat_batched(games, pos, seat_memories)
+                        self._encode_seat_batched(games, seat, seat_memories)
                         for i, game in enumerate(games):
-                            world_valid = game.players[pos - 1].get_valid_action_ids()
+                            world_valid = game.players[seat - 1].get_valid_action_ids()
                             action_id = self._forced_private(
                                 world_valid, det_buries[i], det_unders[i]
                             )
@@ -704,48 +713,48 @@ class ISMCTSTeacher:
                                 raise _ReplayInconsistency(
                                     "batched replay: bad forced private action"
                                 )
-                            if self._oracle_capture and pos == observer:
+                            if self._oracle_capture and seat == observer:
                                 oracle_prefixes[i].append(
-                                    game.players[pos - 1].get_oracle_state_dict()
+                                    game.players[seat - 1].get_oracle_state_dict()
                                 )
-                            game.players[pos - 1].act(action_id)
+                            game.players[seat - 1].act(action_id)
                     else:
-                        if not public_actions or public_actions[0][0] != pos:
+                        if not public_actions or public_actions[0][0] != seat:
                             self.fail["pub_desync"] += 1
                             raise _ReplayInconsistency(
                                 "batched replay: public action desync"
                             )
                         _, action_id = public_actions.popleft()
                         states, encoded = self._encode_seat_batched(
-                            games, pos, seat_memories
+                            games, seat, seat_memories
                         )
                         # Weight bidding actions only (scheme B); plays are forced
                         # but never weighted. The actor head runs only here.
                         if not _is_play_action(action_id):
                             valid_lists = [
-                                game.players[pos - 1].get_valid_action_ids()
+                                game.players[seat - 1].get_valid_action_ids()
                                 for game in games
                             ]
                             probs = self._actor_probs_batched(
-                                encoded, states, valid_lists, pos
+                                encoded, states, valid_lists, seat
                             )
                             action_probs = probs[:, action_id - 1].clamp_min(1e-8)
                             log_weights = log_weights + torch.log(action_probs)
                         for i, game in enumerate(games):
-                            world_valid = game.players[pos - 1].get_valid_action_ids()
+                            world_valid = game.players[seat - 1].get_valid_action_ids()
                             if action_id not in world_valid:
                                 self.fail["bad_public"] += 1
                                 raise _ReplayInconsistency(
                                     "batched replay: bad forced public action"
                                 )
-                            if self._oracle_capture and pos == observer:
+                            if self._oracle_capture and seat == observer:
                                 oracle_prefixes[i].append(
-                                    game.players[pos - 1].get_oracle_state_dict()
+                                    game.players[seat - 1].get_oracle_state_dict()
                                 )
-                            game.players[pos - 1].act(action_id)
+                            game.players[seat - 1].act(action_id)
 
                     acted = True
-                    self._after_action_batched(games, seat_memories)
+                    self._observe_trick_lockstep(games, seat_memories)
                     if self._oracle_capture:
                         for i, game in enumerate(games):
                             if game.was_trick_just_completed:
@@ -1091,59 +1100,74 @@ class ISMCTSTeacher:
 
     def _apply_actor(self, sim, observer, probs, is_tree, completers):
         if is_tree:
-            node, valid = sim.node, sim.valid
-            is_root = sim.depth == 0
-            explore_frac = self.config.root_explore_frac
-            n_legal = len(valid)
-            if is_root:
-                self._root_praw_writes += 1
-            for action_id in valid:
-                prior = float(probs[action_id - 1])
-                if is_root:
-                    # Accumulate the UNMIXED prior for the pi_gumbel readout
-                    # before the explore_frac mix touches it.
-                    self._root_praw[action_id] = (
-                        self._root_praw.get(action_id, 0.0) + prior
-                    )
-                if is_root and explore_frac > 0.0:
-                    prior = (1.0 - explore_frac) * prior + explore_frac / n_legal
-                node.P[action_id] = prior
-                node.N.setdefault(action_id, 0.0)
-                node.W.setdefault(action_id, 0.0)
-                node.avail.setdefault(action_id, 0.0)
-                node.avail[action_id] += 1.0
-            leaf = (not node.visited) or (sim.depth >= self._max_depth)
-            node.visited = True
-            if leaf:
-                # Observer is rolled out starting next round (re-encoded there;
-                # the freshly-written priors are not consumed at a leaf).
-                sim.phase = "rollout"
-                return
-            following = self._is_following(sim.world, observer)
-            if is_root and self._root_rm is not None:
-                action_id = self._select_root_rm(node, valid)
-            else:
-                action_id = self._select_vl(node, valid, following)
-            node.vloss[action_id] = node.vloss.get(action_id, 0) + 1
-            sim.path.append((node, action_id))
-            sim.pending_action = action_id
-            if self._oracle_capture:
-                sim.oracle_seq.append(
-                    sim.world.players[observer - 1].get_oracle_state_dict()
-                )
-            sim.world.players[observer - 1].act(action_id)
-            sim.phase = "advance"
+            self._apply_tree_decision(sim, observer, probs, completers)
         else:
-            seat, valid = sim.seat, sim.valid
-            action_id = self._sample_action(probs, valid)
-            is_obs_play = seat == observer and _valid_has_play(valid)
-            if self._oracle_capture and seat == observer:
-                sim.oracle_seq.append(
-                    sim.world.players[observer - 1].get_oracle_state_dict()
-                )
-            sim.world.players[seat - 1].act(action_id)
-            if sim.phase == "rollout" and is_obs_play:
-                sim.obs_plays += 1
+            self._apply_world_action(sim, observer, probs, completers)
+
+    def _apply_tree_decision(self, sim, observer, probs, completers):
+        """Observer decision at a tree node: write priors/availability, stop at
+        a leaf (-> rollout), otherwise select (PUCT / root-RM), charge virtual
+        loss, and act into the ``advance`` phase."""
+        node, valid = sim.node, sim.valid
+        is_root = sim.depth == 0
+        explore_frac = self.config.root_explore_frac
+        n_legal = len(valid)
+        if is_root:
+            self._root_praw_writes += 1
+        for action_id in valid:
+            prior = float(probs[action_id - 1])
+            if is_root:
+                # Accumulate the UNMIXED prior for the pi_gumbel readout
+                # before the explore_frac mix touches it.
+                self._root_praw[action_id] = self._root_praw.get(action_id, 0.0) + prior
+            if is_root and explore_frac > 0.0:
+                prior = (1.0 - explore_frac) * prior + explore_frac / n_legal
+            node.P[action_id] = prior
+            node.N.setdefault(action_id, 0.0)
+            node.W.setdefault(action_id, 0.0)
+            node.avail.setdefault(action_id, 0.0)
+            node.avail[action_id] += 1.0
+        leaf = (not node.visited) or (sim.depth >= self._max_depth)
+        node.visited = True
+        if leaf:
+            # Observer is rolled out starting next round (re-encoded there;
+            # the freshly-written priors are not consumed at a leaf).
+            sim.phase = "rollout"
+            return
+        use_availability_puct = self._is_following(sim.world, observer)
+        if is_root and self._root_rm is not None:
+            action_id = self._select_root_rm(node, valid)
+        else:
+            action_id = self._select_vl(node, valid, use_availability_puct)
+        node.vloss[action_id] = node.vloss.get(action_id, 0) + 1
+        sim.path.append((node, action_id))
+        sim.pending_action = action_id
+        if self._oracle_capture:
+            sim.oracle_seq.append(
+                sim.world.players[observer - 1].get_oracle_state_dict()
+            )
+        sim.world.players[observer - 1].act(action_id)
+        sim.phase = "advance"
+        self._after_world_step(sim, observer, completers)
+
+    def _apply_world_action(self, sim, observer, probs, completers):
+        """Non-observer advance / rollout action: sample from the masked policy
+        and act; observer rollout plays advance the depth clock."""
+        seat, valid = sim.seat, sim.valid
+        action_id = self._sample_action(probs, valid)
+        is_obs_play = seat == observer and _valid_has_play(valid)
+        if self._oracle_capture and seat == observer:
+            sim.oracle_seq.append(
+                sim.world.players[observer - 1].get_oracle_state_dict()
+            )
+        sim.world.players[seat - 1].act(action_id)
+        if sim.phase == "rollout" and is_obs_play:
+            sim.obs_plays += 1
+        self._after_world_step(sim, observer, completers)
+
+    def _after_world_step(self, sim, observer, completers):
+        """Shared tail of every world mutation: queue the end-of-trick observe
+        and finish the sim if its world just terminated."""
         if sim.world.was_trick_just_completed:
             completers.append(sim)
         if sim.world.is_done():
@@ -1177,9 +1201,16 @@ class ISMCTSTeacher:
         unit = _minmax_unit(np.array(list(q.values()), dtype=np.float64))
         rm.update(dict(zip(q.keys(), unit.tolist())))
 
-    def _select_vl(self, node, valid, following) -> int:
+    def _select_vl(self, node, valid, use_availability_puct) -> int:
         """PUCT selection with virtual loss: an in-flight selected edge is charged
-        ``virtual_loss`` extra (pessimistic) visits so concurrent sims diversify."""
+        ``virtual_loss`` extra (pessimistic) visits so concurrent sims diversify.
+
+        ``use_availability_puct`` swaps the exploration numerator from the
+        node-total visit count to the per-action availability count — used at
+        follow-suit play nodes, where the legal set varies across determinized
+        worlds and total-count PUCT would starve rarely-available actions.
+        Q is normalized on the TREE-GLOBAL [qmin, qmax] span (not root-local
+        like the RM/gumbel readouts) so FPU=1.0 stays optimistic everywhere."""
         c_puct = self.config.c_puct
         virtual_loss = self.config.virtual_loss
         effective_counts = {
@@ -1200,7 +1231,7 @@ class ISMCTSTeacher:
                 q_norm = (w_effective / n_effective - qmin) / span if has_span else 0.5
             else:
                 q_norm = self.config.fpu
-            if following:
+            if use_availability_puct:
                 explore = (
                     c_puct
                     * node.P[action_id]
@@ -1284,7 +1315,10 @@ class ISMCTSTeacher:
     # ------------------------------------------------------------------
     # World advancement helpers
     # ------------------------------------------------------------------
-    def _after_action(self, world):
+    def _observe_trick_sequential(self, world):
+        """End-of-trick observe for every seat, routed through each seat
+        controller's own ``_player_memories`` (the sequential replay's memory
+        home; the lockstep replay uses local tensors instead)."""
         if world.was_trick_just_completed:
             for seat in world.players:
                 self._controller(seat.position).observe(
@@ -1396,7 +1430,7 @@ class ISMCTSTeacher:
                         player.act(action_id)
                     acted = True
                     valid = player.get_valid_action_ids()
-                    self._after_action(world)
+                    self._observe_trick_sequential(world)
                     if self._oracle_capture and world.was_trick_just_completed:
                         oracle_prefix.append(
                             world.players[
