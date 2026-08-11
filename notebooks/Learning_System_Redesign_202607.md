@@ -2113,3 +2113,40 @@ remain (TestExploiterSeating).
   operator review; play softband < 0.5 while ladder above floor.
 - Entropy activation predictions (§8.8): bumpless switch-on ⇒ no
   measurable gen-3 change; targets step only on flat verdicts.
+
+### 7.19 Gen-8 boundary (2026-08-10) + RUN SUSPENDED before gen 9 (operator directive)
+
+Boundary (16:47): panel +0.2409 [+0.2120,+0.2694] - BEST of run
+(called +0.203, jd +0.279); gain_vs_best (vs gen 5) +0.0190
+[-0.0043,+0.0419] p=0.10 - positive but sub-threshold; h2h
+gen8-vs-gen7 -0.005 +/- 0.012 NULL; flat=True -> STEP 3 absorbed in
+sidecar (play 0.542->0.476; only takes effect on a future resume).
+Exploiter gate -0.081 +/- 0.013 (8th bounded fail; series
+-0.028/-0.184/-0.026/-0.067/-0.163/-0.098/-0.100/-0.081). **Step 2 did
+NOT re-ignite h2h** (step 1 gave +0.107; step 2 gave null at the
+transition gen) - consistent with diminishing ladder value, though gen
+8 trained transitioning (the settled read would have been gen 9, which
+we are not running). Panel-vs-h2h divergence (panel best-of-run, h2h
+null) reads as continued drift vs the WEAKER anchors without paired
+improvement vs the immediate predecessor.
+
+C2 @8M: pooled-greedy generation mean 40.6% (n=1,644; gens 5-7:
+41.8/48.9/40.7) - INSIDE the pre-registered 38-52% band => oscillation
+confirmed as entropy-independent (7.18 correction's test resolves:
+no trend through two entropy steps). Scan: pooled 44.6%, trick0 29.9%,
+core-proxy 37.2% - band-consistent.
+
+**SUSPENSION (operator, 2026-08-10, in light of E7/E8):** orchestrator
++ gen-9 trainer terminated at spawn (16:47) after the gen-8 verdict
+was banked. Zero gen-9 artifacts (no checkpoint/snapshot/telemetry
+past 8.0M; last telemetry row 7,999,930; gen-8 boundary snapshot
+past_main_8000000 present as normal). Rationale: E7 (anti-formed
+ordering, ladder amplifies) + E8 (zero realized edge without improved
+continuations) => further PG-only generations spend ~48h/gen on
+progress the gradient cannot make at the target node families; compute
+redirects to the search-teacher lane (Search_Teacher_Design_202608,
+E9 matrix). RESUME PATH: re-issue the same run_extended_league command
+(state file + caches resume at gen 9 from checkpoint_8000000; sidecar
+will start gen 9 at play target 0.476 = step 3 - revisit whether to
+keep that step before resuming). The gen-8 endpoint is the paired
+control for any teacher-graft branch run.
