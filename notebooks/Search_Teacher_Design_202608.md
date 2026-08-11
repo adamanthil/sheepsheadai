@@ -107,3 +107,16 @@ boundary (Learning_System_Redesign 7.19) and the teacher grafts onto
 8M, so headroom must be measured against the graft policy. Recorded
 before any full-matrix results were seen (smoke at 7M disclosed; its
 per-cell n=1 numbers carry no weight). Full run: quota 8, seeds 0-499.
+
+**Phase-2 trigger rule (2026-08-10, pre-results):** the E9 reference
+and headroom map are critic-free (terminal rollouts), so oracle leaves
+are NOT a validation requirement — they refine only the d_rollout=2
+arms. Rule: if d=2 configs qualify (>=60% capture, <=5% harm) at all
+covered cells with limited-critic leaves, SKIP oracle leaves for
+coverage (optional quality bump later). If covered cells require
+terminal rollouts, wire oracle leaves and rerun ONLY those cells'
+d=2 arms against the existing reference — terminal rollouts cost
+~10-25x d=2 per search, and the trainer graft's budget hinges on
+shallow search qualifying. Oracle leaves are expected to be strongest
+exactly there: determinized worlds are full-information, the oracle
+critic's native input regime.
