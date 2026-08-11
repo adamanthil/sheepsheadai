@@ -37,6 +37,15 @@ since 2026-08-10 (privileged oracle critic on the observer's full-information
 stream), silently falling back to the limited critic when the driver
 checkpoint carries no oracle head (see Search_Teacher_Design notebook).
 
+Reuse mode (--reuse-ref PRIOR.json): freeze the prior run's nodes and its
+4096/term reference, and rerun only --configs arms (default: the d=2 arms,
+whose leaf evaluator is the thing that changed). Node identity comes from
+the deterministic greedy replay — each kept node is matched against the
+prior rows in replay order by (seed, cell, policyAction, nLegal) — and the
+original per-node RNG seeds are reproduced from the prior node index, so
+world pools are identical to the prior run and the arms differ only through
+leaf values: a tight leaf-evaluator A/B on shared ground truth.
+
 Usage (from repo root):
 
     uv run python -m sheepshead.analysis.search_help_matrix \\
@@ -112,7 +121,26 @@ def main() -> int:
     ap.add_argument("--num-seeds", type=int, default=400)
     ap.add_argument("--quota", type=int, default=8, help="nodes per cell")
     ap.add_argument("--out", default=None)
+    ap.add_argument(
+        "--reuse-ref",
+        default=None,
+        help="prior matrix JSON: freeze its nodes + reference, rerun only --configs",
+    )
+    ap.add_argument(
+        "--configs",
+        default=None,
+        help="comma list of grid keys to run in reuse mode (default: d=2 arms)",
+    )
     args = ap.parse_args()
+
+    prior_pending: dict[int, list[dict]] = {}
+    run_keys: set[str] | None = None
+    if args.reuse_ref:
+        prior = json.loads(Path(args.reuse_ref).read_text())
+        for i, r in enumerate(prior["rows"]):
+            r["_node_id"] = i
+            prior_pending.setdefault(r["seed"], []).append(r)
+        run_keys = set((args.configs or "128/2,384/2,1024/2").split(","))
 
     driver = load_agent(args.driver)
     teachers = {
@@ -123,6 +151,8 @@ def main() -> int:
     rows: list[dict] = []
 
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
+        if args.reuse_ref and not prior_pending.get(seed):
+            continue  # games are independent (memory reset per seed)
         game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=seed)
         driver.reset_recurrent_state()
         forced_public: list[tuple[int, int]] = []
@@ -141,6 +171,7 @@ def main() -> int:
                         aid = valid_sorted[0]
 
                     sample = False
+                    prior_row = None
                     if (
                         is_play
                         and not game.is_leaster
@@ -148,12 +179,26 @@ def main() -> int:
                         and len(valid_sorted) >= 2
                     ):
                         cell = _classify(game, player)
-                        if cells.get(cell, 0) < args.quota:
+                        if args.reuse_ref:
+                            pend = prior_pending.get(seed) or []
+                            if (
+                                pend
+                                and pend[0]["cell"] == cell
+                                and pend[0]["policyAction"] == aid
+                                and pend[0]["nLegal"] == len(valid_sorted)
+                            ):
+                                prior_row = pend.pop(0)
+                                sample = True
+                        elif cells.get(cell, 0) < args.quota:
                             sample = True
 
                     if sample:
-                        cells[cell] = cells.get(cell, 0) + 1
-                        node_id = len(rows)
+                        if prior_row is None:
+                            cells[cell] = cells.get(cell, 0) + 1
+                            node_id = len(rows)
+                        else:
+                            cells[cell] = cells.get(cell, 0) + 1
+                            node_id = prior_row["_node_id"]
                         node_game = copy.deepcopy(game)
                         row = {
                             "seed": seed,
@@ -166,6 +211,8 @@ def main() -> int:
                         ref_key = f"{REFERENCE[0]}/term"
                         for cfg_i, (iters, depth) in enumerate(GRID + [REFERENCE]):
                             key = f"{iters}/{'term' if depth == TERMINAL_DEPTH else depth}"
+                            if run_keys is not None and key not in run_keys:
+                                continue
                             rng = random.Random(BASE_RNG_SEED + node_id * 100 + cfg_i)
                             res = teachers[iters].search(
                                 node_game,
@@ -184,6 +231,8 @@ def main() -> int:
                                 if key == ref_key
                                 else None,
                             }
+                        if prior_row is not None:
+                            row["configs"][ref_key] = prior_row["configs"][ref_key]
                         ref = row["configs"][ref_key]
                         if ref["ok"] and ref["gumbelArgmax"] is not None:
                             q = {int(a): v for a, v in ref["rootQ"].items()}
@@ -220,6 +269,10 @@ def main() -> int:
                             )
                     valid = player.get_valid_action_ids()
 
+    unmatched = sum(len(v) for v in prior_pending.values())
+    if unmatched:
+        print(f"WARNING: {unmatched} prior rows never matched during replay")
+
     # ---------------- summary matrix ----------------
     def cell_of(r):
         return r["cell"]
@@ -234,9 +287,9 @@ def main() -> int:
         parts = []
         for key in keys:
             cs = [
-                r["configs"][key]
+                c
                 for r in sub
-                if r["configs"][key].get("uplift") is not None
+                if (c := r["configs"].get(key)) and c.get("uplift") is not None
             ]
             if not cs:
                 continue
@@ -266,6 +319,9 @@ def main() -> int:
                         "quota": args.quota,
                         "numSeeds": args.num_seeds,
                         "harmEps": HARM_EPS,
+                        "leafEvaluator": ISMCTSConfig().leaf_evaluator,
+                        "reuseRef": args.reuse_ref,
+                        "configsRun": sorted(run_keys) if run_keys else None,
                     },
                     "summary": summary,
                     "rows": rows,
