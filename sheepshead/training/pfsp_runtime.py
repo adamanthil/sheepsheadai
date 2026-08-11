@@ -18,10 +18,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from sheepshead import (
-    ACTIONS,
     Game,
 )
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.ismcts import infer_head, is_private_action
 from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -40,22 +40,12 @@ if TYPE_CHECKING:
 def _is_private_decision(valid_actions) -> bool:
     """True when the decision is a private bury/under (excluded from the public
     record fed to the ISMCTS teacher's forced replay)."""
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid_actions
-    )
+    return any(is_private_action(a) for a in valid_actions)
 
 
 def _search_head(valid_actions) -> str:
-    """Classify a decision into a search head (mirrors ISMCTSTeacher._infer_head)."""
-    names = [ACTIONS[a - 1] for a in valid_actions]
-    if any(n in ("PICK", "PASS") for n in names):
-        return "pick"
-    if any(n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names):
-        return "partner"
-    if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
-        return "bury"
-    return "play"
+    """Classify a decision into a search head (delegates to ismcts.infer_head)."""
+    return infer_head(valid_actions)
 
 
 def interpolated_weight(schedule: dict, progress_pct: float) -> float:

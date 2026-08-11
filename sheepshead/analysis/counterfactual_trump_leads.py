@@ -76,7 +76,6 @@ from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
 from sheepshead import (  # noqa: E402
     ACTION_IDS,
     ACTION_LOOKUP,
-    ACTIONS,
     FAIL,
     TRUMP,
     TRUMP_SET,
@@ -98,11 +97,10 @@ def _device() -> torch.device:
 
 def _is_private_decision(valid_actions) -> bool:
     """True when the decision is a private bury/under (excluded from the public
-    record fed to the ISMCTS teacher's forced replay) -- mirrors pfsp_runtime."""
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid_actions
-    )
+    record fed to the ISMCTS teacher's forced replay)."""
+    from sheepshead.ismcts import is_private_action
+
+    return any(is_private_action(a) for a in valid_actions)
 
 
 def _card_of(action_id: int) -> Optional[str]:
@@ -506,24 +504,27 @@ def _belief_mc(
 ):
     """Paired policy rollouts over the ISMCTS *belief* pool.
 
-    Builds the exact determinized-world pool the search uses (``_build_pool``),
-    resamples R worlds ~ exp(log_w) (``_pool_probs``), and -- on the SAME sampled
-    worlds (common random worlds) -- forces the ``card_a`` vs ``card_b`` lead
-    (trump vs fail in the original study; any two legal leads in general) and
-    rolls the raw policy to terminal. This is ISMCTS's belief distribution
-    evaluated by policy continuation instead of tree search.
+    Builds the exact determinized-world pool the search uses
+    (``teacher.build_belief_pool``), resamples R worlds ~ exp(log_w)
+    (``pool_probs``), and -- on the SAME sampled worlds (common random worlds)
+    -- forces the ``card_a`` vs ``card_b`` lead (trump vs fail in the original
+    study; any two legal leads in general) and rolls the raw policy to
+    terminal. This is ISMCTS's belief distribution evaluated by policy
+    continuation instead of tree search.
 
     Returns ``(BeliefMcBranch_a, BeliefMcBranch_b)`` or ``(None, None)``.
     """
-    teacher._rng = rng
-    teacher._seat_policies = None
+    from sheepshead.ismcts import pool_ess, pool_probs
+
     saved = _snapshot_memory(agent)
     try:
-        pool = teacher._build_pool(node_game, observer, list(forced_public), pool_k)
+        pool = teacher.build_belief_pool(
+            node_game, observer, list(forced_public), pool_k, rng
+        )
         if not pool:
             return None, None
-        ess = teacher._pool_ess(pool)
-        probs = teacher._pool_probs(pool)
+        ess = pool_ess(pool)
+        probs = pool_probs(pool)
         idxs = rng.choices(range(len(pool)), weights=probs, k=R)
 
         def _rollout_world(world_game, world_mem, card) -> DetBranch:

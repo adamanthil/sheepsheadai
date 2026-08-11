@@ -109,9 +109,31 @@ def _is_weighted_bidding_action(action_id: int) -> bool:
     return not _is_play_action(action_id)
 
 
-def _is_private_action(action_id: int) -> bool:
+def is_private_action(action_id: int) -> bool:
+    """Whether ``action_id`` is a private bury/under action (excluded from the
+    public record fed to the forced replay)."""
     name = ACTIONS[action_id - 1]
     return name.startswith("BURY ") or name.startswith("UNDER ")
+
+
+# Historical name, still imported by analysis/validation callers.
+_is_private_action = is_private_action
+
+
+def infer_head(valid) -> str:
+    """Classify a decision's legal-action set into its search head:
+    "pick" / "partner" / "bury" / "play"."""
+    names = [ACTIONS[action_id - 1] for action_id in valid]
+    if any(name in ("PICK", "PASS") for name in names):
+        return "pick"
+    if any(
+        name == "ALONE" or name == "JD PARTNER" or name.startswith("CALL ")
+        for name in names
+    ):
+        return "partner"
+    if any(name.startswith("BURY ") or name.startswith("UNDER ") for name in names):
+        return "bury"
+    return "play"
 
 
 def _valid_has_play(valid) -> bool:
@@ -123,6 +145,23 @@ def _pool_norm_weights(pool) -> np.ndarray:
     (float64), the shared first step of the pool probability and ESS math."""
     log_weights = np.array([log_weight for _, _, log_weight in pool], dtype=np.float64)
     return np.exp(log_weights - log_weights.max())
+
+
+def pool_probs(pool) -> list:
+    """Self-normalized sampling probabilities over a belief pool's worlds."""
+    weights = _pool_norm_weights(pool)
+    return (weights / weights.sum()).tolist()
+
+
+def pool_ess(pool) -> float:
+    """Effective sample size of a belief pool's importance weights."""
+    if not pool:
+        return 0.0
+    weights = _pool_norm_weights(pool)
+    total = weights.sum()
+    if total <= 0:
+        return 0.0
+    return float(total * total / np.square(weights).sum())
 
 
 def _draw_from_cumulative(rng, valid, prob_of) -> int:
@@ -639,6 +678,48 @@ class ISMCTSTeacher:
             self._seat_policies = None
             self._oracle.clear()
 
+    def build_belief_pool(
+        self,
+        real_game,
+        observer: int,
+        forced_public,
+        n_worlds: int,
+        rng,
+        seat_policies: dict | None = None,
+    ) -> list:
+        """Build the search's belief-weighted determinized world pool WITHOUT
+        running the tree search: a list of ``(world_at_root, memory_snapshot,
+        log_weight)`` — the exact pool ``search`` would use (same forced
+        replay, scheme-B bidding weights, and agent-memory snapshot/restore
+        hygiene; oracle capture stays off). Weigh/sample it with the
+        module-level ``pool_probs`` / ``pool_ess``. For analysis instruments
+        such as paired belief-MC rollouts."""
+        self._rng = rng
+        self._oracle = _OracleCapture(False)
+        self._seat_policies = (
+            {
+                seat: agent
+                for seat, agent in seat_policies.items()
+                if seat != observer and agent is not None
+            }
+            if seat_policies
+            else None
+        )
+        involved = {id(self.agent): self.agent}
+        if self._seat_policies:
+            for agent in self._seat_policies.values():
+                involved[id(agent)] = agent
+        saved_memories = {
+            agent_id: agent.snapshot_player_memories()
+            for agent_id, agent in involved.items()
+        }
+        try:
+            return self._build_pool(real_game, observer, list(forced_public), n_worlds)
+        finally:
+            for agent_id, agent in involved.items():
+                agent.restore_player_memories(saved_memories[agent_id])
+            self._seat_policies = None
+
     # ------------------------------------------------------------------
     # Search driver
     # ------------------------------------------------------------------
@@ -934,20 +1015,9 @@ class ISMCTSTeacher:
             pool.append((game, memory_snapshot, float(log_weights[i].item())))
         return pool
 
-    @staticmethod
-    def _pool_probs(pool):
-        weights = _pool_norm_weights(pool)
-        return (weights / weights.sum()).tolist()
-
-    @staticmethod
-    def _pool_ess(pool) -> float:
-        if not pool:
-            return 0.0
-        weights = _pool_norm_weights(pool)
-        total = weights.sum()
-        if total <= 0:
-            return 0.0
-        return float(total * total / np.square(weights).sum())
+    # Historical spellings, still used by tests/analysis via the teacher.
+    _pool_probs = staticmethod(pool_probs)
+    _pool_ess = staticmethod(pool_ess)
 
     def _finalize(self, root, valid_real, head, n_worlds_built, ess) -> SearchResult:
         pi = np.zeros(self.action_size, dtype=np.float32)
@@ -1031,19 +1101,8 @@ class ISMCTSTeacher:
             pi[action_id - 1] = prob
         return pi
 
-    @staticmethod
-    def _infer_head(valid) -> str:
-        names = [ACTIONS[action_id - 1] for action_id in valid]
-        if any(name in ("PICK", "PASS") for name in names):
-            return "pick"
-        if any(
-            name == "ALONE" or name == "JD PARTNER" or name.startswith("CALL ")
-            for name in names
-        ):
-            return "partner"
-        if any(name.startswith("BURY ") or name.startswith("UNDER ") for name in names):
-            return "bury"
-        return "play"
+    # Historical spelling of the module-level ``infer_head``.
+    _infer_head = staticmethod(infer_head)
 
     # ------------------------------------------------------------------
     # Leaf-parallel batched search (Tier 2): run batch_size simulations
