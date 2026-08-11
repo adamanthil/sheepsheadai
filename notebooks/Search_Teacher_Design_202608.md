@@ -256,3 +256,53 @@ values the endgame); d=1 tests the pure variance-reduction
 hypothesis; 2048/2 tests iterations as the binding constraint.
 Non-grid arms support: commit 7f93213. Output:
 `search_help_matrix_e9_depth.json`.
+
+## 7. E9 depth-ladder results (read 2026-08-11)
+
+Arms {1024/1, 1024/3, 1024/6, 2048/2} (oracle leaves) on the 48
+frozen nodes of the six unresolved-or-terminal-only cells. Semantics
+caveat discovered at read time: ``obs_plays`` counts ROLLOUT-phase
+observer plays only, so d=6 from trick 0-1 exceeds the remaining
+plays — **1024/6 there is a terminal-1024 search under a different
+RNG seed**, i.e. an unplanned replicate probe. That replicate is the
+most important finding:
+
+**Search-seed noise at defender leads is headroom-sized.** On the
+same 8 t0-defender-lead nodes, legacy 1024/term scored −8% capture
+@25% harm while its d=6 replicate scored 84% @0% (per-node swings
+±0.02 Q on ~0.01 headroom). At near-tie nodes, single-search
+capture/harm at n=8 is replicate-noisy; certification there needs
+seed-replicate averaging, not just more nodes.
+
+Genuine depth findings (d=1 arms are true shallow-oracle searches):
+
+- **t0-partner-follow: 1024/1 = 87% @0% harm — QUALIFIES**, replacing
+  384/term (~3x cheaper).
+- **t2-picker-follow: 1024/1 = 63% @0% — QUALIFIES**, replacing
+  1024/term (~10x cheaper).
+- **t0-defender-lead: 1024/1 = 61% @0% — qualifies by the mechanical
+  rule** (newly covered), flagged PROVISIONAL: near-threshold and
+  replicate-noisy.
+- t1-defender-lead: no arm qualifies (best 1024/6 33%@0%; 2048/2
+  57%@12%; oracle-1024/2's 73%@12% stands as best known).
+- t2-picker-lead: resistant across all arms (12-25% harm everywhere).
+- t2-defender-lead (sub-material): depth arms don't help;
+  oracle-1024/2 63%@0% stands.
+
+**Updated coverage map (8 of 30 cells, ~56% of headroom mass) — no
+terminal rollouts required anywhere:** t0-partner-follow 1024/1;
+t0-defender-lead 1024/1 (provisional); t2-defender-follow 384/2;
+t2-partner-follow 384/2; t2-picker-follow 1024/1; t3-partner-follow
+128/2; t3-picker-follow 128/2; t4-picker-lead 128/2. All arms are
+d<=2-or-1 at <=1024 iters with oracle leaves — the trainer-graft
+search budget is cheap-search-only. Unresolved material cells:
+t1-defender-lead and t2-picker-lead (~7.5% of headroom mass
+combined); both rare in play (~1-2 decisions/game), so even a
+reference-grade fallback there would be subsampled, not blanket.
+
+Proposed certification pass (AWAITS OPERATOR SIGN-OFF; est ~3-4h):
+expand the three contested cells (t0/t1-defender-lead,
+t2-picker-lead) to n~32 nodes with 3 search-seed replicates of the
+candidate arms AND the 4096/term reference (replicate-averaged
+pi_gumbel), then re-apply the coverage rule at meaningful harm-gate
+resolution. Artifact: search_help_matrix_e9_depth.json.
