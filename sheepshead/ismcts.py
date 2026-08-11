@@ -59,7 +59,7 @@ import copy
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 import numpy as np
 import torch
@@ -325,6 +325,22 @@ class _Sim:
         self.oracle_seq: list = []
 
 
+class _EncodeRequest(NamedTuple):
+    """One pending network evaluation for a sim this round.
+
+    ``kind`` is the request type (``sim.seat``/``sim.valid`` are already set):
+      * ``"tree"``   — observer decision at a tree node: actor probs feed
+        prior expansion + PUCT/RM selection.
+      * ``"world"``  — non-observer advance or rollout action: actor probs
+        are sampled from directly.
+      * ``"critic"`` — rollout depth cap reached: bootstrap the leaf value
+        (limited critic or oracle) at this state.
+    """
+
+    sim: _Sim
+    kind: str
+
+
 class ISMCTSTeacher:
     def __init__(self, agent, config: ISMCTSConfig | None = None):
         self.agent = agent
@@ -542,12 +558,11 @@ class ISMCTSTeacher:
         seat_memories[seat] = encoded["memory_out"].detach()
         return states, encoded
 
-    def _actor_probs_batched(self, encoded, states, valid_list, seat):
-        """Post-mixture action probabilities (n, A) under ``seat``'s controller —
-        mirrors ``get_action_probs_with_logits`` but over n worlds at once.
-        ``encoded`` must come from the same controller's encoder
-        (``_encode_seat_batched`` on the same seat)."""
-        ctrl = self._controller(seat)
+    def _masked_actor_probs(self, ctrl, encoded, states, valid_list):
+        """Post-mixture action probabilities (n, A) under ``ctrl`` for
+        already-encoded states — the shared mask/hand_ids/actor plumbing.
+        Mirrors ``get_action_probs_with_logits`` over n states at once;
+        ``encoded`` must come from ``ctrl``'s own encoder."""
         masks = torch.stack(
             [ctrl.get_action_mask(valid, self.action_size) for valid in valid_list]
         ).to(DEV)
@@ -561,6 +576,12 @@ class ISMCTSTeacher:
                 encoded, masks, hand_ids, ctrl.encoder.card
             )
         return probs
+
+    def _actor_probs_batched(self, encoded, states, valid_list, seat):
+        """``_masked_actor_probs`` under ``seat``'s controller (replay path)."""
+        return self._masked_actor_probs(
+            self._controller(seat), encoded, states, valid_list
+        )
 
     def _after_action_batched(self, games, seat_memories):
         """End-of-trick observe for every seat (with its controller), batched over
@@ -890,126 +911,21 @@ class ISMCTSTeacher:
             self._run_chunk(sims, observer)
 
     def _run_chunk(self, sims, observer):
+        """Drive a chunk of sims to completion, one network round per pass:
+        collect encode requests -> batched network forward -> (oracle leaves)
+        -> apply outputs -> end-of-trick observes."""
         guard = 0
         while any(sim.phase != "done" for sim in sims):
             guard += 1
             if guard > 100000:
                 raise RuntimeError("batched chunk guard exceeded")
-
-            # 1. Resolve no-network transitions; collect this round's encode
-            # requests.
-            requests = []  # (sim, kind, is_tree)
-            for sim in sims:
-                if sim.phase == "done":
-                    continue
-                prepared = self._prepare(sim, observer)
-                if prepared is not None:
-                    requests.append((sim, prepared[0], prepared[1]))
+            requests = self._collect_requests(sims, observer)
             if not requests:
                 continue
-
-            # 2+3. Encode + actor/critic heads, grouped by the acting seat's
-            # controller (population grounding). The encode COUNT matches the
-            # ungrouped path exactly; only the batch grouping fragments when
-            # seat_policies are present (see notebooks/Population_Grounded_Teacher_Plan.md).
-            # The critic now runs only on groups that contain a bootstrap request
-            # (it used to run on every row and be discarded).
-            states = [
-                sim.world.players[sim.seat - 1].get_state_dict()
-                for sim, _, _ in requests
-            ]
-            groups: dict[int, tuple] = {}
-            for req_idx, (sim, _, _) in enumerate(requests):
-                ctrl = self._controller(sim.seat)
-                groups.setdefault(id(ctrl), (ctrl, []))[1].append(req_idx)
-
-            probs_np = np.zeros((len(requests), self.action_size), dtype=np.float32)
-            values_np = np.zeros(len(requests), dtype=np.float32)
-            for ctrl, req_idxs in groups.values():
-                group_states = [states[req_idx] for req_idx in req_idxs]
-                memory_in = torch.stack(
-                    [
-                        requests[req_idx][0].mem[requests[req_idx][0].seat - 1]
-                        for req_idx in req_idxs
-                    ]
-                )
-                encoded = ctrl.encoder.encode_batch(
-                    group_states, memory_in=memory_in, device=DEV
-                )
-                memory_out = encoded["memory_out"].detach()
-                for row, req_idx in enumerate(req_idxs):
-                    req_sim = requests[req_idx][0]
-                    req_sim.mem[req_sim.seat - 1] = memory_out[row]
-                masks = torch.stack(
-                    [
-                        ctrl.get_action_mask(
-                            requests[req_idx][0].valid, self.action_size
-                        )
-                        for req_idx in req_idxs
-                    ]
-                ).to(DEV)
-                hand_ids = torch.as_tensor(
-                    np.stack([states[req_idx]["hand_ids"] for req_idx in req_idxs]),
-                    dtype=torch.long,
-                    device=DEV,
-                )
-                with torch.no_grad():
-                    group_probs, _ = ctrl.actor.forward_with_logits(
-                        encoded, masks, hand_ids, ctrl.encoder.card
-                    )
-                    if not self._oracle_capture and any(
-                        requests[req_idx][1] == "critic" for req_idx in req_idxs
-                    ):
-                        values_np[req_idxs] = (
-                            ctrl.critic(encoded).detach().view(-1).cpu().numpy()
-                        )
-                probs_np[req_idxs] = group_probs.detach().cpu().numpy()
-
-            # 3b. Oracle leaf evaluation: one ragged batch over the critic
-            # requests' full-information event streams (prefix + path + the
-            # leaf decision state), fresh zero memory per sequence — the
-            # training protocol of forward_sequences. Same value units as the
-            # limited critic (both trained on the same lambda-returns).
+            probs_np, values_np = self._run_network_round(requests)
             if self._oracle_capture:
-                critic_rows = [
-                    req_idx
-                    for req_idx, (_, kind, _) in enumerate(requests)
-                    if kind == "critic"
-                ]
-                if critic_rows:
-                    seqs = []
-                    for req_idx in critic_rows:
-                        req_sim = requests[req_idx][0]
-                        seqs.append(
-                            req_sim.oracle_seq
-                            + [
-                                req_sim.world.players[
-                                    observer - 1
-                                ].get_oracle_state_dict()
-                            ]
-                        )
-                    with torch.no_grad():
-                        oracle_vals = self.agent.oracle_critic.forward_sequences(
-                            seqs, device=DEV
-                        )
-                    for row, req_idx in enumerate(critic_rows):
-                        values_np[req_idx] = float(
-                            oracle_vals[row, len(seqs[row]) - 1].item()
-                        )
-
-            # 4. Apply each request; collect sims that completed a trick this round.
-            completers = []
-            for req_idx, (sim, kind, is_tree) in enumerate(requests):
-                if kind == "critic":
-                    self._finish_value(
-                        sim, self._discount(float(values_np[req_idx]), sim.obs_plays)
-                    )
-                else:
-                    self._apply_actor(
-                        sim, observer, probs_np[req_idx], is_tree, completers
-                    )
-
-            # 5. End-of-trick observe for the completer subset, batched per seat.
+                self._evaluate_oracle_leaves(requests, values_np, observer)
+            completers = self._apply_round(requests, probs_np, values_np, observer)
             if self._oracle_capture:
                 for sim in completers:
                     sim.oracle_seq.append(
@@ -1019,9 +935,115 @@ class ISMCTSTeacher:
                     )
             self._observe_completers_batched(completers)
 
+    def _collect_requests(self, sims, observer) -> list[_EncodeRequest]:
+        """Resolve no-network state-machine transitions; return this round's
+        encode requests (sims that finished during preparation drop out)."""
+        requests = []
+        for sim in sims:
+            if sim.phase == "done":
+                continue
+            kind = self._prepare(sim, observer)
+            if kind is not None:
+                requests.append(_EncodeRequest(sim, kind))
+        return requests
+
+    def _run_network_round(self, requests):
+        """Encode every request and run the actor (and, without oracle leaves,
+        the limited critic) — grouped by the acting seat's controller
+        (population grounding). The encode COUNT matches the ungrouped path
+        exactly; only the batch grouping fragments when seat_policies are
+        present (see notebooks/Population_Grounded_Teacher_Plan.md). The
+        critic runs only on groups that contain a bootstrap request. Returns
+        ``(probs_np, values_np)`` indexed like ``requests``."""
+        states = [
+            req.sim.world.players[req.sim.seat - 1].get_state_dict() for req in requests
+        ]
+        groups: dict[int, tuple] = {}
+        for req_idx, req in enumerate(requests):
+            ctrl = self._controller(req.sim.seat)
+            groups.setdefault(id(ctrl), (ctrl, []))[1].append(req_idx)
+
+        probs_np = np.zeros((len(requests), self.action_size), dtype=np.float32)
+        values_np = np.zeros(len(requests), dtype=np.float32)
+        for ctrl, req_idxs in groups.values():
+            group_states = [states[req_idx] for req_idx in req_idxs]
+            memory_in = torch.stack(
+                [
+                    requests[req_idx].sim.mem[requests[req_idx].sim.seat - 1]
+                    for req_idx in req_idxs
+                ]
+            )
+            encoded = ctrl.encoder.encode_batch(
+                group_states, memory_in=memory_in, device=DEV
+            )
+            memory_out = encoded["memory_out"].detach()
+            for row, req_idx in enumerate(req_idxs):
+                sim = requests[req_idx].sim
+                sim.mem[sim.seat - 1] = memory_out[row]
+            probs = self._masked_actor_probs(
+                ctrl,
+                encoded,
+                group_states,
+                [requests[req_idx].sim.valid for req_idx in req_idxs],
+            )
+            if not self._oracle_capture and any(
+                requests[req_idx].kind == "critic" for req_idx in req_idxs
+            ):
+                with torch.no_grad():
+                    values_np[req_idxs] = (
+                        ctrl.critic(encoded).detach().view(-1).cpu().numpy()
+                    )
+            probs_np[req_idxs] = probs.detach().cpu().numpy()
+        return probs_np, values_np
+
+    def _evaluate_oracle_leaves(self, requests, values_np, observer):
+        """Oracle leaf evaluation: one ragged batch over the critic requests'
+        full-information event streams (prefix + path + the leaf decision
+        state), fresh zero memory per sequence — the training protocol of
+        forward_sequences. Same value units as the limited critic (both
+        trained on the same lambda-returns). Overwrites ``values_np`` rows."""
+        critic_rows = [
+            req_idx for req_idx, req in enumerate(requests) if req.kind == "critic"
+        ]
+        if not critic_rows:
+            return
+        seqs = []
+        for req_idx in critic_rows:
+            sim = requests[req_idx].sim
+            seqs.append(
+                sim.oracle_seq
+                + [sim.world.players[observer - 1].get_oracle_state_dict()]
+            )
+        with torch.no_grad():
+            oracle_vals = self.agent.oracle_critic.forward_sequences(seqs, device=DEV)
+        for row, req_idx in enumerate(critic_rows):
+            values_np[req_idx] = float(oracle_vals[row, len(seqs[row]) - 1].item())
+
+    def _apply_round(self, requests, probs_np, values_np, observer):
+        """Apply each request's network outputs to its sim; return the sims
+        that completed a trick this round (their end-of-trick observe is
+        batched afterwards)."""
+        completers = []
+        for req_idx, req in enumerate(requests):
+            if req.kind == "critic":
+                self._finish_value(
+                    req.sim,
+                    self._discount(float(values_np[req_idx]), req.sim.obs_plays),
+                )
+            else:
+                self._apply_actor(
+                    req.sim,
+                    observer,
+                    probs_np[req_idx],
+                    req.kind == "tree",
+                    completers,
+                )
+        return completers
+
     def _prepare(self, sim, observer):
         """Run no-network state-machine transitions until ``sim`` needs an encode
-        (sets sim.seat/valid and returns (kind, is_tree)) or is done (returns None)."""
+        (sets sim.seat/valid and returns the ``_EncodeRequest`` kind —
+        "tree" / "world" / "critic") or is done (returns None)."""
         while True:
             world = sim.world
             if world.is_done():
@@ -1033,7 +1055,7 @@ class ISMCTSTeacher:
                     sim.phase = "rollout"  # defensive; should not happen at a tree node
                     continue
                 sim.seat, sim.valid = observer, valid
-                return ("actor", True)
+                return "tree"
             if sim.phase == "advance":
                 next_seat = self._next_actor(world)
                 if next_seat is None:
@@ -1051,7 +1073,7 @@ class ISMCTSTeacher:
                     continue
                 sim.seat = next_seat
                 sim.valid = sorted(world.players[next_seat - 1].get_valid_action_ids())
-                return ("actor", False)
+                return "world"
             # rollout
             next_seat = self._next_actor(world)
             if next_seat is None:
@@ -1064,8 +1086,8 @@ class ISMCTSTeacher:
                 and _valid_has_play(sim.valid)
                 and sim.obs_plays >= self._eff_d_rollout
             ):
-                return ("critic", False)
-            return ("actor", False)
+                return "critic"
+            return "world"
 
     def _apply_actor(self, sim, observer, probs, is_tree, completers):
         if is_tree:
