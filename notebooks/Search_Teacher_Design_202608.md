@@ -100,3 +100,10 @@ configs get certified later on bigger n at the covered cells only).
   the matrix if play-phase results warrant.
 - Gate for any trainer graft: operator sign-off + the standing league
   gates (h2h, exploiter, panel) on a branch run before mainline.
+
+**E9 amendment (2026-08-10, pre-results):** driver changed 7M ->
+checkpoint_8000000. The extended run was suspended at the gen-8
+boundary (Learning_System_Redesign 7.19) and the teacher grafts onto
+8M, so headroom must be measured against the graft policy. Recorded
+before any full-matrix results were seen (smoke at 7M disclosed; its
+per-cell n=1 numbers carry no weight). Full run: quota 8, seeds 0-499.
