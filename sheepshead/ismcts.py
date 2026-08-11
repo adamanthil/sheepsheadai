@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import copy
 import math
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -66,6 +66,7 @@ import torch
 from sheepshead import (
     ACTION_IDS,
     ACTIONS,
+    Game,
 )
 from sheepshead.agent import ppo
 from sheepshead.training.training_utils import RETURN_SCALE
@@ -75,6 +76,11 @@ DEV = ppo.device
 # Per-head iteration budgets and tree depths (plan §3).
 _DEFAULT_ITERS = {"pick": 48, "partner": 64, "bury": 96, "play": 96}
 _DEFAULT_DEPTH = {"pick": 1, "partner": 1, "bury": 1, "play": 6}
+
+# Rollout depths above this never reach a critic bootstrap (the observer plays
+# at most 6 plies in a hand), so oracle leaf capture would be pure overhead and
+# is disarmed. Any "terminal-depth" sentinel (e.g. d_rollout=99) exceeds it.
+ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH = 12
 
 
 def _is_play_action(action_id: int) -> bool:
@@ -246,7 +252,6 @@ class _Sim:
         "path",
         "obs_plays",
         "pending_action",
-        "value",
         "seat",
         "valid",
         "oracle_seq",
@@ -261,7 +266,6 @@ class _Sim:
         self.path: list = []  # (node, action) edges to backprop
         self.obs_plays = 0
         self.pending_action = None
-        self.value = None
         self.seat = None  # acting seat for the pending encode this round
         self.valid = None
         # Observer's full-information event stream for oracle leaf evaluation
@@ -279,15 +283,14 @@ class ISMCTSTeacher:
         self._rng = None
         self._oracle_capture = False
         self._oracle_prefix_by_world: dict = {}
-        self._nodes: list[_Node] = []
         self._qmin = math.inf
         self._qmax = -math.inf
         self._max_depth = 1
-        # Per-call rollout-depth override (None -> use config.d_rollout). Lets the
-        # caller apply a trick-indexed schedule: roll deep early-game where the
-        # critic is blind (§1.2 partial-obs ceiling), shallow + bootstrap once the
-        # value head is calibrated mid-game.
-        self._d_rollout_override: int | None = None
+        # Effective rollout depth for the current search: the per-call override
+        # (the trainer's trick-indexed schedule — roll deep early-game where the
+        # critic is blind, shallow + bootstrap once the value head is calibrated
+        # mid-game) or config.d_rollout. Resolved once per search.
+        self._eff_d_rollout: int = self.config.d_rollout
         # Per-search non-observer seat controllers (population grounding); None
         # or a missing seat -> self.agent (pure self-play).
         self._seat_policies: dict | None = None
@@ -356,16 +359,16 @@ class ISMCTSTeacher:
         ``root_n`` / ``root_q`` (per-action weighted visit count / mean value).
         """
         self._rng = rng
-        self._d_rollout_override = d_rollout
+        self._eff_d_rollout = (
+            d_rollout if d_rollout is not None else self.config.d_rollout
+        )
         # Oracle leaf evaluation is armed only when the config asks for it,
         # the agent actually carries an oracle critic, and the effective
-        # rollout depth can produce critic leaves at all (terminal-depth
-        # searches never bootstrap, so capture would be pure overhead).
-        eff_depth = d_rollout if d_rollout is not None else self.config.d_rollout
+        # rollout depth can produce critic leaves at all.
         self._oracle_capture = (
             self.config.leaf_evaluator == "oracle"
             and getattr(self.agent, "oracle_critic", None) is not None
-            and eff_depth <= 12
+            and self._eff_d_rollout <= ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH
         )
         self._oracle_prefix_by_world = {}
         self._seat_policies = (
@@ -393,7 +396,7 @@ class ISMCTSTeacher:
         finally:
             for agent_id, agent in involved.items():
                 agent.restore_player_memories(saved_memories[agent_id])
-            self._d_rollout_override = None
+            self._eff_d_rollout = self.config.d_rollout
             self._seat_policies = None
             self._oracle_prefix_by_world = {}
 
@@ -410,7 +413,6 @@ class ISMCTSTeacher:
 
         # Reset transient search state.
         root = _Node()
-        self._nodes = [root]
         self._qmin = math.inf
         self._qmax = -math.inf
         self._root = root
@@ -469,8 +471,6 @@ class ISMCTSTeacher:
 
     def _fresh_world(self, real_game, deal):
         """Fresh Game with the determinized hands + blind installed (pre-replay)."""
-        from sheepshead import Game
-
         world = Game(partner_selection_mode=real_game.partner_mode_flag)
         for seat in range(1, 6):
             hand = deal["initial_hands"][seat][:]
@@ -568,8 +568,6 @@ class ISMCTSTeacher:
         decision structure). Because the lockstep cannot drop a single inconsistent
         world mid-flight, any legality/desync failure raises ``_ReplayInconsistency``
         so the caller can fall back to the per-world build."""
-        from collections import deque
-
         n_worlds = len(deals)
         games = [self._fresh_world(real_game, deal) for deal in deals]
         oracle_prefixes: list[list] = [[] for _ in games]
@@ -830,8 +828,8 @@ class ISMCTSTeacher:
     # ------------------------------------------------------------------
     @staticmethod
     def _next_actor(world):
-        """Seat (1-5) whose turn it is, or None if terminal (exactly one seat has
-        legal actions at any non-terminal point)."""
+        """First seat (in seat order 1-5) with a legal action, or None if the
+        world is terminal."""
         for player in world.players:
             if player.get_valid_action_ids():
                 return player.position
@@ -1018,7 +1016,6 @@ class ISMCTSTeacher:
                     if child is None:
                         child = _Node()
                         parent.children[action_id] = child
-                        self._nodes.append(child)
                     sim.node, sim.depth, sim.pending_action = child, sim.depth + 1, None
                     sim.phase = "tree"
                     continue
@@ -1032,15 +1029,10 @@ class ISMCTSTeacher:
                 return None
             sim.seat = next_seat
             sim.valid = sorted(world.players[next_seat - 1].get_valid_action_ids())
-            rollout_depth = (
-                self._d_rollout_override
-                if self._d_rollout_override is not None
-                else self.config.d_rollout
-            )
             if (
                 next_seat == observer
                 and _valid_has_play(sim.valid)
-                and sim.obs_plays >= rollout_depth
+                and sim.obs_plays >= self._eff_d_rollout
             ):
                 return ("critic", False)
             return ("actor", False)
@@ -1223,7 +1215,6 @@ class ISMCTSTeacher:
                 self._qmax = q
             backed *= self._gamma()
         sim.phase = "done"
-        sim.value = value
         if self._root_rm is not None and sim.path:
             self._rm_observe()
 
@@ -1282,10 +1273,6 @@ class ISMCTSTeacher:
         memory and reproduce the record) but never weighted. Private bury/under
         are forced from the determinization and never weighted.
         """
-        from collections import deque
-
-        from sheepshead import Game
-
         world = Game(partner_selection_mode=real_game.partner_mode_flag)
         for seat in range(1, 6):
             hand = deal["initial_hands"][seat][:]
