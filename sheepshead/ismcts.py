@@ -168,6 +168,77 @@ def _at_replay_root(real_game, world, public_actions, seat, observer, valid) -> 
     )
 
 
+@dataclass(frozen=True)
+class _PrivateDecision:
+    """Director event: ``seat`` faces a forced bury/under decision. Each world
+    resolves its OWN card from its determinization; never belief-weighted."""
+
+    seat: int
+
+
+@dataclass(frozen=True)
+class _PublicAction:
+    """Director event: ``seat`` must take the recorded public ``action_id``
+    (identical across worlds). ``weighted`` marks scheme-B bidding actions
+    whose policy log-prob enters the world's belief weight."""
+
+    seat: int
+    action_id: int
+    weighted: bool
+
+
+def _replay_events(real_game, ref_world, forced_public, observer):
+    """The replay DIRECTOR: yield the forced-replay decision structure derived
+    from ``ref_world``, one event per action, until the live root is reached
+    (generator return). Both world-build executors run this control flow —
+    ``_build_world`` drives it per world, ``_build_worlds_lockstep`` drives one
+    instance off world 0 and applies each event to every world.
+
+    Contract: the director only READS ``ref_world``; the consumer must apply
+    each yielded event to the reference world (and any lockstepped worlds)
+    before advancing the generator — the next event is derived from the
+    post-action reference state. Owns a fresh copy of the public record;
+    structural failures (guard overflow, public-record desync, no seat acted)
+    raise ``_ReplayInconsistency`` with the matching ``FAIL_*`` key. Per-world
+    failures (a recorded/forced action illegal in one world) are the
+    EXECUTORS' to detect, because worlds may diverge from the reference in
+    private cards — but never in public flow."""
+    public_actions = deque(forced_public)
+    guard = 0
+    while True:
+        guard += 1
+        if guard > _REPLAY_GUARD_LIMIT:
+            raise _ReplayInconsistency(FAIL_GUARD, "forced replay guard exceeded")
+        acted = False
+        for seat in range(1, 6):
+            player = ref_world.players[seat - 1]
+            valid = player.get_valid_action_ids()
+            while valid:
+                # Root reached: public record exhausted and it is the
+                # observer's turn. If this is a later private decision, the
+                # private events already forced bury/under progress to match
+                # the live game.
+                if _at_replay_root(
+                    real_game, ref_world, public_actions, seat, observer, valid
+                ):
+                    return
+                if any(_is_private_action(action_id) for action_id in valid):
+                    yield _PrivateDecision(seat)
+                else:
+                    if not public_actions or public_actions[0][0] != seat:
+                        raise _ReplayInconsistency(
+                            FAIL_PUB_DESYNC, "forced replay: public action desync"
+                        )
+                    _, action_id = public_actions.popleft()
+                    yield _PublicAction(
+                        seat, action_id, _is_weighted_bidding_action(action_id)
+                    )
+                acted = True
+                valid = player.get_valid_action_ids()
+        if not acted:
+            raise _ReplayInconsistency(FAIL_NO_ACTED, "forced replay: no seat acted")
+
+
 class SearchResult(TypedDict):
     """The contract of ``ISMCTSTeacher.search``. Every key is always present
     (pinned by ``test_search_output_contract``); consumers index it directly."""
@@ -619,9 +690,9 @@ class ISMCTSTeacher:
         hidden cards. So instead of replaying each world separately (n_worlds
         batch-1 encoder calls per decision — the dominant search cost; see
         profiling), we step all worlds together and batch the encoder/actor over
-        the n_worlds worlds at each decision point. The per-world sequential path
-        is kept as ``_build_world`` (the reference the batched build is
-        validated against)."""
+        the n_worlds worlds at each decision point. Both builds are executors of
+        the shared ``_replay_events`` director; their equivalence is pinned by
+        the pool tests and the replay goldens."""
         config = self.config
         deals = []
         for _ in range(n_worlds):
@@ -716,8 +787,9 @@ class ISMCTSTeacher:
             )
 
     def _build_pool_sequential(self, real_game, deals, forced_public, observer):
-        """Per-world sequential build (the robust reference): replay each deal with
-        ``_build_world`` and skip the ones that fail (returns None)."""
+        """Per-world sequential build (the robust fallback executor): replay
+        each deal with ``_build_world`` and skip the ones that fail
+        (returns None)."""
         pool = []
         for deal in deals:
             world, log_weight = self._build_world(
@@ -735,129 +807,132 @@ class ISMCTSTeacher:
         return pool
 
     def _build_worlds_lockstep(self, real_game, deals, forced_public, observer):
-        """Lockstep batched analogue of ``_build_world`` over many worlds at once.
+        """Lockstep batched EXECUTOR of the shared ``_replay_events`` director:
+        one director instance driven off world 0 (all worlds share the
+        public/private decision structure), each event applied to every world
+        with batched encodes into local ``seat_memories`` tensors.
 
-        Drives control flow off world 0 (all worlds share the public/private
-        decision structure). Because the lockstep cannot drop a single inconsistent
-        world mid-flight, any legality/desync failure raises ``_ReplayInconsistency``
-        so the caller can fall back to the per-world build."""
+        Fast path semantics: the lockstep cannot drop a single inconsistent
+        world mid-flight, so any pre-root failure raises
+        ``_ReplayInconsistency`` (counter incremented here) for the caller's
+        per-world fallback; root-stage history mismatches are instead dropped
+        per world in ``_collect_lockstep_pool``. The per-world executor is
+        ``_build_world``; their equivalence is pinned by
+        test_batched_pool_matches_sequential / test_replay_equivalence_panel
+        and the replay goldens."""
         n_worlds = len(deals)
         games = [self._fresh_world(real_game, deal) for deal in deals]
         oracle_prefixes: list[list] = [[] for _ in games]
         det_buries = [deque(deal["bury"]) for deal in deals]
         det_unders = [deal["under_card"] for deal in deals]
-        public_actions = deque(forced_public)
         mem_width = self.agent.state_size
         seat_memories = {
             seat: torch.zeros((n_worlds, mem_width), device=DEV) for seat in range(1, 6)
         }
         log_weights = torch.zeros(n_worlds, device=DEV)
-
-        guard = 0
-        while True:
-            guard += 1
-            if guard > _REPLAY_GUARD_LIMIT:
-                self.fail[FAIL_GUARD] += 1
-                raise _ReplayInconsistency(
-                    FAIL_GUARD, "batched pool build guard exceeded"
+        try:
+            for event in _replay_events(real_game, games[0], forced_public, observer):
+                log_weights = self._apply_event_lockstep(
+                    games,
+                    event,
+                    det_buries,
+                    det_unders,
+                    observer,
+                    seat_memories,
+                    log_weights,
+                    oracle_prefixes,
                 )
-            acted = False
-            for seat in range(1, 6):
-                ref_player = games[0].players[seat - 1]
-                ref_valid = ref_player.get_valid_action_ids()
-                while ref_valid:
-                    # Root reached: public record exhausted and it is the
-                    # observer's turn. If this is a later private decision, first
-                    # force the already-taken private actions so the replay stops
-                    # at the same bury/under step as the live game.
-                    if _at_replay_root(
-                        real_game, games[0], public_actions, seat, observer, ref_valid
-                    ):
-                        pool = []
-                        for i, game in enumerate(games):
-                            if game.history != real_game.history:
-                                self.fail[FAIL_HIST_MISMATCH] += 1
-                                continue
-                            memory_snapshot = {
-                                mem_seat: seat_memories[mem_seat][i].detach().clone()
-                                for mem_seat in range(1, 6)
-                            }
-                            self._oracle.store_prefix(game, oracle_prefixes[i])
-                            pool.append(
-                                (game, memory_snapshot, float(log_weights[i].item()))
-                            )
-                        return pool
+        except _ReplayInconsistency as exc:
+            self.fail[exc.key] += 1
+            raise
+        return self._collect_lockstep_pool(
+            games, real_game, seat_memories, log_weights, oracle_prefixes
+        )
 
-                    if any(_is_private_action(action_id) for action_id in ref_valid):
-                        # Forced bury/under: encode (advance memory), then act each
-                        # world with its own determinized card. Not weighted.
-                        self._encode_seat_batched(games, seat, seat_memories)
-                        for i, game in enumerate(games):
-                            world_valid = game.players[seat - 1].get_valid_action_ids()
-                            action_id = self._forced_private(
-                                world_valid, det_buries[i], det_unders[i]
-                            )
-                            if action_id is None or action_id not in world_valid:
-                                self.fail[FAIL_BAD_PRIVATE] += 1
-                                raise _ReplayInconsistency(
-                                    FAIL_BAD_PRIVATE,
-                                    "batched replay: bad forced private action",
-                                )
-                            if seat == observer:
-                                self._oracle.record_decision(
-                                    oracle_prefixes[i], game.players[seat - 1]
-                                )
-                            game.players[seat - 1].act(action_id)
-                    else:
-                        if not public_actions or public_actions[0][0] != seat:
-                            self.fail[FAIL_PUB_DESYNC] += 1
-                            raise _ReplayInconsistency(
-                                FAIL_PUB_DESYNC, "batched replay: public action desync"
-                            )
-                        _, action_id = public_actions.popleft()
-                        states, encoded = self._encode_seat_batched(
-                            games, seat, seat_memories
-                        )
-                        # Weight bidding actions only (scheme B); plays are forced
-                        # but never weighted. The actor head runs only here.
-                        if _is_weighted_bidding_action(action_id):
-                            valid_lists = [
-                                game.players[seat - 1].get_valid_action_ids()
-                                for game in games
-                            ]
-                            probs = self._actor_probs_batched(
-                                encoded, states, valid_lists, seat
-                            )
-                            action_probs = probs[:, action_id - 1].clamp_min(1e-8)
-                            log_weights = log_weights + torch.log(action_probs)
-                        for i, game in enumerate(games):
-                            world_valid = game.players[seat - 1].get_valid_action_ids()
-                            if action_id not in world_valid:
-                                self.fail[FAIL_BAD_PUBLIC] += 1
-                                raise _ReplayInconsistency(
-                                    FAIL_BAD_PUBLIC,
-                                    "batched replay: bad forced public action",
-                                )
-                            if seat == observer:
-                                self._oracle.record_decision(
-                                    oracle_prefixes[i], game.players[seat - 1]
-                                )
-                            game.players[seat - 1].act(action_id)
-
-                    acted = True
-                    self._observe_trick_lockstep(games, seat_memories)
-                    if self._oracle.enabled:
-                        for i, game in enumerate(games):
-                            if game.was_trick_just_completed:
-                                self._oracle.record_trick(
-                                    oracle_prefixes[i], game.players[observer - 1]
-                                )
-                    ref_valid = ref_player.get_valid_action_ids()
-            if not acted:
-                self.fail[FAIL_NO_ACTED] += 1
-                raise _ReplayInconsistency(
-                    FAIL_NO_ACTED, "batched replay: no seat acted"
+    def _apply_event_lockstep(
+        self,
+        games,
+        event,
+        det_buries,
+        det_unders,
+        observer,
+        seat_memories,
+        log_weights,
+        oracle_prefixes,
+    ):
+        """Apply one director event to every lockstepped world (batched encode,
+        per-world act) and run the synchronized end-of-trick observe. Returns
+        the updated ``log_weights`` tensor. Any per-world failure raises
+        ``_ReplayInconsistency`` out of the whole build (all-or-nothing)."""
+        seat = event.seat
+        if isinstance(event, _PrivateDecision):
+            # Forced bury/under: encode (advance memory), then act each
+            # world with its own determinized card. Not weighted.
+            self._encode_seat_batched(games, seat, seat_memories)
+            for i, game in enumerate(games):
+                world_valid = game.players[seat - 1].get_valid_action_ids()
+                action_id = self._forced_private(
+                    world_valid, det_buries[i], det_unders[i]
                 )
+                if action_id is None or action_id not in world_valid:
+                    raise _ReplayInconsistency(
+                        FAIL_BAD_PRIVATE, "batched replay: bad forced private action"
+                    )
+                if seat == observer:
+                    self._oracle.record_decision(
+                        oracle_prefixes[i], game.players[seat - 1]
+                    )
+                game.players[seat - 1].act(action_id)
+        else:
+            action_id = event.action_id
+            states, encoded = self._encode_seat_batched(games, seat, seat_memories)
+            # Weight bidding actions only (scheme B); plays are forced
+            # but never weighted. The actor head runs only here.
+            if event.weighted:
+                valid_lists = [
+                    game.players[seat - 1].get_valid_action_ids() for game in games
+                ]
+                probs = self._actor_probs_batched(encoded, states, valid_lists, seat)
+                action_probs = probs[:, action_id - 1].clamp_min(1e-8)
+                log_weights = log_weights + torch.log(action_probs)
+            for i, game in enumerate(games):
+                world_valid = game.players[seat - 1].get_valid_action_ids()
+                if action_id not in world_valid:
+                    raise _ReplayInconsistency(
+                        FAIL_BAD_PUBLIC, "batched replay: bad forced public action"
+                    )
+                if seat == observer:
+                    self._oracle.record_decision(
+                        oracle_prefixes[i], game.players[seat - 1]
+                    )
+                game.players[seat - 1].act(action_id)
+        self._observe_trick_lockstep(games, seat_memories)
+        if self._oracle.enabled:
+            for i, game in enumerate(games):
+                if game.was_trick_just_completed:
+                    self._oracle.record_trick(
+                        oracle_prefixes[i], game.players[observer - 1]
+                    )
+        return log_weights
+
+    def _collect_lockstep_pool(
+        self, games, real_game, seat_memories, log_weights, oracle_prefixes
+    ):
+        """Root-stage per-world filter + snapshot: a history-mismatched world
+        is DROPPED (counter, never an exception — mirroring the sequential
+        executor's drop); survivors get a dense 5-seat memory snapshot from
+        the local tensors and their oracle prefix registered."""
+        pool = []
+        for i, game in enumerate(games):
+            if game.history != real_game.history:
+                self.fail[FAIL_HIST_MISMATCH] += 1
+                continue
+            memory_snapshot = {
+                seat: seat_memories[seat][i].detach().clone() for seat in range(1, 6)
+            }
+            self._oracle.store_prefix(game, oracle_prefixes[i])
+            pool.append((game, memory_snapshot, float(log_weights[i].item())))
+        return pool
 
     @staticmethod
     def _pool_probs(pool):
@@ -1423,105 +1498,84 @@ class ISMCTSTeacher:
     # Determinized-world reconstruction (forced replay)
     # ------------------------------------------------------------------
     def _build_world(self, real_game, deal, forced_public, observer):
-        """Replay the public record into a fresh game whose hidden hands are the
-        sampled determinization, rebuilding every seat's recurrent memory, and
-        stop at the observer's current decision (root). Returns
-        ``(world, log_weight)`` or ``(None, None)`` on a replay/desync failure.
+        """Per-world sequential EXECUTOR of the shared ``_replay_events``
+        director: replay the public record into a fresh game whose hidden hands
+        are the sampled determinization, rebuilding every seat's recurrent
+        memory (through each controller's own ``_player_memories``), and stop
+        at the observer's current decision (root). Returns
+        ``(world, log_weight)``, or ``(None, None)`` on any inconsistency —
+        this executor DROPS a bad world (its own director instance is derived
+        from that world) where the lockstep executor must raise.
 
-        ``log_weight`` is the sum of policy log-probs of every forced PUBLIC *bidding*
-        action (pick / pass / call / alone / jd-partner) under the rebuilt
-        memory + determinized hands (scheme B). Plays are forced (to rebuild
-        memory and reproduce the record) but never weighted. Private bury/under
-        are forced from the determinization and never weighted.
-        """
-        world = Game(partner_selection_mode=real_game.partner_mode_flag)
-        for seat in range(1, 6):
-            hand = deal["initial_hands"][seat][:]
-            world.players[seat - 1].hand = hand
-            world.players[seat - 1].initial_hand = hand[:]
-        world.blind = deal["blind"][:]
-
+        ``log_weight`` is the sum of policy log-probs of every forced PUBLIC
+        *bidding* action (pick / pass / call / alone / jd-partner) under the
+        rebuilt memory + determinized hands (scheme B). Plays are forced (to
+        rebuild memory and reproduce the record) but never weighted. Private
+        bury/under are forced from the determinization and never weighted.
+        Equivalence with ``_build_worlds_lockstep`` is pinned by the pool
+        tests and the replay goldens."""
+        world = self._fresh_world(real_game, deal)
         self.agent.reset_recurrent_state()
         if self._seat_policies:
             for policy in self._seat_policies.values():
                 policy.reset_recurrent_state()
-        public_actions = deque(forced_public)
         det_bury = deque(deal["bury"])
         det_under = deal["under_card"]
         log_weight = 0.0
         oracle_prefix: list = []
-        guard = 0
-        while True:
-            guard += 1
-            if guard > _REPLAY_GUARD_LIMIT:
-                self.fail[FAIL_GUARD] += 1
-                return None, None
-            acted = False
-            for player in world.players:
-                valid = player.get_valid_action_ids()
-                while valid:
-                    # Root reached: all public actions forced and it is the
-                    # observer's turn. For later private roots, keep replaying the
-                    # determinized private actions until bury/under progress
-                    # matches the live root; the simulate step encodes the root.
-                    if _at_replay_root(
-                        real_game,
-                        world,
-                        public_actions,
-                        player.position,
-                        observer,
-                        valid,
-                    ):
-                        if world.history != real_game.history:
-                            self.fail[FAIL_HIST_MISMATCH] += 1
-                            return None, None
-                        self._oracle.store_prefix(world, oracle_prefix)
-                        return world, log_weight
+        try:
+            for event in _replay_events(real_game, world, forced_public, observer):
+                log_weight += self._apply_event_sequential(
+                    world, event, det_bury, det_under, observer, oracle_prefix
+                )
+        except _ReplayInconsistency as exc:
+            self.fail[exc.key] += 1
+            return None, None
+        if world.history != real_game.history:
+            self.fail[FAIL_HIST_MISMATCH] += 1
+            return None, None
+        self._oracle.store_prefix(world, oracle_prefix)
+        return world, log_weight
 
-                    if any(_is_private_action(action_id) for action_id in valid):
-                        action_id = self._forced_private(valid, det_bury, det_under)
-                        if action_id is None or action_id not in valid:
-                            self.fail[FAIL_BAD_PRIVATE] += 1
-                            return None, None
-                        # Advance this seat's memory through the forced decision.
-                        self._controller(player.position).get_action_probs_with_logits(
-                            player.get_state_dict(), valid, player_id=player.position
-                        )
-                        if player.position == observer:
-                            self._oracle.record_decision(oracle_prefix, player)
-                        player.act(action_id)
-                    else:
-                        if (
-                            not public_actions
-                            or public_actions[0][0] != player.position
-                        ):
-                            self.fail[FAIL_PUB_DESYNC] += 1
-                            return None, None
-                        _, action_id = public_actions.popleft()
-                        if action_id not in valid:
-                            self.fail[FAIL_BAD_PUBLIC] += 1
-                            return None, None
-                        probs, _ = self._controller(
-                            player.position
-                        ).get_action_probs_with_logits(
-                            player.get_state_dict(), valid, player_id=player.position
-                        )
-                        if _is_weighted_bidding_action(action_id):
-                            action_prob = float(probs[0][action_id - 1].item())
-                            log_weight += math.log(max(action_prob, 1e-8))
-                        if player.position == observer:
-                            self._oracle.record_decision(oracle_prefix, player)
-                        player.act(action_id)
-                    acted = True
-                    valid = player.get_valid_action_ids()
-                    self._observe_trick_sequential(world)
-                    if world.was_trick_just_completed:
-                        self._oracle.record_trick(
-                            oracle_prefix, world.players[observer - 1]
-                        )
-            if not acted:
-                self.fail[FAIL_NO_ACTED] += 1
-                return None, None
+    def _apply_event_sequential(
+        self, world, event, det_bury, det_under, observer, oracle_prefix
+    ) -> float:
+        """Apply one director event to a sequential world (batch-1 encode via
+        the seat controller, which advances its ``_player_memories``) and run
+        the end-of-trick observe. Returns the log-weight increment; raises
+        ``_ReplayInconsistency`` if the forced action is illegal here."""
+        player = world.players[event.seat - 1]
+        valid = player.get_valid_action_ids()
+        log_weight = 0.0
+        if isinstance(event, _PrivateDecision):
+            action_id = self._forced_private(valid, det_bury, det_under)
+            if action_id is None or action_id not in valid:
+                raise _ReplayInconsistency(
+                    FAIL_BAD_PRIVATE, "replay: bad forced private action"
+                )
+            # Advance this seat's memory through the forced decision.
+            self._controller(event.seat).get_action_probs_with_logits(
+                player.get_state_dict(), valid, player_id=event.seat
+            )
+        else:
+            action_id = event.action_id
+            if action_id not in valid:
+                raise _ReplayInconsistency(
+                    FAIL_BAD_PUBLIC, "replay: bad forced public action"
+                )
+            probs, _ = self._controller(event.seat).get_action_probs_with_logits(
+                player.get_state_dict(), valid, player_id=event.seat
+            )
+            if event.weighted:
+                action_prob = float(probs[0][action_id - 1].item())
+                log_weight = math.log(max(action_prob, 1e-8))
+        if event.seat == observer:
+            self._oracle.record_decision(oracle_prefix, player)
+        player.act(action_id)
+        self._observe_trick_sequential(world)
+        if world.was_trick_just_completed:
+            self._oracle.record_trick(oracle_prefix, world.players[observer - 1])
+        return log_weight
 
     @staticmethod
     def _forced_private(valid, det_bury, det_under):

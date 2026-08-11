@@ -312,6 +312,88 @@ def test_batched_fallback_on_organic_inconsistency():
     assert memory_snapshot, "surviving world lost its memory snapshot"
 
 
+def _drain_director(real_game, deal, forced_public, observer):
+    """Network-free run of the replay director: apply each yielded event to a
+    fresh determinized world directly (no encodes, no weights); return the
+    event trace and the finished world."""
+    from collections import deque
+
+    from sheepshead.ismcts import ISMCTSTeacher, _PrivateDecision, _replay_events
+
+    world = Game(partner_selection_mode=real_game.partner_mode_flag)
+    for seat in range(1, 6):
+        hand = deal["initial_hands"][seat][:]
+        world.players[seat - 1].hand = hand
+        world.players[seat - 1].initial_hand = hand[:]
+    world.blind = deal["blind"][:]
+    det_bury = deque(deal["bury"])
+    det_under = deal["under_card"]
+    events = []
+    for event in _replay_events(real_game, world, forced_public, observer):
+        events.append(event)
+        player = world.players[event.seat - 1]
+        if isinstance(event, _PrivateDecision):
+            action_id = ISMCTSTeacher._forced_private(
+                player.get_valid_action_ids(), det_bury, det_under
+            )
+        else:
+            action_id = event.action_id
+        assert action_id in player.get_valid_action_ids()
+        player.act(action_id)
+    return world, events
+
+
+def test_director_event_trace():
+    """The director's event sequence is exactly the public record in order
+    (with scheme-B weighted flags) interleaved with one _PrivateDecision per
+    completed private action, terminating at the root (no raise)."""
+    from sheepshead.ismcts import (
+        _is_weighted_bidding_action,
+        _PrivateDecision,
+        _PublicAction,
+    )
+
+    _seed()
+    rng = random.Random(SEED)
+    cases = []
+    for game_seed in range(300):  # mid-trick play node
+        game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=game_seed)
+        out = _drive_to_node(
+            game, random.Random(SEED + game_seed), "play", trick_boundary=False
+        )
+        if out is not None:
+            cases.append((game, *out))
+            break
+    for game_seed in range(300):  # second-bury private root
+        game = Game(partner_selection_mode=PARTNER_BY_JD, seed=game_seed)
+        out = _drive_to_second_bury(game)
+        if out is not None and len(game.bury) == 1:
+            cases.append((game, *out))
+            break
+    assert len(cases) == 2, "could not build both director trace cases"
+
+    for game, observer, forced_public in cases:
+        deal = game.sample_determinization(observer, rng)
+        world, events = _drain_director(game, deal, forced_public, observer)
+
+        public_events = [e for e in events if isinstance(e, _PublicAction)]
+        assert [(e.seat, e.action_id) for e in public_events] == list(forced_public), (
+            "public events must be the forced record, in order"
+        )
+        for e in public_events:
+            assert e.weighted == _is_weighted_bidding_action(e.action_id)
+
+        private_events = [e for e in events if isinstance(e, _PrivateDecision)]
+        expected_private = len(game.bury) + (1 if game.under_card else 0)
+        assert len(private_events) == expected_private, (
+            f"{len(private_events)} private events, expected {expected_private}"
+        )
+        assert all(e.seat == game.picker for e in private_events), (
+            "private decisions must belong to the picker"
+        )
+        assert world.history == game.history, "director replay history mismatch"
+
+
 if __name__ == "__main__":
     import sys
 
