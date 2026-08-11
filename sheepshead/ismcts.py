@@ -97,6 +97,36 @@ def _valid_has_play(valid) -> bool:
     return any(_is_play_action(action_id) for action_id in valid)
 
 
+def _pool_norm_weights(pool) -> np.ndarray:
+    """Unnormalized world importance weights ``exp(log_w - max(log_w))``
+    (float64), the shared first step of the pool probability and ESS math."""
+    log_weights = np.array([log_weight for _, _, log_weight in pool], dtype=np.float64)
+    return np.exp(log_weights - log_weights.max())
+
+
+def _draw_from_cumulative(rng, valid, prob_of) -> int:
+    """One ``rng.random()`` draw walked down the cumulative distribution
+    ``prob_of`` over ``valid`` (in order); numeric slack falls to the last
+    action. Exactly one RNG consumption — part of the pinned draw order."""
+    draw = rng.random()
+    cum = 0.0
+    for action_id in valid:
+        cum += prob_of(action_id)
+        if draw <= cum:
+            return action_id
+    return valid[-1]
+
+
+def _minmax_unit(values: np.ndarray) -> np.ndarray:
+    """Min-max normalize to [0, 1]; a degenerate span maps everything to 0.5.
+    Root-local Q normalization for the RM update and the gumbel readout (the
+    PUCT selection loop keeps its own tree-global normalization)."""
+    lo, hi = float(values.min()), float(values.max())
+    if hi > lo:
+        return (values - lo) / (hi - lo)
+    return np.full_like(values, 0.5)
+
+
 def _private_root_ready(real_game, world, valid) -> bool:
     if not any(_is_private_action(action_id) for action_id in valid):
         return True
@@ -710,20 +740,14 @@ class ISMCTSTeacher:
 
     @staticmethod
     def _pool_probs(pool):
-        log_weights = np.array(
-            [log_weight for _, _, log_weight in pool], dtype=np.float64
-        )
-        weights = np.exp(log_weights - log_weights.max())
+        weights = _pool_norm_weights(pool)
         return (weights / weights.sum()).tolist()
 
     @staticmethod
     def _pool_ess(pool) -> float:
         if not pool:
             return 0.0
-        log_weights = np.array(
-            [log_weight for _, _, log_weight in pool], dtype=np.float64
-        )
-        weights = np.exp(log_weights - log_weights.max())
+        weights = _pool_norm_weights(pool)
         total = weights.sum()
         if total <= 0:
             return 0.0
@@ -799,12 +823,7 @@ class ISMCTSTeacher:
             return None
         v_mix = float((counts[visited] * q[visited]).sum() / counts[visited].sum())
         q_completed = np.where(visited, q, v_mix)
-        qlo, qhi = float(q_completed.min()), float(q_completed.max())
-        qhat = (
-            (q_completed - qlo) / (qhi - qlo)
-            if qhi > qlo
-            else np.full_like(q_completed, 0.5)
-        )
+        qhat = _minmax_unit(q_completed)
         scale = (
             self.config.gumbel_c_visit + float(counts.max())
         ) * self.config.gumbel_c_scale
@@ -1119,13 +1138,11 @@ class ISMCTSTeacher:
         sigma = self._root_rm.sigma()
         gamma = self.config.rm_gamma
         n = len(valid)
-        draw = self._rng.random()
-        cum = 0.0
-        for action_id in valid:
-            cum += (1.0 - gamma) * sigma.get(action_id, 0.0) + gamma / n
-            if draw <= cum:
-                return action_id
-        return valid[-1]
+        return _draw_from_cumulative(
+            self._rng,
+            valid,
+            lambda action_id: (1.0 - gamma) * sigma.get(action_id, 0.0) + gamma / n,
+        )
 
     def _rm_observe(self):
         """One RM+ update from the root's current mean-Q table, min-max
@@ -1135,9 +1152,8 @@ class ISMCTSTeacher:
         if any(root.N.get(a, 0.0) <= 0.0 for a in rm.regret):
             return
         q = {a: root.W[a] / root.N[a] for a in rm.regret}
-        qlo, qhi = min(q.values()), max(q.values())
-        span = qhi - qlo
-        rm.update({a: ((v - qlo) / span if span > 0.0 else 0.5) for a, v in q.items()})
+        unit = _minmax_unit(np.array(list(q.values()), dtype=np.float64))
+        rm.update(dict(zip(q.keys(), unit.tolist())))
 
     def _select_vl(self, node, valid, following) -> int:
         """PUCT selection with virtual loss: an in-flight selected edge is charged
@@ -1178,13 +1194,9 @@ class ISMCTSTeacher:
 
     def _sample_action(self, probs, valid) -> int:
         """Sample an action id from the masked policy over ``valid`` (search RNG)."""
-        draw = self._rng.random()
-        cum = 0.0
-        for action_id in valid:
-            cum += float(probs[action_id - 1])
-            if draw <= cum:
-                return action_id
-        return valid[-1]
+        return _draw_from_cumulative(
+            self._rng, valid, lambda action_id: float(probs[action_id - 1])
+        )
 
     def _gamma(self) -> float:
         return float(getattr(self.agent, "gamma", 1.0))
