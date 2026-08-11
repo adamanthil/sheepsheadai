@@ -202,3 +202,57 @@ nodes with identical headroom; early signal: oracle 1024/2 captured
 reference actions legacy d=2 arms missed. Output:
 `runs/convention_optimality_202607/search_help_matrix_e9_oracle.json`.
 
+
+## 6. E9 Phase-2 results: oracle-leaf A/B (read 2026-08-11)
+
+All 240 frozen nodes matched (no unmatched rows); the operator's ISMCTS
+refactor (aa59cd1..5d88c78) was verified behavior-preserving first —
+21 ISMCTS tests pass and a critic-free 128/term arm rerun on frozen
+nodes BIT-MATCHES the pre-refactor legacy matrix (argmax, uplift, ESS
+to float precision), so world-pool identity holds across the A/B.
+
+Oracle leaves changed a d=2 outcome at 114/240 nodes (t0 47, t1 31,
+t2 36; t3/t4 identical BY CONSTRUCTION — d=2 reaches terminal there,
+no critic consulted). **The effect is budget-dependent** (paired mean
+delta-uplift over t0-t2 nodes, harm legacy->oracle):
+
+| arm | mean dUplift | improved/worse | harm |
+|---|---|---|---|
+| 128/2 | −0.0010 | 40/28 | 10% -> 15% |
+| 384/2 | +0.0001 | 37/37 | 11% -> 12% |
+| 1024/2 | +0.0010 | 34/21 | 10% -> 8% |
+
+Reading: the oracle's sharp, policy-conditioned leaf values amplify
+whatever continuation the tree has built. Under a shallow tree (128)
+they mislead more decisively than the noisier limited critic; under a
+deeper tree (1024) they help — harm drops and capture rises. This is
+the E8 mechanism surfacing inside the search: the leaf cannot supply
+the improved continuation, only value it with less noise once the
+tree supplies it.
+
+Hard cells: **t1-defender-lead 1024/2 jumps −1% -> 73% capture** but
+at 12% harm (1/8 nodes) — near-qualifying, fails the strict <=5%
+gate. t0-defender-lead remains uncaptured (24% at 1024/2).
+t2-defender-lead (sub-material) turns −404% -> +63%. Coverage under
+the operative regime (oracle d=2 arms + terminal arms): same 7 cells,
+53% of headroom mass; one config swap — t2-partner-follow moves
+128/2 -> 384/2 (oracle 128/2 fails at 51%/12% harm; 384/2 86%/0%).
+Since production leaves ARE oracle now, the oracle matrix is the
+operative one for d=2 arms; legacy d=2 numbers are historical.
+
+**Verdict: oracle leaves alone do not qualify the convention-target
+cells at <=1024 iters / d=2.** They open the high-iters path at t1
+and argue depth/budget, not leaf quality, is now binding.
+
+**Depth-ladder probe launched (2026-08-11, pre-registered before
+results):** arms {1024/1, 1024/3, 1024/6, 2048/2} (oracle leaves) on
+the 48 frozen nodes of the six unresolved-or-terminal-only cells
+(t0/t1/t2-defender-lead, t2-picker-lead, t0-partner-follow,
+t2-picker-follow), same frozen reference, judged by the same coverage
+rule. Rationale: leaf values are policy-conditioned, so the improved
+continuation must form in-tree — intermediate d is the midpoint
+toward terminal (policy plays the decisive middle tricks, oracle
+values the endgame); d=1 tests the pure variance-reduction
+hypothesis; 2048/2 tests iterations as the binding constraint.
+Non-grid arms support: commit 7f93213. Output:
+`search_help_matrix_e9_depth.json`.
