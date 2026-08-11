@@ -59,6 +59,7 @@ import copy
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from typing import TypedDict
 
 import numpy as np
 import torch
@@ -103,6 +104,26 @@ def _private_root_ready(real_game, world, valid) -> bool:
         list(world.bury) == list(real_game.bury)
         and world.under_card == real_game.under_card
     )
+
+
+class SearchResult(TypedDict):
+    """The contract of ``ISMCTSTeacher.search``. Every key is always present
+    (pinned by ``test_search_output_contract``); consumers index it directly."""
+
+    pi: np.ndarray  # float32[action_size]; visit-count target, tau-sharpened.
+    #   All-zero when no simulation completed (then ok=False).
+    ess: float  # Effective sample size of the belief-weighted world pool.
+    ok: bool  # ess >= config.ess_floor AND root statistics exist.
+    head: str  # "pick" | "partner" | "bury" | "play".
+    n_iter: int  # Worlds successfully built (NOT the iteration count).
+    valid: list[int]  # Sorted legal action ids at the root.
+    root_n: dict[int, float]  # Per-action weighted visit count.
+    root_q: dict[int, float]  # Per-action mean value (critic units).
+    root_prior: dict[int, float] | None  # Mean UNMIXED network prior;
+    #   None until the root has been expanded at least once.
+    pi_gumbel: np.ndarray | None  # Completed-Q readout; None when unavailable.
+    pi_rm: np.ndarray | None  # RM+ average strategy; None unless
+    #   root_selection == "rm" produced statistics.
 
 
 class _ReplayInconsistency(Exception):
@@ -321,7 +342,7 @@ class ISMCTSTeacher:
         rng,
         d_rollout: int | None = None,
         seat_policies: dict | None = None,
-    ) -> dict:
+    ) -> SearchResult:
         """Run the SO-ISMCTS teacher for ``observer``'s current decision in
         ``real_game``.
 
@@ -403,7 +424,7 @@ class ISMCTSTeacher:
     # ------------------------------------------------------------------
     # Search driver
     # ------------------------------------------------------------------
-    def _search_inner(self, real_game, observer, forced_public) -> dict:
+    def _search_inner(self, real_game, observer, forced_public) -> SearchResult:
         observer_player = real_game.players[observer - 1]
         valid_real = sorted(observer_player.get_valid_action_ids())
         head = self._infer_head(valid_real)
@@ -708,7 +729,7 @@ class ISMCTSTeacher:
             return 0.0
         return float(total * total / np.square(weights).sum())
 
-    def _finalize(self, root, valid_real, head, n_used, ess) -> dict:
+    def _finalize(self, root, valid_real, head, n_worlds_built, ess) -> SearchResult:
         pi = np.zeros(self.action_size, dtype=np.float32)
         counts = np.array(
             [root.N.get(action_id, 0.0) for action_id in valid_real], dtype=np.float64
@@ -732,41 +753,31 @@ class ISMCTSTeacher:
             if self._root_praw_writes > 0
             else None
         )
-        if counts.sum() <= 0.0:
-            return dict(
-                pi=pi,
-                ess=ess,
-                ok=False,
-                head=head,
-                n_iter=n_used,
-                valid=valid_real,
-                root_n=root_n,
-                root_q=root_q,
-                root_prior=root_prior,
-                pi_gumbel=None,
-                pi_rm=None,
-            )
-        powered = np.power(counts, 1.0 / self.config.tau_target)
-        powered /= powered.sum()
-        for action_id, prob in zip(valid_real, powered):
-            pi[action_id - 1] = prob
-        ok = ess >= self.config.ess_floor
+        ok = False
+        pi_gumbel = None
         pi_rm = None
-        if self._root_rm is not None:
-            pi_rm = np.zeros(self.action_size, dtype=np.float32)
-            for action_id, prob in self._root_rm.average().items():
-                pi_rm[action_id - 1] = prob
-        return dict(
+        if counts.sum() > 0.0:
+            powered = np.power(counts, 1.0 / self.config.tau_target)
+            powered /= powered.sum()
+            for action_id, prob in zip(valid_real, powered):
+                pi[action_id - 1] = prob
+            ok = ess >= self.config.ess_floor
+            if self._root_rm is not None:
+                pi_rm = np.zeros(self.action_size, dtype=np.float32)
+                for action_id, prob in self._root_rm.average().items():
+                    pi_rm[action_id - 1] = prob
+            pi_gumbel = self._gumbel_readout(valid_real, counts, root_q, root_prior)
+        return SearchResult(
             pi=pi,
             ess=ess,
             ok=ok,
             head=head,
-            n_iter=n_used,
+            n_iter=n_worlds_built,
             valid=valid_real,
             root_n=root_n,
             root_q=root_q,
             root_prior=root_prior,
-            pi_gumbel=self._gumbel_readout(valid_real, counts, root_q, root_prior),
+            pi_gumbel=pi_gumbel,
             pi_rm=pi_rm,
         )
 
