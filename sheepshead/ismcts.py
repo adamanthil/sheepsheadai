@@ -334,6 +334,55 @@ class _Sim:
         self.oracle_seq: list = []
 
 
+class _OracleCapture:
+    """Collects the observer's full-information event streams for oracle leaf
+    evaluation, mirroring the oracle critic's training protocol (pre-action
+    observer states + post-trick frames, in game order, fresh zero memory per
+    sequence).
+
+    One instance per search. A disabled instance is a null object — every
+    method early-returns — so call sites stay unconditional. During the world
+    build each world accumulates a PREFIX stream (stored here keyed by world
+    identity); each sim then extends a shallow copy of its pool world's prefix
+    along its own descent/rollout path. Prefix dicts are shared
+    immutably across sims, never mutated."""
+
+    __slots__ = ("enabled", "_prefix_by_world")
+
+    def __init__(self, enabled: bool):
+        self.enabled = enabled
+        self._prefix_by_world: dict[int, list] = {}
+
+    def record_decision(self, stream: list, player) -> None:
+        """Append the observer's pre-action oracle state (call only for the
+        observer's own decisions)."""
+        if self.enabled:
+            stream.append(player.get_oracle_state_dict())
+
+    def record_trick(self, stream: list, observer_player) -> None:
+        """Append the observer's post-trick oracle frame."""
+        if self.enabled:
+            stream.append(observer_player.get_last_trick_oracle_state_dict())
+
+    def store_prefix(self, world, prefix: list) -> None:
+        """Register a root-ready world's prefix stream (keyed by identity;
+        pool worlds stay alive for the duration of the search)."""
+        if self.enabled:
+            self._prefix_by_world[id(world)] = prefix
+
+    def seq_for_world(self, world) -> list:
+        """A per-sim shallow copy of ``world``'s prefix stream ([] when
+        disabled or unknown — matching a fresh sim's empty stream)."""
+        if not self.enabled:
+            return []
+        return list(self._prefix_by_world.get(id(world), []))
+
+    def clear(self) -> None:
+        """Drop the prefix store (end of search); the enabled flag persists
+        for post-search inspection."""
+        self._prefix_by_world = {}
+
+
 class _EncodeRequest(NamedTuple):
     """One pending network evaluation for a sim this round.
 
@@ -357,8 +406,7 @@ class ISMCTSTeacher:
         self.config = config or ISMCTSConfig()
         # Per-search transient state (reset in ``search``).
         self._rng = None
-        self._oracle_capture = False
-        self._oracle_prefix_by_world: dict = {}
+        self._oracle = _OracleCapture(False)
         self._qmin = math.inf
         self._qmax = -math.inf
         self._max_depth = 1
@@ -385,6 +433,12 @@ class ISMCTSTeacher:
         if self._seat_policies is None:
             return self.agent
         return self._seat_policies.get(seat, self.agent)
+
+    @property
+    def _oracle_capture(self) -> bool:
+        """Whether the current/most-recent search evaluated leaves with the
+        oracle critic (see the arming condition in ``search``)."""
+        return self._oracle.enabled
 
     # ------------------------------------------------------------------
     # Public API
@@ -441,12 +495,11 @@ class ISMCTSTeacher:
         # Oracle leaf evaluation is armed only when the config asks for it,
         # the agent actually carries an oracle critic, and the effective
         # rollout depth can produce critic leaves at all.
-        self._oracle_capture = (
+        self._oracle = _OracleCapture(
             self.config.leaf_evaluator == "oracle"
             and getattr(self.agent, "oracle_critic", None) is not None
             and self._eff_d_rollout <= ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH
         )
-        self._oracle_prefix_by_world = {}
         self._seat_policies = (
             {
                 seat: agent
@@ -474,7 +527,7 @@ class ISMCTSTeacher:
                 agent.restore_player_memories(saved_memories[agent_id])
             self._eff_d_rollout = self.config.d_rollout
             self._seat_policies = None
-            self._oracle_prefix_by_world = {}
+            self._oracle.clear()
 
     # ------------------------------------------------------------------
     # Search driver
@@ -690,10 +743,7 @@ class ISMCTSTeacher:
                                 mem_seat: seat_memories[mem_seat][i].detach().clone()
                                 for mem_seat in range(1, 6)
                             }
-                            if self._oracle_capture:
-                                self._oracle_prefix_by_world[id(game)] = (
-                                    oracle_prefixes[i]
-                                )
+                            self._oracle.store_prefix(game, oracle_prefixes[i])
                             pool.append(
                                 (game, memory_snapshot, float(log_weights[i].item()))
                             )
@@ -713,9 +763,9 @@ class ISMCTSTeacher:
                                 raise _ReplayInconsistency(
                                     "batched replay: bad forced private action"
                                 )
-                            if self._oracle_capture and seat == observer:
-                                oracle_prefixes[i].append(
-                                    game.players[seat - 1].get_oracle_state_dict()
+                            if seat == observer:
+                                self._oracle.record_decision(
+                                    oracle_prefixes[i], game.players[seat - 1]
                                 )
                             game.players[seat - 1].act(action_id)
                     else:
@@ -747,21 +797,19 @@ class ISMCTSTeacher:
                                 raise _ReplayInconsistency(
                                     "batched replay: bad forced public action"
                                 )
-                            if self._oracle_capture and seat == observer:
-                                oracle_prefixes[i].append(
-                                    game.players[seat - 1].get_oracle_state_dict()
+                            if seat == observer:
+                                self._oracle.record_decision(
+                                    oracle_prefixes[i], game.players[seat - 1]
                                 )
                             game.players[seat - 1].act(action_id)
 
                     acted = True
                     self._observe_trick_lockstep(games, seat_memories)
-                    if self._oracle_capture:
+                    if self._oracle.enabled:
                         for i, game in enumerate(games):
                             if game.was_trick_just_completed:
-                                oracle_prefixes[i].append(
-                                    game.players[
-                                        observer - 1
-                                    ].get_last_trick_oracle_state_dict()
+                                self._oracle.record_trick(
+                                    oracle_prefixes[i], game.players[observer - 1]
                                 )
                     ref_valid = ref_player.get_valid_action_ids()
             if not acted:
@@ -910,12 +958,7 @@ class ISMCTSTeacher:
                     if seat in memory_snapshot:
                         mem[seat - 1] = memory_snapshot[seat]
                 sim = _Sim(world, mem, root)
-                if self._oracle_capture:
-                    # Shallow copy: prefix dicts are immutable-by-convention
-                    # and shared across sims; only the tail is per-sim.
-                    sim.oracle_seq = list(
-                        self._oracle_prefix_by_world.get(id(pool[pool_idx][0]), [])
-                    )
+                sim.oracle_seq = self._oracle.seq_for_world(pool[pool_idx][0])
                 sims.append(sim)
             self._run_chunk(sims, observer)
 
@@ -932,16 +975,12 @@ class ISMCTSTeacher:
             if not requests:
                 continue
             probs_np, values_np = self._run_network_round(requests)
-            if self._oracle_capture:
-                self._evaluate_oracle_leaves(requests, values_np, observer)
+            self._evaluate_oracle_leaves(requests, values_np, observer)
             completers = self._apply_round(requests, probs_np, values_np, observer)
-            if self._oracle_capture:
-                for sim in completers:
-                    sim.oracle_seq.append(
-                        sim.world.players[
-                            observer - 1
-                        ].get_last_trick_oracle_state_dict()
-                    )
+            for sim in completers:
+                self._oracle.record_trick(
+                    sim.oracle_seq, sim.world.players[observer - 1]
+                )
             self._observe_completers_batched(completers)
 
     def _collect_requests(self, sims, observer) -> list[_EncodeRequest]:
@@ -1010,7 +1049,10 @@ class ISMCTSTeacher:
         full-information event streams (prefix + path + the leaf decision
         state), fresh zero memory per sequence — the training protocol of
         forward_sequences. Same value units as the limited critic (both
-        trained on the same lambda-returns). Overwrites ``values_np`` rows."""
+        trained on the same lambda-returns). Overwrites ``values_np`` rows.
+        No-op unless oracle capture is armed."""
+        if not self._oracle.enabled:
+            return
         critic_rows = [
             req_idx for req_idx, req in enumerate(requests) if req.kind == "critic"
         ]
@@ -1142,10 +1184,7 @@ class ISMCTSTeacher:
         node.vloss[action_id] = node.vloss.get(action_id, 0) + 1
         sim.path.append((node, action_id))
         sim.pending_action = action_id
-        if self._oracle_capture:
-            sim.oracle_seq.append(
-                sim.world.players[observer - 1].get_oracle_state_dict()
-            )
+        self._oracle.record_decision(sim.oracle_seq, sim.world.players[observer - 1])
         sim.world.players[observer - 1].act(action_id)
         sim.phase = "advance"
         self._after_world_step(sim, observer, completers)
@@ -1156,9 +1195,9 @@ class ISMCTSTeacher:
         seat, valid = sim.seat, sim.valid
         action_id = self._sample_action(probs, valid)
         is_obs_play = seat == observer and _valid_has_play(valid)
-        if self._oracle_capture and seat == observer:
-            sim.oracle_seq.append(
-                sim.world.players[observer - 1].get_oracle_state_dict()
+        if seat == observer:
+            self._oracle.record_decision(
+                sim.oracle_seq, sim.world.players[observer - 1]
             )
         sim.world.players[seat - 1].act(action_id)
         if sim.phase == "rollout" and is_obs_play:
@@ -1390,8 +1429,7 @@ class ISMCTSTeacher:
                         if world.history != real_game.history:
                             self.fail["hist_mismatch"] += 1
                             return None, None
-                        if self._oracle_capture:
-                            self._oracle_prefix_by_world[id(world)] = oracle_prefix
+                        self._oracle.store_prefix(world, oracle_prefix)
                         return world, log_weight
 
                     if any(_is_private_action(action_id) for action_id in valid):
@@ -1403,8 +1441,8 @@ class ISMCTSTeacher:
                         self._controller(player.position).get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
-                        if self._oracle_capture and player.position == observer:
-                            oracle_prefix.append(player.get_oracle_state_dict())
+                        if player.position == observer:
+                            self._oracle.record_decision(oracle_prefix, player)
                         player.act(action_id)
                     else:
                         if (
@@ -1425,17 +1463,15 @@ class ISMCTSTeacher:
                         if not _is_play_action(action_id):
                             action_prob = float(probs[0][action_id - 1].item())
                             log_weight += math.log(max(action_prob, 1e-8))
-                        if self._oracle_capture and player.position == observer:
-                            oracle_prefix.append(player.get_oracle_state_dict())
+                        if player.position == observer:
+                            self._oracle.record_decision(oracle_prefix, player)
                         player.act(action_id)
                     acted = True
                     valid = player.get_valid_action_ids()
                     self._observe_trick_sequential(world)
-                    if self._oracle_capture and world.was_trick_just_completed:
-                        oracle_prefix.append(
-                            world.players[
-                                observer - 1
-                            ].get_last_trick_oracle_state_dict()
+                    if world.was_trick_just_completed:
+                        self._oracle.record_trick(
+                            oracle_prefix, world.players[observer - 1]
                         )
             if not acted:
                 self.fail["no_acted"] += 1
