@@ -83,9 +83,30 @@ _DEFAULT_DEPTH = {"pick": 1, "partner": 1, "bury": 1, "play": 6}
 # is disarmed. Any "terminal-depth" sentinel (e.g. d_rollout=99) exceeds it.
 ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH = 12
 
+# Iteration cap on a forced replay's outer loop (both executors); exceeding it
+# means the replay is not converging on the public record.
+_REPLAY_GUARD_LIMIT = 6000
+
+# ``teacher.fail`` counter keys for replay/determinization failures.
+FAIL_GUARD = "guard"
+FAIL_PUB_DESYNC = "pub_desync"
+FAIL_BAD_PUBLIC = "bad_public"
+FAIL_BAD_PRIVATE = "bad_private"
+FAIL_HIST_MISMATCH = "hist_mismatch"
+FAIL_NO_ACTED = "no_acted"
+FAIL_DETERMINIZE = "determinize"
+FAIL_BATCHED_FALLBACK = "batched_fallback"
+
 
 def _is_play_action(action_id: int) -> bool:
     return ACTIONS[action_id - 1].startswith("PLAY ")
+
+
+def _is_weighted_bidding_action(action_id: int) -> bool:
+    """Scheme B: only public BIDDING actions (pick / pass / call / alone /
+    jd-partner) carry belief weight during the forced replay; plays are forced
+    but never weighted, private bury/under never weighted."""
+    return not _is_play_action(action_id)
 
 
 def _is_private_action(action_id: int) -> bool:
@@ -136,6 +157,17 @@ def _private_root_ready(real_game, world, valid) -> bool:
     )
 
 
+def _at_replay_root(real_game, world, public_actions, seat, observer, valid) -> bool:
+    """The forced replay has reached the live root: the public record is
+    exhausted, it is the observer's turn, and (for later private roots) the
+    world's bury/under progress matches the live game's."""
+    return (
+        not public_actions
+        and seat == observer
+        and _private_root_ready(real_game, world, valid)
+    )
+
+
 class SearchResult(TypedDict):
     """The contract of ``ISMCTSTeacher.search``. Every key is always present
     (pinned by ``test_search_output_contract``); consumers index it directly."""
@@ -162,7 +194,14 @@ class _ReplayInconsistency(Exception):
     ``sample_determinization`` is consistent by construction, but void inference is
     not exhaustive, so an occasional redeal makes a recorded play illegal. The
     batched lockstep cannot skip one world mid-flight, so it raises this and the
-    caller falls back to the per-world sequential build, which drops bad worlds."""
+    caller falls back to the per-world sequential build, which drops bad worlds.
+
+    ``key`` is the ``teacher.fail`` counter this failure maps to (a ``FAIL_*``
+    constant)."""
+
+    def __init__(self, key: str = "replay", message: str = ""):
+        super().__init__(message or key)
+        self.key = key
 
 
 @dataclass
@@ -593,7 +632,7 @@ class ISMCTSTeacher:
                     )
                 )
             except RuntimeError:
-                self.fail["determinize"] += 1
+                self.fail[FAIL_DETERMINIZE] += 1
         if not deals:
             return []
         return self._build_worlds_batched(real_game, deals, forced_public, observer)
@@ -671,7 +710,7 @@ class ISMCTSTeacher:
                 real_game, deals, forced_public, observer
             )
         except _ReplayInconsistency:
-            self.fail["batched_fallback"] += 1
+            self.fail[FAIL_BATCHED_FALLBACK] += 1
             return self._build_pool_sequential(
                 real_game, deals, forced_public, observer
             )
@@ -717,9 +756,11 @@ class ISMCTSTeacher:
         guard = 0
         while True:
             guard += 1
-            if guard > 6000:
-                self.fail["guard"] += 1
-                raise _ReplayInconsistency("batched pool build guard exceeded")
+            if guard > _REPLAY_GUARD_LIMIT:
+                self.fail[FAIL_GUARD] += 1
+                raise _ReplayInconsistency(
+                    FAIL_GUARD, "batched pool build guard exceeded"
+                )
             acted = False
             for seat in range(1, 6):
                 ref_player = games[0].players[seat - 1]
@@ -729,15 +770,13 @@ class ISMCTSTeacher:
                     # observer's turn. If this is a later private decision, first
                     # force the already-taken private actions so the replay stops
                     # at the same bury/under step as the live game.
-                    if (
-                        not public_actions
-                        and seat == observer
-                        and _private_root_ready(real_game, games[0], ref_valid)
+                    if _at_replay_root(
+                        real_game, games[0], public_actions, seat, observer, ref_valid
                     ):
                         pool = []
                         for i, game in enumerate(games):
                             if game.history != real_game.history:
-                                self.fail["hist_mismatch"] += 1
+                                self.fail[FAIL_HIST_MISMATCH] += 1
                                 continue
                             memory_snapshot = {
                                 mem_seat: seat_memories[mem_seat][i].detach().clone()
@@ -759,9 +798,10 @@ class ISMCTSTeacher:
                                 world_valid, det_buries[i], det_unders[i]
                             )
                             if action_id is None or action_id not in world_valid:
-                                self.fail["bad_private"] += 1
+                                self.fail[FAIL_BAD_PRIVATE] += 1
                                 raise _ReplayInconsistency(
-                                    "batched replay: bad forced private action"
+                                    FAIL_BAD_PRIVATE,
+                                    "batched replay: bad forced private action",
                                 )
                             if seat == observer:
                                 self._oracle.record_decision(
@@ -770,9 +810,9 @@ class ISMCTSTeacher:
                             game.players[seat - 1].act(action_id)
                     else:
                         if not public_actions or public_actions[0][0] != seat:
-                            self.fail["pub_desync"] += 1
+                            self.fail[FAIL_PUB_DESYNC] += 1
                             raise _ReplayInconsistency(
-                                "batched replay: public action desync"
+                                FAIL_PUB_DESYNC, "batched replay: public action desync"
                             )
                         _, action_id = public_actions.popleft()
                         states, encoded = self._encode_seat_batched(
@@ -780,7 +820,7 @@ class ISMCTSTeacher:
                         )
                         # Weight bidding actions only (scheme B); plays are forced
                         # but never weighted. The actor head runs only here.
-                        if not _is_play_action(action_id):
+                        if _is_weighted_bidding_action(action_id):
                             valid_lists = [
                                 game.players[seat - 1].get_valid_action_ids()
                                 for game in games
@@ -793,9 +833,10 @@ class ISMCTSTeacher:
                         for i, game in enumerate(games):
                             world_valid = game.players[seat - 1].get_valid_action_ids()
                             if action_id not in world_valid:
-                                self.fail["bad_public"] += 1
+                                self.fail[FAIL_BAD_PUBLIC] += 1
                                 raise _ReplayInconsistency(
-                                    "batched replay: bad forced public action"
+                                    FAIL_BAD_PUBLIC,
+                                    "batched replay: bad forced public action",
                                 )
                             if seat == observer:
                                 self._oracle.record_decision(
@@ -813,8 +854,10 @@ class ISMCTSTeacher:
                                 )
                     ref_valid = ref_player.get_valid_action_ids()
             if not acted:
-                self.fail["no_acted"] += 1
-                raise _ReplayInconsistency("batched replay: no seat acted")
+                self.fail[FAIL_NO_ACTED] += 1
+                raise _ReplayInconsistency(
+                    FAIL_NO_ACTED, "batched replay: no seat acted"
+                )
 
     @staticmethod
     def _pool_probs(pool):
@@ -1410,8 +1453,8 @@ class ISMCTSTeacher:
         guard = 0
         while True:
             guard += 1
-            if guard > 6000:
-                self.fail["guard"] += 1
+            if guard > _REPLAY_GUARD_LIMIT:
+                self.fail[FAIL_GUARD] += 1
                 return None, None
             acted = False
             for player in world.players:
@@ -1421,13 +1464,16 @@ class ISMCTSTeacher:
                     # observer's turn. For later private roots, keep replaying the
                     # determinized private actions until bury/under progress
                     # matches the live root; the simulate step encodes the root.
-                    if (
-                        not public_actions
-                        and player.position == observer
-                        and _private_root_ready(real_game, world, valid)
+                    if _at_replay_root(
+                        real_game,
+                        world,
+                        public_actions,
+                        player.position,
+                        observer,
+                        valid,
                     ):
                         if world.history != real_game.history:
-                            self.fail["hist_mismatch"] += 1
+                            self.fail[FAIL_HIST_MISMATCH] += 1
                             return None, None
                         self._oracle.store_prefix(world, oracle_prefix)
                         return world, log_weight
@@ -1435,7 +1481,7 @@ class ISMCTSTeacher:
                     if any(_is_private_action(action_id) for action_id in valid):
                         action_id = self._forced_private(valid, det_bury, det_under)
                         if action_id is None or action_id not in valid:
-                            self.fail["bad_private"] += 1
+                            self.fail[FAIL_BAD_PRIVATE] += 1
                             return None, None
                         # Advance this seat's memory through the forced decision.
                         self._controller(player.position).get_action_probs_with_logits(
@@ -1449,18 +1495,18 @@ class ISMCTSTeacher:
                             not public_actions
                             or public_actions[0][0] != player.position
                         ):
-                            self.fail["pub_desync"] += 1
+                            self.fail[FAIL_PUB_DESYNC] += 1
                             return None, None
                         _, action_id = public_actions.popleft()
                         if action_id not in valid:
-                            self.fail["bad_public"] += 1
+                            self.fail[FAIL_BAD_PUBLIC] += 1
                             return None, None
                         probs, _ = self._controller(
                             player.position
                         ).get_action_probs_with_logits(
                             player.get_state_dict(), valid, player_id=player.position
                         )
-                        if not _is_play_action(action_id):
+                        if _is_weighted_bidding_action(action_id):
                             action_prob = float(probs[0][action_id - 1].item())
                             log_weight += math.log(max(action_prob, 1e-8))
                         if player.position == observer:
@@ -1474,7 +1520,7 @@ class ISMCTSTeacher:
                             oracle_prefix, world.players[observer - 1]
                         )
             if not acted:
-                self.fail["no_acted"] += 1
+                self.fail[FAIL_NO_ACTED] += 1
                 return None, None
 
     @staticmethod
