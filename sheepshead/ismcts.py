@@ -25,10 +25,14 @@ Design (locked decisions, §3 of the plan)
   non-lead (follow-suit) play nodes — where the legal set varies across worlds —
   and plain PUCT everywhere else (the observer's own decision set is fixed).
 * **Leaf evaluation:** truncated rollout of ``d_rollout`` further observer *play*
-  plies, then a ``value_trunk`` V-bootstrap; a world that ends first contributes
-  the observer's terminal score discounted on the same observer-action clock as
-  PPO. Values are in the critic's units (game score / 12, i.e. ~[-1, 1]), so the
-  AlphaZero ``c_puct = 1.25`` is calibrated without extra Q-normalization.
+  plies, then a value bootstrap — by default (2026-08-10) the privileged
+  oracle critic on the observer's full-information event stream (legitimate
+  inside a determinized world; silent fallback to the limited critic when the
+  agent has none; ``leaf_evaluator="limited"`` forces the legacy path). A world
+  that ends first contributes the observer's terminal score discounted on the
+  same observer-action clock as PPO. Values are in the critic's units (game
+  score / 12, i.e. ~[-1, 1]), so the AlphaZero ``c_puct = 1.25`` is calibrated
+  without extra Q-normalization.
 * **Seat policies (population grounding):** ``search(..., seat_policies={seat:
   PPOAgent})`` models each NON-observer seat — in the forced-replay pool build
   (including the scheme-B bidding belief weights), the in-tree advance phase,
@@ -51,6 +55,21 @@ The engine is *side-effect free* on the agent's per-seat recurrent memory: it
 snapshots and restores ``agent._player_memories`` around each search so the
 acting policy is undisturbed. Search is **training-time only**; the shipped
 network never searches.
+
+Code map
+--------
+* ``ISMCTSTeacher.search`` -> ``_search_inner`` -> ``_build_pool`` (belief
+  pool) -> ``_run_batched``/``_run_chunk`` (leaf-parallel tree search) ->
+  ``_finalize`` (``SearchResult``).
+* World reconstruction: the ``_replay_events`` DIRECTOR yields the forced
+  replay's decision structure; two executors run it — ``_build_world``
+  (per-world, drops inconsistent worlds) and ``_build_worlds_lockstep``
+  (batched fast path, raises for the per-world fallback).
+* ``_run_chunk`` drives ``_Sim`` state machines one network round at a time:
+  ``_collect_requests`` -> ``_run_network_round`` ->
+  ``_evaluate_oracle_leaves`` -> ``_apply_round``.
+* ``_OracleCapture`` collects the oracle-leaf event streams (null object when
+  disarmed).
 """
 
 from __future__ import annotations
@@ -59,7 +78,7 @@ import copy
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import NamedTuple, TypedDict
+from typing import Literal, NamedTuple, TypedDict
 
 import numpy as np
 import torch
@@ -316,6 +335,17 @@ class _ReplayInconsistency(Exception):
 
 @dataclass
 class ISMCTSConfig:
+    """Engine physics of one ISMCTS search (selection math, belief pool,
+    batching, leaf/readout choices). Deliberately separate from the trainer's
+    ``training.config.SearchConfig``, which owns search SCHEDULING — which
+    decisions get searched (``head_search_fractions``) and the trick-indexed
+    rollout-depth schedule (``t_full``/``d_short``) injected per call via
+    ``search(d_rollout=...)``; ``config.d_rollout`` is only the fallback.
+
+    Mutable by design: several analysis scripts mutate a default instance
+    before constructing the teacher. Construction validates; after mutating,
+    call ``validate()`` yourself."""
+
     c_puct: float = 1.25
     d_rollout: int = 2
     tau_target: float = 1.0
@@ -356,7 +386,7 @@ class ISMCTSConfig:
     # forced/gamma visits update Q but ``pi_rm`` accumulates only sigma(regret+).
     # Bandit-grade property only (opponent models are fixed): converges toward
     # best response, not equilibrium.
-    root_selection: str = "puct"
+    root_selection: Literal["puct", "rm"] = "puct"
     rm_gamma: float = 0.10
     # Gumbel-style completed-Q readout, emitted as ``pi_gumbel`` on every search
     # (readout-only; never affects selection or ``pi``):
@@ -380,7 +410,33 @@ class ISMCTSConfig:
     # Falls back to "limited" silently when the agent carries no oracle
     # critic (e.g. selfplay checkpoints); set "limited" to force the legacy
     # observation-only bootstrap. Terminal rollouts never consult either.
-    leaf_evaluator: str = "oracle"
+    leaf_evaluator: Literal["oracle", "limited"] = "oracle"
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
+        """Raise ValueError on out-of-range fields. Runs at construction; call
+        again after post-construction mutation."""
+        if self.root_selection not in ("puct", "rm"):
+            raise ValueError(
+                f"root_selection must be 'puct' or 'rm', got {self.root_selection!r}"
+            )
+        if self.leaf_evaluator not in ("oracle", "limited"):
+            raise ValueError(
+                "leaf_evaluator must be 'oracle' or 'limited', "
+                f"got {self.leaf_evaluator!r}"
+            )
+        if not self.tau_target > 0:
+            raise ValueError(f"tau_target must be > 0, got {self.tau_target}")
+        if self.batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {self.batch_size}")
+        for name, mapping in (("iters", self.iters), ("max_depth", self.max_depth)):
+            if set(mapping) != set(_DEFAULT_ITERS):
+                raise ValueError(
+                    f"{name} must map exactly the heads "
+                    f"{sorted(_DEFAULT_ITERS)}, got {sorted(mapping)}"
+                )
 
 
 class _Node:
@@ -632,10 +688,10 @@ class ISMCTSTeacher:
 
         Returns
         -------
-        dict with keys: ``pi`` (float32[action_size] soft target), ``ess``,
-        ``ok`` (ESS >= floor and statistics present), ``head``, ``n_iter``
-        (worlds successfully built), ``valid`` (root legal action ids),
-        ``root_n`` / ``root_q`` (per-action weighted visit count / mean value).
+        ``SearchResult`` (a plain dict) — all 11 keys always present: ``pi``,
+        ``ess``, ``ok``, ``head``, ``n_iter``, ``valid``, ``root_n``,
+        ``root_q``, ``root_prior``, ``pi_gumbel``, ``pi_rm``. See the
+        ``SearchResult`` TypedDict for per-key semantics.
         """
         self._rng = rng
         self._eff_d_rollout = (

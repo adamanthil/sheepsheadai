@@ -32,8 +32,10 @@ ESS-skip rate. The teacher-coverage rule reads off the matrix: include a
 cell wherever headroom is materially > 0 and some config captures it with a
 bounded harm rate; choose the cheapest such config per cell.
 
-Leaf evaluation is the limited critic (current teacher behavior). Oracle
-leaves are Phase 2 (see Search_Teacher_Design notebook).
+Leaf evaluation follows ``ISMCTSConfig.leaf_evaluator`` — "oracle" by default
+since 2026-08-10 (privileged oracle critic on the observer's full-information
+stream), silently falling back to the limited critic when the driver
+checkpoint carries no oracle head (see Search_Teacher_Design notebook).
 
 Usage (from repo root):
 

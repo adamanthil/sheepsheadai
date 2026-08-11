@@ -92,23 +92,24 @@ class SelfPlayHyperparams:
 
 @dataclass
 class SearchConfig:
-    """ISMCTS soft-teacher search controls (deploy/audit search path).
+    """ISMCTS soft-teacher search SCHEDULING: which decisions get searched and
+    how deep they roll. The engine physics (PUCT constants, belief pool,
+    batching, leaf/readout choices) live in ``sheepshead.ismcts.ISMCTSConfig``
+    — the split is deliberate: the trainer owns coverage and the depth
+    schedule, the engine owns one search.
 
     ``head_search_fractions`` is the per-head probability that a training-agent
-    decision is searched. The bidding heads default to **1.0** and play to **0.10**: the
-    bidding decisions are the most collapse-prone (always-pick / always-pass /
-    always-call), so searching them every time is the principled replacement for
-    the stripped shaping + epsilon-floor crutches, and they are cheap — shallow
-    ``max_depth=1`` roots, at most a couple per game for the training agent —
-    relative to the deep (``max_depth=6``) play tree, which only needs a thin
-    correction for the trick-0 leak. Pre-pick (PICK / PASS) determinization is
-    supported via ``Game._sample_prepick_deal`` (P4); PARTNER / BURY ride the
-    post-pick determinizer (a picker exists); leasters via
-    ``Game._sample_leaster_deal`` (no picker / called card / bury). Leaster PLAY
-    decisions ARE searched (head "play", at the play frac): with the per-trick
-    reward + leaster bonus gone, the pass->leaster branch the bidding EV rides on
-    is only win-likelihood-driven if the agent plays leasters well, which needs a
-    teacher signal there.
+    decision is searched. The current default searches only PLAY at **0.30**
+    (bidding heads 0). All heads are searchable — bidding roots are cheap
+    (shallow ``max_depth=1``, at most a couple per game) relative to the deep
+    (``max_depth=6``) play tree — and every root type has a determinizer:
+    pre-pick (PICK / PASS) via ``Game._sample_prepick_deal`` (P4);
+    PARTNER / BURY ride the post-pick determinizer (a picker exists); leasters
+    via ``Game._sample_leaster_deal`` (no picker / called card / bury). Leaster
+    PLAY decisions ARE searched (head "play", at the play frac): with the
+    per-trick reward + leaster bonus gone, the pass->leaster branch the bidding
+    EV rides on is only win-likelihood-driven if the agent plays leasters well,
+    which needs a teacher signal there.
 
     ``t_full`` / ``d_short`` set the trick-indexed rollout-depth schedule: roll to
     (near) terminal for tricks ``0..t_full`` where the critic is blind to the
