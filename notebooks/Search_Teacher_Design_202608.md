@@ -120,3 +120,18 @@ d=2 arms against the existing reference — terminal rollouts cost
 shallow search qualifying. Oracle leaves are expected to be strongest
 exactly there: determinized worlds are full-information, the oracle
 critic's native input regime.
+
+**Phase-2 SUPERSEDED by operator directive (2026-08-10):** oracle
+leaves are implemented and DEFAULT-ON in ismcts.py (commit 9674e48;
+config `leaf_evaluator="oracle"`, silent fallback for agents without
+an oracle head, terminal-depth searches unaffected; exit-regression
+suite passes 15/15). Rationale: strictly better value estimator in
+determinized worlds (the oracle's native full-information regime), so
+pre-terminal leaf targets should always use it — the conditional
+skip rule above is void. Consequence for E9: the in-flight Phase-1
+matrix (launched pre-change, limited-critic process image) becomes
+the LEGACY-LEAF baseline; after it completes, the d=2 arms rerun
+under oracle leaves (now simply the default) on the same frozen
+nodes/reference — a clean leaf-evaluator A/B at zero extra design
+cost. Terminal arms and the 4096 reference are identical across both
+(never consult a critic), so the two matrices share ground truth.
