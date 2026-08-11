@@ -1010,3 +1010,43 @@ dPop − dSelf.
 **Caveats.** Uniform roster sampling (training uses PFSP skill/exploit
 weighting); true-deal rollouts (perfect info variance instrument, not
 belief-marginalized); driver-greedy prefixes; actor = 7M not live gen-8.
+
+### E8 results (2026-08-10; 257 nodes, R=24/arm, 36-member roster; `ecology_payoff_e8.json`)
+
+**VERDICT: NO ECOLOGY EFFECT.** contrast dPop − dSelf = −0.002
+[−0.088, +0.078]; dSelf +0.001 [−0.108, +0.116], dPop −0.001 [−0.089,
++0.093]; per-node corr(dSelf, dPop) = 0.68; all cells (trick 0/1,
+C2/non-C2) within ±0.05 of zero in both ecologies. The roster and
+self-play produce the same verdict node-for-node within instrument
+resolution (~±0.08). The in-ecology-payoff mechanism is bounded to a
+minor contributor at most; per the pre-registered band, GENERALIZATION
+BLEED owns E7's wrong-side gradient, and self-play search teachers are
+valid as built.
+
+**The side read is the bigger finding: dSelf ≈ 0.** Under TRUE-DEAL
+rollouts with the CURRENT policy's continuations, the low-vs-fat edge
+is EV-neutral (+0.001 ± 0.11) — not the clearly-positive edge E6's
+4096-iter search found. Reconciliation: E6's edge lives under
+SEARCH-IMPROVED continuations (the tree corrects follow-up play);
+under the current policy's own follow-up the probe lead's advantage
+does not materialize. The convention is only worth points if
+subsequent play exploits it.
+
+**Consequence for the learning story (recorded):** the PG gradient at
+these nodes is not merely noise-buried — the return edge PG samples is
+approximately ABSENT, because it only exists under corrected
+continuation play the current policy does not execute. Terminal-reward
+PG can never bootstrap this convention from returns: the reward for
+the right lead appears only after the policy also improves downstream,
+a joint-improvement chicken-and-egg that policy iteration on returns
+cannot climb and that search (which improves the continuation inside
+the tree before judging the lead) resolves by construction. Combined
+with E7 (bleed supplies an active wrong-side push) the full account
+is: zero realized edge + wrong-side generalization pressure +
+entropy-ladder amplification. The teacher lane is not just the last
+mechanism standing — it is the only mechanism that addresses the
+actual structure of the problem.
+
+Caveats: power bounds ecology contribution at ≲0.08/hand, not zero;
+uniform roster sampling (not PFSP weights); true-deal instrument
+(no belief marginalization); R=24; actor = 7M.
