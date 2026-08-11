@@ -135,16 +135,34 @@ def main() -> int:
 
     prior_pending: dict[int, list[dict]] = {}
     run_keys: set[str] | None = None
+    # (cfg_i, iters, depth) per key; cfg_i seeds the per-node RNG. GRID +
+    # reference keep their historical indices; extra --configs arms (e.g.
+    # "1024/3", "2048/2") get stable indices after them, in sorted order.
+    arms: dict[str, tuple[int, int, int]] = {
+        f"{i}/{'term' if d == TERMINAL_DEPTH else d}": (cfg_i, i, d)
+        for cfg_i, (i, d) in enumerate(GRID + [REFERENCE])
+    }
     if args.reuse_ref:
         prior = json.loads(Path(args.reuse_ref).read_text())
         for i, r in enumerate(prior["rows"]):
             r["_node_id"] = i
             prior_pending.setdefault(r["seed"], []).append(r)
         run_keys = set((args.configs or "128/2,384/2,1024/2").split(","))
+        for j, key in enumerate(sorted(run_keys - set(arms))):
+            it_s, d_s = key.split("/")
+            depth = TERMINAL_DEPTH if d_s == "term" else int(d_s)
+            arms[key] = (len(GRID) + 1 + j, int(it_s), depth)
 
     driver = load_agent(args.driver)
     teachers = {
-        it: _teacher(driver, it) for it in sorted({g[0] for g in GRID} | {REFERENCE[0]})
+        it: _teacher(driver, it)
+        for it in sorted(
+            {
+                a[1]
+                for k, a in arms.items()
+                if run_keys is None or k in run_keys or k == f"{REFERENCE[0]}/term"
+            }
+        )
     }
 
     cells: dict[str, int] = {}
@@ -209,8 +227,9 @@ def main() -> int:
                             "configs": {},
                         }
                         ref_key = f"{REFERENCE[0]}/term"
-                        for cfg_i, (iters, depth) in enumerate(GRID + [REFERENCE]):
-                            key = f"{iters}/{'term' if depth == TERMINAL_DEPTH else depth}"
+                        for key, (cfg_i, iters, depth) in sorted(
+                            arms.items(), key=lambda kv: kv[1][0]
+                        ):
                             if run_keys is not None and key not in run_keys:
                                 continue
                             rng = random.Random(BASE_RNG_SEED + node_id * 100 + cfg_i)
@@ -278,7 +297,11 @@ def main() -> int:
         return r["cell"]
 
     print(f"\nNodes judged: {len(rows)}  (quota {args.quota}/cell, {len(cells)} cells)")
-    keys = [f"{i}/{'term' if d == TERMINAL_DEPTH else d}" for i, d in GRID]
+    keys = [
+        k
+        for k, (cfg_i, _, _) in sorted(arms.items(), key=lambda kv: kv[1][0])
+        if k != f"{REFERENCE[0]}/term"
+    ]
     summary = {}
     for cell in sorted(set(map(cell_of, rows))):
         sub = [r for r in rows if r["cell"] == cell]
