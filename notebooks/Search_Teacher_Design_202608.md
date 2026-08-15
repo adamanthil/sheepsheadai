@@ -338,3 +338,21 @@ iff some arm captures >=60% of (materially positive) headroom at
 cheap arms are left to PG for the initial graft, with subsampled
 reference-grade labeling recorded as the contingency. Output:
 `search_help_matrix_e9_cert.json`.
+
+**Gamma amendment (2026-08-11, operator-prompted):** search-time
+discounting was silently γ=0.99 on all loaded league checkpoints —
+the trainer trains UNDISCOUNTED (--gamma default 1.0, runtime
+override) but checkpoints never persisted gamma and the constructor
+default resurrected 0.99, which the teacher then applied to
+leaf/terminal values against a critic trained on undiscounted
+returns. Fixed in 6c08eb7: gamma persists in checkpoints, load
+restores it, and the matrix instrument pins driver.gamma = 1.0.
+Impact on existing results: hands are FIXED-LENGTH, so from any node
+every continuation spans the same observer-ply count and the
+discount is near-uniform across root actions — action orderings
+(and thus capture/harm/coverage) in the completed matrices stand;
+only Q magnitudes carried a ~1-5% uniform shrink at early tricks,
+which cancels in capture ratios. The in-flight certification run
+(launched pre-fix) runs at 0.99 by the same argument; NOT restarted.
+All post-fix runs (and the Phase-3 trainer graft, whose CLI already
+defaults to 1.0) use γ=1.
