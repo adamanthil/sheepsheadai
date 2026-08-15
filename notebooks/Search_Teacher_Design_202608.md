@@ -542,3 +542,13 @@ designated budget knob; calibration-locked parameters untouched).
 Projected: ~2.4 worker-s/ep -> ~3-4 eps/s, ~3 days/gen, ~6k labels
 per 1M episodes. Attempt-1 log kept as train_attempt1_prob020.log;
 its 1-row telemetry CSV was cleared (fresh run re-creates it).
+
+**Operator re-dial (2026-08-11):** gate_node_prob 0.005 -> 0.01,
+accepting ~2x wall time for ~2x label volume ("I'd rather have a
+better chance of actual improvement after the full generation").
+Restarted at ~ep 3k of attempt 2 (no checkpoint written; clean from
+8M; attempt-2 log kept as train_attempt2_prob005.log). Attempt-2
+first window had confirmed the correction: 2.6 eps/s in the
+startup-burdened window, 0.018 firings/ep on-design, 27% emission,
+agreement 0.92 under early-stop. Projected at 0.01: ~2 eps/s
+steady-state, ~5-6 days/gen, ~12k labels.
