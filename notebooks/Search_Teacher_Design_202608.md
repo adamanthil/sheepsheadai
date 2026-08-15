@@ -523,3 +523,22 @@ E7 logit-ladder endpoint (does the low-vs-fat ordering finally
 form?). Label telemetry (emission rate, agreement rate) watched for
 drift as the policy sharpens — emission collapsing to ~0 is the
 gate's built-in retirement, exactly as headroom self-retires.
+
+**Branch-run launch + throughput correction (2026-08-11):** attempt 1
+(prob 0.02) measured the gate EXACTLY on-design in its first window —
+104 firings / 1,445 episodes (0.072/ep, the predicted rate), 36%
+emission (calibration said ~30%), committee agreement 0.85 — but
+throughput was 1.0 eps/s vs the 14.7 eps/s gen-8 baseline (~15x, vs
+the ~1.1-1.25x estimated pre-launch). Root cause of the estimate
+error: single-threaded workers run a 1024-iter search in ~35s (3-4x
+the full-thread instrument timing), and each firing paid for 3.
+Remediation, applied at episode 1,445 (no checkpoint yet; restarted
+clean from 8M): (a) committee EARLY-STOP (6572938) — once an action
+reaches gate_agreement picks the outcome is decided, so the remaining
+replicate is skipped; identical gate decisions, ~25% less search at
+the measured 0.85 agreement (the emitted target averages the
+replicates actually run); (b) gate_node_prob 0.02 -> 0.005 (the
+designated budget knob; calibration-locked parameters untouched).
+Projected: ~2.4 worker-s/ep -> ~3-4 eps/s, ~3 days/gen, ~6k labels
+per 1M episodes. Attempt-1 log kept as train_attempt1_prob020.log;
+its 1-row telemetry CSV was cleared (fresh run re-creates it).
