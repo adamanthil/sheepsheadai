@@ -198,6 +198,24 @@ class TestCheckpointArchMetadata:
             # Loads fine into a full agent (and via load_agent)...
             PPOAgent(len(ACTIONS)).load(path)
             assert ppo.load_agent(path).arch_name == "full"
+
+    def test_gamma_roundtrips_through_checkpoint(self):
+        agent = PPOAgent(len(ACTIONS))
+        agent.gamma = 1.0  # trainer-style runtime override
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "ckpt.pt")
+            agent.save(path)
+            assert ppo.load_agent(path).gamma == 1.0
+
+    def test_pre_gamma_checkpoint_keeps_historical_default(self):
+        agent = PPOAgent(len(ACTIONS))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "ckpt.pt")
+            agent.save(path)
+            ckpt = torch.load(path, map_location="cpu")
+            del ckpt["gamma"]  # simulate a pre-persistence checkpoint
+            torch.save(ckpt, path)
+            assert ppo.load_agent(path).gamma == 0.99
             # ...but not into a different arch.
             with pytest.raises(ValueError):
                 PPOAgent(len(ACTIONS), arch="no-transformer").load(path)

@@ -2408,6 +2408,7 @@ class PPOAgent:
             }
         payload = {
             "arch": self.arch_name,
+            "gamma": self.gamma,
             "encoder_state_dict": self.encoder.state_dict(),
             "actor_state_dict": self.actor.state_dict(),
             "critic_state_dict": critic_state,
@@ -2513,6 +2514,15 @@ class PPOAgent:
         # Architecture guard: refuse to copy tensors across architecture
         # variants. Checkpoints predating the registry carry no "arch" key
         # and are, by construction, the full architecture.
+        # Restore the training-time discount when the checkpoint recorded it.
+        # Checkpoints predating gamma persistence (2026-08) keep the
+        # constructor default; trainers that override gamma via CLI do so
+        # AFTER load, so their override still wins. Search-time consumers
+        # (ISMCTS leaf/terminal discounting) read agent.gamma, so a loaded
+        # agent must carry the gamma its critic was trained against.
+        if "gamma" in checkpoint:
+            self.gamma = float(checkpoint["gamma"])
+
         ckpt_arch = checkpoint.get("arch", "full")
         if ckpt_arch != self.arch_name:
             raise ValueError(

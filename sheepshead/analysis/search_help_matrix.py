@@ -180,6 +180,13 @@ def main() -> int:
             arms[key] = (len(GRID) + 1 + j, int(it_s), depth)
 
     driver = load_agent(args.driver)
+    # League lineage trains UNDISCOUNTED (train_league_ppo --gamma default
+    # 1.0), but checkpoints predating gamma persistence reload with the
+    # constructor's historical 0.99, which the ISMCTS teacher would then
+    # apply to leaf/terminal values. Pin the search discount to the
+    # training objective. (Fixed-length hands make the old 0.99 discount
+    # near-uniform per node, so earlier matrices' action orderings stand.)
+    driver.gamma = 1.0
     teachers = {
         it: _teacher(driver, it)
         for it in sorted(
