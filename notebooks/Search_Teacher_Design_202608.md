@@ -306,3 +306,35 @@ t2-picker-lead) to n~32 nodes with 3 search-seed replicates of the
 candidate arms AND the 4096/term reference (replicate-averaged
 pi_gumbel), then re-apply the coverage rule at meaningful harm-gate
 resolution. Artifact: search_help_matrix_e9_depth.json.
+
+## 8. Certification pass (launched 2026-08-11, pre-registered before results)
+
+Operator approved the §7 proposal. Instrument: certification mode
+(commit 9c4aa8a — --cells sampling filter with early stop,
+--replicates with disjoint deterministic RNG streams,
+--ref-replicates with root-Q averaging). Run: driver 8M, cells
+{t0-defender-lead, t1-defender-lead, t2-picker-lead}, quota 24
+(fresh deterministic sampling from seed 0, so the original 8
+nodes/cell are a subset), arms {1024/1, 1024/2} x 3 replicates,
+reference 4096/term x 2 replicates averaged.
+
+Design deltas vs the §7 sketch, chosen for the ~4h budget BEFORE
+results (disclosed): n=24/cell not 32; ref replicates 2 not 3
+(averaging 2x4096 root-Q ~ sharper than any single search used to
+date); dropped 2048/2 (dominated by oracle-1024/2 in both prior
+runs: t1 57%@12% vs 73%@12%) and terminal arms (if cheap arms fail
+certification, the fallback is subsampled reference-grade labeling
+per §7, not a mid-terminal arm). Judgment: a_ref = argmax of the
+REPLICATE-AVERAGED reference root-Q (not single-search pi_gumbel);
+headroom from averaged Q; per arm-replicate uplift/harm vs that
+ground truth — deployment semantics (the trainer runs ONE search),
+so capture = E_rep[uplift]/headroom and the harm gate is judged on
+24x3 = 72 node-replicate samples per arm per cell (5% now
+distinguishable from 12%).
+
+Decision rule (same coverage rule): a contested cell joins coverage
+iff some arm captures >=60% of (materially positive) headroom at
+<=5% harm; cheapest qualifying arm wins. Cells failing with both
+cheap arms are left to PG for the initial graft, with subsampled
+reference-grade labeling recorded as the contingency. Output:
+`search_help_matrix_e9_cert.json`.
