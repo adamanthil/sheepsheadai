@@ -356,3 +356,47 @@ which cancels in capture ratios. The in-flight certification run
 (launched pre-fix) runs at 0.99 by the same argument; NOT restarted.
 All post-fix runs (and the Phase-3 trainer graft, whose CLI already
 defaults to 1.0) use γ=1.
+
+### 8.1 Certification results (read 2026-08-11)
+
+72/72 nodes sampled (quota met at seed ~70; process image predates the
+gamma pin, so search ran at 0.99 — ordering-neutral per the fixed-length
+argument). **All three contested cells FAIL certification for both
+cheap arms** (capture ~0-40% vs required 60%; harm 7-14% vs 5%):
+
+| cell | headroom (cert, n=24, 2-rep ref) | headroom (screen, n=8, 1-rep ref) | 1024/1 | 1024/2 |
+|---|---|---|---|---|
+| t0-defender-lead | +0.0072 | +0.0090 | +0.001 up, 14% harm | +0.000 up, 14% harm |
+| t1-defender-lead | +0.0075 | +0.0101 | +0.002, 12% | +0.003, 10% |
+| t2-picker-lead | +0.0049 | +0.0100 | +0.001, 7% | +0.002, 8% |
+
+Decisions per the pre-registered rule: the three cells stay OUT of
+coverage (left to PG; subsampled reference-grade labeling remains the
+recorded contingency), and t0-defender-lead's PROVISIONAL 1024/1
+coverage from the depth ladder is REVOKED. **Final coverage map: 7
+cells** (§7 list minus t0-defender-lead), ~53% of screening headroom
+mass, all cheap arms.
+
+Two deeper findings from the replicate structure:
+
+1. **Screening headroom was partly reference-noise artifact.** All
+   three cells' headroom fell below the material threshold under the
+   averaged reference (argmax over a noisy Q inflates apparent gaps).
+   And the reference itself is soft here: two independent 4096/term
+   searches agree on the best action at only **38/72 (53%)** of these
+   nodes. Much of the "uncaptured headroom" at the contested cells
+   sits inside the reference's own noise floor.
+
+2. **Replicate agreement is a powerful label gate (calibration for
+   the Phase-3 confidence-gate design; operator decision pending).**
+   Pooling all single searches at these failed cells: 1024/1 mean
+   uplift +0.0010 at 11.1% harm. Gating on 2-of-3 replicate agreement
+   with a NON-POLICY action: 22/72 nodes yield a label, mean uplift
+   **+0.0112 at 0/22 harm** (95% CI upper ~13%). The same gate on
+   1024/2 is weaker (+0.0076, 3/27 harm) — consistent with d=1's
+   lower-variance leaves making agreement more evidential. The gate
+   abstains on the rest (majority=policy or no majority), which
+   distillation tolerates by construction. This directly supports the
+   operator-observed per-node-vs-per-cell gap (§9 discussion): the
+   contested cells are not unservable — they are unservable by a
+   FIXED single-search arm.
