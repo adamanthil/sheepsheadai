@@ -484,11 +484,16 @@ _attach_gated_search_target; --search-teacher on train_league_ppo):
    ess_sum repurposed as summed committee-agreement rate;
    entropy_sum = emitted-target entropy.
 
-Constraints: sequential collection only (--num-workers 1 enforced —
-worker weight payloads carry no oracle head; extension = publish
-oracle state + oracle-mode worker agents). Changing gate_iters,
-depth, replicate count, or the agreement threshold voids the E9
-certification calibration.
+Constraints: changing gate_iters, depth, replicate count, or the
+agreement threshold voids the E9 certification calibration.
+PARALLEL WORKERS SUPPORTED (db87a7d, operator-prompted before
+launch): weight payloads carry the oracle head + gamma; workers are
+constructed oracle-mode and load both on every refresh
+(strict=False, headed/headless tolerant); each worker runs its own
+teacher with per-job deterministic RNG. The earlier sequential-only
+restriction is retired — at the prior 8-worker collection the
+teacher's search cost amortizes across workers instead of serializing
+the trainer.
 
 **Literature anchors** (also in the config/code comments): Expert
 Iteration (Anthony, Tian & Barber 2017) for the apprentice/expert
