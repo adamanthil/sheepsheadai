@@ -114,6 +114,10 @@ def _gumbel_argmax(res: dict) -> int | None:
     return int(max(res["valid"], key=lambda a: float(gum[a - 1])))
 
 
+class _QuotaFilled(Exception):
+    """All --cells quotas met; stop replaying seeds."""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--driver", required=True)
@@ -129,12 +133,33 @@ def main() -> int:
     ap.add_argument(
         "--configs",
         default=None,
-        help="comma list of grid keys to run in reuse mode (default: d=2 arms)",
+        help="comma list of arm keys to run (reuse-mode default: d=2 arms; "
+        "fresh-mode default: full grid; the reference always runs in fresh mode)",
+    )
+    ap.add_argument(
+        "--cells",
+        default=None,
+        help="fresh mode: comma list of cells to sample (others skipped); "
+        "replay stops once all listed cells hit quota",
+    )
+    ap.add_argument(
+        "--replicates",
+        type=int,
+        default=1,
+        help="search-seed replicates per arm per node (certification mode)",
+    )
+    ap.add_argument(
+        "--ref-replicates",
+        type=int,
+        default=1,
+        help="reference replicates per node; root Q is averaged across them",
     )
     args = ap.parse_args()
 
     prior_pending: dict[int, list[dict]] = {}
     run_keys: set[str] | None = None
+    cell_filter = set(args.cells.split(",")) if args.cells else None
+    replicate_mode = args.replicates > 1 or args.ref_replicates > 1
     # (cfg_i, iters, depth) per key; cfg_i seeds the per-node RNG. GRID +
     # reference keep their historical indices; extra --configs arms (e.g.
     # "1024/3", "2048/2") get stable indices after them, in sorted order.
@@ -147,6 +172,7 @@ def main() -> int:
         for i, r in enumerate(prior["rows"]):
             r["_node_id"] = i
             prior_pending.setdefault(r["seed"], []).append(r)
+    if args.reuse_ref or args.configs:
         run_keys = set((args.configs or "128/2,384/2,1024/2").split(","))
         for j, key in enumerate(sorted(run_keys - set(arms))):
             it_s, d_s = key.split("/")
@@ -168,6 +194,41 @@ def main() -> int:
     cells: dict[str, int] = {}
     rows: list[dict] = []
 
+    try:
+        _replay_seeds(
+            args,
+            driver,
+            teachers,
+            arms,
+            run_keys,
+            cell_filter,
+            replicate_mode,
+            prior_pending,
+            cells,
+            rows,
+        )
+    except _QuotaFilled:
+        print(f"  all --cells quotas met after {len(rows)} nodes", flush=True)
+
+    unmatched = sum(len(v) for v in prior_pending.values())
+    if unmatched:
+        print(f"WARNING: {unmatched} prior rows never matched during replay")
+
+    return _summarize(args, arms, cells, rows)
+
+
+def _replay_seeds(
+    args,
+    driver,
+    teachers,
+    arms,
+    run_keys,
+    cell_filter,
+    replicate_mode,
+    prior_pending,
+    cells,
+    rows,
+):
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
         if args.reuse_ref and not prior_pending.get(seed):
             continue  # games are independent (memory reset per seed)
@@ -207,7 +268,9 @@ def main() -> int:
                             ):
                                 prior_row = pend.pop(0)
                                 sample = True
-                        elif cells.get(cell, 0) < args.quota:
+                        elif (cell_filter is None or cell in cell_filter) and cells.get(
+                            cell, 0
+                        ) < args.quota:
                             sample = True
 
                     if sample:
@@ -230,26 +293,72 @@ def main() -> int:
                         for key, (cfg_i, iters, depth) in sorted(
                             arms.items(), key=lambda kv: kv[1][0]
                         ):
+                            is_ref = key == ref_key
                             if run_keys is not None and key not in run_keys:
-                                continue
-                            rng = random.Random(BASE_RNG_SEED + node_id * 100 + cfg_i)
-                            res = teachers[iters].search(
-                                node_game,
-                                pos,
-                                list(forced_public),
-                                rng,
-                                d_rollout=depth,
-                            )
-                            row["configs"][key] = {
-                                "ok": bool(res["ok"]),
-                                "ess": float(res["ess"]),
-                                "gumbelArgmax": _gumbel_argmax(res),
-                                "rootQ": {
-                                    str(a): res["root_q"][a] for a in res["valid"]
+                                # The reference is ground truth: it always runs
+                                # in fresh mode, never in reuse mode (frozen).
+                                if not (is_ref and not args.reuse_ref):
+                                    continue
+                            n_rep = args.ref_replicates if is_ref else args.replicates
+                            reps = []
+                            for rep in range(n_rep):
+                                rng = random.Random(
+                                    # Historical scheme for rep 0 keeps
+                                    # single-replicate runs comparable to the
+                                    # earlier matrices; replicates >0 get a
+                                    # disjoint, deterministic stream.
+                                    BASE_RNG_SEED + node_id * 100 + cfg_i
+                                    if rep == 0
+                                    else BASE_RNG_SEED
+                                    + 10_000_019
+                                    + node_id * 1009
+                                    + cfg_i * 31
+                                    + rep
+                                )
+                                res = teachers[iters].search(
+                                    node_game,
+                                    pos,
+                                    list(forced_public),
+                                    rng,
+                                    d_rollout=depth,
+                                )
+                                reps.append(
+                                    {
+                                        "ok": bool(res["ok"]),
+                                        "ess": float(res["ess"]),
+                                        "gumbelArgmax": _gumbel_argmax(res),
+                                        "rootQ": {
+                                            str(a): res["root_q"][a]
+                                            for a in res["valid"]
+                                        }
+                                        if is_ref
+                                        else None,
+                                    }
+                                )
+                            if is_ref:
+                                qs = [e["rootQ"] for e in reps if e["ok"]]
+                                avg = (
+                                    {a: sum(q[a] for q in qs) / len(qs) for a in qs[0]}
+                                    if qs
+                                    else None
+                                )
+                                row["configs"][key] = {
+                                    "ok": bool(qs),
+                                    "rootQ": avg,
+                                    # Replicate mode judges by averaged root Q
+                                    # (sharper ground truth); single-replicate
+                                    # keeps the historical pi_gumbel argmax.
+                                    "gumbelArgmax": (
+                                        int(max(avg, key=avg.get))
+                                        if replicate_mode and avg
+                                        else reps[0]["gumbelArgmax"]
+                                    ),
+                                    "repArgmax": [e["gumbelArgmax"] for e in reps],
                                 }
-                                if key == ref_key
-                                else None,
-                            }
+                            elif replicate_mode:
+                                row["configs"][key] = {"reps": reps}
+                            else:
+                                row["configs"][key] = reps[0]
                         if prior_row is not None:
                             row["configs"][ref_key] = prior_row["configs"][ref_key]
                         ref = row["configs"][ref_key]
@@ -257,15 +366,14 @@ def main() -> int:
                             q = {int(a): v for a, v in ref["rootQ"].items()}
                             row["headroom"] = q[ref["gumbelArgmax"]] - q[aid]
                             for key, c in row["configs"].items():
-                                if (
-                                    key != ref_key
-                                    and c["ok"]
-                                    and c["gumbelArgmax"] in q
-                                ):
-                                    c["uplift"] = q[c["gumbelArgmax"]] - q[aid]
-                                    c["agreeRef"] = (
-                                        c["gumbelArgmax"] == ref["gumbelArgmax"]
-                                    )
+                                if key == ref_key:
+                                    continue
+                                for e in c.get("reps", [c]):
+                                    if e["ok"] and e["gumbelArgmax"] in q:
+                                        e["uplift"] = q[e["gumbelArgmax"]] - q[aid]
+                                        e["agreeRef"] = (
+                                            e["gumbelArgmax"] == ref["gumbelArgmax"]
+                                        )
                             rows.append(row)
                             if len(rows) % 10 == 0:
                                 print(
@@ -274,6 +382,10 @@ def main() -> int:
                                     f"/{len(cells)}",
                                     flush=True,
                                 )
+                            if cell_filter is not None and all(
+                                cells.get(c, 0) >= args.quota for c in cell_filter
+                            ):
+                                raise _QuotaFilled
                         else:
                             cells[cell] -= 1  # reference unusable; return quota slot
 
@@ -288,10 +400,8 @@ def main() -> int:
                             )
                     valid = player.get_valid_action_ids()
 
-    unmatched = sum(len(v) for v in prior_pending.values())
-    if unmatched:
-        print(f"WARNING: {unmatched} prior rows never matched during replay")
 
+def _summarize(args, arms, cells, rows) -> int:
     # ---------------- summary matrix ----------------
     def cell_of(r):
         return r["cell"]
@@ -310,9 +420,11 @@ def main() -> int:
         parts = []
         for key in keys:
             cs = [
-                c
+                e
                 for r in sub
-                if (c := r["configs"].get(key)) and c.get("uplift") is not None
+                if (c := r["configs"].get(key))
+                for e in c.get("reps", [c])
+                if e.get("uplift") is not None
             ]
             if not cs:
                 continue
@@ -344,7 +456,12 @@ def main() -> int:
                         "harmEps": HARM_EPS,
                         "leafEvaluator": ISMCTSConfig().leaf_evaluator,
                         "reuseRef": args.reuse_ref,
-                        "configsRun": sorted(run_keys) if run_keys else None,
+                        "configsRun": sorted(args.configs.split(","))
+                        if args.configs
+                        else None,
+                        "cells": sorted(args.cells.split(",")) if args.cells else None,
+                        "replicates": args.replicates,
+                        "refReplicates": args.ref_replicates,
                     },
                     "summary": summary,
                     "rows": rows,
