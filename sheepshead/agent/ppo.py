@@ -2490,6 +2490,18 @@ class PPOAgent:
                 f"Warning: critic load mismatch for {source}: "
                 f"missing={list(missing)} unexpected={list(unexpected)}"
             )
+        # Optional payload extras (league worker weight refreshes carry them
+        # when the main agent trains with an oracle critic / non-default
+        # gamma, so worker-side ISMCTS teachers stay calibrated — oracle
+        # leaves and search discounting match the main process).
+        if self.oracle_critic is not None and "oracle_state_dict" in checkpoint:
+            # strict=False mirrors PPOAgent.load's oracle path: aux heads may
+            # be present on one side only (headed<->headless tolerance).
+            self.oracle_critic.load_state_dict(
+                checkpoint["oracle_state_dict"], strict=False
+            )
+        if "gamma" in checkpoint:
+            self.gamma = float(checkpoint["gamma"])
         self._player_memories = {}
 
     def load(self, filepath, load_optimizers: bool = True, checkpoint=None):

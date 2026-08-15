@@ -195,7 +195,15 @@ def _league_worker_init(init_args: dict) -> None:
     import torch as _torch
 
     _torch.set_num_threads(1)
-    agent = PPOAgent(len(ACTIONS), arch=init_args.get("arch", "full"))
+    agent = PPOAgent(
+        len(ACTIONS),
+        arch=init_args.get("arch", "full"),
+        # Oracle-mode workers exist for the gated search teacher: the
+        # worker's ISMCTS oracle leaves must evaluate with the SAME head the
+        # main process trains (state arrives via the weight payload).
+        critic_mode=init_args.get("critic_mode", "limited"),
+        oracle_aux_heads=bool(init_args.get("oracle_aux_heads", False)),
+    )
     seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
     random.seed(seed)
     _LWORKER.clear()
@@ -208,6 +216,20 @@ def _league_worker_init(init_args: dict) -> None:
             "cache": {},
         }
     )
+    if init_args.get("search_teacher"):
+        from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+        from sheepshead.training.config import SearchConfig as _SC
+
+        cfg = _SC(
+            mode="gated",
+            gate_node_prob=float(init_args.get("search_prob", 0.02)),
+        )
+        iters = int(init_args.get("search_iters", cfg.gate_iters))
+        _LWORKER["teacher"] = ISMCTSTeacher(
+            agent,
+            ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
+        )
+        _LWORKER["search_config"] = cfg
 
 
 def _league_worker_get_member(member_id: str) -> _Seat:
@@ -239,6 +261,18 @@ def _league_worker_play(job: _Job) -> dict:
         else _league_worker_get_member(mid)
         for mid in job.opponent_ids
     ]
+    teacher_kwargs = {}
+    if g.get("teacher") is not None:
+        teacher_kwargs = {
+            "teacher": g["teacher"],
+            # Per-job stream: reproducible given the job, independent across
+            # jobs (episode is unique; game_seed repeats across seat
+            # rotations of one deal, so fold both in).
+            "determinization_rng": random.Random(
+                (job.episode << 20) ^ (job.game_seed or 0) ^ 0x5EA6C4
+            ),
+            "search_config": g["search_config"],
+        }
     game, episode_events, final_scores, training_data_single, pos_to_seat = (
         play_population_game(
             training_agent=g["agent"],
@@ -248,6 +282,7 @@ def _league_worker_play(job: _Job) -> dict:
             reward_mode="terminal",
             collect_oracle=job.collect_oracle,
             game_seed=job.game_seed,
+            **teacher_kwargs,
         )
     )
     return {
@@ -467,14 +502,18 @@ def sequential_stream(ctx: MainPhaseContext):
 def publish_weights(ctx: MainPhaseContext):
     ctx.weight_sync["version"] += 1
     path = f"{ctx.weight_sync['base']}_v{ctx.weight_sync['version']}.pt"
-    torch.save(
-        {
-            "encoder_state_dict": ctx.training_agent.encoder.state_dict(),
-            "actor_state_dict": ctx.training_agent.actor.state_dict(),
-            "critic_state_dict": ctx.training_agent.critic.state_dict(),
-        },
-        path + ".tmp",
-    )
+    payload = {
+        "encoder_state_dict": ctx.training_agent.encoder.state_dict(),
+        "actor_state_dict": ctx.training_agent.actor.state_dict(),
+        "critic_state_dict": ctx.training_agent.critic.state_dict(),
+        # Worker-side search teachers read gamma from the agent; the oracle
+        # head keeps their leaf evaluation calibrated (load_network_states
+        # consumes both when the worker agent is oracle-mode).
+        "gamma": ctx.training_agent.gamma,
+    }
+    if ctx.training_agent.oracle_critic is not None:
+        payload["oracle_state_dict"] = ctx.training_agent.oracle_critic.state_dict()
+    torch.save(payload, path + ".tmp")
     os.replace(path + ".tmp", path)
     stale = f"{ctx.weight_sync['base']}_v{ctx.weight_sync['version'] - 2}.pt"
     if os.path.exists(stale):
@@ -655,14 +694,6 @@ def run_main_phase(
         entropy_ctrl.attach(training_agent)
 
     pool = None
-    if getattr(args, "search_teacher", False) and args.num_workers > 1:
-        raise SystemExit(
-            "--search-teacher requires --num-workers 1: worker weight "
-            "payloads carry no oracle head, so parallel workers would run "
-            "limited-leaf searches and silently decalibrate the gate "
-            "(extension: publish oracle state in publish_weights + "
-            "oracle-mode worker agents)."
-        )
     if args.num_workers > 1:
         mp_ctx = get_context("spawn")
         pool = mp_ctx.Pool(
@@ -674,6 +705,13 @@ def run_main_phase(
                     "members_dir": str(league.members_dir),
                     "weight_path_base": weight_sync["base"],
                     "base_seed": args.seed,
+                    # Gated search teacher in workers: oracle-mode agents so
+                    # the payload's oracle head loads (calibrated leaves) and
+                    # gamma rides the payload (search discounting).
+                    "critic_mode": getattr(args, "critic_mode", "limited"),
+                    "oracle_aux_heads": bool(getattr(args, "oracle_aux_heads", False)),
+                    "search_teacher": bool(getattr(args, "search_teacher", False)),
+                    "search_prob": float(getattr(args, "search_teacher_prob", 0.02)),
                 },
             ),
         )
@@ -1216,9 +1254,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "E9-certified budget (1024 iters, d=1, oracle leaves), emit the "
         "replicate-averaged pi_gumbel target only on 2-of-3 exact-action "
         "agreement against the policy argmax; PG is masked on labeled "
-        "transitions (ppo.py pg_mask). Sequential mode only "
-        "(--num-workers 1): worker weight payloads carry no oracle head, "
-        "so parallel searches would silently decalibrate the gate",
+        "transitions (ppo.py pg_mask). Works with --num-workers > 1: "
+        "weight payloads carry the oracle head + gamma so worker-side "
+        "searches stay calibrated",
     )
     ap.add_argument(
         "--search-teacher-prob",

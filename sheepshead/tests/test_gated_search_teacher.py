@@ -168,6 +168,63 @@ def test_gate_serves_jack_of_diamonds_games():
     raise AssertionError("no standard JD play node reached")
 
 
+def test_worker_protocol_serves_gated_teacher(tmp_path):
+    # Parallel-collection path: an oracle-mode worker built from init_args
+    # must load the payload's oracle head + gamma on weight refresh and run
+    # gated searches through _league_worker_play (in-process, no pool).
+    import torch
+
+    from sheepshead.training import train_league_ppo as tl
+
+    seed_all(9)
+    main_agent = PPOAgent(
+        len(ACTIONS), arch=ARCH, critic_mode="oracle", oracle_aux_heads=True
+    )
+    main_agent.gamma = 1.0
+    base = tmp_path / "weights"
+    torch.save(
+        {
+            "encoder_state_dict": main_agent.encoder.state_dict(),
+            "actor_state_dict": main_agent.actor.state_dict(),
+            "critic_state_dict": main_agent.critic.state_dict(),
+            "gamma": main_agent.gamma,
+            "oracle_state_dict": main_agent.oracle_critic.state_dict(),
+        },
+        f"{base}_v1.pt",
+    )
+    tl._league_worker_init(
+        {
+            "arch": ARCH,
+            "members_dir": str(tmp_path),
+            "weight_path_base": str(base),
+            "base_seed": 0,
+            "critic_mode": "oracle",
+            "oracle_aux_heads": True,
+            "search_teacher": True,
+            "search_prob": 1.0,
+            "search_iters": 8,  # test-speed override
+        }
+    )
+    job = tl._Job(
+        episode=1,
+        partner_mode=PARTNER_BY_CALLED_ACE,
+        training_position=1,
+        opponent_ids=[tl.SELF_PLAY] * 4,
+        weight_version=1,
+        game_seed=11,
+    )
+    out = tl._league_worker_play(job)
+    worker = tl._LWORKER["agent"]
+    assert worker.gamma == 1.0  # payload gamma reached the worker teacher
+    assert worker.oracle_critic is not None
+    ref = main_agent.oracle_critic.state_dict()
+    got = worker.oracle_critic.state_dict()
+    assert all(torch.equal(ref[k], got[k]) for k in ref)
+    assert out["episode_events"], "worker produced no transitions"
+    diag = out["training_data_single"]["search_diagnostics"]["play"]
+    assert diag["count"] >= 1, "gate never attempted despite prob=1.0"
+
+
 def test_gated_mode_end_to_end_smoke():
     seed_all(7)
     agent = PPOAgent(len(ACTIONS), arch=ARCH)
