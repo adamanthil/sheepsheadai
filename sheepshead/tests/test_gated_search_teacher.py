@@ -91,7 +91,7 @@ def test_emits_on_majority_nonpolicy_agreement():
         [_res(valid, alt, pol), _res(valid, alt, pol), _res(valid, pol, pol)]
     )
     tr, diag = _run_gate(teacher, valid, game, player)
-    assert teacher.calls == 3
+    assert teacher.calls == 2  # committee early-stop: majority decided
     assert tr["has_search_target"] is True
     target = np.asarray(tr["search_target"])
     assert abs(target.sum() - 1.0) < 1e-9
@@ -105,6 +105,7 @@ def test_abstains_when_committee_backs_policy():
     pol = valid[0]
     teacher = _ScriptedTeacher([_res(valid, pol, pol)] * 3)
     tr, diag = _run_gate(teacher, valid, game, player)
+    assert teacher.calls == 2  # early-stop applies to policy-backing majorities too
     assert tr["has_search_target"] is False
     assert diag["play"]["count"] == 1 and diag["play"]["accepted"] == 0
 
@@ -157,7 +158,7 @@ def test_gate_serves_jack_of_diamonds_games():
                         + [_res(valid_sorted, pol, pol)]
                     )
                     tr, diag = _run_gate(teacher, valid_sorted, game, player)
-                    assert teacher.calls == 3
+                    assert teacher.calls == 2  # early-stop
                     assert tr["has_search_target"] is True
                     assert diag["play"]["accepted"] == 1
                     return
