@@ -432,3 +432,80 @@ contextually without a hand-built taxonomy. A distribution-space gate
 would subsume both gates cleanly; calibrating it needs one arms-only
 rerun on the frozen cert nodes with per-replicate pi_gumbel logged
 (cheap; not yet run).
+
+## 9. Phase-3 design: the agreement-gated teacher (operator-approved 2026-08-11)
+
+**Amendment to the pre-registered coverage rule.** The per-cell
+fixed-config rule (§3) is retired as the teacher's selection
+mechanism and retained only as the WHERE-TO-SEARCH filter. Basis:
+the per-node/per-cell gap (operator-observed: 51/52 material nodes
+captured by SOME cheap arm vs 18 by the adopted per-cell arms — the
+union is multiple-comparisons-biased, but certification showed the
+gate converts exactly that luck into signal), certification's failure
+of fixed cheap arms at the contested cells, and the §8.1-8.2 gate
+calibration. Implemented in commit 235c0c3.
+
+**Mechanism** (SearchConfig mode="gated"; pfsp_runtime.
+_attach_gated_search_target; --search-teacher on train_league_ppo):
+
+1. WHERE: main-agent PLAY decisions in standard called-ace games,
+   >= 2 legal actions, node class (play_cell: trick x role x
+   lead/follow — same classifier as the E9 instrument, now shared
+   code) in ``gate_cells`` = the 23 classes with mean headroom
+   >= ~0.003 in E9. Subsampled at ``gate_node_prob`` (default 0.02)
+   — the budget knob.
+2. SEARCH: 3 independent-RNG replicates of ONE calibrated arm —
+   1024 iters, d_rollout=1, oracle leaves (engine default), gamma=1
+   (persisted since 6c08eb7), SELF-PLAY worlds (E8: no ecology
+   effect; the calibration searched self-play continuations, so
+   population grounding would decalibrate the gate).
+3. GATE: emit iff >= 2 of 3 replicates pick the SAME action AND it
+   differs from the policy's greedy choice (argmax of the raw root
+   prior, read from the search result — no extra forward pass, no
+   memory hazard). Otherwise abstain (majority-backs-policy or
+   split committee) — the designed common case (~70% at the hardest
+   cells).
+4. TARGET: the replicate-AVERAGED pi_gumbel distribution,
+   renormalized. Soft, so near-equivalent cards share mass
+   contextually (§8.2) — no hand-built card-class taxonomy.
+5. LOSS: existing Stage-C path — forward-KL distillation toward the
+   target on labeled transitions, hard PG-mask there
+   (ppo.pg_mask_mix=0.0 default), value loss everywhere.
+6. Diagnostics: play-head count/accepted = gate attempts/emissions;
+   ess_sum repurposed as summed committee-agreement rate;
+   entropy_sum = emitted-target entropy.
+
+Constraints: sequential collection only (--num-workers 1 enforced —
+worker weight payloads carry no oracle head; extension = publish
+oracle state + oracle-mode worker agents). Changing gate_iters,
+depth, replicate count, or the agreement threshold voids the E9
+certification calibration.
+
+**Literature anchors** (also in the config/code comments): Expert
+Iteration (Anthony, Tian & Barber 2017) for the apprentice/expert
+loop; AlphaZero (Silver et al. 2017) for soft search-derived policy
+targets on on-policy states; DAgger (Ross et al. 2011) for labeling
+the learner's own state distribution; Gumbel MuZero (Danihelka et
+al. 2022) for the completed-Q readout and its small-simulation
+policy-improvement guarantee (a guarantee about the improved
+DISTRIBUTION — the basis for soft targets over argmax labels);
+MCTS-as-regularized-policy-optimization (Grill et al. 2020);
+root parallelization (Chaslot, Winands & van den Herik 2008) for
+replicate averaging; query-by-committee (Seung, Opper &
+Sompolinsky 1992) for agreement-based label selection. The joint —
+committee-gated emission for search distillation at selected node
+classes — is not a named technique in the game-RL canon; it is this
+program's response to a regime (true edges at or below single-search
+noise) that large-budget AlphaZero-family pipelines do not face.
+
+**Branch-run protocol (pre-registered; launch awaits operator):**
+resume from checkpoint_8000000 on a branch run-name with
+--search-teacher, entropy sidecar held (0.476 pending revisit),
+standing gates unchanged (panel, h2h vs seed AND vs gen-8 endpoint
+as paired control, duplicate-bridge exploiter). Success = h2h vs
+gen-8 endpoint positive at the usual CI with no exploiter
+regression; mechanism-level readout = C1/C2 pooled telemetry + the
+E7 logit-ladder endpoint (does the low-vs-fat ordering finally
+form?). Label telemetry (emission rate, agreement rate) watched for
+drift as the policy sharpens — emission collapsing to ~0 is the
+gate's built-in retirement, exactly as headroom self-retires.
