@@ -133,6 +133,12 @@ PROGRESS_CSV_HEADER = [
     # after the entropy ladder floors (single-lever attributability).
     "approx_kl",
     "lr_actor",
+    # Gated search teacher telemetry (Search_Teacher_Design §9): per update
+    # window, committee firings / emitted labels / mean committee-agreement
+    # rate. Emission decaying to ~0 is the teacher's self-retirement signal.
+    "gate_attempts",
+    "gate_emitted",
+    "gate_agree",
 ]
 
 # greedy_health.csv schema (append-only; migrated on resume like the
@@ -625,6 +631,8 @@ def run_main_phase(
     # getattr: the exploiter's SimpleNamespace args has no leaster_watchdog
     # field, so best-response training always runs without the kick.
     watchdog = LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
+    # Gated-teacher telemetry window (reset after each progress-CSV row).
+    gate_window = {"count": 0, "accepted": 0, "agree_sum": 0.0}
     t0 = time.time()
 
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
@@ -733,6 +741,11 @@ def run_main_phase(
         ) in stream:
             last_episode = episode
             tx_counter.count += store_events_by_seat(training_agent, events)
+            sd = (training_data_single.get("search_diagnostics") or {}).get("play")
+            if sd:
+                gate_window["count"] += sd["count"]
+                gate_window["accepted"] += sd["accepted"]
+                gate_window["agree_sum"] += sd["ess_sum"]
             if training_data_single["was_picker"]:
                 picker_scores.append(training_data_single["score"])
             pick_window.append(1 if training_data_single["was_picker"] else 0)
@@ -891,8 +904,22 @@ def run_main_phase(
                                 ],
                                 f"{stats.get('approx_kl', 0.0):.6f}",
                                 f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
+                                gate_window["count"],
+                                gate_window["accepted"],
+                                f"{gate_window['agree_sum'] / gate_window['count']:.3f}"
+                                if gate_window["count"]
+                                else "",
                             ]
                         )
+                    if gate_window["count"]:
+                        print(
+                            f"🔍 gate: {gate_window['count']} firings, "
+                            f"{gate_window['accepted']} labels "
+                            f"({100 * gate_window['accepted'] / gate_window['count']:.0f}%), "
+                            f"agree {gate_window['agree_sum'] / gate_window['count']:.2f}",
+                            flush=True,
+                        )
+                    gate_window = {"count": 0, "accepted": 0, "agree_sum": 0.0}
 
             # League snapshot of the main (replaces population_add_interval)
             if episode % args.snapshot_interval == 0:
