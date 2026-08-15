@@ -400,3 +400,35 @@ Two deeper findings from the replicate structure:
    operator-observed per-node-vs-per-cell gap (§9 discussion): the
    contested cells are not unservable — they are unservable by a
    FIXED single-search arm.
+
+### 8.2 Near-equivalence analysis (operator-prompted, 2026-08-11)
+
+Operator observation: many Sheepshead plays are near-equivalent (7C
+vs 8C; low fail of either suit), so exact-card agreement understates
+search stability. Tested on the certification rows with lead classes
+{QUEEN, JACK, TRUMP-PIP, FAIL-0, FAIL-K, FAIL-FAT} (suit ignored for
+fail):
+
+- Reference 2-rep self-agreement: 53% exact-card -> **74% class** —
+  ~40% of apparent reference instability is equivalence-splitting,
+  not genuine ambiguity. The instrument's noise floor is partly a
+  card-identity artifact.
+- Class-level 2-of-3 gate (1024/1): 23 labels, +0.0077, 1/23 harm —
+  looser than the exact-card gate (22 labels, +0.0112, 0/22).
+- **Card gate's false abstentions are cheap:** nodes class-consistent
+  but card-split (where the exact-card gate wrongly abstains) number
+  9/72, and their class-labels average only +0.0015 with 1/9 harm —
+  when replicates agree on class but split on cards, the value edge
+  is small/noisy and abstention is (empirically) nearly correct
+  anyway. The equivalence problem bites the REFERENCE
+  interpretation hard, the strict gate barely.
+
+Design implication (pending operator sign-off with the §9 amendment):
+keep the strict exact-card 2-of-3 gate for emission; make the TARGET
+soft — the replicate-AVERAGED pi_gumbel distribution (root-
+parallelization style), which spreads mass over equivalent cards
+contextually without a hand-built taxonomy. A distribution-space gate
+(fire on averaged-target mass decisively leaving the policy action)
+would subsume both gates cleanly; calibrating it needs one arms-only
+rerun on the frozen cert nodes with per-replicate pi_gumbel logged
+(cheap; not yet run).
