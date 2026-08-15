@@ -69,6 +69,7 @@ from sheepshead import ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.fail_lead_logit_probe import _masked_logits
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _is_private_action
+from sheepshead.training.pfsp_runtime import play_cell
 
 DEVICE = torch.device("cpu")
 BASE_RNG_SEED = 20260811
@@ -93,18 +94,10 @@ def _teacher(agent, iters: int) -> ISMCTSTeacher:
     return ISMCTSTeacher(agent, cfg)
 
 
-def _classify(game: Game, player) -> str:
-    pos = player.position
-    if pos == game.picker:
-        role = "picker"
-    elif pos == game.partner or player.is_secret_partner:
-        role = "partner"
-    else:
-        role = "defender"
-    kind = (
-        "lead" if all(c == "" for c in game.history[game.current_trick]) else "follow"
-    )
-    return f"t{game.current_trick}-{role}-{kind}"
+# Cell taxonomy shared with the gated teacher (single source of truth): the
+# instrument that measured the map and the trainer gate that consumes it must
+# classify nodes identically.
+_classify = play_cell
 
 
 def _gumbel_argmax(res: dict) -> int | None:

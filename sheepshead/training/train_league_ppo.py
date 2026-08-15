@@ -63,7 +63,7 @@ import torch
 from sheepshead import ACTIONS
 from sheepshead.agent import architectures
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.training.config import LeagueConfig, PFSPHyperparams
+from sheepshead.training.config import LeagueConfig, PFSPHyperparams, SearchConfig
 from sheepshead.training.entropy_controller import (
     EntropyControllerConfig,
     EntropyTargetController,
@@ -382,6 +382,35 @@ def store_events_by_seat(agent: PPOAgent, events: list) -> int:
 
 
 # -------------------- episode streams --------------------
+def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
+    """play_population_game kwargs for the agreement-gated search teacher
+    (Search_Teacher_Design §9), or {} when --search-teacher is off.
+
+    Built once per stream: an ISMCTS teacher over the training agent at the
+    E9-certified budget (1024 iters, d_rollout=1 per call, oracle leaves via
+    the engine default) plus a gated SearchConfig. The trainer trains
+    undiscounted, so the teacher inherits the correct gamma from the live
+    agent (gamma persists in checkpoints since 6c08eb7)."""
+    if not getattr(ctx.args, "search_teacher", False):
+        return {}
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+
+    iters = SearchConfig().gate_iters
+    teacher = ISMCTSTeacher(
+        ctx.training_agent,
+        ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
+    )
+    search_config = SearchConfig(
+        mode="gated",
+        gate_node_prob=float(getattr(ctx.args, "search_teacher_prob", 0.02)),
+    )
+    return {
+        "teacher": teacher,
+        "determinization_rng": random.Random(ctx.args.seed ^ 0x5EA6C4),
+        "search_config": search_config,
+    }
+
+
 def sequential_stream(ctx: MainPhaseContext):
     # Seat rotation (deal-paired collection): groups of 5 consecutive
     # episodes share one sampled (mode, table, deal); the hero plays every
@@ -390,6 +419,7 @@ def sequential_stream(ctx: MainPhaseContext):
     # cards are identical across the 5 rotations.
     rotate = bool(getattr(ctx.args, "seat_rotation", False))
     rot_state = {}
+    teacher_kwargs = _gated_teacher_kwargs(ctx)
     for episode in range(ctx.start_episode + 1, ctx.end_episode + 1):
         game_seed = None
         if rotate:
@@ -420,6 +450,7 @@ def sequential_stream(ctx: MainPhaseContext):
             reward_mode="terminal",
             collect_oracle=ctx.collect_oracle,
             game_seed=game_seed,
+            **teacher_kwargs,
         )
         yield (
             episode,
@@ -624,6 +655,14 @@ def run_main_phase(
         entropy_ctrl.attach(training_agent)
 
     pool = None
+    if getattr(args, "search_teacher", False) and args.num_workers > 1:
+        raise SystemExit(
+            "--search-teacher requires --num-workers 1: worker weight "
+            "payloads carry no oracle head, so parallel workers would run "
+            "limited-leaf searches and silently decalibrate the gate "
+            "(extension: publish oracle state in publish_weights + "
+            "oracle-mode worker agents)."
+        )
     if args.num_workers > 1:
         mp_ctx = get_context("spawn")
         pool = mp_ctx.Pool(
@@ -1168,6 +1207,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "oracle_moe_offline pretrain) loaded into the oracle critic after "
         "--resume — the supervised warm start that removes the fresh-"
         "oracle burn-in window",
+    )
+    ap.add_argument(
+        "--search-teacher",
+        action="store_true",
+        help="agreement-gated ISMCTS distillation on main-agent play "
+        "decisions (Search_Teacher_Design §9): 3 replicate searches at the "
+        "E9-certified budget (1024 iters, d=1, oracle leaves), emit the "
+        "replicate-averaged pi_gumbel target only on 2-of-3 exact-action "
+        "agreement against the policy argmax; PG is masked on labeled "
+        "transitions (ppo.py pg_mask). Sequential mode only "
+        "(--num-workers 1): worker weight payloads carry no oracle head, "
+        "so parallel searches would silently decalibrate the gate",
+    )
+    ap.add_argument(
+        "--search-teacher-prob",
+        type=float,
+        default=0.02,
+        help="subsample probability for eligible (gate_cells) play nodes — "
+        "the labeling budget knob; expected wall cost per episode is "
+        "roughly prob x eligible-nodes/game x 3 searches",
     )
     ap.add_argument(
         "--seat-rotation",

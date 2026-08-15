@@ -13,6 +13,7 @@ training_utils.py.
 """
 
 import random
+from collections import Counter
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -41,6 +42,26 @@ def _is_private_decision(valid_actions) -> bool:
     """True when the decision is a private bury/under (excluded from the public
     record fed to the ISMCTS teacher's forced replay)."""
     return any(is_private_action(a) for a in valid_actions)
+
+
+def play_cell(game, player) -> str:
+    """Node-class label for a PLAY decision: ``t{trick}-{role}-{lead|follow}``.
+
+    The E9 stratification (Search_Teacher_Design §3): the three axes every
+    prior study conditioned on, all computable from public state at decision
+    time — which is what lets the gated teacher classify nodes online.
+    """
+    pos = player.position
+    if pos == game.picker:
+        role = "picker"
+    elif pos == game.partner or player.is_secret_partner:
+        role = "partner"
+    else:
+        role = "defender"
+    kind = (
+        "lead" if all(c == "" for c in game.history[game.current_trick]) else "follow"
+    )
+    return f"t{game.current_trick}-{role}-{kind}"
 
 
 def _search_head(valid_actions) -> str:
@@ -172,6 +193,91 @@ def _attach_search_target(
             pi = res["pi"]
             nonzero = pi[pi > 0]
             head_diag["entropy_sum"] += float(-(nonzero * np.log(nonzero)).sum())
+
+
+def _attach_gated_search_target(
+    game,
+    player,
+    valid_actions,
+    transition: dict,
+    teacher: "ISMCTSTeacher",
+    determinization_rng: "random.Random",
+    search_config: "SearchConfig",
+    forced_public: list[tuple[int, int]],
+    search_diagnostics: dict,
+) -> None:
+    """Agreement-gated soft-teacher target (Search_Teacher_Design §9).
+
+    Run the same cheap search ``gate_replicates`` times with independent RNG
+    (a committee of stochastic experts — query-by-committee, Seung et al.
+    1992). Emit a target only when >= ``gate_agreement`` replicates agree on
+    the SAME action and it differs from the policy's greedy choice (the raw
+    root prior argmax, free from the search result — no extra forward pass).
+    The emitted target is the replicate-AVERAGED pi_gumbel distribution
+    (Danihelka et al. 2022; averaging = root parallelization, Chaslot et al.
+    2008), so near-equivalent cards share mass contextually instead of the
+    label pretending 7C beats 8C. Abstention is the designed common case:
+    E9 certification showed single cheap searches at near-tie nodes flip to
+    worse actions ~11% of the time, while 2-of-3-agreed non-policy labels
+    measured +0.0112 mean uplift with 0/22 harm.
+
+    Self-play worlds (no ``seat_policies``): E8 found no ecology effect, and
+    the E9 calibration this gate rests on searched self-play continuations —
+    population grounding here would decalibrate the gate.
+
+    Eligibility mirrors the E9 instrument: PLAY head, standard called-ace
+    game (no leaster / alone), >= 2 legal actions, node class in
+    ``gate_cells``, then ``gate_node_prob`` subsampling (the budget knob).
+    """
+    if game.is_leaster or game.alone_called or len(valid_actions) < 2:
+        return
+    if _search_head(valid_actions) != "play":
+        return
+    if play_cell(game, player) not in search_config.gate_cells:
+        return
+    if determinization_rng.random() >= search_config.gate_node_prob:
+        return
+
+    diag = search_diagnostics["play"]
+    diag["count"] += 1
+    picks: list[int] = []
+    gumbels: list[np.ndarray] = []
+    prior_argmax: int | None = None
+    for _ in range(search_config.gate_replicates):
+        rng = random.Random(determinization_rng.getrandbits(64))
+        res = teacher.search(
+            game,
+            player.position,
+            list(forced_public),
+            rng,
+            d_rollout=search_config.gate_d_rollout,
+        )
+        if not res["ok"] or res.get("pi_gumbel") is None:
+            continue
+        gum = res["pi_gumbel"]
+        picks.append(int(max(res["valid"], key=lambda a: float(gum[a - 1]))))
+        gumbels.append(np.asarray(gum, dtype=np.float64))
+        if prior_argmax is None and res.get("root_prior"):
+            prior = res["root_prior"]  # dict action_id -> mean unmixed prior
+            prior_argmax = int(
+                max(res["valid"], key=lambda a: float(prior.get(a, 0.0)))
+            )
+    if not picks:
+        return
+    top_action, top_count = Counter(picks).most_common(1)[0]
+    diag["ess_sum"] += float(top_count) / len(picks)  # committee agreement rate
+    if top_count < search_config.gate_agreement or top_action == prior_argmax:
+        return  # abstain: no majority, or the committee backs the policy
+    target = np.mean(gumbels, axis=0)
+    total = float(target.sum())
+    if total <= 0.0:
+        return
+    target /= total
+    transition["search_target"] = target.tolist()
+    transition["has_search_target"] = True
+    diag["accepted"] += 1
+    nonzero = target[target > 0]
+    diag["entropy_sum"] += float(-(nonzero * np.log(nonzero)).sum())
 
 
 def _finalize_rewards(
@@ -359,18 +465,31 @@ def play_population_game(
                             play_weight=weights["play"],
                         )
                     elif search_enabled:
-                        _attach_search_target(
-                            game,
-                            player,
-                            valid_actions,
-                            transition,
-                            teacher,
-                            determinization_rng,
-                            search_config,
-                            forced_public,
-                            search_seat_policies,
-                            search_diagnostics,
-                        )
+                        if getattr(search_config, "mode", "fraction") == "gated":
+                            _attach_gated_search_target(
+                                game,
+                                player,
+                                valid_actions,
+                                transition,
+                                teacher,
+                                determinization_rng,
+                                search_config,
+                                forced_public,
+                                search_diagnostics,
+                            )
+                        else:
+                            _attach_search_target(
+                                game,
+                                player,
+                                valid_actions,
+                                transition,
+                                teacher,
+                                determinization_rng,
+                                search_config,
+                                forced_public,
+                                search_seat_policies,
+                                search_diagnostics,
+                            )
 
                 else:
                     # Opponent action (stochastic for diversity)

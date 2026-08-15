@@ -129,6 +129,61 @@ class SearchConfig:
     t_full: int = 1
     d_short: int = 2
     enabled: bool = True
+    # ---- Agreement-gated teacher (mode="gated"; Search_Teacher_Design §9) ----
+    # Replaces the per-fraction scheduler above with a replicate-agreement
+    # gate: run the same cheap search ``gate_replicates`` times with
+    # independent RNG and emit a distillation target only when
+    # >= ``gate_agreement`` replicates pick the SAME action and it differs
+    # from the policy's greedy choice (the search root prior's argmax).
+    # Emitted target = the replicate-AVERAGED pi_gumbel distribution — soft,
+    # so near-equivalent cards share mass contextually (certification: gated
+    # labels +0.0112 mean uplift, 0/22 harm vs +0.0010 / 11% ungated).
+    # Literature: the loop is Expert Iteration (Anthony et al. 2017) with
+    # AlphaZero-style soft search targets on on-policy states (Silver et al.
+    # 2017; DAgger, Ross et al. 2011); the readout and its small-budget
+    # policy-improvement guarantee are Gumbel MuZero's completed-Q
+    # (Danihelka et al. 2022; Grill et al. 2020 for the regularized-PI view);
+    # replicate averaging is root parallelization (Chaslot et al. 2008); the
+    # agreement gate is query-by-committee data selection (Seung et al. 1992)
+    # with the committee = independent stochastic runs of one searcher.
+    mode: str = "fraction"  # "fraction" (legacy ExIt) | "gated"
+    gate_iters: int = 1024  # calibrated budget; changing it voids the E9 cert
+    gate_d_rollout: int = 1  # shallow + oracle leaves (variance-min; E9 §7)
+    gate_replicates: int = 3
+    gate_agreement: int = 2  # strict exact-action 2-of-3 (E9 §8.2)
+    gate_node_prob: float = 0.02  # subsample of eligible nodes (budget knob)
+    # Node classes searched at all (trick x role x lead/follow). From the E9
+    # matrix: every play cell whose mean headroom was >= ~0.003 Q — the gate
+    # supplies per-node reliability, the cell set only excludes classes where
+    # search would confirm the policy at pure cost. t5 has no decisions
+    # (forced card); leaster / alone games are ineligible upstream.
+    gate_cells: frozenset = frozenset(
+        {
+            "t0-defender-follow",
+            "t0-defender-lead",
+            "t0-partner-follow",
+            "t0-picker-follow",
+            "t0-picker-lead",
+            "t1-defender-lead",
+            "t1-partner-follow",
+            "t1-partner-lead",
+            "t1-picker-follow",
+            "t1-picker-lead",
+            "t2-defender-follow",
+            "t2-defender-lead",
+            "t2-partner-follow",
+            "t2-partner-lead",
+            "t2-picker-follow",
+            "t2-picker-lead",
+            "t3-defender-lead",
+            "t3-partner-follow",
+            "t3-picker-follow",
+            "t4-defender-follow",
+            "t4-partner-follow",
+            "t4-partner-lead",
+            "t4-picker-lead",
+        }
+    )
 
 
 @dataclass
