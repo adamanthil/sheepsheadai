@@ -136,6 +136,38 @@ def test_cell_filter_skips_search_entirely():
     assert diag["play"]["count"] == 0
 
 
+def test_gate_serves_jack_of_diamonds_games():
+    # The teacher covers BOTH partner modes (operator directive 2026-08-11):
+    # eligibility must not filter on partner_mode_flag, and play_cell role
+    # detection must work in JD mode (is_secret_partner checks the JD hand).
+    from sheepshead import PARTNER_BY_JD
+
+    game = Game(partner_selection_mode=PARTNER_BY_JD, seed=11)
+    while not game.is_done():
+        for player in game.players:
+            valid = player.get_valid_action_ids()
+            while valid:
+                valid_sorted = sorted(valid)
+                names = {a: ACTION_LOOKUP[a] for a in valid_sorted}
+                play = [a for a, n in names.items() if n.startswith("PLAY ")]
+                if play and not game.is_leaster and not game.alone_called:
+                    pol, alt = valid_sorted[0], valid_sorted[1]
+                    teacher = _ScriptedTeacher(
+                        [_res(valid_sorted, alt, pol)] * 2
+                        + [_res(valid_sorted, pol, pol)]
+                    )
+                    tr, diag = _run_gate(teacher, valid_sorted, game, player)
+                    assert teacher.calls == 3
+                    assert tr["has_search_target"] is True
+                    assert diag["play"]["accepted"] == 1
+                    return
+                pick = [a for a, n in names.items() if n == "PICK"]
+                safe = [a for a, n in names.items() if "ALONE" not in n]
+                player.act(pick[0] if pick else (safe[0] if safe else valid_sorted[0]))
+                valid = player.get_valid_action_ids()
+    raise AssertionError("no standard JD play node reached")
+
+
 def test_gated_mode_end_to_end_smoke():
     seed_all(7)
     agent = PPOAgent(len(ACTIONS), arch=ARCH)

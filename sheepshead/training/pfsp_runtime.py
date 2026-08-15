@@ -225,9 +225,15 @@ def _attach_gated_search_target(
     the E9 calibration this gate rests on searched self-play continuations —
     population grounding here would decalibrate the gate.
 
-    Eligibility mirrors the E9 instrument: PLAY head, standard called-ace
-    game (no leaster / alone), >= 2 legal actions, node class in
-    ``gate_cells``, then ``gate_node_prob`` subsampling (the budget knob).
+    Eligibility: PLAY head in BOTH partner-selection modes (called-ace and
+    jack-of-diamonds — ``play_cell`` role detection is mode-aware via
+    ``is_secret_partner``), no leaster / alone games, >= 2 legal actions,
+    node class in ``gate_cells``, then ``gate_node_prob`` subsampling (the
+    budget knob). Calibration caveat: the E9 map and gate calibration were
+    measured on called-ace deals; JD-mode labels extrapolate that
+    calibration — defensible because the gate mechanism is mode-agnostic
+    and abstains wherever the committee splits, but a JD-mode spot-check
+    of emission quality is a recorded follow-up (Search_Teacher_Design §9).
     """
     if game.is_leaster or game.alone_called or len(valid_actions) < 2:
         return

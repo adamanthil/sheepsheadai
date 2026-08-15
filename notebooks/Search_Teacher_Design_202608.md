@@ -448,12 +448,21 @@ calibration. Implemented in commit 235c0c3.
 **Mechanism** (SearchConfig mode="gated"; pfsp_runtime.
 _attach_gated_search_target; --search-teacher on train_league_ppo):
 
-1. WHERE: main-agent PLAY decisions in standard called-ace games,
-   >= 2 legal actions, node class (play_cell: trick x role x
-   lead/follow — same classifier as the E9 instrument, now shared
-   code) in ``gate_cells`` = the 23 classes with mean headroom
+1. WHERE: main-agent PLAY decisions in BOTH partner-selection modes
+   (called-ace AND jack-of-diamonds — operator directive 2026-08-11;
+   eligibility never filters on partner mode, and play_cell role
+   detection is mode-aware via is_secret_partner). Leaster and alone
+   games excluded. >= 2 legal actions, node class (play_cell: trick
+   x role x lead/follow — same classifier as the E9 instrument, now
+   shared code) in ``gate_cells`` = the 23 classes with mean headroom
    >= ~0.003 in E9. Subsampled at ``gate_node_prob`` (default 0.02)
-   — the budget knob.
+   — the budget knob. CALIBRATION-DOMAIN CAVEAT: the E9 map and gate
+   calibration were measured on called-ace deals; JD-mode labels
+   extrapolate it. Defensible — the committee mechanism is
+   mode-agnostic and abstains at splits — but a JD-mode spot-check
+   (E9-style, JD deals, the certified arm) is a recorded follow-up,
+   and per-mode emission/agreement telemetry should be watched in
+   the branch run.
 2. SEARCH: 3 independent-RNG replicates of ONE calibrated arm —
    1024 iters, d_rollout=1, oracle leaves (engine default), gamma=1
    (persisted since 6c08eb7), SELF-PLAY worlds (E8: no ecology
