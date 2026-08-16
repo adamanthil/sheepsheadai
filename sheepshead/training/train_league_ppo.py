@@ -227,7 +227,6 @@ def _league_worker_init(init_args: dict) -> None:
         from sheepshead.training.config import SearchConfig as _SC
 
         cfg = _SC(
-            mode="gated",
             gate_node_prob=float(init_args.get("search_prob", 0.02)),
         )
         iters = int(init_args.get("search_iters", cfg.gate_iters))
@@ -442,7 +441,6 @@ def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
     search_config = SearchConfig(
-        mode="gated",
         gate_node_prob=float(getattr(ctx.args, "search_teacher_prob", 0.02)),
     )
     return {
@@ -1424,7 +1422,6 @@ def main():
         training_agent.search_distill_coeff = float(
             getattr(args, "search_distill_coeff", 0.25)
         )
-        training_agent.search_distill_mode = "margin"
         training_agent.search_margin = float(
             getattr(args, "search_teacher_margin", 0.3)
         )

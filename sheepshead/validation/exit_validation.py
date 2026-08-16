@@ -16,7 +16,7 @@ for a given model (deterministic-greedy unless --stochastic):
      opponents, mean final score (points) over rotations. Baseline-vs-baseline ~0
      is the harness sanity check.
 
-The TRAINING-TIME diagnostics (teacher_kl, ESS-abort fraction, pg_masked_fraction,
+The TRAINING-TIME diagnostics (distill hinge, gate acceptance, pg_masked_fraction,
 pi' entropy) are logged in update_stats['distill'] during the run, and the PG-mask
 vs additive-form A/B is a two-config training experiment — neither is a static
 model eval, so they are tracked during training, not here.

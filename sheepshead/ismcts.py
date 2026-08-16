@@ -338,9 +338,9 @@ class ISMCTSConfig:
     """Engine physics of one ISMCTS search (selection math, belief pool,
     batching, leaf/readout choices). Deliberately separate from the trainer's
     ``training.config.SearchConfig``, which owns search SCHEDULING — which
-    decisions get searched (``head_search_fractions``) and the trick-indexed
-    rollout-depth schedule (``t_full``/``d_short``) injected per call via
-    ``search(d_rollout=...)``; ``config.d_rollout`` is only the fallback.
+    decisions get searched (node eligibility + committee gate) and the
+    rollout depth injected per call via ``search(d_rollout=...)``;
+    ``config.d_rollout`` is only the fallback.
 
     Mutable by design: several analysis scripts mutate a default instance
     before constructing the teacher. Construction validates; after mutating,

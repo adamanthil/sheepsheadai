@@ -72,7 +72,6 @@ def _run_gate(teacher, valid, game, player, cfg=None):
     transition = {"search_target": None, "has_search_target": False}
     diag = {"play": {"count": 0, "accepted": 0, "ess_sum": 0.0, "entropy_sum": 0.0}}
     cfg = cfg or SearchConfig(
-        mode="gated",
         gate_node_prob=1.0,
         gate_replicates=3,
         gate_agreement=2,
@@ -130,9 +129,7 @@ def test_abstains_on_split_committee():
 def test_cell_filter_skips_search_entirely():
     game, player, valid = _to_first_play_node()
     teacher = _ScriptedTeacher([])
-    cfg = SearchConfig(
-        mode="gated", gate_node_prob=1.0, gate_cells=frozenset({"t4-picker-lead"})
-    )
+    cfg = SearchConfig(gate_node_prob=1.0, gate_cells=frozenset({"t4-picker-lead"}))
     tr, diag = _run_gate(teacher, valid, game, player, cfg)
     assert teacher.calls == 0
     assert tr["has_search_target"] is False
@@ -244,7 +241,6 @@ def test_gated_mode_end_to_end_smoke():
         ),
     )
     cfg = SearchConfig(
-        mode="gated",
         gate_node_prob=1.0,
         gate_replicates=2,
         gate_agreement=2,

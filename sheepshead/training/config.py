@@ -11,11 +11,10 @@ Consumers:
   ``SELFPLAY_HYPERPARAMS``) for the bootstrap run's fixed learning rates and
   entropy schedule. Its values intentionally differ from the league trainer's,
   hence a separate dataclass.
-* The deploy/audit ISMCTS search path (``pfsp_runtime.play_population_game`` +
-  ``ismcts.py``) reads ``SearchConfig`` for the per-head search coverage and the
-  rollout-depth schedule. The league/exploiter trainers run terminal-reward only
-  with no teacher, so the search path is reachable only from the probes and the
-  regression tests.
+* The gated search-teacher path (``pfsp_runtime.play_population_game`` +
+  ``ismcts.py``) reads ``SearchConfig`` for node eligibility and the
+  committee-gate knobs; the league trainer builds one when ``--search-teacher``
+  is on (terminal-reward mode only).
 
 The shaped-reward controllers, opponent-block scheduling, and the standalone
 ExIt trainer that this module used to configure were removed in the June 2026
@@ -92,61 +91,35 @@ class SelfPlayHyperparams:
 
 @dataclass
 class SearchConfig:
-    """ISMCTS soft-teacher search SCHEDULING: which decisions get searched and
-    how deep they roll. The engine physics (PUCT constants, belief pool,
+    """Agreement-gated ISMCTS teacher SCHEDULING (Search_Teacher_Design §9):
+    which decisions get searched and how the committee gate decides whether a
+    label is emitted. The engine physics (PUCT constants, belief pool,
     batching, leaf/readout choices) live in ``sheepshead.ismcts.ISMCTSConfig``
-    — the split is deliberate: the trainer owns coverage and the depth
-    schedule, the engine owns one search.
+    — the split is deliberate: the trainer owns coverage and the gate, the
+    engine owns one search.
 
-    ``head_search_fractions`` is the per-head probability that a training-agent
-    decision is searched. The current default searches only PLAY at **0.30**
-    (bidding heads 0). All heads are searchable — bidding roots are cheap
-    (shallow ``max_depth=1``, at most a couple per game) relative to the deep
-    (``max_depth=6``) play tree — and every root type has a determinizer:
-    pre-pick (PICK / PASS) via ``Game._sample_prepick_deal`` (P4);
-    PARTNER / BURY ride the post-pick determinizer (a picker exists); leasters
-    via ``Game._sample_leaster_deal`` (no picker / called card / bury). Leaster
-    PLAY decisions ARE searched (head "play", at the play frac): with the
-    per-trick reward + leaster bonus gone, the pass->leaster branch the bidding
-    EV rides on is only win-likelihood-driven if the agent plays leasters well,
-    which needs a teacher signal there.
+    The gate: run the same cheap search ``gate_replicates`` times with
+    independent RNG and emit a distillation target only when
+    >= ``gate_agreement`` replicates pick the SAME action and it differs
+    from the policy's greedy choice (the search root prior's argmax).
+    Certification: gated labels measured +0.0112 mean uplift with 0/22 harm
+    vs +0.0010 / 11% harm ungated (E9 §8).
+    Literature: the loop is Expert Iteration (Anthony et al. 2017) with
+    AlphaZero-style search targets on on-policy states (Silver et al.
+    2017; DAgger, Ross et al. 2011); the readout and its small-budget
+    policy-improvement guarantee are Gumbel MuZero's completed-Q
+    (Danihelka et al. 2022; Grill et al. 2020 for the regularized-PI view);
+    replicate averaging is root parallelization (Chaslot et al. 2008); the
+    agreement gate is query-by-committee data selection (Seung et al. 1992)
+    with the committee = independent stochastic runs of one searcher.
 
-    ``t_full`` / ``d_short`` set the trick-indexed rollout-depth schedule: roll to
-    (near) terminal for tricks ``0..t_full`` where the critic is blind to the
-    trick-0 leak, then bootstrap ``d_short`` plies later once the value head is
-    trustworthy. ``t_full=1`` / ``d_short=2`` are validated by the critic-calibration
-    probe (``t_full_probe.py``): a search at trick ``t`` bootstraps at ~``t+d_short``,
-    so this lands every bootstrap at trick >= 4, where the best-possible value head
-    reaches R^2 ~0.73+ (vs ~0.26 at trick 0). The trick-0 defender-lead leak states
-    are always rolled to terminal (0 <= t_full). Leasters are forced to terminal
-    rollout in the runtime regardless of t_full (their outcomes barely calibrate,
-    R^2 <= 0.21).
+    A legacy per-head-fraction ExIt scheduler (dense forward-KL visit
+    targets, ``head_search_fractions``/``t_full``/``d_short``) lived here
+    until 2026-08; it was removed after the gated margin form superseded it
+    (Search_Teacher_Design §10, Exit_Arms_202606).
     """
 
-    head_search_fractions: dict = field(
-        default_factory=lambda: {"pick": 0, "partner": 0, "bury": 0, "play": 0.30}
-    )
-    t_full: int = 1
-    d_short: int = 2
     enabled: bool = True
-    # ---- Agreement-gated teacher (mode="gated"; Search_Teacher_Design §9) ----
-    # Replaces the per-fraction scheduler above with a replicate-agreement
-    # gate: run the same cheap search ``gate_replicates`` times with
-    # independent RNG and emit a distillation target only when
-    # >= ``gate_agreement`` replicates pick the SAME action and it differs
-    # from the policy's greedy choice (the search root prior's argmax).
-    # Emitted target = the replicate-AVERAGED pi_gumbel distribution — soft,
-    # so near-equivalent cards share mass contextually (certification: gated
-    # labels +0.0112 mean uplift, 0/22 harm vs +0.0010 / 11% ungated).
-    # Literature: the loop is Expert Iteration (Anthony et al. 2017) with
-    # AlphaZero-style soft search targets on on-policy states (Silver et al.
-    # 2017; DAgger, Ross et al. 2011); the readout and its small-budget
-    # policy-improvement guarantee are Gumbel MuZero's completed-Q
-    # (Danihelka et al. 2022; Grill et al. 2020 for the regularized-PI view);
-    # replicate averaging is root parallelization (Chaslot et al. 2008); the
-    # agreement gate is query-by-committee data selection (Seung et al. 1992)
-    # with the committee = independent stochastic runs of one searcher.
-    mode: str = "fraction"  # "fraction" (legacy ExIt) | "gated"
     gate_iters: int = 1024  # calibrated budget; changing it voids the E9 cert
     gate_d_rollout: int = 1  # shallow + oracle leaves (variance-min; E9 §7)
     gate_replicates: int = 3

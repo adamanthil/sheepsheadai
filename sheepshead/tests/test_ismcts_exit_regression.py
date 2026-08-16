@@ -591,28 +591,49 @@ def _make_pop_agent(agent, mode, i):
     )
 
 
-def test_distill_pgmask_and_dormant():
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+class _GatedDisagreeTeacher:
+    """Deterministic committee stub for the gated teacher: every search
+    unanimously votes the second-lowest legal action while the root prior
+    backs the lowest, so the agreement gate emits a label (with its ranking
+    referent) at every eligible PLAY node."""
+
+    def search(self, game, observer, forced_public, rng, d_rollout=None):
+        valid = sorted(game.players[observer - 1].get_valid_action_ids())
+        gum = np.zeros(len(ACTIONS))
+        pick = valid[1] if len(valid) > 1 else valid[0]
+        gum[pick - 1] = 1.0
+        prior = {a: (1.0 if a == valid[0] else 0.0) for a in valid}
+        return {"ok": True, "pi_gumbel": gum, "root_prior": prior, "valid": valid}
+
+
+def _gated_all_cells_config():
+    """Gated SearchConfig with every play cell eligible and no subsampling,
+    so the stub committee labels every eligible PLAY node."""
     from sheepshead.training.config import SearchConfig
+
+    return SearchConfig(
+        gate_node_prob=1.0,
+        gate_replicates=2,
+        gate_agreement=2,
+        gate_cells=frozenset(
+            f"t{t}-{r}-{k}"
+            for t in range(5)
+            for r in ("picker", "partner", "defender")
+            for k in ("lead", "follow")
+        ),
+    )
+
+
+def test_distill_pgmask_and_dormant():
     from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     agent = _fresh_agent()
     mode = PARTNER_BY_JD
     opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = ISMCTSTeacher(
-        agent,
-        ISMCTSConfig(
-            iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
-            det_max_tries=300,
-            ess_floor=0.5,
-        ),
-    )
+    teacher = _GatedDisagreeTeacher()
     determinization_rng = random.Random(SEED)
-    # High coverage so distillation reliably fires.
-    sc = SearchConfig(
-        head_search_fractions={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.9}
-    )
+    sc = _gated_all_cells_config()
 
     searched = 0
     for gi in range(8):
@@ -634,7 +655,7 @@ def test_distill_pgmask_and_dormant():
     stats = agent.update(epochs=2, batch_size=16)
     d = stats.get("distill", {})
     assert stats["num_transitions"] > 0
-    assert d.get("teacher_kl", -1) >= 0.0, "teacher_kl must be >= 0"
+    assert d.get("hinge", 0.0) > 0.0, "margin hinge must be active on stub labels"
     assert 0.0 < d.get("pg_masked_fraction", 0.0) <= 1.0, (
         "PG-mask fraction out of range"
     )
@@ -665,28 +686,18 @@ def test_distill_pgmask_and_dormant():
 
 
 def _generate_searched_events(n_games=5):
-    """Play terminal-mode games with a teacher and return the concatenated event
-    stream (with search targets on a fraction of transitions)."""
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-    from sheepshead.training.config import SearchConfig
+    """Play terminal-mode games with the stub gated teacher and return the
+    concatenated event stream (with search targets on the eligible PLAY
+    transitions)."""
     from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     gen = _fresh_agent()
     mode = PARTNER_BY_JD
     opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = ISMCTSTeacher(
-        gen,
-        ISMCTSConfig(
-            iters={"pick": 6, "partner": 6, "bury": 6, "play": 6},
-            det_max_tries=300,
-            ess_floor=0.5,
-        ),
-    )
+    teacher = _GatedDisagreeTeacher()
     det_rng = random.Random(SEED)
-    sc = SearchConfig(
-        head_search_fractions={"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 0.9}
-    )
+    sc = _gated_all_cells_config()
     all_events, searched = [], 0
     for _ in range(n_games):
         _, events, _, _, _ = play_population_game(

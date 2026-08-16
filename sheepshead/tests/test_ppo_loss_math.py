@@ -45,9 +45,6 @@ def configure(agent, **overrides):
         "kl_coef": 0.0,
         "anchor_coeff": 0.0,
         "searched_ppo_weight": 0.0,
-        # Legacy KL math tests pin the explicit opt-in; margin-mode tests
-        # override per-test (the agent default is "margin" since 2026-08-12).
-        "search_distill_mode": "kl",
         "clip_epsilon_pick": 0.2,
         "clip_epsilon_partner": 0.2,
         "clip_epsilon_bury": 0.2,
@@ -303,15 +300,14 @@ class TestEntropyBonus:
 
 
 class TestSearchDistillation:
-    def test_masked_row_drops_pg_and_gains_forward_kl(self, agent):
+    def test_masked_row_drops_pg_even_without_referent(self, agent):
         configure(agent)
-        # Row 0 carries a search target over uniform policy probs:
-        #   distill = sum pi'(log pi' - log 0.25) = -H(pi') + ln 4
-        # and its PG element is zeroed (searched_ppo_weight=0), so the policy
+        # Row 0 carries a search target but NO ranking referent (search_ref
+        # defaults to -1): the margin loss must contribute ZERO for it (no
+        # silent ranking against action 0) while the PG-mask still applies —
+        # its PG element is zeroed (searched_ppo_weight=0), so the policy
         # term is the mean of (0, -1.0) = -0.5.
         pi_target = [0.7, 0.1, 0.1, 0.1]
-        target_entropy = -sum(p * math.log(p) for p in pi_target)
-        expected_distill = -target_entropy + math.log(4.0)
         actor_loss, _critic, _kl, _ents, distill, diagnostics = call_losses(
             agent,
             probs_rows=[[0.25, 0.25, 0.25, 0.25]] * 2,
@@ -321,19 +317,16 @@ class TestSearchDistillation:
             search_target=[pi_target, [0.0] * 4],
             has_search=[1.0, 0.0],
         )
-        assert distill.item() == pytest.approx(expected_distill, abs=1e-5)
+        assert distill.item() == 0.0
         assert actor_loss.item() == pytest.approx(-0.5, abs=1e-5)
         assert diagnostics["masked_fraction"].item() == pytest.approx(0.5)
-        assert diagnostics["teacher_kl"].item() == pytest.approx(
-            expected_distill, abs=1e-5
-        )
+        assert diagnostics["hinge"].item() == 0.0
 
-    def test_margin_mode_hinge_value_and_saturation(self, agent):
-        # Margin ranking mode (DQfD-style, Search_Teacher_Design §10.2):
+    def test_margin_hinge_value_and_saturation(self, agent):
+        # Margin ranking loss (DQfD-style, Search_Teacher_Design §10.2):
         # active hinge = m + log pi(a_ref) - log pi(a*); zero once a*
         # out-ranks a_ref by the margin.
         configure(agent)
-        agent.search_distill_mode = "margin"
         agent.search_margin = 0.3
         # Active: uniform probs, a*=0 (target argmax), a_ref=1 -> hinge = m.
         _a, _c, _k, _e, distill, _d = call_losses(
@@ -359,7 +352,6 @@ class TestSearchDistillation:
             search_ref=[1.0],
         )
         assert distill2.item() == 0.0
-        agent.search_distill_mode = "kl"
 
     def test_searched_ppo_weight_one_keeps_full_pg(self, agent):
         configure(agent, searched_ppo_weight=1.0)

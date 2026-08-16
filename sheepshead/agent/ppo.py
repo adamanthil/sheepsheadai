@@ -183,7 +183,7 @@ class _UpdateEpochAccumulator:
         self.secret_loss_sum = 0.0
         self.secret_loss_count = 0
         self.search_distill_loss_sum = 0.0
-        self.teacher_kl_sum = 0.0
+        self.search_hinge_sum = 0.0
         self.pi_target_entropy_sum = 0.0
         self.masked_fraction_sum = 0.0
         self.search_distill_batches = 0
@@ -350,33 +350,22 @@ class PPOAgent:
         self.seen_trump_mask_loss_coeff = 0.2
         self.unseen_trump_higher_than_hand_loss_coeff = 0.1
 
-        # Stage C: ISMCTS soft-teacher distillation. On transitions carrying a
-        # confident search target (ESS >= floor) the policy is trained by forward-KL
-        # distillation toward pi'; the value loss still runs on every transition.
-        # search_distill_coeff scales this KL(pi' || pi_theta) term (plan §3: 1.0).
+        # Search-teacher distillation on transitions carrying a gate-emitted
+        # target; the value loss still runs on every transition.
+        # search_distill_coeff is the batch-level weight of the margin term.
         self.search_distill_coeff = 1.0
-        # Teacher-label loss form on searched transitions:
-        #   "kl"     — forward KL toward pi' (Stage-C/ExIt form; AlphaZero-style
-        #              distribution target, Silver et al. 2017; Anthony et al.
-        #              2017). Demands the full target distribution: gradient
-        #              (pi_theta - pi') touches EVERY logit and persists past
-        #              choice-agreement, which flattened the play head under
-        #              disagreement-selected sparse labels (branch attempts
-        #              3-4, Search_Teacher_Design §10).
-        #   "margin" — DQfD-style large-margin ranking (Hester et al. 2018):
-        #              max(0, m + log pi(a_ref) - log pi(a*)), a_ref = the
-        #              label-time policy argmax. Teaches only the calibrated
-        #              ORDERING claim; gradient support is exactly the two
-        #              logits {a*, a_ref} (softmax terms cancel) and vanishes
-        #              once a* out-ranks a_ref by the margin — self-limiting
-        #              (hinge saturation), no confidence target, no entropy
-        #              injection on other actions.
-        # Default "margin": the KL form is DEMONSTRABLY destabilizing under
-        # disagreement-selected sparse labels (§10 runaway) and is retained
-        # only as an explicit opt-in for the legacy dense-fraction ExIt path
-        # (whose visit-distribution targets carry no ranking referent — set
-        # mode="kl" explicitly if reviving it).
-        self.search_distill_mode = "margin"
+        # Teacher-label loss: DQfD-style large-margin ranking (Hester et al.
+        # 2018): max(0, m + log pi(a_ref) - log pi(a*)), a_ref = the
+        # label-time policy argmax. Teaches only the calibrated ORDERING
+        # claim; gradient support is exactly the two logits {a*, a_ref}
+        # (softmax terms cancel) and vanishes once a* out-ranks a_ref by the
+        # margin — self-limiting (hinge saturation), no confidence target,
+        # no entropy injection on other actions. A forward-KL form
+        # (AlphaZero-style distribution target, Silver et al. 2017; Anthony
+        # et al. 2017) was removed 2026-08: DEMONSTRABLY destabilizing under
+        # disagreement-selected sparse labels — its gradient (pi_theta - pi')
+        # touches EVERY logit and persists past choice-agreement, which
+        # flattened the play head (Search_Teacher_Design §10).
         self.search_margin = 0.3
         # A/B knob for the searched-transition policy loss (plan §4):
         #   0.0 -> hard PG-mask (drop the PPO term on searched states; distillation
@@ -1482,48 +1471,43 @@ class PPOAgent:
         pg_loss_elements = pg_loss_elements * pg_keep
         policy_loss = (pg_loss_elements * head_weight).mean()
 
-        # Forward-KL distillation toward pi' on the searched transitions:
-        #   L_distill = mean_searched( sum_a pi'(a) * (log pi'(a) - log pi_theta(a)) )
-        # Reported KL(pi' || pi_theta), pi' entropy and the masked fraction are
-        # detached for logging.
+        # Margin-ranking distillation on the searched transitions — DQfD-style
+        # large-margin loss (Hester et al. 2018, the canonical
+        # sparse-expert-labels-beside-RL form):
+        #   L = max(0, m + log pi_theta(a_ref) - log pi_theta(a*))
+        # a* = the committee's agreed action (argmax of the stored target),
+        # a_ref = the label-time policy argmax. Gradient wrt logits is exactly
+        # e_{a_ref} - e_{a*} while active (softmax terms cancel) and ZERO once
+        # a* out-ranks a_ref by m — the hinge saturates per state, so pressure
+        # expires exactly when the calibrated ordering claim is satisfied
+        # (contrast a forward-KL form, whose gradient pi_theta - pi' touches
+        # every logit and persists until the full target profile is matched —
+        # the removed KL mode's play-head-flattening mechanism;
+        # Search_Teacher_Design §10.2).
         if searched.any():
             pit = search_target_flat[searched]
             logp_theta = torch.log(probs_all[searched].clamp(min=1e-12))
             logp_it = torch.log(pit.clamp(min=1e-12))
-            if self.search_distill_mode == "margin":
-                # DQfD-style large-margin ranking loss (Hester et al. 2018,
-                # the canonical sparse-expert-labels-beside-RL form):
-                #   L = max(0, m + log pi_theta(a_ref) - log pi_theta(a*))
-                # a* = the committee's agreed action (argmax of the stored
-                # target), a_ref = the label-time policy argmax. Gradient wrt
-                # logits is exactly e_{a_ref} - e_{a*} while active (softmax
-                # terms cancel) and ZERO once a* out-ranks a_ref by m — the
-                # hinge saturates per state, so pressure expires exactly when
-                # the calibrated ordering claim is satisfied (contrast the KL
-                # branch, whose gradient pi_theta - pi' touches every logit
-                # and persists until the full 0.95/eps profile is matched;
-                # Search_Teacher_Design §10.2).
-                a_star = pit.argmax(dim=1)
-                ref_raw = search_ref_flat[searched]
-                # Rows without a stored referent (fraction-path labels, or a
-                # gate emission predating referent storage) contribute ZERO
-                # rather than silently ranking against action 0.
-                has_ref = ref_raw >= 0.0
-                a_ref = ref_raw.long().clamp(min=0)
-                lp_star = logp_theta.gather(1, a_star.unsqueeze(1)).squeeze(1)
-                lp_ref = logp_theta.gather(1, a_ref.unsqueeze(1)).squeeze(1)
-                search_distill_per = (self.search_margin + lp_ref - lp_star).clamp(
-                    min=0.0
-                ) * has_ref.to(lp_star.dtype)
-            else:
-                search_distill_per = (pit * (logp_it - logp_theta)).sum(dim=1)
+            a_star = pit.argmax(dim=1)
+            ref_raw = search_ref_flat[searched]
+            # Rows without a stored referent contribute ZERO rather than
+            # silently ranking against action 0.
+            has_ref = ref_raw >= 0.0
+            a_ref = ref_raw.long().clamp(min=0)
+            lp_star = logp_theta.gather(1, a_star.unsqueeze(1)).squeeze(1)
+            lp_ref = logp_theta.gather(1, a_ref.unsqueeze(1)).squeeze(1)
+            search_distill_per = (self.search_margin + lp_ref - lp_star).clamp(
+                min=0.0
+            ) * has_ref.to(lp_star.dtype)
             search_distill_loss = search_distill_per.mean()
             with torch.no_grad():
-                teacher_kl = search_distill_per.mean()
+                # Unweighted mean hinge (coeff-independent teacher-pressure
+                # readout) and target entropy, detached for logging.
+                search_hinge = search_distill_per.mean()
                 pi_target_entropy = -(pit * logp_it).sum(dim=1).mean()
         else:
             search_distill_loss = logits_flat.new_zeros(())
-            teacher_kl = logits_flat.new_zeros(())
+            search_hinge = logits_flat.new_zeros(())
             pi_target_entropy = logits_flat.new_zeros(())
         masked_fraction = searched.to(torch.float32).mean()
 
@@ -1565,7 +1549,7 @@ class PPOAgent:
             (pick_entropy, partner_entropy, bury_entropy, play_entropy),
             search_distill_loss,
             {
-                "teacher_kl": teacher_kl,
+                "hinge": search_hinge,
                 "pi_target_entropy": pi_target_entropy,
                 "masked_fraction": masked_fraction,
                 "anchor_kl": anchor_kl,
@@ -1751,7 +1735,7 @@ class PPOAgent:
 
         # Stage C distillation accumulation
         acc.search_distill_loss_sum += search_distill_loss.detach().item()
-        acc.teacher_kl_sum += search_distill_metrics["teacher_kl"].item()
+        acc.search_hinge_sum += search_distill_metrics["hinge"].item()
         acc.pi_target_entropy_sum += search_distill_metrics["pi_target_entropy"].item()
         acc.masked_fraction_sum += search_distill_metrics["masked_fraction"].item()
         acc.search_distill_batches += 1
@@ -2396,7 +2380,7 @@ class PPOAgent:
             "distill": {
                 "loss": self.search_distill_coeff
                 * (acc.search_distill_loss_sum / max(acc.search_distill_batches, 1)),
-                "teacher_kl": acc.teacher_kl_sum / max(acc.search_distill_batches, 1),
+                "hinge": acc.search_hinge_sum / max(acc.search_distill_batches, 1),
                 "pi_target_entropy": acc.pi_target_entropy_sum
                 / max(acc.search_distill_batches, 1),
                 "pg_masked_fraction": acc.masked_fraction_sum
