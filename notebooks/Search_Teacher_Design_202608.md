@@ -591,3 +591,54 @@ re-copied (attempt 3 had inserted one degraded snapshot member) and
 the entropy sidecar restored (play target 0.476). Same budget knobs
 (prob 0.01). Watch list: Hn_play vs the ~0.5-0.65 teacher-free band,
 emission rate vs ~30%, greedy conventions at 50k probes.
+
+### 10.1 Attempt 4 + teacher-free control: mechanism reattributed (2026-08-12)
+
+Attempt 4 (one-hot targets, coeff 0.25) SLOWED but did not stop the
+runaway: Hn_play 0.52 -> 0.82 by 16k episodes (attempt 3: ~0.90 by
+13k), emission creeping 33% -> 42%. A ~10x cut in target-entropy
+pressure bought only ~1.5x slope — falsifying "soft targets" as the
+dominant mechanism. Loss plumbing verified correct by inspection
+(mask and distill-mean strictly on labeled rows).
+
+**Teacher-free CONTROL (byte-identical flags/seed/resume, isolated
+league copy): Hn_play FLAT at 0.52 through 40k episodes, picker_avg
+stable ~1.5.** The teacher path is unambiguously the driver, and the
+gen-9 boundary is exonerated. (Also supersedes the earlier
+0.65-at-49k comparison from the orchestrator's killed gen-9, which
+resumed a mid-evolution sidecar.)
+
+**Reattributed mechanism:** forward-KL distillation toward
+committee-agreed actions is INTRINSICALLY entropy-raising while
+adoption is incomplete, and its gradient magnitude does not shrink
+with one-hot targets: the per-sample KL is ~ -log pi_theta(a*), which
+is LARGE precisely because the gate selects disagreement states
+(pi_theta(a*) small by construction). Each update pushes mass from
+the argmax toward currently-low-probability actions at ~20-50 fresh
+states, generalization spreads the flattening through the shared
+representation (E7), rising entropy raises emission (the observed
+feedback), and the entropy controller has no braking authority
+(alpha >= 0; measured-above-target just parks alpha at ~0). One-hot
+targets changed the direction of the asymptote, not the transient —
+and the coeff cut (4x) accounts for the modest slowing observed.
+
+**Proposed fix for attempt 5 (AWAITS OPERATOR SIGN-OFF — third
+design iteration warrants it):** replace forward-KL with a MARGIN
+RANKING loss on labeled transitions:
+
+    L = max(0, m + log pi_theta(a_ref) - log pi_theta(a*))
+
+with a_ref = the label-time policy argmax (already the gate's stored
+referent) and margin m ~ 0.2-0.5 nats. This teaches exactly the
+calibrated claim — "the committee prefers a* over the policy's
+choice" — as an ORDERING constraint (E7's deficit is an ordering
+deficit), is SELF-LIMITING (loss and gradient vanish once a* beats
+a_ref by m; no pressure toward 0.95 mass, no continued flattening),
+and leaves the rest of the distribution untouched except via
+normalization. PG-mask retained. Literature: margin-based ranking /
+large-margin classification (hinge); the self-limiting property is
+the standard hinge saturation.
+
+Meanwhile the control runs on as the TEACHER-FREE GEN-9 TWIN — same
+seed and boundary as any future attempt, i.e. the ideal paired
+control for the §9 gates (better than the gen-8 endpoint alone).
