@@ -728,3 +728,13 @@ the default; KL is the explicit opt-in for the legacy dense-fraction
 path. Made safe by excluding referent-less labeled rows from the
 margin loss (fraction-path targets carry no referent) instead of
 silently ranking against action index 0.
+
+**Attempt 5 (operator-set, 2026-08-12):** margin ranking loss at
+--search-distill-coeff 1.0 (not 0.25): the hinge's structural safety
+(bounded two-logit gradient, saturation) carries the stability
+burden, and 1.0 gives (a) a clean A/B against attempt 3's KL@1.0
+entropy destabilization at matched scale, and (b) the fastest
+teacher-learning read per expensive generation. Escalation ladder
+inverted: if 1.0 destabilizes, 0.25 is the fallback arm. Same budget
+knobs (prob 0.01, m=0.3); entropy tripwires and greedy gates as
+before (violation prints now flush).
