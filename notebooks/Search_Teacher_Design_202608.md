@@ -879,3 +879,83 @@ _league_worker_weights_v*.pt publish, alerting at t0-lead > 5% /
 partner < 92% / spread < 3.2 (8M baseline: 0.7% / 97.1% / 3.60).
 Entropy sidecar restored from the attempt-5a archive copy (5b's final
 controller state had adapted to the scrambled policy).
+
+### 10.5 Attempt 6 (coeff 0.05): coefficient scaling is near-inert under Adam (2026-08-16)
+
+Killed after 2-3 updates on a per-publish probe ORDERING ALERT:
+t0-lead 0.7% → 0.7% (v2) → **17.7%** (v3), partner 95.3% → 88.7%,
+spread 3.73 → 3.24 → 2.54. A 20x coefficient cut bought ~2x slower
+damage at best — decisive against per-coefficient scaling as the
+safety mechanism. **Mechanism:** the actor optimizer is Adam; for
+parameter directions dominated by the teacher's coherent, persistent
+gradient, second-moment normalization re-inflates ANY gradient scale
+to ~lr-sized steps. Damage therefore tracks the NUMBER of Adam steps
+in the coherent direction (epochs x updates), not the coefficient —
+retroactively explaining why 5b (coeff 1.0) and 6 (0.05) failed at
+almost the same update count. Corollary: only a mechanism that ZEROES
+the teacher gradient can bind (Adam cannot step on zero) — loss-scale
+knobs of any size cannot. Artifacts: train_attempt6_coeff005.log,
+progress_attempt6_coeff005.csv, attempt6_damaged_weights_v3.pt.
+
+Supporting measurement (pre-sizing the trust region): label-time gap
+g = log pi(argmax) - log pi(rank-2) at gate-eligible nodes under the
+8M policy (2,011 stochastic-play nodes, seed 31337): p25 0.40 /
+median 1.25 / p75 2.84 / p90 4.80 nats (rank-3 median 3.14). These
+are NOT near-tie nodes on average — each label demands a median
+~1.55-nat pair swing (g + m), which the unclipped hinge delivered in
+one violent multi-epoch update.
+
+### 12. Adopted loss form: evidence-proportional weight + pair-gap trust region (operator-approved 2026-08-16; commit 518331c)
+
+Design discussion (operator-initiated: "I don't like that we have to
+use a hand-tuned coefficient that has baked-in dependencies on our
+PPO update size"):
+
+**A. Evidence-proportional weight lambda** (`--search-label-weight`,
+default 50): distill = lambda * sum-over-labeled / batch_rows — one
+certified label is worth exactly lambda PG samples, the DQfD
+per-sample form (Hester et al. 2018 mixed demos into the batch at
+natural proportion; our mean-over-labeled was the deviation).
+Removes batch-size/emission dependence, and total teacher force now
+tracks label count: the gate's self-retirement finally anneals the
+teacher in the LOSS, where mean-over-labeled had cancelled it by
+re-amplifying the survivors. lambda 50 transfers attempt-6's
+operating point (0.05 x ~1000).
+
+**B. Pair-gap trust region delta** (`--search-clip-delta`, default
+0.2): a labeled row earns gradient only while the pair gap
+log pi(a*) - log pi(a_ref) has improved < delta nats over its stored
+label-time value (anchors = the search's mean unmixed root prior,
+captured free at emission). The PPO-clip analog (Schulman et al.
+2017) and — per §10.5 — the only mechanism in this family that binds
+under Adam, because it zeroes the gradient. Each label is consumed in
+one on-policy update, so delta is also its lifetime budget; a median
+archetype flip (g+m ~ 1.55 nats) accumulates across ~8 labels,
+DAgger-style (Ross et al. 2011).
+
+**Design correction discovered by autograd test (recorded):** the
+first implementation clamped each LEG to anchor +/- delta. Wrong: the
+hinge's two-logit support relies on the pair's softmax terms
+CANCELLING; clamping one leg leaves the other leg's full softmax
+gradient (e_a - pi over every logit) — suppress-a_ref-and-boost-
+everything, precisely the entropy-injection direction of §10. The
+adopted form gates the intact pair to zero on gap_gain >= delta,
+preserving exact two-logit support while active.
+
+**delta sizing** (operator question: maximize learning per expensive
+label subject to stability): candidate anchors were (1) PPO parity
+ln(1+eps) ~ 0.2, (2) median-completion (median g + m)/2 ~ 0.78, (3)
+budget accounting (teacher total movement K*delta << PG's
+N*ln(1+eps) even at generous delta). Pre-§10.5 the recommendation
+was (2); the attempt-6 damage speed argues for starting at (1) 0.2 —
+the probe gives one-update feedback, so delta can be raised
+closed-loop against a healthy ordering probe rather than guessed.
+Instrumentation shipped for exactly that: per-window mean emission
+gap in the 🔍 line, realized per-label displacement d_star/d_ref +
+mean active hinge in distill stats.
+
+**Attempt 7 = this form at lambda 50, delta 0.2, prob 0.01,** same
+budget/gate knobs, per-publish ordering probe + log monitors armed.
+Success signature: probe flat at baseline, entropy drift bounded,
+emission rate decaying (teacher winning at archetypes); failure
+signature: gap_gain pinned at delta with probe drift -> lower delta.
