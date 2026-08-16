@@ -604,6 +604,31 @@ class _EncodeRequest(NamedTuple):
     kind: str
 
 
+class _CommitteeReplicate:
+    """Per-replicate transient state for the lockstep committee driver
+    (``ISMCTSTeacher.search_committee``). Everything ``search`` keeps on
+    ``self`` that differs between replicates lives here and is swapped in
+    around every non-network step; mutable members (rng, root, root_rm,
+    root_praw, fail) are shared by reference so only the scalars need
+    saving back."""
+
+    __slots__ = (
+        "rng",
+        "root",
+        "root_rm",
+        "root_praw",
+        "root_praw_writes",
+        "qmin",
+        "qmax",
+        "fail",
+        "pool",
+        "ess",
+        "indices",
+        "cursor",
+        "sims",
+    )
+
+
 class ISMCTSTeacher:
     def __init__(self, agent, config: ISMCTSConfig | None = None):
         self.agent = agent
@@ -734,6 +759,69 @@ class ISMCTSTeacher:
             self._seat_policies = None
             self._oracle.clear()
 
+    def search_committee(
+        self,
+        real_game,
+        observer: int,
+        forced_public,
+        rngs: list,
+        d_rollout: int | None = None,
+        seat_policies: dict | None = None,
+    ) -> list[SearchResult]:
+        """Run ``len(rngs)`` independent replicate searches of the SAME
+        decision in LOCKSTEP, merging every round's encoder/actor/critic
+        batches across replicates into single forward calls (R x batch_size
+        rows instead of batch_size — small-batch overhead is the dominant
+        committee cost; see the §13.1 deploy-search profiling).
+
+        Per-replicate semantics are identical to a serial ``search`` call
+        with the same rng: each replicate owns its rng, world pool, tree,
+        Q-normalization span, and readout state (swapped in around every
+        non-network step), and its rng consumption ORDER matches the serial
+        path exactly — with R=1 the batches themselves are identical, so the
+        result is bit-equal to ``search``. Replicates interact only through
+        merged network batches, whose float outputs are row-independent up
+        to kernel tiling.
+
+        Returns one ``SearchResult`` per rng, in order.
+        """
+        self._rng = rngs[0] if rngs else None
+        self._eff_d_rollout = (
+            d_rollout if d_rollout is not None else self.config.d_rollout
+        )
+        self._oracle = _OracleCapture(
+            self.config.leaf_evaluator == "oracle"
+            and getattr(self.agent, "oracle_critic", None) is not None
+            and self._eff_d_rollout <= ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH
+        )
+        self._seat_policies = (
+            {
+                seat: agent
+                for seat, agent in seat_policies.items()
+                if seat != observer and agent is not None
+            }
+            if seat_policies
+            else None
+        )
+        involved = {id(self.agent): self.agent}
+        if self._seat_policies:
+            for agent in self._seat_policies.values():
+                involved[id(agent)] = agent
+        saved_memories = {
+            agent_id: agent.snapshot_player_memories()
+            for agent_id, agent in involved.items()
+        }
+        try:
+            return self._search_committee_inner(
+                real_game, observer, forced_public, rngs
+            )
+        finally:
+            for agent_id, agent in involved.items():
+                agent.restore_player_memories(saved_memories[agent_id])
+            self._eff_d_rollout = self.config.d_rollout
+            self._seat_policies = None
+            self._oracle.clear()
+
     def build_belief_pool(
         self,
         real_game,
@@ -814,6 +902,136 @@ class ISMCTSTeacher:
             self._run_batched(root, pool, indices, observer)
 
         return self._finalize(root, valid_real, head, len(pool), ess)
+
+    def _load_replicate(self, ctx: _CommitteeReplicate) -> None:
+        """Swap ``ctx``'s per-replicate transients onto ``self`` (the serial
+        code paths read them there)."""
+        self._rng = ctx.rng
+        self._root = ctx.root
+        self._root_rm = ctx.root_rm
+        self._root_praw = ctx.root_praw
+        self._root_praw_writes = ctx.root_praw_writes
+        self._qmin = ctx.qmin
+        self._qmax = ctx.qmax
+        self.fail = ctx.fail
+
+    def _save_replicate(self, ctx: _CommitteeReplicate) -> None:
+        """Save back the scalars the serial paths reassign (mutable members
+        are shared by reference and need no save)."""
+        ctx.root_praw_writes = self._root_praw_writes
+        ctx.qmin = self._qmin
+        ctx.qmax = self._qmax
+
+    def _search_committee_inner(
+        self, real_game, observer, forced_public, rngs
+    ) -> list[SearchResult]:
+        observer_player = real_game.players[observer - 1]
+        valid_real = sorted(observer_player.get_valid_action_ids())
+        head = self._infer_head(valid_real)
+        config = self.config
+        m_iters = config.iters[head]
+        self._max_depth = config.max_depth[head]
+        batch_size = config.batch_size
+
+        # Per-replicate setup: pool, ESS, iteration schedule. Pool building is
+        # already batched at pool width internally, so replicates build serially.
+        reps: list[_CommitteeReplicate] = []
+        for rng in rngs:
+            ctx = _CommitteeReplicate()
+            ctx.rng = rng
+            ctx.root = _Node()
+            ctx.root_rm = _RootRM(valid_real) if config.root_selection == "rm" else None
+            ctx.root_praw = {a: 0.0 for a in valid_real}
+            ctx.root_praw_writes = 0
+            ctx.qmin = math.inf
+            ctx.qmax = -math.inf
+            ctx.fail = defaultdict(int)
+            self._load_replicate(ctx)
+            ctx.pool = self._build_pool(
+                real_game, observer, list(forced_public), m_iters
+            )
+            ctx.ess = self._pool_ess(ctx.pool)
+            if ctx.pool:
+                probs = self._pool_probs(ctx.pool)
+                ctx.indices = ctx.rng.choices(
+                    range(len(ctx.pool)), weights=probs, k=m_iters
+                )
+            else:
+                ctx.indices = []
+            ctx.cursor = 0
+            ctx.sims = []
+            self._save_replicate(ctx)
+            reps.append(ctx)
+
+        # Merged tree phase: each round, every replicate contributes its
+        # pending encode requests (refilling its next chunk when the current
+        # one has fully completed — same per-chunk barrier as the serial
+        # path), then one network round serves them all.
+        guard = 0
+        while True:
+            guard += 1
+            if guard > 100000 * max(1, len(reps)):
+                raise RuntimeError("committee lockstep guard exceeded")
+            all_requests: list[_EncodeRequest] = []
+            spans: list[tuple[int, int]] = []
+            for ctx in reps:
+                self._load_replicate(ctx)
+                if ctx.cursor < len(ctx.indices) and all(
+                    sim.phase == "done" for sim in ctx.sims
+                ):
+                    chunk = ctx.indices[ctx.cursor : ctx.cursor + batch_size]
+                    ctx.cursor += len(chunk)
+                    ctx.sims = self._spawn_sims(chunk, ctx.pool, ctx.root)
+                live = [sim for sim in ctx.sims if sim.phase != "done"]
+                requests = self._collect_requests(live, observer) if live else []
+                self._save_replicate(ctx)
+                spans.append((len(all_requests), len(requests)))
+                all_requests.extend(requests)
+            if not all_requests:
+                if all(
+                    ctx.cursor >= len(ctx.indices)
+                    and all(sim.phase == "done" for sim in ctx.sims)
+                    for ctx in reps
+                ):
+                    break
+                continue
+            probs_np, values_np = self._run_network_round(all_requests)
+            self._evaluate_oracle_leaves(all_requests, values_np, observer)
+            all_completers = []
+            for ctx, (offset, count) in zip(reps, spans):
+                if count == 0:
+                    continue
+                self._load_replicate(ctx)
+                completers = self._apply_round(
+                    all_requests[offset : offset + count],
+                    probs_np[offset : offset + count],
+                    values_np[offset : offset + count],
+                    observer,
+                )
+                for sim in completers:
+                    self._oracle.record_trick(
+                        sim.oracle_seq, sim.world.players[observer - 1]
+                    )
+                all_completers.extend(completers)
+                self._save_replicate(ctx)
+            # End-of-trick observes are per-sim state — safe to batch across
+            # replicates (and, single-controller, across seats) in one call.
+            # R=1 keeps the serial per-seat batching so the lockstep driver
+            # stays BIT-EQUAL to ``search`` there (the state-swap contract
+            # test); merged batches already differ from serial for R>1.
+            if len(reps) == 1:
+                self._observe_completers_batched(all_completers)
+            else:
+                self._observe_completers_merged(all_completers)
+
+        results = []
+        for ctx in reps:
+            self._load_replicate(ctx)
+            results.append(
+                self._finalize(ctx.root, valid_real, head, len(ctx.pool), ctx.ess)
+            )
+            self._save_replicate(ctx)
+        return results
 
     def _build_pool(self, real_game, observer, forced_public, n_worlds):
         """Sample up to ``n_worlds`` determinized worlds and rebuild all of them
@@ -1176,24 +1394,29 @@ class ISMCTSTeacher:
                 return player.position
         return None
 
+    def _spawn_sims(self, chunk, pool, root):
+        """Materialize one chunk of in-flight sims from sampled pool indices
+        (deep-copied world, per-seat memory snapshot, oracle prefix)."""
+        sims = []
+        for pool_idx in chunk:
+            world = copy.deepcopy(pool[pool_idx][0])
+            memory_snapshot = pool[pool_idx][1]
+            mem = torch.zeros((5, self.agent.state_size), device=DEV)
+            for seat in range(1, 6):
+                if seat in memory_snapshot:
+                    mem[seat - 1] = memory_snapshot[seat]
+            sim = _Sim(world, mem, root)
+            sim.oracle_seq = self._oracle.seq_for_world(pool[pool_idx][0])
+            sims.append(sim)
+        return sims
+
     def _run_batched(self, root, pool, indices, observer):
         batch_size = self.config.batch_size
         start = 0
         while start < len(indices):
             chunk = indices[start : start + batch_size]
             start += len(chunk)
-            sims = []
-            for pool_idx in chunk:
-                world = copy.deepcopy(pool[pool_idx][0])
-                memory_snapshot = pool[pool_idx][1]
-                mem = torch.zeros((5, self.agent.state_size), device=DEV)
-                for seat in range(1, 6):
-                    if seat in memory_snapshot:
-                        mem[seat - 1] = memory_snapshot[seat]
-                sim = _Sim(world, mem, root)
-                sim.oracle_seq = self._oracle.seq_for_world(pool[pool_idx][0])
-                sims.append(sim)
-            self._run_chunk(sims, observer)
+            self._run_chunk(self._spawn_sims(chunk, pool, root), observer)
 
     def _run_chunk(self, sims, observer):
         """Drive a chunk of sims to completion, one network round per pass:
@@ -1583,6 +1806,37 @@ class ISMCTSTeacher:
             memory_out = encoded["memory_out"].detach()
             for i, sim in enumerate(completers):
                 sim.mem[seat - 1] = memory_out[i]
+
+    def _observe_completers_merged(self, completers):
+        """Committee-path variant of ``_observe_completers_batched``: when a
+        single controller models every seat (no seat_policies), the five
+        per-seat encode calls merge into ONE (5 x completers rows) — the
+        observes are ~30% of committee runtime at small per-round completer
+        counts. Row semantics are identical; only batch composition (and so
+        GEMM tiling) differs, which is why the serial path keeps the per-seat
+        version (its outputs are pinned bit-exact by the search goldens).
+        Falls back to the per-seat path under population grounding."""
+        if not completers:
+            return
+        if self._seat_policies:
+            self._observe_completers_batched(completers)
+            return
+        ctrl = self.agent
+        states = []
+        memory_rows = []
+        for seat in range(1, 6):
+            for sim in completers:
+                states.append(sim.world.players[seat - 1].get_last_trick_state_dict())
+                memory_rows.append(sim.mem[seat - 1])
+        encoded = ctrl.encoder.encode_batch(
+            states, memory_in=torch.stack(memory_rows), device=DEV
+        )
+        memory_out = encoded["memory_out"].detach()
+        n = len(completers)
+        for seat in range(1, 6):
+            base = (seat - 1) * n
+            for i, sim in enumerate(completers):
+                sim.mem[seat - 1] = memory_out[base + i]
 
     # ------------------------------------------------------------------
     # World advancement helpers
