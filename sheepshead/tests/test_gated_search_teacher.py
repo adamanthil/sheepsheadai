@@ -277,6 +277,10 @@ def test_gated_mode_end_to_end_smoke():
             target = np.asarray(t["search_target"])
             assert target.shape == (len(ACTIONS),)
             assert abs(target.sum() - 1.0) < 1e-6
+            # The ranking referent must survive event normalization: without
+            # it the margin loss no-ops and the label only PG-masks its row.
+            assert isinstance(t.get("search_ref_action"), int)
+            assert t["search_ref_action"] >= 1
 
 
 def test_margin_loss_gradient_support_and_saturation():

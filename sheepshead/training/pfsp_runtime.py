@@ -366,6 +366,11 @@ def _finalize_rewards(
                 ),
                 "search_target": ev.get("search_target"),
                 "has_search_target": ev.get("has_search_target", False),
+                # Margin-loss ranking referent: without it a labeled row
+                # contributes ZERO distill loss (ppo.py hardens missing
+                # referents to no-op), so dropping it here silently disarms
+                # the teacher while leaving the PG-mask active.
+                "search_ref_action": ev.get("search_ref_action"),
             }
         if ev.get("oracle_state") is not None:
             out["oracle_state"] = ev["oracle_state"]
