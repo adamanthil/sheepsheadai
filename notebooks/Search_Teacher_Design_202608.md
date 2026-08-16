@@ -738,3 +738,65 @@ teacher-learning read per expensive generation. Escalation ladder
 inverted: if 1.0 destabilizes, 0.25 is the fallback arm. Same budget
 knobs (prob 0.01, m=0.3); entropy tripwires and greedy gates as
 before (violation prints now flush).
+
+### 10.3 CORRECTION: attempt 5 launched with an inert teacher — referent stripped in event normalization (2026-08-16)
+
+**Finding (conclusive, reproduced in a deterministic harness):** the
+gated teacher stored the margin loss's ranking referent
+(`search_ref_action`) on the raw transition dict, but the per-event
+whitelist that converts transitions into `episode_events` (the
+normalization every training event passes through, both sequential
+and worker paths) did not carry the key. Every emitted label reached
+the learner referent-less; the §10.2 hardening ("no referent → zero
+loss, never rank against action 0") then zeroed its margin term. Net
+effect since attempt-5 launch: **zero distillation pressure**, while
+the PG-mask still fired on labeled rows — strictly worse than no
+teacher (labeled rows lost their PG signal and got nothing back).
+Nothing in the run telemetry could have shown this: the 🔍 gate line
+reports worker-side firings/labels/agreement, which were all healthy,
+and the distill hinge was not logged.
+
+**How it was caught:** while removing the legacy fraction/KL path
+(operator directive, this date) the exit-regression distillation
+tests were rewired to drive a deterministic always-disagree stub
+committee through `play_population_game` into `update()` — the first
+coverage of the label pipeline THROUGH event normalization. The
+rewired test asserted a positive mean hinge and got exactly 0.0 with
+healthy `pg_masked_fraction`, isolating the dropped key. Prior tests
+straddled the gap: gate tests asserted the referent pre-normalization,
+loss-math tests injected post-normalization tensors directly.
+
+**Why the earlier attempts are unaffected:** attempts 3-4 ran the
+forward-KL form, which never used the referent; their runaway
+diagnosis (§10-10.2) stands. The margin loss has never actually been
+exercised in training until now.
+
+**Interpretation note:** attempt 5's flat entropy (Hn_play ~0.52-0.54
+through ~15k episodes) is NOT evidence the margin form is stable — it
+is a rediscovery of the teacher-free control result with a PG-mask-only
+perturbation. The margin-stability A/B (§10.2) remains unrun.
+
+**Fixes (committed):** `2fe9616` carries `search_ref_action` through
+event normalization; the end-to-end smoke asserts the referent
+survives, and the rewired regression test asserts hinge > 0 through a
+real `update()`. Attempt 5 restarted from `checkpoint_8000000` with
+the fixed code as **attempt 5b** (same config: margin m=0.3, coeff
+1.0, prob 0.01, 8 workers); the inert ~15k-episode run's log/CSV
+preserved as `train_attempt5a_inert.log` / `progress_attempt5a_inert.csv`.
+
+### 11. Legacy fraction/KL search-distill path removed (operator directive, 2026-08-16)
+
+`06b6f7a` deletes the Stage-C/ExIt-era teacher wholesale: the dense
+per-head-fraction scheduler (`head_search_fractions`/`t_full`/
+`d_short`/`SearchConfig.mode`, `_attach_search_target`, the
+fraction-only seat-policies grounding map in the runtime) and the
+forward-KL distillation branch (`search_distill_mode`; the stale
+`teacher_kl` metric renamed `hinge`). Rationale: both halves are
+proven dead ends (fraction coverage: Exit_Arms_202606; forward-KL
+under sparse disagreement-selected labels: §10), and the "kl"
+compatibility shim had exactly zero production consumers — worse, a
+revived fraction run would have silently no-op'd against the
+referent-hardened margin loss. Engine-level `seat_policies`
+(population-grounded rollouts in `ismcts.py`) is retained for the
+analysis probes; the gated committee + margin hinge is now the only
+teacher path.
