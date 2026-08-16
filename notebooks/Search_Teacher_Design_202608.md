@@ -858,3 +858,24 @@ parity (coeff/1200 ≈ 0.0008, likely inert at ~25 rows/update).
 New standing instrument either way: offline greedy probe per weight
 publish as the ordering-damage tripwire (entropy alone is neither
 necessary nor sufficient).
+
+**Attempt 6 launched (operator-set coeff 0.05, 2026-08-16 ~15:30):**
+option (b) from §10.4, skipping the 0.25 attribution arm. Coefficient
+semantics reframed for sizing (operator sanity-check on the 1200x
+math, recorded): with distill = mean-over-labeled and policy loss =
+mean-over-all, coeff IS the teacher's share of the total
+actor-gradient budget (per-labeled-row weight ≈ coeff x
+batch/labels ≈ coeff x 1000; the normalization is self-adjusting —
+sparser emission ⇒ heavier per-label weight, total force constant).
+Similar-node PG samples do NOT dilute it: labeled rows are PG-masked,
+PG at near-tie nodes is advantage-noise with ~zero realized edge (E8)
+so it cancels while the teacher's rows add coherently, and the
+entropy controller cannot brake above target. coeff 0.05 ⇒ ~50x/row,
+20x below the 3-update-scramble scale; linear extrapolation ⇒ ~60
+updates to equivalent damage, vs a per-publish probe cadence of ~1
+update. New standing instrument armed: offline greedy probe
+(scratchpad probe_weights.py, 300 games, CRN seed 98765) on every
+_league_worker_weights_v*.pt publish, alerting at t0-lead > 5% /
+partner < 92% / spread < 3.2 (8M baseline: 0.7% / 97.1% / 3.60).
+Entropy sidecar restored from the attempt-5a archive copy (5b's final
+controller state had adapted to the scrambled policy).
