@@ -30,6 +30,7 @@ LIMITED_CHECKPOINT_KEYS = sorted(
         "actor_optimizer",
         "critic_optimizer",
         "optimizer_steps_total",
+        "gamma",
     ]
 )
 ORACLE_CHECKPOINT_KEYS = sorted(
