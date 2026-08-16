@@ -152,6 +152,16 @@ class SearchConfig:
     gate_replicates: int = 3
     gate_agreement: int = 2  # strict exact-action 2-of-3 (E9 §8.2)
     gate_node_prob: float = 0.02  # subsample of eligible nodes (budget knob)
+    # Label form. "agreed_onehot" (default): 1-eps on the committee's agreed
+    # action, eps spread over the node's other legal actions — the exact
+    # semantics the E9 certification validated (+0.0112 uplift was for the
+    # AGREED ACTION). "avg_gumbel" (the original §9 design) is retained for
+    # study only: at near-tie nodes the completed-Q soft target is close to
+    # uniform, so forward-KL toward it is an entropy-injection term with a
+    # label-count-independent loss scale — observed to flatten the play head
+    # globally within ~25k episodes (branch run attempt 3, 2026-08-12).
+    gate_target: str = "agreed_onehot"
+    gate_target_smooth: float = 0.05
     # Node classes searched at all (trick x role x lead/follow). From the E9
     # matrix: every play cell whose mean headroom was >= ~0.003 Q — the gate
     # supplies per-node reliability, the cell set only excludes classes where

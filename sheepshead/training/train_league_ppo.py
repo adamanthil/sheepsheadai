@@ -1286,6 +1286,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "searches stay calibrated",
     )
     ap.add_argument(
+        "--search-distill-coeff",
+        type=float,
+        default=0.25,
+        help="scale of the forward-KL distillation term on labeled "
+        "transitions. The loss is a mean over SEARCHED transitions, so its "
+        "gradient scale is independent of label sparsity — the Stage-C "
+        "default of 1.0 (sized for ~30%% search fractions) flattened the "
+        "play head within ~25k episodes at ~0.3%% gated labels "
+        "(branch attempt 3, 2026-08-12)",
+    )
+    ap.add_argument(
         "--search-teacher-prob",
         type=float,
         default=0.02,
@@ -1395,6 +1406,11 @@ def main():
     if getattr(args, "gamma", None) is not None:
         training_agent.gamma = float(args.gamma)
         print(f"γ  discount override: {training_agent.gamma}")
+    if getattr(args, "search_teacher", False):
+        training_agent.search_distill_coeff = float(
+            getattr(args, "search_distill_coeff", 0.25)
+        )
+        print(f"🔍 search distill coeff: {training_agent.search_distill_coeff}")
     if getattr(args, "oracle_init", None):
         sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
         training_agent.oracle_critic.load_state_dict(sd, strict=True)

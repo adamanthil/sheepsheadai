@@ -283,11 +283,21 @@ def _attach_gated_search_target(
     diag["ess_sum"] += float(top_count) / len(picks)  # committee agreement rate
     if top_count < search_config.gate_agreement or top_action == prior_argmax:
         return  # abstain: no majority, or the committee backs the policy
-    target = np.mean(gumbels, axis=0)
-    total = float(target.sum())
-    if total <= 0.0:
-        return
-    target /= total
+    if getattr(search_config, "gate_target", "agreed_onehot") == "avg_gumbel":
+        # Study-only (see config): near-uniform at near-ties -> entropy bomb.
+        target = np.mean(gumbels, axis=0)
+        total = float(target.sum())
+        if total <= 0.0:
+            return
+        target /= total
+    else:
+        # Smoothed one-hot on the agreed action — the calibrated semantics.
+        eps = float(search_config.gate_target_smooth)
+        target = np.zeros_like(gumbels[0])
+        others = [a for a in valid_actions if a != top_action]
+        target[top_action - 1] = 1.0 - eps if others else 1.0
+        for a in others:
+            target[a - 1] = eps / len(others)
     transition["search_target"] = target.tolist()
     transition["has_search_target"] = True
     diag["accepted"] += 1

@@ -95,8 +95,9 @@ def test_emits_on_majority_nonpolicy_agreement():
     assert tr["has_search_target"] is True
     target = np.asarray(tr["search_target"])
     assert abs(target.sum() - 1.0) < 1e-9
-    # averaged mass concentrates on the agreed action
+    # smoothed one-hot on the agreed action (the calibrated semantics)
     assert target.argmax() + 1 == alt
+    assert abs(target[alt - 1] - 0.95) < 1e-9
     assert diag["play"]["count"] == 1 and diag["play"]["accepted"] == 1
 
 
