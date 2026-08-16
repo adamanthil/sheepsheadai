@@ -57,20 +57,29 @@ class _ScriptedTeacher:
         return self.results.pop(0)
 
 
-def _res(valid, pick, prior_top, ok=True):
-    """Canned search result whose pi_gumbel argmax is ``pick`` and whose raw
-    root prior argmax is ``prior_top`` (finite prior mass everywhere, like a
-    real softmax policy — the stored log-priors anchor the clip)."""
+def _res(valid, pick, ok=True):
+    """Canned FROZEN-expert search result whose pi_gumbel argmax is ``pick``
+    (the referent/anchors come from the live stash, not the search)."""
     gum = np.zeros(len(ACTIONS))
     gum[pick - 1] = 0.7
     for a in valid:
         if a != pick:
             gum[a - 1] = 0.3 / (len(valid) - 1)
-    prior = {a: (0.6 if a == prior_top else 0.4 / (len(valid) - 1)) for a in valid}
-    return {"ok": ok, "pi_gumbel": gum, "root_prior": prior, "valid": list(valid)}
+    return {"ok": ok, "pi_gumbel": gum, "valid": list(valid)}
 
 
-def _run_gate(teacher, valid, game, player, cfg=None):
+def _live_probs(valid, argmax_action):
+    """LIVE-policy label-time distribution (the act() stash): 0.6 on the
+    student's argmax, the rest spread over the other legal actions."""
+    probs = np.zeros(len(ACTIONS))
+    probs[argmax_action - 1] = 0.6
+    for a in valid:
+        if a != argmax_action:
+            probs[a - 1] = 0.4 / (len(valid) - 1)
+    return probs
+
+
+def _run_gate(teacher, valid, game, player, cfg=None, live=None):
     transition = {"search_target": None, "has_search_target": False}
     diag = {"play": {"count": 0, "accepted": 0, "ess_sum": 0.0, "entropy_sum": 0.0}}
     cfg = cfg or SearchConfig(
@@ -79,8 +88,9 @@ def _run_gate(teacher, valid, game, player, cfg=None):
         gate_agreement=2,
         gate_cells=frozenset({play_cell(game, player)}),
     )
+    live = _live_probs(valid, valid[0]) if live is None else live
     _attach_gated_search_target(
-        game, player, valid, transition, teacher, random.Random(3), cfg, [], diag
+        game, player, valid, transition, teacher, random.Random(3), cfg, [], diag, live
     )
     return transition, diag
 
@@ -88,9 +98,7 @@ def _run_gate(teacher, valid, game, player, cfg=None):
 def test_emits_on_majority_nonpolicy_agreement():
     game, player, valid = _to_first_play_node()
     pol, alt = valid[0], valid[1]
-    teacher = _ScriptedTeacher(
-        [_res(valid, alt, pol), _res(valid, alt, pol), _res(valid, pol, pol)]
-    )
+    teacher = _ScriptedTeacher([_res(valid, alt), _res(valid, alt), _res(valid, pol)])
     tr, diag = _run_gate(teacher, valid, game, player)
     assert teacher.calls == 2  # committee early-stop: majority decided
     assert tr["has_search_target"] is True
@@ -99,9 +107,10 @@ def test_emits_on_majority_nonpolicy_agreement():
     # smoothed one-hot on the agreed action (the calibrated semantics)
     assert target.argmax() + 1 == alt
     assert abs(target[alt - 1] - 0.95) < 1e-9
-    assert tr["search_ref_action"] == pol  # margin-loss ranking referent
-    # Label-time pair log-priors: the clip anchors (a* got 0.4/(n-1) prior
-    # mass in the stub, a_ref got 0.6).
+    # Ranking referent = the LIVE policy's argmax (from the act() stash).
+    assert tr["search_ref_action"] == pol
+    # Clip anchors = the LIVE label-time log-probs (a* got 0.4/(n-1) mass
+    # in the stash, a_ref got 0.6).
     n_other = len(valid) - 1
     assert tr["search_star_logp"] == pytest.approx(np.log(0.4 / n_other), abs=1e-9)
     assert tr["search_ref_logp"] == pytest.approx(np.log(0.6), abs=1e-9)
@@ -115,7 +124,7 @@ def test_emits_on_majority_nonpolicy_agreement():
 def test_abstains_when_committee_backs_policy():
     game, player, valid = _to_first_play_node()
     pol = valid[0]
-    teacher = _ScriptedTeacher([_res(valid, pol, pol)] * 3)
+    teacher = _ScriptedTeacher([_res(valid, pol)] * 3)
     tr, diag = _run_gate(teacher, valid, game, player)
     assert teacher.calls == 2  # early-stop applies to policy-backing majorities too
     assert tr["has_search_target"] is False
@@ -125,12 +134,11 @@ def test_abstains_when_committee_backs_policy():
 def test_abstains_on_split_committee():
     game, player, valid = _to_first_play_node()
     assert len(valid) >= 3, "need 3 distinct picks for a split committee"
-    pol = valid[0]
     teacher = _ScriptedTeacher(
         [
-            _res(valid, valid[0], pol),
-            _res(valid, valid[1], pol),
-            _res(valid, valid[2], pol),
+            _res(valid, valid[0]),
+            _res(valid, valid[1]),
+            _res(valid, valid[2]),
         ]
     )
     tr, _ = _run_gate(teacher, valid, game, player)
@@ -164,8 +172,7 @@ def test_gate_serves_jack_of_diamonds_games():
                 if play and not game.is_leaster and not game.alone_called:
                     pol, alt = valid_sorted[0], valid_sorted[1]
                     teacher = _ScriptedTeacher(
-                        [_res(valid_sorted, alt, pol)] * 2
-                        + [_res(valid_sorted, pol, pol)]
+                        [_res(valid_sorted, alt)] * 2 + [_res(valid_sorted, pol)]
                     )
                     tr, diag = _run_gate(teacher, valid_sorted, game, player)
                     assert teacher.calls == 2  # early-stop
@@ -203,6 +210,9 @@ def test_worker_protocol_serves_gated_teacher(tmp_path):
         },
         f"{base}_v1.pt",
     )
+    # Full checkpoint for the frozen expert (§12.1 stationary teacher).
+    teacher_ckpt = str(tmp_path / "teacher_resume.pt")
+    main_agent.save(teacher_ckpt)
     tl._league_worker_init(
         {
             "arch": ARCH,
@@ -214,23 +224,40 @@ def test_worker_protocol_serves_gated_teacher(tmp_path):
             "search_teacher": True,
             "search_prob": 1.0,
             "search_iters": 8,  # test-speed override
+            "teacher_resume": teacher_ckpt,
+            "teacher_oracle_init": None,
+            "teacher_gamma": 1.0,
         }
     )
-    job = tl._Job(
-        episode=1,
-        partner_mode=PARTNER_BY_CALLED_ACE,
-        training_position=1,
-        opponent_ids=[tl.SELF_PLAY] * 4,
-        weight_version=1,
-        game_seed=11,
-    )
-    out = tl._league_worker_play(job)
+    # The frozen-expert build consumes torch RNG, so which deals avoid
+    # leaster/ALONE (gate-ineligible) is seed-sensitive: try a few deals
+    # until the gate fires.
+    out = None
+    for ep, seed in enumerate((11, 12, 13, 14, 15), start=1):
+        job = tl._Job(
+            episode=ep,
+            partner_mode=PARTNER_BY_CALLED_ACE,
+            training_position=1,
+            opponent_ids=[tl.SELF_PLAY] * 4,
+            weight_version=1,
+            game_seed=seed,
+        )
+        out = tl._league_worker_play(job)
+        if out["training_data_single"]["search_diagnostics"]["play"]["count"]:
+            break
     worker = tl._LWORKER["agent"]
-    assert worker.gamma == 1.0  # payload gamma reached the worker teacher
+    assert worker.gamma == 1.0  # payload gamma reached the live worker agent
     assert worker.oracle_critic is not None
     ref = main_agent.oracle_critic.state_dict()
     got = worker.oracle_critic.state_dict()
     assert all(torch.equal(ref[k], got[k]) for k in ref)
+    # Stationary expert: the teacher wraps its OWN frozen agent, not the
+    # live worker agent that weight refreshes update.
+    frozen = tl._LWORKER["teacher"].agent
+    assert frozen is not worker, "teacher must not wrap the live agent"
+    assert frozen.gamma == 1.0
+    f_ref = frozen.actor.state_dict()
+    assert all(torch.equal(main_agent.actor.state_dict()[k], f_ref[k]) for k in f_ref)
     assert out["episode_events"], "worker produced no transitions"
     diag = out["training_data_single"]["search_diagnostics"]["play"]
     assert diag["count"] >= 1, "gate never attempted despite prob=1.0"
@@ -239,6 +266,8 @@ def test_worker_protocol_serves_gated_teacher(tmp_path):
 def test_gated_mode_end_to_end_smoke():
     seed_all(7)
     agent = PPOAgent(len(ACTIONS), arch=ARCH)
+    # Stationary expert (§12.1): the teacher wraps a separate frozen agent.
+    expert = PPOAgent(len(ACTIONS), arch=ARCH)
 
     class _Seat:
         def __init__(self, a):
@@ -246,7 +275,7 @@ def test_gated_mode_end_to_end_smoke():
             self.member_id = "stub"
 
     teacher = ISMCTSTeacher(
-        agent,
+        expert,
         ISMCTSConfig(
             iters={"pick": 8, "partner": 8, "bury": 8, "play": 8}, batch_size=4
         ),

@@ -230,8 +230,19 @@ def _league_worker_init(init_args: dict) -> None:
             gate_node_prob=float(init_args.get("search_prob", 0.02)),
         )
         iters = int(init_args.get("search_iters", cfg.gate_iters))
+        # Stationary expert (§12.1): the teacher wraps a frozen copy of the
+        # generation-start policy, NOT the live worker agent — weight
+        # refreshes in _league_worker_play never touch it.
+        frozen = _build_frozen_expert(
+            init_args["teacher_resume"],
+            init_args.get("critic_mode", "limited"),
+            init_args.get("arch", "full"),
+            bool(init_args.get("oracle_aux_heads", False)),
+            init_args.get("teacher_oracle_init"),
+            float(init_args.get("teacher_gamma", 1.0)),
+        )
         _LWORKER["teacher"] = ISMCTSTeacher(
-            agent,
+            frozen,
             ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
         )
         _LWORKER["search_config"] = cfg
@@ -422,22 +433,60 @@ def store_events_by_seat(agent: PPOAgent, events: list) -> int:
 
 
 # -------------------- episode streams --------------------
+def _build_frozen_expert(
+    resume: str,
+    critic_mode: str,
+    arch: str,
+    oracle_aux_heads: bool,
+    oracle_init: str | None,
+    gamma: float,
+) -> PPOAgent:
+    """Stationary expert for the gated teacher (Search_Teacher_Design
+    §12.1): a frozen copy of the generation-start policy, reconstructed
+    exactly as the main agent was at resume (checkpoint + oracle
+    warm-start + gamma). The teacher's searches (priors, rollout policies,
+    critic leaves) all run on this snapshot, so the expert cannot chase a
+    drifting student out of the E9-certified regime — DAgger's fixed
+    expert (Ross et al. 2011), where attempt 7 showed the live-expert
+    loop re-labels its own drift. The student's states still drive WHERE
+    labels happen; only the expert's opinion is pinned."""
+    frozen = PPOAgent(
+        len(ACTIONS),
+        critic_mode=critic_mode,
+        arch=arch,
+        oracle_aux_heads=oracle_aux_heads,
+    )
+    frozen.load(resume, load_optimizers=False)
+    if oracle_init:
+        sd = torch.load(oracle_init, map_location="cpu", weights_only=True)
+        frozen.oracle_critic.load_state_dict(sd, strict=True)
+    frozen.gamma = gamma
+    return frozen
+
+
 def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
     """play_population_game kwargs for the agreement-gated search teacher
-    (Search_Teacher_Design §9), or {} when --search-teacher is off.
+    (Search_Teacher_Design §9/§12.1), or {} when --search-teacher is off.
 
-    Built once per stream: an ISMCTS teacher over the training agent at the
-    E9-certified budget (1024 iters, d_rollout=1 per call, oracle leaves via
-    the engine default) plus a gated SearchConfig. The trainer trains
-    undiscounted, so the teacher inherits the correct gamma from the live
-    agent (gamma persists in checkpoints since 6c08eb7)."""
+    Built once per stream: an ISMCTS teacher over a FROZEN copy of the
+    generation-start policy (stationary expert, §12.1) at the E9-certified
+    budget (1024 iters, d_rollout=1 per call, oracle leaves via the engine
+    default) plus a gated SearchConfig."""
     if not getattr(ctx.args, "search_teacher", False):
         return {}
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
+    frozen = _build_frozen_expert(
+        ctx.args.resume,
+        ctx.args.critic_mode,
+        ctx.args.arch,
+        getattr(ctx.args, "oracle_aux_heads", False),
+        getattr(ctx.args, "oracle_init", None),
+        ctx.training_agent.gamma,
+    )
     iters = SearchConfig().gate_iters
     teacher = ISMCTSTeacher(
-        ctx.training_agent,
+        frozen,
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
     search_config = SearchConfig(
@@ -718,6 +767,12 @@ def run_main_phase(
                     "oracle_aux_heads": bool(getattr(args, "oracle_aux_heads", False)),
                     "search_teacher": bool(getattr(args, "search_teacher", False)),
                     "search_prob": float(getattr(args, "search_teacher_prob", 0.02)),
+                    # Stationary expert (§12.1): workers rebuild the frozen
+                    # generation-start policy from these paths; weight
+                    # refreshes touch only the live agent.
+                    "teacher_resume": getattr(args, "resume", None),
+                    "teacher_oracle_init": getattr(args, "oracle_init", None),
+                    "teacher_gamma": float(training_agent.gamma),
                 },
             ),
         )

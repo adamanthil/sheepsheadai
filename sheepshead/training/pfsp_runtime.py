@@ -133,14 +133,14 @@ def _attach_gated_search_target(
     search_config: "SearchConfig",
     forced_public: list[tuple[int, int]],
     search_diagnostics: dict,
+    live_probs: "np.ndarray | None",
 ) -> None:
-    """Agreement-gated soft-teacher target (Search_Teacher_Design §9).
+    """Agreement-gated soft-teacher target (Search_Teacher_Design §9, §12.1).
 
     Run the same cheap search ``gate_replicates`` times with independent RNG
     (a committee of stochastic experts — query-by-committee, Seung et al.
     1992). Emit a target only when >= ``gate_agreement`` replicates agree on
-    the SAME action and it differs from the policy's greedy choice (the raw
-    root prior argmax, free from the search result — no extra forward pass).
+    the SAME action and it differs from the LIVE policy's greedy choice.
     The emitted target is the replicate-AVERAGED pi_gumbel distribution
     (Danihelka et al. 2022; averaging = root parallelization, Chaslot et al.
     2008), so near-equivalent cards share mass contextually instead of the
@@ -148,6 +148,19 @@ def _attach_gated_search_target(
     E9 certification showed single cheap searches at near-tie nodes flip to
     worse actions ~11% of the time, while 2-of-3-agreed non-policy labels
     measured +0.0112 mean uplift with 0/22 harm.
+
+    Stationary expert vs live student (§12.1, DAgger — Ross et al. 2011):
+    the teacher wraps a FROZEN snapshot of the generation-start policy
+    (priors, rollouts, critic leaves), so the expert cannot chase a
+    drifting student out of its certified regime — attempt 7 showed the
+    live-expert loop re-labels its own drift (emission-gap rebound, greedy
+    t0 trump-lead climbing linearly past the certified band). The
+    referent/anchors, by contrast, must come from the LIVE policy
+    (``live_probs``, stashed by the caller's act() — a second forward pass
+    would advance the recurrent memory): emission compares the committee
+    against the student's CURRENT argmax, so the gate self-retires exactly
+    as the student adopts the expert's choices, and the margin-loss clip
+    anchors measure the student's label-time state.
 
     Self-play worlds (no ``seat_policies``): E8 found no ecology effect, and
     the E9 calibration this gate rests on searched self-play continuations —
@@ -171,13 +184,16 @@ def _attach_gated_search_target(
         return
     if determinization_rng.random() >= search_config.gate_node_prob:
         return
+    if live_probs is None:
+        return  # no live referent/anchors possible -> label would be a no-op
 
     diag = search_diagnostics["play"]
     diag["count"] += 1
+    # LIVE policy's greedy choice + label-time distribution: the emission
+    # referent and the margin-loss clip anchors.
+    live_argmax = int(max(valid_actions, key=lambda a: float(live_probs[a - 1])))
     picks: list[int] = []
     gumbels: list[np.ndarray] = []
-    prior_argmax: int | None = None
-    prior_map: dict | None = None
     for _ in range(search_config.gate_replicates):
         rng = random.Random(determinization_rng.getrandbits(64))
         res = teacher.search(
@@ -192,11 +208,6 @@ def _attach_gated_search_target(
         gum = res["pi_gumbel"]
         picks.append(int(max(res["valid"], key=lambda a: float(gum[a - 1]))))
         gumbels.append(np.asarray(gum, dtype=np.float64))
-        if prior_argmax is None and res.get("root_prior"):
-            prior_map = res["root_prior"]  # dict action_id -> mean unmixed prior
-            prior_argmax = int(
-                max(res["valid"], key=lambda a: float(prior_map.get(a, 0.0)))
-            )
         if (
             picks
             and Counter(picks).most_common(1)[0][1] >= search_config.gate_agreement
@@ -210,12 +221,8 @@ def _attach_gated_search_target(
         return
     top_action, top_count = Counter(picks).most_common(1)[0]
     diag["ess_sum"] += float(top_count) / len(picks)  # committee agreement rate
-    if (
-        top_count < search_config.gate_agreement
-        or prior_argmax is None
-        or top_action == prior_argmax
-    ):
-        return  # abstain: no majority, no usable referent, or committee backs policy
+    if top_count < search_config.gate_agreement or top_action == live_argmax:
+        return  # abstain: no majority, or committee backs the live policy
     if getattr(search_config, "gate_target", "agreed_onehot") == "avg_gumbel":
         # Study-only (see config): near-uniform at near-ties -> entropy bomb.
         target = np.mean(gumbels, axis=0)
@@ -233,16 +240,15 @@ def _attach_gated_search_target(
             target[a - 1] = eps / len(others)
     transition["search_target"] = target.tolist()
     transition["has_search_target"] = True
-    # Label-time policy argmax: the margin loss's ranking referent (the
-    # calibrated claim is "committee prefers a* over THIS action").
-    transition["search_ref_action"] = prior_argmax
-    # Label-time log-priors of the pair, from the search's mean unmixed root
-    # prior (~ the acting policy at this state): the anchors for the
-    # PPO-clip-style pair trust region in the margin loss — per update,
-    # neither leg earns gradient past ±delta from these values (analog of
-    # PPO's ratio clip, Schulman et al. 2017; see ppo.py).
-    star_logp = float(np.log(max(float(prior_map.get(top_action, 0.0)), 1e-12)))
-    ref_logp = float(np.log(max(float(prior_map.get(prior_argmax, 0.0)), 1e-12)))
+    # LIVE policy's label-time argmax: the margin loss's ranking referent
+    # (the claim is "committee prefers a* over the action the student would
+    # take HERE, NOW").
+    transition["search_ref_action"] = live_argmax
+    # LIVE label-time log-probs of the pair: the anchors for the pair-gap
+    # trust region in the margin loss (analog of PPO's ratio clip, Schulman
+    # et al. 2017; see ppo.py).
+    star_logp = float(np.log(max(float(live_probs[top_action - 1]), 1e-12)))
+    ref_logp = float(np.log(max(float(live_probs[live_argmax - 1]), 1e-12)))
     transition["search_star_logp"] = star_logp
     transition["search_ref_logp"] = ref_logp
     diag["accepted"] += 1
@@ -371,6 +377,10 @@ def play_population_game(
         and search_config is not None
         and search_config.enabled
     )
+    if search_enabled:
+        # The gate reads the LIVE policy's label-time distribution (referent
+        # + clip anchors) from the act() stash — see _attach_gated_search_target.
+        training_agent.stash_action_probs = True
     # Public (seat, action_id) record for the teacher's forced replay (search only).
     forced_public: list[tuple[int, int]] = []
     # Per-game gate diagnostics (the gated teacher searches PLAY nodes only):
@@ -458,6 +468,7 @@ def play_population_game(
                             search_config,
                             forced_public,
                             search_diagnostics,
+                            training_agent.last_action_probs,
                         )
 
                 else:

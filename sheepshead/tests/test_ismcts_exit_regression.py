@@ -593,21 +593,16 @@ def _make_pop_agent(agent, mode, i):
 
 class _GatedDisagreeTeacher:
     """Deterministic committee stub for the gated teacher: every search
-    unanimously votes the second-lowest legal action while the root prior
-    backs the lowest, so the agreement gate emits a label (with its ranking
-    referent) at every eligible PLAY node."""
+    unanimously votes the second-lowest legal action, so the gate emits a
+    label (referent + anchors from the live act() stash) at every eligible
+    PLAY node where the live argmax differs from that vote."""
 
     def search(self, game, observer, forced_public, rng, d_rollout=None):
         valid = sorted(game.players[observer - 1].get_valid_action_ids())
         gum = np.zeros(len(ACTIONS))
         pick = valid[1] if len(valid) > 1 else valid[0]
         gum[pick - 1] = 1.0
-        # Finite prior mass everywhere (like a real softmax policy): the
-        # emitted label stores log-priors as the clip anchors.
-        prior = {
-            a: (0.6 if a == valid[0] else 0.4 / max(len(valid) - 1, 1)) for a in valid
-        }
-        return {"ok": True, "pi_gumbel": gum, "root_prior": prior, "valid": valid}
+        return {"ok": True, "pi_gumbel": gum, "valid": valid}
 
 
 def _gated_all_cells_config():
@@ -656,13 +651,9 @@ def test_distill_pgmask_and_dormant():
         )
         agent.store_episode_events(events)
     assert searched > 0, "no search targets produced"
-    # The stub's canned priors are fictional (they don't match the fresh
-    # agent's actual log-probs), so the gap trust region would read a
-    # spurious pre-update "gain" and gate the rows. Widen delta: this test
-    # covers the label pipeline (referent + anchors through normalization
-    # into an active hinge), not the gate calibration — that is the
-    # loss-math / autograd tests' job.
-    agent.search_clip_delta = 100.0
+    # Anchors now come from the LIVE act() stash (truthful label-time
+    # log-probs), so the gap trust region reads ~0 pre-update gain and the
+    # hinge is naturally active at default delta.
     stats = agent.update(epochs=2, batch_size=16)
     d = stats.get("distill", {})
     assert stats["num_transitions"] > 0

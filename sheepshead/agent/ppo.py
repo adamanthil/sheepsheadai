@@ -319,6 +319,13 @@ class PPOAgent:
         # Used to maintain correct relative scaling when updating learning rates
         self._actor_lr_ratios = self._capture_actor_lr_ratios(base_lr=float(lr_actor))
 
+        # Label-time distribution stash for the gated search teacher: when
+        # enabled, act() keeps the last action distribution so the gate can
+        # read the LIVE policy's referent + clip anchors without a second
+        # forward pass (which would advance the recurrent memory again).
+        self.stash_action_probs = False
+        self.last_action_probs = None
+
         # Hyperparameters
         self.gamma = 0.99
         self.gae_lambda = 0.95
@@ -685,6 +692,9 @@ class PPOAgent:
 
             # Get value
             value = self.critic(encoder_out)
+
+        if self.stash_action_probs:
+            self.last_action_probs = action_probs[0].detach().cpu().numpy()
 
         # Create distribution for consistent log probability calculation
         dist = torch.distributions.Categorical(action_probs)
