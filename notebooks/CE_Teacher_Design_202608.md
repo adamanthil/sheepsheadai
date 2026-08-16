@@ -269,3 +269,91 @@ always-on graduates to standing architecture.
 - Entropy: Hn play stays within ±0.03 of target with alpha > 0
   (entropy-neutrality claim; sustained negative alpha = the teacher
   is injecting after all → investigate before gen 2).
+
+---
+
+## 10. Implementation record (2026-08-16)
+
+Landed on master (commit series after tag `pre-ce-teacher`); full
+sheepshead/tests suite green (540 passed), search + arch goldens green.
+Two spec ambiguities in §1 were resolved during implementation and are
+now load-bearing code comments (`pfsp_runtime.build_ce_search_target`):
+
+1. **Shrink placement vs min-max normalization.** §1.1's literal
+   "minmax_unit(q̃)" is affine-invariant in a single per-node scalar w —
+   `minmax(w·(q̄−mean))` is identical for every w > 0, which would reduce
+   the shrink to a hard on/off gate. To preserve the stated properties
+   (continuous evidence-proportional sharpening; flat at w=0; exactly the
+   deployment readout at w=1), the implementation multiplies the
+   NORMALIZED vector: target = softmax(log p_raw + scale·w·minmax(q̄)).
+2. **Noise term in the JS ratio.** s̄² is the sampling variance of the
+   POOLED committee mean (the blended per-replicate variance divided by
+   the per-action observation count), i.e. the estimator's noise is
+   compared against the observed spread of the estimates — the
+   statistically matched form of §1.2's formula. The committee scale
+   (`max N`) is the per-replicate mean of max visit counts, keeping the
+   tilt scale identical to a single deployment search.
+
+Loss normalization: CE is mean-over-labeled-rows at `teacher_coeff`
+(AZ-standard). Constant total force at shrinking label counts is safe
+here — unlike the §12 hinge — because abstention lives in the target
+(a conformed or within-noise row carries ~zero CE gradient), so
+self-retirement is per-row, not per-batch. CE passes step the actor
+path only (actor + encoder; one optimizer step per pass, counted in
+optimizer_steps_total).
+
+### 10.1 Shrinkage calibration gate (§1.2), run 2026-08-16
+
+Instrument: `sheepshead/analysis/calibrate_shrinkage.py` on the archived
+§12.8 deflead gating study (144 nodes × 6 replicates at 1024/1), fed
+through the PRODUCTION target builder (uniform priors / equal visits —
+w and tilt direction are invariant to both).
+
+- **shrink_s2_global calibrated = 6.95e-4** (per-action per-replicate Q
+  variance, pooled mean over 720 action cells; SD ≈ 0.026 Q; median
+  3.5e-4, p90 1.7e-3). Config default updated from the provisional
+  1.1e-4 derivation.
+- **Abstention at noise**: committee-of-3 targets shrink to flat at
+  10% / 27% / 50% of t0 / t1 / t2 defender-lead nodes (mean w 0.50 /
+  0.44 / 0.30) — shrinkage tracks the known per-cell scatter ordering.
+- **Criterion (c), split-committee stability**: disjoint 3-rep draws
+  agree on the tilt argmax at only 39/81 both-material nodes — BUT all
+  42 flips sit at pooled-6 top-2 gaps below 2·SE of a committee mean
+  (median flip gap 0.0025 Q vs 0.0111 stable; SE₃ = 0.0152 Q), i.e.
+  every instability lives inside the statistical tie set. A sweep showed
+  this is intrinsic (raising shrinkage 12× still leaves ~20% flips while
+  flattening 92% of nodes): the scalar w separates signal-vs-noise
+  SPREAD, not top-2 order. The gate passes on the design's own terms:
+  CE is LINEAR in the label, so repeated draws at a tie-set archetype
+  average the teaching signal to the tie-set spread (the §1.1 ambiguity-
+  preservation property) — the incumbent-tax mechanism needed a
+  nonlinear anchored loss and is structurally absent.
+- **Criteria (a)/(b) as written are NOT coverable from archives**: the
+  §12.15 EV studies recorded belief-MC deltas, not committee Q tables,
+  so no archived committee draws exist at fat/nopoint or called-suit
+  cells. Direction agreement vs the self-agreeing 4096/term reference on
+  this data: 32/49 (the reference itself self-agrees only 38-48% at
+  these cells, §12.8, so this is a soft check). A fresh committee draw
+  at fat/nopoint + called-suit nodes belongs on the attempt-11
+  pre-launch checklist (cheap: lockstep committee ≈ seconds/node).
+
+### 10.2 Deviations / notes
+
+- The boundary cert (§3) is automated in-trainer
+  (`train_league_ppo.run_boundary_cert`): --cert-seeds × --cert-games
+  adherence battery judged on across-seed MEANS + paired CRN h2h vs a
+  launch-time-fixed anchor (--cert-anchor-ckpt, default the original
+  expert); FAIL saves the cert JSON and halts with exit 4 for operator
+  review. The exploiter gate keeps its existing boundary flow.
+- Progress-CSV gate columns were REPLACED (not appended):
+  gate_attempts/gate_emitted/gate_pairs/gate_learned →
+  teacher_searched/teacher_material_frac/teacher_kl/teacher_ce. Old
+  teacher-run CSVs are not resumable across this boundary (none are:
+  attempt-10's run is closed).
+- run_extended_league no longer passes --entropy-mode (removed); the
+  trainer's v2 controller is always on and attaches bumplessly, so the
+  gen-1 deferral is gone. --adaptive-entropy now governs only the
+  orchestrator's outer target-step + flat-absorption stop rule.
+- `visualizations/dump_ismcts_trace.py` (uncommitted scratch from the
+  explorer work) still references the removed gate_* SearchConfig
+  fields and will need updating if it is ever committed.
