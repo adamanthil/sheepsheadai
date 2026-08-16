@@ -552,3 +552,42 @@ first window had confirmed the correction: 2.6 eps/s in the
 startup-burdened window, 0.018 firings/ep on-design, 27% emission,
 agreement 0.92 under early-stop. Projected at 0.01: ~2 eps/s
 steady-state, ~5-6 days/gen, ~12k labels.
+
+## 10. Attempt-3 entropy runaway and target-form correction (2026-08-12)
+
+**Observed (attempt 3, prob 0.01, soft avg-pi_gumbel targets, coeff
+1.0):** Hn_play climbed monotonically 0.52 -> 0.96 within ~25k
+episodes and pinned; picker_avg +1.17 -> +0.08 (partial recovery
+~+0.7); emission climbed 30% -> ~55% (noisier policy -> more
+committee-vs-argmax disagreement -> more labels: a positive feedback
+loop). Greedy probe at 8.05M showed ARGMAX damage, not just sampling
+noise: partner trump-lead 15% (gen-8 ~100%), t0 trump-lead 37%,
+called-suit lead 30%, median play logit spread 0.164 — the play head
+was globally FLATTENED by ~800 labels. (Teacher-free gen-9 reference
+at the same point: Hn_play ~0.65, conventions intact.)
+
+**Mechanism:** two design errors compounding. (1) At near-tie nodes —
+exactly where the gate fires — the completed-Q soft target is close
+to uniform, so forward-KL toward it is an entropy-injection term on
+states with shared representation (E7: one representation object).
+(2) The Stage-C distill loss is a mean over SEARCHED transitions
+(coeff 1.0, sized for ~30% search fractions), so its gradient scale
+never dilutes with label sparsity — 25 labels/update carried
+full-loss-scale gradient.
+
+**Correction (2616ff9, disclosed):** label = smoothed ONE-HOT on the
+committee's agreed action (eps=0.05 over other legal actions) — the
+exact semantics E9 certification validated (+0.0112 uplift measured
+for the agreed ACTION; the soft distribution was never calibrated).
+This retracts the §8.2/§9 soft-target rationale: at near-ties
+"equivalence mass" and "maximize entropy" are the same thing, and the
+one-hot pushes the agreed card up without actively pushing
+equivalents down (they lose mass only via normalization).
+--search-distill-coeff, new default 0.25. The soft target remains as
+gate_target="avg_gumbel" for study.
+
+**Attempt 4 launched** from a clean 8M resume with the branch league
+re-copied (attempt 3 had inserted one degraded snapshot member) and
+the entropy sidecar restored (play target 0.476). Same budget knobs
+(prob 0.01). Watch list: Hn_play vs the ~0.5-0.65 teacher-free band,
+emission rate vs ~30%, greedy conventions at 50k probes.
