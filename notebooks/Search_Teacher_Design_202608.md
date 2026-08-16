@@ -1063,3 +1063,23 @@ for the next generation. Operationally: two standalone launches with
 existing flags (teacher run to N, resume with --search-teacher off);
 no orchestrator changes needed for the first iteration. Wall-clock
 per generation: ~2 days instead of ~8.
+
+**§12.2 amendments (operator, 2026-08-16):** two-phase generation
+APPROVED. Correction: full-speed league throughput is ~6 eps/s, not
+~14.7 (the 14.7 figure came from a gen-8 baseline log measured under
+different conditions) — consolidation 250k ≈ ~12h, full gen ≈ ~2.5
+days. Follow-up (build AFTER gen-1 validates the pattern): an
+automated generation-phase hook — teacher phase with the adaptive
+emission exit (< ~1/3 of initial rate for 3 consecutive windows, hard
+cap), automatic teacher-off consolidation relaunch, boundary gates +
+E9-style re-certification + expert refreeze — likely as an
+orchestrator mode alongside run_extended_league.py. For gen 1 the
+phase transition is operated manually off the emission telemetry.
+
+**Attempt 8 phase-1 LAUNCH (2026-08-16):** frozen expert (5c9819c),
+clipped margin λ50/δ0.2/m0.3, prob 0.01, --main-episodes 250000
+(hard cap; adaptive exit operated manually), 8 workers, per-publish
+ordering probe + log monitors armed. Verdict instruments: emission
+rate/gap decay (self-retirement under a FIXED expert is now
+monotone-convergent by construction), ordering probe vs the
+certified band, entropy drift, then consolidation + boundary gates.
