@@ -1008,3 +1008,58 @@ agent. Alternatives considered: EV-grounded label audit per window
 §10.5 says destination unchanged). Artifacts:
 train_attempt7_lambda50_delta02.log, progress CSV,
 attempt7_drifted_weights_v6.pt.
+
+### 12.2 Frozen expert built (5c9819c) + literature positioning + generation-length redesign (2026-08-16)
+
+**Implementation:** teacher wraps a frozen reconstruction of the
+generation-start policy (checkpoint + oracle warm-start + gamma) in
+both collection paths; weight refreshes touch only the live agent.
+Referent + clip anchors moved to the LIVE policy via an act() stash
+(a second forward pass would advance recurrent memory): emission
+compares the committee to the student's CURRENT argmax — required for
+self-retirement (frozen-vs-frozen disagreement never resolves) — and
+anchors are truthful label-time log-probs. root_prior no longer
+consumed. Full suite 528 green.
+
+**How established systems handle a non-stationary expert (operator
+question):** they mostly EMBRACE it, but only because their premises
+differ. AlphaGo Zero / AlphaZero / ExIt make search-wrapping-the-
+current-network the whole point (policy iteration): safe because
+their search is a DENSE, reliable improvement operator — hundreds of
+simulations at EVERY state, so drift anywhere is corrected by
+supervision everywhere. They additionally smooth non-stationarity
+with large replay windows spanning many past iterations, and AlphaGo
+Zero used an explicit evaluator gate (new net must win 55% before
+generating data) = periodic re-certification. MuZero Reanalyse
+re-labels old states with fresh searches — again dense targets +
+massive replay averaging. DAgger (our closest frame: sparse expert
+labels on the student's state distribution) assumes a FIXED expert;
+its descendants (SafeDAgger/EnsembleDAgger/ThriftyDAgger) gate
+QUERIES but keep the expert stationary. Our setting violates the
+AlphaZero premise twice — deployable-budget search is an improvement
+operator only at ~7-23 certified cells (E9: ~11% harm ungated at
+near-ties), and labels are sparse one-sided hinges, not dense
+distributions — so drift is amplified, not corrected. Freezing per
+generation + re-certifying at boundaries = Expert Iteration with the
+outer loop at the generation timescale, which is the sound adaptation
+of the standard designs to a weak, gated expert.
+
+**Generation length (operator question — agreed 1M is wrong):**
+three reasons. (1) Cost: 1M at ~1.5 eps/s = 7-8 days/gen. (2) The
+teacher's useful work front-loads: greedy behavior at taught cells
+moved within ~5 updates (~7k episodes) in attempt 7, and with a
+frozen expert the destination is BOUNDED (the expert's fixed
+preferences); once the student adopts them the gate abstains but the
+search cost (~90% throughput tax) continues — paying 10x slowdown
+for abstentions. (3) Boundary gates should measure a
+PG-consolidated policy, not one mid-teaching. PROPOSAL (attempt 8):
+two-phase generation — teacher phase ~150-250k episodes with an
+adaptive exit (emission rate < ~1/3 of its initial level for 3
+consecutive windows = the expert is satisfied wherever it is
+confident; hard cap 250k), then teacher-OFF consolidation ~150-250k
+at full speed (~14.7 eps/s, ~5 hours) before boundary gates +
+re-certification (E9-style spot-check at the new endpoint) + refreeze
+for the next generation. Operationally: two standalone launches with
+existing flags (teacher run to N, resume with --search-teacher off);
+no orchestrator changes needed for the first iteration. Wall-clock
+per generation: ~2 days instead of ~8.
