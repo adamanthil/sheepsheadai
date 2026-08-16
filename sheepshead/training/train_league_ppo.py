@@ -630,7 +630,7 @@ def run_main_phase(
     # field, so best-response training always runs without the kick.
     watchdog = LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
     # Gated-teacher telemetry window (reset after each progress-CSV row).
-    gate_window = {"count": 0, "accepted": 0, "agree_sum": 0.0}
+    gate_window = {"count": 0, "accepted": 0, "agree_sum": 0.0, "gap_sum": 0.0}
     t0 = time.time()
 
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
@@ -744,6 +744,7 @@ def run_main_phase(
                 gate_window["count"] += sd["count"]
                 gate_window["accepted"] += sd["accepted"]
                 gate_window["agree_sum"] += sd["ess_sum"]
+                gate_window["gap_sum"] += sd.get("gap_sum", 0.0)
             if training_data_single["was_picker"]:
                 picker_scores.append(training_data_single["score"])
             pick_window.append(1 if training_data_single["was_picker"] else 0)
@@ -910,14 +911,28 @@ def run_main_phase(
                             ]
                         )
                     if gate_window["count"]:
+                        d = stats.get("distill", {})
+                        gap = (
+                            f", gap {gate_window['gap_sum'] / gate_window['accepted']:.2f}"
+                            if gate_window["accepted"]
+                            else ""
+                        )
                         print(
                             f"🔍 gate: {gate_window['count']} firings, "
                             f"{gate_window['accepted']} labels "
                             f"({100 * gate_window['accepted'] / gate_window['count']:.0f}%), "
-                            f"agree {gate_window['agree_sum'] / gate_window['count']:.2f}",
+                            f"agree {gate_window['agree_sum'] / gate_window['count']:.2f}"
+                            f"{gap} | hinge {d.get('hinge', 0.0):.3f} "
+                            f"Δ* {d.get('d_star', 0.0):+.3f} "
+                            f"Δref {d.get('d_ref', 0.0):+.3f}",
                             flush=True,
                         )
-                    gate_window = {"count": 0, "accepted": 0, "agree_sum": 0.0}
+                    gate_window = {
+                        "count": 0,
+                        "accepted": 0,
+                        "agree_sum": 0.0,
+                        "gap_sum": 0.0,
+                    }
 
             # League snapshot of the main (replaces population_add_interval)
             if episode % args.snapshot_interval == 0:
@@ -1288,15 +1303,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "searches stay calibrated",
     )
     ap.add_argument(
-        "--search-distill-coeff",
+        "--search-label-weight",
         type=float,
-        default=0.25,
-        help="scale of the forward-KL distillation term on labeled "
-        "transitions. The loss is a mean over SEARCHED transitions, so its "
-        "gradient scale is independent of label sparsity — the Stage-C "
-        "default of 1.0 (sized for ~30%% search fractions) flattened the "
-        "play head within ~25k episodes at ~0.3%% gated labels "
-        "(branch attempt 3, 2026-08-12)",
+        default=50.0,
+        help="evidence-proportional weight of the clipped margin loss: one "
+        "gate-certified label is worth this many PG samples (DQfD "
+        "per-sample form; distill = weight * sum-over-labeled / batch "
+        "rows). Replaces the mean-over-labeled coeff whose per-label "
+        "weight baked in batch/label counts and was near-inert under Adam "
+        "(attempts 5b/6 scrambled at coeff 1.0 AND 0.05; "
+        "Search_Teacher_Design §12)",
+    )
+    ap.add_argument(
+        "--search-clip-delta",
+        type=float,
+        default=0.2,
+        help="pair-gap trust region (nats) of the clipped margin loss — the "
+        "PPO-clip analog and the binding safety mechanism under Adam: a "
+        "labeled row earns gradient only while log pi(a*) - log pi(a_ref) "
+        "has improved less than delta over its label-time value. Default "
+        "~ln(1+eps_ppo). Raise only against a healthy greedy-ordering "
+        "probe (Search_Teacher_Design §12)",
     )
     ap.add_argument(
         "--search-teacher-margin",
@@ -1419,15 +1446,20 @@ def main():
         training_agent.gamma = float(args.gamma)
         print(f"γ  discount override: {training_agent.gamma}")
     if getattr(args, "search_teacher", False):
-        training_agent.search_distill_coeff = float(
-            getattr(args, "search_distill_coeff", 0.25)
+        training_agent.search_label_weight = float(
+            getattr(args, "search_label_weight", 50.0)
+        )
+        training_agent.search_clip_delta = float(
+            getattr(args, "search_clip_delta", 0.2)
         )
         training_agent.search_margin = float(
             getattr(args, "search_teacher_margin", 0.3)
         )
         print(
-            f"🔍 search teacher loss: margin ranking (m={training_agent.search_margin}), "
-            f"coeff {training_agent.search_distill_coeff}"
+            f"🔍 search teacher loss: clipped margin ranking "
+            f"(m={training_agent.search_margin}, "
+            f"λ={training_agent.search_label_weight}, "
+            f"δ={training_agent.search_clip_delta})"
         )
     if getattr(args, "oracle_init", None):
         sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)

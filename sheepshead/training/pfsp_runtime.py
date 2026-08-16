@@ -177,6 +177,7 @@ def _attach_gated_search_target(
     picks: list[int] = []
     gumbels: list[np.ndarray] = []
     prior_argmax: int | None = None
+    prior_map: dict | None = None
     for _ in range(search_config.gate_replicates):
         rng = random.Random(determinization_rng.getrandbits(64))
         res = teacher.search(
@@ -192,9 +193,9 @@ def _attach_gated_search_target(
         picks.append(int(max(res["valid"], key=lambda a: float(gum[a - 1]))))
         gumbels.append(np.asarray(gum, dtype=np.float64))
         if prior_argmax is None and res.get("root_prior"):
-            prior = res["root_prior"]  # dict action_id -> mean unmixed prior
+            prior_map = res["root_prior"]  # dict action_id -> mean unmixed prior
             prior_argmax = int(
-                max(res["valid"], key=lambda a: float(prior.get(a, 0.0)))
+                max(res["valid"], key=lambda a: float(prior_map.get(a, 0.0)))
             )
         if (
             picks
@@ -235,7 +236,21 @@ def _attach_gated_search_target(
     # Label-time policy argmax: the margin loss's ranking referent (the
     # calibrated claim is "committee prefers a* over THIS action").
     transition["search_ref_action"] = prior_argmax
+    # Label-time log-priors of the pair, from the search's mean unmixed root
+    # prior (~ the acting policy at this state): the anchors for the
+    # PPO-clip-style pair trust region in the margin loss — per update,
+    # neither leg earns gradient past ±delta from these values (analog of
+    # PPO's ratio clip, Schulman et al. 2017; see ppo.py).
+    star_logp = float(np.log(max(float(prior_map.get(top_action, 0.0)), 1e-12)))
+    ref_logp = float(np.log(max(float(prior_map.get(prior_argmax, 0.0)), 1e-12)))
+    transition["search_star_logp"] = star_logp
+    transition["search_ref_logp"] = ref_logp
     diag["accepted"] += 1
+    # Label-time gap g = log pi(a_ref) - log pi(a*): how strongly the policy
+    # disagreed with the committee. Sizes the trust-region delta ((median g +
+    # m)/2 lets the median label complete in one update) and identifies the
+    # high-g tail the clip is meant to rate-limit.
+    diag["gap_sum"] = diag.get("gap_sum", 0.0) + (ref_logp - star_logp)
     nonzero = target[target > 0]
     diag["entropy_sum"] += float(-(nonzero * np.log(nonzero)).sum())
 
@@ -294,11 +309,15 @@ def _finalize_rewards(
                 ),
                 "search_target": ev.get("search_target"),
                 "has_search_target": ev.get("has_search_target", False),
-                # Margin-loss ranking referent: without it a labeled row
+                # Margin-loss ranking referent + label-time pair log-priors
+                # (trust-region anchors): without them a labeled row
                 # contributes ZERO distill loss (ppo.py hardens missing
-                # referents to no-op), so dropping it here silently disarms
-                # the teacher while leaving the PG-mask active.
+                # referents/anchors to no-op), so dropping a key here
+                # silently disarms the teacher while leaving the PG-mask
+                # active — exactly the attempt-5a bug (notebook §10.3).
                 "search_ref_action": ev.get("search_ref_action"),
+                "search_star_logp": ev.get("search_star_logp"),
+                "search_ref_logp": ev.get("search_ref_logp"),
             }
         if ev.get("oracle_state") is not None:
             out["oracle_state"] = ev["oracle_state"]

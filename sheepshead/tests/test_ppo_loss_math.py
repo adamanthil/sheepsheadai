@@ -68,6 +68,7 @@ def call_losses(
     search_target=None,
     has_search=None,
     search_ref=None,
+    search_prior=None,
 ):
     """Invoke _actor_critic_losses on the toy action space; per-row action
     probabilities are given directly and converted to logits."""
@@ -93,6 +94,9 @@ def call_losses(
         torch.full((n_rows,), -1.0)
         if search_ref is None
         else torch.tensor(search_ref, dtype=torch.float32),
+        torch.full((n_rows, 2), 1.0)
+        if search_prior is None
+        else torch.tensor(search_prior, dtype=torch.float32),
     )
 
 
@@ -292,6 +296,7 @@ class TestEntropyBonus:
                 torch.zeros((n_rows, 4)),
                 zeros,
                 torch.full((n_rows,), -1.0),
+                torch.full((n_rows, 2), 1.0),
             )
         )
         _pick_e, _partner_e, _bury_e, play_e = entropies
@@ -323,23 +328,31 @@ class TestSearchDistillation:
         assert diagnostics["hinge"].item() == 0.0
 
     def test_margin_hinge_value_and_saturation(self, agent):
-        # Margin ranking loss (DQfD-style, Search_Teacher_Design §10.2):
-        # active hinge = m + log pi(a_ref) - log pi(a*); zero once a*
-        # out-ranks a_ref by the margin.
+        # Clipped margin ranking loss (Search_Teacher_Design §12): active
+        # hinge = m + log pi(a_ref) - log pi(a*) with anchors at the current
+        # values (clip not binding); loss = label_weight * sum / n_rows.
         configure(agent)
         agent.search_margin = 0.3
-        # Active: uniform probs, a*=0 (target argmax), a_ref=1 -> hinge = m.
-        _a, _c, _k, _e, distill, _d = call_losses(
+        agent.search_label_weight = 50.0
+        lp = math.log(0.25)
+        # Active: uniform probs, a*=0 (target argmax), a_ref=1, anchors at
+        # the current log-probs -> hinge = m; two rows, one labeled.
+        _a, _c, _k, _e, distill, diag = call_losses(
             agent,
-            probs_rows=[[0.25, 0.25, 0.25, 0.25]],
-            actions=[3],
-            old_log_probs=[math.log(0.25)],
-            advantages=[1.0],
-            search_target=[[0.85, 0.05, 0.05, 0.05]],
-            has_search=[1.0],
-            search_ref=[1.0],
+            probs_rows=[[0.25, 0.25, 0.25, 0.25]] * 2,
+            actions=[3, 3],
+            old_log_probs=[lp] * 2,
+            advantages=[1.0, 1.0],
+            search_target=[[0.85, 0.05, 0.05, 0.05], [0.0] * 4],
+            has_search=[1.0, 0.0],
+            search_ref=[1.0, -1.0],
+            search_prior=[[lp, lp], [1.0, 1.0]],
         )
-        assert distill.item() == pytest.approx(0.3, abs=1e-5)
+        assert distill.item() == pytest.approx(50.0 * 0.3 / 2, abs=1e-4)
+        assert diag["hinge"].item() == pytest.approx(0.3, abs=1e-5)
+        # Neither leg has moved from its anchor yet.
+        assert diag["d_star"].item() == pytest.approx(0.0, abs=1e-6)
+        assert diag["d_ref"].item() == pytest.approx(0.0, abs=1e-6)
         # Saturated: pi(a*)=0.6 vs pi(a_ref)=0.1 -> log-gap ~1.79 > m.
         _a, _c, _k, _e, distill2, _d = call_losses(
             agent,
@@ -350,8 +363,58 @@ class TestSearchDistillation:
             search_target=[[0.85, 0.05, 0.05, 0.05]],
             has_search=[1.0],
             search_ref=[1.0],
+            search_prior=[[math.log(0.6), math.log(0.1)]],
         )
         assert distill2.item() == 0.0
+
+    def test_missing_prior_anchor_is_noop(self, agent):
+        # A labeled row with a referent but NO stored clip anchors (sentinel
+        # +1.0) must contribute zero — same hardening as the missing
+        # referent (a dropped-key regression would otherwise clip to
+        # garbage; cf. the attempt-5a normalization bug, §10.3).
+        configure(agent)
+        _a, _c, _k, _e, distill, diag = call_losses(
+            agent,
+            probs_rows=[[0.25, 0.25, 0.25, 0.25]],
+            actions=[3],
+            old_log_probs=[math.log(0.25)],
+            advantages=[1.0],
+            search_target=[[0.85, 0.05, 0.05, 0.05]],
+            has_search=[1.0],
+            search_ref=[1.0],
+            search_prior=[[1.0, 1.0]],
+        )
+        assert distill.item() == 0.0
+        assert diag["hinge"].item() == 0.0
+
+    def test_gap_trust_region_gates_row_to_zero(self, agent):
+        # Anchors say the pair gap has already improved by 2.0 nats since
+        # label time (> delta = 0.2): the row gates to ZERO — loss and
+        # hinge — even though the hinge is nominally unsatisfied
+        # (gradient-side verification is the autograd test in
+        # test_gated_search_teacher). Displacement diagnostics still report
+        # the realized per-leg movement.
+        configure(agent)
+        agent.search_margin = 0.3
+        agent.search_label_weight = 50.0
+        agent.search_clip_delta = 0.2
+        lp = math.log(0.25)
+        _a, _c, _k, _e, distill, diag = call_losses(
+            agent,
+            probs_rows=[[0.25, 0.25, 0.25, 0.25]],
+            actions=[3],
+            old_log_probs=[lp],
+            advantages=[1.0],
+            search_target=[[0.85, 0.05, 0.05, 0.05]],
+            has_search=[1.0],
+            search_ref=[1.0],
+            search_prior=[[lp - 1.0, lp + 1.0]],
+        )
+        assert distill.item() == 0.0
+        assert diag["hinge"].item() == 0.0
+        # Realized displacement diagnostics: current - anchor.
+        assert diag["d_star"].item() == pytest.approx(1.0, abs=1e-5)
+        assert diag["d_ref"].item() == pytest.approx(1.0, abs=1e-5)
 
     def test_searched_ppo_weight_one_keeps_full_pg(self, agent):
         configure(agent, searched_ppo_weight=1.0)

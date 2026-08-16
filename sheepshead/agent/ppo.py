@@ -70,6 +70,7 @@ class MinibatchTensors(NamedTuple):
     search_target_bt: torch.Tensor
     has_search_bt: torch.Tensor
     search_ref_bt: torch.Tensor
+    search_prior_bt: torch.Tensor
 
 
 class ForwardOutputs(NamedTuple):
@@ -110,6 +111,7 @@ class FlattenedActionSteps(NamedTuple):
     search_target_flat: torch.Tensor
     has_search_flat: torch.Tensor
     search_ref_flat: torch.Tensor
+    search_prior_flat: torch.Tensor
 
 
 class UpdateTargets(NamedTuple):
@@ -184,6 +186,8 @@ class _UpdateEpochAccumulator:
         self.secret_loss_count = 0
         self.search_distill_loss_sum = 0.0
         self.search_hinge_sum = 0.0
+        self.search_d_star_sum = 0.0
+        self.search_d_ref_sum = 0.0
         self.pi_target_entropy_sum = 0.0
         self.masked_fraction_sum = 0.0
         self.search_distill_batches = 0
@@ -352,21 +356,48 @@ class PPOAgent:
 
         # Search-teacher distillation on transitions carrying a gate-emitted
         # target; the value loss still runs on every transition.
-        # search_distill_coeff is the batch-level weight of the margin term.
-        self.search_distill_coeff = 1.0
         # Teacher-label loss: DQfD-style large-margin ranking (Hester et al.
         # 2018): max(0, m + log pi(a_ref) - log pi(a*)), a_ref = the
         # label-time policy argmax. Teaches only the calibrated ORDERING
         # claim; gradient support is exactly the two logits {a*, a_ref}
         # (softmax terms cancel) and vanishes once a* out-ranks a_ref by the
-        # margin — self-limiting (hinge saturation), no confidence target,
-        # no entropy injection on other actions. A forward-KL form
-        # (AlphaZero-style distribution target, Silver et al. 2017; Anthony
-        # et al. 2017) was removed 2026-08: DEMONSTRABLY destabilizing under
-        # disagreement-selected sparse labels — its gradient (pi_theta - pi')
-        # touches EVERY logit and persists past choice-agreement, which
-        # flattened the play head (Search_Teacher_Design §10).
+        # margin. A forward-KL form (AlphaZero-style distribution target,
+        # Silver et al. 2017; Anthony et al. 2017) was removed 2026-08:
+        # destabilizing under disagreement-selected sparse labels — its
+        # gradient touches every logit (Search_Teacher_Design §10).
         self.search_margin = 0.3
+        # Evidence-proportional label weight (Search_Teacher_Design §12):
+        # the distill term is search_label_weight * sum-over-labeled /
+        # N_batch_rows, i.e. one certified label is worth exactly
+        # search_label_weight PG samples — the DQfD per-sample form. This
+        # replaced mean-over-labeled * coeff (attempts 5b/6), whose per-label
+        # weight scaled as coeff * batch/labels (~1000x coeff): it baked in
+        # the update size, applied CONSTANT total force however few labels
+        # remained (cancelling the gate's self-retirement), and its scale
+        # knob was empirically near-inert under Adam — the second-moment
+        # normalization step-normalizes any coherent gradient direction, so
+        # coeff 1.0 and 0.05 scrambled greedy play orderings at almost the
+        # same rate (~2-3 updates, §10.4-10.5).
+        self.search_label_weight = 50.0
+        # Pair-gap trust region (the PPO-clip analog; Schulman et al. 2017)
+        # — the binding safety mechanism under Adam, because it ZEROES the
+        # teacher gradient (Adam cannot step on zero) instead of shrinking
+        # it: a labeled row earns gradient only while the pair gap
+        # log pi(a*) - log pi(a_ref) has improved less than delta nats over
+        # its label-time value (anchors stored at emission). The region is
+        # deliberately on the GAP, not per leg: clamping one leg alone
+        # leaves the other leg's full softmax gradient (e_a - pi over ALL
+        # logits) — an entropy-injection direction — whereas gating the
+        # intact pair preserves the exact two-logit support (softmax terms
+        # cancel) at all times. Each label is consumed in one on-policy
+        # update, so delta is also the per-label lifetime budget; archetype
+        # ordering flips accumulate across repeated labels (DAgger-style,
+        # Ross et al. 2011). Default ~ PPO's own per-state movement budget
+        # (ln(1+eps) ~ 0.2); the measured label-time gap at gate-eligible
+        # nodes (median ~1.25 nats + margin, 2026-08-16 probe) then needs
+        # ~8 labels at an archetype to complete a median flip — raise delta
+        # only against a healthy greedy-ordering probe.
+        self.search_clip_delta = 0.2
         # A/B knob for the searched-transition policy loss (plan §4):
         #   0.0 -> hard PG-mask (drop the PPO term on searched states; distillation
         #          owns them) -- the default.
@@ -757,6 +788,16 @@ class PPOAgent:
                     if has_search_target and ev.get("search_ref_action")
                     else -1
                 )
+                # Label-time pair log-priors [log pi_old(a*), log pi_old(a_ref)]:
+                # trust-region anchors for the clipped margin loss. Sentinel
+                # +1.0 (an impossible log-prob) = absent -> the row is a no-op.
+                star_lp = ev.get("search_star_logp")
+                ref_lp = ev.get("search_ref_logp")
+                search_prior = (
+                    [float(star_lp), float(ref_lp)]
+                    if has_search_target and star_lp is not None and ref_lp is not None
+                    else [1.0, 1.0]
+                )
                 record = {
                     "kind": "action",
                     "state": ev["state"],
@@ -778,6 +819,7 @@ class PPOAgent:
                     "search_target": search_target,
                     "has_search_target": has_search_target,
                     "search_ref": search_ref,
+                    "search_prior": search_prior,
                 }
                 # Oracle mode: full-information observation captured at
                 # decision time, consumed by _fill_oracle_values(). Only added
@@ -983,6 +1025,7 @@ class PPOAgent:
         search_target_list_all = []
         has_search_list_all = []
         search_ref_list_all = []
+        search_prior_list_all = []
 
         for seg_start, seg_end in batch:
             ev_range = [i for i in range(seg_start, seg_end + 1)]
@@ -1004,6 +1047,7 @@ class PPOAgent:
             search_target_bt = []
             has_search_bt = []
             search_ref_bt = []
+            search_prior_bt = []
             for i in ev_range:
                 is_act = kinds[i] == "action"
                 ev = self.events[i]
@@ -1079,6 +1123,12 @@ class PPOAgent:
                 search_ref_bt.append(
                     torch.tensor(search_ref_lbl, dtype=torch.float32, device=device)
                 )
+                search_prior_lbl = (
+                    ev.get("search_prior", [1.0, 1.0]) if is_act else [1.0, 1.0]
+                )
+                search_prior_bt.append(
+                    torch.tensor(search_prior_lbl, dtype=torch.float32, device=device)
+                )
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             old_value_list.append(torch.stack(old_value_bt, dim=0))
@@ -1095,6 +1145,7 @@ class PPOAgent:
             search_target_list_all.append(torch.stack(search_target_bt, dim=0))
             has_search_list_all.append(torch.stack(has_search_bt, dim=0))
             search_ref_list_all.append(torch.stack(search_ref_bt, dim=0))
+            search_prior_list_all.append(torch.stack(search_prior_bt, dim=0))
 
         masks_bt = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt = self._pad_to_bt(is_action_list, lengths, False)
@@ -1114,6 +1165,7 @@ class PPOAgent:
         search_target_bt = self._pad_to_bt(search_target_list_all, lengths, 0.0)
         has_search_bt = self._pad_to_bt(has_search_list_all, lengths, 0.0)
         search_ref_bt = self._pad_to_bt(search_ref_list_all, lengths, -1.0)
+        search_prior_bt = self._pad_to_bt(search_prior_list_all, lengths, 1.0)
 
         return MinibatchTensors(
             states_seqs,
@@ -1133,6 +1185,7 @@ class PPOAgent:
             search_target_bt,
             has_search_bt,
             search_ref_bt,
+            search_prior_bt,
         )
 
     def _build_oracle_minibatch(self, batch, kinds):
@@ -1327,6 +1380,7 @@ class PPOAgent:
             search_target_flat=action_rows(minibatch.search_target_bt),
             has_search_flat=action_rows(minibatch.has_search_bt),
             search_ref_flat=action_rows(minibatch.search_ref_bt),
+            search_prior_flat=action_rows(minibatch.search_prior_bt),
         )
 
     @staticmethod
@@ -1416,6 +1470,7 @@ class PPOAgent:
         search_target_flat,
         has_search_flat,
         search_ref_flat,
+        search_prior_flat,
         anchor_logits_flat=None,
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
@@ -1471,43 +1526,74 @@ class PPOAgent:
         pg_loss_elements = pg_loss_elements * pg_keep
         policy_loss = (pg_loss_elements * head_weight).mean()
 
-        # Margin-ranking distillation on the searched transitions — DQfD-style
-        # large-margin loss (Hester et al. 2018, the canonical
-        # sparse-expert-labels-beside-RL form):
+        # Clipped margin-ranking distillation on the searched transitions
+        # (Search_Teacher_Design §12). Base loss is the DQfD large-margin
+        # hinge (Hester et al. 2018):
         #   L = max(0, m + log pi_theta(a_ref) - log pi_theta(a*))
         # a* = the committee's agreed action (argmax of the stored target),
-        # a_ref = the label-time policy argmax. Gradient wrt logits is exactly
-        # e_{a_ref} - e_{a*} while active (softmax terms cancel) and ZERO once
-        # a* out-ranks a_ref by m — the hinge saturates per state, so pressure
-        # expires exactly when the calibrated ordering claim is satisfied
-        # (contrast a forward-KL form, whose gradient pi_theta - pi' touches
-        # every logit and persists until the full target profile is matched —
-        # the removed KL mode's play-head-flattening mechanism;
-        # Search_Teacher_Design §10.2).
+        # a_ref = the label-time policy argmax; gradient support is exactly
+        # the two logits {a*, a_ref} while active. Two governors on top:
+        #
+        # 1. Pair-gap trust region (PPO-clip analog, Schulman et al. 2017):
+        #    the row earns gradient only while the gap
+        #    log pi(a*) - log pi(a_ref) has improved less than delta over
+        #    its stored label-time value. This is the binding control
+        #    under Adam — attempts 5b/6 showed loss-scale knobs are
+        #    near-inert (second-moment normalization re-inflates any
+        #    coherent gradient direction to ~lr-sized steps), while a
+        #    gated-to-zero gradient cannot be re-inflated.
+        # 2. Evidence-proportional weight: sum over labeled rows / ALL batch
+        #    rows, scaled by search_label_weight — one label is worth
+        #    exactly search_label_weight PG samples (the DQfD per-sample
+        #    form), so total teacher force tracks label count and the
+        #    gate's self-retirement anneals the teacher instead of being
+        #    cancelled by a mean-over-labeled renormalization.
         if searched.any():
             pit = search_target_flat[searched]
             logp_theta = torch.log(probs_all[searched].clamp(min=1e-12))
             logp_it = torch.log(pit.clamp(min=1e-12))
             a_star = pit.argmax(dim=1)
             ref_raw = search_ref_flat[searched]
-            # Rows without a stored referent contribute ZERO rather than
-            # silently ranking against action 0.
-            has_ref = ref_raw >= 0.0
+            # Rows without a stored referent or label-time anchors (sentinel
+            # +1.0: log-probs are never positive) contribute ZERO rather
+            # than silently ranking against action 0 / clipping to garbage.
+            prior = search_prior_flat[searched]
+            old_star, old_ref = prior[:, 0], prior[:, 1]
+            valid_row = (ref_raw >= 0.0) & (old_star <= 0.0) & (old_ref <= 0.0)
             a_ref = ref_raw.long().clamp(min=0)
             lp_star = logp_theta.gather(1, a_star.unsqueeze(1)).squeeze(1)
             lp_ref = logp_theta.gather(1, a_ref.unsqueeze(1)).squeeze(1)
+            # Gap trust region: gate the WHOLE row to zero once the pair gap
+            # has improved delta past its label-time value. Gating (not
+            # per-leg clamping) keeps the hinge's two-logit gradient intact
+            # while active — clamping one leg alone would leave the other
+            # leg's full softmax gradient touching every logit.
+            gap_gain = (lp_star - lp_ref).detach() - (old_star - old_ref)
+            within = valid_row & (gap_gain < self.search_clip_delta)
             search_distill_per = (self.search_margin + lp_ref - lp_star).clamp(
                 min=0.0
-            ) * has_ref.to(lp_star.dtype)
-            search_distill_loss = search_distill_per.mean()
+            ) * within.to(lp_star.dtype)
+            n_rows = max(has_search_flat.numel(), 1)
+            search_distill_loss = (
+                self.search_label_weight * search_distill_per.sum() / n_rows
+            )
             with torch.no_grad():
-                # Unweighted mean hinge (coeff-independent teacher-pressure
-                # readout) and target entropy, detached for logging.
-                search_hinge = search_distill_per.mean()
+                # Per-label diagnostics, detached for logging: mean active
+                # hinge, and realized per-label displacement of each leg
+                # from its label-time anchor (d_star = promotion of a*,
+                # d_ref = suppression of a_ref; d_star + d_ref vs delta
+                # shows whether the gap trust region is binding).
+                vr = valid_row.to(lp_star.dtype)
+                k = vr.sum().clamp(min=1.0)
+                search_hinge = search_distill_per.sum() / k
+                d_star = ((lp_star - old_star) * vr).sum() / k
+                d_ref = ((old_ref - lp_ref) * vr).sum() / k
                 pi_target_entropy = -(pit * logp_it).sum(dim=1).mean()
         else:
             search_distill_loss = logits_flat.new_zeros(())
             search_hinge = logits_flat.new_zeros(())
+            d_star = logits_flat.new_zeros(())
+            d_ref = logits_flat.new_zeros(())
             pi_target_entropy = logits_flat.new_zeros(())
         masked_fraction = searched.to(torch.float32).mean()
 
@@ -1550,6 +1636,8 @@ class PPOAgent:
             search_distill_loss,
             {
                 "hinge": search_hinge,
+                "d_star": d_star,
+                "d_ref": d_ref,
                 "pi_target_entropy": pi_target_entropy,
                 "masked_fraction": masked_fraction,
                 "anchor_kl": anchor_kl,
@@ -1722,6 +1810,7 @@ class PPOAgent:
             flat.search_target_flat,
             flat.has_search_flat,
             flat.search_ref_flat,
+            flat.search_prior_flat,
             anchor_logits_flat=anchor_logits_flat,
         )
         acc.last_approx_kl = float(approx_kl_t.item())
@@ -1736,6 +1825,8 @@ class PPOAgent:
         # Stage C distillation accumulation
         acc.search_distill_loss_sum += search_distill_loss.detach().item()
         acc.search_hinge_sum += search_distill_metrics["hinge"].item()
+        acc.search_d_star_sum += search_distill_metrics["d_star"].item()
+        acc.search_d_ref_sum += search_distill_metrics["d_ref"].item()
         acc.pi_target_entropy_sum += search_distill_metrics["pi_target_entropy"].item()
         acc.masked_fraction_sum += search_distill_metrics["masked_fraction"].item()
         acc.search_distill_batches += 1
@@ -1900,7 +1991,7 @@ class PPOAgent:
         t_bwd = time.time()
         total_loss = (
             actor_loss
-            + self.search_distill_coeff * search_distill_loss
+            + search_distill_loss
             + self.value_loss_coeff * critic_loss
             + self.win_loss_coeff * win_loss
             + self.return_loss_coeff * return_loss
@@ -2378,9 +2469,11 @@ class PPOAgent:
                 "pass_count": acc.pass_adv_count,
             },
             "distill": {
-                "loss": self.search_distill_coeff
-                * (acc.search_distill_loss_sum / max(acc.search_distill_batches, 1)),
+                "loss": acc.search_distill_loss_sum
+                / max(acc.search_distill_batches, 1),
                 "hinge": acc.search_hinge_sum / max(acc.search_distill_batches, 1),
+                "d_star": acc.search_d_star_sum / max(acc.search_distill_batches, 1),
+                "d_ref": acc.search_d_ref_sum / max(acc.search_distill_batches, 1),
                 "pi_target_entropy": acc.pi_target_entropy_sum
                 / max(acc.search_distill_batches, 1),
                 "pg_masked_fraction": acc.masked_fraction_sum

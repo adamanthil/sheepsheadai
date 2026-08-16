@@ -8,6 +8,7 @@ through play_population_game in gated mode.
 import random
 
 import numpy as np
+import pytest
 
 from sheepshead import ACTION_LOOKUP, ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent.ppo import PPOAgent
@@ -58,13 +59,14 @@ class _ScriptedTeacher:
 
 def _res(valid, pick, prior_top, ok=True):
     """Canned search result whose pi_gumbel argmax is ``pick`` and whose raw
-    root prior argmax is ``prior_top``."""
+    root prior argmax is ``prior_top`` (finite prior mass everywhere, like a
+    real softmax policy — the stored log-priors anchor the clip)."""
     gum = np.zeros(len(ACTIONS))
     gum[pick - 1] = 0.7
     for a in valid:
         if a != pick:
             gum[a - 1] = 0.3 / (len(valid) - 1)
-    prior = {a: (1.0 if a == prior_top else 0.0) for a in valid}
+    prior = {a: (0.6 if a == prior_top else 0.4 / (len(valid) - 1)) for a in valid}
     return {"ok": ok, "pi_gumbel": gum, "root_prior": prior, "valid": list(valid)}
 
 
@@ -98,7 +100,16 @@ def test_emits_on_majority_nonpolicy_agreement():
     assert target.argmax() + 1 == alt
     assert abs(target[alt - 1] - 0.95) < 1e-9
     assert tr["search_ref_action"] == pol  # margin-loss ranking referent
+    # Label-time pair log-priors: the clip anchors (a* got 0.4/(n-1) prior
+    # mass in the stub, a_ref got 0.6).
+    n_other = len(valid) - 1
+    assert tr["search_star_logp"] == pytest.approx(np.log(0.4 / n_other), abs=1e-9)
+    assert tr["search_ref_logp"] == pytest.approx(np.log(0.6), abs=1e-9)
     assert diag["play"]["count"] == 1 and diag["play"]["accepted"] == 1
+    # Emission-time gap diagnostic g = ref_logp - star_logp.
+    assert diag["play"]["gap_sum"] == pytest.approx(
+        np.log(0.6) - np.log(0.4 / n_other), abs=1e-9
+    )
 
 
 def test_abstains_when_committee_backs_policy():
@@ -273,10 +284,14 @@ def test_gated_mode_end_to_end_smoke():
             target = np.asarray(t["search_target"])
             assert target.shape == (len(ACTIONS),)
             assert abs(target.sum() - 1.0) < 1e-6
-            # The ranking referent must survive event normalization: without
-            # it the margin loss no-ops and the label only PG-masks its row.
+            # The ranking referent and the clip anchors must survive event
+            # normalization: without them the margin loss no-ops and the
+            # label only PG-masks its row (the attempt-5a failure, §10.3).
             assert isinstance(t.get("search_ref_action"), int)
             assert t["search_ref_action"] >= 1
+            assert t.get("search_star_logp") is not None
+            assert t.get("search_ref_logp") is not None
+            assert t["search_star_logp"] <= 0.0 and t["search_ref_logp"] <= 0.0
 
 
 def test_margin_loss_gradient_support_and_saturation():
@@ -307,6 +322,54 @@ def test_margin_loss_gradient_support_and_saturation():
     logits2 = base.clone().requires_grad_(True)
     logp2 = torch.log_softmax(logits2, dim=-1)
     loss2 = (m + logp2[0, a_ref] - logp2[0, a_star]).clamp(min=0.0)
+    assert loss2.item() == 0.0
+    loss2.backward()
+    assert torch.allclose(logits2.grad, torch.zeros_like(logits2))
+
+
+def test_pair_gap_trust_region_gates_gradient():
+    """The §12 gap trust region, verified by autograd. The region is on the
+    PAIR GAP log pi(a*) - log pi(a_ref), not per leg: while the gap has
+    improved less than delta over its label-time value the row carries the
+    exact two-logit hinge gradient (softmax terms cancel — support is
+    {a*, a_ref} only), and past delta the WHOLE row gates to zero. Per-leg
+    clamping was rejected because zeroing one leg leaves the other leg's
+    full softmax gradient (e_a - pi on every logit) — an entropy-injection
+    direction; the gate preserves the pair or removes it entirely. Zeroing
+    (not scaling) is what binds under Adam: second-moment normalization
+    re-inflates any scaled-down coherent direction, but cannot step on an
+    exactly-zero gradient."""
+    import torch
+
+    m, delta = 0.3, 0.2
+    a_star, a_ref = 3, 7
+
+    def gated_loss(logits, old_star, old_ref):
+        logp = torch.log_softmax(logits, dim=-1)
+        gap_gain = (logp[0, a_star] - logp[0, a_ref]).detach() - (old_star - old_ref)
+        within = (gap_gain < delta).to(logp.dtype)
+        return (m + logp[0, a_ref] - logp[0, a_star]).clamp(min=0.0) * within
+
+    # Anchors at the current values: gap unmoved -> active row with the
+    # exact two-logit gradient (all other coordinates zero).
+    logits = torch.zeros(1, 10, requires_grad=True)
+    with torch.no_grad():
+        lp0 = torch.log_softmax(logits, dim=-1)
+    loss = gated_loss(logits, lp0[0, a_star], lp0[0, a_ref])
+    assert loss.item() == pytest.approx(m, abs=1e-6)
+    loss.backward()
+    g = logits.grad[0]
+    assert g[a_star] < 0 and g[a_ref] > 0
+    others = [i for i in range(10) if i not in (a_star, a_ref)]
+    assert torch.allclose(g[others], torch.zeros(len(others)), atol=1e-7)
+
+    # Gap already improved by more than delta since label time: the row
+    # gates to zero — loss AND gradient — regardless of the hinge being
+    # nominally unsatisfied. This update can no longer move the pair.
+    logits2 = torch.zeros(1, 10, requires_grad=True)
+    loss2 = gated_loss(
+        logits2, lp0[0, a_star] - 0.5, lp0[0, a_ref] + 0.5
+    )  # gap_gain = 1.0 > delta
     assert loss2.item() == 0.0
     loss2.backward()
     assert torch.allclose(logits2.grad, torch.zeros_like(logits2))

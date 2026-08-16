@@ -602,7 +602,11 @@ class _GatedDisagreeTeacher:
         gum = np.zeros(len(ACTIONS))
         pick = valid[1] if len(valid) > 1 else valid[0]
         gum[pick - 1] = 1.0
-        prior = {a: (1.0 if a == valid[0] else 0.0) for a in valid}
+        # Finite prior mass everywhere (like a real softmax policy): the
+        # emitted label stores log-priors as the clip anchors.
+        prior = {
+            a: (0.6 if a == valid[0] else 0.4 / max(len(valid) - 1, 1)) for a in valid
+        }
         return {"ok": True, "pi_gumbel": gum, "root_prior": prior, "valid": valid}
 
 
@@ -652,6 +656,13 @@ def test_distill_pgmask_and_dormant():
         )
         agent.store_episode_events(events)
     assert searched > 0, "no search targets produced"
+    # The stub's canned priors are fictional (they don't match the fresh
+    # agent's actual log-probs), so the gap trust region would read a
+    # spurious pre-update "gain" and gate the rows. Widen delta: this test
+    # covers the label pipeline (referent + anchors through normalization
+    # into an active hinge), not the gate calibration — that is the
+    # loss-math / autograd tests' job.
+    agent.search_clip_delta = 100.0
     stats = agent.update(epochs=2, batch_size=16)
     d = stats.get("distill", {})
     assert stats["num_transitions"] > 0

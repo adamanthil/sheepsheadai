@@ -43,6 +43,7 @@ def _inject_search_targets(agent: PPOAgent) -> None:
         event["search_target"] = list(uniform)
         event["has_search_target"] = True
         event["search_ref"] = (event["action"] + 1) % agent.action_size
+        event["search_prior"] = [-1.5, -0.7]
 
 
 @pytest.fixture(scope="module")
@@ -88,6 +89,7 @@ def naive_build_minibatch_tensors(agent, batch, states, masks_t, kinds):
     search_target = zeros(action_size)
     has_search = zeros()
     search_ref = torch.full((len(batch), max_len), -1.0)
+    search_prior = torch.full((len(batch), max_len, 2), 1.0)
 
     for b, (seg_start, seg_end) in enumerate(batch):
         for t, i in enumerate(range(seg_start, seg_end + 1)):
@@ -120,6 +122,9 @@ def naive_build_minibatch_tensors(agent, batch, states, masks_t, kinds):
             )
             has_search[b, t] = 1.0 if event.get("has_search_target") else 0.0
             search_ref[b, t] = float(event.get("search_ref", -1))
+            search_prior[b, t] = torch.tensor(
+                event.get("search_prior", [1.0, 1.0]), dtype=torch.float32
+            )
 
     return MinibatchTensors(
         states_seqs,
@@ -139,6 +144,7 @@ def naive_build_minibatch_tensors(agent, batch, states, masks_t, kinds):
         search_target,
         has_search,
         search_ref,
+        search_prior,
     )
 
 
@@ -213,6 +219,7 @@ FLAT_FIELD_SOURCES = {
     "search_target_flat": "minibatch.search_target_bt",
     "has_search_flat": "minibatch.has_search_bt",
     "search_ref_flat": "minibatch.search_ref_bt",
+    "search_prior_flat": "minibatch.search_prior_bt",
 }
 
 
