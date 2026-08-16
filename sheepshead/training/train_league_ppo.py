@@ -20,11 +20,15 @@ and resuming from a mid-run checkpoint therefore keeps the same cadence and
 generation indices rather than resetting them to the resume point — a resume
 partway through a phase trains only the episodes remaining to the next boundary.
 
-Terminal reward only; no search/shaping/controllers (ISMCTS is a deploy-time
-amplifier + audit tool per the June 2026 value-add probe). The bidding-head KL
-anchor is available (--anchor-coeff) for warm-start safety but defaults OFF:
-without a distillation yank there is nothing it is known to guard against, and
-it caps bidding improvement.
+Terminal reward, optionally with the always-on CE search teacher (--teacher,
+CE_Teacher_Design_202608.md): a frozen generation-start expert's ISMCTS
+committee labels a subsample of PLAY decisions with shrink-and-tilt CE
+targets, distilled in supervised passes after each PPO update. The teacher
+runs the WHOLE generation (no phases — any teacher-off window is a measured
+reversion window, §13.4); the expert refreezes at each generation boundary.
+The bidding-head KL anchor is available (--anchor-coeff) for warm-start
+safety but defaults OFF: without a distillation yank there is nothing it is
+known to guard against, and it caps bidding improvement.
 
 Bootstrap an empty league one of three ways: --seed-checkpoints <glob|dir> to
 seed past_mains from PPO checkpoints (e.g. the selfplay snapshots that seeded
@@ -133,15 +137,14 @@ PROGRESS_CSV_HEADER = [
     # after the entropy ladder floors (single-lever attributability).
     "approx_kl",
     "lr_actor",
-    # Resolved-pair search-teacher telemetry (Search_Teacher_Design §12.7):
-    # per update window, nodes searched / nodes emitting / emitted pairs /
-    # fraction of resolved orderings the live policy already satisfies.
-    # gate_learned rising toward 1 (and emission falling) is the teacher's
-    # self-retirement signal.
-    "gate_attempts",
-    "gate_emitted",
-    "gate_pairs",
-    "gate_learned",
+    # CE search-teacher telemetry (CE_Teacher_Design §2): per update window,
+    # nodes searched / fraction with shrink w > 0 (material) / mean label-
+    # time KL(target||policy) (the self-retirement readout — decays as the
+    # policy conforms) / mean CE loss over the teacher passes.
+    "teacher_searched",
+    "teacher_material_frac",
+    "teacher_kl",
+    "teacher_ce",
 ]
 
 # greedy_health.csv schema (append-only; migrated on resume like the
@@ -229,20 +232,18 @@ def _league_worker_init(init_args: dict) -> None:
             "cache": {},
         }
     )
-    if init_args.get("search_teacher"):
+    if init_args.get("teacher"):
         from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
         from sheepshead.training.config import SearchConfig as _SC
 
         cfg = _SC(
-            gate_node_prob=float(init_args.get("search_prob", 0.02)),
-            gate_replicates=int(init_args.get("search_replicates", 5)),
-            gate_emit_margin=float(init_args.get("search_margin", 0.3)),
-            gate_pair_eps=float(
-                init_args.get("search_pair_eps") or _SC().gate_pair_eps
+            teacher_prob=float(init_args.get("teacher_prob", _SC().teacher_prob)),
+            teacher_replicates=int(
+                init_args.get("teacher_replicates", _SC().teacher_replicates)
             ),
         )
-        iters = int(init_args.get("search_iters", cfg.gate_iters))
-        # Stationary expert (§12.1): the teacher wraps a frozen copy of the
+        iters = int(init_args.get("teacher_iters", _SC().teacher_iters))
+        # Stationary expert: the teacher wraps a frozen copy of the
         # generation-start policy, NOT the live worker agent — weight
         # refreshes in _league_worker_play never touch it.
         frozen = _build_frozen_expert(
@@ -476,15 +477,15 @@ def _build_frozen_expert(
     return frozen
 
 
-def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
-    """play_population_game kwargs for the agreement-gated search teacher
-    (Search_Teacher_Design §9/§12.1), or {} when --search-teacher is off.
+def _teacher_kwargs(ctx: MainPhaseContext) -> dict:
+    """play_population_game kwargs for the CE search teacher
+    (CE_Teacher_Design §2), or {} when --teacher is off.
 
     Built once per stream: an ISMCTS teacher over a FROZEN copy of the
-    generation-start policy (stationary expert, §12.1) at the E9-certified
-    budget (1024 iters, d_rollout=1 per call, oracle leaves via the engine
-    default) plus a gated SearchConfig."""
-    if not getattr(ctx.args, "search_teacher", False):
+    generation-start policy (stationary expert) at the calibrated budget
+    (--teacher-iters, d_rollout=1 per call, oracle leaves via the engine
+    default) plus the emission SearchConfig."""
+    if not getattr(ctx.args, "teacher", False):
         return {}
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
@@ -496,17 +497,17 @@ def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
         getattr(ctx.args, "oracle_init", None),
         ctx.training_agent.gamma,
     )
-    iters = SearchConfig().gate_iters
+    iters = int(getattr(ctx.args, "teacher_iters", SearchConfig().teacher_iters))
     teacher = ISMCTSTeacher(
         frozen,
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
     search_config = SearchConfig(
-        gate_node_prob=float(getattr(ctx.args, "search_teacher_prob", 0.02)),
-        gate_replicates=int(getattr(ctx.args, "search_replicates", 5)),
-        gate_emit_margin=float(getattr(ctx.args, "search_teacher_margin", 0.3)),
-        gate_pair_eps=float(
-            getattr(ctx.args, "gate_pair_eps", None) or SearchConfig().gate_pair_eps
+        teacher_prob=float(
+            getattr(ctx.args, "teacher_prob", SearchConfig().teacher_prob)
+        ),
+        teacher_replicates=int(
+            getattr(ctx.args, "teacher_replicates", SearchConfig().teacher_replicates)
         ),
     )
     return {
@@ -524,7 +525,7 @@ def sequential_stream(ctx: MainPhaseContext):
     # cards are identical across the 5 rotations.
     rotate = bool(getattr(ctx.args, "seat_rotation", False))
     rot_state = {}
-    teacher_kwargs = _gated_teacher_kwargs(ctx)
+    teacher_kwargs = _teacher_kwargs(ctx)
     for episode in range(ctx.start_episode + 1, ctx.end_episode + 1):
         game_seed = None
         if rotate:
@@ -673,19 +674,9 @@ def run_main_phase(
     n_episodes: int,
     checkpoint_dir: str,
     anchor_eval: dict | None = None,
-    phase_exit: dict | None = None,
 ) -> int:
     """Train the main agent for ``n_episodes`` vs league tables; returns the
     final episode index. Mutates league ratings/EMAs and training_ratings.
-
-    ``phase_exit`` (optional): adaptive teacher-phase exit rule —
-    {"emission_pct", "learned", "windows", "min_searched"}. Evaluated at each
-    gate-telemetry window; the phase ends early after ``windows`` consecutive
-    windows whose emission rate is at or below ``emission_pct`` OR whose
-    self-retirement readout (satisfied/resolved) is at or above ``learned``
-    (teaching saturated: nothing material left that the live policy doesn't
-    already order). Windows with fewer than ``min_searched`` searched rows
-    are skipped (visitation noise), not counted either way.
 
     ``anchor_eval`` (optional): {"agent", "label", "interval", "deals"} — a
     frozen reference for the periodic paired CRN greedy probe, the run's only
@@ -705,14 +696,15 @@ def run_main_phase(
     # getattr: the exploiter's SimpleNamespace args has no leaster_watchdog
     # field, so best-response training always runs without the kick.
     watchdog = LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
-    # Gated-teacher telemetry window (reset after each progress-CSV row).
-    gate_window = {
-        "count": 0,
-        "accepted": 0,
-        "resolved": 0.0,
-        "satisfied": 0.0,
-        "pairs": 0.0,
-        "gap_sum": 0.0,
+    # CE-teacher telemetry window (reset after each progress-CSV row).
+    teacher_window = {
+        "searched": 0,
+        "labeled": 0,
+        "material": 0,
+        "w_sum": 0.0,
+        "spread_sum": 0.0,
+        "kl_sum": 0.0,
+        "kl_n": 0,
     }
     t0 = time.time()
 
@@ -794,20 +786,29 @@ def run_main_phase(
                     "members_dir": str(league.members_dir),
                     "weight_path_base": weight_sync["base"],
                     "base_seed": args.seed,
-                    # Gated search teacher in workers: oracle-mode agents so
+                    # CE search teacher in workers: oracle-mode agents so
                     # the payload's oracle head loads (calibrated leaves) and
                     # gamma rides the payload (search discounting).
                     "critic_mode": getattr(args, "critic_mode", "limited"),
                     "oracle_aux_heads": bool(getattr(args, "oracle_aux_heads", False)),
-                    "search_teacher": bool(getattr(args, "search_teacher", False)),
-                    "search_prob": float(getattr(args, "search_teacher_prob", 0.02)),
-                    "search_replicates": int(getattr(args, "search_replicates", 5)),
-                    "search_margin": float(getattr(args, "search_teacher_margin", 0.3)),
-                    "search_pair_eps": getattr(args, "gate_pair_eps", None),
-                    # Stationary expert (§12.1): workers rebuild the frozen
+                    "teacher": bool(getattr(args, "teacher", False)),
+                    "teacher_prob": float(
+                        getattr(args, "teacher_prob", SearchConfig().teacher_prob)
+                    ),
+                    "teacher_replicates": int(
+                        getattr(
+                            args,
+                            "teacher_replicates",
+                            SearchConfig().teacher_replicates,
+                        )
+                    ),
+                    "teacher_iters": int(
+                        getattr(args, "teacher_iters", SearchConfig().teacher_iters)
+                    ),
+                    # Stationary expert: workers rebuild the frozen
                     # generation-start policy from these paths; weight
                     # refreshes touch only the live agent. --teacher-ckpt
-                    # pins the expert independently of --resume so a mid-phase
+                    # pins the expert independently of --resume so a mid-run
                     # continuation doesn't silently refreeze to student weights.
                     "teacher_resume": getattr(args, "teacher_ckpt", None)
                     or getattr(args, "resume", None),
@@ -836,12 +837,13 @@ def run_main_phase(
             tx_counter.count += store_events_by_seat(training_agent, events)
             sd = (training_data_single.get("search_diagnostics") or {}).get("play")
             if sd:
-                gate_window["count"] += sd["count"]
-                gate_window["accepted"] += sd["accepted"]
-                gate_window["resolved"] += sd.get("resolved_sum", 0.0)
-                gate_window["satisfied"] += sd.get("satisfied_sum", 0.0)
-                gate_window["pairs"] += sd.get("pairs_sum", 0.0)
-                gate_window["gap_sum"] += sd.get("gap_sum", 0.0)
+                teacher_window["searched"] += sd["count"]
+                teacher_window["labeled"] += sd["labeled"]
+                teacher_window["material"] += sd["material"]
+                teacher_window["w_sum"] += sd["w_sum"]
+                teacher_window["spread_sum"] += sd["spread_sum"]
+                teacher_window["kl_sum"] += sd["kl_sum"]
+                teacher_window["kl_n"] += sd["kl_n"]
             if training_data_single["was_picker"]:
                 picker_scores.append(training_data_single["score"])
             pick_window.append(1 if training_data_single["was_picker"] else 0)
@@ -877,6 +879,11 @@ def run_main_phase(
                     epochs=4,
                     batch_size=getattr(args, "minibatch_episodes", 256),
                     grad_accum=getattr(args, "grad_accum", False),
+                    teacher_epochs=(
+                        int(getattr(args, "teacher_epochs", 0))
+                        if getattr(args, "teacher", False)
+                        else 0
+                    ),
                 )
                 tx_counter.count = 0
                 if entropy_ctrl is not None and stats:
@@ -1000,75 +1007,44 @@ def run_main_phase(
                                 ],
                                 f"{stats.get('approx_kl', 0.0):.6f}",
                                 f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
-                                gate_window["count"],
-                                gate_window["accepted"],
-                                f"{gate_window['pairs']:.0f}",
-                                f"{gate_window['satisfied'] / gate_window['resolved']:.3f}"
-                                if gate_window["resolved"]
+                                teacher_window["searched"],
+                                f"{teacher_window['material'] / teacher_window['labeled']:.3f}"
+                                if teacher_window["labeled"]
+                                else "",
+                                f"{teacher_window['kl_sum'] / teacher_window['kl_n']:.4f}"
+                                if teacher_window["kl_n"]
+                                else "",
+                                f"{stats['teacher']['ce']:.4f}"
+                                if stats.get("teacher")
                                 else "",
                             ]
                         )
-                    if gate_window["count"]:
-                        d = stats.get("distill", {})
-                        gap = (
-                            f", gap {gate_window['gap_sum'] / gate_window['pairs']:.2f}"
-                            if gate_window["pairs"]
-                            else ""
-                        )
-                        # satisfied/resolved = the self-retirement readout:
-                        # fraction of committee-resolved orderings the live
-                        # policy already satisfies by the margin.
-                        sat = (
-                            f", learned {gate_window['satisfied'] / gate_window['resolved']:.2f}"
-                            if gate_window["resolved"]
-                            else ""
-                        )
+                    if teacher_window["searched"]:
+                        tstats = stats.get("teacher") or {}
+                        w = teacher_window
+                        # Mean label-time KL(target||policy) is the
+                        # self-retirement readout: it decays toward 0 as
+                        # the student conforms to the committee.
+                        kl = f", KL {w['kl_sum'] / w['kl_n']:.3f}" if w["kl_n"] else ""
                         print(
-                            f"🔍 gate: {gate_window['count']} searched, "
-                            f"{gate_window['accepted']} emitting "
-                            f"({100 * gate_window['accepted'] / gate_window['count']:.0f}%), "
-                            f"{gate_window['pairs']:.0f} pairs"
-                            f"{sat}{gap} | hinge {d.get('hinge', 0.0):.3f} "
-                            f"pairs/row {d.get('pairs_per_row', 0.0):.1f} "
-                            f"Δw {d.get('d_star', 0.0):+.3f} "
-                            f"Δl {d.get('d_ref', 0.0):+.3f}",
+                            f"🎓 teacher: {w['searched']} searched, "
+                            f"{w['material']} material "
+                            f"({100 * w['material'] / max(w['labeled'], 1):.0f}%), "
+                            f"mean w {w['w_sum'] / max(w['labeled'], 1):.2f}, "
+                            f"spread {w['spread_sum'] / max(w['labeled'], 1):.3f}"
+                            f"{kl} | CE {tstats.get('ce', 0.0):.4f} "
+                            f"x{tstats.get('epochs', 0)} epochs "
+                            f"({tstats.get('rows', 0)} rows)",
                             flush=True,
                         )
-                    if phase_exit is not None and gate_window[
-                        "count"
-                    ] >= phase_exit.get("min_searched", 20):
-                        emission = (
-                            100.0 * gate_window["accepted"] / gate_window["count"]
-                        )
-                        learned = (
-                            gate_window["satisfied"] / gate_window["resolved"]
-                            if gate_window["resolved"]
-                            else None
-                        )
-                        if emission <= phase_exit["emission_pct"] or (
-                            learned is not None and learned >= phase_exit["learned"]
-                        ):
-                            phase_exit["_hits"] = phase_exit.get("_hits", 0) + 1
-                        else:
-                            phase_exit["_hits"] = 0
-                        if phase_exit["_hits"] >= phase_exit["windows"]:
-                            print(
-                                f"🎓 TEACHER PHASE SATURATED at ep {episode:,}: "
-                                f"{phase_exit['windows']} consecutive windows at "
-                                f"emission <= {phase_exit['emission_pct']:.1f}% or "
-                                f"learned >= {phase_exit['learned']:.2f} — exiting "
-                                f"teacher phase early",
-                                flush=True,
-                            )
-                            phase_exit["exited_early"] = True
-                            break
-                    gate_window = {
-                        "count": 0,
-                        "accepted": 0,
-                        "resolved": 0.0,
-                        "satisfied": 0.0,
-                        "pairs": 0.0,
-                        "gap_sum": 0.0,
+                    teacher_window = {
+                        "searched": 0,
+                        "labeled": 0,
+                        "material": 0,
+                        "w_sum": 0.0,
+                        "spread_sum": 0.0,
+                        "kl_sum": 0.0,
+                        "kl_n": 0,
                     }
 
             # League snapshot of the main (replaces population_add_interval)
@@ -1161,14 +1137,17 @@ def run_main_phase(
                         ]
                     )
 
-            # Convention adherence guard (Search_Teacher_Design §12.17): the
-            # 200-300-game greedy probe cannot resolve sub-5-point convention
-            # regressions (it masked an 8-point partner-trump deficit for a
-            # full teacher run), so the guard reruns the probe at n=1000 on a
-            # FIXED seed (successive probes are paired) and hard-stops the run
-            # on the configured lines. Damage arrives via shared-trunk
-            # transport (§12.13), which no emission-side mask can prevent —
-            # measurement + stop is the only reliable guard.
+            # Convention adherence guard, two-tier (CE_Teacher_Design §3;
+            # §12.17/§12.21 protocol): the 200-300-game greedy probe cannot
+            # resolve sub-5-point convention regressions (it masked an
+            # 8-point partner-trump deficit for a full teacher run), so the
+            # guard reruns the probe at n=1000 on a FIXED seed (successive
+            # probes are paired). HARD tier (partner below the floor, or t0
+            # trump-lead above the ceiling — the scramble signature) stops
+            # the run for operator review; the NOTIFY tier (partner below
+            # the notify line) only prints, because §12.20 showed partner
+            # dips during teaching can be oscillation with a restoring
+            # force, not collapse.
             if (
                 getattr(args, "adherence_guard_interval", 0) > 0
                 and episode % args.adherence_guard_interval == 0
@@ -1190,13 +1169,26 @@ def run_main_phase(
                 if floor is not None and gp["partner_trump_lead_rate"] < float(floor):
                     violations.append(
                         f"partner trump-lead {gp['partner_trump_lead_rate']:.1f}% "
-                        f"< floor {float(floor):.1f}%"
+                        f"< hard floor {float(floor):.1f}%"
                     )
                 ceil = getattr(args, "guard_t0_ceiling", None)
                 if ceil is not None and gp["t0_trump_lead_rate"] > float(ceil):
                     violations.append(
                         f"t0 trump-lead {gp['t0_trump_lead_rate']:.1f}% "
                         f"> ceiling {float(ceil):.1f}%"
+                    )
+                notify = getattr(args, "guard_partner_notify", None)
+                if (
+                    not violations
+                    and notify is not None
+                    and gp["partner_trump_lead_rate"] < float(notify)
+                ):
+                    print(
+                        f"🛡️⚠️ Adherence NOTIFY: partner trump-lead "
+                        f"{gp['partner_trump_lead_rate']:.1f}% < notify line "
+                        f"{float(notify):.1f}% (hard floor "
+                        f"{float(floor):.1f}%) — continuing",
+                        flush=True,
                     )
                 if violations:
                     stop_ckpt = os.path.join(
@@ -1262,6 +1254,102 @@ def run_main_phase(
 
 
 # ----------------------------------------------------------------------------
+def run_boundary_cert(
+    training_agent: PPOAgent, args, generation: int, checkpoint_dir: str
+) -> dict:
+    """Absolute-anchor expert-refresh cert (CE_Teacher_Design §3), run on the
+    generation-boundary candidate before it may become the next generation's
+    frozen expert.
+
+    Two components, both against FIXED absolute bars (never relative to the
+    previous generation — a relative cert lets a refresh chain ratchet drift
+    into the certified regime):
+
+    * n=--cert-games adherence battery at --cert-seeds distinct fixed deal
+      seeds, judged on the ACROSS-SEED MEAN (single reads are luck-of-phase
+      — the §12.22 lesson: consolidation called-suit swung 39.9-51.0 across
+      reads): mean partner trump-lead >= --cert-partner-floor AND mean t0
+      trump-lead <= --cert-t0-ceiling.
+    * Paired CRN h2h vs the run's fixed cert anchor (--cert-anchor-ckpt,
+      default the ORIGINAL expert checkpoint): edge must not be
+      significantly negative (edge + 2*SE >= 0).
+
+    The exploiter gate that follows every boundary is the third cert
+    component and keeps its existing flow. Result is persisted to
+    boundary_cert_gen<g>.json for the run record."""
+    seeds = [ADHERENCE_GUARD_SEED + i for i in range(int(args.cert_seeds))]
+    probes = [
+        greedy_health_probe(training_agent, n_games=int(args.cert_games), seed=s)
+        for s in seeds
+    ]
+    partner_mean = float(np.mean([p["partner_trump_lead_rate"] for p in probes]))
+    t0_mean = float(np.mean([p["t0_trump_lead_rate"] for p in probes]))
+    called_mean = float(np.mean([p["called_suit_lead_rate"] for p in probes]))
+
+    anchor_path = args.cert_anchor_resolved
+    anchor_agent = load_agent(anchor_path)
+    saved_mem = training_agent.snapshot_player_memories()
+    h2h = paired_edge(
+        training_agent,
+        anchor_agent,
+        anchor_agent,
+        n_deals=int(args.cert_h2h_deals),
+        seed=LEAGUE_ANCHOR_EVAL_SEED,
+        log_every=0,
+    )
+    training_agent.restore_player_memories(saved_mem)
+
+    failures = []
+    if partner_mean < float(args.cert_partner_floor):
+        failures.append(
+            f"partner trump-lead mean {partner_mean:.1f}% "
+            f"< cert floor {float(args.cert_partner_floor):.1f}%"
+        )
+    if t0_mean > float(args.cert_t0_ceiling):
+        failures.append(
+            f"t0 trump-lead mean {t0_mean:.1f}% "
+            f"> cert ceiling {float(args.cert_t0_ceiling):.1f}%"
+        )
+    if h2h["edge"] + 2.0 * h2h["se"] < 0.0:
+        failures.append(
+            f"h2h vs {os.path.basename(anchor_path)} significantly negative "
+            f"({h2h['edge']:+.3f} ± {h2h['se']:.3f})"
+        )
+    result = {
+        "generation": generation,
+        "passed": not failures,
+        "failures": failures,
+        "adherence": {
+            "seeds": seeds,
+            "games_per_seed": int(args.cert_games),
+            "partner_trump_by_seed": [p["partner_trump_lead_rate"] for p in probes],
+            "t0_trump_by_seed": [p["t0_trump_lead_rate"] for p in probes],
+            "called_suit_by_seed": [p["called_suit_lead_rate"] for p in probes],
+            "partner_trump_mean": partner_mean,
+            "t0_trump_mean": t0_mean,
+            "called_suit_mean": called_mean,
+        },
+        "h2h": {
+            "anchor": anchor_path,
+            "edge": h2h["edge"],
+            "se": h2h["se"],
+            "n_deals": h2h["n_deals"],
+        },
+    }
+    cert_path = os.path.join(checkpoint_dir, f"boundary_cert_gen{generation}.json")
+    with open(cert_path, "w") as f:
+        json.dump(result, f, indent=2)
+    print(
+        f"📜 Boundary cert gen {generation}: partner {partner_mean:.1f}% "
+        f"t0 {t0_mean:.1f}% called-suit {called_mean:.1f}% "
+        f"(means over {len(seeds)} seeds x {int(args.cert_games)} games) | "
+        f"h2h vs anchor {h2h['edge']:+.3f} ± {h2h['se']:.3f} -> "
+        f"{'PASS' if result['passed'] else 'FAIL'}",
+        flush=True,
+    )
+    return result
+
+
 def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
     """Subprocess the exploiter module vs the frozen main; returns the gate result."""
     exp_run = f"{args.run_name}_exploiter_gen{generation}"
@@ -1340,8 +1428,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--teacher-ckpt",
         default=None,
         help="checkpoint for the frozen search-teacher expert (defaults to "
-        "--resume; set explicitly when continuing a teacher phase mid-stream "
-        "so the expert stays pinned to the certified generation-start policy)",
+        "--resume; set explicitly when continuing mid-generation so the "
+        "expert stays pinned to the certified generation-start policy)",
     )
     ap.add_argument("--league-dir", required=True)
     ap.add_argument(
@@ -1381,16 +1469,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--greedy-eval-interval", type=int, default=50_000)
     ap.add_argument("--greedy-eval-games", type=int, default=200)
     ap.add_argument("--schedule-horizon", type=int, default=20_000_000)
-    # Adaptive entropy (Phase 2, 2026-07-28): "target" replaces the clock
-    # schedule's entropy coefficients with the SAC-style target-entropy
-    # controller (entropy_controller.py; the LR schedule keeps its clock).
-    # Targets initialize bumplessly from the first update's measurement
-    # unless given explicitly. State persists in
-    # <checkpoint-dir>/entropy_controller.json. Normally set by the
-    # orchestrator (run_extended_league --adaptive-entropy, from gen 2):
-    # target mode WITHOUT the orchestrator's outer loop pins targets at
-    # their initial operating point forever and leaves the stop rule
-    # unamended — a hold-only experiment, not the adaptive program.
     ap.add_argument(
         "--entropy-mode",
         choices=("schedule", "target"),
@@ -1488,112 +1566,60 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "oracle burn-in window",
     )
     ap.add_argument(
-        "--search-teacher",
+        "--teacher",
         action="store_true",
-        help="resolved-pair ISMCTS teacher on main-agent play decisions "
-        "(Search_Teacher_Design §12.7): --search-replicates committee "
-        "searches at the E9-certified budget (1024 iters, d=1, oracle "
-        "leaves), emit pairwise ordering constraints only where the "
-        "committee's paired Q-differences are sign-consistent and clear "
-        "the noise-calibrated floor; PG is masked on labeled transitions "
-        "(ppo.py pg_mask). Works with --num-workers > 1: weight payloads "
+        help="always-on CE search teacher on main-agent play decisions "
+        "(CE_Teacher_Design): a --teacher-replicates lockstep ISMCTS "
+        "committee at the calibrated budget (--teacher-iters, d=1, oracle "
+        "leaves) labels a --teacher-prob subsample of eligible PLAY nodes "
+        "with shrink-and-tilt CE targets (pi_gumbel on James-Stein-shrunk "
+        "committee Q), distilled for --teacher-epochs supervised passes "
+        "after each PPO update. No phases, no PG-mask; abstention lives "
+        "in the target. Works with --num-workers > 1: weight payloads "
         "carry the oracle head + gamma so worker-side searches stay "
         "calibrated",
     )
     ap.add_argument(
-        "--search-replicates",
-        type=int,
-        default=5,
-        help="committee size R for the resolved-pair gate: pair statistics "
-        "use paired per-replicate Q-differences (sign-consistent across "
-        "ALL replicates + mean >= max(gate_pair_eps, gate_pair_z*s/sqrt(R)))"
-        ". §12.8: replicates beat iterations per unit compute at these "
-        "nodes; SE ~0.006 at R=6/1024-iters",
-    )
-    ap.add_argument(
-        "--search-label-weight",
+        "--teacher-prob",
         type=float,
-        default=50.0,
-        help="evidence-proportional weight of the clipped margin loss: one "
-        "resolved pair is worth this many PG samples (DQfD "
-        "per-sample form; distill = weight * sum-over-labeled / batch "
-        "rows). Replaces the mean-over-labeled coeff whose per-label "
-        "weight baked in batch/label counts and was near-inert under Adam "
-        "(attempts 5b/6 scrambled at coeff 1.0 AND 0.05; "
-        "Search_Teacher_Design §12)",
+        default=0.1,
+        help="subsample probability for eligible play nodes — the labeling "
+        "budget knob (unbiased; class-blind per CE_Teacher_Design §2). "
+        "Expected wall cost per episode ~ prob x eligible-nodes/game x "
+        "one lockstep committee search",
     )
     ap.add_argument(
-        "--search-clip-delta",
-        type=float,
-        default=0.2,
-        help="pair-gap trust region (nats) of the clipped margin loss — the "
-        "PPO-clip analog and the binding safety mechanism under Adam: an "
-        "emitted pair earns gradient only while log pi(w) - log pi(l) "
-        "has improved less than delta over its label-time anchors. Default "
-        "~ln(1+eps_ppo). Raise only against a healthy greedy-ordering "
-        "probe (Search_Teacher_Design §12)",
-    )
-    ap.add_argument(
-        "--search-teacher-margin",
-        type=float,
-        default=0.3,
-        help="margin m (nats) of the DQfD-style ranking loss on emitted "
-        "pairs (Hester et al. 2018): pressure stops once the resolved "
-        "winner out-ranks the loser by m. Also the gate's emission filter "
-        "(pairs the live policy already orders by m are not emitted — "
-        "self-retirement, Search_Teacher_Design §12.7)",
-    )
-    ap.add_argument(
-        "--search-teacher-prob",
-        type=float,
-        default=0.02,
-        help="subsample probability for eligible (gate_cells) play nodes — "
-        "the labeling budget knob; expected wall cost per episode is "
-        "roughly prob x eligible-nodes/game x --search-replicates searches",
-    )
-    ap.add_argument(
-        "--gate-pair-eps",
-        type=float,
-        default=0.03,
-        help="materiality floor (Q-units, 1 Q = 12 score points) for pair "
-        "emission: |mean paired Q-diff| must clear max(eps, 2s/sqrt(R)). "
-        "Default 0.03 per the Search_Teacher_Design §12.18 calibration "
-        "(kills reward-wash pairs — fat-vs-nopoint: 0 survivors — while "
-        "keeping convention-direction pairs). SearchConfig's 0.01 is the "
-        "E9 harm epsilon: a wrong-label cost bound, NOT a materiality bar",
-    )
-    ap.add_argument(
-        "--teacher-phase-cap",
-        type=int,
-        default=100000,
-        help="two-phase generations: cap (episodes) on the teacher-ON phase "
-        "at the start of each generation; the remainder to the boundary "
-        "runs teacher-OFF (consolidation — terminal reward audits the "
-        "taught behavior). 0 disables two-phase (teacher on all "
-        "generation, the pre-§12.15 behavior)",
-    )
-    ap.add_argument(
-        "--teacher-exit-emission-pct",
-        type=float,
-        default=2.0,
-        help="adaptive teacher-phase exit: emission rate (%% of searched "
-        "rows emitting) at or below which a telemetry window counts "
-        "toward early exit",
-    )
-    ap.add_argument(
-        "--teacher-exit-learned",
-        type=float,
-        default=0.95,
-        help="adaptive teacher-phase exit: self-retirement readout "
-        "(satisfied/resolved) at or above which a window counts toward "
-        "early exit",
-    )
-    ap.add_argument(
-        "--teacher-exit-windows",
+        "--teacher-replicates",
         type=int,
         default=3,
-        help="consecutive qualifying telemetry windows required to exit "
-        "the teacher phase early",
+        help="committee size R: independent replicate searches run in "
+        "lockstep (search_committee); replicate spread feeds the "
+        "shrinkage noise model that flattens within-noise targets",
+    )
+    ap.add_argument(
+        "--teacher-iters",
+        type=int,
+        default=1024,
+        help="ISMCTS iterations per replicate (the E9-certified cheap "
+        "budget; §12.8 refuted the heavy arm — replicates beat "
+        "iterations)",
+    )
+    ap.add_argument(
+        "--teacher-coeff",
+        type=float,
+        default=1.0,
+        help="coefficient on the CE distillation loss (mean over labeled "
+        "rows); safe near 1.0 because a conformed or within-noise target "
+        "carries ~zero gradient by construction",
+    )
+    ap.add_argument(
+        "--teacher-epochs",
+        type=int,
+        default=4,
+        help="supervised CE passes over the update window's labeled rows "
+        "after the PPO epochs (asymmetric epochs: the PG loss keeps its "
+        "own tuning; a fixed supervised target needs no importance "
+        "ratios). Labels are discarded with their update window",
     )
     ap.add_argument(
         "--adherence-guard-interval",
@@ -1612,19 +1638,71 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--guard-partner-floor",
         type=float,
+        default=90.0,
+        help="adherence guard HARD stop: halt the run (exit 3, checkpoint "
+        "saved) if partner trump-lead %% falls below this floor "
+        "(CE_Teacher_Design §3 two-tier protocol; recalibrate for other "
+        "lineages — the 8M perceiver-shared-v2 seed reads 96.5 at n=1000)",
+    )
+    ap.add_argument(
+        "--guard-partner-notify",
+        type=float,
         default=93.5,
-        help="adherence guard hard stop: halt the run (exit 3, checkpoint "
-        "saved) if partner trump-lead %% falls below this floor. Default "
-        "93.5 = the 8M perceiver-shared-v2 seed's n=1000 level (96.5) "
-        "minus 3 points (§12.17) — recalibrate for other lineages",
+        help="adherence guard NOTIFY tier: print a warning (no stop) when "
+        "partner trump-lead %% dips below this line — §12.20 showed "
+        "teaching-time dips can be oscillation with a restoring force",
     )
     ap.add_argument(
         "--guard-t0-ceiling",
         type=float,
         default=5.0,
-        help="adherence guard hard stop: halt the run if defender t0 "
+        help="adherence guard HARD stop: halt the run if defender t0 "
         "trump-lead %% rises above this ceiling (the v7 scramble "
         "signature; seed level is ~0.1%%)",
+    )
+    ap.add_argument(
+        "--cert-seeds",
+        type=int,
+        default=3,
+        help="boundary cert: number of distinct fixed deal seeds in the "
+        "adherence battery (multi-seed: §12.22 — single reads are "
+        "luck-of-phase)",
+    )
+    ap.add_argument(
+        "--cert-games",
+        type=int,
+        default=1000,
+        help="boundary cert: games per adherence-battery seed (n=1000: "
+        "smaller probes cannot resolve <5-point convention deltas, §12.17)",
+    )
+    ap.add_argument(
+        "--cert-partner-floor",
+        type=float,
+        default=93.5,
+        help="boundary cert ABSOLUTE bar: across-seed mean partner "
+        "trump-lead %% required for the candidate to become the next "
+        "generation's frozen expert",
+    )
+    ap.add_argument(
+        "--cert-t0-ceiling",
+        type=float,
+        default=5.0,
+        help="boundary cert ABSOLUTE bar: across-seed mean t0 trump-lead %% ceiling",
+    )
+    ap.add_argument(
+        "--cert-h2h-deals",
+        type=int,
+        default=1000,
+        help="boundary cert: paired CRN deals vs the fixed cert anchor; "
+        "the candidate fails if its edge is significantly negative",
+    )
+    ap.add_argument(
+        "--cert-anchor-ckpt",
+        default=None,
+        help="FIXED h2h anchor for every boundary cert (default: the run's "
+        "original expert checkpoint, i.e. --teacher-ckpt or --resume at "
+        "launch). Absolute anchoring prevents the expert-refresh chain "
+        "from ratcheting drift (CE_Teacher_Design §3)",
     )
     ap.add_argument(
         "--seat-rotation",
@@ -1728,23 +1806,15 @@ def main():
     if getattr(args, "gamma", None) is not None:
         training_agent.gamma = float(args.gamma)
         print(f"γ  discount override: {training_agent.gamma}")
-    if getattr(args, "search_teacher", False):
-        training_agent.search_label_weight = float(
-            getattr(args, "search_label_weight", 50.0)
-        )
-        training_agent.search_clip_delta = float(
-            getattr(args, "search_clip_delta", 0.2)
-        )
-        training_agent.search_margin = float(
-            getattr(args, "search_teacher_margin", 0.3)
-        )
+    if getattr(args, "teacher", False):
+        training_agent.teacher_coeff = float(getattr(args, "teacher_coeff", 1.0))
         print(
-            f"🔍 search teacher loss: resolved-pair clipped margin "
-            f"(m={training_agent.search_margin}, "
-            f"λ={training_agent.search_label_weight}, "
-            f"δ={training_agent.search_clip_delta}, "
-            f"R={int(getattr(args, 'search_replicates', 5))}, "
-            f"ε={getattr(args, 'gate_pair_eps', None) or 'config-default'})"
+            f"🎓 CE search teacher ON (always-on): "
+            f"prob={getattr(args, 'teacher_prob', 0.1)}, "
+            f"R={int(getattr(args, 'teacher_replicates', 3))}, "
+            f"iters={int(getattr(args, 'teacher_iters', 1024))}, "
+            f"coeff={training_agent.teacher_coeff}, "
+            f"epochs={int(getattr(args, 'teacher_epochs', 4))}"
         )
     if getattr(args, "oracle_init", None):
         sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
@@ -1810,109 +1880,71 @@ def main():
     # the same cadence/numbering and only trains the remainder to the next
     # boundary (rather than resetting the counter to the resume point).
     first_gen = episode // main_ep + 1
-    # Two-phase generations (Search_Teacher_Design §12.7/§12.15): with
-    # --search-teacher and --teacher-phase-cap, each generation runs a
-    # teacher-ON phase (adaptive exit on emission floor / learned saturation,
-    # hard cap) followed by a teacher-OFF consolidation to the boundary, where
-    # terminal reward audits everything the teacher installed. The frozen
-    # expert REFREEZES to each generation's start checkpoint (certification
-    # spot-check at the boundary remains a manual step — flagged loudly).
+    # Always-on teacher generations (CE_Teacher_Design §3): NO phases — a
+    # teacher-off window is a measured reversion window (§13.4). The frozen
+    # expert is pinned per generation to the generation-start checkpoint and
+    # refreshed at each boundary only through the absolute-anchor cert
+    # (run_boundary_cert): fixed bars, never relative-to-previous, so an
+    # expert refresh chain cannot ratchet drift into the certified regime.
     gen_start_ckpt = getattr(args, "teacher_ckpt", None) or args.resume
+    # The cert h2h anchor is resolved ONCE at launch and never follows the
+    # refresh chain (absolute anchoring, §3).
+    args.cert_anchor_resolved = (
+        getattr(args, "cert_anchor_ckpt", None) or gen_start_ckpt
+    )
     for generation in range(first_gen, first_gen + args.generations):
         boundary = generation * main_ep
-        gen_start = boundary - main_ep
-        phase_cap = int(getattr(args, "teacher_phase_cap", 0) or 0)
-        two_phase = bool(getattr(args, "search_teacher", False)) and phase_cap > 0
         print(
             f"\n{'=' * 70}\n🏁 GENERATION {generation}: main phase "
             f"({episode:,} -> {boundary:,})"
-            + (f"  [two-phase: teacher cap {phase_cap:,}]" if two_phase else "")
+            + (
+                f"  [teacher expert: {os.path.basename(gen_start_ckpt)}]"
+                if getattr(args, "teacher", False)
+                else ""
+            )
             + f"\n{'=' * 70}"
         )
-        phase_marker = os.path.join(
-            checkpoint_dir, f"teacher_phase_done_gen{generation}.json"
+        args.teacher_ckpt = gen_start_ckpt
+        episode = run_main_phase(
+            training_agent,
+            league,
+            training_ratings,
+            args,
+            episode,
+            boundary - episode,
+            checkpoint_dir,
+            anchor_eval=anchor_eval,
         )
-        if two_phase:
-            phase_a_budget = max(0, gen_start + phase_cap - episode)
-            if os.path.exists(phase_marker):
-                phase_a_budget = 0
-                print(f"🎓 Teacher phase already completed for gen {generation}")
-            if phase_a_budget > 0:
-                args.teacher_ckpt = gen_start_ckpt
-                print(
-                    f"🧊 Teacher expert frozen to {gen_start_ckpt} "
-                    "(boundary cert spot-check pending before next refreeze)"
-                )
-                phase_exit = {
-                    "emission_pct": float(
-                        getattr(args, "teacher_exit_emission_pct", 2.0)
-                    ),
-                    "learned": float(getattr(args, "teacher_exit_learned", 0.95)),
-                    "windows": int(getattr(args, "teacher_exit_windows", 3)),
-                }
-                episode = run_main_phase(
-                    training_agent,
-                    league,
-                    training_ratings,
-                    args,
-                    episode,
-                    min(phase_a_budget, boundary - episode),
-                    checkpoint_dir,
-                    anchor_eval=anchor_eval,
-                    phase_exit=phase_exit,
-                )
-                with open(phase_marker, "w") as f:
-                    json.dump(
-                        {
-                            "end_episode": episode,
-                            "exited_early": bool(phase_exit.get("exited_early")),
-                            "teacher_ckpt": gen_start_ckpt,
-                        },
-                        f,
-                    )
-                mid_ckpt = os.path.join(
-                    checkpoint_dir,
-                    f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
-                )
-                if not os.path.exists(mid_ckpt):
-                    training_agent.save(mid_ckpt)
-            if boundary - episode > 0:
-                print(
-                    f"🧘 CONSOLIDATION (teacher off): {episode:,} -> {boundary:,} "
-                    "— terminal reward audits the taught behavior"
-                )
-                args_off = copy.copy(args)
-                args_off.search_teacher = False
-                episode = run_main_phase(
-                    training_agent,
-                    league,
-                    training_ratings,
-                    args_off,
-                    episode,
-                    boundary - episode,
-                    checkpoint_dir,
-                    anchor_eval=anchor_eval,
-                )
-        else:
-            episode = run_main_phase(
-                training_agent,
-                league,
-                training_ratings,
-                args,
-                episode,
-                boundary - episode,
-                checkpoint_dir,
-                anchor_eval=anchor_eval,
-            )
         main_ckpt = os.path.join(
             checkpoint_dir,
             f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
         )
         if not os.path.exists(main_ckpt):
             training_agent.save(main_ckpt)
-        # Next generation's frozen expert = this boundary checkpoint
-        # (§12.7 refreeze cadence; certification spot-check is manual).
-        gen_start_ckpt = main_ckpt
+        # Expert refresh (CE_Teacher_Design §3): the boundary checkpoint
+        # becomes the next generation's frozen expert only if it passes the
+        # absolute-anchor cert; a failed cert halts for operator review.
+        if getattr(args, "teacher", False):
+            cert = run_boundary_cert(training_agent, args, generation, checkpoint_dir)
+            if cert["passed"]:
+                gen_start_ckpt = main_ckpt
+                print(
+                    f"🧊 Boundary cert PASSED — gen {generation + 1} expert "
+                    f"refreezes to {os.path.basename(main_ckpt)}"
+                )
+            else:
+                league.save()
+                print(
+                    f"🚨 BOUNDARY CERT FAILED at gen {generation}: "
+                    + "; ".join(cert["failures"])
+                    + f" — expert stays {os.path.basename(gen_start_ckpt)}; "
+                    "run halted for operator review "
+                    f"(checkpoint: {main_ckpt})",
+                    flush=True,
+                )
+                raise SystemExit(4)
+        else:
+            gen_start_ckpt = main_ckpt
 
         gate = run_exploiter_generation(args, generation, main_ckpt)
         write_header = not os.path.exists(exploitability_csv)

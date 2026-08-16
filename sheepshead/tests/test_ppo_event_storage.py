@@ -49,7 +49,7 @@ def stored_record_and_mask(agent, index=0):
 def test_action_event_full_label_mapping(agent):
     state = {"obs": "decision"}
     seen_mask_label = [1] + [0] * (len(TRUMP) - 1)
-    search_pairs = [[3, 1, -0.4, -1.2]]
+    search_target = [0.75, 0.25]  # over sorted valid {1, 3}
     agent.store_episode_events(
         [
             action_event(
@@ -60,7 +60,7 @@ def test_action_event_full_label_mapping(agent):
                 points_label=[1, 2, 3, 4, 5],
                 seen_trump_mask_label=seen_mask_label,
                 unseen_trump_higher_than_hand_label=1,
-                search_pairs=search_pairs,
+                search_target=search_target,
                 has_search_target=True,
             )
         ]
@@ -83,14 +83,14 @@ def test_action_event_full_label_mapping(agent):
         "seen_trump_mask": [1.0] + [0.0] * (len(TRUMP) - 1),
         "unseen_trump_higher_than_hand": 1.0,
         "has_search_target": True,
-        # 1-based runtime pair -> 0-based stored indices; sentinel fill.
-        "search_pairs": [[2.0, 0.0, -0.4, -1.2]]
-        + [[-1.0, -1.0, 1.0, 1.0]] * (agent.SEARCH_MAX_PAIRS - 1),
+        # Ragged target over sorted(valid) densified to action_size
+        # (action ids 1 and 3 -> 0-based rows 0 and 2).
+        "search_target": [0.75, 0.0, 0.25] + [0.0] * (agent.action_size - 3),
     }
     assert record["state"] is state
     assert all(isinstance(x, float) for x in record["points_rel"])
     assert all(isinstance(x, float) for x in record["seen_trump_mask"])
-    assert all(isinstance(x, float) for row in record["search_pairs"] for x in row)
+    assert all(isinstance(x, float) for x in record["search_target"])
 
     expected_mask = torch.zeros(agent.action_size, dtype=torch.bool)
     expected_mask[0] = True
@@ -110,7 +110,7 @@ def test_action_event_full_label_mapping(agent):
             "points_label": None,
             "seen_trump_mask_label": None,
             "unseen_trump_higher_than_hand_label": None,
-            "search_pairs": None,
+            "search_target": None,
             "has_search_target": None,
         },
     ],
@@ -125,7 +125,7 @@ def test_optional_labels_default_to_zeros(agent, labels):
     assert record["points_rel"] == [0.0] * 5
     assert record["seen_trump_mask"] == [0.0] * len(TRUMP)
     assert record["unseen_trump_higher_than_hand"] == 0.0
-    assert record["search_pairs"] == [[-1.0, -1.0, 1.0, 1.0]] * agent.SEARCH_MAX_PAIRS
+    assert record["search_target"] == [0.0] * agent.action_size
     assert record["has_search_target"] is False
 
 
@@ -168,19 +168,19 @@ def test_no_oracle_key_when_not_collected(agent):
     assert all("oracle_state" not in e for e in agent.events)
 
 
-def test_search_pairs_dropped_without_confidence_flag(agent):
+def test_search_target_dropped_without_confidence_flag(agent):
     agent.store_episode_events(
-        [action_event(search_pairs=[[3, 1, -0.4, -1.2]], has_search_target=False)]
+        [action_event(search_target=[0.75, 0.25], has_search_target=False)]
     )
     record, _mask = stored_record_and_mask(agent)
-    assert record["search_pairs"] == [[-1.0, -1.0, 1.0, 1.0]] * agent.SEARCH_MAX_PAIRS
+    assert record["search_target"] == [0.0] * agent.action_size
     assert record["has_search_target"] is False
 
 
-def test_confidence_flag_dropped_without_search_pairs(agent):
+def test_confidence_flag_dropped_without_search_target(agent):
     agent.store_episode_events([action_event(has_search_target=True)])
     record, _mask = stored_record_and_mask(agent)
-    assert record["search_pairs"] == [[-1.0, -1.0, 1.0, 1.0]] * agent.SEARCH_MAX_PAIRS
+    assert record["search_target"] == [0.0] * agent.action_size
     assert record["has_search_target"] is False
 
 

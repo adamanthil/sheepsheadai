@@ -1,8 +1,9 @@
-"""Resolved-pair search teacher (Search_Teacher_Design §12.7, 2026-08-16).
+"""CE search teacher (CE_Teacher_Design §1-§2, 2026-08).
 
-Gate mechanics are unit-tested against a scripted committee (deterministic
-per-replicate root-Q tables); one smoke test runs the real ISMCTS teacher
-end-to-end through play_population_game in gated mode.
+Target construction is unit-tested against synthetic committee replicate
+tables (deterministic root_q / root_n / root_prior); the emission wrapper is
+tested with a scripted committee; one smoke test runs the real ISMCTS
+teacher end-to-end through play_population_game.
 """
 
 import random
@@ -12,16 +13,19 @@ import pytest
 
 from sheepshead import ACTION_LOOKUP, ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _minmax_unit
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.config import SearchConfig
 from sheepshead.training.pfsp_runtime import (
-    _attach_gated_search_target,
-    play_cell,
+    _attach_ce_search_target,
+    build_ce_search_target,
     play_population_game,
 )
 
 ARCH = "perceiver-shared-v2"
+
+C_VISIT = 50.0
+C_SCALE = 0.1
 
 
 def _to_first_play_node(game_seed=11):
@@ -45,220 +49,308 @@ def _to_first_play_node(game_seed=11):
     raise AssertionError("no standard play node reached")
 
 
-class _ScriptedTeacher:
-    """Committee stub: returns the queued result per search() call."""
-
-    def __init__(self, results):
-        self.results = list(results)
-        self.calls = 0
-
-    def search(self, game, observer, forced_public, rng, d_rollout=None):
-        self.calls += 1
-        return self.results.pop(0)
-
-
-def _qres(valid, qmap, ok=True):
-    """Canned FROZEN-expert search result: a completed-Q table over the
-    node's legal actions (the §12.7 gate consumes root_q only)."""
+def _replicate(valid, qmap, n=256.0, prior=None):
+    """Synthetic committee replicate in SearchResult shape (the target
+    builder consumes ok / root_q / root_n / root_prior only)."""
+    uniform = 1.0 / len(valid)
     return {
-        "ok": ok,
+        "ok": True,
         "root_q": {a: float(qmap[a]) for a in valid},
-        "valid": list(valid),
+        "root_n": {a: float(n) for a in valid},
+        "root_prior": {a: float((prior or {}).get(a, uniform)) for a in valid},
     }
 
 
-def _live_probs(valid, argmax_action):
-    """LIVE-policy label-time distribution (the act() stash): 0.6 on the
-    student's argmax, the rest spread over the other legal actions."""
-    probs = np.zeros(len(ACTIONS))
-    probs[argmax_action - 1] = 0.6
-    for a in valid:
-        if a != argmax_action:
-            probs[a - 1] = 0.4 / (len(valid) - 1)
-    return probs
+def _build(replicates, valid, s2_global=1.1e-4, nu=4.0):
+    return build_ce_search_target(
+        replicates,
+        valid,
+        shrink_nu=nu,
+        shrink_s2_global=s2_global,
+        gumbel_c_visit=C_VISIT,
+        gumbel_c_scale=C_SCALE,
+    )
 
 
-def _run_gate(teacher, valid, game, player, cfg=None, live=None):
-    transition = {"search_pairs": None, "has_search_target": False}
+class _ScriptedCommittee:
+    """ISMCTSTeacher stand-in: search_committee returns the queued replicate
+    list; carries the engine config the emission reads readout constants
+    from."""
+
+    def __init__(self, replicates):
+        self.replicates = list(replicates)
+        self.calls = 0
+        self.config = ISMCTSConfig()
+
+    def search_committee(self, game, observer, forced_public, rngs, d_rollout=None):
+        self.calls += 1
+        assert len(rngs) == len(self.replicates)
+        return list(self.replicates)
+
+
+def _run_emission(teacher, valid, game, player, cfg=None, live=None):
+    transition = {"search_target": None, "has_search_target": False}
     diag = {
         "play": {
             "count": 0,
-            "accepted": 0,
-            "resolved_sum": 0.0,
-            "satisfied_sum": 0.0,
-            "pairs_sum": 0.0,
-            "gap_sum": 0.0,
+            "labeled": 0,
+            "material": 0,
+            "w_sum": 0.0,
+            "spread_sum": 0.0,
+            "kl_sum": 0.0,
+            "kl_n": 0,
         }
     }
-    cfg = cfg or SearchConfig(
-        gate_node_prob=1.0,
-        gate_replicates=3,
-        gate_cells=frozenset({play_cell(game, player)}),
-    )
-    live = _live_probs(valid, valid[0]) if live is None else live
-    _attach_gated_search_target(
+    cfg = cfg or SearchConfig(teacher_prob=1.0, teacher_replicates=3)
+    _attach_ce_search_target(
         game, player, valid, transition, teacher, random.Random(3), cfg, [], diag, live
     )
     return transition, diag
 
 
-def test_emits_resolved_pair_with_live_anchors():
-    game, player, valid = _to_first_play_node()
-    pol, alt = valid[0], valid[1]
-    # alt clearly better than pol; every other action exactly tied with pol
-    # (zero paired difference = sign-inconsistent = never resolved).
-    qmap = {a: 0.40 for a in valid}
-    qmap[alt] = 0.50
-    teacher = _ScriptedTeacher([_qres(valid, qmap)] * 3)
-    tr, diag = _run_gate(teacher, valid, game, player)
-    assert teacher.calls == 3  # pair statistics need the full committee
-    assert tr["has_search_target"] is True
-    pairs = tr["search_pairs"]
-    # alt beats pol AND every tied-with-pol action: n-1 resolved pairs, all
-    # unsatisfied at label time (live argmax pol holds 0.6).
-    assert len(pairs) == min(len(valid) - 1, SearchConfig().gate_max_pairs)
-    n_other = len(valid) - 1
-    for w, loser, anchor_w, _anchor_l in pairs:
-        assert int(w) == alt and int(loser) != alt
-        assert anchor_w == pytest.approx(np.log(0.4 / n_other), abs=1e-9)
-    losers = {int(p[1]) for p in pairs}
-    assert pol in losers
-    pol_pair = next(p for p in pairs if int(p[1]) == pol)
-    assert pol_pair[3] == pytest.approx(np.log(0.6), abs=1e-9)
-    assert diag["play"]["count"] == 1 and diag["play"]["accepted"] == 1
-    assert diag["play"]["resolved_sum"] == len(pairs)
-    assert diag["play"]["satisfied_sum"] == 0
+# --------------------------------------------------------------------------
+# Target construction (build_ce_search_target)
+# --------------------------------------------------------------------------
+class TestTargetConstruction:
+    def test_flat_committee_shrinks_to_prior(self):
+        # Identical Q everywhere: zero signal variance -> w = 0 -> the
+        # target IS the pooled expert prior (abstention as the target's
+        # fixed point; CE gradient ~ 0 when the student matches the prior).
+        valid = [1, 2, 3, 4]
+        prior = {1: 0.5, 2: 0.25, 3: 0.15, 4: 0.10}
+        reps = [_replicate(valid, {a: 0.4 for a in valid}, prior=prior)] * 3
+        target, info = _build(reps, valid)
+        assert info["w"] == 0.0
+        np.testing.assert_allclose(target, [prior[a] for a in sorted(valid)], rtol=1e-6)
+
+    def test_within_noise_spread_shrinks_to_flat(self):
+        # Q spread comparable to the replicate noise floor: James-Stein
+        # shrinks the node to (near) zero tilt even though the raw tables
+        # are not exactly flat.
+        valid = [1, 2, 3]
+        base = {1: 0.400, 2: 0.402, 3: 0.401}
+        reps = [
+            _replicate(valid, {a: q + d for a, q in base.items()})
+            for d in (-0.01, 0.0, 0.01)
+        ]
+        target, info = _build(reps, valid)
+        assert info["w"] == 0.0
+        np.testing.assert_allclose(target, [1 / 3] * 3, rtol=1e-6)
+
+    def test_separated_committee_preserves_direction(self):
+        # A clear, replicate-stable gap tilts the target toward the better
+        # action and away from the worst, past the (uniform) prior.
+        valid = [1, 2, 3]
+        qmap = {1: 0.20, 2: 0.60, 3: 0.40}
+        reps = [_replicate(valid, qmap)] * 3
+        target, info = _build(reps, valid, s2_global=1e-6)
+        assert info["w"] > 0.9
+        assert target[1] > target[2] > target[0]
+        assert target[1] > 1 / 3 > target[0]
+
+    def test_full_confidence_matches_pi_gumbel_readout(self):
+        # Zero replicate noise + zero global noise -> w = 1 exactly, and the
+        # target must reproduce the engine's pi_gumbel formula on the pooled
+        # stats: softmax(log p_raw + (c_visit + max N) * c_scale * qhat).
+        valid = [2, 5, 9]
+        qmap = {2: 0.1, 5: 0.7, 9: 0.4}
+        prior = {2: 0.6, 5: 0.1, 9: 0.3}
+        n = 128.0
+        reps = [_replicate(valid, qmap, n=n, prior=prior)] * 3
+        target, info = _build(reps, valid, s2_global=0.0)
+        assert info["w"] == pytest.approx(1.0)
+        q = np.array([qmap[a] for a in sorted(valid)])
+        p = np.array([prior[a] for a in sorted(valid)])
+        logits = np.log(p) + (C_VISIT + n) * C_SCALE * _minmax_unit(q)
+        expected = np.exp(logits - logits.max())
+        expected /= expected.sum()
+        np.testing.assert_allclose(target, expected, rtol=1e-5)
+
+    def test_shrink_interpolates_between_prior_and_readout(self):
+        # 0 < w < 1 must land strictly between the flat (prior) target and
+        # the full readout on every action — the continuous-evidence
+        # property the affine-invariance note in the builder protects.
+        valid = [1, 2, 3]
+        qmap = {1: 0.30, 2: 0.42, 3: 0.36}
+        reps = [
+            _replicate(valid, {a: q + d for a, q in qmap.items()})
+            for d in (-0.02, 0.0, 0.02)
+        ]
+        target, info = _build(reps, valid)
+        assert 0.0 < info["w"] < 1.0
+        full, _ = _build([_replicate(valid, qmap)] * 3, valid, s2_global=0.0)
+        assert 1 / 3 < target[1] < full[1]
+        assert full[0] < target[0] < 1 / 3
+
+    def test_variance_blend_math(self):
+        # The hierarchical blend, checked end-to-end through w: with the
+        # node variance forced to zero (identical replicates), the noise
+        # term is nu*s2_global/(nu + R - 1)/R and w = 1 - noise/Var(q).
+        valid = [1, 2]
+        qmap = {1: 0.40, 2: 0.44}
+        reps = [_replicate(valid, qmap)] * 3
+        nu, s2g, r = 4.0, 2e-4, 3
+        target, info = _build(reps, valid, s2_global=s2g, nu=nu)
+        noise = (nu * s2g / (nu + r - 1)) / r
+        var_q = np.var([0.40, 0.44])
+        assert info["w"] == pytest.approx(1.0 - noise / var_q, rel=1e-9)
+
+    def test_unusable_committee_returns_none(self):
+        valid = [1, 2]
+        bad = {"ok": False, "root_q": None, "root_n": {}, "root_prior": None}
+        assert _build([bad] * 3, valid) is None
+        # A single usable replicate cannot estimate replicate variance.
+        one = _replicate(valid, {1: 0.4, 2: 0.6})
+        assert _build([one, bad, bad], valid) is None
+
+    def test_target_shape_and_normalization(self):
+        valid = [7, 3, 12]  # deliberately unsorted input
+        reps = [_replicate(sorted(valid), {3: 0.2, 7: 0.5, 12: 0.35})] * 3
+        target, _ = _build(reps, valid)
+        assert target.dtype == np.float32
+        assert target.shape == (len(valid),)  # aligned to sorted(valid)
+        assert target.sum() == pytest.approx(1.0, abs=1e-6)
 
 
-def test_abstains_on_replicate_inconsistent_sign():
-    game, player, valid = _to_first_play_node()
-    alt = valid[1]
-    # The alt-vs-policy difference flips sign across replicates (seed noise at
-    # a genuine near-tie): never resolved, no emission.
-    hi = {a: 0.40 for a in valid}
-    hi[alt] = 0.45
-    lo = {a: 0.40 for a in valid}
-    lo[alt] = 0.35
-    teacher = _ScriptedTeacher([_qres(valid, hi), _qres(valid, lo), _qres(valid, hi)])
-    tr, diag = _run_gate(teacher, valid, game, player)
-    assert tr["has_search_target"] is False
-    assert diag["play"]["resolved_sum"] == 0
-    assert diag["play"]["accepted"] == 0
+# --------------------------------------------------------------------------
+# Emission wrapper (_attach_ce_search_target)
+# --------------------------------------------------------------------------
+class TestEmission:
+    def test_labels_eligible_node_and_counts_material(self):
+        game, player, valid = _to_first_play_node()
+        qmap = {a: 0.40 for a in valid}
+        qmap[valid[1]] = 0.55
+        teacher = _ScriptedCommittee([_replicate(valid, qmap)] * 3)
+        tr, diag = _run_emission(teacher, valid, game, player)
+        assert teacher.calls == 1  # ONE lockstep committee call, not R serial
+        assert tr["has_search_target"] is True
+        assert tr["search_target"].shape == (len(valid),)
+        d = diag["play"]
+        assert d["count"] == 1 and d["labeled"] == 1 and d["material"] == 1
+        assert d["w_sum"] > 0.0 and d["spread_sum"] == pytest.approx(0.15)
 
+    def test_flat_node_still_labeled_but_immaterial(self):
+        # Class-blind, no emission gate: a within-noise node still ships a
+        # target (= the expert prior), it just counts as non-material.
+        game, player, valid = _to_first_play_node()
+        teacher = _ScriptedCommittee([_replicate(valid, {a: 0.4 for a in valid})] * 3)
+        tr, diag = _run_emission(teacher, valid, game, player)
+        assert tr["has_search_target"] is True
+        assert diag["play"]["material"] == 0
+        np.testing.assert_allclose(tr["search_target"], 1.0 / len(valid), rtol=1e-6)
 
-def test_eps_floor_blocks_sub_material_gaps():
-    game, player, valid = _to_first_play_node()
-    alt = valid[1]
-    # Sign-consistent but the mean gap (0.005) is below gate_pair_eps: a
-    # statistically-clean but sub-material preference is not taught.
-    qmap = {a: 0.400 for a in valid}
-    qmap[alt] = 0.405
-    teacher = _ScriptedTeacher([_qres(valid, qmap)] * 3)
-    tr, diag = _run_gate(teacher, valid, game, player)
-    assert tr["has_search_target"] is False
-    assert diag["play"]["resolved_sum"] == 0
+    def test_subsample_probability_gates_search(self):
+        game, player, valid = _to_first_play_node()
+        teacher = _ScriptedCommittee([])
+        cfg = SearchConfig(teacher_prob=0.0, teacher_replicates=3)
+        tr, diag = _run_emission(teacher, valid, game, player, cfg)
+        assert teacher.calls == 0
+        assert tr["has_search_target"] is False
+        assert diag["play"]["count"] == 0
 
+    def test_kl_telemetry_uses_live_policy(self):
+        game, player, valid = _to_first_play_node()
+        qmap = {a: 0.40 for a in valid}
+        qmap[valid[1]] = 0.55
+        teacher = _ScriptedCommittee([_replicate(valid, qmap)] * 3)
+        live = np.zeros(len(ACTIONS))
+        for a in valid:
+            live[a - 1] = 1.0 / len(valid)
+        tr, diag = _run_emission(teacher, valid, game, player, live=live)
+        assert diag["play"]["kl_n"] == 1
+        # Target is tilted away from the uniform live policy -> positive KL.
+        assert diag["play"]["kl_sum"] > 0.0
+        # Without live probs the label still ships; only telemetry is skipped.
+        teacher2 = _ScriptedCommittee([_replicate(valid, qmap)] * 3)
+        tr2, diag2 = _run_emission(teacher2, valid, game, player, live=None)
+        assert tr2["has_search_target"] is True
+        assert diag2["play"]["kl_n"] == 0
 
-def test_noise_scaled_threshold_blocks_unstable_gaps():
-    game, player, valid = _to_first_play_node()
-    alt = valid[1]
-    # Sign-consistent, mean 0.02 >= eps, but replicate spread makes
-    # z*s/sqrt(R) ~ 0.038 > 0.02: the committee cannot statistically
-    # resolve the pair, so no constraint is emitted.
-    base = {a: 0.40 for a in valid}
-    reps = []
-    for bump in (0.001, 0.001, 0.058):
-        q = dict(base)
-        q[alt] = 0.40 + bump
-        reps.append(_qres(valid, q))
-    teacher = _ScriptedTeacher(reps)
-    tr, diag = _run_gate(teacher, valid, game, player)
-    assert tr["has_search_target"] is False
-    assert diag["play"]["resolved_sum"] == 0
+    def test_class_blind_serves_jack_of_diamonds_games(self):
+        # The teacher covers BOTH partner modes (operator directive
+        # 2026-08-11); with the cell taxonomy gone, any standard-play node
+        # is eligible.
+        from sheepshead import PARTNER_BY_JD
 
-
-def test_satisfied_pairs_counted_but_not_emitted():
-    game, player, valid = _to_first_play_node()
-    pol, alt = valid[0], valid[1]
-    # The committee resolves pol > alt — but the live policy ALREADY orders
-    # pol over alt by more than the margin (0.6 vs 0.4/(n-1)): counted as
-    # satisfied (self-retirement telemetry), not emitted.
-    qmap = {a: 0.40 for a in valid}
-    qmap[pol] = 0.50
-    qmap[alt] = 0.40 - 0.05  # keep alt distinctly below the tied pack too?
-    # No: a distinct alt would resolve (tied-action, alt) pairs as well.
-    # Keep everything except pol exactly tied so pol-vs-X are the only
-    # resolved pairs — all satisfied.
-    qmap[alt] = 0.40
-    teacher = _ScriptedTeacher([_qres(valid, qmap)] * 3)
-    tr, diag = _run_gate(teacher, valid, game, player)
-    assert tr["has_search_target"] is False
-    assert diag["play"]["resolved_sum"] == len(valid) - 1
-    assert diag["play"]["satisfied_sum"] == len(valid) - 1
-    assert diag["play"]["accepted"] == 0
-
-
-def test_pair_cap_keeps_strongest_evidence():
-    game, player, valid = _to_first_play_node()
-    if len(valid) < 3:
-        pytest.skip("need >= 3 legal actions for a multi-pair node")
-    # Distinct descending Q with the LIVE argmax (valid[0]) Q-worst: every
-    # pair is resolved and unsatisfied, so emission hits the cap when the
-    # node is large enough.
-    qmap = {a: 0.60 - 0.02 * i for i, a in enumerate(reversed(valid))}
-    teacher = _ScriptedTeacher([_qres(valid, qmap)] * 3)
-    tr, diag = _run_gate(teacher, valid, game, player)
-    n = len(valid)
-    expected = min(n * (n - 1) // 2, SearchConfig().gate_max_pairs)
-    assert tr["has_search_target"] is True
-    assert len(tr["search_pairs"]) == expected
-    assert diag["play"]["pairs_sum"] == expected
-
-
-def test_cell_filter_skips_search_entirely():
-    game, player, valid = _to_first_play_node()
-    teacher = _ScriptedTeacher([])
-    cfg = SearchConfig(gate_node_prob=1.0, gate_cells=frozenset({"t4-picker-lead"}))
-    tr, diag = _run_gate(teacher, valid, game, player, cfg)
-    assert teacher.calls == 0
-    assert tr["has_search_target"] is False
-    assert diag["play"]["count"] == 0
-
-
-def test_gate_serves_jack_of_diamonds_games():
-    # The teacher covers BOTH partner modes (operator directive 2026-08-11):
-    # eligibility must not filter on partner_mode_flag, and play_cell role
-    # detection must work in JD mode (is_secret_partner checks the JD hand).
-    from sheepshead import PARTNER_BY_JD
-
-    game = Game(partner_selection_mode=PARTNER_BY_JD, seed=11)
-    while not game.is_done():
-        for player in game.players:
-            valid = player.get_valid_action_ids()
-            while valid:
-                valid_sorted = sorted(valid)
-                names = {a: ACTION_LOOKUP[a] for a in valid_sorted}
-                play = [a for a, n in names.items() if n.startswith("PLAY ")]
-                if play and not game.is_leaster and not game.alone_called:
-                    alt = valid_sorted[1]
-                    qmap = {a: 0.40 for a in valid_sorted}
-                    qmap[alt] = 0.50
-                    teacher = _ScriptedTeacher([_qres(valid_sorted, qmap)] * 3)
-                    tr, diag = _run_gate(teacher, valid_sorted, game, player)
-                    assert tr["has_search_target"] is True
-                    assert diag["play"]["accepted"] == 1
-                    return
-                pick = [a for a, n in names.items() if n == "PICK"]
-                safe = [a for a, n in names.items() if "ALONE" not in n]
-                player.act(pick[0] if pick else (safe[0] if safe else valid_sorted[0]))
+        game = Game(partner_selection_mode=PARTNER_BY_JD, seed=11)
+        while not game.is_done():
+            for player in game.players:
                 valid = player.get_valid_action_ids()
-    raise AssertionError("no standard JD play node reached")
+                while valid:
+                    valid_sorted = sorted(valid)
+                    names = {a: ACTION_LOOKUP[a] for a in valid_sorted}
+                    play = [a for a, n in names.items() if n.startswith("PLAY ")]
+                    if play and not game.is_leaster and not game.alone_called:
+                        qmap = {a: 0.40 for a in valid_sorted}
+                        qmap[valid_sorted[1]] = 0.55
+                        teacher = _ScriptedCommittee(
+                            [_replicate(valid_sorted, qmap)] * 3
+                        )
+                        tr, diag = _run_emission(teacher, valid_sorted, game, player)
+                        assert tr["has_search_target"] is True
+                        assert diag["play"]["labeled"] == 1
+                        return
+                    pick = [a for a, n in names.items() if n == "PICK"]
+                    safe = [a for a, n in names.items() if "ALONE" not in n]
+                    player.act(
+                        pick[0] if pick else (safe[0] if safe else valid_sorted[0])
+                    )
+                    valid = player.get_valid_action_ids()
+        raise AssertionError("no standard JD play node reached")
 
 
-def test_worker_protocol_serves_gated_teacher(tmp_path):
+# --------------------------------------------------------------------------
+# End-to-end
+# --------------------------------------------------------------------------
+def test_ce_teacher_end_to_end_smoke():
+    seed_all(7)
+    agent = PPOAgent(len(ACTIONS), arch=ARCH)
+    # Stationary expert: the teacher wraps a separate frozen agent.
+    expert = PPOAgent(len(ACTIONS), arch=ARCH)
+
+    class _Seat:
+        def __init__(self, a):
+            self.agent = a
+            self.member_id = "stub"
+
+    teacher = ISMCTSTeacher(
+        expert,
+        ISMCTSConfig(
+            iters={"pick": 8, "partner": 8, "bury": 8, "play": 8}, batch_size=4
+        ),
+    )
+    cfg = SearchConfig(teacher_prob=1.0, teacher_replicates=3, teacher_d_rollout=1)
+    _, events, _, data, _ = play_population_game(
+        training_agent=agent,
+        opponents=[_Seat(agent) for _ in range(4)],
+        partner_mode=PARTNER_BY_CALLED_ACE,
+        training_agent_position=1,
+        reward_mode="terminal",
+        teacher=teacher,
+        determinization_rng=random.Random(5),
+        search_config=cfg,
+        game_seed=11,
+    )
+    transitions = [t for t in events if isinstance(t, dict) and "state" in t]
+    assert transitions, "no training transitions collected"
+    diag = data["search_diagnostics"]["play"]
+    labeled = [t for t in transitions if t.get("has_search_target")]
+    assert diag["labeled"] == len(labeled)
+    assert labeled, "prob=1.0 teacher never labeled a play node"
+    for t in labeled:
+        # The target must survive event normalization: without it the CE
+        # loss no-ops on the labeled row (the attempt-5a failure mode).
+        target = t.get("search_target")
+        assert target is not None
+        assert len(target) == len(t["valid_actions"])
+        assert float(np.sum(target)) == pytest.approx(1.0, abs=1e-5)
+        assert np.all(np.asarray(target) >= 0.0)
+
+
+def test_worker_protocol_serves_ce_teacher(tmp_path):
     # Parallel-collection path: an oracle-mode worker built from init_args
     # must load the payload's oracle head + gamma on weight refresh and run
-    # gated searches through _league_worker_play (in-process, no pool).
+    # committee searches through _league_worker_play (in-process, no pool).
     import torch
 
     from sheepshead.training import train_league_ppo as tl
@@ -279,7 +371,7 @@ def test_worker_protocol_serves_gated_teacher(tmp_path):
         },
         f"{base}_v1.pt",
     )
-    # Full checkpoint for the frozen expert (§12.1 stationary teacher).
+    # Full checkpoint for the frozen expert (stationary teacher).
     teacher_ckpt = str(tmp_path / "teacher_resume.pt")
     main_agent.save(teacher_ckpt)
     tl._league_worker_init(
@@ -290,18 +382,18 @@ def test_worker_protocol_serves_gated_teacher(tmp_path):
             "base_seed": 0,
             "critic_mode": "oracle",
             "oracle_aux_heads": True,
-            "search_teacher": True,
-            "search_prob": 1.0,
-            "search_replicates": 3,  # test-speed committee
-            "search_iters": 8,  # test-speed override
+            "teacher": True,
+            "teacher_prob": 1.0,
+            "teacher_replicates": 3,  # test-speed committee
+            "teacher_iters": 8,  # test-speed override
             "teacher_resume": teacher_ckpt,
             "teacher_oracle_init": None,
             "teacher_gamma": 1.0,
         }
     )
     # The frozen-expert build consumes torch RNG, so which deals avoid
-    # leaster/ALONE (gate-ineligible) is seed-sensitive: try a few deals
-    # until the gate fires.
+    # leaster/ALONE (ineligible) is seed-sensitive: try a few deals until
+    # the teacher fires.
     out = None
     for ep, seed in enumerate((11, 12, 13, 14, 15), start=1):
         job = tl._Job(
@@ -330,143 +422,4 @@ def test_worker_protocol_serves_gated_teacher(tmp_path):
     assert all(torch.equal(main_agent.actor.state_dict()[k], f_ref[k]) for k in f_ref)
     assert out["episode_events"], "worker produced no transitions"
     diag = out["training_data_single"]["search_diagnostics"]["play"]
-    assert diag["count"] >= 1, "gate never attempted despite prob=1.0"
-
-
-def test_gated_mode_end_to_end_smoke():
-    seed_all(7)
-    agent = PPOAgent(len(ACTIONS), arch=ARCH)
-    # Stationary expert (§12.1): the teacher wraps a separate frozen agent.
-    expert = PPOAgent(len(ACTIONS), arch=ARCH)
-
-    class _Seat:
-        def __init__(self, a):
-            self.agent = a
-            self.member_id = "stub"
-
-    teacher = ISMCTSTeacher(
-        expert,
-        ISMCTSConfig(
-            iters={"pick": 8, "partner": 8, "bury": 8, "play": 8}, batch_size=4
-        ),
-    )
-    cfg = SearchConfig(
-        gate_node_prob=1.0,
-        gate_replicates=3,
-        gate_d_rollout=1,
-        gate_cells=frozenset(
-            f"t{t}-{r}-{k}"
-            for t in range(5)
-            for r in ("picker", "partner", "defender")
-            for k in ("lead", "follow")
-        ),
-    )
-    _, events, _, data, _ = play_population_game(
-        training_agent=agent,
-        opponents=[_Seat(agent) for _ in range(4)],
-        partner_mode=PARTNER_BY_CALLED_ACE,
-        training_agent_position=1,
-        reward_mode="terminal",
-        teacher=teacher,
-        determinization_rng=random.Random(5),
-        search_config=cfg,
-        game_seed=11,
-    )
-    transitions = [t for t in events if isinstance(t, dict) and "state" in t]
-    assert transitions, "no training transitions collected"
-    diag = data["search_diagnostics"]["play"]
-    emitted = sum(1 for t in transitions if t.get("has_search_target"))
-    assert diag["accepted"] == emitted
-    for t in transitions:
-        if t.get("has_search_target"):
-            # The pairs (indices + live anchors) must survive event
-            # normalization: without them the margin loss no-ops and the
-            # label only PG-masks its row (the attempt-5a failure, §10.3).
-            pairs = t.get("search_pairs")
-            assert pairs, "labeled row lost its pairs in normalization"
-            assert len(pairs) <= SearchConfig().gate_max_pairs
-            for w, loser, anchor_w, anchor_l in pairs:
-                assert int(w) >= 1 and int(loser) >= 1 and int(w) != int(loser)
-                assert anchor_w <= 0.0 and anchor_l <= 0.0
-
-
-def test_margin_loss_gradient_support_and_saturation():
-    """The §10.2 math, verified by autograd: while the hinge is active its
-    logit gradient is exactly e_l - e_w (all other coordinates zero —
-    softmax terms cancel), and once the winner out-ranks the loser by the
-    margin the loss and gradient vanish. Contrast forward-KL, whose
-    gradient (pi_theta - pi') touches every logit until the full target
-    profile is matched (the attempt-3/4 flattening mechanism)."""
-    import torch
-
-    m = 0.3
-    a_star, a_ref = 3, 7
-
-    logits = torch.zeros(1, 10, requires_grad=True)
-    logp = torch.log_softmax(logits, dim=-1)
-    loss = (m + logp[0, a_ref] - logp[0, a_star]).clamp(min=0.0)
-    loss.backward()
-    g = logits.grad[0]
-    assert g[a_ref] > 0 and g[a_star] < 0
-    others = [i for i in range(10) if i not in (a_star, a_ref)]
-    assert torch.allclose(g[others], torch.zeros(len(others)), atol=1e-7)
-    assert abs(g[a_ref] - 1.0) < 1e-6 and abs(g[a_star] + 1.0) < 1e-6
-
-    # Saturated: the winner already out-ranks the loser by more than the
-    # margin.
-    base = torch.zeros(1, 10)
-    base[0, a_star] = 1.0
-    logits2 = base.clone().requires_grad_(True)
-    logp2 = torch.log_softmax(logits2, dim=-1)
-    loss2 = (m + logp2[0, a_ref] - logp2[0, a_star]).clamp(min=0.0)
-    assert loss2.item() == 0.0
-    loss2.backward()
-    assert torch.allclose(logits2.grad, torch.zeros_like(logits2))
-
-
-def test_pair_gap_trust_region_gates_gradient():
-    """The §12 gap trust region, verified by autograd. The region is on the
-    PAIR GAP log pi(w) - log pi(l), not per leg: while the gap has
-    improved less than delta over its label-time anchors the pair carries
-    the exact two-logit hinge gradient (softmax terms cancel — support is
-    {w, l} only), and past delta the WHOLE pair gates to zero. Per-leg
-    clamping was rejected because zeroing one leg leaves the other leg's
-    full softmax gradient (e_a - pi on every logit) — an entropy-injection
-    direction; the gate preserves the pair or removes it entirely. Zeroing
-    (not scaling) is what binds under Adam: second-moment normalization
-    re-inflates any scaled-down coherent direction, but cannot step on an
-    exactly-zero gradient."""
-    import torch
-
-    m, delta = 0.3, 0.2
-    a_star, a_ref = 3, 7
-
-    def gated_loss(logits, old_star, old_ref):
-        logp = torch.log_softmax(logits, dim=-1)
-        gap_gain = (logp[0, a_star] - logp[0, a_ref]).detach() - (old_star - old_ref)
-        within = (gap_gain < delta).to(logp.dtype)
-        return (m + logp[0, a_ref] - logp[0, a_star]).clamp(min=0.0) * within
-
-    # Anchors at the current values: gap unmoved -> active pair with the
-    # exact two-logit gradient (all other coordinates zero).
-    logits = torch.zeros(1, 10, requires_grad=True)
-    with torch.no_grad():
-        lp0 = torch.log_softmax(logits, dim=-1)
-    loss = gated_loss(logits, lp0[0, a_star], lp0[0, a_ref])
-    assert loss.item() == pytest.approx(m, abs=1e-6)
-    loss.backward()
-    g = logits.grad[0]
-    assert g[a_star] < 0 and g[a_ref] > 0
-    others = [i for i in range(10) if i not in (a_star, a_ref)]
-    assert torch.allclose(g[others], torch.zeros(len(others)), atol=1e-7)
-
-    # Gap already improved by more than delta since label time: the pair
-    # gates to zero — loss AND gradient — regardless of the hinge being
-    # nominally unsatisfied. This update can no longer move the pair.
-    logits2 = torch.zeros(1, 10, requires_grad=True)
-    loss2 = gated_loss(
-        logits2, lp0[0, a_star] - 0.5, lp0[0, a_ref] + 0.5
-    )  # gap_gain = 1.0 > delta
-    assert loss2.item() == 0.0
-    loss2.backward()
-    assert torch.allclose(logits2.grad, torch.zeros_like(logits2))
+    assert diag["count"] >= 1, "teacher never attempted despite prob=1.0"

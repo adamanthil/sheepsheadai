@@ -11,10 +11,10 @@ Consumers:
   ``SELFPLAY_HYPERPARAMS``) for the bootstrap run's fixed learning rates and
   entropy schedule. Its values intentionally differ from the league trainer's,
   hence a separate dataclass.
-* The gated search-teacher path (``pfsp_runtime.play_population_game`` +
-  ``ismcts.py``) reads ``SearchConfig`` for node eligibility and the
-  committee-gate knobs; the league trainer builds one when ``--search-teacher``
-  is on (terminal-reward mode only).
+* The CE search-teacher path (``pfsp_runtime.play_population_game`` +
+  ``ismcts.py``) reads ``SearchConfig`` for node eligibility, the committee
+  budget, and the shrinkage constants; the league trainer builds one when
+  ``--teacher`` is on (terminal-reward mode only).
 
 The shaped-reward controllers, opponent-block scheduling, and the standalone
 ExIt trainer that this module used to configure were removed in the June 2026
@@ -91,89 +91,50 @@ class SelfPlayHyperparams:
 
 @dataclass
 class SearchConfig:
-    """Agreement-gated ISMCTS teacher SCHEDULING (Search_Teacher_Design §9):
-    which decisions get searched and how the committee gate decides whether a
-    label is emitted. The engine physics (PUCT constants, belief pool,
-    batching, leaf/readout choices) live in ``sheepshead.ismcts.ISMCTSConfig``
-    — the split is deliberate: the trainer owns coverage and the gate, the
-    engine owns one search.
+    """CE search-teacher SCHEDULING (CE_Teacher_Design §1-§2): which
+    decisions get searched, the committee budget, and the shrinkage noise
+    model that turns committee Q tables into CE targets. The engine physics
+    (PUCT constants, belief pool, batching, leaf/readout choices) live in
+    ``sheepshead.ismcts.ISMCTSConfig`` — the split is deliberate: the
+    trainer owns coverage and the target construction, the engine owns one
+    search.
 
-    The gate (resolved-pair emission, Search_Teacher_Design §12.7/§12.8):
-    run the same cheap search ``gate_replicates`` times with independent
-    RNG, collect each replicate's completed-Q table, and emit PAIRWISE
-    ordering constraints a>b only where the committee statistically
-    resolves them: the per-replicate paired Q-difference is
-    sign-consistent across ALL replicates AND its mean clears
-    max(gate_pair_eps, gate_pair_z * s / sqrt(R)). Pairs the live policy
-    already satisfies by the teaching margin are not emitted
-    (self-retirement); near-tied actions never produce a constraint at
-    all — the §12.8 study measured true top gaps (0.004-0.007 Q) AT the
-    noise floor of any affordable budget, so abstention on ties is the
-    designed common case and the student's relative mass over unresolved
-    sets is left to PG + the entropy bonus (max-ent completion).
+    Emission is CLASS-BLIND (no cell taxonomy, no confidence trigger —
+    §13.3: a top-2-gap trigger captures only ~35% of policy-wrong t0
+    called-suit nodes) and abstention lives in the TARGET, not a gate: the
+    committee's completed-Q vector is James-Stein-shrunk toward flat by the
+    replicate noise model, and a flat shrunk vector reproduces the expert's
+    label-time prior — near-zero CE gradient by construction. See
+    ``pfsp_runtime.build_ce_search_target`` for the construction and
+    CE_Teacher_Design §1.1-§1.2 for the properties each piece replaces
+    (ε-gates, pair emission, incumbent tax).
+
     Literature: the loop is Expert Iteration (Anthony et al. 2017) on
     on-policy states (DAgger, Ross et al. 2011) with a FROZEN per-
-    generation expert (§12.2); pairwise constraints instead of
-    distribution targets are preference learning (Bradley-Terry;
-    Christiano et al. 2017; the anchored pair-gap is DPO's implicit
-    reward, Rafailov et al. 2023); emit-only-when-resolved is racing /
-    best-arm elimination (Maron & Moore 1994); the Q tables are Gumbel
-    MuZero's completed-Q (Danihelka et al. 2022).
+    generation expert; the target is Gumbel MuZero's completed-Q policy
+    improvement (Danihelka et al. 2022; Grill et al. 2020); the shrinkage
+    is positive-part James-Stein with a hierarchical variance blend.
 
-    A legacy per-head-fraction ExIt scheduler (dense forward-KL visit
-    targets) was removed 2026-08 (§10/§11); the exact-card 2-of-3
-    one-hot gate (``gate_agreement``/``gate_target``) was removed
-    2026-08-16 after §12.8 showed its labels ~50% non-reproducible at
-    defender leads (the attempt-8 incumbent-tax mechanism, §12.6).
+    The resolved-pair hinge gate this replaces (gate_pair_* / gate_cells /
+    gate_emit_margin) was removed 2026-08 with the §12 program (attempts
+    5a-10, all retired); git tag ``pre-ce-teacher`` archives it.
     """
 
     enabled: bool = True
-    gate_iters: int = 1024  # calibrated budget (E9; §12.8 re-validated cheap)
-    gate_d_rollout: int = 1  # shallow + oracle leaves (variance-min; E9 §7)
-    gate_replicates: int = 5  # R: committee size; replicates beat iterations
-    gate_node_prob: float = 0.02  # subsample of eligible nodes (budget knob)
-    # Resolved-pair emission rule (§12.7; constants calibrated §12.8: per-
-    # node paired-diff SE ~0.006 at 1024/1, so z=2 with eps floor = harm_eps).
-    gate_pair_eps: float = 0.01  # Q-units floor (E9 harm epsilon)
-    gate_pair_z: float = 2.0  # required mean/SE ratio
-    gate_max_pairs: int = 8  # strongest-evidence cap per node (t-stat order)
-    # Teaching filter: a resolved pair is emitted only if the LIVE policy's
-    # log-prob gap log pi(a) - log pi(b) is below this margin (mirror of the
-    # loss margin, wired from --search-teacher-margin). Satisfied pairs are
-    # counted for self-retirement telemetry but not emitted.
-    gate_emit_margin: float = 0.3
-    # Node classes searched at all (trick x role x lead/follow). From the E9
-    # matrix: every play cell whose mean headroom was >= ~0.003 Q — the gate
-    # supplies per-node reliability, the cell set only excludes classes where
-    # search would confirm the policy at pure cost. t5 has no decisions
-    # (forced card); leaster / alone games are ineligible upstream.
-    gate_cells: frozenset = frozenset(
-        {
-            "t0-defender-follow",
-            "t0-defender-lead",
-            "t0-partner-follow",
-            "t0-picker-follow",
-            "t0-picker-lead",
-            "t1-defender-lead",
-            "t1-partner-follow",
-            "t1-partner-lead",
-            "t1-picker-follow",
-            "t1-picker-lead",
-            "t2-defender-follow",
-            "t2-defender-lead",
-            "t2-partner-follow",
-            "t2-partner-lead",
-            "t2-picker-follow",
-            "t2-picker-lead",
-            "t3-defender-lead",
-            "t3-partner-follow",
-            "t3-picker-follow",
-            "t4-defender-follow",
-            "t4-partner-follow",
-            "t4-partner-lead",
-            "t4-picker-lead",
-        }
-    )
+    teacher_iters: int = 1024  # calibrated budget (E9; §12.8 re-validated cheap)
+    teacher_d_rollout: int = 1  # shallow + oracle leaves (variance-min; E9 §7)
+    teacher_replicates: int = 3  # R: committee size (lockstep search_committee)
+    teacher_prob: float = 0.1  # subsample of eligible nodes (the budget knob)
+    # Shrinkage noise model (CE_Teacher_Design §1.2): per-action replicate
+    # variance at R=3 has 2 dof, so blend it with a global replicate-noise
+    # calibration:  s2_a <- (nu*s2_global + (n_obs-1)*s2_node_a)/(nu + n_obs - 1).
+    shrink_nu: float = 4.0
+    # Per-replicate per-action Q variance at the 1024/1 budget, measured by
+    # the §1.2 calibration gate (analysis/calibrate_shrinkage.py on the
+    # archived §12.8 deflead gating study: 144 nodes x 6 reps, pooled mean
+    # over 720 action cells; per-action per-replicate SD ~0.026 Q). See
+    # CE_Teacher_Design §10 for the recorded gate results.
+    shrink_s2_global: float = 6.95e-4
 
 
 @dataclass

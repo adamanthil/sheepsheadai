@@ -580,7 +580,7 @@ def test_terminal_reward_contract():
 
 
 # ---------------------------------------------------------------------------
-# 6. Distillation + PG-mask path through play_population_game + update
+# 6. CE teacher path through play_population_game + update
 # ---------------------------------------------------------------------------
 def _make_pop_agent(agent, mode, i):
     """Minimal opponent-seat surface play_population_game needs (``.agent`` plus
@@ -591,14 +591,18 @@ def _make_pop_agent(agent, mode, i):
     )
 
 
-class _GatedDisagreeTeacher:
-    """Deterministic committee stub for the resolved-pair gate: every
-    replicate returns the same completed-Q table with the second-lowest
-    legal action clearly best and all pairwise gaps above gate_pair_eps,
-    so the gate resolves pairs (anchors from the live act() stash) at
-    every eligible PLAY node the live policy hasn't already ordered."""
+class _DisagreeCommittee:
+    """Deterministic committee stub for the CE teacher: every replicate
+    returns the same completed-Q table with the second-lowest legal action
+    clearly best (spread far above the noise model), so every eligible
+    PLAY node ships a material CE target tilted away from the raw prior."""
 
-    def search(self, game, observer, forced_public, rng, d_rollout=None):
+    def __init__(self):
+        from sheepshead.ismcts import ISMCTSConfig
+
+        self.config = ISMCTSConfig()
+
+    def search_committee(self, game, observer, forced_public, rngs, d_rollout=None):
         valid = sorted(game.players[observer - 1].get_valid_action_ids())
         best = valid[1] if len(valid) > 1 else valid[0]
         root_q = {}
@@ -609,38 +613,35 @@ class _GatedDisagreeTeacher:
             else:
                 root_q[a] = 0.40 - step
                 step += 0.02
-        return {"ok": True, "root_q": root_q, "valid": valid}
+        replicate = {
+            "ok": True,
+            "root_q": root_q,
+            "root_n": {a: 64.0 for a in valid},
+            "root_prior": {a: 1.0 / len(valid) for a in valid},
+            "valid": valid,
+        }
+        return [dict(replicate) for _ in rngs]
 
 
-def _gated_all_cells_config():
-    """Gated SearchConfig with every play cell eligible and no subsampling,
-    so the stub committee labels every eligible PLAY node."""
+def _teacher_all_nodes_config():
+    """SearchConfig labeling every eligible PLAY node (no subsampling)."""
     from sheepshead.training.config import SearchConfig
 
-    return SearchConfig(
-        gate_node_prob=1.0,
-        gate_replicates=2,
-        gate_cells=frozenset(
-            f"t{t}-{r}-{k}"
-            for t in range(5)
-            for r in ("picker", "partner", "defender")
-            for k in ("lead", "follow")
-        ),
-    )
+    return SearchConfig(teacher_prob=1.0, teacher_replicates=2)
 
 
-def test_distill_pgmask_and_dormant():
+def test_ce_teacher_labels_and_dormant():
     from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     agent = _fresh_agent()
     mode = PARTNER_BY_JD
     opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = _GatedDisagreeTeacher()
+    teacher = _DisagreeCommittee()
     determinization_rng = random.Random(SEED)
-    sc = _gated_all_cells_config()
+    sc = _teacher_all_nodes_config()
 
-    searched = 0
+    labeled = 0
     for gi in range(8):
         game, events, _, _, _ = play_population_game(
             training_agent=agent,
@@ -652,25 +653,21 @@ def test_distill_pgmask_and_dormant():
             determinization_rng=determinization_rng,
             search_config=sc,
         )
-        searched += sum(
+        labeled += sum(
             1 for e in events if e["kind"] == "action" and e.get("has_search_target")
         )
         agent.store_episode_events(events)
-    assert searched > 0, "no search targets produced"
-    # Anchors now come from the LIVE act() stash (truthful label-time
-    # log-probs), so the gap trust region reads ~0 pre-update gain and the
-    # hinge is naturally active at default delta.
-    stats = agent.update(epochs=2, batch_size=16)
-    d = stats.get("distill", {})
+    assert labeled > 0, "no CE targets produced"
+    stats = agent.update(epochs=2, batch_size=16, teacher_epochs=2)
+    t = stats.get("teacher")
     assert stats["num_transitions"] > 0
-    assert d.get("hinge", 0.0) > 0.0, "margin hinge must be active on stub labels"
-    assert 0.0 < d.get("pg_masked_fraction", 0.0) <= 1.0, (
-        "PG-mask fraction out of range"
-    )
+    assert t is not None, "teacher pass must report telemetry on labeled rows"
+    assert t["rows"] == labeled and t["epochs"] == 2
+    assert t["ce"] > 0.0
     assert "value" in stats["critic_losses"], "value loss must be computed"
 
-    # Dormant control: shaped mode with no teacher -> distillation inactive,
-    # confirming the PPO trainers are unaffected by the Stage C plumbing.
+    # Dormant control: shaped mode with no teacher -> CE pass reports None,
+    # confirming the PPO trainers are unaffected by the teacher plumbing.
     _seed()
     agent2 = _fresh_agent()
     opps2 = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
@@ -683,13 +680,9 @@ def test_distill_pgmask_and_dormant():
             reward_mode="shaped",
         )
         agent2.store_episode_events(events)
-    stats2 = agent2.update(epochs=2, batch_size=16)
-    d2 = stats2.get("distill", {})
-    assert d2.get("pg_masked_fraction", 0.0) == 0.0, (
-        "PG-mask must be dormant without search targets"
-    )
-    assert abs(d2.get("loss", 0.0)) < 1e-9, (
-        "distill loss must be 0 without search targets"
+    stats2 = agent2.update(epochs=2, batch_size=16, teacher_epochs=2)
+    assert stats2.get("teacher") is None, (
+        "teacher pass must be dormant without labeled rows"
     )
 
 
@@ -703,9 +696,9 @@ def _generate_searched_events(n_games=5):
     gen = _fresh_agent()
     mode = PARTNER_BY_JD
     opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = _GatedDisagreeTeacher()
+    teacher = _DisagreeCommittee()
     det_rng = random.Random(SEED)
-    sc = _gated_all_cells_config()
+    sc = _teacher_all_nodes_config()
     all_events, searched = [], 0
     for _ in range(n_games):
         _, events, _, _, _ = play_population_game(
@@ -726,33 +719,29 @@ def _generate_searched_events(n_games=5):
     return all_events
 
 
-def test_searched_ppo_weight_ab():
-    """The PG-mask vs additive-form A/B knob must reach the gradient: two agents
-    identical except for searched_ppo_weight (0.0 mask vs 1.0 additive), fed the SAME
-    event stream, must diverge after one update (the additive PG term on searched
-    transitions changes the policy update). Also: the default is the hard mask."""
-    assert _fresh_agent().searched_ppo_weight == 0.0, (
-        "default must be the hard mask (0.0)"
-    )
-
+def test_teacher_epochs_reach_gradient():
+    """teacher_epochs must reach the actor gradient: two agents identical
+    except for teacher_epochs (0 vs 2), fed the SAME labeled event stream,
+    must diverge after one update."""
     event_streams = _generate_searched_events(n_games=5)
 
-    def updated_agent(weight):
+    def updated_agent(teacher_epochs):
         _seed()
         a = _fresh_agent()  # identical init across the two calls (re-seeded)
-        a.searched_ppo_weight = weight
         for events in event_streams:
             a.store_episode_events(copy.deepcopy(events))
-        a.update(epochs=1, batch_size=16)
+        a.update(epochs=1, batch_size=16, teacher_epochs=teacher_epochs)
         return a
 
-    a_mask = updated_agent(0.0)
-    a_add = updated_agent(1.0)
+    a_plain = updated_agent(0)
+    a_taught = updated_agent(2)
     max_diff = 0.0
-    for p_mask, p_add in zip(a_mask.actor.parameters(), a_add.actor.parameters()):
-        max_diff = max(max_diff, (p_mask - p_add).abs().max().item())
+    for p_plain, p_taught in zip(
+        a_plain.actor.parameters(), a_taught.actor.parameters()
+    ):
+        max_diff = max(max_diff, (p_plain - p_taught).abs().max().item())
     assert max_diff > 1e-9, (
-        f"searched_ppo_weight had no effect on the actor update (max param diff {max_diff:.2e})"
+        f"teacher_epochs had no effect on the actor update (max param diff {max_diff:.2e})"
     )
 
 
@@ -981,8 +970,8 @@ TESTS = [
     test_search_output_contract,
     test_ismcts_backup_discount_uses_agent_gamma,
     test_terminal_reward_contract,
-    test_distill_pgmask_and_dormant,
-    test_searched_ppo_weight_ab,
+    test_ce_teacher_labels_and_dormant,
+    test_teacher_epochs_reach_gradient,
     test_bidding_anchor_kl,
     test_seat_policies_population_grounding,
     test_greedy_health_probe_side_effect_free,

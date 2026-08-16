@@ -35,16 +35,15 @@ N_SYNTHETIC_SEARCH_TARGETS = 3
 
 
 def _inject_search_targets(agent: PPOAgent) -> None:
-    """Self-play episodes never carry ISMCTS labels; graft resolved-pair
-    rows onto a few action events so the search-pairs columns are
-    exercised (one real pair + sentinel fill, stored-record layout)."""
+    """Self-play episodes never carry ISMCTS labels; graft dense CE targets
+    onto a few action events so the search-target columns are exercised
+    (stored-record layout: action_size-wide, mass on the action row)."""
     action_events = [e for e in agent.events if e["kind"] == "action"]
     for event in action_events[:N_SYNTHETIC_SEARCH_TARGETS]:
-        pairs = [[-1.0, -1.0, 1.0, 1.0] for _ in range(PPOAgent.SEARCH_MAX_PAIRS)]
-        w = float((event["action"] + 1) % agent.action_size)
-        loser = float(event["action"])
-        pairs[0] = [w, loser, -1.5, -0.7]
-        event["search_pairs"] = pairs
+        target = [0.0] * agent.action_size
+        target[event["action"]] = 0.6
+        target[(event["action"] + 1) % agent.action_size] = 0.4
+        event["search_target"] = target
         event["has_search_target"] = True
 
 
@@ -89,17 +88,11 @@ def naive_build_minibatch_tensors(agent, batch, states, masks_t, kinds):
     seen_trump_mask = zeros(len(TRUMP))
     unseen_trump_higher = zeros()
     has_search = zeros()
-    search_pairs = torch.full((len(batch), max_len, PPOAgent.SEARCH_MAX_PAIRS, 4), -1.0)
+    search_target = zeros(action_size)
 
     for b, (seg_start, seg_end) in enumerate(batch):
         for t, i in enumerate(range(seg_start, seg_end + 1)):
             masks[b, t] = masks_t[i]
-            # In-segment rows (action or observation) carry the sentinel
-            # pair block; only time padding beyond the segment stays -1.0
-            # (matching _pad_to_bt's fill).
-            search_pairs[b, t] = torch.tensor(
-                list(PPOAgent._SEARCH_PAIRS_SENTINEL), dtype=torch.float32
-            )
             if kinds[i] != "action":
                 continue
             event = agent.events[i]
@@ -123,8 +116,8 @@ def naive_build_minibatch_tensors(agent, batch, states, masks_t, kinds):
                 event.get("unseen_trump_higher_than_hand", 0.0) or 0.0
             )
             has_search[b, t] = 1.0 if event.get("has_search_target") else 0.0
-            search_pairs[b, t] = torch.tensor(
-                event.get("search_pairs") or list(PPOAgent._SEARCH_PAIRS_SENTINEL),
+            search_target[b, t] = torch.tensor(
+                event.get("search_target") or [0.0] * action_size,
                 dtype=torch.float32,
             )
 
@@ -144,7 +137,7 @@ def naive_build_minibatch_tensors(agent, batch, states, masks_t, kinds):
         seen_trump_mask,
         unseen_trump_higher,
         has_search,
-        search_pairs,
+        search_target,
     )
 
 
@@ -217,7 +210,7 @@ FLAT_FIELD_SOURCES = {
         "minibatch.unseen_trump_higher_than_hand_bt"
     ),
     "has_search_flat": "minibatch.has_search_bt",
-    "search_pairs_flat": "minibatch.search_pairs_bt",
+    "search_target_flat": "minibatch.search_target_bt",
 }
 
 

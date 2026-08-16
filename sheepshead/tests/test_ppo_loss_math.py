@@ -44,7 +44,6 @@ def configure(agent, **overrides):
         "entropy_coeff_play": 0.0,
         "kl_coef": 0.0,
         "anchor_coeff": 0.0,
-        "searched_ppo_weight": 0.0,
         "clip_epsilon_pick": 0.2,
         "clip_epsilon_partner": 0.2,
         "clip_epsilon_bury": 0.2,
@@ -65,28 +64,12 @@ def call_losses(
     values=None,
     old_values=None,
     returns=None,
-    has_search=None,
-    search_pairs=None,
 ):
     """Invoke _actor_critic_losses on the toy action space; per-row action
-    probabilities are given directly and converted to logits. search_pairs
-    is per row a list of [w_idx, l_idx, anchor_w, anchor_l] (0-based),
-    padded here to the agent's SEARCH_MAX_PAIRS capacity."""
+    probabilities are given directly and converted to logits."""
     probs = torch.tensor(probs_rows, dtype=torch.float32)
     n_rows = probs.size(0)
     zeros = torch.zeros(n_rows)
-    K = PPOAgent.SEARCH_MAX_PAIRS
-    if search_pairs is None:
-        pairs_t = torch.tensor(
-            [list(PPOAgent._SEARCH_PAIRS_SENTINEL)] * n_rows, dtype=torch.float32
-        )
-    else:
-        padded = []
-        for row in search_pairs:
-            rows = [list(p) for p in row][:K]
-            rows += [[-1.0, -1.0, 1.0, 1.0]] * (K - len(rows))
-            padded.append(rows)
-        pairs_t = torch.tensor(padded, dtype=torch.float32)
     return agent._actor_critic_losses(
         torch.log(probs),
         torch.tensor(actions, dtype=torch.long),
@@ -99,8 +82,6 @@ def call_losses(
         PARTNER_IDX,
         BURY_IDX,
         PLAY_IDX,
-        zeros if has_search is None else torch.tensor(has_search),
-        pairs_t,
     )
 
 
@@ -180,7 +161,7 @@ class TestPolicyLoss:
         configure(agent)
         # ratio = 0.4/0.2 = 2.0 > 1.2 with positive advantage:
         # element = -min(2.0*1, 1.2*1) = -1.2
-        actor_loss, _critic, approx_kl, _ents, _distill, _diag = call_losses(
+        actor_loss, _critic, approx_kl, _ents, _anchor = call_losses(
             agent,
             probs_rows=[[0.1, 0.2, 0.3, 0.4]],
             actions=[3],
@@ -194,7 +175,7 @@ class TestPolicyLoss:
         configure(agent)
         # ratio = 0.1/0.2 = 0.5 < 0.8 with advantage -1:
         # element = -min(0.5*-1, 0.8*-1) = 0.8
-        actor_loss, _critic, _kl, _ents, _distill, _diag = call_losses(
+        actor_loss, _critic, _kl, _ents, _anchor = call_losses(
             agent,
             probs_rows=[[0.2, 0.3, 0.4, 0.1]],
             actions=[3],
@@ -210,7 +191,7 @@ class TestPolicyLoss:
         # loss = -(2*2 + (2/3)*(1+1+1))/4 = -1.5
         probs_rows = [[0.25, 0.25, 0.25, 0.25]] * 4
         actions = [0, 3, 3, 3]
-        actor_loss, _critic, _kl, _ents, _distill, _diag = call_losses(
+        actor_loss, _critic, _kl, _ents, _anchor = call_losses(
             agent,
             probs_rows=probs_rows,
             actions=actions,
@@ -222,7 +203,7 @@ class TestPolicyLoss:
     def test_kl_penalty_scales_actor_loss(self, agent):
         configure(agent, kl_coef=3.0)
         expected_kl = 2.0 - 1.0 - math.log(2.0)
-        actor_loss, _critic, _kl, _ents, _distill, _diag = call_losses(
+        actor_loss, _critic, _kl, _ents, _anchor = call_losses(
             agent,
             probs_rows=[[0.1, 0.2, 0.3, 0.4]],
             actions=[3],
@@ -237,7 +218,7 @@ class TestCriticLoss:
         configure(agent)
         # v_clipped = 0 + clip(1.0 - 0, +-0.2) = 0.2; target 0.2:
         # max((1.0-0.2)^2, (0.2-0.2)^2) = 0.64
-        _actor, critic_loss, _kl, _ents, _distill, _diag = call_losses(
+        _actor, critic_loss, _kl, _ents, _anchor = call_losses(
             agent,
             probs_rows=[[0.25, 0.25, 0.25, 0.25]],
             actions=[3],
@@ -252,7 +233,7 @@ class TestCriticLoss:
     def test_unclipped_error_dominates_when_larger(self, agent):
         configure(agent)
         # v_clipped = 0.2, target 0.2 -> clipped mse 0; unclipped (0.5-0.2)^2
-        _actor, critic_loss, _kl, _ents, _distill, _diag = call_losses(
+        _actor, critic_loss, _kl, _ents, _anchor = call_losses(
             agent,
             probs_rows=[[0.25, 0.25, 0.25, 0.25]],
             actions=[3],
@@ -284,154 +265,130 @@ class TestEntropyBonus:
         probs = torch.tensor([[0.2, 0.2, 0.3, 0.3]])
         n_rows = 1
         zeros = torch.zeros(n_rows)
-        actor_loss, _critic, _kl, entropies, _distill, _diag = (
-            agent._actor_critic_losses(
-                torch.log(probs),
-                torch.tensor([3]),
-                torch.log(torch.tensor([0.3])),
-                zeros,
-                zeros,
-                zeros,
-                torch.tensor([0.0]),
-                PICK_IDX,
-                PARTNER_IDX,
-                BURY_IDX,
-                torch.tensor([2, 3]),
-                zeros,
-                torch.tensor(
-                    [list(PPOAgent._SEARCH_PAIRS_SENTINEL)], dtype=torch.float32
-                ),
-            )
+        actor_loss, _critic, _kl, entropies, _anchor = agent._actor_critic_losses(
+            torch.log(probs),
+            torch.tensor([3]),
+            torch.log(torch.tensor([0.3])),
+            zeros,
+            zeros,
+            zeros,
+            torch.tensor([0.0]),
+            PICK_IDX,
+            PARTNER_IDX,
+            BURY_IDX,
+            torch.tensor([2, 3]),
         )
         _pick_e, _partner_e, _bury_e, play_e = entropies
         assert play_e.item() == pytest.approx(math.log(2.0), abs=1e-5)
         assert actor_loss.item() == pytest.approx(-0.5 * math.log(2.0), abs=1e-5)
 
 
-class TestSearchDistillation:
-    def test_masked_row_drops_pg_even_without_pairs(self, agent):
-        configure(agent)
-        # Row 0 is flagged searched but carries only sentinel pair rows
-        # (e.g. a dropped-key regression upstream): the margin loss must
-        # contribute ZERO (no silent ranking against action 0) while the
-        # PG-mask still applies — its PG element is zeroed
-        # (searched_ppo_weight=0), so the policy term is the mean of
-        # (0, -1.0) = -0.5.
-        actor_loss, _critic, _kl, _ents, distill, diagnostics = call_losses(
-            agent,
-            probs_rows=[[0.25, 0.25, 0.25, 0.25]] * 2,
-            actions=[3, 3],
-            old_log_probs=[math.log(0.25)] * 2,
-            advantages=[1.0, 1.0],
-            has_search=[1.0, 0.0],
-        )
-        assert distill.item() == 0.0
-        assert actor_loss.item() == pytest.approx(-0.5, abs=1e-5)
-        assert diagnostics["masked_fraction"].item() == pytest.approx(0.5)
-        assert diagnostics["hinge"].item() == 0.0
+class TestTeacherCE:
+    """CE search-teacher term (CE_Teacher_Design §1.3): loss-form autograd
+    checks plus the agent-level asymmetric-epoch pass over stored events."""
 
-    def test_margin_hinge_value_and_saturation(self, agent):
-        # Resolved-pair clipped margin loss (Search_Teacher_Design §12.7):
-        # active hinge per pair = m + log pi(l) - log pi(w) with anchors at
-        # the current values (clip not binding); loss = weight * sum/n_rows.
-        configure(agent)
-        agent.search_margin = 0.3
-        agent.search_label_weight = 50.0
-        lp = math.log(0.25)
-        # Active: uniform probs, one pair w=0 > l=1, anchors at the current
-        # log-probs -> hinge = m; two rows, one labeled.
-        _a, _c, _k, _e, distill, diag = call_losses(
-            agent,
-            probs_rows=[[0.25, 0.25, 0.25, 0.25]] * 2,
-            actions=[3, 3],
-            old_log_probs=[lp] * 2,
-            advantages=[1.0, 1.0],
-            has_search=[1.0, 0.0],
-            search_pairs=[[[0.0, 1.0, lp, lp]], []],
-        )
-        assert distill.item() == pytest.approx(50.0 * 0.3 / 2, abs=1e-4)
-        assert diag["hinge"].item() == pytest.approx(0.3, abs=1e-5)
-        # Neither leg has moved from its anchor yet.
-        assert diag["d_star"].item() == pytest.approx(0.0, abs=1e-6)
-        assert diag["d_ref"].item() == pytest.approx(0.0, abs=1e-6)
-        assert diag["pairs_per_row"].item() == pytest.approx(1.0, abs=1e-6)
-        # Two pairs on one row: hinges sum (per-pair evidence weighting).
-        _a, _c, _k, _e, distill_two, diag_two = call_losses(
-            agent,
-            probs_rows=[[0.25, 0.25, 0.25, 0.25]],
-            actions=[3],
-            old_log_probs=[lp],
-            advantages=[1.0],
-            has_search=[1.0],
-            search_pairs=[[[0.0, 1.0, lp, lp], [2.0, 3.0, lp, lp]]],
-        )
-        assert distill_two.item() == pytest.approx(50.0 * 0.6, abs=1e-4)
-        assert diag_two["pairs_per_row"].item() == pytest.approx(2.0, abs=1e-6)
-        # Saturated: pi(w)=0.6 vs pi(l)=0.1 -> log-gap ~1.79 > m.
-        _a, _c, _k, _e, distill2, _d = call_losses(
-            agent,
-            probs_rows=[[0.6, 0.1, 0.2, 0.1]],
-            actions=[3],
-            old_log_probs=[math.log(0.1)],
-            advantages=[1.0],
-            has_search=[1.0],
-            search_pairs=[[[0.0, 1.0, math.log(0.6), math.log(0.1)]]],
-        )
-        assert distill2.item() == 0.0
+    def test_ce_gradient_zero_at_conformity(self):
+        # The CE-toward-fixed-target gradient wrt logits is softmax - target,
+        # so a policy that already matches the target earns exactly zero
+        # gradient — abstention/self-retirement is a property of the TARGET,
+        # not of any gate. (This replaces the removed §12 hinge machinery.)
+        logits = torch.tensor([[0.4, -0.3, 1.2, 0.1]], requires_grad=True)
+        target = torch.softmax(logits, dim=-1).detach()
+        ce = -(target * torch.log_softmax(logits, dim=-1)).sum()
+        ce.backward()
+        assert torch.allclose(logits.grad, torch.zeros_like(logits), atol=1e-7)
 
-    def test_missing_prior_anchor_is_noop(self, agent):
-        # A pair row with valid indices but sentinel anchors (+1.0 — an
-        # impossible log-prob) must contribute zero — hardening against a
-        # dropped-key regression upstream (the attempt-5a normalization
-        # bug, §10.3), which would otherwise clip to garbage.
-        configure(agent)
-        _a, _c, _k, _e, distill, diag = call_losses(
-            agent,
-            probs_rows=[[0.25, 0.25, 0.25, 0.25]],
-            actions=[3],
-            old_log_probs=[math.log(0.25)],
-            advantages=[1.0],
-            has_search=[1.0],
-            search_pairs=[[[0.0, 1.0, 1.0, 1.0]]],
-        )
-        assert distill.item() == 0.0
-        assert diag["hinge"].item() == 0.0
+    def test_ce_gradient_is_softmax_minus_target(self):
+        logits = torch.zeros(1, 4, requires_grad=True)
+        target = torch.tensor([[0.7, 0.1, 0.1, 0.1]])
+        ce = -(target * torch.log_softmax(logits, dim=-1)).sum()
+        ce.backward()
+        expected = torch.softmax(torch.zeros(1, 4), dim=-1) - target
+        assert torch.allclose(logits.grad, expected, atol=1e-6)
 
-    def test_gap_trust_region_gates_pair_to_zero(self, agent):
-        # Anchors say the pair gap has already improved by 2.0 nats since
-        # label time (> delta = 0.2): the pair gates to ZERO — loss and
-        # hinge — even though the hinge is nominally unsatisfied
-        # (gradient-side verification is the autograd test in
-        # test_gated_search_teacher). Displacement diagnostics still report
-        # the realized per-leg movement.
-        configure(agent)
-        agent.search_margin = 0.3
-        agent.search_label_weight = 50.0
-        agent.search_clip_delta = 0.2
-        lp = math.log(0.25)
-        _a, _c, _k, _e, distill, diag = call_losses(
-            agent,
-            probs_rows=[[0.25, 0.25, 0.25, 0.25]],
-            actions=[3],
-            old_log_probs=[lp],
-            advantages=[1.0],
-            has_search=[1.0],
-            search_pairs=[[[0.0, 1.0, lp - 1.0, lp + 1.0]]],
-        )
-        assert distill.item() == 0.0
-        assert diag["hinge"].item() == 0.0
-        # Realized displacement diagnostics: current - anchor.
-        assert diag["d_star"].item() == pytest.approx(1.0, abs=1e-5)
-        assert diag["d_ref"].item() == pytest.approx(1.0, abs=1e-5)
+    @staticmethod
+    def _synthetic_events(labeled_flags=(True, False)):
+        """One-action episodes on real observation dicts (drawn from a
+        seeded game); ``labeled_flags`` says which carry a CE target."""
+        from sheepshead import PARTNER_BY_CALLED_ACE, Game
 
-    def test_searched_ppo_weight_one_keeps_full_pg(self, agent):
-        configure(agent, searched_ppo_weight=1.0)
-        actor_loss, _critic, _kl, _ents, _distill, _diag = call_losses(
-            agent,
-            probs_rows=[[0.25, 0.25, 0.25, 0.25]] * 2,
-            actions=[3, 3],
-            old_log_probs=[math.log(0.25)] * 2,
-            advantages=[1.0, 1.0],
-            has_search=[1.0, 0.0],
+        game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=3)
+        player = game.players[0]
+        state = player.get_state_dict()
+        valid = sorted(player.get_valid_action_ids())
+        events = []
+        for labeled in labeled_flags:
+            ev = {
+                "kind": "action",
+                "state": state,
+                "action": valid[0],
+                "log_prob": math.log(0.5),
+                "value": 0.0,
+                "valid_actions": set(valid),
+                "reward": 0.0,
+                "player_id": 1,
+            }
+            if labeled:
+                ev["search_target"] = np.full(
+                    len(valid), 1.0 / len(valid), dtype=np.float32
+                )
+                ev["has_search_target"] = True
+            events.append(ev)
+        return events, len(valid)
+
+    def test_teacher_epochs_step_actor_only_on_labeled_rows(self, agent):
+        agent.reset_storage()
+        agent.teacher_coeff = 1.0
+        events, n_valid = self._synthetic_events()
+        for ev in events:
+            agent.store_episode_events([ev])
+        assert sum(1 for e in agent.events if e["has_search_target"]) == 1
+        actor_before = {
+            k: v.detach().clone() for k, v in agent.actor.state_dict().items()
+        }
+        critic_before = {
+            k: v.detach().clone() for k, v in agent.critic.state_dict().items()
+        }
+        steps_before = agent.optimizer_steps_total
+        agent.compute_gae()  # update() runs GAE before the teacher pass
+        try:
+            stats = agent._run_teacher_ce_epochs(teacher_epochs=2, batch_size=8)
+        finally:
+            agent.reset_storage()
+        assert stats is not None
+        assert stats["rows"] == 1 and stats["epochs"] == 2
+        assert stats["ce"] > 0.0
+        # KL = CE - H(target); the synthetic target is uniform over the
+        # legal set. The two epochs move the policy toward the target, so
+        # per-epoch KL means need a loose bound, not equality across epochs;
+        # the identity holds within the accumulated means.
+        assert stats["kl"] == pytest.approx(stats["ce"] - math.log(n_valid), abs=1e-4)
+        # One actor-path optimizer step per epoch; critic untouched.
+        assert agent.optimizer_steps_total == steps_before + 2
+        actor_after = agent.actor.state_dict()
+        assert any(
+            not torch.equal(actor_before[k], actor_after[k]) for k in actor_before
         )
-        assert actor_loss.item() == pytest.approx(-1.0, abs=1e-5)
+        critic_after = agent.critic.state_dict()
+        assert all(
+            torch.equal(critic_before[k], critic_after[k]) for k in critic_before
+        )
+
+    def test_teacher_epochs_noop_without_labels(self, agent):
+        agent.reset_storage()
+        events, _ = self._synthetic_events(labeled_flags=(False, False))
+        for ev in events:
+            agent.store_episode_events([ev])
+        actor_before = {
+            k: v.detach().clone() for k, v in agent.actor.state_dict().items()
+        }
+        steps_before = agent.optimizer_steps_total
+        agent.compute_gae()
+        try:
+            stats = agent._run_teacher_ce_epochs(teacher_epochs=4, batch_size=8)
+        finally:
+            agent.reset_storage()
+        assert stats is None
+        assert agent.optimizer_steps_total == steps_before
+        actor_after = agent.actor.state_dict()
+        assert all(torch.equal(actor_before[k], actor_after[k]) for k in actor_before)

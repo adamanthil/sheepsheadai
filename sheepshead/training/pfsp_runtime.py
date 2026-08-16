@@ -21,7 +21,7 @@ from sheepshead import (
     Game,
 )
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.ismcts import infer_head, is_private_action
+from sheepshead.ismcts import _minmax_unit, infer_head, is_private_action
 from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -122,7 +122,109 @@ def _setup_seats(
     return agents, pos_to_pop_agent
 
 
-def _attach_gated_search_target(
+def build_ce_search_target(
+    replicates: list,
+    valid_actions,
+    *,
+    shrink_nu: float,
+    shrink_s2_global: float,
+    gumbel_c_visit: float,
+    gumbel_c_scale: float,
+) -> "tuple[np.ndarray, dict] | None":
+    """Committee-pooled CE target (CE_Teacher_Design §1.1-§1.2): the
+    pi_gumbel deployment readout evaluated on the James-Stein-shrunk
+    committee Q vector. Returns ``(target, info)`` with ``target`` a
+    float32 distribution aligned to ``sorted(valid_actions)`` and ``info``
+    the per-node telemetry scalars, or ``None`` when the committee produced
+    no usable root statistics.
+
+    Construction, in order:
+
+    1. **Pool.** Per action, the replicate mean q̄_a over replicates that
+       visited it; unvisited actions are completed with the visit-weighted
+       mean (Gumbel MuZero's completed-Q), which makes their shrunk
+       deviation exactly zero.
+    2. **Shrink.** Single per-node positive-part James-Stein factor
+       w = max(0, 1 - s̄²/Var_V(q̄)): the mean sampling variance of the
+       pooled q̄ (per-action replicate variance stabilized by the
+       ``shrink_nu``/``shrink_s2_global`` hierarchical blend — R-1 dof
+       alone is unstable — then divided by the observation count) against
+       the observed spread of q̄ across the legal set. A node whose Q
+       spread is within replicate noise shrinks to w = 0.
+    3. **Tilt.** target = softmax(log p_raw + scale * w * minmax_unit(q̄))
+       with p_raw the pooled UNMIXED root prior and
+       scale = (c_visit + mean-per-replicate max N) * c_scale — the
+       engine's pi_gumbel readout, so act-time and train-time semantics
+       never diverge. The shrink factor multiplies the min-max NORMALIZED
+       vector rather than preceding the normalization: min-max is affine-
+       invariant, so ``minmax(w * (q̄ - mean))`` would erase every w except
+       w = 0 — multiplying afterwards is what makes the tilt sharpen
+       continuously with evidence, flat at w = 0 (target = prior, CE
+       gradient ~ 0: abstention is the target's fixed point) and exactly
+       the deployment readout at w = 1.
+    """
+    acts = sorted(valid_actions)
+    usable = [
+        r
+        for r in replicates
+        if r["ok"] and r.get("root_q") is not None and r.get("root_prior") is not None
+    ]
+    if len(usable) < 2:
+        return None  # replicate variance needs at least two committee opinions
+
+    q_obs = {
+        a: [float(r["root_q"][a]) for r in usable if r["root_n"].get(a, 0.0) > 0.0]
+        for a in acts
+    }
+    n_pool = {
+        a: float(np.mean([r["root_n"].get(a, 0.0) for r in usable])) for a in acts
+    }
+    visited = [a for a in acts if q_obs[a]]
+    if not visited:
+        return None
+    q_mean = {a: float(np.mean(q_obs[a])) for a in visited}
+    v_mix = float(
+        sum(n_pool[a] * q_mean[a] for a in visited)
+        / max(sum(n_pool[a] for a in visited), 1e-12)
+    )
+    q_bar = np.array([q_mean.get(a, v_mix) for a in acts], dtype=np.float64)
+
+    def pooled_mean_variance(obs: list) -> float:
+        # Hierarchical blend of the per-action replicate variance with the
+        # global calibration (§1.2), then the variance OF THE MEAN of the
+        # n_obs pooled observations.
+        n_obs = len(obs)
+        s2_node = float(np.var(obs, ddof=1)) if n_obs >= 2 else 0.0
+        s2_blend = (shrink_nu * shrink_s2_global + (n_obs - 1) * s2_node) / (
+            shrink_nu + n_obs - 1
+        )
+        return s2_blend / n_obs
+
+    noise_var = float(np.mean([pooled_mean_variance(q_obs[a]) for a in visited]))
+    signal_var = float(np.var(q_bar))
+    shrink_w = max(0.0, 1.0 - noise_var / signal_var) if signal_var > 0.0 else 0.0
+
+    prior = np.array(
+        [np.mean([r["root_prior"][a] for r in usable]) for a in acts],
+        dtype=np.float64,
+    )
+    scale = (
+        gumbel_c_visit
+        + float(np.mean([max(r["root_n"].values() or [0.0]) for r in usable]))
+    ) * gumbel_c_scale
+    logits = np.log(np.clip(prior, 1e-12, None)) + scale * shrink_w * _minmax_unit(
+        q_bar
+    )
+    target = np.exp(logits - logits.max())
+    target /= target.sum()
+    info = {
+        "w": shrink_w,
+        "spread": float(q_bar.max() - q_bar.min()),
+    }
+    return target.astype(np.float32), info
+
+
+def _attach_ce_search_target(
     game,
     player,
     valid_actions,
@@ -134,126 +236,82 @@ def _attach_gated_search_target(
     search_diagnostics: dict,
     live_probs: "np.ndarray | None",
 ) -> None:
-    """Resolved-pair teacher emission (Search_Teacher_Design §12.7/§12.8).
+    """CE search-teacher emission (CE_Teacher_Design §2): run the lockstep
+    committee at a subsampled eligible node and attach the §1.1 shrink-and-
+    tilt target to the transition.
 
-    Run the same cheap search ``gate_replicates`` times with independent RNG
-    (a committee of stochastic experts — query-by-committee, Seung et al.
-    1992) and collect each replicate's completed-Q table. Emit PAIRWISE
-    ordering constraints a>b only where the committee statistically
-    resolves them: paired per-replicate Q-differences sign-consistent
-    across ALL replicates AND mean >= max(gate_pair_eps,
-    gate_pair_z * s / sqrt(R)) — racing/best-arm elimination (Maron &
-    Moore 1994) applied to label emission. Near-tied actions produce no
-    constraint (the §12.8 study measured true top gaps at the noise floor
-    of any affordable budget: abstention on ties is the designed common
-    case, and relative mass over unresolved sets is left to PG + the
-    entropy bonus). Pairs the live policy already orders by the teaching
-    margin are counted (self-retirement telemetry) but not emitted — with
-    no emission there is no incumbent tax, the §12.6 mechanism that made
-    exact-card labels non-convergent.
+    Eligibility is CLASS-BLIND (no cell taxonomy, no confidence trigger —
+    §13.3): PLAY head in both partner-selection modes, standard game (no
+    leaster / alone), >= 2 legal actions, then ``teacher_prob`` subsampling
+    (the budget knob; unbiased). Abstention moved from an emission gate
+    into the TARGET itself — a within-noise committee shrinks the target
+    to the expert's label-time prior, so the CE gradient vanishes at ties
+    by construction (no incumbent tax, no emission bookkeeping).
 
-    Stationary expert vs live student (§12.1, DAgger — Ross et al. 2011):
-    the teacher wraps a FROZEN snapshot of the generation-start policy
+    Stationary expert vs live student (DAgger — Ross et al. 2011): the
+    teacher wraps a FROZEN snapshot of the generation-start policy
     (priors, rollouts, critic leaves), so the expert cannot chase a
-    drifting student out of its certified regime — attempt 7 showed the
-    live-expert loop re-labels its own drift (emission-gap rebound, greedy
-    t0 trump-lead climbing linearly past the certified band). The
-    referent/anchors, by contrast, must come from the LIVE policy
-    (``live_probs``, stashed by the caller's act() — a second forward pass
-    would advance the recurrent memory): emission compares the committee
-    against the student's CURRENT argmax, so the gate self-retires exactly
-    as the student adopts the expert's choices, and the margin-loss clip
-    anchors measure the student's label-time state.
+    drifting student out of its certified regime (the attempt-7/8 lesson).
+    The student's on-policy states still decide WHERE labels happen.
+    ``live_probs`` (the act() stash — a second forward pass would advance
+    the recurrent memory) feeds only the KL(target || policy) telemetry,
+    the self-retirement readout that decays as the student conforms.
 
-    Self-play worlds (no ``seat_policies``): E8 found no ecology effect, and
-    the E9 calibration this gate rests on searched self-play continuations —
-    population grounding here would decalibrate the gate.
-
-    Eligibility: PLAY head in BOTH partner-selection modes (called-ace and
-    jack-of-diamonds — ``play_cell`` role detection is mode-aware via
-    ``is_secret_partner``), no leaster / alone games, >= 2 legal actions,
-    node class in ``gate_cells``, then ``gate_node_prob`` subsampling (the
-    budget knob). Calibration caveat: the E9 map and gate calibration were
-    measured on called-ace deals; JD-mode labels extrapolate that
-    calibration — defensible because the gate mechanism is mode-agnostic
-    and abstains wherever the committee splits, but a JD-mode spot-check
-    of emission quality is a recorded follow-up (Search_Teacher_Design §9).
+    Self-play worlds (no ``seat_policies``): E8 found no ecology effect,
+    and the calibration this teacher rests on searched self-play
+    continuations — population grounding here would decalibrate it.
     """
     if game.is_leaster or game.alone_called or len(valid_actions) < 2:
         return
     if _search_head(valid_actions) != "play":
         return
-    if play_cell(game, player) not in search_config.gate_cells:
+    if determinization_rng.random() >= search_config.teacher_prob:
         return
-    if determinization_rng.random() >= search_config.gate_node_prob:
-        return
-    if live_probs is None:
-        return  # no live referent/anchors possible -> label would be a no-op
 
     diag = search_diagnostics["play"]
     diag["count"] += 1
-    qtabs: list[dict] = []
-    for _ in range(search_config.gate_replicates):
-        rng = random.Random(determinization_rng.getrandbits(64))
-        res = teacher.search(
-            game,
-            player.position,
-            list(forced_public),
-            rng,
-            d_rollout=search_config.gate_d_rollout,
-        )
-        if not res["ok"] or res.get("root_q") is None:
-            continue
-        qtabs.append(res["root_q"])
-    r_n = len(qtabs)
-    if r_n < 2:
-        return  # pair statistics need at least two replicates
-    sqrt_r = float(np.sqrt(r_n))
-    live_logp = {
-        a: float(np.log(max(float(live_probs[a - 1]), 1e-12))) for a in valid_actions
-    }
-    resolved = satisfied = 0
-    emitted: list[tuple[float, list[float]]] = []  # (t-stat, [w, l, lw, ll])
-    acts = sorted(valid_actions)  # valid_actions may arrive as a set
-    for i, a in enumerate(acts):
-        for b in acts[i + 1 :]:
-            d = [float(q[a]) - float(q[b]) for q in qtabs]
-            if not (all(x > 0.0 for x in d) or all(x < 0.0 for x in d)):
-                continue  # direction not replicate-consistent
-            d_mean = float(np.mean(d))
-            d_sd = float(np.std(d, ddof=1))
-            if abs(d_mean) < max(
-                search_config.gate_pair_eps,
-                search_config.gate_pair_z * d_sd / sqrt_r,
-            ):
-                continue  # within committee noise: near-tie, no constraint
-            resolved += 1
-            w, loser = (a, b) if d_mean > 0 else (b, a)
-            # Teaching filter: constraints the live policy already orders by
-            # the margin carry zero hinge gradient — skipping them makes the
-            # emission rate itself the self-retirement readout.
-            if live_logp[w] - live_logp[loser] >= search_config.gate_emit_margin:
-                satisfied += 1
-                continue
-            t_stat = abs(d_mean) * sqrt_r / (d_sd + 1e-9)
-            emitted.append(
-                (t_stat, [float(w), float(loser), live_logp[w], live_logp[loser]])
-            )
-    diag["resolved_sum"] = diag.get("resolved_sum", 0.0) + resolved
-    diag["satisfied_sum"] = diag.get("satisfied_sum", 0.0) + satisfied
-    if not emitted:
-        return  # abstain: nothing both resolved and unlearned
-    emitted.sort(key=lambda e: -e[0])
-    pairs = [p for _, p in emitted[: search_config.gate_max_pairs]]
-    # Pairs ship 1-based action ids + LIVE label-time log-prob anchors for
-    # the pair-gap trust region (analog of PPO's ratio clip; see ppo.py).
-    transition["search_pairs"] = pairs
+    rngs = [
+        random.Random(determinization_rng.getrandbits(64))
+        for _ in range(search_config.teacher_replicates)
+    ]
+    replicates = teacher.search_committee(
+        game,
+        player.position,
+        list(forced_public),
+        rngs,
+        d_rollout=search_config.teacher_d_rollout,
+    )
+    built = build_ce_search_target(
+        replicates,
+        valid_actions,
+        shrink_nu=search_config.shrink_nu,
+        shrink_s2_global=search_config.shrink_s2_global,
+        gumbel_c_visit=teacher.config.gumbel_c_visit,
+        gumbel_c_scale=teacher.config.gumbel_c_scale,
+    )
+    if built is None:
+        return
+    target, info = built
+    transition["search_target"] = target
     transition["has_search_target"] = True
-    diag["accepted"] += 1
-    diag["pairs_sum"] = diag.get("pairs_sum", 0.0) + len(pairs)
-    # Label-time pair gap g = log pi(l) - log pi(w) summed over emitted
-    # pairs: how strongly the live policy inverts the resolved orderings.
-    diag["gap_sum"] = diag.get("gap_sum", 0.0) + sum(p[3] - p[2] for p in pairs)
+    diag["labeled"] += 1
+    diag["w_sum"] += info["w"]
+    diag["spread_sum"] += info["spread"]
+    if info["w"] > 0.0:
+        diag["material"] += 1
+    if live_probs is not None:
+        # KL(target || live policy) at label time: the self-retirement
+        # readout (decays toward 0 as the student adopts the target).
+        acts = sorted(valid_actions)
+        live = np.clip(
+            np.array([float(live_probs[a - 1]) for a in acts], dtype=np.float64),
+            1e-12,
+            None,
+        )
+        live /= live.sum()
+        t = np.clip(target.astype(np.float64), 1e-12, None)
+        diag["kl_sum"] += float((t * np.log(t / live)).sum())
+        diag["kl_n"] += 1
 
 
 def _finalize_rewards(
@@ -309,12 +367,12 @@ def _finalize_rewards(
                     "unseen_trump_higher_than_hand_label", None
                 ),
                 "has_search_target": ev.get("has_search_target", False),
-                # Resolved pairs [winner, loser, anchor_w, anchor_l]:
-                # without them a labeled row contributes ZERO distill loss
-                # (ppo.py hardens missing pairs to no-op), so dropping this
-                # key here silently disarms the teacher while leaving the
-                # PG-mask active — exactly the attempt-5a bug (§10.3).
-                "search_pairs": ev.get("search_pairs"),
+                # CE target (float32 aligned to sorted valid_actions):
+                # without it a labeled row contributes ZERO distill loss
+                # (ppo.py hardens a missing target to a no-op), so dropping
+                # this key here would silently disarm the teacher — the
+                # attempt-5a failure mode (Search_Teacher_Design §10.3).
+                "search_target": ev.get("search_target"),
             }
         if ev.get("oracle_state") is not None:
             out["oracle_state"] = ev["oracle_state"]
@@ -340,11 +398,11 @@ def play_population_game(
     ``reward_mode`` selects the return: ``"shaped"`` applies the intermediate
     reward shaping + per-trick rewards and ``process_episode_rewards``;
     ``"terminal"`` skips all shaping and uses ``process_terminal_rewards``
-    (final_score-only), optionally attaching ISMCTS soft-teacher targets to a
-    per-head fraction of the training agent's decisions (search is teacher-only;
-    the agent still acts on-policy). The league/exploiter trainers call this with
-    ``reward_mode="terminal"`` and no teacher; the search arguments are the
-    deploy/audit hook (the ISMCTS engine lives in ismcts.py).
+    (final_score-only), optionally attaching CE search-teacher targets to a
+    subsample of the training agent's PLAY decisions (search is teacher-only;
+    the agent still acts on-policy). The league trainer passes the teacher
+    arguments when ``--teacher`` is on; the exploiter never does (the ISMCTS
+    engine lives in ismcts.py).
 
     ``collect_oracle``: attach a full-information ``oracle_state`` (captured at
     decision time, while the Game holds the hidden cards) to every training-agent
@@ -369,23 +427,25 @@ def play_population_game(
         and search_config.enabled
     )
     if search_enabled:
-        # The gate reads the LIVE policy's label-time distribution (referent
-        # + clip anchors) from the act() stash — see _attach_gated_search_target.
+        # The teacher reads the LIVE policy's label-time distribution (the
+        # KL telemetry referent) from the act() stash — see
+        # _attach_ce_search_target.
         training_agent.stash_action_probs = True
     # Public (seat, action_id) record for the teacher's forced replay (search only).
     forced_public: list[tuple[int, int]] = []
-    # Per-game gate diagnostics (the gated teacher searches PLAY nodes only):
-    # nodes searched (count), nodes emitting >=1 pair (accepted), resolved /
-    # already-satisfied / emitted pair sums and the summed label-time pair
-    # gap. Attached to training_agent_data so the driver can window + log.
+    # Per-game teacher diagnostics (the CE teacher searches PLAY nodes only):
+    # nodes searched (count), nodes labeled, nodes with shrink w > 0
+    # (material), and the w / Q-spread / label-time KL(target||policy) sums.
+    # Attached to training_agent_data so the driver can window + log.
     search_diagnostics = {
         "play": {
             "count": 0,
-            "accepted": 0,
-            "resolved_sum": 0.0,
-            "satisfied_sum": 0.0,
-            "pairs_sum": 0.0,
-            "gap_sum": 0.0,
+            "labeled": 0,
+            "material": 0,
+            "w_sum": 0.0,
+            "spread_sum": 0.0,
+            "kl_sum": 0.0,
+            "kl_n": 0,
         }
     }
 
@@ -435,7 +495,7 @@ def play_population_game(
                         "unseen_trump_higher_than_hand_label": compute_any_unseen_trump_higher_than_hand(
                             player
                         ),
-                        "search_pairs": None,
+                        "search_target": None,
                         "has_search_target": False,
                     }
                     if collect_oracle:
@@ -456,7 +516,7 @@ def play_population_game(
                             play_weight=weights["play"],
                         )
                     elif search_enabled:
-                        _attach_gated_search_target(
+                        _attach_ce_search_target(
                             game,
                             player,
                             valid_actions,
