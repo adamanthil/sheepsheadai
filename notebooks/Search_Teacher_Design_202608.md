@@ -800,3 +800,61 @@ referent-hardened margin loss. Engine-level `seat_policies`
 (population-grounded rollouts in `ismcts.py`) is retained for the
 analysis probes; the gated committee + margin hinge is now the only
 teacher path.
+
+### 10.4 Attempt 5b (margin, coeff 1.0): greedy orderings scramble in ~3 updates — scale, not loss form, is the driver (2026-08-16)
+
+**Run:** relaunched 13:50 with the referent fix (§10.3). Hn_play
+0.52 → 0.58 → 0.65 over the first three update windows
+(+0.065/window, ≥ attempt 3's KL pace; control flat 0.52). Window
+outcome stats stayed clean throughout (picker_avg +1.4–1.6, pick
+19–20%) — they lag badly and are NOT a usable tripwire.
+
+**Operator challenge (recorded):** is rising entropy even a problem,
+given the teacher deliberately re-weights actions? Watch outcome
+indicators instead. Partially sustained: entropy is instrumental, the
+0.60 tripwire was KL-calibrated, and the margin form has a real
+plateau mechanism (pair-swap satisfaction) that KL lacked. But
+arithmetic rules out the benign reading of the magnitude: ~20 labels
+per window vs ~9k hero play rows (~0.2%) can move average Hn_play by
+~0.002 if fully uniformed; the observed +0.13 is ~60x that, i.e.
+almost entirely generalization to unlabeled states.
+
+**Decisive instrument — offline greedy health probe on published
+worker weights** (no trainer change; ~1 min per probe; validated on
+the untouched 8M checkpoint, same seed 98765, 300 games):
+
+| metric | 8M seed ckpt | 5b @ v4 (~3-4 updates) | control @8.05M |
+|---|---|---|---|
+| t0 defender trump-lead | 0.7% | **61.5%** | 3.7% |
+| partner trump-lead | 97.1% | **41.2%** | 98.4% |
+| called-suit lead | 46.8% | 27.5% | 42.7% |
+| play logit spread (med) | 3.60 | **1.99** | 3.61 |
+| pick / alone / leaster | 37.5/12.9/4.0 | 36.6/17.1/4.7 | 34.4/18.5/8.0 |
+
+Greedy play ORDERINGS scrambled within 3-4 updates — the >8%
+trump-lead violation gate would have fired ~8x over — while bidding
+heads (PG-owned, unlabeled) stayed intact. Run killed at ~window 4
+per the operator's own divergence criterion; artifacts
+train_attempt5b_coeff1.log / progress_attempt5b_coeff1.csv; damaged
+weights preserved (_league_worker_weights_v4.pt) for forensics.
+
+**Mechanism reattributed (again):** the hinge's per-logit properties
+were never the binding constraint. With PG-mask + mean-over-labeled
+normalization, each labeled row carries ~1200x the weight of a PG row
+at coeff 1.0; each row's gradient is "suppress the label-time argmax"
+at disagreement-selected states, and the trunk generalizes that
+direction wholesale — same yank family as §10, insensitive to loss
+form. The label DIRECTION is certified good (+0.0112/0-harm) but at
+this scale the trunk over-amplifies it (61% t0 trump leads vs a
+certified-optimal rate far below that). Scale knob and coeff are the
+same knob: per-labeled-row weight ≈ coeff x (batch_rows/labeled_rows)
+≈ coeff x 1200.
+
+**Open next-arm decision:** (a) pre-registered fallback coeff 0.25
+(≈300x/row — only 4x below a scale that scrambled in 3 updates;
+value = confirms linear scale dependence, cost ~a day); (b) jump to
+coeff ~0.02–0.05 (≈25–60x/row) sized from damage speed; (c) per-row
+parity (coeff/1200 ≈ 0.0008, likely inert at ~25 rows/update).
+New standing instrument either way: offline greedy probe per weight
+publish as the ordering-damage tripwire (entropy alone is neither
+necessary nor sufficient).
