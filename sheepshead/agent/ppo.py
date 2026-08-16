@@ -371,7 +371,12 @@ class PPOAgent:
         #              once a* out-ranks a_ref by the margin — self-limiting
         #              (hinge saturation), no confidence target, no entropy
         #              injection on other actions.
-        self.search_distill_mode = "kl"
+        # Default "margin": the KL form is DEMONSTRABLY destabilizing under
+        # disagreement-selected sparse labels (§10 runaway) and is retained
+        # only as an explicit opt-in for the legacy dense-fraction ExIt path
+        # (whose visit-distribution targets carry no ranking referent — set
+        # mode="kl" explicitly if reviving it).
+        self.search_distill_mode = "margin"
         self.search_margin = 0.3
         # A/B knob for the searched-transition policy loss (plan §4):
         #   0.0 -> hard PG-mask (drop the PPO term on searched states; distillation
@@ -1499,12 +1504,17 @@ class PPOAgent:
                 # and persists until the full 0.95/eps profile is matched;
                 # Search_Teacher_Design §10.2).
                 a_star = pit.argmax(dim=1)
-                a_ref = search_ref_flat[searched].long().clamp(min=0)
+                ref_raw = search_ref_flat[searched]
+                # Rows without a stored referent (fraction-path labels, or a
+                # gate emission predating referent storage) contribute ZERO
+                # rather than silently ranking against action 0.
+                has_ref = ref_raw >= 0.0
+                a_ref = ref_raw.long().clamp(min=0)
                 lp_star = logp_theta.gather(1, a_star.unsqueeze(1)).squeeze(1)
                 lp_ref = logp_theta.gather(1, a_ref.unsqueeze(1)).squeeze(1)
                 search_distill_per = (self.search_margin + lp_ref - lp_star).clamp(
                     min=0.0
-                )
+                ) * has_ref.to(lp_star.dtype)
             else:
                 search_distill_per = (pit * (logp_it - logp_theta)).sum(dim=1)
             search_distill_loss = search_distill_per.mean()

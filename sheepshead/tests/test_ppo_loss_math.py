@@ -45,6 +45,9 @@ def configure(agent, **overrides):
         "kl_coef": 0.0,
         "anchor_coeff": 0.0,
         "searched_ppo_weight": 0.0,
+        # Legacy KL math tests pin the explicit opt-in; margin-mode tests
+        # override per-test (the agent default is "margin" since 2026-08-12).
+        "search_distill_mode": "kl",
         "clip_epsilon_pick": 0.2,
         "clip_epsilon_partner": 0.2,
         "clip_epsilon_bury": 0.2,
