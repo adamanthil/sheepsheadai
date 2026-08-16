@@ -959,3 +959,52 @@ budget/gate knobs, per-publish ordering probe + log monitors armed.
 Success signature: probe flat at baseline, entropy drift bounded,
 emission rate decaying (teacher winning at archetypes); failure
 signature: gap_gain pinned at delta with probe drift -> lower delta.
+
+### 12.1 Attempt 7 verdict: clip validated, but the expert is non-stationary (2026-08-16, killed at ~6 updates)
+
+Run: λ50 / δ0.2 / prob 0.01, per-publish ordering probe + full gate
+telemetry. Killed on a pre-announced stop-rule as t0 defender
+trump-lead approached 15% with a linear trend.
+
+**What the clip fixed (validated):** per-update movement pinned at
+~δ (Δ*+Δref 0.13-0.32 across windows vs the unclipped ~1.5-2.5 nat
+one-shot swings); entropy drift +0.017/window vs 5b's +0.065; damage
+rate ~5-10x slower than attempt 6; damage LOCALIZED to taught cells —
+untaught conventions held throughout (partner trump-lead 99-100% at
+every probe, vs 41-89% collapses in 5b/6). The full mechanism stack
+(two-logit hinge, gap gate, evidence weight) behaved exactly as
+designed.
+
+**What still failed (the remaining mechanism):** greedy t0 trump-lead
+climbed linearly through the certified-optimal band without
+inflection (0.7 → 4.5 → 5.3 → 10.5 → 14.1% across probes v2-v6;
+healthy band ~4%), spread declined monotonically (3.66 → 2.84), and
+the emission gap REBOUNDED at window 4 (2.22 → 1.25 → 0.97 → 1.49)
+after an initial self-retirement trend — the disagreement-feedback
+loop in slow motion. Diagnosis: **the expert is not stationary.** The
+committee searches from the CURRENT policy's priors, rollouts, and
+critic; as the policy shifts at taught cells, the committee shifts
+with it and finds fresh disagreements at the moved policy, teaching
+further in the same direction. The E9 certification (+0.0112/0-harm)
+was measured AT the 8M policy — labels leave their certified regime
+as soon as the policy drifts, and nothing in the loop re-anchors
+them. DAgger's guarantees assume a FIXED expert labeling the
+student's states (Ross et al. 2011); ours is ISMCTS seeded by the
+student, i.e. the expert chases the student.
+
+**Candidate next amendment (attempt 8, operator decision pending):
+freeze the expert.** Pin the teacher's search to the frozen 8M
+snapshot — priors, rollout policies, and critic leaves from the
+anchor, labels applied to the LIVE policy's states (proper DAgger:
+stationary expert, on-student state distribution). The gate's
+calibration then remains valid for the whole generation, and the
+feedback loop is structurally impossible (the expert's opinion of a
+state never moves). Costs: the teacher stops improving with the
+student within a generation (fine — E9's certified edge was measured
+against exactly this teacher), and worker memory for one extra frozen
+agent. Alternatives considered: EV-grounded label audit per window
+(expensive, lagging), symmetric confirm-labels as counterweight
+(dilutes the calibrated signal), larger m / smaller δ (rate knobs —
+§10.5 says destination unchanged). Artifacts:
+train_attempt7_lambda50_delta02.log, progress CSV,
+attempt7_drifted_weights_v6.pt.
