@@ -234,32 +234,34 @@ class TestPersistence:
 
 
 class TestWiring:
-    def test_trainer_defaults_off(self):
+    def test_trainer_controller_always_on(self):
+        # CE_Teacher_Design §4: the v2 controller is always on for the
+        # league trainer — the legacy --entropy-mode selector is gone and
+        # entropy_controller arrives as a parser default (not a CLI flag,
+        # so the exploiter's SimpleNamespace args stays on the schedule).
         from sheepshead.training.train_league_ppo import build_arg_parser
 
         args = build_arg_parser().parse_args(["--resume", "x.pt", "--league-dir", "y"])
-        assert args.entropy_mode == "schedule"
+        assert args.entropy_controller is True
+        assert not hasattr(args, "entropy_mode")
         on = build_arg_parser().parse_args(
             [
                 "--resume",
                 "x.pt",
                 "--league-dir",
                 "y",
-                "--entropy-mode",
-                "target",
                 "--entropy-target-play",
                 "0.75",
             ]
         )
-        assert on.entropy_mode == "target"
         assert on.entropy_target_play == 0.75
         assert on.entropy_target_pick is None
         assert on.entropy_play_floor == 0.28
 
     def test_orchestrator_default_on_with_opt_out(self):
-        # Operator adoption 2026-07-28: adaptive entropy is the default
-        # orchestrator behavior (still deferred past generation 1);
-        # --no-adaptive-entropy restores the pure legacy schedule.
+        # --adaptive-entropy now governs only the orchestrator's OUTER loop
+        # (target stepping + flat absorption); the trainer controller is
+        # always on regardless.
         from sheepshead.training.run_extended_league import parse_args
 
         args = parse_args(["--resume", "x.pt", "--run-name", "t", "--panel", "a.pt"])
@@ -278,14 +280,11 @@ class TestWiring:
         )
         assert off.adaptive_entropy is False
 
-    def test_adaptive_entropy_defers_to_generation_two(self, tmp_path, monkeypatch):
-        """--adaptive-entropy leaves generation 1 on the legacy schedule
-        (the validated seed-transient phase: organic hold-head sharpening
-        and the high-entropy play window across the league transition) and
-        enables target mode from generation 2, where bumpless attachment
-        captures a settled operating point. This is what makes the single
-        flag correct for from-scratch reproductions — no target derivation
-        step exists in the flow."""
+    def test_trainer_cmd_forwards_floor_not_mode(self, tmp_path, monkeypatch):
+        """Every generation's trainer command forwards the play floor and
+        never the removed --entropy-mode selector; gen 1 and gen 2 carry
+        identical entropy flags (the old gen-1 deferral is gone — bumpless
+        attachment makes switch-on a no-op at any operating point)."""
         monkeypatch.chdir(tmp_path)
         from sheepshead.training.run_extended_league import Orchestrator, parse_args
 
@@ -308,8 +307,8 @@ class TestWiring:
         (ckpt_dir / "pfsp_perceiver-shared-v2_checkpoint_1000000.pt").touch()
         gen1 = " ".join(orch.trainer_cmd(1, None))
         gen2 = " ".join(orch.trainer_cmd(2, None))
-        assert "--entropy-mode" not in gen1
-        assert "--entropy-mode target" in gen2
+        assert "--entropy-mode" not in gen1 and "--entropy-mode" not in gen2
+        assert "--entropy-play-floor 0.28" in gen1
         assert "--entropy-play-floor 0.28" in gen2
 
 

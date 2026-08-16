@@ -742,14 +742,18 @@ def run_main_phase(
         end_episode=end_episode,
     )
 
-    # Adaptive entropy (Phase 2): target-entropy controller replaces the
-    # clock schedule's entropy coefficients (LR keeps its clock). Bumpless
-    # handoff: seed alpha from the legacy schedule's value at the current
-    # episode, and let un-set targets adopt the first update's measurement.
-    # getattr keeps the exploiter's SimpleNamespace args on the schedule path.
+    # Entropy controller v2 (always on for the league trainer,
+    # CE_Teacher_Design §4): the signed target-entropy controller owns the
+    # entropy coefficients (LR keeps its clock schedule). Bumpless handoff:
+    # seed alpha from the legacy schedule's value at the current episode,
+    # and let un-set targets adopt the first update's measurement. The
+    # exploiter's SimpleNamespace args carries no entropy_controller
+    # attribute, so best-response training stays on the plain schedule
+    # (disposable, exploration-hungry — a controller would fight its
+    # intentionally hot coefficients).
     entropy_ctrl = None
     entropy_ctrl_path = os.path.join(checkpoint_dir, "entropy_controller.json")
-    if getattr(args, "entropy_mode", "schedule") == "target":
+    if getattr(args, "entropy_controller", False):
         if os.path.exists(entropy_ctrl_path):
             entropy_ctrl = EntropyTargetController.load(entropy_ctrl_path)
             print(
@@ -1469,14 +1473,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--greedy-eval-interval", type=int, default=50_000)
     ap.add_argument("--greedy-eval-games", type=int, default=200)
     ap.add_argument("--schedule-horizon", type=int, default=20_000_000)
-    ap.add_argument(
-        "--entropy-mode",
-        choices=("schedule", "target"),
-        default="schedule",
-        help="entropy coefficients: legacy clock schedule (default) or "
-        "target-entropy feedback control (normally enabled via the "
-        "orchestrator's --adaptive-entropy; standalone = hold-only)",
-    )
+    # Entropy controller v2 (CE_Teacher_Design §4): ALWAYS ON for the league
+    # trainer — the signed SAC-style target-entropy controller
+    # (entropy_controller.py) owns the entropy coefficients; the LR schedule
+    # keeps its clock and the legacy --entropy-mode selector is gone.
+    # Targets initialize bumplessly from the first update's measurement
+    # unless given explicitly; state persists in
+    # <checkpoint-dir>/entropy_controller.json. Standalone runs hold targets
+    # at their initial operating point; the orchestrator's outer loop
+    # (run_extended_league --adaptive-entropy) steps them between
+    # generations. Not a CLI flag: the exploiter's SimpleNamespace args
+    # omits it, keeping best-response training on the plain schedule.
+    ap.set_defaults(entropy_controller=True)
     for _h in ("pick", "partner", "bury", "play"):
         ap.add_argument(
             f"--entropy-target-{_h}",

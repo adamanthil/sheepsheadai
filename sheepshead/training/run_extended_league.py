@@ -420,21 +420,14 @@ class Orchestrator:
         ]
         if a.leaster_watchdog:
             cmd.append("--leaster-watchdog")
-        # Adaptive entropy defers to generation 2: gen 1 runs the legacy
-        # schedule so the seed's entropy transients (organic hold-head
-        # sharpening, the high-entropy play phase across the historically
-        # collapse-critical league transition) play out exactly as in the
-        # validated retention run; the controller then attaches bumplessly
-        # at the gen-1 boundary's settled operating point. This makes the
-        # single flag correct for from-scratch runs (no target derivation
-        # needed) and for resuming mature runs alike.
-        if a.adaptive_entropy and g >= 2:
-            cmd += [
-                "--entropy-mode",
-                "target",
-                "--entropy-play-floor",
-                str(a.entropy_play_floor),
-            ]
+        # The v2 entropy controller is always on in the trainer (the
+        # --entropy-mode selector is gone; CE_Teacher_Design §4) and
+        # attaches bumplessly, so no per-generation deferral is needed —
+        # gen 1 starts at the legacy schedule's exact operating point.
+        # --adaptive-entropy now governs only the ORCHESTRATOR side: the
+        # outer target-annealing step and the flat-absorption stop-rule
+        # amendment (see _absorb_flat_with_entropy_step).
+        cmd += ["--entropy-play-floor", str(a.entropy_play_floor)]
         if a.trainer_args:
             cmd += shlex.split(a.trainer_args)
         if a.smoke:
@@ -995,17 +988,17 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--greedy-eval-interval", type=int, default=50_000)
     p.add_argument("--greedy-eval-games", type=int, default=200)
     p.add_argument("--schedule-horizon", type=int, default=20_000_000)
-    # Adaptive entropy (Phase 2, 2026-07-28; DEFAULT ON since 2026-07-28
-    # operator adoption): from generation 2, trainers run --entropy-mode
-    # target (SAC-style controller, entropy_controller.py) and the stop rule
-    # is amended — a flat generation first steps the play-head entropy
-    # target toward its floor and RESETS the flat streak; flats only count
-    # toward stopping once targets sit at floor. This removes the
-    # converged-vs-entropy-limited confound: under the legacy 20M clock the
-    # coefficients never anneal within a realistic 4-10M run, so a plateau
-    # could be a regularization ceiling rather than convergence. Generation
-    # 1 always runs the legacy schedule (validated seed-transient phase);
-    # opt out entirely with --no-adaptive-entropy.
+    # Adaptive entropy, orchestrator side (Phase 2, 2026-07-28; DEFAULT ON).
+    # The trainer's v2 signed controller is always on (CE_Teacher_Design §4)
+    # regardless of this flag; --adaptive-entropy governs the OUTER loop:
+    # a flat generation first steps the play-head entropy target toward its
+    # floor and RESETS the flat streak; flats only count toward stopping
+    # once targets sit at floor. This removes the converged-vs-entropy-
+    # limited confound: under the legacy 20M clock the coefficients never
+    # anneal within a realistic 4-10M run, so a plateau could be a
+    # regularization ceiling rather than convergence. Opt out of the outer
+    # step with --no-adaptive-entropy (targets then hold their bumplessly
+    # adopted operating point).
     p.add_argument(
         "--adaptive-entropy",
         action=argparse.BooleanOptionalAction,
