@@ -642,3 +642,82 @@ the standard hinge saturation.
 Meanwhile the control runs on as the TEACHER-FREE GEN-9 TWIN — same
 seed and boundary as any future attempt, i.e. the ideal paired
 control for the §9 gates (better than the gen-8 endpoint alone).
+
+### 10.2 Loss mathematics: forward-KL vs margin ranking (implemented 5170e6f)
+
+Setup: labeled transition with committee action a*, label-time policy
+argmax a_ref (stored per transition), legal-action count n, policy
+pi_theta with logits z.
+
+**Old (forward-KL toward smoothed one-hot pi', 0.95 on a*, eps/(n-1)
+elsewhere):**
+
+    L_KL = sum_a pi'(a) (log pi'(a) - log pi_theta(a))
+    dL/dz = pi_theta - pi'        (EVERY logit)
+
+Zero only at pi_theta = pi' exactly. Three consequences:
+1. Pressure continues AFTER the policy's argmax flips to a* — until
+   pi(a*) reaches 0.95. Choice-agreement is not the stopping point;
+   distribution-agreement at an arbitrary confidence profile is.
+2. Every other action is pressed toward eps/(n-1): actions below it
+   (junk) get pushed UP, near-equivalents above it get pushed DOWN —
+   a distribution-reshaping term, entropy-injecting from below.
+3. States are effectively unique (never revisited), so no state ever
+   completes its trajectory to the profile; what transfers through
+   the shared representation is the TRANSIENT gradient direction —
+   argmax-suppression plus junk-inflation = global flattening.
+
+Note the emission-level stop (the gate never emits where the policy
+argmax already equals a*) is real but insufficient: it operates per
+NEW state, while the overshoot happens inside every emitted label.
+
+**New (margin ranking, DQfD form):**
+
+    L_M = max(0, m + log pi_theta(a_ref) - log pi_theta(a*))
+    dL/dz (active) = e_{a_ref} - e_{a*}     (softmax terms cancel)
+    dL/dz (once log pi(a*) - log pi(a_ref) > m) = 0   exactly
+
+Derivation of the cancellation: d log pi(a)/dz_b = delta_ab - pi(b);
+the difference of two such terms kills the -pi(b) parts. So gradient
+support is exactly the two logits in question, all other actions are
+untouched (before weight coupling), and the loss saturates at the
+ordering-plus-margin — pressure expires precisely when the policy
+"chooses the search-approved label" with margin m. Verified by
+autograd (test_margin_loss_gradient_support_and_saturation) and a
+loss-math unit (hinge value + saturation).
+
+Relation to PPO clipping: PPO's clip is a per-update RATE limiter
+that re-arms each update (sustained pressure still moves the policy
+arbitrarily far, which is how the runaway passed through it); the
+hinge is a DESTINATION limiter — the objective itself is satisfied
+and shuts off. Both bound what a small sample may demand; only the
+hinge encodes a terminal state.
+
+**Reference list (for the eventual writeup):**
+- Anthony, Tian & Barber, NeurIPS 2017 — Expert Iteration (the loop).
+- Silver et al., Nature 2017 (AlphaGo Zero) — soft search targets on
+  on-policy states (dense-label regime).
+- Danihelka, Guez, Schrittwieser & Silver, ICLR 2022 (Gumbel MuZero)
+  — completed-Q readout; small-budget policy improvement.
+- Grill et al., ICML 2020 — MCTS as regularized policy optimization.
+- Chaslot, Winands & van den Herik, 2008 — root parallelization
+  (replicate averaging).
+- Seung, Opper & Sompolinsky, COLT 1992 — query by committee (the
+  agreement gate).
+- Ross, Gordon & Bagnell, AISTATS 2011 — DAgger (on-policy expert
+  labeling).
+- Zhang & Cho, AAAI 2017 — SafeDAgger (deviation-triggered queries);
+  Menda et al., IROS 2019 — EnsembleDAgger (uncertainty gate);
+  Hoque et al., CoRL 2021 — ThriftyDAgger (query budgets): the
+  sparse-subset expert-labeling family this design belongs to.
+- Schmitt et al., 2018 — Kickstarting (fixed-weight auxiliary distill
+  hazard; adaptive weighting).
+- Hester et al., AAAI 2018 — DQfD: the large-margin loss for sparse
+  expert data beside an RL objective (the direct precedent for §10.2).
+- Schrittwieser et al., 2021 — MuZero Reanalyse (partial search
+  re-labeling at scale).
+
+Also corrected this session: attempt 3's greedy gate DID fire on
+trump-lead and play-spread — the violation prints lacked flush=True
+and died in the stdout buffer at kill time (fixed in 5170e6f). June's
+guards worked; the visibility bug was ours.
