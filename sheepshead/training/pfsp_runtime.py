@@ -281,8 +281,12 @@ def _attach_gated_search_target(
         return
     top_action, top_count = Counter(picks).most_common(1)[0]
     diag["ess_sum"] += float(top_count) / len(picks)  # committee agreement rate
-    if top_count < search_config.gate_agreement or top_action == prior_argmax:
-        return  # abstain: no majority, or the committee backs the policy
+    if (
+        top_count < search_config.gate_agreement
+        or prior_argmax is None
+        or top_action == prior_argmax
+    ):
+        return  # abstain: no majority, no usable referent, or committee backs policy
     if getattr(search_config, "gate_target", "agreed_onehot") == "avg_gumbel":
         # Study-only (see config): near-uniform at near-ties -> entropy bomb.
         target = np.mean(gumbels, axis=0)
@@ -300,6 +304,9 @@ def _attach_gated_search_target(
             target[a - 1] = eps / len(others)
     transition["search_target"] = target.tolist()
     transition["has_search_target"] = True
+    # Label-time policy argmax: the margin loss's ranking referent (the
+    # calibrated claim is "committee prefers a* over THIS action").
+    transition["search_ref_action"] = prior_argmax
     diag["accepted"] += 1
     nonzero = target[target > 0]
     diag["entropy_sum"] += float(-(nonzero * np.log(nonzero)).sum())

@@ -960,12 +960,14 @@ def run_main_phase(
                 if probe["pick_rate"] < PFSP_HYPERPARAMS.greedy_gate_min_pick:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: PICK rate < "
-                        f"{PFSP_HYPERPARAMS.greedy_gate_min_pick:.0f}%"
+                        f"{PFSP_HYPERPARAMS.greedy_gate_min_pick:.0f}%",
+                        flush=True,
                     )
                 if probe["alone_rate"] > PFSP_HYPERPARAMS.greedy_gate_max_alone:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
-                        f"{PFSP_HYPERPARAMS.greedy_gate_max_alone:.0f}%"
+                        f"{PFSP_HYPERPARAMS.greedy_gate_max_alone:.0f}%",
+                        flush=True,
                     )
                 if (
                     probe["t0_trump_lead_rate"]
@@ -973,7 +975,8 @@ def run_main_phase(
                 ):
                     print(
                         f"🚨 GREEDY GATE VIOLATION: trump-lead > "
-                        f"{PFSP_HYPERPARAMS.greedy_gate_max_trump_lead:.0f}%"
+                        f"{PFSP_HYPERPARAMS.greedy_gate_max_trump_lead:.0f}%",
+                        flush=True,
                     )
                 if (
                     probe["play_logit_spread_med"]
@@ -982,7 +985,8 @@ def run_main_phase(
                     print(
                         "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
                         f"{PFSP_HYPERPARAMS.greedy_gate_min_play_spread} "
-                        "(play head collapsing toward uniform)"
+                        "(play head collapsing toward uniform)",
+                        flush=True,
                     )
                 write_header = not os.path.exists(greedy_csv)
                 with open(greedy_csv, "a", newline="") as f:
@@ -1297,6 +1301,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "(branch attempt 3, 2026-08-12)",
     )
     ap.add_argument(
+        "--search-teacher-margin",
+        type=float,
+        default=0.3,
+        help="margin m (nats) of the DQfD-style ranking loss on labeled "
+        "transitions (Hester et al. 2018): pressure stops once the agreed "
+        "action out-ranks the label-time policy argmax by m. Replaces "
+        "forward-KL distillation for the gated teacher after the attempt-3/4 "
+        "entropy runaway (Search_Teacher_Design §10)",
+    )
+    ap.add_argument(
         "--search-teacher-prob",
         type=float,
         default=0.02,
@@ -1410,7 +1424,14 @@ def main():
         training_agent.search_distill_coeff = float(
             getattr(args, "search_distill_coeff", 0.25)
         )
-        print(f"🔍 search distill coeff: {training_agent.search_distill_coeff}")
+        training_agent.search_distill_mode = "margin"
+        training_agent.search_margin = float(
+            getattr(args, "search_teacher_margin", 0.3)
+        )
+        print(
+            f"🔍 search teacher loss: margin ranking (m={training_agent.search_margin}), "
+            f"coeff {training_agent.search_distill_coeff}"
+        )
     if getattr(args, "oracle_init", None):
         sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
         training_agent.oracle_critic.load_state_dict(sd, strict=True)

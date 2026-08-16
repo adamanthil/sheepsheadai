@@ -98,6 +98,7 @@ def test_emits_on_majority_nonpolicy_agreement():
     # smoothed one-hot on the agreed action (the calibrated semantics)
     assert target.argmax() + 1 == alt
     assert abs(target[alt - 1] - 0.95) < 1e-9
+    assert tr["search_ref_action"] == pol  # margin-loss ranking referent
     assert diag["play"]["count"] == 1 and diag["play"]["accepted"] == 1
 
 
@@ -276,3 +277,36 @@ def test_gated_mode_end_to_end_smoke():
             target = np.asarray(t["search_target"])
             assert target.shape == (len(ACTIONS),)
             assert abs(target.sum() - 1.0) < 1e-6
+
+
+def test_margin_loss_gradient_support_and_saturation():
+    """The §10.2 math, verified by autograd: while the hinge is active its
+    logit gradient is exactly e_ref - e_star (all other coordinates zero —
+    softmax terms cancel), and once a* out-ranks a_ref by the margin the
+    loss and gradient vanish. Contrast forward-KL, whose gradient
+    (pi_theta - pi') touches every logit until the full target profile is
+    matched (the attempt-3/4 flattening mechanism)."""
+    import torch
+
+    m = 0.3
+    a_star, a_ref = 3, 7
+
+    logits = torch.zeros(1, 10, requires_grad=True)
+    logp = torch.log_softmax(logits, dim=-1)
+    loss = (m + logp[0, a_ref] - logp[0, a_star]).clamp(min=0.0)
+    loss.backward()
+    g = logits.grad[0]
+    assert g[a_ref] > 0 and g[a_star] < 0
+    others = [i for i in range(10) if i not in (a_star, a_ref)]
+    assert torch.allclose(g[others], torch.zeros(len(others)), atol=1e-7)
+    assert abs(g[a_ref] - 1.0) < 1e-6 and abs(g[a_star] + 1.0) < 1e-6
+
+    # Saturated: a* already out-ranks a_ref by more than the margin.
+    base = torch.zeros(1, 10)
+    base[0, a_star] = 1.0
+    logits2 = base.clone().requires_grad_(True)
+    logp2 = torch.log_softmax(logits2, dim=-1)
+    loss2 = (m + logp2[0, a_ref] - logp2[0, a_star]).clamp(min=0.0)
+    assert loss2.item() == 0.0
+    loss2.backward()
+    assert torch.allclose(logits2.grad, torch.zeros_like(logits2))

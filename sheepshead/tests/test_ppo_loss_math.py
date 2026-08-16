@@ -67,6 +67,7 @@ def call_losses(
     returns=None,
     search_target=None,
     has_search=None,
+    search_ref=None,
 ):
     """Invoke _actor_critic_losses on the toy action space; per-row action
     probabilities are given directly and converted to logits."""
@@ -89,6 +90,9 @@ def call_losses(
         if search_target is None
         else torch.tensor(search_target),
         zeros if has_search is None else torch.tensor(has_search),
+        torch.full((n_rows,), -1.0)
+        if search_ref is None
+        else torch.tensor(search_ref, dtype=torch.float32),
     )
 
 
@@ -287,6 +291,7 @@ class TestEntropyBonus:
                 torch.tensor([2, 3]),
                 torch.zeros((n_rows, 4)),
                 zeros,
+                torch.full((n_rows,), -1.0),
             )
         )
         _pick_e, _partner_e, _bury_e, play_e = entropies
@@ -319,6 +324,39 @@ class TestSearchDistillation:
         assert diagnostics["teacher_kl"].item() == pytest.approx(
             expected_distill, abs=1e-5
         )
+
+    def test_margin_mode_hinge_value_and_saturation(self, agent):
+        # Margin ranking mode (DQfD-style, Search_Teacher_Design §10.2):
+        # active hinge = m + log pi(a_ref) - log pi(a*); zero once a*
+        # out-ranks a_ref by the margin.
+        configure(agent)
+        agent.search_distill_mode = "margin"
+        agent.search_margin = 0.3
+        # Active: uniform probs, a*=0 (target argmax), a_ref=1 -> hinge = m.
+        _a, _c, _k, _e, distill, _d = call_losses(
+            agent,
+            probs_rows=[[0.25, 0.25, 0.25, 0.25]],
+            actions=[3],
+            old_log_probs=[math.log(0.25)],
+            advantages=[1.0],
+            search_target=[[0.85, 0.05, 0.05, 0.05]],
+            has_search=[1.0],
+            search_ref=[1.0],
+        )
+        assert distill.item() == pytest.approx(0.3, abs=1e-5)
+        # Saturated: pi(a*)=0.6 vs pi(a_ref)=0.1 -> log-gap ~1.79 > m.
+        _a, _c, _k, _e, distill2, _d = call_losses(
+            agent,
+            probs_rows=[[0.6, 0.1, 0.2, 0.1]],
+            actions=[3],
+            old_log_probs=[math.log(0.1)],
+            advantages=[1.0],
+            search_target=[[0.85, 0.05, 0.05, 0.05]],
+            has_search=[1.0],
+            search_ref=[1.0],
+        )
+        assert distill2.item() == 0.0
+        agent.search_distill_mode = "kl"
 
     def test_searched_ppo_weight_one_keeps_full_pg(self, agent):
         configure(agent, searched_ppo_weight=1.0)

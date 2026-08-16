@@ -69,6 +69,7 @@ class MinibatchTensors(NamedTuple):
     unseen_trump_higher_than_hand_bt: torch.Tensor
     search_target_bt: torch.Tensor
     has_search_bt: torch.Tensor
+    search_ref_bt: torch.Tensor
 
 
 class ForwardOutputs(NamedTuple):
@@ -108,6 +109,7 @@ class FlattenedActionSteps(NamedTuple):
     unseen_trump_higher_than_hand_labels_flat: torch.Tensor
     search_target_flat: torch.Tensor
     has_search_flat: torch.Tensor
+    search_ref_flat: torch.Tensor
 
 
 class UpdateTargets(NamedTuple):
@@ -353,6 +355,24 @@ class PPOAgent:
         # distillation toward pi'; the value loss still runs on every transition.
         # search_distill_coeff scales this KL(pi' || pi_theta) term (plan §3: 1.0).
         self.search_distill_coeff = 1.0
+        # Teacher-label loss form on searched transitions:
+        #   "kl"     — forward KL toward pi' (Stage-C/ExIt form; AlphaZero-style
+        #              distribution target, Silver et al. 2017; Anthony et al.
+        #              2017). Demands the full target distribution: gradient
+        #              (pi_theta - pi') touches EVERY logit and persists past
+        #              choice-agreement, which flattened the play head under
+        #              disagreement-selected sparse labels (branch attempts
+        #              3-4, Search_Teacher_Design §10).
+        #   "margin" — DQfD-style large-margin ranking (Hester et al. 2018):
+        #              max(0, m + log pi(a_ref) - log pi(a*)), a_ref = the
+        #              label-time policy argmax. Teaches only the calibrated
+        #              ORDERING claim; gradient support is exactly the two
+        #              logits {a*, a_ref} (softmax terms cancel) and vanishes
+        #              once a* out-ranks a_ref by the margin — self-limiting
+        #              (hinge saturation), no confidence target, no entropy
+        #              injection on other actions.
+        self.search_distill_mode = "kl"
+        self.search_margin = 0.3
         # A/B knob for the searched-transition policy loss (plan §4):
         #   0.0 -> hard PG-mask (drop the PPO term on searched states; distillation
         #          owns them) -- the default.
@@ -737,6 +757,12 @@ class PPOAgent:
                 else:
                     search_target = [0.0] * self.action_size
                     has_search_target = False
+                # Ranking referent for the margin loss (0-based; -1 = absent).
+                search_ref = (
+                    int(ev["search_ref_action"]) - 1
+                    if has_search_target and ev.get("search_ref_action")
+                    else -1
+                )
                 record = {
                     "kind": "action",
                     "state": ev["state"],
@@ -757,6 +783,7 @@ class PPOAgent:
                     "unseen_trump_higher_than_hand": float(unseen_higher),
                     "search_target": search_target,
                     "has_search_target": has_search_target,
+                    "search_ref": search_ref,
                 }
                 # Oracle mode: full-information observation captured at
                 # decision time, consumed by _fill_oracle_values(). Only added
@@ -961,6 +988,7 @@ class PPOAgent:
         unseen_trump_higher_than_hand_list_all = []
         search_target_list_all = []
         has_search_list_all = []
+        search_ref_list_all = []
 
         for seg_start, seg_end in batch:
             ev_range = [i for i in range(seg_start, seg_end + 1)]
@@ -981,6 +1009,7 @@ class PPOAgent:
             unseen_trump_higher_than_hand_bt = []
             search_target_bt = []
             has_search_bt = []
+            search_ref_bt = []
             for i in ev_range:
                 is_act = kinds[i] == "action"
                 ev = self.events[i]
@@ -1052,6 +1081,10 @@ class PPOAgent:
                 has_search_bt.append(
                     torch.tensor(has_search_lbl, dtype=torch.float32, device=device)
                 )
+                search_ref_lbl = float(ev.get("search_ref", -1)) if is_act else -1.0
+                search_ref_bt.append(
+                    torch.tensor(search_ref_lbl, dtype=torch.float32, device=device)
+                )
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
             old_value_list.append(torch.stack(old_value_bt, dim=0))
@@ -1067,6 +1100,7 @@ class PPOAgent:
             )
             search_target_list_all.append(torch.stack(search_target_bt, dim=0))
             has_search_list_all.append(torch.stack(has_search_bt, dim=0))
+            search_ref_list_all.append(torch.stack(search_ref_bt, dim=0))
 
         masks_bt = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt = self._pad_to_bt(is_action_list, lengths, False)
@@ -1085,6 +1119,7 @@ class PPOAgent:
         )
         search_target_bt = self._pad_to_bt(search_target_list_all, lengths, 0.0)
         has_search_bt = self._pad_to_bt(has_search_list_all, lengths, 0.0)
+        search_ref_bt = self._pad_to_bt(search_ref_list_all, lengths, -1.0)
 
         return MinibatchTensors(
             states_seqs,
@@ -1103,6 +1138,7 @@ class PPOAgent:
             unseen_trump_higher_than_hand_bt,
             search_target_bt,
             has_search_bt,
+            search_ref_bt,
         )
 
     def _build_oracle_minibatch(self, batch, kinds):
@@ -1296,6 +1332,7 @@ class PPOAgent:
             ),
             search_target_flat=action_rows(minibatch.search_target_bt),
             has_search_flat=action_rows(minibatch.has_search_bt),
+            search_ref_flat=action_rows(minibatch.search_ref_bt),
         )
 
     @staticmethod
@@ -1384,6 +1421,7 @@ class PPOAgent:
         play_idx_t,
         search_target_flat,
         has_search_flat,
+        search_ref_flat,
         anchor_logits_flat=None,
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
@@ -1447,7 +1485,28 @@ class PPOAgent:
             pit = search_target_flat[searched]
             logp_theta = torch.log(probs_all[searched].clamp(min=1e-12))
             logp_it = torch.log(pit.clamp(min=1e-12))
-            search_distill_per = (pit * (logp_it - logp_theta)).sum(dim=1)
+            if self.search_distill_mode == "margin":
+                # DQfD-style large-margin ranking loss (Hester et al. 2018,
+                # the canonical sparse-expert-labels-beside-RL form):
+                #   L = max(0, m + log pi_theta(a_ref) - log pi_theta(a*))
+                # a* = the committee's agreed action (argmax of the stored
+                # target), a_ref = the label-time policy argmax. Gradient wrt
+                # logits is exactly e_{a_ref} - e_{a*} while active (softmax
+                # terms cancel) and ZERO once a* out-ranks a_ref by m — the
+                # hinge saturates per state, so pressure expires exactly when
+                # the calibrated ordering claim is satisfied (contrast the KL
+                # branch, whose gradient pi_theta - pi' touches every logit
+                # and persists until the full 0.95/eps profile is matched;
+                # Search_Teacher_Design §10.2).
+                a_star = pit.argmax(dim=1)
+                a_ref = search_ref_flat[searched].long().clamp(min=0)
+                lp_star = logp_theta.gather(1, a_star.unsqueeze(1)).squeeze(1)
+                lp_ref = logp_theta.gather(1, a_ref.unsqueeze(1)).squeeze(1)
+                search_distill_per = (self.search_margin + lp_ref - lp_star).clamp(
+                    min=0.0
+                )
+            else:
+                search_distill_per = (pit * (logp_it - logp_theta)).sum(dim=1)
             search_distill_loss = search_distill_per.mean()
             with torch.no_grad():
                 teacher_kl = search_distill_per.mean()
@@ -1668,6 +1727,7 @@ class PPOAgent:
             play_idx_tensor_static,
             flat.search_target_flat,
             flat.has_search_flat,
+            flat.search_ref_flat,
             anchor_logits_flat=anchor_logits_flat,
         )
         acc.last_approx_kl = float(approx_kl_t.item())

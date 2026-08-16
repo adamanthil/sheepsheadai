@@ -85,6 +85,7 @@ def test_action_event_full_label_mapping(agent):
         "unseen_trump_higher_than_hand": 1.0,
         "search_target": search_target,
         "has_search_target": True,
+        "search_ref": -1,
     }
     assert record["state"] is state
     assert all(isinstance(x, float) for x in record["points_rel"])
