@@ -721,3 +721,10 @@ Also corrected this session: attempt 3's greedy gate DID fire on
 trump-lead and play-spread — the violation prints lacked flush=True
 and died in the stdout buffer at kill time (fixed in 5170e6f). June's
 guards worked; the visibility bug was ours.
+
+**Default flipped (operator-prompted, same day):** the agent-level
+``search_distill_mode`` default is now "margin" — the safe form is
+the default; KL is the explicit opt-in for the legacy dense-fraction
+path. Made safe by excluding referent-less labeled rows from the
+margin loss (fraction-path targets carry no referent) instead of
+silently ranking against action index 0.
