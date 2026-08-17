@@ -1968,3 +1968,46 @@ t0 — the committee CAN speak at t0 on the axes that matter. Boundary
 eval of c8 vs seed (h2h duplicate-bridge 3000 deals + 3x1000-game
 adherence) running; its called-suit adherence delta measures whether
 attempt 9 already moved the convention that matters.
+
+### 12.17 Boundary evaluation of c8 vs 8M seed (2026-08-18): certification FAILED — called-suit +2.8, partner-trump −8.1, strength null
+
+**Instruments.** Duplicate-bridge h2h, 3000 deals, seed 777; greedy
+adherence at n=1000 games x 3 seeds per model (the 300-game probe
+cadence is now demonstrated too noisy for partner: per-seed swings of
++/-4 masked an 8-point true deficit all week).
+
+**Results (c8 − seed):**
+- STRENGTH: h2h edge −0.042 ± 0.033 (1.3σ, win_frac 0.494) — null,
+  slight negative lean.
+- CALLED-SUIT (t0, the priority convention): 44.7 → 47.5 mean
+  (+2.8, consistent across all 3 seeds, ~2σ pooled) — small real
+  gain in the EV-backed direction.
+- PARTNER TRUMP: 96.5 → 88.4 mean (−8.1, every seed, ~4-6σ per
+  seed) — UNAMBIGUOUS regression. The n=1000 read settles the
+  oscillation question: the seed's true level is ~96.5 and c8's is
+  ~88.4; the §12.11 partner-bleed read was correct in substance
+  (untaught-convention damage via §12.13 trunk transport), though
+  the overrule bought the mechanism finding and the EV studies.
+- DEFENDER t0 TRUMP: 0.07 → 0.33% — both effectively zero, intact.
+- top1min 9.06 → 6.88 — compression persists at c8.
+
+**Certification verdict (criteria per §12.15): FAIL.** Strength flat;
+the one large convention move is the WRONG direction on a criterion
+convention (partner trump); the taught axis (fat/nopoint) was an EV
+wash (§12.16). Attempt 9's net ledger: −8 partner, +2.8 called-suit,
+0 strength, at the cost of upper-half sharpness.
+
+**Attempt-10 direction (recommendation, operator to approve):**
+1. START FROM THE CLEAN 8M SEED — c8's called-suit gain does not pay
+   for its partner damage.
+2. Teaching cells: t0 defender leads ONLY, axis = called-suit lead
+   (EV-backed: §12.16 t0 +0.257 @ 2.2σ, belief 3.6σ; committee
+   certifiable at t0 per §12.8). Consider excluding/down-weighting
+   picker+1 (its DISAGREE Δ read −0.44).
+3. PARTNER GUARD IS A MEASUREMENT, NOT A MASK: the damage channel is
+   trunk transport (§12.13), which no emission-side mask can stop —
+   the guard must be a tight-cadence LARGE-N probe (n=1000-scale,
+   partner-trump −3 pts from seed = stop) replacing the noisy
+   300-game tripwire.
+4. Lower total teacher pressure (fewer cells = fewer emitted pairs
+   naturally); keep λ/δ; two-phase gen structure unchanged.
