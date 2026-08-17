@@ -1,11 +1,11 @@
 """Tests for the league worker weight-publishing protocol.
 
-publish_weights (train_league_ppo.py) writes versioned weight files that
-_league_worker_play reloads mid-run; these two halves of the protocol have
+publish_weights (league_worker.py) writes versioned weight files that
+league_worker_play reloads mid-run; these two halves of the protocol have
 no direct test coverage. Drives both sides in-process (no multiprocessing
 Pool) — publish_weights via a minimal MainPhaseContext-like namespace, and
-the worker reload path by seeding the module's _LWORKER global directly, as
-_league_worker_init would.
+the worker reload path by seeding the module's WORKER_STATE global directly, as
+league_worker_init would.
 """
 
 import os
@@ -17,10 +17,10 @@ import torch
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.league import SELF_PLAY
-from sheepshead.training.train_league_ppo import (
-    _LWORKER,
-    _Job,
-    _league_worker_play,
+from sheepshead.training.league_worker import (
+    WORKER_STATE,
+    WorkerJob,
+    league_worker_play,
     publish_weights,
 )
 
@@ -110,18 +110,18 @@ class TestPublishWeights:
 class TestWorkerReload:
     def setup_method(self, method):
         self.dir = tempfile.mkdtemp(prefix="publish_weights_worker_")
-        _LWORKER.clear()
+        WORKER_STATE.clear()
 
     def teardown_method(self, method):
         import shutil
 
         shutil.rmtree(self.dir, ignore_errors=True)
-        _LWORKER.clear()
+        WORKER_STATE.clear()
 
     def _seed_worker(self, agent: PPOAgent, version: int, base: str) -> None:
-        # Mirrors _league_worker_init's _LWORKER contract without spinning
+        # Mirrors league_worker_init's WORKER_STATE contract without spinning
         # up a Pool.
-        _LWORKER.update(
+        WORKER_STATE.update(
             {
                 "agent": agent,
                 "members_dir": self.dir,
@@ -148,7 +148,7 @@ class TestWorkerReload:
         before = {k: v.clone() for k, v in worker_agent.actor.state_dict().items()}
         self._seed_worker(worker_agent, version=1, base=ctx.weight_sync["base"])
 
-        job = _Job(
+        job = WorkerJob(
             episode=1,
             partner_mode=0,
             training_position=1,
@@ -156,9 +156,9 @@ class TestWorkerReload:
             weight_version=2,
         )
 
-        result = _league_worker_play(job)
+        result = league_worker_play(job)
 
-        assert _LWORKER["version"] == 2
+        assert WORKER_STATE["version"] == 2
         after = worker_agent.actor.state_dict()
         # At least one tensor changed: the reload actually copied new state.
         assert any(not torch.equal(before[k], after[k]) for k in before)
@@ -178,7 +178,7 @@ class TestWorkerReload:
             worker_agent, version=5, base=os.path.join(self.dir, "does_not_exist")
         )
 
-        job = _Job(
+        job = WorkerJob(
             episode=7,
             partner_mode=0,
             training_position=1,
@@ -186,9 +186,9 @@ class TestWorkerReload:
             weight_version=5,
         )
 
-        result = _league_worker_play(job)
+        result = league_worker_play(job)
 
-        assert _LWORKER["version"] == 5
+        assert WORKER_STATE["version"] == 5
         after = worker_agent.actor.state_dict()
         assert all(torch.equal(before[k], after[k]) for k in before)
         assert result["episode"] == 7
@@ -201,7 +201,7 @@ class TestWorkerReload:
             worker_agent, version=5, base=os.path.join(self.dir, "does_not_exist")
         )
 
-        job = _Job(
+        job = WorkerJob(
             episode=8,
             partner_mode=0,
             training_position=1,
@@ -209,8 +209,8 @@ class TestWorkerReload:
             weight_version=3,  # older than current worker version (5)
         )
 
-        _league_worker_play(job)
+        league_worker_play(job)
 
-        assert _LWORKER["version"] == 5  # unchanged
+        assert WORKER_STATE["version"] == 5  # unchanged
         after = worker_agent.actor.state_dict()
         assert all(torch.equal(before[k], after[k]) for k in before)

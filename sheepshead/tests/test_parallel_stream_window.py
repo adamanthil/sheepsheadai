@@ -30,13 +30,13 @@ from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training import league_streams
 from sheepshead.training.league import SELF_PLAY
-from sheepshead.training.train_league_ppo import (
+from sheepshead.training.league_streams import (
     MainPhaseContext,
-    _Job,
-    _TxCounter,
+    TransitionCounter,
     parallel_stream,
     sequential_stream,
 )
+from sheepshead.training.league_worker import WorkerJob
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -51,11 +51,11 @@ class _FakeLeague:
 
 class _FakePool:
     """Records each window's job list; imap() fabricates the minimal
-    result dict _league_worker_play would return, without touching the
+    result dict league_worker_play would return, without touching the
     real game engine."""
 
     def __init__(self):
-        self.calls: list[list[_Job]] = []
+        self.calls: list[list[WorkerJob]] = []
 
     def imap(self, fn, jobs):
         jobs = list(jobs)
@@ -81,7 +81,7 @@ def _make_ctx(tmp_path, args, start_episode, end_episode, training_agent=None):
         args=args,
         collect_oracle=False,
         weight_sync={"version": 0, "base": str(tmp_path / "weights")},
-        tx_counter=_TxCounter(),
+        tx_counter=TransitionCounter(),
         start_episode=start_episode,
         end_episode=end_episode,
     )

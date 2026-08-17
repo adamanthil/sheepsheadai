@@ -14,9 +14,10 @@ from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.league import SELF_PLAY
+from sheepshead.training.league_worker import OpponentAdapter
 from sheepshead.training.pfsp_runtime import play_population_game
 from sheepshead.training.reward_shaping import RETURN_SCALE
-from sheepshead.training.train_league_ppo import _Seat, store_events_by_seat
+from sheepshead.training.train_league_ppo import store_events_by_seat
 
 SEED = 20260726
 ARCH = "perceiver-shared-v2"
@@ -28,7 +29,7 @@ def _agent():
 
 
 def _play_self_table(agent, seed_offset=0, mode=PARTNER_BY_JD):
-    opponents = [_Seat(agent, SELF_PLAY) for _ in range(4)]
+    opponents = [OpponentAdapter(agent, SELF_PLAY) for _ in range(4)]
     seed_all(SEED + 100 + seed_offset)
     _, events, scores, _, _ = play_population_game(
         training_agent=agent,

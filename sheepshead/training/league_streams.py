@@ -16,11 +16,11 @@ from dataclasses import dataclass
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.config import PFSPHyperparams
 from sheepshead.training.league import SELF_PLAY, League
-from sheepshead.training.league_teacher import _teacher_kwargs
+from sheepshead.training.league_teacher import build_teacher_kwargs
 from sheepshead.training.league_worker import (
     OpponentAdapter,
-    _Job,
-    _league_worker_play,
+    WorkerJob,
+    league_worker_play,
     publish_weights,
 )
 from sheepshead.training.pfsp_runtime import make_game_summary, play_population_game
@@ -47,10 +47,6 @@ class TransitionCounter:
     """
 
     count: int = 0
-
-
-# Re-exported for compatibility: tests/callers import the historical name.
-_TxCounter = TransitionCounter
 
 
 @dataclass
@@ -126,7 +122,7 @@ def sequential_stream(context: MainPhaseContext):
     # duplicate instrument. The deal seed is drawn once per group so the
     # cards are identical across the 5 rotations.
     rot_state = {}
-    teacher_kwargs = _teacher_kwargs(context)
+    teacher_kwargs = build_teacher_kwargs(context)
     for episode in range(context.start_episode + 1, context.end_episode + 1):
         mode, table, position, game_seed, rot_state = rotation_plan(
             episode, context.start_episode, rot_state, context
@@ -176,7 +172,7 @@ def parallel_stream(context: MainPhaseContext, pool, num_workers):
                 episode, context.start_episode, context.rot_state, context
             )
             jobs.append(
-                _Job(
+                WorkerJob(
                     episode=episode,
                     partner_mode=mode,
                     training_position=position,
@@ -189,7 +185,7 @@ def parallel_stream(context: MainPhaseContext, pool, num_workers):
                     game_seed=game_seed,
                 )
             )
-        for result in pool.imap(_league_worker_play, jobs):
+        for result in pool.imap(league_worker_play, jobs):
             yield (
                 result["episode"],
                 result["partner_mode"],

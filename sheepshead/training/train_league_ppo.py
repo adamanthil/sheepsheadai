@@ -70,47 +70,21 @@ from sheepshead.training.entropy_controller import (
     EntropyTargetController,
 )
 from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
-
-# Re-exported for compatibility: build_arg_parser moved to league_cli.py.
-from sheepshead.training.league_cli import build_arg_parser  # noqa: F401
-
-# Re-exported for compatibility: gates + probe seeds moved to league_gates.py.
-from sheepshead.training.league_gates import (  # noqa: F401
-    ADHERENCE_GUARD_SEED,
+from sheepshead.training.league_cli import build_arg_parser
+from sheepshead.training.league_gates import (
     LEAGUE_ANCHOR_EVAL_SEED,
     GateExit,
     check_adherence_guard,
     run_boundary_cert,
 )
-
-# Re-exported for compatibility: moved to league_streams.py.
-from sheepshead.training.league_streams import (  # noqa: F401
-    AVG_TX_PER_GAME,
+from sheepshead.training.league_streams import (
     MainPhaseContext,
-    _TxCounter,
+    TransitionCounter,
     parallel_stream,
     sequential_stream,
-    setup_episode,
 )
-
-# Re-exported for compatibility: moved to league_teacher.py.
-from sheepshead.training.league_teacher import (  # noqa: F401
-    TeacherSettings,
-    _build_frozen_expert,
-    _teacher_kwargs,
-)
-
-# Re-exported for compatibility: moved to league_worker.py.
-from sheepshead.training.league_worker import (  # noqa: F401
-    _LWORKER,
-    OpponentAdapter,
-    _Job,
-    _league_worker_get_member,
-    _league_worker_init,
-    _league_worker_play,
-    _Seat,
-    publish_weights,
-)
+from sheepshead.training.league_teacher import TeacherSettings
+from sheepshead.training.league_worker import league_worker_init, publish_weights
 from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.pfsp_runtime import interpolated_weight
 from sheepshead.training.training_utils import (
@@ -404,7 +378,7 @@ def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
     teacher_settings = TeacherSettings.from_args(args)
     return spawn_context.Pool(
         processes=args.num_workers,
-        initializer=_league_worker_init,
+        initializer=league_worker_init,
         initargs=(
             {
                 "arch": getattr(args, "arch", "full"),
@@ -837,7 +811,7 @@ def run_main_phase(
             "version": 0,
             "base": os.path.join("runs", args.run_name, "_league_worker_weights"),
         },
-        tx_counter=_TxCounter(),
+        tx_counter=TransitionCounter(),
         start_episode=start_episode,
         end_episode=start_episode + n_episodes,
     )

@@ -19,7 +19,7 @@ import torch
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.training.league import SELF_PLAY
-from sheepshead.training.league_teacher import _build_frozen_expert
+from sheepshead.training.league_teacher import build_frozen_expert
 from sheepshead.training.pfsp_runtime import make_game_summary, play_population_game
 
 
@@ -34,12 +34,8 @@ class OpponentAdapter:
         self.metadata = SimpleNamespace(agent_id=agent_id)
 
 
-# Re-exported for compatibility: tests/callers import the historical name.
-_Seat = OpponentAdapter
-
-
 @dataclass
-class _Job:
+class WorkerJob:
     episode: int
     partner_mode: int
     training_position: int
@@ -54,10 +50,10 @@ class _Job:
 # versioned-weights scheme, opponents loaded from the league members dir,
 # SELF_PLAY seats played by the worker's own current-weights copy).
 # ----------------------------------------------------------------------------
-_LWORKER: dict = {}
+WORKER_STATE: dict = {}
 
 
-def _league_worker_init(init_args: dict) -> None:
+def league_worker_init(init_args: dict) -> None:
     import torch as _torch
 
     _torch.set_num_threads(1)
@@ -72,8 +68,8 @@ def _league_worker_init(init_args: dict) -> None:
     )
     seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
     random.seed(seed)
-    _LWORKER.clear()
-    _LWORKER.update(
+    WORKER_STATE.clear()
+    WORKER_STATE.update(
         {
             "agent": agent,
             "members_dir": init_args["members_dir"],
@@ -99,8 +95,8 @@ def _league_worker_init(init_args: dict) -> None:
         )
         # Stationary expert: the teacher wraps a frozen copy of the
         # generation-start policy, NOT the live worker agent — weight
-        # refreshes in _league_worker_play never touch it.
-        frozen_expert = _build_frozen_expert(
+        # refreshes in league_worker_play never touch it.
+        frozen_expert = build_frozen_expert(
             init_args["teacher_resume"],
             init_args.get("critic_mode", "limited"),
             init_args.get("arch", "full"),
@@ -108,7 +104,7 @@ def _league_worker_init(init_args: dict) -> None:
             init_args.get("teacher_oracle_init"),
             float(init_args.get("teacher_gamma", 1.0)),
         )
-        _LWORKER["teacher"] = ISMCTSTeacher(
+        WORKER_STATE["teacher"] = ISMCTSTeacher(
             frozen_expert,
             ISMCTSConfig(
                 iters={
@@ -116,25 +112,25 @@ def _league_worker_init(init_args: dict) -> None:
                 }
             ),
         )
-        _LWORKER["search_config"] = search_config
+        WORKER_STATE["search_config"] = search_config
 
 
-def _league_worker_get_member(member_id: str) -> OpponentAdapter:
-    cache = _LWORKER["cache"]
+def _get_cached_member(member_id: str) -> OpponentAdapter:
+    cache = WORKER_STATE["cache"]
     seat = cache.get(member_id)
     if seat is None:
         # Arch-aware: members carry their architecture in checkpoint metadata
         # (legacy members without the key are the full architecture).
-        agent = load_agent(os.path.join(_LWORKER["members_dir"], f"{member_id}.pt"))
+        agent = load_agent(os.path.join(WORKER_STATE["members_dir"], f"{member_id}.pt"))
         seat = OpponentAdapter(agent, member_id)
         cache[member_id] = seat
     return seat
 
 
-def _league_worker_play(job: _Job) -> dict:
+def league_worker_play(job: WorkerJob) -> dict:
     import torch as _torch
 
-    worker = _LWORKER
+    worker = WORKER_STATE
     if job.weight_version > worker["version"]:
         checkpoint = _torch.load(
             f"{worker['weight_path_base']}_v{job.weight_version}.pt", map_location="cpu"
@@ -147,7 +143,7 @@ def _league_worker_play(job: _Job) -> dict:
     opponents = [
         OpponentAdapter(worker["agent"], SELF_PLAY)
         if member_id_or_self == SELF_PLAY
-        else _league_worker_get_member(member_id_or_self)
+        else _get_cached_member(member_id_or_self)
         for member_id_or_self in job.opponent_ids
     ]
     teacher_kwargs = {}

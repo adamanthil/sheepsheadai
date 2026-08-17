@@ -239,7 +239,7 @@ class TestWiring:
         # league trainer — the legacy --entropy-mode selector is gone and
         # entropy_controller arrives as a parser default (not a CLI flag,
         # so the exploiter's SimpleNamespace args stays on the schedule).
-        from sheepshead.training.train_league_ppo import build_arg_parser
+        from sheepshead.training.league_cli import build_arg_parser
 
         args = build_arg_parser().parse_args(["--resume", "x.pt", "--league-dir", "y"])
         assert args.entropy_controller is True

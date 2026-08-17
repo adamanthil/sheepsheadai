@@ -18,8 +18,9 @@ from sheepshead.agent.ppo import PPOAgent
 from sheepshead.analysis.entropy_probe import HEADS, probe_agent
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.league import SELF_PLAY
+from sheepshead.training.league_worker import OpponentAdapter
 from sheepshead.training.pfsp_runtime import play_population_game
-from sheepshead.training.train_league_ppo import _Seat, store_events_by_seat
+from sheepshead.training.train_league_ppo import store_events_by_seat
 
 SEED = 20260728
 ARCH = "perceiver-shared-v2"
@@ -32,7 +33,7 @@ def _agent():
 
 def _fill_buffer(agent, n_episodes=2):
     for i in range(n_episodes):
-        opponents = [_Seat(agent, SELF_PLAY) for _ in range(4)]
+        opponents = [OpponentAdapter(agent, SELF_PLAY) for _ in range(4)]
         seed_all(SEED + 500 + i)
         _, events, _, _, _ = play_population_game(
             training_agent=agent,

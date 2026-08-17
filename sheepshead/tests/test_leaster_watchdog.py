@@ -7,8 +7,8 @@ import inspect
 from collections import deque
 from types import SimpleNamespace
 
+from sheepshead.training.league_cli import build_arg_parser
 from sheepshead.training.leaster_watchdog import LeasterWatchdog
-from sheepshead.training.train_league_ppo import build_arg_parser
 from sheepshead.training.train_selfplay_ppo import train_ppo
 
 

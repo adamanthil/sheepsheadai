@@ -228,7 +228,7 @@ def test_run_boundary_cert_uses_configured_seed_count(tmp_path, monkeypatch):
         _StubAgent(), args, generation=1, checkpoint_dir=str(tmp_path)
     )
     assert len(seen_seeds) == 5
-    assert seen_seeds == [train_league_ppo.ADHERENCE_GUARD_SEED + i for i in range(5)]
+    assert seen_seeds == [league_gates.ADHERENCE_GUARD_SEED + i for i in range(5)]
 
 
 # ----------------------------------------------------------------------------

@@ -308,7 +308,7 @@ def test_ce_teacher_end_to_end_smoke():
     # Stationary expert: the teacher wraps a separate frozen agent.
     expert = PPOAgent(len(ACTIONS), arch=ARCH)
 
-    class _Seat:
+    class _OpponentStub:
         def __init__(self, a):
             self.agent = a
             self.member_id = "stub"
@@ -322,7 +322,7 @@ def test_ce_teacher_end_to_end_smoke():
     cfg = SearchConfig(teacher_prob=1.0, teacher_replicates=3, teacher_d_rollout=1)
     _, events, _, data, _ = play_population_game(
         training_agent=agent,
-        opponents=[_Seat(agent) for _ in range(4)],
+        opponents=[_OpponentStub(agent) for _ in range(4)],
         partner_mode=PARTNER_BY_CALLED_ACE,
         training_agent_position=1,
         reward_mode="terminal",
@@ -350,10 +350,11 @@ def test_ce_teacher_end_to_end_smoke():
 def test_worker_protocol_serves_ce_teacher(tmp_path):
     # Parallel-collection path: an oracle-mode worker built from init_args
     # must load the payload's oracle head + gamma on weight refresh and run
-    # committee searches through _league_worker_play (in-process, no pool).
+    # committee searches through league_worker_play (in-process, no pool).
     import torch
 
-    from sheepshead.training import train_league_ppo as tl
+    from sheepshead.training import league_worker as lw
+    from sheepshead.training.league import SELF_PLAY
 
     seed_all(9)
     main_agent = PPOAgent(
@@ -374,7 +375,7 @@ def test_worker_protocol_serves_ce_teacher(tmp_path):
     # Full checkpoint for the frozen expert (stationary teacher).
     teacher_ckpt = str(tmp_path / "teacher_resume.pt")
     main_agent.save(teacher_ckpt)
-    tl._league_worker_init(
+    lw.league_worker_init(
         {
             "arch": ARCH,
             "members_dir": str(tmp_path),
@@ -396,18 +397,18 @@ def test_worker_protocol_serves_ce_teacher(tmp_path):
     # the teacher fires.
     out = None
     for ep, seed in enumerate((11, 12, 13, 14, 15), start=1):
-        job = tl._Job(
+        job = lw.WorkerJob(
             episode=ep,
             partner_mode=PARTNER_BY_CALLED_ACE,
             training_position=1,
-            opponent_ids=[tl.SELF_PLAY] * 4,
+            opponent_ids=[SELF_PLAY] * 4,
             weight_version=1,
             game_seed=seed,
         )
-        out = tl._league_worker_play(job)
+        out = lw.league_worker_play(job)
         if out["training_data_single"]["search_diagnostics"]["play"]["count"]:
             break
-    worker = tl._LWORKER["agent"]
+    worker = lw.WORKER_STATE["agent"]
     assert worker.gamma == 1.0  # payload gamma reached the live worker agent
     assert worker.oracle_critic is not None
     ref = main_agent.oracle_critic.state_dict()
@@ -415,7 +416,7 @@ def test_worker_protocol_serves_ce_teacher(tmp_path):
     assert all(torch.equal(ref[k], got[k]) for k in ref)
     # Stationary expert: the teacher wraps its OWN frozen agent, not the
     # live worker agent that weight refreshes update.
-    frozen = tl._LWORKER["teacher"].agent
+    frozen = lw.WORKER_STATE["teacher"].agent
     assert frozen is not worker, "teacher must not wrap the live agent"
     assert frozen.gamma == 1.0
     f_ref = frozen.actor.state_dict()

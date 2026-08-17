@@ -197,12 +197,12 @@ def _collect_episodes(agent, n_episodes, collect_oracle):
     import torch
 
     from sheepshead.training.league import SELF_PLAY
+    from sheepshead.training.league_worker import OpponentAdapter
     from sheepshead.training.pfsp_runtime import play_population_game
-    from sheepshead.training.train_league_ppo import _Seat
 
     random.seed(7)
     torch.manual_seed(7)
-    opponents = [_Seat(agent, SELF_PLAY) for _ in range(4)]
+    opponents = [OpponentAdapter(agent, SELF_PLAY) for _ in range(4)]
     all_events = []
     for ep in range(n_episodes):
         mode = PARTNER_BY_CALLED_ACE if ep % 2 == 0 else PARTNER_BY_JD

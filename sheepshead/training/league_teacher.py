@@ -4,7 +4,7 @@ Split out of train_league_ppo.py as pure code motion (Stage 1 of the
 league-trainer maintainability refactor): the frozen-expert builder, the
 per-stream teacher kwargs builder, and a TeacherSettings dataclass that
 centralizes the today's getattr-with-SearchConfig-default pattern shared by
-_teacher_kwargs (run_main_phase's sequential/parallel streams) and the
+build_teacher_kwargs (run_main_phase's sequential/parallel streams) and the
 worker-pool initargs dict (spawned workers reconstruct their own frozen
 expert from these settings). The exploiter phase passes a SimpleNamespace
 args missing the teacher_* attributes entirely, so the getattr semantics
@@ -52,7 +52,7 @@ class TeacherSettings:
         )
 
 
-def _build_frozen_expert(
+def build_frozen_expert(
     resume: str,
     critic_mode: str,
     arch: str,
@@ -85,7 +85,7 @@ def _build_frozen_expert(
     return frozen
 
 
-def _teacher_kwargs(context) -> dict:
+def build_teacher_kwargs(context) -> dict:
     """play_population_game kwargs for the CE search teacher
     (CE_Teacher_Design §2), or {} when --teacher is off.
 
@@ -98,7 +98,7 @@ def _teacher_kwargs(context) -> dict:
         return {}
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
-    frozen = _build_frozen_expert(
+    frozen = build_frozen_expert(
         settings.ckpt,
         context.args.critic_mode,
         context.args.arch,
