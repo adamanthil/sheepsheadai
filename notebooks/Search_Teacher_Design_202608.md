@@ -2059,3 +2059,29 @@ boundary, then the existing exploiter gate. New flags: --gate-pair-eps,
 --guard-t0-ceiling (guard = n=1000 fixed-seed probe, HARD STOP exit 3
 with checkpoint saved). Smoke-validated end-to-end (phase transition,
 guard, marker, refreeze banner, exploiter gate, HOF promotion).
+
+### 12.19 ATTEMPT 10 LAUNCHED (2026-08-18; calibrated defaults committed e36181a)
+
+Calibrated regime is now the trainer DEFAULT: gate-pair-eps 0.03,
+teacher-phase-cap 100k, adherence guard every 50k at n=1000 with
+partner floor 93.5 / t0 ceiling 5.0. Launch (fresh run dir
+league_retention_pg_teacher10; league pool + entropy-controller state
+inherited from the teacher lineage; expert = certified 8M seed, E9
+cert carries over):
+
+- resume 8M seed; gen 33, boundary 8.25M; TEACHER PHASE 8.0M -> at
+  most 8.1M (adaptive exit: emission <=2% x3 windows or learned
+  >=0.95 x3), then CONSOLIDATION to 8.25M, then exploiter gate.
+- search-teacher-prob 0.02 (operator: doubled from attempt 9's 0.01 —
+  material pairs are ~10x sparser at eps 0.03, so total hinge/
+  transport pressure still falls well below attempt 9).
+- Loss/committee unchanged: λ50/δ0.2/m0.3, R=5, frozen expert.
+
+**Pre-registered expectations (§12.18):** emission well below attempt
+9's 16-35% band; emitted pairs concentrated at lead cells in the
+convention directions; called-suit adherence 44.7 -> 50s-60s at the
+boundary n=1000 battery; partner-trump within ~2 pts of 96.5 (guard
+stops at 93.5); t0-trump ~0; h2h vs seed >= 0. Failure reads: near-
+zero emission with flat adherence = within-fail signal too thin at
+0.03 (fallback: same-suit-as-called class pooling); guard stop =
+transport pressure still too high even at material-only emission.
