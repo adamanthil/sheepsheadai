@@ -1412,3 +1412,54 @@ states, medians):
   NOT added (too many classes to be useful); study data can check
   whether called-suit labels ever cross the point boundary before
   revisiting.
+
+### 12.7 Data-driven alternative to hand classes: resolved-pair emission + emergent mass (operator direction, 2026-08-16)
+
+Operator: hand-labeled card classes inject human taxonomy into an
+otherwise terminal-reward-clean regime. Ideal property: actions the
+search values near-identically get near-identical probability mass;
+truly suboptimal actions get pushed toward 0 — with no hand classes.
+pi_gumbel lacks this (saturating selector); the attempt-3
+avg_gumbel forward-KL had a version of it and injected entropy.
+
+**Target metric with the property: posterior probability of
+optimality** p*(a) = P[a truly best | committee Q means + replicate
+noise]. Near-ties (gap within noise) -> near-equal mass;
+resolved-worse -> mass -> 0 as gap grows in noise units. Classes
+EMERGE as statistically-unseparable sets. No labels.
+
+**But do NOT distribution-match toward it**: forward KL has
+full-logit support (e_target - pi) — any target tail mass actively
+lifts bad actions (the attempt-3 failure was the LOSS SUPPORT as
+much as the target; also label-count-independent scale). Every
+mechanism lesson (two-logit support, gradient-zeroing gates, Adam
+re-inflation of coherent full-support gradients) forbids it.
+
+**Adopted-candidate design (supersedes §12.5/§12.6 class emission,
+pending study calibration):**
+1. EMISSION = resolved pairs: emit (a,b) iff committee Q-gap is
+   statistically resolved (replicate-consistent sign + gap >=
+   threshold in Q-units; threshold calibrated from the gating
+   study's per-rep rootQ = per-node SE at 1024/1 and 4096/term).
+   Unresolved pairs never emitted.
+2. LOSS unchanged: the existing pair-gap hinge (two-logit support,
+   lambda evidence weight, delta trust region). Only the emission
+   condition changes.
+3. CONVERGENCE: incumbent tax dies — live argmax within noise of
+   best -> no resolved pair involving it -> abstain ->
+   self-retirement. (What class emission hand-coded, derived from
+   search uncertainty instead.)
+4. NEAR-EQUAL MASS FOR FREE: teacher pins resolved orderings; the
+   entropy bonus maximizes entropy subject to them -> unresolved
+   sets drift to near-uniform, resolved losers suppressed. The
+   stationary point is the ideal distribution without the teacher
+   ever emitting a distribution or class.
+Hand taxonomy demotes to an ANALYSIS lens (reports, convention
+studies), not a training input.
+
+Cost/risk: 3 replicates = coarse noise floor -> only well-separated
+pairs teach (fewer, truer labels — correct trade). PRE-REGISTERED
+new study readouts: (7) per-node Q standard error at 1024/1 (6 reps)
+and 4096/term (2 reps); (8) resolvable-pair count per defender-lead
+node at each arm; (9) whether the fat-vs-nopoint Q gap clears the
+resolution threshold at cheap budget or requires the heavy arm.
