@@ -1673,3 +1673,73 @@ orderings (t0 > 5% sustained, partner < 92%), sustained outcome-stat
 degradation, or floor-side (median-min) collapse with ordering loss.
 Monitoring continues unchanged; decomposition rerun on each future
 top1-min low.
+
+### 12.11 Attempt 9 KILLED at ~8.022M (2026-08-17): partner ordering broke the amended kill line, replicated on 4 seeds
+
+**Trigger.** Probe v16 (fixed seed 98765) fired the ordering alert:
+partner 91.0% — first reading below the 92% kill line the §12.10
+amendment explicitly preserved — with t0-lead 2.0% (run high) and
+top1-min 6.29. Per protocol, fresh-seed replicates ran BEFORE any
+action.
+
+**Replication (300g each).** v16 partner: 91.0 (98765) / 88.2 (31337)
+/ 88.4 (55555) / 91.9 (77777) — mean ~89.9, ALL four seeds below 92.
+Same-seed baselines (8M seed ckpt): 97.1 / 97.3 / 94.4. Trajectory of
+the replicate means: ~97 (baseline) -> ~94.3 (v15) -> ~89.9 (v16),
+i.e. ~4.5 points lost in ONE publish interval, monotone and
+accelerating. Seed 55555 fell 97.1 -> 88.4 across v15 -> v16. This is
+not probe noise (v15's 93.5/92.4/97.1 spread was still inside the
+baseline's own seed-to-seed band; v16 is not).
+
+**Context at kill.** Ep 8,021,887 (~22k of the 250k phase). Teaching
+metrics remained GOOD and replicated out-of-sample to the end: fat
+42-49 (from 65-67 baseline), nopoint 24-31 (from 10-14), called-suit
+47-59 (from 36-47). Outcome stats healthy throughout (picker_avg
++1.61-1.76, ev O/L stable). Play-head Hn climbed monotone 0.52 ->
+0.63 over the run with the entropy controller pinned at the 0.001
+alpha floor (§12.10 mechanism: hinge mass-transfer). Gate telemetry
+late-run: emission NOT decaying (16-35% oscillation), learned dipping
+(0.71/0.71/0.63 lows in the last ~5 windows vs 0.80-0.90 earlier).
+
+**Read.** The failure channel is NOT the taught axis — it is bleed
+into an untaught protected convention (partner trump lead) while the
+taught metrics kept improving. Consistent mechanism: the same
+mass-transfer that softened the deflead upper half (benign there,
+§12.10 decomposition) eventually reached partner-lead argmaxes, whose
+margins the teacher never sees (partner nodes are excluded from
+emission but not insulated from shared-trunk updates). The §12.10
+relaxation was correct for the top1-min channel (it plateaued then
+recovered 6.5 -> 7.37 before settling ~6.0-6.3); the partner channel
+is the one the amendment kept as a kill line, and it broke it,
+replicated. Kill is protocol-compliant with the operator directive
+("very clearly broken" = the named ordering tripwire, 4/4 seeds).
+
+**Artifacts.** No .pt checkpoints were written (save-interval 50k;
+first save would have been 8.05M). Surviving weights: published
+worker payloads _league_worker_weights_v1..v16.pt (policy-only) in
+runs/league_retention_pg_teacher/, plus the pristine 8M seed
+checkpoint in runs/league_retention_pg/checkpoints/. v15 (~94.3
+partner mean, teaching mostly arrived) and v16 (~89.9) bracket the
+break. Monitors and trainer stopped cleanly; train.log preserved.
+
+**Open questions for the boundary decision (with operator):**
+1. Whether a consolidation (teacher-off) phase from a vN payload can
+   RECOVER partner ordering while retaining the taught fat/nopoint/
+   called-suit gains — the §12.7 design predicts PG re-sharpens
+   terminal-reward-endorsed orderings; partner conventions are
+   strongly endorsed, so recovery is plausible. Candidate starts:
+   v15 (mild damage, most teaching) or v16 (most teaching, most
+   damage). Payloads are policy-only — optimizer/controller state
+   would re-init, acceptable for a consolidation phase.
+2. Whether attempt 10 needs a partner-node guard: the probe watched
+   partner greedy rate but nothing in the LOSS protects it. Options:
+   add partner-lead cells to the satisfied/no-emit check is moot (they
+   are never emitted); real options are a partner-ordering term in the
+   stop rule at tighter cadence (per-update offline probe), lower
+   search-teacher-prob, or lower lambda — all reduce pressure globally
+   rather than shield the channel. A per-head/per-node gradient mask
+   at partner-lead states is the targeted fix but adds machinery.
+3. Emission non-decay + learned dip late-run suggests the teacher was
+   also beginning to fight a moving student (§ frozen-expert ceiling
+   discussion) — consolidation-first, re-cert, refreeze before any
+   attempt 10 remains the plan of record.
