@@ -26,6 +26,12 @@ and equal visit counts: the shrink factor w depends on neither, and the
 tilt argmax under a uniform prior is the pooled-Q argmax — the quantities
 under test are exact.
 
+Estimator lineage: James-Stein shrinkage (James & Stein, 4th Berkeley
+Symposium, 1961), positive-part variant (Baranchik, Stanford TR 51, 1964),
+empirical-Bayes/hierarchical variance treatment as applied here (Efron &
+Morris, "Data Analysis Using Stein's Estimator and Its Generalizations,"
+JASA 70(350), 1975).
+
 The fat/nopoint EV-wash and called-suit directionality criteria from §1.2
 have no archived committee draws (the §12.15 EV studies recorded belief-MC
 deltas, not committee Q); they fall to the attempt-11 pre-launch checklist.

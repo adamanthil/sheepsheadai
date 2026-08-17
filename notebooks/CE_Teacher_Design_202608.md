@@ -357,3 +357,91 @@ w and tilt direction are invariant to both).
 - `visualizations/dump_ismcts_trace.py` (uncommitted scratch from the
   explorer work) still references the removed gate_* SearchConfig
   fields and will need updating if it is ever committed.
+
+---
+
+## 11. References (for the eventual write-up)
+
+The design's lineage claim in one line: Expert Iteration supplies the
+loop, AlphaZero the CE projection step, Grill et al. the theory that the
+visit/completed-Q target is a regularized policy improvement, Gumbel
+MuZero the specific completed-Q readout we train toward, DAgger the
+on-policy-states-with-stationary-expert correction, and James-Stein the
+noise-adaptive abstention.
+
+Search & target construction:
+- Cowling, Powley & Whitehouse, "Information Set Monte Carlo Tree
+  Search," IEEE Trans. Comput. Intell. AI Games 4(2), 2012 — SO-ISMCTS,
+  the engine's algorithm.
+- Long, Sturtevant, Buro & Furtak, "Understanding the Success of Perfect
+  Information Monte Carlo Sampling in Game Tree Search," AAAI 2010 —
+  determinization limits (strategy fusion / non-locality) behind the
+  oracle-leaf "shortcut not leak" argument (§13.3 discussion).
+- Rosin, "Multi-armed Bandits with Episode Context," Ann. Math. Artif.
+  Intell. 61(3), 2011 — PUCT.
+- Chaslot, Winands & van den Herik, "Parallel Monte-Carlo Tree Search,"
+  Computers and Games 2008 — root parallelization (the committee's
+  independent-replicate form; used for noise estimation, not speed).
+- Danihelka, Guez, Schrittwieser & Silver, "Policy Improvement by
+  Planning with Gumbel," ICLR 2022 — completed-Q + sigma-scale tilt;
+  the pi_gumbel readout the target reuses.
+- Grill, Altché, Tang, Hubert, Valko, Antonoglou & Munos, "Monte-Carlo
+  Tree Search as Regularized Policy Optimization," ICML 2020 — the
+  visit/Q-tilt target as a KL-regularized improvement step (why the
+  softmax tilt is the principled sharpening bound).
+
+Installation (the loop and the loss):
+- Anthony, Tian & Barber, "Thinking Fast and Slow with Deep Learning
+  and Tree Search," NeurIPS 2017 — Expert Iteration.
+- Silver et al., "Mastering the Game of Go with Deep Neural Networks
+  and Tree Search," Nature 529, 2016 — prior-guided PUCT; "Mastering
+  the Game of Go without Human Knowledge," Nature 550, 2017 — CE toward
+  the search policy with buffer reuse (the asymmetric-epochs precedent);
+  "A General Reinforcement Learning Algorithm that Masters Chess,
+  Shogi, and Go through Self-Play," Science 362, 2018 — AlphaZero.
+- Ross, Gordon & Bagnell, "A Reduction of Imitation Learning and
+  Structured Prediction to No-Regret Online Learning," AISTATS 2011 —
+  DAgger: labels on the student's state distribution from a stationary
+  expert (the frozen-expert-per-generation rule; attempts 7/8 measured
+  the non-stationary failure mode).
+- Hinton, Vinyals & Dean, "Distilling the Knowledge in a Neural
+  Network," arXiv:1503.02531, 2015 — soft-target CE (why ambiguity at
+  ties transfers, not just argmaxes).
+- Schulman et al., "Proximal Policy Optimization Algorithms,"
+  arXiv:1707.06347, 2017 — the host objective; ratio staleness is what
+  keeps PG at one epoch while the supervised CE term reuses the buffer.
+
+Shrinkage / abstention:
+- James & Stein, "Estimation with Quadratic Loss," 4th Berkeley
+  Symposium, 1961; Baranchik, "Multiple Regression and Estimation of
+  the Mean of a Multivariate Normal Distribution," Stanford TR 51,
+  1964 (positive part); Efron & Morris, "Data Analysis Using Stein's
+  Estimator and Its Generalizations," JASA 70(350), 1975 (the
+  empirical-Bayes/hierarchical variance blend of §1.2).
+
+Entropy controller v2 (§4):
+- Haarnoja et al., "Soft Actor-Critic Algorithms and Applications,"
+  arXiv:1812.05905, 2018 §5 — automatic temperature adjustment (the
+  inner loop's form); Christodoulou, "Soft Actor-Critic for Discrete
+  Action Settings," arXiv:1910.07207, 2019 — discrete/normalized form.
+- Åström & Wittenmark, *Adaptive Control*, 2nd ed., 1995, ch. 9 —
+  bumpless transfer.
+- Jaderberg et al., "Population Based Training of Neural Networks,"
+  arXiv:1711.09846, 2017 — outer-step perturbation scale.
+- Sokota et al., "A Unified Approach to Reinforcement Learning, Quantal
+  Response Equilibria, and Two-Player Zero-Sum Games,"
+  arXiv:2206.05825 (ICLR 2023) — mixed equilibria in imperfect
+  information; why entropy floors are never zero.
+
+Evaluation instruments:
+- Bard, Hawkin, Johanson & Szafron, "The Annual Computer Poker
+  Competition," AI Magazine 34(2), 2013 — duplicate-match format (the
+  ceiling h2h / boundary h2h pairing); Burch, Schmid, Moravčík,
+  Morrill & Bowling, "AIVAT: A New Variance Reduction Technique for
+  Agent Evaluation in Imperfect Information Games," AAAI 2018 — the
+  variance-reduction goal the zero-centered paired design shares.
+
+(The retired §12 pair-hinge lineage — Bradley-Terry, RankNet, DPO
+(Rafailov et al. 2023), DQfD (Hester et al., AAAI 2018) — is cited in
+Search_Teacher_Design_202608.md §12.7 and its references block, and
+belongs to the negative-results half of the write-up.)

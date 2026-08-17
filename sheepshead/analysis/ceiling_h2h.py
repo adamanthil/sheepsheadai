@@ -17,6 +17,14 @@ all 5 seats per CRN deal against an all-anchor field, both partner modes,
 per-deal mean score = the paired edge (anchor's own-field score is 0 by
 symmetry). Deal seeds use the same generator schedule (seed 42).
 
+Variance design: common random numbers (paired simulation, e.g. Law,
+*Simulation Modeling and Analysis*, ch. 11) via the duplicate-match format
+used in computer-poker evaluation (Bard et al., "The Annual Computer Poker
+Competition," AI Magazine 34(2), 2013); deal luck cancels in the pairing and
+a deal where the committee never overrides the policy scores exactly 0, so
+the null is zero-centered by construction (same goal as variance-reduced
+agent evaluation, cf. AIVAT — Burch et al., AAAI 2018).
+
 Instrumentation (the run doubles as a behavioral study): every hero play-lead
 node logs trick, convention-cell eligibility, the policy argmax, the
 committee's per-replicate choices, resolution/abstention, and the acted card

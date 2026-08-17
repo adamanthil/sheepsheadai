@@ -142,8 +142,8 @@ def build_ce_search_target(
 
     1. **Pool.** Per action, the replicate mean q̄_a over replicates that
        visited it; unvisited actions are completed with the visit-weighted
-       mean (Gumbel MuZero's completed-Q), which makes their shrunk
-       deviation exactly zero.
+       mean (Gumbel MuZero's completed-Q; Danihelka et al., ICLR 2022),
+       which makes their shrunk deviation exactly zero.
     2. **Shrink.** Single per-node positive-part James-Stein factor
        w = max(0, 1 - s̄²/Var_V(q̄)): the mean sampling variance of the
        pooled q̄ (per-action replicate variance stabilized by the

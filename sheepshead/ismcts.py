@@ -56,6 +56,27 @@ snapshots and restores ``agent._player_memories`` around each search so the
 acting policy is undisturbed. Search is **training-time only**; the shipped
 network never searches.
 
+Literature
+----------
+* SO-ISMCTS (single-observer information-set MCTS with determinization):
+  Cowling, Powley & Whitehouse, "Information Set Monte Carlo Tree Search,"
+  IEEE Trans. on Computational Intelligence and AI in Games 4(2), 2012.
+  Determinization strengths/limits (strategy fusion, non-locality): Long,
+  Sturtevant, Buro & Furtak, "Understanding the Success of Perfect
+  Information Monte Carlo Sampling in Game Tree Search," AAAI 2010.
+* Prior-guided PUCT selection: Rosin, "Multi-armed Bandits with Episode
+  Context," Ann. Math. Artif. Intell. 61(3), 2011; the network-prior form
+  and ``c_puct`` convention follow AlphaGo (Silver et al., Nature 529, 2016).
+* ``pi_gumbel`` completed-Q readout: Danihelka, Guez, Schrittwieser &
+  Silver, "Policy Improvement by Planning with Gumbel," ICLR 2022 (see
+  ``SearchConfig.gumbel_*``).
+* Root regret matching (``root_selection="rm"``): sigma(regret+) as in
+  regret-matching (Hart & Mas-Colell, Econometrica 68(5), 2000).
+* ``search_committee`` (independent same-node replicates, lockstep-batched):
+  root parallelization, Chaslot, Winands & van den Herik, "Parallel
+  Monte-Carlo Tree Search," Computers and Games 2008 — used here for
+  replicate-noise estimation and majority/agreement reads, not speed.
+
 Code map
 --------
 * ``ISMCTSTeacher.search`` -> ``_search_inner`` -> ``_build_pool`` (belief

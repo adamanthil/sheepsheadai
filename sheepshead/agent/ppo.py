@@ -2044,7 +2044,11 @@ class PPOAgent:
         The PG loss keeps its own epoch tuning (importance-ratio staleness
         binds it); the CE term is a SUPERVISED loss toward a label-time-
         fixed target, so it reuses the buffer's labeled rows for
-        ``teacher_epochs`` extra passes (AZ-standard reuse, no ratios).
+        ``teacher_epochs`` extra passes (AZ-standard reuse, no ratios —
+        CE toward a search-improved policy is the AlphaGo Zero /
+        AlphaZero projection step, Silver et al. Nature 550 2017 /
+        Science 362 2018; soft-target CE per Hinton, Vinyals & Dean,
+        arXiv:1503.02531).
         The target is NOT recomputed against the moving policy —
         recomputation would iterate the improvement operator and
         over-sharpen past the intended KL ball. Labels die with the buffer
