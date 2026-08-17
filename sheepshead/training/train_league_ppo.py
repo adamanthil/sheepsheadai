@@ -168,6 +168,10 @@ PFSP_HYPERPARAMS = PFSPHyperparams()  # entropy/LR decay schedules + greedy-heal
 # SAME deals, so consecutive probe values are paired and the trend line is
 # policy movement, not deal luck.
 LEAGUE_ANCHOR_EVAL_SEED = 20260701
+# Fixed seed for the n=1000 adherence guard probe: successive guard readings
+# share the deal stream, so probe-to-probe deltas are paired (policy-driven,
+# not deal-luck). Same seed as the offline monitoring probes (§12.17).
+ADHERENCE_GUARD_SEED = 98765
 
 
 class _Seat:
@@ -233,6 +237,9 @@ def _league_worker_init(init_args: dict) -> None:
             gate_node_prob=float(init_args.get("search_prob", 0.02)),
             gate_replicates=int(init_args.get("search_replicates", 5)),
             gate_emit_margin=float(init_args.get("search_margin", 0.3)),
+            gate_pair_eps=float(
+                init_args.get("search_pair_eps") or _SC().gate_pair_eps
+            ),
         )
         iters = int(init_args.get("search_iters", cfg.gate_iters))
         # Stationary expert (§12.1): the teacher wraps a frozen copy of the
@@ -498,6 +505,9 @@ def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
         gate_node_prob=float(getattr(ctx.args, "search_teacher_prob", 0.02)),
         gate_replicates=int(getattr(ctx.args, "search_replicates", 5)),
         gate_emit_margin=float(getattr(ctx.args, "search_teacher_margin", 0.3)),
+        gate_pair_eps=float(
+            getattr(ctx.args, "gate_pair_eps", None) or SearchConfig().gate_pair_eps
+        ),
     )
     return {
         "teacher": teacher,
@@ -663,9 +673,19 @@ def run_main_phase(
     n_episodes: int,
     checkpoint_dir: str,
     anchor_eval: dict | None = None,
+    phase_exit: dict | None = None,
 ) -> int:
     """Train the main agent for ``n_episodes`` vs league tables; returns the
     final episode index. Mutates league ratings/EMAs and training_ratings.
+
+    ``phase_exit`` (optional): adaptive teacher-phase exit rule —
+    {"emission_pct", "learned", "windows", "min_searched"}. Evaluated at each
+    gate-telemetry window; the phase ends early after ``windows`` consecutive
+    windows whose emission rate is at or below ``emission_pct`` OR whose
+    self-retirement readout (satisfied/resolved) is at or above ``learned``
+    (teaching saturated: nothing material left that the live policy doesn't
+    already order). Windows with fewer than ``min_searched`` searched rows
+    are skipped (visitation noise), not counted either way.
 
     ``anchor_eval`` (optional): {"agent", "label", "interval", "deals"} — a
     frozen reference for the periodic paired CRN greedy probe, the run's only
@@ -783,6 +803,7 @@ def run_main_phase(
                     "search_prob": float(getattr(args, "search_teacher_prob", 0.02)),
                     "search_replicates": int(getattr(args, "search_replicates", 5)),
                     "search_margin": float(getattr(args, "search_teacher_margin", 0.3)),
+                    "search_pair_eps": getattr(args, "gate_pair_eps", None),
                     # Stationary expert (§12.1): workers rebuild the frozen
                     # generation-start policy from these paths; weight
                     # refreshes touch only the live agent. --teacher-ckpt
@@ -1013,6 +1034,34 @@ def run_main_phase(
                             f"Δl {d.get('d_ref', 0.0):+.3f}",
                             flush=True,
                         )
+                    if phase_exit is not None and gate_window[
+                        "count"
+                    ] >= phase_exit.get("min_searched", 20):
+                        emission = (
+                            100.0 * gate_window["accepted"] / gate_window["count"]
+                        )
+                        learned = (
+                            gate_window["satisfied"] / gate_window["resolved"]
+                            if gate_window["resolved"]
+                            else None
+                        )
+                        if emission <= phase_exit["emission_pct"] or (
+                            learned is not None and learned >= phase_exit["learned"]
+                        ):
+                            phase_exit["_hits"] = phase_exit.get("_hits", 0) + 1
+                        else:
+                            phase_exit["_hits"] = 0
+                        if phase_exit["_hits"] >= phase_exit["windows"]:
+                            print(
+                                f"🎓 TEACHER PHASE SATURATED at ep {episode:,}: "
+                                f"{phase_exit['windows']} consecutive windows at "
+                                f"emission <= {phase_exit['emission_pct']:.1f}% or "
+                                f"learned >= {phase_exit['learned']:.2f} — exiting "
+                                f"teacher phase early",
+                                flush=True,
+                            )
+                            phase_exit["exited_early"] = True
+                            break
                     gate_window = {
                         "count": 0,
                         "accepted": 0,
@@ -1111,6 +1160,59 @@ def run_main_phase(
                             probe["called_leads"],
                         ]
                     )
+
+            # Convention adherence guard (Search_Teacher_Design §12.17): the
+            # 200-300-game greedy probe cannot resolve sub-5-point convention
+            # regressions (it masked an 8-point partner-trump deficit for a
+            # full teacher run), so the guard reruns the probe at n=1000 on a
+            # FIXED seed (successive probes are paired) and hard-stops the run
+            # on the configured lines. Damage arrives via shared-trunk
+            # transport (§12.13), which no emission-side mask can prevent —
+            # measurement + stop is the only reliable guard.
+            if (
+                getattr(args, "adherence_guard_interval", 0) > 0
+                and episode % args.adherence_guard_interval == 0
+            ):
+                gp = greedy_health_probe(
+                    training_agent,
+                    n_games=int(getattr(args, "adherence_guard_games", 1000)),
+                    seed=ADHERENCE_GUARD_SEED,
+                )
+                print(
+                    f"🛡️ Adherence guard (n={gp['games']}): "
+                    f"called-suit {gp['called_suit_lead_rate']:.1f}% "
+                    f"t0-trump {gp['t0_trump_lead_rate']:.1f}% "
+                    f"partner-trump {gp['partner_trump_lead_rate']:.1f}%",
+                    flush=True,
+                )
+                violations = []
+                floor = getattr(args, "guard_partner_floor", None)
+                if floor is not None and gp["partner_trump_lead_rate"] < float(floor):
+                    violations.append(
+                        f"partner trump-lead {gp['partner_trump_lead_rate']:.1f}% "
+                        f"< floor {float(floor):.1f}%"
+                    )
+                ceil = getattr(args, "guard_t0_ceiling", None)
+                if ceil is not None and gp["t0_trump_lead_rate"] > float(ceil):
+                    violations.append(
+                        f"t0 trump-lead {gp['t0_trump_lead_rate']:.1f}% "
+                        f"> ceiling {float(ceil):.1f}%"
+                    )
+                if violations:
+                    stop_ckpt = os.path.join(
+                        checkpoint_dir,
+                        f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
+                    )
+                    training_agent.save(stop_ckpt)
+                    league.save()
+                    print(
+                        "🚨 ADHERENCE GUARD STOP: "
+                        + "; ".join(violations)
+                        + f" — checkpoint saved to {stop_ckpt}; run halted for "
+                        "operator review",
+                        flush=True,
+                    )
+                    raise SystemExit(3)
 
             # Anchored strength probe: paired CRN greedy edge vs the frozen
             # reference (fixed deal set => probe-to-probe diffs are paired).
@@ -1450,6 +1552,78 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "roughly prob x eligible-nodes/game x --search-replicates searches",
     )
     ap.add_argument(
+        "--gate-pair-eps",
+        type=float,
+        default=None,
+        help="materiality floor (Q-units, 1 Q = 12 score points) for pair "
+        "emission: |mean paired Q-diff| must clear max(eps, 2s/sqrt(R)). "
+        "Default (None) uses SearchConfig's 0.01 (the E9 harm epsilon). "
+        "Search_Teacher_Design §12.16-12.17 calibrated 0.03 as the value "
+        "that kills reward-wash pairs (fat-vs-nopoint: 0 survivors) while "
+        "keeping convention-direction pairs",
+    )
+    ap.add_argument(
+        "--teacher-phase-cap",
+        type=int,
+        default=0,
+        help="two-phase generations: cap (episodes) on the teacher-ON phase "
+        "at the start of each generation; the remainder to the boundary "
+        "runs teacher-OFF (consolidation — terminal reward audits the "
+        "taught behavior). 0 disables two-phase (teacher on all "
+        "generation, the pre-§12.15 behavior)",
+    )
+    ap.add_argument(
+        "--teacher-exit-emission-pct",
+        type=float,
+        default=2.0,
+        help="adaptive teacher-phase exit: emission rate (%% of searched "
+        "rows emitting) at or below which a telemetry window counts "
+        "toward early exit",
+    )
+    ap.add_argument(
+        "--teacher-exit-learned",
+        type=float,
+        default=0.95,
+        help="adaptive teacher-phase exit: self-retirement readout "
+        "(satisfied/resolved) at or above which a window counts toward "
+        "early exit",
+    )
+    ap.add_argument(
+        "--teacher-exit-windows",
+        type=int,
+        default=3,
+        help="consecutive qualifying telemetry windows required to exit "
+        "the teacher phase early",
+    )
+    ap.add_argument(
+        "--adherence-guard-interval",
+        type=int,
+        default=0,
+        help="run the n=1000 fixed-seed convention adherence guard every N "
+        "episodes (0 = off). §12.17: smaller probes masked an 8-point "
+        "partner-trump regression for a full teacher run",
+    )
+    ap.add_argument(
+        "--adherence-guard-games",
+        type=int,
+        default=1000,
+        help="games per adherence guard probe",
+    )
+    ap.add_argument(
+        "--guard-partner-floor",
+        type=float,
+        default=None,
+        help="adherence guard hard stop: halt the run (exit 3, checkpoint "
+        "saved) if partner trump-lead %% falls below this floor",
+    )
+    ap.add_argument(
+        "--guard-t0-ceiling",
+        type=float,
+        default=None,
+        help="adherence guard hard stop: halt the run if defender t0 "
+        "trump-lead %% rises above this ceiling",
+    )
+    ap.add_argument(
         "--seat-rotation",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -1566,7 +1740,8 @@ def main():
             f"(m={training_agent.search_margin}, "
             f"λ={training_agent.search_label_weight}, "
             f"δ={training_agent.search_clip_delta}, "
-            f"R={int(getattr(args, 'search_replicates', 5))})"
+            f"R={int(getattr(args, 'search_replicates', 5))}, "
+            f"ε={getattr(args, 'gate_pair_eps', None) or 'config-default'})"
         )
     if getattr(args, "oracle_init", None):
         sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
@@ -1632,28 +1807,109 @@ def main():
     # the same cadence/numbering and only trains the remainder to the next
     # boundary (rather than resetting the counter to the resume point).
     first_gen = episode // main_ep + 1
+    # Two-phase generations (Search_Teacher_Design §12.7/§12.15): with
+    # --search-teacher and --teacher-phase-cap, each generation runs a
+    # teacher-ON phase (adaptive exit on emission floor / learned saturation,
+    # hard cap) followed by a teacher-OFF consolidation to the boundary, where
+    # terminal reward audits everything the teacher installed. The frozen
+    # expert REFREEZES to each generation's start checkpoint (certification
+    # spot-check at the boundary remains a manual step — flagged loudly).
+    gen_start_ckpt = getattr(args, "teacher_ckpt", None) or args.resume
     for generation in range(first_gen, first_gen + args.generations):
         boundary = generation * main_ep
+        gen_start = boundary - main_ep
+        phase_cap = int(getattr(args, "teacher_phase_cap", 0) or 0)
+        two_phase = bool(getattr(args, "search_teacher", False)) and phase_cap > 0
         print(
             f"\n{'=' * 70}\n🏁 GENERATION {generation}: main phase "
-            f"({episode:,} -> {boundary:,})\n{'=' * 70}"
+            f"({episode:,} -> {boundary:,})"
+            + (f"  [two-phase: teacher cap {phase_cap:,}]" if two_phase else "")
+            + f"\n{'=' * 70}"
         )
-        episode = run_main_phase(
-            training_agent,
-            league,
-            training_ratings,
-            args,
-            episode,
-            boundary - episode,
-            checkpoint_dir,
-            anchor_eval=anchor_eval,
+        phase_marker = os.path.join(
+            checkpoint_dir, f"teacher_phase_done_gen{generation}.json"
         )
+        if two_phase:
+            phase_a_budget = max(0, gen_start + phase_cap - episode)
+            if os.path.exists(phase_marker):
+                phase_a_budget = 0
+                print(f"🎓 Teacher phase already completed for gen {generation}")
+            if phase_a_budget > 0:
+                args.teacher_ckpt = gen_start_ckpt
+                print(
+                    f"🧊 Teacher expert frozen to {gen_start_ckpt} "
+                    "(boundary cert spot-check pending before next refreeze)"
+                )
+                phase_exit = {
+                    "emission_pct": float(
+                        getattr(args, "teacher_exit_emission_pct", 2.0)
+                    ),
+                    "learned": float(getattr(args, "teacher_exit_learned", 0.95)),
+                    "windows": int(getattr(args, "teacher_exit_windows", 3)),
+                }
+                episode = run_main_phase(
+                    training_agent,
+                    league,
+                    training_ratings,
+                    args,
+                    episode,
+                    min(phase_a_budget, boundary - episode),
+                    checkpoint_dir,
+                    anchor_eval=anchor_eval,
+                    phase_exit=phase_exit,
+                )
+                with open(phase_marker, "w") as f:
+                    json.dump(
+                        {
+                            "end_episode": episode,
+                            "exited_early": bool(phase_exit.get("exited_early")),
+                            "teacher_ckpt": gen_start_ckpt,
+                        },
+                        f,
+                    )
+                mid_ckpt = os.path.join(
+                    checkpoint_dir,
+                    f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
+                )
+                if not os.path.exists(mid_ckpt):
+                    training_agent.save(mid_ckpt)
+            if boundary - episode > 0:
+                print(
+                    f"🧘 CONSOLIDATION (teacher off): {episode:,} -> {boundary:,} "
+                    "— terminal reward audits the taught behavior"
+                )
+                args_off = copy.copy(args)
+                args_off.search_teacher = False
+                episode = run_main_phase(
+                    training_agent,
+                    league,
+                    training_ratings,
+                    args_off,
+                    episode,
+                    boundary - episode,
+                    checkpoint_dir,
+                    anchor_eval=anchor_eval,
+                )
+        else:
+            episode = run_main_phase(
+                training_agent,
+                league,
+                training_ratings,
+                args,
+                episode,
+                boundary - episode,
+                checkpoint_dir,
+                anchor_eval=anchor_eval,
+            )
         main_ckpt = os.path.join(
             checkpoint_dir,
             f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
         )
         if not os.path.exists(main_ckpt):
             training_agent.save(main_ckpt)
+        # Next generation's frozen expert = this boundary checkpoint
+        # (§12.7 refreeze cadence; certification spot-check is manual).
+        gen_start_ckpt = main_ckpt
 
         gate = run_exploiter_generation(args, generation, main_ckpt)
         write_header = not os.path.exists(exploitability_csv)
