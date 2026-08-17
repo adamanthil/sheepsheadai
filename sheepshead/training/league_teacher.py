@@ -77,13 +77,15 @@ def _build_frozen_expert(
     )
     frozen.load(resume, load_optimizers=False)
     if oracle_init:
-        sd = torch.load(oracle_init, map_location="cpu", weights_only=True)
-        frozen.oracle_critic.load_state_dict(sd, strict=True)
+        oracle_state_dict = torch.load(
+            oracle_init, map_location="cpu", weights_only=True
+        )
+        frozen.oracle_critic.load_state_dict(oracle_state_dict, strict=True)
     frozen.gamma = gamma
     return frozen
 
 
-def _teacher_kwargs(ctx) -> dict:
+def _teacher_kwargs(context) -> dict:
     """play_population_game kwargs for the CE search teacher
     (CE_Teacher_Design §2), or {} when --teacher is off.
 
@@ -91,23 +93,23 @@ def _teacher_kwargs(ctx) -> dict:
     generation-start policy (stationary expert) at the calibrated budget
     (--teacher-iters, d_rollout=1 per call, oracle leaves via the engine
     default) plus the emission SearchConfig."""
-    settings = TeacherSettings.from_args(ctx.args)
+    settings = TeacherSettings.from_args(context.args)
     if not settings.enabled:
         return {}
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     frozen = _build_frozen_expert(
         settings.ckpt,
-        ctx.args.critic_mode,
-        ctx.args.arch,
-        getattr(ctx.args, "oracle_aux_heads", False),
+        context.args.critic_mode,
+        context.args.arch,
+        getattr(context.args, "oracle_aux_heads", False),
         settings.oracle_init,
-        ctx.training_agent.gamma,
+        context.training_agent.gamma,
     )
     teacher = ISMCTSTeacher(
         frozen,
         ISMCTSConfig(
-            iters={h: settings.iters for h in ("pick", "partner", "bury", "play")}
+            iters={head: settings.iters for head in ("pick", "partner", "bury", "play")}
         ),
     )
     search_config = SearchConfig(
@@ -116,6 +118,6 @@ def _teacher_kwargs(ctx) -> dict:
     )
     return {
         "teacher": teacher,
-        "determinization_rng": random.Random(ctx.args.seed ^ 0x5EA6C4),
+        "determinization_rng": random.Random(context.args.seed ^ 0x5EA6C4),
         "search_config": search_config,
     }

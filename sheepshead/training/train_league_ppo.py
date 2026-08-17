@@ -229,26 +229,29 @@ def _inherited_ratings(league: League, training_ratings: dict) -> dict:
 # ----------------------------------------------------------------------------
 # Main phase
 # ----------------------------------------------------------------------------
-def apply_schedules(episode: int, ctx: MainPhaseContext):
-    hp = ctx.hyperparams or PFSP_HYPERPARAMS
-    pct = min(100.0, 100.0 * episode / max(ctx.args.schedule_horizon, 1))
+def apply_schedules(episode: int, context: MainPhaseContext):
+    hyperparams = context.hyperparams or PFSP_HYPERPARAMS
+    pct = min(100.0, 100.0 * episode / max(context.args.schedule_horizon, 1))
     decay = 1.0 - pct / 100.0
-    ctx.training_agent.entropy_coeff_pick = (
-        hp.entropy_pick_end + (hp.entropy_pick_start - hp.entropy_pick_end) * decay
+    context.training_agent.entropy_coeff_pick = (
+        hyperparams.entropy_pick_end
+        + (hyperparams.entropy_pick_start - hyperparams.entropy_pick_end) * decay
     )
-    ctx.training_agent.entropy_coeff_partner = (
-        hp.entropy_partner_end
-        + (hp.entropy_partner_start - hp.entropy_partner_end) * decay
+    context.training_agent.entropy_coeff_partner = (
+        hyperparams.entropy_partner_end
+        + (hyperparams.entropy_partner_start - hyperparams.entropy_partner_end) * decay
     )
-    ctx.training_agent.entropy_coeff_bury = (
-        hp.entropy_bury_end + (hp.entropy_bury_start - hp.entropy_bury_end) * decay
+    context.training_agent.entropy_coeff_bury = (
+        hyperparams.entropy_bury_end
+        + (hyperparams.entropy_bury_start - hyperparams.entropy_bury_end) * decay
     )
-    ctx.training_agent.entropy_coeff_play = (
-        hp.entropy_play_end + (hp.entropy_play_start - hp.entropy_play_end) * decay
+    context.training_agent.entropy_coeff_play = (
+        hyperparams.entropy_play_end
+        + (hyperparams.entropy_play_start - hyperparams.entropy_play_end) * decay
     )
-    ctx.training_agent.set_learning_rates(
-        interpolated_weight(hp.lr_schedule_actor, pct),
-        interpolated_weight(hp.lr_schedule_critic, pct),
+    context.training_agent.set_learning_rates(
+        interpolated_weight(hyperparams.lr_schedule_actor, pct),
+        interpolated_weight(hyperparams.lr_schedule_critic, pct),
     )
 
 
@@ -301,9 +304,9 @@ def fresh_entropy_targets(args) -> dict:
     settled operating point (seed-transient entropy levels are never
     captured as targets; see run_extended_league.trainer_cmd)."""
     return {
-        h: v
-        for h in ("pick", "partner", "bury", "play")
-        if (v := getattr(args, f"entropy_target_{h}", None)) is not None
+        head: target
+        for head in ("pick", "partner", "bury", "play")
+        if (target := getattr(args, f"entropy_target_{head}", None)) is not None
     }
 
 
@@ -313,12 +316,12 @@ class _PhaseState:
     per-episode phase helpers (_ingest_episode, _ppo_update,
     _run_interval_probes). One instance per phase; never outlives it."""
 
-    ctx: MainPhaseContext
+    context: MainPhaseContext
     checkpoint_dir: str
     training_ratings: dict
     anchor_eval: dict | None
-    entropy_ctrl: EntropyTargetController | None
-    entropy_ctrl_path: str
+    entropy_controller: EntropyTargetController | None
+    entropy_controller_path: str
     watchdog: LeasterWatchdog | None
     pool: object | None
     progress_csv: str
@@ -328,7 +331,7 @@ class _PhaseState:
     pick_window: deque
     leaster_window: deque
     teacher_window: dict
-    t0: float
+    start_time: float
 
 
 def _setup_telemetry_csvs(checkpoint_dir: str, start_episode: int):
@@ -342,17 +345,17 @@ def _setup_telemetry_csvs(checkpoint_dir: str, start_episode: int):
         print("📊 Migrated league_training_progress.csv to wider schema")
     if ensure_csv_columns(greedy_csv, GREEDY_CSV_HEADER):
         print("📊 Migrated greedy_health.csv to wider schema")
-    for _csv in (progress_csv, greedy_csv, anchored_csv):
-        _n = truncate_csv_rows_past_episode(_csv, start_episode)
-        if _n:
+    for csv_file in (progress_csv, greedy_csv, anchored_csv):
+        n_trimmed = truncate_csv_rows_past_episode(csv_file, start_episode)
+        if n_trimmed:
             print(
-                f"🧹 Trimmed {_n} stale rows past episode {start_episode:,} "
-                f"from {os.path.basename(_csv)}"
+                f"🧹 Trimmed {n_trimmed} stale rows past episode {start_episode:,} "
+                f"from {os.path.basename(csv_file)}"
             )
     return progress_csv, greedy_csv, anchored_csv
 
 
-def _setup_entropy_controller(args, checkpoint_dir: str, ctx: MainPhaseContext):
+def _setup_entropy_controller(args, checkpoint_dir: str, context: MainPhaseContext):
     """Entropy controller v2 (always on for the league trainer,
     CE_Teacher_Design §4): the signed target-entropy controller owns the
     entropy coefficients (LR keeps its clock schedule). Bumpless handoff:
@@ -363,18 +366,18 @@ def _setup_entropy_controller(args, checkpoint_dir: str, ctx: MainPhaseContext):
     (disposable, exploration-hungry — a controller would fight its
     intentionally hot coefficients). Returns (controller | None, sidecar
     path)."""
-    entropy_ctrl_path = os.path.join(checkpoint_dir, "entropy_controller.json")
+    entropy_controller_path = os.path.join(checkpoint_dir, "entropy_controller.json")
     if not getattr(args, "entropy_controller", False):
-        return None, entropy_ctrl_path
-    if os.path.exists(entropy_ctrl_path):
-        entropy_ctrl = EntropyTargetController.load(entropy_ctrl_path)
+        return None, entropy_controller_path
+    if os.path.exists(entropy_controller_path):
+        entropy_controller = EntropyTargetController.load(entropy_controller_path)
         print(
             f"🎯 Entropy controller resumed: targets "
-            f"{entropy_ctrl.targets}  alphas {entropy_ctrl.alphas}"
+            f"{entropy_controller.targets}  alphas {entropy_controller.alphas}"
         )
     else:
         targets = fresh_entropy_targets(args)
-        entropy_ctrl = EntropyTargetController(
+        entropy_controller = EntropyTargetController(
             config=EntropyControllerConfig(
                 floors={"play": getattr(args, "entropy_play_floor", 0.28)}
             ),
@@ -387,26 +390,26 @@ def _setup_entropy_controller(args, checkpoint_dir: str, ctx: MainPhaseContext):
             )
         else:
             print("🎯 Entropy controller fresh (bumpless targets pending)")
-    apply_schedules(ctx.start_episode, ctx)
-    entropy_ctrl.attach(ctx.training_agent)
-    return entropy_ctrl, entropy_ctrl_path
+    apply_schedules(context.start_episode, context)
+    entropy_controller.attach(context.training_agent)
+    return entropy_controller, entropy_controller_path
 
 
-def _spawn_worker_pool(args, league: League, ctx: MainPhaseContext):
+def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
     """Spawn the versioned-weights worker pool (league_worker protocol), or
     return None for the in-process sequential path (num_workers <= 1)."""
     if args.num_workers <= 1:
         return None
-    mp_ctx = get_context("spawn")
+    spawn_context = get_context("spawn")
     teacher_settings = TeacherSettings.from_args(args)
-    return mp_ctx.Pool(
+    return spawn_context.Pool(
         processes=args.num_workers,
         initializer=_league_worker_init,
         initargs=(
             {
                 "arch": getattr(args, "arch", "full"),
                 "members_dir": str(league.members_dir),
-                "weight_path_base": ctx.weight_sync["base"],
+                "weight_path_base": context.weight_sync["base"],
                 "base_seed": args.seed,
                 # CE search teacher in workers: oracle-mode agents so
                 # the payload's oracle head loads (calibrated leaves) and
@@ -424,14 +427,14 @@ def _spawn_worker_pool(args, league: League, ctx: MainPhaseContext):
                 # continuation doesn't silently refreeze to student weights.
                 "teacher_resume": teacher_settings.ckpt,
                 "teacher_oracle_init": teacher_settings.oracle_init,
-                "teacher_gamma": float(ctx.training_agent.gamma),
+                "teacher_gamma": float(context.training_agent.gamma),
             },
         ),
     )
 
 
 def _ingest_episode(
-    st: _PhaseState,
+    state: _PhaseState,
     mode: int,
     position: int,
     events: list,
@@ -442,30 +445,32 @@ def _ingest_episode(
 ) -> None:
     """Fold one finished episode into the phase state: store its events for
     the next PPO update, accumulate telemetry windows, and update ratings."""
-    league = st.ctx.league
-    st.ctx.tx_counter.count += store_events_by_seat(st.ctx.training_agent, events)
-    sd = (training_data_single.get("search_diagnostics") or {}).get("play")
-    if sd:
-        st.teacher_window["searched"] += sd["count"]
-        st.teacher_window["labeled"] += sd["labeled"]
-        st.teacher_window["material"] += sd["material"]
-        st.teacher_window["w_sum"] += sd["w_sum"]
-        st.teacher_window["spread_sum"] += sd["spread_sum"]
-        st.teacher_window["kl_sum"] += sd["kl_sum"]
-        st.teacher_window["kl_n"] += sd["kl_n"]
+    league = state.context.league
+    state.context.tx_counter.count += store_events_by_seat(
+        state.context.training_agent, events
+    )
+    diagnostics = (training_data_single.get("search_diagnostics") or {}).get("play")
+    if diagnostics:
+        state.teacher_window["searched"] += diagnostics["count"]
+        state.teacher_window["labeled"] += diagnostics["labeled"]
+        state.teacher_window["material"] += diagnostics["material"]
+        state.teacher_window["w_sum"] += diagnostics["w_sum"]
+        state.teacher_window["spread_sum"] += diagnostics["spread_sum"]
+        state.teacher_window["kl_sum"] += diagnostics["kl_sum"]
+        state.teacher_window["kl_n"] += diagnostics["kl_n"]
     if training_data_single["was_picker"]:
-        st.picker_scores.append(training_data_single["score"])
-    st.pick_window.append(1 if training_data_single["was_picker"] else 0)
-    st.leaster_window.append(1 if summary["is_leaster"] else 0)
+        state.picker_scores.append(training_data_single["score"])
+    state.pick_window.append(1 if training_data_single["was_picker"] else 0)
+    state.leaster_window.append(1 if summary["is_leaster"] else 0)
 
     members_by_pos = {
-        pos: league.get(mid)
-        for pos, mid in seat_to_id.items()
-        if mid != SELF_PLAY and league.get(mid) is not None
+        pos: league.get(member_id)
+        for pos, member_id in seat_to_id.items()
+        if member_id != SELF_PLAY and league.get(member_id) is not None
     }
-    st.training_ratings[mode] = league.update_ratings_with_training(
+    state.training_ratings[mode] = league.update_ratings_with_training(
         partner_mode=mode,
-        training_rating=st.training_ratings[mode],
+        training_rating=state.training_ratings[mode],
         final_scores=scores,
         training_position=position,
         opponents_by_position=members_by_pos,
@@ -475,135 +480,153 @@ def _ingest_episode(
     )
 
 
-def _emit_progress(st: _PhaseState, episode: int, stats: dict) -> None:
+def _emit_progress(state: _PhaseState, episode: int, stats: dict) -> None:
     """Post-update reporting: the progress print, the progress-CSV row, and
     the teacher-window print, then reset the teacher window."""
-    training_agent = st.ctx.training_agent
-    league = st.ctx.league
-    eps_s = (episode - st.ctx.start_episode) / max(time.time() - st.t0, 1e-9)
-    picker_avg = float(np.mean(st.picker_scores)) if st.picker_scores else 0.0
+    training_agent = state.context.training_agent
+    league = state.context.league
+    episodes_per_sec = (episode - state.context.start_episode) / max(
+        time.time() - state.start_time, 1e-9
+    )
+    picker_avg = float(np.mean(state.picker_scores)) if state.picker_scores else 0.0
     anchor = stats.get("anchor", {})
     anchor_str = (
         f"  anchor_kl={anchor.get('kl', 0.0):.4f}" if anchor.get("active") else ""
     )
-    astats = stats.get("advantage_stats", {})
-    hstd = astats.get("head_std", {})
-    adv_std_all = astats.get("std", 0.0)
-    adv_std_play = hstd.get("play", 0.0)
-    adv_std_pick = hstd.get("pick", 0.0)
+    advantage_stats = stats.get("advantage_stats", {})
+    head_std = advantage_stats.get("head_std", {})
+    adv_std_all = advantage_stats.get("std", 0.0)
+    adv_std_play = head_std.get("play", 0.0)
+    adv_std_pick = head_std.get("pick", 0.0)
     # Oracle mode: explained variance of each critic vs the
     # empirical return — the variance-reduction headline.
-    ostats = stats.get("oracle") or {}
+    oracle_stats = stats.get("oracle") or {}
     oracle_str = (
-        f"  ev O/L {ostats['ev_oracle']:.2f}/{ostats['ev_limited']:.2f}"
-        if ostats
+        f"  ev O/L {oracle_stats['ev_oracle']:.2f}/{oracle_stats['ev_limited']:.2f}"
+        if oracle_stats
         else ""
     )
-    hnorm = stats.get("head_entropy_norm") or {}
-    hsoft = stats.get("head_softband") or {}
+    head_entropy = stats.get("head_entropy_norm") or {}
+    head_softband = stats.get("head_softband") or {}
 
-    def _hn(head):
-        v = hnorm.get(head)
+    def _format_head_entropy(head):
+        v = head_entropy.get(head)
         return f"{v:.2f}" if v is not None else "-"
 
     hnorm_str = (
-        f" | Hn {_hn('pick')}/{_hn('partner')}/{_hn('bury')}/{_hn('play')}"
-        if hnorm
+        f" | Hn {_format_head_entropy('pick')}/{_format_head_entropy('partner')}/{_format_head_entropy('bury')}/{_format_head_entropy('play')}"
+        if head_entropy
         else ""
     )
     print(
         f"Ep {episode:,} | picker_avg {picker_avg:+.2f} | "
-        f"pick {100 * np.mean(st.pick_window):.0f}% | "
-        f"leaster {100 * np.mean(st.leaster_window):.1f}% | "
+        f"pick {100 * np.mean(state.pick_window):.0f}% | "
+        f"leaster {100 * np.mean(state.leaster_window):.1f}% | "
         f"x-share {league.exploiter_share():.2f} | "
         f"advσ all/pick/play "
         f"{adv_std_all:.3f}/{adv_std_pick:.3f}/{adv_std_play:.3f} | "
-        f"{eps_s:.1f} eps/s{anchor_str}{oracle_str}{hnorm_str}",
+        f"{episodes_per_sec:.1f} eps/s{anchor_str}{oracle_str}{hnorm_str}",
         flush=True,
     )
-    gns = stats.get("gns") or {}
-    write_header = not os.path.exists(st.progress_csv)
-    with open(st.progress_csv, "a", newline="") as f:
-        w = csv.writer(f)
+    gns_stats = stats.get("gns") or {}
+    write_header = not os.path.exists(state.progress_csv)
+    with open(state.progress_csv, "a", newline="") as f:
+        writer = csv.writer(f)
         if write_header:
-            w.writerow(PROGRESS_CSV_HEADER)
-        w.writerow(
+            writer.writerow(PROGRESS_CSV_HEADER)
+        writer.writerow(
             [
                 episode,
                 f"{picker_avg:.3f}",
-                f"{np.mean(st.pick_window):.3f}",
-                f"{np.mean(st.leaster_window):.3f}",
+                f"{np.mean(state.pick_window):.3f}",
+                f"{np.mean(state.leaster_window):.3f}",
                 f"{league.exploiter_share():.3f}",
-                f"{st.training_ratings[0].mu:.2f}",
-                f"{st.training_ratings[1].mu:.2f}",
+                f"{state.training_ratings[0].mu:.2f}",
+                f"{state.training_ratings[1].mu:.2f}",
                 f"{adv_std_all:.4f}",
                 f"{adv_std_pick:.4f}",
                 f"{adv_std_play:.4f}",
-                f"{ostats['ev_oracle']:.4f}" if ostats else "",
-                f"{ostats['ev_limited']:.4f}" if ostats else "",
+                f"{oracle_stats['ev_oracle']:.4f}" if oracle_stats else "",
+                f"{oracle_stats['ev_limited']:.4f}" if oracle_stats else "",
                 f"{anchor.get('kl', 0.0):.5f}" if anchor.get("active") else "",
                 stats.get("optimizer_steps_total", ""),
-                f"{gns['global']:.0f}" if gns.get("global") is not None else "",
-                f"{gns['lead']:.0f}" if gns.get("lead") is not None else "",
-                gns.get("lead_rows", ""),
-                f"{gns['lead_adv_mean']:.4f}" if "lead_adv_mean" in gns else "",
-                f"{gns['lead_adv_std']:.4f}" if "lead_adv_std" in gns else "",
-                f"{gns['lead_trump_mass']:.4f}" if "lead_trump_mass" in gns else "",
+                f"{gns_stats['global']:.0f}"
+                if gns_stats.get("global") is not None
+                else "",
+                f"{gns_stats['lead']:.0f}" if gns_stats.get("lead") is not None else "",
+                gns_stats.get("lead_rows", ""),
+                f"{gns_stats['lead_adv_mean']:.4f}"
+                if "lead_adv_mean" in gns_stats
+                else "",
+                f"{gns_stats['lead_adv_std']:.4f}"
+                if "lead_adv_std" in gns_stats
+                else "",
+                f"{gns_stats['lead_trump_mass']:.4f}"
+                if "lead_trump_mass" in gns_stats
+                else "",
                 *[
-                    f"{hnorm[head]:.4f}" if hnorm.get(head) is not None else ""
+                    f"{head_entropy[head]:.4f}"
+                    if head_entropy.get(head) is not None
+                    else ""
                     for head in ("pick", "partner", "bury", "play")
                 ],
                 *[
-                    f"{hsoft[head]:.4f}" if hsoft.get(head) is not None else ""
+                    f"{head_softband[head]:.4f}"
+                    if head_softband.get(head) is not None
+                    else ""
                     for head in ("pick", "partner", "bury", "play")
                 ],
                 f"{stats.get('approx_kl', 0.0):.6f}",
                 f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
-                st.teacher_window["searched"],
-                f"{st.teacher_window['material'] / st.teacher_window['labeled']:.3f}"
-                if st.teacher_window["labeled"]
+                state.teacher_window["searched"],
+                f"{state.teacher_window['material'] / state.teacher_window['labeled']:.3f}"
+                if state.teacher_window["labeled"]
                 else "",
-                f"{st.teacher_window['kl_sum'] / st.teacher_window['kl_n']:.4f}"
-                if st.teacher_window["kl_n"]
+                f"{state.teacher_window['kl_sum'] / state.teacher_window['kl_n']:.4f}"
+                if state.teacher_window["kl_n"]
                 else "",
                 f"{stats['teacher']['ce']:.4f}" if stats.get("teacher") else "",
             ]
         )
-    if st.teacher_window["searched"]:
-        tstats = stats.get("teacher") or {}
-        tw = st.teacher_window
+    if state.teacher_window["searched"]:
+        teacher_stats = stats.get("teacher") or {}
+        teacher_window = state.teacher_window
         # Mean label-time KL(target||policy) is the self-retirement
         # readout: it decays toward 0 as the student conforms to the
         # committee.
-        kl = f", KL {tw['kl_sum'] / tw['kl_n']:.3f}" if tw["kl_n"] else ""
+        kl_str = (
+            f", KL {teacher_window['kl_sum'] / teacher_window['kl_n']:.3f}"
+            if teacher_window["kl_n"]
+            else ""
+        )
         print(
-            f"🎓 teacher: {tw['searched']} searched, "
-            f"{tw['material']} material "
-            f"({100 * tw['material'] / max(tw['labeled'], 1):.0f}%), "
-            f"mean w {tw['w_sum'] / max(tw['labeled'], 1):.2f}, "
-            f"spread {tw['spread_sum'] / max(tw['labeled'], 1):.3f}"
-            f"{kl} | CE {tstats.get('ce', 0.0):.4f} "
-            f"x{tstats.get('epochs', 0)} epochs "
-            f"({tstats.get('rows', 0)} rows)",
+            f"🎓 teacher: {teacher_window['searched']} searched, "
+            f"{teacher_window['material']} material "
+            f"({100 * teacher_window['material'] / max(teacher_window['labeled'], 1):.0f}%), "
+            f"mean w {teacher_window['w_sum'] / max(teacher_window['labeled'], 1):.2f}, "
+            f"spread {teacher_window['spread_sum'] / max(teacher_window['labeled'], 1):.3f}"
+            f"{kl_str} | CE {teacher_stats.get('ce', 0.0):.4f} "
+            f"x{teacher_stats.get('epochs', 0)} epochs "
+            f"({teacher_stats.get('rows', 0)} rows)",
             flush=True,
         )
-    st.teacher_window = fresh_teacher_window()
+    state.teacher_window = fresh_teacher_window()
 
 
-def _ppo_update(st: _PhaseState, episode: int) -> None:
+def _ppo_update(state: _PhaseState, episode: int) -> None:
     """One PPO update at an update-interval boundary: schedules, entropy
     controller, watchdog kick, the gradient update (+ CE teacher passes),
     exploiter retirement, weight republish, and progress reporting."""
-    args = st.ctx.args
-    training_agent = st.ctx.training_agent
-    apply_schedules(episode, st.ctx)
-    if st.entropy_ctrl is not None:
+    args = state.context.args
+    training_agent = state.context.training_agent
+    apply_schedules(episode, state.context)
+    if state.entropy_controller is not None:
         # Controller owns the entropy coefficients (overrides the
         # schedule's); the watchdog kick below still multiplies on top —
         # it stays the upward override.
-        st.entropy_ctrl.apply(training_agent)
-    if st.watchdog is not None:
-        st.watchdog.tick(training_agent, st.leaster_window)
+        state.entropy_controller.apply(training_agent)
+    if state.watchdog is not None:
+        state.watchdog.tick(training_agent, state.leaster_window)
     stats = training_agent.update(
         oracle_extra_epochs=getattr(args, "oracle_extra_epochs", 0),
         epochs=PPO_EPOCHS,
@@ -615,59 +638,59 @@ def _ppo_update(st: _PhaseState, episode: int) -> None:
             else 0
         ),
     )
-    st.ctx.tx_counter.count = 0
-    if st.entropy_ctrl is not None and stats:
+    state.context.tx_counter.count = 0
+    if state.entropy_controller is not None and stats:
         had_pending = any(
-            st.entropy_ctrl.targets[h] is None
+            state.entropy_controller.targets[h] is None
             for h in ("pick", "partner", "bury", "play")
         )
-        st.entropy_ctrl.observe(stats.get("head_entropy_norm") or {})
+        state.entropy_controller.observe(stats.get("head_entropy_norm") or {})
         if had_pending and not any(
-            st.entropy_ctrl.targets[h] is None
+            state.entropy_controller.targets[h] is None
             for h in ("pick", "partner", "bury", "play")
         ):
             print(
                 "🎯 Entropy targets initialized (bumpless): "
                 + "  ".join(
-                    f"{h} {st.entropy_ctrl.targets[h]:.3f}"
+                    f"{h} {state.entropy_controller.targets[h]:.3f}"
                     for h in ("pick", "partner", "bury", "play")
                 )
             )
-        st.entropy_ctrl.save(st.entropy_ctrl_path)
-    for mid in st.ctx.league.retire_patched_exploiters():
-        print(f"🩹 Exploiter {mid} patched (EMA collapsed); retired")
-    if st.pool is not None:
-        publish_weights(st.ctx)
+        state.entropy_controller.save(state.entropy_controller_path)
+    for member_id in state.context.league.retire_patched_exploiters():
+        print(f"🩹 Exploiter {member_id} patched (EMA collapsed); retired")
+    if state.pool is not None:
+        publish_weights(state.context)
     if stats:
-        _emit_progress(st, episode, stats)
+        _emit_progress(state, episode, stats)
 
 
-def _run_interval_probes(st: _PhaseState, episode: int) -> None:
+def _run_interval_probes(state: _PhaseState, episode: int) -> None:
     """Interval-keyed side effects after each episode: league snapshot,
     greedy-health probe + gates, adherence guard, anchored strength probe,
     and the periodic checkpoint save."""
-    args = st.ctx.args
-    training_agent = st.ctx.training_agent
-    league = st.ctx.league
+    args = state.context.args
+    training_agent = state.context.training_agent
+    league = state.context.league
 
     # League snapshot of the main (replaces population_add_interval)
     if episode % args.snapshot_interval == 0:
-        snap = copy.deepcopy(training_agent)
-        snap.set_anchor(None, 0.0)
+        snapshot = copy.deepcopy(training_agent)
+        snapshot.set_anchor(None, 0.0)
         # League members are inference-only: drop the privileged critic
         # so it isn't persisted into every member checkpoint.
-        snap.strip_oracle()
+        snapshot.strip_oracle()
         league.add_member(
-            snap,
+            snapshot,
             ROLE_PAST_MAIN,
             training_episodes=episode,
-            initial_ratings=_inherited_ratings(league, st.training_ratings),
+            initial_ratings=_inherited_ratings(league, state.training_ratings),
         )
         print(f"👥 League snapshot at ep {episode:,}; {league.summary()}")
 
     # Greedy health probe + gates (collapse guard, unchanged semantics)
     if args.greedy_eval_interval > 0 and episode % args.greedy_eval_interval == 0:
-        hp = st.ctx.hyperparams or PFSP_HYPERPARAMS
+        hyperparams = state.context.hyperparams or PFSP_HYPERPARAMS
         probe = greedy_health_probe(
             training_agent, n_games=args.greedy_eval_games, seed=episode
         )
@@ -684,36 +707,36 @@ def _run_interval_probes(st: _PhaseState, episode: int) -> None:
             f"play-spread {probe['play_logit_spread_med']:.2f}",
             flush=True,
         )
-        if probe["pick_rate"] < hp.greedy_gate_min_pick:
+        if probe["pick_rate"] < hyperparams.greedy_gate_min_pick:
             print(
-                f"🚨 GREEDY GATE VIOLATION: PICK rate < {hp.greedy_gate_min_pick:.0f}%",
+                f"🚨 GREEDY GATE VIOLATION: PICK rate < {hyperparams.greedy_gate_min_pick:.0f}%",
                 flush=True,
             )
-        if probe["alone_rate"] > hp.greedy_gate_max_alone:
+        if probe["alone_rate"] > hyperparams.greedy_gate_max_alone:
             print(
                 f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
-                f"{hp.greedy_gate_max_alone:.0f}%",
+                f"{hyperparams.greedy_gate_max_alone:.0f}%",
                 flush=True,
             )
-        if probe["t0_trump_lead_rate"] > hp.greedy_gate_max_trump_lead:
+        if probe["t0_trump_lead_rate"] > hyperparams.greedy_gate_max_trump_lead:
             print(
                 f"🚨 GREEDY GATE VIOLATION: trump-lead > "
-                f"{hp.greedy_gate_max_trump_lead:.0f}%",
+                f"{hyperparams.greedy_gate_max_trump_lead:.0f}%",
                 flush=True,
             )
-        if probe["play_logit_spread_med"] < hp.greedy_gate_min_play_spread:
+        if probe["play_logit_spread_med"] < hyperparams.greedy_gate_min_play_spread:
             print(
                 "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
-                f"{hp.greedy_gate_min_play_spread} "
+                f"{hyperparams.greedy_gate_min_play_spread} "
                 "(play head collapsing toward uniform)",
                 flush=True,
             )
-        write_header = not os.path.exists(st.greedy_csv)
-        with open(st.greedy_csv, "a", newline="") as f:
-            w = csv.writer(f)
+        write_header = not os.path.exists(state.greedy_csv)
+        with open(state.greedy_csv, "a", newline="") as f:
+            writer = csv.writer(f)
             if write_header:
-                w.writerow(GREEDY_CSV_HEADER)
-            w.writerow(
+                writer.writerow(GREEDY_CSV_HEADER)
+            writer.writerow(
                 [
                     episode,
                     f"{probe['pick_rate']:.2f}",
@@ -741,31 +764,31 @@ def _run_interval_probes(st: _PhaseState, episode: int) -> None:
             training_agent,
             args,
             episode,
-            checkpoint_path(st.checkpoint_dir, args, episode),
+            checkpoint_path(state.checkpoint_dir, args, episode),
             league,
         )
 
     # Anchored strength probe: paired CRN greedy edge vs the frozen
     # reference (fixed deal set => probe-to-probe diffs are paired).
-    if st.anchor_eval is not None and episode % st.anchor_eval["interval"] == 0:
+    if state.anchor_eval is not None and episode % state.anchor_eval["interval"] == 0:
         saved_mem = training_agent.snapshot_player_memories()
         probe = paired_edge(
             training_agent,
-            st.anchor_eval["agent"],
-            st.anchor_eval["agent"],
-            n_deals=st.anchor_eval["deals"],
+            state.anchor_eval["agent"],
+            state.anchor_eval["agent"],
+            n_deals=state.anchor_eval["deals"],
             seed=LEAGUE_ANCHOR_EVAL_SEED,
             log_every=0,
         )
         training_agent.restore_player_memories(saved_mem)
         print(
-            f"⚓ Anchored eval vs {st.anchor_eval['label']}: "
+            f"⚓ Anchored eval vs {state.anchor_eval['label']}: "
             f"{probe['edge']:+.3f} ± {probe['se']:.3f} score/deal "
             f"(win {probe['win_frac']:.3f}, n={probe['n_deals']})",
             flush=True,
         )
         append_csv_row(
-            st.anchored_csv,
+            state.anchored_csv,
             ["episode", "edge", "se", "win_frac", "n_deals"],
             {
                 "episode": episode,
@@ -777,7 +800,7 @@ def _run_interval_probes(st: _PhaseState, episode: int) -> None:
         )
 
     if episode % args.save_interval == 0:
-        training_agent.save(checkpoint_path(st.checkpoint_dir, args, episode))
+        training_agent.save(checkpoint_path(state.checkpoint_dir, args, episode))
         league.save()
 
 
@@ -804,7 +827,7 @@ def run_main_phase(
     # GAE baseline (asymmetric actor-critic; see oracle.py). getattr keeps the
     # exploiter's SimpleNamespace args (no critic_mode field) on the limited path.
     collect_oracle = getattr(args, "critic_mode", "limited") == "oracle"
-    ctx = MainPhaseContext(
+    context = MainPhaseContext(
         training_agent=training_agent,
         league=league,
         rng=random.Random(args.seed + start_episode),
@@ -821,22 +844,22 @@ def run_main_phase(
     progress_csv, greedy_csv, anchored_csv = _setup_telemetry_csvs(
         checkpoint_dir, start_episode
     )
-    entropy_ctrl, entropy_ctrl_path = _setup_entropy_controller(
-        args, checkpoint_dir, ctx
+    entropy_controller, entropy_controller_path = _setup_entropy_controller(
+        args, checkpoint_dir, context
     )
-    pool = _spawn_worker_pool(args, league, ctx)
+    pool = _spawn_worker_pool(args, league, context)
     stream = (
-        parallel_stream(ctx, pool, args.num_workers)
+        parallel_stream(context, pool, args.num_workers)
         if pool is not None
-        else sequential_stream(ctx)
+        else sequential_stream(context)
     )
-    st = _PhaseState(
-        ctx=ctx,
+    state = _PhaseState(
+        context=context,
         checkpoint_dir=checkpoint_dir,
         training_ratings=training_ratings,
         anchor_eval=anchor_eval,
-        entropy_ctrl=entropy_ctrl,
-        entropy_ctrl_path=entropy_ctrl_path,
+        entropy_controller=entropy_controller,
+        entropy_controller_path=entropy_controller_path,
         # getattr: the exploiter's SimpleNamespace args has no
         # leaster_watchdog field, so best-response training always runs
         # without the kick.
@@ -851,7 +874,7 @@ def run_main_phase(
         pick_window=deque(maxlen=3000),
         leaster_window=deque(maxlen=3000),
         teacher_window=fresh_teacher_window(),
-        t0=time.time(),
+        start_time=time.time(),
     )
 
     last_episode = start_episode
@@ -868,7 +891,7 @@ def run_main_phase(
         ) in stream:
             last_episode = episode
             _ingest_episode(
-                st,
+                state,
                 mode,
                 position,
                 events,
@@ -877,9 +900,9 @@ def run_main_phase(
                 summary,
                 seat_to_id,
             )
-            if ctx.tx_counter.count >= args.update_interval:
-                _ppo_update(st, episode)
-            _run_interval_probes(st, episode)
+            if context.tx_counter.count >= args.update_interval:
+                _ppo_update(state, episode)
+            _run_interval_probes(state, episode)
     finally:
         if pool is not None:
             pool.close()
@@ -890,7 +913,7 @@ def run_main_phase(
 
 def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
     """Subprocess the exploiter module vs the frozen main; returns the gate result."""
-    exp_run = f"{args.run_name}_exploiter_gen{generation}"
+    exploiter_run = f"{args.run_name}_exploiter_gen{generation}"
     cmd = [
         sys.executable,
         "-m",
@@ -898,7 +921,7 @@ def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
         "--main-ckpt",
         main_ckpt,
         "--run-name",
-        exp_run,
+        exploiter_run,
         "--episodes",
         str(args.exploiter_episodes),
         "--gate-deals",
@@ -928,7 +951,7 @@ def run_exploiter_generation(args, generation: int, main_ckpt: str) -> dict:
     proc = subprocess.run(cmd, env=env)
     if proc.returncode != 0:
         raise SystemExit(f"exploiter phase failed (rc={proc.returncode})")
-    with open(os.path.join("runs", exp_run, "gate_result.json")) as f:
+    with open(os.path.join("runs", exploiter_run, "gate_result.json")) as f:
         return json.load(f)
 
 
@@ -1008,8 +1031,10 @@ def _build_training_agent(args) -> tuple[PPOAgent, int]:
             f"epochs={int(getattr(args, 'teacher_epochs', 4))}"
         )
     if getattr(args, "oracle_init", None):
-        sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
-        training_agent.oracle_critic.load_state_dict(sd, strict=True)
+        oracle_state_dict = torch.load(
+            args.oracle_init, map_location="cpu", weights_only=True
+        )
+        training_agent.oracle_critic.load_state_dict(oracle_state_dict, strict=True)
         print(f"🔮⚡ Oracle warm-started from {args.oracle_init}")
     if getattr(args, "oracle_aux_heads", False):
         print("🔮🧩 Oracle aux heads ON (team membership + team points)")
@@ -1072,9 +1097,9 @@ def _append_exploitability(csv_path: str, generation: int, episode: int, gate: d
     the run's empirical-exploitability headline series."""
     write_header = not os.path.exists(csv_path)
     with open(csv_path, "a", newline="") as f:
-        w = csv.writer(f)
+        writer = csv.writer(f)
         if write_header:
-            w.writerow(
+            writer.writerow(
                 [
                     "generation",
                     "main_episode",
@@ -1085,7 +1110,7 @@ def _append_exploitability(csv_path: str, generation: int, episode: int, gate: d
                     "exploiter_ckpt",
                 ]
             )
-        w.writerow(
+        writer.writerow(
             [
                 generation,
                 episode,
@@ -1115,13 +1140,13 @@ def main():
     exploitability_csv = os.path.join(checkpoint_dir, "exploitability.csv")
 
     episode = start_episode
-    main_ep = args.main_episodes
+    episodes_per_gen = args.main_episodes
     # Generation index and phase boundary are derived from the ABSOLUTE episode
-    # count: gen g ends at g * main_ep. The first generation to run is the one
+    # count: gen g ends at g * episodes_per_gen. The first generation to run is the one
     # whose boundary lies past the resumed episode, so a mid-run restart picks up
     # the same cadence/numbering and only trains the remainder to the next
     # boundary (rather than resetting the counter to the resume point).
-    first_gen = episode // main_ep + 1
+    first_gen = episode // episodes_per_gen + 1
     # Always-on teacher generations (CE_Teacher_Design §3): NO phases — a
     # teacher-off window is a measured reversion window (§13.4). The frozen
     # expert is pinned per generation to the generation-start checkpoint and
@@ -1133,7 +1158,7 @@ def main():
     # refresh chain (absolute anchoring, §3).
     cert_anchor = getattr(args, "cert_anchor_ckpt", None) or gen_start_ckpt
     for generation in range(first_gen, first_gen + args.generations):
-        boundary = generation * main_ep
+        boundary = generation * episodes_per_gen
         print(
             f"\n{'=' * 70}\n🏁 GENERATION {generation}: main phase "
             f"({episode:,} -> {boundary:,})"
@@ -1148,14 +1173,14 @@ def main():
         # immutable; the generation-dependent expert pin and the resolved
         # cert anchor ride an explicit copy instead of being written back
         # into the shared namespace.
-        gen_args = copy.copy(args)
-        gen_args.teacher_ckpt = gen_start_ckpt
-        gen_args.cert_anchor_resolved = cert_anchor
+        generation_args = copy.copy(args)
+        generation_args.teacher_ckpt = gen_start_ckpt
+        generation_args.cert_anchor_resolved = cert_anchor
         episode = run_main_phase(
             training_agent,
             league,
             training_ratings,
-            gen_args,
+            generation_args,
             episode,
             boundary - episode,
             checkpoint_dir,
@@ -1169,7 +1194,7 @@ def main():
         # absolute-anchor cert; a failed cert halts for operator review.
         if getattr(args, "teacher", False):
             cert = run_boundary_cert(
-                training_agent, gen_args, generation, checkpoint_dir
+                training_agent, generation_args, generation, checkpoint_dir
             )
             if cert["passed"]:
                 gen_start_ckpt = main_ckpt
@@ -1206,16 +1231,16 @@ def main():
             # Certified robust: no best response cleared the gate against this
             # main, so its boundary snapshot becomes a HOF anchor (the
             # anti-forgetting floor; quota enforced by promote_to_hof).
-            snaps = [
+            boundary_snapshots = [
                 m
                 for m in league.by_role(ROLE_PAST_MAIN)
                 if m.meta.training_episodes == episode
             ]
-            if snaps:
-                league.promote_to_hof(snaps[-1].member_id)
+            if boundary_snapshots:
+                league.promote_to_hof(boundary_snapshots[-1].member_id)
                 print(
                     f"🏛️  Gen {generation} main survived its exploiter gate; "
-                    f"{snaps[-1].member_id} promoted to HOF anchor"
+                    f"{boundary_snapshots[-1].member_id} promoted to HOF anchor"
                 )
 
     training_agent.save(os.path.join(run_dir, f"final_{args.arch}.pt"))

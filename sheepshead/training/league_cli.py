@@ -15,32 +15,32 @@ import argparse
 from sheepshead.agent import architectures
 
 
-def add_run_args(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument(
+def add_run_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--resume", required=True, help="main agent checkpoint to start from"
     )
-    ap.add_argument(
+    parser.add_argument(
         "--teacher-ckpt",
         default=None,
         help="checkpoint for the frozen search-teacher expert (defaults to "
         "--resume; set explicitly when continuing mid-generation so the "
         "expert stays pinned to the certified generation-start policy)",
     )
-    ap.add_argument("--league-dir", required=True)
-    ap.add_argument(
+    parser.add_argument("--league-dir", required=True)
+    parser.add_argument(
         "--migrate-from",
         default=None,
         help="legacy population dir (used once if league empty)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--seed-checkpoints",
         default=None,
         help="glob or dir of PPO checkpoints to seed an empty league as "
         "past_mains (e.g. the selfplay bootstrap snapshots that seeded the "
         "original pfsp run: 'runs/reference_selfplay_ppo/checkpoints/*.pt')",
     )
-    ap.add_argument("--run-name", default="league_run")
-    ap.add_argument(
+    parser.add_argument("--run-name", default="league_run")
+    parser.add_argument(
         "--generations",
         type=int,
         default=3,
@@ -48,25 +48,25 @@ def add_run_args(ap: argparse.ArgumentParser) -> None:
         "Boundaries are keyed to absolute episode (gen g ends at g*main-episodes), "
         "so the starting generation index is derived from the resumed episode.",
     )
-    ap.add_argument("--main-episodes", type=int, default=1_000_000)
-    ap.add_argument("--exploiter-episodes", type=int, default=50_000)
-    ap.add_argument("--gate-deals", type=int, default=3000)
-    ap.add_argument(
+    parser.add_argument("--main-episodes", type=int, default=1_000_000)
+    parser.add_argument("--exploiter-episodes", type=int, default=50_000)
+    parser.add_argument("--gate-deals", type=int, default=3000)
+    parser.add_argument(
         "--screen-deals",
         type=int,
         default=200,
         help="paired deals per exploiter checkpoint for best-of-checkpoints "
         "selection before the full gate (0 = gate the final save only)",
     )
-    ap.add_argument("--update-interval", type=int, default=16_384)
-    ap.add_argument("--save-interval", type=int, default=50_000)
-    ap.add_argument("--snapshot-interval", type=int, default=50_000)
-    ap.add_argument("--greedy-eval-interval", type=int, default=50_000)
-    ap.add_argument("--greedy-eval-games", type=int, default=200)
-    ap.add_argument("--schedule-horizon", type=int, default=20_000_000)
+    parser.add_argument("--update-interval", type=int, default=16_384)
+    parser.add_argument("--save-interval", type=int, default=50_000)
+    parser.add_argument("--snapshot-interval", type=int, default=50_000)
+    parser.add_argument("--greedy-eval-interval", type=int, default=50_000)
+    parser.add_argument("--greedy-eval-games", type=int, default=200)
+    parser.add_argument("--schedule-horizon", type=int, default=20_000_000)
 
 
-def add_entropy_args(ap: argparse.ArgumentParser) -> None:
+def add_entropy_args(parser: argparse.ArgumentParser) -> None:
     # Entropy controller v2 (CE_Teacher_Design §4): ALWAYS ON for the league
     # trainer — the signed SAC-style target-entropy controller
     # (entropy_controller.py) owns the entropy coefficients; the LR schedule
@@ -78,16 +78,16 @@ def add_entropy_args(ap: argparse.ArgumentParser) -> None:
     # (run_extended_league --adaptive-entropy) steps them between
     # generations. Not a CLI flag: the exploiter's SimpleNamespace args
     # omits it, keeping best-response training on the plain schedule.
-    ap.set_defaults(entropy_controller=True)
-    for _h in ("pick", "partner", "bury", "play"):
-        ap.add_argument(
-            f"--entropy-target-{_h}",
+    parser.set_defaults(entropy_controller=True)
+    for head in ("pick", "partner", "bury", "play"):
+        parser.add_argument(
+            f"--entropy-target-{head}",
             type=float,
             default=None,
-            help=f"explicit initial H_norm target for the {_h} head "
+            help=f"explicit initial H_norm target for the {head} head "
             "(default: bumpless from first measurement)",
         )
-    ap.add_argument(
+    parser.add_argument(
         "--entropy-play-floor",
         type=float,
         default=0.28,
@@ -96,8 +96,8 @@ def add_entropy_args(ap: argparse.ArgumentParser) -> None:
     )
 
 
-def add_training_args(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument(
+def add_training_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--critic-mode",
         choices=["limited", "oracle"],
         default="oracle",
@@ -105,8 +105,8 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
         "baseline (asymmetric actor-critic; see oracle.py). The actor, the "
         "limited critic, and all aux heads train identically in both modes.",
     )
-    ap.add_argument("--anchor-coeff", type=float, default=0.0)
-    ap.add_argument(
+    parser.add_argument("--anchor-coeff", type=float, default=0.0)
+    parser.add_argument(
         "--gae-lambda",
         type=float,
         default=None,
@@ -114,7 +114,7 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
         "Learning_System_Redesign_202607 lowers this toward 0.8 once the "
         "stratified-EV gate shows trustworthy mid-game values.",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--exploiter-patched-ema",
         type=float,
         default=0.35,
@@ -123,7 +123,7 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
         "exploit is patched, stop paying its seat share (default: age-based "
         "retirement only)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--grad-accum",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -134,7 +134,7 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
         "braided-segment OOM; post per-seat storage fix it is kept for the "
         "step-size semantics, not memory.)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--minibatch-episodes",
         type=int,
         default=128,
@@ -144,7 +144,7 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
         "whole buffer; with --no-grad-accum it becomes the per-step "
         "minibatch size",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--gamma",
         type=float,
         default=1.0,
@@ -153,7 +153,7 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
         "finite-horizon terminal-reward game (retention-run validated). "
         "The agent's historical value was 0.99",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--oracle-aux-heads",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -162,7 +162,7 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
         "2026-07-24). Historical checkpoints without heads still load "
         "(heads start fresh)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--oracle-init",
         default=None,
         help="path to a pretrained oracle state_dict (e.g. from "
@@ -172,8 +172,8 @@ def add_training_args(ap: argparse.ArgumentParser) -> None:
     )
 
 
-def add_teacher_args(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument(
+def add_teacher_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--teacher",
         action="store_true",
         help="always-on CE search teacher on main-agent play decisions "
@@ -187,7 +187,7 @@ def add_teacher_args(ap: argparse.ArgumentParser) -> None:
         "carry the oracle head + gamma so worker-side searches stay "
         "calibrated",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--teacher-prob",
         type=float,
         default=0.1,
@@ -196,7 +196,7 @@ def add_teacher_args(ap: argparse.ArgumentParser) -> None:
         "Expected wall cost per episode ~ prob x eligible-nodes/game x "
         "one lockstep committee search",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--teacher-replicates",
         type=int,
         default=3,
@@ -204,7 +204,7 @@ def add_teacher_args(ap: argparse.ArgumentParser) -> None:
         "lockstep (search_committee); replicate spread feeds the "
         "shrinkage noise model that flattens within-noise targets",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--teacher-iters",
         type=int,
         default=1024,
@@ -212,7 +212,7 @@ def add_teacher_args(ap: argparse.ArgumentParser) -> None:
         "budget; §12.8 refuted the heavy arm — replicates beat "
         "iterations)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--teacher-coeff",
         type=float,
         default=1.0,
@@ -220,7 +220,7 @@ def add_teacher_args(ap: argparse.ArgumentParser) -> None:
         "rows); safe near 1.0 because a conformed or within-noise target "
         "carries ~zero gradient by construction",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--teacher-epochs",
         type=int,
         default=4,
@@ -231,8 +231,8 @@ def add_teacher_args(ap: argparse.ArgumentParser) -> None:
     )
 
 
-def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument(
+def add_guard_cert_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--adherence-guard-interval",
         type=int,
         default=50000,
@@ -240,13 +240,13 @@ def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
         "episodes (0 = off). §12.17: smaller probes masked an 8-point "
         "partner-trump regression for a full teacher run",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--adherence-guard-games",
         type=int,
         default=1000,
         help="games per adherence guard probe",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--guard-partner-floor",
         type=float,
         default=90.0,
@@ -255,7 +255,7 @@ def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
         "(CE_Teacher_Design §3 two-tier protocol; recalibrate for other "
         "lineages — the 8M perceiver-shared-v2 seed reads 96.5 at n=1000)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--guard-partner-notify",
         type=float,
         default=93.5,
@@ -263,7 +263,7 @@ def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
         "partner trump-lead %% dips below this line — §12.20 showed "
         "teaching-time dips can be oscillation with a restoring force",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--guard-t0-ceiling",
         type=float,
         default=5.0,
@@ -271,7 +271,7 @@ def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
         "trump-lead %% rises above this ceiling (the v7 scramble "
         "signature; seed level is ~0.1%%)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--cert-seeds",
         type=int,
         default=3,
@@ -279,14 +279,14 @@ def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
         "adherence battery (multi-seed: §12.22 — single reads are "
         "luck-of-phase)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--cert-games",
         type=int,
         default=1000,
         help="boundary cert: games per adherence-battery seed (n=1000: "
         "smaller probes cannot resolve <5-point convention deltas, §12.17)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--cert-partner-floor",
         type=float,
         default=93.5,
@@ -294,20 +294,20 @@ def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
         "trump-lead %% required for the candidate to become the next "
         "generation's frozen expert",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--cert-t0-ceiling",
         type=float,
         default=5.0,
         help="boundary cert ABSOLUTE bar: across-seed mean t0 trump-lead %% ceiling",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--cert-h2h-deals",
         type=int,
         default=1000,
         help="boundary cert: paired CRN deals vs the fixed cert anchor; "
         "the candidate fails if its edge is significantly negative",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--cert-anchor-ckpt",
         default=None,
         help="FIXED h2h anchor for every boundary cert (default: the run's "
@@ -317,8 +317,8 @@ def add_guard_cert_args(ap: argparse.ArgumentParser) -> None:
     )
 
 
-def add_eval_args(ap: argparse.ArgumentParser) -> None:
-    ap.add_argument(
+def add_eval_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--seat-rotation",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -327,7 +327,7 @@ def add_eval_args(ap: argparse.ArgumentParser) -> None:
         "(train-time duplicate instrument; equalizes role exposure per "
         "deal)",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--gns-log",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -336,7 +336,7 @@ def add_eval_args(ap: argparse.ArgumentParser) -> None:
         "epoch-equivalent of compute per update; measurement only — the "
         "applied updates are bit-identical",
     )
-    ap.add_argument(
+    parser.add_argument(
         "--oracle-extra-epochs",
         type=int,
         default=4,
@@ -346,25 +346,25 @@ def add_eval_args(ap: argparse.ArgumentParser) -> None:
         "step-count lever for the fresh-oracle transient at large "
         "--update-interval. 0 = historical behavior",
     )
-    ap.add_argument("--anchor-ref", default=None)
-    ap.add_argument(
+    parser.add_argument("--anchor-ref", default=None)
+    parser.add_argument(
         "--anchor-eval-ckpt",
         default="final_pfsp_swish_ppo.pt",
         help="frozen reference for the periodic anchored strength probe, the "
         "run's absolute-strength trend line ('' disables)",
     )
-    ap.add_argument("--anchor-eval-interval", type=int, default=100_000)
-    ap.add_argument("--anchor-eval-deals", type=int, default=300)
-    ap.add_argument("--num-workers", type=int, default=8)
-    ap.add_argument(
+    parser.add_argument("--anchor-eval-interval", type=int, default=100_000)
+    parser.add_argument("--anchor-eval-deals", type=int, default=300)
+    parser.add_argument("--num-workers", type=int, default=8)
+    parser.add_argument(
         "--arch",
         default="perceiver-shared-v2",
         choices=architectures.available_architectures(),
         help="Network architecture variant for the training agent, its "
         "snapshots, and the exploiter phase (see the architectures package)",
     )
-    ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument(
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
         "--leaster-watchdog",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -377,13 +377,13 @@ def add_eval_args(ap: argparse.ArgumentParser) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="League training (main/exploiter generations)"
     )
-    add_run_args(ap)
-    add_entropy_args(ap)
-    add_training_args(ap)
-    add_teacher_args(ap)
-    add_guard_cert_args(ap)
-    add_eval_args(ap)
-    return ap
+    add_run_args(parser)
+    add_entropy_args(parser)
+    add_training_args(parser)
+    add_teacher_args(parser)
+    add_guard_cert_args(parser)
+    add_eval_args(parser)
+    return parser

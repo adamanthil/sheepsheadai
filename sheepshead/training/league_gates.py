@@ -51,42 +51,44 @@ def check_adherence_guard(
     saving ``stop_ckpt`` first; the NOTIFY tier (partner below the notify
     line) only prints, because §12.20 showed partner dips during teaching
     can be oscillation with a restoring force, not collapse."""
-    gp = greedy_health_probe(
+    probe = greedy_health_probe(
         training_agent,
         n_games=int(getattr(args, "adherence_guard_games", 1000)),
         seed=ADHERENCE_GUARD_SEED,
     )
     print(
-        f"🛡️ Adherence guard (n={gp['games']}): "
-        f"called-suit {gp['called_suit_lead_rate']:.1f}% "
-        f"t0-trump {gp['t0_trump_lead_rate']:.1f}% "
-        f"partner-trump {gp['partner_trump_lead_rate']:.1f}%",
+        f"🛡️ Adherence guard (n={probe['games']}): "
+        f"called-suit {probe['called_suit_lead_rate']:.1f}% "
+        f"t0-trump {probe['t0_trump_lead_rate']:.1f}% "
+        f"partner-trump {probe['partner_trump_lead_rate']:.1f}%",
         flush=True,
     )
     violations = []
-    floor = getattr(args, "guard_partner_floor", None)
-    if floor is not None and gp["partner_trump_lead_rate"] < float(floor):
+    partner_floor = getattr(args, "guard_partner_floor", None)
+    if partner_floor is not None and probe["partner_trump_lead_rate"] < float(
+        partner_floor
+    ):
         violations.append(
-            f"partner trump-lead {gp['partner_trump_lead_rate']:.1f}% "
-            f"< hard floor {float(floor):.1f}%"
+            f"partner trump-lead {probe['partner_trump_lead_rate']:.1f}% "
+            f"< hard floor {float(partner_floor):.1f}%"
         )
-    ceil = getattr(args, "guard_t0_ceiling", None)
-    if ceil is not None and gp["t0_trump_lead_rate"] > float(ceil):
+    t0_ceiling = getattr(args, "guard_t0_ceiling", None)
+    if t0_ceiling is not None and probe["t0_trump_lead_rate"] > float(t0_ceiling):
         violations.append(
-            f"t0 trump-lead {gp['t0_trump_lead_rate']:.1f}% "
-            f"> ceiling {float(ceil):.1f}%"
+            f"t0 trump-lead {probe['t0_trump_lead_rate']:.1f}% "
+            f"> ceiling {float(t0_ceiling):.1f}%"
         )
-    notify = getattr(args, "guard_partner_notify", None)
+    partner_notify = getattr(args, "guard_partner_notify", None)
     if (
         not violations
-        and notify is not None
-        and gp["partner_trump_lead_rate"] < float(notify)
+        and partner_notify is not None
+        and probe["partner_trump_lead_rate"] < float(partner_notify)
     ):
         print(
             f"🛡️⚠️ Adherence NOTIFY: partner trump-lead "
-            f"{gp['partner_trump_lead_rate']:.1f}% < notify line "
-            f"{float(notify):.1f}% (hard floor "
-            f"{float(floor):.1f}%) — continuing",
+            f"{probe['partner_trump_lead_rate']:.1f}% < notify line "
+            f"{float(partner_notify):.1f}% (hard floor "
+            f"{float(partner_floor):.1f}%) — continuing",
             flush=True,
         )
     if violations:
@@ -127,16 +129,20 @@ def run_boundary_cert(
     boundary_cert_gen<g>.json for the run record."""
     seeds = [ADHERENCE_GUARD_SEED + i for i in range(int(args.cert_seeds))]
     probes = [
-        greedy_health_probe(training_agent, n_games=int(args.cert_games), seed=s)
-        for s in seeds
+        greedy_health_probe(
+            training_agent, n_games=int(args.cert_games), seed=deal_seed
+        )
+        for deal_seed in seeds
     ]
-    partner_mean = float(np.mean([p["partner_trump_lead_rate"] for p in probes]))
-    t0_mean = float(np.mean([p["t0_trump_lead_rate"] for p in probes]))
-    called_mean = float(np.mean([p["called_suit_lead_rate"] for p in probes]))
+    partner_mean = float(
+        np.mean([probe["partner_trump_lead_rate"] for probe in probes])
+    )
+    t0_mean = float(np.mean([probe["t0_trump_lead_rate"] for probe in probes]))
+    called_mean = float(np.mean([probe["called_suit_lead_rate"] for probe in probes]))
 
     anchor_path = args.cert_anchor_resolved
     anchor_agent = load_agent(anchor_path)
-    saved_mem = training_agent.snapshot_player_memories()
+    saved_memories = training_agent.snapshot_player_memories()
     h2h = paired_edge(
         training_agent,
         anchor_agent,
@@ -145,7 +151,7 @@ def run_boundary_cert(
         seed=LEAGUE_ANCHOR_EVAL_SEED,
         log_every=0,
     )
-    training_agent.restore_player_memories(saved_mem)
+    training_agent.restore_player_memories(saved_memories)
 
     failures = []
     if partner_mean < float(args.cert_partner_floor):
@@ -170,9 +176,11 @@ def run_boundary_cert(
         "adherence": {
             "seeds": seeds,
             "games_per_seed": int(args.cert_games),
-            "partner_trump_by_seed": [p["partner_trump_lead_rate"] for p in probes],
-            "t0_trump_by_seed": [p["t0_trump_lead_rate"] for p in probes],
-            "called_suit_by_seed": [p["called_suit_lead_rate"] for p in probes],
+            "partner_trump_by_seed": [
+                probe["partner_trump_lead_rate"] for probe in probes
+            ],
+            "t0_trump_by_seed": [probe["t0_trump_lead_rate"] for probe in probes],
+            "called_suit_by_seed": [probe["called_suit_lead_rate"] for probe in probes],
             "partner_trump_mean": partner_mean,
             "t0_trump_mean": t0_mean,
             "called_suit_mean": called_mean,

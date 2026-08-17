@@ -35,7 +35,7 @@ AVG_TX_PER_GAME = 26.0
 # Main phase
 # ----------------------------------------------------------------------------
 @dataclass
-class _TxCounter:
+class TransitionCounter:
     """Mutable box for transitions_since_update.
 
     Shared between run_main_phase's consuming loop (which increments it and
@@ -47,6 +47,10 @@ class _TxCounter:
     """
 
     count: int = 0
+
+
+# Re-exported for compatibility: tests/callers import the historical name.
+_TxCounter = TransitionCounter
 
 
 @dataclass
@@ -62,7 +66,7 @@ class MainPhaseContext:
     args: object
     collect_oracle: bool
     weight_sync: dict
-    tx_counter: _TxCounter
+    tx_counter: TransitionCounter
     start_episode: int
     end_episode: int
     # Seat-rotation group state carried across parallel_stream's dispatch
@@ -74,14 +78,14 @@ class MainPhaseContext:
     hyperparams: PFSPHyperparams | None = None
 
 
-def setup_episode(episode: int, ctx: MainPhaseContext):
+def setup_episode(episode: int, context: MainPhaseContext):
     mode = get_partner_selection_mode(episode)
-    table = ctx.league.sample_table(mode, ctx.rng)
-    position = ctx.rng.randint(1, 5)
+    table = context.league.sample_table(mode, context.rng)
+    position = context.rng.randint(1, 5)
     return mode, table, position
 
 
-def rotation_plan(episode: int, start_episode: int, rot_state: dict | None, ctx):
+def rotation_plan(episode: int, start_episode: int, rot_state: dict | None, context):
     """Seat-rotation grouping shared by sequential_stream and
     parallel_stream: groups of 5 consecutive episodes share one sampled
     (mode, table, deal); the hero plays every seat of the same deal against
@@ -93,15 +97,15 @@ def rotation_plan(episode: int, start_episode: int, rot_state: dict | None, ctx)
     Returns (mode, table, position, game_seed, rot_state) — rot_state is
     the (possibly newly created) group state to pass into the next call in
     the group; callers persist it across calls as needed (sequential_stream
-    a local var, parallel_stream on ctx.rot_state so it survives a window
+    a local var, parallel_stream on context.rot_state so it survives a window
     split).
     """
-    rotate = bool(getattr(ctx.args, "seat_rotation", False))
+    rotate = bool(getattr(context.args, "seat_rotation", False))
     game_seed = None
     if rotate:
         phase = (episode - start_episode - 1) % 5
         if phase == 0 or not rot_state:
-            mode, table, _ = setup_episode(episode, ctx)
+            mode, table, _ = setup_episode(episode, context)
             rot_state = {
                 "mode": mode,
                 "table": table,
@@ -111,35 +115,35 @@ def rotation_plan(episode: int, start_episode: int, rot_state: dict | None, ctx)
         position = phase + 1
         game_seed = rot_state["seed"]
     else:
-        mode, table, position = setup_episode(episode, ctx)
+        mode, table, position = setup_episode(episode, context)
     return mode, table, position, game_seed, rot_state
 
 
-def sequential_stream(ctx: MainPhaseContext):
+def sequential_stream(context: MainPhaseContext):
     # Seat rotation (deal-paired collection): groups of 5 consecutive
     # episodes share one sampled (mode, table, deal); the hero plays every
     # seat of the same deal against the same opponents — the train-time
     # duplicate instrument. The deal seed is drawn once per group so the
     # cards are identical across the 5 rotations.
     rot_state = {}
-    teacher_kwargs = _teacher_kwargs(ctx)
-    for episode in range(ctx.start_episode + 1, ctx.end_episode + 1):
+    teacher_kwargs = _teacher_kwargs(context)
+    for episode in range(context.start_episode + 1, context.end_episode + 1):
         mode, table, position, game_seed, rot_state = rotation_plan(
-            episode, ctx.start_episode, rot_state, ctx
+            episode, context.start_episode, rot_state, context
         )
         opponents = [
-            OpponentAdapter(ctx.training_agent, SELF_PLAY)
+            OpponentAdapter(context.training_agent, SELF_PLAY)
             if entry == SELF_PLAY
             else OpponentAdapter(entry.agent, entry.member_id)
             for entry in table
         ]
         game, events, scores, training_data_single, pos_to_seat = play_population_game(
-            training_agent=ctx.training_agent,
+            training_agent=context.training_agent,
             opponents=opponents,
             partner_mode=mode,
             training_agent_position=position,
             reward_mode="terminal",
-            collect_oracle=ctx.collect_oracle,
+            collect_oracle=context.collect_oracle,
             game_seed=game_seed,
             **teacher_kwargs,
         )
@@ -151,44 +155,49 @@ def sequential_stream(ctx: MainPhaseContext):
             scores,
             training_data_single,
             make_game_summary(game),
-            {pos: s.metadata.agent_id for pos, s in pos_to_seat.items()},
+            {pos: seat.metadata.agent_id for pos, seat in pos_to_seat.items()},
         )
 
 
-def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
-    publish_weights(ctx)
-    episode = ctx.start_episode + 1
-    while episode <= ctx.end_episode:
-        remaining_tx = max(1, ctx.args.update_interval - ctx.tx_counter.count)
-        window = max(num_workers, min(256, int(remaining_tx / AVG_TX_PER_GAME) + 1))
-        end = min(ctx.end_episode, episode + window - 1)
+def parallel_stream(context: MainPhaseContext, pool, num_workers):
+    publish_weights(context)
+    next_episode = context.start_episode + 1
+    while next_episode <= context.end_episode:
+        remaining_transitions = max(
+            1, context.args.update_interval - context.tx_counter.count
+        )
+        window_size = max(
+            num_workers, min(256, int(remaining_transitions / AVG_TX_PER_GAME) + 1)
+        )
+        window_end = min(context.end_episode, next_episode + window_size - 1)
         jobs = []
-        for ep in range(episode, end + 1):
-            mode, table, position, game_seed, ctx.rot_state = rotation_plan(
-                ep, ctx.start_episode, ctx.rot_state, ctx
+        for episode in range(next_episode, window_end + 1):
+            mode, table, position, game_seed, context.rot_state = rotation_plan(
+                episode, context.start_episode, context.rot_state, context
             )
             jobs.append(
                 _Job(
-                    episode=ep,
+                    episode=episode,
                     partner_mode=mode,
                     training_position=position,
                     opponent_ids=[
-                        SELF_PLAY if e == SELF_PLAY else e.member_id for e in table
+                        SELF_PLAY if entry == SELF_PLAY else entry.member_id
+                        for entry in table
                     ],
-                    weight_version=ctx.weight_sync["version"],
-                    collect_oracle=ctx.collect_oracle,
+                    weight_version=context.weight_sync["version"],
+                    collect_oracle=context.collect_oracle,
                     game_seed=game_seed,
                 )
             )
-        for r in pool.imap(_league_worker_play, jobs):
+        for result in pool.imap(_league_worker_play, jobs):
             yield (
-                r["episode"],
-                r["partner_mode"],
-                r["training_position"],
-                r["episode_events"],
-                r["final_scores"],
-                r["training_data_single"],
-                r["game_summary"],
-                r["seat_to_member_id"],
+                result["episode"],
+                result["partner_mode"],
+                result["training_position"],
+                result["episode_events"],
+                result["final_scores"],
+                result["training_data_single"],
+                result["game_summary"],
+                result["seat_to_member_id"],
             )
-        episode = end + 1
+        next_episode = window_end + 1
