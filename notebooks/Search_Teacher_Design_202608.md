@@ -1932,3 +1932,39 @@ defender no-trump leads, partner trump leads.
 exploiter gate, plus large-n convention adherence (called-suit t0,
 defender trump t0, partner trump) — the certification readout per the
 criteria above.
+
+### 12.16 EV study RESULTS (2026-08-18, 8M-seed lineage): fat/nopoint RETIRED (wash); t0 called-suit lead EV-SUPPORTED — the operator's priority convention is the real target
+
+**cf_fat_leads_8m (new instrument, c0fdf61; 120 decision cases).**
+FAT-ARGMAX decision cell: true-deal MC Δ(nopoint−fat) = +0.043
+(SE 0.068, 0.6σ; nopoint better in 51% — coin flip); belief-pool MC
++0.022 (SE 0.028) brackets the effect under the pre-registered ~0.05
+retirement bound. NOPOINT-ARGMAX sanity n=3 (policy near-never leads
+nopoint given fat), weakly positive, no indictment. VERDICT: the
+reward channel AGREES with the committee's abstention — fat vs
+nopoint is an EV WASH at these nodes. The §12.7-§12.9 taught tilt
+was search noise at near-ties (per §12.8 self-agreement); the
+continuation "reversion" moved between EV-equivalent behaviors.
+fat/nopoint probe metric RETIRED as a teaching target (stays as a
+descriptive stat only).
+
+**cf_called_suit_8m (July C2 instrument rerun under the 8M seed).**
+AGREE sanity: +0.329 @ 4.3σ (belief +0.196 @ 6.1σ) — holds.
+PARTNER falsifier: −0.354, conv better in 30% — passes.
+DISAGREE decision cell (n=120): true-deal MC +0.108 (1.3σ, short of
+the strict rung-2 2σ overall) BUT trick-0 subset +0.257 @ 2.2σ
+(n=62) and belief-pool +0.102 @ 3.6σ with sign agreement — the
+support is CONCENTRATED AT t0, exactly the operator's named
+deployable behavior; the edge fades to noise by t2-t3. Position
+wrinkle: picker+1 seat DISAGREE Δ = −0.44 (n=23) — called-suit
+leads from immediately left of the picker read negative; teaching
+cells for attempt 10 should likely exclude or down-weight that seat.
+
+**Program consequence.** Attempt-10 target = t0 called-suit leading
+(+ defender no-trump and partner trump, already probed), NOT
+fat/nopoint. §12.8 already showed the cheap panel matches the heavy
+confident class 94% at t0 and confident deep labels carry 0% trump at
+t0 — the committee CAN speak at t0 on the axes that matter. Boundary
+eval of c8 vs seed (h2h duplicate-bridge 3000 deals + 3x1000-game
+adherence) running; its called-suit adherence delta measures whether
+attempt 9 already moved the convention that matters.
