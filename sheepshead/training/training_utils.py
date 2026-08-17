@@ -511,6 +511,16 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     cs_leads = 0  # defender leads, called-ace mode, called suit not yet led
     cs_adherent = 0  # ...that led a called-suit fail (convention C2)
     play_spreads = []  # legal-play logit spread (max-min) at multi-legal nodes
+    # Early-trick defender leads (t0-t2): the search-teacher target nodes
+    # (Search_Teacher_Design §12.7 relaunch monitoring spec). Composition of
+    # the greedy FAIL lead by point class (policy bias = fat A/10; search
+    # direction = no-point 7/8/9), plus top1-min logit gap at these nodes —
+    # the conviction floor that separates benign top-compression from
+    # erosion (§12.6 addendum 3).
+    deflead_fail = 0  # greedy fail leads at t0-2 defender lead nodes
+    deflead_fat = 0  # ...that led A/10
+    deflead_nopoint = 0  # ...that led 7/8/9
+    deflead_top1min = []  # top1 - min legal-play logit at those nodes
     try:
         for g in range(n_games):
             game = Game(partner_selection_mode=get_partner_selection_mode(g))
@@ -574,6 +584,18 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                         is_play = game.play_started and all(
                             ACTIONS[x - 1].startswith("PLAY ") for x in valid
                         )
+                        is_deflead = (
+                            game.play_started
+                            and not game.is_leaster
+                            and game.cards_played == 0
+                            and game.current_trick <= 2
+                            and game.leader == player.position
+                            and not (
+                                player.is_picker
+                                or player.is_partner
+                                or player.is_secret_partner
+                            )
+                        )
                         if is_play and len(valid) >= 2:
                             # One forward yields both the greedy action and the
                             # legal-play logit spread. Do NOT also call act():
@@ -585,6 +607,16 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                             a = int(torch.argmax(probs_t, dim=1).item()) + 1
                             lv = logits_t[0][[x - 1 for x in valid]]
                             play_spreads.append(float(lv.max() - lv.min()))
+                            if is_deflead:
+                                deflead_top1min.append(float(lv.max() - lv.min()))
+                                gcard = ACTIONS[a - 1][5:]
+                                if gcard not in TRUMP:
+                                    deflead_fail += 1
+                                    rank = gcard[:-1]
+                                    if rank in ("A", "10"):
+                                        deflead_fat += 1
+                                    elif rank in ("7", "8", "9"):
+                                        deflead_nopoint += 1
                         else:
                             a, _, _ = agent.act(
                                 state,
@@ -646,6 +678,16 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         # Median legal-play logit spread (max-min). A healthy play head is well
         # separated (baseline ~6.5); a collapsed/uniform head reads ~0. This is
         # the cheap canary for the terminal-only play-head collapse.
+        # Search-teacher target-node monitors (§12.7): greedy fail-lead point
+        # composition at t0-2 defender leads (policy bias = fat; taught
+        # direction = no-point) and the top1-min conviction floor there
+        # (8M baseline ~9.7/9.5/6.9 nats t0/t1/t2; v7 damage read 5.2/3.9/2.8).
+        "deflead_fail_leads": deflead_fail,
+        "deflead_fat_lead_rate": 100.0 * deflead_fat / max(deflead_fail, 1),
+        "deflead_nopoint_lead_rate": 100.0 * deflead_nopoint / max(deflead_fail, 1),
+        "deflead_top1min_med": (
+            float(np.median(deflead_top1min)) if deflead_top1min else 0.0
+        ),
         "play_logit_spread_med": (
             float(np.median(play_spreads)) if play_spreads else 0.0
         ),
