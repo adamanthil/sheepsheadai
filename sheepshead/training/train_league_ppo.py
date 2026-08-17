@@ -175,9 +175,21 @@ LEAGUE_ANCHOR_EVAL_SEED = 20260701
 # share the deal stream, so probe-to-probe deltas are paired (policy-driven,
 # not deal-luck). Same seed as the offline monitoring probes (§12.17).
 ADHERENCE_GUARD_SEED = 98765
+# parallel_stream's dispatch-window sizing formula (jobs to submit per
+# pool.imap window, sized off the expected transitions/game).
+AVG_TX_PER_GAME = 26.0
+# PPO epochs per update in run_main_phase's training_agent.update() call.
+PPO_EPOCHS = 4
 
 
-class _Seat:
+def checkpoint_path(checkpoint_dir: str, args, episode: int) -> str:
+    """Standard main-agent checkpoint filename, arch-tagged."""
+    return os.path.join(
+        checkpoint_dir, f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt"
+    )
+
+
+class OpponentAdapter:
     """Adapter giving a LeagueMember (or the training agent itself, for
     SELF_PLAY seats) the .agent / .metadata.agent_id surface that
     play_population_game expects of population opponents. The league keeps no
@@ -186,6 +198,10 @@ class _Seat:
     def __init__(self, agent: PPOAgent, agent_id: str):
         self.agent = agent
         self.metadata = SimpleNamespace(agent_id=agent_id)
+
+
+# Re-exported for compatibility: tests/callers import the historical name.
+_Seat = OpponentAdapter
 
 
 @dataclass
@@ -261,14 +277,14 @@ def _league_worker_init(init_args: dict) -> None:
         _LWORKER["search_config"] = cfg
 
 
-def _league_worker_get_member(member_id: str) -> _Seat:
+def _league_worker_get_member(member_id: str) -> OpponentAdapter:
     cache = _LWORKER["cache"]
     seat = cache.get(member_id)
     if seat is None:
         # Arch-aware: members carry their architecture in checkpoint metadata
         # (legacy members without the key are the full architecture).
         agent = load_agent(os.path.join(_LWORKER["members_dir"], f"{member_id}.pt"))
-        seat = _Seat(agent, member_id)
+        seat = OpponentAdapter(agent, member_id)
         cache[member_id] = seat
     return seat
 
@@ -285,7 +301,7 @@ def _league_worker_play(job: _Job) -> dict:
         g["version"] = job.weight_version
 
     opponents = [
-        _Seat(g["agent"], SELF_PLAY)
+        OpponentAdapter(g["agent"], SELF_PLAY)
         if mid == SELF_PLAY
         else _league_worker_get_member(mid)
         for mid in job.opponent_ids
@@ -543,9 +559,9 @@ def sequential_stream(ctx: MainPhaseContext):
         else:
             mode, table, position = setup_episode(episode, ctx)
         opponents = [
-            _Seat(ctx.training_agent, SELF_PLAY)
+            OpponentAdapter(ctx.training_agent, SELF_PLAY)
             if entry == SELF_PLAY
-            else _Seat(entry.agent, entry.member_id)
+            else OpponentAdapter(entry.agent, entry.member_id)
             for entry in table
         ]
         game, events, scores, training_data_single, pos_to_seat = play_population_game(
@@ -596,11 +612,10 @@ def publish_weights(ctx: MainPhaseContext):
 
 def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
     publish_weights(ctx)
-    avg_tx_per_game = 26.0
     episode = ctx.start_episode + 1
     while episode <= ctx.end_episode:
         remaining_tx = max(1, ctx.args.update_interval - ctx.tx_counter.count)
-        window = max(num_workers, min(256, int(remaining_tx / avg_tx_per_game) + 1))
+        window = max(num_workers, min(256, int(remaining_tx / AVG_TX_PER_GAME) + 1))
         end = min(ctx.end_episode, episode + window - 1)
         jobs = []
         rotate = bool(getattr(ctx.args, "seat_rotation", False))
@@ -651,6 +666,20 @@ def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
         episode = end + 1
 
 
+def fresh_teacher_window() -> dict:
+    """Zeroed CE-teacher telemetry accumulator (reset after each
+    progress-CSV row)."""
+    return {
+        "searched": 0,
+        "labeled": 0,
+        "material": 0,
+        "w_sum": 0.0,
+        "spread_sum": 0.0,
+        "kl_sum": 0.0,
+        "kl_n": 0,
+    }
+
+
 def fresh_entropy_targets(args) -> dict:
     """Initial targets for a FRESH entropy controller (no sidecar yet):
     the explicit --entropy-target-* flags, if any. The default (empty) is
@@ -697,15 +726,7 @@ def run_main_phase(
     # field, so best-response training always runs without the kick.
     watchdog = LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
     # CE-teacher telemetry window (reset after each progress-CSV row).
-    teacher_window = {
-        "searched": 0,
-        "labeled": 0,
-        "material": 0,
-        "w_sum": 0.0,
-        "spread_sum": 0.0,
-        "kl_sum": 0.0,
-        "kl_n": 0,
-    }
+    teacher_window = fresh_teacher_window()
     t0 = time.time()
 
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
@@ -880,7 +901,7 @@ def run_main_phase(
                     watchdog.tick(training_agent, leaster_window)
                 stats = training_agent.update(
                     oracle_extra_epochs=getattr(args, "oracle_extra_epochs", 0),
-                    epochs=4,
+                    epochs=PPO_EPOCHS,
                     batch_size=getattr(args, "minibatch_episodes", 256),
                     grad_accum=getattr(args, "grad_accum", False),
                     teacher_epochs=(
@@ -1041,15 +1062,7 @@ def run_main_phase(
                             f"({tstats.get('rows', 0)} rows)",
                             flush=True,
                         )
-                    teacher_window = {
-                        "searched": 0,
-                        "labeled": 0,
-                        "material": 0,
-                        "w_sum": 0.0,
-                        "spread_sum": 0.0,
-                        "kl_sum": 0.0,
-                        "kl_n": 0,
-                    }
+                    teacher_window = fresh_teacher_window()
 
             # League snapshot of the main (replaces population_add_interval)
             if episode % args.snapshot_interval == 0:
@@ -1195,10 +1208,7 @@ def run_main_phase(
                         flush=True,
                     )
                 if violations:
-                    stop_ckpt = os.path.join(
-                        checkpoint_dir,
-                        f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
-                    )
+                    stop_ckpt = checkpoint_path(checkpoint_dir, args, episode)
                     training_agent.save(stop_ckpt)
                     league.save()
                     print(
@@ -1242,12 +1252,7 @@ def run_main_phase(
                 )
 
             if episode % args.save_interval == 0:
-                training_agent.save(
-                    os.path.join(
-                        checkpoint_dir,
-                        f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
-                    )
-                )
+                training_agent.save(checkpoint_path(checkpoint_dir, args, episode))
                 league.save()
     finally:
         if pool is not None:
@@ -1923,10 +1928,7 @@ def main():
             checkpoint_dir,
             anchor_eval=anchor_eval,
         )
-        main_ckpt = os.path.join(
-            checkpoint_dir,
-            f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt",
-        )
+        main_ckpt = checkpoint_path(checkpoint_dir, args, episode)
         if not os.path.exists(main_ckpt):
             training_agent.save(main_ckpt)
         # Expert refresh (CE_Teacher_Design §3): the boundary checkpoint
