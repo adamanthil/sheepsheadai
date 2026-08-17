@@ -1083,3 +1083,73 @@ ordering probe + log monitors armed. Verdict instruments: emission
 rate/gap decay (self-retirement under a FIXED expert is now
 monotone-convergent by construction), ordering probe vs the
 certified band, entropy drift, then consolidation + boundary gates.
+
+### 12.3 Attempt 8 verdict: frozen expert fixes the ordering axis; global spread flattening persists — killed on the pre-registered spread stop-rule (2026-08-16, ~7 updates / ~8k episodes)
+
+**KILLED at v7 (~Ep 8,008k) per the pre-registered stop rule (probe
+spread < 2.7).** Seed-98765 spread trajectory across weight publishes:
+3.66 → 3.61 → 3.52 → 3.41 → 3.13 → 3.02 → 2.72 (baseline 3.60) —
+monotone, with the LARGEST single-step drop last (−0.30). Fresh-seed
+replication on v7 (seeds 12345/55555/77777, 300 games each): 2.72 /
+2.68 / 2.79 — median on the line, one seed below. Killed rather than
+waiting for an unambiguous breach because the trend showed no
+deceleration and damage tracks Adam step count.
+
+**What the frozen expert FIXED (hypothesis confirmed):** the attempt-7
+divergence axis is gone. t0 trump-lead rose into the certified band
+and came back down — 0.7 → 4.8 → 5.6 → 3.2 → 2.5 → 2.1% — vs
+attempt 7's linear climb to 14.1% at the same probe count. Partner
+trump-lead held 94.9-100% (v6 reading of 94.9 replicated at
+94.4/97.1/99.0 = noise, not erosion). Emission gap decayed
+(1.80 → 1.42-ish band, oscillating) instead of rebounding. Window
+outcome stats stayed healthy throughout: picker_avg +1.32 → +1.58,
+pick 19-20%, leaster 5-6%, probe pick-rate 33-36%. The bounded
+destination the frozen expert was built for is real.
+
+**What it did NOT fix — the kill mechanism:** global play-head
+flattening. The probe spread is a MEDIAN over all play nodes; labels
+touch ~1% of eligible nodes in 23 cells, so a 0.9-nat median drop
+cannot be direct label gradient — it is generalized softening, the
+attempt-5b/6 entropy-injection signature slowed by the clip (7
+updates to −0.9 vs scramble-in-2-3) but not stopped. Two reasons it
+is NOT self-limiting as built:
+
+1. **Emission never decayed.** Rate held at 39/33/21/41/38/41% —
+   self-retirement stalled. With a frozen expert and a moving
+   student, steady emission means the live argmax keeps disagreeing
+   at fresh (or re-visited) nodes.
+2. **Re-anchoring ratchet.** The pair-gap trust region anchors at
+   LABEL time. Every re-label of a similar node re-anchors at the
+   current policy and grants a fresh δ=0.2. δ caps movement per
+   label cycle, not total movement. Steady 40% emission ⇒ unbounded
+   cumulative drift budget, and the softmax redistribution en route
+   leaks entropy into the trunk via generalization (the per-row
+   two-logit support is exact; cross-state generalization is not).
+
+Extrapolation: ~170 more updates in phase 1 at −0.1/update average
+(accelerating) ends in a scramble long before the 8.25M cap.
+
+**Standing conclusions for the next design round (NO new attempt
+without operator review):**
+- Frozen expert: KEEP. It is necessary (attempt 7) and its success
+  signature appeared exactly as predicted.
+- Pair-gap clip: KEEP but insufficient alone — it needs either
+  (a) anchors fixed at GENERATION start (total-movement budget, not
+  per-label), or (b) an emission-side cooldown (once a node/cell has
+  been labeled N times, stop re-emitting) to break the ratchet.
+- The stalled emission rate is itself diagnostic: if the student had
+  converged to the expert at taught cells, emission would abstain
+  (argmax match). It didn't — plausibly because flattening UNDOES
+  earlier teaching at previously-taught nodes (spread collapse ⇒
+  argmax instability ⇒ re-disagreement ⇒ re-label ⇒ more flattening:
+  the ratchet is a closed loop).
+- Operator's outcome-indicator framing held right up to the kill
+  (picker_avg rising at v7); the spread probe led every lagging
+  indicator by many updates. Spread median = the canonical early
+  instrument for this failure mode.
+
+Artifacts: train_attempt8_frozen_expert.log,
+attempt8_flattened_weights_v7.pt,
+checkpoints/progress_attempt8_frozen_expert.csv. No phase-1
+checkpoint was written (first save at 8.05M; killed at ~8.008M) —
+next attempt relaunches from the same 8M seed checkpoint.
