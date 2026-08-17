@@ -1554,18 +1554,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--gate-pair-eps",
         type=float,
-        default=None,
+        default=0.03,
         help="materiality floor (Q-units, 1 Q = 12 score points) for pair "
         "emission: |mean paired Q-diff| must clear max(eps, 2s/sqrt(R)). "
-        "Default (None) uses SearchConfig's 0.01 (the E9 harm epsilon). "
-        "Search_Teacher_Design §12.16-12.17 calibrated 0.03 as the value "
-        "that kills reward-wash pairs (fat-vs-nopoint: 0 survivors) while "
-        "keeping convention-direction pairs",
+        "Default 0.03 per the Search_Teacher_Design §12.18 calibration "
+        "(kills reward-wash pairs — fat-vs-nopoint: 0 survivors — while "
+        "keeping convention-direction pairs). SearchConfig's 0.01 is the "
+        "E9 harm epsilon: a wrong-label cost bound, NOT a materiality bar",
     )
     ap.add_argument(
         "--teacher-phase-cap",
         type=int,
-        default=0,
+        default=100000,
         help="two-phase generations: cap (episodes) on the teacher-ON phase "
         "at the start of each generation; the remainder to the boundary "
         "runs teacher-OFF (consolidation — terminal reward audits the "
@@ -1598,7 +1598,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--adherence-guard-interval",
         type=int,
-        default=0,
+        default=50000,
         help="run the n=1000 fixed-seed convention adherence guard every N "
         "episodes (0 = off). §12.17: smaller probes masked an 8-point "
         "partner-trump regression for a full teacher run",
@@ -1612,16 +1612,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--guard-partner-floor",
         type=float,
-        default=None,
+        default=93.5,
         help="adherence guard hard stop: halt the run (exit 3, checkpoint "
-        "saved) if partner trump-lead %% falls below this floor",
+        "saved) if partner trump-lead %% falls below this floor. Default "
+        "93.5 = the 8M perceiver-shared-v2 seed's n=1000 level (96.5) "
+        "minus 3 points (§12.17) — recalibrate for other lineages",
     )
     ap.add_argument(
         "--guard-t0-ceiling",
         type=float,
-        default=None,
+        default=5.0,
         help="adherence guard hard stop: halt the run if defender t0 "
-        "trump-lead %% rises above this ceiling",
+        "trump-lead %% rises above this ceiling (the v7 scramble "
+        "signature; seed level is ~0.1%%)",
     )
     ap.add_argument(
         "--seat-rotation",
