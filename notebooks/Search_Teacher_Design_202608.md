@@ -2011,3 +2011,51 @@ wash (§12.16). Attempt 9's net ledger: −8 partner, +2.8 called-suit,
    300-game tripwire.
 4. Lower total teacher pressure (fewer cells = fewer emitted pairs
    naturally); keep λ/δ; two-phase gen structure unchanged.
+
+### 12.18 ε provenance + calibration; two-phase automation BAKED IN (2026-08-18, commit c0febbe)
+
+**gate_pair_eps provenance (operator question).** Q-units are critic
+units: terminal get_score()/RETURN_SCALE with RETURN_SCALE=12, so
+1 Q = 12 score points and ε=0.01 Q = 0.12 points. The 0.01 figure is
+E9's HARM epsilon — a read-time operationalization ("harm = uplift <
+−0.01 Q"), disclosed as not pre-registered, built to bound the cost
+of a WRONG label when choosing teacher cells — which §12.7 then
+inherited as the EMISSION materiality floor. "Too small to hurt" was
+reused as "big enough to teach"; those are different questions, and
+the fat/nopoint episode is the direct consequence: committee gaps of
+0.01-0.02 Q at near-ties passed the floor while the reward channel
+measures the true class effect at ~0.004-0.007 Q (search self-play Q
+overstates true EV gaps several-fold at these nodes).
+
+**Calibration (existing gating-study reps, 1024/1, R=5 rule, sweep
+ε∈{0.01,0.02,0.03,0.05,0.08}; §12.16 unit correction applied —
+CRN-verified t0 called-suit effect 0.257 score = 0.021 Q):**
+survivors by class: trump-vs-fail 282→267→239→148→65;
+calledsuit-vs-trump 122→119→113→81→31; calledsuit-vs-fail(within)
+38→25→10→1→0; fat-vs-nopoint 13→8→0→0→0. Called-suit pair DIRECTION:
+153:7 toward the convention (sign-test p~1e-33) vs fat/nopoint's
+coin-flip. ADOPTED: ε=0.03 Q (0.36 points) — kills fat-vs-nopoint
+exactly, keeps the trump-ordering conventions (mostly self-retiring)
+and a thin, directionally clean within-fail called-suit signal.
+PRE-REGISTERED RISK: within-fail signal may be too thin at 0.03 to
+move adherence 44.7→60s; fallback = class-consistency pooling over
+same-suit-as-called cards (game-ontological, not hand-picked), or
+accept the ceiling verdict.
+
+**Generation length (operator question).** 250k stays as the CAP
+(league snapshot/gate bookkeeping + h2h endpoint stability); phases
+are adaptive within it: teacher phase capped by --teacher-phase-cap
+(attempt 10: 100k) with early exit on emission <=2% x3 windows or
+learned >=0.95 x3; consolidation runs the boundary remainder.
+
+**Automation (c0febbe).** train_league_ppo now runs two-phase
+generations natively: teacher-ON (frozen expert auto-refrozen to each
+generation-start checkpoint; cert spot-check remains MANUAL, flagged
+in the log), adaptive exit with crash-resume marker
+(teacher_phase_done_genN.json), teacher-OFF consolidation to
+boundary, then the existing exploiter gate. New flags: --gate-pair-eps,
+--teacher-phase-cap, --teacher-exit-{emission-pct,learned,windows},
+--adherence-guard-{interval,games}, --guard-partner-floor,
+--guard-t0-ceiling (guard = n=1000 fixed-seed probe, HARD STOP exit 3
+with checkpoint saved). Smoke-validated end-to-end (phase transition,
+guard, marker, refreeze banner, exploiter gate, HOF promotion).
