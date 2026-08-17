@@ -1463,3 +1463,43 @@ new study readouts: (7) per-node Q standard error at 1024/1 (6 reps)
 and 4096/term (2 reps); (8) resolvable-pair count per defender-lead
 node at each arm; (9) whether the fat-vs-nopoint Q gap clears the
 resolution threshold at cheap budget or requires the heavy arm.
+
+**§12.7 math + literature (operator-approved design, 2026-08-16):**
+Committee stats: paired per-replicate differences d_r(a,b) =
+Q_r(s,a) - Q_r(s,b) (each replicate scores all actions on shared
+worlds -> paired test cancels world noise); d-bar, s² over R reps.
+EMIT a>b iff sign-consistent (all R) AND d-bar >= eps_res =
+max(eps_harm, z*s/sqrt(R))  [one-sided paired t-test; z / alpha and
+required budget calibrated from study readouts 7-9].
+TARGET (converged-toward, never regressed-onto): posterior
+probability of optimality p*(a) = P[mu_a >= mu_b for all b] under
+mu_a ~ N(Qbar(a), sigma_a²)  (Thompson 1933): ties -> 1/k, resolved
+losers -> 0.
+LOSS: existing anchored pair-gap hinge over emitted pairs
+L = lambda * (1/N) sum max(0, m + log pi(b) - log pi(a)) * 1[g_ab<delta],
+g_ab = anchored pair-gap; two-logit gradient identity
+d/dz_j [log pi(b) - log pi(a)] = 1[j=b] - 1[j=a] (softmax cancels).
+FIXED POINT: max H(pi) s.t. log pi(a) - log pi(b) >= m on resolved
+pairs -> constraints bind at m on the transitive reduction,
+unconstrained gaps -> 0: pi(a) prop exp(-m * chain-depth(a)) —
+EXACT uniformity within unresolved sets. Caveat recorded: teacher
+guarantees orderings to margin m only (~0.74/level); suppression of
+resolved losers toward 0 remains PG's (unbiased) job.
+LITERATURE: Thompson 1933 / Russo et al. 2018 (posterior
+optimality); Hoeffding races Maron-Moore 1994, Even-Dar 2006, LUCB
+2012, OCBA (emit-only-when-resolved = elimination w/ confidence);
+Bradley-Terry 1952, RankNet 2005, RankSVM 2002, dueling bandits Yue
+2012, Christiano 2017 (pairwise supervision reliability); DPO
+Rafailov 2023 — g_ab IS DPO's implicit-reward difference with
+pi_ref = label-time policy, delta = hard cap where beta is soft;
+Jaynes 1957 + MaxEnt RL (Ziebart 2008, SAC 2018) (emergent
+uniform-over-ties); Gumbel MuZero Danihelka 2022 (completed-Q
+improvement operator — ours is a significance-gated conservative
+subset); Grill et al. 2020 (MCTS ~ regularized policy opt ->
+extract order relations, don't regress realizations); Chow 1970 /
+El-Yaniv-Wiener 2010 (abstention/selective prediction).
+Nearest single precedent: DPO on search-derived preferences gated
+by best-arm-identification statistics with max-ent completion —
+composition novel, every seam established. OPERATOR APPROVED the
+§12.7 design this session; build remains gated on study readouts
+7-9 calibration.
