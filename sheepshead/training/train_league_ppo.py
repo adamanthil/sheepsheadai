@@ -56,6 +56,7 @@ import subprocess
 import sys
 import time
 from collections import deque
+from dataclasses import dataclass
 from multiprocessing import get_context
 
 import numpy as np
@@ -306,6 +307,480 @@ def fresh_entropy_targets(args) -> dict:
     }
 
 
+@dataclass
+class _PhaseState:
+    """Loop-carried state of one run_main_phase call, threaded through the
+    per-episode phase helpers (_ingest_episode, _ppo_update,
+    _run_interval_probes). One instance per phase; never outlives it."""
+
+    ctx: MainPhaseContext
+    checkpoint_dir: str
+    training_ratings: dict
+    anchor_eval: dict | None
+    entropy_ctrl: EntropyTargetController | None
+    entropy_ctrl_path: str
+    watchdog: LeasterWatchdog | None
+    pool: object | None
+    progress_csv: str
+    greedy_csv: str
+    anchored_csv: str
+    picker_scores: deque
+    pick_window: deque
+    leaster_window: deque
+    teacher_window: dict
+    t0: float
+
+
+def _setup_telemetry_csvs(checkpoint_dir: str, start_episode: int):
+    """Resolve the three phase CSVs, migrating pre-existing files to wider
+    schemas and trimming rows a crashed run wrote past the resume episode
+    (the replayed episodes would otherwise duplicate rows)."""
+    progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
+    greedy_csv = os.path.join(checkpoint_dir, "greedy_health.csv")
+    anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
+    if ensure_csv_columns(progress_csv, PROGRESS_CSV_HEADER):
+        print("📊 Migrated league_training_progress.csv to wider schema")
+    if ensure_csv_columns(greedy_csv, GREEDY_CSV_HEADER):
+        print("📊 Migrated greedy_health.csv to wider schema")
+    for _csv in (progress_csv, greedy_csv, anchored_csv):
+        _n = truncate_csv_rows_past_episode(_csv, start_episode)
+        if _n:
+            print(
+                f"🧹 Trimmed {_n} stale rows past episode {start_episode:,} "
+                f"from {os.path.basename(_csv)}"
+            )
+    return progress_csv, greedy_csv, anchored_csv
+
+
+def _setup_entropy_controller(args, checkpoint_dir: str, ctx: MainPhaseContext):
+    """Entropy controller v2 (always on for the league trainer,
+    CE_Teacher_Design §4): the signed target-entropy controller owns the
+    entropy coefficients (LR keeps its clock schedule). Bumpless handoff:
+    seed alpha from the legacy schedule's value at the current episode,
+    and let un-set targets adopt the first update's measurement. The
+    exploiter's SimpleNamespace args carries no entropy_controller
+    attribute, so best-response training stays on the plain schedule
+    (disposable, exploration-hungry — a controller would fight its
+    intentionally hot coefficients). Returns (controller | None, sidecar
+    path)."""
+    entropy_ctrl_path = os.path.join(checkpoint_dir, "entropy_controller.json")
+    if not getattr(args, "entropy_controller", False):
+        return None, entropy_ctrl_path
+    if os.path.exists(entropy_ctrl_path):
+        entropy_ctrl = EntropyTargetController.load(entropy_ctrl_path)
+        print(
+            f"🎯 Entropy controller resumed: targets "
+            f"{entropy_ctrl.targets}  alphas {entropy_ctrl.alphas}"
+        )
+    else:
+        targets = fresh_entropy_targets(args)
+        entropy_ctrl = EntropyTargetController(
+            config=EntropyControllerConfig(
+                floors={"play": getattr(args, "entropy_play_floor", 0.28)}
+            ),
+            targets=targets,
+        )
+        if targets:
+            print(
+                "🎯 Entropy controller fresh, explicit targets: "
+                + "  ".join(f"{h} {v:.3f}" for h, v in sorted(targets.items()))
+            )
+        else:
+            print("🎯 Entropy controller fresh (bumpless targets pending)")
+    apply_schedules(ctx.start_episode, ctx)
+    entropy_ctrl.attach(ctx.training_agent)
+    return entropy_ctrl, entropy_ctrl_path
+
+
+def _spawn_worker_pool(args, league: League, ctx: MainPhaseContext):
+    """Spawn the versioned-weights worker pool (league_worker protocol), or
+    return None for the in-process sequential path (num_workers <= 1)."""
+    if args.num_workers <= 1:
+        return None
+    mp_ctx = get_context("spawn")
+    teacher_settings = TeacherSettings.from_args(args)
+    return mp_ctx.Pool(
+        processes=args.num_workers,
+        initializer=_league_worker_init,
+        initargs=(
+            {
+                "arch": getattr(args, "arch", "full"),
+                "members_dir": str(league.members_dir),
+                "weight_path_base": ctx.weight_sync["base"],
+                "base_seed": args.seed,
+                # CE search teacher in workers: oracle-mode agents so
+                # the payload's oracle head loads (calibrated leaves) and
+                # gamma rides the payload (search discounting).
+                "critic_mode": getattr(args, "critic_mode", "limited"),
+                "oracle_aux_heads": bool(getattr(args, "oracle_aux_heads", False)),
+                "teacher": teacher_settings.enabled,
+                "teacher_prob": teacher_settings.prob,
+                "teacher_replicates": teacher_settings.replicates,
+                "teacher_iters": teacher_settings.iters,
+                # Stationary expert: workers rebuild the frozen
+                # generation-start policy from these paths; weight
+                # refreshes touch only the live agent. --teacher-ckpt
+                # pins the expert independently of --resume so a mid-run
+                # continuation doesn't silently refreeze to student weights.
+                "teacher_resume": teacher_settings.ckpt,
+                "teacher_oracle_init": teacher_settings.oracle_init,
+                "teacher_gamma": float(ctx.training_agent.gamma),
+            },
+        ),
+    )
+
+
+def _ingest_episode(
+    st: _PhaseState,
+    mode: int,
+    position: int,
+    events: list,
+    scores: dict,
+    training_data_single: dict,
+    summary: dict,
+    seat_to_id: dict,
+) -> None:
+    """Fold one finished episode into the phase state: store its events for
+    the next PPO update, accumulate telemetry windows, and update ratings."""
+    league = st.ctx.league
+    st.ctx.tx_counter.count += store_events_by_seat(st.ctx.training_agent, events)
+    sd = (training_data_single.get("search_diagnostics") or {}).get("play")
+    if sd:
+        st.teacher_window["searched"] += sd["count"]
+        st.teacher_window["labeled"] += sd["labeled"]
+        st.teacher_window["material"] += sd["material"]
+        st.teacher_window["w_sum"] += sd["w_sum"]
+        st.teacher_window["spread_sum"] += sd["spread_sum"]
+        st.teacher_window["kl_sum"] += sd["kl_sum"]
+        st.teacher_window["kl_n"] += sd["kl_n"]
+    if training_data_single["was_picker"]:
+        st.picker_scores.append(training_data_single["score"])
+    st.pick_window.append(1 if training_data_single["was_picker"] else 0)
+    st.leaster_window.append(1 if summary["is_leaster"] else 0)
+
+    members_by_pos = {
+        pos: league.get(mid)
+        for pos, mid in seat_to_id.items()
+        if mid != SELF_PLAY and league.get(mid) is not None
+    }
+    st.training_ratings[mode] = league.update_ratings_with_training(
+        partner_mode=mode,
+        training_rating=st.training_ratings[mode],
+        final_scores=scores,
+        training_position=position,
+        opponents_by_position=members_by_pos,
+        picker_seat=summary["picker"],
+        partner_seat=summary["partner"],
+        is_leaster=summary["is_leaster"],
+    )
+
+
+def _emit_progress(st: _PhaseState, episode: int, stats: dict) -> None:
+    """Post-update reporting: the progress print, the progress-CSV row, and
+    the teacher-window print, then reset the teacher window."""
+    training_agent = st.ctx.training_agent
+    league = st.ctx.league
+    eps_s = (episode - st.ctx.start_episode) / max(time.time() - st.t0, 1e-9)
+    picker_avg = float(np.mean(st.picker_scores)) if st.picker_scores else 0.0
+    anchor = stats.get("anchor", {})
+    anchor_str = (
+        f"  anchor_kl={anchor.get('kl', 0.0):.4f}" if anchor.get("active") else ""
+    )
+    astats = stats.get("advantage_stats", {})
+    hstd = astats.get("head_std", {})
+    adv_std_all = astats.get("std", 0.0)
+    adv_std_play = hstd.get("play", 0.0)
+    adv_std_pick = hstd.get("pick", 0.0)
+    # Oracle mode: explained variance of each critic vs the
+    # empirical return — the variance-reduction headline.
+    ostats = stats.get("oracle") or {}
+    oracle_str = (
+        f"  ev O/L {ostats['ev_oracle']:.2f}/{ostats['ev_limited']:.2f}"
+        if ostats
+        else ""
+    )
+    hnorm = stats.get("head_entropy_norm") or {}
+    hsoft = stats.get("head_softband") or {}
+
+    def _hn(head):
+        v = hnorm.get(head)
+        return f"{v:.2f}" if v is not None else "-"
+
+    hnorm_str = (
+        f" | Hn {_hn('pick')}/{_hn('partner')}/{_hn('bury')}/{_hn('play')}"
+        if hnorm
+        else ""
+    )
+    print(
+        f"Ep {episode:,} | picker_avg {picker_avg:+.2f} | "
+        f"pick {100 * np.mean(st.pick_window):.0f}% | "
+        f"leaster {100 * np.mean(st.leaster_window):.1f}% | "
+        f"x-share {league.exploiter_share():.2f} | "
+        f"advσ all/pick/play "
+        f"{adv_std_all:.3f}/{adv_std_pick:.3f}/{adv_std_play:.3f} | "
+        f"{eps_s:.1f} eps/s{anchor_str}{oracle_str}{hnorm_str}",
+        flush=True,
+    )
+    gns = stats.get("gns") or {}
+    write_header = not os.path.exists(st.progress_csv)
+    with open(st.progress_csv, "a", newline="") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(PROGRESS_CSV_HEADER)
+        w.writerow(
+            [
+                episode,
+                f"{picker_avg:.3f}",
+                f"{np.mean(st.pick_window):.3f}",
+                f"{np.mean(st.leaster_window):.3f}",
+                f"{league.exploiter_share():.3f}",
+                f"{st.training_ratings[0].mu:.2f}",
+                f"{st.training_ratings[1].mu:.2f}",
+                f"{adv_std_all:.4f}",
+                f"{adv_std_pick:.4f}",
+                f"{adv_std_play:.4f}",
+                f"{ostats['ev_oracle']:.4f}" if ostats else "",
+                f"{ostats['ev_limited']:.4f}" if ostats else "",
+                f"{anchor.get('kl', 0.0):.5f}" if anchor.get("active") else "",
+                stats.get("optimizer_steps_total", ""),
+                f"{gns['global']:.0f}" if gns.get("global") is not None else "",
+                f"{gns['lead']:.0f}" if gns.get("lead") is not None else "",
+                gns.get("lead_rows", ""),
+                f"{gns['lead_adv_mean']:.4f}" if "lead_adv_mean" in gns else "",
+                f"{gns['lead_adv_std']:.4f}" if "lead_adv_std" in gns else "",
+                f"{gns['lead_trump_mass']:.4f}" if "lead_trump_mass" in gns else "",
+                *[
+                    f"{hnorm[head]:.4f}" if hnorm.get(head) is not None else ""
+                    for head in ("pick", "partner", "bury", "play")
+                ],
+                *[
+                    f"{hsoft[head]:.4f}" if hsoft.get(head) is not None else ""
+                    for head in ("pick", "partner", "bury", "play")
+                ],
+                f"{stats.get('approx_kl', 0.0):.6f}",
+                f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
+                st.teacher_window["searched"],
+                f"{st.teacher_window['material'] / st.teacher_window['labeled']:.3f}"
+                if st.teacher_window["labeled"]
+                else "",
+                f"{st.teacher_window['kl_sum'] / st.teacher_window['kl_n']:.4f}"
+                if st.teacher_window["kl_n"]
+                else "",
+                f"{stats['teacher']['ce']:.4f}" if stats.get("teacher") else "",
+            ]
+        )
+    if st.teacher_window["searched"]:
+        tstats = stats.get("teacher") or {}
+        tw = st.teacher_window
+        # Mean label-time KL(target||policy) is the self-retirement
+        # readout: it decays toward 0 as the student conforms to the
+        # committee.
+        kl = f", KL {tw['kl_sum'] / tw['kl_n']:.3f}" if tw["kl_n"] else ""
+        print(
+            f"🎓 teacher: {tw['searched']} searched, "
+            f"{tw['material']} material "
+            f"({100 * tw['material'] / max(tw['labeled'], 1):.0f}%), "
+            f"mean w {tw['w_sum'] / max(tw['labeled'], 1):.2f}, "
+            f"spread {tw['spread_sum'] / max(tw['labeled'], 1):.3f}"
+            f"{kl} | CE {tstats.get('ce', 0.0):.4f} "
+            f"x{tstats.get('epochs', 0)} epochs "
+            f"({tstats.get('rows', 0)} rows)",
+            flush=True,
+        )
+    st.teacher_window = fresh_teacher_window()
+
+
+def _ppo_update(st: _PhaseState, episode: int) -> None:
+    """One PPO update at an update-interval boundary: schedules, entropy
+    controller, watchdog kick, the gradient update (+ CE teacher passes),
+    exploiter retirement, weight republish, and progress reporting."""
+    args = st.ctx.args
+    training_agent = st.ctx.training_agent
+    apply_schedules(episode, st.ctx)
+    if st.entropy_ctrl is not None:
+        # Controller owns the entropy coefficients (overrides the
+        # schedule's); the watchdog kick below still multiplies on top —
+        # it stays the upward override.
+        st.entropy_ctrl.apply(training_agent)
+    if st.watchdog is not None:
+        st.watchdog.tick(training_agent, st.leaster_window)
+    stats = training_agent.update(
+        oracle_extra_epochs=getattr(args, "oracle_extra_epochs", 0),
+        epochs=PPO_EPOCHS,
+        batch_size=getattr(args, "minibatch_episodes", 256),
+        grad_accum=getattr(args, "grad_accum", False),
+        teacher_epochs=(
+            int(getattr(args, "teacher_epochs", 0))
+            if getattr(args, "teacher", False)
+            else 0
+        ),
+    )
+    st.ctx.tx_counter.count = 0
+    if st.entropy_ctrl is not None and stats:
+        had_pending = any(
+            st.entropy_ctrl.targets[h] is None
+            for h in ("pick", "partner", "bury", "play")
+        )
+        st.entropy_ctrl.observe(stats.get("head_entropy_norm") or {})
+        if had_pending and not any(
+            st.entropy_ctrl.targets[h] is None
+            for h in ("pick", "partner", "bury", "play")
+        ):
+            print(
+                "🎯 Entropy targets initialized (bumpless): "
+                + "  ".join(
+                    f"{h} {st.entropy_ctrl.targets[h]:.3f}"
+                    for h in ("pick", "partner", "bury", "play")
+                )
+            )
+        st.entropy_ctrl.save(st.entropy_ctrl_path)
+    for mid in st.ctx.league.retire_patched_exploiters():
+        print(f"🩹 Exploiter {mid} patched (EMA collapsed); retired")
+    if st.pool is not None:
+        publish_weights(st.ctx)
+    if stats:
+        _emit_progress(st, episode, stats)
+
+
+def _run_interval_probes(st: _PhaseState, episode: int) -> None:
+    """Interval-keyed side effects after each episode: league snapshot,
+    greedy-health probe + gates, adherence guard, anchored strength probe,
+    and the periodic checkpoint save."""
+    args = st.ctx.args
+    training_agent = st.ctx.training_agent
+    league = st.ctx.league
+
+    # League snapshot of the main (replaces population_add_interval)
+    if episode % args.snapshot_interval == 0:
+        snap = copy.deepcopy(training_agent)
+        snap.set_anchor(None, 0.0)
+        # League members are inference-only: drop the privileged critic
+        # so it isn't persisted into every member checkpoint.
+        snap.strip_oracle()
+        league.add_member(
+            snap,
+            ROLE_PAST_MAIN,
+            training_episodes=episode,
+            initial_ratings=_inherited_ratings(league, st.training_ratings),
+        )
+        print(f"👥 League snapshot at ep {episode:,}; {league.summary()}")
+
+    # Greedy health probe + gates (collapse guard, unchanged semantics)
+    if args.greedy_eval_interval > 0 and episode % args.greedy_eval_interval == 0:
+        hp = st.ctx.hyperparams or PFSP_HYPERPARAMS
+        probe = greedy_health_probe(
+            training_agent, n_games=args.greedy_eval_games, seed=episode
+        )
+        print(
+            f"🩺 Greedy health ({probe['games']} games): "
+            f"PICK {probe['pick_rate']:.1f}%, ALONE {probe['alone_rate']:.1f}%, "
+            f"leaster {probe['leaster_rate']:.1f}%, "
+            f"t0 trump-lead {probe['t0_trump_lead_rate']:.1f}% "
+            f"(n={probe['t0_def_leads']}), "
+            f"partner trump-lead {probe['partner_trump_lead_rate']:.1f}% "
+            f"(n={probe['partner_leads']}), "
+            f"called-suit lead {probe['called_suit_lead_rate']:.1f}% "
+            f"(n={probe['called_leads']}), "
+            f"play-spread {probe['play_logit_spread_med']:.2f}",
+            flush=True,
+        )
+        if probe["pick_rate"] < hp.greedy_gate_min_pick:
+            print(
+                f"🚨 GREEDY GATE VIOLATION: PICK rate < {hp.greedy_gate_min_pick:.0f}%",
+                flush=True,
+            )
+        if probe["alone_rate"] > hp.greedy_gate_max_alone:
+            print(
+                f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
+                f"{hp.greedy_gate_max_alone:.0f}%",
+                flush=True,
+            )
+        if probe["t0_trump_lead_rate"] > hp.greedy_gate_max_trump_lead:
+            print(
+                f"🚨 GREEDY GATE VIOLATION: trump-lead > "
+                f"{hp.greedy_gate_max_trump_lead:.0f}%",
+                flush=True,
+            )
+        if probe["play_logit_spread_med"] < hp.greedy_gate_min_play_spread:
+            print(
+                "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
+                f"{hp.greedy_gate_min_play_spread} "
+                "(play head collapsing toward uniform)",
+                flush=True,
+            )
+        write_header = not os.path.exists(st.greedy_csv)
+        with open(st.greedy_csv, "a", newline="") as f:
+            w = csv.writer(f)
+            if write_header:
+                w.writerow(GREEDY_CSV_HEADER)
+            w.writerow(
+                [
+                    episode,
+                    f"{probe['pick_rate']:.2f}",
+                    f"{probe['alone_rate']:.2f}",
+                    f"{probe['leaster_rate']:.2f}",
+                    f"{probe['t0_trump_lead_rate']:.2f}",
+                    probe["t0_def_leads"],
+                    f"{probe['play_logit_spread_med']:.3f}",
+                    probe["play_nodes"],
+                    probe["games"],
+                    f"{probe['partner_trump_lead_rate']:.2f}",
+                    probe["partner_leads"],
+                    f"{probe['called_suit_lead_rate']:.2f}",
+                    probe["called_leads"],
+                ]
+            )
+
+    # Convention adherence guard (league_gates): halts the run via
+    # GateExit(3) on a hard-tier violation.
+    if (
+        getattr(args, "adherence_guard_interval", 0) > 0
+        and episode % args.adherence_guard_interval == 0
+    ):
+        check_adherence_guard(
+            training_agent,
+            args,
+            episode,
+            checkpoint_path(st.checkpoint_dir, args, episode),
+            league,
+        )
+
+    # Anchored strength probe: paired CRN greedy edge vs the frozen
+    # reference (fixed deal set => probe-to-probe diffs are paired).
+    if st.anchor_eval is not None and episode % st.anchor_eval["interval"] == 0:
+        saved_mem = training_agent.snapshot_player_memories()
+        probe = paired_edge(
+            training_agent,
+            st.anchor_eval["agent"],
+            st.anchor_eval["agent"],
+            n_deals=st.anchor_eval["deals"],
+            seed=LEAGUE_ANCHOR_EVAL_SEED,
+            log_every=0,
+        )
+        training_agent.restore_player_memories(saved_mem)
+        print(
+            f"⚓ Anchored eval vs {st.anchor_eval['label']}: "
+            f"{probe['edge']:+.3f} ± {probe['se']:.3f} score/deal "
+            f"(win {probe['win_frac']:.3f}, n={probe['n_deals']})",
+            flush=True,
+        )
+        append_csv_row(
+            st.anchored_csv,
+            ["episode", "edge", "se", "win_frac", "n_deals"],
+            {
+                "episode": episode,
+                "edge": f"{probe['edge']:.4f}",
+                "se": f"{probe['se']:.4f}",
+                "win_frac": f"{probe['win_frac']:.4f}",
+                "n_deals": probe["n_deals"],
+            },
+        )
+
+    if episode % args.save_interval == 0:
+        training_agent.save(checkpoint_path(st.checkpoint_dir, args, episode))
+        league.save()
+
+
 def run_main_phase(
     training_agent: PPOAgent,
     league: League,
@@ -324,129 +799,60 @@ def run_main_phase(
     absolute-strength signal (run-review F7). The deal set is fixed across
     probes, so successive probe values are paired with each other and the
     trend is policy-driven, not deal-luck."""
-    rng = random.Random(args.seed + start_episode)
-    end_episode = start_episode + n_episodes
     # Oracle critic (critic_mode="oracle"): collection attaches full-information
     # oracle_state to every training-agent event; the learner uses it as the
     # GAE baseline (asymmetric actor-critic; see oracle.py). getattr keeps the
     # exploiter's SimpleNamespace args (no critic_mode field) on the limited path.
     collect_oracle = getattr(args, "critic_mode", "limited") == "oracle"
-    picker_scores = deque(maxlen=3000)
-    pick_window = deque(maxlen=3000)
-    leaster_window = deque(maxlen=3000)
-    # getattr: the exploiter's SimpleNamespace args has no leaster_watchdog
-    # field, so best-response training always runs without the kick.
-    watchdog = LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
-    # CE-teacher telemetry window (reset after each progress-CSV row).
-    teacher_window = fresh_teacher_window()
-    t0 = time.time()
-
-    progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
-    greedy_csv = os.path.join(checkpoint_dir, "greedy_health.csv")
-    anchored_csv = os.path.join(checkpoint_dir, "anchored_eval.csv")
-    # Crash-resume dedupe: drop telemetry a crashed run wrote past the
-    # resume episode, or the replayed episodes would duplicate rows.
-    if ensure_csv_columns(progress_csv, PROGRESS_CSV_HEADER):
-        print("📊 Migrated league_training_progress.csv to wider schema")
-    if ensure_csv_columns(greedy_csv, GREEDY_CSV_HEADER):
-        print("📊 Migrated greedy_health.csv to wider schema")
-    for _csv in (progress_csv, greedy_csv, anchored_csv):
-        _n = truncate_csv_rows_past_episode(_csv, start_episode)
-        if _n:
-            print(
-                f"🧹 Trimmed {_n} stale rows past episode {start_episode:,} "
-                f"from {os.path.basename(_csv)}"
-            )
-
-    weight_sync = {
-        "version": 0,
-        "base": os.path.join("runs", args.run_name, "_league_worker_weights"),
-    }
-    tx_counter = _TxCounter()
     ctx = MainPhaseContext(
         training_agent=training_agent,
         league=league,
-        rng=rng,
+        rng=random.Random(args.seed + start_episode),
         args=args,
         collect_oracle=collect_oracle,
-        weight_sync=weight_sync,
-        tx_counter=tx_counter,
+        weight_sync={
+            "version": 0,
+            "base": os.path.join("runs", args.run_name, "_league_worker_weights"),
+        },
+        tx_counter=_TxCounter(),
         start_episode=start_episode,
-        end_episode=end_episode,
+        end_episode=start_episode + n_episodes,
     )
-
-    # Entropy controller v2 (always on for the league trainer,
-    # CE_Teacher_Design §4): the signed target-entropy controller owns the
-    # entropy coefficients (LR keeps its clock schedule). Bumpless handoff:
-    # seed alpha from the legacy schedule's value at the current episode,
-    # and let un-set targets adopt the first update's measurement. The
-    # exploiter's SimpleNamespace args carries no entropy_controller
-    # attribute, so best-response training stays on the plain schedule
-    # (disposable, exploration-hungry — a controller would fight its
-    # intentionally hot coefficients).
-    entropy_ctrl = None
-    entropy_ctrl_path = os.path.join(checkpoint_dir, "entropy_controller.json")
-    if getattr(args, "entropy_controller", False):
-        if os.path.exists(entropy_ctrl_path):
-            entropy_ctrl = EntropyTargetController.load(entropy_ctrl_path)
-            print(
-                f"🎯 Entropy controller resumed: targets "
-                f"{entropy_ctrl.targets}  alphas {entropy_ctrl.alphas}"
-            )
-        else:
-            targets = fresh_entropy_targets(args)
-            entropy_ctrl = EntropyTargetController(
-                config=EntropyControllerConfig(
-                    floors={"play": getattr(args, "entropy_play_floor", 0.28)}
-                ),
-                targets=targets,
-            )
-            if targets:
-                print(
-                    "🎯 Entropy controller fresh, explicit targets: "
-                    + "  ".join(f"{h} {v:.3f}" for h, v in sorted(targets.items()))
-                )
-            else:
-                print("🎯 Entropy controller fresh (bumpless targets pending)")
-        apply_schedules(start_episode, ctx)
-        entropy_ctrl.attach(training_agent)
-
-    pool = None
-    if args.num_workers > 1:
-        mp_ctx = get_context("spawn")
-        teacher_settings = TeacherSettings.from_args(args)
-        pool = mp_ctx.Pool(
-            processes=args.num_workers,
-            initializer=_league_worker_init,
-            initargs=(
-                {
-                    "arch": getattr(args, "arch", "full"),
-                    "members_dir": str(league.members_dir),
-                    "weight_path_base": weight_sync["base"],
-                    "base_seed": args.seed,
-                    # CE search teacher in workers: oracle-mode agents so
-                    # the payload's oracle head loads (calibrated leaves) and
-                    # gamma rides the payload (search discounting).
-                    "critic_mode": getattr(args, "critic_mode", "limited"),
-                    "oracle_aux_heads": bool(getattr(args, "oracle_aux_heads", False)),
-                    "teacher": teacher_settings.enabled,
-                    "teacher_prob": teacher_settings.prob,
-                    "teacher_replicates": teacher_settings.replicates,
-                    "teacher_iters": teacher_settings.iters,
-                    # Stationary expert: workers rebuild the frozen
-                    # generation-start policy from these paths; weight
-                    # refreshes touch only the live agent. --teacher-ckpt
-                    # pins the expert independently of --resume so a mid-run
-                    # continuation doesn't silently refreeze to student weights.
-                    "teacher_resume": teacher_settings.ckpt,
-                    "teacher_oracle_init": teacher_settings.oracle_init,
-                    "teacher_gamma": float(training_agent.gamma),
-                },
-            ),
-        )
-        stream = parallel_stream(ctx, pool, args.num_workers)
-    else:
-        stream = sequential_stream(ctx)
+    progress_csv, greedy_csv, anchored_csv = _setup_telemetry_csvs(
+        checkpoint_dir, start_episode
+    )
+    entropy_ctrl, entropy_ctrl_path = _setup_entropy_controller(
+        args, checkpoint_dir, ctx
+    )
+    pool = _spawn_worker_pool(args, league, ctx)
+    stream = (
+        parallel_stream(ctx, pool, args.num_workers)
+        if pool is not None
+        else sequential_stream(ctx)
+    )
+    st = _PhaseState(
+        ctx=ctx,
+        checkpoint_dir=checkpoint_dir,
+        training_ratings=training_ratings,
+        anchor_eval=anchor_eval,
+        entropy_ctrl=entropy_ctrl,
+        entropy_ctrl_path=entropy_ctrl_path,
+        # getattr: the exploiter's SimpleNamespace args has no
+        # leaster_watchdog field, so best-response training always runs
+        # without the kick.
+        watchdog=(
+            LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
+        ),
+        pool=pool,
+        progress_csv=progress_csv,
+        greedy_csv=greedy_csv,
+        anchored_csv=anchored_csv,
+        picker_scores=deque(maxlen=3000),
+        pick_window=deque(maxlen=3000),
+        leaster_window=deque(maxlen=3000),
+        teacher_window=fresh_teacher_window(),
+        t0=time.time(),
+    )
 
     last_episode = start_episode
     try:
@@ -461,344 +867,19 @@ def run_main_phase(
             seat_to_id,
         ) in stream:
             last_episode = episode
-            tx_counter.count += store_events_by_seat(training_agent, events)
-            sd = (training_data_single.get("search_diagnostics") or {}).get("play")
-            if sd:
-                teacher_window["searched"] += sd["count"]
-                teacher_window["labeled"] += sd["labeled"]
-                teacher_window["material"] += sd["material"]
-                teacher_window["w_sum"] += sd["w_sum"]
-                teacher_window["spread_sum"] += sd["spread_sum"]
-                teacher_window["kl_sum"] += sd["kl_sum"]
-                teacher_window["kl_n"] += sd["kl_n"]
-            if training_data_single["was_picker"]:
-                picker_scores.append(training_data_single["score"])
-            pick_window.append(1 if training_data_single["was_picker"] else 0)
-            leaster_window.append(1 if summary["is_leaster"] else 0)
-
-            members_by_pos = {
-                pos: league.get(mid)
-                for pos, mid in seat_to_id.items()
-                if mid != SELF_PLAY and league.get(mid) is not None
-            }
-            training_ratings[mode] = league.update_ratings_with_training(
-                partner_mode=mode,
-                training_rating=training_ratings[mode],
-                final_scores=scores,
-                training_position=position,
-                opponents_by_position=members_by_pos,
-                picker_seat=summary["picker"],
-                partner_seat=summary["partner"],
-                is_leaster=summary["is_leaster"],
+            _ingest_episode(
+                st,
+                mode,
+                position,
+                events,
+                scores,
+                training_data_single,
+                summary,
+                seat_to_id,
             )
-
-            if tx_counter.count >= args.update_interval:
-                apply_schedules(episode, ctx)
-                if entropy_ctrl is not None:
-                    # Controller owns the entropy coefficients (overrides the
-                    # schedule's); the watchdog kick below still multiplies
-                    # on top — it stays the upward override.
-                    entropy_ctrl.apply(training_agent)
-                if watchdog is not None:
-                    watchdog.tick(training_agent, leaster_window)
-                stats = training_agent.update(
-                    oracle_extra_epochs=getattr(args, "oracle_extra_epochs", 0),
-                    epochs=PPO_EPOCHS,
-                    batch_size=getattr(args, "minibatch_episodes", 256),
-                    grad_accum=getattr(args, "grad_accum", False),
-                    teacher_epochs=(
-                        int(getattr(args, "teacher_epochs", 0))
-                        if getattr(args, "teacher", False)
-                        else 0
-                    ),
-                )
-                tx_counter.count = 0
-                if entropy_ctrl is not None and stats:
-                    had_pending = any(
-                        entropy_ctrl.targets[h] is None
-                        for h in ("pick", "partner", "bury", "play")
-                    )
-                    entropy_ctrl.observe(stats.get("head_entropy_norm") or {})
-                    if had_pending and not any(
-                        entropy_ctrl.targets[h] is None
-                        for h in ("pick", "partner", "bury", "play")
-                    ):
-                        print(
-                            "🎯 Entropy targets initialized (bumpless): "
-                            + "  ".join(
-                                f"{h} {entropy_ctrl.targets[h]:.3f}"
-                                for h in ("pick", "partner", "bury", "play")
-                            )
-                        )
-                    entropy_ctrl.save(entropy_ctrl_path)
-                for mid in league.retire_patched_exploiters():
-                    print(f"🩹 Exploiter {mid} patched (EMA collapsed); retired")
-                if pool is not None:
-                    publish_weights(ctx)
-                if stats:
-                    eps_s = (episode - start_episode) / max(time.time() - t0, 1e-9)
-                    picker_avg = float(np.mean(picker_scores)) if picker_scores else 0.0
-                    anchor = stats.get("anchor", {})
-                    anchor_str = (
-                        f"  anchor_kl={anchor.get('kl', 0.0):.4f}"
-                        if anchor.get("active")
-                        else ""
-                    )
-                    astats = stats.get("advantage_stats", {})
-                    hstd = astats.get("head_std", {})
-                    adv_std_all = astats.get("std", 0.0)
-                    adv_std_play = hstd.get("play", 0.0)
-                    adv_std_pick = hstd.get("pick", 0.0)
-                    # Oracle mode: explained variance of each critic vs the
-                    # empirical return — the variance-reduction headline.
-                    ostats = stats.get("oracle") or {}
-                    oracle_str = (
-                        f"  ev O/L {ostats['ev_oracle']:.2f}/{ostats['ev_limited']:.2f}"
-                        if ostats
-                        else ""
-                    )
-                    hnorm = stats.get("head_entropy_norm") or {}
-                    hsoft = stats.get("head_softband") or {}
-
-                    def _hn(head):
-                        v = hnorm.get(head)
-                        return f"{v:.2f}" if v is not None else "-"
-
-                    hnorm_str = (
-                        f" | Hn {_hn('pick')}/{_hn('partner')}/"
-                        f"{_hn('bury')}/{_hn('play')}"
-                        if hnorm
-                        else ""
-                    )
-                    print(
-                        f"Ep {episode:,} | picker_avg {picker_avg:+.2f} | "
-                        f"pick {100 * np.mean(pick_window):.0f}% | "
-                        f"leaster {100 * np.mean(leaster_window):.1f}% | "
-                        f"x-share {league.exploiter_share():.2f} | "
-                        f"advσ all/pick/play "
-                        f"{adv_std_all:.3f}/{adv_std_pick:.3f}/{adv_std_play:.3f} | "
-                        f"{eps_s:.1f} eps/s{anchor_str}{oracle_str}{hnorm_str}",
-                        flush=True,
-                    )
-                    gns = stats.get("gns") or {}
-                    write_header = not os.path.exists(progress_csv)
-                    with open(progress_csv, "a", newline="") as f:
-                        w = csv.writer(f)
-                        if write_header:
-                            w.writerow(PROGRESS_CSV_HEADER)
-                        w.writerow(
-                            [
-                                episode,
-                                f"{picker_avg:.3f}",
-                                f"{np.mean(pick_window):.3f}",
-                                f"{np.mean(leaster_window):.3f}",
-                                f"{league.exploiter_share():.3f}",
-                                f"{training_ratings[0].mu:.2f}",
-                                f"{training_ratings[1].mu:.2f}",
-                                f"{adv_std_all:.4f}",
-                                f"{adv_std_pick:.4f}",
-                                f"{adv_std_play:.4f}",
-                                f"{ostats['ev_oracle']:.4f}" if ostats else "",
-                                f"{ostats['ev_limited']:.4f}" if ostats else "",
-                                f"{anchor.get('kl', 0.0):.5f}"
-                                if anchor.get("active")
-                                else "",
-                                stats.get("optimizer_steps_total", ""),
-                                f"{gns['global']:.0f}"
-                                if gns.get("global") is not None
-                                else "",
-                                f"{gns['lead']:.0f}"
-                                if gns.get("lead") is not None
-                                else "",
-                                gns.get("lead_rows", ""),
-                                f"{gns['lead_adv_mean']:.4f}"
-                                if "lead_adv_mean" in gns
-                                else "",
-                                f"{gns['lead_adv_std']:.4f}"
-                                if "lead_adv_std" in gns
-                                else "",
-                                f"{gns['lead_trump_mass']:.4f}"
-                                if "lead_trump_mass" in gns
-                                else "",
-                                *[
-                                    f"{hnorm[head]:.4f}"
-                                    if hnorm.get(head) is not None
-                                    else ""
-                                    for head in ("pick", "partner", "bury", "play")
-                                ],
-                                *[
-                                    f"{hsoft[head]:.4f}"
-                                    if hsoft.get(head) is not None
-                                    else ""
-                                    for head in ("pick", "partner", "bury", "play")
-                                ],
-                                f"{stats.get('approx_kl', 0.0):.6f}",
-                                f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
-                                teacher_window["searched"],
-                                f"{teacher_window['material'] / teacher_window['labeled']:.3f}"
-                                if teacher_window["labeled"]
-                                else "",
-                                f"{teacher_window['kl_sum'] / teacher_window['kl_n']:.4f}"
-                                if teacher_window["kl_n"]
-                                else "",
-                                f"{stats['teacher']['ce']:.4f}"
-                                if stats.get("teacher")
-                                else "",
-                            ]
-                        )
-                    if teacher_window["searched"]:
-                        tstats = stats.get("teacher") or {}
-                        w = teacher_window
-                        # Mean label-time KL(target||policy) is the
-                        # self-retirement readout: it decays toward 0 as
-                        # the student conforms to the committee.
-                        kl = f", KL {w['kl_sum'] / w['kl_n']:.3f}" if w["kl_n"] else ""
-                        print(
-                            f"🎓 teacher: {w['searched']} searched, "
-                            f"{w['material']} material "
-                            f"({100 * w['material'] / max(w['labeled'], 1):.0f}%), "
-                            f"mean w {w['w_sum'] / max(w['labeled'], 1):.2f}, "
-                            f"spread {w['spread_sum'] / max(w['labeled'], 1):.3f}"
-                            f"{kl} | CE {tstats.get('ce', 0.0):.4f} "
-                            f"x{tstats.get('epochs', 0)} epochs "
-                            f"({tstats.get('rows', 0)} rows)",
-                            flush=True,
-                        )
-                    teacher_window = fresh_teacher_window()
-
-            # League snapshot of the main (replaces population_add_interval)
-            if episode % args.snapshot_interval == 0:
-                snap = copy.deepcopy(training_agent)
-                snap.set_anchor(None, 0.0)
-                # League members are inference-only: drop the privileged critic
-                # so it isn't persisted into every member checkpoint.
-                snap.strip_oracle()
-                league.add_member(
-                    snap,
-                    ROLE_PAST_MAIN,
-                    training_episodes=episode,
-                    initial_ratings=_inherited_ratings(league, training_ratings),
-                )
-                print(f"👥 League snapshot at ep {episode:,}; {league.summary()}")
-
-            # Greedy health probe + gates (collapse guard, unchanged semantics)
-            if (
-                args.greedy_eval_interval > 0
-                and episode % args.greedy_eval_interval == 0
-            ):
-                hp = ctx.hyperparams or PFSP_HYPERPARAMS
-                probe = greedy_health_probe(
-                    training_agent, n_games=args.greedy_eval_games, seed=episode
-                )
-                print(
-                    f"🩺 Greedy health ({probe['games']} games): "
-                    f"PICK {probe['pick_rate']:.1f}%, ALONE {probe['alone_rate']:.1f}%, "
-                    f"leaster {probe['leaster_rate']:.1f}%, "
-                    f"t0 trump-lead {probe['t0_trump_lead_rate']:.1f}% "
-                    f"(n={probe['t0_def_leads']}), "
-                    f"partner trump-lead {probe['partner_trump_lead_rate']:.1f}% "
-                    f"(n={probe['partner_leads']}), "
-                    f"called-suit lead {probe['called_suit_lead_rate']:.1f}% "
-                    f"(n={probe['called_leads']}), "
-                    f"play-spread {probe['play_logit_spread_med']:.2f}",
-                    flush=True,
-                )
-                if probe["pick_rate"] < hp.greedy_gate_min_pick:
-                    print(
-                        f"🚨 GREEDY GATE VIOLATION: PICK rate < "
-                        f"{hp.greedy_gate_min_pick:.0f}%",
-                        flush=True,
-                    )
-                if probe["alone_rate"] > hp.greedy_gate_max_alone:
-                    print(
-                        f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
-                        f"{hp.greedy_gate_max_alone:.0f}%",
-                        flush=True,
-                    )
-                if probe["t0_trump_lead_rate"] > hp.greedy_gate_max_trump_lead:
-                    print(
-                        f"🚨 GREEDY GATE VIOLATION: trump-lead > "
-                        f"{hp.greedy_gate_max_trump_lead:.0f}%",
-                        flush=True,
-                    )
-                if probe["play_logit_spread_med"] < hp.greedy_gate_min_play_spread:
-                    print(
-                        "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
-                        f"{hp.greedy_gate_min_play_spread} "
-                        "(play head collapsing toward uniform)",
-                        flush=True,
-                    )
-                write_header = not os.path.exists(greedy_csv)
-                with open(greedy_csv, "a", newline="") as f:
-                    w = csv.writer(f)
-                    if write_header:
-                        w.writerow(GREEDY_CSV_HEADER)
-                    w.writerow(
-                        [
-                            episode,
-                            f"{probe['pick_rate']:.2f}",
-                            f"{probe['alone_rate']:.2f}",
-                            f"{probe['leaster_rate']:.2f}",
-                            f"{probe['t0_trump_lead_rate']:.2f}",
-                            probe["t0_def_leads"],
-                            f"{probe['play_logit_spread_med']:.3f}",
-                            probe["play_nodes"],
-                            probe["games"],
-                            f"{probe['partner_trump_lead_rate']:.2f}",
-                            probe["partner_leads"],
-                            f"{probe['called_suit_lead_rate']:.2f}",
-                            probe["called_leads"],
-                        ]
-                    )
-
-            # Convention adherence guard (league_gates): halts the run via
-            # GateExit(3) on a hard-tier violation.
-            if (
-                getattr(args, "adherence_guard_interval", 0) > 0
-                and episode % args.adherence_guard_interval == 0
-            ):
-                check_adherence_guard(
-                    training_agent,
-                    args,
-                    episode,
-                    checkpoint_path(checkpoint_dir, args, episode),
-                    league,
-                )
-
-            # Anchored strength probe: paired CRN greedy edge vs the frozen
-            # reference (fixed deal set => probe-to-probe diffs are paired).
-            if anchor_eval is not None and episode % anchor_eval["interval"] == 0:
-                saved_mem = training_agent.snapshot_player_memories()
-                probe = paired_edge(
-                    training_agent,
-                    anchor_eval["agent"],
-                    anchor_eval["agent"],
-                    n_deals=anchor_eval["deals"],
-                    seed=LEAGUE_ANCHOR_EVAL_SEED,
-                    log_every=0,
-                )
-                training_agent.restore_player_memories(saved_mem)
-                print(
-                    f"⚓ Anchored eval vs {anchor_eval['label']}: "
-                    f"{probe['edge']:+.3f} ± {probe['se']:.3f} score/deal "
-                    f"(win {probe['win_frac']:.3f}, n={probe['n_deals']})",
-                    flush=True,
-                )
-                append_csv_row(
-                    anchored_csv,
-                    ["episode", "edge", "se", "win_frac", "n_deals"],
-                    {
-                        "episode": episode,
-                        "edge": f"{probe['edge']:.4f}",
-                        "se": f"{probe['se']:.4f}",
-                        "win_frac": f"{probe['win_frac']:.4f}",
-                        "n_deals": probe["n_deals"],
-                    },
-                )
-
-            if episode % args.save_interval == 0:
-                training_agent.save(checkpoint_path(checkpoint_dir, args, episode))
-                league.save()
+            if ctx.tx_counter.count >= args.update_interval:
+                _ppo_update(st, episode)
+            _run_interval_probes(st, episode)
     finally:
         if pool is not None:
             pool.close()
