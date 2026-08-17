@@ -1338,3 +1338,34 @@ went to trump). Two implications:
    Residual watch item: t1 showed the one class-CHANGING mass
    (other-fail->trump at 9% of nodes) — label class-validity matters
    most exactly there.
+
+**§12.6 addendum 2 — CORRECTION under point-split taxonomy (operator
+question, 2026-08-16):** the class taxonomy above lacked the
+point-fail split from the earlier deploy-search finding (policy
+prefers "fat" A/10 leads; search-optimal fail is no-point 7/8/9).
+Re-running classify_flips.py with 5 classes (trump / called-suit /
+fat-fail A,10 / K-fail / nopoint-fail):
+- Down-pointing flips dominate up-pointing 39:6 across t0-t2
+  (t0: fat->nopoint 11 vs nopoint->fat 0; fat->K 6, K->nopoint 6).
+  Baseline argmax was fat at ~57% of t0 defender leads — the
+  documented policy bias, and v7 moved consistently DOWN the point
+  ladder.
+- CORRECTION to addendum 1: under 5 classes, t0 flips = 34
+  class-CHANGING (directional) + 11 sibling churn — the 3-class
+  taxonomy had hidden the fat->nopoint direction inside
+  "other-fail->other-fail" and made coherent teaching read as noise.
+  Attempt 8's label CONTENT was substantially the search-optimal
+  direction; the damage mechanism (exact-card hinge + re-anchor
+  ratchet on siblings and the eroding remainder) was the problem.
+- DESIGN consequence: the emission-gate class taxonomy MUST carry
+  the point split — a coarse fail class abstains on the largest
+  evidenced teaching direction. With 5 classes the convergence story
+  closes: directional labels flip the student's class, then the gate
+  abstains (self-retirement); sibling churn is abstained from the
+  start; <=3 suit-siblings per class bounds residual card noise.
+- Study readouts 1/4/6 will use the 5-class taxonomy (analysis-side;
+  no instrument change, run continues).
+Footnote: per-run node counts in classify_flips vary slightly
+(147-160 at t0 across reruns; threading-level near-tie argmax flips
+alter greedy trajectories). Distributions and directions are stable
+across runs; conclusions unaffected.
