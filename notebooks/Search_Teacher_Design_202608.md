@@ -2519,3 +2519,26 @@ THE EXCEPTION STRUCTURE IS ALMOST ENTIRELY "SINGLETON, LOW":
   (game.partner unset = 0 before the ace is revealed; t0 leader is
   always seat 1) — dropped from analysis; all findings above are in
   OBSERVABLE terms (hand + picker seat).
+
+§13.5 ADDENDUM (operator follow-up, seat semantics + void-guarantee
+hypothesis): (i) Seat buckets are (leader − picker) mod 5, and play
+proceeds in seat order from the leader, so seat+1 = PICKER PLAYS LAST
+in the led trick and seat+4 = picker plays immediately after the
+leader. The elevated AGAINST bucket (31%) is therefore picker-last,
+NOT "leading through the picker" (picker-2nd is the LOWEST bucket,
+19%). Mechanism hypothesis (labeled): the picker is rule-guaranteed
+to follow the called lead; playing last on the near-certain
+partner-ace trick he schmears his best called fail with full
+information and never wastes trump — the convention's forcing value
+is cheapest to him there. (ii) Void-guarantee test (holding 3+ of
+another fail suit guarantees a void among the other four seats,
+6-card suits): AGAINST hands hold a 3+ side fail 16% vs 9% SUPPORT;
+when an AGAINST hand holds one, the override lead comes FROM that
+long suit 9/9. Direct Q test over all 33 holders: best long-suit
+lead vs best called lead = 16 better / 9 within noise / 8 worse,
+median +0.0050 (at the 0.006 floor) — directionally supportive but
+not decisive at n=33. Contrast: the short-suit point-card lead is
+NOT a blanket rule (39/49/83 against called, median −0.0055 across
+all 171 holders) — it wins only at the search-selected nodes. Long
+fails explain 9/55 overrides; the rest are situational point-card
+unloads.
