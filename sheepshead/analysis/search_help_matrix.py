@@ -327,18 +327,32 @@ def _replay_seeds(
                                     rng,
                                     d_rollout=depth,
                                 )
+                                gum = res.get("pi_gumbel")
                                 reps.append(
                                     {
                                         "ok": bool(res["ok"]),
                                         "ess": float(res["ess"]),
                                         "sec": round(time.perf_counter() - t0, 3),
                                         "gumbelArgmax": _gumbel_argmax(res),
+                                        # pi_gumbel is the ADOPTED label
+                                        # readout (Search_Readout; operator
+                                        # 2026-08-16). Its mass saturates to
+                                        # one-hot at these budgets (the sigma
+                                        # scale grows with visits), so the
+                                        # graded confidence margin is
+                                        # calibrated on per-rep root Q, in
+                                        # the Q-units every prior threshold
+                                        # (harm eps, headroom) is defined in.
+                                        "piGumbel": {
+                                            str(a): float(gum[a - 1])
+                                            for a in res["valid"]
+                                        }
+                                        if gum is not None
+                                        else None,
                                         "rootQ": {
                                             str(a): res["root_q"][a]
                                             for a in res["valid"]
-                                        }
-                                        if is_ref
-                                        else None,
+                                        },
                                     }
                                 )
                             if is_ref:
