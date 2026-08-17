@@ -358,6 +358,47 @@ w and tilt direction are invariant to both).
   explorer work) still references the removed gate_* SearchConfig
   fields and will need updating if it is ever committed.
 
+### 10.3 Fresh-draw cell verification (§1.2 criteria (a)/(b)), run 2026-08-16
+
+Instrument: `analysis/verify_shrinkage_cells.py` (a7a0744) — live lockstep
+committees (R=3 @ 1024/1, production target builder, trainer defaults) at
+36 fat/nopoint EV-wash defender leads (tricks 0-2) + 36 t0 called-suit
+defender leads, sampled from greedy self-play of the clean 8M seed.
+Full draws: runs/ce_teacher_prelaunch/verify_shrinkage_cells.json.
+
+**(b) called-suit cells: PASS.** 75% material (mean w 0.47); among the 27
+material tilts, mass moves TOWARD the called-suit class 17 : 6 : 4
+(toward/away/neutral at ±0.02; binomial p ≈ 0.035), mean push +0.23 of
+probability mass, target-argmax installs 8 vs removals 2. Shrinkage at
+the calibrated constant does NOT silence the one convention we most need
+to teach. (The §12.17 153:7 analog is not expected 1:1 — that study
+filtered by ε=0.03 Q materiality; w > 0 is a weaker filter and admits
+near-neutral rows.)
+
+**(a) wash cells: PASS on the pairwise reading, with a recorded nuance.**
+The naive summary looks like a fail — only 47% shrink to w=0, and the
+class-marginal push is 10:5 "toward nopoint". But the §12.15 wash
+finding is about the fat↔nopoint PAIR, not the node: per-row, the
+CONDITIONAL fat-share fat/(fat+nopoint) moves 6 toward nopoint, 6 toward
+fat, 7 neutral (median delta +0.007) — no systematic pair direction
+survives shrinkage, so CE-linear averaging cancels class-level teaching
+pressure at washes (the §10.1 tie-band argument, confirmed behaviorally).
+The material tilts at wash NODES are real signal on OTHER options at the
+same node: called-suit installs at overlapping t0 nodes (+0.72/+0.83/
++0.97 called-class pushes — criterion (b) showing up in family (a)'s
+sample) and two late-trick pushes INTO trump (t1/t2; consistent with
+§12.8's "trump appears by t2"). Zero material wash rows push mass OUT of
+trump beyond −0.05.
+
+**Recorded caveat**: per-node label variance at wash cells is high
+(single-draw conditional-share swings up to ±0.9 in both directions).
+Class-level safety rests on sign-mixing + the ~15k-labels/gen averaging
+scale, not on per-node convergence — the §9 partner-≥93.5-throughout
+guard remains the behavioral backstop for this residual risk. With this,
+the §10.1 open item is closed: all three §1.2 criteria are now verified
+(criterion (c) in §10.1, criteria (a)/(b) here) and the calibration gate
+is COMPLETE for attempt-11 launch.
+
 ---
 
 ## 11. References (for the eventual write-up)
