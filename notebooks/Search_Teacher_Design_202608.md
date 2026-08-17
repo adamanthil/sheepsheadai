@@ -1311,3 +1311,30 @@ calibrated on per-rep root Q in Q-units (the scale of harm eps and
 headroom), while the emitted action stays the pi_gumbel argmax.
 Study relaunched (~15 min sunk) with per-rep piGumbel + rootQ on all
 arms recorded per replicate.
+
+**§12.6 addendum — v7 flips were CLASS-PRESERVING (operator question,
+2026-08-16):** re-analysis of the archived v7 weights (scratchpad
+classify_flips.py; same dual-agent drive as §12.4, restricted to
+t0-t2 defender leads, argmaxes classified trump / called-suit fail /
+other fail): base->v7 class transitions are 87% / 80% / 83%
+class-preserving at t0/t1/t2 (other-fail->other-fail dominates;
+called-suit->called-suit intact). The flips that produced the §12.4
+spread collapse scatter across 9-11 DISTINCT in-class fail cards
+(t0: 54 of 61 flips landed on other-fail, 9 distinct cards; only 5
+went to trump). Two implications:
+1. The attempt-8 war was dominated by INTRA-CLASS exact-card churn —
+   precisely the emissions a class-level gate ABSTAINS on (live
+   argmax already in the agreed class => no label, no PG-mask, no
+   fight). The dominant destructive mode disappears by construction
+   under class-level emission, independent of arm strength.
+2. Whether this also removes the need for 4096/term online is the
+   cross-arm question: a cheap panel can be class-STABLE yet
+   class-WRONG (E9: defender-lead edge only under improved
+   continuations). New pre-registered readout 6 for the running
+   study: cheap-panel (6x1024/1) agreed-CLASS agreement with the
+   heavy reference's (2x4096/term) class per node. High values =>
+   cheap class-panels label online and 4096/term demotes to periodic
+   certification/audit; low => heavy arm stays in the loop at leads.
+   Residual watch item: t1 showed the one class-CHANGING mass
+   (other-fail->trump at 9% of nodes) — label class-validity matters
+   most exactly there.
