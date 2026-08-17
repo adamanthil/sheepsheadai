@@ -67,10 +67,8 @@ class MinibatchTensors(NamedTuple):
     points_bt: torch.Tensor
     seen_trump_mask_bt: torch.Tensor
     unseen_trump_higher_than_hand_bt: torch.Tensor
-    search_target_bt: torch.Tensor
     has_search_bt: torch.Tensor
-    search_ref_bt: torch.Tensor
-    search_prior_bt: torch.Tensor
+    search_pairs_bt: torch.Tensor
 
 
 class ForwardOutputs(NamedTuple):
@@ -108,10 +106,8 @@ class FlattenedActionSteps(NamedTuple):
     seen_trump_mask_labels_flat: torch.Tensor
     unseen_trump_higher_than_hand_logits_flat: torch.Tensor
     unseen_trump_higher_than_hand_labels_flat: torch.Tensor
-    search_target_flat: torch.Tensor
     has_search_flat: torch.Tensor
-    search_ref_flat: torch.Tensor
-    search_prior_flat: torch.Tensor
+    search_pairs_flat: torch.Tensor
 
 
 class UpdateTargets(NamedTuple):
@@ -188,7 +184,7 @@ class _UpdateEpochAccumulator:
         self.search_hinge_sum = 0.0
         self.search_d_star_sum = 0.0
         self.search_d_ref_sum = 0.0
-        self.pi_target_entropy_sum = 0.0
+        self.search_pairs_per_row_sum = 0.0
         self.masked_fraction_sum = 0.0
         self.search_distill_batches = 0
         self.anchor_kl_sum = 0.0
@@ -196,6 +192,16 @@ class _UpdateEpochAccumulator:
 
 
 class PPOAgent:
+    # Fixed per-row capacity for gate-emitted resolved-pair constraints
+    # (Search_Teacher_Design §12.7). Rows are [winner_idx, loser_idx,
+    # anchor_w_logp, anchor_l_logp]; the sentinel (winner -1, anchors +1 —
+    # an impossible log-prob) is hardened to a no-op in the loss. Must
+    # cover SearchConfig.gate_max_pairs; extra rows stay sentinel.
+    SEARCH_MAX_PAIRS = 8
+    _SEARCH_PAIRS_SENTINEL = tuple(
+        (-1.0, -1.0, 1.0, 1.0) for _ in range(SEARCH_MAX_PAIRS)
+    )
+
     def __init__(
         self,
         action_size,
@@ -361,17 +367,20 @@ class PPOAgent:
         self.seen_trump_mask_loss_coeff = 0.2
         self.unseen_trump_higher_than_hand_loss_coeff = 0.1
 
-        # Search-teacher distillation on transitions carrying a gate-emitted
-        # target; the value loss still runs on every transition.
-        # Teacher-label loss: DQfD-style large-margin ranking (Hester et al.
-        # 2018): max(0, m + log pi(a_ref) - log pi(a*)), a_ref = the
-        # label-time policy argmax. Teaches only the calibrated ORDERING
-        # claim; gradient support is exactly the two logits {a*, a_ref}
-        # (softmax terms cancel) and vanishes once a* out-ranks a_ref by the
-        # margin. A forward-KL form (AlphaZero-style distribution target,
-        # Silver et al. 2017; Anthony et al. 2017) was removed 2026-08:
-        # destabilizing under disagreement-selected sparse labels — its
-        # gradient touches every logit (Search_Teacher_Design §10).
+        # Search-teacher distillation on transitions carrying gate-emitted
+        # RESOLVED-PAIR constraints (Search_Teacher_Design §12.7); the value
+        # loss still runs on every transition. Per-pair loss: DQfD-style
+        # large-margin ranking (Hester et al. 2018):
+        # max(0, m + log pi(l) - log pi(w)) for each committee-resolved
+        # ordering w>l. Teaches only statistically-resolved ORDERING claims;
+        # gradient support is exactly the two logits {w, l} (softmax terms
+        # cancel) and vanishes once w out-ranks l by the margin. Near-tied
+        # actions never arrive here (the gate abstains), so relative mass
+        # over unresolved sets is shaped by PG + the entropy bonus alone —
+        # the max-ent completion. A forward-KL form (AlphaZero-style
+        # distribution target) was removed 2026-08 (§10: full-logit
+        # support); the exact-card one-hot form was removed 2026-08-16
+        # (§12.6: incumbent tax made it non-convergent).
         self.search_margin = 0.3
         # Evidence-proportional label weight (Search_Teacher_Design §12):
         # the distill term is search_label_weight * sum-over-labeled /
@@ -782,32 +791,27 @@ class PPOAgent:
                     ev.get("unseen_trump_higher_than_hand_label", 0.0) or 0.0
                 )
                 mask = self.get_action_mask(ev["valid_actions"], self.action_size)
-                # Stage C: optional ISMCTS soft-teacher target pi'(a) over the
-                # action set, plus whether the search produced a confident (ESS >=
-                # floor) target. When absent the transition trains via plain PG.
-                raw_target = ev.get("search_target")
-                has_search_target = bool(ev.get("has_search_target", False))
-                if has_search_target and raw_target is not None:
-                    search_target = [float(x) for x in raw_target]
-                else:
-                    search_target = [0.0] * self.action_size
-                    has_search_target = False
-                # Ranking referent for the margin loss (0-based; -1 = absent).
-                search_ref = (
-                    int(ev["search_ref_action"]) - 1
-                    if has_search_target and ev.get("search_ref_action")
-                    else -1
+                # Resolved-pair teacher constraints (Search_Teacher_Design
+                # §12.7): up to SEARCH_MAX_PAIRS rows of
+                # [winner_idx, loser_idx, anchor_w, anchor_l] with 0-based
+                # action indices and LIVE label-time log-prob anchors.
+                # Sentinel row [-1, -1, 1, 1] = absent (log-probs are never
+                # positive), hardened to a no-op in the loss.
+                raw_pairs = ev.get("search_pairs")
+                has_search_target = bool(ev.get("has_search_target", False)) and bool(
+                    raw_pairs
                 )
-                # Label-time pair log-priors [log pi_old(a*), log pi_old(a_ref)]:
-                # trust-region anchors for the clipped margin loss. Sentinel
-                # +1.0 (an impossible log-prob) = absent -> the row is a no-op.
-                star_lp = ev.get("search_star_logp")
-                ref_lp = ev.get("search_ref_logp")
-                search_prior = (
-                    [float(star_lp), float(ref_lp)]
-                    if has_search_target and star_lp is not None and ref_lp is not None
-                    else [1.0, 1.0]
-                )
+                search_pairs = [
+                    [-1.0, -1.0, 1.0, 1.0] for _ in range(self.SEARCH_MAX_PAIRS)
+                ]
+                if has_search_target:
+                    for k, p in enumerate(raw_pairs[: self.SEARCH_MAX_PAIRS]):
+                        search_pairs[k] = [
+                            float(int(p[0]) - 1),
+                            float(int(p[1]) - 1),
+                            float(p[2]),
+                            float(p[3]),
+                        ]
                 record = {
                     "kind": "action",
                     "state": ev["state"],
@@ -826,10 +830,8 @@ class PPOAgent:
                     ],
                     "seen_trump_mask": [float(x) for x in seen_mask],
                     "unseen_trump_higher_than_hand": float(unseen_higher),
-                    "search_target": search_target,
                     "has_search_target": has_search_target,
-                    "search_ref": search_ref,
-                    "search_prior": search_prior,
+                    "search_pairs": search_pairs,
                 }
                 # Oracle mode: full-information observation captured at
                 # decision time, consumed by _fill_oracle_values(). Only added
@@ -1032,10 +1034,8 @@ class PPOAgent:
         points_list_all = []
         seen_trump_mask_list_all = []
         unseen_trump_higher_than_hand_list_all = []
-        search_target_list_all = []
         has_search_list_all = []
-        search_ref_list_all = []
-        search_prior_list_all = []
+        search_pairs_list_all = []
 
         for seg_start, seg_end in batch:
             ev_range = [i for i in range(seg_start, seg_end + 1)]
@@ -1054,10 +1054,8 @@ class PPOAgent:
             points_bt = []
             seen_trump_mask_bt = []
             unseen_trump_higher_than_hand_bt = []
-            search_target_bt = []
             has_search_bt = []
-            search_ref_bt = []
-            search_prior_bt = []
+            search_pairs_bt = []
             for i in ev_range:
                 is_act = kinds[i] == "action"
                 ev = self.events[i]
@@ -1115,29 +1113,17 @@ class PPOAgent:
                 unseen_trump_higher_than_hand_bt.append(
                     torch.tensor(unseen_higher_lbl, dtype=torch.float32, device=device)
                 )
-                search_tgt_lbl = (
-                    (ev.get("search_target") or [0.0] * self.action_size)
-                    if is_act
-                    else [0.0] * self.action_size
-                )
-                search_target_bt.append(
-                    torch.tensor(search_tgt_lbl, dtype=torch.float32, device=device)
-                )
                 has_search_lbl = (
                     (1.0 if ev.get("has_search_target") else 0.0) if is_act else 0.0
                 )
                 has_search_bt.append(
                     torch.tensor(has_search_lbl, dtype=torch.float32, device=device)
                 )
-                search_ref_lbl = float(ev.get("search_ref", -1)) if is_act else -1.0
-                search_ref_bt.append(
-                    torch.tensor(search_ref_lbl, dtype=torch.float32, device=device)
-                )
-                search_prior_lbl = (
-                    ev.get("search_prior", [1.0, 1.0]) if is_act else [1.0, 1.0]
-                )
-                search_prior_bt.append(
-                    torch.tensor(search_prior_lbl, dtype=torch.float32, device=device)
+                pairs_lbl = (
+                    ev.get("search_pairs") if is_act else None
+                ) or self._SEARCH_PAIRS_SENTINEL
+                search_pairs_bt.append(
+                    torch.tensor(pairs_lbl, dtype=torch.float32, device=device)
                 )
             actions_list.append(torch.stack(act_bt, dim=0))
             old_lp_list.append(torch.stack(olp_bt, dim=0))
@@ -1152,10 +1138,8 @@ class PPOAgent:
             unseen_trump_higher_than_hand_list_all.append(
                 torch.stack(unseen_trump_higher_than_hand_bt, dim=0)
             )
-            search_target_list_all.append(torch.stack(search_target_bt, dim=0))
             has_search_list_all.append(torch.stack(has_search_bt, dim=0))
-            search_ref_list_all.append(torch.stack(search_ref_bt, dim=0))
-            search_prior_list_all.append(torch.stack(search_prior_bt, dim=0))
+            search_pairs_list_all.append(torch.stack(search_pairs_bt, dim=0))
 
         masks_bt = self._pad_to_bt(masks_list, lengths, True)
         is_action_bt = self._pad_to_bt(is_action_list, lengths, False)
@@ -1172,10 +1156,10 @@ class PPOAgent:
         unseen_trump_higher_than_hand_bt = self._pad_to_bt(
             unseen_trump_higher_than_hand_list_all, lengths, 0.0
         )
-        search_target_bt = self._pad_to_bt(search_target_list_all, lengths, 0.0)
         has_search_bt = self._pad_to_bt(has_search_list_all, lengths, 0.0)
-        search_ref_bt = self._pad_to_bt(search_ref_list_all, lengths, -1.0)
-        search_prior_bt = self._pad_to_bt(search_prior_list_all, lengths, 1.0)
+        # Pad value -1.0 leaves padded pair rows with winner_idx -1 =
+        # sentinel-invalid (anchors are ignored on invalid rows).
+        search_pairs_bt = self._pad_to_bt(search_pairs_list_all, lengths, -1.0)
 
         return MinibatchTensors(
             states_seqs,
@@ -1192,10 +1176,8 @@ class PPOAgent:
             points_bt,
             seen_trump_mask_bt,
             unseen_trump_higher_than_hand_bt,
-            search_target_bt,
             has_search_bt,
-            search_ref_bt,
-            search_prior_bt,
+            search_pairs_bt,
         )
 
     def _build_oracle_minibatch(self, batch, kinds):
@@ -1361,6 +1343,10 @@ class PPOAgent:
             return None
 
         def action_rows(tensor_bt):
+            if tensor_bt.dim() == 4:
+                return tensor_bt.view(-1, tensor_bt.size(-2), tensor_bt.size(-1))[
+                    flat_mask
+                ]
             if tensor_bt.dim() == 3:
                 return tensor_bt.view(-1, tensor_bt.size(-1))[flat_mask]
             return tensor_bt.view(-1)[flat_mask]
@@ -1387,10 +1373,8 @@ class PPOAgent:
             unseen_trump_higher_than_hand_labels_flat=action_rows(
                 minibatch.unseen_trump_higher_than_hand_bt
             ),
-            search_target_flat=action_rows(minibatch.search_target_bt),
             has_search_flat=action_rows(minibatch.has_search_bt),
-            search_ref_flat=action_rows(minibatch.search_ref_bt),
-            search_prior_flat=action_rows(minibatch.search_prior_bt),
+            search_pairs_flat=action_rows(minibatch.search_pairs_bt),
         )
 
     @staticmethod
@@ -1477,10 +1461,8 @@ class PPOAgent:
         partner_idx_t,
         bury_idx_t,
         play_idx_t,
-        search_target_flat,
         has_search_flat,
-        search_ref_flat,
-        search_prior_flat,
+        search_pairs_flat,
         anchor_logits_flat=None,
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
@@ -1536,75 +1518,72 @@ class PPOAgent:
         pg_loss_elements = pg_loss_elements * pg_keep
         policy_loss = (pg_loss_elements * head_weight).mean()
 
-        # Clipped margin-ranking distillation on the searched transitions
-        # (Search_Teacher_Design §12). Base loss is the DQfD large-margin
-        # hinge (Hester et al. 2018):
-        #   L = max(0, m + log pi_theta(a_ref) - log pi_theta(a*))
-        # a* = the committee's agreed action (argmax of the stored target),
-        # a_ref = the label-time policy argmax; gradient support is exactly
-        # the two logits {a*, a_ref} while active. Two governors on top:
+        # Resolved-pair clipped margin ranking on the searched transitions
+        # (Search_Teacher_Design §12.7). Each emitted constraint w>l is a
+        # DQfD large-margin hinge (Hester et al. 2018):
+        #   L = max(0, m + log pi_theta(l) - log pi_theta(w))
+        # gradient support is exactly the two logits {w, l} while active
+        # (the softmax terms cancel in the pair difference). Governors:
         #
-        # 1. Pair-gap trust region (PPO-clip analog, Schulman et al. 2017):
-        #    the row earns gradient only while the gap
-        #    log pi(a*) - log pi(a_ref) has improved less than delta over
-        #    its stored label-time value. This is the binding control
-        #    under Adam — attempts 5b/6 showed loss-scale knobs are
-        #    near-inert (second-moment normalization re-inflates any
-        #    coherent gradient direction to ~lr-sized steps), while a
-        #    gated-to-zero gradient cannot be re-inflated.
-        # 2. Evidence-proportional weight: sum over labeled rows / ALL batch
-        #    rows, scaled by search_label_weight — one label is worth
-        #    exactly search_label_weight PG samples (the DQfD per-sample
-        #    form), so total teacher force tracks label count and the
-        #    gate's self-retirement anneals the teacher instead of being
-        #    cancelled by a mean-over-labeled renormalization.
+        # 1. Pair-gap trust region (PPO-clip analog, Schulman et al. 2017;
+        #    the anchored gap is DPO's implicit-reward difference, Rafailov
+        #    et al. 2023): a pair earns gradient only while its gap
+        #    log pi(w) - log pi(l) has improved less than delta over the
+        #    stored label-time anchors. This is the binding control under
+        #    Adam — attempts 5b/6 showed loss-scale knobs are near-inert,
+        #    while a gated-to-zero gradient cannot be re-inflated.
+        # 2. Evidence-proportional weight: sum over emitted pairs / ALL
+        #    batch rows, scaled by search_label_weight — one PAIR is worth
+        #    search_label_weight PG samples (DQfD per-sample form), so
+        #    total teacher force tracks constraint count and the gate's
+        #    self-retirement anneals the teacher.
         if searched.any():
-            pit = search_target_flat[searched]
+            pairs = search_pairs_flat[searched]  # [S, K, 4]
             logp_theta = torch.log(probs_all[searched].clamp(min=1e-12))
-            logp_it = torch.log(pit.clamp(min=1e-12))
-            a_star = pit.argmax(dim=1)
-            ref_raw = search_ref_flat[searched]
-            # Rows without a stored referent or label-time anchors (sentinel
-            # +1.0: log-probs are never positive) contribute ZERO rather
-            # than silently ranking against action 0 / clipping to garbage.
-            prior = search_prior_flat[searched]
-            old_star, old_ref = prior[:, 0], prior[:, 1]
-            valid_row = (ref_raw >= 0.0) & (old_star <= 0.0) & (old_ref <= 0.0)
-            a_ref = ref_raw.long().clamp(min=0)
-            lp_star = logp_theta.gather(1, a_star.unsqueeze(1)).squeeze(1)
-            lp_ref = logp_theta.gather(1, a_ref.unsqueeze(1)).squeeze(1)
-            # Gap trust region: gate the WHOLE row to zero once the pair gap
-            # has improved delta past its label-time value. Gating (not
-            # per-leg clamping) keeps the hinge's two-logit gradient intact
-            # while active — clamping one leg alone would leave the other
-            # leg's full softmax gradient touching every logit.
-            gap_gain = (lp_star - lp_ref).detach() - (old_star - old_ref)
-            within = valid_row & (gap_gain < self.search_clip_delta)
-            search_distill_per = (self.search_margin + lp_ref - lp_star).clamp(
+            w_raw, l_raw = pairs[..., 0], pairs[..., 1]
+            anchor_w, anchor_l = pairs[..., 2], pairs[..., 3]
+            # Sentinel rows ([-1,-1,1,1] and time-padding) contribute ZERO
+            # rather than silently ranking action 0 / clipping to garbage
+            # (log-prob anchors are never positive).
+            valid_pair = (
+                (w_raw >= 0.0) & (l_raw >= 0.0) & (anchor_w <= 0.0) & (anchor_l <= 0.0)
+            )
+            w_idx = w_raw.long().clamp(min=0)
+            l_idx = l_raw.long().clamp(min=0)
+            lp_w = logp_theta.gather(1, w_idx)
+            lp_l = logp_theta.gather(1, l_idx)
+            # Gap trust region: gate the WHOLE pair to zero once its gap has
+            # improved delta past label time. Gating (not per-leg clamping)
+            # keeps the hinge's two-logit gradient intact while active —
+            # clamping one leg alone would leave the other leg's full
+            # softmax gradient touching every logit.
+            gap_gain = (lp_w - lp_l).detach() - (anchor_w - anchor_l)
+            within = valid_pair & (gap_gain < self.search_clip_delta)
+            search_distill_per = (self.search_margin + lp_l - lp_w).clamp(
                 min=0.0
-            ) * within.to(lp_star.dtype)
+            ) * within.to(lp_w.dtype)
             n_rows = max(has_search_flat.numel(), 1)
             search_distill_loss = (
                 self.search_label_weight * search_distill_per.sum() / n_rows
             )
             with torch.no_grad():
-                # Per-label diagnostics, detached for logging: mean active
-                # hinge, and realized per-label displacement of each leg
-                # from its label-time anchor (d_star = promotion of a*,
-                # d_ref = suppression of a_ref; d_star + d_ref vs delta
-                # shows whether the gap trust region is binding).
-                vr = valid_row.to(lp_star.dtype)
-                k = vr.sum().clamp(min=1.0)
+                # Per-pair diagnostics, detached for logging: mean active
+                # hinge, and realized displacement of each leg from its
+                # label-time anchor (d_star = promotion of winners, d_ref =
+                # suppression of losers; d_star + d_ref vs delta shows
+                # whether the gap trust region is binding).
+                vp = valid_pair.to(lp_w.dtype)
+                k = vp.sum().clamp(min=1.0)
                 search_hinge = search_distill_per.sum() / k
-                d_star = ((lp_star - old_star) * vr).sum() / k
-                d_ref = ((old_ref - lp_ref) * vr).sum() / k
-                pi_target_entropy = -(pit * logp_it).sum(dim=1).mean()
+                d_star = ((lp_w - anchor_w) * vp).sum() / k
+                d_ref = ((anchor_l - lp_l) * vp).sum() / k
+                pairs_per_row = vp.sum(dim=1).mean()
         else:
             search_distill_loss = logits_flat.new_zeros(())
             search_hinge = logits_flat.new_zeros(())
             d_star = logits_flat.new_zeros(())
             d_ref = logits_flat.new_zeros(())
-            pi_target_entropy = logits_flat.new_zeros(())
+            pairs_per_row = logits_flat.new_zeros(())
         masked_fraction = searched.to(torch.float32).mean()
 
         # Bidding-head KL anchor: forward KL(pi_ref || pi_theta) on the
@@ -1648,7 +1627,7 @@ class PPOAgent:
                 "hinge": search_hinge,
                 "d_star": d_star,
                 "d_ref": d_ref,
-                "pi_target_entropy": pi_target_entropy,
+                "pairs_per_row": pairs_per_row,
                 "masked_fraction": masked_fraction,
                 "anchor_kl": anchor_kl,
             },
@@ -1817,10 +1796,8 @@ class PPOAgent:
             partner_idx_tensor_static,
             bury_idx_tensor_static,
             play_idx_tensor_static,
-            flat.search_target_flat,
             flat.has_search_flat,
-            flat.search_ref_flat,
-            flat.search_prior_flat,
+            flat.search_pairs_flat,
             anchor_logits_flat=anchor_logits_flat,
         )
         acc.last_approx_kl = float(approx_kl_t.item())
@@ -1837,7 +1814,7 @@ class PPOAgent:
         acc.search_hinge_sum += search_distill_metrics["hinge"].item()
         acc.search_d_star_sum += search_distill_metrics["d_star"].item()
         acc.search_d_ref_sum += search_distill_metrics["d_ref"].item()
-        acc.pi_target_entropy_sum += search_distill_metrics["pi_target_entropy"].item()
+        acc.search_pairs_per_row_sum += search_distill_metrics["pairs_per_row"].item()
         acc.masked_fraction_sum += search_distill_metrics["masked_fraction"].item()
         acc.search_distill_batches += 1
 
@@ -2484,7 +2461,7 @@ class PPOAgent:
                 "hinge": acc.search_hinge_sum / max(acc.search_distill_batches, 1),
                 "d_star": acc.search_d_star_sum / max(acc.search_distill_batches, 1),
                 "d_ref": acc.search_d_ref_sum / max(acc.search_distill_batches, 1),
-                "pi_target_entropy": acc.pi_target_entropy_sum
+                "pairs_per_row": acc.search_pairs_per_row_sum
                 / max(acc.search_distill_batches, 1),
                 "pg_masked_fraction": acc.masked_fraction_sum
                 / max(acc.search_distill_batches, 1),

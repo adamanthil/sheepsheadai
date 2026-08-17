@@ -592,17 +592,24 @@ def _make_pop_agent(agent, mode, i):
 
 
 class _GatedDisagreeTeacher:
-    """Deterministic committee stub for the gated teacher: every search
-    unanimously votes the second-lowest legal action, so the gate emits a
-    label (referent + anchors from the live act() stash) at every eligible
-    PLAY node where the live argmax differs from that vote."""
+    """Deterministic committee stub for the resolved-pair gate: every
+    replicate returns the same completed-Q table with the second-lowest
+    legal action clearly best and all pairwise gaps above gate_pair_eps,
+    so the gate resolves pairs (anchors from the live act() stash) at
+    every eligible PLAY node the live policy hasn't already ordered."""
 
     def search(self, game, observer, forced_public, rng, d_rollout=None):
         valid = sorted(game.players[observer - 1].get_valid_action_ids())
-        gum = np.zeros(len(ACTIONS))
-        pick = valid[1] if len(valid) > 1 else valid[0]
-        gum[pick - 1] = 1.0
-        return {"ok": True, "pi_gumbel": gum, "valid": valid}
+        best = valid[1] if len(valid) > 1 else valid[0]
+        root_q = {}
+        step = 0.0
+        for a in valid:
+            if a == best:
+                root_q[a] = 0.60
+            else:
+                root_q[a] = 0.40 - step
+                step += 0.02
+        return {"ok": True, "root_q": root_q, "valid": valid}
 
 
 def _gated_all_cells_config():
@@ -613,7 +620,6 @@ def _gated_all_cells_config():
     return SearchConfig(
         gate_node_prob=1.0,
         gate_replicates=2,
-        gate_agreement=2,
         gate_cells=frozenset(
             f"t{t}-{r}-{k}"
             for t in range(5)

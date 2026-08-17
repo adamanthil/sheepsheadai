@@ -133,12 +133,15 @@ PROGRESS_CSV_HEADER = [
     # after the entropy ladder floors (single-lever attributability).
     "approx_kl",
     "lr_actor",
-    # Gated search teacher telemetry (Search_Teacher_Design §9): per update
-    # window, committee firings / emitted labels / mean committee-agreement
-    # rate. Emission decaying to ~0 is the teacher's self-retirement signal.
+    # Resolved-pair search-teacher telemetry (Search_Teacher_Design §12.7):
+    # per update window, nodes searched / nodes emitting / emitted pairs /
+    # fraction of resolved orderings the live policy already satisfies.
+    # gate_learned rising toward 1 (and emission falling) is the teacher's
+    # self-retirement signal.
     "gate_attempts",
     "gate_emitted",
-    "gate_agree",
+    "gate_pairs",
+    "gate_learned",
 ]
 
 # greedy_health.csv schema (append-only; migrated on resume like the
@@ -228,6 +231,8 @@ def _league_worker_init(init_args: dict) -> None:
 
         cfg = _SC(
             gate_node_prob=float(init_args.get("search_prob", 0.02)),
+            gate_replicates=int(init_args.get("search_replicates", 5)),
+            gate_emit_margin=float(init_args.get("search_margin", 0.3)),
         )
         iters = int(init_args.get("search_iters", cfg.gate_iters))
         # Stationary expert (§12.1): the teacher wraps a frozen copy of the
@@ -491,6 +496,8 @@ def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
     )
     search_config = SearchConfig(
         gate_node_prob=float(getattr(ctx.args, "search_teacher_prob", 0.02)),
+        gate_replicates=int(getattr(ctx.args, "search_replicates", 5)),
+        gate_emit_margin=float(getattr(ctx.args, "search_teacher_margin", 0.3)),
     )
     return {
         "teacher": teacher,
@@ -679,7 +686,14 @@ def run_main_phase(
     # field, so best-response training always runs without the kick.
     watchdog = LeasterWatchdog() if getattr(args, "leaster_watchdog", False) else None
     # Gated-teacher telemetry window (reset after each progress-CSV row).
-    gate_window = {"count": 0, "accepted": 0, "agree_sum": 0.0, "gap_sum": 0.0}
+    gate_window = {
+        "count": 0,
+        "accepted": 0,
+        "resolved": 0.0,
+        "satisfied": 0.0,
+        "pairs": 0.0,
+        "gap_sum": 0.0,
+    }
     t0 = time.time()
 
     progress_csv = os.path.join(checkpoint_dir, "league_training_progress.csv")
@@ -767,6 +781,8 @@ def run_main_phase(
                     "oracle_aux_heads": bool(getattr(args, "oracle_aux_heads", False)),
                     "search_teacher": bool(getattr(args, "search_teacher", False)),
                     "search_prob": float(getattr(args, "search_teacher_prob", 0.02)),
+                    "search_replicates": int(getattr(args, "search_replicates", 5)),
+                    "search_margin": float(getattr(args, "search_teacher_margin", 0.3)),
                     # Stationary expert (§12.1): workers rebuild the frozen
                     # generation-start policy from these paths; weight
                     # refreshes touch only the live agent.
@@ -798,7 +814,9 @@ def run_main_phase(
             if sd:
                 gate_window["count"] += sd["count"]
                 gate_window["accepted"] += sd["accepted"]
-                gate_window["agree_sum"] += sd["ess_sum"]
+                gate_window["resolved"] += sd.get("resolved_sum", 0.0)
+                gate_window["satisfied"] += sd.get("satisfied_sum", 0.0)
+                gate_window["pairs"] += sd.get("pairs_sum", 0.0)
                 gate_window["gap_sum"] += sd.get("gap_sum", 0.0)
             if training_data_single["was_picker"]:
                 picker_scores.append(training_data_single["score"])
@@ -960,32 +978,44 @@ def run_main_phase(
                                 f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
                                 gate_window["count"],
                                 gate_window["accepted"],
-                                f"{gate_window['agree_sum'] / gate_window['count']:.3f}"
-                                if gate_window["count"]
+                                f"{gate_window['pairs']:.0f}",
+                                f"{gate_window['satisfied'] / gate_window['resolved']:.3f}"
+                                if gate_window["resolved"]
                                 else "",
                             ]
                         )
                     if gate_window["count"]:
                         d = stats.get("distill", {})
                         gap = (
-                            f", gap {gate_window['gap_sum'] / gate_window['accepted']:.2f}"
-                            if gate_window["accepted"]
+                            f", gap {gate_window['gap_sum'] / gate_window['pairs']:.2f}"
+                            if gate_window["pairs"]
+                            else ""
+                        )
+                        # satisfied/resolved = the self-retirement readout:
+                        # fraction of committee-resolved orderings the live
+                        # policy already satisfies by the margin.
+                        sat = (
+                            f", learned {gate_window['satisfied'] / gate_window['resolved']:.2f}"
+                            if gate_window["resolved"]
                             else ""
                         )
                         print(
-                            f"🔍 gate: {gate_window['count']} firings, "
-                            f"{gate_window['accepted']} labels "
+                            f"🔍 gate: {gate_window['count']} searched, "
+                            f"{gate_window['accepted']} emitting "
                             f"({100 * gate_window['accepted'] / gate_window['count']:.0f}%), "
-                            f"agree {gate_window['agree_sum'] / gate_window['count']:.2f}"
-                            f"{gap} | hinge {d.get('hinge', 0.0):.3f} "
-                            f"Δ* {d.get('d_star', 0.0):+.3f} "
-                            f"Δref {d.get('d_ref', 0.0):+.3f}",
+                            f"{gate_window['pairs']:.0f} pairs"
+                            f"{sat}{gap} | hinge {d.get('hinge', 0.0):.3f} "
+                            f"pairs/row {d.get('pairs_per_row', 0.0):.1f} "
+                            f"Δw {d.get('d_star', 0.0):+.3f} "
+                            f"Δl {d.get('d_ref', 0.0):+.3f}",
                             flush=True,
                         )
                     gate_window = {
                         "count": 0,
                         "accepted": 0,
-                        "agree_sum": 0.0,
+                        "resolved": 0.0,
+                        "satisfied": 0.0,
+                        "pairs": 0.0,
                         "gap_sum": 0.0,
                     }
 
@@ -1348,21 +1378,32 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--search-teacher",
         action="store_true",
-        help="agreement-gated ISMCTS distillation on main-agent play "
-        "decisions (Search_Teacher_Design §9): 3 replicate searches at the "
-        "E9-certified budget (1024 iters, d=1, oracle leaves), emit the "
-        "replicate-averaged pi_gumbel target only on 2-of-3 exact-action "
-        "agreement against the policy argmax; PG is masked on labeled "
-        "transitions (ppo.py pg_mask). Works with --num-workers > 1: "
-        "weight payloads carry the oracle head + gamma so worker-side "
-        "searches stay calibrated",
+        help="resolved-pair ISMCTS teacher on main-agent play decisions "
+        "(Search_Teacher_Design §12.7): --search-replicates committee "
+        "searches at the E9-certified budget (1024 iters, d=1, oracle "
+        "leaves), emit pairwise ordering constraints only where the "
+        "committee's paired Q-differences are sign-consistent and clear "
+        "the noise-calibrated floor; PG is masked on labeled transitions "
+        "(ppo.py pg_mask). Works with --num-workers > 1: weight payloads "
+        "carry the oracle head + gamma so worker-side searches stay "
+        "calibrated",
+    )
+    ap.add_argument(
+        "--search-replicates",
+        type=int,
+        default=5,
+        help="committee size R for the resolved-pair gate: pair statistics "
+        "use paired per-replicate Q-differences (sign-consistent across "
+        "ALL replicates + mean >= max(gate_pair_eps, gate_pair_z*s/sqrt(R)))"
+        ". §12.8: replicates beat iterations per unit compute at these "
+        "nodes; SE ~0.006 at R=6/1024-iters",
     )
     ap.add_argument(
         "--search-label-weight",
         type=float,
         default=50.0,
         help="evidence-proportional weight of the clipped margin loss: one "
-        "gate-certified label is worth this many PG samples (DQfD "
+        "resolved pair is worth this many PG samples (DQfD "
         "per-sample form; distill = weight * sum-over-labeled / batch "
         "rows). Replaces the mean-over-labeled coeff whose per-label "
         "weight baked in batch/label counts and was near-inert under Adam "
@@ -1374,9 +1415,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.2,
         help="pair-gap trust region (nats) of the clipped margin loss — the "
-        "PPO-clip analog and the binding safety mechanism under Adam: a "
-        "labeled row earns gradient only while log pi(a*) - log pi(a_ref) "
-        "has improved less than delta over its label-time value. Default "
+        "PPO-clip analog and the binding safety mechanism under Adam: an "
+        "emitted pair earns gradient only while log pi(w) - log pi(l) "
+        "has improved less than delta over its label-time anchors. Default "
         "~ln(1+eps_ppo). Raise only against a healthy greedy-ordering "
         "probe (Search_Teacher_Design §12)",
     )
@@ -1384,11 +1425,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--search-teacher-margin",
         type=float,
         default=0.3,
-        help="margin m (nats) of the DQfD-style ranking loss on labeled "
-        "transitions (Hester et al. 2018): pressure stops once the agreed "
-        "action out-ranks the label-time policy argmax by m. Replaces "
-        "forward-KL distillation for the gated teacher after the attempt-3/4 "
-        "entropy runaway (Search_Teacher_Design §10)",
+        help="margin m (nats) of the DQfD-style ranking loss on emitted "
+        "pairs (Hester et al. 2018): pressure stops once the resolved "
+        "winner out-ranks the loser by m. Also the gate's emission filter "
+        "(pairs the live policy already orders by m are not emitted — "
+        "self-retirement, Search_Teacher_Design §12.7)",
     )
     ap.add_argument(
         "--search-teacher-prob",
@@ -1396,7 +1437,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=0.02,
         help="subsample probability for eligible (gate_cells) play nodes — "
         "the labeling budget knob; expected wall cost per episode is "
-        "roughly prob x eligible-nodes/game x 3 searches",
+        "roughly prob x eligible-nodes/game x --search-replicates searches",
     )
     ap.add_argument(
         "--seat-rotation",
@@ -1511,10 +1552,11 @@ def main():
             getattr(args, "search_teacher_margin", 0.3)
         )
         print(
-            f"🔍 search teacher loss: clipped margin ranking "
+            f"🔍 search teacher loss: resolved-pair clipped margin "
             f"(m={training_agent.search_margin}, "
             f"λ={training_agent.search_label_weight}, "
-            f"δ={training_agent.search_clip_delta})"
+            f"δ={training_agent.search_clip_delta}, "
+            f"R={int(getattr(args, 'search_replicates', 5))})"
         )
     if getattr(args, "oracle_init", None):
         sd = torch.load(args.oracle_init, map_location="cpu", weights_only=True)

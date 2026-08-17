@@ -13,7 +13,6 @@ training_utils.py.
 """
 
 import random
-from collections import Counter
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -135,19 +134,23 @@ def _attach_gated_search_target(
     search_diagnostics: dict,
     live_probs: "np.ndarray | None",
 ) -> None:
-    """Agreement-gated soft-teacher target (Search_Teacher_Design §9, §12.1).
+    """Resolved-pair teacher emission (Search_Teacher_Design §12.7/§12.8).
 
     Run the same cheap search ``gate_replicates`` times with independent RNG
     (a committee of stochastic experts — query-by-committee, Seung et al.
-    1992). Emit a target only when >= ``gate_agreement`` replicates agree on
-    the SAME action and it differs from the LIVE policy's greedy choice.
-    The emitted target is the replicate-AVERAGED pi_gumbel distribution
-    (Danihelka et al. 2022; averaging = root parallelization, Chaslot et al.
-    2008), so near-equivalent cards share mass contextually instead of the
-    label pretending 7C beats 8C. Abstention is the designed common case:
-    E9 certification showed single cheap searches at near-tie nodes flip to
-    worse actions ~11% of the time, while 2-of-3-agreed non-policy labels
-    measured +0.0112 mean uplift with 0/22 harm.
+    1992) and collect each replicate's completed-Q table. Emit PAIRWISE
+    ordering constraints a>b only where the committee statistically
+    resolves them: paired per-replicate Q-differences sign-consistent
+    across ALL replicates AND mean >= max(gate_pair_eps,
+    gate_pair_z * s / sqrt(R)) — racing/best-arm elimination (Maron &
+    Moore 1994) applied to label emission. Near-tied actions produce no
+    constraint (the §12.8 study measured true top gaps at the noise floor
+    of any affordable budget: abstention on ties is the designed common
+    case, and relative mass over unresolved sets is left to PG + the
+    entropy bonus). Pairs the live policy already orders by the teaching
+    margin are counted (self-retirement telemetry) but not emitted — with
+    no emission there is no incumbent tax, the §12.6 mechanism that made
+    exact-card labels non-convergent.
 
     Stationary expert vs live student (§12.1, DAgger — Ross et al. 2011):
     the teacher wraps a FROZEN snapshot of the generation-start policy
@@ -189,11 +192,7 @@ def _attach_gated_search_target(
 
     diag = search_diagnostics["play"]
     diag["count"] += 1
-    # LIVE policy's greedy choice + label-time distribution: the emission
-    # referent and the margin-loss clip anchors.
-    live_argmax = int(max(valid_actions, key=lambda a: float(live_probs[a - 1])))
-    picks: list[int] = []
-    gumbels: list[np.ndarray] = []
+    qtabs: list[dict] = []
     for _ in range(search_config.gate_replicates):
         rng = random.Random(determinization_rng.getrandbits(64))
         res = teacher.search(
@@ -203,62 +202,58 @@ def _attach_gated_search_target(
             rng,
             d_rollout=search_config.gate_d_rollout,
         )
-        if not res["ok"] or res.get("pi_gumbel") is None:
+        if not res["ok"] or res.get("root_q") is None:
             continue
-        gum = res["pi_gumbel"]
-        picks.append(int(max(res["valid"], key=lambda a: float(gum[a - 1]))))
-        gumbels.append(np.asarray(gum, dtype=np.float64))
-        if (
-            picks
-            and Counter(picks).most_common(1)[0][1] >= search_config.gate_agreement
-        ):
-            # Committee early-stop: the majority is decided, so further
-            # replicates cannot change the gate outcome — identical decisions
-            # at ~25% less search (measured agreement ~0.85). The emitted
-            # target averages the replicates actually run.
-            break
-    if not picks:
-        return
-    top_action, top_count = Counter(picks).most_common(1)[0]
-    diag["ess_sum"] += float(top_count) / len(picks)  # committee agreement rate
-    if top_count < search_config.gate_agreement or top_action == live_argmax:
-        return  # abstain: no majority, or committee backs the live policy
-    if getattr(search_config, "gate_target", "agreed_onehot") == "avg_gumbel":
-        # Study-only (see config): near-uniform at near-ties -> entropy bomb.
-        target = np.mean(gumbels, axis=0)
-        total = float(target.sum())
-        if total <= 0.0:
-            return
-        target /= total
-    else:
-        # Smoothed one-hot on the agreed action — the calibrated semantics.
-        eps = float(search_config.gate_target_smooth)
-        target = np.zeros_like(gumbels[0])
-        others = [a for a in valid_actions if a != top_action]
-        target[top_action - 1] = 1.0 - eps if others else 1.0
-        for a in others:
-            target[a - 1] = eps / len(others)
-    transition["search_target"] = target.tolist()
+        qtabs.append(res["root_q"])
+    r_n = len(qtabs)
+    if r_n < 2:
+        return  # pair statistics need at least two replicates
+    sqrt_r = float(np.sqrt(r_n))
+    live_logp = {
+        a: float(np.log(max(float(live_probs[a - 1]), 1e-12))) for a in valid_actions
+    }
+    resolved = satisfied = 0
+    emitted: list[tuple[float, list[float]]] = []  # (t-stat, [w, l, lw, ll])
+    acts = sorted(valid_actions)  # valid_actions may arrive as a set
+    for i, a in enumerate(acts):
+        for b in acts[i + 1 :]:
+            d = [float(q[a]) - float(q[b]) for q in qtabs]
+            if not (all(x > 0.0 for x in d) or all(x < 0.0 for x in d)):
+                continue  # direction not replicate-consistent
+            d_mean = float(np.mean(d))
+            d_sd = float(np.std(d, ddof=1))
+            if abs(d_mean) < max(
+                search_config.gate_pair_eps,
+                search_config.gate_pair_z * d_sd / sqrt_r,
+            ):
+                continue  # within committee noise: near-tie, no constraint
+            resolved += 1
+            w, loser = (a, b) if d_mean > 0 else (b, a)
+            # Teaching filter: constraints the live policy already orders by
+            # the margin carry zero hinge gradient — skipping them makes the
+            # emission rate itself the self-retirement readout.
+            if live_logp[w] - live_logp[loser] >= search_config.gate_emit_margin:
+                satisfied += 1
+                continue
+            t_stat = abs(d_mean) * sqrt_r / (d_sd + 1e-9)
+            emitted.append(
+                (t_stat, [float(w), float(loser), live_logp[w], live_logp[loser]])
+            )
+    diag["resolved_sum"] = diag.get("resolved_sum", 0.0) + resolved
+    diag["satisfied_sum"] = diag.get("satisfied_sum", 0.0) + satisfied
+    if not emitted:
+        return  # abstain: nothing both resolved and unlearned
+    emitted.sort(key=lambda e: -e[0])
+    pairs = [p for _, p in emitted[: search_config.gate_max_pairs]]
+    # Pairs ship 1-based action ids + LIVE label-time log-prob anchors for
+    # the pair-gap trust region (analog of PPO's ratio clip; see ppo.py).
+    transition["search_pairs"] = pairs
     transition["has_search_target"] = True
-    # LIVE policy's label-time argmax: the margin loss's ranking referent
-    # (the claim is "committee prefers a* over the action the student would
-    # take HERE, NOW").
-    transition["search_ref_action"] = live_argmax
-    # LIVE label-time log-probs of the pair: the anchors for the pair-gap
-    # trust region in the margin loss (analog of PPO's ratio clip, Schulman
-    # et al. 2017; see ppo.py).
-    star_logp = float(np.log(max(float(live_probs[top_action - 1]), 1e-12)))
-    ref_logp = float(np.log(max(float(live_probs[live_argmax - 1]), 1e-12)))
-    transition["search_star_logp"] = star_logp
-    transition["search_ref_logp"] = ref_logp
     diag["accepted"] += 1
-    # Label-time gap g = log pi(a_ref) - log pi(a*): how strongly the policy
-    # disagreed with the committee. Sizes the trust-region delta ((median g +
-    # m)/2 lets the median label complete in one update) and identifies the
-    # high-g tail the clip is meant to rate-limit.
-    diag["gap_sum"] = diag.get("gap_sum", 0.0) + (ref_logp - star_logp)
-    nonzero = target[target > 0]
-    diag["entropy_sum"] += float(-(nonzero * np.log(nonzero)).sum())
+    diag["pairs_sum"] = diag.get("pairs_sum", 0.0) + len(pairs)
+    # Label-time pair gap g = log pi(l) - log pi(w) summed over emitted
+    # pairs: how strongly the live policy inverts the resolved orderings.
+    diag["gap_sum"] = diag.get("gap_sum", 0.0) + sum(p[3] - p[2] for p in pairs)
 
 
 def _finalize_rewards(
@@ -313,17 +308,13 @@ def _finalize_rewards(
                 "unseen_trump_higher_than_hand_label": ev.get(
                     "unseen_trump_higher_than_hand_label", None
                 ),
-                "search_target": ev.get("search_target"),
                 "has_search_target": ev.get("has_search_target", False),
-                # Margin-loss ranking referent + label-time pair log-priors
-                # (trust-region anchors): without them a labeled row
-                # contributes ZERO distill loss (ppo.py hardens missing
-                # referents/anchors to no-op), so dropping a key here
-                # silently disarms the teacher while leaving the PG-mask
-                # active — exactly the attempt-5a bug (notebook §10.3).
-                "search_ref_action": ev.get("search_ref_action"),
-                "search_star_logp": ev.get("search_star_logp"),
-                "search_ref_logp": ev.get("search_ref_logp"),
+                # Resolved pairs [winner, loser, anchor_w, anchor_l]:
+                # without them a labeled row contributes ZERO distill loss
+                # (ppo.py hardens missing pairs to no-op), so dropping this
+                # key here silently disarms the teacher while leaving the
+                # PG-mask active — exactly the attempt-5a bug (§10.3).
+                "search_pairs": ev.get("search_pairs"),
             }
         if ev.get("oracle_state") is not None:
             out["oracle_state"] = ev["oracle_state"]
@@ -384,11 +375,18 @@ def play_population_game(
     # Public (seat, action_id) record for the teacher's forced replay (search only).
     forced_public: list[tuple[int, int]] = []
     # Per-game gate diagnostics (the gated teacher searches PLAY nodes only):
-    # gate firings (count), emitted labels (accepted), summed committee
-    # agreement rate (ess_sum) and emitted-target entropy for averaging.
-    # Attached to training_agent_data so the driver can window + log them.
+    # nodes searched (count), nodes emitting >=1 pair (accepted), resolved /
+    # already-satisfied / emitted pair sums and the summed label-time pair
+    # gap. Attached to training_agent_data so the driver can window + log.
     search_diagnostics = {
-        "play": {"count": 0, "accepted": 0, "ess_sum": 0.0, "entropy_sum": 0.0}
+        "play": {
+            "count": 0,
+            "accepted": 0,
+            "resolved_sum": 0.0,
+            "satisfied_sum": 0.0,
+            "pairs_sum": 0.0,
+            "gap_sum": 0.0,
+        }
     }
 
     # Reset recurrent states for all agents
@@ -437,7 +435,7 @@ def play_population_game(
                         "unseen_trump_higher_than_hand_label": compute_any_unseen_trump_higher_than_hand(
                             player
                         ),
-                        "search_target": None,
+                        "search_pairs": None,
                         "has_search_target": False,
                     }
                     if collect_oracle:

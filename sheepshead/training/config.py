@@ -98,43 +98,50 @@ class SearchConfig:
     — the split is deliberate: the trainer owns coverage and the gate, the
     engine owns one search.
 
-    The gate: run the same cheap search ``gate_replicates`` times with
-    independent RNG and emit a distillation target only when
-    >= ``gate_agreement`` replicates pick the SAME action and it differs
-    from the policy's greedy choice (the search root prior's argmax).
-    Certification: gated labels measured +0.0112 mean uplift with 0/22 harm
-    vs +0.0010 / 11% harm ungated (E9 §8).
-    Literature: the loop is Expert Iteration (Anthony et al. 2017) with
-    AlphaZero-style search targets on on-policy states (Silver et al.
-    2017; DAgger, Ross et al. 2011); the readout and its small-budget
-    policy-improvement guarantee are Gumbel MuZero's completed-Q
-    (Danihelka et al. 2022; Grill et al. 2020 for the regularized-PI view);
-    replicate averaging is root parallelization (Chaslot et al. 2008); the
-    agreement gate is query-by-committee data selection (Seung et al. 1992)
-    with the committee = independent stochastic runs of one searcher.
+    The gate (resolved-pair emission, Search_Teacher_Design §12.7/§12.8):
+    run the same cheap search ``gate_replicates`` times with independent
+    RNG, collect each replicate's completed-Q table, and emit PAIRWISE
+    ordering constraints a>b only where the committee statistically
+    resolves them: the per-replicate paired Q-difference is
+    sign-consistent across ALL replicates AND its mean clears
+    max(gate_pair_eps, gate_pair_z * s / sqrt(R)). Pairs the live policy
+    already satisfies by the teaching margin are not emitted
+    (self-retirement); near-tied actions never produce a constraint at
+    all — the §12.8 study measured true top gaps (0.004-0.007 Q) AT the
+    noise floor of any affordable budget, so abstention on ties is the
+    designed common case and the student's relative mass over unresolved
+    sets is left to PG + the entropy bonus (max-ent completion).
+    Literature: the loop is Expert Iteration (Anthony et al. 2017) on
+    on-policy states (DAgger, Ross et al. 2011) with a FROZEN per-
+    generation expert (§12.2); pairwise constraints instead of
+    distribution targets are preference learning (Bradley-Terry;
+    Christiano et al. 2017; the anchored pair-gap is DPO's implicit
+    reward, Rafailov et al. 2023); emit-only-when-resolved is racing /
+    best-arm elimination (Maron & Moore 1994); the Q tables are Gumbel
+    MuZero's completed-Q (Danihelka et al. 2022).
 
     A legacy per-head-fraction ExIt scheduler (dense forward-KL visit
-    targets, ``head_search_fractions``/``t_full``/``d_short``) lived here
-    until 2026-08; it was removed after the gated margin form superseded it
-    (Search_Teacher_Design §10, Exit_Arms_202606).
+    targets) was removed 2026-08 (§10/§11); the exact-card 2-of-3
+    one-hot gate (``gate_agreement``/``gate_target``) was removed
+    2026-08-16 after §12.8 showed its labels ~50% non-reproducible at
+    defender leads (the attempt-8 incumbent-tax mechanism, §12.6).
     """
 
     enabled: bool = True
-    gate_iters: int = 1024  # calibrated budget; changing it voids the E9 cert
+    gate_iters: int = 1024  # calibrated budget (E9; §12.8 re-validated cheap)
     gate_d_rollout: int = 1  # shallow + oracle leaves (variance-min; E9 §7)
-    gate_replicates: int = 3
-    gate_agreement: int = 2  # strict exact-action 2-of-3 (E9 §8.2)
+    gate_replicates: int = 5  # R: committee size; replicates beat iterations
     gate_node_prob: float = 0.02  # subsample of eligible nodes (budget knob)
-    # Label form. "agreed_onehot" (default): 1-eps on the committee's agreed
-    # action, eps spread over the node's other legal actions — the exact
-    # semantics the E9 certification validated (+0.0112 uplift was for the
-    # AGREED ACTION). "avg_gumbel" (the original §9 design) is retained for
-    # study only: at near-tie nodes the completed-Q soft target is close to
-    # uniform, so forward-KL toward it is an entropy-injection term with a
-    # label-count-independent loss scale — observed to flatten the play head
-    # globally within ~25k episodes (branch run attempt 3, 2026-08-12).
-    gate_target: str = "agreed_onehot"
-    gate_target_smooth: float = 0.05
+    # Resolved-pair emission rule (§12.7; constants calibrated §12.8: per-
+    # node paired-diff SE ~0.006 at 1024/1, so z=2 with eps floor = harm_eps).
+    gate_pair_eps: float = 0.01  # Q-units floor (E9 harm epsilon)
+    gate_pair_z: float = 2.0  # required mean/SE ratio
+    gate_max_pairs: int = 8  # strongest-evidence cap per node (t-stat order)
+    # Teaching filter: a resolved pair is emitted only if the LIVE policy's
+    # log-prob gap log pi(a) - log pi(b) is below this margin (mirror of the
+    # loss margin, wired from --search-teacher-margin). Satisfied pairs are
+    # counted for self-retirement telemetry but not emitted.
+    gate_emit_margin: float = 0.3
     # Node classes searched at all (trick x role x lead/follow). From the E9
     # matrix: every play cell whose mean headroom was >= ~0.003 Q — the gate
     # supplies per-node reliability, the cell set only excludes classes where
