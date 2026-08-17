@@ -1901,3 +1901,34 @@ these nodes is NOT certifiably wrong.
    step under this reading = boundary evaluation of c8 vs the 8M
    seed (panel + h2h + exploiter gate): did certified teaching move
    outcomes at all?
+
+### 12.15 Operator direction (2026-08-18): certification criteria + EV studies launched (§12.14 fork = option 3 then 1)
+
+**Operator priorities (program-level, recorded verbatim in intent):**
+the deployable-agent behavior that matters most is LEADING CALLED SUIT
+at t0 — the human convention most missing from the 8M seed. Fat vs
+nopoint was pursued as "a convention with more samples", not as the
+goal. A successful teacher program is certified by (a) overall agent
+strength and (b) stronger convention adherence: t0 called-suit leads,
+defender no-trump leads, partner trump leads.
+
+**Launched (both under the 8M seed model, called-ace mode, tricks
+0-2, 50 CRN rollouts, belief-pool 192 worlds, 120 cases/group):**
+1. cf_called_suit_8m — rerun of counterfactual_called_suit_leads
+   (July C2/E2 instrument) under the DEPLOYABLE lineage (July numbers
+   were measured on the 30M-lineage default model). AGREE sanity +
+   DISAGREE decision cell + PARTNER falsifier.
+2. cf_fat_leads_8m — NEW counterfactual_fat_leads (c0fdf61):
+   Δ = (nopoint − fat) forced-lead branches at defender leads holding
+   both classes; called-suit fails excluded from both pools while the
+   suit is unled (C2 confound guard); groups by argmax class
+   (FAT-ARGMAX = decision cell; NOPOINT-ARGMAX = sanity). Decision
+   rule (pre-registered): Δ > 0 at 2σ on true-deal MC with belief-MC
+   sign agreement supports teaching the tilt; |Δ| under ~0.05 with
+   tight SE retires fat/nopoint as a teaching target.
+
+**Then (option 1): boundary evaluation** of the continuation endpoint
+(c8) vs the 8M seed — rigorous_eval panel, duplicate-bridge h2h,
+exploiter gate, plus large-n convention adherence (called-suit t0,
+defender trump t0, partner trump) — the certification readout per the
+criteria above.
