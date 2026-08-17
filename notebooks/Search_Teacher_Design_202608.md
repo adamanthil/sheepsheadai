@@ -1851,3 +1851,53 @@ continuation cost little and produced this §12.13 mechanism finding.
    rule), or a small node-level top-set mass term. Keeps the
    resolved-pair machinery; adds the one constraint PG is exploiting
    the absence of.
+
+### 12.14 Argmax-escape diagnostic (2026-08-18, c8 weights, 60 nodes): 95% TIES — the reversion is committee-UNCONSTRAINABLE, the §12.13 fix sketch is moot
+
+**Run.** Attempt-9 continuation KILLED by operator decision (~8.03M) to
+implement the §12.13 "emit vs live argmax" fix. Code reading first
+CORRECTED §12.13: pfsp_runtime already forms ALL legal pairs, so
+winner-vs-argmax is already a candidate and always unsatisfied when
+resolved; the 8-pair cap never binds (pairs/row ~1.5). The only
+possible escapes were (a) ties-by-design or (b) maintenance-rate
+deficit. Diagnostic: greedy c8 games, at each fat-argmax deflead node
+(n=60, 92 games) run the real committee (frozen 8M expert, R=5 @
+1024/1, gate eps/z rule) and test every (x > argmax) pair.
+
+**Result: TIE 57/60 (95%), DEFICIT 3/60 (5%; resolvers nopoint x2,
+mid x1, trump x1, mean 1.3 per node).** The fat cards PG re-promoted
+are statistically indistinguishable from the committee's best at the
+gate budget — abstention working as specified (§12.8 predicted this:
+top-gap mass sits AT the noise floor even at 4096/terminal).
+
+**Corrected §12.13 mechanism.** PG generalization (gradient transport
+from the abundant states where fat is genuinely right) re-promoted
+fat cards INSIDE the committee's abstention set. The resolved pairs
+the teacher emitted mostly HELD (learned ~0.85 at revisits). Both the
+teacher and PG behaved exactly per design; the fat/nopoint PROBE
+METRIC tracks a class-level tilt that per-card pairwise resolution
+cannot certify at ~95% of these nodes. The pre-restart fat 47% state
+was hinge pressure held against generalization, not consolidated
+knowledge — and per §12.7's own max-ent philosophy, mass location
+within the abstention set is PG+entropy's to choose. fat ~60-65 at
+these nodes is NOT certifiably wrong.
+
+**Consequences.**
+1. The §12.13 candidate fixes (decisive-pair priority, higher
+   gate_node_prob, satisfied re-emission) target the 5% hole —
+   implementing them would NOT restore the taught tilt. NOT built.
+2. The §12.8 class tilt (best-fail winner nopoint:fat ~28:19) is
+   real but lives mostly in per-card-unresolvable territory. Routes
+   IF the tilt is wanted: (a) class-pooled resolution (aggregate
+   paired Q-diffs across same-class cards before the noise test —
+   pooling may clear the floor where single cards cannot; NOTE §12.7
+   deliberately avoided hand classes — operator call required); (b)
+   ground it in the reward channel: CRN-paired forced-lead rollouts
+   (fat vs nopoint) vs the actual pool, offline, to measure the true
+   on-policy class EV gap — decides whether the tilt is worth ANY
+   machinery.
+3. Or accept the design's answer: the teacher's deliverable is the
+   resolved pairs + certified cells (held), not the probe tilt. Next
+   step under this reading = boundary evaluation of c8 vs the 8M
+   seed (panel + h2h + exploiter gate): did certified teaching move
+   outcomes at all?
