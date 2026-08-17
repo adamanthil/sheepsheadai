@@ -60,6 +60,7 @@ import argparse
 import copy
 import json
 import random
+import time
 from pathlib import Path
 
 import numpy as np
@@ -287,6 +288,9 @@ def _replay_seeds(
                             "nLegal": len(valid_sorted),
                             "policyAction": aid,
                             "policyCard": ACTION_LOOKUP[aid][5:],
+                            # Class-level analysis (called-suit fail vs other
+                            # fail vs trump) needs the called card at the node.
+                            "calledCard": game.called_card or "",
                             "configs": {},
                         }
                         ref_key = f"{REFERENCE[0]}/term"
@@ -315,6 +319,7 @@ def _replay_seeds(
                                     + cfg_i * 31
                                     + rep
                                 )
+                                t0 = time.perf_counter()
                                 res = teachers[iters].search(
                                     node_game,
                                     pos,
@@ -326,6 +331,7 @@ def _replay_seeds(
                                     {
                                         "ok": bool(res["ok"]),
                                         "ess": float(res["ess"]),
+                                        "sec": round(time.perf_counter() - t0, 3),
                                         "gumbelArgmax": _gumbel_argmax(res),
                                         "rootQ": {
                                             str(a): res["root_q"][a]
@@ -354,6 +360,10 @@ def _replay_seeds(
                                         else reps[0]["gumbelArgmax"]
                                     ),
                                     "repArgmax": [e["gumbelArgmax"] for e in reps],
+                                    # Per-replicate root Q: single-search
+                                    # trust / Q-margin gate calibration needs
+                                    # the un-averaged posteriors.
+                                    "reps": reps,
                                 }
                             elif replicate_mode:
                                 row["configs"][key] = {"reps": reps}
