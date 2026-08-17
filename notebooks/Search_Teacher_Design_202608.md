@@ -1248,3 +1248,52 @@ Redesign (PENDING operator decision; nothing built):
    then needs tie-breaking pressure, not value pressure — a design
    fork for the operator, and a result worth having before spending
    more teacher compute.
+
+### 12.6 Gating study LAUNCHED + single-search design question (operator, 2026-08-16)
+
+**Operator amendment to §12.5 under discussion:** if we pay
+4096/terminal at defender leads (t0, maybe t1), drop the 3-panel
+there — trust the single heavy search and save the panel compute.
+Hypothetical design: specified lead cells use ONE 4096/term search;
+everywhere else keeps 2-of-3 @ 1024/1.
+
+Evidence bearing on it, both ways:
+- AGAINST raw single-search trust: the §7 certification measured two
+  independent 4096/term searches self-agreeing only 53% at exactly
+  these contested near-tie nodes (exact-card level). A raw single
+  search emits a coin-flip card label roughly half the time.
+- Rescues that keep the operator's cost shape: (1) CLASS-level
+  emission (the 53% is exact-card; class self-agreement is unknown
+  and is what the convention needs); (2) a within-search confidence
+  gate — top-class Q-margin / visit share (June audit: frac=1.0 +
+  top@Q) — giving the single search the abstention mechanism the
+  panel otherwise provides.
+- COST correction to §12.5: the expensive ingredient is terminal
+  rollouts, not panel multiplicity. Measured at t0 (smoke node):
+  4096/term ≈ 80s/search, 1024/1 ≈ 25s/search. So 1x4096/term (~80s)
+  vs the 3x4096/term committee (~240s) is the real 3x saving the
+  operator's design buys; the certified cheap panel (3x1024/1 ≈ 75s)
+  is comparable to ONE heavy search, not 3x cheaper than it.
+
+**Study launched** (operator: "either way we should run the gating
+study"): search_help_matrix on the 8M driver,
+cells t0/t1/t2-defender-lead, quota 48/cell (~144 nodes),
+--configs 1024/1 --replicates 6 --ref-replicates 2 →
+deflead_gating_study.json (~5.2 min/node ≈ ~12.5h). Instrument
+amendment 7601c45 records per-rep reference rootQ (single-search
+self-agreement + Q-margin gate calibration), calledCard (class
+taxonomy: called-suit fail / other fail / trump), per-search sec.
+Readouts pre-registered:
+1. Single 4096/term self-agreement, exact-card AND class-level
+   (2 independent seeds per node).
+2. Cheap-panel stability: 6x 1024/1 reps → two disjoint 3-panels →
+   emitted-label agreement across panels + 2-of-3 fire rate.
+3. Q-margin gate calibration: what top-class margin threshold would
+   have filtered the self-disagreeing heavy labels?
+4. Label content by class at confident nodes = the deep-search
+   convention-optimality readout at a convention-adherent (84-98%)
+   expert: fraction of trump leads answers whether the optimal t0
+   trump-lead rate is 0% (operator's stated standard of evidence).
+5. Per-arm wall-clock totals.
+Smoke anecdote (n=1, not evidence): heavy search self-agreed
+(106/106) while two 1024/1 reps scattered (95/88).
