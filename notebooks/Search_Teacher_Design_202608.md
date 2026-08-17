@@ -1369,3 +1369,46 @@ Footnote: per-run node counts in classify_flips vary slightly
 (147-160 at t0 across reruns; threading-level near-tie argmax flips
 alter greedy trajectories). Distributions and directions are stable
 across runs; conclusions unaffected.
+
+**§12.6 addendum 3 — was the v7 run actually invalid? (operator
+challenge, 2026-08-16):** operator raised: if labels taught correct
+class-level changes, perhaps no teacher changes are needed and the
+oscillation was normal learning dynamics (this program oscillates in
+many metrics). Adjudicated by decomposing the killed-on max-min
+spread at defender leads (scratchpad spread_decompose.py, identical
+states, medians):
+
+  cell               top1-top2      top1-top3      top1-min
+  t0-def-lead      0.94 -> 0.23   2.03 -> 0.50   9.77 -> 5.20
+  t1-def-lead      1.16 -> 0.34   2.75 -> 0.64   9.53 -> 3.91
+  t2-def-lead      1.10 -> 0.32   2.84 -> 0.63   6.85 -> 2.75
+
+- Top-candidate compression (top1-top2 ~0.2-0.3) is the BENIGN
+  near-tie structure class-equivalence predicts. If that were all,
+  the run was healthy and the stop-rule a category error.
+- But top1-MIN fell 4.5-5.6 nats in 7 updates (odds vs the worst
+  legal lead ~900:1 -> ~15-50:1), MONOTONE — not oscillation.
+  ~170 updates remained; extrapolation = indifference at the target
+  nodes + growing stochastic blunder leakage in training play.
+  KILL SUSTAINED. Operator's oscillation reading applies to the
+  t0-rate wobble and outcome metrics (healthy), not to this trend.
+- MECHANISM (explains top1-min without trunk-leak hand-waving): the
+  hinge's ref leg pushes the CURRENT argmax down ~m per label. With
+  exact-card emission and seed-scattered committee cards there is
+  always a star != incumbent -> the incumbent tax never stops
+  (dethrone, re-anchor, next sibling, dethrone). The top compresses
+  toward the pack = the measured signature. Label CONTENT was right;
+  EMISSION GRANULARITY makes it non-convergent.
+- CONSEQUENCE: minimal fix = class-level emission alone (5-class
+  taxonomy; committee/budgets/frozen-expert/lambda/delta unchanged).
+  In-agreed-class => abstain => no incumbent tax => genuine
+  self-retirement. Class emission IS the convergence mechanism, not
+  just a noise filter. Heavy-arm necessity stays gated on study
+  readout 6 (cheap-panel class validity vs heavy reference).
+- Instrument amendment for any relaunch: standing probes must carry
+  per-cell top1-min alongside max-min so benign top-compression is
+  never again conflated with conviction erosion (the §12.3 misread).
+- Operator note on taxonomy: called-suit point-split deliberately
+  NOT added (too many classes to be useful); study data can check
+  whether called-suit labels ever cross the point boundary before
+  revisiting.
