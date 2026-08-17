@@ -1503,3 +1503,24 @@ by best-arm-identification statistics with max-ent completion —
 composition novel, every seam established. OPERATOR APPROVED the
 §12.7 design this session; build remains gated on study readouts
 7-9 calibration.
+
+**§12.7 relaunch monitoring spec (operator, 2026-08-16):** the play
+metrics of interest for learning progress under the resolved-pair
+teacher are BOTH at early-trick defender-lead nodes:
+1. Fail-lead point composition: fat (A/10) vs K vs no-point (7/8/9)
+   argmax shares at t0-t2 defender leads. Baseline (8M, per
+   classify_flips): fat ~57% of t0 defender-lead argmaxes. Taught
+   direction (if study confirms at resolving budget): fat share
+   DOWN, no-point share UP.
+2. Called-suit lead rate in called-ace games (C2 canary already in
+   greedy_health_probe): baseline ~35-45% across v1-v7 probe
+   readings; convention target 100% at eligible nodes.
+Success signature = monotone movement in the taught direction WITH
+convergence (emission rate decaying as the student enters the
+resolved set) and per-cell top1-min intact (conviction floor, the
+§12.6-addendum-3 instrument). Oscillation without emission decay =
+the §12.3-era failure shape, now with the instruments to tell the
+two apart. Implementation venue when the build is approved: extend
+greedy_health_probe (or the per-publish probe script) with the
+point-composition breakdown + per-cell top1-min; called-suit rate
+already present.
