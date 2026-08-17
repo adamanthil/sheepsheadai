@@ -955,15 +955,9 @@ def _seed_league_from_checkpoints(league: League, spec: str) -> None:
     print(f"🌱 Seeded league with {len(paths)} checkpoints as past_mains")
 
 
-def main():
-    args = build_arg_parser().parse_args()
-
-    set_all_seeds(args.seed)
-
-    run_dir = os.path.join("runs", args.run_name)
-    checkpoint_dir = os.path.join(run_dir, "checkpoints")
-    os.makedirs(checkpoint_dir, exist_ok=True)
-
+def _bootstrap_league(args) -> League:
+    """Open (or bootstrap) the league per the CLI: legacy migration, then
+    checkpoint seeding, then cold-start from pure self-play."""
     league_config = LeagueConfig()
     if args.exploiter_patched_ema is not None:
         league_config.exploiter_patched_ema = args.exploiter_patched_ema
@@ -984,7 +978,12 @@ def main():
             f"snapshots accumulate (first at +{args.snapshot_interval:,} episodes)."
         )
     print(league.summary())
+    return league
 
+
+def _build_training_agent(args) -> tuple[PPOAgent, int]:
+    """Construct the main agent from --resume and apply the CLI run options
+    (each printing its banner). Returns (agent, resumed start episode)."""
     training_agent = PPOAgent(
         len(ACTIONS),
         critic_mode=args.critic_mode,
@@ -1039,7 +1038,12 @@ def main():
         ref = load_agent(args.anchor_ref or args.resume)
         training_agent.set_anchor(ref, args.anchor_coeff)
         print(f"⚓ Bidding anchor ON (coeff={args.anchor_coeff})")
+    return training_agent, start_episode
 
+
+def _setup_anchor_eval(args) -> dict | None:
+    """Config for the periodic anchored strength probe vs a frozen
+    reference checkpoint, or None when disabled/missing."""
     anchor_eval = None
     if args.anchor_eval_ckpt and args.anchor_eval_interval > 0:
         if os.path.exists(args.anchor_eval_ckpt):
@@ -1060,6 +1064,52 @@ def main():
                 f"⚠️  --anchor-eval-ckpt not found ({args.anchor_eval_ckpt}); "
                 "anchored probe disabled"
             )
+    return anchor_eval
+
+
+def _append_exploitability(csv_path: str, generation: int, episode: int, gate: dict):
+    """Append one generation's exploiter-gate edge to exploitability.csv —
+    the run's empirical-exploitability headline series."""
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, "a", newline="") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(
+                [
+                    "generation",
+                    "main_episode",
+                    "edge",
+                    "se",
+                    "win_frac",
+                    "passed",
+                    "exploiter_ckpt",
+                ]
+            )
+        w.writerow(
+            [
+                generation,
+                episode,
+                f"{gate['edge']:.4f}",
+                f"{gate['se']:.4f}",
+                f"{gate['win_frac']:.3f}",
+                gate["passed"],
+                gate["exploiter_ckpt"],
+            ]
+        )
+
+
+def main():
+    args = build_arg_parser().parse_args()
+
+    set_all_seeds(args.seed)
+
+    run_dir = os.path.join("runs", args.run_name)
+    checkpoint_dir = os.path.join(run_dir, "checkpoints")
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    league = _bootstrap_league(args)
+    training_agent, start_episode = _build_training_agent(args)
+    anchor_eval = _setup_anchor_eval(args)
 
     training_ratings = {mode: league.rating_model.rating() for mode in (0, 1)}
     exploitability_csv = os.path.join(checkpoint_dir, "exploitability.csv")
@@ -1142,32 +1192,7 @@ def main():
             gen_start_ckpt = main_ckpt
 
         gate = run_exploiter_generation(args, generation, main_ckpt)
-        write_header = not os.path.exists(exploitability_csv)
-        with open(exploitability_csv, "a", newline="") as f:
-            w = csv.writer(f)
-            if write_header:
-                w.writerow(
-                    [
-                        "generation",
-                        "main_episode",
-                        "edge",
-                        "se",
-                        "win_frac",
-                        "passed",
-                        "exploiter_ckpt",
-                    ]
-                )
-            w.writerow(
-                [
-                    generation,
-                    episode,
-                    f"{gate['edge']:.4f}",
-                    f"{gate['se']:.4f}",
-                    f"{gate['win_frac']:.3f}",
-                    gate["passed"],
-                    gate["exploiter_ckpt"],
-                ]
-            )
+        _append_exploitability(exploitability_csv, generation, episode, gate)
         print(
             f"📊 Exploitability gen {generation}: edge {gate['edge']:+.3f} ± {gate['se']:.3f} "
             f"({'inserted' if gate['passed'] else 'below gate'})"
