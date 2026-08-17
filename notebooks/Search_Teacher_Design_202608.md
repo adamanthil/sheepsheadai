@@ -1524,3 +1524,56 @@ two apart. Implementation venue when the build is approved: extend
 greedy_health_probe (or the per-publish probe script) with the
 point-composition breakdown + per-cell top1-min; called-suit rate
 already present.
+
+### 12.8 Gating study RESULTS (2026-08-16, deflead_gating_study.json; 48 nodes/cell t0-t2 defender leads, 6x1024/1 + 2x4096/term, 8M driver)
+
+Readouts (t0 / t1 / t2):
+1. HEAVY SELF-AGREE: exact 38/48/48%, class 54/69/71%. The cert's
+   53% replicated on fresh nodes — a single 4096/term search is not
+   trustworthy at ANY granularity strong enough to label with.
+2. Cheap 2-of-3 fires 73/75/90% of nodes but panel-to-panel label
+   stability only 46/53/50% exact (61/78/65% class): attempt 8's
+   emission stream was ~50% non-reproducible — the noise-grade
+   diagnosis confirmed on fresh data.
+3. Heavy top-2 Q-margins: 0.007 agreed vs 0.004 disagreed — no
+   usable single-search margin gate; both below eps_harm.
+4. HEAVY CONFIDENT LABEL CONTENT (self-agreed only): t0 = 78%
+   called-suit, 0% TRUMP (0/18) -> the 0% t0 trump-lead convention
+   optimum is SUPPORTED by deep search at the convention-adhering
+   8M expert (operator's stated standard of evidence). Trump
+   appears in confident labels only by t2 (30%) — consistent with
+   the June leak-edge living later in the hand. Labels differ from
+   policy class 44-65% -> real teaching signal exists.
+5. Cost: heavy 68-96s, cheap 18-31s per search (t2->t0).
+6. CHEAP-PANEL CLASS vs heavy confident class: 94/76/78% (t0
+   exact-card even 93%) — the cheap committee reproduces the heavy
+   arm's confident verdicts.
+7. NOISE SCALE: top-2 diff SE ~0.006 at BOTH arms (cheap 6-rep SE ~
+   heavy 2-rep SD). True top gaps (0.004-0.007) sit AT the noise
+   floor of any affordable budget: the tops of these nodes are
+   genuinely near-tied; no budget resolves them reliably.
+8. Resolved-pair fraction (sign-consistent + max(0.01, 2s/sqrt(R))):
+   cheap 27-28%, heavy 38-42% of pairs -> ~3-4 constraints per
+   sampled node, mostly suppress-blunder orderings + top
+   resolutions that clear noise.
+9. Fat-vs-nopoint: per-node mostly UNRESOLVED; tilts nopoint where
+   resolved (t1 heavy 9:2). The v7 39:6 aggregate direction = many
+   sub-noise biases summed across exact-card labels; resolved-pair
+   teaching moves this direction only where evidence clears noise
+   (slower but valid). Fail-lead composition stays the progress
+   metric; expect measured pace.
+
+**VERDICTS:**
+- Single-heavy-search design (operator §12.6 question): REFUTED —
+  and the heavy arm refuted with it. Per unit compute, replicates
+  beat iterations: 6x1024/1 ~ cost of 2x4096/term with R=6 vs R=2
+  statistics at equal SE. NO 4096/term online.
+- Resolved-pair emission (§12.7): calibration lands as
+  pre-registered — eps_res = max(eps_harm, 2s/sqrt(R)) with
+  measured s ~ 0.006-0.015/pair. Abstains on near-tied tops (the
+  attempt-8 killing ground) while emitting ~28% of pairs.
+- RECOMMENDED RELAUNCH DESIGN (pending operator sign-off, nothing
+  built): committee R=4-6 x 1024/1 oracle-leaves, no heavy arm;
+  resolved-pair emission per §12.7; loss/lambda/delta/frozen-expert/
+  two-phase-generation unchanged; throughput ~ attempt 8
+  (~1.5-1.7 eps/s teacher phase at prob 0.01).
