@@ -1743,3 +1743,60 @@ break. Monitors and trainer stopped cleanly; train.log preserved.
    also beginning to fight a moving student (§ frozen-expert ceiling
    discussion) — consolidation-first, re-cert, refreeze before any
    attempt 10 remains the plan of record.
+
+### 12.12 OPERATOR OVERRULE of the §12.11 kill (2026-08-17): guards relaxed, training CONTINUED from the stopped point
+
+**Operator correction.** "I think this should not have been killed. We
+had oscillations similar in normal PG training as well. This looked
+healthy by all other counts. These guards should be relaxed and
+training continued." The §12.11 kill is judged premature. This section
+records the overrule explicitly (standing rule: corrections, never
+silent rewrites) — §12.11's data stands; its DECISION is reversed.
+
+**Calibration check (supports the overrule).** Normal-PG history
+(league_retention_pg greedy_health.csv, 200g evals): partner
+trump-lead in the 2-5M window dipped to 45.5 / 57.1 / 75.3 / 78.6 and
+RECOVERED every time without intervention; only the mature 5-8M
+window held a tight band (min 92.4, p5 94.0, median 98.6). The 92%
+kill line was calibrated to the mature band and treated an excursion
+as breakage; PG's own record shows the convention is an attractor
+that survives far deeper dips. v16's ~89.9 replicate mean is below
+the recent band but well inside historically-recovered territory.
+
+**Relaxed guard regime (operative from here):**
+- AUTONOMOUS KILL: only the t0 trump-lead scramble signature
+  (>5% sustained across probes AND fresh-seed replicated) — the v7
+  damage mode with zero false-positive history.
+- NOTIFY-ONLY (operator decides): partner < 88 replicated; sustained
+  outcome-stat degradation; floor-side collapse.
+- ADVISORY (log only): top1-min, spread, entropy trajectory
+  (play-entropy event line moved 0.60 -> 0.65; 0.63 is the known
+  current level).
+
+**Continuation mechanics (ep 8,021,887, GENERATION 33 -> 8.25M):**
+- No checkpoint existed; crafted
+  checkpoints/pfsp_perceiver-shared-v2_checkpoint_8021887.pt = v16
+  network states (encoder/actor/critic/oracle, verified tensor-equal
+  after round-trip) grafted into the 8M checkpoint's optimizer states
+  (~15 updates stale Adam moments — accepted) + gamma=1.0 from the
+  payload (8M ckpt predates gamma persistence).
+- NEW FLAG --teacher-ckpt (train_league_ppo): pins the frozen expert
+  independently of --resume. Without it the continuation would have
+  silently REFROZEN the expert to v16 (uncertified) because both the
+  main-process and worker expert builds read args.resume. Continuation
+  runs with --teacher-ckpt = the certified 8M seed: same expert, same
+  labels, exact continuation semantics. 12/12 teacher tests green.
+- Entropy controller resumed from sidecar (play alpha still 0.001
+  floor); telemetry CSVs auto-trimmed past 8,021,887 (crash-resume
+  dedupe path); attempt-9 payloads v15/v16 + log archived under
+  attempt9_artifacts/ (earlier payloads were pruned by the trainer);
+  continuation probes labeled cN, fixed seed 98765 as before.
+
+**What the continuation will decide.** Whether partner mean-reverts
+under continued teaching pressure (operator's oscillation hypothesis)
+or keeps declining toward the notify line — either way the question
+is answered by data without giving up the taught gains (fat ~66->42-49,
+nopoint ~12->24-31, called-suit up). If partner recovers while
+teaching holds, the §12.11 "bleed" read was wrong and the partner
+channel joins top1-min as a soft channel; if it declines to <88
+replicated, the operator decides with the full picture.
