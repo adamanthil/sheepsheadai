@@ -482,7 +482,7 @@ def _gated_teacher_kwargs(ctx: MainPhaseContext) -> dict:
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     frozen = _build_frozen_expert(
-        ctx.args.resume,
+        getattr(ctx.args, "teacher_ckpt", None) or ctx.args.resume,
         ctx.args.critic_mode,
         ctx.args.arch,
         getattr(ctx.args, "oracle_aux_heads", False),
@@ -785,8 +785,11 @@ def run_main_phase(
                     "search_margin": float(getattr(args, "search_teacher_margin", 0.3)),
                     # Stationary expert (§12.1): workers rebuild the frozen
                     # generation-start policy from these paths; weight
-                    # refreshes touch only the live agent.
-                    "teacher_resume": getattr(args, "resume", None),
+                    # refreshes touch only the live agent. --teacher-ckpt
+                    # pins the expert independently of --resume so a mid-phase
+                    # continuation doesn't silently refreeze to student weights.
+                    "teacher_resume": getattr(args, "teacher_ckpt", None)
+                    or getattr(args, "resume", None),
                     "teacher_oracle_init": getattr(args, "oracle_init", None),
                     "teacher_gamma": float(training_agent.gamma),
                 },
@@ -1230,6 +1233,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--resume", required=True, help="main agent checkpoint to start from"
+    )
+    ap.add_argument(
+        "--teacher-ckpt",
+        default=None,
+        help="checkpoint for the frozen search-teacher expert (defaults to "
+        "--resume; set explicitly when continuing a teacher phase mid-stream "
+        "so the expert stays pinned to the certified generation-start policy)",
     )
     ap.add_argument("--league-dir", required=True)
     ap.add_argument(
