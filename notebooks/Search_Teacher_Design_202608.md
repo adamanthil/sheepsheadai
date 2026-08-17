@@ -1627,3 +1627,49 @@ UP at defender leads, WITH gate_learned rising + emission falling
 **Stop rule:** t0 trump-lead > 5% sustained, partner < 92%, or
 top1-min < 6.0 on fresh-seed replication — kill and report, no
 design changes without operator.
+
+### 12.10 Attempt 9 mid-run readout: teaching direction CONFIRMED; conviction floor near 6.0 decomposed as mostly-benign; stop rule RELAXED by operator (2026-08-17)
+
+**Probe series (seed 98765, 300g, per publish v1-v9):** called-suit
+36.1 -> 42.1 -> 43.1 -> 47.5 -> 36.1 -> 49.6 -> 42.2 -> 50.5 -> 46.8
+(center ~45 vs 36 baseline; v5 reads as a low outlier). fat 65.6 ->
+... -> 63.6 -> 56.4; nopoint 13.8 -> ... -> 13.7 -> 22.5 (both
+directional moves arriving by v8-v9, faster than the "slow drift"
+prediction). t0-lead 0.0-1.3% (noise vs 0.7% seed baseline); partner
+96.7-100%. Gate telemetry: emission 18/21/24/12/22% (no decay trend
+yet), learned 0.80-0.87 (window noise), gap of emitted pairs ~1.0-2.3.
+
+**Watch item:** deflead top1-min slid monotone v6-v9: 8.40 -> 7.88 ->
+7.13 -> 6.51. Fresh-seed replicates on v9 (12345, 55555): 6.16 /
+6.17 — the slide is real, not seed noise. Teaching metrics replicate
+at fresh seeds too (fat 57.2 both; nopoint 23.7/25.3; called-suit
+44.7/50.4; t0 <= 1.3; partner 98.1).
+
+**Decomposition (new instrument, 300g @98765, v9 vs 8M seed, medians
+at deflead nodes with >=3 legal):**
+
+| quantile gap | 8M seed | v9 | change |
+|---|---|---|---|
+| top1-top2 | 0.93 | 0.43 | -0.50 (halved) |
+| top1-median | 2.76 | 1.27 | -1.49 (halved) |
+| median-min | 5.23 | 4.14 | -1.09 (-21%) |
+| top1-min | 9.06 | 6.12 | -2.94 |
+
+~2/3 of the top1-min loss is upper-half compression (top1-top2 and
+top1-median halved) = the max-ent near-tie equalization the design
+predicts, NOT the v7 signature (v7: orderings scrambled, t0 61.5%;
+here orderings IMPROVE in the taught direction while compressing).
+The remaining ~1.1 nats is floor-side rise (median-min): entropy is
+also lifting the worst actions somewhat — the genuine erosion channel
+to keep watching. Verdict: mostly benign softening accompanying real
+teaching.
+
+**OPERATOR DIRECTIVE (2026-08-17):** "genuinely promising performance
+with some softening of the overall action distribution. Do not kill
+the run unless it is very clearly broken." Stop rule AMENDED: the
+top1-min < 6.0 tripwire is downgraded from kill-trigger to advisory
+watch item. Kill now requires clear breakage: scrambled greedy
+orderings (t0 > 5% sustained, partner < 92%), sustained outcome-stat
+degradation, or floor-side (median-min) collapse with ordering loss.
+Monitoring continues unchanged; decomposition rerun on each future
+top1-min low.
