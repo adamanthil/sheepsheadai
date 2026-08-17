@@ -1153,3 +1153,98 @@ attempt8_flattened_weights_v7.pt,
 checkpoints/progress_attempt8_frozen_expert.csv. No phase-1
 checkpoint was written (first save at 8.05M; killed at ~8.008M) —
 next attempt relaunches from the same 8M seed checkpoint.
+
+### 12.4 CORRECTION to §12.3: the flattening is NOT systemic — it is concentrated at defender-lead cells (2026-08-16, per-cell analysis on v7)
+
+**Process note:** the assistant reported this section as committed in
+the previous working session before it was actually written; it is
+recorded now, after the omission was caught against git log. The
+analysis itself was run before the report.
+
+§12.3 attributed the spread decline to "global play-head flattening
+via generalization leak." A per-cell measurement (scratchpad
+spread_by_cell.py: 300 CRN games seed 98765 DRIVEN by the v7 policy,
+both v7 and the 8M baseline evaluated on identical states with
+independent recurrent-memory streams, spread bucketed by play_cell)
+falsifies the "global" claim:
+
+| cell (sel.)         |    n | base |   v7 | delta | agree% |
+|---------------------|------|------|------|-------|--------|
+| t0-defender-lead    |  154 | 9.73 | 4.74 | -5.00 |  61.0  |
+| t1-defender-lead    |  145 | 9.50 | 3.72 | -5.77 |  81.4  |
+| t2-defender-lead    |  120 | 7.37 | 2.81 | -4.56 |  83.3  |
+| t3-defender-lead    |  115 | 4.55 | 1.31 | -3.24 |  73.9  |
+| def/ptn follows     |    — |  2.4-4.3 |  | -0.9..-1.4 | 69-80 |
+| picker cells (all)  |    — |  3.0-7.4 |  | -0.06..+0.33 | 74-96 |
+| ALL                 | 5094 | 3.94 | 2.84 | -1.10 |  78.3  |
+
+- **Picker region untouched** (t2-picker-follow delta 0.00;
+  t4-picker-lead -0.06 at 95.9% agreement): a trunk-level entropy
+  leak cannot be this role-selective. §12.3's "global" mechanism is
+  WRONG; the global median moved because defenders hold 3 of 5 seats.
+- **The collapse sits exactly on the trained conventions**: defender
+  leads had the sharpest convictions in the whole play head (9.5-9.7
+  nats) and lost 3-6 nats in ~7 updates.
+- **A fight without a stable winner**: 39% of t0-defender-lead
+  argmaxes flipped, yet greedy t0 trump-lead is only 2.1% — flips
+  scatter across fail cards instead of installing one taught action.
+  Consistent with the E9 depth-ladder finding of headroom-sized
+  SEARCH-SEED NOISE at defender leads and with certification having
+  FAILED/REVOKED every cheap arm at those cells: 2-of-3 exact-card
+  agreement occasionally coincides on noise, and each such label
+  erodes the incumbent by up to m=0.3 without consistent
+  replacement. Non-convergent by construction → emission never
+  decayed. The kill stands; the mechanism is sharper than §12.3.
+- **Operator framing correction**: earlier monitoring notes called the
+  t0 trump-lead rise movement "into the certified band." Wrong: E9
+  certified the VALUE of agreed labels (dominated by follow cells),
+  never a target trump-lead rate. The human-convention optimum for
+  t0 defender trump leads is 0%; any expert-induced rise is
+  UNVALIDATED until deep search at a strong convention-adhering
+  agent says otherwise (operator, 2026-08-16). The probe's t0>5%
+  alert threshold reverts to being treated as a genuine alarm, not a
+  "taught direction" tolerance.
+
+### 12.5 Premise correction (operator, 2026-08-16): defender leads are the TARGET, not a nuisance — instrument redesign proposal
+
+The assistant proposed removing defender-lead cells from gate_cells.
+**REJECTED by operator**: the impetus for the search-teacher path is
+a convention-adhering agent under terminal-only rewards — PARTICULARLY
+at defender leads, where PG obeyed the called-suit lead convention at
+only ~30% on the first two tricks (and falling as entropy dropped).
+Excluding those nodes optimizes the instrument at the expense of the
+mission. Proposal retracted.
+
+Redesign (PENDING operator decision; nothing built):
+
+1. **Split-arm gate — heavy committee at lead cells only.** Defender
+   leads are rare (~0.5/game) and gate-subsampled, so 4096-iter /
+   terminal-rollout committees at just those cells are affordable in
+   a way they never were cell-wide; follows keep the certified
+   1024/1. Rationale: E9 "edge-only-under-improved-continuations" +
+   June targeted study (edge appears only at 4096-to-terminal). The
+   frozen 8M expert supplies better continuations (conventions
+   84-98%) than the 30M agent the June study used.
+2. **Class-level agreement at lead cells.** The decision is
+   categorical (called-suit fail vs other fail vs trump) and the
+   convention is defined at that granularity. Require 3-replicate
+   agreement on the CLASS, emit the highest-mean-Q card within the
+   agreed class, abstain when the live argmax is already in-class.
+   Noise-robust where exact-card agreement demonstrably is not;
+   still terminal-grounded — the convention must win on outcomes to
+   be emitted.
+3. **Gating study (doubles as the convention-optimality probe).**
+   Before any relaunch: harvest ~150-200 t0-t2 defender-lead nodes
+   from 8M self-play; run the heavy committee TWICE with independent
+   seeds; measure replicate stability, class-agreement rate, and
+   label content vs conventions. Outcomes: (a) class-stable labels →
+   relaunch with split-arm gate, teacher installs the convention
+   with certified pressure at the ~30%-adherence nodes that motivated
+   the program; also directly answers whether the optimal t0
+   trump-lead rate is 0% or slightly above (deep search AT a strong
+   convention-adhering agent = the operator's stated standard of
+   evidence). (b) Labels still scatter → the optimum at these nodes
+   is genuinely flat at this playing strength; convention adherence
+   then needs tie-breaking pressure, not value pressure — a design
+   fork for the operator, and a result worth having before spending
+   more teacher compute.
