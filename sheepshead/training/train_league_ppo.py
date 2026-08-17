@@ -228,34 +228,25 @@ def _inherited_ratings(league: League, training_ratings: dict) -> dict:
 # Main phase
 # ----------------------------------------------------------------------------
 def apply_schedules(episode: int, ctx: MainPhaseContext):
+    hp = ctx.hyperparams or PFSP_HYPERPARAMS
     pct = min(100.0, 100.0 * episode / max(ctx.args.schedule_horizon, 1))
     decay = 1.0 - pct / 100.0
     ctx.training_agent.entropy_coeff_pick = (
-        PFSP_HYPERPARAMS.entropy_pick_end
-        + (PFSP_HYPERPARAMS.entropy_pick_start - PFSP_HYPERPARAMS.entropy_pick_end)
-        * decay
+        hp.entropy_pick_end + (hp.entropy_pick_start - hp.entropy_pick_end) * decay
     )
     ctx.training_agent.entropy_coeff_partner = (
-        PFSP_HYPERPARAMS.entropy_partner_end
-        + (
-            PFSP_HYPERPARAMS.entropy_partner_start
-            - PFSP_HYPERPARAMS.entropy_partner_end
-        )
-        * decay
+        hp.entropy_partner_end
+        + (hp.entropy_partner_start - hp.entropy_partner_end) * decay
     )
     ctx.training_agent.entropy_coeff_bury = (
-        PFSP_HYPERPARAMS.entropy_bury_end
-        + (PFSP_HYPERPARAMS.entropy_bury_start - PFSP_HYPERPARAMS.entropy_bury_end)
-        * decay
+        hp.entropy_bury_end + (hp.entropy_bury_start - hp.entropy_bury_end) * decay
     )
     ctx.training_agent.entropy_coeff_play = (
-        PFSP_HYPERPARAMS.entropy_play_end
-        + (PFSP_HYPERPARAMS.entropy_play_start - PFSP_HYPERPARAMS.entropy_play_end)
-        * decay
+        hp.entropy_play_end + (hp.entropy_play_start - hp.entropy_play_end) * decay
     )
     ctx.training_agent.set_learning_rates(
-        interpolated_weight(PFSP_HYPERPARAMS.lr_schedule_actor, pct),
-        interpolated_weight(PFSP_HYPERPARAMS.lr_schedule_critic, pct),
+        interpolated_weight(hp.lr_schedule_actor, pct),
+        interpolated_weight(hp.lr_schedule_critic, pct),
     )
 
 
@@ -694,6 +685,7 @@ def run_main_phase(
                 args.greedy_eval_interval > 0
                 and episode % args.greedy_eval_interval == 0
             ):
+                hp = ctx.hyperparams or PFSP_HYPERPARAMS
                 probe = greedy_health_probe(
                     training_agent, n_games=args.greedy_eval_games, seed=episode
                 )
@@ -710,34 +702,28 @@ def run_main_phase(
                     f"play-spread {probe['play_logit_spread_med']:.2f}",
                     flush=True,
                 )
-                if probe["pick_rate"] < PFSP_HYPERPARAMS.greedy_gate_min_pick:
+                if probe["pick_rate"] < hp.greedy_gate_min_pick:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: PICK rate < "
-                        f"{PFSP_HYPERPARAMS.greedy_gate_min_pick:.0f}%",
+                        f"{hp.greedy_gate_min_pick:.0f}%",
                         flush=True,
                     )
-                if probe["alone_rate"] > PFSP_HYPERPARAMS.greedy_gate_max_alone:
+                if probe["alone_rate"] > hp.greedy_gate_max_alone:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: ALONE rate > "
-                        f"{PFSP_HYPERPARAMS.greedy_gate_max_alone:.0f}%",
+                        f"{hp.greedy_gate_max_alone:.0f}%",
                         flush=True,
                     )
-                if (
-                    probe["t0_trump_lead_rate"]
-                    > PFSP_HYPERPARAMS.greedy_gate_max_trump_lead
-                ):
+                if probe["t0_trump_lead_rate"] > hp.greedy_gate_max_trump_lead:
                     print(
                         f"🚨 GREEDY GATE VIOLATION: trump-lead > "
-                        f"{PFSP_HYPERPARAMS.greedy_gate_max_trump_lead:.0f}%",
+                        f"{hp.greedy_gate_max_trump_lead:.0f}%",
                         flush=True,
                     )
-                if (
-                    probe["play_logit_spread_med"]
-                    < PFSP_HYPERPARAMS.greedy_gate_min_play_spread
-                ):
+                if probe["play_logit_spread_med"] < hp.greedy_gate_min_play_spread:
                     print(
                         "🚨 GREEDY GATE VIOLATION: play-head logit spread < "
-                        f"{PFSP_HYPERPARAMS.greedy_gate_min_play_spread} "
+                        f"{hp.greedy_gate_min_play_spread} "
                         "(play head collapsing toward uniform)",
                         flush=True,
                     )

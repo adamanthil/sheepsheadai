@@ -14,6 +14,7 @@ import random
 from dataclasses import dataclass
 
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.training.config import PFSPHyperparams
 from sheepshead.training.league import SELF_PLAY, League
 from sheepshead.training.league_teacher import _teacher_kwargs
 from sheepshead.training.league_worker import (
@@ -64,6 +65,13 @@ class MainPhaseContext:
     tx_counter: _TxCounter
     start_episode: int
     end_episode: int
+    # Seat-rotation group state carried across parallel_stream's dispatch
+    # windows (a window boundary can cut through a 5-episode group).
+    rot_state: dict | None = None
+    # Schedule/gate hyperparameters. None = the trainer's module-level
+    # PFSP_HYPERPARAMS singleton; tests inject a custom instance here
+    # instead of monkeypatching the module.
+    hyperparams: PFSPHyperparams | None = None
 
 
 def setup_episode(episode: int, ctx: MainPhaseContext):
@@ -85,7 +93,7 @@ def rotation_plan(episode: int, start_episode: int, rot_state: dict | None, ctx)
     Returns (mode, table, position, game_seed, rot_state) — rot_state is
     the (possibly newly created) group state to pass into the next call in
     the group; callers persist it across calls as needed (sequential_stream
-    a local var, parallel_stream on ctx._rot_state so it survives a window
+    a local var, parallel_stream on ctx.rot_state so it survives a window
     split).
     """
     rotate = bool(getattr(ctx.args, "seat_rotation", False))
@@ -155,12 +163,10 @@ def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
         window = max(num_workers, min(256, int(remaining_tx / AVG_TX_PER_GAME) + 1))
         end = min(ctx.end_episode, episode + window - 1)
         jobs = []
-        rot_state = getattr(ctx, "_rot_state", None)
         for ep in range(episode, end + 1):
-            mode, table, position, game_seed, rot_state = rotation_plan(
-                ep, ctx.start_episode, rot_state, ctx
+            mode, table, position, game_seed, ctx.rot_state = rotation_plan(
+                ep, ctx.start_episode, ctx.rot_state, ctx
             )
-            ctx._rot_state = rot_state
             jobs.append(
                 _Job(
                     episode=ep,
