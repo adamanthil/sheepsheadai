@@ -2392,6 +2392,56 @@ PRE-REGISTERED reads:
   ceiling, upper bound on single-gen distillation capture; measures
   SIGNAL, not transfer/transport safety.
 
+RESULT (2026-08-17, run complete, 21.7h, runs/ceiling_h2h_202608/):
+
+    EDGE +0.1800 +/- 0.0289 score/deal   (n_deals 500; ~6.2 sigma)
+    called +0.2096 +/- 0.0384 (n=250) | jd +0.1504 +/- 0.0433 (n=250)
+    win_frac 0.591; deals with >=1 deviation 57%
+    nodes searched 9099, resolved 8492 (93%), deviated 3544 (39%)
+
+VERDICT vs pre-registration: MATERIAL, decisively — the edge clears
+the +0.05 materiality bar by >4 sigma and sits ~6.2 sigma from the
+kill line (<=0). The always-on strength case is ALIVE. Magnitude
+context: +0.18 is comparable to the entire two-generation cumulative
+panel movement of the PG league lineage (~+0.21) and ~2x the best
+single-generation h2h gain (+0.089 / +0.101), against a PG regime
+that has since plateaued (v2 ablation ~zero lift over 2M eps;
+attempt-10 boundary h2h null −0.007±0.012). Standing caveats apply:
+this is a read-time one-step ceiling; distillation capture will be a
+fraction of it (25–50% capture pre-registered as success in the CE
+doc).
+
+Adherence by trick (searched nodes; acted = committee arm,
+policy = argmax counterfactual at the SAME nodes):
+
+  def_lead_no_trump  acted  t0 100.0 t1 88.5 t2 86.3 t3 77.0 t4 57.1 | ALL 87.3
+                     policy t0 100.0 t1 98.9 t2 98.5 t3 95.0 t4 83.7 | ALL 97.4
+  partner_trump      acted  t0  85.5 t1 82.4 t2 84.8 t3 73.9 t4 37.5 | ALL 81.5
+                     policy t0  97.4 t1 97.3 t2 100.0 t3 91.3 t4 87.5 | ALL 96.9
+  called_suit        acted  t0  56.2 t1 64.0 t2 57.5 t3 50.0 t4 20.0 | ALL 56.7
+                     policy t0  40.0 t1 46.0 t2 45.0 t3 69.2 t4  0.0 | ALL 45.3
+
+Pre-registered adherence reads, scored:
+- t0 called-suit RAISED: 40.0% -> 56.2% acted (+16.2 pts). CONFIRMED
+  — matches the 153:7 directionality and the §12.8 finding that
+  confident deep labels support the convention at t0.
+- partner/def-lead "hold": PARTIALLY. t0 def-lead held exactly
+  (100.0/100.0); t0 partner-trump dipped 97.4 -> 85.5 acted. Both
+  conventions show committee deviation growing with trick index
+  (def-lead t3/t4: 77/57 vs policy 95/84) — consistent with §12.16
+  ("trump appears by t2": later-trick deviations INTO trump are
+  EV-backed there) and with the E1-E3 result that conventions are
+  good on average while the committee deviates at a minority of
+  nodes. Since the total edge is +0.18 with 39% of resolved nodes
+  deviating, these deviations are on-average EV-positive or neutral;
+  per-cell attribution is not identified by this instrument.
+- Note for attempt-11 monitoring: the CE teacher installs the
+  committee's distribution, so mild pressure AWAY from late-trick
+  def-lead/partner conventions is an EXPECTED signature of teaching
+  working, not (by itself) a §12.11-style bleed — the partner guard
+  battery (n=1000, floor 90/notify 93.5) remains the arbiter of
+  harm.
+
 **13.4 Always-on installation design (operator discussion, pre-decision):**
 recommended loss = CE toward the noise-shrunk completed-Q improved
 policy pi_target(a) ∝ pi_theta(a)·exp(sigma(q_tilde(a))) — the

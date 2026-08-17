@@ -1,6 +1,7 @@
 # CE Search Teacher — Design & Implementation Plan (2026-08)
 
-Status: DESIGN APPROVED PENDING §13.3 ceiling result (operator, 2026-08-16).
+Status: APPROVED & LAUNCHED as attempt 11 (2026-08-17; §12 launch record).
+Ceiling gate passed: +0.180 ± 0.029 at n=500, decisively material.
 Successor to the resolved-pair hinge teacher (Search_Teacher_Design §12,
 attempts 5a–10, all retired). This document is the implementation contract
 for the always-on cross-entropy teacher and the accompanying cleanup: after
@@ -11,7 +12,9 @@ git history (final pre-removal commit will be tagged `pre-ce-teacher`).
 Evidence base, in one paragraph: policy-space hinge teaching proved
 transient against PG — gains and damage both squeezed out (§12.22); the
 per-decision search committee itself carries real EV (§13.3 ceiling h2h,
-interim +0.13 ± 0.04 at n=205, final result to be recorded below) and
+FINAL +0.1800 ± 0.0289 at n=500 — full record in Search_Teacher_Design
+§13.3 RESULT; called +0.210±0.038, jd +0.150±0.043; t0 called-suit
+adherence raised 40.0→56.2 by the acting committee, per prediction) and
 raises conventions at act time; the sample-efficiency frontier for
 installing search results is CE toward the completed-Q improved policy
 (ExIt → AlphaZero → Grill 2020 → Gumbel MuZero), which makes abstention,
@@ -505,3 +508,87 @@ Evaluation instruments:
 (Rafailov et al. 2023), DQfD (Hester et al., AAAI 2018) — is cited in
 Search_Teacher_Design_202608.md §12.7 and its references block, and
 belongs to the negative-results half of the write-up.)
+
+---
+
+## 12. Attempt-11 launch record & pre-registration (2026-08-17)
+
+Gate resolution: §13.3 ceiling h2h completed 2026-08-17 (21.7h,
+runs/ceiling_h2h_202608/): EDGE +0.1800 ± 0.0289 score/deal at
+n_deals 500 (~6.2σ; called +0.2096±0.0384, jd +0.1504±0.0433;
+win_frac 0.591). Clears the pre-registered +0.05 materiality bar by
+>4σ → always-on strength case ALIVE; launch authorized under the
+operator's standing directive ("once the 500-deal measurement lands
+and the conclusion is added to the notebook, set up and launch").
+Full result + adherence tables: Search_Teacher_Design §13.3 RESULT.
+
+Launch configuration (operator-directed where noted):
+
+- Seed / expert: runs/league_retention_pg/checkpoints/
+  pfsp_perceiver-shared-v2_checkpoint_8000000.pt — clean 8M seed;
+  frozen committee expert defaults to the SAME checkpoint via
+  --teacher-ckpt fallback to --resume. E9 cert carries (certified on
+  these exact weights). NO --oracle-init: the 8M checkpoint restores
+  its own trained oracle (strict load), and the flag would OVERWRITE
+  it with the stale 400k pretrain post-load (§10.2 defect record;
+  hardening warning + tests committed 0437eee). Attempt 11 is the
+  first lineage run whose deployed expert oracle matches every
+  calibrated offline instrument (E9, §12.8, ceiling, §10.3).
+- Generation length: 100,000 episodes (operator: "make the
+  generation 100k"), i.e. --main-episodes 100000; generations 3
+  (default) → 8.0M → 8.3M.
+- Emission: teacher_prob 0.1 (operator: "p=0.1"), class-blind PLAY
+  nodes, ≥2 legal, standard game, self-play worlds. R=3 @1024/1,
+  pi_gumbel-on-shrunk-Q targets, shrink_s2_global 6.95e-4 (§10.1),
+  teacher_coeff 1.0, teacher_epochs 4 — all trainer defaults.
+- Guards (in-trainer, §3 two-tier): partner hard floor 90 /
+  notify 93.5 (n=1000), t0 trump-lead ceiling 5.0 → SystemExit(3);
+  boundary cert 3 seeds × 1000 games on across-seed means + CRN h2h
+  vs fixed anchor, exit 4 on fail; refreeze only on cert pass.
+- Run dir: runs/league_ce_teacher11/ — league/ pool copied from
+  teacher10 (36 members, current_generation 33); entropy sidecar
+  copied from the 8M lineage (v1 format, migrates bumplessly to v2
+  on first update).
+
+Pre-registered expectations (finalizing §9 with concrete numbers):
+
+1. Self-retirement: mean KL(target‖policy) at labeled nodes DECAYS
+   within each generation (the signature attempt 10 never showed).
+   Smoke baseline at 8M weights: KL ≈ 0.046 at n=20 nodes — small
+   because most nodes abstain into the policy; the read is the
+   TREND on the labeled subset, not the level.
+2. Conventions: called_suit t0 adherence rises from ~43-45 (attempt-10
+   boundary read 43.3; ceiling policy-arm 40.0) toward the committee's
+   acted 56.2 and HOLDS while teaching continues — no consolidation
+   phase exists to revert it. Partner-trump ≥ 93.5 n=1000 THROUGHOUT
+   (gentleness claim; attempt 10 bled to 80.9 under the hinge).
+   Expected-and-benign: mild late-trick (t2+) softening of def-lead /
+   partner adherence toward the committee's acted profile (§13.3
+   RESULT tables) — the guard battery, not adherence drift alone,
+   arbitrates harm.
+3. Strength: gen-1-end h2h vs 8M seed captures 25–50% of the ceiling
+   → +0.045 to +0.090 expected band; ≥ +0.02 at 2σ = teaching signal
+   confirmed; ≤ 0 after a full gen with healthy KL decay = CE
+   transfer failure, stop and diagnose before gen 2.
+4. Entropy: play Hn within ±0.03 of target with alpha ≥ 0; sustained
+   negative alpha = the teacher injects entropy after all →
+   investigate before gen 2 (v2 signed range −0.05..0.25 exists
+   precisely to absorb this without saturation).
+5. Emission health: labeled-node rate ≈ p·(play nodes) with ~90%+
+   resolution (ceiling instrument: 93%); near-zero emission or flat
+   adherence = ε/shrink miscalibration → fall back per §10.3 caveat
+   (class pooling) rather than raising coefficients.
+
+Launch command (from master, post-merge; nohup background):
+
+    uv run python -m sheepshead.training.train_league_ppo \
+      --resume runs/league_retention_pg/checkpoints/pfsp_perceiver-shared-v2_checkpoint_8000000.pt \
+      --league-dir runs/league_ce_teacher11/league \
+      --run-name league_ce_teacher11 \
+      --teacher --main-episodes 100000
+
+(teacher_prob 0.1, R 3, iters 1024, coeff 1.0, epochs 4,
+generations 3, oracle critic mode, guard/cert defaults all from
+league_cli defaults — verified pre-launch; §6 micro-smoke exercised
+emission, guards, cert+refreeze chain, exploiter gate, crash-resume
+with --teacher-ckpt pin, and the signed-alpha clamp end-to-end.)
