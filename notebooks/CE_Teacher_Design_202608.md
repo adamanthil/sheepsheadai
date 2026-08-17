@@ -357,6 +357,25 @@ w and tilt direction are invariant to both).
 - `visualizations/dump_ismcts_trace.py` (uncommitted scratch from the
   explorer work) still references the removed gate_* SearchConfig
   fields and will need updating if it is ever committed.
+- **--oracle-init finding (2026-08-16, attempt-11 launch prep;
+  operator caught it)**: the flag OVERWRITES the oracle critic AFTER
+  the resume load, in both the training agent and the frozen teacher
+  expert (same order pre-refactor — verified against a7a0744's
+  train_league_ppo). It exists for resuming PRE-oracle checkpoints
+  (the original Jul-25 retention launch, where the seed carried no
+  oracle_state_dict); on a post-oracle resume it silently downgrades
+  the checkpoint's trained oracle to the 400k pretrain. The 8M seed
+  checkpoint DOES carry oracle_state_dict + oracle_optimizer, so
+  attempt 11 launches WITHOUT --oracle-init. Historical footnote:
+  attempts 9 and 10 inherited the flag by launch-recipe copy-paste,
+  so their training-time teacher experts evaluated leaves with the
+  400k-pretrain oracle while every offline instrument (E9 cert, §12.8
+  gating study, ceiling h2h, §10.3 verification) used the
+  checkpoint's 8M oracle via load_agent — an instrument/deployment
+  oracle mismatch. (Not retro-blamed for §12.4 scatter: the §12.8
+  study measured high scatter WITH the 8M oracle.) Dropping the flag
+  aligns attempt-11's deployed teacher with the calibrated
+  instruments for the first time in the teacher lineage.
 
 ### 10.3 Fresh-draw cell verification (§1.2 criteria (a)/(b)), run 2026-08-16
 
