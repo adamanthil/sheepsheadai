@@ -2463,3 +2463,59 @@ ties belongs here, not in labels). Transport not structurally
 excluded (adapter composes if guards demand); attempt-11 shape:
 always-on, no consolidation phases, per-gen expert refresh on
 absolute-anchor cert, guard battery unchanged.
+
+**13.5 Called-suit t0 exception structure (operator question, 2026-08-17;
+instrument analysis/called_suit_exceptions.py, run
+runs/called_suit_exceptions_202608/, n=250 fresh nodes).** Question:
+the human convention is UNCONDITIONAL (defender leads called suit at
+t0 whenever held) — where exactly is that wrong in EV? Instrument:
+greedy 8M self-play to the t0 lead; at defender-on-lead nodes holding
+a called-suit fail + alternative, the certified committee (lockstep
+R=3 @1024/1, 8M weights = the CE teacher's expert) evaluates the
+node; per-node categories from the PRODUCTION target builder:
+SUPPORT (argmax called / mass toward), AGAINST (material, argmax
+non-called, mass away), NEUTRAL (shrinks to abstention). Overall:
+151 SUPPORT (60%) / 55 AGAINST (22%) / 44 NEUTRAL (18%).
+
+THE EXCEPTION STRUCTURE IS ALMOST ENTIRELY "SINGLETON, LOW":
+
+    holding                n    SUPPORT  AGAINST  NEUTRAL
+    2+ called cards        92     85%      12%      3%
+    singleton 10           25     76%      20%      4%
+    singleton K            33     52%      30%     18%
+    singleton 7/8/9       100     37%      29%     34%
+
+- With 2+ called-suit cards (or the singleton 10 — despite feeding
+  10 points into the forced trick) the convention is simply right.
+- The contested region is a singleton LOW called card (7/8/9): only
+  37% clear support, 29% actively against, 34% wash. The "always"
+  rule is really "always, except think with a bare low one."
+- What search leads instead (55 AGAINST nodes): NEVER trump (0/55);
+  a fail from another suit, usually a POINT card from a short suit —
+  10 x17, K x16, A x6 (39/55), chosen-suit length 1-2 in 46/55.
+  Feature echo: NEUTRAL/AGAINST singleton-low hands hold a short
+  unguarded off-suit point card 79%/66% vs 51% in SUPPORT.
+  Hypothesis (labeled as such): a bare low called card is a
+  zero-point guaranteed exit that keeps its forcing value for later,
+  so hands with vulnerable short point cards prefer to move those
+  first; with length or with the 10, the called lead dominates.
+- Seat: AGAINST mildly elevated at picker+1 (31% vs 17-24%; 37%
+  within singleton-low) — consistent with the §12.15 picker+1
+  negative pocket, but subordinate to hand shape (n=35 small).
+- Margins are SMALL: AGAINST median pooled-Q edge over the best
+  called option 0.0097 (p90 0.026), barely above the 0.006 replicate
+  noise floor and subject to the ~5x Q-overstatement at near-ties
+  (§12.17) — so the human convention's unconditional form costs
+  little per violated node; it is a good heuristic whose exceptions
+  are low-stakes refinements, exactly why class pooling reads them
+  but per-card certs cannot.
+- Consistency checks: at AGAINST nodes the 8M policy already
+  deviates (prior argmax called 18% vs 50% at SUPPORT) — the CE
+  teacher's called-suit pressure concentrates at SUPPORT nodes,
+  matching §10.3; exact-card 2-of-3 votes resolve at only 38/55
+  AGAINST nodes and match the target argmax at 27/55 — the class-
+  mass read is the identified one, per the standing §12.8 lesson.
+- Instrument note: privileged partner-seat fields recorded constant
+  (game.partner unset = 0 before the ace is revealed; t0 leader is
+  always seat 1) — dropped from analysis; all findings above are in
+  OBSERVABLE terms (hand + picker seat).
