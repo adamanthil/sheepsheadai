@@ -2085,3 +2085,331 @@ stops at 93.5); t0-trump ~0; h2h vs seed >= 0. Failure reads: near-
 zero emission with flat adherence = within-fail signal too thin at
 0.03 (fallback: same-suit-as-called class pooling); guard stop =
 transport pressure still too high even at material-only emission.
+
+### 12.20 Attempt 10 partner bleed REPLICATED at ~8.024M (2026-08-14 window; probe v18): notify-only alert, decision pending
+
+Offline greedy probes (n=300/probe, published payloads v1-v18, ~24k
+episodes into the teacher phase) tracked a healthy arc for everything
+EXCEPT partner trump leads: t0 spiked to 4.4% then receded to 0.0
+(transient, as predicted); top1-min V-shaped 8.9 -> 4.2 -> ~9.1
+(recovered); spread settled ~2.5-2.7; taught called-suit direction
+noisy around baseline. Partner, after oscillating 93.6-100, slid
+FOUR consecutive probes: 97.8 (v15) -> 93.5 -> 92.6 -> 82.5 (v18,
+fixed seed 98765). Fresh-seed replication per the §12.12 protocol
+CONFIRMS the level: seed 11111 -> 82.6, seed 22222 -> 75.3
+(baseline 96.5). Play entropy creep corroborates the mechanism
+(Hn play 0.52 at launch -> 0.63, roughly linear, controller not
+containing it; hinge dw AND dl positive = mass pulled into pair legs
+from outside actions every update).
+
+Reads:
+- eps 0.03 + resolved pairs did NOT protect the untaught partner
+  convention. Transport bleed at ~14% emission is sufficient; the
+  §12.19 failure read "guard stop = transport pressure still too
+  high" is the branch we are on.
+- Deficit is DEEPER at the same phase age than the one attempt 9 was
+  killed over (88-92 at ~22k eps), despite the doubled prob being
+  chosen because material pairs are sparser. Per-pair transport
+  damage appears worse, not better, at material-only emission —
+  plausibly because surviving pairs carry larger hinge gradients
+  (bigger gaps), concentrating the perturbation.
+- FAVORABLE configuration vs attempt 9: damage is ISOLATED to
+  partner (t0 clean, top1-min healthy, taught direction intact), and
+  partner is the convention with the strongest reward support
+  (+0.24 ecology-invariant, §12.16 self-healing prediction applies).
+- Probe-noise caveat discovered same window: duplicate v13 probes
+  (identical payload + seed) differed (called-suit 49.2 vs 39.7,
+  partner 94.6 vs 98.0) — unpinned torch threading flips near-tie
+  argmaxes; probe called-suit error bar is +/-8-10 pts.
+  probe_weights.py now pins threads + takes a seed argument. The
+  partner finding stands on 3 seeds x ~14-21 pt deficits, far
+  outside this noise.
+
+Status: partner < 88 is NOTIFY-ONLY under the §12.12 relaxed guards
+— operator notified (trainer left running); the in-trainer n=1000
+guard (floor 93.5) will hard-stop at 8.05M (~25k eps away) if the
+level persists. Options laid out to operator: (1) run to the guard
+stop for the authoritative n=1000 read; (2) stop now, craft
+checkpoint from v18 payload + 8M optimizer, and launch consolidation
+early — directly tests the §12.16 reward-channel healing hypothesis
+(recommended); (3) abandon the attempt. Decision pending.
+
+**§12.20 addendum (v19, ~8.028M):** collapse ACCELERATING, not
+stabilizing — v19 partner 65.9 (fixed seed) / 76.6 (fresh seed
+44444); per-probe deltas −4.3, −0.9, −10.1, −16.6. All other metrics
+still clean (t0 0.0, top1-min ~9, taught direction intact). Payload
+retention discovered to prune old versions: pre-bleed v15-v17 already
+deleted; v18/v19 archived to payload_archive/ + continuous archiver
+started. Operator pushed twice; recommendation upgraded to STOP NOW
++ consolidate from v18 (~82 partner — deep enough to test §12.16
+healing, shallow enough to be in the historically-recovered range)
+rather than waiting ~13h for the 8.05M guard stop.
+
+**§12.20 CORRECTION (v20-v21, ~8.031M):** the "accelerating collapse"
+read is WRONG — partner self-recovered 65.9 -> 91.7 -> 91.3 within
+~3k episodes with no intervention (fixed-seed probes; trough was
+fresh-seed replicated so both trough and rebound are real). Dynamics
+are VIOLENT OSCILLATION WITH A RESTORING FORCE — the operator's
+"fluctuating under novel pressure, expect stabilization" hypothesis
+and the §12.16 reward-channel prediction (partner +0.24 reward
+support) operating DURING teaching, not just in consolidation. The
+stop-now recommendation is WITHDRAWN; run continues on-design to the
+8.1M cap. Open risk: the 8.05M n=1000 guard (floor 93.5) samples one
+phase of an oscillation with ~65-98 swing — a trip is likely on
+timing alone and should be treated per the two-tier protocol
+(checkpoint + fresh-seed replicate + relaunch with lowered floor if
+transient), not as a verdict. Amplitude itself remains a finding:
+excursions this deep were never seen in attempt 9 (whose probes only
+reached 88) — prob 0.02's higher transport pressure is the plausible
+driver of both the deeper trough and the faster recovery cycle.
+
+**§12.20 entropy diagnosis (~8.033M, Hn play 0.65):** the creep
+(0.52 -> 0.65, roughly linear) is CONTROLLER SATURATION, not target
+drift: play target intact at 0.476, play alpha pinned at its 0.001
+floor. The controller's only actuator is the entropy BONUS
+coefficient — it cannot oppose the hinge's injection (pair-leg mass
+pulls, Δw AND Δl > 0 every window, plus the designed near-tie
+entropy term), only stop contributing. Entropy will therefore rise
+for the remainder of the teacher phase by construction.
+PRE-REGISTERED consolidation prediction: with the teacher off, PG
+re-sharpening should decay Hn play back toward the 0.476 target; if
+it does not, the softening is structural damage, not pressure.
+Next-iteration fixes (either/or): allow negative alpha (entropy
+penalty) on annealed heads during teacher phases; or shrink/remove
+the near-tie entropy term in the hinge loss.
+
+### 12.21 GUARD STOP at 8.05M (n=1000 partner 80.9): replicated 82.3/82.0 — teacher phase ended 50k early, decision package
+
+The in-trainer adherence guard fired on schedule: n=1000 seed 98765
+at ep 8,050,000 -> called-suit 46.9%, t0-trump 0.4%, partner-trump
+80.9% < 93.5 floor. Checkpoint saved (checkpoint_8050000.pt), exit 3.
+Fresh-seed n=1000 replicates (13579, 24680) on the stop checkpoint:
+partner 82.3 / 82.0, called-suit 41.7 / 50.9, t0 0.0 / 0.2, spread
+1.93 / 1.95. VERDICT: settled partner level ~81-82 (15-pt deficit) —
+the n=300 probes' ~88 read high on thin node coverage (they also
+oscillate +/-10; the n=1000 trio agrees within 1.5 pts). The §12.20
+oscillation is real but oscillates around a DEGRADED center that
+drifted down as teaching continued (early probes ~96-97, mid ~89-92,
+stop ~81-82) — restoring force wins battles, loses ground on average
+while emission pressure persists.
+
+Mid-phase scoreboard (50k eps of teaching): called-suit 44.7 -> ~47
+(+2, direction right, target 50s-60s); t0 ~0 intact; partner 96.5 ->
+~81.5; Hn play 0.52 -> 0.65+ (controller saturated, §12.20); spread
+grinding down. Adaptive exit was NOT approaching (emission cycled
+10-18%, learned peaked 0.93 < 0.95x3) — the remaining 50k to cap was
+plateaued teaching at ongoing transport cost.
+
+Options to operator:
+(A) resume teacher to the 8.1M cap w/ lowered floor — 50k more
+    plateaued teaching, center likely drifts further; weak case.
+(B) EARLY CONSOLIDATION (recommended): write
+    checkpoints/teacher_phase_done_gen33.json, resume from
+    checkpoint_8050000 w/ --guard-partner-floor 70 (critical-only so
+    healing isn't re-tripped at 8.10M); consolidation to 8.25M then
+    exploiter gate. Tests the two §12.20 pre-registered predictions:
+    partner re-anchors toward 96.5 (reward channel, +0.24) and Hn
+    play decays toward the 0.476 target. Boundary n=1000 + h2h then
+    adjudicate cert: keep the +2 called-suit w/o paying partner = the
+    whole program question in one number.
+(C) abandon attempt 10.
+Decision pending (guard stop = designed operator-review point).
+
+**§12.21 addendum — consolidation mid-point (8.10M, n=1000 guard):**
+called-suit 39.9% / t0 2.4% / partner-trump 99.1%. Both §12.20
+pre-registered predictions CONFIRMED in the same read: partner fully
+healed 80.9 -> 99.1 (above the 96.5 seed baseline; Hn play also
+easing 0.65 -> ~0.62, spread 1.93 -> 2.58) — AND the taught
+called-suit gain reverted 46.9 -> 39.9, now BELOW the 44.7 baseline.
+Healing and reversion are the same PG re-anchoring force: transport
+damage to reward-endorsed conventions squeezes out, and so does
+non-reward-endorsed teaching. §12.16's asymmetry thesis now has its
+cleanest demonstration — but note called-suit was measured EV-positive
+AT t0 (+0.257@2.2σ, §12.16), so if reward truly endorses it, PG
+should NOT fully revert it; 39.9 < baseline suggests either the EV
+support is too thin per-episode to bind PG at these nodes (SNR, the
+convention-erosion rung-1 mechanism) or the probe cells
+under-sample the EV-positive subclass. Boundary battery at 8.25M
+adjudicates; greedy alone-rate 22.8% (gate line 20%) is a separate
+watch item, within historical noise band at n~60.
+
+### 12.22 Attempt 10 boundary battery (8.25M, n=1000 x 4 reads): taught gain NOT durable; damage healed; strength verdict pending
+
+Consolidation completed 8.05M -> 8.25M on the automation. Boundary
+adherence (in-trainer guard seed 98765 + fresh seeds 31415/27182/
+16180, all n=1000): called-suit 44.3/42.8/44.5/41.4 (mean 43.3 vs
+44.7 baseline; pre-registered 50s-60s = MISS — the mid-teaching
+46.9 and the 8.15M 51.0 were oscillation phases, settled value is
+baseline); partner 95.4/94.4/93.3/93.8 (mean 94.2, -2.3 vs 96.5 @
+~4sigma — marginal miss of "within ~2", vastly better than c8's
+-8.1); t0 0.2-1.1 (pass; the mid-consolidation ~3% drift
+self-corrected); top1-min 8.3-8.6 and spread ~3.2 (sharpness fully
+healed from 5.8/1.93 at the guard stop); Hn play 0.56 and falling
+(from 0.65 peak; §12.20 saturation diagnosis + healing prediction
+both confirmed). NEW: pick rate settled 36.7-38.0 vs seed ~30-33 —
+uninstructed drift, flag for h2h interpretation.
+
+Consolidation-dynamics findings (n=1000 guard series): called-suit
+46.9 -> 39.9 -> 51.0 -> 45.8 -> 44.3 — multi-sigma oscillation, so
+single-read certs are luck-of-phase; multi-seed boundary battery is
+the right instrument (adopted here). Partner healed 80.9 -> 99.1
+within 50k eps (fastest confirmation of the §12.16 reward-channel
+prediction); t0 drifted to ~3 (n=1000 replicated) then returned to
+~0.5 unforced.
+
+Pending for the verdict: gen-33 exploiter gate (running) + h2h vs
+8M seed (duplicate bridge 3000 deals, to run after exploiter frees
+cores). Emerging program conclusion: hinge teaching on the shared
+trunk is TRANSIENT against PG — it neither holds its gains nor
+(with guards + consolidation) leaves lasting damage; durable
+convention gains need reward-channel coupling, not policy-space
+pinning.
+
+**§12.22 VERDICT (run complete, all instruments in):**
+
+| criterion (§12.19 pre-reg) | result | verdict |
+|---|---|---|
+| called-suit 44.7 -> 50s-60s | 43.3 (n=1000 x4) | FAIL — taught gain not durable |
+| partner within ~2 of 96.5 | 94.2 (-2.3 @ ~4sigma) | marginal fail — small residual |
+| t0-trump ~0 | 0.2-1.1 | PASS |
+| h2h vs seed >= 0 | -0.007 +/- 0.012 (dup-bridge 3000) | PASS (null) |
+| exploiter gate | exploiter -0.112 +/- 0.014 | PASS — promoted to HOF |
+
+ATTEMPT 10 CERTIFICATION: FAIL on the teaching objective, PASS on
+safety. The complete arc: teaching moved called-suit +2 at peak
+while transport-bleeding partner to ~81 (oscillating, center
+degrading); guard stop at 8.05M; 200k eps of consolidation healed
+partner to 94-95, entropy 0.65 -> 0.56, sharpness fully restored,
+strength unchanged — and squeezed the taught gain back to baseline.
+Teaching and damage were BOTH transient: PG re-anchored everything
+to its own equilibrium.
+
+PROGRAM CONCLUSION (attempts 5a-10): policy-space teaching (margin
+hinge in any form — exact-card, pair-gap, resolved-pair, material-
+only) on a shared trunk is TRANSIENT against on-policy PG. It cannot
+durably install a convention whose per-episode reward advantage is
+too thin to bind PG at the target nodes (called-suit: EV-positive at
+t0 in aggregate, +0.257@2.2sigma, but SNR-starved per node — same
+mechanism as convention-erosion rung-1). What survives PG is what
+reward endorses; everything else needs either (a) reward-channel
+coupling (shaping at emission-gated nodes — contradicts the
+operator's no-shaping principle and E9's read-time framing; would
+need explicit operator reversal), (b) permanent maintenance
+(teacher always-on — rejected: transport bleed is the standing
+cost), or (c) architectural separation (convention head/adapter
+isolated from the PG trunk — new design space). The two-phase
+automation, materiality gate, oscillation-aware guards, and
+multi-seed n=1000 certification are VALIDATED infrastructure
+regardless. Attempt-10 artifacts: boundary ckpt 8250000 (= HOF
+anchor), payload_archive/ incl. teacher_phase v18-v35 oscillation
+arc, probe_a10.log (full trend), h2h_boundary_vs_seed.log,
+exploiter gen33 gate_result.json.
+
+**§12.22 metric clarification (operator question, post-verdict):**
+the "called-suit" figures cited throughout §12.19-12.22 are the
+greedy_health_probe canary: DEFENDER leads on ALL tricks while the
+called suit is unled (holding a called-suit fail + alternative) —
+NOT trick-0-only (the probe was t0-only until 2026-07-28, then
+broadened). Calibrated instrument (called_suit_probe, 2000 deals,
+CRN seed) with the trick split, seed vs boundary:
+all-tricks 42.8 -> 44.9 (+2.1); TRICK-0 40.4 -> 41.4 (+1.0, null at
+SE ~2-3); first-opp 42.8 -> 44.6. CONFIRMED: t0 adherence — the
+deployable-priority convention, and the node class where the EV
+support (+0.257@2.2sigma) actually lives — is ~40% and statistically
+UNMOVED by the full teacher phase + consolidation. The aggregate
+null was not masking a t0 gain. Attempt-11 implication: pre-register
+certification on the calibrated instrument's trick0 split ("rises
+from ~40 AND HOLDS while teacher on"), not the all-tricks canary
+(fine for in-run trend, wrong for cert).
+
+### 13. Post-attempt-10 alternatives (operator thought exercises, measured where possible)
+
+**13.1 Deploy-time search feasibility — MEASURED.** Reliability floor
+at t0 called-suit nodes is the committee, not a budget: single
+searches self-agree 38-53% at near-ties at ANY budget (§12.8);
+certified-reliable = 1024/1 x R=3, sign-consistent, 0%-harm (E9),
+94% match to heavy confident class at t0. Below 1024: contested
+cells fail cheap fixed arms (cert); 384-iter raw-Q inverts at 25-34%
+of defender leads (readout study). Wall-clock measured on idle
+M-series, 8M policy, real t0 lead nodes (6 legal): 22.4s per 1024/1
+search, 12.0s per 512/1 -> certified R=3 ~ 67s/decision vs the 1-2s
+deploy target = 30-60x gap. Optimization ceiling (lockstep committee
+batching ~3-5x, MPS ~5-10x) reaches ~2-5s on Apple-Silicon GPU;
+deploy VPS (CPU, $10 Vultr) is out of reach. VERDICT: offline/
+analysis-grade only (consistent with the 2026-06 "offline-grade,
+not real-time" finding); selective triggering (unforced + top-2 gap
+threshold, abstain->policy) noted if ever revisited.
+
+**13.2 Convention adapter (architectural separation) — design
+sketch.** Tiny zero-init module: additive logit deltas at play
+nodes, reads stop-grad trunk features + node-class embedding,
+clamped. GRADIENT ROUTING is the mechanism: hinge -> adapter params
+ONLY; PG -> trunk/heads ONLY (adapter stop-grad in PG loss, included
+in log-probs for ratio correctness). Structurally excludes BOTH
+measured failure modes: no transport (hinge never touches trunk), no
+reversion (PG cannot write adapter). Residual risks: (1) PG
+counter-offsets through the trunk head — weak by the SNR symmetry
+argument (PG's gradient at these nodes is the measured 50k-eps-scale
+restoring force); (2) trunk representation drift staling the
+adapter -> periodic light re-teaching. Advantage over always-on:
+teach-then-freeze becomes DURABLE (search stops at equilibrium;
+maintenance ~ zero; adapter ships in weights, no inference cost).
+Cost: arch change (registry + capture_arch_goldens gate). Always-on
+can migrate to adapter later: same teacher/emissions, re-routed
+gradients. Operator deciding between full-coverage always-on
+(§12.22 conclusion path) and adapter; deploy search ruled out for
+the live game.
+
+**13.3 Ceiling h2h LAUNCHED (2026-08-16; instruments committed 7283fb9 +
+e9ac407).** Operator-directed measurement of the always-on teacher's EV
+ceiling. Prerequisite built first: ISMCTSTeacher.search_committee —
+lockstep committee batching (R replicates' network rounds merged into
+single forward calls; R=1 bit-equal to serial search by test; goldens
+bit-identical; 1.66x measured at real t0 nodes). Harness:
+analysis/ceiling_h2h.py — hero = 8M seed weights + E9 read-time
+committee (R=3 x 1024/1, 2-of-3 pi_gumbel-argmax agreement, abstain ->
+policy) at EVERY unforced play node, class-blind per operator (the
+top-2-gap trigger was measured to capture only 35% of policy-WRONG t0
+called-suit nodes at threshold 0.5 — argmax->called-suit gap median
+1.37 nats — so confidence triggers are circular and excluded).
+Instrument = h2h_duplicate design (all 5 seats/deal, all-anchor field,
+both modes, seed-42 deal schedule); no-deviation deals score exactly 0
+(perfectly zero-centered null). 250 deals/mode (n_deals 500),
+7 workers; smoke-validated (3.4 searched nodes/game, ~72% resolution
+at the smoke budget). Run dir runs/ceiling_h2h_202608/.
+
+PRE-REGISTERED reads:
+- edge <= ~0 at 2se: NO distillable EV signal at the certified budget
+  -> always-on strength case dies; conventions-only paths (adapter)
+  remain.
+- edge >= +0.05 at 2se: material per-generation ceiling; weigh against
+  the permanent ~4-6x always-on throughput tax and distillation loss.
+- in between: sequential-extend toward 500/mode before judging.
+- adherence (acted arm, by trick): committee predicted to RAISE t0
+  called-suit (153:7 directionality) and hold partner/def-lead;
+  policy-argmax counterfactual at identical nodes = the baseline arm.
+- caveats standing: one-step improvement = lower bound on the iterated
+  ceiling, upper bound on single-gen distillation capture; measures
+  SIGNAL, not transfer/transport safety.
+
+**13.4 Always-on installation design (operator discussion, pre-decision):**
+recommended loss = CE toward the noise-shrunk completed-Q improved
+policy pi_target(a) ∝ pi_theta(a)·exp(sigma(q_tilde(a))) — the
+pi_gumbel readout AS the training target (ExIt -> AZ -> Grill 2020 ->
+Gumbel MuZero lineage; MPO-family trust region). Committee replicate
+SEs shrink q-diffs (empirical Bayes / calibrated floor): below-
+confidence -> target = policy -> ZERO gradient (abstention as fixed
+point, no incumbent tax); ties -> prior-preserving (entropy-neutral
+teacher — resolves the §12.20 controller-saturation conflict
+structurally); confident gaps -> evidence-scaled sharpening. One node
+= full improved distribution (vs <=8 hinge pairs at same search cost)
+= the sample-efficiency claim. Self-limiting CE gradient (vanishes on
+conformance) vs hinge's standing pressure; modest fixed coefficient
+jointly with PPO on same minibatches; reward-aligned at material
+nodes per §12.16 asymmetry + §13.3 ceiling EV. Entropy knobs
+separate: eta (per-node evidence scale, not a schedule) vs alpha
+(ambient controller, needs negative capability; uniform-mixing at
+ties belongs here, not in labels). Transport not structurally
+excluded (adapter composes if guards demand); attempt-11 shape:
+always-on, no consolidation phases, per-gen expert refresh on
+absolute-anchor cert, guard battery unchanged.
