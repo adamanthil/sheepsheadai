@@ -22,7 +22,7 @@ import pytest
 
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.training import train_league_ppo
+from sheepshead.training import league_gates, train_league_ppo
 
 
 class _StubAgent:
@@ -75,9 +75,10 @@ def _patch_probe_and_h2h(
             "deviating_frac": 0.0,
         }
 
-    monkeypatch.setattr(train_league_ppo, "greedy_health_probe", fake_probe)
-    monkeypatch.setattr(train_league_ppo, "paired_edge", fake_paired_edge)
-    monkeypatch.setattr(train_league_ppo, "load_agent", lambda path: _StubAgent())
+    # run_boundary_cert lives in league_gates; its collaborators resolve there.
+    monkeypatch.setattr(league_gates, "greedy_health_probe", fake_probe)
+    monkeypatch.setattr(league_gates, "paired_edge", fake_paired_edge)
+    monkeypatch.setattr(league_gates, "load_agent", lambda path: _StubAgent())
 
 
 # ----------------------------------------------------------------------------
@@ -214,13 +215,13 @@ def test_run_boundary_cert_uses_configured_seed_count(tmp_path, monkeypatch):
             "called_suit_lead_rate": 50.0,
         }
 
-    monkeypatch.setattr(train_league_ppo, "greedy_health_probe", fake_probe)
+    monkeypatch.setattr(league_gates, "greedy_health_probe", fake_probe)
     monkeypatch.setattr(
-        train_league_ppo,
+        league_gates,
         "paired_edge",
         lambda *a, **k: {"edge": 0.0, "se": 0.0, "win_frac": 0.5, "n_deals": 1000},
     )
-    monkeypatch.setattr(train_league_ppo, "load_agent", lambda path: _StubAgent())
+    monkeypatch.setattr(league_gates, "load_agent", lambda path: _StubAgent())
 
     args = _make_cert_args(cert_seeds=5, cert_games=17)
     train_league_ppo.run_boundary_cert(
