@@ -1800,3 +1800,54 @@ nopoint ~12->24-31, called-suit up). If partner recovers while
 teaching holds, the §12.11 "bleed" read was wrong and the partner
 channel joins top1-min as a soft channel; if it declines to <88
 replicated, the operator decides with the full picture.
+
+### 12.13 Continuation readout (2026-08-17, probes c1-c8): taught behavior FULLY REVERTED while the gate reports its pairs SATISFIED — PG routes argmax around pinned pairs
+
+**Timeline.** After the §12.12 restart, taught metrics held ~4 probes
+(fat 45-52, nopoint 22-26) then stepped back over c4-c8 to baseline:
+fat 62.6 fixed-seed / 60.2/61.8/63.5 fresh (baseline 65-67), nopoint
+13-17 (baseline 10-14). Replicated on 4 seeds at c5 AND c8 — not
+probe noise, and at ~8+ updates past restart, not the stale-Adam
+transient (that window closed by ~c3). top1-min recovered 6.1 -> 8.1
+(baseline ~8.4): the whole distribution re-sharpened toward the seed
+shape. Partner: stable-low ~89 mean with single-seed excursions
+(84.2 fixed at c8; fresh 88.2-91.5) — notify line (<88 replicated)
+NOT crossed. t0 0.0-1.2%, outcomes healthy throughout. Play Hn
+climbed 0.63 -> 0.66.
+
+**The key inconsistency.** While probe-visible teaching reverted,
+gate telemetry stayed nominal (emission 16-32% no rise, learned
+0.75-0.85 no fall, hinge loss small). If the emitted pairs themselves
+were being violated, learned would fall and emission rise. They
+aren't. Mechanism: the hinge constrains ONLY committee-resolved pairs
+(this-nopoint-card ≻ that-fat-card, by ≥m log-prob). PG can satisfy
+every such pair while promoting a DIFFERENT fat card — one never in a
+resolved pair at that node (committee abstained: near-tie, sign flip,
+or simply unvisited) — back to argmax. Pairwise constraint
+satisfaction does not pin argmax behavior; probability mass flows
+through the unconstrained complement. The §12.8 finding that exact-
+card labels scatter across fail cards is the same phenomenon seen
+from the label side: the resolved set is sparse relative to the
+card-slate, and PG finds the gaps.
+
+**Status of the §12.11 "bleed" hypothesis.** Weakened: partner did
+not continue declining under continued teaching (stable ~89-90 since
+v16), consistent with the operator's oscillation read. The
+continuation cost little and produced this §12.13 mechanism finding.
+
+**Implications (for operator decision):**
+1. Continuing to 8.25M likely buys oscillation, not retention — the
+   fight is now between a pair-constrained hinge and PG argmax
+   re-routing, and PG is winning at probe states while formally
+   satisfying the constraints.
+2. The planned teacher-off consolidation from archived v15/v16 is now
+   predicted to revert (PG reverts taught argmax even WITH the hinge
+   on) — running it would confirm cheaply, but the §12.7 premise
+   "PG audits, teacher maintains" already looks insufficient at
+   near-tie nodes without an argmax-aware constraint.
+3. Attempt-10 design direction: close the re-routing gap — e.g.,
+   emit pairs against the live argmax when it is not the committee
+   winner (winner ≻ current-argmax, subject to the same resolution
+   rule), or a small node-level top-set mass term. Keeps the
+   resolved-pair machinery; adds the one constraint PG is exploiting
+   the absence of.
