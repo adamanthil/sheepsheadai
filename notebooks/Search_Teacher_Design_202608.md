@@ -1297,3 +1297,17 @@ Readouts pre-registered:
 5. Per-arm wall-clock totals.
 Smoke anecdote (n=1, not evidence): heavy search self-agreed
 (106/106) while two 1024/1 reps scattered (95/88).
+
+**§12.6 amendment (operator clarification, 2026-08-16):** pi_gumbel
+is the program's adopted search readout — NOT top@Q or visit counts
+(§12.6's original readout-3 wording cited the June-audit top@Q
+lesson, which predates the Search_Readout adoption; corrected).
+Labels in the study remain pi_gumbel argmax throughout (the harness
+already does this). Empirical wrinkle found while wiring it: at
+study budgets pi_gumbel's MASS is one-hot (sigma scale grows with
+visits; runner-up mass underflows to exactly 0.0), so it cannot
+serve as a graded confidence signal. The margin gate is therefore
+calibrated on per-rep root Q in Q-units (the scale of harm eps and
+headroom), while the emitted action stays the pi_gumbel argmax.
+Study relaunched (~15 min sunk) with per-rep piGumbel + rootQ on all
+arms recorded per replicate.
