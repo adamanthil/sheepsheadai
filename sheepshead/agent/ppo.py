@@ -282,6 +282,9 @@ class PPOAgent:
         self.critic_mode = critic_mode
         self.oracle_critic = None
         self.oracle_optimizer = None
+        # True once load() restores oracle weights from a checkpoint; lets
+        # launch code warn before --oracle-init overwrites a trained oracle.
+        self.oracle_loaded_from_checkpoint = False
         self.oracle_value_loss_coeff = 1.0
         # Oracle aux-head loss coefficients (mirror the limited critic's
         # secret/points coefficients; inert without oracle aux heads).
@@ -2627,6 +2630,7 @@ class PPOAgent:
         # expected baseline→oracle warm start. Limited agents ignore the keys.
         if self.oracle_critic is not None:
             if "oracle_state_dict" in checkpoint:
+                self.oracle_loaded_from_checkpoint = True
                 missing, unexpected = self.oracle_critic.load_state_dict(
                     checkpoint["oracle_state_dict"], strict=False
                 )

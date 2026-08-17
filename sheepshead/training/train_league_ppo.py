@@ -83,7 +83,7 @@ from sheepshead.training.league_streams import (
     parallel_stream,
     sequential_stream,
 )
-from sheepshead.training.league_teacher import TeacherSettings
+from sheepshead.training.league_teacher import TeacherSettings, warn_if_oracle_overwrite
 from sheepshead.training.league_worker import league_worker_init, publish_weights
 from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.pfsp_runtime import interpolated_weight
@@ -1005,6 +1005,7 @@ def _build_training_agent(args) -> tuple[PPOAgent, int]:
             f"epochs={int(getattr(args, 'teacher_epochs', 4))}"
         )
     if getattr(args, "oracle_init", None):
+        warn_if_oracle_overwrite(training_agent, args.oracle_init, args.resume)
         oracle_state_dict = torch.load(
             args.oracle_init, map_location="cpu", weights_only=True
         )

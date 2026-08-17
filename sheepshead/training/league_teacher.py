@@ -52,6 +52,23 @@ class TeacherSettings:
         )
 
 
+def warn_if_oracle_overwrite(agent: PPOAgent, oracle_init: str, resume: str) -> None:
+    """Loud banner before --oracle-init clobbers a trained oracle.
+
+    The flag exists for resuming PRE-oracle checkpoints (no
+    oracle_state_dict — the warm start is the only trained init
+    available). When the resume checkpoint already restored oracle
+    weights, applying the init afterwards DOWNGRADES a trained critic to
+    the pretrain — this silently shipped in the attempt-9/10 launch
+    recipes (CE_Teacher_Design §10.2)."""
+    if getattr(agent, "oracle_loaded_from_checkpoint", False):
+        print(
+            f"⚠️  --oracle-init {oracle_init} is OVERWRITING the trained oracle "
+            f"critic restored from {resume}. This flag is meant for pre-oracle "
+            "checkpoints; drop it unless the downgrade is intentional."
+        )
+
+
 def build_frozen_expert(
     resume: str,
     critic_mode: str,
@@ -77,6 +94,7 @@ def build_frozen_expert(
     )
     frozen.load(resume, load_optimizers=False)
     if oracle_init:
+        warn_if_oracle_overwrite(frozen, oracle_init, resume)
         oracle_state_dict = torch.load(
             oracle_init, map_location="cpu", weights_only=True
         )
