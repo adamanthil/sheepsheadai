@@ -1577,3 +1577,53 @@ Readouts (t0 / t1 / t2):
   resolved-pair emission per §12.7; loss/lambda/delta/frozen-expert/
   two-phase-generation unchanged; throughput ~ attempt 8
   (~1.5-1.7 eps/s teacher phase at prob 0.01).
+
+### 12.9 Resolved-pair teacher BUILT + attempt 9 LAUNCHED at R=5 (operator-approved, 2026-08-16)
+
+**Build (commits 8b8c814 + 1f6d904, 375 fast + 17 slow search tests
+green):**
+- Gate (pfsp_runtime): committee of R full replicates (no early stop
+  — pair statistics need every table), root_q per replicate, §12.7
+  emission rule (sign-consistent all R + |d-bar| >= max(gate_pair_eps
+  0.01, gate_pair_z 2.0 * s/sqrt(R))), teaching filter (live gap >=
+  m => counted satisfied, not emitted), strongest-evidence cap
+  (gate_max_pairs 8, t-stat order). Emits search_pairs =
+  [[winner, loser, anchor_w, anchor_l], ...] (1-based ids + LIVE
+  label-time log-prob anchors) through the normalization whitelist
+  (§10.3 hardening retained: sentinel pairs are loss no-ops).
+- Loss (ppo.py): anchored pair-gap hinge unchanged in form, extended
+  to K<=8 pairs per row ([S,K,4] tensor field replaces
+  search_target/search_ref/search_prior); per-PAIR evidence weight
+  (one pair = lambda PG samples); PG-mask semantics unchanged.
+  Diagnostics: hinge, pairs/row, d_star (winner promotion), d_ref
+  (loser suppression).
+- Config: gate_agreement/gate_target/gate_target_smooth REMOVED
+  (exact-card one-hot gate retired per §12.8); new gate_pair_eps /
+  gate_pair_z / gate_max_pairs / gate_emit_margin (wired from
+  --search-teacher-margin); gate_replicates default 5
+  (--search-replicates, operator-selected R=5).
+- Telemetry: gate line = searched / emitting / pairs / learned
+  (satisfied/resolved = the self-retirement readout — should RISE
+  toward 1 as constraints are absorbed) / gap / hinge / pairs-row /
+  Δw / Δl. CSV: gate_pairs + gate_learned replace gate_agree.
+- Probe (greedy_health_probe + scratchpad probe_weights.py):
+  defender-lead (t0-2) fail-lead point composition (8M baseline: fat
+  69.4%, nopoint 10.6% at seed 98765/150g) + deflead top1-min
+  conviction floor (baseline ~8.4; v7 damage 5.2; ALERT < 6.0).
+  t0>5% restored as a REAL alarm (§12.8: confident deep labels are
+  0% trump at t0). Old max-min spread alert retired (conflates
+  benign top-compression with erosion, §12.6 addendum 3).
+
+**Attempt 9 phase-1 LAUNCH:** attempt-8 command + --search-replicates
+5 (8M -> 8.25M, prob 0.01, lambda 50 / delta 0.2 / m 0.3, 8 workers,
+entropy sidecar restored from 5a archive). Banner confirmed:
+"resolved-pair clipped margin (m=0.3, λ=50.0, δ=0.2, R=5)". Stale
+attempt-8 weight payloads removed (v7 archived). Monitors: log watch
++ per-publish probe.
+
+**Success signatures:** fat share DOWN / nopoint UP and called-suit
+UP at defender leads, WITH gate_learned rising + emission falling
+(convergence) and deflead top1-min >= ~6 (conviction floor intact).
+**Stop rule:** t0 trump-lead > 5% sustained, partner < 92%, or
+top1-min < 6.0 on fresh-seed replication — kill and report, no
+design changes without operator.
