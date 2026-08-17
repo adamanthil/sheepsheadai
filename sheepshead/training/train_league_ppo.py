@@ -56,9 +56,7 @@ import subprocess
 import sys
 import time
 from collections import deque
-from dataclasses import dataclass
 from multiprocessing import get_context
-from types import SimpleNamespace
 
 import numpy as np
 import torch
@@ -75,22 +73,39 @@ from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
 # Re-exported for compatibility: build_arg_parser moved to league_cli.py.
 from sheepshead.training.league_cli import build_arg_parser  # noqa: F401
 
+# Re-exported for compatibility: moved to league_streams.py.
+from sheepshead.training.league_streams import (  # noqa: F401
+    AVG_TX_PER_GAME,
+    MainPhaseContext,
+    _TxCounter,
+    parallel_stream,
+    sequential_stream,
+    setup_episode,
+)
+
 # Re-exported for compatibility: moved to league_teacher.py.
 from sheepshead.training.league_teacher import (  # noqa: F401
     TeacherSettings,
     _build_frozen_expert,
     _teacher_kwargs,
 )
-from sheepshead.training.leaster_watchdog import LeasterWatchdog
-from sheepshead.training.pfsp_runtime import (
-    interpolated_weight,
-    make_game_summary,
-    play_population_game,
+
+# Re-exported for compatibility: moved to league_worker.py.
+from sheepshead.training.league_worker import (  # noqa: F401
+    _LWORKER,
+    OpponentAdapter,
+    _Job,
+    _league_worker_get_member,
+    _league_worker_init,
+    _league_worker_play,
+    _Seat,
+    publish_weights,
 )
+from sheepshead.training.leaster_watchdog import LeasterWatchdog
+from sheepshead.training.pfsp_runtime import interpolated_weight
 from sheepshead.training.training_utils import (
     append_csv_row,
     ensure_csv_columns,
-    get_partner_selection_mode,
     greedy_health_probe,
     paired_edge,
     set_all_seeds,
@@ -183,9 +198,6 @@ LEAGUE_ANCHOR_EVAL_SEED = 20260701
 # share the deal stream, so probe-to-probe deltas are paired (policy-driven,
 # not deal-luck). Same seed as the offline monitoring probes (§12.17).
 ADHERENCE_GUARD_SEED = 98765
-# parallel_stream's dispatch-window sizing formula (jobs to submit per
-# pool.imap window, sized off the expected transitions/game).
-AVG_TX_PER_GAME = 26.0
 # PPO epochs per update in run_main_phase's training_agent.update() call.
 PPO_EPOCHS = 4
 
@@ -195,161 +207,6 @@ def checkpoint_path(checkpoint_dir: str, args, episode: int) -> str:
     return os.path.join(
         checkpoint_dir, f"pfsp_{getattr(args, 'arch', 'full')}_checkpoint_{episode}.pt"
     )
-
-
-class OpponentAdapter:
-    """Adapter giving a LeagueMember (or the training agent itself, for
-    SELF_PLAY seats) the .agent / .metadata.agent_id surface that
-    play_population_game expects of population opponents. The league keeps no
-    strategic profiles, so this is the whole opponent surface it needs."""
-
-    def __init__(self, agent: PPOAgent, agent_id: str):
-        self.agent = agent
-        self.metadata = SimpleNamespace(agent_id=agent_id)
-
-
-# Re-exported for compatibility: tests/callers import the historical name.
-_Seat = OpponentAdapter
-
-
-@dataclass
-class _Job:
-    episode: int
-    partner_mode: int
-    training_position: int
-    opponent_ids: list  # member_id strings; SELF_PLAY for self seats
-    weight_version: int
-    collect_oracle: bool = False  # attach oracle_state to events (critic_mode=oracle)
-    game_seed: int | None = None  # fixed deal for seat-rotated collection
-
-
-# ----------------------------------------------------------------------------
-# Worker pool (league flavor of the pfsp_runtime worker protocol: same
-# versioned-weights scheme, opponents loaded from the league members dir,
-# SELF_PLAY seats played by the worker's own current-weights copy).
-# ----------------------------------------------------------------------------
-_LWORKER: dict = {}
-
-
-def _league_worker_init(init_args: dict) -> None:
-    import torch as _torch
-
-    _torch.set_num_threads(1)
-    agent = PPOAgent(
-        len(ACTIONS),
-        arch=init_args.get("arch", "full"),
-        # Oracle-mode workers exist for the gated search teacher: the
-        # worker's ISMCTS oracle leaves must evaluate with the SAME head the
-        # main process trains (state arrives via the weight payload).
-        critic_mode=init_args.get("critic_mode", "limited"),
-        oracle_aux_heads=bool(init_args.get("oracle_aux_heads", False)),
-    )
-    seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
-    random.seed(seed)
-    _LWORKER.clear()
-    _LWORKER.update(
-        {
-            "agent": agent,
-            "members_dir": init_args["members_dir"],
-            "weight_path_base": init_args["weight_path_base"],
-            "version": 0,
-            "cache": {},
-        }
-    )
-    if init_args.get("teacher"):
-        from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-        from sheepshead.training.config import SearchConfig as _SC
-
-        cfg = _SC(
-            teacher_prob=float(init_args.get("teacher_prob", _SC().teacher_prob)),
-            teacher_replicates=int(
-                init_args.get("teacher_replicates", _SC().teacher_replicates)
-            ),
-        )
-        iters = int(init_args.get("teacher_iters", _SC().teacher_iters))
-        # Stationary expert: the teacher wraps a frozen copy of the
-        # generation-start policy, NOT the live worker agent — weight
-        # refreshes in _league_worker_play never touch it.
-        frozen = _build_frozen_expert(
-            init_args["teacher_resume"],
-            init_args.get("critic_mode", "limited"),
-            init_args.get("arch", "full"),
-            bool(init_args.get("oracle_aux_heads", False)),
-            init_args.get("teacher_oracle_init"),
-            float(init_args.get("teacher_gamma", 1.0)),
-        )
-        _LWORKER["teacher"] = ISMCTSTeacher(
-            frozen,
-            ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
-        )
-        _LWORKER["search_config"] = cfg
-
-
-def _league_worker_get_member(member_id: str) -> OpponentAdapter:
-    cache = _LWORKER["cache"]
-    seat = cache.get(member_id)
-    if seat is None:
-        # Arch-aware: members carry their architecture in checkpoint metadata
-        # (legacy members without the key are the full architecture).
-        agent = load_agent(os.path.join(_LWORKER["members_dir"], f"{member_id}.pt"))
-        seat = OpponentAdapter(agent, member_id)
-        cache[member_id] = seat
-    return seat
-
-
-def _league_worker_play(job: _Job) -> dict:
-    import torch as _torch
-
-    g = _LWORKER
-    if job.weight_version > g["version"]:
-        ckpt = _torch.load(
-            f"{g['weight_path_base']}_v{job.weight_version}.pt", map_location="cpu"
-        )
-        g["agent"].load_network_states(ckpt, source=f"weights v{job.weight_version}")
-        g["version"] = job.weight_version
-
-    opponents = [
-        OpponentAdapter(g["agent"], SELF_PLAY)
-        if mid == SELF_PLAY
-        else _league_worker_get_member(mid)
-        for mid in job.opponent_ids
-    ]
-    teacher_kwargs = {}
-    if g.get("teacher") is not None:
-        teacher_kwargs = {
-            "teacher": g["teacher"],
-            # Per-job stream: reproducible given the job, independent across
-            # jobs (episode is unique; game_seed repeats across seat
-            # rotations of one deal, so fold both in).
-            "determinization_rng": random.Random(
-                (job.episode << 20) ^ (job.game_seed or 0) ^ 0x5EA6C4
-            ),
-            "search_config": g["search_config"],
-        }
-    game, episode_events, final_scores, training_data_single, pos_to_seat = (
-        play_population_game(
-            training_agent=g["agent"],
-            opponents=opponents,
-            partner_mode=job.partner_mode,
-            training_agent_position=job.training_position,
-            reward_mode="terminal",
-            collect_oracle=job.collect_oracle,
-            game_seed=job.game_seed,
-            **teacher_kwargs,
-        )
-    )
-    return {
-        "episode": job.episode,
-        "partner_mode": job.partner_mode,
-        "training_position": job.training_position,
-        "episode_events": episode_events,
-        "final_scores": final_scores,
-        "training_data_single": training_data_single,
-        "game_summary": make_game_summary(game),
-        "seat_to_member_id": {
-            pos: seat.metadata.agent_id for pos, seat in pos_to_seat.items()
-        },
-    }
 
 
 def _inherited_ratings(league: League, training_ratings: dict) -> dict:
@@ -370,46 +227,6 @@ def _inherited_ratings(league: League, training_ratings: dict) -> dict:
 # ----------------------------------------------------------------------------
 # Main phase
 # ----------------------------------------------------------------------------
-@dataclass
-class _TxCounter:
-    """Mutable box for transitions_since_update.
-
-    Shared between run_main_phase's consuming loop (which increments it and
-    resets it to 0 after each PPO update) and parallel_stream's batch-window
-    sizing (which reads the live count to decide how many episodes to
-    dispatch before the next expected update). A plain int can't be shared
-    this way once parallel_stream is a module-level function rather than a
-    closure over run_main_phase's locals.
-    """
-
-    count: int = 0
-
-
-@dataclass
-class MainPhaseContext:
-    """Explicit bundle of the state run_main_phase's nested helpers
-    (setup_episode, apply_schedules, sequential_stream, publish_weights,
-    parallel_stream) used to close over, now that they are module-level
-    functions."""
-
-    training_agent: PPOAgent
-    league: League
-    rng: random.Random
-    args: object
-    collect_oracle: bool
-    weight_sync: dict
-    tx_counter: _TxCounter
-    start_episode: int
-    end_episode: int
-
-
-def setup_episode(episode: int, ctx: MainPhaseContext):
-    mode = get_partner_selection_mode(episode)
-    table = ctx.league.sample_table(mode, ctx.rng)
-    position = ctx.rng.randint(1, 5)
-    return mode, table, position
-
-
 def apply_schedules(episode: int, ctx: MainPhaseContext):
     pct = min(100.0, 100.0 * episode / max(ctx.args.schedule_horizon, 1))
     decay = 1.0 - pct / 100.0
@@ -467,140 +284,6 @@ def store_events_by_seat(agent: PPOAgent, events: list) -> int:
         agent.store_episode_events(by_player[pid])
         n_actions += sum(1 for ev in by_player[pid] if ev["kind"] == "action")
     return n_actions
-
-
-# -------------------- episode streams --------------------
-def sequential_stream(ctx: MainPhaseContext):
-    # Seat rotation (deal-paired collection): groups of 5 consecutive
-    # episodes share one sampled (mode, table, deal); the hero plays every
-    # seat of the same deal against the same opponents — the train-time
-    # duplicate instrument. The deal seed is drawn once per group so the
-    # cards are identical across the 5 rotations.
-    rotate = bool(getattr(ctx.args, "seat_rotation", False))
-    rot_state = {}
-    teacher_kwargs = _teacher_kwargs(ctx)
-    for episode in range(ctx.start_episode + 1, ctx.end_episode + 1):
-        game_seed = None
-        if rotate:
-            phase = (episode - ctx.start_episode - 1) % 5
-            if phase == 0 or not rot_state:
-                mode, table, _ = setup_episode(episode, ctx)
-                rot_state = {
-                    "mode": mode,
-                    "table": table,
-                    "seed": random.randrange(2**31),
-                }
-            mode, table = rot_state["mode"], rot_state["table"]
-            position = phase + 1
-            game_seed = rot_state["seed"]
-        else:
-            mode, table, position = setup_episode(episode, ctx)
-        opponents = [
-            OpponentAdapter(ctx.training_agent, SELF_PLAY)
-            if entry == SELF_PLAY
-            else OpponentAdapter(entry.agent, entry.member_id)
-            for entry in table
-        ]
-        game, events, scores, training_data_single, pos_to_seat = play_population_game(
-            training_agent=ctx.training_agent,
-            opponents=opponents,
-            partner_mode=mode,
-            training_agent_position=position,
-            reward_mode="terminal",
-            collect_oracle=ctx.collect_oracle,
-            game_seed=game_seed,
-            **teacher_kwargs,
-        )
-        yield (
-            episode,
-            mode,
-            position,
-            events,
-            scores,
-            training_data_single,
-            make_game_summary(game),
-            {pos: s.metadata.agent_id for pos, s in pos_to_seat.items()},
-        )
-
-
-def publish_weights(ctx: MainPhaseContext):
-    ctx.weight_sync["version"] += 1
-    path = f"{ctx.weight_sync['base']}_v{ctx.weight_sync['version']}.pt"
-    payload = {
-        "encoder_state_dict": ctx.training_agent.encoder.state_dict(),
-        "actor_state_dict": ctx.training_agent.actor.state_dict(),
-        "critic_state_dict": ctx.training_agent.critic.state_dict(),
-        # Worker-side search teachers read gamma from the agent; the oracle
-        # head keeps their leaf evaluation calibrated (load_network_states
-        # consumes both when the worker agent is oracle-mode).
-        "gamma": ctx.training_agent.gamma,
-    }
-    if ctx.training_agent.oracle_critic is not None:
-        payload["oracle_state_dict"] = ctx.training_agent.oracle_critic.state_dict()
-    torch.save(payload, path + ".tmp")
-    os.replace(path + ".tmp", path)
-    stale = f"{ctx.weight_sync['base']}_v{ctx.weight_sync['version'] - 2}.pt"
-    if os.path.exists(stale):
-        try:
-            os.remove(stale)
-        except OSError:
-            pass
-
-
-def parallel_stream(ctx: MainPhaseContext, pool, num_workers):
-    publish_weights(ctx)
-    episode = ctx.start_episode + 1
-    while episode <= ctx.end_episode:
-        remaining_tx = max(1, ctx.args.update_interval - ctx.tx_counter.count)
-        window = max(num_workers, min(256, int(remaining_tx / AVG_TX_PER_GAME) + 1))
-        end = min(ctx.end_episode, episode + window - 1)
-        jobs = []
-        rotate = bool(getattr(ctx.args, "seat_rotation", False))
-        rot_state = getattr(ctx, "_rot_state", None)
-        for ep in range(episode, end + 1):
-            game_seed = None
-            if rotate:
-                # Same 5-episode grouping as sequential_stream: one sampled
-                # (mode, table, deal) per group, hero seat = group phase + 1.
-                phase = (ep - ctx.start_episode - 1) % 5
-                if phase == 0 or rot_state is None:
-                    mode, table, _ = setup_episode(ep, ctx)
-                    rot_state = {
-                        "mode": mode,
-                        "table": table,
-                        "seed": random.randrange(2**31),
-                    }
-                    ctx._rot_state = rot_state
-                mode, table = rot_state["mode"], rot_state["table"]
-                position = phase + 1
-                game_seed = rot_state["seed"]
-            else:
-                mode, table, position = setup_episode(ep, ctx)
-            jobs.append(
-                _Job(
-                    episode=ep,
-                    partner_mode=mode,
-                    training_position=position,
-                    opponent_ids=[
-                        SELF_PLAY if e == SELF_PLAY else e.member_id for e in table
-                    ],
-                    weight_version=ctx.weight_sync["version"],
-                    collect_oracle=ctx.collect_oracle,
-                    game_seed=game_seed,
-                )
-            )
-        for r in pool.imap(_league_worker_play, jobs):
-            yield (
-                r["episode"],
-                r["partner_mode"],
-                r["training_position"],
-                r["episode_events"],
-                r["final_scores"],
-                r["training_data_single"],
-                r["game_summary"],
-                r["seat_to_member_id"],
-            )
-        episode = end + 1
 
 
 def fresh_teacher_window() -> dict:

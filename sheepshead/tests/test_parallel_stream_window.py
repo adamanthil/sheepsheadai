@@ -28,7 +28,7 @@ import pytest
 
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.training import train_league_ppo as tlp
+from sheepshead.training import league_streams
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.train_league_ppo import (
     MainPhaseContext,
@@ -224,8 +224,10 @@ class TestSequentialParallelGroupingEquivalence:
             game = object()
             return game, [], {}, None, {1: seat}
 
-        monkeypatch.setattr(tlp, "play_population_game", fake_play_population_game)
-        monkeypatch.setattr(tlp, "make_game_summary", lambda game: {})
+        monkeypatch.setattr(
+            league_streams, "play_population_game", fake_play_population_game
+        )
+        monkeypatch.setattr(league_streams, "make_game_summary", lambda game: {})
 
         args = SimpleNamespace(seat_rotation=True)
         ctx = _make_ctx(
