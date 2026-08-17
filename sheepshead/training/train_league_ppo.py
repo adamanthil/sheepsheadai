@@ -1148,9 +1148,7 @@ def main():
     gen_start_ckpt = getattr(args, "teacher_ckpt", None) or args.resume
     # The cert h2h anchor is resolved ONCE at launch and never follows the
     # refresh chain (absolute anchoring, §3).
-    args.cert_anchor_resolved = (
-        getattr(args, "cert_anchor_ckpt", None) or gen_start_ckpt
-    )
+    cert_anchor = getattr(args, "cert_anchor_ckpt", None) or gen_start_ckpt
     for generation in range(first_gen, first_gen + args.generations):
         boundary = generation * main_ep
         print(
@@ -1163,12 +1161,18 @@ def main():
             )
             + f"\n{'=' * 70}"
         )
-        args.teacher_ckpt = gen_start_ckpt
+        # Per-generation view of the CLI namespace: the parsed args stay
+        # immutable; the generation-dependent expert pin and the resolved
+        # cert anchor ride an explicit copy instead of being written back
+        # into the shared namespace.
+        gen_args = copy.copy(args)
+        gen_args.teacher_ckpt = gen_start_ckpt
+        gen_args.cert_anchor_resolved = cert_anchor
         episode = run_main_phase(
             training_agent,
             league,
             training_ratings,
-            args,
+            gen_args,
             episode,
             boundary - episode,
             checkpoint_dir,
@@ -1181,7 +1185,9 @@ def main():
         # becomes the next generation's frozen expert only if it passes the
         # absolute-anchor cert; a failed cert halts for operator review.
         if getattr(args, "teacher", False):
-            cert = run_boundary_cert(training_agent, args, generation, checkpoint_dir)
+            cert = run_boundary_cert(
+                training_agent, gen_args, generation, checkpoint_dir
+            )
             if cert["passed"]:
                 gen_start_ckpt = main_ckpt
                 print(
