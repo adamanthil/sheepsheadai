@@ -65,7 +65,7 @@ import torch
 
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.training.config import LeagueConfig, PFSPHyperparams, SearchConfig
+from sheepshead.training.config import LeagueConfig, PFSPHyperparams
 from sheepshead.training.entropy_controller import (
     EntropyControllerConfig,
     EntropyTargetController,
@@ -74,6 +74,13 @@ from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
 
 # Re-exported for compatibility: build_arg_parser moved to league_cli.py.
 from sheepshead.training.league_cli import build_arg_parser  # noqa: F401
+
+# Re-exported for compatibility: moved to league_teacher.py.
+from sheepshead.training.league_teacher import (  # noqa: F401
+    TeacherSettings,
+    _build_frozen_expert,
+    _teacher_kwargs,
+)
 from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.pfsp_runtime import (
     interpolated_weight,
@@ -463,77 +470,6 @@ def store_events_by_seat(agent: PPOAgent, events: list) -> int:
 
 
 # -------------------- episode streams --------------------
-def _build_frozen_expert(
-    resume: str,
-    critic_mode: str,
-    arch: str,
-    oracle_aux_heads: bool,
-    oracle_init: str | None,
-    gamma: float,
-) -> PPOAgent:
-    """Stationary expert for the gated teacher (Search_Teacher_Design
-    §12.1): a frozen copy of the generation-start policy, reconstructed
-    exactly as the main agent was at resume (checkpoint + oracle
-    warm-start + gamma). The teacher's searches (priors, rollout policies,
-    critic leaves) all run on this snapshot, so the expert cannot chase a
-    drifting student out of the E9-certified regime — DAgger's fixed
-    expert (Ross et al. 2011), where attempt 7 showed the live-expert
-    loop re-labels its own drift. The student's states still drive WHERE
-    labels happen; only the expert's opinion is pinned."""
-    frozen = PPOAgent(
-        len(ACTIONS),
-        critic_mode=critic_mode,
-        arch=arch,
-        oracle_aux_heads=oracle_aux_heads,
-    )
-    frozen.load(resume, load_optimizers=False)
-    if oracle_init:
-        sd = torch.load(oracle_init, map_location="cpu", weights_only=True)
-        frozen.oracle_critic.load_state_dict(sd, strict=True)
-    frozen.gamma = gamma
-    return frozen
-
-
-def _teacher_kwargs(ctx: MainPhaseContext) -> dict:
-    """play_population_game kwargs for the CE search teacher
-    (CE_Teacher_Design §2), or {} when --teacher is off.
-
-    Built once per stream: an ISMCTS teacher over a FROZEN copy of the
-    generation-start policy (stationary expert) at the calibrated budget
-    (--teacher-iters, d_rollout=1 per call, oracle leaves via the engine
-    default) plus the emission SearchConfig."""
-    if not getattr(ctx.args, "teacher", False):
-        return {}
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-
-    frozen = _build_frozen_expert(
-        getattr(ctx.args, "teacher_ckpt", None) or ctx.args.resume,
-        ctx.args.critic_mode,
-        ctx.args.arch,
-        getattr(ctx.args, "oracle_aux_heads", False),
-        getattr(ctx.args, "oracle_init", None),
-        ctx.training_agent.gamma,
-    )
-    iters = int(getattr(ctx.args, "teacher_iters", SearchConfig().teacher_iters))
-    teacher = ISMCTSTeacher(
-        frozen,
-        ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
-    )
-    search_config = SearchConfig(
-        teacher_prob=float(
-            getattr(ctx.args, "teacher_prob", SearchConfig().teacher_prob)
-        ),
-        teacher_replicates=int(
-            getattr(ctx.args, "teacher_replicates", SearchConfig().teacher_replicates)
-        ),
-    )
-    return {
-        "teacher": teacher,
-        "determinization_rng": random.Random(ctx.args.seed ^ 0x5EA6C4),
-        "search_config": search_config,
-    }
-
-
 def sequential_stream(ctx: MainPhaseContext):
     # Seat rotation (deal-paired collection): groups of 5 consecutive
     # episodes share one sampled (mode, table, deal); the hero plays every
@@ -803,6 +739,7 @@ def run_main_phase(
     pool = None
     if args.num_workers > 1:
         mp_ctx = get_context("spawn")
+        teacher_settings = TeacherSettings.from_args(args)
         pool = mp_ctx.Pool(
             processes=args.num_workers,
             initializer=_league_worker_init,
@@ -817,28 +754,17 @@ def run_main_phase(
                     # gamma rides the payload (search discounting).
                     "critic_mode": getattr(args, "critic_mode", "limited"),
                     "oracle_aux_heads": bool(getattr(args, "oracle_aux_heads", False)),
-                    "teacher": bool(getattr(args, "teacher", False)),
-                    "teacher_prob": float(
-                        getattr(args, "teacher_prob", SearchConfig().teacher_prob)
-                    ),
-                    "teacher_replicates": int(
-                        getattr(
-                            args,
-                            "teacher_replicates",
-                            SearchConfig().teacher_replicates,
-                        )
-                    ),
-                    "teacher_iters": int(
-                        getattr(args, "teacher_iters", SearchConfig().teacher_iters)
-                    ),
+                    "teacher": teacher_settings.enabled,
+                    "teacher_prob": teacher_settings.prob,
+                    "teacher_replicates": teacher_settings.replicates,
+                    "teacher_iters": teacher_settings.iters,
                     # Stationary expert: workers rebuild the frozen
                     # generation-start policy from these paths; weight
                     # refreshes touch only the live agent. --teacher-ckpt
                     # pins the expert independently of --resume so a mid-run
                     # continuation doesn't silently refreeze to student weights.
-                    "teacher_resume": getattr(args, "teacher_ckpt", None)
-                    or getattr(args, "resume", None),
-                    "teacher_oracle_init": getattr(args, "oracle_init", None),
+                    "teacher_resume": teacher_settings.ckpt,
+                    "teacher_oracle_init": teacher_settings.oracle_init,
                     "teacher_gamma": float(training_agent.gamma),
                 },
             ),
