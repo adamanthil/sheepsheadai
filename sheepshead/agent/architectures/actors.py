@@ -74,14 +74,38 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self.tw_Wg = nn.Linear(d_model, self.tw_latent)
         self.tw_We = nn.Linear(self._d_card, self.tw_latent)
 
-        # Action index mappings
-        self._map_cid_to_play_action_index = map_cid_to_play_action_index.clone().long()
-        self._map_cid_to_bury_action_index = map_cid_to_bury_action_index.clone().long()
-        self._map_cid_to_under_action_index = (
-            map_cid_to_under_action_index.clone().long()
+        # Action index mappings, registered as buffers so that .to(device) moves
+        # them with the module. As plain attributes they stayed on the host for
+        # the module's lifetime and every forward pass re-copied all five.
+        #
+        # persistent=False keeps them out of state_dict(): they are derived
+        # deterministically from the action table by
+        # PPOAgent._build_action_index_mappings rather than learned, and the
+        # actor is loaded with strict=True, so persisting them would add keys
+        # that no existing checkpoint carries.
+        self.register_buffer(
+            "_map_cid_to_play_action_index",
+            map_cid_to_play_action_index.clone().long(),
+            persistent=False,
         )
-        self._call_action_global_indices = call_action_global_indices.clone().long()
-        self._call_card_ids = call_card_ids.clone().long()
+        self.register_buffer(
+            "_map_cid_to_bury_action_index",
+            map_cid_to_bury_action_index.clone().long(),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_map_cid_to_under_action_index",
+            map_cid_to_under_action_index.clone().long(),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_call_action_global_indices",
+            call_action_global_indices.clone().long(),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_call_card_ids", call_card_ids.clone().long(), persistent=False
+        )
         self._play_under_action_index = int(play_under_action_index)
 
     def _init_weights(self, m):
@@ -179,8 +203,8 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # PARTNER: CALL actions via two-tower card scoring
         card_scores = self._score_cards_two_tower(feat, card_embedding)  # (K, 34)
-        call_scores = card_scores[:, self._call_card_ids.to(device)]
-        logits[:, self._call_action_global_indices.to(device)] = call_scores
+        call_scores = card_scores[:, self._call_card_ids]
+        logits[:, self._call_action_global_indices] = call_scores
 
         # Pointer scores over hand tokens (compute once, reuse for bury/under/play)
         slot_scores = self._score_hand_pointer(
@@ -223,7 +247,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             self._map_cid_to_under_action_index,
             self._map_cid_to_play_action_index,
         ):
-            dest = cid_to_action.to(device)[cids]  # (K, N), -1 on padded slots
+            dest = cid_to_action[cids]  # (K, N), -1 on padded slots
             dest = torch.where(
                 dest.ge(0), dest, torch.full_like(dest, self.action_size)
             )
