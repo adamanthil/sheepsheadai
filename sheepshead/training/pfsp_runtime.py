@@ -130,6 +130,7 @@ def build_ce_search_target(
     shrink_s2_global: float,
     gumbel_c_visit: float,
     gumbel_c_scale: float,
+    base_prior: "np.ndarray | None" = None,
 ) -> "tuple[np.ndarray, dict] | None":
     """Committee-pooled CE target (CE_Teacher_Design §1.1-§1.2): the
     pi_gumbel deployment readout evaluated on the James-Stein-shrunk
@@ -162,6 +163,15 @@ def build_ce_search_target(
        continuously with evidence, flat at w = 0 (target = prior, CE
        gradient ~ 0: abstention is the target's fixed point) and exactly
        the deployment readout at w = 1.
+
+    ``base_prior`` (aligned to ``sorted(valid_actions)``) replaces the
+    pooled root prior as the tilt baseline when given. The pooled prior
+    is a mixture of the expert's policy over sampled worlds and is
+    therefore softer than the acting policy at the observed info-state
+    (Jensen), so with the default baseline the w = 0 fixed point is the
+    POOLED PRIOR, not the student — a persistent entropy-raising CE pull
+    at abstention rows. Passing the student's own label-time policy
+    makes abstention exactly zero-gradient.
     """
     acts = sorted(valid_actions)
     usable = [
@@ -204,10 +214,14 @@ def build_ce_search_target(
     signal_var = float(np.var(q_bar))
     shrink_w = max(0.0, 1.0 - noise_var / signal_var) if signal_var > 0.0 else 0.0
 
-    prior = np.array(
-        [np.mean([r["root_prior"][a] for r in usable]) for a in acts],
-        dtype=np.float64,
-    )
+    if base_prior is not None:
+        prior = np.asarray(base_prior, dtype=np.float64)
+        prior = prior / max(prior.sum(), 1e-12)
+    else:
+        prior = np.array(
+            [np.mean([r["root_prior"][a] for r in usable]) for a in acts],
+            dtype=np.float64,
+        )
     scale = (
         gumbel_c_visit
         + float(np.mean([max(r["root_n"].values() or [0.0]) for r in usable]))
