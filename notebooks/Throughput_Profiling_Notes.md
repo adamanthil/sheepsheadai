@@ -316,20 +316,45 @@ MPS 0.89× at B=96 rather than the ~0.4× it would otherwise have been.
 
 ## A6. How to reproduce
 
-Harnesses are scratchpad-only (not committed), in the same spirit as
+The two instruments worth keeping are **committed** — §A1/A2 and §A4 can be
+re-run directly, which is the point on a different box:
+
+```
+# A1/A2 — op coverage + host syncs (load-independent; --attribute names the
+# source line behind each sync). Run the accelerator pass with the fallback
+# enabled so gaps enumerate, then again without it: completing is the proof.
+uv run python -m sheepshead.analysis.device_op_audit --device cpu
+PYTORCH_ENABLE_MPS_FALLBACK=1 \
+  uv run python -m sheepshead.analysis.device_op_audit --device mps --attribute
+uv run python -m sheepshead.analysis.device_op_audit --device mps
+
+# A4 — per-device batch sweep + the aggregate-throughput table that actually
+# decides the shared-accelerator question. --threads 1 (default) matches a
+# league worker; benchmarking with default threads on a busy box is what
+# produced the discarded first pass.
+uv run python -m sheepshead.analysis.bench_inference_device
+```
+
+`bench_inference_device` prints an aggregate states/s table comparing N
+concurrent CPU workers against one accelerator, since per-call speedup is not
+the deciding number when workers share one GPU. On this box it reads:
+
+| B | cpu ×8 | mps ×1 |
+|---|---|---|
+| 1 | 5,266 | 84 |
+| 96 | 40,507 | 5,421 |
+| 1024 | 35,224 | 15,370 |
+
+Two harnesses remain one-off and uncommitted, in the same spirit as
 `profile_throughput.py` above:
 
-- `mps_op_audit.py` — `TorchDispatchMode` op tracer + dispatcher-table
-  classification + sync/transfer accounting + bench. Run once per device; the
-  MPS run needs `PYTORCH_ENABLE_MPS_FALLBACK=1` so a gap enumerates instead of
-  aborting at the first one.
 - `sync_counterfactual.py` — per-sync cost microbenchmark, and a same-process
-  A/B of the shipped vs sync-free actor scatter.
+  A/B of the shipped vs sync-free actor scatter (its finding is now landed, so
+  the A/B has no shipped counterpart left to compare against).
 - `search_profile.py` — wraps `encode_batch` / actor / critic with timers and a
   batch-size histogram, then runs one `ISMCTSTeacher.search_committee` at
   production settings (§A3).
-- `bench_batches.py` — `encode_batch` at B ∈ {1,32,96,160,320,480,1024} with
-  `torch.set_num_threads(1)` (§A4).
 
-Op coverage is a dispatcher-table fact and is load-independent; the timing
-sections should be re-run on a quiet machine before being quoted as absolutes.
+Op coverage and sync counts are dispatcher-level facts and are
+load-independent; the timing sections should be re-run on a quiet machine
+before being quoted as absolutes.
