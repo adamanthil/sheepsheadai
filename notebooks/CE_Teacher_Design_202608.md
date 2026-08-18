@@ -675,3 +675,11 @@ sub-flip mass shift changes SAMPLED play EV invisibly to the whole
 greedy battery — if gen 1 ends probes-flat with the mass signature
 intact, run one sampled-action h2h before concluding the teaching
 did nothing.
+
+§13 battery result (ep ~8,029k, paired probe seeds, n=3000 deals):
+called-suit t0 43.75 vs seed 41.16 (+2.6, ~1σ, taught direction);
+partner trump-lead CALLED mode 97.8 vs 93.2 (+4.6, ~5σ — untaught
+convention SHARPENED, anti-§12.11 signature, gentleness claim
+holding), jd mode 99.6 flat; defender t0 trump-lead 0.58-0.90% vs
+0.08-0.24% (uptick, ~10x below the 5% tripwire, implied EV -0.3
+per 1000 hands). No damage anywhere; accept-and-monitor unchanged.
