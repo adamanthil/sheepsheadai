@@ -652,8 +652,17 @@ class PPOAgent:
         if self.stash_action_probs:
             self.last_action_probs = action_probs[0].detach().cpu().numpy()
 
-        # Create distribution for consistent log probability calculation
-        dist = torch.distributions.Categorical(action_probs)
+        # Create distribution for consistent log probability calculation.
+        #
+        # validate_args=False: both of the checks it disables read a device
+        # tensor back to the host, and neither can fail on its own terms here.
+        # The constructor checks that action_probs lies on the simplex, but it
+        # is a softmax and is on the simplex by construction; log_prob checks
+        # that the action indexes the distribution, but the action was drawn
+        # from that very tensor. What the simplex check did catch incidentally
+        # is a diverged network emitting non-finite logits, so that detection is
+        # kept explicitly below rather than dropped.
+        dist = torch.distributions.Categorical(action_probs, validate_args=False)
 
         if deterministic:
             action = torch.argmax(action_probs, dim=1)
@@ -663,10 +672,27 @@ class PPOAgent:
         # Get log probability from the distribution for consistency
         log_prob = dist.log_prob(action)
 
+        # One device-to-host transfer for all three return values plus a
+        # finiteness sentinel, rather than five separate stalls (two from the
+        # validation above, three from .item()). The sentinel is not redundant:
+        # torch.multinomial rejects a non-finite probability tensor by itself,
+        # but the deterministic branch never calls it, and argmax over NaN
+        # returns index 0 with a NaN log_prob and no error -- which the
+        # deterministic evaluation harnesses, which discard log_prob, would read
+        # as a real policy.
+        probs_finite = torch.isfinite(action_probs).all().reshape(1).float()
+        action_f, log_prob_f, value_f, finite_f = torch.cat(
+            [action.float(), log_prob, value.reshape(1), probs_finite]
+        ).tolist()
+        if finite_f != 1.0:
+            raise ValueError(
+                "non-finite action probabilities from the actor (policy divergence)"
+            )
+
         return (
-            action.item() + 1,
-            log_prob.item(),
-            value.item(),
+            int(action_f) + 1,
+            log_prob_f,
+            value_f,
         )  # Convert back to 1-indexed
 
     # ------------------------------------------------------------------
