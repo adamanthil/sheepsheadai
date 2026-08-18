@@ -645,3 +645,33 @@ student checkpoint vs --teacher-ckpt = frozen 8M expert — sizes the
 w=0 drift-anchor pull and tests fix safety under real drift. Result
 to be recorded below; gen-2 decision (mask w0 / alpha_min / accept)
 waits on it.
+
+§13 ADDENDUM (operator decision, 2026-08-18): ACCEPT-AND-MONITOR
+confirmed at ~29k eps. Mid-gen sanity battery on the live worker
+payload (v21 nets + seed metadata = crafted eval ckpt, no trainer
+disturbance): telemetry stationary (teacher KL 0.37-0.46 flat, CE
+~0.79 flat, material ~0.48 flat; approx_kl healthy; ev/picker_avg
+trendless; lead_trump_mass stable ~0.70); play Hn EQUILIBRIUM at
+~0.64 since ep 8,013k (crested, not falling); greedy called-suit t0
+probe 43.75 vs seed 41.16 paired (+2.6 ± ~2.3, whisper). Refined
+stalemate mechanism (if gen-end confirms): NOT directional PG
+opposition (reward aligned per §12.16, SNR-thin at taught cells) but
+EROSION — dense unlabeled PG stream + negative-alpha re-sharpening
+drag shared-trunk features between sparse label visits; mass shifts
+toward search-preferred actions sub-argmax-flip (entropy up, softband
+up 0.69→0.84, greedy probes flat).
+
+Pre-analyzed contingency ladder if gen-1 verdict = stalemate
+(ordered by cost, per attempt-6 Adam lesson that STEP COUNT binds
+while coefficients are muted):
+  1. teacher_epochs 4→8 (binding, ~free — labels already paid for);
+  2. teacher_coeff raise (free, likely Adam-muted, second-order);
+  3. teacher_prob raise (halves eps/s at p=0.2 — justified ONLY if
+     diagnostics show coverage-limited failure: taught nodes conform
+     while fresh-node KL stays flat; if taught nodes rebound, p buys
+     more erosion).
+Measurement subtlety recorded: probes/certs read GREEDY argmax; a
+sub-flip mass shift changes SAMPLED play EV invisibly to the whole
+greedy battery — if gen 1 ends probes-flat with the mass signature
+intact, run one sampled-action h2h before concluding the teaching
+did nothing.
