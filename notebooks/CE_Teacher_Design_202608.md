@@ -592,3 +592,56 @@ generations 3, oracle critic mode, guard/cert defaults all from
 league_cli defaults — verified pre-launch; §6 micro-smoke exercised
 emission, guards, cert+refreeze chain, exploiter gate, crash-resume
 with --teacher-ckpt pin, and the signed-alpha clamp end-to-end.)
+
+---
+
+## 13. Entropy investigation (2026-08-17, gen 1 in flight)
+
+Observation (~15% into gen 1): play Hn 0.53 -> 0.64 vs target 0.476,
+partner 0.10-0.13 vs 0.067, BOTH alphas pinned at the -0.05 clamp
+(one sign flip each) — pre-registered expectation #4's investigate
+condition. Run left in flight (guards quiet, outcomes healthy, clamp
+bounds the fight); offline instrument built to identify the channel:
+analysis/verify_entropy_baseline.py compares, at emission-eligible
+nodes, pi (student), p_raw (pooled expert prior = target baseline),
+the production target, and a target rebuilt with base_prior=pi (the
+candidate structural fix; optional arg added to
+build_ce_search_target, default behavior unchanged, 3b09c56).
+
+PHASE 1 (n=121 nodes, seed weights = gen-start conditions, 1024/1):
+
+- Root-level Jensen story FALSIFIED: at the root every determinized
+  world presents the same info-state, so the pooled root prior EQUALS
+  the expert policy (gap ~1e-7). The §1.1 abstention fixed-point
+  claim is architecturally sound at gen start.
+- Material rows (n=69): teacher is strongly entropy-REDUCING —
+  H(target) 0.069 vs H(pi) 0.381, median dH -0.30, 99% negative.
+  (A 64-iter smoke had suggested tilt softening; artifact of the
+  small visit scale.)
+- Abstention rows (n=52): KL(target||pi) = 0.030, ALL of it
+  engine-replay recurrent-state divergence at trick 4 (t0-t3 exact
+  zeros). base_prior=pi zeroes it to machine precision; fix safety
+  at gen start perfect (argmax agree 1.0, push corr 0.99998).
+- REVISED leading hypothesis for the live Hn rise: MASS-IN-TRANSIT.
+  Material-row KL is heavy-tailed (median 0.19, p95 4.5; 14/69 rows
+  > 1 nat = argmax replacements). CE moving mass between modes
+  passes through bimodal intermediates; always-on emission keeps a
+  standing population mid-transfer — consistent with flat live
+  teacher KL ~0.40. Entropy rise = teaching's transient shadow
+  (attempt-9 top1min-softening family), predicted to self-limit as
+  labeled rows conform (same signature as within-gen KL decay).
+- FIX MENU REVISED: base_prior=pi at MATERIAL rows is now judged
+  RISKY — each relabel re-tilts from the already-taught position =
+  the §1.1 iterated-improvement ratchet; the expert-prior baseline
+  is what bounds the within-gen target. The clean surgical option
+  if phase 2 shows a material drift-anchor pull: MASK CE LOSS AT
+  w=0 ROWS (designed zero-gradient anyway; kills drift-anchor and
+  replay-divergence channels exactly, zero ratchet risk, teaching
+  untouched). Controller-authority widening (alpha_min) remains the
+  fallback for the transient itself.
+
+PHASE 2 (auto-armed): same instrument with --ckpt = first attempt-11
+student checkpoint vs --teacher-ckpt = frozen 8M expert — sizes the
+w=0 drift-anchor pull and tests fix safety under real drift. Result
+to be recorded below; gen-2 decision (mask w0 / alpha_min / accept)
+waits on it.
