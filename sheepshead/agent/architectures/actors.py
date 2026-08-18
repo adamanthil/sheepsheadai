@@ -187,34 +187,48 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             feat,
             hand_tokens,
         )  # (K, N)
-        K_, N = slot_scores.size(0), slot_scores.size(1)
         cids = hand_ids.long()
 
-        # BURY and UNDER scatter
-        idx_bury = self._map_cid_to_bury_action_index.to(device)[cids]  # (K, N)
-        idx_under = self._map_cid_to_under_action_index.to(device)[cids]  # (K, N)
-        for i in range(N):
-            b_idx = idx_bury[:, i]
-            u_idx = idx_under[:, i]
-            valid_b = b_idx.ge(0)
-            valid_u = u_idx.ge(0)
-            if valid_b.any():
-                logits.view(K_, -1)[valid_b, b_idx[valid_b]] = slot_scores[valid_b, i]
-            if valid_u.any():
-                logits.view(K_, -1)[valid_u, u_idx[valid_u]] = slot_scores[valid_u, i]
-
-        # PLAY scatter
-        idx_play = self._map_cid_to_play_action_index.to(device)[cids]  # (K, N)
-        for i in range(N):
-            p_idx = idx_play[:, i]
-            valid_p = p_idx.ge(0)
-            if valid_p.any():
-                logits.view(K_, -1)[valid_p, p_idx[valid_p]] = slot_scores[valid_p, i]
-
-        # PLAY UNDER scalar
+        # PLAY UNDER scalar. Written before the card scatters below rather than
+        # after: it is a card-independent action, and _build_action_index_mappings
+        # skips it when filling map_cid_to_play_action_index, so no card can
+        # scatter into this column and the relative order is immaterial.
         if self._play_under_action_index is not None:
             play_under_logit = self.play_under_head(feat).squeeze(-1)
             logits[:, self._play_under_action_index] = play_under_logit
+
+        # BURY / UNDER / PLAY: route each hand slot's pointer score to the global
+        # action column of the card sitting in that slot. Each family's lookup
+        # table holds -1 where a card id has no action of that kind, which in
+        # practice means only PAD_CARD_ID -- every one of the 32 real cards has a
+        # bury, an under and a play action -- so the -1 entries are exactly the
+        # padded slots of a short hand.
+        #
+        # One scatter per family into a sink column, rather than a loop over the N
+        # slots masking rows. The loop form needed an `if valid.any()` guard per
+        # slot, and reading that 0-d tensor into a Python `if` forces a
+        # device-to-host round trip: 3*N stalls per forward pass, independent of
+        # batch size, to skip a kernel that is empty only when EVERY row in the
+        # batch is padded at that slot. Padded slots are instead aimed at an extra
+        # sink column that is dropped afterwards, so there is no mask, no guard
+        # and no host traffic. Destinations are unique within a row (a hand cannot
+        # hold the same card twice), so scatter's undefined duplicate-index
+        # behaviour is unreachable for the columns we keep; the sink column does
+        # take duplicate writes from padded slots, but it is discarded and its
+        # gradient is zero.
+        sink = torch.full((K, 1), -1e8, device=device)
+        wide = torch.cat([logits, sink], dim=1)  # (K, action_size + 1)
+        for cid_to_action in (
+            self._map_cid_to_bury_action_index,
+            self._map_cid_to_under_action_index,
+            self._map_cid_to_play_action_index,
+        ):
+            dest = cid_to_action.to(device)[cids]  # (K, N), -1 on padded slots
+            dest = torch.where(
+                dest.ge(0), dest, torch.full_like(dest, self.action_size)
+            )
+            wide = wide.scatter(1, dest, slot_scores)
+        logits = wide[:, : self.action_size]
 
         # Apply action mask if provided
         if action_mask is not None:
