@@ -47,10 +47,21 @@ from sheepshead.analysis.verify_shrinkage_cells import _lead_class
 from sheepshead.game import get_card_points
 
 PUSH_EPS = 0.02
+NOISE_EPS = 0.006  # §12.8 replicate noise floor on pooled-Q gaps
 QUEENS = {"QC", "QS", "QH", "QD"}
 JACKS = {"JC", "JS", "JH", "JD"}
 
 _W = {}  # per-worker state
+
+
+def _side_fail_lengths(hand, called_suit) -> dict:
+    """Held length per non-called fail suit (Q/J/diamonds are trump)."""
+    lens = {}
+    for c in hand:
+        if c in TRUMP or c[-1] == called_suit:
+            continue
+        lens[c[-1]] = lens.get(c[-1], 0) + 1
+    return lens
 
 
 def _eligible_t0_lead(game, player, valid) -> dict | None:
@@ -103,7 +114,7 @@ def _hand_features(game, player) -> dict:
     }
 
 
-def _worker_init(ckpt, iters):
+def _worker_init(ckpt, iters, singleton_low_called=False, long_side_fail=False):
     import torch
 
     torch.set_num_threads(1)
@@ -117,6 +128,24 @@ def _worker_init(ckpt, iters):
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
     _W["search_cfg"] = SearchConfig()
+    _W["singleton_low_called"] = singleton_low_called
+    _W["long_side_fail"] = long_side_fail
+
+
+def _cell_pass(game, player) -> bool:
+    """Optional cell filters, checked BEFORE the committee runs (cheap)."""
+    called_suit = game.called_card[-1]
+    if _W.get("singleton_low_called"):
+        called_fails = [
+            c for c in player.hand if c not in TRUMP and c[-1] == called_suit
+        ]
+        if len(called_fails) != 1 or called_fails[0][:-1] not in ("7", "8", "9"):
+            return False
+    if _W.get("long_side_fail"):
+        lens = _side_fail_lengths(player.hand, called_suit)
+        if not lens or max(lens.values()) < 3:
+            return False
+    return True
 
 
 def _committee_row(game, player, valid, forced_public, deal_seed, classes):
@@ -243,6 +272,8 @@ def _run_deal(deal_seed):
             while valid:
                 if game.play_started:
                     classes = _eligible_t0_lead(game, player, sorted(valid))
+                    if classes is not None and not _cell_pass(game, player):
+                        classes = None
                     row = None
                     if classes is not None:
                         row = _committee_row(
@@ -310,6 +341,51 @@ def summarize(rows) -> dict:
         c: sum(1 for r in against if r["target_argmax_class"] == c)
         for c in ("trump", "fat", "nopoint", "other")
     }
+
+    # Void-guarantee verdict: among nodes holding a 3+ card side fail,
+    # sign of best-long-suit pooled Q minus best-called pooled Q.
+    wins = noise = losses = 0
+    deltas = []
+    lead_from_long = long_holders = 0
+    for r in rows:
+        lens = _side_fail_lengths(r["hand"], r["called_card"][-1])
+        long_suits = [s for s, n in lens.items() if n >= 3]
+        if not long_suits:
+            continue
+        long_holders += 1
+        lead_from_long += int(r["target_argmax"][-1] in long_suits)
+        ql = [
+            a["q_pooled"]
+            for a in r["actions"]
+            if a["card"][-1] in long_suits
+            and a["class"] != "trump"
+            and a["q_pooled"] is not None
+        ]
+        qc = [
+            a["q_pooled"]
+            for a in r["actions"]
+            if a["class"] == "called" and a["q_pooled"] is not None
+        ]
+        if not ql or not qc:
+            continue
+        dlt = max(ql) - max(qc)
+        deltas.append(dlt)
+        if dlt > NOISE_EPS:
+            wins += 1
+        elif dlt < -NOISE_EPS:
+            losses += 1
+        else:
+            noise += 1
+    out["long_vs_called"] = {
+        "n_long_holders": long_holders,
+        "n_compared": len(deltas),
+        "long_better": wins,
+        "within_noise": noise,
+        "called_better": losses,
+        "median_delta": float(np.median(deltas)) if deltas else None,
+        "mean_delta": float(np.mean(deltas)) if deltas else None,
+        "target_argmax_from_long": lead_from_long,
+    }
     return out
 
 
@@ -321,13 +397,31 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--base-seed", type=int, default=700_000)
     ap.add_argument("--max-deals", type=int, default=6000)
+    ap.add_argument(
+        "--singleton-low-called",
+        action="store_true",
+        help="cell filter: exactly one called-suit fail, rank 7/8/9",
+    )
+    ap.add_argument(
+        "--long-side-fail",
+        action="store_true",
+        help="cell filter: >= 3 cards held in some non-called fail suit "
+        "(pigeonhole void among the other four seats)",
+    )
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
     rows = []
     ctx = get_context("spawn")
     with ctx.Pool(
-        args.workers, initializer=_worker_init, initargs=(args.ckpt, args.iters)
+        args.workers,
+        initializer=_worker_init,
+        initargs=(
+            args.ckpt,
+            args.iters,
+            args.singleton_low_called,
+            args.long_side_fail,
+        ),
     ) as pool:
         seeds = [args.base_seed + i for i in range(args.max_deals)]
         for row in pool.imap_unordered(_run_deal, seeds, chunksize=1):
@@ -352,6 +446,10 @@ def main() -> int:
         "ckpt": args.ckpt,
         "iters": args.iters,
         "push_eps": PUSH_EPS,
+        "cell_filters": {
+            "singleton_low_called": args.singleton_low_called,
+            "long_side_fail": args.long_side_fail,
+        },
         "summary": summary,
         "rows": rows,
     }
