@@ -5,8 +5,13 @@ concurrent clients against the RTX 5060 run at **0.68×** — slower than the CP
 path it replaces (§5.3). Cross-worker batching is built and correct but merges
 only 1.4 requests per batch, for a queueing reason that no server-side change
 fixes. The binding cost is ~17.7 ms of per-batch CUDA dispatch on the i5, with
-the GPU 5% utilised, so **the next move is cutting that (§6.0) — and it should
-be tried on the M1 Max first, where it needs no second machine at all.**
+the GPU 5% utilised, so the next move is cutting that (§6.0).
+
+**Tried on the M1 Max first (§5.4): `torch.compile` gives 1.13× end-to-end at 8
+workers — real, cheap, and far short of 3×.** It also found that the seam
+carries only ~42% of committee time, not 74.5%, so the ceiling for offloading it
+at all is ~1.7×. The same lever is still untested on the i5, where the dispatch
+ratio is much worse and CUDA supports `reduce-overhead` properly.
 
 What began as "is MPS worth it?" turned into a two-machine inference split, a
 seam through the live trainer's search engine, and three bit-exact changes to
@@ -435,24 +440,98 @@ amount of merging changes that ratio — merging only amortizes work *inside*
 - **2.5GbE stays unnecessary**, now for a second independent reason: the link
   ran at 21%.
 
+## 5.4 torch.compile on the M1 Max: real but small (2026-08-19)
+
+§6.0 said try it locally first. Done, on an idle machine (the CE generation had
+finished), against the production committee.
+
+**It compiles cleanly.** Encoder + actor go into **one graph with zero graph
+breaks**, in 0.4-5 s. The single most encouraging fact here: no rewriting, no
+`torch._dynamo` wrangling.
+
+**`mode="reduce-overhead"` is a no-op on MPS.** It selects CUDA graphs, which
+Metal has no equivalent of — measured 2.72 ms against `default`'s 2.73 ms. On
+this machine the question is simply whether `torch.compile` helps at all.
+
+Forward only, B=96, single process:
+
+| device | eager | compiled | |
+|---|---|---|---|
+| MPS | 6.49 ms | 2.72 ms | **2.39×** |
+| MPS, B=744 | 16.05 ms | 15.84 ms | 1.01× |
+| CPU (1 thread) | 13.37 ms | 8.21 ms | 1.63× |
+
+MPS gains only at small batches, which is the signature of dispatch overhead: by
+B=744 it is compute-bound and compilation has nothing left to remove.
+
+### 5.4.1 End to end at the production worker count
+
+The micro-benchmark is seductive and wrong. Eight concurrent committees, one per
+worker, is the shape that counts (mean of 8, idle machine):
+
+| arm | committee wall | inference | share | vs eager |
+|---|---|---|---|---|
+| CPU eager | 61.2 s | 31.30 ms/round | 42.3% | — |
+| **CPU compiled** | **54.2 s** | **24.49 ms/round** | 37.3% | **1.13×** |
+| MPS compiled | 55.4 s | 23.84 ms/round | 35.6% | 1.10× |
+
+A 2.4× forward becomes **1.13× of training throughput.** All arms produced
+identical labels (argmax `[92, 92, 78]` across all three replicates).
+
+Two things invert between one process and eight. Compiled CPU shows *no* gain
+single-process (37.7 s against eager's 37.5 s) yet 1.13× at eight — fused
+kernels move less memory, which only matters once cores contend. And MPS
+compiled leads single-process (31.8 s against 37.5 s) but merely ties compiled
+CPU at eight, while costing more setup (68 s against 59 s including per-process
+compilation).
+
+**So the MPS verdict stands** — compiled CPU is at least as good and simpler.
+
+### 5.4.2 Two corrections this forced
+
+- **§5.1's MPS numbers were taken under the live training run and are inflated
+  ~3.3×.** Encoder+actor at B=93 measured 21.31 ms then, **6.49 ms idle**. The
+  fit "18.6 ms fixed + 28.7 µs/state" should be 5.1 ms + 14.7. MPS dispatch is
+  CPU-side work, so a saturated host slows it directly. The *verdict* survives;
+  the numbers do not. Same failure mode as the 0.213 eps/s baseline — a number
+  recorded without the conditions it was taken under.
+- **§1's "74.5% of committee time is network inference" is not what the seam
+  measures.** Through `backend.evaluate` it is **42%**. The gap is real network
+  work outside the seam — `_encode_seat_batched` and `_observe_trick_lockstep`
+  on the replay/pool-build path — which this measurement charges to "tree". So
+  the true share sits somewhere in 42-74%, and **the Amdahl ceiling for
+  offloading the seam alone is ~1.7×, not 3.2-4×.** Compiling the replay path
+  as well is untried headroom.
+
 ## 6. Planned work
 
-### 6.0 Cut per-batch dispatch cost — the actual bottleneck
+### 6.0 Cut per-batch dispatch cost — measured locally at ~1.1×
 
-Promoted to the top by §5.3. `S` ≈ 17.7 ms per batch against a 0.65 ms forward:
-hundreds of small aten dispatches driven through Python on a 2015 Skylake, with
-the GPU 95% idle. Unlike the merge factor, this is not capped by queueing
-arithmetic — cutting it helps at every client count.
+**Superseded by §5.4 for the local path.** `torch.compile` works, needs no
+bucketing scheme, and returns 1.13× end-to-end on CPU at 8 workers. Worth having
+and cheap — but not the 3× this program was chasing.
 
-`torch.compile(mode="reduce-overhead")` or explicit CUDA graph capture is the
-direct attack. The obstacle is static shapes, since rounds run 96-1024 states;
-padding to a few buckets is nearly free at 5% GPU utilisation. At `S` ≈ 3 ms the
-closed-system model gives ~190 req/s and a remote wall of ~35 s against local
-57 s — around 1.6×, with the Mac's tree work then binding.
+The complexity is far lower than this section first assumed. It claimed rounds
+"run 96-1024 states"; **measured, 87.4% of rounds are exactly B=96 and none
+exceed it** (44 distinct shapes, but B=96 carries 90.7% of all states), because
+`R × ISMCTSConfig.batch_size` bounds them. Padding every round up to 96 therefore
+gives **one** compiled shape at a cost of 3.8% wasted rows — no buckets, and no
+dynamic shapes, which are markedly worse (1.45-1.82× against 1.95-2.38×).
 
-**Try it on the M1 Max first.** If the win really is dispatch overhead, a
-compiled local forward needs no second machine, no weight-sync protocol and no
-wire at all. That is worth knowing before building any more of this.
+Productionising it would need:
+
+- a `CompiledBackend` beside `LocalBackend`, padding to `R × batch_size`, with
+  pad rows given an all-legal mask (an all-False row softmaxes to NaN and
+  poisons the whole batch)
+- the critic reusing the compiled graph's `encoded` dict — recomputing the
+  encoder for it costs more than compilation saves, measured
+- **opt-in, never the default.** Compiled output differs from eager by 2.6e-08
+  on probs, so `capture_search_goldens` cannot pass against it. Same status as
+  remote mode.
+
+On the **remote** path the same lever is untested and the case is stronger: the
+i5 spends ~17 ms of dispatch against a 0.65 ms forward, a far worse ratio than
+anything measured here, and CUDA actually does support `reduce-overhead`.
 
 ### 6.1 Cross-worker batching — BUILT, and it did not pay
 
