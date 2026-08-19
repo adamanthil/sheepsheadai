@@ -166,18 +166,53 @@ class ServedModel:
     every round size. Without it, ``dynamic=False`` recompiles per distinct
     merged batch -- and merged sizes are far more varied than a single client's,
     since they are sums over however many clients happened to arrive together.
+
+    ``backend`` picks how. The default (inductor) needs Triton, which upstream
+    PyTorch does not ship for Windows. ``cudagraphs`` needs no code generation
+    at all -- it captures the eager kernel sequence and replays it as one graph
+    -- which happens to be aimed squarely at this server's problem, since the
+    cost here is launch count rather than kernel quality.
     """
 
-    def __init__(self, agent, device, compile_mode=None, granularity: int = 1):
+    def __init__(
+        self,
+        agent,
+        device,
+        compile_mode=None,
+        granularity: int = 1,
+        backend: str | None = None,
+    ):
         self.agent = agent
         self.device = device
         # Independent of compile_mode so the padding path is testable without
         # paying for a compile.
         self.granularity = max(1, int(granularity))
+        self._forward_eager = self._forward
         self.forward = self._forward
         if compile_mode:
-            kwargs = {} if compile_mode == "default" else {"mode": compile_mode}
+            if backend:
+                kwargs = {"backend": backend}  # mode is an inductor-only knob
+            else:
+                kwargs = {} if compile_mode == "default" else {"mode": compile_mode}
             self.forward = torch.compile(self._forward, dynamic=False, **kwargs)
+
+    def _fall_back(self, exc: Exception) -> None:
+        """Degrade to eager rather than take the run down with us.
+
+        Compilation fails for environmental reasons -- a missing Triton install,
+        a graph CUDA cannot capture -- and it fails on the *first batch*, which
+        is to say on eight workers at once, mid-generation. That must cost
+        throughput, not the generation. Loud, once, then eager for good.
+        """
+        self.forward = self._forward_eager
+        self.granularity = 1  # padding existed only to bound the shape count
+        print(
+            f"\n  COMPILE FAILED -- serving eager for the rest of this run.\n"
+            f"  {type(exc).__name__}: {str(exc).splitlines()[0]}\n"
+            f"  On Windows the inductor backend needs Triton, which upstream "
+            f"PyTorch does not ship; try --compile-backend cudagraphs.\n",
+            flush=True,
+        )
 
     def _forward(self, marshalled, memory_in, masks, wants_critic: bool):
         encoded = self.agent.encoder.encode_tensors(
@@ -193,26 +228,36 @@ class ServedModel:
         return probs, values, encoded["memory_out"]
 
     def __call__(self, merged: dict) -> tuple:
-        marshalled = merged["marshalled"]
-        memory_in = merged["memory_in"]
-        masks = merged["masks"]
-        n = int(memory_in.shape[0])
+        exact = (merged["marshalled"], merged["memory_in"], merged["masks"])
+        wants_critic = merged["wants_critic"]
+        n = int(merged["memory_in"].shape[0])
         pad = -(-n // self.granularity) * self.granularity - n
         if pad:
-            marshalled = {
-                key: torch.cat([v, v[:1].repeat_interleave(pad, 0)], 0)
-                for key, v in marshalled.items()
-            }
-            memory_in = torch.cat(
-                [memory_in, memory_in[:1].repeat_interleave(pad, 0)], 0
+            marshalled, memory_in, masks = exact
+            padded = (
+                {
+                    key: torch.cat([v, v[:1].repeat_interleave(pad, 0)], 0)
+                    for key, v in marshalled.items()
+                },
+                torch.cat([memory_in, memory_in[:1].repeat_interleave(pad, 0)], 0),
+                # Pad rows get an all-legal mask. An all-False row softmaxes to
+                # NaN, and one NaN row is enough to poison a client's reply.
+                torch.cat([masks, torch.ones_like(masks[:1].expand(pad, -1))], 0),
             )
-            # Pad rows get an all-legal mask. An all-False row softmaxes to NaN,
-            # and one NaN row is enough to poison a whole client's reply.
-            masks = torch.cat([masks, torch.ones_like(masks[:1].expand(pad, -1))], 0)
+        else:
+            padded = exact
+
         with torch.no_grad():
-            probs, values, memory_out = self.forward(
-                marshalled, memory_in, masks, merged["wants_critic"]
-            )
+            try:
+                probs, values, memory_out = self.forward(*padded, wants_critic)
+            except Exception as exc:
+                if self.forward is self._forward_eager:
+                    raise  # eager failed too: a real bug, not a compile problem
+                self._fall_back(exc)
+                # Retry on the *unpadded* inputs, so this reply is bit-identical
+                # to what a plain eager server would have sent. Padding existed
+                # only to bound the compiled shape count.
+                probs, values, memory_out = self._forward_eager(*exact, wants_critic)
         return probs[:n], values[:n], memory_out[:n]
 
 
@@ -512,6 +557,24 @@ def main() -> int:
         "first batch of each shape pays compilation",
     )
     parser.add_argument(
+        "--compile-backend",
+        default=None,
+        metavar="BACKEND",
+        help="torch.compile backend. Unset means inductor, which needs Triton "
+        "-- upstream PyTorch does not ship it for Windows. 'cudagraphs' needs "
+        "no code generation and targets exactly what dominates this server: it "
+        "replays hundreds of kernel launches as a single graph. --compile MODE "
+        "is inductor-specific and is ignored when this is set",
+    )
+    parser.add_argument(
+        "--tf32",
+        action="store_true",
+        help="allow TF32 for float32 matmuls on Ampere and later. Real speedup, "
+        "real precision loss (~10 mantissa bits). UNVALIDATED: fp16 on the wire "
+        "flipped a search label, so check bench_remote_search's divergence "
+        "output before trusting this",
+    )
+    parser.add_argument(
         "--pad-granularity",
         type=int,
         default=32,
@@ -527,15 +590,25 @@ def main() -> int:
     args = parser.parse_args()
 
     torch.set_num_threads(args.threads)
+    if args.tf32:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        print("TF32 enabled -- verify search divergence before trusting results")
     device = torch.device(args.device)
     agent = build_agent(args.checkpoint, args.arch, device, args.seed)
     model = ServedModel(
-        agent, device, args.compile, args.pad_granularity if args.compile else 1
+        agent,
+        device,
+        args.compile,
+        args.pad_granularity if args.compile else 1,
+        args.compile_backend,
     )
     if args.compile:
+        how = args.compile_backend or f"inductor/{args.compile}"
         print(
-            f"compiling the forward (mode={args.compile}, pad to multiples of "
-            f"{args.pad_granularity}); the first batch of each shape is slow"
+            f"compiling the forward ({how}, pad to multiples of "
+            f"{args.pad_granularity}); the first batch of each shape is slow, "
+            f"and a failure degrades to eager rather than dropping clients"
         )
     policy = BatchPolicy(
         window=args.batch_window_ms / 1e3,

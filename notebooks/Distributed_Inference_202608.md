@@ -590,6 +590,23 @@ the i5 spends ~17 ms of dispatch against a 0.65 ms forward, a far worse ratio
 than anything measured on the Mac, and CUDA actually does support
 `reduce-overhead` (on MPS it is a no-op).
 
+**Inductor needs Triton, and upstream PyTorch does not ship Triton for
+Windows** — the GPU box raises `TritonMissing` on the first batch. Two ways past
+it, and the second is arguably the better one anyway:
+
+- `pip install triton-windows` (community port; must match the torch version).
+- **`--compile-backend cudagraphs`.** No code generation at all: it captures the
+  eager kernel sequence and replays it as one graph. That is aimed squarely at
+  this server's problem, which is launch *count*, not kernel quality — ~17 ms of
+  dispatch against a 0.65 ms forward. Inductor's fusion would be a bonus on top,
+  not the main event.
+
+A compile failure now **degrades to eager instead of taking the run down**. It
+fails on the first batch — which is to say on every worker at once,
+mid-generation — so the alternative is losing the generation to a missing
+dependency. The fallback retries on the unpadded inputs, so the reply is
+bit-identical to a plain eager server's.
+
 Two things to expect when running it:
 
 - **Compilation must amortize.** A short bench is meaningless — a 78-round

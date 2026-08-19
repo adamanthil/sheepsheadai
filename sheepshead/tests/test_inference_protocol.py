@@ -416,3 +416,33 @@ def test_batch_padding_does_not_change_any_client_result(agent, states):
             zip(unpack_response(got, *shape, wire), unpack_response(want, *shape, wire))
         ):
             assert np.abs(x - y).max() < 1e-5, (i, k)
+
+
+def test_a_compile_failure_degrades_to_eager(agent, states):
+    """Compilation fails for environmental reasons -- a missing Triton install
+    on Windows, a graph CUDA cannot capture -- and it fails on the first batch,
+    which is to say on every worker at once, mid-generation. That has to cost
+    throughput, not the run."""
+    device = torch.device("cpu")
+    blob, raw = _request(agent, states, [[1, 2, 5, 9]] * len(states))
+    want = run_batch(ServedModel(agent, device), [raw], device)[0]
+
+    broken = ServedModel(agent, device, granularity=16)
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("TritonMissing: Cannot find a working triton installation")
+
+    broken.forward = explode
+    got = run_batch(broken, [raw], device)[0]
+
+    shape = (len(states), agent.action_size, agent.encoder.d_model)
+    wire = WireConfig(half=False)
+    for x, y in zip(
+        unpack_response(got, *shape, wire), unpack_response(want, *shape, wire)
+    ):
+        assert np.abs(x - y).max() < 1e-6
+    assert broken.forward is broken._forward_eager  # and stays there
+    # byte-identical to a plain eager server: the fallback retries on the
+    # unpadded inputs, so batch composition never differs
+    assert got == want
+    assert run_batch(broken, [raw], device)[0] == got
