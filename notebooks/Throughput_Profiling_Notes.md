@@ -335,9 +335,17 @@ uv run python -m sheepshead.analysis.device_op_audit --device mps
 uv run python -m sheepshead.analysis.bench_inference_device
 ```
 
-`bench_inference_device` prints an aggregate states/s table comparing N
-concurrent CPU workers against one accelerator, since per-call speedup is not
-the deciding number when workers share one GPU. On this box it reads:
+`bench_inference_device` splits each measurement into **marshal** (host-side
+Python packing of the observation dicts) and **device** (everything after).
+That distinction only matters off-box, but there it is decisive: marshalling is
+a flat ~10 µs/state on the M1 Max and never amortizes with batch size, so a
+remote accelerator fed pre-packed arrays should be charged the *device* column
+only. Reading the *total* column for a remote device measures the remote host's
+Python speed, not its GPU — which on an old CPU can be most of the number.
+
+It also prints an aggregate states/s table comparing N concurrent CPU workers
+against one accelerator, since per-call speedup is not the deciding number when
+workers share one GPU. On this box it reads:
 
 | B | cpu ×8 | mps ×1 |
 |---|---|---|

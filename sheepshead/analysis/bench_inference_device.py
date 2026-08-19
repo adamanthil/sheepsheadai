@@ -47,6 +47,59 @@ from sheepshead.analysis.capture_arch_goldens import collect_probe_states
 
 DEFAULT_BATCH_SIZES = (1, 32, 96, 160, 320, 480, 1024)
 
+# The observation fields encode_batch marshals out of the state dicts, mirrored
+# here so the host-side share of its cost can be timed on its own. Kept in sync
+# with CardReasoningEncoder.encode_batch by hand; a drift only mis-attributes
+# time between the marshal and device columns, it cannot change the total.
+_HEADER_FIELDS = (
+    "partner_mode",
+    "is_leaster",
+    "play_started",
+    "current_trick",
+    "alone_called",
+    "called_under",
+    "picker_rel",
+    "partner_rel",
+    "leader_rel",
+    "picker_position",
+)
+_SCALAR_FIELDS = ("called_card_id", "picker_rel", "partner_rel")
+_ID_FIELDS = (
+    ("hand_ids", 8),
+    ("blind_ids", 2),
+    ("bury_ids", 2),
+    ("trick_card_ids", 5),
+    ("trick_is_picker", 5),
+    ("trick_is_partner_known", 5),
+)
+
+
+def marshal_host(batch: list) -> dict:
+    """The host-side half of encode_batch: turn a list of observation dicts into
+    stacked CPU tensors, before any device transfer.
+
+    This is one Python-level operation per state per field -- ~19 of them,
+    six constructing a tensor -- so it costs a fixed amount per state and never
+    amortizes with batch size. On a single machine it is invisible next to the
+    forward. In a split design, where a fast host marshals and ships packed
+    arrays to a remote accelerator, it stays on the host and must not be
+    charged to the accelerator.
+    """
+    out = {}
+    cols = [
+        torch.as_tensor([int(s[key]) for s in batch], dtype=torch.float32).view(-1, 1)
+        for key in _HEADER_FIELDS
+    ]
+    out["header"] = torch.cat(cols, dim=1)
+    for key in _SCALAR_FIELDS:
+        out[key] = torch.as_tensor([int(s[key]) for s in batch], dtype=torch.long)
+    for key, width in _ID_FIELDS:
+        stacked = torch.stack(
+            [torch.as_tensor(s[key], dtype=torch.long) for s in batch], dim=0
+        )
+        out[key] = stacked.view(-1, width) if stacked.dim() == 1 else stacked
+    return out
+
 
 def synchronize(device: torch.device) -> None:
     if device.type == "mps":
@@ -111,32 +164,34 @@ def bench_device(
                     )
 
         iters = max(3, min(30, target_states // batch))
-        results[batch] = time_call(call, device, iters)
+        total = time_call(call, device, iters)
+        host = time_call(lambda obs=observations: marshal_host(obs), device, iters)
+        results[batch] = {"total": total, "marshal": host, "device": total - host}
     return results
 
 
 def print_table(per_device: dict, batch_sizes: tuple) -> None:
-    devices = list(per_device)
-    head = f"{'B':>6}"
-    for name in devices:
-        head += f" | {name + ' ms':>10} {name + ' us/st':>11}"
-    if len(devices) == 2:
-        head += f" | {'speedup':>9}"
-    print(head)
-    print("-" * len(head))
-    for batch in batch_sizes:
-        row = f"{batch:>6}"
-        for name in devices:
-            seconds = per_device[name][batch]
-            row += f" | {seconds * 1e3:10.2f} {seconds / batch * 1e6:11.1f}"
-        if len(devices) == 2:
-            base, other = per_device[devices[0]][batch], per_device[devices[1]][batch]
-            row += f" | {base / other:8.2f}x"
-        print(row)
-    if len(devices) == 2:
+    for name, table in per_device.items():
+        print(f"\n[{name}]")
         print(
-            f"\nspeedup = {devices[0]} / {devices[1]}  (>1 means {devices[1]} is faster)"
+            f"{'B':>6} | {'total ms':>9} {'marshal ms':>11} {'device ms':>10}"
+            f" | {'total us/st':>12} {'device us/st':>13}"
         )
+        print("-" * 72)
+        for batch in batch_sizes:
+            row = table[batch]
+            print(
+                f"{batch:>6} | {row['total'] * 1e3:9.2f} {row['marshal'] * 1e3:11.2f}"
+                f" {row['device'] * 1e3:10.2f}"
+                f" | {row['total'] / batch * 1e6:12.1f}"
+                f" {row['device'] / batch * 1e6:13.1f}"
+            )
+    print(
+        "\n  marshal = host-side Python packing of the observation dicts; it is"
+        "\n  linear in B and never amortizes. Charge it to whichever machine"
+        "\n  builds the batch: on one box read 'total us/st'; for a remote"
+        "\n  accelerator fed pre-packed arrays read 'device us/st'."
+    )
 
 
 def print_aggregate(per_device: dict, batch_sizes: tuple, workers: int) -> None:
@@ -145,21 +200,25 @@ def print_aggregate(per_device: dict, batch_sizes: tuple, workers: int) -> None:
     on one GPU."""
     if "cpu" not in per_device or len(per_device) < 2:
         return
+    others = [n for n in per_device if n != "cpu"]
     print(f"\nAggregate throughput (states/s), assuming {workers} concurrent workers:")
-    print(
-        f"  {'B':>6} | {'cpu x' + str(workers):>14} | "
-        + " | ".join(f"{name + ' x1':>14}" for name in per_device if name != "cpu")
-    )
+    header = f"  {'B':>6} | {'cpu x' + str(workers):>14}"
+    for name in others:
+        header += f" | {name + ' x1':>14} | {name + ' x1 remote':>16}"
+    print(header)
     for batch in batch_sizes:
-        cpu_rate = workers * batch / per_device["cpu"][batch]
+        cpu_rate = workers * batch / per_device["cpu"][batch]["total"]
         row = f"  {batch:>6} | {cpu_rate:14,.0f}"
-        for name, table in per_device.items():
-            if name == "cpu":
-                continue
-            row += f" | {batch / table[batch]:14,.0f}"
+        for name in others:
+            entry = per_device[name][batch]
+            row += f" | {batch / entry['total']:14,.0f}"
+            row += f" | {batch / entry['device']:16,.0f}"
         print(row)
     print(
-        f"  A device only pays off where its x1 column exceeds the cpu x{workers} column."
+        f"  x1        = that device doing everything, including marshalling.\n"
+        f"  x1 remote = that device fed pre-packed arrays by a faster host\n"
+        f"              (marshalling excluded -- the split-machine case).\n"
+        f"  A device only pays off where its column beats cpu x{workers}."
     )
 
 
