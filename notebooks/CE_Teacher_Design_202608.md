@@ -751,3 +751,63 @@ OPERATOR DECISION MENU (no action taken; run halted on checkpoint):
   D. Crafted rollback to ~29k weights (v21 payload + 8M optimizer,
      attempt-9 §12.12 precedent) + reduced dose — preserves the
      good state but adds optimizer-mismatch confounds.
+
+---
+
+## 15. Theory of the failure and redesign space (2026-08-19)
+
+PHASE 2 RECORD (drifted 8,050k student vs frozen 8M expert, n=120,
+runs/entropy_baseline_202608/phase2_drift_8050k.json): student now
+SOFTER than expert prior everywhere (H_pi 0.60 vs H_praw 0.50 —
+Jensen gap flipped negative); w=0 anchor pull grew 0.030 (gen start)
+-> 0.106; material targets still sharp (H 0.09) — by 50k the teacher
+was RE-sharpening the softened student, i.e. the softening came from
+the interaction dynamics, not from target entropy. Fix safety under
+drift: argmax agree 98.4%, push corr 0.968.
+
+MECHANISM (evidence-backed): three vector fields with NO COMMON
+FIXED POINT on a shared trunk —
+ (1) CE toward pi_gumbel(seed prior, seed Q) = a one-step
+     improvement OF THE SEED, valid in a neighborhood (trust
+     region); integrated open-loop for 50k eps, far past the
+     linearization radius. The 29k peak = the radius edge. Frozen
+     expert => label KL has a FLOOR set by seed-student distance —
+     the pre-registered KL-decay signature was structurally
+     impossible in this design.
+ (2) PG's dense stream owns trunk features; CE's sparse off-mode
+     pulls (KL p95 ~4.5) leave standing bimodal mass that
+     generalizes into untaught heads (ALONE/pick drift).
+ (3) Entropy controller pinned at clamp all gen — the stabilizer
+     was bounded, the damage was not.
+Composite attractor = neither PG optimum nor search-improved policy;
+29k->50k near-tie flips = relaxation into it. HYPERPARAMETERS set
+spiral speed and attractor location, NOT existence — the instability
+is structural (the program's sweep across hinge/CE, coeff, epochs,
+two-phase/always-on never varied the structure: policy-space pull
+toward a NON-MOVING reference through a shared trunk).
+
+REDESIGN SPACE (ranked by information/risk):
+ (a) CLOSED LOOP (true AZ): expert = current net; target =
+     softmax(log pi_current + tilt) — bounded-KL from policy by
+     construction (no mass-in-transit), no staleness, KL decay
+     becomes the real self-retirement signature. Same compute. Cost:
+     CANNOT certify a moving expert — cert culture retreats to the
+     absolute-anchor boundary instruments. Attempt-7 counterevidence
+     is confounded (hinge at pathological scale + frozen-cert
+     semantics); CE-tilt with moving expert is a tamer object.
+ (b) PHASED OFFLINE ExIt: fixed certified target corpus at seed
+     states -> supervised distill w/ PG OFF -> boundary cert ->
+     refreeze as next expert. One clean Newton step per outer
+     iteration; certifiable; respects the validity radius by
+     construction. Cost: dedicated labeling runs (~days per
+     iteration); do NOT interleave PG (it erodes — measured).
+ (c) ADAPTER SEPARATION (§13.2 sketch): CE into zero-init additive
+     logit module PG never touches; structural interference kill;
+     the standing fallback if (a)/(b) still show trunk coupling.
+ (d) VALUE-SPACE distillation (search Q -> action-value head, act
+     on it at deploy): sidesteps softmax mass dynamics entirely;
+     biggest deployment change; hold unless policy-space exhausted.
+READING: attempt-11 indicts the FROZEN REFERENCE, not policy-space
+distillation per se — the 29k state proves CE installs and
+generalizes benignly inside the validity radius. (a) = highest
+information next; (b) = safest; (c) = structural insurance.
