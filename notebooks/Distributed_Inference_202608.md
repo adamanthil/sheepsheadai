@@ -2,8 +2,9 @@
 
 Status: **prototype working and measured; not yet wired into training.**
 Measured single-worker speedup 1.18×, modelled ceiling ~3.3×. **Cross-worker
-batching is mandatory, not optional** — deployed as-is the design is a
-regression (§5).
+batching is mandatory, not optional** — unbatched, the design is a regression
+(§5). Batching is now **built** (§6.1) but its win is not yet measured on the
+real two-machine pair.
 
 What began as "is MPS worth it?" turned into a two-machine inference split, a
 seam through the live trainer's search engine, and three bit-exact changes to
@@ -137,6 +138,8 @@ The system:
 | `1e074cc` | `sheepshead/inference/`: protocol, `LocalBackend`/`RemoteBackend`, server, 9 tests; the `_run_network_round` seam |
 | `aa3cd98` | Servers interruptible on Windows; `--bind`; startup prints reachable addresses |
 | `34d14ea` | Connect failures diagnose refusal vs timeout instead of raising bare |
+| `f0ba696` | Protocol v2: fused request/response blocks (13 transfers → 4 in, 3 D2H → 1) |
+| (this change) | **Cross-worker batching** — see §6.1 |
 
 Instruments (`sheepshead/analysis/`):
 
@@ -197,6 +200,29 @@ recurrent state, fed back every round.
 **fp32 is therefore required** until a per-field precision experiment says
 otherwise, at the cost of doubling the payload.
 
+#### 4.1.1 Merged batches diverge more than single ones — measured
+
+The fp32 figures above are **single-client**. Batching changes batch
+composition, hence GEMM tiling, hence the last bits of every reduction, so it
+was never going to carry over unchanged. Measured on loopback with everything
+else held fixed — same CPU, same weights, same RNG, fp32 wire, so tiling is the
+*only* difference:
+
+| comparison | max &#124;Δ pi_gumbel&#124; |
+|---|---|
+| single-client, CUDA vs local CPU | 2e-15 … 2e-11 |
+| **merged batch (3-4 clients), CPU vs local CPU** | **1.6e-06 … 2.9e-06** |
+
+Five orders of magnitude worse, and argmax still agrees everywhere. It is the
+expected cost, not a defect — but it is four orders below the 0.026 Q shrinkage
+floor rather than nine, so the margin is now a thing with a size rather than a
+formality. **Re-check this on the 5060 once batching runs there**, where device
+numerics and tiling changes compound.
+
+This is also why a server-backed run can never be golden-pinned (§2.4): the
+divergence is a function of *who else happened to be in the batch*, which is not
+reproducible even in principle.
+
 ## 5. Where the time goes now
 
 Of 13.44 s blocked, **9.59 s was server-side compute** and only ~3.85 s was wire
@@ -209,13 +235,14 @@ significant:
 
 | server mode | µs/state | capacity | vs 0.30 |
 |---|---|---|---|
-| unbatched (today's prototype) | 125 | 0.24 eps/s | **0.80× — a regression** |
+| unbatched | 125 | 0.24 eps/s | **0.80× — a regression** |
 | batched 8× (~750-state rounds) | 22 | 1.37 eps/s | above the Mac ceiling |
 
-**Deployed as-is, this would be slower than the current CPU trainer.** Not
-marginal — an outright regression. Cross-worker batching is not an optimization
-to schedule, it is the thing that makes the design viable at all, and everything
-else in §6 is downstream of it.
+**Unbatched, this would be slower than the current CPU trainer.** Not marginal —
+an outright regression. Cross-worker batching is not an optimization to
+schedule, it is the thing that makes the design viable at all, and everything
+else in §6 is downstream of it. It is now built (§6.1); the second row remains
+**modelled** until it is measured on the real pair.
 
 ## 5.1 MPS on the M1 Max: settled, and it loses (2026-08-19)
 
@@ -309,12 +336,49 @@ Consequences, none of which move the headline:
 
 ## 6. Planned work
 
-### 6.1 Cross-worker batching — the dominant lever
+### 6.1 Cross-worker batching — BUILT, win not yet measured
 
-A server request queue with a batching window, merging 8 workers' rounds into
-one ~750-state forward. Its value is *not* mainly GPU efficiency: it amortizes
-the fixed ~11 ms per round across 8× the states. Free, and it must come before
-any hardware decision.
+**Built.** The server now accepts concurrent connections and merges whatever is
+queued into a single forward. Its value is *not* mainly GPU efficiency: it
+amortizes the fixed ~11 ms per round across 8× the states.
+
+Shape:
+
+- **One thread per connection** does socket I/O and the (cheap) decode; **one
+  batcher thread** owns the model and runs every forward. Connection threads
+  decode while the batcher computes, and no lock guards the model because only
+  one thread ever touches it.
+- **Greedy by default** (`--batch-window-ms 0`): take everything already queued
+  and go. With synchronous clients that is self-synchronizing — while batch *k*
+  computes, all *K* workers queue their next round, so batch *k+1* fills without
+  anyone having waited. A window is available but costs its full value on
+  *every* round when a single client is connected, which is the benchmark case.
+- **Four transfers in, one out, regardless of client count.** `merge_requests`
+  interleaves the field-major uint8 observation region so the merged batch keeps
+  the layout that lets it cross in one copy; `response_block` returns a
+  contiguous host array so each client's rows are a slice, not a second copy.
+- A batch of one takes the same path — there is no separate unbatched branch to
+  drift.
+- Caps (`--max-batch-requests`, `--max-batch-states`) bound accelerator memory.
+  A request that cannot share a forward (different `action_size` or wire dtype)
+  is **returned to the queue**, never dropped: a dropped request strands a
+  client forever on an Event only the batcher sets.
+- Mixed `wants_critic` is handled by computing the critic if anyone asked and
+  zeroing the column back out for the clients that did not, so a client cannot
+  tell it was batched.
+
+**Verified**: 17 protocol tests, both golden gates bit-identical (the local path
+is untouched), and a 6-client loopback run whose every output matches
+`LocalBackend` to <1e-5.
+
+**Not verified**: the actual amortization. Loopback on the M1 Max under the live
+training run merged only 1.6-2.6 requests per batch — but there the "server" is
+the same saturated machine as the clients, so arrivals are spread by client
+starvation rather than by server speed. The 8× claim needs the real pair.
+`bench_remote_search --clients 8` exists for exactly this: eight client
+*processes* (not threads — GIL-serialised clients would stagger arrivals and
+flatter the merge factor), barrier-synchronised so the local and remote phases
+are each genuinely concurrent. The server prints its own merge factor.
 
 Then re-measure. Only once that fixed cost is amortized does payload dominate.
 
@@ -399,7 +463,14 @@ slots. Park it unless the link becomes binding again.
 - **`0.30 eps/s` is printed to one decimal**, so the true rate is 0.25-0.349 —
   roughly ±16% on every ratio here.
 - **Calibration is answered for fp32 only.** Any move back to fp16, or a change
-  to what is quantised, reopens it.
+  to what is quantised, reopens it. **And it is answered for single-client fp32
+  only** — merged batches measured 1.6-2.9e-6 against 2e-15..2e-11 unbatched
+  (§4.1.1). Still far under the 0.026 floor, but re-measure on the 5060, where
+  device numerics and tiling changes compound.
+- **The batcher thread is a single point of failure.** A forward that raises
+  fails its whole batch's clients (deliberately — the alternative is stranding
+  them), so one bad round disconnects up to `--max-batch-requests` workers at
+  once. That is survivable only once §6.4's fallback-to-local exists.
 
 ## 8. Reproducing
 
@@ -410,8 +481,14 @@ uv run python -m sheepshead.inference.server --checkpoint <weights> \
 
 # orchestrator
 uv run python -m sheepshead.analysis.bench_lan_roundtrip --connect <p2p-ip>
+
+# one client: latency and fidelity
 uv run python -m sheepshead.analysis.bench_remote_search --checkpoint <weights> \
     --host <p2p-ip> --fp32
+
+# eight clients: the batching win. Read the server's 'merge N req/batch' line.
+uv run python -m sheepshead.analysis.bench_remote_search --checkpoint <weights> \
+    --host <p2p-ip> --fp32 --clients 8
 ```
 
 Both ends need **identical weights** — pass the same file, or omit `--checkpoint`
