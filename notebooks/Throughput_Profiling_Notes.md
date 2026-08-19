@@ -438,23 +438,37 @@ With that much GPU headroom the link matters. Effective per-state cost is
 `t_device + t_wire`; the GRU memory (512 B/state each way in fp16) dwarfs the
 39-byte observation and dominates everything.
 
+**Measured 2026-08-18** on a direct point-to-point gigabit link
+(`bench_lan_roundtrip`), superseding the derived estimates this table
+originally carried. Baseline RTT **p50 0.354 ms** (min 0.157, p99 0.745) against
+an assumed 0.5 ms, and **0.72-0.87 Gbit/s** sustained — about 90% of line rate,
+i.e. the link is not the loss. `t_wire` below is the best per-state figure
+across round sizes; the derived estimate is in brackets and every one landed
+within ~20%.
+
 | wire encoding | B/state | t_wire @1GbE | t_eff | capacity | vs today |
 |---|---|---|---|---|---|
-| naive (int64 ids, fp32 memory both ways) | ~2768 | 22.1 µs | 29.1 | 0.30 | 1.4× |
-| packed (uint8 ids, fp16 memory both ways) | 1285 | 10.3 µs | 17.3 | 0.51 | 2.4× |
-| packed + memory resident on server | 261 | 2.1 µs | 9.1 | Mac-capped | **3.2×** |
-| packed both ways on 2.5GbE | 1285 | 4.1 µs | 11.1 | Mac-capped | **3.2×** |
+| naive (int64 ids, fp32 memory both ways) | ~2768 | 25.7 µs *(22.1)* | 32.7 | 0.27 | 1.27× |
+| packed (uint8 ids, fp16 memory both ways) | 1285 | 11.9 µs *(10.3)* | 18.9 | 0.47 | **2.20×** |
+| packed + memory resident on server | 261 | 2.6 µs *(2.1)* | 9.6 | Mac-capped | **3.24×** |
+| packed both ways on 2.5GbE | 1285 | ~4.8 µs (projected) | 11.8 | Mac-capped | **3.24×** |
 
-Two ways to reach the Mac ceiling. Keeping memory server-side is elegant but
-means holding per-(worker, sim, seat) state that the search reorders and prunes
-(the client would send permutation indices rather than tensors) — note that
-`_run_network_round` writes `sim.mem[sim.seat-1] = memory_out[row]` back into
-client-side state, so this is a real restructuring, not a wrapper. **2.5GbE
-adapters achieve the same number for the price of a cable**, and are the
-recommended first move.
+Two ways to reach the Mac ceiling, and the measurement makes the choice
+lopsided. Keeping memory server-side means holding per-(worker, sim, seat) state
+that the search reorders and prunes, with the client sending permutation indices
+rather than tensors — note that `_run_network_round` writes
+`sim.mem[sim.seat-1] = memory_out[row]` back into client-side state, so this is
+a restructuring of the search, not a change of wire format. **2.5GbE adapters
+reach the same 3.24× for ~$20-40 and no code**, because packed at 11.9 µs/state
+is entirely link-bound and divides straight through. Take the hardware.
 
-`t_wire` above is derived from link rate, not measured. It is now a top-two term
-and should be measured before anything is built.
+Caveat on the tails: at round sizes above ~1000 states the original sweep took
+only 6-25 samples per configuration, so its p90/p99 columns reported little more
+than the worst observation (a lone 355 ms outlier at 4032 states read as a 10%
+tail). Only the 126-state row had enough samples to trust, and there the tail is
+a healthy p99/p50 of 1.6×. The sampling floor is fixed; tails matter here
+because the search issues ~897 *sequential* rounds per episode, so a fat tail
+compounds rather than averages out.
 
 ## B4. Standing risks (unchanged by the good result)
 
@@ -473,8 +487,12 @@ and should be measured before anything is built.
 
 ## B5. Build order
 
-1. Measure the link — RTT and effective throughput at realistic payload sizes,
-   to replace the derived `t_wire` above.
+1. ~~Measure the link~~ **DONE 2026-08-18** — see the measured table in B3. The
+   derived estimates held within ~20%; gigabit gives 2.20× packed and the
+   link runs at ~90% of line rate. Note the first attempt was over a WiFi 6
+   mesh and read 6 ms RTT / 0.08-0.21 Gbit/s, i.e. 1.9× at best on the
+   byte-thriftiest encoding — worth remembering that the wire, not the code,
+   was the entire difference between 1.9× and 3.24×.
 2. Prototype at the existing seam: `ismcts._run_network_round` (line ~1475)
    takes an ordered request list, contains no RNG, and returns
    `(probs_np, values_np)`. Wrap it behind a pluggable backend and run one

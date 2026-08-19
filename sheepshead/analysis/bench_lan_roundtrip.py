@@ -55,6 +55,9 @@ DEFAULT_STATES = (126, 1008, 2016, 4032)
 #: which is the likeliest reason a connection to one of them fails.
 DEFAULT_PORT = 53017
 INFERENCE_PORT = 53018
+#: Floor on samples per configuration, so the reported percentiles mean
+#: something at large round sizes (see the comment at the call site).
+_MIN_SAMPLES = 30
 _HEADER = struct.Struct("!Q")  # frame length prefix
 
 
@@ -252,7 +255,12 @@ def connect(host: str, port: int, states: tuple, iters: int) -> int:
         )
         for n in states:
             up, down = up_per * n, down_per * n
-            stat = measure(sock, up, down, max(5, iters // max(1, n // 126)))
+            # Scale iterations down with round size to bound wall time, but keep
+            # a floor: the search issues ~897 sequential rounds per episode, so
+            # tail latency accumulates and p90/p99 are load-bearing. Below ~30
+            # samples those percentiles just report the worst observation and
+            # read as a catastrophic tail that is really one outlier.
+            stat = measure(sock, up, down, max(_MIN_SAMPLES, iters // max(1, n // 126)))
             results[(name, n)] = stat
             print(
                 f"{n:>8} | {up / 1e3:8.1f} {down / 1e3:9.1f} |"
