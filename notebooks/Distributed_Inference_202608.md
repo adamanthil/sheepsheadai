@@ -269,6 +269,44 @@ throughput, and unlike the link or the transfers there is no cheap fix — it
 would need the actor's op count cut or a working `torch.compile` MPS backend,
 neither of which is a small change.
 
+## 5.2 The non-teacher share: 1.3 s confirmed, and it is a serial update
+
+The last modelled input in the chain. Production runs at **6.2 eps/s with the
+teacher off** (operator, `league_retention_pg` generations), and the CE model's
+`8/(1.3 + 362·p)` gives `8/1.3 = 6.15` at p=0. **The 1.3 s was right.**
+
+A first attempt to measure it directly gave 0.199 s/episode and was wrong,
+instructively. Timing one process generating episodes and calling `update()`
+measures a *worker's* cost; production's 1.3 s is dominated by the **synchronous
+learner**, where all 8 workers idle during the gradient update. Decomposed
+against the 6.2 eps/s anchor, over a 1459-episode window:
+
+| | per window | per episode-worker-equivalent |
+|---|---|---|
+| generation (parallel over 8 workers) | 21 s | 0.11 s |
+| **PPO update (serial, workers idle)** | **215 s** | **1.18 s** |
+| total | 235 s | 1.29 s |
+
+So ~92% of the non-teacher share is a serial stall, not work that parallelism
+helps. Measured update cost is also **superlinear** in window size — 0.156,
+0.109, 0.146 s/episode at n = 100, 300, 600, with segment slopes 0.086 then
+0.183 — so it must not be extrapolated; the production anchor is the number to
+use.
+
+Consequences, none of which move the headline:
+
+- **Ceiling essentially unchanged: 0.99 eps/s = 3.29×** (it was 3.3× under the
+  modelled value). Demand 33,138 states/s against 33,222. MPS still short at
+  18,609; the 5060 still clears at ~49,000.
+- **The serial update becomes the next bottleneck.** It is 4% of wall time today
+  and **15% after offload**. If teacher work were free the ceiling would be
+  6.2 eps/s — so there is real headroom, but the update is now a visible term
+  rather than a rounding error, and it is the thing to attack after this.
+- **`teacher_prob` interacts with it.** Raising p adds parallel work while the
+  serial update stays fixed, so the update's share shrinks — the headroom from a
+  faster accelerator converts into labels more efficiently than the naive model
+  suggested.
+
 ## 6. Planned work
 
 ### 6.1 Cross-worker batching — the dominant lever
@@ -353,9 +391,11 @@ slots. Park it unless the link becomes binding again.
   single-process by `bench_inference_device`. Eight workers plus a learner on
   ten cores is simply more contended than a benchmark process. This means the
   benchmarks *understate* the CPU cost, and so understate the offload win.
-- **Remaining unverified input: the 1.3 s non-teacher share** per episode, still
-  from the CE model. It sets the tree/inference split and hence the Mac-side
-  ceiling. Worth measuring before the ceiling is quoted again.
+- ~~**Remaining unverified input: the 1.3 s non-teacher share.**~~ **CONFIRMED
+  2026-08-19 — see §5.2.** Production runs at 6.2 eps/s with the teacher off,
+  and `8/1.3 = 6.15`. The model was right. But it is ~92% *serial PPO update*,
+  not per-worker work, which changes what it means — the update does not scale
+  with workers and becomes the next bottleneck after inference is offloaded.
 - **`0.30 eps/s` is printed to one decimal**, so the true rate is 0.25-0.349 —
   roughly ±16% on every ratio here.
 - **Calibration is answered for fp32 only.** Any move back to fp16, or a change
