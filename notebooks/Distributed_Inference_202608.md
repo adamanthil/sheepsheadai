@@ -1,10 +1,12 @@
 # Distributed Inference for the CE Search Teacher — 2026-08
 
-Status: **prototype working and measured; not yet wired into training.**
-Measured single-worker speedup 1.18×, modelled ceiling ~3.3×. **Cross-worker
-batching is mandatory, not optional** — unbatched, the design is a regression
-(§5). Batching is now **built** (§6.1) but its win is not yet measured on the
-real two-machine pair.
+Status: **built and measured end to end; NOT viable as it stands.** Eight
+concurrent clients against the RTX 5060 run at **0.68×** — slower than the CPU
+path it replaces (§5.3). Cross-worker batching is built and correct but merges
+only 1.4 requests per batch, for a queueing reason that no server-side change
+fixes. The binding cost is ~17.7 ms of per-batch CUDA dispatch on the i5, with
+the GPU 5% utilised, so **the next move is cutting that (§6.0) — and it should
+be tried on the M1 Max first, where it needs no second machine at all.**
 
 What began as "is MPS worth it?" turned into a two-machine inference split, a
 seam through the live trainer's search engine, and three bit-exact changes to
@@ -214,10 +216,16 @@ else held fixed — same CPU, same weights, same RNG, fp32 wire, so tiling is th
 | **merged batch (3-4 clients), CPU vs local CPU** | **1.6e-06 … 2.9e-06** |
 
 Five orders of magnitude worse, and argmax still agrees everywhere. It is the
-expected cost, not a defect — but it is four orders below the 0.026 Q shrinkage
-floor rather than nine, so the margin is now a thing with a size rather than a
-formality. **Re-check this on the 5060 once batching runs there**, where device
-numerics and tiling changes compound.
+expected cost, not a defect — but four orders below the 0.026 Q shrinkage floor
+rather than nine, so the margin becomes a thing with a size rather than a
+formality.
+
+**Measured on the real pair (2026-08-19), it is a non-issue**: 8 clients, fp32,
+RTX 5060 gave **1.7e-16 / 9.1e-12 / 1.6e-11**, all argmax agreeing — as good as
+the single-client figures. The reason is uncomfortable rather than reassuring:
+the merge factor is only 1.4 (§5.3), so most rounds *are* batches of one. The
+caveat is re-scoped, not retired. **If `S` ever drops far enough for batches to
+actually fill, re-measure this.**
 
 This is also why a server-backed run can never be golden-pinned (§2.4): the
 divergence is a function of *who else happened to be in the batch*, which is not
@@ -236,13 +244,18 @@ significant:
 | server mode | µs/state | capacity | vs 0.30 |
 |---|---|---|---|
 | unbatched | 125 | 0.24 eps/s | **0.80× — a regression** |
-| batched 8× (~750-state rounds) | 22 | 1.37 eps/s | above the Mac ceiling |
+| ~~batched 8× (~750-state rounds)~~ | ~~22~~ | ~~1.37 eps/s~~ | ~~above the Mac ceiling~~ |
+| batched, **measured** 8 clients | **136** | **0.219 eps/s** | **0.73× — still a regression** |
 
 **Unbatched, this would be slower than the current CPU trainer.** Not marginal —
-an outright regression. Cross-worker batching is not an optimization to
-schedule, it is the thing that makes the design viable at all, and everything
-else in §6 is downstream of it. It is now built (§6.1); the second row remains
-**modelled** until it is measured on the real pair.
+an outright regression. Cross-worker batching was therefore treated as the thing
+that makes the design viable at all.
+
+**It is built, and it did not deliver (§5.3).** Eight real clients merged 1.4
+requests per batch, not 8, for a reason that turns out to be arithmetic rather
+than an implementation defect — so the second row above is struck and replaced
+by measurement. The bottleneck is per-batch dispatch cost on the i5, not the
+merge factor, and §6 is reordered accordingly.
 
 ## 5.1 MPS on the M1 Max: settled, and it loses (2026-08-19)
 
@@ -334,9 +347,114 @@ Consequences, none of which move the headline:
   faster accelerator converts into labels more efficiently than the naive model
   suggested.
 
+## 5.3 Eight clients on the real pair: batching does not fill (2026-08-19)
+
+The measurement §6.1 was waiting for. M1 Max uncontended, 8 client *processes*,
+RTX 5060 server, gigabit point-to-point, fp32, 8M checkpoint, one production
+committee each (1024 iters, R=3).
+
+| | local, 8 workers | remote, 8 clients |
+|---|---|---|
+| wall, slowest client | 56.92 s | 83.36 s |
+| aggregate | **10,751 states/s** | **7,341 states/s** |
+| rounds | — | 6,602 |
+| client blocked on I/O | — | 398.1 s of 642.5 s |
+| merge factor | — | **1.32-1.45 req/batch** |
+
+**0.68× — the remote path is slower than the CPU it replaces.** Batching did not
+change the per-round economics either: **136 µs/state** against 125 unbatched,
+where §5's model assumed 22.
+
+(The local column independently confirms the §1 correction: 33,558 states/episode
+× 0.30 eps/s = 10,067 states/s predicted, 10,751 measured.)
+
+### 5.3.1 The merge factor is arithmetic, not a bug
+
+For a greedy batcher the merge factor is simply how many requests arrive during
+one service time. In a closed system with `N` synchronous clients:
+
+```
+k  =  N · S / (T + L)
+```
+
+where `S` is service time per batch, `T` client think time, `L` round-trip
+latency. From the run: `L` = 398.1/6602 = **60.3 ms**, `T` = (80.31−49.8)/825 =
+**37.0 ms**, `X` = 6602/83.36 = **79.2 req/s** (against `N/(T+L)` = 82 ✓).
+Solving for `S` gives **17.7 ms/batch**; substituting back predicts
+**k = 1.45** against 1.32-1.45 measured.
+
+The structural consequence: **`k = N` requires `S = T + L`, which is impossible
+because `L ≥ S`.** Eight synchronous clients cannot fill a batch of eight unless
+the server is slower than an entire client cycle — and if batching ever does
+make the server faster, it un-fills its own batches. It is self-limiting.
+
+This is not greedy-vs-windowed. A 40 ms window models to about +20%, because in
+a closed system the window is dead time that raises `L` and throttles arrivals.
+The lever that does work is `N`: `k` scales linearly with client count, and
+during the remote phase each client is only ~49% CPU-busy, so the Mac could host
+more clients than it has cores. That is a trainer-side change, not a server one.
+
+### 5.3.2 Everything except the i5 is idle
+
+| station | load |
+|---|---|
+| RTX 5060 | 7,341 of ~140,000 states/s — **5%** |
+| gigabit link | 19 MB/s of ~90 — 21% |
+| M1 Max | 8 procs × 38% busy ≈ 3 of 10 cores |
+| **i5 Python / CUDA dispatch** | **~17.7 ms per batch, near-saturated** |
+
+17.7 ms against a 0.65 ms forward is kernel-*launch* overhead: hundreds of small
+aten dispatches through Python on a 2015 Skylake. This is the same pathology
+that killed MPS (§5.1, a flat ~10 ms in the actor graph), reappearing on the
+other machine for the same reason — an op-count-heavy graph driven by a slow
+interpreter.
+
+It also reframes the contest. The Mac's local path scaled ~8× across 8 processes
+(57 s for eight committees against 60 s for one); the remote path scaled 4.9×.
+**One GIL versus ten cores** is what the server is actually up against, and no
+amount of merging changes that ratio — merging only amortizes work *inside*
+`run_batch`.
+
+### 5.3.3 What this changes
+
+- **Deployed today the remote path caps training at 7,341/33,558 = 0.219 eps/s
+  against 0.30.** Consistent with the observed 0.68×.
+- **§5's "batched 8× → 22 µs/state → 1.37 eps/s" row is refuted.** The failure
+  was not in the batching implementation but in assuming 8 clients would produce
+  a merge factor of 8.
+- **The target moves from `k` to `S`.** Cutting per-batch dispatch cost helps
+  unconditionally, at every merge factor, and it is the same fix on both
+  machines. CUDA graphs / `torch.compile(mode="reduce-overhead")` is the direct
+  attack: at `S` ≈ 3 ms the model gives `X` ≈ 190 req/s and a remote wall of
+  ~35 s against local 57 s, i.e. ~1.6×. Static shapes are the obstacle (rounds
+  are 96-1024 states), but padding to buckets is nearly free when the GPU sits
+  at 5%.
+- **Worth trying on the M1 Max first.** If the win is dispatch overhead, a
+  compiled local forward needs no second machine, no weight sync and no wire —
+  which was the simpler path all along.
+- **2.5GbE stays unnecessary**, now for a second independent reason: the link
+  ran at 21%.
+
 ## 6. Planned work
 
-### 6.1 Cross-worker batching — BUILT, win not yet measured
+### 6.0 Cut per-batch dispatch cost — the actual bottleneck
+
+Promoted to the top by §5.3. `S` ≈ 17.7 ms per batch against a 0.65 ms forward:
+hundreds of small aten dispatches driven through Python on a 2015 Skylake, with
+the GPU 95% idle. Unlike the merge factor, this is not capped by queueing
+arithmetic — cutting it helps at every client count.
+
+`torch.compile(mode="reduce-overhead")` or explicit CUDA graph capture is the
+direct attack. The obstacle is static shapes, since rounds run 96-1024 states;
+padding to a few buckets is nearly free at 5% GPU utilisation. At `S` ≈ 3 ms the
+closed-system model gives ~190 req/s and a remote wall of ~35 s against local
+57 s — around 1.6×, with the Mac's tree work then binding.
+
+**Try it on the M1 Max first.** If the win really is dispatch overhead, a
+compiled local forward needs no second machine, no weight-sync protocol and no
+wire at all. That is worth knowing before building any more of this.
+
+### 6.1 Cross-worker batching — BUILT, and it did not pay
 
 **Built.** The server now accepts concurrent connections and merges whatever is
 queued into a single forward. Its value is *not* mainly GPU efficiency: it
@@ -371,16 +489,25 @@ Shape:
 is untouched), and a 6-client loopback run whose every output matches
 `LocalBackend` to <1e-5.
 
-**Not verified**: the actual amortization. Loopback on the M1 Max under the live
-training run merged only 1.6-2.6 requests per batch — but there the "server" is
-the same saturated machine as the clients, so arrivals are spread by client
-starvation rather than by server speed. The 8× claim needs the real pair.
-`bench_remote_search --clients 8` exists for exactly this: eight client
-*processes* (not threads — GIL-serialised clients would stagger arrivals and
-flatter the merge factor), barrier-synchronised so the local and remote phases
-are each genuinely concurrent. The server prints its own merge factor.
+**Measured on the real pair, and the win did not materialise — see §5.3.** Eight
+client processes merged **1.4** requests per batch, not 8, and end-to-end the
+remote path ran at **0.68×**. The implementation is correct; the premise was
+wrong. `k = N·S/(T+L)` caps the merge factor well below `N` for synchronous
+clients, and the fixed cost that batching was meant to amortize is better
+attacked directly.
 
-Then re-measure. Only once that fixed cost is amortized does payload dominate.
+Loopback on the loaded M1 Max had merged 1.6-2.6 — close to the real figure, and
+in hindsight not the artefact of a saturated host it was written off as.
+
+`bench_remote_search --clients N` is the instrument: N client *processes* (not
+threads — GIL-serialised clients would stagger arrivals and flatter the merge
+factor), barrier-synchronised so the local and remote phases are each genuinely
+concurrent. The server prints merge factor, ms/batch, µs/state, queue wait and
+**busy %**; the last two discriminate the two ways a merge factor can
+disappoint. Busy near 100% with a long queue wait means the batcher is the wall
+and a batch must get cheaper. Busy well under 100% with a short queue wait means
+requests are not reaching the queue at all — the connection threads are behind,
+and merging cannot help because the cost sits upstream of the merge point.
 
 ### 6.2 Weight sync — the largest production gap
 
@@ -433,7 +560,11 @@ slots. Park it unless the link becomes binding again.
   tiling. The local backend stays default and stays bit-exact; that is the only
   path the goldens gate.
 - **A remote dependency can kill a generation.** Needs §6.4's fallback.
-- **The Amdahl ceiling is ~3.2-4×** regardless of hardware.
+- **The Amdahl ceiling is ~3.2-4×** regardless of hardware. It has never been
+  approached: the measured figure is 0.68× (§5.3).
+- **The merge factor cannot be fixed from the server side.** `k = N·S/(T+L)`
+  bounds it below `N` for synchronous clients, so any future plan that assumes
+  full batches is assuming something the client structure forbids.
 - ~~**Addendum 1's MPS verdict rests on the same bad input and needs
   re-checking.**~~ **RESOLVED 2026-08-19 — see §5.1.** Re-derived from
   measurement: MPS loses, but because of Metal kernel-launch overhead in the
