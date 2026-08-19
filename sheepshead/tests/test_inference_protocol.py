@@ -192,6 +192,52 @@ def test_local_backend_skips_the_critic_when_not_asked(agent, states):
     assert np.array_equal(result.values, np.zeros(len(states), dtype=np.float32))
 
 
+def test_fused_device_unpack_matches_the_cpu_path(agent, states):
+    """unpack_request(device=...) fuses the inbound transfers -- four copies
+    instead of thirteen -- by slicing the contiguous uint8 region on the far
+    side. It must decode to exactly what the unfused path decodes."""
+    marshalled = agent.encoder.marshal_batch(states)
+    memory = torch.randn(len(states), agent.encoder.d_model)
+    valid = _valid_lists(agent, states)
+    wire = WireConfig(half=False)
+    blob = pack_request(marshalled, memory, valid, agent.action_size, True, wire)
+
+    plain = unpack_request(blob, agent.encoder.d_model)
+    fused = unpack_request(blob, agent.encoder.d_model, device=torch.device("cpu"))
+
+    for key in plain["marshalled"]:
+        assert torch.equal(fused["marshalled"][key], plain["marshalled"][key]), key
+    assert torch.equal(fused["masks"], plain["masks"])
+    assert torch.equal(fused["memory_in"], plain["memory_in"])
+
+
+def test_pack_response_agrees_across_torch_and_numpy(agent, states):
+    """The torch path concatenates on-device and crosses the bus once; the numpy
+    path is the reference. They must produce identical bytes."""
+    n = len(states)
+    torch.manual_seed(0)
+    probs = torch.rand(n, agent.action_size)
+    values = torch.rand(n)
+    memory_out = torch.randn(n, agent.encoder.d_model)
+    for half in (True, False):
+        wire = WireConfig(half=half)
+        from_torch = pack_response(probs, values, memory_out, wire)
+        from_numpy = pack_response(
+            probs.numpy(), values.numpy(), memory_out.numpy(), wire
+        )
+        assert from_torch == from_numpy, half
+        assert len(from_torch) == response_nbytes(
+            n, agent.action_size, agent.encoder.d_model, wire
+        )
+        got_p, got_v, got_m = unpack_response(
+            from_torch, n, agent.action_size, agent.encoder.d_model, wire
+        )
+        tol = 1e-3 if half else 0
+        assert np.abs(got_p - probs.numpy()).max() <= tol
+        assert np.abs(got_v - values.numpy()).max() <= tol
+        assert np.abs(got_m - memory_out.numpy()).max() <= (1e-2 if half else 0)
+
+
 def test_encode_tensors_matches_encode_batch(agent, states):
     """The split that lets a server consume packed arrays must not change what
     encode_batch computes."""

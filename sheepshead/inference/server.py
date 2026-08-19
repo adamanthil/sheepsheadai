@@ -120,31 +120,32 @@ def build_agent(checkpoint: str | None, arch: str, device: torch.device, seed: i
 
 
 def serve_round(agent, request: bytes, device: torch.device) -> bytes:
-    parsed = unpack_request(request, agent.encoder.d_model)
-    marshalled = {k: v.to(device) for k, v in parsed["marshalled"].items()}
-    memory_in = parsed["memory_in"].to(device)
-    masks = parsed["masks"].to(device)
+    """Decode, forward, encode -- with exactly four transfers in and one out.
+
+    The transfer count is the point. Per-round bus bookkeeping, not the forward,
+    dominated this server's budget: unfused it cost ~20 ms/round against a ~9.6
+    ms forward on MPS, where each small copy carries command-buffer overhead and
+    each ``.cpu()`` drains the pipeline. ``unpack_request`` takes the device so
+    it can fuse the inbound side; ``pack_response`` takes device tensors so it
+    can concatenate and cross back once.
+    """
+    parsed = unpack_request(request, agent.encoder.d_model, device=device)
+    marshalled = parsed["marshalled"]
 
     with torch.no_grad():
         encoded = agent.encoder.encode_tensors(
-            marshalled, memory_in=memory_in, device=device
+            marshalled, memory_in=parsed["memory_in"], device=device
         )
         probs, _ = agent.actor.forward_with_logits(
-            encoded, masks, marshalled["hand_ids"], agent.encoder.card
+            encoded, parsed["masks"], marshalled["hand_ids"], agent.encoder.card
         )
         memory_out = encoded["memory_out"]
-        n = memory_in.shape[0]
         if parsed["wants_critic"]:
             values = agent.critic(encoded).view(-1)
         else:
-            values = torch.zeros(n, device=device)
+            values = torch.zeros(probs.shape[0], device=probs.device)
 
-    return pack_response(
-        probs.cpu().numpy(),
-        values.cpu().numpy(),
-        memory_out.cpu().numpy(),
-        parsed["wire"],
-    )
+    return pack_response(probs, values, memory_out, parsed["wire"])
 
 
 def serve(agent, port: int, device: torch.device, bind: str = "0.0.0.0") -> int:
