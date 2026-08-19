@@ -44,11 +44,12 @@ So ~70% of training wall time is batched forward passes. That is the target.
 
 Two prior conclusions bound the problem:
 
-- **MPS is not the answer on this machine.** Eight M1 Max performance cores
-  out-throughput the 32-core GPU on a model this small (~25-29k states/s vs
-  ~17.4k best case). See `Throughput_Profiling_Notes.md` addendum 1 — including
-  the finding that MPS was being slowed by 24 batch-size-independent host syncs
-  in our own actor, since fixed.
+- **MPS is not the answer on this machine** — re-derived from measurement in
+  §5.1 after the original argument's numbers were retracted. The binding cost is
+  Metal kernel-launch overhead in the actor graph (~10 ms/round, flat in batch
+  size), which no batching or transfer fusion reaches. Addendum 1 also found
+  that MPS was being slowed by 24 batch-size-independent host syncs in our own
+  actor, since fixed.
 - **The Amdahl ceiling is ~3.2-4×.** 25.5% of committee-search time is Python
   tree/game work that stays on the orchestrator. No accelerator touches it.
 
@@ -216,6 +217,58 @@ marginal — an outright regression. Cross-worker batching is not an optimizatio
 to schedule, it is the thing that makes the design viable at all, and everything
 else in §6 is downstream of it.
 
+## 5.1 MPS on the M1 Max: settled, and it loses (2026-08-19)
+
+Addendum 1's verdict was flagged for re-derivation after the baseline
+correction. It is now re-derived, and it holds — for a better reason than the
+original.
+
+A single-machine MPS design would be far simpler: no second box, no weight sync
+over a wire, no network failure modes, no precision question. So it was worth
+settling properly. Two candidate shapes:
+
+**Per-worker MPS** (just change the device — the genuinely simple option). At the
+production round size of B≈93 the GPU delivers **9,715 states/s** against a
+demand of 33,222. Eight workers serialise on one GPU, so this is 3.4× short: a
+wash with today at best.
+
+**MPS behind a batching server.** Measured by pointing the existing server at
+`--device mps` on loopback: **0.90×** against local, with 24.9-27.2 s of
+server-side compute over 825 rounds. Loopback confirms the network was never
+the issue — 0.3 s of 25.2 s.
+
+The cost is **Metal kernel-launch overhead in the actor graph**, not data
+movement. Measured decomposition:
+
+| MPS device-only | B=93 | B=744 |
+|---|---|---|
+| encoder alone | 11.85 ms | 29.62 ms |
+| encoder + actor | 21.31 ms | 39.98 ms |
+| actor's contribution | 9.5 ms | **10.4 ms** |
+
+The actor costs a flat ~10 ms at both batch sizes — it is launches, not work.
+Fitting both points gives **18.6 ms fixed + 28.7 µs/state**:
+
+| merged batch | µs/state | states/s | vs 33,222 demand |
+|---|---|---|---|
+| 744 (8 workers) | 53.7 | 18,609 | short 1.8× |
+| 1488 | 41.2 | 24,267 | short 1.4× |
+| 4096 | 33.2 | 30,093 | still short |
+
+MPS does not clear even in the limit, and B=744 is what 8 workers actually
+produce — larger merged batches would need ~20 workers, which the Mac has no
+cores for. **A transfer-fusion attempt (protocol v2, `f0ba696`) did not move it**,
+because the cost was never transfers; that hypothesis and its refutation are in
+the commit message.
+
+The RTX 5060 clears the same bar with room: ~10 ms of i5 Python plus 744 × 7 µs
+≈ 15 ms per merged round ≈ 20 µs/state ≈ 49,000 states/s.
+
+**Verdict: the two-machine design is the path.** MPS is simpler and loses on
+throughput, and unlike the link or the transfers there is no cheap fix — it
+would need the actor's op count cut or a working `torch.compile` MPS backend,
+neither of which is a small change.
+
 ## 6. Planned work
 
 ### 6.1 Cross-worker batching — the dominant lever
@@ -279,7 +332,13 @@ slots. Park it unless the link becomes binding again.
   path the goldens gate.
 - **A remote dependency can kill a generation.** Needs §6.4's fallback.
 - **The Amdahl ceiling is ~3.2-4×** regardless of hardware.
-- **Addendum 1's MPS verdict rests on the same bad input and needs re-checking.**
+- ~~**Addendum 1's MPS verdict rests on the same bad input and needs
+  re-checking.**~~ **RESOLVED 2026-08-19 — see §5.1.** Re-derived from
+  measurement: MPS loses, but because of Metal kernel-launch overhead in the
+  actor graph (a flat ~10 ms/round), not the aggregate-throughput argument the
+  original gave. Original note kept below for the record.
+  <details><summary>original note</summary>
+
   `Throughput_Profiling_Notes.md` §A5 justified "MPS loses on the M1 Max" partly
   via `0.213 eps/s × 113k states/ep ≈ 24k states/s` for 8 CPU workers, and
   claimed a second route agreed at ~29k. Corrected, route 1 gives **10.1k
@@ -288,6 +347,7 @@ slots. Park it unless the link becomes binding again.
   original serialisation argument (8 workers, one GPU) is unaffected and may
   still carry the verdict, but it now needs the batched-server design to be
   compared honestly. **Do not treat addendum 1 as settled.**
+  </details>
 - **Production per-state inference cost is 2-3× the benchmark.** The corrected
   figures imply ~563 µs/state in production against 180-230 µs/state measured
   single-process by `bench_inference_device`. Eight workers plus a learner on
