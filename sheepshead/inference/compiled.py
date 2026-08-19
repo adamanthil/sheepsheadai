@@ -27,6 +27,9 @@ Two properties are load-bearing rather than incidental:
 * **Steady state only.** The first committee pays compilation and is *slower*
   than eager. A training run does thousands; a short benchmark measures the
   compiler.
+* **Enough shape slots.** dynamo compiles 8 variants per function by default and
+  then silently falls back to eager, which is more shapes than bucketing leaves
+  -- see ``allow_shape_specialisation``.
 """
 
 import torch
@@ -34,6 +37,28 @@ import torch
 from sheepshead.agent.encoder import CardReasoningEncoder
 
 _ORIGINAL_ENCODE_BATCH = None
+
+#: Bucketing still leaves more shapes than dynamo compiles by default.
+_DEFAULT_SHAPE_BUDGET = 64
+
+
+def allow_shape_specialisation(limit: int = _DEFAULT_SHAPE_BUDGET) -> None:
+    """Raise dynamo's per-function recompile limit.
+
+    It defaults to **8**, and on hitting it dynamo stops compiling and runs the
+    function eager *without raising* -- it only logs. Bucketed search shapes
+    exceed 8 (14 distinct at granularity 32), so the tail of the size
+    distribution silently loses its compilation.
+
+    Silently is the whole problem. The run still produces correct results, so
+    nothing fails; only the throughput is worse than it looks like it should be,
+    which is indistinguishable from the optimisation simply not helping much.
+    """
+    import torch._dynamo as dynamo
+
+    for name in ("recompile_limit", "cache_size_limit"):
+        if getattr(dynamo.config, name, limit) < limit:
+            setattr(dynamo.config, name, limit)
 
 
 def enable_compiled_encoder(granularity: int = 32, mode: str | None = None) -> None:
@@ -47,6 +72,7 @@ def enable_compiled_encoder(granularity: int = 32, mode: str | None = None) -> N
     global _ORIGINAL_ENCODE_BATCH
     if _ORIGINAL_ENCODE_BATCH is not None:
         return
+    allow_shape_specialisation()
     _ORIGINAL_ENCODE_BATCH = CardReasoningEncoder.encode_batch
     granularity = max(1, int(granularity))
     kwargs = {} if mode in (None, "default") else {"mode": mode}

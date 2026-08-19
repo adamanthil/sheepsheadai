@@ -190,6 +190,11 @@ class ServedModel:
         self._forward_eager = self._forward
         self.forward = self._forward
         if compile_mode:
+            # Merged batches take more distinct shapes than a single client's
+            # do, and dynamo's default budget of 8 is silently exceeded.
+            from sheepshead.inference.compiled import allow_shape_specialisation
+
+            allow_shape_specialisation()
             if backend:
                 kwargs = {"backend": backend}  # mode is an inductor-only knob
             else:
