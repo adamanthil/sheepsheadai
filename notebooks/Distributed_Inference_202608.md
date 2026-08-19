@@ -1,7 +1,9 @@
 # Distributed Inference for the CE Search Teacher — 2026-08
 
 Status: **prototype working and measured; not yet wired into training.**
-Measured single-worker speedup 1.18×, modelled ceiling ~3.2×.
+Measured single-worker speedup 1.18×, modelled ceiling ~3.3×. **Cross-worker
+batching is mandatory, not optional** — deployed as-is the design is a
+regression (§5).
 
 What began as "is MPS worth it?" turned into a two-machine inference split, a
 seam through the live trainer's search engine, and three bit-exact changes to
@@ -14,13 +16,31 @@ what is built, what was measured, and what is left.
 
 ## 1. Why
 
-At `teacher_prob=0.1` the league trainer runs at **0.213 eps/s** with 8 workers
-(CE doc §8: `eps/s ≈ 8 / (1.3 + 362·p)`). Of a worker's 37.5 s episode, the CE
-teacher's committee search is ~36.2 s — **96.5%** — and profiling a
-production-config committee found **74.5% of that is network inference**, spread
-over batches of 96 to 1024 states.
+At `teacher_prob=0.1` the league trainer runs at **0.30 eps/s** with 8 workers —
+measured from `runs/league_ce_teacher11/train.log`, not modelled. Of a worker's
+26.7 s episode, the CE teacher's committee search is the overwhelming majority,
+and profiling a production-config committee found **74.5% of that is network
+inference**, spread over batches of 96 to 1024 states.
 
-So ~72% of training wall time is batched forward passes. That is the target.
+So ~70% of training wall time is batched forward passes. That is the target.
+
+> **Correction (2026-08-19).** This section originally used **0.213 eps/s** and
+> **113,000 states/episode**, both taken from the CE doc's pre-launch model
+> (§8: `eps/s ≈ 8/(1.3 + 362·p)`) and a reconstruction from a time histogram.
+> Both were wrong, in opposite directions:
+>
+> | quantity | was | now | source |
+> |---|---|---|---|
+> | baseline | 0.213 eps/s | **0.30** | train.log, cumulative average |
+> | committees/episode | 0.78 | **0.439** | log: 640 `searched` per 1459 episodes |
+> | states/committee | ~145,000 | **76,501** | `bench_remote_search` |
+> | states/episode | 113,000 | **33,558** | product of the two above |
+> | rounds/episode | ~897 | **362** | 825 rounds/committee × 0.439 |
+>
+> The headline ceiling barely moved (3.24× → 3.29×) because a 41% higher
+> baseline and a 3.4× lower state count push the ratio in opposite directions.
+> But the *absolute* loads changed a lot, and two conclusions flipped — see the
+> correction note in §6.3, and the warning in §7 about addendum 1.
 
 Two prior conclusions bound the problem:
 
@@ -149,7 +169,9 @@ single worker, no cross-worker batching:
 | server-side compute | — | 9.59 s |
 
 Round count is **825**, not the ~1150 the model assumed — that figure counted
-all `encode_batch` calls, not just blocking round-trips.
+all `encode_batch` calls, not just blocking round-trips. Combined with the log's
+0.439 committees/episode, that gives the corrected **362 rounds and 33,558
+states per episode** used throughout (see the §1 correction).
 
 ### 4.1 Numerics: fp16 was the problem, CUDA is not
 
@@ -181,8 +203,18 @@ plus client packing. Per round that is 11.6 ms of server time against a ~0.65 ms
 GPU forward — **~94% is fixed per-round overhead** (unpack, dtype conversions,
 ten small H2D transfers, three D2H syncs, pack) on a 2015 Skylake.
 
-At 93-state rounds **the link is not the bottleneck.** Faster networking now
-would optimize a term that is not binding.
+With the corrected state count that becomes decisive rather than merely
+significant:
+
+| server mode | µs/state | capacity | vs 0.30 |
+|---|---|---|---|
+| unbatched (today's prototype) | 125 | 0.24 eps/s | **0.80× — a regression** |
+| batched 8× (~750-state rounds) | 22 | 1.37 eps/s | above the Mac ceiling |
+
+**Deployed as-is, this would be slower than the current CPU trainer.** Not
+marginal — an outright regression. Cross-worker batching is not an optimization
+to schedule, it is the thing that makes the design viable at all, and everything
+else in §6 is downstream of it.
 
 ## 6. Planned work
 
@@ -202,21 +234,31 @@ reject the first one. Needs a coordinated reload: version-stamped weights, a
 client-initiated swap, and a barrier so no round straddles a version change.
 Until this exists the system cannot run a real generation.
 
-### 6.3 Then decide: 2.5GbE or memory-resident
+### 6.3 Gigabit is enough — do not buy 2.5GbE
 
-Once §6.1 lands and payload binds again, two routes to the Mac-side ceiling:
+**Reversed 2026-08-19 by the corrected state count.** At 33,558 states/episode
+and 2576 B/state (fp32), the link carries ~86 MB per episode. At the Mac-side
+ceiling of 0.99 eps/s that is **0.66 Gbit/s against a measured 0.72-0.87
+sustained** — inside budget, if not by a wide margin.
 
-- **2.5GbE** (~$20-40, a PCIe card for the PC). No code. With fp32 required this
-  likely moves from optional to necessary.
-- **Memory-resident server.** The GRU memory is 1024 B/state each way in fp32,
-  ~80% of traffic. Keeping it server-side deletes that **and** moots the
-  quantisation question, since the state would never leave the GPU. But
-  `_run_network_round` writes `memory_out` back into client-side sim state, so
-  this is a restructuring of the search, not a wire change — the client would
-  send permutation indices against server-held slots.
+| configuration | t_eff | capacity | vs 0.30 |
+|---|---|---|---|
+| fp32, gigabit | 31.0 µs | 0.96 eps/s | 3.2× |
+| fp32, 2.5GbE | 16.6 µs | 1.80 eps/s | (Mac-capped at 3.3×) |
+| fp16, gigabit | 18.9 µs | 1.58 eps/s | (Mac-capped at 3.3×) |
 
-The fp32 requirement makes memory-resident materially more attractive than when
-the two looked equivalent.
+fp32 on gigabit lands at 0.96 eps/s against a Mac ceiling of 0.99 — the two are
+effectively tied, so faster networking buys nothing the orchestrator can use.
+**2.5GbE is unnecessary.** The earlier recommendation to buy it came from the
+inflated state count; with 3.4× less traffic than assumed, the link stopped
+being the problem.
+
+Memory-resident remains interesting for headroom and because it moots the
+quantisation question — the GRU memory is 1024 B/state each way in fp32, ~80% of
+traffic — but it is no longer needed to reach the ceiling, and it restructures
+the search: `_run_network_round` writes `memory_out` back into client-side sim
+state, so the client would have to send permutation indices against server-held
+slots. Park it unless the link becomes binding again.
 
 ### 6.4 Smaller, cheap
 
@@ -237,10 +279,25 @@ the two looked equivalent.
   path the goldens gate.
 - **A remote dependency can kill a generation.** Needs §6.4's fallback.
 - **The Amdahl ceiling is ~3.2-4×** regardless of hardware.
-- **The states-per-episode figure (~113k)** is reconstructed from a time
-  histogram, not counted. The headline speedup is deliberately expressed as
-  `(W/11.6)/(8/37.5)` so it does not depend on it, but the GPU-capacity check
-  does.
+- **Addendum 1's MPS verdict rests on the same bad input and needs re-checking.**
+  `Throughput_Profiling_Notes.md` §A5 justified "MPS loses on the M1 Max" partly
+  via `0.213 eps/s × 113k states/ep ≈ 24k states/s` for 8 CPU workers, and
+  claimed a second route agreed at ~29k. Corrected, route 1 gives **10.1k
+  states/s** — so the two routes never agreed; both were wrong and the errors
+  happened to cancel. At 10.1k the M1 Max GPU may well *beat* 8 CPU cores. The
+  original serialisation argument (8 workers, one GPU) is unaffected and may
+  still carry the verdict, but it now needs the batched-server design to be
+  compared honestly. **Do not treat addendum 1 as settled.**
+- **Production per-state inference cost is 2-3× the benchmark.** The corrected
+  figures imply ~563 µs/state in production against 180-230 µs/state measured
+  single-process by `bench_inference_device`. Eight workers plus a learner on
+  ten cores is simply more contended than a benchmark process. This means the
+  benchmarks *understate* the CPU cost, and so understate the offload win.
+- **Remaining unverified input: the 1.3 s non-teacher share** per episode, still
+  from the CE model. It sets the tree/inference split and hence the Mac-side
+  ceiling. Worth measuring before the ceiling is quoted again.
+- **`0.30 eps/s` is printed to one decimal**, so the true rate is 0.25-0.349 —
+  roughly ±16% on every ratio here.
 - **Calibration is answered for fp32 only.** Any move back to fp16, or a change
   to what is quantised, reopens it.
 

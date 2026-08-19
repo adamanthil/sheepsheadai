@@ -268,6 +268,28 @@ B=96 — below it.**
 
 ## A5. Throughput estimate for `train_league_ppo` + teacher
 
+> **⚠ CORRECTION (2026-08-19) — the aggregate figures below are wrong and the
+> verdict is no longer settled.**
+>
+> This section rests on `0.213 eps/s` (a pre-launch model from CE doc §8) and
+> `~113k states/episode` (reconstructed from a time histogram). Both are wrong.
+> Measured: **0.30 eps/s** from `runs/league_ce_teacher11/train.log`, and
+> **33,558 states/episode** (0.439 committees/episode from the log's `searched`
+> counts × 76,501 states/committee from `bench_remote_search`).
+>
+> The "two independent routes agree" claim below does not survive. Route 1
+> corrected gives **10.1k states/s**, not 24k; the routes never agreed, and the
+> apparent agreement came from two errors cancelling. Route 2's ~200 µs/state is
+> also a single-process benchmark figure, whereas production implies ~563
+> µs/state under 8-way contention.
+>
+> At ~10.1k states/s for 8 CPU workers, **the M1 Max GPU may beat the CPU pool**,
+> which would reverse this section's conclusion. The serialisation argument (8
+> workers, one GPU) is untouched and may still carry it, but that has to be
+> re-derived against a batched-server design rather than assumed. Treat A5's
+> *method* as sound and its *numbers* as retracted; see
+> `Distributed_Inference_202608.md` §1 and §7.
+
 Time-weighting §A4 by the §A3 distribution: inference **1.34×**, hence search
 **1.23×**, hence at `teacher_prob=0.1` (teacher = 96.5% of episode time) a
 **single worker** would go 37.5 → ~31.9 s/episode, about **1.18×**.
