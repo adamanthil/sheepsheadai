@@ -24,6 +24,11 @@ Then:
     uv run python -m sheepshead.analysis.bench_remote_search \
         --checkpoint runs/league_ce_teacher11/_league_worker_weights_v24.pt \
         --host 192.168.1.50
+
+``--clients 8`` runs eight concurrent client *processes*, which is the only way
+to measure the server's cross-worker batching -- one client has nothing to merge
+with, and the unbatched per-round cost is what made the prototype a regression.
+The server prints its own merge factor.
 """
 
 import argparse
@@ -85,8 +90,12 @@ def find_play_node(agent, max_seeds: int = 200):
     raise RuntimeError("no eligible play node found")
 
 
-def run_committee(teacher, game, seat, forced, iters, replicates, d_rollout):
-    rngs = [random.Random(1000 + i) for i in range(replicates)]
+def run_committee(teacher, game, seat, forced, replicates, d_rollout, seed_offset=0):
+    """One committee search. ``seed_offset`` desynchronizes concurrent clients:
+    identical RNG would make every client issue its rounds in lockstep, which is
+    the most favourable possible arrival pattern for a batching server and would
+    overstate the merge factor."""
+    rngs = [random.Random(1000 + seed_offset + i) for i in range(replicates)]
     start = time.perf_counter()
     results = teacher.search_committee(
         game, seat, list(forced), rngs, d_rollout=d_rollout
@@ -123,6 +132,118 @@ def compare(local_results, remote_results) -> None:
         print(row)
 
 
+def setup(opts: dict, announce: bool = True):
+    """Load the agent and replay to the node every client searches."""
+    from sheepshead.agent.ppo import PPOAgent
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.training.training_utils import set_all_seeds
+
+    set_all_seeds(42)
+    agent = PPOAgent(action_size=len(ACTION_IDS), arch=opts["arch"])
+    if opts["checkpoint"]:
+        payload = torch.load(opts["checkpoint"], map_location="cpu", weights_only=False)
+        agent.load_network_states(payload, source=opts["checkpoint"])
+        if announce:
+            print(f"loaded {opts['checkpoint']}")
+
+    game, seat, forced, seed = find_play_node(agent)
+    if announce:
+        print(f"node: seed={seed} trick={game.current_trick} seat={seat}")
+
+    config = ISMCTSConfig(
+        iters={k: opts["iters"] for k in ("pick", "partner", "bury", "play")}
+    )
+    return agent, ISMCTSTeacher(agent, config), game, seat, forced
+
+
+def _run_client(index: int, opts: dict, barrier, results) -> None:
+    """One orchestrator worker's worth of load.
+
+    A separate process, not a thread, and that is the point: production workers
+    are processes, and eight Python searches sharing one interpreter would
+    contend on the GIL badly enough to become the bottleneck themselves --
+    arrivals would space out and the server's merge factor would look better
+    than it will ever be in production.
+    """
+    torch.set_num_threads(1)
+    agent, teacher, game, seat, forced = setup(opts, announce=(index == 0))
+    offset = 977 * index
+    payload = {"index": index}
+
+    barrier.wait()  # setup costs differ; start the measured phase together
+    local = LocalBackend(torch.device("cpu"))
+    teacher.backend = local
+    local_results, payload["local_wall"] = run_committee(
+        teacher, game, seat, forced, opts["replicates"], opts["d_rollout"], offset
+    )
+    payload["local_rounds"] = local.rounds
+    payload["local_states"] = local.states
+
+    if opts["host"]:
+        barrier.wait()  # ... and so is the remote phase genuinely concurrent
+        remote = RemoteBackend(opts["host"], opts["port"], agent, half=not opts["fp32"])
+        teacher.backend = remote
+        remote_results, payload["remote_wall"] = run_committee(
+            teacher, game, seat, forced, opts["replicates"], opts["d_rollout"], offset
+        )
+        payload["remote"] = remote.report()
+        remote.close()
+        if index == 0:
+            compare(local_results, remote_results)
+
+    results.put(payload)
+
+
+def run_fleet(opts: dict, clients: int) -> int:
+    """Measure ``clients`` concurrent searches, which is what actually exercises
+    cross-worker batching. A single client can never merge with anything."""
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    barrier = ctx.Barrier(clients)
+    results = ctx.Queue()
+    procs = [
+        ctx.Process(target=_run_client, args=(i, opts, barrier, results))
+        for i in range(clients)
+    ]
+    print(f"\n=== {clients} concurrent clients ===")
+    for proc in procs:
+        proc.start()
+    collected = [results.get() for _ in procs]
+    for proc in procs:
+        proc.join()
+
+    collected.sort(key=lambda row: row["index"])
+    local_walls = [row["local_wall"] for row in collected]
+    states = sum(row["local_states"] for row in collected)
+    print(
+        f"\n[local]  wall max {max(local_walls):6.2f}s  mean "
+        f"{sum(local_walls) / clients:6.2f}s   {states} states total   "
+        f"{states / max(local_walls):8.0f} states/s"
+    )
+    if not opts["host"]:
+        return 0
+
+    remote_walls = [row["remote_wall"] for row in collected]
+    rounds = sum(row["remote"]["rounds"] for row in collected)
+    blocked = sum(row["remote"]["total_s"] for row in collected)
+    print(
+        f"[remote] wall max {max(remote_walls):6.2f}s  mean "
+        f"{sum(remote_walls) / clients:6.2f}s   {states} states total   "
+        f"{states / max(remote_walls):8.0f} states/s"
+    )
+    print(
+        f"  rounds {rounds}   blocked on I/O {blocked:.1f}s of "
+        f"{sum(remote_walls):.1f}s client wall"
+    )
+    print(f"  local/remote    : {max(local_walls) / max(remote_walls):8.2f}x")
+    print(
+        "  the merge factor is the server's to report -- read its "
+        "'merge N req/batch' line."
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--checkpoint", default=None)
@@ -138,32 +259,28 @@ def main() -> int:
         help="fp32 on the wire, to separate quantisation from device numerics",
     )
     parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument(
+        "--clients",
+        type=int,
+        default=1,
+        help="run N concurrent client processes instead of one, to exercise "
+        "the server's cross-worker batching. 8 matches the trainer's worker "
+        "count. A single client can never merge with anything, so the "
+        "default measures latency and fidelity, not the batching win",
+    )
     args = parser.parse_args()
 
     torch.set_num_threads(args.threads)
-    from sheepshead.agent.ppo import PPOAgent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-    from sheepshead.training.training_utils import set_all_seeds
+    opts = vars(args)
+    if args.clients > 1:
+        return run_fleet(opts, args.clients)
 
-    set_all_seeds(42)
-    agent = PPOAgent(action_size=len(ACTION_IDS), arch=args.arch)
-    if args.checkpoint:
-        payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-        agent.load_network_states(payload, source=args.checkpoint)
-        print(f"loaded {args.checkpoint}")
-
-    game, seat, forced, seed = find_play_node(agent)
-    print(f"node: seed={seed} trick={game.current_trick} seat={seat}")
-
-    config = ISMCTSConfig(
-        iters={k: args.iters for k in ("pick", "partner", "bury", "play")}
-    )
-    teacher = ISMCTSTeacher(agent, config)
+    agent, teacher, game, seat, forced = setup(opts)
 
     local = LocalBackend(torch.device("cpu"))
     teacher.backend = local
     local_results, local_wall = run_committee(
-        teacher, game, seat, forced, args.iters, args.replicates, args.d_rollout
+        teacher, game, seat, forced, args.replicates, args.d_rollout
     )
     print(
         f"\n[local]  {local_wall:7.2f}s   rounds {local.rounds}   "
@@ -178,7 +295,7 @@ def main() -> int:
     remote = RemoteBackend(args.host, args.port, agent, half=not args.fp32)
     teacher.backend = remote
     remote_results, remote_wall = run_committee(
-        teacher, game, seat, forced, args.iters, args.replicates, args.d_rollout
+        teacher, game, seat, forced, args.replicates, args.d_rollout
     )
     stats = remote.report()
     remote.close()
