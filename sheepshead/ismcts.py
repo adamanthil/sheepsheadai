@@ -110,6 +110,7 @@ from sheepshead import (
     Game,
 )
 from sheepshead.agent import ppo
+from sheepshead.inference import LocalBackend, masked_actor_probs
 from sheepshead.training.training_utils import RETURN_SCALE
 
 DEV = ppo.device
@@ -655,6 +656,11 @@ class ISMCTSTeacher:
         self.agent = agent
         self.action_size = agent.action_size
         self.config = config or ISMCTSConfig()
+        # Where the network rounds run. The in-process default is the only path
+        # capture_search_goldens can pin -- a server-backed run batches across
+        # workers, which changes GEMM tiling and so can never be bit-exact.
+        # Swap it only for a throughput experiment, never for a golden capture.
+        self.backend = LocalBackend(DEV)
         # Per-search transient state (reset in ``search``).
         self._rng = None
         self._oracle = _OracleCapture(False)
@@ -1106,29 +1112,15 @@ class ISMCTSTeacher:
         seat_memories[seat] = encoded["memory_out"].detach()
         return states, encoded
 
-    def _masked_actor_probs(self, ctrl, encoded, states, valid_list):
-        """Post-mixture action probabilities (n, A) under ``ctrl`` for
-        already-encoded states — the shared mask/hand_ids/actor plumbing.
-        Mirrors ``get_action_probs_with_logits`` over n states at once;
-        ``encoded`` must come from ``ctrl``'s own encoder."""
-        masks = torch.stack(
-            [ctrl.get_action_mask(valid, self.action_size) for valid in valid_list]
-        ).to(DEV)
-        hand_ids = torch.as_tensor(
-            np.stack([state["hand_ids"] for state in states]),
-            dtype=torch.long,
-            device=DEV,
-        )
-        with torch.no_grad():
-            probs, _ = ctrl.actor.forward_with_logits(
-                encoded, masks, hand_ids, ctrl.encoder.card
-            )
-        return probs
-
     def _actor_probs_batched(self, encoded, states, valid_list, seat):
-        """``_masked_actor_probs`` under ``seat``'s controller (replay path)."""
-        return self._masked_actor_probs(
-            self._controller(seat), encoded, states, valid_list
+        """``masked_actor_probs`` under ``seat``'s controller (replay path)."""
+        return masked_actor_probs(
+            self._controller(seat),
+            encoded,
+            states,
+            valid_list,
+            self.action_size,
+            DEV,
         )
 
     def _observe_trick_lockstep(self, games, seat_memories):
@@ -1498,27 +1490,22 @@ class ISMCTSTeacher:
                     for req_idx in req_idxs
                 ]
             )
-            encoded = ctrl.encoder.encode_batch(
-                group_states, memory_in=memory_in, device=DEV
+            wants_critic = not self._oracle_capture and any(
+                requests[req_idx].kind == "critic" for req_idx in req_idxs
             )
-            memory_out = encoded["memory_out"].detach()
+            result = self.backend.evaluate(
+                ctrl,
+                group_states,
+                memory_in,
+                [requests[req_idx].sim.valid for req_idx in req_idxs],
+                wants_critic,
+            )
             for row, req_idx in enumerate(req_idxs):
                 sim = requests[req_idx].sim
-                sim.mem[sim.seat - 1] = memory_out[row]
-            probs = self._masked_actor_probs(
-                ctrl,
-                encoded,
-                group_states,
-                [requests[req_idx].sim.valid for req_idx in req_idxs],
-            )
-            if not self._oracle_capture and any(
-                requests[req_idx].kind == "critic" for req_idx in req_idxs
-            ):
-                with torch.no_grad():
-                    values_np[req_idxs] = (
-                        ctrl.critic(encoded).detach().view(-1).cpu().numpy()
-                    )
-            probs_np[req_idxs] = probs.detach().cpu().numpy()
+                sim.mem[sim.seat - 1] = result.memory_out[row]
+            if wants_critic:
+                values_np[req_idxs] = result.values
+            probs_np[req_idxs] = result.probs
         return probs_np, values_np
 
     def _evaluate_oracle_leaves(self, requests, values_np, observer):
