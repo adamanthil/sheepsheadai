@@ -1,17 +1,26 @@
 # Distributed Inference for the CE Search Teacher — 2026-08
 
-Status: **built and measured end to end; NOT viable as it stands.** Eight
-concurrent clients against the RTX 5060 run at **0.68×** — slower than the CPU
-path it replaces (§5.3). Cross-worker batching is built and correct but merges
-only 1.4 requests per batch, for a queueing reason that no server-side change
-fixes. The binding cost is ~17.7 ms of per-batch CUDA dispatch on the i5, with
-the GPU 5% utilised, so the next move is cutting that (§6.0).
+Status: **CONCLUDED. Shelve the distributed path; ship the local one.**
 
-**Tried on the M1 Max first (§5.4): `torch.compile` gives 1.13× end-to-end at 8
-workers — real, cheap, and far short of 3×.** It also found that the seam
-carries only ~42% of committee time, not 74.5%, so the ceiling for offloading it
-at all is ~1.7×. The same lever is still untested on the i5, where the dispatch
-ratio is much worse and CUDA supports `reduce-overhead` properly.
+The two-machine design was built, measured, and optimised until the accelerator
+side stopped being the problem — and it still only reaches **parity with the
+weakest local configuration**. Meanwhile compiling the local encoder returns
+**1.36×** for a command-line flag (§5.5, §5.6).
+
+| configuration | committee, 8 workers | |
+|---|---|---|
+| local, CPU eager | 55.91 s | the incumbent |
+| remote, i5 + CUDA graphs | 55.94 s | 1.00× — after 1.49× of server-side work |
+| **local, MPS + compiled** | **42.09 s** | **1.36× — one flag** |
+
+What the distributed path would additionally need: a weight-sync protocol
+(§6.2), fallback-to-local so a dropped connection cannot kill a generation, and
+a second machine kept alive. What it buys over the local path: nothing.
+
+The useful residue is real, though: the encoder seam, `marshal_batch` /
+`encode_tensors`, `sheepshead/inference/compiled.py`, and the measurement
+discipline in §5.6.1. Read §5.3.1 before proposing any batching design — the
+merge factor is bounded by arithmetic, not by implementation.
 
 What began as "is MPS worth it?" turned into a two-machine inference split, a
 seam through the live trainer's search engine, and three bit-exact changes to
@@ -554,7 +563,80 @@ it discouraged trying `torch.compile` on MPS, which is where the 1.41× is.
 warm/cold status next to every timing.** Three separate conclusions in this
 notebook have now been distorted by one or the other.
 
+## 5.6 The i5 with CUDA graphs — and the verdict (2026-08-19)
+
+`--compile --compile-backend cudagraphs` on the RTX 5060 box, same 8-client
+bench, fp32, steady state. Inductor was never an option there: it generates
+Triton kernels and upstream PyTorch ships no Triton for Windows.
+
+**It worked.** Server-side service time `S` fell from **17.7 ms to ~10.6 ms** and
+throughput rose from 79.2 to **118 req/s** — the remote committee went
+**83.36 s → 55.94 s, a 1.49× improvement.**
+
+And it does not matter:
+
+| configuration | committee (max of 8) | vs CPU eager |
+|---|---|---|
+| local, CPU eager | 55.91 s | — |
+| **remote, i5 + CUDA graphs** | **55.94 s** | **1.00×** |
+| **local, MPS + compiled** | **42.09 s** | **1.36×** |
+
+**The distributed path reaches parity with the weakest local configuration and
+loses to the best by 1.33×.** For that it wants a second machine, a weight-sync
+protocol that does not exist yet, a network failure mode that can kill a
+generation, and an fp32 wire whose numerics needed their own study. The local
+path wants a flag.
+
+Two structural notes:
+
+- **The merge factor did not move** (1.16-1.39, against 1.32-1.45 before), which
+  is `k = N·S/(T+L)` behaving exactly as §5.3.1 says it must: `S` fell, so `k`
+  fell with it. Making the server faster un-fills its own batches. There is no
+  operating point where both are good.
+- **The remaining 10.6 ms is still ~94% overhead** against a 0.65 ms forward, but
+  it is no longer kernel launches — those are what CUDA graphs removed. What is
+  left is `merge_requests`, the transfers, `response_block`, and the
+  connection-thread decode. Each is a smaller, more awkward target than the one
+  just cleared.
+
+Numerics stayed excellent through all of it: 3.9e-16 / 2.4e-10 / 9.2e-12, all
+argmax agreeing.
+
+### 5.6.1 Correction: the 1.41× was measured with a silent cap
+
+`torch._dynamo.config.recompile_limit` defaults to **8**. Bucketing to multiples
+of 32 leaves **14** shapes, and §5.5's own output said "14 shapes, 8 graphs" —
+it hit the cap exactly. Past the limit dynamo stops compiling and runs the
+function eager **without raising**; it only logs.
+
+That is the worst shape a defect can take here. Nothing fails, results stay
+correct, and only the throughput is quietly worse than it should be — which is
+indistinguishable from the optimisation just not helping much. Every number in
+§5.5 was measured with 6 of 14 shapes eager.
+
+`enable_compiled_encoder` now raises the limit. Re-measured on the same node and
+harness as the client above: **55.47 s → 40.69 s = 1.36×** (mean of 8). §5.5's
+1.41× was a different node and a different harness, so the two are not directly
+comparable; **1.36× on a like-for-like comparison is the number to quote.**
+
 ## 6. Planned work
+
+**Reordered by §5.6.** Everything below §6.0 is now *shelved*, not next. The
+remaining work on the distributed path (weight sync, fallback-to-local, worker
+wiring) buys nothing the local path does not already deliver more cheaply.
+
+### 6.-1 Ship the compiled local encoder — the only live item
+
+`enable_compiled_encoder(granularity=32)` returns 1.36× at 8 workers. To put it
+into training it needs a trainer flag, and it must stay **opt-in**: compiled
+output differs from eager by ~2.6e-08, so `capture_search_goldens` cannot pass
+against it. Same status as remote mode — fine for training, never for goldens,
+CRN panels or eval.
+
+Worth measuring before wiring it in: this is 1.36× on *committees*, and at
+`teacher_prob=0.1` a generation mixes in non-teacher work, so the end-to-end
+training gain will be smaller. §5.2's serial PPO update is untouched by any of
+this and becomes a larger share afterwards.
 
 ### 6.0 Cut per-batch dispatch cost — measured locally at ~1.1×
 
