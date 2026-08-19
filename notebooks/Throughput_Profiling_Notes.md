@@ -493,8 +493,90 @@ compounds rather than averages out.
    mesh and read 6 ms RTT / 0.08-0.21 Gbit/s, i.e. 1.9× at best on the
    byte-thriftiest encoding — worth remembering that the wire, not the code,
    was the entire difference between 1.9× and 3.24×.
-2. Prototype at the existing seam: `ismcts._run_network_round` (line ~1475)
-   takes an ordered request list, contains no RNG, and returns
-   `(probs_np, values_np)`. Wrap it behind a pluggable backend and run one
-   committee search end to end for real per-round latency and round counts.
+2. ~~Prototype at the existing seam~~ **DONE 2026-08-18** — see B6.
 3. Only then: the server proper, worker-pool changes, and the fallback path.
+
+## B6. Prototype measurements (2026-08-18)
+
+One production-config committee (1024 iters, R=3, 8M checkpoint) run locally and
+again against the RTX 5060 over the direct gigabit link, via
+`bench_remote_search`. Single worker, single-connection server, no cross-worker
+batching.
+
+| | local | remote fp16 | remote fp32 |
+|---|---|---|---|
+| wall | 62.3 / 60.0 s | 53.3 s | 50.7 s |
+| rounds | 825 | 825 | 825 |
+| mean batch | 93 states | 93 | 93 |
+| round latency p50 | — | 13.98 ms | 15.40 ms |
+| client blocked on I/O | — | 12.60 s | 13.44 s |
+| **server-side compute** | — | **10.09 s** | **9.59 s** |
+| payload B/state | — | 1331 | 2576 |
+| speedup | 1.00× | 1.17× | 1.18× |
+
+**Round count: 825, not the assumed ~1150.** The model was conservative; the
+1150 figure counted all `encode_batch` calls, of which only the
+`_run_network_round` ones are blocking round-trips.
+
+### B6.1 Numerics: fp16 was the whole problem, CUDA is a non-issue
+
+Divergence of `pi_gumbel` against the local search, same RNG, three replicates:
+
+| wire | replicate 0 | 1 | 2 |
+|---|---|---|---|
+| fp16 | 3.3e-13 AGREE | 1.1e-04 AGREE | **1.0e+00 DIFFER** |
+| fp32 | 2.2e-15 AGREE | 2.4e-11 AGREE | 7.8e-12 AGREE |
+
+The fp16 result is bimodal — trees either stay locked or bifurcate completely —
+which is the signature of chaotic amplification, not of accumulating float
+error: one perturbed prior changes a PUCT selection and 825 rounds later the
+tree is different. `pi_gumbel` saturates to one-hot at these budgets, so a delta
+of 1.0 is an outright label flip.
+
+**With fp32 on the wire the question closes.** 2e-15 to 2e-11 over a full
+825-round search means CUDA-vs-CPU device numerics contribute ~nine orders of
+magnitude less than the 0.026 Q shrinkage noise floor. The B4 calibration
+concern is answered for fp32: `shrink_s2_global` does not need refitting for the
+device. It was fp16 quantisation of the recurrent state — fed back every round,
+compounding — not the GPU.
+
+Cost: fp32 doubles the payload (1331 → 2576 B/state), putting packed-fp32 at
+roughly the "naive" row of B3, ~24-26 µs/state on gigabit.
+
+### B6.2 The binding constraint is the server's per-round Python, not the link
+
+Of the 13.44 s the client spent blocked (fp32), **9.59 s was server-side
+compute** and only ~3.85 s was wire plus client-side packing. Per round that is
+11.6 ms of server time, of which the GPU forward is ~0.65 ms (93 states at
+~7 µs). **~94% of server time is fixed per-round overhead** — `unpack_request`,
+the dtype conversions, ten small H2D transfers, three D2H syncs, `pack_response`
+— on a 2015 Skylake.
+
+That reorders the build. Cross-worker batching is not primarily about GPU
+efficiency; it amortizes a fixed ~11 ms per round across 8 workers' worth of
+states. At 93-state rounds the link is *not* the bottleneck, so buying a faster
+NIC now would optimize a term that is not binding.
+
+Revised order:
+
+1. **Cross-worker batching** (server request queue + batching window). Free,
+   and the dominant term.
+2. **Re-measure.** Only once the fixed cost is amortized does the payload
+   dominate; that is when 2.5GbE becomes worth buying, and with fp32 required it
+   likely becomes necessary rather than optional.
+3. Weight-sync protocol, fallback-to-local, worker wiring.
+
+### B6.3 fp32 strengthens the case for memory-resident
+
+The GRU memory is 1024 B/state *each way* in fp32 — now ~80% of the payload.
+Keeping it server-side deletes that traffic **and** moots the quantisation
+question entirely, since the state would never leave the GPU or change dtype.
+Measured at 2.6 µs/state in B3 against ~24 for packed-fp32.
+
+Still a restructuring of the search rather than a wire change (see B3), but the
+fp32 requirement makes the payoff materially larger than when B3 was written.
+
+Open question worth one cheap experiment: fp16 for *some* fields may be safe.
+Memory is the likely culprit (fed back 825 times); if instead probabilities and
+values are the sensitive ones, fp16 memory would save 41% of the payload against
+10% the other way round.
