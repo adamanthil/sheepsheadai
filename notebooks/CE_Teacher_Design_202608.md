@@ -683,3 +683,71 @@ convention SHARPENED, anti-§12.11 signature, gentleness claim
 holding), jd mode 99.6 flat; defender t0 trump-lead 0.58-0.90% vs
 0.08-0.24% (uptick, ~10x below the 5% tripwire, implied EV -0.3
 per 1000 hands). No damage anywhere; accept-and-monitor unchanged.
+
+---
+
+## 14. Guard halt at 8,050k and the three-point reversal (2026-08-19)
+
+FACTS: first n=1000 adherence guard probe (ep 8,050,000): partner
+trump-lead 87.5 < hard floor 90.0 -> designed SystemExit(3), halt
+checkpoint saved (checkpoints/..._checkpoint_8050000.pt); called-suit
+39.3 (below seed baseline); t0-trump 0.2 (clean). Independent greedy
+health at same episode: partner 86.1 (n=72), ALONE 22.2 > 20 gate.
+Trainer-side telemetry showed NOTHING trending to the end (teacher KL
+flat ~0.40, CE flat, ev/picker_avg flat) — §12.21 lesson repeated:
+probes lead every lagging indicator.
+
+THREE-POINT GREEDY BASELINE (same instrument/seed, n=500/point —
+the load-bearing measurement):
+
+  metric                 seed 8000k   mid 8029k   halt 8050k
+  called-suit (taught)      45.8        55.5         38.5
+  partner trump-lead        96.4        98.9         87.4
+  pick rate (greedy)        38.4        34.0         32.1
+  alone rate                13.4        13.8         17.6
+  leaster rate               5.8         7.4         10.2
+  play spread (med)         3.56        2.39         2.37
+  top1min (med)             9.19        6.19         5.89
+
+READING: (i) BY 29k THE TEACHER WAS WORKING AS DESIGNED — called-suit
++9.7 into the pre-registered 50s band with partner IMPROVED (+2.5);
+the CE mechanism installs, and gently, at that horizon. (ii) Between
+29k and 50k a BROAD reversal: both conventions collapsed (taught
+metric to below seed), pick fell 6 pts across the gen, leaster nearly
+doubled, alone +4, while logit spread sat compressed (2.4 vs seed
+3.6; attempt-8's stop-rule line was 2.7) and top1min kept softening.
+This is not single-convention oscillation (§12.20 trough shape —
+others held there); it is systemic drift, the §10.4 "greedy orderings
+scramble" failure family in slow motion (~50k eps vs attempt-5b's
+3-4 updates), arriving through cumulative CE step count on the
+shared trunk with the entropy controller PINNED at the -0.05 clamp
+the entire generation (the bounded-fight design bound proved to be
+the binding failure: sub-argmax mass accumulated until near-tie
+argmaxes started flipping broadly).
+
+CAUSAL CHAIN (working hypothesis): CE mass-transfer at material rows
+(KL p95 ~4.5 = mode replacements) -> sustained sub-flip mass +
+entropy elevation -> alpha saturates at clamp, cannot counter ->
+softening compounds (spread 3.6->2.4, top1min 9.2->5.9) -> near-tie
+greedy flips cascade across taught AND untaught heads (29k->50k).
+Phase-2 instrument (drifted 8050k student vs frozen 8M expert, in
+flight) will additionally size the w=0 anchor pull now that the
+student has moved.
+
+OPERATOR DECISION MENU (no action taken; run halted on checkpoint):
+  A. Resume unchanged from 8,050k betting on §12.12-style
+     self-recovery — argued AGAINST by the breadth of the drift
+     (systemic, not single-cell) and by both softening tripwires
+     sitting past their historical stop lines.
+  B. Resume from 8,050k with dose reduction + controller authority:
+     teacher_epochs 4->2 AND alpha_min widened (e.g. -0.15) so the
+     controller can actually hold Hn at target. Rationale: 29k
+     proves efficacy; the collapse tracks cumulative dose with a
+     saturated controller. Cheapest live test of the causal chain.
+  C. Kill attempt 11; fold into the §12.22 program conclusion
+     (policy-space teaching on a shared trunk destabilizes at any
+     dose that installs) and move to architectural separation
+     (convention head / adapter).
+  D. Crafted rollback to ~29k weights (v21 payload + 8M optimizer,
+     attempt-9 §12.12 precedent) + reduced dose — preserves the
+     good state but adds optimizer-mismatch confounds.
