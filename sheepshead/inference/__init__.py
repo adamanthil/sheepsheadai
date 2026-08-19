@@ -26,10 +26,14 @@ from sheepshead.inference.backend import (
     masked_actor_probs,
 )
 from sheepshead.inference.protocol import (
+    RawRequest,
     WireConfig,
+    decode_request,
     fingerprint_weights,
+    merge_requests,
     pack_request,
     pack_response,
+    response_block,
     unpack_request,
     unpack_response,
 )
@@ -40,10 +44,14 @@ __all__ = [
     "RemoteBackend",
     "RoundResult",
     "masked_actor_probs",
+    "RawRequest",
     "WireConfig",
+    "decode_request",
     "fingerprint_weights",
+    "merge_requests",
     "pack_request",
     "pack_response",
+    "response_block",
     "unpack_request",
     "unpack_response",
 ]

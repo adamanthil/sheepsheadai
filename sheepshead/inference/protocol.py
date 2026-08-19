@@ -24,6 +24,7 @@ order, so both sides agree without a schema negotiation.
 
 import hashlib
 import struct
+from typing import NamedTuple
 
 import numpy as np
 import torch
@@ -135,20 +136,60 @@ def pack_request(
     return b"".join(parts)
 
 
-def unpack_request(buf: bytes, d_model: int, device=None) -> dict:
-    """Inverse of pack_request. Returns tensors ready for encode_tensors --
-    no observation dicts are reconstructed, which is the point.
+def _ids_layout(n: int) -> list:
+    """Byte spans of each observation field inside an ``n``-row ``ids_flat``.
 
-    When ``device`` is given the transfer is **fused**: the observation fields
-    all sit contiguously in the buffer as one uint8 region, so they cross to the
-    accelerator in a single copy and are sliced up on the far side, where
-    slicing is free. Four transfers per round instead of thirteen.
+    The region is *field-major*: all n ``called_card_id`` bytes, then all n
+    ``picker_rel`` bytes, and so on. That layout is what lets the whole thing
+    cross the bus in one transfer and be sliced for free on the far side -- but
+    it also means merging several requests has to interleave at field
+    granularity rather than concatenating whole regions end to end.
 
-    That matters far more than it looks on MPS, where every small copy carries
-    command-buffer overhead: the unfused version cost ~20 ms/round of pure
-    transfer bookkeeping against a ~9.6 ms forward. CUDA hides this; Metal does
-    not.
+    Yields ``(field, width, start, stop)``; ``width`` is None for the scalar
+    columns, which are (n,) rather than (n, width).
     """
+    spans = []
+    cursor = 0
+    for field in _OBS_SCALAR_FIELDS:
+        spans.append((field, None, cursor, cursor + n))
+        cursor += n
+    for field, width in _OBS_ID_FIELDS:
+        spans.append((field, width, cursor, cursor + n * width))
+        cursor += n * width
+    return spans
+
+
+class RawRequest(NamedTuple):
+    """One decoded request, still on the host and still flat.
+
+    Decoding deliberately stops short of reconstructing per-field tensors: the
+    server merges several of these into a single forward, and the merge is
+    cheapest while the observation bytes are still one contiguous field-major
+    region. ``merge_requests`` is what turns a list of these into something
+    ``encode_tensors`` can consume.
+    """
+
+    n: int
+    action_size: int
+    wants_critic: bool
+    wire: WireConfig
+    header: torch.Tensor  # (n, 10) float32
+    ids_flat: torch.Tensor  # (n * _IDS_WIDTH,) uint8, field-major
+    packed_masks: torch.Tensor  # (n, ceil(A/8)) uint8
+    memory_in: torch.Tensor  # (n, d_model) float32
+
+    @property
+    def key(self) -> tuple:
+        """Requests merge only within a key. The response block's column count
+        and dtype have to agree across the whole batch for it to cross back in
+        one copy, and both are fixed by these two fields."""
+        return (self.action_size, self.wire.code)
+
+
+def decode_request(buf: bytes, d_model: int) -> RawRequest:
+    """Parse one request frame into host-side flat arrays. No transfers here --
+    placing the batch on a device is ``merge_requests``' job, because it can do
+    it once for a merged batch instead of once per client."""
     magic, version, flags, n, action_size, dtype_code = _HEADER.unpack_from(buf, 0)
     if magic != _MAGIC:
         raise ValueError(f"bad magic {magic!r}")
@@ -164,55 +205,125 @@ def unpack_request(buf: bytes, d_model: int, device=None) -> dict:
         offset += count * itemsize
         return raw
 
+    header = take(n * _HEADER_WIDTH, np.float32).reshape(n, _HEADER_WIDTH)
+    ids_flat = take(n * _IDS_WIDTH, np.uint8)
+    mask_bytes = (action_size + 7) // 8
+    packed = take(n * mask_bytes, np.uint8).reshape(n, mask_bytes)
+    mem = take(n * d_model, wire.np_dtype).reshape(n, d_model)
+
+    return RawRequest(
+        n=n,
+        action_size=action_size,
+        wants_critic=bool(flags & FLAG_WANTS_CRITIC),
+        wire=wire,
+        # .copy() throughout: np.frombuffer views immutable bytes, and torch
+        # refuses to take ownership of a read-only array without warning.
+        header=torch.from_numpy(header.copy()),
+        ids_flat=torch.from_numpy(ids_flat.copy()),
+        packed_masks=torch.from_numpy(packed.copy()),
+        memory_in=torch.from_numpy(mem.astype(np.float32).copy()),
+    )
+
+
+def merge_requests(raws: list, device=None) -> dict:
+    """Combine K decoded requests into one batch ready for ``encode_tensors``.
+
+    Two things happen here, and both are about transfer count.
+
+    The batch crosses to the accelerator in **four transfers regardless of K**:
+    header, the whole uint8 observation region, the packed masks, and the
+    recurrent memory. Naively moving each request separately would be four per
+    client; reconstructing per-field tensors first would be ten per batch. On
+    MPS every small copy carries command-buffer overhead -- the unfused original
+    spent ~20 ms/round on transfer bookkeeping against a ~9.6 ms forward -- and
+    CUDA hides this only partly.
+
+    And merging at all is the point of the server rather than a refinement of
+    it: ~94% of the measured per-round server cost was fixed overhead, so eight
+    clients' rounds in one forward amortize it eightfold. See
+    notebooks/Distributed_Inference_202608.md §5.
+
+    Returns the same dict shape as a single-request unpack, plus ``rows`` --
+    the per-request row counts the caller needs to split the results back up.
+    """
+    if not raws:
+        raise ValueError("merge_requests needs at least one request")
+    key = raws[0].key
+    for other in raws[1:]:
+        if other.key != key:
+            raise ValueError(
+                f"cannot merge requests with different (action_size, dtype): "
+                f"{key} vs {other.key}"
+            )
+    action_size = raws[0].action_size
+    n = sum(raw.n for raw in raws)
+
     def to_device(tensor):
         return tensor.to(device) if device is not None else tensor
 
-    # --- transfer 1: the float32 header block
-    header = to_device(
-        torch.from_numpy(
-            take(n * _HEADER_WIDTH, np.float32).reshape(n, _HEADER_WIDTH).copy()
-        )
-    )
-    # --- transfer 2: every uint8 observation field as one flat region
-    ids_flat = to_device(torch.from_numpy(take(n * _IDS_WIDTH, np.uint8).copy()))
-    # --- transfer 3: bit-packed masks (unpacked on the far side)
-    mask_bytes = (action_size + 7) // 8
-    packed_masks = to_device(
-        torch.from_numpy(take(n * mask_bytes, np.uint8).reshape(n, mask_bytes).copy())
-    )
-    # --- transfer 4: recurrent memory
-    mem = take(n * d_model, wire.np_dtype).reshape(n, d_model)
-    memory_in = to_device(torch.from_numpy(mem.astype(np.float32).copy()))
+    if len(raws) == 1:
+        # Fast path, and not only an optimization: it keeps the single-client
+        # cost identical to the pre-batching server, so a one-worker run is not
+        # taxed for a feature it is not using.
+        header = to_device(raws[0].header)
+        ids_flat = to_device(raws[0].ids_flat)
+        packed = to_device(raws[0].packed_masks)
+        memory_in = to_device(raws[0].memory_in)
+    else:
+        header = to_device(torch.cat([raw.header for raw in raws], dim=0))
+        # Interleave field-by-field so the merged region keeps the field-major
+        # layout _ids_layout describes; concatenating whole regions would put
+        # request 1's hand_ids where request 0's trick_card_ids belong.
+        layouts = [_ids_layout(raw.n) for raw in raws]
+        pieces = []
+        for column in range(len(layouts[0])):
+            for raw, layout in zip(raws, layouts):
+                _field, _width, start, stop = layout[column]
+                pieces.append(raw.ids_flat[start:stop])
+        ids_flat = to_device(torch.cat(pieces))
+        packed = to_device(torch.cat([raw.packed_masks for raw in raws], dim=0))
+        memory_in = to_device(torch.cat([raw.memory_in for raw in raws], dim=0))
 
     # Slice the uint8 region into fields. Device-side and free -- no transfers.
     marshalled = {"header_scalar": header}
-    cursor = 0
-    for field in _OBS_SCALAR_FIELDS:
-        marshalled[field] = ids_flat[cursor : cursor + n].long()
-        cursor += n
-    for field, width in _OBS_ID_FIELDS:
-        marshalled[field] = ids_flat[cursor : cursor + n * width].view(n, width).long()
-        cursor += n * width
-
-    masks = _unpack_bits(packed_masks, action_size)
+    for field, width, start, stop in _ids_layout(n):
+        chunk = ids_flat[start:stop]
+        marshalled[field] = (
+            chunk.long() if width is None else chunk.view(n, width).long()
+        )
 
     return {
         "marshalled": marshalled,
         "memory_in": memory_in,
-        "masks": masks,
+        "masks": _unpack_bits(packed, action_size),
         "action_size": action_size,
-        "wants_critic": bool(flags & FLAG_WANTS_CRITIC),
-        "wire": wire,
+        # Any client asking for the critic makes it one extra head on a forward
+        # that is happening anyway; the server zeroes the column back out for
+        # the clients that did not ask.
+        "wants_critic": any(raw.wants_critic for raw in raws),
+        "wire": raws[0].wire,
+        "rows": [raw.n for raw in raws],
     }
 
 
-def pack_response(probs, values, memory_out, wire: WireConfig) -> bytes:
-    """Serialize one round's results as a single (n, A + 1 + d_model) block.
+def unpack_request(buf: bytes, d_model: int, device=None) -> dict:
+    """Inverse of pack_request: the batch-of-one case of ``merge_requests``."""
+    return merge_requests([decode_request(buf, d_model)], device=device)
+
+
+def response_block(probs, values, memory_out, wire: WireConfig) -> np.ndarray:
+    """One round's results as a writable, C-contiguous (n, A + 1 + d_model) host
+    array.
 
     Accepts torch tensors or numpy arrays. Given device tensors it concatenates
     on the device and crosses the bus **once** -- three separate ``.cpu()``
     calls would be three full pipeline drains, which on MPS cost ~688 us each
     and dominated the server's per-round budget.
+
+    Returning the array rather than bytes is what lets a batching server hand
+    each client its own row range without a second copy per client: a row slice
+    of a C-contiguous array is itself contiguous, so ``.tobytes()`` on it is
+    exactly that client's response.
 
     The column layout (probs | value | memory_out) is why this is v2 of the
     protocol: v1 shipped three separate blocks, which cannot be fused.
@@ -228,7 +339,7 @@ def pack_response(probs, values, memory_out, wire: WireConfig) -> bytes:
             dim=1,
         )
         dtype = torch.float16 if wire.half else torch.float32
-        return block.to(dtype).cpu().numpy().tobytes()
+        return block.to(dtype).cpu().numpy()
 
     block = np.concatenate(
         [
@@ -238,7 +349,12 @@ def pack_response(probs, values, memory_out, wire: WireConfig) -> bytes:
         ],
         axis=1,
     )
-    return np.ascontiguousarray(block, dtype=wire.np_dtype).tobytes()
+    return np.ascontiguousarray(block, dtype=wire.np_dtype)
+
+
+def pack_response(probs, values, memory_out, wire: WireConfig) -> bytes:
+    """Serialize one round's results. See ``response_block``."""
+    return response_block(probs, values, memory_out, wire).tobytes()
 
 
 def unpack_response(

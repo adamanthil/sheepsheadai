@@ -16,14 +16,17 @@ from sheepshead.agent.ppo import PPOAgent
 from sheepshead.inference import (
     LocalBackend,
     WireConfig,
+    decode_request,
     fingerprint_weights,
     masked_actor_probs,
+    merge_requests,
     pack_request,
     pack_response,
     unpack_request,
     unpack_response,
 )
 from sheepshead.inference.protocol import request_nbytes, response_nbytes
+from sheepshead.inference.server import run_batch, serve_round
 from sheepshead.training.training_utils import set_all_seeds
 
 
@@ -236,6 +239,141 @@ def test_pack_response_agrees_across_torch_and_numpy(agent, states):
         assert np.abs(got_p - probs.numpy()).max() <= tol
         assert np.abs(got_v - values.numpy()).max() <= tol
         assert np.abs(got_m - memory_out.numpy()).max() <= (1e-2 if half else 0)
+
+
+def _request(agent, states, valid, wants_critic=True, half=False, seed=0):
+    """A packed request frame for ``states``, decoded back to a RawRequest."""
+    torch.manual_seed(seed)
+    memory = torch.randn(len(states), agent.encoder.d_model)
+    blob = pack_request(
+        agent.encoder.marshal_batch(states),
+        memory,
+        valid,
+        agent.action_size,
+        wants_critic,
+        WireConfig(half=half),
+    )
+    return blob, decode_request(blob, agent.encoder.d_model)
+
+
+#: Deliberately ragged: equal-sized sub-batches would hide an off-by-one in the
+#: row split, and production rounds are 96-1024 states with no relation to each
+#: other's size.
+_SHAPES = ((0, 1), (1, 3), (3, 4))
+
+
+def test_merging_reproduces_the_individual_unpacks(agent, states):
+    """The merged batch must be the row-concatenation of its parts. If field
+    interleaving were wrong -- concatenating whole ids_flat regions instead of
+    merging field by field -- one client's hand_ids would land in another's
+    trick slots and the forward would still run, silently."""
+    parts = [
+        _request(agent, states[a:b], [[1, 2, 5, 9]] * (b - a), seed=i)
+        for i, (a, b) in enumerate(_SHAPES)
+    ]
+    merged = merge_requests([raw for _blob, raw in parts])
+    singles = [unpack_request(blob, agent.encoder.d_model) for blob, _raw in parts]
+
+    assert merged["rows"] == [b - a for a, b in _SHAPES]
+    for key in singles[0]["marshalled"]:
+        expected = torch.cat([s["marshalled"][key] for s in singles], dim=0)
+        assert torch.equal(merged["marshalled"][key], expected), key
+    for key in ("memory_in", "masks"):
+        expected = torch.cat([s[key] for s in singles], dim=0)
+        assert torch.equal(merged[key], expected), key
+
+
+def test_a_merged_batch_returns_each_client_its_own_rows(agent, states):
+    """The whole feature is invisible to clients or it is a bug. Exact equality
+    is not promised -- merged batches change GEMM tiling, which is why a
+    server-backed run can never be golden-pinned -- but the divergence must stay
+    far below the CE teacher's 0.026 Q shrinkage floor."""
+    device = torch.device("cpu")
+    valid = {0: [1, 2, 5, 9], 1: [3, 4, 7], 2: [2, 6, 8, 10, 11]}
+    parts = [
+        _request(agent, states[a:b], [valid[i]] * (b - a), seed=i)
+        for i, (a, b) in enumerate(_SHAPES)
+    ]
+    batched = run_batch(agent, [raw for _blob, raw in parts], device)
+    alone = [serve_round(agent, blob, device) for blob, _raw in parts]
+
+    assert len(batched) == len(alone)
+    for i, ((a, b), got, want) in enumerate(zip(_SHAPES, batched, alone)):
+        assert len(got) == len(want), i
+        shape = (b - a, agent.action_size, agent.encoder.d_model)
+        wire = WireConfig(half=False)
+        got_probs, got_values, got_memory = unpack_response(got, *shape, wire)
+        want_probs, want_values, want_memory = unpack_response(want, *shape, wire)
+        assert np.abs(got_probs - want_probs).max() < 1e-5, i
+        assert np.abs(got_values - want_values).max() < 1e-5, i
+        assert np.abs(got_memory - want_memory).max() < 1e-5, i
+
+
+def test_a_client_that_did_not_ask_for_the_critic_still_gets_zeros(agent, states):
+    """A merged batch runs the critic if *anyone* asked. The clients that did
+    not must be unable to tell -- LocalBackend hands them zeros."""
+    device = torch.device("cpu")
+    wants = (True, False, True)
+    parts = [
+        _request(agent, states[a:b], [[1, 2, 5, 9]] * (b - a), wants_critic=w, seed=i)
+        for i, ((a, b), w) in enumerate(zip(_SHAPES, wants))
+    ]
+    replies = run_batch(agent, [raw for _blob, raw in parts], device)
+    for (a, b), want, reply in zip(_SHAPES, wants, replies):
+        _probs, values, _memory = unpack_response(
+            reply, b - a, agent.action_size, agent.encoder.d_model, WireConfig(False)
+        )
+        assert (np.abs(values) > 0).any() == want
+
+
+def test_incompatible_requests_are_not_merged(agent, states):
+    """Mixed wire dtypes would make the response block's column dtype ambiguous,
+    so they must raise here rather than corrupt one client's reply."""
+    _blob_a, fp32 = _request(agent, states, [[1, 2]] * len(states), half=False)
+    _blob_b, fp16 = _request(agent, states, [[1, 2]] * len(states), half=True)
+    assert fp32.key != fp16.key
+    with pytest.raises(ValueError, match="different"):
+        merge_requests([fp32, fp16])
+
+
+def test_collect_defers_an_incompatible_request_instead_of_dropping_it(agent, states):
+    """A dropped request strands a client forever: it is blocked on an Event
+    only the batcher sets. The batcher must hand it back to the queue."""
+    import queue as queue_module
+
+    from sheepshead.inference.server import BatchPolicy, _collect, _Pending
+
+    valid = [[1, 2]] * len(states)
+    pendings = [
+        _Pending(_request(agent, states, valid, half=half)[1])
+        for half in (False, True, False)
+    ]
+    work = queue_module.Queue()
+    for pending in pendings[1:]:
+        work.put(pending)
+
+    batch = _collect(work, pendings[0], BatchPolicy())
+    assert batch == [pendings[0]]  # stopped at the fp16 request
+    assert work.qsize() == 2  # and both survivors are still queued
+
+
+def test_collect_respects_the_state_cap(agent, states):
+    """Merged batches are capped so one huge round cannot blow up accelerator
+    memory; the cap is checked before admitting, so it is a soft ceiling."""
+    import queue as queue_module
+
+    from sheepshead.inference.server import BatchPolicy, _collect, _Pending
+
+    valid = [[1, 2]] * len(states)
+    pendings = [_Pending(_request(agent, states, valid)[1]) for _ in range(4)]
+    work = queue_module.Queue()
+    for pending in pendings[1:]:
+        work.put(pending)
+
+    # states per request is len(states); a cap just above one request admits two
+    batch = _collect(work, pendings[0], BatchPolicy(max_states=len(states) + 1))
+    assert len(batch) == 2
+    assert work.qsize() == 2
 
 
 def test_encode_tensors_matches_encode_batch(agent, states):
