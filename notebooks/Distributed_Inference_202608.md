@@ -495,13 +495,64 @@ compilation).
   CPU-side work, so a saturated host slows it directly. The *verdict* survives;
   the numbers do not. Same failure mode as the 0.213 eps/s baseline — a number
   recorded without the conditions it was taken under.
-- **§1's "74.5% of committee time is network inference" is not what the seam
-  measures.** Through `backend.evaluate` it is **42%**. The gap is real network
-  work outside the seam — `_encode_seat_batched` and `_observe_trick_lockstep`
-  on the replay/pool-build path — which this measurement charges to "tree". So
-  the true share sits somewhere in 42-74%, and **the Amdahl ceiling for
-  offloading the seam alone is ~1.7×, not 3.2-4×.** Compiling the replay path
-  as well is untried headroom.
+- **§1's "74.5% of committee time is network inference" is right — but only
+  ~33% of it is behind the seam.** Through `backend.evaluate` it is 42% of a
+  committee; §5.5 attributes the rest and confirms the total at **75.3%**. So
+  the seam alone is bounded at ~1.5×, and reaching the real ceiling means
+  compiling the replay path too — which §5.5 does.
+
+## 5.5 Compiling every encoder site: 1.41× (2026-08-19)
+
+`encode_batch` is called from four places, and the seam is the smallest of the
+three that matter. Attributed on a CPU committee, splitting host marshal from
+device work:
+
+| site | marshal | device | total | % wall | shapes |
+|---|---|---|---|---|---|
+| `_run_network_round` (the seam) | 0.87 s | 11.24 s | 12.11 s | **33.0%** | 44, B=96 dominant |
+| `_observe_completers_merged` | 0.81 s | 9.15 s | 9.96 s | **27.1%** | 49, B=160/320/480 |
+| `_encode_seat_batched` | 0.29 s | 3.33 s | 3.63 s | 9.9% | **1: B=1024** |
+| `_observe_trick_lockstep` | 0.16 s | 1.79 s | 1.95 s | 5.3% | **1: B=1024** |
+| **encoder total** | 2.13 s | 25.5 s | **27.6 s** | **75.3%** | |
+| tree / game / actor / critic | | | 9.1 s | 24.7% | |
+
+That vindicates §1's 74.5% and the "25.5% Python tree work" Amdahl figure — both
+were right; §5.4.2's doubt was measuring only the seam. It also explains
+`_observe_completers_merged`'s own docstring claim that the observes are "~30% of
+committee runtime".
+
+Since every site routes through `encode_batch`, patching *it* reaches all four at
+once. Bucketing to multiples of 32 covers everything in **14 shapes / 8 compiled
+graphs at 1.8% padding waste**. Eight concurrent committees, steady state
+(committee 2 of 3):
+
+| arm | committee wall | vs CPU eager |
+|---|---|---|
+| CPU eager | 62.4 s | — |
+| CPU compiled | 58.5 s | 1.07× |
+| MPS eager | 58.6 s | 1.07× |
+| **MPS compiled** | **44.3 s** | **1.41×** |
+
+Backing out the split: the 75.3% encoder share got **1.63× faster**, which is
+exactly what the micro-benchmarks predicted, and 1.41× is what that becomes once
+the 24.7% of tree work is carried along. **0.30 eps/s → ~0.42, on one machine,
+with no wire and no weight sync.**
+
+### 5.5.1 MPS eager was never as bad as recorded
+
+`mps eager` runs its first committee in 50.6 s and its second in **33.7 s** —
+Metal caches compiled shaders across calls. Every MPS figure in this project
+before now was a first run, including §5.1's.
+
+So the standing "MPS loses on the M1 Max" verdict was an artefact twice over:
+measured under load *and* measured cold. In steady state MPS eager already edges
+CPU eager (58.6 s against 62.4 s at 8 workers). The margin is small enough that
+the verdict never mattered much on its own — but it mattered a great deal that
+it discouraged trying `torch.compile` on MPS, which is where the 1.41× is.
+
+**Measurement rule this earns: report steady state, and record machine load and
+warm/cold status next to every timing.** Three separate conclusions in this
+notebook have now been distorted by one or the other.
 
 ## 6. Planned work
 
@@ -529,9 +580,26 @@ Productionising it would need:
   on probs, so `capture_search_goldens` cannot pass against it. Same status as
   remote mode.
 
-On the **remote** path the same lever is untested and the case is stronger: the
-i5 spends ~17 ms of dispatch against a 0.65 ms forward, a far worse ratio than
-anything measured here, and CUDA actually does support `reduce-overhead`.
+**Superseded again by §5.5**: compiling only the seam reaches 33% of a committee,
+compiling every `encode_batch` site reaches 75.3% and returns **1.41× on MPS at
+8 workers**. That is the local recommendation.
+
+On the **remote** path the same lever is now available (`--compile`, default mode
+`reduce-overhead`, `--pad-granularity`) and untested. The case is stronger there:
+the i5 spends ~17 ms of dispatch against a 0.65 ms forward, a far worse ratio
+than anything measured on the Mac, and CUDA actually does support
+`reduce-overhead` (on MPS it is a no-op).
+
+Two things to expect when running it:
+
+- **Compilation must amortize.** A short bench is meaningless — a 78-round
+  loopback smoke test measured 644 ms/batch because nearly every batch compiled
+  a new shape. Use `--clients 8` at full iters (~6,600 rounds).
+- **Merged sizes vary more than a single client's**, being sums over however many
+  clients arrived. `--pad-granularity 96` is the natural quantum here
+  (`R × ISMCTSConfig.batch_size`), so one client rounds to 96 with zero waste,
+  two to 192, and the shape count stays small — which matters because inductor
+  codegen on a 2015 Skylake is not fast.
 
 ### 6.1 Cross-worker batching — BUILT, and it did not pay
 
