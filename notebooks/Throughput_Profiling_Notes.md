@@ -1,6 +1,11 @@
-# ISMCTS ExIt — Throughput Profiling Notes (NOT committed)
+# ISMCTS ExIt — Throughput Profiling Notes
 
-> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
+Measurement reference: how fast the search is, where its time goes, and how fast
+each device and link is. Systems built on these numbers are documented
+elsewhere — see **`Distributed_Inference_202608.md`** for the two-machine
+inference split that addendum 2 below grew into.
+
+> **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record. The original title claimed this file was uncommitted; it has been tracked in git since the reorg.
 
 Reference notes from the May 2026 throughput pass. All numbers are **CPU,
 single process**, on the dev Mac (Darwin arm64). The real training box may be
@@ -368,22 +373,21 @@ load-independent; the timing sections should be re-run on a quiet machine
 before being quoted as absolutes.
 
 ---
+---
 
-# Addendum 2 (2026-08-18) — remote CUDA over LAN
+# Addendum 2 (2026-08-18) — device and link benchmarks for remote inference
 
 Addendum 1 ruled MPS out **on this machine** and flagged that a CUDA box would
-likely flip the verdict. A second machine became available, so the question
-became concrete: can the M1 Max keep orchestration, simulation and all CPU-heavy
-work, and ship inference over the LAN to a GPU?
+likely flip the verdict. One became available (PC with an **RTX 5060 8GB** and a
+**Core i5-6500**, Skylake 2015), and the answer was yes — which grew into a
+two-machine inference split with its own seam through the search engine.
 
-Hardware: M1 Max (10 CPU / 32 GPU) as host; PC with a **Core i5-6500** (Skylake,
-4 cores, 2015) and an **RTX 5060 8GB**, torch 2.13.0+cu130. The PC is far too
-slow for anything CPU-bound, which is the entire premise — it is a GPU on a
-stick.
+**That system, its motivation, architecture, status and plan now live in
+`Distributed_Inference_202608.md`.** What stays here is the benchmark data it
+rests on: how fast each device is, how fast the link is, and the measurement
+trap that nearly buried the result.
 
-**Verdict: worth building, ~2.3-3.2×, and the Mac becomes the bottleneck.**
-
-## B1. The marshal trap (why the first measurement lied)
+## B1. The marshal trap — read this before benchmarking any accelerator
 
 The first `bench_inference_device --devices cuda` run on the PC read:
 
@@ -391,192 +395,72 @@ The first `bench_inference_device --devices cuda` run on the PC read:
 |---|---|---|---|---|
 | total µs/state | 76.0 | 52.5 | 50.7 | 52.0 |
 
-Against the §A5 breakeven of ~42 µs/state that reads as a clear no. It was
-wrong, and the shape of the numbers is the tell: per-state cost is **flat** from
-B=1024 to B=4096, and total time scales 3.96× for a 4× batch increase. A small
-model on a GPU should get *cheaper* per state as launch overhead amortizes.
-Near-perfect linearity is the signature of a per-state **host** cost.
+Against a ~42 µs/state breakeven that is a clear no. It was wrong, and the shape
+is the tell: per-state cost **flat** from B=1024 to B=4096, total time scaling
+3.96× for a 4× batch increase. A small model on a GPU gets *cheaper* per state
+as launch overhead amortizes; near-perfect linearity is a per-state **host**
+cost.
 
-That cost is `encode_batch`'s marshalling: ~19 Python-level operations per state
-(ten `_stack_scalar` passes, three `int()` comprehensions, six per-state
-`torch.as_tensor` calls), six of which construct a tensor. At B=4096 that is
-~74,000 tensor constructions on one Skylake core.
-
-Splitting the measurement (`bench_inference_device` now reports marshal and
-device separately) gives:
+That cost is `encode_batch`'s marshalling — ~19 Python operations per state, six
+constructing a tensor. At B=4096 that is ~74,000 tensor constructions on one
+Skylake core. Splitting the measurement:
 
 | | B=1024 | B=2049 | B=4096 | B=8192 |
 |---|---|---|---|---|
 | i5-6500 marshal µs/state | 39.6 | 40.4 | 39.8 | 40.6 |
 | **RTX 5060 device µs/state** | **10.0** | **6.3** | **7.0** | **9.0** |
-| M1 Max marshal µs/state (ref) | 10.0 | — | 9.9 | — |
-| M1 Max MPS device µs/state (ref) | 21.9 | — | 19.6 | — |
+| M1 Max marshal µs/state | 10.0 | — | 9.9 | — |
+| M1 Max MPS device µs/state | 21.9 | — | 19.6 | — |
 
-The i5 marshals at a flat **40 µs/state, ~4× the M1 Max**. The original 52
-µs/state was ~85% Skylake Python and ~15% GPU. Actual 5060 device cost is
-**~7 µs/state**, six times under the breakeven.
+The original 52 µs/state was ~85% Skylake Python. `bench_inference_device` now
+reports marshal and device separately: **on one box read `total us/st`; for a
+remote accelerator fed pre-packed arrays read `device us/st`.** Reading the total
+for a remote device measures that host's Python speed, not its GPU.
 
-**Design consequence, not a footnote:** marshalling must happen on the Mac and
-the PC must receive pre-packed arrays. Marshalling on the PC would pay 40
-µs/state to save 7.
+## B2. Device summary (per state, B≥1024)
 
-## B2. Revised model — Mac-bound, not GPU-bound
+| device | µs/state | note |
+|---|---|---|
+| RTX 5060 | ~7 | device only; host marshals |
+| M1 Max GPU (MPS) | ~20 | device only |
+| M1 Max CPU | 180-230 | single-threaded, as a league worker runs |
+| i5-6500 | — | marshalling only, ~40 µs/state |
 
-With inference offloaded the Mac keeps ~9.2 s/episode of tree/game Python, ~1.3 s
-of non-teacher work, and ~1.1 s of marshalling (113k states × 10 µs) ≈ **11.6
-s/episode**.
+The CPU/MPS crossover on the M1 Max sits at **B≈160**, and the CE teacher's
+dominant round is B=96 (`R × ISMCTSConfig.batch_size` = 3 × 32) — *below* it.
+A sweep that stops at 64 or starts at 256 gives the opposite answer.
 
-The resulting speedup does not depend on the states-per-episode estimate at all:
-`(W / 11.6) / (8 / 37.5)` = **3.2× at W=8**, ~4× at W=10. That figure only enters
-the check on whether the GPU can keep up — at 7 µs/state the 5060 could supply
-~1.26 eps/s against the Mac's ~0.69 ceiling, so it has ~2× headroom. Even if the
-113k estimate is 2× low, the result degrades only to ~2.3×.
+## B3. Link (direct point-to-point gigabit)
 
-## B3. Wire cost is now the second bottleneck
+Baseline RTT **p50 0.354 ms** (min 0.157, p99 0.745). Sustained **0.72-0.87
+Gbit/s**, ~90% of line rate. `t_wire` is the best per-state figure across round
+sizes; the pre-measurement estimate from nominal link rate is in brackets, and
+every one landed within ~20%.
 
-With that much GPU headroom the link matters. Effective per-state cost is
-`t_device + t_wire`; the GRU memory (512 B/state each way in fp16) dwarfs the
-39-byte observation and dominates everything.
+| wire encoding | B/state | t_wire @1GbE |
+|---|---|---|
+| naive (int64 ids, fp32 memory both ways) | ~2768 | 25.7 µs *(22.1)* |
+| packed (uint8 ids, fp16 memory both ways) | 1285 | 11.9 µs *(10.3)* |
+| packed + memory resident on server | 261 | 2.6 µs *(2.1)* |
 
-**Measured 2026-08-18** on a direct point-to-point gigabit link
-(`bench_lan_roundtrip`), superseding the derived estimates this table
-originally carried. Baseline RTT **p50 0.354 ms** (min 0.157, p99 0.745) against
-an assumed 0.5 ms, and **0.72-0.87 Gbit/s** sustained — about 90% of line rate,
-i.e. the link is not the loss. `t_wire` below is the best per-state figure
-across round sizes; the derived estimate is in brackets and every one landed
-within ~20%.
+For contrast, the first attempt ran over a **WiFi 6 mesh**: 6 ms RTT at
+0.08-0.21 Gbit/s, capping the byte-thriftiest encoding at 1.9×. The wire, not
+the code, was the whole difference between that and 3.24×.
 
-| wire encoding | B/state | t_wire @1GbE | t_eff | capacity | vs today |
-|---|---|---|---|---|---|
-| naive (int64 ids, fp32 memory both ways) | ~2768 | 25.7 µs *(22.1)* | 32.7 | 0.27 | 1.27× |
-| packed (uint8 ids, fp16 memory both ways) | 1285 | 11.9 µs *(10.3)* | 18.9 | 0.47 | **2.20×** |
-| packed + memory resident on server | 261 | 2.6 µs *(2.1)* | 9.6 | Mac-capped | **3.24×** |
-| packed both ways on 2.5GbE | 1285 | ~4.8 µs (projected) | 11.8 | Mac-capped | **3.24×** |
+Tail caveat: percentiles need ≥30 samples per configuration. An earlier sweep
+took 6 at 4032 states, so its p90/p99 reported little more than the worst
+observation — one 355 ms outlier read as a 10% tail. Fixed, but worth
+remembering: the search issues ~825 *sequential* rounds per committee, so tails
+compound rather than average out.
 
-Two ways to reach the Mac ceiling, and the measurement makes the choice
-lopsided. Keeping memory server-side means holding per-(worker, sim, seat) state
-that the search reorders and prunes, with the client sending permutation indices
-rather than tensors — note that `_run_network_round` writes
-`sim.mem[sim.seat-1] = memory_out[row]` back into client-side state, so this is
-a restructuring of the search, not a change of wire format. **2.5GbE adapters
-reach the same 3.24× for ~$20-40 and no code**, because packed at 11.9 µs/state
-is entirely link-bound and divides straight through. Take the hardware.
+## B4. How to reproduce
 
-Caveat on the tails: at round sizes above ~1000 states the original sweep took
-only 6-25 samples per configuration, so its p90/p99 columns reported little more
-than the worst observation (a lone 355 ms outlier at 4032 states read as a 10%
-tail). Only the 126-state row had enough samples to trust, and there the tail is
-a healthy p99/p50 of 1.6×. The sampling floor is fixed; tails matter here
-because the search issues ~897 *sequential* rounds per episode, so a fat tail
-compounds rather than averages out.
+```
+uv run python -m sheepshead.analysis.bench_inference_device
+uv run python -m sheepshead.analysis.bench_lan_roundtrip --serve        # GPU box
+uv run python -m sheepshead.analysis.bench_lan_roundtrip --connect <ip> # orchestrator
+```
 
-## B4. Standing risks (unchanged by the good result)
-
-- **Calibration.** `shrink_s2_global = 6.95e-4` was fitted to CPU-produced
-  committee Q variance, and CUDA shifts those Q values through different
-  reductions. Almost certainly far below the 0.026 Q SD, but "almost certainly"
-  is not this project's standard: re-run `calibrate_shrinkage` on CUDA-produced
-  committee draws before trusting a teacher generation.
-- **No golden pinning.** Cross-worker batch composition changes GEMM tiling, so
-  server mode can never be bit-reproducible. The in-process CPU backend stays
-  default and stays bit-exact; eval, CRN panels and goldens do not move.
-- **New failure modes.** A network hiccup or PC crash now kills a generation.
-  Needs a fallback-to-local path, not just retries.
-- **Amdahl.** ~3.2-4× is the ceiling regardless of GPU, because 25.5% of
-  committee-search time is Python tree/game work that stays on the Mac.
-
-## B5. Build order
-
-1. ~~Measure the link~~ **DONE 2026-08-18** — see the measured table in B3. The
-   derived estimates held within ~20%; gigabit gives 2.20× packed and the
-   link runs at ~90% of line rate. Note the first attempt was over a WiFi 6
-   mesh and read 6 ms RTT / 0.08-0.21 Gbit/s, i.e. 1.9× at best on the
-   byte-thriftiest encoding — worth remembering that the wire, not the code,
-   was the entire difference between 1.9× and 3.24×.
-2. ~~Prototype at the existing seam~~ **DONE 2026-08-18** — see B6.
-3. Only then: the server proper, worker-pool changes, and the fallback path.
-
-## B6. Prototype measurements (2026-08-18)
-
-One production-config committee (1024 iters, R=3, 8M checkpoint) run locally and
-again against the RTX 5060 over the direct gigabit link, via
-`bench_remote_search`. Single worker, single-connection server, no cross-worker
-batching.
-
-| | local | remote fp16 | remote fp32 |
-|---|---|---|---|
-| wall | 62.3 / 60.0 s | 53.3 s | 50.7 s |
-| rounds | 825 | 825 | 825 |
-| mean batch | 93 states | 93 | 93 |
-| round latency p50 | — | 13.98 ms | 15.40 ms |
-| client blocked on I/O | — | 12.60 s | 13.44 s |
-| **server-side compute** | — | **10.09 s** | **9.59 s** |
-| payload B/state | — | 1331 | 2576 |
-| speedup | 1.00× | 1.17× | 1.18× |
-
-**Round count: 825, not the assumed ~1150.** The model was conservative; the
-1150 figure counted all `encode_batch` calls, of which only the
-`_run_network_round` ones are blocking round-trips.
-
-### B6.1 Numerics: fp16 was the whole problem, CUDA is a non-issue
-
-Divergence of `pi_gumbel` against the local search, same RNG, three replicates:
-
-| wire | replicate 0 | 1 | 2 |
-|---|---|---|---|
-| fp16 | 3.3e-13 AGREE | 1.1e-04 AGREE | **1.0e+00 DIFFER** |
-| fp32 | 2.2e-15 AGREE | 2.4e-11 AGREE | 7.8e-12 AGREE |
-
-The fp16 result is bimodal — trees either stay locked or bifurcate completely —
-which is the signature of chaotic amplification, not of accumulating float
-error: one perturbed prior changes a PUCT selection and 825 rounds later the
-tree is different. `pi_gumbel` saturates to one-hot at these budgets, so a delta
-of 1.0 is an outright label flip.
-
-**With fp32 on the wire the question closes.** 2e-15 to 2e-11 over a full
-825-round search means CUDA-vs-CPU device numerics contribute ~nine orders of
-magnitude less than the 0.026 Q shrinkage noise floor. The B4 calibration
-concern is answered for fp32: `shrink_s2_global` does not need refitting for the
-device. It was fp16 quantisation of the recurrent state — fed back every round,
-compounding — not the GPU.
-
-Cost: fp32 doubles the payload (1331 → 2576 B/state), putting packed-fp32 at
-roughly the "naive" row of B3, ~24-26 µs/state on gigabit.
-
-### B6.2 The binding constraint is the server's per-round Python, not the link
-
-Of the 13.44 s the client spent blocked (fp32), **9.59 s was server-side
-compute** and only ~3.85 s was wire plus client-side packing. Per round that is
-11.6 ms of server time, of which the GPU forward is ~0.65 ms (93 states at
-~7 µs). **~94% of server time is fixed per-round overhead** — `unpack_request`,
-the dtype conversions, ten small H2D transfers, three D2H syncs, `pack_response`
-— on a 2015 Skylake.
-
-That reorders the build. Cross-worker batching is not primarily about GPU
-efficiency; it amortizes a fixed ~11 ms per round across 8 workers' worth of
-states. At 93-state rounds the link is *not* the bottleneck, so buying a faster
-NIC now would optimize a term that is not binding.
-
-Revised order:
-
-1. **Cross-worker batching** (server request queue + batching window). Free,
-   and the dominant term.
-2. **Re-measure.** Only once the fixed cost is amortized does the payload
-   dominate; that is when 2.5GbE becomes worth buying, and with fp32 required it
-   likely becomes necessary rather than optional.
-3. Weight-sync protocol, fallback-to-local, worker wiring.
-
-### B6.3 fp32 strengthens the case for memory-resident
-
-The GRU memory is 1024 B/state *each way* in fp32 — now ~80% of the payload.
-Keeping it server-side deletes that traffic **and** moots the quantisation
-question entirely, since the state would never leave the GPU or change dtype.
-Measured at 2.6 µs/state in B3 against ~24 for packed-fp32.
-
-Still a restructuring of the search rather than a wire change (see B3), but the
-fp32 requirement makes the payoff materially larger than when B3 was written.
-
-Open question worth one cheap experiment: fp16 for *some* fields may be safe.
-Memory is the likely culprit (fed back 825 times); if instead probabilities and
-values are the sensitive ones, fp16 memory would save 41% of the payload against
-10% the other way round.
+`--threads 1` (the default) matches a league worker. Benchmarking with the
+default thread count on a box already running a generation oversubscribes the
+cores and inflated the CPU column severalfold in a discarded first pass.
