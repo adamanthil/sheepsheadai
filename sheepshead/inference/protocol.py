@@ -221,7 +221,9 @@ def decode_request(buf: bytes, d_model: int) -> RawRequest:
         header=torch.from_numpy(header.copy()),
         ids_flat=torch.from_numpy(ids_flat.copy()),
         packed_masks=torch.from_numpy(packed.copy()),
-        memory_in=torch.from_numpy(mem.astype(np.float32).copy()),
+        # astype already copies, and this is the largest array by an order of
+        # magnitude -- a trailing .copy() would double the memcpy for nothing.
+        memory_in=torch.from_numpy(mem.astype(np.float32)),
     )
 
 

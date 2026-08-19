@@ -56,7 +56,24 @@ _FRAME = struct.Struct("!Q")
 _POLL_SECONDS = 0.5
 
 
-def _recv_exact(sock: socket.socket, n: int, stop: threading.Event = None) -> bytes:
+class PeerClosed(ConnectionError):
+    """A client hung up cleanly, between frames.
+
+    At the socket layer a worker that finished its work looks exactly like one
+    that died mid-transfer: both are a zero-byte read. The only thing telling
+    them apart is whether any of the current frame had already arrived. Worth
+    distinguishing, because the clean case is *every* worker at the end of
+    *every* generation, and reporting that as an error is how an operator learns
+    to stop reading the log.
+    """
+
+
+def _recv_exact(
+    sock: socket.socket,
+    n: int,
+    stop: threading.Event = None,
+    boundary: bool = False,
+) -> bytes:
     chunks = []
     remaining = n
     while remaining:
@@ -70,6 +87,8 @@ def _recv_exact(sock: socket.socket, n: int, stop: threading.Event = None) -> by
             # desynchronising a partially-read message.
             continue
         if not chunk:
+            if boundary and remaining == n:
+                raise PeerClosed("peer closed between frames")
             raise ConnectionError(f"peer closed with {remaining} bytes outstanding")
         chunks.append(chunk)
         remaining -= len(chunk)
@@ -98,8 +117,10 @@ def _send(sock: socket.socket, payload: bytes) -> None:
 
 
 def _recv(sock: socket.socket, stop: threading.Event = None) -> bytes:
-    (length,) = _FRAME.unpack(_recv_exact(sock, _FRAME.size, stop))
-    return _recv_exact(sock, length, stop)
+    # Only the length prefix sits on a frame boundary; an EOF anywhere after it
+    # is a truncated message, not a clean goodbye.
+    header = _recv_exact(sock, _FRAME.size, stop, boundary=True)
+    return _recv_exact(sock, _FRAME.unpack(header)[0], stop)
 
 
 def build_agent(checkpoint: str | None, arch: str, device: torch.device, seed: int):
@@ -204,9 +225,14 @@ class _Stats:
         self.states = 0
         self.compute = 0.0
         self.waited = 0.0
+        self.started = None
 
-    def record(self, requests: int, states: int, compute: float, waited: float) -> None:
+    def record(
+        self, requests: int, states: int, start: float, compute: float, waited: float
+    ) -> None:
         with self._lock:
+            if self.started is None:
+                self.started = start
             self.batches += 1
             self.requests += requests
             self.states += states
@@ -217,13 +243,21 @@ class _Stats:
         with self._lock:
             if not self.batches:
                 return "no batches served"
+            elapsed = max(time.perf_counter() - self.started, 1e-9)
             return (
                 f"{self.batches} batches  "
                 f"merge {self.requests / self.batches:.2f} req/batch  "
                 f"{self.states / self.batches:.0f} states/batch  "
                 f"{self.compute / self.batches * 1e3:.1f} ms/batch  "
                 f"{self.compute / max(self.states, 1) * 1e6:.1f} us/state  "
-                f"queue wait {self.waited / max(self.requests, 1) * 1e3:.1f} ms"
+                f"queue wait {self.waited / max(self.requests, 1) * 1e3:.1f} ms  "
+                # Decisive when the merge factor disappoints. Busy near 100% with
+                # a long queue wait means the batcher itself is the wall, so the
+                # fix is to make a batch cheaper. Busy well under 100% with a
+                # short queue wait means requests are not reaching the queue --
+                # the connection threads are behind, and merging cannot help
+                # because the cost is upstream of the merge point.
+                f"busy {100 * self.compute / elapsed:.0f}%"
             )
 
 
@@ -293,7 +327,7 @@ def _batcher(agent, device, work, stop, stats, policy, report_every) -> None:
         states = sum(pending.raw.n for pending in batch)
         for pending in batch:
             pending.done.set()
-        stats.record(len(batch), states, compute, waited)
+        stats.record(len(batch), states, start, compute, waited)
         if report_every and stats.batches % report_every == 0:
             print(f"  {stats.line()}", flush=True)
 
@@ -321,8 +355,10 @@ def _serve_connection(conn, addr, expected, work, d_model, stop) -> None:
                 raise pending.error
             _send(conn, pending.reply)
             rounds += 1
+    except PeerClosed:
+        print(f"  {who} done, {rounds} rounds", flush=True)
     except (ConnectionError, OSError) as exc:
-        print(f"  {who} closed after {rounds} rounds ({type(exc).__name__})")
+        print(f"  {who} LOST after {rounds} rounds ({type(exc).__name__}: {exc})")
     except Exception as exc:
         print(f"  {who} failed after {rounds} rounds: {exc!r}")
     finally:
