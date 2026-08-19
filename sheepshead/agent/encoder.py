@@ -442,37 +442,90 @@ class CardReasoningEncoder(nn.Module):
                 'memory_out': (B, 256) updated memory state
         """
 
-        # Move to device lazily
+        return self.encode_tensors(
+            self.marshal_batch(batch, device), memory_in=memory_in, device=device
+        )
+
+    #: Observation fields marshalled out of the state dicts, in wire order.
+    HEADER_FIELDS = (
+        "partner_mode",
+        "is_leaster",
+        "play_started",
+        "current_trick",
+        "alone_called",
+        "called_under",
+        "picker_rel",
+        "partner_rel",
+        "leader_rel",
+        "picker_position",
+    )
+    SCALAR_FIELDS = ("called_card_id", "picker_rel", "partner_rel")
+    ID_FIELDS = (
+        ("hand_ids", 8),
+        ("blind_ids", 2),
+        ("bury_ids", 2),
+        ("trick_card_ids", 5),
+        ("trick_is_picker", 5),
+        ("trick_is_partner_known", 5),
+    )
+
+    @classmethod
+    def marshal_batch(
+        cls, batch: List[Dict[str, Any]], device: "torch.device | None" = None
+    ) -> Dict[str, torch.Tensor]:
+        """Host half of ``encode_batch``: observation dicts -> stacked tensors.
+
+        Split out from ``encode_tensors`` because the two halves have very
+        different cost profiles and can run in different places. This is pure
+        Python — roughly nineteen operations per observation, six of them
+        constructing a tensor — so it costs a fixed amount per state and never
+        amortizes with batch size (~10 us/state on an M1 Max, ~40 on a 2015
+        Skylake). ``encode_tensors`` is the part that benefits from an
+        accelerator. A remote-inference server must therefore be fed the output
+        of this method, not a list of dicts; marshalling on the accelerator host
+        would cost far more than the forward it is trying to speed up. See
+        notebooks/Throughput_Profiling_Notes.md addendum 2.
+        """
+
         def to_device(x: torch.Tensor) -> torch.Tensor:
             return x.to(device) if device is not None else x
 
-        B = len(batch)
+        marshalled = {
+            "header_scalar": to_device(
+                torch.cat([cls._stack_scalar(batch, k) for k in cls.HEADER_FIELDS], 1)
+            )
+        }
+        for field in cls.SCALAR_FIELDS:
+            marshalled[field] = to_device(
+                torch.as_tensor([int(s[field]) for s in batch], dtype=torch.long)
+            )
+        for field, width in cls.ID_FIELDS:
+            marshalled[field] = to_device(cls._stack_uint8(batch, field, width))
+        return marshalled
+
+    def encode_tensors(
+        self,
+        obs: Dict[str, torch.Tensor],
+        memory_in: torch.Tensor | None = None,
+        device: torch.device | None = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Device half of ``encode_batch``: marshalled tensors -> encoder output.
+
+        ``obs`` is the output of ``marshal_batch``. Everything here is tensor
+        work; nothing touches the observation dicts.
+        """
+        B = obs["hand_ids"].size(0)
 
         # Initialize memory if not provided
         if memory_in is None:
             memory_in = torch.zeros(
                 (B, self.d_model), dtype=torch.float32, device=device
             )
-        else:
-            memory_in = to_device(memory_in)
+        elif device is not None:
+            memory_in = memory_in.to(device)
 
-        # 1. Build header scalar + called_card_emb → context_token
-        header_fields = [
-            "partner_mode",
-            "is_leaster",
-            "play_started",
-            "current_trick",
-            "alone_called",
-            "called_under",
-            "picker_rel",
-            "partner_rel",
-            "leader_rel",
-            "picker_position",
-        ]
-        header_cols = [self._stack_scalar(batch, k) for k in header_fields]
-        header_scalar = torch.cat(header_cols, dim=1)
-        header_scalar = to_device(header_scalar)
-        # Normalize header scalars
+        # 1. Normalize header scalars, embed the called card → context_token
+        header_scalar = obs["header_scalar"]
         norm = torch.tensor(
             [1.0, 1.0, 1.0, 6.0, 1.0, 1.0, 5.0, 5.0, 5.0, 5.0],
             dtype=header_scalar.dtype,
@@ -480,12 +533,7 @@ class CardReasoningEncoder(nn.Module):
         )
         header_scalar = header_scalar / norm
 
-        # Called card embedding
-        called_ids = torch.as_tensor(
-            [int(s["called_card_id"]) for s in batch], dtype=torch.long
-        )
-        called_ids = to_device(called_ids)
-        called_emb = self.card(called_ids)  # (B, d_card)
+        called_emb = self.card(obs["called_card_id"])  # (B, d_card)
 
         # Build context token from header + called card
         context_tok = self.context_mlp(
@@ -496,29 +544,17 @@ class CardReasoningEncoder(nn.Module):
         memory_tok = self.memory_in_proj(memory_in)  # (B, d_token)
 
         # 3. Derive actor role from picker_rel and partner_rel
-        picker_rel_raw = torch.as_tensor(
-            [int(s["picker_rel"]) for s in batch], dtype=torch.long
-        )
-        partner_rel_raw = torch.as_tensor(
-            [int(s["partner_rel"]) for s in batch], dtype=torch.long
-        )
-        picker_rel_raw = to_device(picker_rel_raw)
-        partner_rel_raw = to_device(partner_rel_raw)
         actor_role_id = (
-            picker_rel_raw.eq(1).long() * 1 + partner_rel_raw.eq(1).long() * 2
+            obs["picker_rel"].eq(1).long() * 1 + obs["partner_rel"].eq(1).long() * 2
         )  # 0=none, 1=picker, 2=partner, 3=both
 
         # 4. Build card tokens
-        hand_ids = to_device(self._stack_uint8(batch, "hand_ids", 8))
-        blind_ids = to_device(self._stack_uint8(batch, "blind_ids", 2))
-        bury_ids = to_device(self._stack_uint8(batch, "bury_ids", 2))
-        trick_card_ids = to_device(self._stack_uint8(batch, "trick_card_ids", 5))
-        trick_is_picker = to_device(
-            self._stack_uint8(batch, "trick_is_picker", 5)
-        ).bool()
-        trick_is_partner_known = to_device(
-            self._stack_uint8(batch, "trick_is_partner_known", 5)
-        ).bool()
+        hand_ids = obs["hand_ids"]
+        blind_ids = obs["blind_ids"]
+        bury_ids = obs["bury_ids"]
+        trick_card_ids = obs["trick_card_ids"]
+        trick_is_picker = obs["trick_is_picker"].bool()
+        trick_is_partner_known = obs["trick_is_partner_known"].bool()
 
         hand_tok, hand_mask = self._embed_hand(hand_ids, actor_role_id)
         blind_tok, blind_mask = self._embed_simple_bag(blind_ids)

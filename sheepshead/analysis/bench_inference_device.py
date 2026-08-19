@@ -47,58 +47,19 @@ from sheepshead.analysis.capture_arch_goldens import collect_probe_states
 
 DEFAULT_BATCH_SIZES = (1, 32, 96, 160, 320, 480, 1024)
 
-# The observation fields encode_batch marshals out of the state dicts, mirrored
-# here so the host-side share of its cost can be timed on its own. Kept in sync
-# with CardReasoningEncoder.encode_batch by hand; a drift only mis-attributes
-# time between the marshal and device columns, it cannot change the total.
-_HEADER_FIELDS = (
-    "partner_mode",
-    "is_leaster",
-    "play_started",
-    "current_trick",
-    "alone_called",
-    "called_under",
-    "picker_rel",
-    "partner_rel",
-    "leader_rel",
-    "picker_position",
-)
-_SCALAR_FIELDS = ("called_card_id", "picker_rel", "partner_rel")
-_ID_FIELDS = (
-    ("hand_ids", 8),
-    ("blind_ids", 2),
-    ("bury_ids", 2),
-    ("trick_card_ids", 5),
-    ("trick_is_picker", 5),
-    ("trick_is_partner_known", 5),
-)
 
+def marshal_host(encoder, batch: list) -> dict:
+    """The host-side half of encode_batch, timed on its own.
 
-def marshal_host(batch: list) -> dict:
-    """The host-side half of encode_batch: turn a list of observation dicts into
-    stacked CPU tensors, before any device transfer.
-
-    This is one Python-level operation per state per field -- ~19 of them,
-    six constructing a tensor -- so it costs a fixed amount per state and never
-    amortizes with batch size. On a single machine it is invisible next to the
-    forward. In a split design, where a fast host marshals and ships packed
-    arrays to a remote accelerator, it stays on the host and must not be
+    Calls the production seam (``CardReasoningEncoder.marshal_batch``) with no
+    device argument, so it measures exactly the Python packing cost and no
+    transfer. That work is ~19 operations per observation, six of them
+    constructing a tensor, so it costs a fixed amount per state and never
+    amortizes with batch size. On one machine it is invisible next to the
+    forward; in a split design it stays on the fast host and must not be
     charged to the accelerator.
     """
-    out = {}
-    cols = [
-        torch.as_tensor([int(s[key]) for s in batch], dtype=torch.float32).view(-1, 1)
-        for key in _HEADER_FIELDS
-    ]
-    out["header"] = torch.cat(cols, dim=1)
-    for key in _SCALAR_FIELDS:
-        out[key] = torch.as_tensor([int(s[key]) for s in batch], dtype=torch.long)
-    for key, width in _ID_FIELDS:
-        stacked = torch.stack(
-            [torch.as_tensor(s[key], dtype=torch.long) for s in batch], dim=0
-        )
-        out[key] = stacked.view(-1, width) if stacked.dim() == 1 else stacked
-    return out
+    return encoder.marshal_batch(batch)
 
 
 def synchronize(device: torch.device) -> None:
@@ -165,7 +126,9 @@ def bench_device(
 
         iters = max(3, min(30, target_states // batch))
         total = time_call(call, device, iters)
-        host = time_call(lambda obs=observations: marshal_host(obs), device, iters)
+        host = time_call(
+            lambda obs=observations: marshal_host(agent.encoder, obs), device, iters
+        )
         results[batch] = {"total": total, "marshal": host, "device": total - host}
     return results
 
