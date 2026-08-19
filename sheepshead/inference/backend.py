@@ -60,6 +60,12 @@ class LocalBackend:
         self.rounds = 0
         self.states = 0
 
+    def reset(self) -> None:
+        """Drop accumulated counters. Benchmarks that run a warm-up committee
+        need the reported stats to describe the measured one only."""
+        self.rounds = 0
+        self.states = 0
+
     def evaluate(self, controller, states, memory_in, valid_lists, wants_critic):
         self.rounds += 1
         self.states += len(states)
@@ -139,6 +145,16 @@ class RemoteBackend:
         self._sock.settimeout(timeout)
         self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._handshake(controller)
+
+    def reset(self) -> None:
+        """Drop accumulated counters -- see LocalBackend.reset. Without this a
+        warm-up committee's rounds and bytes are folded into the reported
+        per-state costs and understate them."""
+        self.rounds = 0
+        self.states = 0
+        self.latencies.clear()
+        self.bytes_up = 0
+        self.bytes_down = 0
 
     def _handshake(self, controller) -> None:
         """Refuse to proceed unless the server holds identical weights. A stale

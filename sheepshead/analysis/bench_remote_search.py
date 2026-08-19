@@ -166,25 +166,61 @@ def _run_client(index: int, opts: dict, barrier, results) -> None:
     than it will ever be in production.
     """
     torch.set_num_threads(1)
+    # ismcts binds DEV = ppo.device at import, and the replay/pool-build path
+    # (two thirds of the encoder work) uses it, so this must happen before setup
+    # pulls ismcts in.
+    from sheepshead.agent import ppo as ppo_module
+
+    local_device = torch.device(opts["local_device"])
+    ppo_module.device = local_device
+    if opts["local_compile"]:
+        from sheepshead.inference.compiled import enable_compiled_encoder
+
+        enable_compiled_encoder(opts["local_granularity"], opts["local_compile"])
+
     agent, teacher, game, seat, forced = setup(opts, announce=(index == 0))
+    for net in (agent.encoder, agent.actor, agent.critic):
+        net.to(local_device)
     offset = 977 * index
+    repeats = max(1, int(opts["repeats"]))
     payload = {"index": index}
 
-    barrier.wait()  # setup costs differ; start the measured phase together
-    local = LocalBackend(torch.device("cpu"))
-    teacher.backend = local
-    local_results, payload["local_wall"] = run_committee(
-        teacher, game, seat, forced, opts["replicates"], opts["d_rollout"], offset
-    )
+    def phase(make_backend, key):
+        """Run the committee ``repeats`` times. The first pays compilation and
+        any device warm-up (Metal caches shaders across calls, so a cold MPS
+        committee reads ~50% slow); a training run does thousands, so the later
+        repeats are the honest number."""
+        backend = make_backend()
+        teacher.backend = backend
+        walls = []
+        for repeat in range(repeats):
+            if repeat == repeats - 1:
+                backend.reset()  # report the measured committee, not the warm-ups
+            barrier.wait()  # every repeat has to be concurrent, not just the first
+            out, wall = run_committee(
+                teacher,
+                game,
+                seat,
+                forced,
+                opts["replicates"],
+                opts["d_rollout"],
+                offset,
+            )
+            walls.append(wall)
+        payload[f"{key}_walls"] = walls
+        payload[f"{key}_wall"] = min(walls[1:]) if repeats > 1 else walls[0]
+        return backend, out
+
+    local, local_results = phase(lambda: LocalBackend(local_device), "local")
     payload["local_rounds"] = local.rounds
     payload["local_states"] = local.states
 
     if opts["host"]:
-        barrier.wait()  # ... and so is the remote phase genuinely concurrent
-        remote = RemoteBackend(opts["host"], opts["port"], agent, half=not opts["fp32"])
-        teacher.backend = remote
-        remote_results, payload["remote_wall"] = run_committee(
-            teacher, game, seat, forced, opts["replicates"], opts["d_rollout"], offset
+        remote, remote_results = phase(
+            lambda: RemoteBackend(
+                opts["host"], opts["port"], agent, half=not opts["fp32"]
+            ),
+            "remote",
         )
         payload["remote"] = remote.report()
         remote.close()
@@ -216,9 +252,23 @@ def run_fleet(opts: dict, clients: int) -> int:
     collected.sort(key=lambda row: row["index"])
     local_walls = [row["local_wall"] for row in collected]
     states = sum(row["local_states"] for row in collected)
+    repeats = max(1, int(opts["repeats"]))
+    if repeats > 1:
+        print(
+            "\nper-repeat walls (client 0). The first pays compilation and device "
+            "warm-up; later ones are steady state and are what is reported below."
+        )
+        for key in ("local", "remote"):
+            series = collected[0].get(f"{key}_walls")
+            if series:
+                print(f"  {key:7s} " + "  ".join(f"{w:6.2f}s" for w in series))
+    label = "local" + (
+        f" {opts['local_device']}"
+        + (f" compiled/{opts['local_compile']}" if opts["local_compile"] else " eager")
+    )
     print(
-        f"\n[local]  wall max {max(local_walls):6.2f}s  mean "
-        f"{sum(local_walls) / clients:6.2f}s   {states} states total   "
+        f"\n[{label}]  wall max {max(local_walls):6.2f}s  mean "
+        f"{sum(local_walls) / clients:6.2f}s   {states} states/committee/client   "
         f"{states / max(local_walls):8.0f} states/s"
     )
     if not opts["host"]:
@@ -268,6 +318,32 @@ def main() -> int:
         "count. A single client can never merge with anything, so the "
         "default measures latency and fidelity, not the batching win",
     )
+    parser.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help="run the committee N times per leg and report the steady-state "
+        "wall (best of repeats 2..N). Use >= 2 whenever either side is "
+        "compiled or on MPS: the first committee pays compilation, and Metal "
+        "caches shaders across calls, so a cold run reads ~50%% slow",
+    )
+    parser.add_argument(
+        "--local-device",
+        default="cpu",
+        help="device for the local leg AND for the replay/pool-build encodes "
+        "in both legs, which the server never sees. 'mps' + --local-compile is "
+        "the fastest known local configuration (1.41x)",
+    )
+    parser.add_argument(
+        "--local-compile",
+        nargs="?",
+        const="default",
+        default=None,
+        metavar="MODE",
+        help="compile the local encoder (all four call sites). Opt-in: output "
+        "differs from eager by ~2.6e-08, so goldens cannot pass against it",
+    )
+    parser.add_argument("--local-granularity", type=int, default=32)
     args = parser.parse_args()
 
     torch.set_num_threads(args.threads)
@@ -275,10 +351,24 @@ def main() -> int:
     if args.clients > 1:
         return run_fleet(opts, args.clients)
 
-    agent, teacher, game, seat, forced = setup(opts)
+    from sheepshead.agent import ppo as ppo_module
 
-    local = LocalBackend(torch.device("cpu"))
+    local_device = torch.device(args.local_device)
+    ppo_module.device = local_device  # ismcts binds DEV at import; see _run_client
+    if args.local_compile:
+        from sheepshead.inference.compiled import enable_compiled_encoder
+
+        enable_compiled_encoder(args.local_granularity, args.local_compile)
+
+    agent, teacher, game, seat, forced = setup(opts)
+    for net in (agent.encoder, agent.actor, agent.critic):
+        net.to(local_device)
+
+    local = LocalBackend(local_device)
     teacher.backend = local
+    for _ in range(max(1, args.repeats) - 1):
+        run_committee(teacher, game, seat, forced, args.replicates, args.d_rollout)
+    local.reset()
     local_results, local_wall = run_committee(
         teacher, game, seat, forced, args.replicates, args.d_rollout
     )
@@ -294,6 +384,9 @@ def main() -> int:
 
     remote = RemoteBackend(args.host, args.port, agent, half=not args.fp32)
     teacher.backend = remote
+    for _ in range(max(1, args.repeats) - 1):
+        run_committee(teacher, game, seat, forced, args.replicates, args.d_rollout)
+    remote.reset()
     remote_results, remote_wall = run_committee(
         teacher, game, seat, forced, args.replicates, args.d_rollout
     )
