@@ -2542,3 +2542,18 @@ NOT a blanket rule (39/49/83 against called, median −0.0055 across
 all 171 holders) — it wins only at the search-selected nodes. Long
 fails explain 9/55 overrides; the rest are situational point-card
 unloads.
+
+§13.5 ADDENDUM 2 — void-lead cell VERDICT (2026-08-19, n=150 fresh
+draws, seeds 800000+, runs/called_suit_exceptions_202608/
+void_cell.json; --singleton-low-called --long-side-fail): in the
+conditioned cell (bare 7/8/9 called card + >=3 cards in another
+fail suit) the pilot's 16/9/8 replicates as 97/37/16
+long-better/noise/called-better (6:1 sign test, p < 1e-12; median
+Q edge +0.012 = 2x noise floor). Production target argmax comes
+FROM the long suit 109/150 (73%); in-cell categories 24 SUPPORT /
+56 AGAINST / 70 NEUTRAL. Override card class scattered (fat 24,
+nopoint 11, K 21, trump 0) — the SUIT (pigeonhole void among the
+other four seats), not the card class, carries the effect. Human
+rule: singleton-low called + 3-card side fail -> lead the long
+suit. This is the one exception to the unconditional convention
+with certifiable, rule-shaped structure.
