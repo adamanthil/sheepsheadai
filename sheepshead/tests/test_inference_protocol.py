@@ -26,7 +26,7 @@ from sheepshead.inference import (
     unpack_response,
 )
 from sheepshead.inference.protocol import request_nbytes, response_nbytes
-from sheepshead.inference.server import run_batch, serve_round
+from sheepshead.inference.server import ServedModel, run_batch, serve_round
 from sheepshead.training.training_utils import set_all_seeds
 
 
@@ -294,7 +294,9 @@ def test_a_merged_batch_returns_each_client_its_own_rows(agent, states):
         _request(agent, states[a:b], [valid[i]] * (b - a), seed=i)
         for i, (a, b) in enumerate(_SHAPES)
     ]
-    batched = run_batch(agent, [raw for _blob, raw in parts], device)
+    batched = run_batch(
+        ServedModel(agent, device), [raw for _blob, raw in parts], device
+    )
     alone = [serve_round(agent, blob, device) for blob, _raw in parts]
 
     assert len(batched) == len(alone)
@@ -318,7 +320,9 @@ def test_a_client_that_did_not_ask_for_the_critic_still_gets_zeros(agent, states
         _request(agent, states[a:b], [[1, 2, 5, 9]] * (b - a), wants_critic=w, seed=i)
         for i, ((a, b), w) in enumerate(zip(_SHAPES, wants))
     ]
-    replies = run_batch(agent, [raw for _blob, raw in parts], device)
+    replies = run_batch(
+        ServedModel(agent, device), [raw for _blob, raw in parts], device
+    )
     for (a, b), want, reply in zip(_SHAPES, wants, replies):
         _probs, values, _memory = unpack_response(
             reply, b - a, agent.action_size, agent.encoder.d_model, WireConfig(False)
@@ -388,3 +392,27 @@ def test_encode_tensors_matches_encode_batch(agent, states):
     for key, tensor in direct.items():
         if isinstance(tensor, torch.Tensor):
             assert torch.equal(tensor, via_split[key]), key
+
+
+def test_batch_padding_does_not_change_any_client_result(agent, states):
+    """Compiled mode rounds merged batches up to a fixed set of shapes. The pad
+    rows must be invisible: they carry an all-legal mask (an all-False row
+    softmaxes to NaN and would poison the real rows through nothing at all --
+    but a wrong slice would), and they must be sliced off before the split."""
+    device = torch.device("cpu")
+    parts = [
+        _request(agent, states[a:b], [[1, 2, 5, 9]] * (b - a), seed=i)
+        for i, (a, b) in enumerate(_SHAPES)
+    ]
+    raws = [raw for _blob, raw in parts]
+    plain = run_batch(ServedModel(agent, device), raws, device)
+    padded = run_batch(ServedModel(agent, device, granularity=16), raws, device)
+
+    assert [len(r) for r in padded] == [len(r) for r in plain]
+    for i, ((a, b), got, want) in enumerate(zip(_SHAPES, padded, plain)):
+        shape = (b - a, agent.action_size, agent.encoder.d_model)
+        wire = WireConfig(half=False)
+        for k, (x, y) in enumerate(
+            zip(unpack_response(got, *shape, wire), unpack_response(want, *shape, wire))
+        ):
+            assert np.abs(x - y).max() < 1e-5, (i, k)

@@ -153,7 +153,70 @@ def build_agent(checkpoint: str | None, arch: str, device: torch.device, seed: i
     return agent
 
 
-def run_batch(agent, raws: list, device: torch.device) -> list:
+class ServedModel:
+    """The forward this server runs, optionally compiled.
+
+    Compilation targets the cost that actually dominates here: ~17 ms of
+    per-batch CUDA dispatch on a 2015 Skylake against a ~0.65 ms forward
+    (notebooks/Distributed_Inference_202608.md §5.3). Hundreds of small aten
+    ops driven through Python is exactly what inductor collapses, and unlike
+    the merge factor it is not capped by queueing arithmetic.
+
+    ``granularity`` rounds the batch up so a handful of compiled shapes serve
+    every round size. Without it, ``dynamic=False`` recompiles per distinct
+    merged batch -- and merged sizes are far more varied than a single client's,
+    since they are sums over however many clients happened to arrive together.
+    """
+
+    def __init__(self, agent, device, compile_mode=None, granularity: int = 1):
+        self.agent = agent
+        self.device = device
+        # Independent of compile_mode so the padding path is testable without
+        # paying for a compile.
+        self.granularity = max(1, int(granularity))
+        self.forward = self._forward
+        if compile_mode:
+            kwargs = {} if compile_mode == "default" else {"mode": compile_mode}
+            self.forward = torch.compile(self._forward, dynamic=False, **kwargs)
+
+    def _forward(self, marshalled, memory_in, masks, wants_critic: bool):
+        encoded = self.agent.encoder.encode_tensors(
+            marshalled, memory_in=memory_in, device=self.device
+        )
+        probs, _ = self.agent.actor.forward_with_logits(
+            encoded, masks, marshalled["hand_ids"], self.agent.encoder.card
+        )
+        if wants_critic:
+            values = self.agent.critic(encoded).view(-1)
+        else:
+            values = torch.zeros(probs.shape[0], device=probs.device)
+        return probs, values, encoded["memory_out"]
+
+    def __call__(self, merged: dict) -> tuple:
+        marshalled = merged["marshalled"]
+        memory_in = merged["memory_in"]
+        masks = merged["masks"]
+        n = int(memory_in.shape[0])
+        pad = -(-n // self.granularity) * self.granularity - n
+        if pad:
+            marshalled = {
+                key: torch.cat([v, v[:1].repeat_interleave(pad, 0)], 0)
+                for key, v in marshalled.items()
+            }
+            memory_in = torch.cat(
+                [memory_in, memory_in[:1].repeat_interleave(pad, 0)], 0
+            )
+            # Pad rows get an all-legal mask. An all-False row softmaxes to NaN,
+            # and one NaN row is enough to poison a whole client's reply.
+            masks = torch.cat([masks, torch.ones_like(masks[:1].expand(pad, -1))], 0)
+        with torch.no_grad():
+            probs, values, memory_out = self.forward(
+                marshalled, memory_in, masks, merged["wants_critic"]
+            )
+        return probs[:n], values[:n], memory_out[:n]
+
+
+def run_batch(model: ServedModel, raws: list, device: torch.device) -> list:
     """Merge, forward, split. Returns one reply frame per request, in order.
 
     A batch of one takes exactly this path too -- there is no separate unbatched
@@ -162,21 +225,8 @@ def run_batch(agent, raws: list, device: torch.device) -> list:
     why merging pays: see ``merge_requests`` and ``response_block``.
     """
     merged = merge_requests(raws, device=device)
-    marshalled = merged["marshalled"]
     action_size = merged["action_size"]
-
-    with torch.no_grad():
-        encoded = agent.encoder.encode_tensors(
-            marshalled, memory_in=merged["memory_in"], device=device
-        )
-        probs, _ = agent.actor.forward_with_logits(
-            encoded, merged["masks"], marshalled["hand_ids"], agent.encoder.card
-        )
-        memory_out = encoded["memory_out"]
-        if merged["wants_critic"]:
-            values = agent.critic(encoded).view(-1)
-        else:
-            values = torch.zeros(probs.shape[0], device=probs.device)
+    probs, values, memory_out = model(merged)
 
     # One device-to-host copy for the whole merged batch; the per-client split
     # below is row slicing on the host, which is free.
@@ -198,7 +248,7 @@ def run_batch(agent, raws: list, device: torch.device) -> list:
 def serve_round(agent, request: bytes, device: torch.device) -> bytes:
     """One request in, one reply out -- the batch-of-one case of ``run_batch``."""
     raw = decode_request(request, agent.encoder.d_model)
-    return run_batch(agent, [raw], device)[0]
+    return run_batch(ServedModel(agent, device), [raw], device)[0]
 
 
 class _Pending:
@@ -303,7 +353,7 @@ def _collect(work: queue.Queue, first: _Pending, policy: BatchPolicy) -> list:
     return batch
 
 
-def _batcher(agent, device, work, stop, stats, policy, report_every) -> None:
+def _batcher(model, device, work, stop, stats, policy, report_every) -> None:
     while not stop.is_set():
         try:
             first = work.get(timeout=_POLL_SECONDS)
@@ -313,7 +363,7 @@ def _batcher(agent, device, work, stop, stats, policy, report_every) -> None:
 
         start = time.perf_counter()
         try:
-            replies = run_batch(agent, [p.raw for p in batch], device)
+            replies = run_batch(model, [p.raw for p in batch], device)
             for pending, reply in zip(batch, replies):
                 pending.reply = reply
         except Exception as exc:
@@ -372,8 +422,10 @@ def serve(
     bind: str = "0.0.0.0",
     policy: BatchPolicy = None,
     report_every: int = 200,
+    model: "ServedModel" = None,
 ) -> int:
     policy = policy or BatchPolicy()
+    model = model or ServedModel(agent, device)
     expected = "|".join(
         fingerprint_weights(net) for net in (agent.encoder, agent.actor, agent.critic)
     )
@@ -382,7 +434,7 @@ def serve(
     stats = _Stats()
     threading.Thread(
         target=_batcher,
-        args=(agent, device, work, stop, stats, policy, report_every),
+        args=(model, device, work, stop, stats, policy, report_every),
         name="batcher",
         daemon=True,
     ).start()
@@ -449,6 +501,24 @@ def main() -> int:
     parser.add_argument("--max-batch-requests", type=int, default=16)
     parser.add_argument("--max-batch-states", type=int, default=8192)
     parser.add_argument(
+        "--compile",
+        nargs="?",
+        const="reduce-overhead",
+        default=None,
+        metavar="MODE",
+        help="compile the served forward (default mode reduce-overhead, which "
+        "on CUDA means CUDA graphs; it is a no-op on MPS, where Metal has no "
+        "equivalent). Pass 'default' for plain inductor. Off unless given: the "
+        "first batch of each shape pays compilation",
+    )
+    parser.add_argument(
+        "--pad-granularity",
+        type=int,
+        default=32,
+        help="with --compile, round merged batches up to a multiple of this so "
+        "a few compiled shapes cover every round size",
+    )
+    parser.add_argument(
         "--report-every",
         type=int,
         default=200,
@@ -459,13 +529,23 @@ def main() -> int:
     torch.set_num_threads(args.threads)
     device = torch.device(args.device)
     agent = build_agent(args.checkpoint, args.arch, device, args.seed)
+    model = ServedModel(
+        agent, device, args.compile, args.pad_granularity if args.compile else 1
+    )
+    if args.compile:
+        print(
+            f"compiling the forward (mode={args.compile}, pad to multiples of "
+            f"{args.pad_granularity}); the first batch of each shape is slow"
+        )
     policy = BatchPolicy(
         window=args.batch_window_ms / 1e3,
         max_requests=args.max_batch_requests,
         max_states=args.max_batch_states,
     )
     try:
-        return serve(agent, args.port, device, args.bind, policy, args.report_every)
+        return serve(
+            agent, args.port, device, args.bind, policy, args.report_every, model
+        )
     except KeyboardInterrupt:
         print("\nstopped")
         return 0
