@@ -37,16 +37,47 @@ from sheepshead.inference.protocol import (
 _FRAME = struct.Struct("!Q")
 
 
+#: Blocking sockets swallow Ctrl-C on Windows: a signal handler only runs
+#: between bytecode instructions, and WSAAccept/WSARecv do not return early the
+#: way an EINTR-interrupted POSIX syscall does. Giving every blocking call a
+#: short timeout hands control back to the interpreter often enough for the
+#: KeyboardInterrupt to be raised.
+_POLL_SECONDS = 0.5
+
+
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
     chunks = []
     remaining = n
     while remaining:
-        chunk = sock.recv(min(remaining, 1 << 20))
+        try:
+            chunk = sock.recv(min(remaining, 1 << 20))
+        except TimeoutError:
+            # Not an error: keep waiting for the rest of the frame. Retrying
+            # here rather than at the frame level is what keeps a timeout from
+            # desynchronising a partially-read message.
+            continue
         if not chunk:
             raise ConnectionError(f"peer closed with {remaining} bytes outstanding")
         chunks.append(chunk)
         remaining -= len(chunk)
     return b"".join(chunks)
+
+
+def local_addresses() -> list:
+    """Best-effort IPv4 addresses of this host.
+
+    Printed at startup because the common multi-adapter mistake is pointing the
+    client at the wrong one -- a machine with WiFi for internet and a
+    point-to-point link to the orchestrator has two, and only one of them is
+    reachable from the other end.
+    """
+    found = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            found.add(info[4][0])
+    except socket.gaierror:
+        pass
+    return sorted(found)
 
 
 def _send(sock: socket.socket, payload: bytes) -> None:
@@ -116,18 +147,28 @@ def serve_round(agent, request: bytes, device: torch.device) -> bytes:
     )
 
 
-def serve(agent, port: int, device: torch.device) -> int:
+def serve(agent, port: int, device: torch.device, bind: str = "0.0.0.0") -> int:
     expected = "|".join(
         fingerprint_weights(net) for net in (agent.encoder, agent.actor, agent.critic)
     )
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listener.bind(("0.0.0.0", port))
+    listener.bind((bind, port))
     listener.listen(4)
-    print(f"serving {device} on 0.0.0.0:{port}   weights {expected[:16]}...")
+    listener.settimeout(_POLL_SECONDS)
+    print(f"serving {device} on {bind}:{port}   weights {expected[:16]}...")
+    if bind in ("0.0.0.0", ""):
+        for address in local_addresses():
+            print(f"  reachable at {address}:{port}")
+        print("  (bound to every adapter; --bind <ip> to restrict)")
+    print("  ctrl-c to stop")
     while True:
-        conn, addr = listener.accept()
+        try:
+            conn, addr = listener.accept()
+        except TimeoutError:
+            continue  # see _POLL_SECONDS: keeps Ctrl-C responsive on Windows
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        conn.settimeout(_POLL_SECONDS)
         print(f"connection from {addr[0]}:{addr[1]}")
         rounds = 0
         compute = 0.0
@@ -170,13 +211,19 @@ def main() -> int:
     parser.add_argument(
         "--seed", type=int, default=42, help="fresh-agent seed when no checkpoint"
     )
+    parser.add_argument(
+        "--bind",
+        default="0.0.0.0",
+        help="interface to listen on; default every adapter. Set this to the "
+        "point-to-point link's local IP to keep the server off a shared network",
+    )
     args = parser.parse_args()
 
     torch.set_num_threads(args.threads)
     device = torch.device(args.device)
     agent = build_agent(args.checkpoint, args.arch, device, args.seed)
     try:
-        return serve(agent, args.port, device)
+        return serve(agent, args.port, device, args.bind)
     except KeyboardInterrupt:
         print("\nstopped")
         return 0

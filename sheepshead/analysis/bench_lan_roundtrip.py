@@ -53,11 +53,28 @@ DEFAULT_STATES = (126, 1008, 2016, 4032)
 _HEADER = struct.Struct("!Q")  # frame length prefix
 
 
-def _recv_exact(sock: socket.socket, n: int) -> bytes:
+#: Blocking sockets swallow Ctrl-C on Windows: a signal handler only runs
+#: between bytecode instructions, and WSAAccept/WSARecv do not return early the
+#: way an EINTR-interrupted POSIX syscall does. The server polls with a short
+#: timeout so the interpreter gets a chance to raise KeyboardInterrupt. The
+#: client does NOT retry -- there a timeout means the peer is gone and should
+#: surface as an error.
+_POLL_SECONDS = 0.5
+
+
+def _recv_exact(sock: socket.socket, n: int, retry_on_timeout: bool = False) -> bytes:
     chunks = []
     remaining = n
     while remaining:
-        chunk = sock.recv(min(remaining, 1 << 20))
+        try:
+            chunk = sock.recv(min(remaining, 1 << 20))
+        except TimeoutError:
+            if retry_on_timeout:
+                # Keep waiting for the rest of the frame. Retrying here rather
+                # than at the frame level is what stops a timeout from
+                # desynchronising a partially-read message.
+                continue
+            raise
         if not chunk:
             raise ConnectionError(f"peer closed with {remaining} bytes outstanding")
         chunks.append(chunk)
@@ -69,9 +86,23 @@ def _send_frame(sock: socket.socket, payload: bytes) -> None:
     sock.sendall(_HEADER.pack(len(payload)) + payload)
 
 
-def _recv_frame(sock: socket.socket) -> bytes:
-    (length,) = _HEADER.unpack(_recv_exact(sock, _HEADER.size))
-    return _recv_exact(sock, length)
+def _recv_frame(sock: socket.socket, retry_on_timeout: bool = False) -> bytes:
+    (length,) = _HEADER.unpack(
+        _recv_exact(sock, _HEADER.size, retry_on_timeout=retry_on_timeout)
+    )
+    return _recv_exact(sock, length, retry_on_timeout=retry_on_timeout)
+
+
+def local_addresses() -> list:
+    """Best-effort IPv4 addresses of this host, printed so the operator can see
+    which adapter to point the client at when several are up."""
+    found = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            found.add(info[4][0])
+    except socket.gaierror:
+        pass
+    return sorted(found)
 
 
 def _tune(sock: socket.socket) -> None:
@@ -80,7 +111,7 @@ def _tune(sock: socket.socket) -> None:
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 
-def serve(port: int) -> int:
+def serve(port: int, bind: str = "0.0.0.0") -> int:
     """Echo server: read a frame, reply with a frame of the requested size.
 
     The reply size is carried in the first 8 bytes of the request, so the client
@@ -88,17 +119,27 @@ def serve(port: int) -> int:
     """
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listener.bind(("0.0.0.0", port))
+    listener.bind((bind, port))
     listener.listen(4)
-    print(f"listening on 0.0.0.0:{port} (ctrl-c to stop)")
+    listener.settimeout(_POLL_SECONDS)
+    print(f"listening on {bind}:{port}")
+    if bind in ("0.0.0.0", ""):
+        for address in local_addresses():
+            print(f"  reachable at {address}:{port}")
+        print("  (bound to every adapter; --bind <ip> to restrict)")
+    print("  ctrl-c to stop")
     while True:
-        conn, addr = listener.accept()
+        try:
+            conn, addr = listener.accept()
+        except TimeoutError:
+            continue  # see _POLL_SECONDS: keeps Ctrl-C responsive on Windows
         _tune(conn)
+        conn.settimeout(_POLL_SECONDS)
         print(f"connection from {addr[0]}:{addr[1]}")
         blob = b"\0" * (1 << 22)
         try:
             while True:
-                payload = _recv_frame(conn)
+                payload = _recv_frame(conn, retry_on_timeout=True)
                 (reply_len,) = _HEADER.unpack(payload[: _HEADER.size])
                 while len(blob) < reply_len:
                     blob += blob
@@ -210,6 +251,11 @@ def main() -> int:
     mode.add_argument("--connect", metavar="HOST", help="run on the orchestrator")
     parser.add_argument("--port", type=int, default=53017)
     parser.add_argument(
+        "--bind",
+        default="0.0.0.0",
+        help="server: interface to listen on; default every adapter",
+    )
+    parser.add_argument(
         "--states",
         type=int,
         nargs="+",
@@ -221,7 +267,7 @@ def main() -> int:
 
     if args.serve:
         try:
-            return serve(args.port)
+            return serve(args.port, args.bind)
         except KeyboardInterrupt:
             print("\nstopped")
             return 0
