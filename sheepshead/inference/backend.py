@@ -121,7 +121,13 @@ class RemoteBackend:
     name = "remote"
 
     def __init__(
-        self, host: str, port: int, controller, half: bool = True, timeout: float = 60.0
+        self,
+        host: str,
+        port: int,
+        controller,
+        half: bool = True,
+        timeout: float = 60.0,
+        connect_timeout: float = 8.0,
     ):
         self.wire = WireConfig(half=half)
         self.rounds = 0
@@ -129,7 +135,8 @@ class RemoteBackend:
         self.latencies: list[float] = []
         self.bytes_up = 0
         self.bytes_down = 0
-        self._sock = socket.create_connection((host, port), timeout=timeout)
+        self._sock = _dial(host, port, connect_timeout)
+        self._sock.settimeout(timeout)
         self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._handshake(controller)
 
@@ -196,6 +203,36 @@ class RemoteBackend:
             "mb_down": self.bytes_down / 1e6,
             "us_per_state": sum(lat) / self.states * 1e6,
         }
+
+
+def _dial(host: str, port: int, connect_timeout: float) -> socket.socket:
+    """Connect, turning the two failure modes into the diagnosis they imply.
+
+    A refusal means the packet arrived and nothing was listening; a timeout
+    means it was silently dropped, which is a firewall rather than a missing
+    route. Distinguishing them is the whole diagnostic, and a bare "timed out"
+    sends people hunting for a routing problem that is not there.
+    """
+    try:
+        return socket.create_connection((host, port), timeout=connect_timeout)
+    except ConnectionRefusedError:
+        raise SystemExit(
+            f"connection refused at {host}:{port}\n"
+            f"  Reachable, nothing listening. Start the server there:\n"
+            f"    python -m sheepshead.inference.server --checkpoint <weights> "
+            f"--device cuda --port {port}\n"
+            f"  The LAN round-trip probe is a different service on port 53017."
+        ) from None
+    except TimeoutError:
+        raise SystemExit(
+            f"timed out connecting to {host}:{port}\n"
+            f"  Silently dropped SYN -- a firewall, not a missing route. On "
+            f"Windows:\n"
+            f"    New-NetFirewallRule -DisplayName sheepshead -Direction Inbound "
+            f"-Protocol TCP -LocalPort {port} -Action Allow\n"
+            f"  Confirm the port too: this client defaults to 53018, the LAN "
+            f"probe to 53017."
+        ) from None
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes:

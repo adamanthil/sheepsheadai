@@ -50,6 +50,11 @@ ENCODINGS = (
 )
 
 DEFAULT_STATES = (126, 1008, 2016, 4032)
+#: This probe and the inference server are different services on different
+#: ports. Naming both here so the connect diagnostics can point at the mix-up,
+#: which is the likeliest reason a connection to one of them fails.
+DEFAULT_PORT = 53017
+INFERENCE_PORT = 53018
 _HEADER = struct.Struct("!Q")  # frame length prefix
 
 
@@ -182,10 +187,49 @@ def measure(sock, up: int, down: int, iters: int, warmup: int = 5) -> dict:
     }
 
 
-def connect(host: str, port: int, states: tuple, iters: int) -> int:
+def dial(host: str, port: int, connect_timeout: float = 8.0) -> socket.socket:
+    """Connect, turning the two failure modes into the diagnosis they imply.
+
+    The distinction is the whole diagnostic and is easy to miss: a refusal means
+    the packet reached the host and nothing was listening, whereas a timeout
+    means it was silently dropped -- so the two point at completely different
+    causes, and a bare "timed out" sends people hunting for a routing problem
+    that is not there.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(30.0)
-    sock.connect((host, port))
+    sock.settimeout(connect_timeout)
+    try:
+        sock.connect((host, port))
+    except ConnectionRefusedError:
+        raise SystemExit(
+            f"connection refused at {host}:{port}\n"
+            f"  The host is reachable and nothing is dropping packets -- there is\n"
+            f"  simply no listener on that port. Start the probe server there:\n"
+            f"    python -m sheepshead.analysis.bench_lan_roundtrip --serve "
+            f"--port {port}\n"
+            f"  Note this probe defaults to {DEFAULT_PORT}, which is NOT the\n"
+            f"  inference server's port ({INFERENCE_PORT}) -- they are different\n"
+            f"  services and both ends must agree."
+        ) from None
+    except TimeoutError:
+        raise SystemExit(
+            f"timed out connecting to {host}:{port}\n"
+            f"  A timeout rather than 'connection refused' means the SYN was\n"
+            f"  silently dropped, which is a firewall, not a missing route. If\n"
+            f"  another port on this host answers, routing is fine. On Windows:\n"
+            f"    New-NetFirewallRule -DisplayName sheepshead -Direction Inbound "
+            f"-Protocol TCP -LocalPort {port} -Action Allow\n"
+            f"    Set-NetConnectionProfile -InterfaceAlias <adapter> "
+            f"-NetworkCategory Private\n"
+            f"  Also confirm the port: this probe defaults to {DEFAULT_PORT}, the\n"
+            f"  inference server to {INFERENCE_PORT}."
+        ) from None
+    sock.settimeout(None)
+    return sock
+
+
+def connect(host: str, port: int, states: tuple, iters: int) -> int:
+    sock = dial(host, port)
     _tune(sock)
     print(f"connected to {host}:{port}\n")
 
@@ -249,7 +293,13 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--serve", action="store_true", help="run on the GPU box")
     mode.add_argument("--connect", metavar="HOST", help="run on the orchestrator")
-    parser.add_argument("--port", type=int, default=53017)
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"probe port (default {DEFAULT_PORT}); the inference server is a "
+        f"different service on {INFERENCE_PORT}",
+    )
     parser.add_argument(
         "--bind",
         default="0.0.0.0",
