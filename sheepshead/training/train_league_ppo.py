@@ -21,11 +21,12 @@ generation indices rather than resetting them to the resume point — a resume
 partway through a phase trains only the episodes remaining to the next boundary.
 
 Terminal reward, optionally with the always-on CE search teacher (--teacher,
-CE_Teacher_Design_202608.md): a frozen generation-start expert's ISMCTS
-committee labels a subsample of PLAY decisions with shrink-and-tilt CE
-targets, distilled in supervised passes after each PPO update. The teacher
-runs the WHOLE generation (no phases — any teacher-off window is a measured
-reversion window, §13.4); the expert refreezes at each generation boundary.
+CE_Teacher_Design_202608.md): a closed-loop ISMCTS committee — running on
+the training network itself (§15a) — labels a subsample of PLAY decisions
+with shrink-and-tilt CE targets, distilled in supervised passes after each
+PPO update. The teacher runs the WHOLE generation (no phases — any
+teacher-off window is a measured reversion window, §13.4); the boundary
+cert's absolute anchors are its certification.
 The bidding-head KL anchor is available (--anchor-coeff) for warm-start
 safety but defaults OFF: without a distillation yank there is nothing it is
 known to guard against, and it caps bidding improvement.
@@ -414,13 +415,6 @@ def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
                 "teacher_prob": teacher_settings.prob,
                 "teacher_replicates": teacher_settings.replicates,
                 "teacher_iters": teacher_settings.iters,
-                # Stationary expert: workers rebuild the frozen
-                # generation-start policy from these paths; weight
-                # refreshes touch only the live agent. --teacher-ckpt
-                # pins the expert independently of --resume so a mid-run
-                # continuation doesn't silently refreeze to student weights.
-                "teacher_resume": teacher_settings.ckpt,
-                "teacher_oracle_init": teacher_settings.oracle_init,
                 "teacher_gamma": float(context.training_agent.gamma),
                 # Opt-in worker throughput options; see
                 # league_worker._apply_inference_options.
@@ -1150,33 +1144,30 @@ def main():
     # boundary (rather than resetting the counter to the resume point).
     first_gen = episode // episodes_per_gen + 1
     # Always-on teacher generations (CE_Teacher_Design §3): NO phases — a
-    # teacher-off window is a measured reversion window (§13.4). The frozen
-    # expert is pinned per generation to the generation-start checkpoint and
-    # refreshed at each boundary only through the absolute-anchor cert
-    # (run_boundary_cert): fixed bars, never relative-to-previous, so an
-    # expert refresh chain cannot ratchet drift into the certified regime.
-    gen_start_ckpt = getattr(args, "teacher_ckpt", None) or args.resume
-    # The cert h2h anchor is resolved ONCE at launch and never follows the
-    # refresh chain (absolute anchoring, §3).
-    cert_anchor = getattr(args, "cert_anchor_ckpt", None) or gen_start_ckpt
+    # teacher-off window is a measured reversion window (§13.4). The expert
+    # is the training network itself (closed-loop, §15a), so there is no
+    # per-generation expert pin; the boundary cert (run_boundary_cert) is
+    # its certification — fixed bars, never relative-to-previous, so
+    # boundary-to-boundary drift cannot ratchet.
+    #
+    # The cert h2h anchor is resolved ONCE at launch (absolute anchoring, §3).
+    cert_anchor = getattr(args, "cert_anchor_ckpt", None) or args.resume
     for generation in range(first_gen, first_gen + args.generations):
         boundary = generation * episodes_per_gen
         print(
             f"\n{'=' * 70}\n🏁 GENERATION {generation}: main phase "
             f"({episode:,} -> {boundary:,})"
             + (
-                f"  [teacher expert: {os.path.basename(gen_start_ckpt)}]"
+                "  [teacher expert: live (training network)]"
                 if getattr(args, "teacher", False)
                 else ""
             )
             + f"\n{'=' * 70}"
         )
         # Per-generation view of the CLI namespace: the parsed args stay
-        # immutable; the generation-dependent expert pin and the resolved
-        # cert anchor ride an explicit copy instead of being written back
-        # into the shared namespace.
+        # immutable; the resolved cert anchor rides an explicit copy instead
+        # of being written back into the shared namespace.
         generation_args = copy.copy(args)
-        generation_args.teacher_ckpt = gen_start_ckpt
         generation_args.cert_anchor_resolved = cert_anchor
         episode = run_main_phase(
             training_agent,
@@ -1191,32 +1182,26 @@ def main():
         main_ckpt = checkpoint_path(checkpoint_dir, args, episode)
         if not os.path.exists(main_ckpt):
             training_agent.save(main_ckpt)
-        # Expert refresh (CE_Teacher_Design §3): the boundary checkpoint
-        # becomes the next generation's frozen expert only if it passes the
-        # absolute-anchor cert; a failed cert halts for operator review.
+        # Boundary cert (CE_Teacher_Design §3): the live expert is never a
+        # certified checkpoint, so the absolute-anchor cert at each boundary
+        # is the teacher's whole certification; a fail halts for operator
+        # review.
         if getattr(args, "teacher", False):
             cert = run_boundary_cert(
                 training_agent, generation_args, generation, checkpoint_dir
             )
             if cert["passed"]:
-                gen_start_ckpt = main_ckpt
-                print(
-                    f"🧊 Boundary cert PASSED — gen {generation + 1} expert "
-                    f"refreezes to {os.path.basename(main_ckpt)}"
-                )
+                print("🧊 Boundary cert PASSED — live expert continues")
             else:
                 league.save()
                 print(
                     f"🚨 BOUNDARY CERT FAILED at gen {generation}: "
                     + "; ".join(cert["failures"])
-                    + f" — expert stays {os.path.basename(gen_start_ckpt)}; "
-                    "run halted for operator review "
+                    + " — run halted for operator review "
                     f"(checkpoint: {main_ckpt})",
                     flush=True,
                 )
                 raise GateExit(4)
-        else:
-            gen_start_ckpt = main_ckpt
 
         gate = run_exploiter_generation(args, generation, main_ckpt)
         _append_exploitability(exploitability_csv, generation, episode, gate)

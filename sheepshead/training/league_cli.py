@@ -19,13 +19,6 @@ def add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--resume", required=True, help="main agent checkpoint to start from"
     )
-    parser.add_argument(
-        "--teacher-ckpt",
-        default=None,
-        help="checkpoint for the frozen search-teacher expert (defaults to "
-        "--resume; set explicitly when continuing mid-generation so the "
-        "expert stays pinned to the certified generation-start policy)",
-    )
     parser.add_argument("--league-dir", required=True)
     parser.add_argument(
         "--migrate-from",
@@ -343,10 +336,10 @@ def add_guard_cert_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--cert-anchor-ckpt",
         default=None,
-        help="FIXED h2h anchor for every boundary cert (default: the run's "
-        "original expert checkpoint, i.e. --teacher-ckpt or --resume at "
-        "launch). Absolute anchoring prevents the expert-refresh chain "
-        "from ratcheting drift (CE_Teacher_Design §3)",
+        help="FIXED h2h anchor for every boundary cert (default: --resume "
+        "at launch). Absolute anchoring prevents boundary-to-boundary "
+        "drift from ratcheting (CE_Teacher_Design §3) — with the live "
+        "expert it is the only certification the teacher has (§15a)",
     )
 
 

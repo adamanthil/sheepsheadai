@@ -372,9 +372,6 @@ def test_worker_protocol_serves_ce_teacher(tmp_path):
         },
         f"{base}_v1.pt",
     )
-    # Full checkpoint for the frozen expert (stationary teacher).
-    teacher_ckpt = str(tmp_path / "teacher_resume.pt")
-    main_agent.save(teacher_ckpt)
     lw.league_worker_init(
         {
             "arch": ARCH,
@@ -387,14 +384,11 @@ def test_worker_protocol_serves_ce_teacher(tmp_path):
             "teacher_prob": 1.0,
             "teacher_replicates": 3,  # test-speed committee
             "teacher_iters": 8,  # test-speed override
-            "teacher_resume": teacher_ckpt,
-            "teacher_oracle_init": None,
             "teacher_gamma": 1.0,
         }
     )
-    # The frozen-expert build consumes torch RNG, so which deals avoid
-    # leaster/ALONE (ineligible) is seed-sensitive: try a few deals until
-    # the teacher fires.
+    # Which deals avoid leaster/ALONE (ineligible) is seed-sensitive: try a
+    # few deals until the teacher fires.
     out = None
     for ep, seed in enumerate((11, 12, 13, 14, 15), start=1):
         job = lw.WorkerJob(
@@ -414,13 +408,9 @@ def test_worker_protocol_serves_ce_teacher(tmp_path):
     ref = main_agent.oracle_critic.state_dict()
     got = worker.oracle_critic.state_dict()
     assert all(torch.equal(ref[k], got[k]) for k in ref)
-    # Stationary expert: the teacher wraps its OWN frozen agent, not the
-    # live worker agent that weight refreshes update.
-    frozen = lw.WORKER_STATE["teacher"].agent
-    assert frozen is not worker, "teacher must not wrap the live agent"
-    assert frozen.gamma == 1.0
-    f_ref = frozen.actor.state_dict()
-    assert all(torch.equal(main_agent.actor.state_dict()[k], f_ref[k]) for k in f_ref)
+    # Closed-loop expert (§15a): the teacher wraps the live worker agent, so
+    # every weight refresh reaches the committee with at most one version lag.
+    assert lw.WORKER_STATE["teacher"].agent is worker
     assert out["episode_events"], "worker produced no transitions"
     diag = out["training_data_single"]["search_diagnostics"]["play"]
     assert diag["count"] >= 1, "teacher never attempted despite prob=1.0"

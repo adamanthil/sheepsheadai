@@ -19,7 +19,6 @@ import torch
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.training.league import SELF_PLAY
-from sheepshead.training.league_teacher import build_frozen_expert
 from sheepshead.training.pfsp_runtime import make_game_summary, play_population_game
 
 
@@ -127,19 +126,16 @@ def league_worker_init(init_args: dict) -> None:
         iters_per_head = int(
             init_args.get("teacher_iters", SearchConfig().teacher_iters)
         )
-        # Stationary expert: the teacher wraps a frozen copy of the
-        # generation-start policy, NOT the live worker agent — weight
-        # refreshes in league_worker_play never touch it.
-        frozen_expert = build_frozen_expert(
-            init_args["teacher_resume"],
-            init_args.get("critic_mode", "limited"),
-            init_args.get("arch", "full"),
-            bool(init_args.get("oracle_aux_heads", False)),
-            init_args.get("teacher_oracle_init"),
-            float(init_args.get("teacher_gamma", 1.0)),
-        )
+        # Closed-loop expert (CE_Teacher_Design §15a): the committee runs
+        # on the worker's own current-weights copy. Weight refreshes in
+        # league_worker_play mutate these same networks in place, so the
+        # expert follows the student with at most one version of lag. The
+        # engine snapshots/restores per-seat memories around each search
+        # (keyed by id, the shared agent included), so sharing the rollout
+        # agent is side-effect free.
+        agent.gamma = float(init_args.get("teacher_gamma", 1.0))
         WORKER_STATE["teacher"] = ISMCTSTeacher(
-            frozen_expert,
+            agent,
             ISMCTSConfig(
                 iters={
                     head: iters_per_head for head in ("pick", "partner", "bury", "play")

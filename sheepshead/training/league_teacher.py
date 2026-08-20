@@ -1,14 +1,22 @@
 """CE search-teacher construction for train_league_ppo.py.
 
-Split out of train_league_ppo.py as pure code motion (Stage 1 of the
-league-trainer maintainability refactor): the frozen-expert builder, the
-per-stream teacher kwargs builder, and a TeacherSettings dataclass that
-centralizes the today's getattr-with-SearchConfig-default pattern shared by
-build_teacher_kwargs (run_main_phase's sequential/parallel streams) and the
-worker-pool initargs dict (spawned workers reconstruct their own frozen
-expert from these settings). The exploiter phase passes a SimpleNamespace
-args missing the teacher_* attributes entirely, so the getattr semantics
-here must match exactly what the two call sites did before extraction.
+The expert is CLOSED-LOOP (CE_Teacher_Design §15a): the committee runs on
+the training network itself — the sequential stream wraps the training
+agent, spawned workers wrap their own current-weights copy, which weight
+refreshes mutate in place, so the expert lags the student by at most one
+version. Targets are therefore one-step improvements of the CURRENT policy,
+bounded-KL from it by construction. The frozen generation-start expert this
+replaced (attempts 8-11) is gone, not optional: an open-loop expert
+integrates the seed's one-step improvement past its validity radius, and
+the label KL carries a floor set by seed-student distance — the §14/§15
+failure mechanism. The cost is that the expert is never a certified
+checkpoint; the boundary cert's absolute anchors are the certification.
+
+TeacherSettings centralizes the getattr-with-SearchConfig-default pattern
+shared by build_teacher_kwargs (run_main_phase's sequential/parallel
+streams) and the worker-pool initargs dict. The exploiter phase passes a
+SimpleNamespace args missing the teacher_* attributes entirely, so the
+getattr semantics must tolerate that.
 """
 
 from __future__ import annotations
@@ -16,9 +24,6 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-import torch
-
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.config import SearchConfig
 
@@ -32,8 +37,6 @@ class TeacherSettings:
     prob: float
     replicates: int
     iters: int
-    ckpt: str | None
-    oracle_init: str | None
 
     @classmethod
     def from_args(cls, args) -> "TeacherSettings":
@@ -44,11 +47,6 @@ class TeacherSettings:
                 getattr(args, "teacher_replicates", SearchConfig().teacher_replicates)
             ),
             iters=int(getattr(args, "teacher_iters", SearchConfig().teacher_iters)),
-            # Stationary expert: --teacher-ckpt pins the expert independently
-            # of --resume so a mid-run continuation doesn't silently refreeze
-            # to student weights; falls back to --resume when unset.
-            ckpt=getattr(args, "teacher_ckpt", None) or getattr(args, "resume", None),
-            oracle_init=getattr(args, "oracle_init", None),
         )
 
 
@@ -69,46 +67,14 @@ def warn_if_oracle_overwrite(agent: PPOAgent, oracle_init: str, resume: str) -> 
         )
 
 
-def build_frozen_expert(
-    resume: str,
-    critic_mode: str,
-    arch: str,
-    oracle_aux_heads: bool,
-    oracle_init: str | None,
-    gamma: float,
-) -> PPOAgent:
-    """Stationary expert for the gated teacher (Search_Teacher_Design
-    §12.1): a frozen copy of the generation-start policy, reconstructed
-    exactly as the main agent was at resume (checkpoint + oracle
-    warm-start + gamma). The teacher's searches (priors, rollout policies,
-    critic leaves) all run on this snapshot, so the expert cannot chase a
-    drifting student out of the E9-certified regime — DAgger's fixed
-    expert (Ross et al. 2011), where attempt 7 showed the live-expert
-    loop re-labels its own drift. The student's states still drive WHERE
-    labels happen; only the expert's opinion is pinned."""
-    frozen = PPOAgent(
-        len(ACTIONS),
-        critic_mode=critic_mode,
-        arch=arch,
-        oracle_aux_heads=oracle_aux_heads,
-    )
-    frozen.load(resume, load_optimizers=False)
-    if oracle_init:
-        warn_if_oracle_overwrite(frozen, oracle_init, resume)
-        oracle_state_dict = torch.load(
-            oracle_init, map_location="cpu", weights_only=True
-        )
-        frozen.oracle_critic.load_state_dict(oracle_state_dict, strict=True)
-    frozen.gamma = gamma
-    return frozen
-
-
 def build_teacher_kwargs(context) -> dict:
     """play_population_game kwargs for the CE search teacher
     (CE_Teacher_Design §2), or {} when --teacher is off.
 
-    Built once per stream: an ISMCTS teacher over a FROZEN copy of the
-    generation-start policy (stationary expert) at the calibrated budget
+    Built once per stream: an ISMCTS teacher over the training agent itself
+    (closed-loop expert, CE_Teacher_Design §15a; the engine
+    snapshots/restores per-seat memories around each search, so sharing the
+    acting agent is side-effect free), at the calibrated budget
     (--teacher-iters, d_rollout=1 per call, oracle leaves via the engine
     default) plus the emission SearchConfig."""
     settings = TeacherSettings.from_args(context.args)
@@ -116,16 +82,8 @@ def build_teacher_kwargs(context) -> dict:
         return {}
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
-    frozen = build_frozen_expert(
-        settings.ckpt,
-        context.args.critic_mode,
-        context.args.arch,
-        getattr(context.args, "oracle_aux_heads", False),
-        settings.oracle_init,
-        context.training_agent.gamma,
-    )
     teacher = ISMCTSTeacher(
-        frozen,
+        context.training_agent,
         ISMCTSConfig(
             iters={head: settings.iters for head in ("pick", "partner", "bury", "play")}
         ),
