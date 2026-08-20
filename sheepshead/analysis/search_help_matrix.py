@@ -69,7 +69,7 @@ import torch
 from sheepshead import ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.fail_lead_logit_probe import _masked_logits
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _is_private_action
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
 from sheepshead.training.pfsp_runtime import play_cell
 
 DEVICE = torch.device("cpu")
@@ -413,7 +413,7 @@ def _replay_seeds(
                         else:
                             cells[cell] -= 1  # reference unusable; return quota slot
 
-                    if not _is_private_action(aid):
+                    if not is_private_action(aid):
                         forced_public.append((pos, aid))
                     player.act(aid)
                     if game.was_trick_just_completed and not game.is_done():

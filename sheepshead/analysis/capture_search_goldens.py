@@ -36,7 +36,7 @@ import torch
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _is_private_action
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
 from sheepshead.training.training_utils import set_all_seeds
 
 SEED = 20260810
@@ -104,7 +104,7 @@ def _drive_to_head(game, rng, want_head):
                     action_id = pass_id
                 else:
                     action_id = rng.choice(sorted(valid))
-                if not _is_private_action(action_id):
+                if not is_private_action(action_id):
                     forced_public.append((player.position, action_id))
                 player.act(action_id)
                 valid = player.get_valid_action_ids()

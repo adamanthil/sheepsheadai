@@ -48,7 +48,7 @@ TEACHER_D_ROLLOUT = 1
 def find_play_node(agent, max_seeds: int = 200):
     """Replay deterministically to a mid-game PLAY decision with >= 2 legal
     actions -- the node class the CE teacher actually labels."""
-    from sheepshead.ismcts import _is_private_action
+    from sheepshead.ismcts import is_private_action
 
     for seed in range(max_seeds):
         game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=seed)
@@ -74,7 +74,7 @@ def find_play_node(agent, max_seeds: int = 200):
                         and not game.alone_called
                     ):
                         return game, player.position, list(forced), seed
-                    if not _is_private_action(action):
+                    if not is_private_action(action):
                         forced.append((player.position, action))
                     player.act(action)
                     if game.was_trick_just_completed and not game.is_done():

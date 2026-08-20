@@ -156,10 +156,6 @@ def is_private_action(action_id: int) -> bool:
     return name.startswith("BURY ") or name.startswith("UNDER ")
 
 
-# Historical name, still imported by analysis/validation callers.
-_is_private_action = is_private_action
-
-
 def infer_head(valid) -> str:
     """Classify a decision's legal-action set into its search head:
     "pick" / "partner" / "bury" / "play"."""
@@ -228,7 +224,7 @@ def _minmax_unit(values: np.ndarray) -> np.ndarray:
 
 
 def _private_root_ready(real_game, world, valid) -> bool:
-    if not any(_is_private_action(action_id) for action_id in valid):
+    if not any(is_private_action(action_id) for action_id in valid):
         return True
     return (
         list(world.bury) == list(real_game.bury)
@@ -301,7 +297,7 @@ def _replay_events(real_game, ref_world, forced_public, observer):
                     real_game, ref_world, public_actions, seat, observer, valid
                 ):
                     return
-                if any(_is_private_action(action_id) for action_id in valid):
+                if any(is_private_action(action_id) for action_id in valid):
                     yield _PrivateDecision(seat)
                 else:
                     if not public_actions or public_actions[0][0] != seat:

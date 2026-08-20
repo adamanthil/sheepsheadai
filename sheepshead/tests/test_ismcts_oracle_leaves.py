@@ -12,7 +12,7 @@ import torch
 
 from sheepshead import ACTION_LOOKUP, ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _is_private_action
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
 from sheepshead.tests.ppo_test_helpers import seed_all
 
 SEED = 20260810
@@ -43,7 +43,7 @@ def _to_first_play_node(agent, game_seed=11):
                 aid = int(torch.argmax(probs.squeeze(0)).item()) + 1
                 if aid not in valid:
                     aid = valid_sorted[0]
-                if not _is_private_action(aid):
+                if not is_private_action(aid):
                     forced_public.append((player.position, aid))
                 player.act(aid)
                 if game.was_trick_just_completed and not game.is_done():
