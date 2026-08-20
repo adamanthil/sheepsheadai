@@ -811,3 +811,149 @@ READING: attempt-11 indicts the FROZEN REFERENCE, not policy-space
 distillation per se — the 29k state proves CE installs and
 generalizes benignly inside the validity radius. (a) = highest
 information next; (b) = safest; (c) = structural insurance.
+
+---
+
+## 16. Attempt-12 launch record & pre-registration (2026-08-19)
+
+OPERATOR DECISION: proceed with §15(a) — closed-loop expert, the
+committee backed by the TRAINING network. §14 menu items A/B/B'/D
+retired unexecuted; attempt-11's halted checkpoint stays archived at
+runs/league_ce_teacher11/checkpoints/..._8050000.pt.
+
+### 16.1 Code change (commit 40c55e2)
+
+The frozen expert is REMOVED, not made optional (operator: "drop the
+old frozen teacher arguments and implementation... we could
+reimplement it if we wanted"). --teacher-ckpt, TeacherSettings
+ckpt/oracle_init, build_frozen_expert, the per-gen expert pin and the
+refreeze-on-cert plumbing are gone. The teacher now wraps:
+
+- sequential stream: the training agent itself;
+- spawned workers: the worker's current-weights copy, which
+  league_worker_play weight refreshes mutate IN PLACE — expert lags
+  the student by at most one weight version (~1.4k episodes).
+
+Safety of sharing the acting agent: the ISMCTS engine
+snapshots/restores per-seat recurrent memories around every search,
+keyed by id with self.agent always included (ismcts.py ~795) — the
+frozen expert never masked a side effect; there wasn't one.
+
+Boundary cert UNCHANGED and now the teacher's whole certification:
+absolute anchors resolved once at launch (--cert-anchor-ckpt or
+--resume), fixed bars, GateExit(4) + halt on fail. What is LOST with
+the frozen expert: per-generation expert certification (the §12.18
+refreeze gate). What is GAINED: label KL floor removed (KL decay =
+real self-retirement signal), no open-loop integration past a fixed
+policy's validity radius, w=0 drift-anchor channel structurally
+zeroed (expert ≡ student ⇒ pooled root prior ≡ π up to the trick-4
+replay divergence, 0.030 nats, §13 phase 1).
+
+### 16.2 Worker throughput flags (audit of fce37f52)
+
+Operator asked for an efficiency audit of fce37f52 ("Add opt-in
+compiled/device inference for league workers") before launch.
+VERDICT: CLEAN, adopted for attempt 12. Findings:
+
+- Scope verified worker-pool-only: PPO update, adherence guards,
+  greedy eval, boundary cert, exploiter gate all run in the main
+  process (eager CPU) — cert/golden comparability unaffected.
+- Ordering verified: device global patched + encoder compiled BEFORE
+  PPOAgent construction in league_worker_init; ISMCTSTeacher reads
+  device off the agent's params (9d8efff), no import-time snapshots
+  left on the worker path (remaining DEV=ppo.device snapshots are all
+  analysis/validation scripts, not reached by workers).
+- Pad-and-slice wrapper: encode_tensors returns 4 batch-major tensors
+  (features/hand_tokens/context_token/memory_out); the v[:n] slice
+  covers all of them; pad rows replicate row 0 and cannot leak
+  (positional indexing downstream sees exactly n rows).
+- dynamo recompile_limit raised to 64 (allow_shape_specialisation) —
+  covers the ~14 bucketed shapes at granularity 32; the silent-eager
+  fallback trap (§ Distributed_Inference) is closed.
+- Latent (not a blocker, noted): PPOAgent.get_recurrent_memory's
+  device=None fallback recomputes cuda-or-cpu instead of reading the
+  patched module global; no worker-path caller hits it (all pass
+  device explicitly).
+- 16 tests pass (test_worker_inference_options, test_search_encode_path).
+- Known cost: worker episodes differ from eager in the last bits
+  (~2.6e-08) — bit-exact cross-run comparison is off the table for
+  this run; every statistical instrument is unaffected.
+
+SPAWNED-POOL SMOKE (real spawn import ordering, 8M seed payload,
+oracle mode + aux heads, live teacher, mps + compile, R=3 @16):
+networks and teacher on mps:0, teacher.agent IS the worker agent,
+17 play decisions labeled on the first eligible deal, v2 payload
+refresh reached the teacher (actor param sum moved). PASS.
+
+### 16.3 Attempt-12 design: single substantive change
+
+Everything held at attempt-11 values so the frozen->live expert swap
+is the only learning-relevant difference (throughput flags change
+last-bit numerics only):
+
+- Seed: runs/league_retention_pg/checkpoints/..._checkpoint_8000000.pt
+  (same clean 8M seed; optimizer state included via --resume).
+- Emission: prob 0.1, R=3 @1024/1, pi_gumbel-on-shrunk-Q,
+  shrink_s2_global 6.95e-4, coeff 1.0, epochs 4 (trainer defaults).
+- Target semantics CHANGE BY CONSTRUCTION: expert ≡ student ⇒ target
+  = softmax-tilt of the CURRENT policy toward the CURRENT network's
+  committee Q — a one-step policy improvement, bounded-KL from π.
+- Guards unchanged: partner n=1000 hard floor 90 / notify 93.5, t0
+  trump-lead ceiling 5.0 -> SystemExit(3); boundary cert 3x1000 +
+  CRN h2h vs the 8M anchor, GateExit(4) on fail.
+- Entropy controller v2 unchanged (alpha range -0.05..0.25): the
+  attempt-11 saturation is a pre-registered readout here, not a
+  patched symptom.
+- League: fresh copy of teacher10's pool (attempt-11's LAUNCH state;
+  attempt-11's own league drifted: ratings churn, 7350000 retired,
+  its guard-halted 8050000 snapshot inserted — excluded here).
+  Entropy sidecar copied from the 8M lineage as before.
+- Run dir: runs/league_ce_teacher12/. 100k eps/gen x 3 gens.
+- Throughput: --num-workers 8 (default) --worker-device mps
+  --worker-compile. Expectation ~1.2-1.4x on episode generation
+  (search-dominated share; §5.5-§5.6 measured 1.36x on committee
+  search); attempt-11 baseline 0.3 eps/s.
+
+### 16.4 Pre-registered expectations
+
+1. SELF-RETIREMENT (the decisive readout): mean KL(target‖π) at
+   labeled nodes starts LOW (no seed-student floor; smoke-scale
+   analogue of §13 phase-1 abstention 0.030 + material tilt) and
+   DECLINES within gen 1; material fraction and mean w decline as
+   improvements are absorbed. Attempt-11 baseline: KL flat ~0.40 all
+   gen. Live-expert KL flat-or-rising at attempt-11 levels = the
+   §1.1 iterated-improvement ratchet materializing -> stop and go
+   §15(b)/(c).
+2. ENTROPY: play Hn rise strictly smaller than attempt-11's
+   0.53->0.65; alphas NOT pinned at -0.05 for the whole gen (the
+   w=0 anchor channel is gone; mass-in-transit at material rows may
+   still produce a mild transient).
+3. CONVENTIONS: called-suit t0 (greedy probe) rises from the seed's
+   ~45.8 toward the committee's acted 56 AND HOLDS (no 29k->50k
+   reversal); partner-trump >= 93.5 n=1000 throughout. The greedy
+   3-POINT BATTERY (seed / ~29k / ~50k, greedy_health_probe n=500
+   seed=0) is the arbitrating instrument — it caught attempt 11 when
+   all trainer telemetry was flat.
+4. STRENGTH: gen-1-end h2h vs 8M seed in the +0.045..+0.090 band
+   (25-50% of the +0.180 ceiling); >= +0.02 at 2sigma = teaching
+   signal; <= 0 with healthy KL decay = transfer failure, stop.
+5. OUTCOME SANITY: pick rate stays ~30-38% (not the attempt-11 drift
+   to 32 with ALONE 17.6); leaster <= ~8%; play spread does not
+   cross the attempt-8 stop line (2.7) downward past 2.4.
+6. RISK REGISTER (what closed-loop can do that frozen could not):
+   self-referential drift — the committee certifying the student's
+   own bad habits (attempt-7 family, now WITHOUT the hinge-scale
+   confound). Tripwires: t0 trump-lead probe > 5% replicated (hard
+   guard), called-suit falling BELOW seed while KL stays low
+   (teaching toward a degraded self), partner < 88 replicated.
+   Boundary cert vs the FIXED 8M anchor is the backstop.
+
+Launch command (from master @ 40c55e2 + this doc):
+
+    nohup uv run python -m sheepshead.training.train_league_ppo \
+      --resume runs/league_retention_pg/checkpoints/pfsp_perceiver-shared-v2_checkpoint_8000000.pt \
+      --league-dir runs/league_ce_teacher12/league \
+      --run-name league_ce_teacher12 \
+      --teacher --main-episodes 100000 \
+      --worker-device mps --worker-compile \
+      > runs/league_ce_teacher12/train.log 2>&1 &
