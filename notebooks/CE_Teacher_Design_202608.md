@@ -1102,3 +1102,12 @@ Reading:
   instrument. Hard guards (partner n=1000 >= 90, t0 > 5) armed and
   quiet. Operator decision point: continue to the 50k mark as
   pre-registered vs early action on the ALONE drift.
+
+OPERATOR DECISION (2026-08-20): CONTINUE past the 29k flags to the
+50k hold-vs-revert read. Amendment noted for a FUTURE attempt (not
+this run): include ALONE nodes in teacher emission — the CE teacher
+currently labels standard-game PLAY nodes only, so alone/bidding
+behavior is an untaught head coupled through the shared trunk; the
+25.5% greedy ALONE drift argues for anchoring it with search labels
+(committee already searches all four heads; emission-side change)
+rather than leaving it to PG generalization.
