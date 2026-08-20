@@ -1056,3 +1056,12 @@ exercised sync. RELAUNCH: §16.3 command + --worker-routed-encoder,
 run dir reset to launch state again; §16.4 pre-registrations carry;
 pre-registered throughput mark: steady eps/s >= 0.40 by update 3
 (else routing underdelivers in situ too — investigate, don't tune).
+
+§16.6 THROUGHPUT VERDICT (2026-08-19 23:46, in situ): window 1
+(incl. compile warm-up) 65 min = 0.37 eps/s; window 2 (warm) 62 min
+= 0.40 eps/s — the pre-registered >=0.40 mark is MET (1.33x over the
+0.30 eager baseline; below the 1.47x projection, i.e. in-situ search
+share / shadow overhead slightly less favorable than the isolated
+bench, but decisively worth it: generation ~3.9d -> ~2.9d). Early
+teacher telemetry: KL 0.395 -> 0.321 over windows 1-2 (attempt-11:
+flat ~0.40) — the §16.4 #1 decay direction, too early to call.
