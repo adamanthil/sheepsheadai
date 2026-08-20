@@ -479,9 +479,13 @@ compound rather than average out.
 
 ```
 uv run python -m sheepshead.analysis.bench_inference_device
-uv run python -m sheepshead.analysis.bench_lan_roundtrip --serve        # GPU box
-uv run python -m sheepshead.analysis.bench_lan_roundtrip --connect <ip> # orchestrator
 ```
+
+The link half of this addendum is no longer reproducible from the tree:
+`bench_lan_roundtrip` was removed with the rest of the distributed path on
+2026-08-19 (`4e91045`; `Distributed_Inference_202608.md` §9). It ran as
+`--serve` on the GPU box and `--connect <ip>` on the orchestrator, and
+`git show 1c10f35` still has it.
 
 `--threads 1` (the default) matches a league worker. Benchmarking with the
 default thread count on a box already running a generation oversubscribes the
