@@ -476,15 +476,13 @@ class CardReasoningEncoder(nn.Module):
         """Host half of ``encode_batch``: observation dicts -> stacked tensors.
 
         Split out from ``encode_tensors`` because the two halves have very
-        different cost profiles and can run in different places. This is pure
-        Python — roughly nineteen operations per observation, six of them
-        constructing a tensor — so it costs a fixed amount per state and never
-        amortizes with batch size (~10 us/state on an M1 Max, ~40 on a 2015
-        Skylake). ``encode_tensors`` is the part that benefits from an
-        accelerator. A remote-inference server must therefore be fed the output
-        of this method, not a list of dicts; marshalling on the accelerator host
-        would cost far more than the forward it is trying to speed up. See
-        notebooks/Throughput_Profiling_Notes.md addendum 2.
+        different cost profiles. This is pure Python — roughly nineteen
+        operations per observation, six of them constructing a tensor — so it
+        costs a fixed amount per state and never amortizes with batch size
+        (~10 us/state on an M1 Max, ~40 on a 2015 Skylake), and it is invisible
+        to an accelerator and to ``torch.compile`` alike. ``encode_tensors`` is
+        the half that benefits from either, which is why
+        ``agent.compiled_encoder`` compiles that one and leaves this eager.
         """
 
         def to_device(x: torch.Tensor) -> torch.Tensor:

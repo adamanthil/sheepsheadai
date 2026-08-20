@@ -1,23 +1,23 @@
 """Opt-in compiled encoder for the search path.
 
 A global patch of ``CardReasoningEncoder.encode_batch``, and deliberately so.
-The win is spread across four call sites in ``ismcts`` and the search seam is
-the smallest of the three that matter -- measured on a production committee,
+The win is spread across four call sites in ``ismcts`` and the network round is
+the largest but not the majority -- measured on a production committee,
 ``_run_network_round`` is 33.0% of wall, ``_observe_completers_merged`` 27.1%,
 ``_encode_seat_batched`` 9.9% and ``_observe_trick_lockstep`` 5.3%, for 75.3%
 total. All four route through ``encode_batch``, so patching that one method
-reaches every one of them; wrapping a backend reaches a third of the work.
+reaches every one of them; wrapping the round alone reaches a third of the work.
 
-Measured effect, 8 concurrent committees at steady state: MPS 62.4s -> 44.3s
-(1.41x), CPU 62.4 -> 58.5 (1.07x). See notebooks/Distributed_Inference_202608.md
-§5.5.
+Measured effect, 8 concurrent committees at steady state on an M1 Max: 55.5s
+CPU eager -> 40.7s MPS compiled, 1.36x. See
+notebooks/Distributed_Inference_202608.md §5.5-§5.6.
 
 **Never on by default.** Compiled output differs from eager by ~2.6e-08 on
 probabilities, so ``capture_search_goldens`` cannot pass against it. This is an
-opt-in throughput mode with exactly the status of remote inference: fine for
-training, never for goldens, CRN panels or eval.
+opt-in throughput mode: fine for training, never for goldens, CRN panels or
+eval.
 
-Two properties are load-bearing rather than incidental:
+Three properties are load-bearing rather than incidental:
 
 * **Bucketed shapes.** ``dynamic=False`` specialises per input shape, and the
   search dispatches 44 distinct round sizes plus 49 observe sizes. Rounding up

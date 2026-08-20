@@ -18,9 +18,13 @@ What the distributed path would additionally need: a weight-sync protocol
 a second machine kept alive. What it buys over the local path: nothing.
 
 The useful residue is real, though: the encoder seam, `marshal_batch` /
-`encode_tensors`, `sheepshead/inference/compiled.py`, and the measurement
+`encode_tensors`, `sheepshead/agent/compiled_encoder.py`, and the measurement
 discipline in §5.6.1. Read §5.3.1 before proposing any batching design — the
 merge factor is bounded by arithmetic, not by implementation.
+
+**The distributed code was removed from the tree on 2026-08-19** rather than
+carried as dead weight — see §9 for what went, what stayed, and how to get it
+back.
 
 What began as "is MPS worth it?" turned into a two-machine inference split, a
 seam through the live trainer's search engine, and three bit-exact changes to
@@ -75,6 +79,11 @@ A second machine changed the arithmetic: a PC with an **RTX 5060 8GB** — and a
 bound. That asymmetry is the whole design constraint. It is a GPU on a stick.
 
 ## 2. Architecture
+
+> Sections 2-4 describe the system **as built**, in the present tense. It is no
+> longer in the tree (§9): there is no `teacher.backend`, no `LocalBackend`, and
+> no wire protocol. `_run_network_round` runs the forward directly again. Read
+> these sections as the design record they now are.
 
 ### 2.1 The seam
 
@@ -627,11 +636,11 @@ wiring) buys nothing the local path does not already deliver more cheaply.
 
 ### 6.-1 Ship the compiled local encoder — the only live item
 
-`enable_compiled_encoder(granularity=32)` returns 1.36× at 8 workers. To put it
-into training it needs a trainer flag, and it must stay **opt-in**: compiled
-output differs from eager by ~2.6e-08, so `capture_search_goldens` cannot pass
-against it. Same status as remote mode — fine for training, never for goldens,
-CRN panels or eval.
+`sheepshead.agent.compiled_encoder.enable_compiled_encoder(granularity=32)`
+returns 1.36× at 8 workers. To put it into training it needs a trainer flag, and
+it must stay **opt-in**: compiled output differs from eager by ~2.6e-08, so
+`capture_search_goldens` cannot pass against it. Fine for training, never for
+goldens, CRN panels or eval.
 
 Worth measuring before wiring it in: this is 1.36× on *committees*, and at
 `teacher_prob=0.1` a generation mixes in non-teacher work, so the end-to-end
@@ -851,25 +860,21 @@ slots. Park it unless the link becomes binding again.
 
 ## 8. Reproducing
 
+The distributed half of this no longer runs from the tree (§9). What remains is
+the local comparison, which is the one that decided the program:
+
 ```
-# GPU box
-uv run python -m sheepshead.inference.server --checkpoint <weights> \
-    --device cuda --bind <p2p-ip>
+# the incumbent
+uv run python -m sheepshead.analysis.bench_search_committee \
+    --checkpoint <weights> --clients 8 --repeats 3
 
-# orchestrator
-uv run python -m sheepshead.analysis.bench_lan_roundtrip --connect <p2p-ip>
-
-# one client: latency and fidelity
-uv run python -m sheepshead.analysis.bench_remote_search --checkpoint <weights> \
-    --host <p2p-ip> --fp32
-
-# eight clients: the batching win. Read the server's 'merge N req/batch' line.
-uv run python -m sheepshead.analysis.bench_remote_search --checkpoint <weights> \
-    --host <p2p-ip> --fp32 --clients 8
+# the winner: 1.36x
+uv run python -m sheepshead.analysis.bench_search_committee \
+    --checkpoint <weights> --clients 8 --repeats 3 --device mps --compile
 ```
 
-Both ends need **identical weights** — pass the same file, or omit `--checkpoint`
-on both for a seeded fresh agent. Copy the file somewhere stable rather than
+`--clients 8` and `--repeats 3` are both load-bearing; §5.6.1 and §5.5.1 are
+what happens without them. Copy the weights somewhere stable rather than
 pointing at a live run's rotating `_league_worker_weights_v*.pt`.
 
 Gates before any change to the search or encoder path:
@@ -879,3 +884,45 @@ uv run python -m sheepshead.analysis.capture_arch_goldens --check
 uv run python -m sheepshead.analysis.capture_search_goldens --check
 uv run pytest sheepshead/tests -q
 ```
+
+---
+
+## 9. Removal (2026-08-19)
+
+The distributed path was deleted from the tree. It was measured to parity, it
+was not going to be deployed, and a socket protocol plus a threaded batching
+server is a standing maintenance cost — every future change to the encoder, the
+wire layout or the search seam would have had to keep it compiling and passing
+tests for a configuration nobody runs. The record is this notebook plus git.
+
+**Deleted**
+
+| path | what it was |
+|---|---|
+| `sheepshead/inference/protocol.py` | wire format: field-major layout, `merge_requests`, `response_block` |
+| `sheepshead/inference/server.py` | threaded batching server, `ServedModel`, `--compile`, stats |
+| `sheepshead/inference/backend.py` → `RemoteBackend` | client transport, weight handshake, latency accounting |
+| `sheepshead/analysis/bench_lan_roundtrip.py` | pure-socket link probe (`t_wire`) |
+| `sheepshead/analysis/bench_remote_search.py` → remote legs | the local/remote comparison and divergence report |
+
+**Kept, and where it went**
+
+| now at | why it survives |
+|---|---|
+| `sheepshead/agent/compiled_encoder.py` | the 1.36×. Was `sheepshead/inference/compiled.py` |
+| `sheepshead/analysis/bench_search_committee.py` | the harness that produced every number in §5.4–§5.6, local legs only |
+| `sheepshead/tests/test_search_encode_path.py` | the encoder split and the compiled wrapper's padding |
+| `CardReasoningEncoder.marshal_batch` / `encode_tensors` | built for the server, now load-bearing for compilation: the Python half stays eager, the tensor half compiles |
+| `sheepshead/ismcts.py` `masked_actor_probs` | shared by the network round and the replay path |
+
+The pluggable-backend seam went with it. `LocalBackend` was folded back into
+`ISMCTSTeacher._run_network_round` — a one-implementation `InferenceBackend`
+Protocol is scaffolding for a thing that no longer exists, and `local` only ever
+meant "not remote". `capture_search_goldens --check` is bit-identical across the
+fold, which is the assurance that mattered.
+
+To get any of it back: `git show 1c10f35` is the last commit with the whole
+system in the tree, and `git log --diff-filter=D --name-only` finds the removal.
+Before rebuilding it, read §5.3.1 — the merge factor is bounded by
+`k = N·S/(T+L)`, so a faster server un-fills its own batches, and no
+implementation escapes that.

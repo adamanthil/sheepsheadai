@@ -110,7 +110,6 @@ from sheepshead import (
     Game,
 )
 from sheepshead.agent import ppo
-from sheepshead.inference import LocalBackend, masked_actor_probs
 from sheepshead.training.training_utils import RETURN_SCALE
 
 DEV = ppo.device
@@ -626,6 +625,30 @@ class _EncodeRequest(NamedTuple):
     kind: str
 
 
+def masked_actor_probs(controller, encoded, states, valid_lists, action_size, device):
+    """Post-mixture action probabilities (n, A) under ``controller`` for
+    already-encoded states -- the shared mask/hand_ids/actor plumbing.
+
+    A free function rather than a method because both the search's network
+    rounds and its replay path need it, and a second copy would be free to
+    drift from the one capture_search_goldens pins. ``encoded`` must come from
+    ``controller``'s own encoder.
+    """
+    masks = torch.stack(
+        [controller.get_action_mask(valid, action_size) for valid in valid_lists]
+    ).to(device)
+    hand_ids = torch.as_tensor(
+        np.stack([state["hand_ids"] for state in states]),
+        dtype=torch.long,
+        device=device,
+    )
+    with torch.no_grad():
+        probs, _ = controller.actor.forward_with_logits(
+            encoded, masks, hand_ids, controller.encoder.card
+        )
+    return probs
+
+
 class _CommitteeReplicate:
     """Per-replicate transient state for the lockstep committee driver
     (``ISMCTSTeacher.search_committee``). Everything ``search`` keeps on
@@ -656,11 +679,11 @@ class ISMCTSTeacher:
         self.agent = agent
         self.action_size = agent.action_size
         self.config = config or ISMCTSConfig()
-        # Where the network rounds run. The in-process default is the only path
-        # capture_search_goldens can pin -- a server-backed run batches across
-        # workers, which changes GEMM tiling and so can never be bit-exact.
-        # Swap it only for a throughput experiment, never for a golden capture.
-        self.backend = LocalBackend(DEV)
+        # Cumulative network-round counters, for throughput benchmarks that
+        # need a per-committee state count to normalize against. Diagnostics
+        # only -- nothing in the search reads them.
+        self.network_rounds = 0
+        self.network_states = 0
         # Per-search transient state (reset in ``search``).
         self._rng = None
         self._oracle = _OracleCapture(False)
@@ -1493,19 +1516,30 @@ class ISMCTSTeacher:
             wants_critic = not self._oracle_capture and any(
                 requests[req_idx].kind == "critic" for req_idx in req_idxs
             )
-            result = self.backend.evaluate(
+            self.network_rounds += 1
+            self.network_states += len(group_states)
+
+            encoded = ctrl.encoder.encode_batch(
+                group_states, memory_in=memory_in, device=DEV
+            )
+            memory_out = encoded["memory_out"].detach()
+            probs = masked_actor_probs(
                 ctrl,
+                encoded,
                 group_states,
-                memory_in,
                 [requests[req_idx].sim.valid for req_idx in req_idxs],
-                wants_critic,
+                ctrl.action_size,
+                DEV,
             )
             for row, req_idx in enumerate(req_idxs):
                 sim = requests[req_idx].sim
-                sim.mem[sim.seat - 1] = result.memory_out[row]
+                sim.mem[sim.seat - 1] = memory_out[row]
             if wants_critic:
-                values_np[req_idxs] = result.values
-            probs_np[req_idxs] = result.probs
+                with torch.no_grad():
+                    values_np[req_idxs] = (
+                        ctrl.critic(encoded).detach().view(-1).cpu().numpy()
+                    )
+            probs_np[req_idxs] = probs.detach().cpu().numpy()
         return probs_np, values_np
 
     def _evaluate_oracle_leaves(self, requests, values_np, observer):
