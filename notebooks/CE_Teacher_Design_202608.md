@@ -1065,3 +1065,40 @@ share / shadow overhead slightly less favorable than the isolated
 bench, but decisively worth it: generation ~3.9d -> ~2.9d). Early
 teacher telemetry: KL 0.395 -> 0.321 over windows 1-2 (attempt-11:
 flat ~0.40) — the §16.4 #1 decay direction, too early to call.
+
+### 16.7 Attempt-12 mid-gen battery at 29k (2026-08-20)
+
+Same instrument as the §14 three-point baseline (greedy_health_probe
+n=500 seed=0; crafted eval ckpt = worker payload v21 nets @8,029,074
+swapped into seed-checkpoint metadata). Comparators:
+
+    metric         seed    a11@29k  a11@50k   A12@29k
+    called_suit    45.8    55.5     38.5      50.3
+    partner_trump  96.4    98.9     87.4      95.9
+    t0_trump       —       —        0.2       1.19
+    pick           38.4    34.0     32.1      33.2
+    ALONE          13.4    13.8     17.6      25.5   <- FLAG
+    leaster        5.8     7.4      10.2      8.4    (marginal)
+    spread_med     3.56    2.39     2.37      2.12   <- below the 2.4 mark
+    top1min_med    9.19    6.19     5.89      6.34
+
+Reading:
+- TEACHING LANDING (§16.4 #3): called-suit 45.8 -> 50.3, inside the
+  pre-registered 50s band (less than a11's 55.5 at the same point);
+  partner 95.9 above the 93.5 notify line; t0 clean. The 50k re-read
+  is the decisive hold-vs-revert test.
+- KL context at ~29k: windows 1-19 series 0.395...0.274-0.304 band —
+  BELOW a11's flat ~0.40 throughout (self-retirement direction, #1).
+- Hn: play 0.65-0.69 vs a11 equilibrium 0.65; alphas pinned -0.05
+  since early gen — #2's "strictly smaller rise + unpinned alphas"
+  is VIOLATED in direction (recorded; mass-in-transit now carries
+  the whole rise, the w=0 anchor channel being structurally gone).
+- OUTCOME FLAGS (#5): ALONE 25.5 = ~2x seed and worse than a11's
+  HALT-time drift (17.6) while taught metrics are still good —
+  untaught-bidding-head drift arriving EARLIER and LARGER under the
+  closed-loop teacher; spread 2.12 crossed the pre-registered 2.4
+  line (a11 29k: 2.39). Leaster 8.4 marginal. No in-trainer greedy
+  probe has run yet (sparser cadence); this battery is the only 29k
+  instrument. Hard guards (partner n=1000 >= 90, t0 > 5) armed and
+  quiet. Operator decision point: continue to the 50k mark as
+  pre-registered vs early action on the ALONE drift.
