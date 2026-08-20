@@ -373,9 +373,29 @@ def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
     """Spawn the versioned-weights worker pool (league_worker protocol), or
     return None for the in-process sequential path (num_workers <= 1)."""
     if args.num_workers <= 1:
+        # These only ever apply to worker processes, so with no pool they do
+        # nothing at all. Say so: a flag that is silently inert reads exactly
+        # like an optimization that did not help.
+        if getattr(args, "worker_compile", None) or getattr(
+            args, "worker_device", None
+        ):
+            print(
+                "⚠️  --worker-compile/--worker-device ignored: they configure "
+                "the worker pool, and --num-workers <= 1 runs in-process"
+            )
         return None
     spawn_context = get_context("spawn")
     teacher_settings = TeacherSettings.from_args(args)
+    if getattr(args, "worker_compile", None) or getattr(args, "worker_device", None):
+        # Into the run log, because it changes the last bits of every episode
+        # these workers produce: a later reader comparing two runs needs to
+        # know which one was on.
+        print(
+            f"⚡ worker inference: device="
+            f"{getattr(args, 'worker_device', None) or 'process default'}, "
+            f"compile={getattr(args, 'worker_compile', None) or 'off'} "
+            f"(throughput only; not bit-comparable with an eager run)"
+        )
     return spawn_context.Pool(
         processes=args.num_workers,
         initializer=league_worker_init,
@@ -402,6 +422,13 @@ def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
                 "teacher_resume": teacher_settings.ckpt,
                 "teacher_oracle_init": teacher_settings.oracle_init,
                 "teacher_gamma": float(context.training_agent.gamma),
+                # Opt-in worker throughput options; see
+                # league_worker._apply_inference_options.
+                "worker_device": getattr(args, "worker_device", None),
+                "worker_compile": getattr(args, "worker_compile", None),
+                "worker_compile_granularity": getattr(
+                    args, "worker_compile_granularity", 32
+                ),
             },
         ),
     )

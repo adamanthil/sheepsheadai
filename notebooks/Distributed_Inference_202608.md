@@ -634,18 +634,41 @@ comparable; **1.36× on a like-for-like comparison is the number to quote.**
 remaining work on the distributed path (weight sync, fallback-to-local, worker
 wiring) buys nothing the local path does not already deliver more cheaply.
 
-### 6.-1 Ship the compiled local encoder — the only live item
+### 6.-1 Ship the compiled local encoder — DONE (2026-08-19)
 
-`sheepshead.agent.compiled_encoder.enable_compiled_encoder(granularity=32)`
-returns 1.36× at 8 workers. To put it into training it needs a trainer flag, and
-it must stay **opt-in**: compiled output differs from eager by ~2.6e-08, so
-`capture_search_goldens` cannot pass against it. Fine for training, never for
-goldens, CRN panels or eval.
+Wired into the league trainer as two opt-in flags on the worker pool:
 
-Worth measuring before wiring it in: this is 1.36× on *committees*, and at
-`teacher_prob=0.1` a generation mixes in non-teacher work, so the end-to-end
-training gain will be smaller. §5.2's serial PPO update is untouched by any of
-this and becomes a larger share afterwards.
+```
+uv run python -m sheepshead.training.train_league_ppo ... \
+    --worker-device mps --worker-compile
+```
+
+`--worker-compile-granularity` (default 32) is the bucketing knob. Both are
+**opt-in and must stay so**: compiled output differs from eager by ~2.6e-08, so
+`capture_search_goldens` cannot pass against a run using them. They apply to
+worker processes only — the PPO update, the gates, greedy eval and the boundary
+cert all run in the main process and are untouched. The trainer prints the
+setting into the run log when either is set, and warns when `--num-workers <= 1`
+makes them inert.
+
+**The blocker was `DEV = ppo.device`, a module-level snapshot taken at import.**
+`pfsp_runtime` imports `ismcts` at module scope, so a spawned worker had already
+bound `DEV` to the process default *before* its initializer ran — any device
+chosen there would have left the networks on one device and the search
+allocating on another, which fails on the first encode. `ISMCTSTeacher` now
+reads `self.device` off the agent's own parameters at construction, so it cannot
+disagree with where the networks actually live and cannot be pinned by import
+order. `capture_search_goldens --check` is bit-identical across the change.
+`device_op_audit`'s `ismcts.DEV = device` line went with it.
+
+Verified end to end in a process with the real spawned-worker import ordering:
+networks and teacher both on `mps:0`, encoder patched, 18 CE-labelled decisions
+on the first deal.
+
+Still worth measuring before trusting the headline: 1.36× is on *committees*,
+and at `teacher_prob=0.1` a generation mixes in non-teacher work, so the
+end-to-end training gain will be smaller. §5.2's serial PPO update is untouched
+by any of this and becomes a larger share afterwards.
 
 ### 6.0 Cut per-batch dispatch cost — measured locally at ~1.1×
 

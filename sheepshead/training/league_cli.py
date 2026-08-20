@@ -96,6 +96,39 @@ def add_entropy_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_worker_inference_args(parser: argparse.ArgumentParser) -> None:
+    """Throughput-only options for the worker processes. Both change results in
+    the last bits, so both are opt-in and neither may be set for a run whose
+    output is compared bit-exactly against another."""
+    parser.add_argument(
+        "--worker-device",
+        default=None,
+        metavar="DEVICE",
+        help="device for worker inference (e.g. 'mps'). Default: the process "
+        "default, which is CPU everywhere but CUDA. Workers only generate "
+        "episodes; the update, the gates and greedy eval stay where they were",
+    )
+    parser.add_argument(
+        "--worker-compile",
+        nargs="?",
+        const="default",
+        default=None,
+        metavar="MODE",
+        help="torch.compile the encoder in workers (all four search call "
+        "sites). Opt-in: output differs from eager by ~2.6e-08, so "
+        "capture_search_goldens cannot pass against a run using it. Pays for "
+        "itself only over thousands of committees — the first few per worker "
+        "are slower. With --worker-device mps this is the measured 1.36x",
+    )
+    parser.add_argument(
+        "--worker-compile-granularity",
+        type=int,
+        default=32,
+        help="round encode batches up to a multiple of this so compilation "
+        "sees ~14 shapes instead of ~93, at ~1.8%% wasted rows",
+    )
+
+
 def add_training_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--critic-mode",
@@ -382,6 +415,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     add_run_args(parser)
     add_entropy_args(parser)
+    add_worker_inference_args(parser)
     add_training_args(parser)
     add_teacher_args(parser)
     add_guard_cert_args(parser)

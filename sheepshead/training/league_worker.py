@@ -53,10 +53,44 @@ class WorkerJob:
 WORKER_STATE: dict = {}
 
 
+def _apply_inference_options(init_args: dict) -> None:
+    """Apply the opt-in worker inference options, before anything builds a
+    network or a teacher.
+
+    Both are throughput-only and both change results in the last bits, so
+    neither is ever on by default: compiled output differs from eager by
+    ~2.6e-08 and ``capture_search_goldens`` cannot pass against it, and a
+    non-CPU device brings its own numerics. Workers only generate episodes —
+    the gates, greedy eval and boundary certs all run in the main process,
+    which these never touch.
+
+    Ordering is load-bearing. ``PPOAgent`` places its networks on the module
+    global at construction, and the search teacher then follows the networks,
+    so the device must be set here rather than anywhere later.
+
+    Measured together (M1 Max, 8 workers, steady state): 1.36x on committee
+    search. See notebooks/Distributed_Inference_202608.md §5.5-§5.6.
+    """
+    device = init_args.get("worker_device")
+    if device:
+        from sheepshead.agent import ppo as ppo_module
+
+        ppo_module.device = torch.device(device)
+
+    compile_mode = init_args.get("worker_compile")
+    if compile_mode:
+        from sheepshead.agent.compiled_encoder import enable_compiled_encoder
+
+        enable_compiled_encoder(
+            int(init_args.get("worker_compile_granularity", 32)), compile_mode
+        )
+
+
 def league_worker_init(init_args: dict) -> None:
     import torch as _torch
 
     _torch.set_num_threads(1)
+    _apply_inference_options(init_args)
     agent = PPOAgent(
         len(ACTIONS),
         arch=init_args.get("arch", "full"),
