@@ -993,3 +993,19 @@ KL 0.337/0.347, material 46/45%, w 0.31/0.30, Hn play 0.52/0.54 —
 consistent with §16.4 expectations, decided nothing yet. All §16.4
 pre-registrations carry unchanged; worker episodes are now
 bit-comparable eager CPU again (the §16.3 numerics caveat is void).
+
+CORRECTION to the §16.5 mechanism (2026-08-19, same evening): the
+singles-padding hypothesis cannot be the dominant mechanism. Empirical
+decomposition from the teacher10 log on this machine (same arch, 8
+workers): teacher-OFF consolidation ran 6.0 eps/s vs 0.3 eps/s at
+p=0.1 R=3 @1024 — committee search is ~95% of episode wall time, and
+singles (~5%) cannot produce a 1.5x overall slowdown at any plausible
+penalty. The flagged run's slowdown therefore came from INSIDE the
+search path running slower on MPS in situ than in the §5.5 bench:
+the prime suspects are the non-encoder ops that ran eager-MPS
+(actor/critic head forwards at small round batches, oracle-leaf
+forward_sequences, GRU memory updates) and 8-process Metal contention
+against a bench whose committee composition may not have included the
+production oracle-leaf path. Any routing design must therefore keep
+EVERYTHING except large-batch encodes on CPU — and the realized
+encode-slice speedup must be re-benched in situ before building.
