@@ -104,7 +104,15 @@ def setup(opts: dict, announce: bool = True):
     from sheepshead.training.training_utils import set_all_seeds
 
     set_all_seeds(42)
-    agent = PPOAgent(action_size=len(ACTION_IDS), arch=opts["arch"])
+    agent = PPOAgent(
+        action_size=len(ACTION_IDS),
+        arch=opts["arch"],
+        # --oracle matches the production CE-teacher worker: oracle-mode agent
+        # with aux heads, so committees pay the oracle-leaf path the trainer
+        # pays. The original 1.36x was measured WITHOUT it (§16.5 correction).
+        critic_mode="oracle" if opts.get("oracle") else "limited",
+        oracle_aux_heads=bool(opts.get("oracle")),
+    )
     if opts["checkpoint"]:
         payload = torch.load(opts["checkpoint"], map_location="cpu", weights_only=False)
         agent.load_network_states(payload, source=opts["checkpoint"])
@@ -138,7 +146,15 @@ def _run_client(index: int, opts: dict, barrier, results) -> None:
 
     device = torch.device(opts["device"])
     ppo_module.device = device
-    if opts["compile"]:
+    if opts.get("routed"):
+        # Routed configuration: the process stays on --device (cpu), only
+        # committee-scale encode batches visit the compiled MPS shadow.
+        from sheepshead.agent.compiled_encoder import enable_routed_encoder
+
+        enable_routed_encoder(
+            opts["granularity"], opts["compile"], device=opts["routed"]
+        )
+    elif opts["compile"]:
         from sheepshead.agent.compiled_encoder import enable_compiled_encoder
 
         enable_compiled_encoder(opts["granularity"], opts["compile"])
@@ -207,9 +223,12 @@ def run_fleet(opts: dict, clients: int) -> int:
         )
         print("  " + "  ".join(f"{wall:6.2f}s" for wall in collected[0]["walls"]))
 
-    label = opts["device"] + (
-        f" compiled/{opts['compile']}" if opts["compile"] else " eager"
-    )
+    if opts.get("routed"):
+        label = f"{opts['device']} routed->{opts['routed']} compiled"
+    else:
+        label = opts["device"] + (
+            f" compiled/{opts['compile']}" if opts["compile"] else " eager"
+        )
     print(
         f"\n[{label}]  wall max {max(walls):6.2f}s  mean "
         f"{sum(walls) / clients:6.2f}s   {states / clients:.0f} states/committee/client"
@@ -272,6 +291,24 @@ def main() -> int:
         "and is a no-op on MPS",
     )
     parser.add_argument("--granularity", type=int, default=32)
+    parser.add_argument(
+        "--routed",
+        nargs="?",
+        const="mps",
+        default=None,
+        metavar="DEVICE",
+        help="batch-size-thresholded routing: the process stays on --device "
+        "(cpu), only committee-scale encode batches (>= 16 rows) run a "
+        "compiled shadow encoder on DEVICE (default mps). The configuration "
+        "the router in compiled_encoder.enable_routed_encoder ships",
+    )
+    parser.add_argument(
+        "--oracle",
+        action="store_true",
+        help="oracle-mode agent + aux heads (the production CE-teacher "
+        "worker): committees pay the oracle-leaf path. The historical 1.36x "
+        "was measured without it",
+    )
     args = parser.parse_args()
 
     return run_fleet(vars(args), max(1, args.clients))

@@ -107,3 +107,117 @@ def disable_compiled_encoder() -> None:
         return
     CardReasoningEncoder.encode_batch = _ORIGINAL_ENCODE_BATCH
     _ORIGINAL_ENCODE_BATCH = None
+
+
+# ----------------------------------------------------------------------------
+# Routed encoder: eager CPU for small batches, compiled shadow on a device for
+# committee-scale ones.
+# ----------------------------------------------------------------------------
+
+_ROUTED: dict | None = None
+#: Search rounds are the only large batches (32-512 rows after bucketing);
+#: act() singles and per-seat observes are 1-8. 16 splits them cleanly.
+_DEFAULT_ROUTE_THRESHOLD = 16
+
+
+def enable_routed_encoder(
+    granularity: int = 32,
+    mode: str | None = None,
+    threshold: int = _DEFAULT_ROUTE_THRESHOLD,
+    device: str = "mps",
+) -> None:
+    """Batch-size-thresholded routing (CE_Teacher_Design §16.5): batches below
+    ``threshold`` take the original eager method on whatever device the caller's
+    networks live on (CPU in a league worker) and stay bit-identical; batches at
+    or above it run a compiled SHADOW copy of the encoder on ``device``, with
+    inputs shipped over and outputs shipped back.
+
+    This exists because the all-on-MPS configuration measured 1.5x SLOWER than
+    eager CPU on the real p=0.1 teaching workload despite the committee-search
+    bench's 1.36x: moving the whole agent moves every small, dispatch-bound op
+    (head forwards at round batch sizes, ragged oracle-sequence assembly, GRU
+    memory updates, opponent act() singles) onto a device that only pays off at
+    width. Routing sends ONLY the wide encodes — the measured 75% of committee
+    wall — and leaves everything else on CPU.
+
+    The shadow is built lazily per encoder instance on first routed batch,
+    weights copied from the live encoder at that moment. After any in-place
+    weight refresh (``load_network_states``), call :func:`sync_routed_encoder`
+    or the shadow keeps labeling with stale weights. Idempotent; mutually
+    exclusive with :func:`enable_compiled_encoder` (last call wins is NOT
+    supported — enable exactly one).
+    """
+    global _ORIGINAL_ENCODE_BATCH, _ROUTED
+    if _ORIGINAL_ENCODE_BATCH is not None:
+        return
+    allow_shape_specialisation()
+    _ORIGINAL_ENCODE_BATCH = CardReasoningEncoder.encode_batch
+    granularity = max(1, int(granularity))
+    threshold = max(1, int(threshold))
+    kwargs = {} if mode in (None, "default") else {"mode": mode}
+    graph = torch.compile(CardReasoningEncoder.encode_tensors, dynamic=False, **kwargs)
+    shadow_device = torch.device(device)
+    _ROUTED = {"shadows": {}, "device": shadow_device, "threshold": threshold}
+    original = _ORIGINAL_ENCODE_BATCH
+
+    def _shadow_for(encoder):
+        shadow = _ROUTED["shadows"].get(id(encoder))
+        if shadow is None:
+            import copy
+
+            shadow = copy.deepcopy(encoder).to(shadow_device)
+            shadow.eval()
+            _ROUTED["shadows"][id(encoder)] = shadow
+        return shadow
+
+    def routed_encode_batch(self, batch, memory_in=None, device=None):
+        n = len(batch)
+        if n < threshold:
+            return original(self, batch, memory_in=memory_in, device=device)
+        shadow = _shadow_for(self)
+        marshalled = self.marshal_batch(batch, None)
+        pad = -(-n // granularity) * granularity - n
+        if pad:
+            marshalled = {
+                key: torch.cat([v, v[:1].repeat_interleave(pad, 0)], 0)
+                for key, v in marshalled.items()
+            }
+            if memory_in is not None:
+                memory_in = torch.cat(
+                    [memory_in, memory_in[:1].repeat_interleave(pad, 0)], 0
+                )
+        moved = {key: v.to(shadow_device) for key, v in marshalled.items()}
+        if memory_in is not None:
+            memory_in = memory_in.to(shadow_device)
+        out = graph(shadow, moved, memory_in=memory_in, device=shadow_device)
+        # Back to the caller's world: CPU tensors, pad rows sliced off before
+        # anything downstream can index them positionally.
+        target = device if device is not None else torch.device("cpu")
+        return {
+            k: (v[:n].to(target) if torch.is_tensor(v) else v) for k, v in out.items()
+        }
+
+    CardReasoningEncoder.encode_batch = routed_encode_batch
+
+
+def sync_routed_encoder(encoder) -> None:
+    """Copy the live encoder's weights into its shadow, if one exists.
+
+    Call after every in-place weight refresh (a league worker's
+    ``load_network_states``). A shadow that was never built yet needs no sync —
+    it copies the live weights when first built. No-op when routing is off."""
+    if _ROUTED is None:
+        return
+    shadow = _ROUTED["shadows"].get(id(encoder))
+    if shadow is not None:
+        shadow.load_state_dict(encoder.state_dict())
+
+
+def disable_routed_encoder() -> None:
+    """Restore the eager method and drop the shadows."""
+    global _ORIGINAL_ENCODE_BATCH, _ROUTED
+    if _ROUTED is None:
+        return
+    CardReasoningEncoder.encode_batch = _ORIGINAL_ENCODE_BATCH
+    _ORIGINAL_ENCODE_BATCH = None
+    _ROUTED = None

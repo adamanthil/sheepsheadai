@@ -120,6 +120,22 @@ def add_worker_inference_args(parser: argparse.ArgumentParser) -> None:
         help="round encode batches up to a multiple of this so compilation "
         "sees ~14 shapes instead of ~93, at ~1.8%% wasted rows",
     )
+    parser.add_argument(
+        "--worker-routed-encoder",
+        nargs="?",
+        const="mps",
+        default=None,
+        metavar="DEVICE",
+        help="batch-size-thresholded routing (CE_Teacher_Design §16.5-§16.6): "
+        "the worker stays on CPU — act() singles, observes, opponents and "
+        "oracle leaves bit-identical to an unrouted run — and only "
+        "committee-scale encode batches (>= 16 rows) run a compiled shadow "
+        "encoder on DEVICE (default mps). Measured 1.50x on production "
+        "committees at 8 workers, vs 1.09x for --worker-device mps "
+        "--worker-compile (which moves every dispatch-bound small op too "
+        "and measured SLOWER than eager in situ). Leave --worker-device "
+        "unset with this",
+    )
 
 
 def add_training_args(parser: argparse.ArgumentParser) -> None:

@@ -189,3 +189,84 @@ class _FakeContext:
         gamma = 1.0
 
     training_agent = _Agent()
+
+
+def test_routed_flag_reaches_the_pool_initargs():
+    from sheepshead.training.train_league_ppo import _spawn_worker_pool
+
+    args = build_arg_parser().parse_args(
+        [
+            "--league-dir",
+            ".",
+            "--resume",
+            "unused.pt",
+            "--num-workers",
+            "4",
+            "--worker-routed-encoder",
+        ]
+    )
+    assert args.worker_routed_encoder == "mps"  # bare flag defaults the device
+    captured = {}
+
+    class FakePool:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    class FakeContext:
+        Pool = FakePool
+
+    import sheepshead.training.train_league_ppo as trainer
+
+    original = trainer.get_context
+    trainer.get_context = lambda _name: FakeContext()
+    try:
+        _spawn_worker_pool(args, _FakeLeague(), _FakeContext())
+    finally:
+        trainer.get_context = original
+
+    assert captured["initargs"][0]["worker_routed_encoder"] == "mps"
+
+
+def test_routed_worker_routes_and_stays_on_cpu(restore_globals, stub_compiler):
+    """Routing must not touch the process device — the whole point is that
+    everything except committee-scale encodes stays eager CPU."""
+    from sheepshead.agent.compiled_encoder import disable_routed_encoder
+
+    before = ppo_module.device
+    league_worker.league_worker_init(
+        {
+            "arch": ARCH,
+            "members_dir": ".",
+            "weight_path_base": "unused",
+            "base_seed": 0,
+            "worker_routed_encoder": "cpu",  # cpu shadow: no MPS needed in CI
+        }
+    )
+    try:
+        assert ppo_module.device is before
+        assert len(stub_compiler) == 1  # the shadow graph was compiled
+    finally:
+        disable_routed_encoder()
+
+
+def test_routed_and_device_refuse_to_combine():
+    import sys
+
+    from sheepshead.training.train_league_ppo import main
+
+    argv = sys.argv
+    sys.argv = [
+        "train_league_ppo",
+        "--league-dir",
+        ".",
+        "--resume",
+        "unused.pt",
+        "--worker-routed-encoder",
+        "--worker-device",
+        "mps",
+    ]
+    try:
+        with pytest.raises(SystemExit, match="mutually exclusive"):
+            main()
+    finally:
+        sys.argv = argv

@@ -155,3 +155,105 @@ def test_the_shape_budget_clears_dynamos_default():
     assert dynamo.config.recompile_limit >= 14
     assert dynamo.config.cache_size_limit >= 14
     assert _DEFAULT_SHAPE_BUDGET >= 14
+
+
+# ----------------------------------------------------------------------------
+# Routed encoder (batch-size-thresholded shadow, CE_Teacher_Design §16.5)
+# ----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stub_routed(monkeypatch):
+    """torch.compile as identity + the shadow 'device' as cpu, so the routing
+    logic runs without codegen or an MPS context. The routing surface under
+    test is the threshold split, the shadow build/sync, and the ship-out/
+    ship-back with pad slicing -- none of which depend on the device being
+    real."""
+    seen = []
+
+    def fake_compile(fn, **kwargs):
+        seen.append(kwargs)
+        return fn
+
+    monkeypatch.setattr(torch, "compile", fake_compile)
+    yield seen
+    from sheepshead.agent.compiled_encoder import disable_routed_encoder
+
+    disable_routed_encoder()
+
+
+def test_small_batches_stay_bit_identical_under_routing(agent, states, stub_routed):
+    """Below the threshold the original eager method runs untouched -- the
+    property that keeps act() singles and observes exactly as fast and exactly
+    as reproducible as an unrouted worker."""
+    from sheepshead.agent.compiled_encoder import enable_routed_encoder
+
+    memory = torch.randn(len(states), agent.encoder.d_model)
+    eager = _encode(agent, states, memory)
+    enable_routed_encoder(granularity=16, threshold=len(states) + 1, device="cpu")
+    routed = _encode(agent, states, memory)
+    for key, tensor in eager.items():
+        if isinstance(tensor, torch.Tensor):
+            assert torch.equal(routed[key], tensor), key
+
+
+def test_large_batches_route_and_slice_back(agent, states, stub_routed):
+    """At or above the threshold the batch takes the shadow: padded to the
+    bucket, computed, sliced, and returned on the caller's device."""
+    from sheepshead.agent.compiled_encoder import enable_routed_encoder
+
+    memory = torch.randn(len(states), agent.encoder.d_model)
+    eager = _encode(agent, states, memory)
+    enable_routed_encoder(granularity=16, threshold=len(states), device="cpu")
+    routed = _encode(agent, states, memory)
+    assert set(routed) == set(eager)
+    for key, tensor in eager.items():
+        if not isinstance(tensor, torch.Tensor):
+            continue
+        assert routed[key].shape == tensor.shape, key
+        assert routed[key].device == tensor.device, key
+        if tensor.is_floating_point():
+            assert torch.abs(routed[key] - tensor).max() < TILING_TOL, key
+        else:
+            assert torch.equal(routed[key], tensor), key
+
+
+def test_sync_updates_the_shadow_after_a_weight_refresh(agent, states, stub_routed):
+    """A league worker's load_network_states mutates the live encoder in
+    place; without the sync the shadow keeps labeling with stale weights --
+    exactly the silent staleness the closed-loop teacher exists to remove."""
+    from sheepshead.agent.compiled_encoder import (
+        enable_routed_encoder,
+        sync_routed_encoder,
+    )
+
+    enable_routed_encoder(granularity=16, threshold=len(states), device="cpu")
+    memory = torch.zeros(len(states), agent.encoder.d_model)
+    before = _encode(agent, states, memory)["features"].clone()
+
+    param = next(agent.encoder.parameters())
+    with torch.no_grad():
+        param.add_(0.05)
+    stale = _encode(agent, states, memory)["features"].clone()
+    assert torch.allclose(stale, before), "shadow should not see the change yet"
+
+    sync_routed_encoder(agent.encoder)
+    synced = _encode(agent, states, memory)["features"]
+    assert not torch.allclose(synced, before)
+
+    with torch.no_grad():
+        param.sub_(0.05)
+    sync_routed_encoder(agent.encoder)
+
+
+def test_disable_routed_restores_the_eager_method(agent, stub_routed):
+    from sheepshead.agent.compiled_encoder import (
+        disable_routed_encoder,
+        enable_routed_encoder,
+    )
+
+    original = type(agent.encoder).encode_batch
+    enable_routed_encoder(granularity=16, device="cpu")
+    assert type(agent.encoder).encode_batch is not original
+    disable_routed_encoder()
+    assert type(agent.encoder).encode_batch is original

@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import torch
 
 from sheepshead import ACTIONS
+from sheepshead.agent.compiled_encoder import sync_routed_encoder
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.pfsp_runtime import make_game_summary, play_population_game
@@ -76,8 +77,22 @@ def _apply_inference_options(init_args: dict) -> None:
 
         ppo_module.device = torch.device(device)
 
+    routed = init_args.get("worker_routed_encoder")
     compile_mode = init_args.get("worker_compile")
-    if compile_mode:
+    if routed:
+        # Routing keeps the process on CPU and ships only committee-scale
+        # encode batches to a compiled shadow on the device — the measured
+        # 1.50x (vs 1.09x for whole-agent MPS, §16.6). The shadow copies the
+        # live weights lazily on first routed batch; league_worker_play
+        # re-syncs it after every weight refresh.
+        from sheepshead.agent.compiled_encoder import enable_routed_encoder
+
+        enable_routed_encoder(
+            int(init_args.get("worker_compile_granularity", 32)),
+            compile_mode,
+            device=routed,
+        )
+    elif compile_mode:
         from sheepshead.agent.compiled_encoder import enable_compiled_encoder
 
         enable_compiled_encoder(
@@ -169,6 +184,11 @@ def league_worker_play(job: WorkerJob) -> dict:
             checkpoint, source=f"weights v{job.weight_version}"
         )
         worker["version"] = job.weight_version
+        # No-op unless the routed encoder is enabled: the refresh above
+        # mutated the live encoder in place, so its compiled shadow (which
+        # the closed-loop teacher's committees run on) must follow or it
+        # keeps labeling with stale weights.
+        sync_routed_encoder(worker["agent"].encoder)
 
     opponents = [
         OpponentAdapter(worker["agent"], SELF_PLAY)
