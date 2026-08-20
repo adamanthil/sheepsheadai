@@ -347,14 +347,11 @@ def main() -> int:
     device = torch.device(args.device)
     backend = {"cpu": "CPU", "mps": "MPS", "cuda": "CUDA"}[args.device]
 
-    # The trainers read a module-level device global chosen at import; override
-    # it (and the ISMCTS alias bound from it) before building the agent.
+    # PPOAgent places its networks on a module-level device global. Override it
+    # before building the agent; the ISMCTS teacher then follows the networks.
     from sheepshead.agent import ppo as ppo_module
 
     ppo_module.device = device
-    from sheepshead import ismcts
-
-    ismcts.DEV = device
     from sheepshead.agent.ppo import PPOAgent
     from sheepshead.training.training_utils import set_all_seeds
 

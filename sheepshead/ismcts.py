@@ -109,10 +109,7 @@ from sheepshead import (
     ACTIONS,
     Game,
 )
-from sheepshead.agent import ppo
 from sheepshead.training.training_utils import RETURN_SCALE
-
-DEV = ppo.device
 
 # Per-head iteration budgets and tree depths (plan §3).
 _DEFAULT_ITERS = {"pick": 48, "partner": 64, "bury": 96, "play": 96}
@@ -675,6 +672,15 @@ class ISMCTSTeacher:
         self.agent = agent
         self.action_size = agent.action_size
         self.config = config or ISMCTSConfig()
+        # Taken from the networks, at construction, rather than from a
+        # module-level snapshot of ``ppo.device`` read at import. Two reasons,
+        # both bugs that have actually happened: a process that selects its
+        # device after importing this module (a league worker reaches ismcts
+        # through pfsp_runtime long before its initializer runs) would have
+        # been pinned to the process default and crash on the first encode;
+        # and a device global can disagree with where the networks actually
+        # live, which this cannot.
+        self.device = next(agent.encoder.parameters()).device
         # Cumulative network-round counters, for throughput benchmarks that
         # need a per-committee state count to normalize against. Diagnostics
         # only -- nothing in the search reads them.
@@ -1126,7 +1132,7 @@ class ISMCTSTeacher:
         ctrl = self._controller(seat)
         states = [game.players[seat - 1].get_state_dict() for game in games]
         encoded = ctrl.encoder.encode_batch(
-            states, memory_in=seat_memories[seat], device=DEV
+            states, memory_in=seat_memories[seat], device=self.device
         )
         seat_memories[seat] = encoded["memory_out"].detach()
         return states, encoded
@@ -1139,7 +1145,7 @@ class ISMCTSTeacher:
             states,
             valid_list,
             self.action_size,
-            DEV,
+            self.device,
         )
 
     def _observe_trick_lockstep(self, games, seat_memories):
@@ -1154,7 +1160,7 @@ class ISMCTSTeacher:
                 game.players[seat - 1].get_last_trick_state_dict() for game in games
             ]
             encoded = ctrl.encoder.encode_batch(
-                states, memory_in=seat_memories[seat], device=DEV
+                states, memory_in=seat_memories[seat], device=self.device
             )
             seat_memories[seat] = encoded["memory_out"].detach()
 
@@ -1214,9 +1220,10 @@ class ISMCTSTeacher:
         det_unders = [deal["under_card"] for deal in deals]
         mem_width = self.agent.state_size
         seat_memories = {
-            seat: torch.zeros((n_worlds, mem_width), device=DEV) for seat in range(1, 6)
+            seat: torch.zeros((n_worlds, mem_width), device=self.device)
+            for seat in range(1, 6)
         }
-        log_weights = torch.zeros(n_worlds, device=DEV)
+        log_weights = torch.zeros(n_worlds, device=self.device)
         try:
             for event in _replay_events(real_game, games[0], forced_public, observer):
                 log_weights = self._apply_event_lockstep(
@@ -1433,7 +1440,7 @@ class ISMCTSTeacher:
         for pool_idx in chunk:
             world = copy.deepcopy(pool[pool_idx][0])
             memory_snapshot = pool[pool_idx][1]
-            mem = torch.zeros((5, self.agent.state_size), device=DEV)
+            mem = torch.zeros((5, self.agent.state_size), device=self.device)
             for seat in range(1, 6):
                 if seat in memory_snapshot:
                     mem[seat - 1] = memory_snapshot[seat]
@@ -1516,7 +1523,7 @@ class ISMCTSTeacher:
             self.network_states += len(group_states)
 
             encoded = ctrl.encoder.encode_batch(
-                group_states, memory_in=memory_in, device=DEV
+                group_states, memory_in=memory_in, device=self.device
             )
             memory_out = encoded["memory_out"].detach()
             probs = masked_actor_probs(
@@ -1525,7 +1532,7 @@ class ISMCTSTeacher:
                 group_states,
                 [requests[req_idx].sim.valid for req_idx in req_idxs],
                 ctrl.action_size,
-                DEV,
+                self.device,
             )
             for row, req_idx in enumerate(req_idxs):
                 sim = requests[req_idx].sim
@@ -1560,7 +1567,9 @@ class ISMCTSTeacher:
                 + [sim.world.players[observer - 1].get_oracle_state_dict()]
             )
         with torch.no_grad():
-            oracle_vals = self.agent.oracle_critic.forward_sequences(seqs, device=DEV)
+            oracle_vals = self.agent.oracle_critic.forward_sequences(
+                seqs, device=self.device
+            )
         for row, req_idx in enumerate(critic_rows):
             values_np[req_idx] = float(oracle_vals[row, len(seqs[row]) - 1].item())
 
@@ -1840,7 +1849,9 @@ class ISMCTSTeacher:
                 for sim in completers
             ]
             memory_in = torch.stack([sim.mem[seat - 1] for sim in completers])
-            encoded = ctrl.encoder.encode_batch(states, memory_in=memory_in, device=DEV)
+            encoded = ctrl.encoder.encode_batch(
+                states, memory_in=memory_in, device=self.device
+            )
             memory_out = encoded["memory_out"].detach()
             for i, sim in enumerate(completers):
                 sim.mem[seat - 1] = memory_out[i]
@@ -1867,7 +1878,7 @@ class ISMCTSTeacher:
                 states.append(sim.world.players[seat - 1].get_last_trick_state_dict())
                 memory_rows.append(sim.mem[seat - 1])
         encoded = ctrl.encoder.encode_batch(
-            states, memory_in=torch.stack(memory_rows), device=DEV
+            states, memory_in=torch.stack(memory_rows), device=self.device
         )
         memory_out = encoded["memory_out"].detach()
         n = len(completers)
