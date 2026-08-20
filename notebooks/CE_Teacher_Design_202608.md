@@ -1009,3 +1009,50 @@ against a bench whose committee composition may not have included the
 production oracle-leaf path. Any routing design must therefore keep
 EVERYTHING except large-batch encodes on CPU — and the realized
 encode-slice speedup must be re-benched in situ before building.
+
+### 16.6 Routed encoder: bench, build, relaunch (2026-08-19 late)
+
+Operator: kill the eager relaunch, bench the batch-size-thresholded
+routing first, build it if promising. Three-arm bench at PRODUCTION
+committee composition (oracle-mode agent + aux heads — the §16.5
+correction's point; 8 clients, R=3 @1024/1, steady state = best of
+repeats 2-3; bench_search_committee gained --oracle and --routed):
+
+    A eager CPU + oracle:            62.3s/committee   1.00x
+    B whole-agent MPS+compile:       57.4s             1.09x
+    C routed (CPU + MPS shadow):     41.4s             1.50x
+
+Readings:
+- The historical 1.36x (§5.5-§5.6) shrinks to 1.09x once committees
+  pay the oracle-leaf path: OracleCriticEncoder OVERRIDES
+  encode_batch with its own copy, so the compiled patch never touched
+  it — on --worker-device mps it ran EAGER MPS (ragged sequence
+  assembly, sync-heavy). That, plus per-instance dynamo recompiles
+  for each lazily-loaded league opponent's encoder (36 members x ~14
+  shapes >> the 64 cap -> silent eager-MPS tail), is the §16.5
+  in-situ 1.5x slowdown, now mechanistically accounted for.
+- Routing dodges both BY CONSTRUCTION: opponents only send
+  single-row encodes (never routed, stay eager CPU), the oracle's
+  override is untouched (eager CPU), and exactly one shadow exists —
+  the live agent's.
+- C = 1.50x on the committee; at the §16.5 decomposition (search =
+  95% of wall) that projects to ~1.47x overall: 0.30 -> ~0.44 eps/s,
+  100k generation ~3.9d -> ~2.6d.
+
+BUILT (commit with this note's hash lineage): compiled_encoder.
+enable_routed_encoder(granularity, mode, threshold=16, device) +
+sync_routed_encoder (league_worker_play calls it after every weight
+refresh — the shadow must follow the closed-loop expert or it labels
+with stale weights) + disable_routed_encoder; trainer flag
+--worker-routed-encoder [DEVICE=mps], mutually exclusive with
+--worker-device. Small batches take the ORIGINAL eager method
+bit-identically; routed large batches differ from eager by ~3e-6
+(MPS numerics — same worker-only caveat class as §16.3, main-process
+gates/certs untouched). Tests: 4 routing tests in
+test_search_encode_path + 3 wiring tests in
+test_worker_inference_options; spawned-pool smoke = nets CPU, teacher
+live, single mps:0 shadow, labels on first eligible deal, v2 refresh
+exercised sync. RELAUNCH: §16.3 command + --worker-routed-encoder,
+run dir reset to launch state again; §16.4 pre-registrations carry;
+pre-registered throughput mark: steady eps/s >= 0.40 by update 3
+(else routing underdelivers in situ too — investigate, don't tune).
