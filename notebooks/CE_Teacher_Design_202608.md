@@ -957,3 +957,39 @@ Launch command (from master @ 40c55e2 + this doc):
       --teacher --main-episodes 100000 \
       --worker-device mps --worker-compile \
       > runs/league_ce_teacher12/train.log 2>&1 &
+
+### 16.5 AMENDMENT (2026-08-19 ~21:10): throughput flags REMOVED, relaunched
+
+The §16.3 expectation (~1.2-1.4x from --worker-device mps
+--worker-compile) is REFUTED on the full-episode workload:
+
+- window 1 (incl. 8x compile warm-up): 1,443 eps in 117 min = 0.21 eps/s
+- window 2 (fully warm):               1,462 eps in 121 min = 0.20 eps/s
+- attempt-11 eager-CPU baseline:       ~80 min/window       = 0.30 eps/s
+
+i.e. a 1.5x SLOWDOWN, stable after warm-up. Mechanism (hypothesis,
+consistent with the numbers): the compiled-encoder patch is
+class-global, so every SINGLE-ROW act() encode — the ~90% of
+decisions the teacher never searches, across 5 seats plus opponent
+pools — pays granularity padding (1 -> 32 rows) plus MPS dispatch
+and host-sync latency. The §5.5-§5.6 1.36x was measured on committee
+SEARCH in isolation (large merged batches), and does not transfer to
+a p=0.1 emission workload dominated by singles. The fce37f52 audit
+(§16.3) stands — the code does what it says, on the path it was
+measured on; the workload composition is what was mispredicted.
+
+Candidate future fix (NOT built): batch-size-thresholded routing —
+small encodes stay eager-CPU, only committee-scale batches take the
+compiled MPS path. Worth building only if teacher_prob rises enough
+for search to dominate episode wall time.
+
+OPERATOR CALL (after 9pm read of the same numbers): drop the flags.
+RELAUNCH from the same 8M seed with the identical §16.3 command minus
+--worker-device/--worker-compile; run dir reset to launch state
+(league re-copied from teacher10, sidecar re-copied from the 8M
+lineage, flagged-run log archived as train.log.mps-flags-attempt).
+The discarded ~2,900 flagged episodes' telemetry, for the record:
+KL 0.337/0.347, material 46/45%, w 0.31/0.30, Hn play 0.52/0.54 —
+consistent with §16.4 expectations, decided nothing yet. All §16.4
+pre-registrations carry unchanged; worker episodes are now
+bit-comparable eager CPU again (the §16.3 numerics caveat is void).
