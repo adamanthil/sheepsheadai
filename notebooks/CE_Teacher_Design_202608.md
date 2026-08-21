@@ -1170,3 +1170,26 @@ Run artifacts: halt checkpoint 8,050,000; payload snapshots
 t12_payload_29k/50k.pt + crafted eval ckpts in scratchpad; KL series
 windows 1-35 in train.log / league_training_progress.csv. Awaiting
 operator decision.
+
+§16.8 ADDENDUM — strength h2h of the halt snapshot (2026-08-21):
+operator challenged the reversal reading (oscillation-to-new-
+equilibrium hypothesis: §12.20/§12.22 churn precedent, ALONE
+round-trip, spread-compression greedy amplification). Pre-stated
+interpretation grid: >= +0.045 teaching captured / ~0 (+-0.03)
+EV-neutral churn / <= -0.03 damage confirmed. RESULT
+(duplicate-bridge, 2000 deals/mode, checkpoint_8050000 vs 8M seed):
+
+    edge -0.058 +- 0.010  (5.6 sigma below zero; win_frac 0.454)
+    called -0.045 +- 0.015   jd -0.072 +- 0.015
+
+DAMAGE CONFIRMED — both modes negative, no mode-split ambiguity.
+The oscillation hypothesis is REJECTED for strength: whatever
+equilibrium the policy was moving toward, it is materially weaker
+than the seed (pre-reg expected +0.045..+0.090; delta from
+expectation ~-0.10 to -0.15). The §16.8 verdict stands as written:
+closed-loop CE teaching on the shared trunk under concurrent PG
+destroyed value on the same mid-gen clock as attempt 11, with label
+KL low throughout. Caveat kept honest: attempt-11's RAW 8,050k halt
+state was never h2h'd (only probed), so cross-attempt severity is
+not comparable — but the within-attempt question the operator asked
+is answered.
