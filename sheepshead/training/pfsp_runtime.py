@@ -231,9 +231,14 @@ def build_ce_search_target(
     )
     target = np.exp(logits - logits.max())
     target /= target.sum()
+    q_sorted = np.sort(q_bar)[::-1]
     info = {
         "w": shrink_w,
         "spread": float(q_bar.max() - q_bar.min()),
+        # Top-2 pooled-Q separation: the resolved-gap statistic behind the
+        # distill pilot's omega evidence weight and node telemetry
+        # (CE_Teacher_Design §17.3-§17.4); 0.0 for a single-action root.
+        "gap": float(q_sorted[0] - q_sorted[1]) if len(q_sorted) >= 2 else 0.0,
     }
     return target.astype(np.float32), info
 
