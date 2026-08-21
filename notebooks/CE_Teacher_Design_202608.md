@@ -1111,3 +1111,62 @@ behavior is an untaught head coupled through the shared trunk; the
 25.5% greedy ALONE drift argues for anchoring it with search labels
 (committee already searches all four heads; emission-side change)
 rather than leaving it to PG generalization.
+
+### 16.8 GUARD HALT at 8,050,000 and the attempt-12 verdict (2026-08-21)
+
+Hard adherence guard (n=1000): t0 trump-lead 6.1% > 5.0 ceiling ->
+SystemExit(3), checkpoint saved (..._checkpoint_8050000.pt). Same
+episode as attempt-11's halt, different channel (t0 scramble vs
+partner collapse). Partner held 99.2 this time.
+
+Three-point same-instrument series (greedy_health_probe n=500
+seed=0; a12@50k = payload v35 nets @8,049,295):
+
+    metric        seed   a12@29k  a12@50k | a11@29k  a11@50k
+    called_suit   45.8   50.3     37.6    | 55.5     38.5
+    partner       96.4   95.9     98.4    | 98.9     87.4
+    t0_trump      ~1     1.19     2.65    | —        0.2
+    pick          38.4   33.2     29.5    | 34.0     32.1
+    ALONE         13.4   25.5     14.5    | 13.8     17.6
+    leaster       5.8    8.4      13.4    | 7.4      10.2
+    spread_med    3.56   2.12     2.10    | 2.39     2.37
+    top1min_med   9.19   6.34     5.19    | 6.19     5.89
+
+(Guard's 6.1 vs battery's 2.65 t0: different deal sets — the guard
+probes n=1000 fresh deals, the battery the fixed seed-0 set; both
+are far above the seed's level and the direction is what matters.)
+
+VERDICT — the reversal arc REPRODUCED with expert ≡ student:
+called-suit peaked mid-gen then fell below seed on the same schedule
+as attempt 11; leaster doubled; pick eroded; t0-trump escalated into
+the hard guard; ALONE round-tripped (25.5 -> 14.5 = §12.20-style
+oscillation, not collapse). ALL WHILE the teacher KL sat in the
+0.27-0.31 band, decaying — labeled nodes conforming as the global
+greedy ordering scrambled around them.
+
+THEORY UPDATE: §15's indictment of the FROZEN REFERENCE is falsified
+as the sufficient mechanism. The closed-loop expert delivered
+everything it promised locally (low bounded KL, self-retirement
+signature, no label staleness) and the mid-gen reversal happened
+anyway, on the same clock. What remains indicted is the §12.22
+conclusion, now strengthened and expert-independent: POLICY-SPACE CE
+TEACHING ON THE SHARED TRUNK IS TRANSIENT AND DESTABILIZING UNDER
+CONCURRENT PG — epochs-4 CE x PG co-training scrambles untaught
+greedy orderings regardless of where the labels come from. Low label
+KL is NOT protective; it measures the taught subspace only.
+
+Remaining §15 directions, re-ranked by this result: (b) PHASED
+OFFLINE ExIt (PG OFF during distill — the only variant that removes
+the interaction term itself) and (c) ADAPTER SEPARATION (structural
+removal of the trunk coupling) are now the live candidates; further
+same-structure hyperparameter variants (epochs, p, coeff) are
+third-line at best — two attempts have shown the arc survives the
+biggest structural lever available inside this loss. The operator's
+ALONE-emission amendment remains relevant to whichever path
+continues but would not have prevented this halt (t0-trump is not an
+emission-coverage gap; it is generalization damage).
+
+Run artifacts: halt checkpoint 8,050,000; payload snapshots
+t12_payload_29k/50k.pt + crafted eval ckpts in scratchpad; KL series
+windows 1-35 in train.log / league_training_progress.csv. Awaiting
+operator decision.
