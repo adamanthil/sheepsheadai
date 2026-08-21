@@ -1193,3 +1193,268 @@ KL low throughout. Caveat kept honest: attempt-11's RAW 8,050k halt
 state was never h2h'd (only probed), so cross-attempt severity is
 not comparable — but the within-attempt question the operator asked
 is answered.
+
+### 16.9 Mechanism synthesis + phased-offline design sketch (2026-08-21)
+
+Operator question: search and PG both optimize EV — why destructive?
+Synthesis (full argument in session; condensed):
+
+MECHANISM — "same signal" holds at the objective level, fails at the
+gradient level, four layers: (1) magnitude mismatch: CE is O(1) in
+logit space regardless of EV at stake (x4 epochs, Adam normalizes
+coefficients away — a5b/a6), applied exactly where PG's true signal
+is O(eps) under O(sigma) noise (near-ties, median edge 0.0097 vs
+floor 0.006); (2) shared-trunk generalization: bounded KL at labeled
+nodes bounds nothing elsewhere — feature drift dephases whichever
+head has the weakest restoring force (partner in a11, t0/leaster/
+pick in a12; "policy churn" Schaul-22 is the single-objective
+baseline of this); (3) asymmetric repair: PG repair needs
+O(sigma^2/eps^2) visits at rare nodes, CE re-applies pressure every
+update — Grill-20: CE-to-search IS a KL-regularized policy update,
+so concurrent PPO = two proximal operators, different centers, no
+common fixed point, orbit through weaker space (h2h -0.058);
+(4) third optimizer (entropy controller pinned at clamp) + critic
+lag under distribution shift (ev O/L 0.66/0.52 -> 0.55/0.36 across
+a12) + league self-play non-stationarity. Near-tie noise labels: PG
+turns them into zero-mean dither, CE into persistent directed churn
+(v7 incumbent tax). LITERATURE: AZ/ExIt are phase-pure (search is
+the ONLY policy-improvement operator; no concurrent model-free PG,
+ever); kickstarting/distillation anneal the distill term to zero;
+AlphaStar KL-anchors to a FIXED reference; concurrent full-strength
+CE + PG on one trunk is the unusual configuration and is now
+falsified with both expert types.
+
+PHASED OFFLINE ExIt (§15b sharpened): (i) freeze theta_k, generate
+corpus (self-play, committee at eligible nodes; offline budget =>
+p can rise; ALONE + bidding-head emission fits here); (ii) distill
+PG-OFF with a MIXED loss — CE at material labeled nodes (sparse
+override) + SELF-DISTILLATION ANCHOR KL(pi_k || pi) on broad replay
+of ALL other states incl. unsearched classes (pick/partner/bury,
+leaster, ALONE, forced, abstentions) — LwF-style: match your own
+old outputs except exactly where search says otherwise; coverage
+boundary becomes a specification, untaught-head bleed structurally
+suppressed; value/oracle rehearse on corpus outcomes; low LR, few
+epochs, 3-point-battery early stop; (iii) CERT before acceptance
+(multi-seed n=1000 + duplicate h2h vs theta_k AND absolute anchor);
+reject costs one iteration, not a run; (iv) PG in separate certified
+phases only. NOT "exclusively search targets" — the anchor is the
+answer to catastrophic forgetting, the cert gate the empirical
+backstop. (b) composes with (c): distill into zero-init adapter w/
+frozen trunk = forgetting structurally impossible. Suggested pilot:
+ONE offline iteration from the clean 8M seed, elevated-p corpus,
+cert at end — few days' compute, directly tests whether the +0.180
+ceiling survives phase separation; anchor-despite-drift in cert
+would be the clean signal that (c) is required.
+
+§16.9 ADDENDUM — corpus design + sizing (operator dialogue, 2026-08-21):
+- Acting-policy knob: student-acting corpus (DAgger-correct, states
+  theta_k visits) vs committee-acting (AZ-style, improved-policy
+  distribution; the §13.3 ceiling was committee-acting). Default:
+  mostly student-acting + committee-acting slice; ratio pre-registered.
+- p offline is NOT an accuracy trade: per-label quality = committee
+  budget + materiality gates; unlabeled states are UNCHANGED by
+  construction (anchor). p shapes composition — lower p over more
+  games = more diversity + bigger free anchor replay per search-
+  dollar (unsearched games ~6 eps/s). Naive random p thins rare node
+  classes; offline enables STRATIFIED EMISSION (oversample t0
+  defender leads / called-suit holdings) — a lever the online
+  teacher never had.
+- Sizing: installation dose demonstrated ~14k searched / ~6k
+  material labels (both attempts reached the 50s called-suit band by
+  29k while fighting PG). Target 25-50k material labels (4-7x dose,
+  stratification headroom) + 100k+ free anchor states. Routed
+  throughput ~5.2s/committee effective at 8-way => 30k labels ~1.5-2
+  days; distill itself minutes-hours; full iteration incl. cert
+  under a week.
+- Iteration: theta_k+1 anchors BOTH next search and next self-KL;
+  cert gates between iterations = AZ generational loop (within-gen
+  staleness objection does not apply across certified boundaries).
+  Expect diminishing per-iteration gains (+0.180 was step-one
+  committee-acting ceiling); absolute-anchor cert prevents ratchet.
+- Load-bearing claim the pilot tests: stability comes from anchor +
+  early-stop + cert, not label volume; anchored PG-off drift in cert
+  = clean verdict for the adapter path, corpus carries over.
+
+§16.9 ADDENDUM 2 — anchor/override partition (operator-found flaw,
+2026-08-21): naive "anchor all unsearched states" is SELF-DEFEATING
+at p<1: a convention class sampled at p=0.1 gets a 10:90
+contradictory vote (10 CE-toward-target vs 90 anchor-toward-old-
+behavior on near-identical inputs) — the anchor wins by volume, and
+the offline scheme would be WORSE than the online teacher on the
+taught subspace (online unlabeled twins carried no explicit
+counter-pull; that is how ~6k material labels installed the class).
+FIX — the anchor set is constructed, three-way partition:
+  1. OVERRIDE: material labels (w>0), CE toward target.
+  2. ENDORSED ANCHOR: (a) classes outside emission by design
+     (pick/partner/bury, leaster, ALONE, forced — the bidding-side
+     collateral protection); (b) searched-and-ABSTAINED play nodes
+     (w=0/tie/materiality-fail) — committee examined and endorsed
+     the prior (§1.1; §13 phase-1 KL~0 rows) = certified-safe anchor
+     INSIDE the play distribution, where a12's damage lived.
+  3. NO-LOSS: eligible-but-unsearched play nodes — excluded from
+     the loss entirely; shaped only by generalization (the regime
+     the online teacher proved installs, minus concurrent PG).
+Upgrades: STRATIFIED p (~1.0 at known convention cells per the
+§13.5 map — the 10:90 situation cannot arise there; low p only on
+low-material background) and optional CHEAP SCREEN routing (§12.8:
+1-replicate panel matches heavy confident class 94% at t0) —
+high-coverage triage into endorsed-anchor vs full-committee.
+INVARIANT: a state carries an anchor loss only if search cannot
+speak there or spoke and endorsed the prior — never because search
+merely wasn't asked. p then controls corpus cost only, never
+anti-teaching pressure.
+
+§16.9 ADDENDUM 3 — data-driven stratification + literature audit
+(2026-08-21): OPERATOR AMENDMENT ACCEPTED: p differences MODEST and
+driven by the measured disagreement-EV map (ceiling-study node rows
++ §12.7/§12.8 resolved Q-gaps), not hand-picked convention cells —
+p(class) = clip(p0 + k*gap_hat, p_min, p_max), nonzero floor
+everywhere eligible; goal = conventions AND EV, one statistic, no
+category distinction. LITERATURE SUPPORT per component: phase
+separation (ExIt Anthony-17; AGZ/AZ Silver-17; offline corpus =
+MuZero Reanalyze Schrittwieser-21); disagreement sampling (Query-by-
+Committee Seung-92 — our labeler IS a committee; PER Schaul-16 w/
+its annealed-IS caution = the "modest" instinct); regret-weighted
+supervised updates (AWR Peng-19 / AWAC Nair-20 / CRR Wang-20 — makes
+gradient prop. to EV at stake, repairing the §16.9 magnitude
+pathology inside the loss; TD3+BC Fujimoto-21 = mixed
+override+anchor loss shape); target form already lit-recommended
+(Grill-20 regularized target; Gumbel MuZero Danihelka-22); anchor
+(LwF Li-16, KD Hinton-15, replay>EWC per continual-learning
+consensus, Born-Again Furlanello-18); acceptance gate (AGZ 55%/400
+evaluator = exact precedent for dup-h2h gate); warm start/iteration
+(Reincarnating RL Agarwal-22, IDA Christiano-18). AMENDMENTS FROM
+LIT: (1) Reanalyze-style state reuse across iterations (re-search
+stored states under theta_k+1; mix with fresh games per DAgger);
+(2) interleave override+anchor within batches, never blocks;
+(3) conservative fits x more certified iterations over one deep fit;
+(4) temperatures: KD temp on anchor KL + AWR beta on override weight
+(smooth knobs above the eps-materiality emission gate); (5) honest
+AZ-line challenge: at p->1 committee-acting the pure design drops
+the anchor entirely — partition machinery is scaffolding for partial
+coverage, remove if search budget allows.
+
+§16.9 ADDENDUM 4 — partition corrections + batch mixture (2026-08-21):
+Operator clarifications resolved:
+- Searched-and-abstained play nodes = ENDORSED anchor (positive
+  evidence, in-distribution protection); eligible-but-UNSEARCHED
+  play nodes = NO-LOSS (generalization region — the online-teacher
+  regime). Not the other way around.
+- Unsearched non-play classes (pick/partner/bury heads, leaster and
+  ALONE games' rows) = RETENTION anchor (by necessity, not
+  endorsement — search cannot speak; holding them IS the a9/a12
+  collateral protection). Keep the two anchor justifications
+  distinct in code.
+- CORRECTION: forced nodes (1 legal action) = no-loss trivially
+  (degenerate softmax, no gradient); earlier listing in the anchor
+  was sloppy.
+- Raw-count skew at p=0.1 (~1.4 override / ~1.6 endorsed / ~6-10
+  retention rows per standard game + excluded-game rows) does NOT
+  set gradient shares: BATCH MIXTURE is pre-registered separately
+  (order 40-50% override / 25-30% endorsed / 25-30% retention,
+  interleaved within every batch) — corpus composition and gradient
+  composition decoupled, standard multi-task/distillation practice
+  (PER's sampling-ratio-as-hyperparameter). Retention rows compete
+  for trunk capacity (dilution risk, mixture-managed), they do not
+  contradict play targets on near-identical inputs (unlike the
+  addendum-2 10:90 flaw) — different heads, different states.
+- References (QBC/PER/AWR/LwF/Reanalyze etc.) to be cited in §17,
+  code docstrings and commits at implementation (operator request).
+
+§16.9 ADDENDUM 5 — ALONE/leaster emission + acting-mixture tuning
+(2026-08-21): Operator correction ACCEPTED: ALONE/leaster PLAY rows
+share the token-pointer play head — retention-anchoring them is
+same-head near-neighbor supervision against the taught behavior
+(soft 10:90), not cross-head dilution as addendum 4 claimed.
+- ALONE PLAY -> EMISSION (approved direction): determinization is
+  MORE faithful than standard (no hidden-partner uncertainty, 1v4
+  roles known); states structurally adjacent to standard play so
+  labels generalize across the boundary instead of fighting it;
+  class exits the retention anchor entirely. Pre-registered gate:
+  §12.8-style mini-calibration on a few hundred alone nodes
+  (paired-replicate noise floor; confirm eps=0.03 sits above it —
+  shrink/eps were standard-game calibrated). Alone DECLARATION
+  (bidding head) stays retention-anchored; bidding emission out of
+  pilot scope.
+- LEASTER PLAY -> retention anchor for the pilot: (1) interference
+  attenuated by representation distance (no picker, inverted
+  incentives, mode flags); (2) observed damage was leaster ENTRY
+  (pick head; anchor already protects), not leaster-play quality;
+  (3) search validity in leaster unvalidated (P4 determinizer
+  exists, no E9-family calibration; different EV structure).
+  Falsifiable: ADD leaster-play metrics (leaster score avg,
+  point-avoidance) to the cert battery; anchor inadequacy promotes
+  leaster into emission at iteration 2 behind the same
+  mini-calibration gate.
+- ACTING MIXTURE literature: BC compounding error (Ross-Bagnell 10),
+  DAgger beta-mixture w/ anneal-to-0 regret theory (Ross-11),
+  AggreVaTe roll-in/roll-out (Ross-Bagnell 14), scheduled sampling
+  (Bengio-15); AZ = pure teacher-acting extreme (total coverage).
+  Hybrid = DAgger stability + AZ coverage of post-improvement
+  states (which student-acting at 45% adherence under-produces).
+- TUNING: two knobs. Generation-time share — committee-acting games
+  are search-efficient (every acted node yields a label), so budget
+  ~25-30% of searches on committee trajectories. Train-time balance
+  = batch weight over the two pools, SWEEPABLE ON THE FIXED CORPUS
+  (distills are minutes-hours; fit 3-4 mixtures, select by cert
+  battery + dup h2h). Across iterations: anneal driven by MEASURED
+  on-support convergence (disagreement rate along committee
+  trajectories -> student-trajectory baseline), not a faith
+  schedule.
+
+§16.9 ADDENDUM 6 — exact per-partition loss treatment (2026-08-21):
+Two loss forms + an exclusion; the partition is a POLICY-loss
+partition (value/oracle heads regress on outcomes at ALL states —
+full-coverage rehearsal, no contradiction structure, keeps leaves
+calibrated for the next iteration's search).
+  1. OVERRIDE: L = lambda_CE * omega(s) * CE(t || pi_theta), valid-
+     masked; t = full pi_gumbel-on-shrunk-Q distribution (ties keep
+     §12.7 near-equal mass); omega = AWR-style soft weight, monotone
+     in resolved Q-gap, temperature beta. Only loss that moves
+     behavior.
+  2. ENDORSED ANCHOR: L = lambda_end * KL(pi_thetak || pi_theta) at
+     KD temp tau. Anchor to theta_k's DIRECT forward pass at the
+     trajectory state, NOT the emitted w=0 target — §13 phase-1: the
+     pooled engine-replay prior carries the trick-4 recurrent
+     divergence artifact (KL~0.030); the committee's contribution at
+     these rows is the CERTIFICATE, not the target.
+  3. RETENTION ANCHOR: IDENTICAL KL form vs theta_k on whichever
+     head the decision used. Anchor sets differ in ROLE not math:
+     (a) evidence status -> separate pre-registered shares +
+     separate lambdas (start equal; sweepable on dilution);
+     (b) TELEMETRY: per-set KL logged separately = two distinct
+     early-warning instruments (endorsed-KL rise = taught-region
+     play-head drift; retention-KL rise = a9/a12-style collateral
+     onset in untaught heads);
+     (c) annealing: endorsed share tracks p; retention persists
+     while its classes stay outside emission.
+  4. NO-LOSS (eligible-unsearched play, forced): no policy loss, not
+     in policy batches; PRESENT in the value-regression stream.
+Batches: interleaved at pre-registered mixture (~40-50 / 25-30 /
+25-30), each row = its policy term + value term.
+
+§16.9 ADDENDUM 7 — bidding-head staleness (2026-08-21): operator
+identifies the designed-in limitation: within a distill iteration
+there is NO channel from play changes to bidding heads (retention
+anchor holds them; PG off; inference never consults the retraining
+value heads) — the plan holds bidding ACCEPTABLE-at-theta_k, not
+optimal-for-new-play. Bounds + escape channels:
+  1. The §13.3 ceiling (+0.180) was measured with committee PLAY on
+     FIXED seed bidding — the pilot's target gain already prices in
+     exactly this staleness; bidding re-optimization is upside
+     beyond the ceiling, not a prerequisite. Staleness cost is
+     VISIBLE (h2h attenuation + battery rates), never silent.
+  2. Principled channel (iteration 2+, behind the alone-style
+     mini-calibration gate): BIDDING EMISSION — pick/partner/bury
+     shallow-root searches evaluate by ROLLOUTS under the current
+     policy, so search-labeled bidding targets incorporate the
+     improved play distribution by construction.
+  3. Fallback: bidding-only PG phase w/ trunk + play head FROZEN —
+     terminal reward, decent SNR at bidding (frequent decisions,
+     larger gaps), and the a11/a12 interaction term (CE-play vs
+     PG-trunk) structurally cannot exist. Composition: [distill
+     play, PG off] -> cert -> [PG bidding-only, frozen trunk] ->
+     cert.
+Pilot: accept + pre-register the limitation; staleness meters =
+battery pick/alone/leaster/called-card rates + dup h2h across
+accepted iterations; drift triggers channel 2 or 3.
