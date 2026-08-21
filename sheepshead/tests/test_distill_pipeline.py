@@ -66,7 +66,6 @@ def _worker_state(agent, *, committee_act_ready=True, **overrides):
     args = {
         "seed": 7,
         "collect_oracle": overrides.pop("collect_oracle", False),
-        "search_alone": overrides.pop("search_alone", False),
         "iters": 8,
         "replicates": 3,
         "d_rollout": 1,
@@ -164,21 +163,21 @@ def test_partition_assignment_and_schema():
                 assert ev["anchor_probs"] is None
                 assert ev["search_gap"] > 0.0
             elif ev["distill_set"] == "retention":
-                # bidding heads, leaster play, unsearched alone play
+                # bidding heads and leaster play (alone play is searched)
                 assert ev["anchor_probs"] is not None
                 assert sum(ev["anchor_probs"]) == pytest.approx(1.0, abs=1e-6)
                 assert not ev["has_search_target"]
             elif ev["distill_set"] == "none":
                 assert len(ev["valid_actions"]) == 1 or head_is_play
                 assert ev["anchor_probs"] is None
-    # p=1 + scripted-material committee: every eligible standard play node
-    # searched and material; bidding rows all retention
+    # p=1 + scripted-material committee: every eligible non-leaster play
+    # node (std AND alone) searched and material; bidding rows all retention
     assert saw["override"] > 0
     assert saw["retention"] > 0
     assert saw["endorsed"] == 0
     counts = res["counts"]
-    std_cells = [c for c in counts if c.startswith("std|")]
-    assert sum(counts[c]["searched"] for c in std_cells) == saw["override"]
+    play_cells = [c for c in counts if c.startswith(("std|", "alone|"))]
+    assert sum(counts[c]["searched"] for c in play_cells) == saw["override"]
     assert all(
         counts[h]["searched"] == 0 for h in ("pick", "partner", "bury") if h in counts
     )

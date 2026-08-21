@@ -28,8 +28,8 @@ Per-row policy loss by partition (§16.9 addendum 6):
              without-Forgetting recipe (Li & Hoiem 2016,
              arXiv:1606.09282) applied where search spoke and endorsed.
   retention  identical form, separate coefficient + telemetry: bidding
-             heads, leaster play, unsearched alone rows. Endorsed-KL
-             rising = taught-region play drift; retention-KL rising =
+             heads and leaster play (alone play is searched). Endorsed-
+             KL rising = taught-region play drift; retention-KL rising =
              attempt-9/12-style collateral onset in untaught heads —
              the two pre-registered early-warning instruments.
   none       no policy loss (eligible-unsearched play, forced nodes).

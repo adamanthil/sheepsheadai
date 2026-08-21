@@ -1527,6 +1527,14 @@ b_* against the manifest's measured material-rate/gap map.
   leaster play, alone play+declaration), no-loss (eligible-unsearched,
   forced, committee-failure). ALONE play stays retention until §17.6
   passes, then flips to emission via `--search-alone`.
+  AMENDED (operator, 2026-08-21): alone-game PLAY is searched BY
+  DEFAULT — no flag, first corpus included. Rationale: same token-
+  pointer play head as standard play (the addendum-5 same-head
+  argument cuts both ways), and 1v4 determinization carries no hidden-
+  partner uncertainty. §17.6 remains as a pre-registered MEASUREMENT
+  (noise floor recorded below; a bad floor would prompt an alone-
+  specific shrink_s2 or exclusion at iteration 2), no longer an
+  inclusion gate. Retention play set = leaster only.
 - ANCHOR IMPLEMENTATION of "theta_k's direct forward pass": the
   generator stores theta_k's act-time probability vector (the `act()`
   stash) per anchor row. This IS a direct forward output at the TRUE

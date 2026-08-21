@@ -12,10 +12,11 @@ policy-loss partition:
   endorsed   searched, abstained (w = 0): search spoke and endorsed the
              policy — the row anchors to theta_k in the trainer.
   retention  search cannot speak there in this corpus: bidding heads
-             (pick/partner/bury — ALONE declaration included), leaster
-             play, and alone play until the §17.6 calibration gate
-             passes (then ``--search-alone`` flips alone play into the
-             searched partitions).
+             (pick/partner/bury — ALONE declaration included) and
+             leaster play. Alone-game PLAY is searched by default
+             (operator amendment 2026-08-21: same token-pointer play
+             head as standard play, and the 1v4 determinization has no
+             hidden-partner uncertainty; §17.6 records its noise floor).
   none       eligible-but-unsearched play (the p-schedule passed it
              over), forced nodes, and committee failures: no policy
              loss, still in the value-regression stream.
@@ -256,7 +257,6 @@ def play_corpus_game(task: tuple) -> dict:
     torch.manual_seed((base_seed ^ (game_idx * 0x9E3779B1)) & 0x7FFFFFFF)
     det_rng = random.Random(game_rng.getrandbits(64))
     collect_oracle = bool(init_args["collect_oracle"])
-    search_alone = bool(init_args["search_alone"])
 
     game = Game(partner_selection_mode=mode, seed=game_rng.randint(0, 2**31 - 1))
     agent.reset_recurrent_state()
@@ -296,11 +296,7 @@ def play_corpus_game(task: tuple) -> dict:
                 target_list = None
                 info = None
                 if len(valid_actions) >= 2:
-                    searchable_play = (
-                        head == "play"
-                        and not game.is_leaster
-                        and (search_alone or not game.alone_called)
-                    )
+                    searchable_play = head == "play" and not game.is_leaster
                     if not searchable_play:
                         dset = "retention"
                     else:
@@ -494,11 +490,6 @@ def main() -> int:
         help="fraction of games where material searches ACT (§17.3)",
     )
     ap.add_argument(
-        "--search-alone",
-        action="store_true",
-        help="search alone-game play nodes (behind the §17.6 calibration gate)",
-    )
-    ap.add_argument(
         "--alone-only",
         action="store_true",
         help="calibration mode: keep only games where ALONE was called "
@@ -532,7 +523,6 @@ def main() -> int:
         "seed": args.seed,
         "torch_threads": args.torch_threads,
         "collect_oracle": args.collect_oracle,
-        "search_alone": args.search_alone,
         "alone_only": args.alone_only,
         "iters": args.iters,
         "replicates": args.replicates,
