@@ -1458,3 +1458,168 @@ optimal-for-new-play. Bounds + escape channels:
 Pilot: accept + pre-register the limitation; staleness meters =
 battery pick/alone/leaster/called-card rates + dup h2h across
 accepted iterations; drift triggers channel 2 or 3.
+
+## 17. Phased-offline distillation pilot — pre-registration (2026-08-21)
+
+Operator go on the §16.9 design. Build directive: TWO new scripts in
+`sheepshead/training` — `distill_corpus.py` (corpus generator) and
+`train_distill.py` (supervised trainer) — the league trainer's CLI and
+generation machinery is deliberately NOT reused (its loop is built around
+concurrent PG, weight publishing and gen boundaries, all absent here).
+
+### 17.1 Disagreement map (mined from the §13.3 ceiling node log)
+
+Source: `runs/ceiling_h2h_202608/nodes.jsonl` (9,099 committee-vs-argmax
+node rows, n=500 deals, R=3 @ 1024/1). "Deviated" = 2-of-3 vote winner !=
+policy argmax; includes near-tie noise (the §12.8 self-agreement caveat),
+so these are UPPER bounds on material disagreement — the corpus manifest's
+w>0 material rate per class is the refining instrument.
+
+- By trick: deviation 35.6-41.4%, resolved 87.6->100% (t0->t4). FLAT.
+- Lead 42.4% vs follow/other 37.9%; dev|resolved 48.5% vs 39.9%.
+- Convention cells (lead nodes): called_suit-eligible 57.1% (64.9%
+  dev|resolved, n=201 pooled) — the highest class, matching the known
+  deficit; def_lead 41.4%; partner_lead 43.6%; no-cell leads 42.4%.
+- n_valid gradient: dev|resolved 35.0% (nv2) -> 53.9% (nv6).
+- Adherence flips (policy -> committee-acted): called_suit 45.3 -> 56.7%
+  (the teachable deficit); def_lead_no_trump 97.4 -> 87.3% and
+  partner_trump 96.9 -> 81.5% (search mildly ANTI-convention at these,
+  reproducing E5/§12 — the tie-mass + shrinkage target construction, not
+  emission exclusion, is what keeps this from becoming anti-teaching:
+  near-tie committee opinions shrink toward the policy prior).
+
+VERDICT for the p-schedule: disagreement is BROAD AND FLAT — the data
+supports near-uniform coverage with small boosts, i.e. exactly the
+"modest, data-driven" stratification the operator asked for; anything
+sharply peaked would have been unsupported.
+
+### 17.2 p-schedule (pre-registered)
+
+p(node) = clip(p0 * b_lead^[is_lead] * b_cs^[called_suit_eligible],
+p_min, p_max) with p0 = 0.10, b_lead = 1.25, b_cs = 1.5, p_min = 0.05,
+p_max = 0.25. The nonzero floor is structural (§16.9 addendum 4: PER-style
+annealed bias bound — Schaul et al. 2016 — every eligible class keeps
+coverage). Committee-act games use the same schedule. Iteration 2 refits
+b_* against the manifest's measured material-rate/gap map.
+
+### 17.3 Corpus spec (`distill_corpus.py`)
+
+- theta_k = the clean 8M seed
+  (`runs/league_retention_pg/checkpoints/..._checkpoint_8000000.pt`).
+  Expert = R=3 lockstep committee at 1024/1 with oracle leaves ON
+  theta_k ITSELF. Offline phase purity (AZ/ExIt — Silver et al. 2017;
+  Anthony et al. 2017): nothing updates during generation, so
+  frozen-expert vs closed-loop is moot — expert == acting policy ==
+  anchor, and targets are fixed at train time.
+- Self-play, ALL-SEAT collection (5 episodes per game, per-seat streams),
+  stochastic acting = on-policy state distribution (DAgger — Ross et al.
+  2011); both partner modes alternate; terminal rewards; oracle states
+  collected (keeps the privileged critic trainable for the next
+  certified PG phase / iteration-2 search leaves).
+- Committee-acting games (game-level flag, fraction 0.25 of games,
+  §16.9 addendum 5): at searched nodes where the target is material
+  (w > 0) the seat ACTS the target argmax; everywhere else the policy
+  samples. Every material search on these trajectories is also a label
+  row (search-efficient), and states downstream of improvements enter
+  the corpus (AggreVaTe / scheduled-sampling rationale).
+- Partition annotation per §16.9 addendum 6 exactly: override (w>0
+  target attached), endorsed (searched, w=0), retention (bidding heads,
+  leaster play, alone play+declaration), no-loss (eligible-unsearched,
+  forced, committee-failure). ALONE play stays retention until §17.6
+  passes, then flips to emission via `--search-alone`.
+- ANCHOR IMPLEMENTATION of "theta_k's direct forward pass": the
+  generator stores theta_k's act-time probability vector (the `act()`
+  stash) per anchor row. This IS a direct forward output at the TRUE
+  recurrent state of the realized trajectory; the trainer's replayed
+  unroll reproduces it to replay noise (the standard PPO ratio~1
+  property), so KL(anchor || pi_theta0) ~ 0 at init by construction —
+  and the trick-4 engine-replay artifact (§13 phase 1) cannot enter
+  because the engine's forced replay is never used for anchors.
+- CE targets: `build_ce_search_target` with base_prior = the same
+  act-time stash (§16.6 zero-gradient abstention referent), which adds
+  a `gap` (top-2 pooled-Q separation) to its info dict for the omega
+  weight and telemetry.
+- Node telemetry (`--node-telemetry`): one JSONL row per searched node —
+  class, regime, w, gap, spread, per-replicate top-pair Q diffs — the
+  §17.6 calibration instrument and the map-refinement input.
+- Output: shards of N games (default 200) as torch payloads of per-seat
+  episode event lists (the `store_episode_events` schema + distill
+  keys), plus `manifest.json`: per-class searched/material counts, gap
+  histogram, config echo, ckpt path+hash, git rev.
+- Dose (§16.9 addendum 2): target 30-50k MATERIAL labels + >=100k
+  anchor rows. Measured basis: ~18 unforced play nodes/game across 5
+  seats, mean p ~ 0.11 -> ~2 searches/game; ~5.2 s/committee (8-way
+  routed) -> ~15-25k games, ~6-12 h wall on 8 workers. Anchor rows are
+  free (every unsearched decision).
+
+### 17.4 Trainer spec (`train_distill.py`)
+
+PG OFF: no ratios, no advantages, no entropy controller, no PPO epochs —
+a plain supervised loop over corpus shards (segments -> the existing
+`_build_minibatch_tensors` / `_forward_vectorized` recurrent unroll; the
+distill channels ride alongside via the same pad/flatten alignment).
+
+Per-batch loss (addendum 6, exact forms):
+- OVERRIDE: lambda_ce * mean_override[ omega * CE(t || pi_theta) ],
+  omega = min(exp(gap/beta), omega_max)/omega_max — AWR/CRR-family
+  advantage-weighted regression (Peng et al. 2019; Nair et al. 2020;
+  Wang et al. 2020) with beta = 0.03 (the calibrated epsilon_Q scale,
+  §12.17) and omega_max = e (weights in [1/e, 1] * 1 — soft, bounded).
+- ENDORSED: lambda_end * tau^2 * mean_end[ KL(anchor_tau || pi_tau) ]
+  (KD — Hinton et al. 2015; LwF — Li & Hoiem 2016), tau = 1.0 default,
+  sweep {1, 2}.
+- RETENTION: lambda_ret * tau^2 * mean_ret[ same form ]. Same math,
+  separate lambda + separate telemetry stream (the two early-warning
+  instruments of addendum 6).
+- VALUE: MSE(v, final_score/RETURN_SCALE) at ALL action rows (MC
+  target, gamma=1 terminal — no GAE without PG); aux heads keep the
+  PPO forms/coefficients; oracle head plain MSE + its aux losses when
+  oracle states are present.
+Per-partition MEANS then lambdas = gradient-share mixture knob,
+decoupled from row counts (addendum 4). Defaults lambda_ce/end/ret =
+1.0/0.5/0.5 (~ the 40-50/25-30/25-30 pre-registered shares at observed
+per-row magnitudes); sweep on the FIXED corpus: (1, 0.5, 0.5),
+(1, 0.25, 0.25), (1, 1, 1), and committee-pool batch weight default vs
+2x — 3-4 distills, selected by CERT not train loss.
+
+Optimizer: the agent's existing AdamW groups (actor+encoder, critic) at
+a flat distill LR 1e-4, grad-clip = agent.max_grad_norm, 2-4 epochs,
+10% episode holdout for no-grad CE/KL eval, `greedy_health_probe`
+(n=500, seed=0 — the battery instrument) at every epoch end,
+`agent.save()` checkpoints per epoch.
+
+### 17.5 Cert bars (pilot accept/reject)
+
+Multi-seed battery (n=1000 x 4 seeds, §12.22 standard) on the selected
+sweep arm: t0 called-suit 50s-60s (installed AND retained — the §16.8
+arc peaked 55.5 mid-gen; offline must HOLD it); partner >= 94.5; t0
+trump <= 5%; pick/alone/leaster within oscillation bands of seed
+(staleness meters, addendum 7); NEW leaster-play metrics (addendum 5)
+within bands. Duplicate-bridge h2h (2000 deals/mode): vs theta_k >= 0
+at 2 se, expectation +0.05..+0.18 (the pilot captures part of the
++0.180 +/- 0.029 ceiling; committee-play-on-fixed-bidding staleness is
+already priced into that number); vs absolute anchor no regression.
+FAIL -> the sweep's other arms; all-fail -> §15(c) adapter path.
+
+### 17.6 Alone-node mini-calibration (gate for `--search-alone`)
+
+Run the generator in calibration mode over alone games only
+(`--search-alone --p-base 1.0` on a few hundred alone-containing games),
+read the node telemetry: paired per-replicate top-pair Q-diff noise
+s/sqrt(R) vs the gap spectrum. PASS = alone noise floor <= the
+standard-game 0.006 (§12.8) and implied shrink s2 within ~2x of the
+6.95e-4 calibration; then alone play joins emission for the corpus
+proper. Determinization is 1v4 with no hidden-partner uncertainty, so
+the prior is that search there is MORE faithful, not less (§16.9
+addendum 5).
+
+### 17.7 Execution order
+
+1. Generator + trainer + tests (this commit series).
+2. Generator smoke (tiny run, schema + manifest sanity).
+3. Alone calibration run -> §17.6 verdict recorded here.
+4. Corpus proper (~20k games incl. 25% committee-act, --search-alone
+   iff 17.6 passes) -> manifest map recorded here.
+5. Sweep distills -> cert battery + dup h2h -> verdict.
+Mining command for §17.1 (scratchpad, one-off):
+`uv run python mine_disagreement_map.py` over the ceiling node log.
