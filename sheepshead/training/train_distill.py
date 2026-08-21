@@ -84,7 +84,11 @@ def load_shards(corpus_dir: str) -> list:
         raise SystemExit(f"no corpus shards in {corpus_dir}")
     episodes = []
     for p in paths:
-        episodes.extend(torch.load(p, map_location="cpu")["episodes"])
+        # Shards are this pipeline's own artifacts: event dicts carry numpy
+        # arrays/scalars, which the weights-only unpickler rejects.
+        episodes.extend(
+            torch.load(p, map_location="cpu", weights_only=False)["episodes"]
+        )
     return episodes
 
 

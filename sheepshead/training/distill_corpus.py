@@ -320,6 +320,12 @@ def play_corpus_game(task: tuple) -> dict:
                             p_min=float(init_args["p_min"]),
                             p_max=float(init_args["p_max"]),
                         )
+                        # Calibration mode (§17.6): spend search on alone
+                        # nodes only — the game is discarded otherwise, and
+                        # the unsearched standard rows stay "none" (the
+                        # sampling gate, not the regime gate, skips them).
+                        if init_args.get("alone_only") and not game.alone_called:
+                            p = 0.0
                         if det_rng.random() < p:
                             counts[cls]["searched"] += 1
                             target_list, info, (top_pair, pair_diffs) = _search_node(
@@ -527,6 +533,7 @@ def main() -> int:
         "torch_threads": args.torch_threads,
         "collect_oracle": args.collect_oracle,
         "search_alone": args.search_alone,
+        "alone_only": args.alone_only,
         "iters": args.iters,
         "replicates": args.replicates,
         "d_rollout": args.d_rollout,
