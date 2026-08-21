@@ -327,8 +327,9 @@ def h2h(
 
     SUPERSEDED for the extended-league stop rule by h2h_duplicate (amendment
     2026-07-19): at 2000 deals this instrument's se ≈ 0.055, which makes
-    criterion B (edge >= 0.05 at 2 se) unreachable below +0.11. Kept for
-    comparability with earlier recorded numbers."""
+    criterion B (edge >= 0.05 at 2 se) unreachable below +0.11. Kept ONLY
+    for comparability with earlier recorded numbers — the CLI reaches it
+    via --h2h-legacy; every live workflow uses h2h_duplicate."""
     challenger = load_agent(gen_ckpt)
     incumbent = load_agent(prev_ckpt)
     return paired_edge(challenger, incumbent, incumbent, n_deals, seed=seed)
@@ -405,11 +406,30 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--deals", type=int, default=3996)
     p.add_argument("--seed", type=int, default=PANEL_SEED)
     p.add_argument("--h2h", nargs=2, metavar=("GEN", "PREV"), default=None)
-    p.add_argument("--h2h-deals", type=int, default=2000)
+    p.add_argument(
+        "--h2h-deals",
+        type=int,
+        default=2000,
+        help="deals PER PARTNER MODE for the duplicate instrument "
+        "(2000/mode ~= se 0.015); legacy takes it as total deals",
+    )
+    p.add_argument(
+        "--h2h-legacy",
+        action="store_true",
+        help="use the superseded single-seat paired_edge instrument "
+        "(se ~0.055 at 2000 deals) — ONLY for comparability with numbers "
+        "recorded before the 2026-07-19 duplicate-bridge amendment",
+    )
     args = p.parse_args(argv)
 
     if args.h2h:
-        res = h2h(args.h2h[0], args.h2h[1], n_deals=args.h2h_deals)
+        res = (
+            h2h(args.h2h[0], args.h2h[1], n_deals=args.h2h_deals)
+            if args.h2h_legacy
+            else h2h_duplicate(
+                args.h2h[0], args.h2h[1], n_deals_per_mode=args.h2h_deals
+            )
+        )
         print(json.dumps(res, indent=2))
         return 0
     if not args.ckpts:
