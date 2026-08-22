@@ -1626,8 +1626,39 @@ addendum 5).
 1. Generator + trainer + tests (this commit series).
 2. Generator smoke (tiny run, schema + manifest sanity).
 3. Alone calibration run -> §17.6 verdict recorded here.
-4. Corpus proper (~20k games incl. 25% committee-act, --search-alone
-   iff 17.6 passes) -> manifest map recorded here.
+4. Corpus proper (~20k games incl. 25% committee-act, alone searched
+   by default per the §17.3 amendment) -> manifest map recorded here.
 5. Sweep distills -> cert battery + dup h2h -> verdict.
 Mining command for §17.1 (scratchpad, one-off):
 `uv run python mine_disagreement_map.py` over the ceiling node log.
+
+### 17.6 RESULT (2026-08-21): PASS
+
+Run: `runs/distill_alone_cal_202608` — 2,000 games, 291 alone games
+kept (14.6% incidence), 5,496 telemetry nodes at R=3 @ 1024/1 (p=1 on
+alone play; --alone-only spent zero search elsewhere); 2 committee
+failures total (0.04%).
+
+- Paired-replicate noise floor s/sqrt(R): median 0.0050 (p75 0.0098,
+  p90 0.0172) — BELOW the 0.006 standard-game reference (§12.8). PASS.
+- Implied per-replicate per-action variance: median ~0.05x the
+  standard shrink_s2_global 6.95e-4 — alone committees are far LESS
+  noisy than standard play (the no-hidden-partner prediction). Using
+  the standard s2 therefore OVER-shrinks alone targets (excess
+  abstention — conservative, not harmful). Iteration-2 candidate: an
+  alone-specific shrink_s2 to sharpen.
+- Signal content: material rate 52.0% (mean w 0.378), 19.6% of top-2
+  gaps >= eps_Q 0.03, gap median 0.0078.
+- Per-class: picker cells noisiest (s ~0.02-0.05), defender-follow
+  tight (~0.008); t4 picker rows exactly zero-variance (solved
+  endgame, unanimous committee).
+
+Both pre-registered criteria met; alone play stays in the searched
+partitions (already the default per the §17.3 amendment). Stability
+check: all headline stats within noise of the 825-node interim read.
+
+Step 4 LAUNCHED same day: `runs/distill_corpus_202608`, 20,000 games,
+seed 17, committee-act-frac 0.25, p-schedule defaults, oracle states
+on, node telemetry on, routed encoder; projected ~0.08 g/s => ~3 days
+(the program's long pole; ~2.2 searches/game matches the calibration
+run's density).
