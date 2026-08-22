@@ -509,6 +509,15 @@ def main() -> int:
     ap.add_argument("--p-max", type=float, default=0.25)
     ap.add_argument("--node-telemetry", default=None)
     ap.add_argument(
+        "--start-game",
+        type=int,
+        default=0,
+        help="resume an interrupted run: play game indices [start, games) "
+        "into the same out-dir, continuing its manifest and shard "
+        "numbering (game-index seeding makes each index's deal and "
+        "committee-act draw independent of when it is played)",
+    )
+    ap.add_argument(
         "--routed-encoder",
         nargs="?",
         const="mps",
@@ -538,16 +547,19 @@ def main() -> int:
     }
 
     # Deterministic task schedule: modes alternate; committee-act games are
-    # drawn by index hash at the pre-registered fraction.
+    # drawn sequentially at the pre-registered fraction, so a resume must
+    # burn the draws of already-played indices to keep the schedule
+    # identical to an uninterrupted run.
     sched_rng = random.Random(args.seed ^ 0xD157)
     tasks = []
     for g in range(args.games):
         mode = PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD
-        tasks.append((g, mode, sched_rng.random() < args.committee_act_frac))
+        committee = sched_rng.random() < args.committee_act_frac
+        if g >= args.start_game:
+            tasks.append((g, mode, committee))
 
     import torch
 
-    telemetry_f = open(args.node_telemetry, "w") if args.node_telemetry else None
     manifest = {
         "ckpt": args.ckpt,
         "ckpt_sha256_16": _file_sha256(args.ckpt),
@@ -566,10 +578,56 @@ def main() -> int:
     class_totals: dict[str, dict] = defaultdict(
         lambda: {"nodes": 0, "searched": 0, "override": 0, "endorsed": 0, "failed": 0}
     )
-    shard_episodes: list = []
-    shard_meta: list = []
     shard_idx = 0
     kept = 0
+    if args.start_game > 0:
+        # Resume: continue the prior invocation's manifest, class totals and
+        # shard numbering. Only whole flushed shards survive a kill, so
+        # start-game should be the prior manifest's kept_games boundary;
+        # games played past the last flush are simply regenerated (their
+        # per-index seeding reproduces nothing from the lost buffer — they
+        # are fresh, independent replays of the same indices).
+        prior_path = os.path.join(args.out_dir, "manifest.json")
+        with open(prior_path) as f:
+            prior = json.load(f)
+        for key in (
+            "games",
+            "kept_games",
+            "episodes",
+            "committee_act_games",
+            "committee_acted_nodes",
+        ):
+            manifest[key] = prior[key]
+        manifest["shards"] = prior["shards"]
+        manifest["resumed_at_game"] = args.start_game
+        for cls, c in prior.get("classes", {}).items():
+            class_totals[cls].update(c)
+        shard_idx = len(prior["shards"])
+        kept = prior["kept_games"]
+
+    if (
+        args.node_telemetry
+        and args.start_game > 0
+        and os.path.exists(args.node_telemetry)
+    ):
+        # Drop telemetry rows at or past the resume point (they belong to
+        # games whose episodes died in the unflushed buffer), then append.
+        with open(args.node_telemetry) as f:
+            keep_lines = [
+                line for line in f if json.loads(line).get("game", 0) < args.start_game
+            ]
+        with open(args.node_telemetry, "w") as f:
+            f.writelines(keep_lines)
+        all_gaps.extend(
+            row["gap"]
+            for row in map(json.loads, keep_lines)
+            if row.get("w") is not None and row["w"] > 0.0 and row.get("gap")
+        )
+        telemetry_f = open(args.node_telemetry, "a")
+    else:
+        telemetry_f = open(args.node_telemetry, "w") if args.node_telemetry else None
+    shard_episodes: list = []
+    shard_meta: list = []
     done = 0
     t_start = time.time()
 
