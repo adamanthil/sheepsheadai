@@ -1662,3 +1662,26 @@ seed 17, committee-act-frac 0.25, p-schedule defaults, oracle states
 on, node telemetry on, routed encoder; projected ~0.08 g/s => ~3 days
 (the program's long pole; ~2.2 searches/game matches the calibration
 run's density).
+
+2026-08-23 dose amendment (operator): the corpus STOPS at 20,000 games
+as launched. Measured material yield is ~0.93/game (committee abstains
+at ~50% of searched nodes) => ~18.6k override labels, under the §17.3
+pre-registered 25-50k floor (which had assumed ~2 material/game).
+Operator accepts 18.6k: the attempt-11/12 installation phases showed
+teaching visibly landing at ~6k material labels, so the dose carries
+~3x margin over the demonstrated-effective quantity; no extension run.
+Also amended 2026-08-22 (operator request): train/holdout convention
+telemetry added to the trainer (def trump-lead + partner trump-lead
+derived from stored masks, full-corpus coverage; called-suit adherent
+ids stored by the generator from game 8,000 => ~60% coverage incl.
+proportional holdout share; e4d0f6c) — the corpus run was restarted at
+the 8,000-game flush boundary to carry the called-suit fields.
+
+2026-08-22 interruption note: the overnight session restart reaped the
+background run at 4,075 games (20 shards / 4,000 games banked; ~75
+unflushed games lost). Resume support added to the generator
+(--start-game, 83d19a3) and the run RESUMED from game 4,000 with
+operator approval — indices 4,000-4,074 are fresh independent replays
+(per-index seeding), telemetry truncated at the boundary, shard
+numbering and manifest continuous. Observed steady rate 0.10 g/s =>
+remaining ~16k games ~1.9 days.
