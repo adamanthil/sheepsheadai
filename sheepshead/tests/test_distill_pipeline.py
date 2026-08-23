@@ -303,6 +303,69 @@ def test_channel_alignment_and_loss_masking():
         assert stats["retention_kl"] < 1e-3
 
 
+def test_convention_telemetry_rates():
+    """convention_rows + accumulate + report on hand-built rows: a defender
+    lead holding both classes (also called-suit eligible), a partner lead,
+    and an ineligible follow row."""
+    from sheepshead import ACTIONS
+
+    agent = _fresh_agent()
+    n = agent.action_size
+    play_ids = [i + 1 for i, name in enumerate(ACTIONS) if name.startswith("PLAY ")]
+    from sheepshead import TRUMP
+
+    trump_id = next(a for a in play_ids if ACTIONS[a - 1][5:] in TRUMP)
+    fail_id = next(a for a in play_ids if ACTIONS[a - 1][5:] not in TRUMP)
+
+    def mask_for(ids):
+        m = torch.zeros(n, dtype=torch.bool)
+        for a in ids:
+            m[a - 1] = True
+        return m
+
+    agent.events = [
+        {
+            "kind": "action",
+            "node_class": "std|t0-defender-lead",
+            "mask": mask_for([trump_id, fail_id]),
+            "conv_cs_ids": [fail_id],
+        },
+        {
+            "kind": "action",
+            "node_class": "std|t1-partner-lead",
+            "mask": mask_for([trump_id, fail_id]),
+            "conv_cs_ids": None,
+        },
+        {
+            "kind": "action",
+            "node_class": "std|t1-defender-follow",
+            "mask": mask_for([trump_id, fail_id]),
+            "conv_cs_ids": None,
+        },
+    ]
+    batch = [(0, 2)]
+    kinds = ["action"] * 3
+    rows = train_distill.convention_rows(agent, batch, kinds)
+    assert len(rows) == 3
+    assert {e[0] for e in rows[0]} == {"def_trump_lead", "called_suit_lead"}
+    assert [e[0] for e in rows[1]] == ["partner_trump_lead"]
+    assert rows[2] == []
+
+    # Greedy plays: fail at the defender lead, trump at the partner lead.
+    logits = torch.full((3, n), -1e9)
+    logits[0, fail_id - 1] = 1.0
+    logits[1, trump_id - 1] = 1.0
+    logits[2, fail_id - 1] = 1.0
+    counts: dict = {}
+    train_distill.accumulate_conventions(counts, rows, logits)
+    report = train_distill.convention_report(counts)
+    assert report["t0_def_trump_lead_rate"] == 0.0  # led fail, not trump
+    assert report["t0_called_suit_lead_rate"] == 100.0  # fail IS the called suit
+    assert report["partner_trump_lead_rate"] == 100.0
+    assert "t0_partner_trump_lead_rate" not in report  # partner row was t1
+    assert report["def_trump_lead_n"] == 1
+
+
 def test_split_by_game_keeps_siblings_together():
     # 40 synthetic episodes = 8 games of 5; tag each episode with its game.
     episodes = [

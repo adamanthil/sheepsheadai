@@ -62,6 +62,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from sheepshead import ACTIONS, TRUMP
 from sheepshead.agent import ppo as ppo_module
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import RETURN_SCALE, greedy_health_probe
@@ -145,6 +146,8 @@ def store_episodes(agent, episodes: list) -> None:
             src = next(src_actions)
             rec["distill_set"] = SET_CODES.get(src.get("distill_set", "none"), 0)
             rec["search_gap"] = float(src.get("search_gap", 0.0) or 0.0)
+            rec["node_class"] = src.get("node_class", "")
+            rec["conv_cs_ids"] = src.get("conv_cs_ids")
             rec["anchor_probs"] = densify(
                 src.get("anchor_probs"), src["valid_actions"], agent.action_size
             )
@@ -194,6 +197,96 @@ def flat_channels(agent, batch, kinds):
     anchor_bt = pad(anchor_list, lengths, 0.0)
     anchor_flat = anchor_bt.view(-1, anchor_bt.size(-1))[flat_mask]
     return set_flat, gap_flat, anchor_flat
+
+
+_IS_PLAY = [name.startswith("PLAY ") for name in ACTIONS]
+_IS_TRUMP_PLAY = [name.startswith("PLAY ") and name[5:] in TRUMP for name in ACTIONS]
+
+
+def convention_rows(agent, batch, kinds):
+    """Per-action-row convention-telemetry annotations, aligned with the
+    flatten path's row order: a list (one entry per flat action row) of
+    ``(conv_name, trick, tracked_action_id_set)`` tuples (empty when the
+    row is convention-ineligible; a called-suit-eligible defender lead
+    carries BOTH its instruments, matching the battery's independent
+    definitions).
+
+    The three §17.4-amendment conventions, battery orientations:
+      - def_trump_lead: standard-game defender lead holding both classes;
+        tracked = trump leads (rate LOWER = better, t0 = the historical
+        leak metric).
+      - partner_trump_lead: partner lead holding both; tracked = trump
+        (higher = better).
+      - called_suit_lead: generation-time eligibility (the called card is
+        not reconstructible from the stored row); tracked = the adherent
+        ids the corpus generator stored in ``conv_cs_ids`` (higher =
+        better); rows from before that field existed don't contribute.
+    Eligibility for the mask-derived pair: ``node_class`` says
+    std|t{k}-{role}-lead and the legal set (= the hand, at a lead)
+    contains both a trump and a fail play."""
+    rows = []
+    for seg_start, seg_end in batch:
+        for i in range(seg_start, seg_end + 1):
+            if kinds[i] != "action":
+                continue
+            ev = agent.events[i]
+            cls = ev.get("node_class", "") or ""
+            entries = []
+            if cls.startswith("std|") and cls.endswith("-lead"):
+                trick = int(cls.split("|")[1].split("-")[0][1:])
+                mask = ev["mask"]
+                valid = [a + 1 for a in range(len(mask)) if bool(mask[a])]
+                trump_plays = {a for a in valid if _IS_TRUMP_PLAY[a - 1]}
+                fail_plays = {a for a in valid if _IS_PLAY[a - 1]} - trump_plays
+                both = bool(trump_plays and fail_plays)
+                if "-defender-" in cls:
+                    if both:
+                        entries.append(("def_trump_lead", trick, trump_plays))
+                    if ev.get("conv_cs_ids"):
+                        entries.append(
+                            ("called_suit_lead", trick, set(ev["conv_cs_ids"]))
+                        )
+                elif "-partner-" in cls and both:
+                    entries.append(("partner_trump_lead", trick, trump_plays))
+            rows.append(entries)
+    return rows
+
+
+def accumulate_conventions(conv_counts, conv_rows, logits_flat):
+    """Fold one minibatch's greedy convention behavior into
+    ``conv_counts[(name, trick)] = [eligible, led_tracked_class]`` (masked
+    logits argmax = the greedy action, the same semantics as the
+    battery)."""
+    greedy = logits_flat.argmax(dim=-1)
+    for row_idx, entries in enumerate(conv_rows):
+        for name, trick, tracked in entries:
+            bin_ = conv_counts.setdefault((name, trick), [0, 0])
+            bin_[0] += 1
+            bin_[1] += int(int(greedy[row_idx].item()) + 1 in tracked)
+
+
+def convention_report(conv_counts) -> dict:
+    """Battery-oriented rates from the accumulated counts: per convention,
+    the pooled rate plus t0 (the deployable-priority bin)."""
+    out = {}
+    for name in ("def_trump_lead", "partner_trump_lead", "called_suit_lead"):
+        pooled = [0, 0]
+        t0 = [0, 0]
+        for (n, trick), (elig, led) in conv_counts.items():
+            if n != name:
+                continue
+            pooled[0] += elig
+            pooled[1] += led
+            if trick == 0:
+                t0[0] += elig
+                t0[1] += led
+        if pooled[0]:
+            out[f"{name}_rate"] = 100.0 * pooled[1] / pooled[0]
+            out[f"{name}_n"] = pooled[0]
+        if t0[0]:
+            out[f"t0_{name}_rate"] = 100.0 * t0[1] / t0[0]
+            out[f"t0_{name}_n"] = t0[0]
+    return out
 
 
 def omega_weights(gap_flat: torch.Tensor, beta: float, omega_max: float):
@@ -353,6 +446,7 @@ def run_epoch(agent, episodes, args, train: bool):
     row-weighted mean telemetry."""
     totals: dict[str, float] = {}
     weights: dict[str, float] = {}
+    conv_counts: dict = {}
     steps = 0
     order = list(range(len(episodes)))
     if train:
@@ -382,6 +476,11 @@ def run_epoch(agent, episodes, args, train: bool):
                 if flat is None:
                     continue
                 dchan = flat_channels(agent, batch, kinds)
+                accumulate_conventions(
+                    conv_counts,
+                    convention_rows(agent, batch, kinds),
+                    flat.logits_flat.detach(),
+                )
                 total, stats = distill_losses(
                     agent, minibatch, forward, flat, dchan, args
                 )
@@ -441,7 +540,9 @@ def run_epoch(agent, episodes, args, train: bool):
                 totals[key] = totals.get(key, 0.0) + stats[key]
                 weights[key] = 1.0
     agent.reset_storage()
-    return {k: totals[k] / max(weights.get(k, 1.0), 1e-9) for k in totals}, steps
+    out = {k: totals[k] / max(weights.get(k, 1.0), 1e-9) for k in totals}
+    out.update(convention_report(conv_counts))
+    return out, steps
 
 
 def fmt_stats(stats: dict) -> str:
@@ -464,6 +565,15 @@ def fmt_stats(stats: dict) -> str:
             stats.get("retention_rows", 0),
         )
     )
+    for k in (
+        "t0_def_trump_lead_rate",
+        "def_trump_lead_rate",
+        "partner_trump_lead_rate",
+        "t0_called_suit_lead_rate",
+        "called_suit_lead_rate",
+    ):
+        if k in stats:
+            parts.append(f"{k} {stats[k]:.1f} (n={stats[k[:-5] + '_n']:.0f})")
     return "  ".join(parts)
 
 

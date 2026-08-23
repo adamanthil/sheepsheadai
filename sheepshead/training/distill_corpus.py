@@ -73,6 +73,7 @@ from multiprocessing import get_context
 import numpy as np
 
 from sheepshead import (
+    ACTIONS,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     TRUMP,
@@ -295,6 +296,7 @@ def play_corpus_game(task: tuple) -> dict:
                 dset = "none"
                 target_list = None
                 info = None
+                cs_ids = None
                 if len(valid_actions) >= 2:
                     searchable_play = head == "play" and not game.is_leaster
                     if not searchable_play:
@@ -307,6 +309,21 @@ def play_corpus_game(task: tuple) -> dict:
                             )
                         else:
                             is_lead, cs_elig = lead_features(game, player)
+                        if cs_elig:
+                            # Adherent called-suit leads for the trainer's
+                            # convention telemetry (§17.4 amendment): the
+                            # called card / suit-played status exist only
+                            # here at generation time — def-lead and
+                            # partner-lead adherence are derivable from the
+                            # stored mask, called-suit is not.
+                            called = game.called_card
+                            cs_ids = [
+                                a
+                                for a in sorted(valid_actions)
+                                if ACTIONS[a - 1].startswith("PLAY ")
+                                and ACTIONS[a - 1][5:] not in TRUMP
+                                and ACTIONS[a - 1][-1] == called[-1]
+                            ]
                         p = schedule_p(
                             is_lead,
                             cs_elig,
@@ -383,6 +400,7 @@ def play_corpus_game(task: tuple) -> dict:
                     # Distill annotations (§17.3)
                     "distill_set": dset,
                     "node_class": cls,
+                    "conv_cs_ids": cs_ids,
                     "has_search_target": dset == "override",
                     "search_target": target_list if dset == "override" else None,
                     "search_gap": float(info["gap"]) if info else 0.0,
