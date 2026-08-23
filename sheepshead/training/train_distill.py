@@ -92,6 +92,28 @@ def load_shards(corpus_dir: str) -> list:
     return episodes
 
 
+def split_by_game(episodes: list, holdout_frac: float, seed: int) -> tuple[list, list]:
+    """(train, holdout) split at GAME granularity.
+
+    Every corpus game contributes five per-seat episodes (contiguous in
+    shard order) that share one deal and one outcome — splitting at the
+    episode level would put siblings of the same deal on both sides and
+    bias the holdout telemetry optimistic. Games are the exchangeable
+    unit, so the shuffle and the cut both happen over 5-episode groups.
+    Seed-deterministic: every sweep arm sees the identical split."""
+    if len(episodes) % 5 != 0:
+        raise SystemExit(
+            f"corpus episode count {len(episodes)} is not a multiple of 5 "
+            "(all-seat collection guarantees 5 per game)"
+        )
+    games = [episodes[i : i + 5] for i in range(0, len(episodes), 5)]
+    random.Random(seed).shuffle(games)
+    n_holdout_games = int(len(games) * holdout_frac)
+    holdout = [ep for game in games[:n_holdout_games] for ep in game]
+    train = [ep for game in games[n_holdout_games:] for ep in game]
+    return train, holdout
+
+
 def densify(probs: list | None, valid_actions, action_size: int) -> list:
     """Anchor distribution over sorted(valid) -> fixed-width vector
     (zeros off the legal set), mirroring the search-target densification
@@ -482,12 +504,10 @@ def main() -> int:
     agent.set_learning_rates(actor_lr=args.lr, critic_lr=args.lr)
 
     episodes = load_shards(args.corpus_dir)
-    rng = random.Random(args.seed)
-    rng.shuffle(episodes)
-    n_holdout = int(len(episodes) * args.holdout_frac)
-    holdout, train_eps = episodes[:n_holdout], episodes[n_holdout:]
+    train_eps, holdout = split_by_game(episodes, args.holdout_frac, args.seed)
     print(
-        f"corpus: {len(train_eps)} train / {len(holdout)} holdout episodes",
+        f"corpus: {len(train_eps)} train / {len(holdout)} holdout episodes "
+        f"(game-level split)",
         flush=True,
     )
 

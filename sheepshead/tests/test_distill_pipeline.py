@@ -303,6 +303,24 @@ def test_channel_alignment_and_loss_masking():
         assert stats["retention_kl"] < 1e-3
 
 
+def test_split_by_game_keeps_siblings_together():
+    # 40 synthetic episodes = 8 games of 5; tag each episode with its game.
+    episodes = [
+        [{"kind": "observation", "game": g}] for g in range(8) for _ in range(5)
+    ]
+    train, hold = train_distill.split_by_game(episodes, holdout_frac=0.25, seed=3)
+    assert len(train) + len(hold) == 40
+    assert len(hold) == 10  # 2 games x 5 seats
+    hold_games = {ep[0]["game"] for ep in hold}
+    train_games = {ep[0]["game"] for ep in train}
+    assert hold_games.isdisjoint(train_games)
+    # deterministic given the seed
+    train2, hold2 = train_distill.split_by_game(episodes, holdout_frac=0.25, seed=3)
+    assert [ep[0]["game"] for ep in hold2] == [ep[0]["game"] for ep in hold]
+    with pytest.raises(SystemExit):
+        train_distill.split_by_game(episodes[:7], 0.25, 3)
+
+
 def test_run_epoch_steps_and_updates_weights():
     agent = _fresh_agent()
     episodes = []
