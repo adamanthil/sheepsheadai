@@ -641,9 +641,13 @@ def main() -> int:
             for row in map(json.loads, keep_lines)
             if row.get("w") is not None and row["w"] > 0.0 and row.get("gap")
         )
-        telemetry_f = open(args.node_telemetry, "a")
+        telemetry_f = open(args.node_telemetry, "a", buffering=1 << 20)
     else:
-        telemetry_f = open(args.node_telemetry, "w") if args.node_telemetry else None
+        telemetry_f = (
+            open(args.node_telemetry, "w", buffering=1 << 20)
+            if args.node_telemetry
+            else None
+        )
     shard_episodes: list = []
     shard_meta: list = []
     done = 0
@@ -662,6 +666,11 @@ def main() -> int:
         shard_idx += 1
         shard_episodes = []
         shard_meta = []
+        if telemetry_f is not None:
+            # Telemetry durability is shard-granular: resume drops rows past
+            # --start-game, so flushing between shards buys nothing and costs
+            # one fs event per game (fseventsd fan-out to every watcher).
+            telemetry_f.flush()
 
     def write_manifest():
         for cls, c in class_totals.items():
@@ -699,7 +708,6 @@ def main() -> int:
             if telemetry_f is not None:
                 for row in res["telemetry"]:
                     telemetry_f.write(json.dumps(row) + "\n")
-                telemetry_f.flush()
             shard_episodes.extend(res["episodes"])
             shard_meta.append(
                 {
