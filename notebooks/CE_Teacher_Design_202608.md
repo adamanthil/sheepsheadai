@@ -1720,3 +1720,25 @@ lambda_ce=1, tau=1, 3 epochs, seed 0 (same game-level split all
 arms), 500-game greedy probe per epoch -> runs/distill_pilot_{a,b,c}.
 Cert battery + dup-bridge h2h vs theta_k follows per §17.5; selection
 by cert, never train loss (§12.8).
+
+Arm-a epoch-1 probe (first phase-pure installation evidence):
+called-suit 50.3 (baseline 44.7 -> inside the 50s-60s band in ONE
+epoch), partner 97.5, t0-trump 0.0, fat/nopoint 65.3/14.2 (~baseline),
+top1min_med 6.0; watch item: spread_med 2.9 (above the 2.7 attempt-8
+line, below historical ~3.6) — stop-relevant only if it TRENDS down
+across epochs.
+
+OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
+50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
+of additional eligible leads sit in the tie band (search abstained;
+called-suit and an alternative fail equally valid). Generalizing into
+that band — rates ABOVE 60 — is MORE ideal from a human-convention
+standpoint provided EV is not sacrificed (h2h >= 0 gates it). Do NOT
+read >60 as overshoot. Structural link: tie-band rows ARE the
+endorsed partition (w=0 => KL-anchored to theta_k), so lambda_end
+directly prices this generalization — arm b (0.25) permits it most,
+arm c (1.0) resists it most; the operator preference makes b's
+region the desired outcome if conventions + h2h hold. Second note:
+t0 defender trump-lead 0.0 is the priority read — this convention is
+EV-positive and any leak > 0 is jarring at a human table; treat 0 as
+the working target, the pre-registered <=5 as a hard outer bar only.
