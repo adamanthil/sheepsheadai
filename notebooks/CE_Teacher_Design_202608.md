@@ -1685,3 +1685,38 @@ operator approval — indices 4,000-4,074 are fresh independent replays
 (per-index seeding), telemetry truncated at the boundary, shard
 numbering and manifest continuous. Observed steady rate 0.10 g/s =>
 remaining ~16k games ~1.9 days.
+
+### 17.7 Step 4 COMPLETE (2026-08-26): corpus manifest map
+
+DONE: 20,000 games / 100,000 episodes / 100 shards (2.1 GB), ckpt
+b56ba26c5c0977dc, final git rev e4d0f6c. Totals: 708,830 action
+nodes, 37,332 searched (1.87/game), 18,541 override + 18,783
+endorsed (50.3% abstention — matches the ~50% projection), 8
+committee failures (0.02%). Committee-act: 5,024 games flagged
+(25.1%), 1,771 nodes actually re-acted (the argmax differed).
+Override-gap percentiles: p50 0.019, p75 0.043, p90 0.086, p99 0.333
+(vs eps_Q 0.03 => ~35-40% of override rows are above materiality by
+themselves; omega weighting handles the rest).
+
+Class map (top override mass): defender-follow t0-t3 (~1.1-1.4k
+override each at ~41-49% override|searched), then the TARGET cells —
+std|t0-defender-lead 1,002 override of 1,212 searched (83%
+override|searched, the highest large-cell rate: search disagrees
+most exactly where the conventions live), t1-defender-lead 732/1,149
+(64%), picker-follow/lead t1-t2 ~600-800 each. Label mass is
+concentrated where §12 wanted it without any cell-picking.
+
+Wall-clock post-mortem: ~4.5 days vs ~3 projected — two harness
+reaps (resumes at 4,000 / 8,000) plus a machine-wide slowdown in the
+final 2 days (fseventsd ~2 cores, load avg 40-120 on 10 cores,
+153-day uptime; run throughput 0.10 -> ~0.015-0.02 g/s; workers
+memory-flat throughout, so external contention, not a leak — audit
+2026-08-25). Mitigation for future runs: telemetry flushes batched
+to shard granularity (9ac493d).
+
+Step 5 LAUNCHED (detached, sequential): lambda-grid arms a/b/c =
+(lambda_end, lambda_ret) (0.5,0.5) / (0.25,0.25) / (1,1) at
+lambda_ce=1, tau=1, 3 epochs, seed 0 (same game-level split all
+arms), 500-game greedy probe per epoch -> runs/distill_pilot_{a,b,c}.
+Cert battery + dup-bridge h2h vs theta_k follows per §17.5; selection
+by cert, never train loss (§12.8).
