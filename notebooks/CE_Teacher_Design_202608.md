@@ -1767,6 +1767,51 @@ greedy probe n=1000 x 4 fresh seeds (multi-seed §12.22 standard)
 bars = §17.5 + the operator notes below (t0 target 0; called-suit
 >60 desirable, not overshoot; h2h >= 0 gates EV).
 
+### 17.9 Cert verdict (2026-08-28): conventions PASS, EV FAIL — and a new lever
+
+Battery (n=1000 x 4 fresh seeds + h2h_duplicate 2000/mode vs
+theta_k; runs/distill_cert_202608/cert_results.jsonl):
+
+- arm_a_ep1: called-suit 47.7 pooled (45.7/46.6/48.0/50.6), t0
+  0.25, partner 97.5, pick 37.0 (baseline 32.9), leaster ~5;
+  h2h edge -0.0697 se 0.0097 (called -0.075 / jd -0.065). FAIL.
+- arm_c_ep1: called-suit 49.3 (47.2/52.6/45.6/51.8), t0 0.6,
+  partner 96.7, pick 37.3; h2h edge -0.0276 se 0.0089
+  (called -0.026 / jd -0.029). FAIL.
+
+Both candidates fail the h2h >= 0 bar. Convention teaching is real
+but SMALLER than the epoch probes advertised (pooled +3.0/+4.6 over
+the 44.7 baseline, at/below the band floor — the training-loop
+seed-0 reads of ~50 were the optimistic tail). Safety bars pass
+(t0 at-or-below the seed's own leak; partner >= 96.7). Both arms
+carry an IDENTICAL ~+4.4 pick-rate drift (leaster halves) that the
+corpus never taught.
+
+KEY FINDING — EV loss scales inversely with anchor weight at EQUAL
+installation: a (-0.070) vs c (-0.028), diff 0.042 +/- 0.013
+(3.2 sigma) with matched conventions AND matched pick drift. The
+bidding-drift hypothesis therefore CANNOT explain the arm gap; the
+dominant EV damage is anchor-suppressible play degradation —
+label-noise fitting on the ~50%-self-agreement committee targets
+(§12.8) that stronger anchors squeeze out without costing the
+taught conventions. The §13.3 ceiling (+0.18) measured
+committee-ACTED play; distilling argmaxes wholesale pays a noise
+tax the ceiling never priced.
+
+Iteration-2 levers (operator to choose; all reuse the corpus, no
+new search):
+(1) ANCHOR ESCALATION: lambda_end=lambda_ret=2-4, 1 epoch —
+    extrapolates the a->c trend; cheapest, directly targeted at
+    the measured mechanism. Risk: installation finally caps.
+(2) HEAD-ROUTING DIAGNOSTIC: theta_k bidding + distilled play
+    through the duplicate h2h — prices the pick drift exactly
+    (~50 lines, wrapper agent, both recurrent streams).
+(3) TIE-BAND CLASS POOLING (§12.19 fallback): adds the missing
+    tie-row gradient for called-suit generalization >60 — value
+    only after EV is fixed; pooling won't rescue a -0.03 deficit.
+(4) Dose reduction: LR/step cuts (fractional epoch) — blunter
+    than (1), same intent.
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
