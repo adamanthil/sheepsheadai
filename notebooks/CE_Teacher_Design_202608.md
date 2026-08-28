@@ -1812,6 +1812,36 @@ new search):
 (4) Dose reduction: LR/step cuts (fractional epoch) — blunter
     than (1), same intent.
 
+### 17.10 Iteration 2 pre-registration (2026-08-28): levers 1+2
+
+Operator selected §17.9 levers (1) anchor escalation and (2)
+head-routing diagnostic. Pipeline (detached, sequential:
+runs/distill_sweep2_202608): arms d (lambda_end=lambda_ret=2) and
+e (=4), ONE epoch each (the sweep's dose finding), same corpus /
+seed 0 split / probes; then cert battery (n=1000 x 4 + dup h2h)
+on both; then head-routed h2h — theta_k BIDDING + arm_c_ep1 PLAY
+vs theta_k anchor (sheepshead/analysis/head_routed_h2h.py; both
+sub-agents advance recurrent streams on the identical realized
+trajectory — PPO act() folds only the encoded state into memory,
+never the chosen action, so the chimera cannot desync; same
+seed-42 deal pipeline as h2h_duplicate => row-comparable with
+§17.9).
+
+Pre-registered readings:
+- Escalation trend: a(0.5) -0.070 -> c(1.0) -0.028 halved the loss
+  per anchor doubling. NAIVE extrapolation d(2) ~ -0.007, e(4)
+  ~ +0.003; expect diminishing returns => d in [-0.02, +0.01],
+  e within noise of d. PASS = h2h >= 0 with called-suit >= +3
+  over the 44.7 baseline and t0/partner bars held. FAILURE MODE
+  to watch: installation finally capping (called-suit -> baseline)
+  — anchors were NOT the cap at 0.5-1.0, but 2-4 is new territory.
+- Routed diagnostic: edge(route) - edge(arm_c) = the EV recovered
+  by undoing arm c's bidding drift. route ~ 0 => deficit was
+  bidding (fix = bidding-head anchor escalation or routing at
+  deploy); route ~ -0.028 => play damage persists at lambda=1
+  (raising the stakes on arms d/e); intermediate => both
+  contribute, sized by the split.
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
