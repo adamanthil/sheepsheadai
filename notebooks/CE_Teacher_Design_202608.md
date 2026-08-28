@@ -1728,6 +1728,45 @@ top1min_med 6.0; watch item: spread_med 2.9 (above the 2.7 attempt-8
 line, below historical ~3.6) — stop-relevant only if it TRENDS down
 across epochs.
 
+### 17.8 Step-5 sweep RESULT (2026-08-28): dose, not mixture
+
+All 9 epoch-checkpoints + paired 500-game probes (fixed seed 0 =>
+same deals every read) banked; rc=0 all arms. Probe trajectories
+(called-suit / t0-def-trump / partner):
+
+- arm a (0.5): 50.3/0.0/97.5 -> 46.9/1.2/98.1 -> 50.0/1.3/98.7;
+  pick drifts 34.3 -> 37.8 -> 37.5 (baseline 32.9).
+- arm b (0.25): 49.5/0.0/94.7 -> 42.8/2.0/83.3 -> 49.0/0.4/100.0;
+  the ep-2 partner trough (83.3) exceeds attempt-9 amplitude.
+- arm c (1.0): 47.8/0.4/96.2 -> 40.4/6.2/97.4 -> 50.2/1.6/100.0;
+  ep-2 t0 leak 6.2 = worst priority-metric read of the sweep.
+
+FINDINGS. (1) DOSE NOT MIXTURE: epoch 1 installs called-suit to
+~48-50 at EVERY lambda (2.5-pt spread across a 4x anchor range);
+epoch 2+ damages every arm — lambda only selects the failure mode
+(a: mild t0 leak + pick drift; b: partner collapse; c: t0 leak).
+Post-installation passes fit label noise (§12.8 ceiling made
+visible). (2) OSCILLATION NOT DECAY: ep-3 rebounds everywhere
+(b partner 83.3 -> 100.0; c t0 6.2 -> 1.6); lambda maps to
+oscillation AMPLITUDE (a ± few pts, b ±15). Single-epoch reads are
+luck-of-phase — §12.22 lesson reconfirmed in pure supervision.
+(3) ANCHORS DON'T CAP INSTALLATION: 4x anchor weight barely moves
+epoch-1 called-suit => tie-band generalization (>60) needs a
+tie-row gradient (class pooling, §12.19 fallback), not looser
+anchors. (4) Mean anchor KL stays low (0.09-0.15) through argmax
+flips — KL constrains the distribution, not the decisions (§12.14
+mechanism, supervised edition). (5) Train/holdout streams stayed
+nominal through ALL damage — probes are the only instrument that
+sees it (§12.14 on/off-support gap).
+
+Shortlist to cert: arm_a_ep1 PRIMARY (50.3/0.0/97.5, least drift),
+arm_c_ep1 challenger (47.8/0.4/96.2, tightest anchors), b_ep1
+reserve. Cert LAUNCHED (runs/distill_cert_202608, detached):
+greedy probe n=1000 x 4 fresh seeds (multi-seed §12.22 standard)
++ h2h_duplicate vs theta_k (2000/mode, se ~0.015) per candidate;
+bars = §17.5 + the operator notes below (t0 target 0; called-suit
+>60 desirable, not overshoot; h2h >= 0 gates EV).
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
