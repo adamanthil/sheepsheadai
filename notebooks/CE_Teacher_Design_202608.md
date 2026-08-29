@@ -1993,6 +1993,30 @@ ITERATION-4 MENU (operator to choose; each arm now ~1-3 h train +
     attribution rung before committing to (1)'s mechanism.
 (3) Run (2) then (1): rigorous order, ~day total at new speeds.
 
+### 17.14 Iteration-4 lever 1 pre-registration + launch (2026-08-29)
+
+Operator chose (1) first. BUILT --stop-grad-value (tested: encoder
+grads byte-identical to a value-free backward; critic still gets
+the full value-MSE gradient via manual add — gradient surgery, no
+ppo.py change, no double forward): value MSE trains the critic
+ONLY; the shared trunk sees zero value-stream gradient; ALL aux
+heads keep flowing to the trunk (ballast preserved — the lever
+splits arm g's stream into value-MSE drag vs aux protection and
+removes only the former's trunk coupling).
+
+ARM i LAUNCHED: arm-c config (lambda=1, 1 epoch, seed 0, aux +
+oracle on) + --stop-grad-value -> runs/distill_pilot_i; cert
+battery (probes n=1000 x 4 + dup h2h). Pre-registered readings:
+- PASS: partner >= 94.5 (aux ballast intact), called-suit >= arm
+  c's 49.3 (CE no longer fighting value drift), h2h > -0.012
+  (value-drag share removed; ideally within noise of 0).
+- Value-MSE drag confirmed if h2h improves materially vs c's
+  -0.028 at held conventions; aux-drag indicted instead if h2h
+  stays at floor (then lever 2 splits g's -0.016 directly).
+- Critic calibration retained (value head still trained) for the
+  next phase — value_mse telemetry should track arm c's, not arm
+  h's untrained drift.
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
