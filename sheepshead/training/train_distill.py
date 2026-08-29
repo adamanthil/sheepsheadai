@@ -374,7 +374,12 @@ def distill_losses(agent, minibatch, forward, flat, dchan, args):
     # the oracle) so only the policy losses touch the shared trunk.
     if getattr(args, "no_value_aux", False):
         return total, stats
-    total = total + agent.value_loss_coeff * value_loss
+    # §17.13 lever 1 (--stop-grad-value): the value MSE is EXCLUDED from
+    # the joint backward — run_epoch routes its gradient to critic
+    # parameters only (value_head_grads), so the shared trunk never sees
+    # it while the aux ballast below keeps flowing.
+    if not getattr(args, "stop_grad_value", False):
+        total = total + agent.value_loss_coeff * value_loss
 
     if agent.critic.has_aux_heads:
         win_loss = F.binary_cross_entropy_with_logits(
@@ -446,6 +451,19 @@ def oracle_loss_for_batch(agent, batch, kinds, minibatch):
 # --------------------------------------------------------------------------- #
 # Epoch loops
 # --------------------------------------------------------------------------- #
+def value_head_grads(agent, flat):
+    """Gradient of the (coeff-scaled) value MSE w.r.t. CRITIC parameters
+    only (§17.13 lever 1). Because grads w.r.t. critic params never route
+    through encoder params, adding these by hand after the joint backward
+    trains the value head/trunk normally while the SHARED trunk receives
+    zero value-stream gradient — the surgical version of freezing the
+    value path without giving up critic calibration."""
+    scaled = agent.value_loss_coeff * F.mse_loss(flat.values_flat, flat.returns_flat)
+    params = [p for p in agent.critic.parameters() if p.requires_grad]
+    grads = torch.autograd.grad(scaled, params, retain_graph=True, allow_unused=True)
+    return params, grads
+
+
 def run_epoch(agent, episodes, args, train: bool, frozen=None):
     """One pass over ``episodes`` in buffer-sized chunks. Returns the
     row-weighted mean telemetry.
@@ -524,7 +542,14 @@ def run_epoch(agent, episodes, args, train: bool, frozen=None):
                 agent.critic_optimizer.zero_grad()
                 if agent.oracle_optimizer is not None:
                     agent.oracle_optimizer.zero_grad()
+                sg_value = getattr(args, "stop_grad_value", False)
+                if sg_value:
+                    v_params, v_grads = value_head_grads(agent, flat)
                 total.backward()
+                if sg_value:
+                    for p, g in zip(v_params, v_grads):
+                        if g is not None:
+                            p.grad = g if p.grad is None else p.grad + g
                 torch.nn.utils.clip_grad_norm_(
                     agent.actor.parameters(), agent.max_grad_norm
                 )
@@ -628,6 +653,14 @@ def main() -> int:
         help="anchor targets from a frozen theta_k forward over the "
         "trainer's own replayed unroll instead of the stored act-time "
         "stashes (§17.11: init KL == 0 by construction)",
+    )
+    ap.add_argument(
+        "--stop-grad-value",
+        dest="stop_grad_value",
+        action="store_true",
+        help="value MSE trains the critic only — zero value-stream "
+        "gradient reaches the shared trunk; aux ballast unaffected "
+        "(§17.13 iteration-4 lever 1)",
     )
     ap.add_argument(
         "--no-value-aux",

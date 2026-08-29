@@ -340,6 +340,52 @@ def test_recomputed_anchors_zero_at_init():
     # cannot reproduce.
 
 
+def test_stop_grad_value_surgery():
+    """§17.13 lever 1: with --stop-grad-value, the shared trunk (encoder)
+    receives EXACTLY the gradients of the non-value losses, while the
+    critic still receives the value-MSE gradient via the manual add."""
+    agent = _fresh_agent()
+    res = _generate_game(agent, game_idx=3)
+    minibatch, forward, flat, dchan = _store_and_batch(agent, res["episodes"])
+    args_sg = _trainer_args(stop_grad_value=True)
+
+    # Reference: backward of the sg-total (value term excluded) alone.
+    total_sg, _ = distill_losses(agent, minibatch, forward, flat, dchan, args_sg)
+    for net in (agent.encoder, agent.actor, agent.critic):
+        net.zero_grad()
+    total_sg.backward(retain_graph=True)
+    enc_ref = [
+        None if p.grad is None else p.grad.clone() for p in agent.encoder.parameters()
+    ]
+    critic_ref = [
+        None if p.grad is None else p.grad.clone() for p in agent.critic.parameters()
+    ]
+
+    # Surgery path: same backward + value_head_grads added by hand.
+    for net in (agent.encoder, agent.actor, agent.critic):
+        net.zero_grad()
+    total_sg2, _ = distill_losses(agent, minibatch, forward, flat, dchan, args_sg)
+    v_params, v_grads = train_distill.value_head_grads(agent, flat)
+    total_sg2.backward()
+    for p, g in zip(v_params, v_grads):
+        if g is not None:
+            p.grad = g if p.grad is None else p.grad + g
+
+    # Encoder untouched by the value stream: byte-identical grads.
+    for ref, p in zip(enc_ref, agent.encoder.parameters()):
+        if ref is None:
+            assert p.grad is None or float(p.grad.abs().sum()) == 0.0
+        else:
+            assert torch.equal(ref, p.grad)
+    # Critic DID gain gradient from the value MSE somewhere.
+    changed = any(
+        (r is None) != (p.grad is None)
+        or (r is not None and not torch.equal(r, p.grad))
+        for r, p in zip(critic_ref, agent.critic.parameters())
+    )
+    assert changed
+
+
 def test_convention_telemetry_rates():
     """convention_rows + accumulate + report on hand-built rows: a defender
     lead holding both classes (also called-suit eligible), a partner lead,
