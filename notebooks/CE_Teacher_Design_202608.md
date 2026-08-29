@@ -1946,6 +1946,53 @@ OPERATOR APPROVED + LAUNCHED 2026-08-29 ("make it so"):
 runs/distill_sweep3_202608 detached — arm g then arm h then full
 cert battery (probes n=1000 x 4 + dup h2h) on both.
 
+### 17.13 Ablation verdict (2026-08-29): jointly-carried floor,
+### mutually-protective streams
+
+(Machine rebooted mid-battery; battery relaunched, ~10x faster on
+the clean machine — h2h 35 min vs 2-4 h. INSTRUMENT NOTE: same-seed
+greedy probes differ up to ~6 pts called-suit ACROSS PROCESSES
+(g seed1 41.6 pre-reboot vs 48.0 post; seed3 46.1 vs 39.9) — the
+probe carries process-level numeric nondeterminism that flips
+near-tie argmaxes and forks game paths; multi-seed pooling absorbs
+it, single-probe deltas < ~5 pts are not meaningful. Arm g pooled
+over all 8 replicates.)
+
+  arm            called-suit  partner  pick   h2h vs theta_k
+  c  (both, l=1)    49.3       96.7    37.3   -0.0276 se 0.0089
+  g  (value only)   44.6       93.3    34.2   -0.0158 se 0.0080
+  h  (policy only)  48.2       ~69     36.4   -0.0543 se 0.0100
+
+- Arm g: value/aux stream ALONE (zero policy teaching) loses
+  -0.016 (2 sigma) with partner eroded ~3 pts and called-suit at
+  baseline (the seed-0 35.3 was instrument noise) — value-stream
+  trunk reshaping is a REAL, MAJORITY-SHARE contributor to the
+  floor. No pick drift => the drift belongs to the policy stream.
+- Arm h: policy stream ALONE installs called-suit fine (48.2) but
+  COLLAPSES partner to ~69 (all 5 reads agree; retention anchor
+  at lambda_ret=1 sitting right there) and loses -0.054. The
+  partner protection in every combined arm was never the anchor —
+  it was the VALUE/AUX stream (aux heads forcing the trunk to keep
+  partner-relevant structure; the arch-ablation "aux-ballast"
+  phenomenon rediscovered from the training side).
+- NON-ADDITIVE: g+h = -0.070 vs combined -0.028. The streams are
+  MUTUALLY PROTECTIVE: value/aux shields the untaught conventions
+  from CE; CE offsets value-stream drift on the taught cells. The
+  -0.025 floor is the residue this mutual protection cannot
+  remove — value-stream damage (majority) + CE noise (remainder).
+
+ITERATION-4 MENU (operator to choose; each arm now ~1-3 h train +
+~1.5 h battery on the clean machine):
+(1) STOP-GRADIENT VALUE: value MSE updates the value head through
+    a DETACHED trunk; aux heads keep flowing to the trunk
+    (ballast preserved). Prediction: partner held (~96+), install
+    >= arm c, h2h improves by up to the value-drag share. One-line
+    build; keeps the critic calibrated for the next phase.
+(2) AUX-ONLY ablation (drop value MSE, keep aux): splits arm g's
+    -0.016 into value-MSE vs aux-head shares first — one more
+    attribution rung before committing to (1)'s mechanism.
+(3) Run (2) then (1): rigorous order, ~day total at new speeds.
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
