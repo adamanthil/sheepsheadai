@@ -1898,6 +1898,50 @@ collapses toward 0 with installation held (+4-5 called-suit);
 readings between -0.02 and 0 size the residual (value/aux
 retraining = next suspect). Cost: one frozen forward per batch.
 
+### 17.12 Premise check (2026-08-29): mismatch hypothesis FALSIFIED;
+### floor suspects narrowed
+
+Before launching the recomputed-anchor arm (operator-approved), a
+cheap premise check: eval-mode run_epoch at INIT over 4 shards
+(4,000 real-corpus episodes), stash anchors vs recomputed
+(frozen-theta_k forward over the trainer's own unroll; built as
+--recomputed-anchors, 11 tests green):
+
+  STASH      endorsed_kl 0.00000   retention_kl -0.00000
+  RECOMPUTE  endorsed_kl 0.00000   retention_kl -0.00000
+
+The stored act-time stashes reproduce under the batched replayed
+unroll to FLOAT NOISE — no zero-point corruption exists. (Mechanism:
+the workers' routed encoder sends only >=16-row batches to the MPS
+shadow; single-row act() encodes ran CPU, matching the trainer's CPU
+replay. The "~0.025 init KL" premise was a misattribution — likely a
+first-epoch running average taken after updates began.) The §17.11
+mismatch hypothesis is FALSIFIED; the recomputed-anchor arm would be
+a no-op and is NOT launched. The flag + init-zero test stay in-tree
+as the check's record.
+
+Floor suspects remaining — both lambda-independent, play-borne,
+probe-invisible:
+(A) VALUE/AUX/ORACLE REGRESSION THROUGH THE SHARED TRUNK: greedy
+    play never reads the critic, but its gradients reshape the
+    shared trunk under coefficients FIXED across all arms; init
+    value_mse 0.031 is a real persistent gradient (fresh MC returns
+    vs GAE-fitted critic).
+(B) OVERRIDE-CE NOISE-FITTING: override rows are unanchored at
+    every lambda; greedy expression of the teaching died at
+    lambda>=2 but the CE gradient kept flowing through the trunk.
+
+REVISED ITERATION-3 PROPOSAL (awaiting operator): decisive
+attribution pair on the arm-c config, 1 epoch + dup h2h each —
+  arm g: lambda_ce=0 (anchors nominal, value stream ON) — pure
+    value-stream arm; floor present => (A).
+  arm h: --no-value-aux --no-oracle (policy stream only) — floor
+    present => (B). Built: --no-value-aux drops value+aux terms.
+Readings are additive-ish if both contribute; either way the next
+fix is targeted (A: freeze value/aux during distill or decouple
+via critic-only optimizer steps; B: omega floor/eps tightening or
+override-row dose reduction).
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
