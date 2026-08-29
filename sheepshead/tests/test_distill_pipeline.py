@@ -303,6 +303,43 @@ def test_channel_alignment_and_loss_masking():
         assert stats["retention_kl"] < 1e-3
 
 
+def test_recomputed_anchors_zero_at_init():
+    """§17.11 recomputed anchors: with frozen == the generating agent, the
+    anchor target comes from the SAME replayed unroll the student is scored
+    under, so endorsed/retention KL is exactly zero at init (the stored
+    act-time stash only reproduces to replay noise; recomputation removes
+    that zero-point corruption entirely) and the anchor gradient vanishes."""
+    agent = _fresh_agent()
+    res = _generate_game(agent, game_idx=3)
+    minibatch, forward, flat, dchan = _store_and_batch(agent, res["episodes"])
+    with torch.no_grad():
+        f_fwd = agent._forward_vectorized(minibatch.states_seqs, minibatch.masks_bt)
+        f_flat = agent._flatten_action_steps(minibatch, f_fwd)
+        dchan_rc = (
+            dchan[0],
+            dchan[1],
+            torch.softmax(f_flat.logits_flat, dim=-1),
+        )
+    total, stats = distill_losses(
+        agent, minibatch, forward, flat, dchan_rc, _trainer_args()
+    )
+    # Byte-identical streams: strictly tighter than the stored-stash 1e-3.
+    # (The scripted committee is always material, so no endorsed rows
+    # exist here; retention rows — the bidding heads — always do.)
+    # (kd_kl's log/softmax round-trip leaves ~1e-8 float residue; the
+    # stored-stash KL it replaces is ~1e-2 — six orders larger.)
+    assert stats["retention_rows"] > 0
+    assert stats["retention_kl"] < 1e-6
+    if stats["endorsed_rows"]:
+        assert stats["endorsed_kl"] < 1e-6
+    # NOTE: no stash-vs-recomputed comparison here — in-process CPU
+    # generation reproduces the act-time stream to ~1e-8, so the stash KL
+    # is also at float noise in this synthetic setting. The real corpus's
+    # ~0.025 init KL comes from cross-process generation with the
+    # routed-encoder MPS shadow (device numerics), which a unit test
+    # cannot reproduce.
+
+
 def test_convention_telemetry_rates():
     """convention_rows + accumulate + report on hand-built rows: a defender
     lead holding both classes (also called-suit eligible), a partner lead,

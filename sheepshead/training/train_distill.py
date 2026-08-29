@@ -368,8 +368,13 @@ def distill_losses(agent, minibatch, forward, flat, dchan, args):
         args.lambda_ce * override_loss
         + args.lambda_end * endorsed_loss
         + args.lambda_ret * retention_loss
-        + agent.value_loss_coeff * value_loss
     )
+    # §17.12 floor-attribution ablation: --no-value-aux drops every
+    # value-stream term (value MSE, critic aux heads; --no-oracle covers
+    # the oracle) so only the policy losses touch the shared trunk.
+    if getattr(args, "no_value_aux", False):
+        return total, stats
+    total = total + agent.value_loss_coeff * value_loss
 
     if agent.critic.has_aux_heads:
         win_loss = F.binary_cross_entropy_with_logits(
@@ -441,9 +446,18 @@ def oracle_loss_for_batch(agent, batch, kinds, minibatch):
 # --------------------------------------------------------------------------- #
 # Epoch loops
 # --------------------------------------------------------------------------- #
-def run_epoch(agent, episodes, args, train: bool):
+def run_epoch(agent, episodes, args, train: bool, frozen=None):
     """One pass over ``episodes`` in buffer-sized chunks. Returns the
-    row-weighted mean telemetry."""
+    row-weighted mean telemetry.
+
+    ``frozen`` (§17.11 recomputed anchors): a frozen theta_k agent whose
+    forward pass over the SAME minibatch tensors replaces the stored
+    act-time anchor stashes. Target and student then see byte-identical
+    replayed streams, so the anchor loss's zero point is exactly
+    theta_k-as-replayed (init KL == 0, init gradient == 0 by
+    construction) — eliminating the act-time-vs-replay zero-point
+    corruption that §17.11 promoted to lead hypothesis for the
+    lambda-independent EV floor."""
     totals: dict[str, float] = {}
     weights: dict[str, float] = {}
     conv_counts: dict = {}
@@ -476,6 +490,19 @@ def run_epoch(agent, episodes, args, train: bool):
                 if flat is None:
                     continue
                 dchan = flat_channels(agent, batch, kinds)
+                if frozen is not None:
+                    with torch.no_grad():
+                        f_fwd = frozen._forward_vectorized(
+                            minibatch.states_seqs, minibatch.masks_bt
+                        )
+                        f_flat = agent._flatten_action_steps(minibatch, f_fwd)
+                        # Masked logits: softmax is ~0 off-legal, so the
+                        # kd_kl legal-set reconstruction (anchor > 0) holds.
+                        dchan = (
+                            dchan[0],
+                            dchan[1],
+                            F.softmax(f_flat.logits_flat, dim=-1),
+                        )
                 accumulate_conventions(
                     conv_counts,
                     convention_rows(agent, batch, kinds),
@@ -595,6 +622,20 @@ def main() -> int:
     ap.add_argument("--beta", type=float, default=0.03)
     ap.add_argument("--omega-max", type=float, default=float(np.e))
     ap.add_argument("--kd-tau", type=float, default=1.0)
+    ap.add_argument(
+        "--recomputed-anchors",
+        action="store_true",
+        help="anchor targets from a frozen theta_k forward over the "
+        "trainer's own replayed unroll instead of the stored act-time "
+        "stashes (§17.11: init KL == 0 by construction)",
+    )
+    ap.add_argument(
+        "--no-value-aux",
+        dest="no_value_aux",
+        action="store_true",
+        help="drop value + critic-aux losses (§17.12 floor attribution; "
+        "combine with --no-oracle for a pure policy-stream arm)",
+    )
     ap.add_argument("--no-oracle", dest="train_oracle", action="store_false")
     ap.add_argument(
         "--probe-games",
@@ -612,6 +653,13 @@ def main() -> int:
     # Supervised phase: the corpus is fixed, so PPO's staleness-driven LR
     # schedule is irrelevant — flat distill LR on both optimizer paths.
     agent.set_learning_rates(actor_lr=args.lr, critic_lr=args.lr)
+
+    frozen = None
+    if args.recomputed_anchors:
+        frozen = load_agent(args.ckpt)
+        for net in (frozen.encoder, frozen.actor, frozen.critic):
+            for p in net.parameters():
+                p.requires_grad_(False)
 
     episodes = load_shards(args.corpus_dir)
     train_eps, holdout = split_by_game(episodes, args.holdout_frac, args.seed)
@@ -632,7 +680,9 @@ def main() -> int:
 
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
-        train_stats, steps = run_epoch(agent, train_eps, args, train=True)
+        train_stats, steps = run_epoch(
+            agent, train_eps, args, train=True, frozen=frozen
+        )
         print(
             f"[epoch {epoch}] train ({steps} steps, "
             f"{(time.time() - t0) / 60:.1f} min): {fmt_stats(train_stats)}",
@@ -640,7 +690,7 @@ def main() -> int:
         )
         log_row({"kind": "train", "epoch": epoch, **train_stats})
         if holdout:
-            hold_stats, _ = run_epoch(agent, holdout, args, train=False)
+            hold_stats, _ = run_epoch(agent, holdout, args, train=False, frozen=frozen)
             print(f"[epoch {epoch}] holdout: {fmt_stats(hold_stats)}", flush=True)
             log_row({"kind": "holdout", "epoch": epoch, **hold_stats})
         if args.probe_games:
