@@ -1842,6 +1842,62 @@ Pre-registered readings:
   (raising the stakes on arms d/e); intermediate => both
   contribute, sized by the split.
 
+### 17.11 Iteration-2 verdict (2026-08-29): floor is play-borne;
+### mismatch hypothesis promoted
+
+Escalation arms (cert battery, n=1000 x 4 + dup h2h):
+- arm_d_ep1 (lambda=2): called-suit 44.3 pooled (43.2/41.9/48.5/
+  43.6) = BASELINE — teaching ERASED; t0 0.2, partner 95.1, pick
+  35.9 (drift halved); h2h -0.0239 se 0.0091.
+- arm_e_ep1 (lambda=4): called-suit 43.6 = below baseline; t0 0.4,
+  partner 94.5 pooled (one seed 92.0 — worst partner card of the
+  program), pick 36.8; h2h -0.0229 se 0.0087.
+
+Four-point dose-response (lambda -> install / h2h): 0.5 -> +3.0 /
+-0.070; 1.0 -> +4.6 / -0.028; 2.0 -> dead / -0.024; 4.0 -> dead /
+-0.023. LEVER 1 CLOSED: EV loss hits a LAMBDA-INDEPENDENT FLOOR
+~ -0.025 from lambda=1 on, while installation dies between 1 and 2
+(mechanism note: override rows are unanchored — the teaching is
+killed INDIRECTLY, via hard-anchored endorsed twins of the same
+situations pulling the shared representation back; yet another
+arrow at tie-row targets = class pooling). lambda=1 (arm c) is the
+optimum of this axis: max installation at the floor. Escalation
+past lambda=2 is strictly harmful (partner degrades).
+
+ROUTED DIAGNOSTIC (lever 2): theta_k bidding + arm_c_ep1 play =
+-0.0248 se 0.0082 (called -0.0215 / jd -0.0280;
+runs/distill_cert_202608/routed_h2h_c.json) vs arm c full -0.0276
+=> bidding contribution +0.003 +/- 0.012 NULL. The floor is
+PLAY-BORNE; the +4 pick drift is EV-cosmetic (and plausibly a
+symptom, see below), undoing it recovers nothing.
+
+MECHANISM SYNTHESIS — anchor-target mismatch (zero-point
+corruption), now the lead hypothesis: anchors are act-time stashes
+(theta_k online act/observe streams) while the student is scored
+under the trainer's batched replayed unroll; at INIT (student ==
+theta_k) KL ~ 0.025 — pure computation-path residual. The anchor
+loss's zero point is therefore NOT "behave like theta_k" but
+"reproduce act-time outputs under replay streams," pushing weights
+off theta_k to compensate — a correction that misgeneralizes at
+deployment (act-time mode). Predicts: lambda-independent floor
+(same wrong destination, any pull strength) OK; play-borne (16.9k
+endorsed play rows) OK; pick drift as the same bias expressed via
+the 116.5k retention (bidding-head) rows at ~zero EV cost OK;
+invisible to convention probes OK; floor magnitude ~ init KL 0.025
+(suggestive, not evidence). Search/override rows are immune —
+their targets are exogenous Q-derived labels, so mismatch adds
+noise, not a biased zero point.
+
+ITERATION-3 PROPOSAL (single change, direct test of the
+hypothesis): RECOMPUTED ANCHORS — load a frozen theta_k copy in
+the trainer and take anchor targets from ITS OWN replayed unroll
+(same batching/segments as the student): init KL == 0 and init
+gradient == 0 by construction. Arm-c config (lambda=1, 1 epoch),
+same corpus/split, cert battery + dup h2h. PASS = h2h floor
+collapses toward 0 with installation held (+4-5 called-suit);
+readings between -0.02 and 0 size the residual (value/aux
+retraining = next suspect). Cost: one frozen forward per batch.
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
