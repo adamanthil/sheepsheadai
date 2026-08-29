@@ -1942,6 +1942,10 @@ fix is targeted (A: freeze value/aux during distill or decouple
 via critic-only optimizer steps; B: omega floor/eps tightening or
 override-row dose reduction).
 
+OPERATOR APPROVED + LAUNCHED 2026-08-29 ("make it so"):
+runs/distill_sweep3_202608 detached — arm g then arm h then full
+cert battery (probes n=1000 x 4 + dup h2h) on both.
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
