@@ -2140,6 +2140,35 @@ theories). Installation lost => the small-gap labels were carrying
 teaching after all (dose result). WiSE-FT walk-back applies to the
 winner afterward regardless.
 
+### 18.1 RESULT (2026-08-30): FAIL both ways — near-tie labels
+### were not the poison
+
+Cert: called-suit 43.0 pooled (40.9/43.9/42.9/44.2) — BELOW
+baseline, installation GONE; partner 97.5, t0 0.5, spread 3.2
+(compression indeed came from the near-tie labels). h2h -0.0449
+se 0.0090 — WORSE than arm c's -0.0276, with an extreme mode
+split: called -0.0746 / jd -0.0151.
+
+Reading: the pre-registered "noise component confirmed" outcome is
+REFUTED AS EXECUTED — removing the noisiest 63% of labels made
+both teaching and EV worse. FIFTH falsified single-mechanism story.
+CONFOUND (honest note, not in the pre-reg): the override loss is a
+per-partition MEAN, so pruning to 1/3 the rows RENORMALIZED
+per-label intensity ~3x (and every survivor sits at omega=1, vs
+0.37-1.0 mixed before) — arm p trained fewer labels HARDER, and
+high-gap labels concentrate in called-game convention cells, which
+matches the called-mode -0.075 damage signature (arm-a-like). So
+the arm conflates label selection with intensity; a clean variant
+would scale lambda_ce by ~0.37. EMERGENT ALTERNATIVE READING: the
+full label set's redundancy/diversity acts as its own regularizer
+— near-tie labels, individually noisy, spread the CE pressure
+thin; concentrating it is what breaks play. Fits arm a (strong
+effective pressure, -0.070), c (balanced, -0.028), p (concentrated,
+-0.045). Intensity-compensated arm p' (lambda_ce 0.37) is the
+deconfounding follow-up if wanted; NOT launched — corpus q is the
+main event and its distill recipe defaults to the FULL label set
+(gap floor NOT carried).
+
 ### 18.2 Corpus q — AGZ-density mini-corpus
 
 5,000 games, seed 19: p-base/p-min/p-max = 1.0 (EVERY eligible
