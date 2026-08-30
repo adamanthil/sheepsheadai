@@ -2114,7 +2114,32 @@ and it carries the called-suit convention at its lineage's EV
 parity. Deploy decision remains the operator's
 (runs/xarch_h2h_202608/run.log).
 
-## 18. EV-gain program — pre-registration (2026-08-30)
+§17.16 ADDENDUM 2 (2026-08-30) — legacy-30M probe card + OPERATOR
+PROVENANCE NOTE: same instrument (4 x n=1000) on
+final_pfsp_swish_ppo: called-suit 90.1 (87.4-93.5), partner 99.8,
+t0-def-trump 1.18, fat/nopoint 29.7/48.8, pick 32.0, leaster 10.4,
+alone 8.1, spread_med 6.58, top1min ~17. (Eligibility is pooled
+over ALL tricks with the called suit unplayed + both classes held;
+high adherence extinguishes own eligibility early — 298 vs a50's
+385 eligible leads/1000 games.) vs interp_a50: 30M wins called-suit
+(90 vs 48) + partner (99.8 vs 96.7); a50 wins t0 cleanliness (0.41
+vs 1.18); h2h = tie (+0.014 a50).
+
+OPERATOR (verbatim substance): the 30M ran 15M episodes under
+SHAPED convention rewards while entropy annealed, then 15M
+unshaped. That directly explains the spread (6.6) and the
+partner/called-suit adherence — mass concentrated ON the rewarded
+actions. PROGRAM SIGNIFICANCE: (a) the 30M's 90-adherence is
+trained-in preference, not tie-band generalization; (b) DURABILITY
+DATUM — shaping-installed conventions at concentrated mass
+SURVIVED 15M subsequent outcome-only episodes, while every
+CE-installed convention in this program (spread ~3 at install)
+eroded under any later gradient pressure => basin depth at install
+time, not the convention or arch, is the durability variable;
+(c) this is the §12 "reward coupling" durable-gains option with an
+existence proof at EV parity (h2h tie after the unshaped 15M).
+Implication routes: sharpened/concentrated tie-band distill
+targets, or operator revisiting the no-shaping rule (their call).
 
 GOAL: convert the search ceiling (+0.180 committee-ACTED, §13.3;
 offline-grade targeted-search edge independently confirmed) into
