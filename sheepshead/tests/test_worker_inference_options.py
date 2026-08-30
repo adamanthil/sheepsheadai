@@ -12,6 +12,7 @@ covers the wrapper, and paying inductor codegen here would buy nothing.
 """
 
 import argparse
+from typing import cast
 
 import pytest
 import torch
@@ -22,7 +23,9 @@ from sheepshead.agent.compiled_encoder import disable_compiled_encoder
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training import league_worker
+from sheepshead.training.league import League
 from sheepshead.training.league_cli import build_arg_parser
+from sheepshead.training.league_streams import MainPhaseContext
 
 ARCH = "perceiver-shared-v2"
 
@@ -143,7 +146,9 @@ def test_the_flags_reach_the_pool_initargs():
     original = trainer.get_context
     trainer.get_context = lambda _name: FakeContext()
     try:
-        _spawn_worker_pool(args, _FakeLeague(), _FakeContext())
+        _spawn_worker_pool(
+            args, cast(League, _FakeLeague()), cast(MainPhaseContext, _FakeContext())
+        )
     finally:
         trainer.get_context = original
 
@@ -220,7 +225,9 @@ def test_routed_flag_reaches_the_pool_initargs():
     original = trainer.get_context
     trainer.get_context = lambda _name: FakeContext()
     try:
-        _spawn_worker_pool(args, _FakeLeague(), _FakeContext())
+        _spawn_worker_pool(
+            args, cast(League, _FakeLeague()), cast(MainPhaseContext, _FakeContext())
+        )
     finally:
         trainer.get_context = original
 

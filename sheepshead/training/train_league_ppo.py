@@ -370,9 +370,12 @@ def _setup_entropy_controller(args, checkpoint_dir: str, context: MainPhaseConte
     return entropy_controller, entropy_controller_path
 
 
-def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
+def _spawn_worker_pool(args, league: League | None, context: MainPhaseContext | None):
     """Spawn the versioned-weights worker pool (league_worker protocol), or
-    return None for the in-process sequential path (num_workers <= 1)."""
+    return None for the in-process sequential path (num_workers <= 1).
+
+    ``league`` and ``context`` are only read when a pool is actually spawned,
+    so the sequential path accepts None for both."""
     inference_flags = (
         getattr(args, "worker_compile", None),
         getattr(args, "worker_device", None),
@@ -389,6 +392,8 @@ def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
                 "--num-workers <= 1 runs in-process"
             )
         return None
+    if league is None or context is None:
+        raise ValueError("spawning a worker pool needs a league and a phase context")
     spawn_context = get_context("spawn")
     teacher_settings = TeacherSettings.from_args(args)
     if any(inference_flags):
@@ -444,7 +449,7 @@ def _ingest_episode(
     mode: int,
     position: int,
     events: list,
-    scores: dict,
+    scores: list[float],
     training_data_single: dict,
     summary: dict,
     seat_to_id: dict,
@@ -470,9 +475,9 @@ def _ingest_episode(
     state.leaster_window.append(1 if summary["is_leaster"] else 0)
 
     members_by_pos = {
-        pos: league.get(member_id)
+        pos: member
         for pos, member_id in seat_to_id.items()
-        if member_id != SELF_PLAY and league.get(member_id) is not None
+        if member_id != SELF_PLAY and (member := league.get(member_id)) is not None
     }
     state.training_ratings[mode] = league.update_ratings_with_training(
         partner_mode=mode,

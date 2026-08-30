@@ -141,8 +141,9 @@ def test_committee_r3_matches_per_seed_serial():
             )
         # Visit argmax must agree unless the top two are Q-near-tied (a
         # single tiling-flipped tie-break can reroute visits at a tie).
-        s_top = max(serial["root_n"], key=serial["root_n"].get)
-        l_top = max(lock["root_n"], key=lock["root_n"].get)
+        s_n, l_n = serial["root_n"], lock["root_n"]
+        s_top = max(s_n, key=lambda a: s_n[a])
+        l_top = max(l_n, key=lambda a: l_n[a])
         if s_top != l_top:
             gap = abs(serial["root_q"][s_top] - serial["root_q"][l_top])
             assert gap < 5e-3, (

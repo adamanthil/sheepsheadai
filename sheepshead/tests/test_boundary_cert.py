@@ -17,6 +17,7 @@ the actual conditional at the call site is what's under test.
 import json
 import sys
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -35,6 +36,11 @@ class _StubAgent:
 
     def restore_player_memories(self, snapshot):
         pass
+
+
+def _stub_agent() -> PPOAgent:
+    """The stub, typed as the agent run_boundary_cert declares."""
+    return cast(PPOAgent, _StubAgent())
 
 
 def _make_cert_args(**overrides):
@@ -109,7 +115,7 @@ def test_run_boundary_cert_pass(tmp_path, monkeypatch):
     )
     args = _make_cert_args()
     result = train_league_ppo.run_boundary_cert(
-        _StubAgent(), args, generation=3, checkpoint_dir=str(tmp_path)
+        _stub_agent(), args, generation=3, checkpoint_dir=str(tmp_path)
     )
 
     assert result["passed"] is True
@@ -137,7 +143,7 @@ def test_run_boundary_cert_fails_partner_floor(tmp_path, monkeypatch):
     )
     args = _make_cert_args()
     result = train_league_ppo.run_boundary_cert(
-        _StubAgent(), args, generation=1, checkpoint_dir=str(tmp_path)
+        _stub_agent(), args, generation=1, checkpoint_dir=str(tmp_path)
     )
 
     assert result["passed"] is False
@@ -157,7 +163,7 @@ def test_run_boundary_cert_fails_t0_ceiling(tmp_path, monkeypatch):
     )
     args = _make_cert_args()
     result = train_league_ppo.run_boundary_cert(
-        _StubAgent(), args, generation=1, checkpoint_dir=str(tmp_path)
+        _stub_agent(), args, generation=1, checkpoint_dir=str(tmp_path)
     )
 
     assert result["passed"] is False
@@ -177,7 +183,7 @@ def test_run_boundary_cert_fails_h2h_significantly_negative(tmp_path, monkeypatc
     )
     args = _make_cert_args()
     result = train_league_ppo.run_boundary_cert(
-        _StubAgent(), args, generation=1, checkpoint_dir=str(tmp_path)
+        _stub_agent(), args, generation=1, checkpoint_dir=str(tmp_path)
     )
 
     assert result["passed"] is False
@@ -199,7 +205,7 @@ def test_run_boundary_cert_h2h_edge_exactly_zero_passes(tmp_path, monkeypatch):
     )
     args = _make_cert_args()
     result = train_league_ppo.run_boundary_cert(
-        _StubAgent(), args, generation=1, checkpoint_dir=str(tmp_path)
+        _stub_agent(), args, generation=1, checkpoint_dir=str(tmp_path)
     )
     assert result["passed"] is True
 
@@ -225,7 +231,7 @@ def test_run_boundary_cert_uses_configured_seed_count(tmp_path, monkeypatch):
 
     args = _make_cert_args(cert_seeds=5, cert_games=17)
     train_league_ppo.run_boundary_cert(
-        _StubAgent(), args, generation=1, checkpoint_dir=str(tmp_path)
+        _stub_agent(), args, generation=1, checkpoint_dir=str(tmp_path)
     )
     assert len(seen_seeds) == 5
     assert seen_seeds == [league_gates.ADHERENCE_GUARD_SEED + i for i in range(5)]

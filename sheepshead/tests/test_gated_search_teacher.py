@@ -62,7 +62,7 @@ def _replicate(valid, qmap, n=256.0, prior=None):
 
 
 def _build(replicates, valid, s2_global=1.1e-4, nu=4.0):
-    out = build_ce_search_target(
+    return build_ce_search_target(
         replicates,
         valid,
         shrink_nu=nu,
@@ -70,8 +70,12 @@ def _build(replicates, valid, s2_global=1.1e-4, nu=4.0):
         gumbel_c_visit=C_VISIT,
         gumbel_c_scale=C_SCALE,
     )
-    # Every caller here feeds a committee that yields a target; None means the
-    # fixture, not the code under test, is wrong.
+
+
+def _built(replicates, valid, **kw):
+    """_build for the cases that must produce a target; None there means the
+    fixture is wrong, not the code under test."""
+    out = _build(replicates, valid, **kw)
     assert out is not None, "committee produced no usable root statistics"
     return out
 
@@ -123,7 +127,7 @@ class TestTargetConstruction:
         valid = [1, 2, 3, 4]
         prior = {1: 0.5, 2: 0.25, 3: 0.15, 4: 0.10}
         reps = [_replicate(valid, {a: 0.4 for a in valid}, prior=prior)] * 3
-        target, info = _build(reps, valid)
+        target, info = _built(reps, valid)
         assert info["w"] == 0.0
         np.testing.assert_allclose(target, [prior[a] for a in sorted(valid)], rtol=1e-6)
 
@@ -137,7 +141,7 @@ class TestTargetConstruction:
             _replicate(valid, {a: q + d for a, q in base.items()})
             for d in (-0.01, 0.0, 0.01)
         ]
-        target, info = _build(reps, valid)
+        target, info = _built(reps, valid)
         assert info["w"] == 0.0
         np.testing.assert_allclose(target, [1 / 3] * 3, rtol=1e-6)
 
@@ -147,7 +151,7 @@ class TestTargetConstruction:
         valid = [1, 2, 3]
         qmap = {1: 0.20, 2: 0.60, 3: 0.40}
         reps = [_replicate(valid, qmap)] * 3
-        target, info = _build(reps, valid, s2_global=1e-6)
+        target, info = _built(reps, valid, s2_global=1e-6)
         assert info["w"] > 0.9
         assert target[1] > target[2] > target[0]
         assert target[1] > 1 / 3 > target[0]
@@ -161,7 +165,7 @@ class TestTargetConstruction:
         prior = {2: 0.6, 5: 0.1, 9: 0.3}
         n = 128.0
         reps = [_replicate(valid, qmap, n=n, prior=prior)] * 3
-        target, info = _build(reps, valid, s2_global=0.0)
+        target, info = _built(reps, valid, s2_global=0.0)
         assert info["w"] == pytest.approx(1.0)
         q = np.array([qmap[a] for a in sorted(valid)])
         p = np.array([prior[a] for a in sorted(valid)])
@@ -180,9 +184,9 @@ class TestTargetConstruction:
             _replicate(valid, {a: q + d for a, q in qmap.items()})
             for d in (-0.02, 0.0, 0.02)
         ]
-        target, info = _build(reps, valid)
+        target, info = _built(reps, valid)
         assert 0.0 < info["w"] < 1.0
-        full, _ = _build([_replicate(valid, qmap)] * 3, valid, s2_global=0.0)
+        full, _ = _built([_replicate(valid, qmap)] * 3, valid, s2_global=0.0)
         assert 1 / 3 < target[1] < full[1]
         assert full[0] < target[0] < 1 / 3
 
@@ -194,7 +198,7 @@ class TestTargetConstruction:
         qmap = {1: 0.40, 2: 0.44}
         reps = [_replicate(valid, qmap)] * 3
         nu, s2g, r = 4.0, 2e-4, 3
-        target, info = _build(reps, valid, s2_global=s2g, nu=nu)
+        target, info = _built(reps, valid, s2_global=s2g, nu=nu)
         noise = (nu * s2g / (nu + r - 1)) / r
         var_q = np.var([0.40, 0.44])
         assert info["w"] == pytest.approx(1.0 - noise / var_q, rel=1e-9)
@@ -210,7 +214,7 @@ class TestTargetConstruction:
     def test_target_shape_and_normalization(self):
         valid = [7, 3, 12]  # deliberately unsorted input
         reps = [_replicate(sorted(valid), {3: 0.2, 7: 0.5, 12: 0.35})] * 3
-        target, _ = _build(reps, valid)
+        target, _ = _built(reps, valid)
         assert target.dtype == np.float32
         assert target.shape == (len(valid),)  # aligned to sorted(valid)
         assert target.sum() == pytest.approx(1.0, abs=1e-6)

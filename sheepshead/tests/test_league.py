@@ -30,6 +30,13 @@ def _agent(seed: int) -> PPOAgent:
     return PPOAgent(len(ACTIONS))
 
 
+def _member(league: League, member_id: str) -> LeagueMember:
+    """League.get is Optional; every id passed here came from add_member."""
+    member = league.get(member_id)
+    assert member is not None, f"member {member_id} missing from the league"
+    return member
+
+
 class TestLeagueRoster:
     def setup_method(self, method):
         self.dir = tempfile.mkdtemp(prefix="league_test_")
@@ -290,7 +297,7 @@ class TestRatings:
             for i in range(4)
         ]
         self.opps = {
-            pos: self.league.get(mid) for pos, mid in zip([2, 3, 4, 5], self.ids)
+            pos: _member(self.league, mid) for pos, mid in zip([2, 3, 4, 5], self.ids)
         }
 
     def teardown_method(self, method):
