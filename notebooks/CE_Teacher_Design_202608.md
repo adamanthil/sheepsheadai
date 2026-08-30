@@ -2017,6 +2017,46 @@ battery (probes n=1000 x 4 + dup h2h). Pre-registered readings:
   next phase — value_mse telemetry should track arm c's, not arm
   h's untrained drift.
 
+### 17.15 Arm-i verdict (2026-08-29): FAIL — value-MSE trunk
+### gradient was protective, not the drag
+
+Cert: called-suit 46.5 pooled (49.1/42.2/47.2/47.3), partner 95.5,
+t0 0.25, pick 36.4 — conventions PASS, telemetry sanity checks all
+passed (value_mse tracked arm c: critic trained normally). But h2h
+= -0.0387 se 0.0093 (modes -0.0387/-0.0386) — WORSE than arm c's
+-0.0276 (diff 0.011 +/- 0.013, n.s. but directionally opposite the
+pre-registration; the > -0.012 bar decisively FAILED).
+
+CONCLUSION: within the full recipe, the value-MSE trunk gradient is
+net NEUTRAL-TO-PROTECTIVE — removing it recovered nothing and
+plausibly cost ~0.01. Combined with §17.13, the drag inside arm g's
+value/aux stream now points at the AUX-HEAD gradients and/or an
+IRREDUCIBLE component (label-noise tax of distilling ~50%-self-
+agreement targets, §12.8 — present in every arm, insensitive to
+routing). Running tally of falsified single-mechanism stories:
+anchors (17.11), replay mismatch (17.12), bidding drift (17.11
+routed), value-MSE drag (here). The stream coupling is not
+decomposable by one-lever surgery; every component is Janus-faced
+(protective somewhere, damaging elsewhere).
+
+REVISED MENU (operator to choose):
+(1) WEIGHT INTERPOLATION (WiSE-FT — Wortsman et al. 2022,
+    arXiv:2109.01903; model-soup family): theta_alpha = (1-alpha)
+    theta_k + alpha*theta_c for alpha in {0.5, 0.75}, NO training —
+    battery per alpha (~1.5 h each). Fine-tune damage often
+    shrinks faster than task gains under interpolation; if some
+    alpha holds ~+3 called-suit at h2h ~0, the pilot ships a
+    deployable artifact without solving the attribution puzzle.
+(2) Arm j: aux OFF, value ON (CE + anchors + value + oracle) —
+    completes the 2x2 stream matrix (g/h/i/j), directly tests
+    aux-drag and locates the partner protection (value vs aux).
+    Risk: partner collapse repeat.
+(3) Accept-and-conclude: record the floor as the §12.8 label-noise
+    tax, declare phased-offline distillation conventions-capable
+    but EV-taxed at this corpus quality; durable-gains options
+    revert to the §12 conclusion list (reward coupling /
+    architectural separation).
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
