@@ -2157,6 +2157,25 @@ sharpened tie-band distill targets (class pooling on the endorsed
 rows — where the 30M's shaped preference lives), corpus q's dense
 endorsed coverage as the material.
 
+PER-TRICK called-suit breakdown (2026-08-30, 2,000 greedy games
+each, probe-identical eligibility, scratchpad cs_by_trick.py):
+  trick    a50            30M
+  0        39.0 (n=556)   95.1 (n=596)
+  1        46.4 (n=416)   92.2 (n=232)
+  2        53.4 (n=281)   92.5 (n=159)
+  3        47.3 (n=224)   75.6 (n=127)
+  4        52.8 (n=89)    62.2 (n=45)
+  pooled   45.5           90.8
+Mirror-image profiles: the shaped install is DEEPEST at t0 (95.1,
+decaying late where the convention matters least); a50 is WEAKEST
+at t0 (39). Priority-bin deficit = 56 points. 30M's t0 95 exceeds
+the search-endorsed band + tie band (~85 ceiling): either mild
+EV-irrelevant over-adherence, or single-node committee Q at deploy
+budgets under-prices the convention's coordination value (operator
+SNR thesis) — h2h tie cannot distinguish. PROGRAM TARGET, made
+precise: raise t0 called-suit 39 -> ~90 under terminal-only
+discipline while preserving t0-trump cleanliness (0.25-0.6).
+
 GOAL: convert the search ceiling (+0.180 committee-ACTED, §13.3;
 offline-grade targeted-search edge independently confirmed) into
 DISTILLED EV GAIN, not just parity. Theory inventory (recorded
