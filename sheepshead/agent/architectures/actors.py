@@ -16,6 +16,15 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
     logic continues to work unchanged.
     """
 
+    # register_buffer() assigns through nn.Module.__setattr__, so the buffers
+    # below are only reachable via __getattr__, whose declared return type is
+    # `Tensor | Module`. Declaring them states what they actually are.
+    _map_cid_to_play_action_index: torch.Tensor
+    _map_cid_to_bury_action_index: torch.Tensor
+    _map_cid_to_under_action_index: torch.Tensor
+    _call_action_global_indices: torch.Tensor
+    _call_card_ids: torch.Tensor
+
     def __init__(
         self,
         action_size,

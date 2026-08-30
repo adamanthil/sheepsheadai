@@ -73,6 +73,7 @@ import time
 from multiprocessing import Pool
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import torch
@@ -1069,7 +1070,7 @@ def cmd_bootstrap(args) -> int:
     out = {}
     for s in strata_names:
         g, vals = by_stratum[s]
-        entry = {"n": len(g)}
+        entry: dict[str, Any] = {"n": len(g)}
         for a in arms:
             entry[a] = {"ev": ev(g, vals[a]), "ci95": ci(np.array(boot[s][a]))}
         pairs = [

@@ -798,7 +798,9 @@ class CardReasoningEncoder(nn.Module):
             hand_tokens_out[:, t, :, :] = encoder_out["hand_tokens"]
             step_all_tokens = encoder_out.get("all_tokens")
             if step_all_tokens is not None:
-                if all_tokens_out is None:
+                # The pair is allocated together; check both so each stays
+                # narrowed for the writes below.
+                if all_tokens_out is None or all_mask_out is None:
                     n_all = step_all_tokens.size(1)
                     all_tokens_out = torch.zeros(
                         (B, T, n_all, self.d_token_dim),
@@ -819,7 +821,7 @@ class CardReasoningEncoder(nn.Module):
             "hand_tokens": hand_tokens_out,
             "memory_out": memory_state,
         }
-        if all_tokens_out is not None:
+        if all_tokens_out is not None and all_mask_out is not None:
             out["all_tokens"] = all_tokens_out
             out["all_mask"] = all_mask_out
         return out

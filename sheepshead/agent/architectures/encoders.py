@@ -112,8 +112,13 @@ class TokenReadEncoder(CardReasoningEncoder):
             bury_vec,
             memory_in,
         )
-        out["all_tokens"] = all_tokens
-        out["all_mask"] = all_mask
+        # _pool_fuse_update always supplies both; the None defaults exist only
+        # to match the base signature. Consumers probe for the KEY (.get, or
+        # `"all_tokens" not in out`), so an absent stream stays absent rather
+        # than becoming a None value.
+        if all_tokens is not None and all_mask is not None:
+            out["all_tokens"] = all_tokens
+            out["all_mask"] = all_mask
         return out
 
 

@@ -74,7 +74,7 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -819,7 +819,7 @@ class Orchestrator:
 
     def run_confirmation(self, g: int, forced: bool) -> bool:
         self._event(f"CONFIRMATION after gen {g} (fresh deals, seed {CONFIRM_SEED})")
-        conf: Dict[str, dict] = {}
+        conf: Dict[str, Any] = {}
 
         def conf_endpoint(h: int) -> Endpoint:
             npz = os.path.join(self.orch_dir, f"confirm_gen{h}.npz")
@@ -840,13 +840,14 @@ class Orchestrator:
             (h for h in range(1, g + 1)),
             key=lambda h: self.state["generations"][str(h)]["panel"]["mean"],
         )
-        conf["deploy_candidate"] = {"generation": best_g}
+        candidate: Dict[str, Any] = {"generation": best_g}
+        conf["deploy_candidate"] = candidate
         if best_g not in (g, g - 2):
             e_best = conf_endpoint(best_g)
-            conf["deploy_candidate"]["score"] = vars(e_best.score)
+            candidate["score"] = vars(e_best.score)
         else:
             src = e_g if best_g == g else e_gm2
-            conf["deploy_candidate"]["score"] = vars(src.score)
+            candidate["score"] = vars(src.score)
 
         boot_idx = _endpoint_boot_idx(self.args.panel_deals, N_BOOT, CONFIRM_SEED)
         cv = confirmation_verdict(e_g.per_deal, e_gm2.per_deal, boot_idx, self.cfg)

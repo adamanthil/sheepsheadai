@@ -39,6 +39,7 @@ import random
 import sys
 import time
 from multiprocessing import get_context
+from typing import Any
 
 import numpy as np
 
@@ -321,7 +322,7 @@ def summarize(rows) -> dict:
         "n_fail_suits",
         "w",
     )
-    out = {"n": len(rows)}
+    out: dict[str, Any] = {"n": len(rows)}
     for c, rs in cats.items():
         out[c] = {
             "n": len(rs),

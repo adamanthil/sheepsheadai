@@ -116,6 +116,9 @@ class PerceiverCriticNetwork(_TokenReadoutValueMixin, nn.Module):
 class RecurrentCriticNetwork(nn.Module):
     """Critic head using encoder features directly."""
 
+    # Reached only through nn.Module.__getattr__, which declares Tensor | Module.
+    trump_card_ids: torch.Tensor
+
     def __init__(
         self,
         d_card: int | None = None,
@@ -128,6 +131,9 @@ class RecurrentCriticNetwork(nn.Module):
             raise ValueError(
                 "RecurrentCriticNetwork requires card embedding dimension (d_card)."
             )
+        # Past the guard the width is known wherever it is used: only the aux
+        # heads read it, and they are exactly the case that cannot be None.
+        d_card = 0 if d_card is None else int(d_card)
         d_model = int(d_model)
 
         act = nn.SiLU
