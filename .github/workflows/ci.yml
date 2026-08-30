@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  # Exactly what `prek install` runs before each commit, over the whole tree:
+  # ruff format/check and basedpyright. The server extra is needed too --
+  # type-checking app/server means resolving fastapi, pydantic and asyncpg.
+  # The frontend half of the prek config skips itself here (no node_modules);
+  # the `web` job below covers eslint and prettier.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --extra server --extra dev
+      - uses: j178/prek-action@v1
+
   server:
     runs-on: ubuntu-latest
     services:
@@ -31,8 +46,8 @@ jobs:
       # Python 3.14 comes from requires-python in pyproject.toml; the server
       # code uses PEP 758 syntax, so older interpreters cannot parse it.
       - run: uv sync --extra server --extra dev
-      - run: uv run ruff check app/server
-      - run: uv run ruff format --check app/server
+      # Lint and formatting live in the `lint` job; this one only proves the
+      # sources parse under 3.14 before the suites below import them.
       - run: uv run python -m compileall -q app/server
       # Apply migrations to the service container (exercises graphile-migrate)
       # so the API-flow tests run against the real schema.
@@ -63,8 +78,6 @@ jobs:
       # CPU-only torch wheels on Linux via [tool.uv.sources]; the server
       # extra is not needed for the training suite.
       - run: uv sync --extra dev
-      - run: uv run ruff check sheepshead play.py
-      - run: uv run ruff format --check sheepshead play.py
       - run: uv run pytest sheepshead/tests -q
 
   web:

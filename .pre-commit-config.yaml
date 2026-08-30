@@ -1,0 +1,43 @@
+# Git hooks, run by prek (https://prek.j178.dev) -- a single-binary
+# reimplementation of pre-commit that reads this same file format.
+#
+#   prek install              enable the hooks in this clone (once)
+#   prek run --all-files      run everything over the whole tree
+#   git commit --no-verify    bypass for one commit
+#
+# Every hook is `language: system`, against this repo's own toolchain: the
+# .venv that `uv sync --extra dev` builds, and app/web/node_modules. Hook
+# repositories would pin their own copies instead, and a formatter that
+# disagrees with CI by a patch release is a worse failure than a slow cold
+# start. app/web carries its own config (prek workspace mode) so eslint and
+# prettier resolve their flat config and tsconfig from that directory.
+#
+# Nothing here rewrites your files: a failing hook prints the command to run.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run --frozen ruff format --check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      # Import order rides on the lint pass, not the format pass: isort (`I`)
+      # is enabled in pyproject.toml and reports as I001.
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      # The tree is held at zero errors; see pyrightconfig.json for the rule
+      # set. Pinned to the same version the editor's language server runs, so
+      # a clean editor and a clean commit mean the same thing.
+      - id: basedpyright
+        name: basedpyright
+        entry: uv run --frozen basedpyright
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

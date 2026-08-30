@@ -174,10 +174,11 @@ uv run python app/scripts/export_openapi.py   # refresh app/web/openapi.json
 cd app/web && npm run gen:api                 # refresh lib/api.gen.ts
 ```
 
-CI (`.github/workflows/ci.yml`) runs three jobs — `server` (ruff lint +
-format + server tests against Postgres + schema drift), `training` (ruff
-lint + format over the package + the full training suite), and `web`
-(typecheck/lint/prettier/build + generated-type drift).
+CI (`.github/workflows/ci.yml`) runs four jobs — `lint` (the pre-commit
+gate over the whole tree: ruff format/check + basedpyright), `server`
+(server tests against Postgres + schema drift), `training` (the full
+training suite), and `web` (typecheck/lint/prettier/build + generated-type
+drift).
 
 Python formatting is ruff. `ruff format` does the layout; import order is a
 separate concern it deliberately leaves alone, so isort (`I`) is enabled under
@@ -191,6 +192,23 @@ uv run ruff format .        # layout
 uv run ruff check --fix .   # lint + import order
 ```
 
+Python type checking is basedpyright, configured in `pyrightconfig.json`
+and held at **zero errors** by the pre-commit gate and the `lint` CI job:
+
+```bash
+uv run basedpyright              # whole tree
+uv run basedpyright path/to.py   # one file (~1s)
+```
+
+`typeCheckingMode` is `basic` with the Unknown-* family off — the research
+code is deliberately only partially annotated, and basedpyright's default
+"recommended" mode reports ~29k warnings about it. `pythonVersion` is pinned
+to 3.14 (the repo uses PEP 758 `except A, B:`, which an inferred older
+version rejects) and `pythonPlatform` is `All`, so the macOS hook and the
+Linux CI job agree on what a clean tree is. The version in the `dev` extra is
+pinned exactly and must match the editor's language server; bump both
+together.
+
 Frontend formatting is prettier, scoped to `app/web` TypeScript and
 JavaScript (`npm run format` to fix, `npm run format:check` to verify).
 `lib/api.gen.ts` is excluded because `npm run gen:api` regenerates it in
@@ -200,19 +218,39 @@ tooling rewrites, the latter is vendored upstream code.
 
 ### 5. Pre-commit hook (optional)
 
-`git clone` does not install hooks, so enable the lint gate once per clone:
+Hooks are managed by [prek](https://github.com/j178/prek), a single-binary
+reimplementation of `pre-commit` that reads the same config format. `git
+clone` does not install hooks, so enable the gate once per clone:
 
 ```bash
-git config core.hooksPath .githooks
+uv tool install prek   # or: brew install prek
+prek install
 ```
 
-`.githooks/pre-commit` then checks the files in each commit — `ruff format
---check` plus `ruff check` on Python, and `eslint` plus `prettier --check` on
-`app/web` TypeScript — reading them from the index so a partially staged file
-is judged by what is actually being committed. It only reports; nothing is rewritten under you,
-and `git commit --no-verify` skips it. Either half is skipped rather than
-failed when its toolchain is missing (no `.venv`, no `node_modules`), so CI
-is the real backstop; the hook just catches drift before it is pushed.
+Each commit is then checked by `ruff format --check`, `ruff check` and
+`basedpyright` on Python, and `eslint` plus `prettier --check` on `app/web`
+TypeScript. prek stashes unstaged changes first, so a partially staged file
+is judged by what is actually being committed. Nothing is rewritten under
+you — a failing hook prints the command to run — and `git commit
+--no-verify` skips it.
+
+The hooks are `language: system`, running this repo's own `.venv` and
+`app/web/node_modules` rather than versions prek pins itself, so the hook,
+CI and your editor never disagree by a patch release. The frontend hooks
+skip rather than fail when `node_modules` is missing, so a fresh clone can
+still commit; CI is the real backstop.
+
+Two config files, because eslint and prettier have to resolve
+`eslint.config.mjs` and `tsconfig.json` from `app/web`: the root
+`.pre-commit-config.yaml` carries the Python hooks and
+`app/web/.pre-commit-config.yaml` the frontend ones. prek's workspace mode
+discovers both and runs each with its own directory as the working
+directory.
+
+```bash
+prek run --all-files   # the whole tree (~12s), same as the lint CI job
+prek run <hook-id>     # one hook, e.g. `prek run basedpyright`
+```
 
 ### 6. Deployment
 

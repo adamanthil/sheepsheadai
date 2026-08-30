@@ -1,0 +1,22 @@
+# Frontend half of the prek hooks (workspace mode): prek discovers this file
+# and runs its hooks with app/web as the working directory, passing only the
+# paths under it. That is what lets eslint and prettier resolve
+# eslint.config.mjs, tsconfig.json and node_modules the way `npm run lint`
+# does. The root .pre-commit-config.yaml carries the Python half.
+#
+# Both hooks skip rather than fail when node_modules is missing, so a fresh
+# clone that has not run `npm ci` can still commit. CI is the real backstop.
+repos:
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: bash -c '[ -x node_modules/.bin/eslint ] || exit 0; exec node_modules/.bin/eslint --no-warn-ignored "$@"' --
+        language: system
+        files: \.(ts|tsx|js|jsx|mjs|cjs)$
+
+      - id: prettier
+        name: prettier --check
+        entry: bash -c '[ -x node_modules/.bin/prettier ] || exit 0; exec node_modules/.bin/prettier --check "$@"' --
+        language: system
+        files: \.(ts|tsx|js|jsx|mjs|cjs)$

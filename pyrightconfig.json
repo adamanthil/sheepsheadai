@@ -7,6 +7,12 @@
   // 3.14 in .venv) and rejects the repo's PEP 758 `except A, B:` syntax.
   "pythonVersion": "3.14",
 
+  // "All" instead of the host platform: the pre-commit gate runs on macOS and
+  // CI runs on Linux, and platform-conditional code (torch device selection,
+  // the CPU-wheel markers in pyproject.toml) must type-check under both or the
+  // two disagree about what a clean tree is.
+  "pythonPlatform": "All",
+
   // runs/ and model-history/ are gitignored training artifacts; notebooks/ is
   // prose. None of them are import targets.
   "exclude": [
