@@ -2176,6 +2176,8 @@ SNR thesis) — h2h tie cannot distinguish. PROGRAM TARGET, made
 precise: raise t0 called-suit 39 -> ~90 under terminal-only
 discipline while preserving t0-trump cleanliness (0.25-0.6).
 
+## 18. EV-gain program — pre-registration (2026-08-30)
+
 GOAL: convert the search ceiling (+0.180 committee-ACTED, §13.3;
 offline-grade targeted-search edge independently confirmed) into
 DISTILLED EV GAIN, not just parity. Theory inventory (recorded
@@ -2270,3 +2272,39 @@ region the desired outcome if conventions + h2h hold. Second note:
 t0 defender trump-lead 0.0 is the priority read — this convention is
 EV-positive and any leak > 0 is jarring at a human table; treat 0 as
 the working target, the pre-registered <=5 as a hard outer bar only.
+
+## 19. Post-30M program objectives — operator restatement
+## (2026-08-30, authoritative)
+
+The intentions of the post-30M agent program divide into three:
+
+1. Produce an agent that FIXES THE DEFENDER TRUMP-LEAD LEAK
+   (defender trump lead as close to 0 as possible).
+2. To avoid behavior bias, produce an agent via TERMINAL-ONLY
+   REWARDS with as much convention adherence as possible — and
+   determine whether the human conventions are actually OPTIMAL
+   and DERIVABLE from terminal-only rewards.
+3. Produce an agent with MEASURABLY BETTER SKILL than the 30M.
+
+Operator status summary (2026-08-30): significant progress on all
+three; none completely satisfied.
+
+1. CLOSE TO FULLY RESOLVED — very minor leaks still occur, but
+   incredibly close to target. [Annex: t0 def trump 0.25-0.6
+   across §17 arms / 0.41 interp_a50, vs 30M 1.18 same-instrument
+   / 4.8 historical.]
+2. OPTIMALITY LARGELY ANSWERED YES: defender and partner lead
+   conventions appear 100% optimal under search; called-suit
+   generally optimal with GENUINE exceptions. [Annex: E9 +
+   ceiling confident-label studies; §12.15-12.17 t0 called-suit
+   EV-backed; §12.8 tie band = the exception set.] TRANSLATION of
+   that EV into play behavior beating the 30M: achieved ONLY for
+   defender trump-lead (the most important — good news there);
+   partner 96.7 vs 99.8 and called-suit t0 39 vs 95 remain behind
+   the shaped baseline.
+3. Terminal-only rewards CAN produce a much stronger agent — but
+   so far only by running the search algorithm directly (+0.180
+   committee-acted, §13.3); attempts to DISTILL that into a
+   deployable network have been largely unsuccessful (best =
+   parity: interp_a50 ties theta_k and the 30M). Corpus q (§18.2)
+   is the live structural attempt.
