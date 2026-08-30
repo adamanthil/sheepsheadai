@@ -191,7 +191,11 @@ def analyze_strategic_decisions(agent, num_samples=100):
                             sdict, actions, player_id=player.position
                         )
                     action = (
-                        torch.distributions.Categorical(action_probs).sample().item()
+                        int(
+                            torch.distributions.Categorical(action_probs)
+                            .sample()
+                            .item()
+                        )
                         + 1
                     )
                     action_name = ACTION_LOOKUP[action]
@@ -645,7 +649,12 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                         if is_called_suit_lead:
                             cs_leads += 1
                             card = name[5:] if name.startswith("PLAY ") else ""
-                            if card and card not in TRUMP and card[-1] == called[-1]:
+                            if (
+                                card
+                                and called
+                                and card not in TRUMP
+                                and card[-1] == called[-1]
+                            ):
                                 cs_adherent += 1
                         player.act(a)
                         valid = player.get_valid_action_ids()

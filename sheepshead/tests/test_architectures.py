@@ -12,10 +12,12 @@ import os
 import random
 import tempfile
 from types import SimpleNamespace
+from typing import cast
 
 import numpy as np
 import pytest
 import torch
+import torch.nn as nn
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent import architectures, ppo
@@ -327,7 +329,9 @@ class TestNoAuxCritic:
         with pytest.raises(RuntimeError):
             critic.aux_predictions({"features": feat})
         with pytest.raises(RuntimeError):
-            critic.seen_trump_mask_logits(feat, None)
+            # The aux guard fires before the embedding is touched, so None is
+            # a fine stand-in for the argument it never reads.
+            critic.seen_trump_mask_logits(feat, cast(nn.Embedding, None))
         with pytest.raises(RuntimeError):
             critic.unseen_trump_higher_than_hand_logits(feat)
 

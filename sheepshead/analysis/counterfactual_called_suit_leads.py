@@ -136,7 +136,7 @@ def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int
             continue
 
         legal_leads = [
-            cf._card_of(v) for v in ad.validActionIds if cf._card_of(v) is not None
+            c for v in ad.validActionIds if (c := cf._card_of(v)) is not None
         ]
 
         if scan._is_secret_partner(view, PARTNER_MODE_CALLED_ACE):

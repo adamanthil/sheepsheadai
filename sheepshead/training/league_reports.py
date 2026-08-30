@@ -300,6 +300,7 @@ def write_curve_png(orch_dir: str, state: dict) -> None:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.ticker import MaxNLocator
 
     gens, means, los, his, t0s, t1s = [], [], [], [], [], []
     panel0 = os.path.join(orch_dir, "panel_gen0.npz")
@@ -396,7 +397,7 @@ def write_curve_png(orch_dir: str, state: dict) -> None:
     )
     ax2.set_xlabel("generation", fontsize=9, color=ink)
     ax2.set_ylim(bottom=0)
-    ax2.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    ax2.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     fig.tight_layout()
     fig.savefig(os.path.join(orch_dir, "generations_curve.png"), dpi=150)

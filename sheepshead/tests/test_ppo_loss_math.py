@@ -296,6 +296,7 @@ class TestTeacherCE:
         target = torch.softmax(logits, dim=-1).detach()
         ce = -(target * torch.log_softmax(logits, dim=-1)).sum()
         ce.backward()
+        assert logits.grad is not None
         assert torch.allclose(logits.grad, torch.zeros_like(logits), atol=1e-7)
 
     def test_ce_gradient_is_softmax_minus_target(self):
@@ -304,6 +305,7 @@ class TestTeacherCE:
         ce = -(target * torch.log_softmax(logits, dim=-1)).sum()
         ce.backward()
         expected = torch.softmax(torch.zeros(1, 4), dim=-1) - target
+        assert logits.grad is not None
         assert torch.allclose(logits.grad, expected, atol=1e-6)
 
     @staticmethod

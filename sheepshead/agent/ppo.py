@@ -481,6 +481,8 @@ class PPOAgent:
             [idx_to_cid[int(x)] for x in idx_call_global.tolist()], dtype=torch.long
         )
 
+        if play_under_index is None:
+            raise RuntimeError(f"PLAY {UNDER_TOKEN} missing from PLAY_ACTIONS")
         return (
             map_cid_to_play_action_index,
             map_cid_to_bury_action_index,

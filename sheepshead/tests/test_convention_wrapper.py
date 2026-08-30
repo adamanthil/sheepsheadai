@@ -350,6 +350,7 @@ class TestDelegation:
         original = list(valid)
         action, _, _ = w.act(state, valid, p.position, deterministic=False)
         # Inner agent saw exactly the convention set; caller's list untouched.
+        assert spy.seen_valid is not None
         assert sorted(spy.seen_valid) == sorted(_conv_ids(game, valid))
         assert spy.seen_deterministic is False
         assert valid == original

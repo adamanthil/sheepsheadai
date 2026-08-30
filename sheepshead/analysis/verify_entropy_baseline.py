@@ -125,6 +125,8 @@ def _node_row(game, player, valid, forced_public, deal_seed, node_idx, pi):
         return None
     t_cur, info = built
     built_fix = build_ce_search_target(replicates, valid, base_prior=pi, **kwargs)
+    if built_fix is None:
+        return None
     t_fix = built_fix[0]
     acts = sorted(valid)
     usable = [

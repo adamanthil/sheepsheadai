@@ -283,7 +283,7 @@ def evaluate(states, agent, K, r_inner, r_oracle, tau, seed):
             world, lwf, lpick = build_determinized_world(
                 st["game"], deal, st["forced_public"], agent, 1
             )
-            if world is None:
+            if world is None or lwf is None or lpick is None:
                 continue
             if rng.random() < float(np.exp(lpick)):  # accept ~ P(picker PICK|deal)
                 mem = snapshot_memory(agent)

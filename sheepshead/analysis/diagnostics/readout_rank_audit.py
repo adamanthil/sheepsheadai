@@ -22,6 +22,7 @@ Reported per checkpoint:
 """
 
 import random
+from typing import cast
 
 import numpy as np
 import torch
@@ -136,7 +137,7 @@ def main():
                 if isinstance(enc.readout_proj, torch.nn.Sequential)
                 else enc.readout_proj
             )
-            w = lin.weight
+            w = cast(torch.Tensor, lin.weight)
         else:
             w = composite_full_map(enc)
         ws = spectrum_stats(w)

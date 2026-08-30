@@ -105,7 +105,8 @@ def _gumbel_argmax(res: dict) -> int | None:
     gum = res.get("pi_gumbel")
     if gum is None:
         return None
-    return int(max(res["valid"], key=lambda a: float(gum[a - 1])))
+    valid = list(res["valid"])
+    return int(max(valid, key=lambda a: float(gum[a - 1])))
 
 
 class _QuotaFilled(Exception):
@@ -362,17 +363,20 @@ def _replay_seeds(
                                     if qs
                                     else None
                                 )
+                                # Replicate mode judges by averaged root Q
+                                # (sharper ground truth); single-replicate
+                                # keeps the historical pi_gumbel argmax.
+                                if replicate_mode and avg:
+                                    avg_q = avg
+                                    gumbel_argmax = int(
+                                        max(avg_q, key=lambda a: avg_q[a])
+                                    )
+                                else:
+                                    gumbel_argmax = reps[0]["gumbelArgmax"]
                                 row["configs"][key] = {
                                     "ok": bool(qs),
                                     "rootQ": avg,
-                                    # Replicate mode judges by averaged root Q
-                                    # (sharper ground truth); single-replicate
-                                    # keeps the historical pi_gumbel argmax.
-                                    "gumbelArgmax": (
-                                        int(max(avg, key=lambda a: avg[a]))
-                                        if replicate_mode and avg
-                                        else reps[0]["gumbelArgmax"]
-                                    ),
+                                    "gumbelArgmax": gumbel_argmax,
                                     "repArgmax": [e["gumbelArgmax"] for e in reps],
                                     # Per-replicate root Q: single-search
                                     # trust / Q-margin gate calibration needs

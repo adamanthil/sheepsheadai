@@ -88,7 +88,8 @@ def check_adherence_guard(
             f"🛡️⚠️ Adherence NOTIFY: partner trump-lead "
             f"{probe['partner_trump_lead_rate']:.1f}% < notify line "
             f"{float(partner_notify):.1f}% (hard floor "
-            f"{float(partner_floor):.1f}%) — continuing",
+            f"{'n/a' if partner_floor is None else f'{float(partner_floor):.1f}'}%) "
+            "— continuing",
             flush=True,
         )
     if violations:

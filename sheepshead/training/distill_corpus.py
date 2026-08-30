@@ -309,14 +309,14 @@ def play_corpus_game(task: tuple) -> dict:
                             )
                         else:
                             is_lead, cs_elig = lead_features(game, player)
-                        if cs_elig:
+                        called = game.called_card
+                        if cs_elig and called is not None:
                             # Adherent called-suit leads for the trainer's
                             # convention telemetry (§17.4 amendment): the
                             # called card / suit-played status exist only
                             # here at generation time — def-lead and
                             # partner-lead adherence are derivable from the
                             # stored mask, called-suit is not.
-                            called = game.called_card
                             cs_ids = [
                                 a
                                 for a in sorted(valid_actions)
@@ -352,7 +352,7 @@ def play_corpus_game(task: tuple) -> dict:
                             if target_list is None:
                                 dset = "none"
                                 counts[cls]["failed"] += 1
-                            elif info["w"] > 0.0:
+                            elif info is not None and info["w"] > 0.0:
                                 dset = "override"
                                 counts[cls]["override"] += 1
                                 gaps.append(info["gap"])
@@ -375,6 +375,7 @@ def play_corpus_game(task: tuple) -> dict:
                                 committee_act
                                 and dset == "override"
                                 and target_list is not None
+                                and anchor is not None
                             ):
                                 acts = sorted(valid_actions)
                                 acted = acts[int(np.argmax(target_list))]

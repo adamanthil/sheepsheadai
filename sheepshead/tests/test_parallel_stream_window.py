@@ -23,13 +23,14 @@ catch it changing.
 
 import random
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training import league_streams
-from sheepshead.training.league import SELF_PLAY
+from sheepshead.training.league import SELF_PLAY, League
 from sheepshead.training.league_streams import (
     MainPhaseContext,
     TransitionCounter,
@@ -75,8 +76,8 @@ class _FakePool:
 
 def _make_ctx(tmp_path, args, start_episode, end_episode, training_agent=None):
     return MainPhaseContext(
-        training_agent=training_agent,
-        league=_FakeLeague(),
+        training_agent=cast(PPOAgent, training_agent),
+        league=cast(League, _FakeLeague()),
         rng=random.Random(7),
         args=args,
         collect_oracle=False,

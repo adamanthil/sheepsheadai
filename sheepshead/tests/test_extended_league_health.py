@@ -6,9 +6,11 @@ never halt, only the leaster trend halts, and every verdict is one-shot
 (recorded in state, never re-litigated on relaunch).
 """
 
+import argparse
 import csv
 import os
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -49,7 +51,9 @@ def make_orch(tmp_path, monkeypatch, **arg_overrides):
         ignore_health_halt=False,
     )
     args = SimpleNamespace(**{**defaults, **arg_overrides})
-    orch = Orchestrator(args)
+    # Orchestrator only reads attributes; a namespace with the same fields
+    # stands in for the parsed argparse.Namespace.
+    orch = Orchestrator(cast(argparse.Namespace, args))
     # Baseline normally measured by ensure_baseline_health; pin it so the
     # relative ALONE limit is deterministic (max(20, 25 + 5) = 30).
     orch.state["baseline_health"] = {"alone_rate": 25.0}

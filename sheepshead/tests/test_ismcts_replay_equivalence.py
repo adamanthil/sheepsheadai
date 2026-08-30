@@ -273,7 +273,8 @@ def test_sequential_drop_on_inconsistent_deal():
     world, log_w = teacher._build_world(
         game, copy.deepcopy(good), forced_public, observer
     )
-    assert world is not None and np.isfinite(log_w), "good deal failed to build"
+    assert world is not None and log_w is not None, "good deal failed to build"
+    assert np.isfinite(log_w), "good deal built with a non-finite log-weight"
     assert teacher.fail["bad_public"] == 0
 
     world, log_w = teacher._build_world(

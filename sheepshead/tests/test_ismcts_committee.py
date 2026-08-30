@@ -109,7 +109,9 @@ def test_committee_r1_bitexact_vs_serial():
     if serial["pi_gumbel"] is None:
         assert lock["pi_gumbel"] is None
     else:
-        assert np.array_equal(lock["pi_gumbel"], serial["pi_gumbel"])
+        l_gumbel, s_gumbel = lock["pi_gumbel"], serial["pi_gumbel"]
+    assert l_gumbel is not None and s_gumbel is not None
+    assert np.array_equal(l_gumbel, s_gumbel)
 
 
 def test_committee_r3_matches_per_seed_serial():

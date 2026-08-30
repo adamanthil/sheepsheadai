@@ -99,7 +99,7 @@ import copy
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Literal, NamedTuple, TypedDict
+from typing import Literal, NamedTuple, TypedDict, cast
 
 import numpy as np
 import torch
@@ -1617,7 +1617,10 @@ class ISMCTSTeacher:
                     return None
                 if next_seat == observer:
                     # Done advancing -> descend into the selected action's child.
-                    parent, action_id = sim.node, sim.pending_action
+                    # pending_action is set at the tree -> advance handoff
+                    # below; the advance phase is unreachable without one.
+                    parent = sim.node
+                    action_id = cast(int, sim.pending_action)
                     child = parent.children.get(action_id)
                     if child is None:
                         child = _Node()

@@ -43,7 +43,7 @@ import json
 import math
 import random
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -148,6 +148,9 @@ def analyze_node(agent, spot: dict, args, device) -> Optional[dict]:
     if node.argmaxCard != spot["cardLed"]:
         print(f"  ! seed={seed} step={step}: argmax drifted; skipping")
         return None
+    if node.leadLogits is None:
+        print(f"  ! seed={seed} step={step}: node carries no lead logits; skipping")
+        return None
     lead_cards = sorted(node.leadLogits.keys())
     if len(lead_cards) < 2:
         return None
@@ -174,7 +177,7 @@ def analyze_node(agent, spot: dict, args, device) -> Optional[dict]:
 
     rng_seed = 0xC0FFEE ^ (seed << 8) ^ step
     d_rollout = 6 - int(node.trickIndex)  # roll to terminal
-    arm_res: Dict[str, dict] = {}
+    arm_res: Dict[str, Any] = {}
     for arm, overrides in SEARCH_ARMS.items():
         cfg = ISMCTSConfig()
         cfg.iters = {k: args.iters for k in cfg.iters}

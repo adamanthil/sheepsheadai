@@ -274,12 +274,12 @@ def probe_branch(
             pos = actor.position
             state = actor.get_state_dict()
             valid = actor.get_valid_action_ids()
-            if pos == node.leader and want_oracle and v_next_orc is None:
+            if pos == node.leader and orc_events is not None and v_next_orc is None:
                 orc_events.append(actor.get_oracle_state_dict())
             probs, v = policy_and_value(agent, state, valid, pid=pos)
             if pos == node.leader and v_next_lim is None:
                 v_next_lim = v
-                if want_oracle:
+                if orc_events is not None:
                     v_next_orc = _oracle_value(agent, orc_events)
             actor.act(_sample_action(probs, rng))
             if g.was_trick_just_completed:
@@ -288,7 +288,7 @@ def probe_branch(
                         seat.get_last_trick_state_dict(), player_id=seat.position
                     )
                     if (
-                        want_oracle
+                        orc_events is not None
                         and seat.position == node.leader
                         and v_next_orc is None
                     ):
@@ -305,7 +305,7 @@ def probe_branch(
         else:
             r0 = _trick_reward(g, node.trick)
             boot_lim.append(r0 + GAMMA * v_next_lim)
-            if want_oracle:
+            if want_oracle and v_next_orc is not None:
                 boot_orc.append(r0 + GAMMA * v_next_orc)
     out = {
         "realized": float(np.mean(realized)),

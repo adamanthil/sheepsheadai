@@ -142,7 +142,7 @@ def _classify_spots(resp, seed: int, max_trick: int) -> List[dict]:
         called = view.get("called_card")
         called_led = _called_suit_already_led(view) if called else True
         legal_leads = [
-            cf._card_of(v) for v in ad.validActionIds if cf._card_of(v) is not None
+            c for v in ad.validActionIds if (c := cf._card_of(v)) is not None
         ]
         classes = {c: _lead_class(c, called, called_led) for c in legal_leads}
         if not any(v == "fat" for v in classes.values()) or not any(

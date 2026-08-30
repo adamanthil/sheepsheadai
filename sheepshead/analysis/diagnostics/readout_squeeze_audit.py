@@ -88,6 +88,8 @@ def audit(ckpt: str) -> dict:
                     va = player.get_valid_action_ids()
 
     ent = np.concatenate([e[None, :] for e in ents], axis=0)  # (N, 16)
+    if map_sum is None:
+        raise RuntimeError("no readout attention maps were collected")
     mean_maps = (map_sum / map_count).numpy()  # (16, 19)
     # pairwise cosine overlap between the 16 mean maps
     norms = np.linalg.norm(mean_maps, axis=1, keepdims=True).clip(1e-9)

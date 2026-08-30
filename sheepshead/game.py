@@ -500,7 +500,7 @@ class Game:
 
             trick = self.history[self.current_trick]
 
-            is_called_10_suit = (
+            is_called_10_suit = bool(
                 self.called_card
                 and self.called_card in CALLED_10S
                 and not self.was_called_suit_played

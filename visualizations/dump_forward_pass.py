@@ -45,6 +45,7 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import torch
 
@@ -218,7 +219,9 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
     game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=seed)
     agent.reset_recurrent_state()
     snapshots = {k: [] for k in SCENARIO_ORDER}
-    oracle_mem = None
+    # Left empty when there is no oracle; every read below is behind the same
+    # `oracle is not None` guard that fills it.
+    oracle_mem: dict[int, torch.Tensor] = {}
     if oracle is not None:
         d_model = oracle.encoder.d_model
         oracle_mem = {
@@ -277,7 +280,7 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
                             device=ORACLE_DEVICE,
                         )
                     oracle_mem[player.position] = out["memory_out"].detach()
-                if snap is not None:
+                if snap is not None and kind is not None:
                     snap["chosen_action"] = ACTION_LOOKUP[action]
                     snapshots[kind].append(snap)
                 valid_actions = player.get_valid_action_ids()
@@ -822,7 +825,7 @@ def capture_oracle_forward(oracle, ostate, memory_in):
         # Each prediction is paired with the exact label the training loss
         # uses, straight from team_aux_labels, so the viz can show the
         # residual rather than a bare number.
-        aux = {"has_heads": bool(oracle.has_aux_heads)}
+        aux: dict[str, Any] = {"has_heads": bool(oracle.has_aux_heads)}
         if oracle.has_aux_heads:
             member_prob = torch.sigmoid(oracle.team_membership(value_feat))  # (1, 5)
             team_pts = oracle.team_points(value_feat)  # (1, 2), /120 units

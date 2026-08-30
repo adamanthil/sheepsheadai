@@ -102,7 +102,7 @@ def _setup_seats(
     """Build the position-to-agent seat mapping (shuffling which opponent sits
     where) and derive the position->pop-agent map from it."""
     # Create position-to-agent mapping; all five seats must be populated by training + 4 opponents
-    agents = [None] * 5
+    agents: list = [None] * 5
     agents[training_agent_position - 1] = training_agent
 
     # Randomize which opponent sits in which non-training seat to reduce seat-assignment bias
@@ -438,13 +438,20 @@ def play_population_game(
     )
     weights = shaping_weights or {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 1.0}
     shaped = reward_mode == "shaped"
-    search_enabled = (
-        reward_mode == "terminal"
-        and teacher is not None
-        and determinization_rng is not None
-        and search_config is not None
-        and search_config.enabled
+    # Bundled rather than kept as three separate Optionals plus a bool: one
+    # `is not None` check at the emission site below then narrows all three.
+    search_ctx = (
+        (teacher, determinization_rng, search_config)
+        if (
+            reward_mode == "terminal"
+            and teacher is not None
+            and determinization_rng is not None
+            and search_config is not None
+            and search_config.enabled
+        )
+        else None
     )
+    search_enabled = search_ctx is not None
     if search_enabled:
         # The teacher reads the LIVE policy's label-time distribution (the
         # KL telemetry referent) from the act() stash — see
@@ -534,15 +541,16 @@ def play_population_game(
                             bury_weight=weights["bury"],
                             play_weight=weights["play"],
                         )
-                    elif search_enabled:
+                    elif search_ctx is not None:
+                        ce_teacher, ce_rng, ce_config = search_ctx
                         _attach_ce_search_target(
                             game,
                             player,
                             valid_actions,
                             transition,
-                            teacher,
-                            determinization_rng,
-                            search_config,
+                            ce_teacher,
+                            ce_rng,
+                            ce_config,
                             forced_public,
                             search_diagnostics,
                             training_agent.last_action_probs,

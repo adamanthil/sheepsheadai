@@ -50,10 +50,11 @@ from sheepshead.scripted_agent import ScriptedAgent
 _FAIL_SET = set(FAIL)
 
 
-def _called_suit_fail(card: str, called_card: str) -> bool:
+def _called_suit_fail(card: str, called_card: str | None) -> bool:
     """True when ``card`` is a fail of the called card's suit (the suit letter
-    is the last character for all fail cards; QC/JC etc. are trump)."""
-    return card in _FAIL_SET and card[-1] == called_card[-1]
+    is the last character for all fail cards; QC/JC etc. are trump). A hand
+    with no called card has no called suit, so nothing matches."""
+    return called_card is not None and card in _FAIL_SET and card[-1] == called_card[-1]
 
 
 def _legal_lead_cards(player) -> list[str]:

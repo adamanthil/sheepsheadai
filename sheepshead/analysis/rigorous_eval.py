@@ -82,7 +82,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -107,7 +107,10 @@ class Model:
     model_id: str
     filepath: Path
     episodes: Optional[int]
-    agent: PPOAgent
+    # A PPOAgent, or any stand-in with the same act()/observe() surface: the
+    # convention wrapper (design E4) and the head-routed pair
+    # (analysis/head_routed_h2h.py) are entrants in their own right.
+    agent: Any
 
 
 class ModelRegistry:
