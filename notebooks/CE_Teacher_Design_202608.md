@@ -2057,6 +2057,25 @@ REVISED MENU (operator to choose):
     revert to the §12 conclusion list (reward coupling /
     architectural separation).
 
+### 17.16 Option-1 launch (2026-08-29): WiSE-FT interpolation
+
+Operator chose (1). Built runs/distill_interp_202608/make_interp.py:
+theta_alpha = lerp(theta_k, arm_c_ep1, alpha) over every float
+param+buffer of every module (encoder/actor/critic/oracle),
+integer buffers asserted identical; saved via agent.save() =
+ordinary checkpoints. interp_a50 + interp_a75 built; cert battery
+LAUNCHED on both (probes n=1000 x 4 + dup h2h each).
+
+Pre-registered readings (WiSE-FT anisotropy bet): damage from
+noise-fitting decays faster along the path than the coherently-
+installed convention shift. SHIP CANDIDATE = any alpha with h2h
+within noise of 0 (>= -0.01) AND called-suit >= ~47.5 (i.e. most
+of arm c's +4.6 held) AND partner >= 94.5, t0 <= 1. Linear-fade
+null: called-suit gain and h2h loss shrink proportionally
+(a75 ~ 3/4 of both, a50 ~ 1/2) — informative but no ship. Watch
+partner: both endpoints hold it, so any interior dip would be a
+mode-connectivity artifact (not expected at 1-epoch distance).
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
