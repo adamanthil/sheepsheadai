@@ -62,7 +62,7 @@ def _replicate(valid, qmap, n=256.0, prior=None):
 
 
 def _build(replicates, valid, s2_global=1.1e-4, nu=4.0):
-    return build_ce_search_target(
+    out = build_ce_search_target(
         replicates,
         valid,
         shrink_nu=nu,
@@ -70,6 +70,10 @@ def _build(replicates, valid, s2_global=1.1e-4, nu=4.0):
         gumbel_c_visit=C_VISIT,
         gumbel_c_scale=C_SCALE,
     )
+    # Every caller here feeds a committee that yields a target; None means the
+    # fixture, not the code under test, is wrong.
+    assert out is not None, "committee produced no usable root statistics"
+    return out
 
 
 class _ScriptedCommittee:
@@ -402,6 +406,7 @@ def test_worker_protocol_serves_ce_teacher(tmp_path):
         out = lw.league_worker_play(job)
         if out["training_data_single"]["search_diagnostics"]["play"]["count"]:
             break
+    assert out is not None, "no deal produced a worker payload"
     worker = lw.WORKER_STATE["agent"]
     assert worker.gamma == 1.0  # payload gamma reached the live worker agent
     assert worker.oracle_critic is not None

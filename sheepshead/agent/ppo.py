@@ -792,7 +792,7 @@ class PPOAgent:
                     and len(raw_target) == len(sorted_valid)
                 )
                 search_target = [0.0] * self.action_size
-                if has_search_target:
+                if has_search_target and raw_target is not None:
                     for action_id, prob in zip(sorted_valid, raw_target):
                         search_target[action_id - 1] = float(prob)
                 record = {
@@ -1392,10 +1392,10 @@ class PPOAgent:
         is_bury = torch.isin(actions_flat, bury_idx_t)
         is_play = ~(is_pick | is_partner | is_bury)
 
-        count_pick = is_pick.sum().item()
-        count_partner = is_partner.sum().item()
-        count_bury = is_bury.sum().item()
-        count_play = is_play.sum().item()
+        count_pick = int(is_pick.sum().item())
+        count_partner = int(is_partner.sum().item())
+        count_bury = int(is_bury.sum().item())
+        count_play = int(is_play.sum().item())
         total_count = float(count_pick + count_partner + count_bury + count_play)
         heads_present = int(
             (count_pick > 0) + (count_partner > 0) + (count_bury > 0) + (count_play > 0)
@@ -1561,7 +1561,7 @@ class PPOAgent:
 
         # Store statistics before normalization
         raw_advantages = advantages.copy() if advantages.size else np.array([0.0])
-        advantage_stats = {
+        advantage_stats: dict[str, Any] = {
             "mean": float(np.mean(raw_advantages)),
             "std": float(np.std(raw_advantages)),
             "min": float(np.min(raw_advantages)),
@@ -2329,7 +2329,7 @@ class PPOAgent:
             del forward, flat
         zero_grads()
 
-        out = {"lead_rows": total_lead}
+        out: dict[str, Any] = {"lead_rows": total_lead}
         if lead_n > 0:
             mean = lead_adv_sum / lead_n
             var = max(lead_adv_sq / lead_n - mean**2, 0.0)

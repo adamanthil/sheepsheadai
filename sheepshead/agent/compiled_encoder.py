@@ -32,6 +32,8 @@ Three properties are load-bearing rather than incidental:
   -- see ``allow_shape_specialisation``.
 """
 
+from typing import Any
+
 import torch
 
 from sheepshead.agent.encoder import CardReasoningEncoder
@@ -75,7 +77,7 @@ def enable_compiled_encoder(granularity: int = 32, mode: str | None = None) -> N
     allow_shape_specialisation()
     _ORIGINAL_ENCODE_BATCH = CardReasoningEncoder.encode_batch
     granularity = max(1, int(granularity))
-    kwargs = {} if mode in (None, "default") else {"mode": mode}
+    kwargs: dict[str, Any] = {} if mode in (None, "default") else {"mode": mode}
     graph = torch.compile(CardReasoningEncoder.encode_tensors, dynamic=False, **kwargs)
 
     def compiled_encode_batch(self, batch, memory_in=None, device=None):
@@ -154,20 +156,24 @@ def enable_routed_encoder(
     _ORIGINAL_ENCODE_BATCH = CardReasoningEncoder.encode_batch
     granularity = max(1, int(granularity))
     threshold = max(1, int(threshold))
-    kwargs = {} if mode in (None, "default") else {"mode": mode}
+    kwargs: dict[str, Any] = {} if mode in (None, "default") else {"mode": mode}
     graph = torch.compile(CardReasoningEncoder.encode_tensors, dynamic=False, **kwargs)
     shadow_device = torch.device(device)
-    _ROUTED = {"shadows": {}, "device": shadow_device, "threshold": threshold}
+    # Held as a local as well: the closures below read it on every routed
+    # batch, and a module global that is declared `dict | None` narrows to
+    # neither inside them.
+    shadows: dict[int, Any] = {}
+    _ROUTED = {"shadows": shadows, "device": shadow_device, "threshold": threshold}
     original = _ORIGINAL_ENCODE_BATCH
 
     def _shadow_for(encoder):
-        shadow = _ROUTED["shadows"].get(id(encoder))
+        shadow = shadows.get(id(encoder))
         if shadow is None:
             import copy
 
             shadow = copy.deepcopy(encoder).to(shadow_device)
             shadow.eval()
-            _ROUTED["shadows"][id(encoder)] = shadow
+            shadows[id(encoder)] = shadow
         return shadow
 
     def routed_encode_batch(self, batch, memory_in=None, device=None):
