@@ -2076,6 +2076,32 @@ null: called-suit gain and h2h loss shrink proportionally
 partner: both endpoints hold it, so any interior dip would be a
 mode-connectivity artifact (not expected at 1-epoch distance).
 
+RESULT (2026-08-29/30): ANISOTROPY CONFIRMED, a50 PASSES ALL BARS.
+
+  alpha  called-suit(4x1000)  partner  t0    h2h vs theta_k
+  0.0        44.7 (baseline)   ~96.5    ~1    0 (identity)
+  0.5        48.0              96.8     0.4   -0.0039 se 0.0074
+  0.75       45.8              96.7     0.1   -0.0155 se 0.0083
+  1.0 (c)    49.3              96.7     0.6   -0.0276 se 0.0089
+
+EV damage is CONVEX along the path (a50 sheds ~86% of arm c's loss;
+linear fade would predict -0.014) while the convention is CONCAVE-
+ish (a50 keeps ~70% of the gain; a75's 45.8 dip vs a50 is ~1.2
+sigma — noise or a mild non-monotone bump, either way dominated).
+interp_a50 = FIRST ARTIFACT IN THE PROGRAM with an installed
+convention (+3.3 called-suit, 4x n=1000) at EV PARITY (h2h -0.004
++/- 0.007; jd mode +0.007, called mode -0.015 ~ -1.4 sigma = watch
+item, not a fail). Partner 96.8, t0 0.4, pick 37.2 (the cosmetic
+drift interpolates through), spread 3.4 (compression mostly gone).
+
+VERDICT: interp_a50 is the ship candidate
+(runs/distill_interp_202608/interp_a50.pt). Deploy decision +
+whether to refine alpha (e.g. 0.6) is the operator's; marginal
+value of refinement looks low (a50 already passes every bar).
+WiSE-FT interpolation is hereby a validated post-processing step
+of the phased-offline ExIt recipe: distill hot (accept EV damage),
+then walk back toward theta_k to the EV-parity point.
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
