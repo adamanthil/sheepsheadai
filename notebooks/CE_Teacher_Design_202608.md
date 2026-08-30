@@ -2102,6 +2102,18 @@ WiSE-FT interpolation is hereby a validated post-processing step
 of the phased-offline ExIt recipe: distill hot (accept EV damage),
 then walk back toward theta_k to the EV-parity point.
 
+§17.16 ADDENDUM (2026-08-30) — cross-lineage h2h vs PROD: operator
+requested interp_a50 vs final_pfsp_swish_ppo (the deployed 30M
+legacy-arch model) through the duplicate instrument (2000/mode):
+edge +0.0145 (called +0.0076 / jd +0.0213, se ~0.014) — a
+STATISTICAL TIE with the point estimate in a50's favor. The
+arch-ablation panel-absolute readings (v2 lineage ~-0.12) do NOT
+transfer to direct head-to-head at theta_k+distill maturity:
+deploying interp_a50 would NOT be a strength downgrade vs prod,
+and it carries the called-suit convention at its lineage's EV
+parity. Deploy decision remains the operator's
+(runs/xarch_h2h_202608/run.log).
+
 ## 18. EV-gain program — pre-registration (2026-08-30)
 
 GOAL: convert the search ceiling (+0.180 committee-ACTED, §13.3;
