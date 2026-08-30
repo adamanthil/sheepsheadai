@@ -2138,8 +2138,24 @@ eroded under any later gradient pressure => basin depth at install
 time, not the convention or arch, is the durability variable;
 (c) this is the §12 "reward coupling" durable-gains option with an
 existence proof at EV parity (h2h tie after the unshaped 15M).
-Implication routes: sharpened/concentrated tie-band distill
-targets, or operator revisiting the no-shaping rule (their call).
+
+OPERATOR FRAMING CORRECTION (2026-08-30, supersedes the last
+implication line): the no-shaping discipline is not a rule up for
+revisiting — it IS the research program. History: the original
+trigger for the convention investigations (-> oracle critic,
+search teacher) was the 30M's DEFENDER TRUMP-LEAD LEAK; the
+terminal-only lineage has FIXED that (t0 0.25-0.6 across §17 arms
+vs the 30M's 1.18 pooled / 4.8 historical) — priority 1 achieved.
+Priority 2 = comparable-or-higher EV WITH partner/called-suit
+adherence under disciplined terminal-only rewards: EV
+comparability achieved (h2h tie), partner close (96.7 vs 99.8),
+called-suit the open gap (48 vs 90). The shaped 30M is the
+BASELINE the terminal-only program must match, not a route back;
+its analytical role is proving the 90-adherence target is
+EV-compatible and durable. Live levers toward it: concentrated/
+sharpened tie-band distill targets (class pooling on the endorsed
+rows — where the 30M's shaped preference lives), corpus q's dense
+endorsed coverage as the material.
 
 GOAL: convert the search ceiling (+0.180 committee-ACTED, §13.3;
 offline-grade targeted-search edge independently confirmed) into
