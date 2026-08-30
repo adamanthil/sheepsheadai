@@ -1,4 +1,34 @@
 {
   "venvPath": ".",
-  "venv": ".venv"
+  "venv": ".venv",
+
+  // Pin the language level. Without this basedpyright infers the version from
+  // whatever `python3` resolves to on PATH (a 3.11 pyenv shim here, not the
+  // 3.14 in .venv) and rejects the repo's PEP 758 `except A, B:` syntax.
+  "pythonVersion": "3.14",
+
+  // runs/ and model-history/ are gitignored training artifacts; notebooks/ is
+  // prose. None of them are import targets.
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "runs",
+    "model-history",
+    "notebooks"
+  ],
+
+  "typeCheckingMode": "basic",
+
+  // basedpyright's default "recommended" mode reports ~29k warnings on this
+  // codebase, nearly all of them "the inferred type is Unknown" on untyped
+  // research code. The project is deliberately only partially annotated, so
+  // the Unknown-* family stays off and `basic` is the floor we hold at zero.
+  "reportAttributeAccessIssue": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownVariableType": "none",
+  "reportMissingParameterType": "none",
+  "reportUnknownArgumentType": "none"
 }

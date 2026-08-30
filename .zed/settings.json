@@ -1,0 +1,22 @@
+{
+  // Type-checking config lives in pyrightconfig.json, not here: when that file
+  // exists, basedpyright ignores diagnostic settings sent by the editor.
+  // Only language-server-only settings (no config-file equivalent) belong here.
+  "lsp": {
+    "basedpyright": {
+      "settings": {
+        "basedpyright": {
+          "analysis": {
+            "autoImportCompletions": false,
+            // Default is "openFilesOnly", which reports only the files that
+            // happen to be open -- the project diagnostics panel then shows a
+            // small fraction of the real count. The repo is held at zero
+            // errors by the pre-commit gate and CI, so scanning the whole
+            // workspace is what makes the editor agree with them.
+            "diagnosticMode": "workspace",
+          },
+        },
+      },
+    },
+  },
+}
