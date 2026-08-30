@@ -257,12 +257,15 @@ def _pick_branch_cards(node: cf.NodeInfo, spot: dict) -> Optional[tuple[str, str
         others = {c: v for c, v in logits.items() if c != called}
         if not others:
             return None
-        return called, max(others, key=others.get)
+        return called, max(others, key=lambda c: others[c])
     conv_pool = {c: v for c, v in logits.items() if _called_suit_fail(c, called)}
     alt_pool = {c: v for c, v in logits.items() if not _called_suit_fail(c, called)}
     if not conv_pool or not alt_pool:
         return None
-    return max(conv_pool, key=conv_pool.get), max(alt_pool, key=alt_pool.get)
+    return (
+        max(conv_pool, key=lambda c: conv_pool[c]),
+        max(alt_pool, key=lambda c: alt_pool[c]),
+    )
 
 
 def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[C2CaseResult]:

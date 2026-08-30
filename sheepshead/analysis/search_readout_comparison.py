@@ -124,7 +124,7 @@ def _entropy(pi: Dict[int, float]) -> float:
 
 
 def _policy_metrics(pi: Dict[int, float], vals: Dict[int, dict], aid_card) -> dict:
-    mode = max(pi, key=pi.get)
+    mode = max(pi, key=lambda a: pi[a])
     return {
         "valueMixture": float(sum(pi[a] * vals[a]["scoreMean"] for a in pi)),
         "valueMode": float(vals[mode]["scoreMean"]),

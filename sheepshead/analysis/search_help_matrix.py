@@ -369,7 +369,7 @@ def _replay_seeds(
                                     # (sharper ground truth); single-replicate
                                     # keeps the historical pi_gumbel argmax.
                                     "gumbelArgmax": (
-                                        int(max(avg, key=avg.get))
+                                        int(max(avg, key=lambda a: avg[a]))
                                         if replicate_mode and avg
                                         else reps[0]["gumbelArgmax"]
                                     ),

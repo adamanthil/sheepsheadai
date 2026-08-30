@@ -154,7 +154,7 @@ def _replicate_top_pair_diffs(replicates, valid_actions) -> tuple[list, list]:
             pooled[a] = float(np.mean(obs))
     if len(pooled) < 2:
         return [], []
-    a1, a2 = sorted(pooled, key=pooled.get, reverse=True)[:2]
+    a1, a2 = sorted(pooled, key=lambda a: pooled[a], reverse=True)[:2]
     diffs = [
         float(r["root_q"][a1]) - float(r["root_q"][a2])
         for r in usable

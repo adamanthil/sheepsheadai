@@ -217,7 +217,7 @@ def collect_nodes(
                     card_p = {ACTIONS[a - 1][5:]: float(probs[a - 1]) for a in valid}
                     conv_card = max(conv_pool, key=lambda c: card_p.get(c, 0.0))
                     alt_card = max(alt_pool, key=lambda c: card_p.get(c, 0.0))
-                    argmax_card = max(card_p, key=card_p.get)
+                    argmax_card = max(card_p, key=lambda c: card_p[c])
                     nodes.append(
                         _EligibleNode(
                             game=copy.deepcopy(game),
