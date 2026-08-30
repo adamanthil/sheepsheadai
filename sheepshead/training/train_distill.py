@@ -126,12 +126,18 @@ def densify(probs: list | None, valid_actions, action_size: int) -> list:
     return dense
 
 
-def store_episodes(agent, episodes: list) -> None:
+def store_episodes(agent, episodes: list, gap_floor: float = 0.0) -> None:
     """Store corpus episodes into the agent's event buffer and annotate the
     stored action records with the distill channels. Reuses the exact
     ``store_episode_events`` schema (masks, target densification, aux
     labels), then walks the appended records in step with the source
     events — action records correspond 1:1 in order.
+
+    ``gap_floor`` (§18 label pruning): override rows with a resolved
+    top-2 gap BELOW the floor are demoted to NO-LOSS ("none") — search
+    spoke and materially disagreed, so anchoring them to theta_k would
+    anti-teach, but their labels sit inside the committee's near-tie
+    noise band (§12.8) and are excluded from the CE stream.
 
     Also writes the supervised value targets: return = final_score /
     RETURN_SCALE at EVERY action row (MC target, terminal gamma=1), and
@@ -144,7 +150,13 @@ def store_episodes(agent, episodes: list) -> None:
             if rec["kind"] != "action":
                 continue
             src = next(src_actions)
-            rec["distill_set"] = SET_CODES.get(src.get("distill_set", "none"), 0)
+            dset = src.get("distill_set", "none")
+            if (
+                dset == "override"
+                and float(src.get("search_gap", 0.0) or 0.0) < gap_floor
+            ):
+                dset = "none"
+            rec["distill_set"] = SET_CODES.get(dset, 0)
             rec["search_gap"] = float(src.get("search_gap", 0.0) or 0.0)
             rec["node_class"] = src.get("node_class", "")
             rec["conv_cs_ids"] = src.get("conv_cs_ids")
@@ -488,7 +500,7 @@ def run_epoch(agent, episodes, args, train: bool, frozen=None):
             episodes[i] for i in order[chunk_start : chunk_start + args.buffer_episodes]
         ]
         agent.reset_storage()
-        store_episodes(agent, chunk)
+        store_episodes(agent, chunk, gap_floor=getattr(args, "gap_floor", 0.0))
         states, masks_t, kinds = agent._prepare_training_views()
         segments = agent._segments_from_events(kinds)
         seg_order = list(range(len(segments)))
@@ -653,6 +665,14 @@ def main() -> int:
         help="anchor targets from a frozen theta_k forward over the "
         "trainer's own replayed unroll instead of the stored act-time "
         "stashes (§17.11: init KL == 0 by construction)",
+    )
+    ap.add_argument(
+        "--gap-floor",
+        dest="gap_floor",
+        type=float,
+        default=0.0,
+        help="demote override rows with top-2 gap below this to no-loss "
+        "(§18 near-tie label pruning; 0 = keep all)",
     )
     ap.add_argument(
         "--stop-grad-value",

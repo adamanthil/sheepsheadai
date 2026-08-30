@@ -340,6 +340,26 @@ def test_recomputed_anchors_zero_at_init():
     # cannot reproduce.
 
 
+def test_gap_floor_demotes_override_rows():
+    """§18 pruning: override rows below the gap floor become no-loss
+    ("none"), never anchored; rows at/above the floor are untouched."""
+    agent = _fresh_agent()
+    res = _generate_game(agent, game_idx=3)
+    src = [e for ep in res["episodes"] for e in ep if e["kind"] == "action"]
+    ov_gaps = sorted(e["search_gap"] for e in src if e["distill_set"] == "override")
+    assert ov_gaps, "need override rows for the floor test"
+    floor = ov_gaps[len(ov_gaps) // 2] + 1e-9  # demote the lower half
+    agent.reset_storage()
+    store_episodes(agent, res["episodes"], gap_floor=floor)
+    recs = [r for r in agent.events if r["kind"] == "action"]
+    for r, s in zip(recs, src):
+        if s["distill_set"] == "override" and s["search_gap"] < floor:
+            assert r["distill_set"] == SET_CODES["none"]
+            assert r["anchor_probs"] == [0.0] * agent.action_size
+        else:
+            assert r["distill_set"] == SET_CODES[s["distill_set"]]
+
+
 def test_stop_grad_value_surgery():
     """§17.13 lever 1: with --stop-grad-value, the shared trunk (encoder)
     receives EXACTLY the gradients of the non-value losses, while the
