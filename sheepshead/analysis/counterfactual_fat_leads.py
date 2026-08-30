@@ -224,7 +224,7 @@ def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[FatCaseRe
     target_step, seat = spot["stepIndex"], spot["seat"]
     det_rng = random.Random(0xFA7 ^ (seed << 8) ^ target_step)
 
-    node_game, node_mem, node, _search, forced_public = cf._replay_to_node(
+    cap = cf._replay_to_node(
         agent,
         seed,
         PARTNER_MODE_CALLED_ACE,
@@ -237,9 +237,10 @@ def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[FatCaseRe
         rollout_depth=args.rollout_depth,
         min_visit_frac=args.min_visit_frac,
     )
-    if node is None:
+    if cap is None:
         print(f"  ! seed={seed} step={target_step}: node not reached; skipping")
         return None
+    node_game, node_mem, node, _search, forced_public = cap
     if node.argmaxCard != spot["cardLed"]:
         print(
             f"  ! seed={seed} step={target_step}: argmax {node.argmaxCard} "

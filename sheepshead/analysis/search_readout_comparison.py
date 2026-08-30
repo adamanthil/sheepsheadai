@@ -138,12 +138,13 @@ def _policy_metrics(pi: Dict[int, float], vals: Dict[int, dict], aid_card) -> di
 
 def analyze_node(agent, spot: dict, args, device) -> Optional[dict]:
     seed, step, seat = spot["seed"], spot["stepIndex"], spot["seat"]
-    node_game, node_mem, node, _s, forced_public = cf._replay_to_node(
+    cap = cf._replay_to_node(
         agent, seed, spot["partnerMode"], step, args.max_steps, device, teacher=None
     )
-    if node is None:
+    if cap is None:
         print(f"  ! seed={seed} step={step}: node not reached; skipping")
         return None
+    node_game, node_mem, node, _s, forced_public = cap
     if node.argmaxCard != spot["cardLed"]:
         print(f"  ! seed={seed} step={step}: argmax drifted; skipping")
         return None

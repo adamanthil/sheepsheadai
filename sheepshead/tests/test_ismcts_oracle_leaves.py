@@ -7,6 +7,7 @@ agents without an oracle critic, terminal-depth gating, and determinism.
 """
 
 import random
+from typing import Any
 
 import torch
 
@@ -56,7 +57,7 @@ def _to_first_play_node(agent, game_seed=11):
 
 
 def _config(**kw):
-    base = dict(
+    base: dict[str, Any] = dict(
         iters={"pick": 16, "partner": 16, "bury": 16, "play": 16},
         batch_size=4,
         d_rollout=2,

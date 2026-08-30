@@ -29,6 +29,7 @@ import os
 import platform
 import random
 import sys
+from typing import Any
 
 import numpy as np
 import torch
@@ -51,7 +52,10 @@ FIXTURE_DIR = os.path.join(
 
 # One search per (node, arm). Small iteration budgets keep a full run ~1-2 min
 # while still exercising every code path the refactor touches.
-_BASE = dict(
+# dict[str, Any]: the entries are heterogeneous (nested dicts, ints) and this
+# is splatted into ISMCTSConfig(**...), so a narrower inferred value type makes
+# every keyword argument look mistyped.
+_BASE: dict[str, Any] = dict(
     iters={"pick": 8, "partner": 8, "bury": 8, "play": 8},
     det_max_tries=400,
     d_rollout=2,

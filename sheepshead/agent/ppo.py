@@ -1,5 +1,5 @@
 import time
-from typing import List, NamedTuple
+from typing import Any, List, NamedTuple
 
 import numpy as np
 import torch
@@ -185,6 +185,18 @@ class _UpdateEpochAccumulator:
 
 
 class PPOAgent:
+    # The architecture registry is duck-typed by design (see
+    # architectures/registry.py): every spec builds a different concrete
+    # encoder/actor/critic, and callers -- this class, the analysis probes and
+    # the tests -- reach arch-specific attributes on them. Declaring these as
+    # nn.Module would route each such access through nn.Module.__getattr__,
+    # whose declared return type is `Tensor | Module`, so a type checker
+    # rejects calls and subscripts it cannot see. `Any` is the honest
+    # annotation for that boundary; the runtime contract is the spec's.
+    encoder: Any
+    actor: Any
+    critic: Any
+
     def __init__(
         self,
         action_size,

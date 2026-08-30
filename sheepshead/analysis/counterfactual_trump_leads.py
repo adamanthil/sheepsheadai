@@ -62,7 +62,7 @@ import json
 import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional, cast
 
 import numpy as np
 import torch
@@ -103,9 +103,19 @@ def _is_private_decision(valid_actions) -> bool:
     return any(is_private_action(a) for a in valid_actions)
 
 
-def _card_of(action_id: int) -> Optional[str]:
+def _card_of(action_id: Optional[int]) -> Optional[str]:
+    """Card name for a PLAY action id; None for any other action, and for the
+    None that ``max(..., default)`` yields when a lead class is empty."""
+    if action_id is None:
+        return None
     name = ACTION_LOOKUP.get(action_id, "")
     return name[5:] if name.startswith("PLAY ") else None
+
+
+def _lead_cards(leads) -> List[str]:
+    """Card names for (action_id, logit) lead pairs. The pairs are built by
+    filtering on _card_of, so nothing is actually dropped here."""
+    return [c for aid, _ in leads if (c := _card_of(aid)) is not None]
 
 
 def _snapshot_memory(agent) -> dict:
@@ -139,6 +149,18 @@ class NodeInfo:
     # card -> logit for every legal lead at the node (UNDER token excluded),
     # so callers can pick branch cards by any class (e.g. called-suit fails).
     leadLogits: Optional[Dict[str, float]] = None
+
+
+class NodeCapture(NamedTuple):
+    """What _replay_to_node hands back once it reaches the target step. The
+    five fields are only ever populated together, so the function returns None
+    rather than a tuple of Nones when the node is not reached."""
+
+    game: Any  # positioned deep copy, post-node-forward
+    memory: dict  # per-player memory snapshot at the node
+    node: NodeInfo
+    search: Optional[SearchOutcome]
+    forced_public: List[tuple]
 
 
 @dataclass
@@ -206,8 +228,8 @@ class SearchOutcome:
     trumpQ: float
     failVisits: float
     failQ: float
-    bestTrumpCard: str
-    bestFailCard: str
+    bestTrumpCard: Optional[str]
+    bestFailCard: Optional[str]
     ranking: List[Dict]
     # ADOPTED verdict (Search_Readout_Comparison_202607): argmax of the
     # completed-Q ``pi_gumbel`` readout — mass from the UNMIXED prior +
@@ -358,10 +380,9 @@ def _replay_to_node(
     iters: int = 384,
     rollout_depth: Optional[int] = None,
     min_visit_frac: float = 0.01,
-):
+) -> Optional[NodeCapture]:
     """Deterministically replay the game to ``target_step`` (the defender lead),
-    returning ``(node_game_copy, node_mem_snapshot, NodeInfo, SearchOutcome|None,
-    forced_public_at_node)``.
+    returning a :class:`NodeCapture`, or None when the node is never reached.
 
     Mirrors simulate_game's decision loop so the snapshot is the exact ``/analyze``
     state at that node. Returns ``(None, ...)`` if the node isn't reached.
@@ -434,19 +455,15 @@ def _replay_to_node(
                 bestTrumpLogit=best_trump_logit,
                 bestFailCard=_card_of(best_fail_aid),
                 bestFailLogit=best_fail_logit,
-                trumpLeadOptions=sorted(
-                    (_card_of(a) for a, _ in trump_leads), key=TRUMP.index
-                ),
-                failLeadOptions=sorted(
-                    (_card_of(a) for a, _ in fail_leads), key=FAIL.index
-                ),
+                trumpLeadOptions=sorted(_lead_cards(trump_leads), key=TRUMP.index),
+                failLeadOptions=sorted(_lead_cards(fail_leads), key=FAIL.index),
                 handTrumpCount=sum(1 for c in actor.hand if c in TRUMP_SET),
                 handFailCount=sum(1 for c in actor.hand if c in FAIL_SET),
                 hand=sorted(actor.hand, key=lambda c: (c not in TRUMP_SET, c)),
                 leadLogits={
-                    _card_of(aid): float(logits_np[aid - 1])
+                    c: float(logits_np[aid - 1])
                     for aid in valid_sorted
-                    if _card_of(aid) and _card_of(aid) != UNDER_TOKEN
+                    if (c := _card_of(aid)) and c != UNDER_TOKEN
                 },
             )
 
@@ -476,7 +493,9 @@ def _replay_to_node(
                     min_visit_frac,
                 )
 
-            return node_game, node_mem, node, search_outcome, list(forced_public)
+            return NodeCapture(
+                node_game, node_mem, node, search_outcome, list(forced_public)
+            )
 
         if not _is_private_decision(valid):
             forced_public.append((pos, argmax_action))
@@ -486,7 +505,7 @@ def _replay_to_node(
                 agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
         step += 1
 
-    return None, None, None, None, None
+    return None
 
 
 def _belief_mc(
@@ -558,8 +577,8 @@ def _belief_mc(
 def _summarize_search(
     res: dict,
     argmax_aid: int,
-    trump_aid: int,
-    fail_aid: int,
+    trump_aid: Optional[int],
+    fail_aid: Optional[int],
     depth: int,
     iters: int,
     frac: float,
@@ -634,7 +653,11 @@ def _summarize_search(
         ranking=ranking,
         gumbelActionId=gum_aid,
         gumbelAction=ACTION_LOOKUP[gum_aid] if gum_aid is not None else None,
-        gumbelProb=(round(float(gum[gum_aid - 1]), 4) if gum_aid is not None else None),
+        gumbelProb=(
+            round(float(gum[gum_aid - 1]), 4)
+            if gum is not None and gum_aid is not None
+            else None
+        ),
         gumbelIsArgmax=(gum_aid == argmax_aid) if gum_aid is not None else None,
         gumbelIsTrump=(gum_card in TRUMP_SET) if gum_aid is not None else None,
         gumbelIsFail=(gum_card in FAIL_SET) if gum_aid is not None else None,
@@ -744,14 +767,15 @@ def _explore_sweep(agent, teacher, spot, args, device, fracs, iters_list) -> Non
     """
     seed, partner_mode = spot["seed"], spot["partnerMode"]
     target_step, seat = spot["stepIndex"], spot["seat"]
-    node_game, _, node, _, forced_public = _replay_to_node(
+    cap = _replay_to_node(
         agent, seed, partner_mode, target_step, args.max_steps, device, teacher=None
     )
-    if node is None or node.argmaxCard != spot["cardLed"]:
+    if cap is None or cap.node.argmaxCard != spot["cardLed"]:
         print(
             f"  ! seed={seed} step={target_step}: node not reached / non-reproducing; skip"
         )
         return
+    node_game, node, forced_public = cap.game, cap.node, cap.forced_public
     trump_aid = ACTION_IDS[f"PLAY {node.bestTrumpCard}"]
     fail_aid = ACTION_IDS[f"PLAY {node.bestFailCard}"]
     observer = seat
@@ -816,7 +840,7 @@ def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[CaseResul
     det_rng = random.Random(0xC0FFEE ^ (seed << 8) ^ target_step)
 
     search_teacher = None if args.no_search else teacher
-    node_game, node_mem, node, search, forced_public = _replay_to_node(
+    cap = _replay_to_node(
         agent,
         seed,
         partner_mode,
@@ -829,13 +853,22 @@ def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[CaseResul
         rollout_depth=args.rollout_depth,
         min_visit_frac=args.min_visit_frac,
     )
-    if node is None:
+    if cap is None:
         print(f"  ! seed={seed} step={target_step}: node not reached; skipping")
         return None
+    node_game, node_mem, node, search, forced_public = cap
     if node.argmaxCard != spot["cardLed"]:
         print(
             f"  ! seed={seed} step={target_step}: argmax {node.argmaxCard} "
             f"!= scanned {spot['cardLed']}; skipping (non-reproducing)"
+        )
+        return None
+    if node.bestTrumpCard is None or node.bestFailCard is None:
+        # Both branches of the paired comparison have to exist for the case to
+        # mean anything; NodeInfo allows either to be absent.
+        print(
+            f"  ! seed={seed} step={target_step}: no trump or no fail lead "
+            f"available; skipping"
         )
         return None
 
@@ -930,14 +963,16 @@ def _fmt_case(r: CaseResult) -> str:
         f"failPts={r.mcFail.defenderPointsMean:5.1f} => dPts={r.mcDeltaPoints:+5.1f} "
         f"dScore={r.mcDeltaScore:+5.2f} dWin={r.mcDeltaWin * 100:+.0f}%",
     ]
-    if r.beliefMcTrump is not None:
-        b = r.beliefMcTrump
+    if r.beliefMcTrump is not None and r.beliefMcFail is not None:
+        # The belief fields are filled as a unit by _belief_mc, or all left None.
+        b, bf = r.beliefMcTrump, r.beliefMcFail
+        d_win = cast(float, r.beliefMcDeltaWin)
         lines.append(
             f"    bmc{b.R:<3} (belief, K={b.poolSize} ess {b.ess:.0f}): "
-            f"trumpPts={r.beliefMcTrump.defenderPointsMean:5.1f} "
-            f"failPts={r.beliefMcFail.defenderPointsMean:5.1f} => "
+            f"trumpPts={b.defenderPointsMean:5.1f} "
+            f"failPts={bf.defenderPointsMean:5.1f} => "
             f"dPts={r.beliefMcDeltaPoints:+5.1f} dScore={r.beliefMcDeltaScore:+5.2f} "
-            f"dWin={r.beliefMcDeltaWin * 100:+.0f}%"
+            f"dWin={d_win * 100:+.0f}%"
         )
     if r.search is not None:
         s = r.search
