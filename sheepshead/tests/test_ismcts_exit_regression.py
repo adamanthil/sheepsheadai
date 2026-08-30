@@ -20,6 +20,7 @@ import random
 import sys
 import time
 from types import SimpleNamespace
+from typing import cast
 
 import numpy as np
 import pytest
@@ -188,7 +189,7 @@ def _assert_deal_legal(game, deal, observer, kind):
     )
     pb = _played_by(game)
     picker = game.picker
-    eight = ih[picker] + list(blind) if picker else None
+    eight = ih[picker] + list(blind) if picker else []
     for s in range(1, 6):
         pool = eight if (picker and s == picker) else ih[s]
         for c in pb[s]:
@@ -345,7 +346,8 @@ def test_private_root_replay_matches_completed_private_actions():
     deal = game.sample_determinization(observer, rng)
 
     world, log_w = teacher._build_world(game, copy.deepcopy(deal), fp, observer)
-    assert world is not None and np.isfinite(log_w), "private replay failed"
+    assert world is not None and log_w is not None, "private replay failed"
+    assert np.isfinite(log_w), "private replay produced a non-finite log-weight"
     assert world.history == game.history, "history mismatch at private root"
     assert world.bury == game.bury, "completed private actions were not replayed"
     assert (
@@ -631,13 +633,14 @@ def _teacher_all_nodes_config():
 
 
 def test_ce_teacher_labels_and_dormant():
+    from sheepshead.ismcts import ISMCTSTeacher
     from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     agent = _fresh_agent()
     mode = PARTNER_BY_JD
     opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = _DisagreeCommittee()
+    teacher = cast(ISMCTSTeacher, _DisagreeCommittee())
     determinization_rng = random.Random(SEED)
     sc = _teacher_all_nodes_config()
 
@@ -690,13 +693,14 @@ def _generate_searched_events(n_games=5):
     """Play terminal-mode games with the stub gated teacher and return the
     concatenated event stream (with search targets on the eligible PLAY
     transitions)."""
+    from sheepshead.ismcts import ISMCTSTeacher
     from sheepshead.training.pfsp_runtime import play_population_game
 
     _seed()
     gen = _fresh_agent()
     mode = PARTNER_BY_JD
     opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = _DisagreeCommittee()
+    teacher = cast(ISMCTSTeacher, _DisagreeCommittee())
     det_rng = random.Random(SEED)
     sc = _teacher_all_nodes_config()
     all_events, searched = [], 0
@@ -838,7 +842,9 @@ def test_seat_policies_population_grounding():
         if out is not None:
             game, (observer, fp) = cand, out
             break
-    assert game is not None, "no play node found"
+    assert game is not None and observer is not None and fp is not None, (
+        "no play node found"
+    )
     seat_policies = {s: opp for s in range(1, 6) if s != observer}
 
     # Seed non-trivial live memories on both agents so isolation is meaningful.

@@ -24,4 +24,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # The required fields are supplied by the environment and .env, which
+    # pydantic-settings reads inside __init__; a type checker only sees a
+    # dataclass-like constructor with three missing arguments.
+    return Settings()  # pyright: ignore[reportCallIssue]

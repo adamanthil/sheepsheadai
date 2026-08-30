@@ -15,7 +15,7 @@ import os
 import httpx
 import pytest
 
-TEST_DB = os.environ.get("TEST_DATABASE_URL")
+TEST_DB = os.environ.get("TEST_DATABASE_URL", "")
 
 pytestmark = pytest.mark.skipif(
     not TEST_DB, reason="TEST_DATABASE_URL not set (needs a migrated Postgres)"
@@ -26,6 +26,7 @@ class StubAgent:
     """Deterministic stand-in for PPOAgent: always the lowest valid action."""
 
     def act(self, state, valid_actions=None, player_id=None, deterministic=False):
+        assert valid_actions is not None, "the server always passes valid actions"
         return (sorted(valid_actions)[0], None, None)
 
     def observe(self, *args, **kwargs):

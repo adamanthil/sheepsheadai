@@ -3,18 +3,27 @@
 from __future__ import annotations
 
 import uuid
+from typing import cast
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from server.api import auth
 
 
 class _Request:
+    """Stand-in for a Starlette Request: the auth dependencies read only
+    ``.headers``."""
+
     def __init__(self, authorization: str | None):
-        self.headers = {}
+        self.headers: dict[str, str] = {}
         if authorization is not None:
             self.headers["authorization"] = authorization
+
+
+def _request(authorization: str | None) -> Request:
+    """The stub, typed as the Request the dependencies under test declare."""
+    return cast(Request, _Request(authorization))
 
 
 @pytest.fixture(autouse=True)
@@ -26,14 +35,14 @@ def _clean_cache():
 
 async def test_missing_header_is_401():
     with pytest.raises(HTTPException) as exc:
-        await auth.current_player(_Request(None))
+        await auth.current_player(_request(None))
     assert exc.value.status_code == 401
     assert exc.value.detail == "missing_token"
 
 
 async def test_non_bearer_header_is_401():
     with pytest.raises(HTTPException) as exc:
-        await auth.current_player(_Request("Basic dXNlcjpwdw=="))
+        await auth.current_player(_request("Basic dXNlcjpwdw=="))
     assert exc.value.status_code == 401
 
 
@@ -44,7 +53,7 @@ async def test_unknown_token_is_401(monkeypatch):
     monkeypatch.setattr(auth.sessions_db, "resolve_token", no_session)
     monkeypatch.setattr(auth, "get_db_pool", lambda: object())
     with pytest.raises(HTTPException) as exc:
-        await auth.current_player(_Request("Bearer nope"))
+        await auth.current_player(_request("Bearer nope"))
     assert exc.value.status_code == 401
     assert exc.value.detail == "invalid_token"
 
@@ -60,9 +69,9 @@ async def test_valid_token_resolves_and_caches(monkeypatch):
     monkeypatch.setattr(auth.sessions_db, "resolve_token", one_session)
     monkeypatch.setattr(auth, "get_db_pool", lambda: object())
 
-    first = await auth.current_player(_Request("Bearer tok"))
-    second = await auth.current_player(_Request("Bearer tok"))
+    first = await auth.current_player(_request("Bearer tok"))
+    second = await auth.current_player(_request("Bearer tok"))
     assert first.id == second.id == player_id
     assert calls["n"] == 1  # second hit served from cache
 
-    assert await auth.optional_player(_Request(None)) is None
+    assert await auth.optional_player(_request(None)) is None

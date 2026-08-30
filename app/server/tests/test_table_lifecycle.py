@@ -11,9 +11,10 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from typing import cast
 
 import pytest
-from fastapi import WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 from starlette.testclient import TestClient
 
 import server.realtime.websocket as ws_module
@@ -58,6 +59,7 @@ async def test_autoclose_removes_table_from_registry(registry, stub_db):
     registry.tables[table.id] = table
 
     lifecycle.schedule_autoclose_if_no_humans(table, delay_seconds=0.01)
+    assert table.autoclose_task is not None, "no autoclose task was scheduled"
     await table.autoclose_task
 
     assert table.id not in registry.tables
@@ -68,7 +70,8 @@ async def test_autoclose_removes_table_from_registry(registry, stub_db):
 async def test_autoclose_suppressed_while_a_human_is_connected(registry, stub_db):
     table = Table(id="busy", name="busy")
     conn = ClientConn(client_id="c1", display_name="human", player_id="p1")
-    conn.sockets.add(object())  # only the set's emptiness is inspected
+    # Only the set's emptiness is inspected, so any object stands in.
+    conn.sockets.add(cast(WebSocket, object()))
     table.clients["c1"] = conn
     registry.tables[table.id] = table
 
@@ -141,7 +144,9 @@ async def test_failed_handshake_send_does_not_leave_a_phantom_connection(registr
     registry.tables[table.id] = table
 
     with pytest.raises(RuntimeError):
-        await ws_module._serve_connection(_FakeWebSocket(), table, "c1", None)
+        await ws_module._serve_connection(
+            cast(WebSocket, _FakeWebSocket()), table, "c1", None
+        )
 
     # A lingering socket here reads as a connected human to
     # any_human_connected(), which would suppress the idle autoclose forever.
@@ -180,7 +185,9 @@ class _ControllableWebSocket:
 
 async def _open_tab(table, client_id="c1"):
     ws = _ControllableWebSocket()
-    task = asyncio.create_task(ws_module._serve_connection(ws, table, client_id, None))
+    task = asyncio.create_task(
+        ws_module._serve_connection(cast(WebSocket, ws), table, client_id, None)
+    )
     await ws.settled()
     return ws, task
 
@@ -251,7 +258,7 @@ async def test_socket_cap_refuses_the_extra_tab(registry, monkeypatch):
     assert len(conn.sockets) == 2
 
     extra = _ControllableWebSocket()
-    await ws_module._serve_connection(extra, table, "c1", None)
+    await ws_module._serve_connection(cast(WebSocket, extra), table, "c1", None)
 
     assert extra.close_code == 4429
     assert extra not in conn.sockets

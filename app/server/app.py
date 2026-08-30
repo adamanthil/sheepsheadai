@@ -6,11 +6,13 @@ import logging
 import os
 import signal
 from contextlib import asynccontextmanager
+from typing import cast
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.types import ExceptionHandler
 
 from server.api import actions as actions_router
 from server.api import analyze as analyze_router
@@ -172,7 +174,12 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Sheepshead Realtime API", lifespan=lifespan)
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # slowapi narrows its handler's second parameter to RateLimitExceeded;
+    # Starlette's registry declares handlers over bare Exception, and the two
+    # cannot be reconciled without weakening slowapi's own signature.
+    app.add_exception_handler(
+        RateLimitExceeded, cast(ExceptionHandler, _rate_limit_exceeded_handler)
+    )
 
     origins = parse_cors_origins(settings.sheepshead_cors_origins)
     if settings.env == "production":
