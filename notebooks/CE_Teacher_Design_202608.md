@@ -2102,6 +2102,59 @@ WiSE-FT interpolation is hereby a validated post-processing step
 of the phased-offline ExIt recipe: distill hot (accept EV damage),
 then walk back toward theta_k to the EV-parity point.
 
+## 18. EV-gain program — pre-registration (2026-08-30)
+
+GOAL: convert the search ceiling (+0.180 committee-ACTED, §13.3;
+offline-grade targeted-search edge independently confirmed) into
+DISTILLED EV GAIN, not just parity. Theory inventory (recorded
+in-session 2026-08-29): (1) near-tie label noise, (2) sparse label
+support + uncontrolled generalization (2.7% of decisions labeled),
+(3) covariate shift (75% of corpus states are theta_k trajectories;
+the ceiling is search-on-its-own-trajectory), (4) partial-obs
+unrealizability of some search decisions, (5) converged-policy
+fine-tuning tax. Arm g ALREADY measures the label-independent
+component (-0.016; the planned "self-distillation null" is
+redundant with it — a pure-KD null is vacuous since every loss is
+zero at init). Reference-recipe contrast (AGZ/ExIt): label density
+1.0, committee-act 1.0, soft targets, moving data, never-converged-
+elsewhere network; our budget-forced deviation is the Gumbel-family
+Q readout (AGZ visit counts are prior-dominated at our ISMCTS
+budgets — June audit). Deferred readout-fidelity item: Gumbel-style
+value-completion of unvisited actions.
+
+### 18.1 Arm p — near-tie label pruning (--gap-floor 0.03)
+
+Arm-c config (lambda=1, 1 epoch, seed 0) + --gap-floor 0.03
+(BUILT + tested: override rows with top-2 gap < 0.03 demote to
+NO-LOSS, never anchored — anchoring searched-and-disagreed rows
+would anti-teach). Keeps 6,889 of 18,545 override labels (37.1%)
+— at the demonstrated-effective installation dose (~6k); every
+surviving label saturates omega=1 (beta=0.03), so this is a HARD
+exclusion the soft weighting never applied (near-tie labels
+previously carried omega 0.37-1.0). Pre-registered readings: label
+noise real => h2h improves from arm c's -0.028 toward the arm-g
+floor (-0.016) with called-suit installation HELD (>= ~47.5; the
+high-gap labels are the 153:7-directional ones). h2h unchanged =>
+CE damage is not gap-concentrated (points back at support/shift
+theories). Installation lost => the small-gap labels were carrying
+teaching after all (dose result). WiSE-FT walk-back applies to the
+winner afterward regardless.
+
+### 18.2 Corpus q — AGZ-density mini-corpus
+
+5,000 games, seed 19: p-base/p-min/p-max = 1.0 (EVERY eligible
+standard+alone play node searched), committee-act-frac 1.0 (EVERY
+game acts the material argmaxes => states lie on expert
+trajectories; MC value targets = expert-play returns, Reanalyze-
+flavored), R=3 @ 1024/1, oracle + telemetry on, routed encoder.
+Attacks theories 2+3 structurally (the two biggest deviations from
+the reference recipes). Expected ~20-25 searches/game => ~100-125k
+searches (~3.3x corpus proper); estimate 1.5-3 days wall on the
+clean machine. Distill recipe for q decided after arm p (gap floor
+carried iff validated); cert battery + WiSE-FT walk-back as
+standard. Launched DETACHED alongside arm p (contention accepted:
+corpus is the long pole).
+
 OPERATOR INTERPRETATION NOTE (2026-08-26, for cert readings): the
 50s-60s called-suit band is the SEARCH-ENDORSED optimum, but ~20-25%
 of additional eligible leads sit in the tie band (search abstained;
