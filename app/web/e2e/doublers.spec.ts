@@ -29,7 +29,10 @@ test("host picks doublers and the table badges it", async ({ page }) => {
   const panel = page.locator('div[class*="RulesPanel-module"]').first();
   const leasters = page.getByRole("button", { name: "Leasters", exact: true });
   const doublers = page.getByRole("button", { name: "Doublers", exact: true });
-  await expect(page.getByText("When everyone passes")).toBeVisible();
+  // Generous: this is the first render after a cold Next.js start.
+  await expect(page.getByText("When everyone passes")).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(page.getByText(/played with no picker/)).toBeVisible();
   await expect(leasters).toHaveClass(/segActive/);
 
@@ -59,7 +62,9 @@ test("host picks doublers and the table badges it", async ({ page }) => {
 
   // The rule survives the deal and is badged in the table header.
   const badge = page.getByText(/Called Ace · Doublers/);
-  await expect(badge).toBeVisible();
+  // The first deal in a fresh server process loads the model checkpoint from
+  // disk while /start is in flight, so allow for it.
+  await expect(badge).toBeVisible({ timeout: 30_000 });
   await page
     .locator('div[class*="TableHeader-module"]')
     .first()

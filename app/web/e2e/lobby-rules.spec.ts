@@ -27,3 +27,53 @@ test("lobby lists each table's game mode", async ({ page, browser }) => {
   await expect(row(`Jack ${suffix}`)).toContainText("Jack of Diamonds");
   await expect(row(`Jack ${suffix}`)).toContainText("Leasters");
 });
+
+test("a rule change in the waiting room reaches an open lobby", async ({
+  page,
+  context,
+}) => {
+  const tableName = `Live ${Date.now()}`;
+
+  // Tab 1: host the table and land in the waiting room.
+  const nameInput = page.locator("label:has-text('Your name') + input");
+  const tableInput = page.locator("label:has-text('Table name') + input");
+  const createButton = page.getByRole("button", { name: "Create table →" });
+  await page.goto("/");
+  await expect(createButton).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        await nameInput.fill("Host");
+        await tableInput.fill(tableName);
+        return createButton.isEnabled();
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  await createButton.click();
+  await page.waitForURL(/\/waiting\//);
+
+  // Tab 2: a player sitting on the lobby, reading the default.
+  const lobby = await context.newPage();
+  await lobby.goto("/");
+  const row = lobby
+    .locator('div[class$="__row"]')
+    .filter({ hasText: tableName });
+  await expect(row).toContainText("Leasters");
+
+  // Host switches to doublers; the open lobby follows without a reload.
+  const doublers = page.getByRole("button", { name: "Doublers", exact: true });
+  await expect
+    .poll(
+      async () => {
+        await doublers.click();
+        const cls = (await doublers.getAttribute("class")) ?? "";
+        return cls.includes("segActive");
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+
+  await expect(row).toContainText("Doublers", { timeout: 15_000 });
+  await expect(row).not.toContainText("Leasters");
+});

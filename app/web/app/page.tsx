@@ -12,6 +12,9 @@ import MastheadBand from "./components/home/MastheadBand";
 import Strapline from "./components/home/Strapline";
 import styles from "./page.module.css";
 
+/** How often the lobby refetches the table list while the tab is visible. */
+const LOBBY_POLL_MS = 5000;
+
 export default function HomePage() {
   const router = useRouter();
   const [tables, setTables] = useState<TableSummary[]>([]);
@@ -30,8 +33,10 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = async () => {
-    setLoading(true);
+  // `showLoading` only on the first fetch: the poll below must not flash the
+  // list back to "Loading…" every few seconds.
+  const refresh = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const res = await apiFetch("/api/tables");
       const data = await res.json();
@@ -40,12 +45,44 @@ export default function HomePage() {
       // Backend unreachable — show an empty lobby rather than throwing.
       setTables([]);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
+  // The lobby has no socket, so it polls: seats fill, hands start and hosts
+  // change the house rules while someone is looking at the list, and a
+  // snapshot taken at mount goes stale within seconds. Paused while the tab
+  // is hidden, and refetched immediately on return so the list is current
+  // before it is read.
   useEffect(() => {
-    refresh();
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const stop = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const start = () => {
+      stop();
+      timer = setInterval(() => void refresh(false), LOBBY_POLL_MS);
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        void refresh(false);
+        start();
+      }
+    };
+
+    void refresh();
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   // Mobile Safari compatible click handler
