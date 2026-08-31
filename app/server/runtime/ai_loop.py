@@ -6,6 +6,7 @@ from typing import Optional
 
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import emit_bid_chat_message
+from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.tables import (
     Table,
     get_actor_seat,
@@ -110,6 +111,18 @@ async def ai_take_turns(table: Table) -> None:
         action_str = ACTION_LOOKUP.get(action_id, "")
         display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"
         await emit_bid_chat_message(table, action_str, display_name)
+
+        # A doublers table that just passed out swaps in a fresh deal before
+        # any state goes out, so the momentary leaster state is never
+        # broadcast. Loop round onto the new deal from the top.
+        if await redeal_passed_out_hand(table):
+            await ai_observe_all(table)
+            await broadcast_table_state(table)
+            # Beat before the new deal's first bid, so the throw-in callout
+            # is readable rather than being overrun by the next PICK.
+            await asyncio.sleep(1.2)
+            continue
+
         if isinstance(action_str, str) and action_str.startswith("PLAY "):
             await asyncio.sleep(0.5)
         await broadcast_table_state(table)

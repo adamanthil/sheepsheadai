@@ -39,8 +39,13 @@ def _json_default(obj: Any):
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
-def build_player_state(player: Player) -> Dict[str, Any]:
-    """Build the per-seat state payload: dict state and a small, readable view."""
+def build_player_state(player: Player, score_multiplier: int = 1) -> Dict[str, Any]:
+    """Build the per-seat state payload: dict state and a small, readable view.
+
+    ``score_multiplier`` is the doublers stake the hand is being played for
+    (see ``Table.score_multiplier``). The engine is stake-unaware, so the
+    reported final scores are scaled here, at the one place they are read.
+    """
     state_dict = player.get_state_dict()
     hand_cards = list(player.hand)
     blind_cards = [
@@ -79,22 +84,25 @@ def build_player_state(player: Player) -> Dict[str, Any]:
     is_done = bool(game.is_done())
     final_payload = None
     if is_done:
+        scores = [p.get_score() * score_multiplier for p in game.players]
         if game.is_leaster:
             final_payload = {
                 "mode": "leaster",
+                "multiplier": score_multiplier,
                 "winner": game.get_leaster_winner(),
                 "points_taken": game.points_taken,
-                "scores": [p.get_score() for p in game.players],
+                "scores": scores,
             }
         else:
             final_payload = {
                 "mode": "standard",
+                "multiplier": score_multiplier,
                 "picker": game.picker,
                 "partner": game.partner,
                 "picker_score": game.get_final_picker_points(),
                 "defender_score": game.get_final_defender_points(),
                 "points_taken": game.points_taken,
-                "scores": [p.get_score() for p in game.players],
+                "scores": scores,
             }
 
     view = {
@@ -155,6 +163,9 @@ def get_actor_seat(table: Table) -> Optional[int]:
 def record_hand_result(table: Table) -> None:
     """Tally per-seat scores into running totals and append a results-history entry.
 
+    Scores are scaled by the table's doublers stake, so a hand reached after
+    two passed-out deals counts four times.
+
     Idempotent: a second call for the same hand is a no-op because
     ``results_counted`` is flipped on first call. Reset by ``start_game`` /
     ``redeal`` for the next hand.
@@ -162,11 +173,12 @@ def record_hand_result(table: Table) -> None:
     if not table.game or table.results_counted:
         return
 
+    multiplier = int(table.score_multiplier)
     for i in range(1, 6):
         occ = table.seats[i]
         if not occ:
             continue
-        pscore = int(table.game.players[i - 1].get_score())
+        pscore = int(table.game.players[i - 1].get_score()) * multiplier
         table.running_scores[occ] = table.running_scores.get(occ, 0) + pscore
     table.results_counted = True
 
@@ -174,12 +186,13 @@ def record_hand_result(table: Table) -> None:
         entry: Dict[str, Any] = {
             "hand": len(table.results_history) + 1,
             "timestamp": time.time(),
+            "multiplier": multiplier,
             "bySeat": {},
             "sum": 0,
         }
         pub = table.to_public_dict()
         for i in range(1, 6):
-            score = int(table.game.players[i - 1].get_score())
+            score = int(table.game.players[i - 1].get_score()) * multiplier
             entry["bySeat"][i] = {
                 "name": pub["seats"][i],
                 "id": pub["seatOccupants"][i],

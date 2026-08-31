@@ -89,6 +89,16 @@ async def emit_bid_chat_message(
     await broadcast_chat_append(table, msg_dict)
 
 
+async def emit_doubler_redeal_message(table: Table, multiplier: int) -> None:
+    """Post + broadcast the system message for a passed-out doublers deal."""
+    msg_dict = await add_chat_message(
+        table,
+        "system",
+        f"All passed — hand thrown in, redealing at {multiplier}x",
+    )
+    await broadcast_chat_append(table, msg_dict)
+
+
 async def send_chat_init(table: Table, websocket: WebSocket) -> None:
     """Send the full chat history to a newly connected client."""
     messages = list(table.chat_log)

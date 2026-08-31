@@ -79,6 +79,10 @@ class Table:
     running_scores: Dict[str, int] = field(
         default_factory=dict
     )  # occupant_id -> cumulative score
+    # Stake the hand in progress is played for. Always 1 at a leasters table;
+    # at a doublers table it doubles with every consecutive passed-out deal
+    # and resets to 1 once a hand is actually played out.
+    score_multiplier: int = 1
     results_counted: bool = False
     # History of completed hands at this table (in chronological order)
     results_history: List[Dict[str, Any]] = field(default_factory=list)
@@ -130,6 +134,7 @@ class Table:
             "status": self.status,
             "rules": self.rules,
             "fillWithAI": self.fill_with_ai,
+            "scoreMultiplier": self.score_multiplier,
             "seats": seats_named,
             "runningBySeat": running_by_seat,
             "seatOccupants": seats_ids,

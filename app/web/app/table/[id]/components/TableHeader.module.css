@@ -28,6 +28,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The doublers stake only appears above 1x, so it is allowed to shout. */
+.stake {
+  flex-shrink: 0;
+  align-self: center;
+}
 .deskRight {
   display: flex;
   align-items: baseline;

@@ -15,6 +15,7 @@ import {
 } from "./lib/phase";
 import {
   rulesBadgeText,
+  stakeBadgeText,
   buildCallOptions,
   computeIsYourTurn,
   computeIsHost,
@@ -111,6 +112,8 @@ export default function TablePage() {
     onTrickComplete: triggerCollect,
     onPickerAnnounced: (name) => showCallout("PICK", `${name} picked`),
     onLeaster: () => showCallout("LEASTER", "All passed · Leaster"),
+    onDoubler: (multiplier) =>
+      showCallout("DOUBLER", `All passed · Redealing at ${multiplier}×`, 2600),
     onAlone: (name) => showCallout("ALONE", `${name} goes alone`),
     onCall: (name, cardDisplay, under) =>
       showCallout(
@@ -184,6 +187,7 @@ export default function TablePage() {
   const callOptions = buildCallOptions(lastState.valid_actions, actionLookup);
   const handNumber = computeHandNumber(table);
   const rulesBadge = rulesBadgeText(table.rules);
+  const stakeBadge = stakeBadgeText(table.scoreMultiplier);
   const hasLastTrick = computeHasLastTrick(view);
   const prevText = computePrevText(showPrev, hasLastTrick, view, table);
 
@@ -306,6 +310,7 @@ export default function TablePage() {
     <TableHeader
       roomName={table.name}
       rulesBadge={rulesBadge}
+      stakeBadge={stakeBadge}
       handNumber={handNumber}
       phaseLabel={PHASE_LABEL[kind]}
       connected={connected}

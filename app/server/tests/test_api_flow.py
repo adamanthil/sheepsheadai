@@ -40,15 +40,15 @@ class StubAgent:
 async def db_app(app, monkeypatch):
     """The hermetic app fixture, but with a live pool wired to TEST_DATABASE_URL
     (httpx's ASGITransport does not run the lifespan, so do its DB work here)."""
-    import server.api.games as games_module
     import server.app as app_module
+    import server.runtime.dealing as dealing_module
     from server.services.persistence.pool import (
         close_pool,
         open_pool,
         set_db_state,
     )
 
-    monkeypatch.setattr(games_module, "load_agent", lambda path: StubAgent())
+    monkeypatch.setattr(dealing_module, "load_agent", lambda path: StubAgent())
 
     pool = await open_pool(TEST_DB)
     async with pool.acquire() as conn:
@@ -169,3 +169,70 @@ async def test_expired_session_is_rejected(db_app):
         )
         assert resp.status_code == 401
         assert resp.json()["detail"] == "invalid_token"
+
+
+async def test_doublers_pass_out_persists_the_thrown_in_deal_and_doubled_stake(db_app):
+    """The doublers house rule, end to end against the real schema."""
+    import uuid
+
+    from server.runtime.dealing import redeal_passed_out_hand
+    from server.runtime.tables import tables
+    from sheepshead import ACTION_IDS
+
+    app, pool = db_app
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post(
+            "/api/tables",
+            json={"name": "doublers", "rules": {"allPassMode": "doublers"}},
+        )
+        assert created.status_code == 200, created.text
+        table_id = created.json()["id"]
+
+        joined = await client.post(
+            f"/api/tables/{table_id}/join", json={"display_name": "Dub"}
+        )
+        j = joined.json()
+        auth = {"Authorization": f"Bearer {j['session_token']}"}
+
+        started = await client.post(
+            f"/api/tables/{table_id}/start",
+            json={"client_id": j["client_id"]},
+            headers=auth,
+        )
+        assert started.status_code == 200, started.text
+        assert started.json()["scoreMultiplier"] == 1
+
+    # The table-level rule is on the game_table row.
+    assert await pool.fetchval(
+        "SELECT is_doublers FROM game_table WHERE game_table_id = $1",
+        uuid.UUID(table_id),
+    )
+
+    table = tables.get_table(table_id)
+    # Take the AI loop out of the way; this test drives the deal by hand.
+    if table.ai_task:
+        table.ai_task.cancel()
+    thrown_in_game_id = table.current_game_id
+    assert table.game is not None
+    for player in table.game.players:
+        assert player.act(ACTION_IDS["PASS"])
+
+    assert await redeal_passed_out_hand(table) is True
+    assert table.score_multiplier == 2
+
+    rows = await pool.fetch(
+        "SELECT game_id, score_multiplier, is_leaster, time_closed FROM game "
+        "WHERE game_table_id = $1 ORDER BY time_created, score_multiplier",
+        uuid.UUID(table_id),
+    )
+    assert len(rows) == 2
+    thrown_in, redealt = rows
+    # The thrown-in deal is closed, at its own stake, and is NOT a leaster.
+    assert str(thrown_in["game_id"]) == thrown_in_game_id
+    assert thrown_in["score_multiplier"] == 1
+    assert thrown_in["is_leaster"] is None
+    assert thrown_in["time_closed"] is not None
+    # The redeal is open and carries the doubled stake.
+    assert redealt["score_multiplier"] == 2
+    assert redealt["time_closed"] is None

@@ -20,12 +20,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
 
+from server.runtime.rules import plays_doublers
 from server.services.persistence.game_table import (
     close_game_table,
     ensure_game_table,
 )
 from server.services.persistence.hand_play import (
     persist_finalize_game,
+    persist_passed_out_game,
     persist_trick_completed,
 )
 from server.services.persistence.hand_setup import (
@@ -51,6 +53,7 @@ __all__ = [
     "fire_game_hooks",
     "persist_finalize_game",
     "persist_partner_revealed",
+    "persist_passed_out_game",
     "persist_pick_resolved",
     "persist_picker_decisions",
     "persist_started_game",
@@ -77,6 +80,13 @@ async def fire_game_hooks(
             pool, table, picker=post["picker"], is_leaster=False
         )
     elif not pre["is_leaster"] and post["is_leaster"]:
+        if plays_doublers(table.rules):
+            # Not a leaster: at a doublers table the deal is thrown in and
+            # redealt at double stakes. Closing it here — rather than letting
+            # the redeal race the hook — is what keeps is_leaster NULL on a
+            # hand that was never played as one.
+            await persist_passed_out_game(pool, table)
+            return
         await persist_pick_resolved(pool, table, picker=None, is_leaster=True)
 
     # Hook 3: bury complete (second BURY action lands)
@@ -94,4 +104,10 @@ async def fire_game_hooks(
 
     # Hook 6: game done (fires on the same action as hook 5 for the last trick)
     if post["is_done"]:
-        await persist_finalize_game(pool, table, post["scores"])
+        # Stored at the stake the hand was played for, so game_player.score
+        # matches the running totals the players saw; game.score_multiplier
+        # records how that stake was reached.
+        multiplier = int(table.score_multiplier)
+        await persist_finalize_game(
+            pool, table, [s * multiplier for s in post["scores"]]
+        )

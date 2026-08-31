@@ -702,6 +702,12 @@ export interface components {
          */
         RulesInput: {
             /**
+             * Allpassmode
+             * @default leasters
+             * @enum {string}
+             */
+            allPassMode: "leasters" | "doublers";
+            /**
              * Doubleonthebump
              * @default true
              */
@@ -718,6 +724,8 @@ export interface components {
          * @description Partial rules patch; only provided keys are merged.
          */
         RulesUpdate: {
+            /** Allpassmode */
+            allPassMode?: ("leasters" | "doublers") | null;
             /** Doubleonthebump */
             doubleOnTheBump?: boolean | null;
             /** Partnermode */
@@ -768,6 +776,11 @@ export interface components {
             runningBySeat: {
                 [key: string]: number;
             };
+            /**
+             * Scoremultiplier
+             * @default 1
+             */
+            scoreMultiplier: number;
             /** Seatisai */
             seatIsAI: {
                 [key: string]: boolean;

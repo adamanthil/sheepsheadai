@@ -11,6 +11,8 @@ export type TableSummary = TablePublic;
 
 export type HandResult = {
   hand?: number;
+  /** Doublers stake the hand counted for; the scores already include it. */
+  multiplier?: number;
   bySeat?: Record<string, { id: string; score: number }>;
   sum?: number;
 };
@@ -32,6 +34,8 @@ export type TableView = TablePublic;
 
 export type FinalState = {
   mode?: "leaster" | "standard";
+  /** Doublers stake the hand was played for; `scores` already includes it. */
+  multiplier?: number;
   winner?: number;
   picker?: number;
   partner?: number;

@@ -8,6 +8,7 @@ export interface TrickCompleteEvent {
 export type PhaseCallout =
   | { kind: "picker"; pickerName: string }
   | { kind: "leaster" }
+  | { kind: "doubler"; multiplier: number }
   | { kind: "alone"; pickerName: string }
   | { kind: "call"; pickerName: string; cardDisplay: string; under: boolean };
 
@@ -44,6 +45,10 @@ export function diffCallouts(
   const curCalledUnder = !!next.view?.called_under;
   const prevAlone = !!prev?.view?.alone;
   const curAlone = !!next.view?.alone;
+  // A doublers table never broadcasts leaster state -- the server swaps in
+  // the redeal first -- so the rising stake is the only sign of a throw-in.
+  const prevStake = prev?.table?.scoreMultiplier ?? 1;
+  const curStake = next.table?.scoreMultiplier ?? 1;
 
   const playStarted =
     !!(next.state?.play_started === 1) ||
@@ -56,7 +61,9 @@ export function diffCallouts(
   };
 
   let phase: PhaseCallout | null = null;
-  if (curPicker > 0 && prevPicker === 0) {
+  if (prev && curStake > prevStake) {
+    phase = { kind: "doubler", multiplier: curStake };
+  } else if (curPicker > 0 && prevPicker === 0) {
     phase = { kind: "picker", pickerName: getPickerName() };
   } else if (!prevLeaster && curLeaster) {
     phase = { kind: "leaster" };

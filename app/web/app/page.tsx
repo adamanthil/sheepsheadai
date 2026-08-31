@@ -66,7 +66,11 @@ export default function HomePage() {
         body: JSON.stringify({
           name,
           fillWithAI: true,
-          rules: { partnerMode: 1, doubleOnTheBump: true },
+          rules: {
+            partnerMode: 1,
+            allPassMode: "leasters",
+            doubleOnTheBump: true,
+          },
         }),
       });
 

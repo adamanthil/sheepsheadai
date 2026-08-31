@@ -71,7 +71,7 @@ async def broadcast_table_state(table: Table) -> None:
         if not conn.seat:
             continue
         player = table.game.players[conn.seat - 1]
-        payload = build_player_state(player)
+        payload = build_player_state(player, table.score_multiplier)
         valid_actions = get_valid_action_ids_for_seat(table, conn.seat)
         msg = {
             "type": "state",

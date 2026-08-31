@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 
-export type CalloutKind = "PICK" | "CALL" | "LEASTER" | "ALONE";
+export type CalloutKind = "PICK" | "CALL" | "LEASTER" | "ALONE" | "DOUBLER";
 
 export interface Callout {
   kind: CalloutKind;

@@ -10,6 +10,7 @@ import { z } from "zod";
 const rules = z.looseObject({
   doubleOnTheBump: z.boolean(),
   partnerMode: z.union([z.literal(0), z.literal(1)]),
+  allPassMode: z.enum(["leasters", "doublers"]),
 });
 
 const looseTable = z.looseObject({
@@ -22,6 +23,7 @@ const looseTable = z.looseObject({
   initialSeatOrder: z.array(z.string()),
   resultsHistory: z.array(z.looseObject({})),
   rules,
+  scoreMultiplier: z.number(),
   runningBySeat: z.record(z.string(), z.number()),
   seatIsAI: z.record(z.string(), z.boolean()),
   seatOccupants: z.record(z.string(), z.string().nullable()),
@@ -39,6 +41,7 @@ const chatMessage = z.looseObject({
 
 const finalState = z.looseObject({
   mode: z.enum(["leaster", "standard"]).optional(),
+  multiplier: z.number().optional(),
   winner: z.number().optional(),
   picker: z.number().optional(),
   partner: z.number().optional(),

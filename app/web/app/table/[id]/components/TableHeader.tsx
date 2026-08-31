@@ -5,6 +5,7 @@ import styles from "./TableHeader.module.css";
 interface TableHeaderProps {
   roomName: string;
   rulesBadge: string | null;
+  stakeBadge: string | null;
   handNumber: number;
   phaseLabel: string;
   connected: boolean;
@@ -17,6 +18,7 @@ interface TableHeaderProps {
 export default function TableHeader({
   roomName,
   rulesBadge,
+  stakeBadge,
   handNumber,
   phaseLabel,
   isMobile,
@@ -33,6 +35,11 @@ export default function TableHeader({
           <div className={styles.mobMeta}>
             H{handNumber} · {phaseLabel}
           </div>
+          {stakeBadge && (
+            <span className={`${ds.badge} ${ds.badgeAccent} ${styles.stake}`}>
+              {stakeBadge}
+            </span>
+          )}
         </div>
         <a className={styles.mobLeave} onClick={onLeave}>
           Leave
@@ -49,6 +56,11 @@ export default function TableHeader({
         <div className={styles.room}>{roomName}</div>
         {rulesBadge && (
           <span className={`${ds.badge} ${ds.badgeQuiet}`}>{rulesBadge}</span>
+        )}
+        {stakeBadge && (
+          <span className={`${ds.badge} ${ds.badgeAccent} ${styles.stake}`}>
+            {stakeBadge}
+          </span>
         )}
       </div>
       <div className={styles.deskRight}>

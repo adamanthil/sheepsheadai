@@ -43,6 +43,7 @@ export default function GameOverBanner({
   );
 
   const isLeaster = final.mode === "leaster";
+  const multiplier = final.multiplier ?? 1;
 
   // Names run inline here ("Picker: X · Partner: Y"); clamp them so a long
   // one ellipsizes rather than wrapping the line.
@@ -61,6 +62,13 @@ export default function GameOverBanner({
         <div className={styles.header}>
           {isLeaster ? "Game Over · Leaster" : "Game Over"}
         </div>
+        {multiplier > 1 && (
+          <div className={styles.sub}>
+            <span className={`${ds.badge} ${ds.badgeAccent}`}>
+              {multiplier}× Doubler
+            </span>
+          </div>
+        )}
         {isLeaster ? (
           <div className={styles.sub}>Winner: {name(final.winner || 0)}</div>
         ) : (

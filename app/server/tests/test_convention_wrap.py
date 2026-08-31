@@ -1,4 +1,4 @@
-"""Convention-wrap plumbing (server.api.games.build_table_agent).
+"""Convention-wrap plumbing (server.runtime.dealing.build_table_agent).
 
 Hermetic: load_agent is stubbed; only the settings-driven wrap decision is
 under test. The wrapper's own behavior is covered by
@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-import server.api.games as games_module
-from server.api.games import build_table_agent
+import server.runtime.dealing as dealing_module
 from server.config import Settings
+from server.runtime.dealing import build_table_agent
 from sheepshead.agent.convention_wrapper import ConventionWrapper
 
 
@@ -38,7 +38,7 @@ def _settings(wrap: str) -> Settings:
 @pytest.fixture
 def stub_loader(monkeypatch):
     stub = _StubAgent()
-    monkeypatch.setattr(games_module, "load_agent", lambda path: stub)
+    monkeypatch.setattr(dealing_module, "load_agent", lambda path: stub)
     return stub
 
 

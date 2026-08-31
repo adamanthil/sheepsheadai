@@ -30,28 +30,36 @@ function Segmented({ options, value, onChange, disabled }: SegmentedProps) {
   );
 }
 
+export type AllPassMode = "leasters" | "doublers";
+
 interface RulesPanelProps {
   partnerMode: number; // 1 = Called Ace, 0 = Jack of Diamonds
+  allPassMode: AllPassMode;
   scoringMode: number; // 1 = Double on the Bump, 0 = Symmetric
   onPartnerMode: (mode: number) => void;
+  onAllPassMode: (mode: AllPassMode) => void;
   onScoringMode: (mode: number) => void;
   variant?: "panel" | "inline";
 }
 
 /**
- * House-rules controls bound to the table's partner/scoring modes. The
- * segmented option order is [secondary, primary] to match the prototype, so
- * the stored mode (1 = primary) maps to segmented index `mode === 1 ? 0 : 1`.
+ * House-rules controls bound to the table's partner, all-pass and scoring
+ * modes. For the two numeric modes the segmented option order is
+ * [secondary, primary] to match the prototype, so the stored mode
+ * (1 = primary) maps to segmented index `mode === 1 ? 0 : 1`.
  */
 export default function RulesPanel({
   partnerMode,
+  allPassMode,
   scoringMode,
   onPartnerMode,
+  onAllPassMode,
   onScoringMode,
   variant = "panel",
 }: RulesPanelProps) {
   const inline = variant === "inline";
   const partnerIndex = partnerMode === 1 ? 0 : 1;
+  const allPassIndex = allPassMode === "doublers" ? 1 : 0;
   const scoringIndex = scoringMode === 1 ? 0 : 1;
 
   return (
@@ -79,6 +87,24 @@ export default function RulesPanel({
             {partnerMode === 1
               ? "The picker names a fail‑suit ace; whoever holds it is their secret partner until the card is played."
               : "The player holding the Jack of Diamonds is the picker’s partner."}
+          </div>
+        )}
+      </div>
+
+      <div className={styles.group}>
+        <div className={styles.groupLabel}>
+          {inline ? "All pass" : "When everyone passes"}
+        </div>
+        <Segmented
+          options={["Leasters", "Doublers"]}
+          value={allPassIndex}
+          onChange={(i) => onAllPassMode(i === 1 ? "doublers" : "leasters")}
+        />
+        {!inline && (
+          <div className={styles.desc}>
+            {allPassMode === "doublers"
+              ? "The hand is thrown in and redealt and every score counts double."
+              : "The hand is played with no picker. Take the fewest points. Blind goes on the first trick."}
           </div>
         )}
       </div>

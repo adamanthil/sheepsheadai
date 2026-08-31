@@ -25,8 +25,15 @@ export function rulesBadgeText(
 ): string | null {
   if (!rules) return null;
   const partner = rules.partnerMode === 0 ? "Jack of Diamonds" : "Called Ace";
+  const allPass = rules.allPassMode === "doublers" ? "Doublers" : "Leasters";
   const scoring = rules.doubleOnTheBump ? "Double on Bump" : "Symmetric";
-  return `${partner} · ${scoring}`;
+  return `${partner} · ${allPass} · ${scoring}`;
+}
+
+/** Label for the stake the hand in progress is being played for, or null at
+ * the base stake — the overwhelmingly common case, which needs no badge. */
+export function stakeBadgeText(multiplier: number | undefined): string | null {
+  return multiplier && multiplier > 1 ? `${multiplier}× Doubler` : null;
 }
 
 export function buildCallOptions(

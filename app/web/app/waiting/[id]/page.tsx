@@ -13,7 +13,7 @@ import {
   DesktopWaitingLayout,
   MobileWaitingLayout,
 } from "./components/WaitingLayouts";
-import RulesPanel from "./components/RulesPanel";
+import RulesPanel, { type AllPassMode } from "./components/RulesPanel";
 
 type TableInfo = TableSummary & {
   seats: Record<string, string | null>;
@@ -45,6 +45,7 @@ export default function WaitingRoom() {
   const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [partnerMode, setPartnerMode] = useState<number>(1); // 1 = Called Ace (default), 0 = Jack of Diamonds
+  const [allPassMode, setAllPassMode] = useState<AllPassMode>("leasters"); // "leasters" (default) or "doublers"
   const [scoringMode, setScoringMode] = useState<number>(1); // 1 = Double on the Bump (default), 0 = Symmetric
   const [callout, setCallout] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -62,6 +63,9 @@ export default function WaitingRoom() {
         const rules = t.rules ?? {};
         const pMode = rules.partnerMode !== undefined ? rules.partnerMode : 1; // Default to Called Ace
         setPartnerMode(pMode);
+        setAllPassMode(
+          rules.allPassMode === "doublers" ? "doublers" : "leasters",
+        );
         const sMode =
           rules.doubleOnTheBump !== undefined
             ? rules.doubleOnTheBump
@@ -92,6 +96,7 @@ export default function WaitingRoom() {
         if (typeof hostFlag === "boolean") setIsHost(hostFlag);
         const rules = t.rules ?? {};
         if (rules.partnerMode !== undefined) setPartnerMode(rules.partnerMode);
+        if (rules.allPassMode !== undefined) setAllPassMode(rules.allPassMode);
         if (rules.doubleOnTheBump !== undefined)
           setScoringMode(rules.doubleOnTheBump ? 1 : 0);
         if (t.status === "playing") {
@@ -158,6 +163,26 @@ export default function WaitingRoom() {
       setPartnerMode(newMode);
     } catch {
       setError("Failed to update partner mode");
+    }
+  }
+
+  async function updateAllPassMode(newMode: AllPassMode) {
+    try {
+      const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          client_id: clientId,
+          rules: { allPassMode: newMode },
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j?.detail || "Failed to update all-pass mode");
+        return;
+      }
+      setAllPassMode(newMode);
+    } catch {
+      setError("Failed to update all-pass mode");
     }
   }
 
@@ -231,8 +256,10 @@ export default function WaitingRoom() {
   const rules = (
     <RulesPanel
       partnerMode={partnerMode}
+      allPassMode={allPassMode}
       scoringMode={scoringMode}
       onPartnerMode={updatePartnerMode}
+      onAllPassMode={updateAllPassMode}
       onScoringMode={updateScoringMode}
       variant={isMobile ? "inline" : "panel"}
     />

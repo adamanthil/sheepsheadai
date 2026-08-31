@@ -73,6 +73,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Marks a hand that was played at a doubled doublers stake. */
+.handStake {
+  margin-left: 5px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+}
 .tdHand {
   font-family: var(--font-mono);
   color: var(--muted);

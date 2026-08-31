@@ -95,6 +95,38 @@ async def persist_trick_completed(
 # ---------------------------------------------------------------------------
 
 
+async def persist_passed_out_game(pool: asyncpg.Pool, table: "Table") -> None:
+    """Close a doublers deal that everyone passed out of.
+
+    The deal was dealt and bid on, so it keeps its game / game_player rows
+    (the chain of passed-out deals is what the next hand's doubled stake is
+    evidence for); it just never reaches play, so the scores stay NULL and
+    only ``time_closed`` is stamped.
+    """
+    if not table.current_game_id:
+        return
+    game_id = table.current_game_id
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE game SET time_closed = now() WHERE game_id = $1",
+                UUID(game_id),
+            )
+    except Exception:
+        logger.exception(
+            "persist_passed_out_game failed (table=%s game=%s)",
+            table.id,
+            game_id,
+            extra={"table_id": table.id, "game_id": game_id},
+        )
+    finally:
+        # Cleared even on failure: the next deal's hook 1 is about to take
+        # over these slots, and leaving them pointing at the abandoned hand
+        # would misfile its rows.
+        table.current_game_id = None
+        table.game_player_ids = {}
+
+
 async def persist_finalize_game(
     pool: asyncpg.Pool,
     table: "Table",

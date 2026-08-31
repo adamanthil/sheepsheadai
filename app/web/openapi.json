@@ -1184,6 +1184,15 @@
         "additionalProperties": false,
         "description": "Full rules specification; unknown keys rejected.",
         "properties": {
+          "allPassMode": {
+            "default": "leasters",
+            "enum": [
+              "leasters",
+              "doublers"
+            ],
+            "title": "Allpassmode",
+            "type": "string"
+          },
           "doubleOnTheBump": {
             "default": true,
             "title": "Doubleonthebump",
@@ -1206,6 +1215,21 @@
         "additionalProperties": false,
         "description": "Partial rules patch; only provided keys are merged.",
         "properties": {
+          "allPassMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "leasters",
+                  "doublers"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allpassmode"
+          },
           "doubleOnTheBump": {
             "anyOf": [
               {
@@ -1351,6 +1375,11 @@
             },
             "title": "Runningbyseat",
             "type": "object"
+          },
+          "scoreMultiplier": {
+            "default": 1,
+            "title": "Scoremultiplier",
+            "type": "integer"
           },
           "seatIsAI": {
             "additionalProperties": {

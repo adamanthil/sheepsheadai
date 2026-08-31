@@ -10,6 +10,9 @@ class RulesInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     partnerMode: Literal[0, 1] = 1
+    # What happens when all five players pass: "leasters" plays the hand out
+    # with no picker, "doublers" throws it in and redeals at double stakes.
+    allPassMode: Literal["leasters", "doublers"] = "leasters"
     doubleOnTheBump: bool = True
 
 
@@ -18,6 +21,7 @@ class RulesUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     partnerMode: Optional[Literal[0, 1]] = None
+    allPassMode: Optional[Literal["leasters", "doublers"]] = None
     doubleOnTheBump: Optional[bool] = None
 
 
@@ -104,6 +108,9 @@ class TablePublic(BaseModel):
     status: Literal["open", "playing", "finished"]
     rules: RulesInput
     fillWithAI: bool
+    # Stake the hand in progress is being played for: 1 normally, doubling
+    # with each consecutive passed-out deal at a doublers table.
+    scoreMultiplier: int = 1
     seats: Dict[int, Optional[str]] | Dict[str, Optional[str]]
     runningBySeat: Dict[int, int] | Dict[str, int]
     seatOccupants: Dict[int, Optional[str]] | Dict[str, Optional[str]]

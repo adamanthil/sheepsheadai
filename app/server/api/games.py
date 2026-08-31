@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,24 +14,27 @@ from server.api.schemas import (
     TablePublic,
 )
 from server.api.tables import require_client, require_host
-from server.config import get_settings
 from server.realtime.broadcast import (
     broadcast_table_state,
     broadcast_table_update,
 )
 from server.realtime.chat import emit_bid_chat_message
 from server.runtime.ai_loop import ai_observe_all, schedule_ai_turns
+from server.runtime.dealing import (
+    new_game_for_table,
+    redeal_passed_out_hand,
+    refresh_table_agent,
+)
 from server.runtime.lifecycle import is_draining
+from server.runtime.rules import plays_doublers
 from server.runtime.seating import AI_NAME_POOL
 from server.runtime.tables import (
     Occupant,
-    _try_int,
     get_actor_seat,
     get_valid_action_ids_for_seat,
     record_hand_result,
     tables,
 )
-from server.services.ai_loader import load_agent
 from server.services.persistence.games import (
     capture_post_state,
     capture_pre_state,
@@ -41,32 +43,9 @@ from server.services.persistence.games import (
     persist_started_game,
 )
 from server.services.persistence.pool import get_db_pool
-from sheepshead import ACTION_LOOKUP, Game
+from sheepshead import ACTION_LOOKUP
 
 router = APIRouter()
-
-
-def build_table_agent(settings, table_id: str):
-    """Load the table's AI, applying the configured convention mask if any.
-
-    SHEEPSHEAD_CONVENTION_WRAP ("", "c1", "c2", "c1c2") wraps the agent with
-    the deploy-time convention mask (sheepshead/agent/convention_wrapper.py):
-    convention-violating defender leads are masked, the policy still picks the
-    card. Table agents only — /analyze stays raw so the research scanners
-    measure the unwrapped policy. An unknown value raises (fail fast at game
-    start rather than silently no-opping).
-    """
-    agent = load_agent(settings.sheepshead_model_path)
-    if settings.sheepshead_convention_wrap:
-        from sheepshead.agent.convention_wrapper import wrap_agent
-
-        agent = wrap_agent(agent, settings.sheepshead_convention_wrap)
-        logging.info(
-            "Table %s AI wrapped with convention mask %s",
-            table_id,
-            settings.sheepshead_convention_wrap,
-        )
-    return agent
 
 
 def _fill_empty_seats_with_ai(table) -> None:
@@ -136,17 +115,13 @@ async def start_game(
         ):
             raise HTTPException(status_code=400, detail="host_not_seated")
 
-        rules = table.rules or {}
-        partner_mode = _try_int(rules.get("partnerMode", 1), 1)
-        double_on_the_bump = bool(rules.get("doubleOnTheBump", True))
-
-        game = Game(
-            double_on_the_bump=double_on_the_bump,
-            partner_selection_mode=partner_mode,
-        )
+        game = new_game_for_table(table)
         table.game = game
         table.status = "playing"
         table.results_counted = False
+        # A fresh hand is played for the base stake; only a passed-out
+        # doublers deal raises it, and only until that hand is played out.
+        table.score_multiplier = 1
         if not table.initial_seat_order:
             table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
             pub = table.to_public_dict()
@@ -155,19 +130,14 @@ async def start_game(
                 if occ:
                     table.initial_names[str(occ)] = pub["seats"][i]
 
-        has_ai = any(
-            (occ_id and (occ := table.occupants.get(occ_id)) and occ.is_ai)
-            for occ_id in table.seats.values()
-        )
-        if has_ai:
-            table.ai_agent = build_table_agent(get_settings(), table.id)
+        refresh_table_agent(table)
 
     await broadcast_table_update(table)
     await broadcast_table_state(table)
     schedule_ai_turns(table, initial_delay=2.0)
 
     pool = get_db_pool()
-    await ensure_game_table(pool, table.id, table.name)
+    await ensure_game_table(pool, table.id, table.name, plays_doublers(table.rules))
     await persist_started_game(pool, table, game)
 
     return table.to_public_dict()
@@ -206,6 +176,7 @@ async def redeal(
         table.game = None
         table.status = "open"
         table.results_counted = False
+        table.score_multiplier = 1
 
     return table.to_public_dict()
 
@@ -256,6 +227,12 @@ async def post_action(
 
     action_str = ACTION_LOOKUP.get(req.action_id, "")
     await emit_bid_chat_message(table, action_str, conn.display_name)
+
+    # A doublers table that just passed out swaps in a fresh deal here, before
+    # anything is broadcast, so the momentary leaster state never reaches a
+    # client. The new deal has its own seats to observe, so this precedes
+    # ai_observe_all.
+    await redeal_passed_out_hand(table)
 
     await ai_observe_all(table, except_seat=conn.seat)
     await broadcast_table_state(table)

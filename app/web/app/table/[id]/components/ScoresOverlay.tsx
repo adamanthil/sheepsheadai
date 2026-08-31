@@ -14,6 +14,7 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
 
   const rows = history.map((h, idx) => ({
     hand: h.hand || idx + 1,
+    multiplier: h.multiplier || 1,
     bySeat: h.bySeat || {},
     sum: h.sum || 0,
   }));
@@ -89,7 +90,17 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
               <tbody>
                 {rows.map((r, idx) => (
                   <tr key={idx}>
-                    <td className={styles.tdHand}>{r.hand}</td>
+                    <td className={styles.tdHand}>
+                      {r.hand}
+                      {r.multiplier > 1 && (
+                        <span
+                          className={styles.handStake}
+                          title={`Doubler — scored at ${r.multiplier}x`}
+                        >
+                          {r.multiplier}×
+                        </span>
+                      )}
+                    </td>
                     {columns.map((c, i) => (
                       <td key={i} className={styles.tdRight}>
                         {scoreFor(r, c.id)}

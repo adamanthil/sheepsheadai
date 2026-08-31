@@ -55,14 +55,15 @@ async def persist_started_game(
                     """
                     INSERT INTO game (
                         game_id, game_table_id, is_double_on_the_bump, is_called_partner,
-                        blind_id, time_created, time_closed,
+                        score_multiplier, blind_id, time_created, time_closed,
                         is_alone, is_leaster, called_card_id, under_card_id, bury_id
-                    ) VALUES ($1, $2, $3, $4, $5, now(), NULL, NULL, NULL, NULL, NULL, NULL)
+                    ) VALUES ($1, $2, $3, $4, $5, $6, now(), NULL, NULL, NULL, NULL, NULL, NULL)
                     """,
                     UUID(game_id),
                     UUID(table.id),
                     is_double,
                     is_called_partner,
+                    int(table.score_multiplier),
                     blind_id,
                 )
 
