@@ -196,6 +196,22 @@
   font-size: 22px;
   color: var(--ink);
 }
+/* House rules, directly under the table name: the same micro-caps voice as
+   the column heads, so it reads as what this table *is* rather than as
+   status. The italic .tableSub below carries the changing state. */
+.tableRules {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.rulesPart {
+  white-space: nowrap;
+}
 .tableSub {
   font-family: var(--font-display);
   font-style: italic;

@@ -6,6 +6,7 @@ import type { TableSummary } from "../lib/types";
 import { apiFetch, storeSessionToken } from "../lib/api";
 import { STORAGE_KEYS } from "../lib/storage";
 import { ds } from "../lib/ds";
+import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
 import MastheadBand from "./components/home/MastheadBand";
 import Strapline from "./components/home/Strapline";
@@ -283,6 +284,17 @@ export default function HomePage() {
                   <div key={t.id} className={styles.row}>
                     <div>
                       <div className={styles.tableName}>{t.name}</div>
+                      <div className={styles.tableRules}>
+                        {/* Each mode is one unbreakable unit, so a narrow
+                            column wraps between them -- carrying the
+                            separator down -- rather than mid-mode. */}
+                        <span className={styles.rulesPart}>
+                          {partnerModeLabel(t.rules)}
+                        </span>{" "}
+                        <span className={styles.rulesPart}>
+                          · {allPassModeLabel(t.rules)}
+                        </span>
+                      </div>
                       {(playing || bots > 0) && (
                         <div className={styles.tableSub}>
                           {[

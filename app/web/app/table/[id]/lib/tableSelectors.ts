@@ -5,6 +5,7 @@ import type {
   TableView,
 } from "../../../../lib/types";
 import { parseCard } from "../../../../lib/ds";
+import { gameModeLabel, scoringModeLabel } from "../../../../lib/rules";
 import { nameForSeat, isAiSeat } from "../utils/seatMath";
 import { relSeat } from "./seatLayout";
 import { getSeatRole, type InterludeMode, type TablePhase } from "./phase";
@@ -24,10 +25,7 @@ export function rulesBadgeText(
   rules: Record<string, unknown> | undefined,
 ): string | null {
   if (!rules) return null;
-  const partner = rules.partnerMode === 0 ? "Jack of Diamonds" : "Called Ace";
-  const allPass = rules.allPassMode === "doublers" ? "Doublers" : "Leasters";
-  const scoring = rules.doubleOnTheBump ? "Double on Bump" : "Symmetric";
-  return `${partner} · ${allPass} · ${scoring}`;
+  return `${gameModeLabel(rules)} · ${scoringModeLabel(rules)}`;
 }
 
 /** Label for the stake the hand in progress is being played for, or null at
