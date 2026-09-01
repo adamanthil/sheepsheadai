@@ -156,20 +156,32 @@ def test_partition_assignment_and_schema():
             saw[ev["distill_set"]] += 1
             assert "oracle_state" in ev
             head_is_play = ev["node_class"].startswith(("std|", "alone|", "leaster|"))
+            n_valid = len(ev["valid_actions"])
+            # Schema 2: the act-time stash rides on every multi-action row.
+            if n_valid >= 2:
+                assert ev["anchor_probs"] is not None
+                assert sum(ev["anchor_probs"]) == pytest.approx(1.0, abs=1e-6)
+            else:
+                assert ev["anchor_probs"] is None
             if ev["distill_set"] == "override":
                 assert head_is_play
                 assert ev["has_search_target"]
-                assert len(ev["search_target"]) == len(ev["valid_actions"])
-                assert ev["anchor_probs"] is None
+                assert len(ev["search_target"]) == n_valid
                 assert ev["search_gap"] > 0.0
+                # Schema 2: pooled committee evidence on every searched row.
+                assert ev["search_stats_source"] == "committee"
+                assert len(ev["search_q"]) == n_valid == len(ev["search_q_var"])
+                assert len(ev["search_n"]) == n_valid == len(ev["search_prior"])
+                assert ev["search_noise_var"] > 0.0
+                assert ev["search_spread"] >= ev["search_gap"] > 0.0
+                assert ev["search_w"] > 0.0
             elif ev["distill_set"] == "retention":
                 # bidding heads and leaster play (alone play is searched)
-                assert ev["anchor_probs"] is not None
-                assert sum(ev["anchor_probs"]) == pytest.approx(1.0, abs=1e-6)
                 assert not ev["has_search_target"]
+                assert "search_q" not in ev
             elif ev["distill_set"] == "none":
-                assert len(ev["valid_actions"]) == 1 or head_is_play
-                assert ev["anchor_probs"] is None
+                assert n_valid == 1 or head_is_play
+                assert "search_q" not in ev
     # p=1 + scripted-material committee: every eligible non-leaster play
     # node (std AND alone) searched and material; bidding rows all retention
     assert saw["override"] > 0
@@ -227,7 +239,10 @@ def test_unsearched_play_is_no_loss_not_retention():
             break
     assert play_rows
     assert all(e["distill_set"] == "none" for e in play_rows)
-    assert all(e["anchor_probs"] is None for e in play_rows)
+    # Schema 2 stores the stash on these rows too; the invariant is that
+    # the trainer gives "none" rows no policy loss (SET_CODES["none"] = 0),
+    # which test_channel_alignment_and_loss_masking covers.
+    assert all(e["anchor_probs"] is not None for e in play_rows)
 
 
 # --------------------------------------------------------------------------- #
@@ -287,7 +302,17 @@ def test_channel_alignment_and_loss_masking():
             torch.ones(int(anchored.sum())),
             atol=1e-5,
         )
-        assert float(anchor_flat[~anchored].abs().sum()) == 0.0
+        # Schema 2 stores the stash on every multi-action row (override
+        # rows included); only forced rows carry no anchor. Which rows get
+        # an anchor LOSS is decided by the partition code in
+        # distill_losses, not by data presence.
+        multi = flat.search_target_flat.new_tensor(
+            [len(e["valid_actions"]) >= 2 for e in src]
+        ).bool()
+        assert torch.allclose(
+            anchor_flat[multi].sum(dim=-1), torch.ones(int(multi.sum())), atol=1e-5
+        )
+        assert float(anchor_flat[~multi].abs().sum()) == 0.0
         # Gaps live only on override rows.
         assert torch.all(gap_flat[ov] > 0.0)
         assert float(gap_flat[~ov].abs().sum()) == 0.0
@@ -355,7 +380,9 @@ def test_gap_floor_demotes_override_rows():
     for r, s in zip(recs, src):
         if s["distill_set"] == "override" and s["search_gap"] < floor:
             assert r["distill_set"] == SET_CODES["none"]
-            assert r["anchor_probs"] == [0.0] * agent.action_size
+            # Demotion changes the partition code only; the stored stash
+            # (schema 2: every multi-action row) is untouched and inert
+            # under code 0.
         else:
             assert r["distill_set"] == SET_CODES[s["distill_set"]]
 

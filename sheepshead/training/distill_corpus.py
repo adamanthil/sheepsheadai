@@ -50,6 +50,23 @@ node (class, regime, w, gap, spread, per-replicate top-pair Q diffs) —
 the §17.6 alone-noise calibration instrument and the iteration-2
 p-schedule refinement input.
 
+Row schema 2 (CE_Teacher_Design §20.3, manifest ``row_schema``): every
+SEARCHED row — w = 0 rows included — stores the pooled committee
+evidence (``search_q`` / ``search_q_var`` / ``search_n`` /
+``search_prior`` / ``search_noise_var`` / ``search_spread``, see
+``pfsp_runtime.CommitteeSummary``) so a trainer can build its own
+target from the evidence rather than from the legacy pi_gumbel
+``search_target``; and EVERY row with two or more legal actions stores
+theta_k's act-time stash as ``anchor_probs``. Storing the stash
+everywhere does not violate the anchor-LOSS invariant above — which
+rows carry an anchor loss is the trainer's partition decision
+(``distill_set``), not a property of data presence.
+
+Committee acting defaults OFF since schema 2: acting the argmax of a
+near-tie lead (§20.1: coin-flip top-2 order at t0 leads) reshapes the
+trajectory and value-target distribution around the committee's own
+noise. ``--committee-act-frac`` remains for the §17.3 AggreVaTe arm.
+
 Usage:
   uv run python -m sheepshead.training.distill_corpus \\
       --ckpt runs/league_retention_pg/checkpoints/..._checkpoint_8000000.pt \\
@@ -82,6 +99,12 @@ from sheepshead import (
 from sheepshead.training.training_utils import RETURN_SCALE
 
 _W: dict = {}  # per-worker state (agent, teacher, config)
+
+# Corpus row schema version written to the manifest. 1 = the §17 pilot rows
+# (legacy target + gap/w, anchors on endorsed/retention rows only); 2 = the
+# §20 rows described in the module docstring. ``recover_search_q.py`` lifts
+# schema-1 corpora to schema-2-equivalent shards.
+ROW_SCHEMA_VERSION = 2
 
 
 # --------------------------------------------------------------------------- #
@@ -203,10 +226,16 @@ def worker_init(init_args: dict) -> None:
 
 
 def _search_node(game, player, valid_actions, forced_public, det_rng, anchor):
-    """Run the committee and build the CE target (base_prior = the act-time
-    stash, the §16.6 zero-gradient abstention referent). Returns
-    (target_list | None, info | None, telemetry_extras)."""
-    from sheepshead.training.pfsp_runtime import build_ce_search_target
+    """Run the committee, pool it (``CommitteeSummary``) and build the legacy
+    CE target (base_prior = the act-time stash, the §16.6 zero-gradient
+    abstention referent). Returns
+    (target_list | None, info | None, summary | None, telemetry_extras);
+    the first three are all None when the committee produced no usable
+    root statistics."""
+    from sheepshead.training.pfsp_runtime import (
+        summarize_committee,
+        tilt_summary_to_target,
+    )
 
     init_args = _W["args"]
     rngs = [
@@ -220,20 +249,22 @@ def _search_node(game, player, valid_actions, forced_public, det_rng, anchor):
         rngs,
         d_rollout=int(init_args["d_rollout"]),
     )
-    built = build_ce_search_target(
+    summary = summarize_committee(
         replicates,
         valid_actions,
         shrink_nu=float(init_args["shrink_nu"]),
         shrink_s2_global=float(init_args["shrink_s2_global"]),
+    )
+    top_pair, pair_diffs = _replicate_top_pair_diffs(replicates, valid_actions)
+    if summary is None:
+        return None, None, None, (top_pair, pair_diffs)
+    target, info = tilt_summary_to_target(
+        summary,
         gumbel_c_visit=_W["teacher"].config.gumbel_c_visit,
         gumbel_c_scale=_W["teacher"].config.gumbel_c_scale,
         base_prior=anchor,
     )
-    top_pair, pair_diffs = _replicate_top_pair_diffs(replicates, valid_actions)
-    if built is None:
-        return None, None, (top_pair, pair_diffs)
-    target, info = built
-    return [float(x) for x in target], info, (top_pair, pair_diffs)
+    return [float(x) for x in target], info, summary, (top_pair, pair_diffs)
 
 
 def play_corpus_game(task: tuple) -> dict:
@@ -296,6 +327,7 @@ def play_corpus_game(task: tuple) -> dict:
                 dset = "none"
                 target_list = None
                 info = None
+                summary = None
                 cs_ids = None
                 if len(valid_actions) >= 2:
                     searchable_play = head == "play" and not game.is_leaster
@@ -341,13 +373,15 @@ def play_corpus_game(task: tuple) -> dict:
                             p = 0.0
                         if det_rng.random() < p:
                             counts[cls]["searched"] += 1
-                            target_list, info, (top_pair, pair_diffs) = _search_node(
-                                game,
-                                player,
-                                valid_actions,
-                                forced_public,
-                                det_rng,
-                                anchor,
+                            target_list, info, summary, (top_pair, pair_diffs) = (
+                                _search_node(
+                                    game,
+                                    player,
+                                    valid_actions,
+                                    forced_public,
+                                    det_rng,
+                                    anchor,
+                                )
                             )
                             if target_list is None:
                                 dset = "none"
@@ -406,12 +440,19 @@ def play_corpus_game(task: tuple) -> dict:
                     "search_target": target_list if dset == "override" else None,
                     "search_gap": float(info["gap"]) if info else 0.0,
                     "search_w": float(info["w"]) if info else 0.0,
+                    # Schema 2: the act-time stash on every multi-action row;
+                    # forced rows (one legal action) have nothing to anchor.
                     "anchor_probs": (
                         [float(x) for x in anchor]
-                        if dset in ("endorsed", "retention") and anchor is not None
+                        if anchor is not None and len(valid_actions) >= 2
                         else None
                     ),
                 }
+                if summary is not None:
+                    # Schema 2: the pooled committee evidence on every
+                    # searched row, w = 0 included (the §20 trainer reads
+                    # these; the legacy target above is act-time readout).
+                    transition.update(summary.as_row_fields())
                 if collect_oracle:
                     transition["oracle_state"] = player.get_oracle_state_dict()
                 seat_transitions[player.position].append(transition)
@@ -505,8 +546,11 @@ def main() -> int:
     ap.add_argument(
         "--committee-act-frac",
         type=float,
-        default=0.25,
-        help="fraction of games where material searches ACT (§17.3)",
+        default=0.0,
+        help="fraction of games where material searches ACT the legacy "
+        "target's argmax (§17.3 AggreVaTe arm). Default 0 since schema 2: "
+        "at near-tie leads the argmax is a coin flip (§20.1) and acting it "
+        "reshapes the trajectory / value-target distribution",
     )
     ap.add_argument(
         "--alone-only",
@@ -580,6 +624,7 @@ def main() -> int:
     import torch
 
     manifest = {
+        "row_schema": ROW_SCHEMA_VERSION,
         "ckpt": args.ckpt,
         "ckpt_sha256_16": _file_sha256(args.ckpt),
         "git_rev": _git_rev(),

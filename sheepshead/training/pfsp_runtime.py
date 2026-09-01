@@ -13,6 +13,7 @@ training_utils.py.
 """
 
 import random
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -122,56 +123,95 @@ def _setup_seats(
     return agents, pos_to_pop_agent
 
 
-def build_ce_search_target(
+@dataclass(frozen=True)
+class CommitteeSummary:
+    """Pooled root statistics of one committee search over a legal set.
+
+    This is the committee's evidence in the form every downstream consumer
+    reads: the CE target builder (``build_ce_search_target``), the corpus
+    generator's schema-2 rows (``distill_corpus.py``) and the search-Q
+    policy-iteration trainer (CE_Teacher_Design §20). All vectors are
+    aligned to ``actions`` (= ``sorted(valid_actions)``), Q in reward
+    units (score / 12).
+
+    Attributes:
+        actions: the legal action ids, sorted.
+        q_mean: pooled completed-Q per action — the replicate mean over
+            replicates that visited the action; UNVISITED actions are
+            completed with the visit-weighted mean of the visited ones
+            (Gumbel MuZero's completed-Q, Danihelka et al. 2022), so their
+            centered deviation is exactly zero.
+        q_var: sampling variance of each pooled mean (the §1.2 hierarchical
+            blend of per-action replicate variance with the global
+            calibration, divided by the number of pooled observations).
+            Unvisited actions carry one replicate's worth of the global
+            variance (no pooling happened) — ``n_mean`` = 0 marks them.
+        n_mean: per-action mean root visit count across replicates.
+        prior: pooled UNMIXED root prior (the label-time policy averaged
+            over the replicates' determinized worlds).
+        noise_var: mean of ``q_var`` over visited actions — the
+            shrinkage's noise term.
+        signal_var: variance of ``q_mean`` across the legal set.
+        w: positive-part James-Stein factor max(0, 1 - noise_var /
+            signal_var); 0 when the spread is within replicate noise.
+        gap: top-2 separation of ``q_mean`` (0 for a single action).
+        spread: max - min of ``q_mean``.
+        max_visits: mean over replicates of the max root visit count (the
+            pi_gumbel tilt-scale input).
+    """
+
+    actions: tuple[int, ...]
+    q_mean: np.ndarray
+    q_var: np.ndarray
+    n_mean: np.ndarray
+    prior: np.ndarray
+    noise_var: float
+    signal_var: float
+    w: float
+    gap: float
+    spread: float
+    max_visits: float
+
+    def as_row_fields(self) -> dict:
+        """The schema-2 corpus row fields (CE_Teacher_Design §20.3), plain
+        Python lists/floats so shards stay torch.load-able without numpy
+        pickles."""
+        return {
+            "search_q": [float(x) for x in self.q_mean],
+            "search_q_var": [float(x) for x in self.q_var],
+            "search_n": [float(x) for x in self.n_mean],
+            "search_prior": [float(x) for x in self.prior],
+            "search_noise_var": float(self.noise_var),
+            "search_w": float(self.w),
+            "search_gap": float(self.gap),
+            "search_spread": float(self.spread),
+            "search_stats_source": "committee",
+        }
+
+
+def summarize_committee(
     replicates: list,
     valid_actions,
     *,
     shrink_nu: float,
     shrink_s2_global: float,
-    gumbel_c_visit: float,
-    gumbel_c_scale: float,
-    base_prior: "np.ndarray | None" = None,
-) -> "tuple[np.ndarray, dict] | None":
-    """Committee-pooled CE target (CE_Teacher_Design §1.1-§1.2): the
-    pi_gumbel deployment readout evaluated on the James-Stein-shrunk
-    committee Q vector. Returns ``(target, info)`` with ``target`` a
-    float32 distribution aligned to ``sorted(valid_actions)`` and ``info``
-    the per-node telemetry scalars, or ``None`` when the committee produced
-    no usable root statistics.
+) -> "CommitteeSummary | None":
+    """Pool a committee's per-replicate root statistics into a
+    ``CommitteeSummary`` (see its docstring for every field), or ``None``
+    when fewer than two replicates produced usable root statistics
+    (replicate variance needs at least two committee opinions) or no
+    action was visited at all.
 
-    Construction, in order:
+    Construction (CE_Teacher_Design §1.1-§1.2, numerically identical to
+    the pre-§20 target builder):
 
-    1. **Pool.** Per action, the replicate mean q̄_a over replicates that
-       visited it; unvisited actions are completed with the visit-weighted
-       mean (Gumbel MuZero's completed-Q; Danihelka et al., ICLR 2022),
-       which makes their shrunk deviation exactly zero.
-    2. **Shrink.** Single per-node positive-part James-Stein factor
-       w = max(0, 1 - s̄²/Var_V(q̄)): the mean sampling variance of the
-       pooled q̄ (per-action replicate variance stabilized by the
-       ``shrink_nu``/``shrink_s2_global`` hierarchical blend — R-1 dof
-       alone is unstable — then divided by the observation count) against
-       the observed spread of q̄ across the legal set. A node whose Q
-       spread is within replicate noise shrinks to w = 0.
-    3. **Tilt.** target = softmax(log p_raw + scale * w * minmax_unit(q̄))
-       with p_raw the pooled UNMIXED root prior and
-       scale = (c_visit + mean-per-replicate max N) * c_scale — the
-       engine's pi_gumbel readout, so act-time and train-time semantics
-       never diverge. The shrink factor multiplies the min-max NORMALIZED
-       vector rather than preceding the normalization: min-max is affine-
-       invariant, so ``minmax(w * (q̄ - mean))`` would erase every w except
-       w = 0 — multiplying afterwards is what makes the tilt sharpen
-       continuously with evidence, flat at w = 0 (target = prior, CE
-       gradient ~ 0: abstention is the target's fixed point) and exactly
-       the deployment readout at w = 1.
-
-    ``base_prior`` (aligned to ``sorted(valid_actions)``) replaces the
-    pooled root prior as the tilt baseline when given. The pooled prior
-    is a mixture of the expert's policy over sampled worlds and is
-    therefore softer than the acting policy at the observed info-state
-    (Jensen), so with the default baseline the w = 0 fixed point is the
-    POOLED PRIOR, not the student — a persistent entropy-raising CE pull
-    at abstention rows. Passing the student's own label-time policy
-    makes abstention exactly zero-gradient.
+    1. **Pool.** Per action, the replicate mean over replicates that visited
+       it; unvisited actions are completed with the visit-weighted mean.
+    2. **Noise.** Per action, the hierarchical blend
+       (nu * s2_global + (n_obs - 1) * s2_node) / (nu + n_obs - 1), divided
+       by n_obs — the sampling variance OF THE POOLED MEAN; the node's noise
+       term is its mean over visited actions.
+    3. **Shrink.** w = max(0, 1 - noise_var / signal_var).
     """
     acts = sorted(valid_actions)
     usable = [
@@ -180,7 +220,7 @@ def build_ce_search_target(
         if r["ok"] and r.get("root_q") is not None and r.get("root_prior") is not None
     ]
     if len(usable) < 2:
-        return None  # replicate variance needs at least two committee opinions
+        return None
 
     q_obs = {
         a: [float(r["root_q"][a]) for r in usable if r["root_n"].get(a, 0.0) > 0.0]
@@ -200,9 +240,6 @@ def build_ce_search_target(
     q_bar = np.array([q_mean.get(a, v_mix) for a in acts], dtype=np.float64)
 
     def pooled_mean_variance(obs: list) -> float:
-        # Hierarchical blend of the per-action replicate variance with the
-        # global calibration (§1.2), then the variance OF THE MEAN of the
-        # n_obs pooled observations.
         n_obs = len(obs)
         s2_node = float(np.var(obs, ddof=1)) if n_obs >= 2 else 0.0
         s2_blend = (shrink_nu * shrink_s2_global + (n_obs - 1) * s2_node) / (
@@ -210,36 +247,124 @@ def build_ce_search_target(
         )
         return s2_blend / n_obs
 
+    q_var = np.array(
+        [
+            pooled_mean_variance(q_obs[a]) if q_obs[a] else float(shrink_s2_global)
+            for a in acts
+        ],
+        dtype=np.float64,
+    )
     noise_var = float(np.mean([pooled_mean_variance(q_obs[a]) for a in visited]))
     signal_var = float(np.var(q_bar))
     shrink_w = max(0.0, 1.0 - noise_var / signal_var) if signal_var > 0.0 else 0.0
 
+    prior = np.array(
+        [np.mean([r["root_prior"][a] for r in usable]) for a in acts],
+        dtype=np.float64,
+    )
+    max_visits = float(np.mean([max(r["root_n"].values() or [0.0]) for r in usable]))
+    q_sorted = np.sort(q_bar)[::-1]
+    return CommitteeSummary(
+        actions=tuple(acts),
+        q_mean=q_bar,
+        q_var=q_var,
+        n_mean=np.array([n_pool[a] for a in acts], dtype=np.float64),
+        prior=prior,
+        noise_var=noise_var,
+        signal_var=signal_var,
+        w=shrink_w,
+        gap=float(q_sorted[0] - q_sorted[1]) if len(q_sorted) >= 2 else 0.0,
+        spread=float(q_bar.max() - q_bar.min()),
+        max_visits=max_visits,
+    )
+
+
+def build_ce_search_target(
+    replicates: list,
+    valid_actions,
+    *,
+    shrink_nu: float,
+    shrink_s2_global: float,
+    gumbel_c_visit: float,
+    gumbel_c_scale: float,
+    base_prior: "np.ndarray | None" = None,
+) -> "tuple[np.ndarray, dict] | None":
+    """Committee-pooled CE target (CE_Teacher_Design §1.1-§1.2): the
+    pi_gumbel deployment readout evaluated on the James-Stein-shrunk
+    committee Q vector. Returns ``(target, info)`` with ``target`` a
+    float32 distribution aligned to ``sorted(valid_actions)`` and ``info``
+    the per-node telemetry scalars, or ``None`` when the committee produced
+    no usable root statistics.
+
+    The pooling and shrinkage live in ``summarize_committee``; this function
+    adds only the tilt:
+
+    target = softmax(log p_raw + scale * w * minmax_unit(q̄)) with p_raw the
+    pooled UNMIXED root prior and scale = (c_visit + mean-per-replicate max
+    N) * c_scale — the engine's pi_gumbel readout, so act-time and
+    train-time semantics never diverge. The shrink factor multiplies the
+    min-max NORMALIZED vector rather than preceding the normalization:
+    min-max is affine-invariant, so ``minmax(w * (q̄ - mean))`` would erase
+    every w except w = 0 — multiplying afterwards is what makes the tilt
+    sharpen continuously with evidence, flat at w = 0 (target = prior, CE
+    gradient ~ 0: abstention is the target's fixed point) and exactly the
+    deployment readout at w = 1.
+
+    ``base_prior`` (aligned to ``sorted(valid_actions)``) replaces the
+    pooled root prior as the tilt baseline when given. The pooled prior
+    is a mixture of the expert's policy over sampled worlds and is
+    therefore softer than the acting policy at the observed info-state
+    (Jensen), so with the default baseline the w = 0 fixed point is the
+    POOLED PRIOR, not the student — a persistent entropy-raising CE pull
+    at abstention rows. Passing the student's own label-time policy
+    makes abstention exactly zero-gradient.
+
+    KNOWN LIMITATION (CE_Teacher_Design §20.1): the tilt's sharpness is a
+    visit-count scale, not a confidence in top-2 order, and w gates on
+    whole-set spread — at near-tie leads this yields ~one-hot targets on
+    coin-flip cards. The §20 policy-iteration trainer builds its targets
+    from ``CommitteeSummary`` through a noise-calibrated pooled advantage
+    instead; this readout stays as the ACT-time readout and the legacy
+    ``search_target`` row field.
+    """
+    summary = summarize_committee(
+        replicates,
+        valid_actions,
+        shrink_nu=shrink_nu,
+        shrink_s2_global=shrink_s2_global,
+    )
+    if summary is None:
+        return None
+    return tilt_summary_to_target(
+        summary,
+        gumbel_c_visit=gumbel_c_visit,
+        gumbel_c_scale=gumbel_c_scale,
+        base_prior=base_prior,
+    )
+
+
+def tilt_summary_to_target(
+    summary: CommitteeSummary,
+    *,
+    gumbel_c_visit: float,
+    gumbel_c_scale: float,
+    base_prior: "np.ndarray | None" = None,
+) -> "tuple[np.ndarray, dict]":
+    """The pi_gumbel tilt of ``build_ce_search_target`` applied to an
+    already-pooled ``CommitteeSummary``. Returns ``(target, info)``;
+    ``info`` carries ``w`` / ``spread`` / ``gap`` for telemetry."""
     if base_prior is not None:
         prior = np.asarray(base_prior, dtype=np.float64)
         prior = prior / max(prior.sum(), 1e-12)
     else:
-        prior = np.array(
-            [np.mean([r["root_prior"][a] for r in usable]) for a in acts],
-            dtype=np.float64,
-        )
-    scale = (
-        gumbel_c_visit
-        + float(np.mean([max(r["root_n"].values() or [0.0]) for r in usable]))
-    ) * gumbel_c_scale
-    logits = np.log(np.clip(prior, 1e-12, None)) + scale * shrink_w * _minmax_unit(
-        q_bar
+        prior = summary.prior
+    scale = (gumbel_c_visit + summary.max_visits) * gumbel_c_scale
+    logits = np.log(np.clip(prior, 1e-12, None)) + scale * summary.w * _minmax_unit(
+        summary.q_mean
     )
     target = np.exp(logits - logits.max())
     target /= target.sum()
-    q_sorted = np.sort(q_bar)[::-1]
-    info = {
-        "w": shrink_w,
-        "spread": float(q_bar.max() - q_bar.min()),
-        # Top-2 pooled-Q separation: the resolved-gap statistic behind the
-        # distill pilot's omega evidence weight and node telemetry
-        # (CE_Teacher_Design §17.3-§17.4); 0.0 for a single-action root.
-        "gap": float(q_sorted[0] - q_sorted[1]) if len(q_sorted) >= 2 else 0.0,
-    }
+    info = {"w": summary.w, "spread": summary.spread, "gap": summary.gap}
     return target.astype(np.float32), info
 
 
