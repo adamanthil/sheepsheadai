@@ -158,18 +158,20 @@ class EncodedRows:
     masks: torch.Tensor  # (R, action_size) legal-action mask
 
 
-def encode_rows(agent: PPOAgent, rows: RowBatch) -> EncodedRows:
-    """Run the agent's encoder over the batch's replayed sequences and
-    select the action rows. Mirrors the encode half of
-    ``PPOAgent._forward_vectorized`` (zero initial memory per segment,
-    ``encode_sequences`` carries the recurrent state across steps) without
-    the actor/critic heads. Gradient flows if the caller enables it."""
+def encode_rows(agent: PPOAgent, rows: RowBatch, encoder=None) -> EncodedRows:
+    """Run the agent's encoder (or ``encoder``, a trainable copy of it)
+    over the batch's replayed sequences and select the action rows.
+    Mirrors the encode half of ``PPOAgent._forward_vectorized`` (zero
+    initial memory per segment, ``encode_sequences`` carries the recurrent
+    state across steps) without the actor/critic heads. Gradient flows if
+    the caller enables it."""
     device = ppo_module.device
     states = rows.minibatch.states_seqs
     B = len(states)
     T = rows.minibatch.masks_bt.size(1)
     memory_init = torch.zeros((B, agent.state_size), device=device)
-    out = agent.encoder.encode_sequences(states, memory_in=memory_init, device=device)
+    enc = encoder if encoder is not None else agent.encoder
+    out = enc.encode_sequences(states, memory_in=memory_init, device=device)
     hand_ids_bt = torch.zeros((B, T, HAND_SLOTS), dtype=torch.long, device=device)
     for b, seq in enumerate(states):
         for t, state in enumerate(seq):
