@@ -288,6 +288,13 @@ class AdvantageModel(nn.Module):
       trunk    a trainable COPY of the encoder + fresh adapter + pointer
     Only ``trunk`` re-encodes rows during training; the frozen rungs train
     on a cached ``RowTable``.
+
+    The policy's own centered log-probability over the legal set enters as
+    a covariate with one learned scale (``prior_scale``, Q per nat): theta_k
+    already orders actions in rough agreement with the committee (its top
+    card is the committee's ~58% of the time on corpus q), so the head
+    learns the RESIDUAL the prior does not explain instead of relearning
+    the prior from scratch — the natural Fay-Herriot covariate.
     """
 
     def __init__(self, agent: PPOAgent, capacity: str):
@@ -314,6 +321,7 @@ class AdvantageModel(nn.Module):
         self.pointer_Wg = nn.Linear(d_model, POINTER_HIDDEN)
         self.pointer_Wt = nn.Linear(d_token, POINTER_HIDDEN)
         self.pointer_v = nn.Linear(POINTER_HIDDEN, 1, bias=False)
+        self.prior_scale = nn.Parameter(torch.tensor(0.01))
         self.action_size = int(agent.action_size)
         for name in ("play", "under", "bury"):
             self.register_buffer(
@@ -325,7 +333,12 @@ class AdvantageModel(nn.Module):
     def trainable_parameters(self):
         return [p for p in self.parameters() if p.requires_grad]
 
-    def forward(self, enc: EncodedRows) -> torch.Tensor:
+    def forward(
+        self, enc: EncodedRows, prior: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        """Dense ``(R, action_size)`` advantage. ``prior`` (dense theta_k
+        probabilities, zeros off-legal) adds the scaled centered log-prior
+        covariate; omit it for the bare head (the scatter-alignment test)."""
         h = self.adapter(enc.features)
         g = self.pointer_Wg(h).unsqueeze(1)  # (R, 1, hidden)
         t = self.pointer_Wt(enc.hand_tokens)  # (R, 8, hidden)
@@ -339,7 +352,19 @@ class AdvantageModel(nn.Module):
                 dest.ge(0), dest, torch.full_like(dest, self.action_size)
             )
             wide = wide.scatter(1, dest, slot)
-        return wide[:, : self.action_size]
+        out = wide[:, : self.action_size]
+        if prior is not None:
+            out = out + self.prior_scale * centered_log_prior(prior, enc.masks.bool())
+        return out
+
+
+def centered_log_prior(prior: torch.Tensor, legal: torch.Tensor) -> torch.Tensor:
+    """log p centered over the legal set (0 off-legal) — the prior covariate."""
+    logp = torch.log(prior.clamp(min=1e-12))
+    logp = torch.where(legal, logp, torch.zeros_like(logp))
+    n = legal.sum(dim=1, keepdim=True).clamp(min=1)
+    centered = logp - logp.sum(dim=1, keepdim=True) / n
+    return torch.where(legal, centered, torch.zeros_like(centered))
 
 
 # --------------------------------------------------------------------------- #
@@ -433,7 +458,7 @@ def evaluate_rows(
                 hand_ids=enc.hand_ids.to(device),
                 masks=enc.masks.to(device),
             )
-            pred = model(enc).cpu()
+            pred = model(enc, table.prior[b].to(device)).cpu()
             adv, lab, nv = table.advantage[b], table.label_mask[b], table.noise_var[b]
             _, per_row = weighted_rows_mse(pred, adv, lab, nv, var_floor)
             w = 1.0 / (nv + var_floor)
@@ -511,7 +536,7 @@ def fit_advantage_model(
                 hand_ids=enc.hand_ids.to(device),
                 masks=enc.masks.to(device),
             )
-            pred = model(enc)
+            pred = model(enc, table.prior[b].to(device))
             loss, _ = weighted_rows_mse(
                 pred,
                 table.advantage[b].to(device),
@@ -641,7 +666,7 @@ def targets_for_table(
                 hand_ids=enc.hand_ids.to(device),
                 masks=enc.masks.to(device),
             )
-            a_model = model(enc).cpu()
+            a_model = model(enc, table.prior[b].to(device)).cpu()
             legal = table.masks[b].bool()
             # The model predicts over hand slots; center it over the legal
             # set so it lives on the same zero as the observed advantages.
@@ -792,7 +817,7 @@ def fit_advantage_model_live(
                         masks=enc.masks[sel],
                     )
                     b = torch.tensor(tab_rows, dtype=torch.long)
-                    pred = model(enc)
+                    pred = model(enc, table.prior[b].to(device))
                     loss, _ = weighted_rows_mse(
                         pred,
                         table.advantage[b].to(device),
