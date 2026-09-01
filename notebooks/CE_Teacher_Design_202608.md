@@ -2554,3 +2554,50 @@ the Kendall-Gal heteroscedastic head, then to explicit tie-band
 pooling as the last resort. Installation without EV recovery ⇒ §17.13
 value-stream coupling is the residual, attack it separately (critic-
 only phase). EV recovery without installation ⇒ raise κ / iterate.
+
+### 20.5 Implementation record (2026-09-01, same day)
+
+Landed as five commits on master (local): §20 doc; committee-summary
+refactor + row schema 2 (`924ef54`); recovery tool (`fcf66dd`);
+policy-iteration trainer + interpolation CLI (`32c547a`); log-prior
+covariate (`c2a03d2`). 40 + 3 + 4 tests green in the touched files;
+basedpyright clean.
+
+Deviations from §20.3, both additive:
+- The advantage model takes theta_k's CENTERED LOG-PRIOR over the
+  legal set as a covariate with one learned scale. Motivation from
+  the first real-shard smoke: the prior's own top card is the
+  committee's top card 58% of the time, a freshly initialized head
+  starts at chance and spends epochs relearning that. The head now
+  fits the residual the prior does not explain (the obvious
+  Fay-Herriot covariate); the bare head is kept for the scatter-
+  alignment test.
+- Stage 3 is not a new loss loop: the target stage writes a TARGETED
+  corpus in the schema `train_distill` already consumes (search_target
+  := the §20 target, distill_set := override, legacy target kept as
+  search_target_legacy) and the projection reuses that tested loop
+  with omega fixed at 1. The new script owns fit / target and the
+  orchestration.
+
+Recovery on real corpus-q rows (shard 13, 1,677 override rows):
+1,612 recovered (96.1%), 65 refused — 39 exact-top-tie endgame rows
+whose worst card underflowed float32 (no pair to pin on), 26 min-
+residual mismatches (replayed prior vs stash beyond 1e-4). Recovered
+min-residual max 3e-5; median tilt/w 78.8 (max N ~740, consistent
+with 1024 iterations). 10 s per shard.
+
+Stage 1 smoke on that one shard (adapter rung, 6 epochs, PRE-
+covariate): 3,384 targetable rows / 1,612 with Q; held-out weighted
+MSE 1.8e-2 -> 5.9e-3, still descending, against a noise floor of
+2.1e-4; sigma_u^2 5.7e-3. A large sigma_u^2 makes gamma ~ 1 on every
+row with Q, i.e. the Stage-2 targets reduce to the per-node evidence-
+calibrated readout until the model has earned trust — the safe
+default the design intended.
+
+Corpus q: stopped at its 3,000-game shard flush (15 shards; ~24k
+override + ~25k endorsed rows) rather than run to 5,000, since Stage 1
+has ample power on what is banked and the schema-2 generator now
+records what recovery cannot. Iteration-1 pipeline:
+`runs/policy_iteration_202609/pipeline.py` (recover -> fit all rungs
+-> target -> distill 1 epoch -> cert battery on distill_epoch1 ->
+WiSE-FT alpha 0.5 -> cert battery), idempotent and detached.
