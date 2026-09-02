@@ -309,7 +309,13 @@ class AdvantageModel(nn.Module):
     Fay-Herriot sigma_u^2 the blend uses.
     """
 
-    def __init__(self, agent: PPOAgent, capacity: str, heteroscedastic: bool = False):
+    def __init__(
+        self,
+        agent: PPOAgent,
+        capacity: str,
+        heteroscedastic: bool = False,
+        bilinear: bool = False,
+    ):
         super().__init__()
         if capacity not in CAPACITIES:
             raise ValueError(f"capacity must be one of {CAPACITIES}, got {capacity!r}")
@@ -334,6 +340,17 @@ class AdvantageModel(nn.Module):
         self.pointer_Wt = nn.Linear(d_token, POINTER_HIDDEN)
         self.pointer_v = nn.Linear(POINTER_HIDDEN, 1, bias=False)
         self.prior_scale = nn.Parameter(torch.tensor(0.01))
+        # §20.8: a bilinear state x card term. The pointer's tanh(W_g h + W_t
+        # token) is additive inside the nonlinearity and gates a card
+        # attribute by the state only weakly; (U h) . (V token) scores a card
+        # attribute conditionally on the state (e.g. "called-suit card, but
+        # only at a defender lead before the suit was led"). Zero-initialized
+        # on the state side so the model starts as the plain pointer.
+        self.bilinear = bool(bilinear)
+        if self.bilinear:
+            self.bilinear_U = nn.Linear(d_model, POINTER_HIDDEN, bias=False)
+            self.bilinear_V = nn.Linear(d_token, POINTER_HIDDEN, bias=False)
+            nn.init.zeros_(self.bilinear_U.weight)
         self.heteroscedastic = bool(heteroscedastic)
         if self.heteroscedastic:
             self.logvar_head = nn.Linear(d_model, 1)
@@ -367,6 +384,10 @@ class AdvantageModel(nn.Module):
         g = self.pointer_Wg(h).unsqueeze(1)  # (R, 1, hidden)
         t = self.pointer_Wt(enc.hand_tokens)  # (R, 8, hidden)
         slot = self.pointer_v(torch.tanh(g + t)).squeeze(-1)  # (R, 8)
+        if self.bilinear:
+            u = self.bilinear_U(h).unsqueeze(1)  # (R, 1, hidden)
+            v = self.bilinear_V(enc.hand_tokens)  # (R, 8, hidden)
+            slot = slot + (u * v).sum(-1) / POINTER_HIDDEN**0.5
         R = slot.size(0)
         wide = slot.new_zeros((R, self.action_size + 1))
         cids = enc.hand_ids.long()

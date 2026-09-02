@@ -143,7 +143,9 @@ def stage_fit(args) -> FitReport:
     reports: dict[str, FitReport] = {}
     for cap in capacities:
         torch.manual_seed(args.seed)
-        model = AdvantageModel(agent, cap, heteroscedastic=args.heteroscedastic)
+        model = AdvantageModel(
+            agent, cap, heteroscedastic=args.heteroscedastic, bilinear=args.bilinear
+        )
         if cap == "trunk":
             report = fit_advantage_model_live(
                 model,
@@ -165,7 +167,10 @@ def stage_fit(args) -> FitReport:
         else:
             model, report = fit_advantage_model_iterated(
                 lambda cap=cap: AdvantageModel(
-                    agent, cap, heteroscedastic=args.heteroscedastic
+                    agent,
+                    cap,
+                    heteroscedastic=args.heteroscedastic,
+                    bilinear=args.bilinear,
                 ),
                 table,
                 train_idx,
@@ -209,6 +214,7 @@ def stage_fit(args) -> FitReport:
                 {
                     "selected": best,
                     "heteroscedastic": bool(args.heteroscedastic),
+                    "bilinear": bool(args.bilinear),
                     **json.loads(selected.to_json()),
                 },
                 indent=2,
@@ -235,7 +241,10 @@ def stage_target(args) -> dict:
     with open(os.path.join(args.out_dir, "fit_report.json")) as f:
         fit = json.load(f)
     model = AdvantageModel(
-        agent, fit["selected"], heteroscedastic=bool(fit.get("heteroscedastic", False))
+        agent,
+        fit["selected"],
+        heteroscedastic=bool(fit.get("heteroscedastic", False)),
+        bilinear=bool(fit.get("bilinear", False)),
     )
     model.load_state_dict(torch.load(os.path.join(args.out_dir, "advantage_model.pt")))
     table = RowTable.load(os.path.join(args.out_dir, "row_table.pt"))
@@ -516,6 +525,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="added to every row's noise variance in the 1/var weight (Q^2)",
     )
     fit.add_argument("--rebuild-table", action="store_true")
+    fit.add_argument(
+        "--bilinear",
+        action="store_true",
+        help="add a bilinear state x card term to the pointer (§20.8): scores a "
+        "card attribute conditionally on the state",
+    )
     fit.add_argument(
         "--heteroscedastic",
         action="store_true",

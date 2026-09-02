@@ -386,6 +386,17 @@ def test_heteroscedastic_head_and_nll():
     idx = torch.arange(len(table))
     adv, su2 = model.forward_with_variance(table.encoded(idx), table.prior)
     assert su2 is not None and su2.shape == (len(table),) and bool((su2 > 0).all())
+    # The bilinear term is zero-initialized on the state side, so at init it
+    # adds nothing to the plain pointer's scores.
+    torch.manual_seed(3)
+    plain = AdvantageModel(agent, "adapter")
+    torch.manual_seed(3)
+    bil = AdvantageModel(agent, "adapter", bilinear=True)
+    with torch.no_grad():
+        assert torch.allclose(
+            plain(table.encoded(idx)), bil(table.encoded(idx)), atol=1e-6
+        )
+    assert bil.bilinear and not plain.bilinear
     assert (
         AdvantageModel(agent, "adapter").forward_with_variance(table.encoded(idx))[1]
         is None
