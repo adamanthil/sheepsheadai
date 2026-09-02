@@ -504,6 +504,54 @@ Evaluation instruments:
   Agent Evaluation in Imperfect Information Games," AAAI 2018 — the
   variance-reduction goal the zero-centered paired design shares.
 
+Search-Q policy iteration (§20) — reading order to understand the
+implementation (2026-09-01; each item names the piece of the recipe it
+supplies):
+- Fay & Herriot, "Estimates of Income for Small Places," JASA 74, 1979 —
+  THE estimator of Stage 1b: known-variance measurements, a covariate
+  regression, the precision-weighted blend (gamma) and the residual-
+  variance estimate; "area" = searched node.
+- Efron & Morris, "Data Analysis Using Stein's Estimator and Its
+  Generalizations," JASA 70, 1975 — why pooling toward a group estimate
+  beats per-unit estimates under noise; the empirical-Bayes framing that
+  also justifies shrinking per-class residual variances toward the
+  global one.
+- Kendall & Gal, "What Uncertainties Do We Need in Bayesian Deep
+  Learning for Computer Vision?", NeurIPS 2017 (arXiv:1703.04977) —
+  heteroscedastic regression with a learned per-input variance: the
+  per-node version of the per-class residual variance (§20.6).
+- Vieillard, Pietquin & Geist, "Leverage the Average: an Analysis of KL
+  Regularization in Reinforcement Learning," NeurIPS 2020
+  (arXiv:2007.06799) — KL-regularized policy iteration (new policy =
+  old policy tilted by exp(advantage / temperature)); the error-
+  averaging theorem behind the multi-iteration compounding claim.
+- Grill et al., "Monte-Carlo Tree Search as Regularized Policy
+  Optimization," ICML 2020 (arXiv:2007.12509) — the search target as
+  the same regularized step with lambda set by visit counts; read with
+  §20.1 for exactly which assumption fails under determinization.
+- Wang et al., "Critic Regularized Regression," NeurIPS 2020
+  (arXiv:2006.15134); Nair et al., "AWAC," 2020 (arXiv:2006.09359);
+  Peng et al., "Advantage-Weighted Regression," 2019 (arXiv:1910.00177)
+  — advantage-weighted policy extraction, the temperature and the clip;
+  our tilt with the advantage from search instead of a TD critic.
+- Anthony, Tian & Barber, "Thinking Fast and Slow with Deep Learning and
+  Tree Search," NeurIPS 2017 — the phase-pure loop (generate with a
+  frozen policy, improve with search, project, certify).
+- Sun et al., "Dual Policy Iteration," NeurIPS 2018 (arXiv:1805.10755)
+  — theory of fast-policy / slow-search loops and when the projection
+  contracts.
+- Ross, Gordon & Bagnell, DAgger, AISTATS 2011 — corpus on the
+  student's own state distribution with a stationary expert; why
+  committee acting is off.
+- Danihelka et al., "Policy Improvement by Planning with Gumbel," ICLR
+  2022 — the retired target's completed-Q readout and its visit-count
+  sigma scale (its eq. 8 vs §20.1).
+- Optional: Wortsman et al., WiSE-FT (arXiv:2109.01903) — the
+  interpolation control; Lisý, Lanctot & Bowling, "Online Monte Carlo
+  Counterfactual Regret Minimization for Search in Imperfect
+  Information Games," AAMAS 2015 — the in-engine average-strategy
+  alternative held in reserve.
+
 (The retired §12 pair-hinge lineage — Bradley-Terry, RankNet, DPO
 (Rafailov et al. 2023), DQfD (Hester et al., AAAI 2018) — is cited in
 Search_Teacher_Design_202608.md §12.7 and its references block, and
@@ -2601,3 +2649,87 @@ records what recovery cannot. Iteration-1 pipeline:
 `runs/policy_iteration_202609/pipeline.py` (recover -> fit all rungs
 -> target -> distill 1 epoch -> cert battery on distill_epoch1 ->
 WiSE-FT alpha 0.5 -> cert battery), idempotent and detached.
+
+### 20.6 Iteration-1 results (2026-09-01) and the next arm
+
+Run: runs/policy_iteration_202609 (corpus q stopped at 3,000 games /
+15 shards; recovery 23,938 of 25,151 override rows; fit on 51,714
+targetable rows, 23,938 with Q; 4-seed n=1000 battery + duplicate
+h2h vs theta_k, 2000 deals/mode).
+
+Stage 1 (adapter rung selected; pointer 1.05e-3, adapter 9.7e-4, trunk
+1.04e-3 held-out weighted MSE vs a 2.1e-4 noise floor; the trunk rung
+lost, as pre-registered). The pointer rung needed the epoch cap raised
+30 -> 120 (still creeping at 120; adapter early-stopped at 46). Pooled
+top-card agreement with the committee draw: model 0.598 vs prior
+0.602. At std|t0-defender-lead: model 0.44 vs prior 0.50 (above the
+35% null bar, below the prior — a PARTIAL pass), with held-out MSE
+3.3e-4 vs floor 2.4e-4: the explainable variance there is ~1e-4 Q^2,
+the size a 0.01-Q convention effect carries.
+
+Stage 2 (global sigma_u^2 1.24e-3, kappa 1): KL(target||prior) p50
+0.013 / p90 0.20, |z| p50 1.1 / p90 4.5, 2.2% clipped. Direction at the
+priority cells, prior -> target argmax on the called suit: t0 40.5 ->
+49.2, t1 44.9 -> 51.9, t2 53.8 -> 56.0, t3 flat, t4 reversed (n=51) —
+the committee's own late-trick profile.
+
+Stage 3 (1 epoch, lambda_ce = lambda_ret = 1, 432 steps, 4.6 min):
+mean KL(target||policy) 0.092 BEFORE -> 0.094 holdout / 0.097 train
+AFTER. The policy head did not move toward the targets; the network
+did move (value/aux/retention).
+
+Cert:
+
+    checkpoint        h2h vs theta_k        called-suit  partner  t0-trump  spread
+    pi1_ep1 (hot)     +0.0171 se 0.0068     45.2         99.1     0.6       3.65
+                      (called +0.016 / jd +0.018)
+    pi1_a50 (interp)  +0.0126 se 0.0052     45.7         97.6     0.45      3.6
+    arm c ep1 (§17.9) -0.0276 se 0.0089     49.3         96.7     0.6       ~2.9
+    interp_a50 (§17)  -0.0039 se 0.0074     48.0         96.8     0.4       3.4
+
+READINGS. (1) EV: the first distilled checkpoint in the program with a
+POSITIVE h2h vs theta_k, hot, no walk-back (2.5 sigma, both modes),
+against a pre-registered bar of -0.010 — the lambda-independent
+-0.025 floor of §17.11-§17.15 was target-borne. No spread
+compression (3.65 vs seed 3.6), top1min 8.5, partner SHARPENED 96.5
+-> 99.1. (2) Installation: called-suit 45.2 vs 44.7 baseline — NOT
+installed; the +9-point tilt at t0 leads never reached the policy.
+(3) Interpolation: costs EV here (+0.017 -> +0.013) and installs
+nothing; it was a remedy for noise-fitting damage and this arm has
+none. Operator preference recorded: avoid interpolation in the final
+model, keep it as a control.
+
+DIAGNOSIS of (2), two mechanisms, both measured:
+(a) Under-tilted lead targets. sigma_u^2 was estimated GLOBALLY
+    (1.24e-3), dominated by high-variance cells (t3 picker-follow
+    local residual 2.8e-3). At t0 defender leads the local residual is
+    8.7e-5 against noise 2.4e-4, so gamma should be ~0.27 (model gets
+    ~73%) but the global value gave 0.84 (model 16%): the pooled
+    convention effect entered the lead targets at about a quarter of
+    its calibrated strength and the node's own noise kept the rest
+    (signal ~0.1 nats vs noise ~0.9 nats; locally ~0.9 vs ~0.5).
+    This is the heteroscedastic case §20.4 pre-registered as the
+    fallback.
+(b) Under-dosed projection. Calibrated targets sit a median 0.013 nats
+    from the prior, so the CE gradient is small where the one-hot
+    gradients were O(1); at lambda_ce = 1 the fixed-coefficient value/
+    aux terms owned the trunk and the target KL did not decrease. More
+    epochs / a larger CE coefficient are a legitimate supervised
+    projection onto FIXED targets (AZ buffer reuse); the §17.8 "epoch
+    2+ damages" finding was noise-fitting of one-hot coin flips, which
+    the calibrated targets bound per row.
+
+NEXT ARM (operator-approved 2026-09-01), reusing corpus q, no new
+search: (i) per-class residual variance — sigma_u^2 per telemetry cell
+from the held-out per-class residual (weighted MSE - noise floor),
+shrunk toward the global value by row count (an EB step; the cell
+enters only as a VARIANCE bucket, never as a card class); Stage-2
+targets rebuilt with the local gamma; (ii) projection with lambda_ce
+raised (5) and up to 4 epochs under a held-out target-KL stop rule
+(stop when holdout KL(target||policy) stops decreasing; keep the best
+epoch); (iii) the standard battery, hot only (interpolation as a
+control only if the operator asks). Pre-registered: t0 lead targets
+now carry the pooled tilt (argmax on the called suit at t0 leads
+> 49.2 in the targeted corpus); holdout target-KL DECREASES across
+epochs; called-suit pooled >= 49 with t0-bin movement; h2h >= 0
+maintained; partner >= 96.5, t0-trump <= 1, spread >= 3.2.
