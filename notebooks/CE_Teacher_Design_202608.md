@@ -2970,3 +2970,33 @@ Realization instrument: analysis/lead_row_realization.py (policy vs
 target called-suit mass and argmax at t0/t1 defender leads on the
 train and held-out games of the distill split; realized fraction of
 the target mass shift relative to theta_k).
+
+§20.9 RESULTS (2026-09-02, screen on arm 4b's targets; realization =
+fraction of the target's called-suit mass shift realized at t0
+defender leads, train / held-out rows; probe = the distill's 500-game
+seed-0 read):
+
+    variant                          realized t0   probe partner / spread   verdict
+    arm 4b control (1 epoch)          10% / 15%     100 / 3.8                —
+    P1 precision-weighted CE          10% / 21%     100 / 3.7                no train gain
+    P2 head-first: frozen epoch 1     16% / 23%     96.8 / 4.0               best clean gain; cert below
+       + full epoch 2                 11% / 22%     100 / 4.1                gives half back
+    P3 arm-3 ep1/ep2 average          10% / 14%     —                        nothing
+    P4 4x batch, 4x lr                20% / 19%     92.3 / 3.8               FAILS partner
+    P2 head-first ep1 cert (4 x n=1000): called-suit 43.9, partner 97.6,
+       t0-trump 0.4, spread 3.95; h2h (see below)
+
+Reading: four well-grounded ways of reallocating or protecting the
+projection's gradient leave lead-row realization at 10-20%, and the
+only one past 20% breaks partner. That is the signature of a
+representational limit in the POLICY, not of the projection schedule:
+the actor scores a card as tanh(W_g h + W_t token) — the same additive
+form the advantage head started with, which captured 13% of the lead
+effect until a bilinear state x card term lifted it to 55% (§20.8). A
+state-conditional card preference (every convention) is what the
+additive form expresses poorly, so the projection must bend shared
+features to approximate it: slow, and collateral-prone. Proposed test
+(operator decision — it changes the deployed actor): a zero-
+initialized bilinear term in the policy pointer, registered as a new
+architecture that loads the 8M checkpoint bit-identically at init
+(existing goldens untouched), then the arm-3 projection on it.
