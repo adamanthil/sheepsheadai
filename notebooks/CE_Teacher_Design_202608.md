@@ -2984,12 +2984,18 @@ seed-0 read):
     P3 arm-3 ep1/ep2 average          10% / 14%     —                        nothing
     P4 4x batch, 4x lr                20% / 19%     92.3 / 3.8               FAILS partner
     P2 head-first ep1 cert (4 x n=1000): called-suit 43.9, partner 97.6,
-       t0-trump 0.4, spread 3.95; h2h (see below)
+       t0-trump 0.4, spread 3.95; h2h +0.0023 se 0.0075 (called -0.011 /
+       jd +0.016) = NO EV gain: the full projection's EV (+0.019..+0.025)
+       lives in the trunk update, not the head.
+    P2b four FROZEN-trunk epochs at actor lr 1e-3 (4 x 432 steps):
+       realized t0 16 / 19 / 18 / 21%, t1 6 / 1 / 15 / 22% — SATURATES
+       near 20% with the trunk fixed however many steps the head gets.
 
 Reading: four well-grounded ways of reallocating or protecting the
-projection's gradient leave lead-row realization at 10-20%, and the
-only one past 20% breaks partner. That is the signature of a
-representational limit in the POLICY, not of the projection schedule:
+projection's gradient leave lead-row realization at 10-20%, the only
+one past 20% breaks partner, and the head alone saturates at ~20%
+given unlimited steps. That is the signature of a representational
+limit in the POLICY, not of the projection schedule:
 the actor scores a card as tanh(W_g h + W_t token) — the same additive
 form the advantage head started with, which captured 13% of the lead
 effect until a bilinear state x card term lifted it to 55% (§20.8). A
