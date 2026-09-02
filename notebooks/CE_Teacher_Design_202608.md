@@ -3229,3 +3229,14 @@ alone 12.2 — within the seed's band. Cert (4 x n=1000 + dup h2h vs
 theta_k) launched on iter11/distill_epoch7.pt as p1_bp_ep7; adoption
 bar unchanged (h2h >= 5f's +0.020 within se, partner >= 96.5, t0 <= 1,
 spread >= 3.6, called-suit pooled >= 5f's 46.4).
+
+§20.9 ARM 5f vs PRODUCTION 30M (2026-09-02 11:05): duplicate h2h,
+2000 deals/mode, seed 42 (same instrument as the cert): edge +0.0389
+se 0.0136 (2.9 sigma; called +0.0206 / jd +0.0572). The transitive
+estimate (+0.034 +/- 0.016 via interp_a50) is confirmed. Arm 5f —
+8M terminal-only seed + one search-Q policy-iteration step — is the
+first checkpoint of this lineage to BEAT the shaped 30M production
+agent on the deployment instrument (interp_a50 tied it at +0.014 +/-
+0.014). The JD-mode edge is the larger; the called-ace mode is where
+the 30M's shaped called-suit adherence (90 vs 46) plays, and 5f still
+leads there. Row in cert_results.jsonl as kind h2h_30m.
