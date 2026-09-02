@@ -2842,3 +2842,95 @@ rate (operator to choose):
     corpus from theta_{k+1} (student-acting, per-action stats stored),
     refit, project, cert against BOTH theta_{k+1} and the 8M anchor.
     This is the standing plan regardless of (a)-(c).
+
+### 20.8 Stage-1 comparison and the projection bottleneck (2026-09-02)
+
+Operator directions recorded 2026-09-01/02: interpolation is a control,
+not a component of the final model; `called_suit_played` is REMOVED
+from the observation dict (it was a precomputed table fact added for
+the stateless scripted agent; no network ever read it — the scripted
+agent now tracks the led suit from what it sees; commit 2a219fe); the
+aux-head route is reserved for attributes a probe shows the trunk
+lacks, and the trunk does NOT lack called-suit membership (linear
+probe on frozen hand tokens, held-out AUC 0.94); observation-derived
+covariates for the head are held in reserve.
+
+Stage-1 variants on the same cached table (adapter rung; "capture" =
+the model's pooled called-suit-minus-other-fail advantage at the cell
+over the observed +0.0114 / +0.0096 / +0.0117 Q at t0 / t1 / t2):
+
+    fit                                   holdout wMSE  t0 capture  t1   t2   t0 agree model/prior
+    arm 1  1/noise weights, patience 8     9.74e-4        13%       2%   27%   0.44 / 0.50
+    arm 3  FH iterated weights x2          9.17e-4        37%       29%  19%   0.50 / 0.50
+    heteroscedastic head (NLL)             9.25e-4        35%       31%  35%   0.54 / 0.50
+    heteroscedastic + BILINEAR pointer     9.23e-4        55%       52%  38%   0.40 / 0.50
+
+- Weight decay is not a factor (AdamW decoupled decay at lr 1e-3
+  shrinks weights 0.2% per run; wd 0 / 1e-4 / 1e-3 give identical fits).
+- The heteroscedastic head learns the variance structure WITHOUT cells
+  (lead rows sigma_u^2 ~4e-5, picker follows ~2e-3, correctly ordered)
+  and gives the model ~80% of the lead blend, but standardizing the
+  loss does not speed discovery of the effect: capture unchanged.
+- The BILINEAR state x card term is the lever: the pointer's
+  tanh(W_g h + W_t token) is additive inside the nonlinearity and gates
+  a card attribute by the state weakly; "called-suit card is better,
+  but only at a defender lead before the suit was led" is an
+  interaction. (U h).(V token), zero-initialized on the state side,
+  lifts capture to 55% / 52% at unchanged global fit.
+
+Arms 4 and 4b (bilinear + heteroscedastic model; cert 4 x n=1000 +
+dup h2h):
+
+    arm   blend variance            targets: |z| p50 / clipped   called-suit  partner  t0-trump  h2h vs theta_k
+    4     per-NODE (head sigma_u^2)   3.4 / 17.1%                 42.7         95.6     0.2       (pending)
+    4b    per-class (all rows)        1.7 / 3.1%                  44.0         98.2     0.45      (pending)
+    3     per-class (all rows)        1.65 / 2.8%                 45.0         97.9     0.2       +0.0252 se 0.0065
+
+Arm 4's per-node variances make the targets much sharper (a fifth of
+rows at the 8-nat clip); held-out target KL fell 17% in one epoch, the
+largest yet, but fresh-deal called-suit fell BELOW baseline and
+partner slipped to 95.6 — over-sharp targets where the head is over-
+confident cost generalization. Arm 4b (same mean, class variance)
+restores partner and the arm-3 regime and installs nothing more.
+
+THE PROJECTION IS THE BOTTLENECK NOW. Lead-row movement measured on
+the FULL training set and on held-out games (t0 defender leads with a
+called-suit option; called-suit probability mass, policy vs target):
+
+    arm   train rows (n=362)                 held-out rows (n=36)
+    3     0.375 -> 0.385  (target 0.455)     0.398 -> 0.415  (target 0.515)
+    4     0.375 -> 0.388  (target 0.494)     0.398 -> 0.423  (target 0.551)
+
+One epoch realizes ~15% of the lead rows' target shift ON THE ROWS IT
+TRAINS ON, and about the same on held-out rows — it is under-fitting,
+not memorizing. Mechanism: the lead rows are ~2% of targeted rows and
+their target tilt is moderate (KL 0.03-0.14), so their share of the
+CE gradient is small (1.7% of the encoder gradient, §20.7) and Adam's
+per-step displacement budget goes to the many larger-gradient rows;
+the network fits the bulk first. Making the lead targets sharper (arm
+4) did not raise the realized share and cost generalization; a second
+epoch (arm 3 ep2) cost EV without installing. The greedy fresh-deal
+rate across five arms — 45.2 / 43.7 / 45.0 / 42.7 / 44.0 vs 44.7 —
+is flat at the probe's resolution.
+
+What this leaves for installation, in order of principle:
+(1) Iterate and compound: each iteration re-searches from the improved
+    policy and moves the lead rows another ~15% of the gap; EV has
+    been positive at every step. Slow but honest; the standing plan.
+(2) Projection dose targeted by evidence, not by cell: weight each
+    row's CE by its posterior confidence (the Fay-Herriot v_post the
+    target was built from) so coherent, confident rows — leads under
+    the bilinear model, resolved follows — carry more of the gradient
+    than noise-dominated ties. This is the existing omega mechanism
+    (AWR weight) with the posterior variance as the evidence instead
+    of the top-2 gap; taxonomy-free. Untested.
+(3) More corpus at the lead cells: p is already 1.0 there, so this
+    means more games (the schema-2 regeneration from the accepted
+    checkpoint), which raises the lead rows' absolute gradient share
+    only through the model's capture, not the projection's.
+(4) Bidding/leaster: held by the retention KL anchor at lambda 1;
+    distributions hold (KL ~0.007) but near-tie decisions drift (pick
+    32.9 -> ~36 in every arm; EV-neutral per the routed h2h). Across
+    iterations the anchor ratchets; before iteration 3 either anchor
+    bidding to the fixed 8M seed or bring bidding into search emission
+    (§16.9 addendum 7).
