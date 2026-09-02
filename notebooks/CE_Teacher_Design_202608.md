@@ -2733,3 +2733,107 @@ now carry the pooled tilt (argmax on the called suit at t0 leads
 > 49.2 in the targeted corpus); holdout target-KL DECREASES across
 epochs; called-suit pooled >= 49 with t0-bin movement; h2h >= 0
 maintained; partner >= 96.5, t0-trump <= 1, spread >= 3.2.
+
+### 20.7 Arms 2-3 and the Stage-1 diagnosis (2026-09-01, late)
+
+Cert table (4 x n=1000 fresh seeds + duplicate h2h vs theta_k):
+
+    arm  change vs arm 1                    called-suit  partner  t0-trump  spread  h2h vs theta_k
+    1    (baseline recipe, global sigma_u2)  45.2         99.1     0.6       3.65    +0.0171 se 0.0068
+    2    per-class sigma_u2 (holdout, shrunk), lambda_ce 5, KL stop (stopped ep 1)
+                                            43.7         99.2     1.2       3.7     +0.0183 se 0.0065
+    3    FH iterated-WLS fit (2 rounds), all-rows per-class sigma_u2, lambda_ce 1, 2 epochs
+         ep1                                45.0         97.9     0.2       3.8     (h2h pending)
+         ep2                                (cert pending)
+    seed baseline                           44.7         96.5     ~1        3.6     0
+
+EV: positive and stable across arms (+0.017 / +0.018, both modes, no
+walk-back) — the coefficient did not hurt it. Installation: none of
+the three arms moved greedy called-suit on fresh deals beyond probe
+noise (pooled SE ~1.5 pts).
+
+Where the convention signal goes missing — measured step by step:
+
+1. The LABELS carry it. Pooled over corpus q's committee rows, the
+   called-suit cards' advantage over the other fail cards is
+   +0.0114 +/- 0.0011 Q at t0 defender leads (10 sigma; +0.0096 at
+   t1, +0.0117 at t2) — the same 0.01 Q the CRN counterfactual
+   instrument measured (0.10 score / 12). The pooled effect exists in
+   the search evidence; a per-node label cannot see it (SE 0.015).
+2. The FEATURES carry it. A linear probe on the frozen hand tokens
+   classifies "this card is in the called suit" at held-out AUC 0.94.
+3. The advantage MODEL under-fits it. Arm-1 fit: +0.0015 (13% of
+   the observed effect); the prior covariate contributes nothing
+   (+0.09 nats, < 1 sigma). Weight decay is NOT the cause (AdamW's
+   decoupled decay at lr 1e-3 shrinks weights 0.2% per run; fits at
+   wd 0 / 1e-4 / 1e-3 are identical). The cause is the fit's
+   weighting and stopping: with 1 / noise_var weights every row weighs
+   about the same, so cells whose true advantages vary by ~2e-3 Q^2
+   (picker follows) dominate the loss over cells whose whole signal is
+   ~1e-4 Q^2, and global early stopping (patience 8, epoch 46-73)
+   halts before the small effect is learned. Fay-Herriot's own
+   generalized-least-squares weight 1 / (noise_var + sigma_u^2_cell)
+   raises the recovered effect to +0.0033 (30%) at the old stopping
+   point; a 300-epoch trace shows the lead effect learned LATE and
+   monotonically (+0.001 at epoch 40, +0.005 at 130 = the global
+   held-out optimum, +0.007 at 190 while the global fit overfits),
+   tracked identically on held-out lead rows (no memorization). The
+   arm-3 fit (2 FH rounds, patience 25, best epoch 92) recovers
+   +0.0042 (37%); its lead-cell held-out MSE is 2.8e-4 vs the 2.4e-4
+   floor and its top-card agreement matches the prior at t0 (0.50)
+   and beats it at t1 (0.52 vs 0.45).
+4. The BLEND then dilutes it. Arm 1's global sigma_u^2 gave the model
+   16% of the t0-lead blend; per-class holdout estimates shrunk by
+   count gave 34% (arm 2); all-rows estimates give ~70% (arm 3, gamma
+   0.30). Target coherence at t0 leads (rows tilting toward vs away
+   from the called suit): arm 1 51/20, arm 3 57/20; called-suit mass
+   0.377 -> 0.451 (arm 1) / 0.461 (arm 3).
+5. The PROJECTION moves toward coherent targets and not toward
+   incoherent ones. Held-out KL(target || policy) after one epoch:
+   arm 1 0.092 -> 0.094, arm 2 0.094 -> 0.093, arm 3 0.110 -> 0.094
+   (-14%; epoch 2 flat at 0.094 = fitting train rows only). On the
+   corpus's own t0-lead rows: arm 2 moved called-suit mass 0.362 ->
+   0.367 (target 0.417); arm 3 moved 0.391 -> 0.405 / 0.407 at ep1 /
+   ep2 (target 0.470), argmax 45.0 -> 47.5 / 48.8 (target 51.2), row
+   KL 0.086 -> 0.065 / 0.061. Gradient-norm audit (arm-2 targets,
+   lambda 1): CE puts 4.6 on the shared encoder vs 0.75 for value +
+   aux — CE dominates the trunk (the §20.6 "value/aux own the trunk"
+   reading was wrong); the t0-lead rows are 1.7% of that CE gradient.
+   The mean target KL is a poor progress metric (dominated by
+   mutually inconsistent sharp rows); the KL stop rule is retired.
+
+Reading: the recipe is sound end to end and every stage now measurably
+moves in the right direction, but the per-iteration convention step is
+small — the model carries ~37% of a 0.011 Q effect, the blend passes
+~70% of that, the tilt at a lead row is then ~0.35 nats of coherent
+signal against a 40/60 prior, and one epoch realizes ~20% of the
+target's mass shift. Compounding this over iterations (each iteration
+searches from the improved policy and multiplies the prior by fresh
+evidence) is the design's answer, at perhaps +1-3 greedy points per
+iteration at this capture rate.
+
+Interpolation (operator preference recorded 2026-09-01): a control
+only; not part of the final model. Arm 1's alpha 0.5 read +0.0126 se
+0.0052 with no installation — walking back cost EV here.
+
+Levers for the next arm, ranked by expected effect on the capture
+rate (operator to choose):
+(a) Raw per-card observation covariates in the ADVANTAGE HEAD ONLY
+    (called-suit membership of the card, trump, point value — public
+    observation attributes the encoder already receives, not human
+    convention labels): the +0.011 mean effect becomes a single linear
+    weight the WLS fit finds in epoch 1 instead of epoch 130. Expected
+    capture ~100%. The policy network is untouched; the head is
+    training-time only. Judgement call on whether this counts as
+    special casing: it is a covariate choice in the pooling
+    regression, and the covariates are raw observations.
+(b) Stage-1 schedule without new inputs: train to the global held-out
+    optimum (~130 epochs) with FH weights, or add a second, later
+    round with a smaller learning rate. Expected capture ~50%.
+(c) kappa < 1 (sharper tilt for the same evidence): doubles both the
+    coherent and the noise tilt; cheap sweep (retarget + distill +
+    cert ~1 h per value). Best paired with (a) or (b).
+(d) Iterate now from the arm-3 checkpoint: generate the schema-2
+    corpus from theta_{k+1} (student-acting, per-action stats stored),
+    refit, project, cert against BOTH theta_{k+1} and the 8M anchor.
+    This is the standing plan regardless of (a)-(c).
