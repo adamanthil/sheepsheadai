@@ -69,6 +69,21 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
     )
 
 
+def _bilinear_pointer_actor(action_size, action_groups, encoder, mappings):
+    """The pointer actor plus the zero-initialized bilinear state x card
+    term (CE_Teacher_Design §20.9); loads a plain pointer-actor
+    checkpoint bit-identically via analysis/migrate_arch_checkpoint.py."""
+    return MultiHeadRecurrentActorNetwork(
+        action_size,
+        action_groups,
+        d_card=encoder.d_card_dim,
+        d_token=encoder.d_token_dim,
+        d_model=encoder.d_model,
+        bilinear_pointer=True,
+        **mappings,
+    )
+
+
 def _tokenread_actor(action_size, action_groups, encoder, mappings):
     return TokenReadActorNetwork(
         action_size,
@@ -470,6 +485,33 @@ register(
             normed_readout=True,
         ),
         build_actor=_pointer_actor,
+        build_critic=_aux_critic,
+        has_aux_heads=True,
+    )
+)
+
+register(
+    ArchitectureSpec(
+        name="perceiver-shared-v2-bp",
+        description=(
+            "perceiver-shared-v2 with a bilinear state x card term in the "
+            "play pointer (CE_Teacher_Design §20.9): the additive pointer "
+            "cannot express a state-conditional card preference — the form "
+            "every lead convention takes — and the §20 policy-iteration "
+            "projection realized only ~20% of its lead-row targets on v2 "
+            "however it was scheduled, while the advantage head's twin "
+            "pointer went from 13% to 55% capture with this term. Zero-"
+            "initialized state side: a migrated v2 checkpoint plays bit-"
+            "identically at load. Encoder, critic and every other head are "
+            "v2's."
+        ),
+        build_encoder=lambda: SharedReadoutEncoder(
+            card_config=CardEmbeddingConfig(),
+            n_readout_queries=16,
+            n_readout_heads=4,
+            normed_readout=True,
+        ),
+        build_actor=_bilinear_pointer_actor,
         build_critic=_aux_critic,
         has_aux_heads=True,
     )

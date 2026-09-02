@@ -39,6 +39,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         call_action_global_indices: torch.Tensor,
         call_card_ids: torch.Tensor,
         play_under_action_index: int,
+        bilinear_pointer: bool = False,
     ):
         super(MultiHeadRecurrentActorNetwork, self).__init__()
         self.action_size = action_size
@@ -78,6 +79,19 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         self.pointer_Wg = nn.Linear(d_model, self.pointer_hidden)
         self.pointer_Wt = nn.Linear(self._d_token, self.pointer_hidden)
         self.pointer_v = nn.Linear(self.pointer_hidden, 1, bias=False)
+        # Bilinear state x card term (CE_Teacher_Design §20.9): the additive
+        # tanh(W_g h + W_t t) lets the state shift every card's score
+        # together but expresses "this card attribute matters differently
+        # in this state" only through tanh saturation. (U h) . (V t) is the
+        # product the call scorer already uses. U starts at ZERO so a
+        # checkpoint migrated onto this option plays bit-identically until
+        # training moves it; V gets the pointer's ordinary orthogonal init.
+        self.bilinear_pointer = bool(bilinear_pointer)
+        if self.bilinear_pointer:
+            self.pointer_U = nn.Linear(d_model, self.pointer_hidden, bias=False)
+            self.pointer_V = nn.Linear(self._d_token, self.pointer_hidden, bias=False)
+            nn.init.zeros_(self.pointer_U.weight)
+            nn.init.orthogonal_(self.pointer_V.weight, gain=1.0)
         # Two-tower (card CALL scoring)
         self.tw_latent = 64
         self.tw_Wg = nn.Linear(d_model, self.tw_latent)
@@ -151,6 +165,10 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         t = self.pointer_Wt(tok)  # (B, N, h)
         e = torch.tanh(g + t)  # (B, N, h)
         s = self.pointer_v(e).squeeze(-1)  # (B, N)
+        if self.bilinear_pointer:
+            u = self.pointer_U(feat).unsqueeze(1)  # (B, 1, h)
+            v = self.pointer_V(tok)  # (B, N, h)
+            s = s + (u * v).sum(-1) / (self.pointer_hidden**0.5)
         return s
 
     def _adapt_features(
