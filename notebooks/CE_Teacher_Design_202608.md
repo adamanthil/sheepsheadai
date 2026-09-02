@@ -3267,3 +3267,41 @@ STANDING RECIPE (supersedes the 5f entry above): target stage with
 @1e-3 (--bilinear-only-frozen) to the holdout-KL plateau (~6).
 theta_{k+1} = runs/policy_iteration_202609/iter11/distill_epoch7.pt.
 Next: bidding PG phase, then the §20.10 regeneration from theta_{k+1}.
+
+### 20.11 Standing-recipe constant provenance (2026-09-02)
+
+Recorded at the operator's request so nobody later mistakes a default
+for a tuned value. Operator decision: values kept as-is for now.
+
+  constant            value   origin                                  status
+  trunk lr (--lr)     1e-4    §17.4 "flat distill LR", 1/3 of the     conventional;
+                              PPO rate 3e-4 (ppo.py lr_actor)         only P4 (4x, with
+                                                                      4x batch) tested,
+                                                                      failed partner
+  head lr (--head-lr) 1e-3    default set in 0a80546 with the LP-FT   heuristic (10x
+                              schedule; = --fit-lr used for the       trunk); epochs
+                              same-sized Stage-1 adapter              swept (P2b/5e),
+                                                                      rate never swept
+  tilt clip           8       code default at 32c547a; §20.4 formula  numerical bound
+  (--tilt-max)                names ±tilt_max without a number; e^8   (one-hot region);
+                              ~ 3000:1 so the target is one-hot       binds 3.1% of rows
+                              before the clip binds                   (z p90 5.17, so a
+                                                                      clip at 5 WOULD
+                                                                      change targets)
+  kappa (--kappa)     1       DERIVED: one posterior SE = one nat     pre-registered
+                              (§20.4)                                 sweep 0.5/1/2 not
+                                                                      run
+  weight cap          5       written into the P1 pre-registration   NEVER BINDS on
+  (--weight-max)              (§20.9) as a standard exponentiated-    iter11 targets:
+                              weight truncation; not data-derived     max 2.34, p99
+                                                                      2.19, 0 rows at cap
+  weight scale        mean=1  DERIVED: mean-normalized so weighted    by construction
+                              loss sum = uniform loss sum ("same
+                              dose, different allocation")
+
+Iter11 weight distribution (51,714 targeted rows): min 0.013, p5 0.13,
+p25 0.62, p50 0.94, p75 1.40, p90 1.79, p95 1.95, p99 2.19, max 2.34.
+Consequence: the P1 h2h gain is a pure precision-weighting result; the
+cap is inert for this corpus. Of the unpinned constants, --head-lr is
+the most consequential and cheapest to sweep (~40 min/arm on the
+realization screen) if a later iteration stalls at the plateau.
