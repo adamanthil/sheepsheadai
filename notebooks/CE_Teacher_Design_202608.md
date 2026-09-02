@@ -2743,14 +2743,19 @@ Cert table (4 x n=1000 fresh seeds + duplicate h2h vs theta_k):
     2    per-class sigma_u2 (holdout, shrunk), lambda_ce 5, KL stop (stopped ep 1)
                                             43.7         99.2     1.2       3.7     +0.0183 se 0.0065
     3    FH iterated-WLS fit (2 rounds), all-rows per-class sigma_u2, lambda_ce 1, 2 epochs
-         ep1                                45.0         97.9     0.2       3.8     (h2h pending)
-         ep2                                (cert pending)
+         ep1                                45.0         97.9     0.2       3.8     +0.0252 se 0.0065 (called +0.029 / jd +0.022)
+         ep2                                45.7         98.8     0.5       3.9     +0.0140 se 0.0065 (called +0.017 / jd +0.011)
     seed baseline                           44.7         96.5     ~1        3.6     0
 
-EV: positive and stable across arms (+0.017 / +0.018, both modes, no
-walk-back) — the coefficient did not hurt it. Installation: none of
-the three arms moved greedy called-suit on fresh deals beyond probe
-noise (pooled SE ~1.5 pts).
+EV: positive across all arms, both modes, no walk-back; arm 3 ep1 is
+the strongest (+0.025, ~4 sigma) and moved in step with target
+coherence and the held-out target-KL drop. Arm 3's SECOND epoch —
+which lowered train KL while held-out KL stayed flat — gave back
+~0.011 of EV and installed nothing: on fixed targets ONE epoch is the
+dose (the §17.8 "epoch 2+ damages" finding survives calibration in a
+milder form). Installation: none of the three arms moved greedy
+called-suit on fresh deals beyond probe noise (pooled SE ~1.5 pts);
+arm-3 ep2's 45.7 is the highest pooled read of the program's arms.
 
 Where the convention signal goes missing — measured step by step:
 
