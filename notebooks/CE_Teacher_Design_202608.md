@@ -3090,3 +3090,118 @@ the watch item (retention anchor only; bidding PG phase queued).
   (--bilinear-only-frozen), 3 epochs @1e-3 from theta_k_bp — isolates
   the new capacity and removes the actor-resident bidding drift the
   head phase causes (alone 22.4 mid-phase in arm 5c).
+
+§20.9 ARM 5d CERT PROBES + P5e (2026-09-02 08:15):
+- Arm 5d ep3 (trunk epoch, then 2 full-actor head epochs): called-suit
+  48.1 pooled (48.8 / 43.0 / 49.4 / 51.2) = +3.4 over baseline (~2
+  sigma) — the FIRST fresh-deal movement of the calibrated-target
+  program — with partner 98.4, t0-trump 0.35, spread 4.2, pick 36.9,
+  leaster 4.6. h2h pending.
+- P5e (theta_k_bp, 3 frozen epochs training ONLY pointer_U/V @1e-3):
+  t0 realized 17 / 23 / 33% train, 23 / 30 / 39% held-out; t1 15 / 18
+  / 30% train, 18 / 26 / 43% held-out — still RISING at epoch 3 with
+  ~20k trainable parameters; partner 96-96.5, spread 3.9-4.1. The new
+  capacity alone carries the installation; the full-actor head phase
+  was faster but dragged the bidding heads.
+- Arm 5f (launched, candidate recipe): full trunk epoch 1 @1e-4, then
+  epochs 2-7 bilinear-only @1e-3; realization at ep1/4/7; cert on ep7.
+  Pre-registered: t0 realization >= 40% train / 50% held-out at ep7;
+  called-suit pooled >= 48; h2h >= arm 4b (+0.019); partner >= 96.5,
+  t0-trump <= 1, spread >= 3.6; pick/alone within the seed's band
+  (nothing but U/V trains after epoch 1).
+
+§20.9 ORDERING VERDICT + ARM 5f REALIZATION (2026-09-02 09:05):
+- Arm 5c (head-first, full actor, then trunk): h2h -0.0065 se 0.0078
+  (called -0.003 / jd -0.010). The full-actor head phase at lr 1e-3
+  gave back the whole EV gain; the bidding heads live in the actor and
+  drifted (pick 38-39, leaster 3-4, alone 22 mid-phase).
+- Arm 5d (trunk first, then full-actor head epochs): h2h +0.0135 se
+  0.0077 (called +0.009 / jd +0.019) WITH called-suit 48.1 pooled
+  (+3.4, ~2 sigma), partner 98.4, t0-trump 0.35, spread 4.2 — the
+  first checkpoint carrying BOTH a fresh-deal convention gain and
+  positive EV with sharpness intact. Ordering matters for EV: the
+  trunk epoch must come first.
+- Arm 5f (trunk first, then 6 bilinear-only epochs; nothing else
+  trains after epoch 1): t0 realized 15% (ep1) -> 29% (ep4) -> 32%
+  (ep7) train, 21 -> 32 -> 35% held-out; t1 11 -> 23 -> 30% train;
+  plateau by epoch 7; held-out target KL 0.109 -> 0.085 (program low);
+  final probe called-suit 50.6, partner 98.5, t0-trump 0.4, spread
+  4.2, top1min 9.7, pick 35.8, alone 18.0 (probe-noise band). Cert
+  pending. Realization per training row is the best of the program;
+  the unresolved question for the cert is whether the bilinear-only
+  phase keeps arm 5d's fresh-deal install (48.1) and EV.
+
+§20.9 ARM 5f PROBES (2026-09-02 09:11): called-suit 45.6 / 45.4 / 49.6
+/ 44.8 = 46.4 pooled (+1.7 over the 44.7 baseline; below arm 5d's
+48.1), partner 98.1, t0-trump 0.0-0.8, spread 4.0-4.1, pick 34.2-34.3,
+leaster 6.5-7.8 (the seed's band — bidding heads untouched, as
+designed). h2h pending; it decides between 5d and 5f.
+
+### 20.10 Corpus size per iteration (operator decision, 2026-09-02)
+
+Objective restated by the operator: certifiable EV and general play
+improvement, not convention adherence alone. Decision: 2,000 games per
+iteration, leads searched at p = 1.0 and follows at half that rate
+(`--p-base 0.5 --boost-lead 2 --p-max 1.0`; committee-act 0, i.e.
+student-acting; schema 2; oracle states on).
+
+Why 2,000. The binding rows are the t0/t1 defender leads. Corpus q at
+p = 1.0 everywhere yielded, per class:
+
+    class                  searched   per game
+    std|t0-defender-lead     1,195      0.40
+    std|t1-defender-lead     1,174      0.39
+    all searched            51,728     17.2
+
+The Fay-Herriot fit pools across rows; held-out lead-cell MSE reached
+the noise floor at ~1,200 lead rows, and §20.8 located the bottleneck
+in the projection, not the corpus (more games raise the lead rows'
+gradient share only through the model's capture, which is saturated
+at this size). 2,000 games gives ~800 lead rows per class at the
+50-row per-class shrink — enough for the pooled fit and for the
+posterior z-scores the tilt is built from. 1,000 games would fit but
+halves the evidence behind the tilt; not used for an iteration whose
+checkpoint is to be certified.
+
+Why halve the follows. Follows are ~60% of corpus q's searches
+(defender follows ~4,000 per trick alone). Sampling them at 0.5 cuts
+searches per game from ~17 to ~11 without touching the lead-row count.
+The follow rows still enter Stage 1 (pooled model) and Stage 2
+(targets), just at half the density; their per-class sigma_u^2 is
+larger (picker follows ~2e-3 vs leads ~4e-5, §20.8) so their targets
+lean on the prior more anyway.
+
+Cost. ~22k searches per iteration vs corpus q's ~52k (~40%); at corpus
+q's observed 0.01 g/s (~6 s per committee search on 8 workers) about
+36 h wall, less on a clean machine (corpus q ran under the §17.7 load
+degradation).
+
+Regeneration source = the accepted bilinear checkpoint (arm 5d or 5f
+by cert), after the bidding PG phase.
+
+§20.9 ARM 5f CERT COMPLETE (2026-09-02 09:50) — VERDICT:
+- h2h vs theta_k: +0.0204 se 0.0070 (called +0.0249 / jd +0.0158),
+  2.9 sigma, both modes positive — the program's best EV, above the
+  pre-registered bar (arm 4b's +0.019) and above arm 5d (+0.0135).
+- Conventions: called-suit 46.4 pooled (+1.7; MISSES the pre-reg >= 48
+  and sits below arm 5d's 48.1, though the 5d-5f gap is ~1 sigma at
+  the probe's 4-seed resolution), partner 98.1, t0-trump 0.0-0.8,
+  spread 4.0-4.1. Realization 32/35% t0 also missed its 40/50% bar.
+- Bidding heads: pick 34.2-34.3, leaster 6.5-7.8, alone in band — the
+  bilinear-only phase leaves them at the seed, which removes the
+  pick-drift ratchet that every full-actor arm carried.
+- Scorecard vs pre-registration: EV bar PASS, partner/t0/spread PASS,
+  install bars FAIL (46.4 < 48; realization 32 < 40).
+
+Standing recipe = ARM 5f (trunk epoch first at 1e-4, then bilinear-
+only epochs at 1e-3, holdout-KL plateau stop). Reason: the operator's
+objective is certifiable EV and general play; 5f has the strongest
+and cleanest EV (2.9 sigma, both modes, bidding untouched) while its
+install deficit vs 5d is within probe noise. Arm 5d stays as the
+fallback recipe if a later iteration needs faster convention movement
+at the cost of a full-actor head phase.
+
+Accepted checkpoint = runs/policy_iteration_202609/iter10/
+distill_epoch7.pt (theta_{k+1}). Next: bidding PG phase (bidding
+heads only; trunk + play head frozen; head-routed h2h as instrument),
+then the §20.10 regeneration from theta_{k+1}.
