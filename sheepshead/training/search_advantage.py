@@ -396,6 +396,9 @@ class FitReport:
     holdout_noise_floor: float = float("nan")
     per_class: dict = field(default_factory=dict)
     sigma_u2: float = float("nan")
+    # Per-class residual variances (§20.6, shrunk toward sigma_u2 by row
+    # count); filled by ``class_residual_variances`` after the fit.
+    sigma_u2_by_class: dict = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__, indent=2)
@@ -583,6 +586,9 @@ def fit_advantage_model(
     report.sigma_u2 = estimate_residual_variance(
         final.residual_sq_mean, final.noise_var_mean
     )
+    report.sigma_u2_by_class = class_residual_variances(
+        report.per_class, report.sigma_u2, CLASS_SHRINK_ROWS
+    )
     return report
 
 
@@ -590,6 +596,9 @@ def fit_advantage_model(
 # Stage 1b: Fay-Herriot combination
 # --------------------------------------------------------------------------- #
 SIGMA_U2_FLOOR = 1e-7  # Q^2; keeps gamma defined when the model fits to the floor
+# Row-count weight of the global sigma_u^2 when shrinking per-class values
+# (§20.6): a cell with this many held-out rows counts as much as the prior.
+CLASS_SHRINK_ROWS = 50.0
 
 
 def estimate_residual_variance(residual_sq_mean: float, noise_var_mean: float) -> float:
@@ -600,20 +609,52 @@ def estimate_residual_variance(residual_sq_mean: float, noise_var_mean: float) -
     return max(residual_sq_mean - noise_var_mean, SIGMA_U2_FLOOR)
 
 
+def class_residual_variances(
+    per_class: dict, global_sigma_u2: float, shrink_rows: float
+) -> dict[str, float]:
+    """Per-class sigma_u^2 (§20.6): the held-out identity E[r^2] = sigma_u^2
+    + E[noise] applied within each telemetry cell (weighted MSE minus noise
+    floor), then shrunk toward the global value by row count,
+    (n * local + k * global) / (n + k) with k = ``shrink_rows`` — the
+    empirical-Bayes step that keeps thin cells from swinging on their own
+    sampling error. The cell is only a VARIANCE bucket here; it never says
+    which card is right."""
+    out = {}
+    for cls, r in per_class.items():
+        if cls == "__all__":
+            continue
+        local = max(r["weighted_mse"] - r["noise_floor"], SIGMA_U2_FLOOR)
+        n = float(r["n"])
+        out[cls] = (n * local + shrink_rows * global_sigma_u2) / (n + shrink_rows)
+    return out
+
+
+def sigma_u2_rows(
+    node_class: list[str], by_class: dict[str, float], global_sigma_u2: float
+) -> torch.Tensor:
+    """Per-row sigma_u^2 from the class table; classes never seen on the
+    held-out set fall back to the global value."""
+    return torch.tensor(
+        [by_class.get(c, global_sigma_u2) for c in node_class], dtype=torch.float32
+    )
+
+
 def blend_advantages(
     a_obs: torch.Tensor,
     a_model: torch.Tensor,
     has_q: torch.Tensor,
     noise_var: torch.Tensor,
-    sigma_u2: float,
+    sigma_u2: "float | torch.Tensor",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """(a_hat, v_post, gamma) per row. Rows with Q take the precision-
     weighted blend; rows without take the model alone with variance
-    sigma_u^2."""
+    sigma_u^2. ``sigma_u2`` is one value for every row or a per-row
+    tensor (the §20.6 per-class variances)."""
+    su2 = torch.as_tensor(sigma_u2, dtype=noise_var.dtype).expand_as(noise_var)
     nv = torch.where(has_q, noise_var, torch.zeros_like(noise_var))
-    gamma = torch.where(has_q, sigma_u2 / (sigma_u2 + nv), torch.zeros_like(nv))
+    gamma = torch.where(has_q, su2 / (su2 + nv), torch.zeros_like(nv))
     a_hat = gamma.unsqueeze(1) * a_obs + (1.0 - gamma).unsqueeze(1) * a_model
-    v_post = torch.where(has_q, gamma * nv, torch.full_like(nv, sigma_u2))
+    v_post = torch.where(has_q, gamma * nv, su2)
     return a_hat, v_post, gamma
 
 
@@ -645,13 +686,19 @@ def targets_for_table(
     model: AdvantageModel,
     table: RowTable,
     *,
-    sigma_u2: float,
+    sigma_u2: "float | torch.Tensor",
     kappa: float,
     tilt_max: float,
     batch_rows: int = 2048,
 ) -> dict:
     """Stage 1b + 2 over every targetable row. Returns dense tensors
-    (targets, z, gamma, v_post, a_hat) aligned with ``table``."""
+    (targets, z, gamma, v_post, a_hat) aligned with ``table``.
+    ``sigma_u2``: one value, or a per-row tensor aligned with ``table``."""
+    su2_rows = (
+        sigma_u2
+        if isinstance(sigma_u2, torch.Tensor)
+        else torch.full((len(table),), float(sigma_u2))
+    )
     model.eval()
     device = ppo_module.device
     out_t, out_z, out_g, out_v, out_a = [], [], [], [], []
@@ -679,7 +726,7 @@ def targets_for_table(
                 a_model,
                 table.has_q[b],
                 table.noise_var[b],
-                sigma_u2,
+                su2_rows[b],
             )
             t, z = build_tilt_target(
                 table.prior[b], a_hat, v_post, legal, kappa=kappa, tilt_max=tilt_max
@@ -862,6 +909,9 @@ def fit_advantage_model_live(
     report.per_class = final.per_class
     report.sigma_u2 = estimate_residual_variance(
         final.residual_sq_mean, final.noise_var_mean
+    )
+    report.sigma_u2_by_class = class_residual_variances(
+        report.per_class, report.sigma_u2, CLASS_SHRINK_ROWS
     )
     # Stage 2 reads encodings from the saved table; the trunk rung's
     # encoder differs from theta_k's, so refresh the cached encodings.

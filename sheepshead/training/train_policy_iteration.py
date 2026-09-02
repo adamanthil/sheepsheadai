@@ -57,6 +57,7 @@ from sheepshead.training.search_advantage import (
     build_row_table,
     fit_advantage_model,
     fit_advantage_model_live,
+    sigma_u2_rows,
     split_rows_by_game,
     targets_for_table,
 )
@@ -224,12 +225,25 @@ def stage_target(args) -> dict:
     model.load_state_dict(torch.load(os.path.join(args.out_dir, "advantage_model.pt")))
     table = RowTable.load(os.path.join(args.out_dir, "row_table.pt"))
     sigma_u2 = float(fit["sigma_u2"]) if args.sigma_u2 is None else args.sigma_u2
-    log(
-        f"[target] capacity {fit['selected']}, sigma_u2 {sigma_u2:.3e}, "
-        f"kappa {args.kappa}, tilt_max {args.tilt_max}"
-    )
+    if args.variance_mode == "class":
+        # §20.6: per-class residual variance, shrunk toward the global.
+        su2_by_class: dict[str, float] = fit.get("sigma_u2_by_class") or {}
+        if not su2_by_class:
+            raise SystemExit("fit_report.json has no sigma_u2_by_class; refit")
+        su2 = sigma_u2_rows(table.node_class, su2_by_class, sigma_u2)
+        log(
+            f"[target] capacity {fit['selected']}, per-class sigma_u2 "
+            f"(global {sigma_u2:.3e}; {len(su2_by_class)} classes), "
+            f"kappa {args.kappa}, tilt_max {args.tilt_max}"
+        )
+    else:
+        su2 = sigma_u2
+        log(
+            f"[target] capacity {fit['selected']}, global sigma_u2 {sigma_u2:.3e}, "
+            f"kappa {args.kappa}, tilt_max {args.tilt_max}"
+        )
     built = targets_for_table(
-        model, table, sigma_u2=sigma_u2, kappa=args.kappa, tilt_max=args.tilt_max
+        model, table, sigma_u2=su2, kappa=args.kappa, tilt_max=args.tilt_max
     )
 
     shards, manifest = load_corpus(args.corpus_dir)
@@ -267,6 +281,7 @@ def stage_target(args) -> dict:
         "rows": len(table),
         "rows_with_q": int(table.has_q.sum()),
         "sigma_u2": sigma_u2,
+        "variance_mode": args.variance_mode,
         "kappa": args.kappa,
         "tilt_max": args.tilt_max,
         "gamma_p50_rows_with_q": float(built["gamma"][table.has_q].median())
@@ -358,6 +373,16 @@ def stage_distill(args) -> list[str]:
             log_f.flush()
 
         log_row({"kind": "config", **{k: str(v) for k, v in vars(args).items()}})
+        # Held-out target KL before any update: the projection's starting
+        # point and the reference for the stop rule (§20.6: iteration 1
+        # ended with this number unchanged).
+        best_kl = float("inf")
+        best_epoch = 0
+        if holdout:
+            init_stats, _ = train_distill.run_epoch(agent, holdout, dargs, train=False)
+            best_kl = float(init_stats.get("override_kl", float("inf")))
+            log(f"[distill epoch 0] holdout: {train_distill.fmt_stats(init_stats)}")
+            log_row({"kind": "holdout", "epoch": 0, **init_stats})
         for epoch in range(1, args.epochs + 1):
             t0 = time.time()
             train_stats, steps = train_distill.run_epoch(
@@ -368,6 +393,7 @@ def stage_distill(args) -> list[str]:
                 f"{(time.time() - t0) / 60:.1f} min): {train_distill.fmt_stats(train_stats)}"
             )
             log_row({"kind": "train", "epoch": epoch, **train_stats})
+            improved = True
             if holdout:
                 hold_stats, _ = train_distill.run_epoch(
                     agent, holdout, dargs, train=False
@@ -376,6 +402,10 @@ def stage_distill(args) -> list[str]:
                     f"[distill epoch {epoch}] holdout: {train_distill.fmt_stats(hold_stats)}"
                 )
                 log_row({"kind": "holdout", "epoch": epoch, **hold_stats})
+                kl = float(hold_stats.get("override_kl", float("inf")))
+                improved = kl < best_kl * (1.0 - args.kl_min_improve)
+                if improved:
+                    best_kl, best_epoch = kl, epoch
             if args.probe_games:
                 probe = greedy_health_probe(agent, n_games=args.probe_games, seed=0)
                 log(
@@ -387,6 +417,19 @@ def stage_distill(args) -> list[str]:
             agent.save(ckpt_path)
             saved.append(ckpt_path)
             log(f"[distill epoch {epoch}] saved {ckpt_path}")
+            if args.kl_stop and not improved:
+                log(
+                    f"[distill] KL stop rule: holdout target KL did not improve by "
+                    f">= {100 * args.kl_min_improve:.0f}% over the best ({best_kl:.4f}, "
+                    f"epoch {best_epoch}); stopping after epoch {epoch}"
+                )
+                break
+        if holdout:
+            with open(os.path.join(args.out_dir, "distill_best.json"), "w") as f:
+                json.dump({"best_epoch": best_epoch, "holdout_override_kl": best_kl}, f)
+            log(
+                f"[distill] best epoch by holdout target KL: {best_epoch} ({best_kl:.4f})"
+            )
     return saved
 
 
@@ -429,6 +472,12 @@ def build_parser() -> argparse.ArgumentParser:
     tgt.add_argument(
         "--sigma-u2", type=float, default=None, help="override the fitted sigma_u^2"
     )
+    tgt.add_argument(
+        "--variance-mode",
+        choices=("class", "global"),
+        default="class",
+        help="residual variance per telemetry cell (§20.6, default) or one global value",
+    )
     # Stage 3
     dst = ap.add_argument_group("distill")
     dst.add_argument("--targeted-dir", default=None, help="default <out-dir>/targeted")
@@ -439,6 +488,17 @@ def build_parser() -> argparse.ArgumentParser:
     dst.add_argument("--kd-tau", type=float, default=1.0)
     dst.add_argument("--no-oracle", dest="train_oracle", action="store_false")
     dst.add_argument("--probe-games", type=int, default=500)
+    dst.add_argument(
+        "--kl-stop",
+        action="store_true",
+        help="stop when the held-out KL(target||policy) stops improving (§20.6)",
+    )
+    dst.add_argument(
+        "--kl-min-improve",
+        type=float,
+        default=0.02,
+        help="relative improvement in held-out target KL an epoch must deliver",
+    )
     return ap
 
 

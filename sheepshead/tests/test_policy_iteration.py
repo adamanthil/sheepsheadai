@@ -24,8 +24,10 @@ from sheepshead.training.search_advantage import (
     blend_advantages,
     build_row_table,
     build_tilt_target,
+    class_residual_variances,
     estimate_residual_variance,
     fit_advantage_model,
+    sigma_u2_rows,
     split_rows_by_game,
 )
 
@@ -271,3 +273,99 @@ def test_end_to_end_stages_on_tiny_corpus(tmp_path):
     train = next(r for r in log if r["kind"] == "train")
     assert train["override_rows"] > 0 and train["endorsed_rows"] == 0
     assert np.isfinite(train["override_ce"])
+
+
+def test_class_residual_variances_shrink_toward_global():
+    """§20.6: a thin cell stays near the global value, a fat cell keeps its
+    own; the per-row lookup falls back to the global for unseen classes,
+    and a per-row sigma_u^2 changes gamma row by row."""
+    per_class = {
+        "__all__": {"n": 1000, "weighted_mse": 1e-3, "noise_floor": 2e-4},
+        "thin": {"n": 5, "weighted_mse": 3e-4, "noise_floor": 2.4e-4},
+        "fat": {"n": 5000, "weighted_mse": 3e-4, "noise_floor": 2.4e-4},
+        "floor": {"n": 100, "weighted_mse": 1e-4, "noise_floor": 2e-4},
+    }
+    by = class_residual_variances(per_class, global_sigma_u2=1e-3, shrink_rows=50)
+    assert "__all__" not in by
+    assert abs(by["thin"] - 1e-3) < abs(by["fat"] - 1e-3)
+    assert by["fat"] == pytest.approx((5000 * 6e-5 + 50 * 1e-3) / 5050, rel=1e-6)
+    assert by["floor"] > 0.0
+    rows = sigma_u2_rows(["fat", "unknown", "thin"], by, 1e-3)
+    assert rows[1] == pytest.approx(1e-3) and rows[0] == pytest.approx(by["fat"])
+    a_obs = torch.zeros(3, 2)
+    a_model = torch.zeros(3, 2)
+    has_q = torch.tensor([True, True, True])
+    nv = torch.full((3,), 2.4e-4)
+    _, v_post, gamma = blend_advantages(a_obs, a_model, has_q, nv, rows)
+    assert gamma[0] < gamma[2] < gamma[1]  # fat cell trusts the model most
+    assert torch.allclose(v_post, gamma * nv)
+
+
+def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
+    """The stop rule needs a holdout KL at epoch 0 and a best-epoch record;
+    on a tiny corpus with a large coefficient the projection moves the
+    policy toward the targets (holdout target KL falls from epoch 0)."""
+    agent = _fresh_agent()
+    ckpt = tmp_path / "theta_k.pt"
+    agent.save(str(ckpt))
+    shard = _corpus(agent, [3, 4, 5])
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    torch.save(shard, corpus_dir / "corpus_0000.pt")
+    (corpus_dir / "manifest.json").write_text(
+        json.dumps(
+            {"row_schema": ROW_SCHEMA_VERSION, "shards": [{"path": "corpus_0000.pt"}]}
+        )
+    )
+    out_dir = tmp_path / "iter"
+    rc = tpi.main(
+        [
+            "all",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--ckpt",
+            str(ckpt),
+            "--out-dir",
+            str(out_dir),
+            "--capacity",
+            "pointer",
+            "--fit-epochs",
+            "2",
+            "--batch-rows",
+            "32",
+            "--buffer-episodes",
+            "10",
+            "--batch-segments",
+            "4",
+            "--holdout-frac",
+            "0.34",
+            "--variance-mode",
+            "class",
+            "--probe-games",
+            "0",
+            "--no-oracle",
+            "--epochs",
+            "3",
+            "--kl-stop",
+            "--kl-min-improve",
+            "0",
+            "--lambda-ce",
+            "5",
+            "--lr",
+            "1e-3",
+        ]
+    )
+    assert rc == 0
+    fit = json.loads((out_dir / "fit_report.json").read_text())
+    assert fit["sigma_u2_by_class"]
+    report = json.loads((out_dir / "target_report.json").read_text())
+    assert report["variance_mode"] == "class"
+    rows = [
+        json.loads(line)
+        for line in (out_dir / "distill_log.jsonl").read_text().splitlines()
+    ]
+    hold = {r["epoch"]: r for r in rows if r["kind"] == "holdout"}
+    assert 0 in hold and 1 in hold
+    assert hold[1]["override_kl"] < hold[0]["override_kl"]
+    best = json.loads((out_dir / "distill_best.json").read_text())
+    assert best["best_epoch"] >= 1
