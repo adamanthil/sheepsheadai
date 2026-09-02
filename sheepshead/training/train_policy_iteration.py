@@ -55,6 +55,8 @@ from sheepshead.training.search_advantage import (
     FitReport,
     RowTable,
     build_row_table,
+    class_residual_variances,
+    evaluate_rows,
     fit_advantage_model,
     fit_advantage_model_live,
     sigma_u2_rows,
@@ -227,15 +229,37 @@ def stage_target(args) -> dict:
     sigma_u2 = float(fit["sigma_u2"]) if args.sigma_u2 is None else args.sigma_u2
     if args.variance_mode == "class":
         # §20.6: per-class residual variance, shrunk toward the global.
-        su2_by_class: dict[str, float] = fit.get("sigma_u2_by_class") or {}
-        if not su2_by_class:
-            raise SystemExit("fit_report.json has no sigma_u2_by_class; refit")
+        if args.variance_rows == "all":
+            # Re-estimate on EVERY row with Q (train + holdout). The held-out
+            # cells are thin (~100 rows at t0 leads) and the count shrinkage
+            # then pins gamma near the global value; the fit shows little
+            # train/holdout gap, so the train residual is a mild under-
+            # estimate at ten times the rows (§20.6 arm 3).
+            ev = evaluate_rows(
+                model, table, torch.arange(len(table)), var_floor=args.var_floor
+            )
+            su2_by_class: dict[str, float] = class_residual_variances(
+                ev.per_class, sigma_u2, args.class_shrink_rows
+            )
+        else:
+            su2_by_class = fit.get("sigma_u2_by_class") or {}
+            if not su2_by_class:
+                raise SystemExit("fit_report.json has no sigma_u2_by_class; refit")
         su2 = sigma_u2_rows(table.node_class, su2_by_class, sigma_u2)
         log(
-            f"[target] capacity {fit['selected']}, per-class sigma_u2 "
-            f"(global {sigma_u2:.3e}; {len(su2_by_class)} classes), "
-            f"kappa {args.kappa}, tilt_max {args.tilt_max}"
+            f"[target] capacity {fit['selected']}, per-class sigma_u2 from "
+            f"{args.variance_rows} rows (global {sigma_u2:.3e}; "
+            f"{len(su2_by_class)} classes), kappa {args.kappa}, tilt_max {args.tilt_max}"
         )
+        for cls in sorted(su2_by_class):
+            r = (ev.per_class if args.variance_rows == "all" else fit["per_class"]).get(
+                cls
+            )
+            if r and r["n"] >= 100:
+                g = su2_by_class[cls] / (su2_by_class[cls] + r["noise_floor"])
+                log(
+                    f"    {cls:28s} n={r['n']:5d} sigma_u2 {su2_by_class[cls]:.2e} gamma {g:.2f}"
+                )
     else:
         su2 = sigma_u2
         log(
@@ -477,6 +501,19 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("class", "global"),
         default="class",
         help="residual variance per telemetry cell (§20.6, default) or one global value",
+    )
+    tgt.add_argument(
+        "--variance-rows",
+        choices=("holdout", "all"),
+        default="all",
+        help="rows the per-class residual variance is estimated on (§20.6 arm 3: "
+        "all rows with Q, so thin cells are not pinned to the global by shrinkage)",
+    )
+    tgt.add_argument(
+        "--class-shrink-rows",
+        type=float,
+        default=50.0,
+        help="row-count weight of the global value when shrinking per-class variances",
     )
     # Stage 3
     dst = ap.add_argument_group("distill")
