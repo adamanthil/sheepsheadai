@@ -1,0 +1,556 @@
+# Release-Candidate Training Pipeline — end-to-end redesign (September 2026)
+
+Status: **DESIGN APPROVED 2026-09-02 (operator); NOT YET BUILT.** Launch
+is gated on the iteration-2 policy-iteration compounding test running on
+the current lineage (CE_Teacher_Design §20.12). This notebook is the
+design contract, the pre-registration, and the write-up scaffold for the
+program's final run: a from-scratch training of the deployable agent on
+the `perceiver-recall` architecture through a simplified, validated
+pipeline that ends in search-Q policy iteration.
+
+Predecessors (the evidence base; nothing here re-argues them):
+[Architecture_Ablation_202607](Architecture_Ablation_202607.md),
+[Learning_System_Redesign_202607](Learning_System_Redesign_202607.md),
+[Convention_Erosion_202607](Convention_Erosion_202607.md),
+[Convention_Optimality_202607](Convention_Optimality_202607.md),
+[Search_Teacher_Design_202608](Search_Teacher_Design_202608.md),
+[CE_Teacher_Design_202608](CE_Teacher_Design_202608.md),
+[Blind_Bury_Ablation_202608](Blind_Bury_Ablation_202608.md).
+
+---
+
+## 0. Decision log
+
+| Date (2026) | Decision | § |
+|---|---|---|
+| 09-02 | Restart the program from scratch on `perceiver-recall` to produce the final deployable artifact; simplify the pipeline end to end | 1, 3, 4 |
+| 09-02 | `blind_ids`/`bury_ids` REMOVED from the actor observation dict (oracle dict keeps them); app view builder reads the game object | 3.2 |
+| 09-02 | Skip the recall-vs-ctxmem architecture pilot; no strength bar on the bootstrap | 3.4, 5.3 |
+| 09-02 | PG phase stop rule = marginal-value handoff (not plateau); one entropy step max; settled-checkpoint handoff | 5.1 |
+| 09-02 | Exploiters dropped from the training loop (post-hoc audit only); PFSP kept | 4.3 |
+| 09-02 | Shaped bootstrap KEPT (400k), run in the unified trainer; fallback = legacy self-play trainer | 4.1 |
+| 09-02 | Bidding channel = frozen-trunk PG phase between iterations; bidding emission = contingency | 4.4 |
+| 09-02 | Leaster play: measure drift first; fixed-reference anchor, then emission, if it drifts | 4.4, A |
+| 09-02 | Validate iteration 2 of policy iteration on the CURRENT lineage before building/launching | 7 |
+
+---
+
+## 1. Objectives and constraints
+
+Objectives (operator, 2026-08-30 restatement + this program):
+
+1. **Validate the full training system end to end from scratch**,
+   incorporating every learning of the last two months and the
+   observation/recall restrictions the program was founded on.
+2. **Highest skill of any agent in the program**: beat the current best
+   (iter11 P1, CE_Teacher §20.9) and the production 30M on the
+   deployment instrument. Expert-human comparison is not measurable
+   in-program without human game data; the 30M and the current best are
+   the operational bars.
+3. **Highest convention adherence justifiable from terminal-only rewards
+   plus search targets**, on the three instruments: defender trump lead
+   (t0/t1), partner trump lead, defender called-suit lead.
+
+Standing constraints (unchanged): terminal-only reward after the
+bootstrap (no shaping is the research question); observations contain
+nothing a human at the table could not see or remember — no precomputed
+features, no history replay, no strategic hints; principled, general
+mechanisms over hand-selected node classes; aux-head hints only for
+attributes the trunk demonstrably lacks; every phase pre-registered and
+certified before the next starts.
+
+The recall constraint is the new element. Play history is already
+carried only by the GRU memory[^drqn]; the picker's blind and bury were
+re-injected into every observation, a documented violation
+(Blind_Bury_Ablation §1). This program closes it structurally.
+
+---
+
+## 2. Evidence base: what each design choice rests on
+
+| Choice | Evidence (notebook §) |
+|---|---|
+| Keep a shaped self-play bootstrap | Every from-scratch run enters the all-PASS/leaster attractor in 3–4k episodes; architectures differ only in escape time; watchdog fixes it (Arch_Ablation §4.5). No terminal-only from-scratch run has ever been attempted. The 400k seed's conventions were terminal-optimal (+0.24 to +0.36 score, Redesign §7.2), so shaping acted as a curriculum, not a bias, and the league re-derived pick rate (50% → 34%) under the terminal objective. |
+| Oracle critic + supervised oracle pretraining | Oracle GAE baseline removes hidden-card variance (Redesign §2.2, §7.1); pretraining (held-out EV 0.508) made ev_oracle 0.52–0.55 from update 1 and removed the burn-in window that killed conventions in every earlier league arm (§7.3). |
+| Seat rotation, γ = 1, 16k updates + grad-accum, λ = 0.95 | The validated retention config (§7.1, §7.5, §7.9): the only league lineage that held conventions AND climbed (+0.078/+0.101 h2h gens 1–2). |
+| PFSP kept, exploiters dropped | Exploiter gates failed 8/8 (edges −0.028…−0.184; §7.10–§7.19), pressure inert historically (League_Run_Review F2). PFSP weights measured near-uniform (§2.2) — kept because it is validated and cheap, not because it is load-bearing. |
+| Entropy: inner controller, at most ONE target step | Play is the only binding head (pick H_norm ≈ 0.05 flat; §8.4). Step 1 re-ignited h2h +0.107 (gen 5); step 2 gave null (gens 7–8). Transition checkpoints carry the deepest wrong-side lock-in (E7). |
+| Marginal-value handoff to search | Per-gen h2h: +0.078, +0.101, −0.005, +0.001, +0.107, +0.018, +0.019, −0.005 (Redesign generations.csv). Search yields +0.026 per ~2.5-day iteration (CE_Teacher §20.9). E8: the defender-lead edge is ~zero under the policy's own continuations — PG cannot climb it at any SNR; E7: more PG deepens the wrong-side prior. |
+| Search-Q policy iteration as the final operator | Committee ceiling +0.180 ± 0.029 (Search_Teacher §13.3); concurrent CE+PG falsified twice (CE_Teacher §14–§16); phase-pure P1 recipe +0.0258 ± 0.0073 vs seed, 5f +0.039 ± 0.014 vs the 30M (§20.9). |
+| Bilinear play pointer | Additive pointer realized ~20% of lead-row targets; the bilinear term took the advantage twin from 13% to 55% capture (§20.9). |
+| Drop blind/bury tokens | Masking costs the 8M seed −1.90/picker hand and the 30M −0.30 with zero fine-tuning (Blind_Bury §3): the policies consume the re-injection; a from-scratch run is the only clean version of the claim (§4.3). |
+
+---
+
+## 3. Architecture: `perceiver-recall`
+
+### 3.1 Specification
+
+Derived from `perceiver-shared-v2-bp` (Architecture_Ablation §5.11,
+CE_Teacher §20.9). Four differences from that spec, everything else
+identical (d_card 16 informed init[^informed], d_token 64, 4 reasoning
+layers × 4 heads, d_model 256, 16-query/4-head LayerNorm'd shared
+readout, aux critic, oracle critic).
+
+1. **Token layout 19 → 15**: `[context, memory, hand×8, trick×5]`,
+   four card-type ids. The base encoder gains an `observe_blind_bury`
+   switch; legacy encoders keep the 19-token path bit-identically
+   (golden gate), so every existing checkpoint remains loadable and the
+   production 30M is unaffected. The oracle encoder keeps its 51-token
+   full-information layout (blind/bury true cards for all seats + 32
+   opponent-hand tokens) — CTDE is exempt by construction[^ctde].
+2. **Memory driver = post-reasoning MEMORY token.** The GRUCell input
+   is the transformer's own "what to remember" slot (the `perceiver`
+   rung's design, encoders.PerceiverEncoder) rather than the context
+   token. Zero parameter change. Rationale: under the recall constraint
+   the memory token is the only path by which the blind (seen once via
+   `hand_ids` during the bury phase) and the bury (the picker's own
+   action, inferable as the hand difference) reach later decisions; the
+   architecture should make the network learn to write what it must
+   recall, and leave the context token as the current-situation summary.
+   Caveat on record: this change was never measured in isolation (the
+   `perceiver-ctxmem` decomposition arm was registered, never launched;
+   Arch_Ablation §5.6); the operator chose it as a program requirement,
+   not a learning optimization (§0).
+3. **Bilinear state × card term in the play pointer** (actors
+   `bilinear_pointer=True`; zero-init U, orthogonal V)[^pointer].
+4. **Aux critic unchanged**; note that the seen-trump aux head becomes
+   a genuine recall target for the picker (it must remember the blind
+   to answer), which is the kind of aux hint the program allows.
+
+Parameter count ≈ v2-bp minus the simple-bag MLP (~1k). Throughput:
+attention cost scales with token count squared (15² / 19² ≈ 0.62), but
+the encoder is a minority of wall time; expect ~10–20% on the encoder
+forward, less end to end.
+
+### 3.2 Observation change (enforced at the observation, not the encoder)
+
+`Player.get_state_dict` drops `blind_ids` and `bury_ids`.
+`get_oracle_state_dict` keeps them (true cards, all seats). Consumers
+audited 2026-09-02:
+
+- `app/server/runtime/views.py:49-55` (the only UI reader) converts the
+  ids back to card names for `view.blind`/`view.bury`; it will read
+  `game.blind`/`game.bury` gated on `player.is_picker` instead (same
+  view shape; no client change). Nothing in the web client reads the raw
+  id fields; the WebSocket zod schemas do not name them.
+- Inference paths (`ai_loop.py`, `analysis_common.run_inference_step`)
+  hand the dict straight to the encoder — /analyze's displayed
+  observation becomes accurate for the deployed agent by construction.
+- Legacy encoders (`full` family, one-hot baseline) marshal the keys;
+  they get a missing-key-means-PAD fallback, reproducing the ablation's
+  masked pass. Tests touching the keys: game rules, oracle critic,
+  scripted agent.
+
+### 3.3 Registry and gates
+
+New `ArchitectureSpec` entry; `capture_arch_goldens` recapture with the
+environment stamp + skip guard (Maintainability §CI); compiled-encoder
+and MPS worker paths checked against the 15-token layout; a test
+asserting the recall encoder's declared key set excludes the two ids.
+
+### 3.4 What is deliberately NOT gated
+
+No strength comparison against easier-job architectures during the
+bootstrap. The recall constraint makes early learning harder by design
+(less information, a routing problem to solve); judging it by early
+curves would penalize the requirement. Strength gates start where the
+comparison is like-for-like (§5.3).
+
+---
+
+## 4. The pipeline
+
+Five phases, one orchestrator, one config dataclass that doubles as the
+pre-registration artifact. Everything below is phase-pure: exactly one
+policy-improvement operator acts on the network at a time[^phasepure].
+
+### 4.1 Phase 0 — shaped self-play bootstrap (400k hero episodes)
+
+- Reward: the historical shaping (intermediate trick rewards, leaster
+  bonus, running picker baseline)[^shaping]; limited critic; aux heads
+  on; leaster watchdog ON (selective pick-entropy kick, inert when
+  healthy; Arch_Ablation §4.5)[^watchdog].
+- Runs in the **unified trainer** (§6) with an empty population: pure
+  self tables, per-seat hero-stream storage, 8 workers, seat rotation.
+  Bootstrap presets differ from the league's: 4k-episode updates,
+  standard minibatching (4 epochs × 256), the self-play entropy schedule
+  (config.SelfPlayHyperparams). Rationale: the from-scratch escape needs
+  update density, not the league's low-temperature regime.
+- Why kept (vs terminal-only from scratch): §2 row 1. A terminal-only
+  from-scratch run remains a future ablation, not this run's risk.
+- Health gates only: escape from the all-PASS attractor by ≲30k
+  episodes; no divergence; no watchdog halt streak. NO strength bar
+  (§3.4).
+- Cost: legacy single-process trainer did 400k in 20.8 h (~5.3 eps/s,
+  v2); the unified 8-worker path is expected at 6–8 h. Fallback if the
+  smoke shows anything odd: `train_selfplay_ppo` as-is for this run.
+
+### 4.2 Phase 1 — oracle supervised pretraining
+
+Verbatim Redesign §7.4: 40k frozen-seed self-play episodes, γ = 1
+terminal returns, official `OracleValueNetwork` with the two validated
+aux heads (team membership 5-way multi-label, team points with bury;
+coefficients 0.1/0.2), early stop on validation value-MSE. Moved out of
+`analysis/diagnostics/oracle_moe_offline.py` into a training module
+without the MoE arms. ~3 h.
+
+Literature: asymmetric actor-critic / centralized critics[^ctde]; the
+history-state value U(h, s) (Baisero & Amato) is why the oracle is
+recurrent over the same event stream the actor sees; critic
+pre-fitting before policy optimization is standard practice in
+warm-started RL (e.g. value-head initialization before PPO in
+Ziegler et al.[^ziegler]).
+
+### 4.3 Phase 2 — terminal-only league policy gradient
+
+The retention configuration is the ONLY mode (Redesign §7.9 defaults):
+PPO[^ppo] with GAE λ = 0.95, γ = 1.0[^gae]; oracle GAE baseline; aux
+heads on-line; seat-rotated collection (each deal 5×, hero in every
+seat: role-exposure equalization + paired deals); update interval 16,384
+episodes, 128-episode minibatches with gradient accumulation (one
+full-buffer optimizer step per epoch, bit-equivalent gradients);
+unanchored from gen 1; leaster watchdog; snapshots every 50k; 1M-episode
+generations. Terminal reward = final_score / 12 at the last action.
+
+Population (`League.sample_table`, per-seat mixture)[^pfsp]: 0.15
+current-self, otherwise PFSP over past-main snapshots with a 0.05 HOF
+floor. HOF promotion = every boundary snapshot (quota 6 by rating).
+Exploiter role, seat-heat EMA, retirement clocks: DELETED (§2).
+
+Entropy (§5.2): per-head target-entropy controller (SAC automatic
+temperature, discrete/normalized form)[^sac]; gen 1 runs the fixed start
+coefficients; at the gen-1 boundary each head adopts its measured H_norm
+as its hold target (bumpless transfer[^bumpless]); at most one play-target
+step (retain 0.75 toward the 0.28 floor) over the whole phase, fired by
+the stop rule. Learning rate constant 1.5e-4 (the 20M-episode clock never
+annealed within a real run; PPO under Adam tolerates flat LR[^andry]).
+
+Removed outright: the online CE teacher and its guards/in-trainer cert
+(falsified, CE_Teacher §14–§16), the gen-1 bidding anchor (validated 0),
+in-trainer anchor eval, GNS logging, schedule horizon, all exploiter
+flags, the outer entropy ladder and its sidecar absorption.
+
+Boundary battery (per generation): duplicate-bridge h2h vs the previous
+generation (2,000 deals/mode, all-seat CRN, deal-clustered
+bootstrap)[^duplicate]; PANEL-A absolute endpoint (the 30M-lineage
+yardstick, kept because it is available and absolute); the three
+convention probes at n=1000 × 4 seeds; greedy health (pick/leaster/alone/
+spread); the E7 frozen-node logit ladder (scale-free low-mass share, C2
+mass); role-conditioned h2h (picker hands) as the recall diagnostic.
+Cost ≈ 47 h/gen training + ~1 h evals (retention run measured 44–63 h).
+
+### 4.4 Phase 3 — search-Q regularized policy iteration, to convergence
+
+The CE_Teacher §20 standing recipe (§20.9 P1 + §20.10 + §20.11), one
+iteration = corpus → fit → target → distill → cert → bidding phase →
+cert:
+
+1. **Corpus** from frozen θ_k: 2,000 student-acting games (DAgger-
+   correct state distribution[^dagger]), committee R = 3 × 1024
+   iterations, d_rollout 1 with oracle leaves (ISMCTS[^ismcts]; E9
+   certified budget), leads searched at p = 1.0, follows at 0.5, schema
+   2 (pooled q̄, per-action variance, act-time prior on every row),
+   oracle states stored. ~36 h.
+2. **Stage 1 (evaluation)** — heteroscedastic weighted least squares of
+   the centered committee Q onto θ_k's frozen features through a twin of
+   the play pointer, with the centered log-prior as a covariate; held-out
+   weighted MSE selects capacity. **Stage 1b** — Fay–Herriot blend:
+   γ_n = σ²_u/(σ²_u + σ²_n), per-class residual variance, posterior
+   variance v_n = γ_n σ²_n[^fh][^efron].
+3. **Stage 2 (improvement)** — t_n(a) ∝ p_θk(a|s) · exp(clip(Â_n(a)/
+   (κ √v_n), ±8)), κ = 1: the KL-regularized mirror-descent step with
+   the posterior SE as temperature[^vieillard][^awr]; precision weights
+   ω_n ∝ 1/v_n, mean-normalized, cap 5 (never binds; §20.11).
+4. **Stage 3 (projection)** — PG off. Weighted CE on searched play rows;
+   retention KL(p_θk ‖ π_θ) on bidding-head and leaster-play rows[^lwf];
+   value/aux/oracle regression on all rows. Schedule: one trunk epoch
+   at 1e-4, then bilinear-only head epochs at 1e-3 with the encoder
+   frozen, to the holdout-KL plateau (~6)[^lpft].
+5. **Cert** — 4 × n=1000 convention/health probes + duplicate h2h vs θ_k
+   (adoption bar: h2h CI lower bound > 0, partner ≥ 96.5, t0 trump ≤ 1.0,
+   spread ≥ 3.6) + the leaster-conditioned paired score (new, §A);
+   WiSE-FT interpolation as the walk-back if EV fails with conventions
+   installed[^wise].
+6. **Bidding phase** — PG under terminal reward with the encoder, actor
+   adapter and play head frozen; bidding heads (pick, partner basic,
+   two-tower call), limited critic and oracle train; ~200k episodes;
+   certified by head-routed h2h. The a11/a12 interaction (CE on play vs
+   PG on the trunk) structurally cannot occur. Contingency if the frozen-
+   trunk phase yields nothing: bidding-node search emission (P4 pre-pick
+   determinizers exist) behind the addendum-5 mini-calibration gate.
+7. Iterate: θ_{k+1} generates the next corpus. Stop when the h2h gain vs
+   θ_k is below 2 SE for two consecutive iterations, or on a cert fail
+   the walk-back cannot rescue. Expected 3–5 iterations at ~2.5 days
+   each, subject to the §7 compounding test.
+
+Code consolidation: the §17 partition trainer (`train_distill.py`:
+override/endorsed/retention partition, AWR ω, KD temperature) merges
+into the policy-iteration module with the standing recipe as defaults;
+capacity/variance-mode/weight-mode sweep flags removed; schema-1 support
+and `recover_search_q.py` deleted; `--committee-act-frac` removed
+(decided 0).
+
+### 4.5 Phase 4 — final certification and release
+
+Duplicate h2h vs iter11 P1 and vs the 30M (2,000 deals/mode each); the
+convention battery; ONE exploitability audit (a best-response run + gate,
+`exploiter.py` retained as an analysis tool); golden capture for the
+release checkpoint; export.
+
+---
+
+## 5. Stop rule and gates
+
+### 5.1 PG → search handoff: marginal value, not plateau
+
+Continue PG while the duplicate h2h gain over the previous generation is
+≥ +0.02 with the bootstrap CI lower bound > 0. The bar is search's
+measured yield at equal compute (+0.026 per ~2.5-day iteration vs ~2
+days per generation). Applied to the retention run it passes gens 1, 2
+and 5 and fails 3, 4, 6, 7, 8 — exactly the generations that paid.
+
+- First failure → fire the single play-target entropy step (the gen-4→5
+  precedent: +0.107 after the step).
+- Second failure → hand off, after a fresh-deal confirmation (seed
+  20260706) contradicts nothing. Minimum 3 generations, cap 8.
+- Handoff checkpoint = the last generation wholly at a settled entropy
+  target, never a transition generation: E7's two deepest wrong-side
+  reads were the two transition checkpoints (low-mass share 0.226 at 5M,
+  0.108 at 7.9M vs 0.371 settled at 7M).
+- Power note: at 2,000 deals/mode the h2h SE ≈ 0.012, so a true +0.02
+  gain passes the rule roughly half the time; the confirmation run is
+  what keeps a noise miss from ending PG a generation early.
+
+### 5.2 Conventions are guards, not triggers
+
+Per generation: B2 hard bounds (partner trump lead ≥ 0.5 AND defender
+t0 trump lead ≤ 0.10) halt for review; the E7 ladder, C2 pooled-greedy,
+and the three headline probes are recorded. A convention-based early
+stop would have discarded gens 2 and 5; search reverses the lock-in
+either way. Pre-registered: the low-mass share at handoff predicts the
+search phase's install cost (more locked-in prior → lower per-iteration
+realization).
+
+### 5.3 Review gates (operator review, not automatic kill)
+
+| gate | instrument | v2-lineage reference | bar |
+|---|---|---|---|
+| gen-2 boundary | PANEL-A absolute endpoint | +0.132 | ≥ +0.06 (one MDE below) |
+| handoff | duplicate h2h vs the v2 8M seed | parity | CI lower bound > −0.02 |
+| end of phase 3 | duplicate h2h vs iter11 P1; vs 30M | +0.026 vs seed; +0.039 vs 30M | CI excludes −0.02 vs P1; > 0 at 2 SE vs 30M |
+
+A gate failure is diagnosed before any decision: the role-conditioned
+h2h (picker hands) separates a recall-routing deficit from a general
+one; the `perceiver-recall-ctxmem` twin becomes the first diagnostic
+arm if the gen-2 gate fails.
+
+---
+
+## 6. Code plan
+
+New / retained modules (`sheepshead/training/`):
+
+| module | role | provenance |
+|---|---|---|
+| `train_ppo.py` (unified trainer) | phases 0, 2, and the bidding phase: `--reward {shaped,terminal}`, `--critic {limited,oracle}`, `--train-heads {all,bidding}`, entropy target schedule, population from `league.py` | `train_league_ppo.py` stripped of teacher/exploiter/anchor/GNS/horizon |
+| `league.py` | roster + per-seat PFSP/self sampling + HOF | exploiter role removed |
+| `pfsp_runtime.py` | game primitive, shaped and terminal reward paths | CE emission removed |
+| `pretrain_oracle.py` | phase 1 | from `oracle_moe_offline.py` |
+| `distill_corpus.py` | phase 3 corpus | schema 2 only |
+| `policy_iteration.py` | fit / target / distill / cert | `train_policy_iteration.py` + `train_distill.py` merged, standing defaults |
+| `run_training_program.py` | the orchestrator: resumable `state.json`, phases, gates, reports, `--smoke` | replaces `run_extended_league.py` |
+| `program_config.py` | one dataclass = the pre-registration artifact | new |
+
+Retired: `train_selfplay_ppo.py`, `exploiter.py` (→ analysis),
+`league_teacher.py`, `league_gates.py`, `recover_search_q.py`,
+`train_distill.py`, `run_extended_league.py`, `run_ablation_matrix.py`;
+`SearchConfig` teacher fields; the corresponding tests (live teacher,
+gated teacher, boundary cert, exploiter gate, recovery, §17 pipeline).
+Golden gates (`capture_arch_goldens`, `capture_search_goldens`), the
+bit-exact fixture suite, basedpyright zero, and prek/CI stay green
+throughout.
+
+Build order: (1) architecture + observation change + goldens; (2) unified
+trainer + population cleanup + smoke; (3) policy-iteration consolidation;
+(4) orchestrator + config + smoke of every phase; (5) notebook §7 filled
+with final constants; (6) launch.
+
+---
+
+## 7. Pre-registration
+
+### 7.0 Gate before launch: iteration-2 compounding on the current lineage
+
+Running since 2026-09-02 (CE_Teacher §20.12). COMPOUNDS ⇒ phase 3 as
+written. STALLS (h2h vs iter11 inside ±0.01) ⇒ phase 3 budget = one
+iteration + bidding phase, and the §4.4 stop rule is moot. REGRESSES ⇒
+student-acting corpus suspect; committee-acting rerun before launch.
+
+### 7.1 Per-phase expectations
+
+- **Bootstrap.** Escape ≤ 30k; scripted-probe and PANEL-A curves
+  recorded, no bar. Seen-trump aux accuracy on picker hands after bury
+  ≥ 0.95 by 400k (the memory carries the blind).
+- **League.** Gen-1 h2h ≥ +0.05 and gen-2 ≥ +0.05; B2 held from gen 1;
+  panel ≥ +0.20 by gen 6 (v2: +0.206); C2 in the 38–52% band; handoff
+  at gen 4–6.
+- **Policy iteration.** Iteration 1 h2h vs θ_k ≥ +0.015; iteration 2
+  ≥ 0 vs θ_{k+1} with cumulative gain above iteration 1; leaster paired
+  score within noise of θ_k at every cert.
+- **Final.** Bars per §5.3; conventions as EXPECTATIONS: defender t0
+  trump ≤ 1%, partner ≥ 96%, called-suit pooled ≥ 50% (terminal-only
+  optimum estimated 60–70%, E6; the 30M's 90% is shaped over-adherence);
+  exploiter audit gate fails.
+
+### 7.2 Failure readings
+
+- Bootstrap fails to escape ⇒ watchdog gain / kick timing, not the
+  architecture (all archs escaped with it).
+- Gen-2 gate fails with picker-hand deficit ⇒ recall routing; run the
+  ctxmem twin; consider a seen-trump/bury-points aux boost.
+- Handoff h2h vs 8M seed below bar with conventions intact ⇒ the recall
+  tax is a strength tax; proceed to search and re-read at the final gate.
+- Iteration stalls at the first iteration ⇒ the §20.8 projection
+  bottleneck reproduces; head-lr sweep (§20.11) before anything else.
+
+### 7.3 Budget
+
+| phase | estimate |
+|---|---|
+| bootstrap 400k | 6–8 h (unified) / 21 h (legacy) |
+| oracle pretrain | ~3 h |
+| league, 4–8 gens × ~48 h | 8–16 days |
+| policy iteration, 1–5 iterations × ~2.5 days | 2.5–12 days |
+| final cert + audit | ~1 day |
+| total | 2.5–5 weeks |
+
+---
+
+## 8. Novelty assessment (for the write-up)
+
+Honest positioning, checked against the literature the program has
+cited plus three targeted searches on 2026-09-02 (no systematic review).
+
+**Genuinely novel (no precedent found):**
+
+1. **Search-Q policy evaluation as small-area estimation over the
+   policy's own frozen features** (Stage 1/1b). Treating each searched
+   node as a Fay–Herriot "area" — a known-variance measurement (committee
+   replicate SE) with a covariate regression (a twin of the play pointer
+   on θ_k's frozen readout + hand tokens, log-prior covariate) — and
+   using the posterior variance as the tilt temperature. Empirical-Bayes
+   shrinkage of MCTS values exists in single-search settings (Tesauro et
+   al. 2010[^tesauro]), and heteroscedastic regression heads are standard
+   (Kendall & Gal[^kg]), but pooling search labels across states through
+   the student's representation to estimate a shared advantage, with the
+   improvement step tempered by the pooled posterior SE, appears to be
+   new. It is the program's answer to a specific measured fact: per-node
+   determinized-search labels at convention nodes sit at the noise null
+   however much budget is spent (§20.1, §12.8).
+2. **Recall-constrained observation as an architectural specification**
+   enforced at the observation dict, with the memory token as the sole
+   recall channel and a from-scratch training to prove it. Human-like
+   play modeling exists (Jacob et al. 2022[^jacob]; Maia), but as
+   imitation of humans, not as a restriction on machine recall under
+   pure self-play.
+
+**Uncommon compositions (each component has precedent; the composition
+does not, as far as found):**
+
+3. PPO league (AlphaStar-style PFSP[^pfsp], OpenAI-Five-style self
+   share[^five]) → phase-pure offline expert iteration on the SAME
+   network, with an explicit compute-marginal-value handoff rule.
+   Classical approximate PI with rollouts (Tesauro & Galperin[^tg];
+   Lagoudakis & Parr[^lp]; CBMPI[^scherrer]) and ExIt[^exit]/AlphaZero[^az]
+   start from scratch or from supervised data; mixing PG with MCTS
+   values inside one loop has been studied (Soemers et al.[^soemers]) and
+   we measured its failure (CE_Teacher §16.9). Handing off by comparing
+   the two operators' marginal yield per unit compute is, to our
+   knowledge, undocumented.
+4. **Head-partitioned alternating improvement operators**: search-CE on
+   the play head, PG on the bidding heads with trunk and play head
+   frozen, alternating under certification. Phasic Policy Gradient[^ppg]
+   alternates phases with a behavior-cloning constraint on one network;
+   ours partitions by decision type because the two heads have different
+   SNR structure (§16.9 addendum 7).
+5. Supervised oracle pretraining + seat-rotated paired deals + terminal
+   reward as the league regime (each standard; the combination was what
+   made retention work, Redesign §7).
+
+**Not novel, and should be cited as such:** the CTDE oracle critic,
+pointer/two-tower heads, Perceiver-style shared readout[^perceiver]
+[^settrans], GRU memory for partial observability, SAC-style entropy
+control, duplicate-bridge evaluation, WiSE-FT, LP-FT-style frozen-trunk
+epochs, positive-part James–Stein shrinkage, DAgger state distribution.
+
+---
+
+## 9. References
+
+[^drqn]: Hausknecht & Stone, "Deep Recurrent Q-Learning for Partially Observable MDPs," arXiv:1507.06527, 2015 — recurrent memory as the sole carrier of history under partial observability.
+[^informed]: Architecture_Ablation §4.1/§4.3 — informed card-embedding init +0.150 PANEL-A under the transformer (2 SE).
+[^ctde]: Pinto et al., "Asymmetric Actor Critic for Image-Based Robot Learning," arXiv:1710.06542, 2017; Yu et al., "The Surprising Effectiveness of PPO in Cooperative Multi-Agent Games" (MAPPO), arXiv:2103.01955, 2021; Foerster et al., COMA, arXiv:1705.08926, 2018; Baisero & Amato, "Unbiased Asymmetric Reinforcement Learning under Partial Observability," arXiv:2105.11674, 2022 (the history-state value U(h,s)); Li et al., Suphx, arXiv:2003.13590, 2020 (oracle guiding in a hidden-information card game); Berner et al., OpenAI Five, arXiv:1912.06680, 2019 (privileged value function).
+[^pointer]: Vinyals, Fortunato & Jaitly, "Pointer Networks," arXiv:1506.03134, 2015 — hand-slot scoring; the bilinear term is the two-tower product the call scorer already used (CE_Teacher §20.9).
+[^phasepure]: Anthony, Tian & Barber, "Thinking Fast and Slow with Deep Learning and Tree Search," NeurIPS 2017 (ExIt); Silver et al., AlphaZero, Science 362, 2018 (arXiv:1712.01815) — search is the only policy-improvement operator, never concurrent with model-free PG; Schaul et al., "The Phenomenon of Policy Churn," arXiv:2206.00730, 2022 — the single-objective baseline of the two-operator orbit measured in CE_Teacher §16.9.
+[^shaping]: Ng, Harada & Russell, "Policy Invariance under Reward Transformations," ICML 1999 — our shaping is NOT potential-based, which is exactly why the phase switch to terminal reward exists and why the final agent is certified under the terminal objective only.
+[^watchdog]: Architecture_Ablation §4.5; a bang-bang controller on the pick head's entropy coefficient, hysteresis 90%/30% rolling leaster rate.
+[^ziegler]: Ziegler et al., "Fine-Tuning Language Models from Human Preferences," arXiv:1909.08593, 2019 — value head initialized before policy optimization; the general practice of critic pre-fitting on a frozen policy's returns.
+[^ppo]: Schulman et al., "Proximal Policy Optimization Algorithms," arXiv:1707.06347, 2017.
+[^gae]: Schulman et al., "High-Dimensional Continuous Control Using Generalized Advantage Estimation," arXiv:1506.02438, 2016; λ = 0.95 policy and the node-selective contingency: Learning_System_Redesign §7.5.
+[^pfsp]: Vinyals et al., "Grandmaster level in StarCraft II using multi-agent reinforcement learning," Nature 575, 2019, doi:10.1038/s41586-019-1724-z — prioritized fictitious self-play; Lanctot et al., PSRO, arXiv:1711.00832, 2017 — population-based best-response framing (the exploiter role we retire to an audit).
+[^five]: Berner et al., OpenAI Five, arXiv:1912.06680, 2019 — 80/20 self vs past mixture; our 0.15 self share is the validated per-seat analog.
+[^sac]: Haarnoja et al., "Soft Actor-Critic Algorithms and Applications," arXiv:1812.05905, 2018 §5; Christodoulou, "Soft Actor-Critic for Discrete Action Settings," arXiv:1910.07207, 2019; Sokota et al., arXiv:2206.05825, 2023 — mixed equilibria in imperfect information, why the floor is never zero.
+[^bumpless]: Åström & Wittenmark, *Adaptive Control*, 2nd ed., 1995, ch. 9 — bumpless transfer; Learning_System_Redesign §8.5–§8.6.
+[^andry]: Andrychowicz et al., "What Matters in On-Policy Reinforcement Learning?", arXiv:2006.05990, 2020 — LR decay helpful but modest; Learning_System_Redesign §8.7.
+[^duplicate]: Bard, Hawkin, Johanson & Szafron, "The Annual Computer Poker Competition," AI Magazine 34(2), 2013 — duplicate-match format; Burch et al., AIVAT, AAAI 2018 — paired variance reduction; instrument: analysis/rigorous_eval.py + league_progress_eval.h2h_duplicate.
+[^dagger]: Ross, Gordon & Bagnell, DAgger, AISTATS 2011 (arXiv:1011.0686) — labels on the student's own state distribution from a stationary expert; committee acting is off (CE_Teacher §20.3).
+[^ismcts]: Cowling, Powley & Whitehouse, "Information Set Monte Carlo Tree Search," IEEE TCIAIG 4(2), 2012; Long et al., AAAI 2010 (determinization limits); committee form: Chaslot et al., root parallelization, CG 2008 — used for noise estimation; certified budget: Search_Teacher_Design §3–§8 (E9).
+[^fh]: Fay & Herriot, "Estimates of Income for Small Places," JASA 74(366), 1979 — the Stage-1b estimator: known-variance measurements, covariate regression, precision-weighted blend, residual-variance estimate.
+[^efron]: Efron & Morris, "Data Analysis Using Stein's Estimator and Its Generalizations," JASA 70(350), 1975; James & Stein 1961; Baranchik 1964 (positive part) — the shrinkage root and the per-class residual-variance pooling.
+[^vieillard]: Vieillard, Pietquin & Geist, "Leverage the Average," NeurIPS 2020 (arXiv:2007.06799); Vieillard et al., Munchausen RL, arXiv:2007.14430 — KL-regularized policy iteration, evaluation errors average across iterations at rate 1/k (the compounding claim); Grill et al., "Monte-Carlo Tree Search as Regularized Policy Optimization," ICML 2020 (arXiv:2007.12509); Danihelka et al., "Policy Improvement by Planning with Gumbel," ICLR 2022 — the retired visit-count-tempered target and why its confidence proxy fails under determinization (§20.1).
+[^awr]: Peng et al., AWR, arXiv:1910.00177, 2019; Nair et al., AWAC, arXiv:2006.09359, 2020; Wang et al., CRR, arXiv:2006.15134, 2020; Kostrikov et al., IQL, arXiv:2110.06169, 2021 — advantage-weighted extraction, temperature and weight clip.
+[^lwf]: Li & Hoiem, "Learning without Forgetting," arXiv:1606.09282, 2016; Hinton, Vinyals & Dean, "Distilling the Knowledge in a Neural Network," arXiv:1503.02531, 2015 — the retention KL on heads search cannot speak to.
+[^lpft]: Kumar et al., "Fine-Tuning can Distort Pretrained Features and Underperform Out-of-Distribution," arXiv:2202.10054, 2022 (LP-FT) — precedent for separating trunk and head training epochs; our order is trunk-first then head-only, chosen empirically (CE_Teacher §20.9 arms 5d/5f/P1).
+[^wise]: Wortsman et al., "Robust Fine-Tuning of Zero-Shot Models" (WiSE-FT), arXiv:2109.01903, 2022 — weight interpolation as the walk-back (CE_Teacher §17.16).
+[^tesauro]: Tesauro, Rajan & Segal, "Bayesian Inference in Monte-Carlo Tree Search," UAI 2010 — posterior-of-optimality readouts within one search.
+[^kg]: Kendall & Gal, "What Uncertainties Do We Need in Bayesian Deep Learning for Computer Vision?", NeurIPS 2017 (arXiv:1703.04977) — the per-node heteroscedastic fallback (CE_Teacher §20.4).
+[^jacob]: Jacob et al., "Modeling Strong and Human-Like Gameplay with KL-Regularized Search," ICML 2022 (arXiv:2112.07544) — KL-regularized search toward a human-imitation prior; adjacent in method (regularized search targets), opposite in goal (imitating humans vs constraining machine recall).
+[^tg]: Tesauro & Galperin, "On-line Policy Improvement using Monte-Carlo Search," NIPS 1996 — rollout-based policy improvement (backgammon), the ancestor of search-as-improvement-operator.
+[^lp]: Lagoudakis & Parr, "Reinforcement Learning as Classification: Leveraging Modern Classifiers," ICML 2003 — approximate PI by classifying rollout-labeled actions (the Stage-3 CE projection in its classical form).
+[^scherrer]: Scherrer et al., "Approximate Modified Policy Iteration and its Application to the Game of Tetris," JMLR 16, 2015 — classification-based MPI; error propagation across iterations.
+[^exit]: Anthony, Tian & Barber, NeurIPS 2017; Sun et al., "Dual Policy Iteration," NeurIPS 2018 (arXiv:1805.10755) — fast-policy / slow-search loops and when the projection contracts.
+[^az]: Silver et al., Nature 550, 2017 (AlphaGo Zero); Science 362, 2018 (AlphaZero); Schrittwieser et al., "Online and Offline Reinforcement Learning by Planning with a Learned Model" (MuZero Reanalyze), arXiv:2104.06294, 2021 — offline corpus re-search across iterations (the state-reuse amendment held in reserve, CE_Teacher §16.9 addendum 3).
+[^soemers]: Soemers, Piette, Stephenson & Browne, "Learning Policies from Self-Play with Policy Gradients and MCTS Value Estimates," IEEE CoG 2019 (arXiv:1905.05809) — PG with search-derived values inside one loop; contrast with our measured two-operator failure and phase separation.
+[^ppg]: Cobbe et al., "Phasic Policy Gradient," arXiv:2009.04416, 2020 — alternating policy and auxiliary phases with a behavior-cloning constraint; the nearest precedent for head-partitioned alternating operators.
+[^perceiver]: Jaegle et al., "Perceiver IO," arXiv:2107.14795, 2021 — learned-query cross-attention readout over a token set.
+[^settrans]: Lee et al., "Set Transformer," arXiv:1810.00825, 2019 — pooling by multi-head attention (the AttentionPool / shared-readout lineage).
+
+Also load-bearing but internal: Schrittwieser et al. MuZero (Nature 588, 2020); Wu, KataGo, arXiv:1902.10565, 2019 (auxiliary targets shaping the trunk); Agarwal et al., "Reincarnating RL," arXiv:2206.01626, 2022 and Schmitt et al., "Kickstarting," arXiv:1803.03835, 2018 (warm-start and anneal-to-zero distillation, the precedent for phase-pure handoff rather than concurrent teaching); Brown et al., ReBeL, arXiv:2007.13544, 2020 and Schmid et al., "Student of Games," Science 382, 2023 (public-belief-state search, the full-rewrite alternative held in reserve); Schaul et al., PER, arXiv:1511.05952, 2016 (stratified emission's annealed-bias rationale).
+
+---
+
+## Appendix A — contingencies and open items
+
+- **Leaster play under policy iteration** (operator concern 2026-09-02).
+  Leaster rows carry only the chained retention KL to θ_k plus value
+  regression: bounded drift per iteration, no improvement signal,
+  possible random walk across iterations. Instrument added to the cert:
+  leaster-conditioned paired score (rigorous_eval tags hands). Escalation:
+  (1) fixed-reference anchor — anchor leaster rows to the handoff
+  checkpoint, bounding cumulative drift at handoff competence
+  (AlphaStar-style fixed KL reference); (2) leaster-play emission behind
+  the addendum-5 mini-calibration gate (P4 leaster determinizer exists).
+- **Bidding-node emission** if the frozen-trunk bidding phase yields
+  nothing (§4.4 step 6).
+- **`perceiver-recall-ctxmem` twin**: diagnostic arm only, on a gen-2
+  gate failure.
+- **Uniform-window population** in place of PFSP: measured near-
+  equivalent, not in this run; a future simplification with its own
+  pre-registration.
+- **Terminal-only from-scratch bootstrap**: a future ablation of the
+  shaped phase, not this run's risk.
+- **Reanalyze-style corpus reuse across iterations** (re-search stored
+  states under θ_{k+1}) if corpus cost becomes the binding constraint.
+- **Human-expert comparison** requires human game data from the app;
+  out of scope until it exists.
