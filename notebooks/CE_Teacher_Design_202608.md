@@ -3240,3 +3240,30 @@ agent on the deployment instrument (interp_a50 tied it at +0.014 +/-
 0.014). The JD-mode edge is the larger; the called-ace mode is where
 the 30M's shaped called-suit adherence (90 vs 46) plays, and 5f still
 leads there. Row in cert_results.jsonl as kind h2h_30m.
+
+§20.9 P1 CERT COMPLETE (2026-09-02 11:50) — VERDICT: ADOPT.
+- h2h vs theta_k: +0.0258 se 0.0073 (3.5 sigma; called +0.0335 / jd
+  +0.0182), above arm 5f's +0.0204 (same se) — program best EV.
+- Conventions: called-suit 44.6 / 41.3 / 48.8 / 47.0 = 45.4 pooled
+  (5f: 46.4; the 1-pt gap is inside the 4-seed probe's resolution),
+  partner 98.1, t0-trump 0.2-0.7, spread 4.1; pick 33.3-35.0, leaster
+  6.2-8.3 = seed band (bilinear-only phase, bidding untouched).
+- Scorecard: h2h PASS (above 5f), partner/t0/spread PASS, called-suit
+  pooled 45.4 vs the >= 46.4 bar = TIE at instrument resolution (the
+  deterministic realization instrument, which does resolve it, favors
+  P1 on every row set: 40/37/43/38 vs 32/30/35/15).
+- Reading: reallocating the projection dose by posterior precision buys
+  EV (the confident rows are where the committee's signal is real; the
+  down-weighted rows are the noise-dominated ties whose fitting cost EV
+  in every earlier arm — §17.9's "anchor-suppressible label-noise
+  fitting", now addressed at the source instead of by an anchor) and
+  more of the targeted lead-row shift, without a fresh-deal convention
+  gain visible at n=4000 games. Convention movement per iteration
+  remains the slow variable; EV is compounding.
+
+STANDING RECIPE (supersedes the 5f entry above): target stage with
+--variance-mode class --variance-rows all --weight-mode precision
+--weight-max 5; distill = trunk epoch @1e-4, then bilinear-only epochs
+@1e-3 (--bilinear-only-frozen) to the holdout-KL plateau (~6).
+theta_{k+1} = runs/policy_iteration_202609/iter11/distill_epoch7.pt.
+Next: bidding PG phase, then the §20.10 regeneration from theta_{k+1}.
