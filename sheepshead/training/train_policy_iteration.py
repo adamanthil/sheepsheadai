@@ -452,6 +452,13 @@ def stage_distill(args) -> list[str]:
         # ended with this number unchanged).
         best_kl = float("inf")
         best_epoch = 0
+        # Epochs with the encoder frozen (§20.9 head-first): either the
+        # first N (--freeze-encoder-epochs) or an explicit list
+        # (--freeze-epochs "2,3"), e.g. trunk epoch first for EV, then the
+        # head phase last so nothing erodes it (arm 5d).
+        frozen_epochs = set(range(1, args.freeze_encoder_epochs + 1))
+        if args.freeze_epochs:
+            frozen_epochs = {int(x) for x in args.freeze_epochs.split(",") if x.strip()}
         if holdout:
             init_stats, _ = train_distill.run_epoch(agent, holdout, dargs, train=False)
             best_kl = float(init_stats.get("override_kl", float("inf")))
@@ -461,13 +468,13 @@ def stage_distill(args) -> list[str]:
             # §20.9 head-first projection (LP-FT, Kumar et al. 2022): the
             # encoder is frozen for the first --freeze-encoder-epochs at
             # --head-lr, then everything trains at --lr.
-            freeze = epoch <= args.freeze_encoder_epochs
+            freeze = epoch in frozen_epochs
             for prm in agent.encoder.parameters():
                 prm.requires_grad_(not freeze)
             agent.set_learning_rates(
                 actor_lr=args.head_lr if freeze else args.lr, critic_lr=args.lr
             )
-            if args.freeze_encoder_epochs:
+            if frozen_epochs:
                 log(
                     f"[distill epoch {epoch}] encoder "
                     f"{'FROZEN, actor lr ' + str(args.head_lr) if freeze else 'unfrozen, lr ' + str(args.lr)}"
@@ -620,6 +627,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dst.add_argument(
         "--head-lr", type=float, default=1e-3, help="actor lr while frozen"
+    )
+    dst.add_argument(
+        "--freeze-epochs",
+        default="",
+        help='explicit comma list of epochs with the encoder frozen (e.g. "2,3"); '
+        "overrides --freeze-encoder-epochs",
     )
     dst.add_argument("--lambda-ce", type=float, default=1.0)
     dst.add_argument("--lambda-ret", type=float, default=1.0)

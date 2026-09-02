@@ -349,6 +349,8 @@ def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
             "--kl-stop",
             "--kl-min-improve",
             "0",
+            "--freeze-epochs",
+            "3",
             "--lambda-ce",
             "5",
             "--lr",
@@ -369,6 +371,9 @@ def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
     assert hold[1]["override_kl"] < hold[0]["override_kl"]
     best = json.loads((out_dir / "distill_best.json").read_text())
     assert best["best_epoch"] >= 1
+    log_text = (out_dir / "policy_iteration.log").read_text()
+    assert "[distill epoch 3] encoder FROZEN" in log_text
+    assert "[distill epoch 1] encoder unfrozen" in log_text
 
 
 def test_heteroscedastic_head_and_nll():
