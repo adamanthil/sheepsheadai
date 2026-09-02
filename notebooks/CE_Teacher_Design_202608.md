@@ -3044,3 +3044,28 @@ frozen-2 read (36% / 55%) after the full epoch (P2's plain-actor give-
 back should not repeat if the term, not the trunk, holds the shift);
 called-suit pooled >= 47; h2h >= arm 4b's +0.019; partner >= 96.5,
 t0-trump <= 1, spread >= 3.6.
+
+§20.9 ARM 5c RESULT (2026-09-02): bp actor, frozen-trunk epochs 1-2
+@1e-3 then full epoch 3 @1e-4, arm-4b targets.
+
+    checkpoint            t0 realized train / holdout   holdout argmax cs   t1 realized train
+    arm 4b control         10% / 15%                     44.4                6%
+    arm 5c after head ep2  36% / 55%                     50.0                12%
+    arm 5c after full ep3  25% / 34%                     47.2                25%
+
+The head phase installs the lead shift (2.5-3.5x the control) and the
+following trunk epoch erodes about a third of it while lifting t1 —
+the same give-back P2 showed on the plain actor, now at a higher
+level. Held-out target KL after the full epoch 0.104 = the best of the
+program; probe after ep3: partner 99.0, t0-trump 0.4, spread 4.2,
+top1min 9.8, alone 14.7 (the frozen epochs had pushed alone to 22.4
+via the actor-resident bidding heads at lr 1e-3; the full epoch re-
+centered it). Cert of ep3 pending.
+
+Arm 5d (launched): the ORDER swapped — full trunk epoch 1 @1e-4 (the
+EV carrier), then frozen-trunk epochs 2-3 @1e-3 so nothing follows to
+erode the head-installed shift. Pre-registered: realization after
+epoch 3 >= arm 5c's head-phase read (36% / 55%); h2h >= arm 4b's
++0.019 (the head phase moved EV by +0.002 se 0.008 on the plain
+actor); partner >= 96.5, t0-trump <= 1, spread >= 3.6; alone rate is
+the watch item (retention anchor only; bidding PG phase queued).
