@@ -3006,3 +3006,41 @@ features to approximate it: slow, and collateral-prone. Proposed test
 initialized bilinear term in the policy pointer, registered as a new
 architecture that loads the 8M checkpoint bit-identically at init
 (existing goldens untouched), then the arm-3 projection on it.
+
+§20.9 ARM 5 — the bilinear-pointer actor (2026-09-02). Operator
+approved the architecture. `perceiver-shared-v2-bp` = v2 + (U h).(V t)
+in the play pointer, U zero-init; `analysis/migrate_arch_checkpoint.py`
+re-saves the 8M seed under it and verifies max action-probability
+divergence 0 on real self-play (commit 6101c8d; the registry test
+gates the fixture's key hashes; numeric fields to be recaptured on the
+reference environment). Epoch-0 holdout under the trainer's replay is
+identical to arm 4b's (target KL 0.1242, oracle loss 0.0182).
+
+    checkpoint (arm 4b targets)              t0 realized train / holdout   holdout argmax cs   partner  spread
+    theta_k                                   —                             44.4                96.5     3.6
+    arm 4b control (plain actor, 1 full ep)   10% / 15%                     44.4                98.2     3.8
+    arm 5  (bp actor, 1 full ep @1e-4)        15% / 21%                     44.4                97.8     3.8
+    plain actor, trunk FROZEN 4 ep @1e-3      21% / 29%   (P2b)             47.2                98.6     4.1
+    bp actor,    trunk FROZEN 1 ep @1e-3      27% / 40%                     47.2                99.5     3.9
+    bp actor,    trunk FROZEN 2 ep @1e-3      36% / 55%                     50.0                98.8     4.1
+    bp actor,    trunk FROZEN 4 ep @1e-3      37% / 48%                     52.8                99.5     4.3
+
+Arm 5 (one full epoch) improves realization 1.5x over the control
+but not more, because U starts at zero and 432 steps at 1e-4 grow it
+to ~0.04 per entry — the term is BUDGET-limited in the standard
+projection. Under the identical frozen-trunk schedule that saturated
+the plain actor at 21% (P2b), the bp actor reaches 36-37% on training
+rows and 55% on held-out rows by epoch 2, with held-out argmax on the
+called suit 44.4 -> 52.8 (target 55.6) and every safety metric held or
+sharper. CAPACITY CONFIRMED as the binding limit; the recipe change is a
+head-first phase in which the bilinear term grows. Arm 5 cert: called-
+suit 42.2 pooled (45.0 / 38.3 / 42.7 / 42.6), partner 97.8, t0-trump
+0.35, spread 3.8; h2h (below).
+
+Arm 5c (launched): bp actor, 2 frozen-trunk epochs @1e-3 then 1 full
+epoch @1e-4 (the trunk update that carries EV), realization per epoch,
+cert on the final checkpoint. Pre-registered: realization >= the
+frozen-2 read (36% / 55%) after the full epoch (P2's plain-actor give-
+back should not repeat if the term, not the trunk, holds the shift);
+called-suit pooled >= 47; h2h >= arm 4b's +0.019; partner >= 96.5,
+t0-trump <= 1, spread >= 3.6.
