@@ -3069,3 +3069,24 @@ epoch 3 >= arm 5c's head-phase read (36% / 55%); h2h >= arm 4b's
 +0.019 (the head phase moved EV by +0.002 se 0.008 on the plain
 actor); partner >= 96.5, t0-trump <= 1, spread >= 3.6; alone rate is
 the watch item (retention anchor only; bidding PG phase queued).
+
+§20.9 ARM 5 / 5c / 5d READINGS (2026-09-02 08:00):
+- Arm 5 h2h (bp, 1 full epoch): +0.0127 se 0.0069 (called +0.006 /
+  jd +0.019) vs arm 4b's +0.0193 on the same targets with the plain
+  actor — inside one sigma; the term does not change EV under the
+  standard projection, only what a head phase can install.
+- Arm 5c ep3 cert probes: called-suit 46.4 pooled (48.1 / 44.4 / 45.1
+  / 47.9) — the highest pooled read of the program (baseline 44.7, ~1
+  sigma); partner 98.8, t0-trump 0.2, spread 4.3; pick 38.4, leaster
+  3.9 = bidding drift. h2h pending.
+- Arm 5d (trunk epoch FIRST, then 2 head epochs): t0 realized 15%
+  after the trunk epoch -> 26% train / 28% held-out after the head
+  epochs (held-out argmax 50.0), t1 19%; probe partner 97.3, t0-trump
+  0.4, spread 4.1, top1min 9.4, alone 13.4. Ordering does NOT recover
+  the head-only peak (36% / 55%): head epochs after a trunk epoch
+  install less than from the seed, and both orderings settle ~2.5x the
+  control. Cert pending.
+- P5e (launched): head phase training ONLY pointer_U / pointer_V
+  (--bilinear-only-frozen), 3 epochs @1e-3 from theta_k_bp — isolates
+  the new capacity and removes the actor-resident bidding drift the
+  head phase causes (alone 22.4 mid-phase in arm 5c).

@@ -471,6 +471,14 @@ def stage_distill(args) -> list[str]:
             freeze = epoch in frozen_epochs
             for prm in agent.encoder.parameters():
                 prm.requires_grad_(not freeze)
+            # --bilinear-only-frozen: in frozen epochs train ONLY the play
+            # pointer's bilinear tensors (the new capacity), leaving the
+            # bidding heads, adapter and the rest of the actor at rest.
+            for name, prm in agent.actor.named_parameters():
+                only_bilinear = freeze and args.bilinear_only_frozen
+                prm.requires_grad_(
+                    (not only_bilinear) or name.startswith(("pointer_U", "pointer_V"))
+                )
             agent.set_learning_rates(
                 actor_lr=args.head_lr if freeze else args.lr, critic_lr=args.lr
             )
@@ -627,6 +635,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dst.add_argument(
         "--head-lr", type=float, default=1e-3, help="actor lr while frozen"
+    )
+    dst.add_argument(
+        "--bilinear-only-frozen",
+        action="store_true",
+        help="in frozen-encoder epochs train only the actor's pointer_U / "
+        "pointer_V (perceiver-shared-v2-bp); the rest of the actor stays fixed",
     )
     dst.add_argument(
         "--freeze-epochs",
