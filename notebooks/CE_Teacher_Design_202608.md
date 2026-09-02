@@ -3305,3 +3305,65 @@ Consequence: the P1 h2h gain is a pure precision-weighting result; the
 cap is inert for this corpus. Of the unpinned constants, --head-lr is
 the most consequential and cheapest to sweep (~40 min/arm on the
 realization screen) if a later iteration stalls at the plateau.
+
+### 20.12 Iteration-2 corpus launch + pre-registration (2026-09-02)
+
+Operator decision (same day, after the program-redesign review): before
+the from-scratch perceiver-recall program is launched, VALIDATE a second
+policy-iteration round under the standing recipe on the current
+lineage. The compounding claim (§20.4) has never been tested: every
+iteration so far re-projected corpus q from the same theta_k.
+
+Launch (13:20, pid in runs/distill_corpus_iter2_202609/run.pid):
+
+    uv run python -m sheepshead.training.distill_corpus \
+      --ckpt runs/policy_iteration_202609/iter11/distill_epoch7.pt \
+      --out-dir runs/distill_corpus_iter2_202609 \
+      --games 2000 --workers 8 --seed 20260902 --shard-games 200 \
+      --p-base 0.5 --boost-lead 2 --p-max 1.0 \
+      --node-telemetry runs/distill_corpus_iter2_202609/nodes.jsonl \
+      --routed-encoder mps
+
+theta_k for this iteration = iter11/distill_epoch7.pt (the P1-certified
+theta_{k+1} of §20.9). Schema 2, oracle states on, committee-act 0
+(student-acting; corpus q was committee-acting at frac 1.0 under schema
+1, so acting mode is a deliberate recipe difference this iteration
+carries, per §20.3). Leads p = 1.0, follows 0.5 (§20.10). Fresh deal
+seed, independent of corpus q. Expected ~22k searches, ~36 h.
+
+Then: fit -> target (--variance-mode class --variance-rows all
+--weight-mode precision --weight-max 5) -> distill (trunk epoch @1e-4,
+bilinear-only epochs @1e-3 to the holdout-KL plateau) -> cert (4 x
+n=1000 + dup h2h vs theta_k). The bidding PG phase is NOT run before
+this regeneration (operator: validate the play-side compounding first;
+bidding stays at the seed as in every arm so far).
+
+Pre-registered reads (iteration 2 vs iteration 1):
+- COMPOUNDS: h2h vs iter11 >= +0.015 with CI lower bound > 0, AND h2h
+  vs the 8M seed exceeds iteration 1's +0.0258 (cumulative gain), with
+  partner >= 96.5, t0-trump <= 1.0, spread >= 3.6.
+- STALLS: h2h vs iter11 inside +/- 0.01 -> the per-iteration gain does
+  not accumulate under a fresh corpus; the from-scratch program's phase
+  3 budget (3-5 iterations) is cut to one iteration + bidding phase, and
+  the search-ceiling residual is attributed to the projection.
+- REGRESSES: h2h vs iter11 < -0.01 at 2 SE -> student-acting corpus
+  from a distilled policy is the suspect (the accepted checkpoint acts
+  the coin-flip leads its own targets flattened); rerun with
+  --committee-act-frac 1.0 before any other change.
+- Stage-1 diagnostics expected to reproduce §20.8 qualitatively (lead
+  cells at the noise null per node, pooled fit at the floor with
+  ~800 rows per lead class).
+
+Leaster-play instrument (operator concern, 2026-09-02): leaster play rows
+carry only the chained retention KL anchor to theta_k (train_distill
+§17.4) plus value regression; no improvement signal, and the anchor
+re-fits the old outputs through a moving trunk, so drift is bounded per
+iteration but can random-walk across iterations. The cert battery has
+no leaster-play quality metric (greedy probe reports leaster ENTRY rate
+only; the duplicate h2h contains ~7% leaster hands, diluted). Adding a
+leaster-conditioned paired score (rigorous_eval already tags hands
+is_leaster) to the iteration-2 cert as a baseline read of iteration-1
+-> 2 drift. Escalation order if drift shows: fixed-reference anchor
+(anchor leaster rows to the handoff checkpoint, not theta_k, bounding
+cumulative drift at handoff competence) -> leaster-play emission behind
+the addendum-5 mini-calibration gate (P4 leaster determinizer exists).
