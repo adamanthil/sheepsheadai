@@ -143,7 +143,7 @@ def stage_fit(args) -> FitReport:
     reports: dict[str, FitReport] = {}
     for cap in capacities:
         torch.manual_seed(args.seed)
-        model = AdvantageModel(agent, cap)
+        model = AdvantageModel(agent, cap, heteroscedastic=args.heteroscedastic)
         if cap == "trunk":
             report = fit_advantage_model_live(
                 model,
@@ -164,7 +164,9 @@ def stage_fit(args) -> FitReport:
             )
         else:
             model, report = fit_advantage_model_iterated(
-                lambda cap=cap: AdvantageModel(agent, cap),
+                lambda cap=cap: AdvantageModel(
+                    agent, cap, heteroscedastic=args.heteroscedastic
+                ),
                 table,
                 train_idx,
                 hold_idx,
@@ -203,7 +205,14 @@ def stage_fit(args) -> FitReport:
     selected = reports[best]
     with open(os.path.join(args.out_dir, "fit_report.json"), "w") as f:
         f.write(
-            json.dumps({"selected": best, **json.loads(selected.to_json())}, indent=2)
+            json.dumps(
+                {
+                    "selected": best,
+                    "heteroscedastic": bool(args.heteroscedastic),
+                    **json.loads(selected.to_json()),
+                },
+                indent=2,
+            )
         )
     os.replace(
         os.path.join(args.out_dir, f"advantage_{best}.pt"),
@@ -225,11 +234,24 @@ def stage_target(args) -> dict:
     _freeze(agent)
     with open(os.path.join(args.out_dir, "fit_report.json")) as f:
         fit = json.load(f)
-    model = AdvantageModel(agent, fit["selected"])
+    model = AdvantageModel(
+        agent, fit["selected"], heteroscedastic=bool(fit.get("heteroscedastic", False))
+    )
     model.load_state_dict(torch.load(os.path.join(args.out_dir, "advantage_model.pt")))
     table = RowTable.load(os.path.join(args.out_dir, "row_table.pt"))
     sigma_u2 = float(fit["sigma_u2"]) if args.sigma_u2 is None else args.sigma_u2
-    if args.variance_mode == "class":
+    node_variance = False
+    if args.variance_mode == "node":
+        if not model.heteroscedastic:
+            raise SystemExit("--variance-mode node needs a fit with --heteroscedastic")
+        node_variance = True
+        su2 = sigma_u2
+        log(
+            f"[target] capacity {fit['selected']}, per-NODE sigma_u2 from the "
+            f"heteroscedastic head (global {sigma_u2:.3e}), kappa {args.kappa}, "
+            f"tilt_max {args.tilt_max}"
+        )
+    elif args.variance_mode == "class":
         # §20.6: per-class residual variance, shrunk toward the global.
         if args.variance_rows == "all":
             # Re-estimate on EVERY row with Q (train + holdout). The held-out
@@ -269,7 +291,12 @@ def stage_target(args) -> dict:
             f"kappa {args.kappa}, tilt_max {args.tilt_max}"
         )
     built = targets_for_table(
-        model, table, sigma_u2=su2, kappa=args.kappa, tilt_max=args.tilt_max
+        model,
+        table,
+        sigma_u2=su2,
+        kappa=args.kappa,
+        tilt_max=args.tilt_max,
+        node_variance=node_variance,
     )
 
     shards, manifest = load_corpus(args.corpus_dir)
@@ -490,6 +517,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fit.add_argument("--rebuild-table", action="store_true")
     fit.add_argument(
+        "--heteroscedastic",
+        action="store_true",
+        help="fit a per-row log-variance head by Gaussian NLL (§20.8): rows are "
+        "standardized by their own learned residual scale, no cell taxonomy",
+    )
+    fit.add_argument(
         "--fh-iterations",
         type=int,
         default=2,
@@ -507,9 +540,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tgt.add_argument(
         "--variance-mode",
-        choices=("class", "global"),
+        choices=("class", "global", "node"),
         default="class",
-        help="residual variance per telemetry cell (§20.6, default) or one global value",
+        help="residual variance per telemetry cell (§20.6, default), one global "
+        "value, or per node from the heteroscedastic head (§20.8)",
     )
     tgt.add_argument(
         "--variance-rows",

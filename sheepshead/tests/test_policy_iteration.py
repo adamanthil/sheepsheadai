@@ -369,3 +369,120 @@ def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
     assert hold[1]["override_kl"] < hold[0]["override_kl"]
     best = json.loads((out_dir / "distill_best.json").read_text())
     assert best["best_epoch"] >= 1
+
+
+def test_heteroscedastic_head_and_nll():
+    """§20.8: the variance head yields positive per-row sigma_u^2, the NLL
+    reduces to the weighted MSE ordering when variances are equal, and a row
+    with larger learned variance contributes less squared-error pressure."""
+    from sheepshead.training.search_advantage import gaussian_nll_rows
+
+    agent = _fresh_agent()
+    shard = _corpus(agent, [3])
+    table = build_row_table(
+        agent, shard["episodes"], shard_idx=0, game_indices=[3] * len(shard["episodes"])
+    )
+    model = AdvantageModel(agent, "adapter", heteroscedastic=True)
+    idx = torch.arange(len(table))
+    adv, su2 = model.forward_with_variance(table.encoded(idx), table.prior)
+    assert su2 is not None and su2.shape == (len(table),) and bool((su2 > 0).all())
+    assert (
+        AdvantageModel(agent, "adapter").forward_with_variance(table.encoded(idx))[1]
+        is None
+    )
+    # NLL: same total variance everywhere -> loss orders like the MSE.
+    pred = torch.zeros_like(table.advantage)
+    nv = table.noise_var.clone()
+    same = torch.full_like(nv, 1e-3)
+    nll_a, mse_a = gaussian_nll_rows(
+        pred, table.advantage, table.label_mask, nv, same, 1e-6
+    )
+    nll_b, _ = gaussian_nll_rows(
+        pred * 0 + 0.05, table.advantage, table.label_mask, nv, same, 1e-6
+    )
+    assert torch.isfinite(nll_a) and nll_a < nll_b
+    assert torch.allclose(
+        mse_a,
+        ((table.advantage**2) * table.label_mask).sum(1)
+        / table.label_mask.sum(1).clamp(min=1),
+    )
+    # Doubling a row's learned variance halves its squared-error term.
+    su2_big = same.clone()
+    su2_big[0] = 1e-3 * 3  # total 4e-3 vs 2e-3 at noise 1e-3 (ignoring the tiny floor)
+    n0 = gaussian_nll_rows(
+        pred[:1],
+        table.advantage[:1],
+        table.label_mask[:1],
+        torch.full((1,), 1e-3),
+        same[:1],
+        0.0,
+    )[0]
+    n1 = gaussian_nll_rows(
+        pred[:1],
+        table.advantage[:1],
+        table.label_mask[:1],
+        torch.full((1,), 1e-3),
+        su2_big[:1],
+        0.0,
+    )[0]
+    sq = float(
+        ((table.advantage[0] ** 2) * table.label_mask[0]).sum()
+        / table.label_mask[0].sum()
+    )
+    assert float(n0) == pytest.approx(0.5 * (sq / 2e-3 + np.log(2e-3)), rel=1e-4)
+    assert float(n1) == pytest.approx(0.5 * (sq / 4e-3 + np.log(4e-3)), rel=1e-4)
+
+
+def test_heteroscedastic_stages_end_to_end(tmp_path):
+    agent = _fresh_agent()
+    ckpt = tmp_path / "theta_k.pt"
+    agent.save(str(ckpt))
+    shard = _corpus(agent, [3, 4, 5])
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    torch.save(shard, corpus_dir / "corpus_0000.pt")
+    (corpus_dir / "manifest.json").write_text(
+        json.dumps(
+            {"row_schema": ROW_SCHEMA_VERSION, "shards": [{"path": "corpus_0000.pt"}]}
+        )
+    )
+    out_dir = tmp_path / "iter"
+    rc = tpi.main(
+        [
+            "all",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--ckpt",
+            str(ckpt),
+            "--out-dir",
+            str(out_dir),
+            "--capacity",
+            "adapter",
+            "--heteroscedastic",
+            "--fit-epochs",
+            "2",
+            "--batch-rows",
+            "32",
+            "--fh-iterations",
+            "1",
+            "--buffer-episodes",
+            "10",
+            "--batch-segments",
+            "4",
+            "--holdout-frac",
+            "0.34",
+            "--variance-mode",
+            "node",
+            "--probe-games",
+            "0",
+            "--no-oracle",
+            "--epochs",
+            "1",
+        ]
+    )
+    assert rc == 0
+    fit = json.loads((out_dir / "fit_report.json").read_text())
+    assert fit["heteroscedastic"] is True
+    assert fit["per_class"]["__all__"]["sigma_u2_head_mean"] > 0.0
+    report = json.loads((out_dir / "target_report.json").read_text())
+    assert report["variance_mode"] == "node" and report["rows"] > 0

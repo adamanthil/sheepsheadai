@@ -58,6 +58,10 @@ from sheepshead.training.corpus_rows import (
 
 CAPACITIES = ("pointer", "adapter", "trunk")
 POINTER_HIDDEN = 64  # matches the actor's pointer scorer
+# Heteroscedastic head: log sigma_u^2 init (~ the global residual variance
+# measured on corpus q) and the clamp that keeps the NLL well-conditioned.
+LOGVAR_INIT = 1e-3
+LOGVAR_MIN, LOGVAR_MAX = math.log(1e-7), math.log(1.0)
 
 # Corpus rows the §20 recipe can TARGET: searched play rows, whatever the
 # committee concluded there (the endorsed/override split dissolves).
@@ -295,9 +299,17 @@ class AdvantageModel(nn.Module):
     card is the committee's ~58% of the time on corpus q), so the head
     learns the RESIDUAL the prior does not explain instead of relearning
     the prior from scratch — the natural Fay-Herriot covariate.
+
+    ``heteroscedastic`` (§20.8): a second output, the per-ROW log residual
+    variance log sigma_u^2(s), trained by Gaussian negative log-likelihood
+    with the known measurement noise added (Kendall & Gal 2017). Each row is
+    then standardized by its own learned scale in the loss — cells whose
+    true advantages vary a lot no longer drown cells whose whole signal is
+    small, with no cell taxonomy — and the learned variance is the per-node
+    Fay-Herriot sigma_u^2 the blend uses.
     """
 
-    def __init__(self, agent: PPOAgent, capacity: str):
+    def __init__(self, agent: PPOAgent, capacity: str, heteroscedastic: bool = False):
         super().__init__()
         if capacity not in CAPACITIES:
             raise ValueError(f"capacity must be one of {CAPACITIES}, got {capacity!r}")
@@ -322,6 +334,11 @@ class AdvantageModel(nn.Module):
         self.pointer_Wt = nn.Linear(d_token, POINTER_HIDDEN)
         self.pointer_v = nn.Linear(POINTER_HIDDEN, 1, bias=False)
         self.prior_scale = nn.Parameter(torch.tensor(0.01))
+        self.heteroscedastic = bool(heteroscedastic)
+        if self.heteroscedastic:
+            self.logvar_head = nn.Linear(d_model, 1)
+            nn.init.zeros_(self.logvar_head.weight)
+            nn.init.constant_(self.logvar_head.bias, math.log(LOGVAR_INIT))
         self.action_size = int(agent.action_size)
         for name in ("play", "under", "bury"):
             self.register_buffer(
@@ -339,6 +356,13 @@ class AdvantageModel(nn.Module):
         """Dense ``(R, action_size)`` advantage. ``prior`` (dense theta_k
         probabilities, zeros off-legal) adds the scaled centered log-prior
         covariate; omit it for the bare head (the scatter-alignment test)."""
+        return self.forward_with_variance(enc, prior)[0]
+
+    def forward_with_variance(
+        self, enc: EncodedRows, prior: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """(advantage (R, A), sigma_u^2 (R,) or None for a homoscedastic
+        model)."""
         h = self.adapter(enc.features)
         g = self.pointer_Wg(h).unsqueeze(1)  # (R, 1, hidden)
         t = self.pointer_Wt(enc.hand_tokens)  # (R, 8, hidden)
@@ -355,7 +379,10 @@ class AdvantageModel(nn.Module):
         out = wide[:, : self.action_size]
         if prior is not None:
             out = out + self.prior_scale * centered_log_prior(prior, enc.masks.bool())
-        return out
+        if not self.heteroscedastic:
+            return out, None
+        logvar = self.logvar_head(h).squeeze(-1).clamp(LOGVAR_MIN, LOGVAR_MAX)
+        return out, torch.exp(logvar)
 
 
 def centered_log_prior(prior: torch.Tensor, legal: torch.Tensor) -> torch.Tensor:
@@ -385,6 +412,28 @@ def weighted_rows_mse(
     per_row = sq.sum(dim=1) / n_lab
     w = 1.0 / (noise_var + var_floor)
     return (w * per_row).sum() / w.sum(), per_row
+
+
+def gaussian_nll_rows(
+    pred: torch.Tensor,
+    advantage: torch.Tensor,
+    label_mask: torch.Tensor,
+    noise_var: torch.Tensor,
+    sigma_u2: torch.Tensor,
+    var_floor: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(loss, per_row_mse): Gaussian negative log-likelihood of the labeled
+    advantages under total variance noise_var + sigma_u^2(s) (both per row),
+    averaged over labeled actions per row and then over rows. Standardizes
+    each row by its own learned scale — the taxonomy-free replacement for
+    the per-cell Fay-Herriot weights."""
+    total = (noise_var + sigma_u2 + var_floor).unsqueeze(1)
+    sq = (pred - advantage) ** 2
+    nll = 0.5 * (sq / total + torch.log(total))
+    n_lab = label_mask.sum(dim=1).clamp(min=1)
+    per_row_nll = (nll * label_mask).sum(dim=1) / n_lab
+    per_row_mse = (sq * label_mask).sum(dim=1) / n_lab
+    return per_row_nll.mean(), per_row_mse
 
 
 @dataclass
@@ -449,6 +498,7 @@ def evaluate_rows(
             "n": 0,
             "agree_model": 0,
             "agree_prior": 0,
+            "su2_sum": 0.0,
         }
     )
     residual_sq, noise_list = [], []
@@ -461,7 +511,9 @@ def evaluate_rows(
                 hand_ids=enc.hand_ids.to(device),
                 masks=enc.masks.to(device),
             )
-            pred = model(enc, table.prior[b].to(device)).cpu()
+            pred, su2 = model.forward_with_variance(enc, table.prior[b].to(device))
+            pred = pred.cpu()
+            su2 = su2.cpu() if su2 is not None else None
             adv, lab, nv = table.advantage[b], table.label_mask[b], table.noise_var[b]
             _, per_row = weighted_rows_mse(pred, adv, lab, nv, var_floor)
             w = 1.0 / (nv + var_floor)
@@ -479,6 +531,8 @@ def evaluate_rows(
                     s["n"] += 1
                     s["agree_model"] += int(model_top[i] == obs_top[i])
                     s["agree_prior"] += int(prior_top[i] == obs_top[i])
+                    if su2 is not None:
+                        s["su2_sum"] += float(su2[i])
             residual_sq.extend(per_row.tolist())
             noise_list.extend(nv.tolist())
     per_class = {}
@@ -491,6 +545,7 @@ def evaluate_rows(
             "noise_floor": s["wnoise"] / max(s["w"], 1e-12),
             "top_agree_model": s["agree_model"] / s["n"],
             "top_agree_prior": s["agree_prior"] / s["n"],
+            "sigma_u2_head_mean": s["su2_sum"] / s["n"],
         }
     return HoldoutEval(
         per_class=per_class,
@@ -549,14 +604,24 @@ def fit_advantage_model(
                 hand_ids=enc.hand_ids.to(device),
                 masks=enc.masks.to(device),
             )
-            pred = model(enc, table.prior[b].to(device))
-            loss, _ = weighted_rows_mse(
-                pred,
-                table.advantage[b].to(device),
-                table.label_mask[b].to(device),
-                train_var[b].to(device),
-                var_floor,
-            )
+            pred, su2 = model.forward_with_variance(enc, table.prior[b].to(device))
+            if su2 is not None:
+                loss, _ = gaussian_nll_rows(
+                    pred,
+                    table.advantage[b].to(device),
+                    table.label_mask[b].to(device),
+                    table.noise_var[b].to(device),
+                    su2,
+                    var_floor,
+                )
+            else:
+                loss, _ = weighted_rows_mse(
+                    pred,
+                    table.advantage[b].to(device),
+                    table.label_mask[b].to(device),
+                    train_var[b].to(device),
+                    var_floor,
+                )
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -751,10 +816,13 @@ def targets_for_table(
     kappa: float,
     tilt_max: float,
     batch_rows: int = 2048,
+    node_variance: bool = False,
 ) -> dict:
     """Stage 1b + 2 over every targetable row. Returns dense tensors
     (targets, z, gamma, v_post, a_hat) aligned with ``table``.
-    ``sigma_u2``: one value, or a per-row tensor aligned with ``table``."""
+    ``sigma_u2``: one value, or a per-row tensor aligned with ``table``;
+    ``node_variance`` uses the heteroscedastic head's per-row sigma_u^2
+    instead (ignored for a homoscedastic model)."""
     su2_rows = (
         sigma_u2
         if isinstance(sigma_u2, torch.Tensor)
@@ -774,7 +842,10 @@ def targets_for_table(
                 hand_ids=enc.hand_ids.to(device),
                 masks=enc.masks.to(device),
             )
-            a_model = model(enc, table.prior[b].to(device)).cpu()
+            a_model, su2_head = model.forward_with_variance(
+                enc, table.prior[b].to(device)
+            )
+            a_model = a_model.cpu()
             legal = table.masks[b].bool()
             # The model predicts over hand slots; center it over the legal
             # set so it lives on the same zero as the observed advantages.
@@ -782,12 +853,17 @@ def targets_for_table(
             n_legal = legal.sum(dim=1).clamp(min=1).unsqueeze(1)
             a_model = a_model - (a_model.sum(dim=1, keepdim=True) / n_legal)
             a_model = torch.where(legal, a_model, torch.zeros_like(a_model))
+            su2_b = (
+                su2_head.cpu()
+                if (su2_head is not None and node_variance)
+                else su2_rows[b]
+            )
             a_hat, v_post, gamma = blend_advantages(
                 table.advantage[b],
                 a_model,
                 table.has_q[b],
                 table.noise_var[b],
-                su2_rows[b],
+                su2_b,
             )
             t, z = build_tilt_target(
                 table.prior[b], a_hat, v_post, legal, kappa=kappa, tilt_max=tilt_max
