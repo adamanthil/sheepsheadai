@@ -428,7 +428,6 @@ class TestStateDictContract:
         "alone_called",
         "called_card_id",
         "called_under",
-        "called_suit_played",
         "picker_rel",
         "partner_rel",
         "leader_rel",

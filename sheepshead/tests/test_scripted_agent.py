@@ -94,7 +94,6 @@ class TestTeamInference:
             "alone_called": np.uint8(alone),
             "called_card_id": np.uint8(0),
             "called_under": np.uint8(0),
-            "called_suit_played": np.uint8(0),
             "picker_rel": np.uint8(3),
             "partner_rel": np.uint8(0),
             "leader_rel": np.uint8(1),
@@ -120,8 +119,30 @@ class TestTeamInference:
         state["current_trick"] = np.uint8(2)
         cards = ["9H", "AS", "7C"]
         assert ag._lead(state, cards) == "9H"  # through, even at trick 2
-        state["called_suit_played"] = np.uint8(1)
-        assert ag._lead(state, cards) == "AS"  # back to cashing fail aces
+        # act() is a pure function of the state: the lead is only PENDING
+        # until the trick has moved on, so asking again gives the same card.
+        assert ag._lead(state, cards) == "9H"
+        assert not ag._called_suit_led and ag._pending_lead == (2, "9H")
+        later = self._lead_state(1, alone=0, hand_ids=hand)
+        later["called_card_id"] = np.uint8(DECK_IDS["AH"])
+        later["current_trick"] = np.uint8(3)
+        assert ag._lead(later, cards) == "AS"  # back to cashing fail aces
+        assert ag._called_suit_led
+        # ... and so does seeing another seat lead it (relative seat order,
+        # leader at leader_rel): a heart led from seat rel 3 at trick 1.
+        ag.reset_recurrent_state()
+        seen = self._lead_state(1, alone=0, hand_ids=hand)
+        seen["called_card_id"] = np.uint8(DECK_IDS["AH"])
+        seen["leader_rel"] = np.uint8(3)
+        seen["trick_card_ids"] = np.array([0, 0, DECK_IDS["7H"], 0, 0], dtype=np.uint8)
+        ag._note_led_card(seen)
+        assert ag._called_suit_led
+        assert ag._lead(state, cards) == "AS"
+        # A new hand (trick 0) clears it.
+        fresh = self._lead_state(1, alone=0, hand_ids=hand)
+        fresh["current_trick"] = np.uint8(0)
+        ag._note_led_card(fresh)
+        assert not ag._called_suit_led
 
     def test_jd_holder_is_defender_when_picker_goes_alone(self):
         # JD-mode: holding the JD marks the secret partner — but not when

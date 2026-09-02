@@ -35,8 +35,11 @@ PLAY — LEADING
     the biggest fail (aces first by points).
   * Defender: NEVER lead trump while holding fail (the exact tell the 30M
     RL lineage leaks); in CA mode lead the called suit through whenever it
-    is held and has not been led yet (any trick — extended from trick-0-only
-    2026-07-28 once ``called_suit_played`` entered the observation dict);
+    is held and has not been led yet (any trick). Whether the called suit
+    has been led is tracked by the agent itself from the tricks it sees
+    (it plays in every trick, so it sees every trick's led card at its own
+    turn, or led it) — the observation dict carries no precomputed table
+    facts (2026-09-02: ``called_suit_played`` removed from the contract);
     otherwise fail aces, then highest fail; all-trump hand -> lowest trump.
   * Team membership is self-inferred from public info plus own hand: on the
     picker's team iff picker, revealed partner, or holding the called card /
@@ -145,13 +148,23 @@ class ScriptedAgent:
     def __init__(self, pick_threshold: int = 7, alone_threshold: int = 13):
         self.pick_threshold = pick_threshold
         self.alone_threshold = alone_threshold
+        # Has the called suit been led in this hand? Set from the led card of
+        # every trick this seat plays in (see _note_led_card); reset at the
+        # first trick of a hand. A lead of our own is recorded as PENDING
+        # and applied once the trick has moved on, so act() stays a pure
+        # function of the state (calling it twice returns the same card).
+        self._called_suit_led = False
+        self._pending_lead: tuple[int, str] | None = None
 
     # ------------------------------------------------------------- interface
     def reset_recurrent_state(self) -> None:
-        pass
+        self._called_suit_led = False
+        self._pending_lead = None
 
     def observe(self, state, player_id=None, valid_actions=None) -> None:
-        pass
+        # Post-trick frames carry the completed trick with the NEXT leader
+        # in leader_rel, so only the hand/trick bookkeeping applies here.
+        self._advance(state)
 
     def act(self, state, valid_actions, player_id=None, deterministic=True):
         # Deliberately no exception guard: a decision bug must raise, not
@@ -229,11 +242,43 @@ class ScriptedAgent:
         return discards[min(discards, key=key)]
 
     # ------------------------------------------------------------------ play
+    def _advance(self, state) -> None:
+        """Hand/trick bookkeeping: the first trick of a hand resets the flag
+        (nothing can have been led before it); a pending lead of our own
+        counts once the trick it was led in is behind us."""
+        trick = int(state["current_trick"])
+        if trick == 0 and not any(int(x) for x in state["trick_card_ids"]):
+            self._called_suit_led = False
+            self._pending_lead = None
+        if self._pending_lead is not None and self._pending_lead[0] < trick:
+            _, card = self._pending_lead
+            called = _card(int(state["called_card_id"]))
+            if called and card[-1] == called[-1]:
+                self._called_suit_led = True
+            self._pending_lead = None
+
+    def _note_led_card(self, state) -> None:
+        """Track whether the called suit has been led from the trick in
+        progress: trick cards arrive in relative seat order with the trick's
+        leader at ``leader_rel``, and this seat plays in every trick, so it
+        sees every led card (or led it — see ``_pending_lead``)."""
+        self._advance(state)
+        called = _card(int(state["called_card_id"]))
+        if not called or self._called_suit_led:
+            return
+        trick_ids = [int(x) for x in state["trick_card_ids"]]
+        if not any(trick_ids):
+            return
+        led = _card(trick_ids[int(state["leader_rel"]) - 1])
+        if led and not _is_trump(led) and led[-1] == called[-1]:
+            self._called_suit_led = True
+
     def _choose_play(self, state, plays: dict[str, int], hand) -> int:
         trick_ids = [int(x) for x in state["trick_card_ids"]]
         leader_rel = int(state["leader_rel"])
         is_leaster = bool(state["is_leaster"])
         n_played = sum(1 for x in trick_ids if x)
+        self._note_led_card(state)
 
         cards = sorted(plays)  # deterministic
         if n_played == 0:
@@ -284,6 +329,7 @@ class ScriptedAgent:
         return plays[self._duck(cards)]
 
     def _lead(self, state, cards: list[str]) -> str:
+        self._advance(state)  # a pending lead of ours may have matured
         on_picker_team = self._same_team(state, 0, leading=True)
         trumps = [c for c in cards if _is_trump(c)]
         fails = [c for c in cards if not _is_trump(c)]
@@ -296,10 +342,12 @@ class ScriptedAgent:
         # 30M lineage leaks). Called suit through first, then fail aces.
         if fails:
             called = _card(int(state["called_card_id"]))
-            if called and not int(state["called_suit_played"]):
+            if called and not self._called_suit_led:
                 through = [c for c in fails if c[-1] == called[-1]]
                 if through:
-                    return max(through, key=lambda c: _fail_power(c))
+                    card = max(through, key=lambda c: _fail_power(c))
+                    self._pending_lead = (int(state["current_trick"]), card)
+                    return card
             aces = [c for c in fails if c.startswith("A")]
             if aces:
                 return aces[0]
