@@ -2882,8 +2882,8 @@ Arms 4 and 4b (bilinear + heteroscedastic model; cert 4 x n=1000 +
 dup h2h):
 
     arm   blend variance            targets: |z| p50 / clipped   called-suit  partner  t0-trump  h2h vs theta_k
-    4     per-NODE (head sigma_u^2)   3.4 / 17.1%                 42.7         95.6     0.2       (pending)
-    4b    per-class (all rows)        1.7 / 3.1%                  44.0         98.2     0.45      (pending)
+    4     per-NODE (head sigma_u^2)   3.4 / 17.1%                 42.7         95.6     0.2       +0.0125 se 0.0075
+    4b    per-class (all rows)        1.7 / 3.1%                  44.0         98.2     0.45      +0.0193 se 0.0068
     3     per-class (all rows)        1.65 / 2.8%                 45.0         97.9     0.2       +0.0252 se 0.0065
 
 Arm 4's per-node variances make the targets much sharper (a fifth of
