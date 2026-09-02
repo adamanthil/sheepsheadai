@@ -158,6 +158,9 @@ def store_episodes(agent, episodes: list, gap_floor: float = 0.0) -> None:
                 dset = "none"
             rec["distill_set"] = SET_CODES.get(dset, 0)
             rec["search_gap"] = float(src.get("search_gap", 0.0) or 0.0)
+            # Optional per-row CE weight written by a target stage (§20.9
+            # posterior-precision weighting); None = use the omega rule.
+            rec["search_weight"] = src.get("search_weight")
             rec["node_class"] = src.get("node_class", "")
             rec["conv_cs_ids"] = src.get("conv_cs_ids")
             rec["anchor_probs"] = densify(
@@ -173,23 +176,30 @@ def store_episodes(agent, episodes: list, gap_floor: float = 0.0) -> None:
 # --------------------------------------------------------------------------- #
 # Distill channels (aligned with the agent's pad/flatten path)
 # --------------------------------------------------------------------------- #
+# Weight-channel sentinel: "no explicit weight, use the omega rule".
+NO_WEIGHT = -1.0
+
+
 def flat_channels(agent, batch, kinds):
-    """(set_flat, gap_flat, anchor_flat) aligned with
+    """(set_flat, gap_flat, anchor_flat, weight_flat) aligned with
     ``_flatten_action_steps``: same per-segment padding, same
-    is-action row selection order."""
+    is-action row selection order. ``weight_flat`` is the explicit per-row
+    CE weight or ``NO_WEIGHT``."""
     device = ppo_module.device
     lengths = []
-    set_list, gap_list, anchor_list, is_act_list = [], [], [], []
+    set_list, gap_list, anchor_list, weight_list, is_act_list = [], [], [], [], []
     for seg_start, seg_end in batch:
         ev_range = range(seg_start, seg_end + 1)
         lengths.append(seg_end - seg_start + 1)
-        sets, gaps, anchors, is_act = [], [], [], []
+        sets, gaps, anchors, weights, is_act = [], [], [], [], []
         for i in ev_range:
             ev = agent.events[i]
             action = kinds[i] == "action"
             is_act.append(action)
             sets.append(float(ev.get("distill_set", 0)) if action else 0.0)
             gaps.append(float(ev.get("search_gap", 0.0)) if action else 0.0)
+            w = ev.get("search_weight") if action else None
+            weights.append(float(w) if w is not None else NO_WEIGHT)
             anchor = ev.get("anchor_probs") if action else None
             anchors.append(
                 torch.tensor(
@@ -201,6 +211,7 @@ def flat_channels(agent, batch, kinds):
         set_list.append(torch.tensor(sets, dtype=torch.float32, device=device))
         gap_list.append(torch.tensor(gaps, dtype=torch.float32, device=device))
         anchor_list.append(torch.stack(anchors, dim=0))
+        weight_list.append(torch.tensor(weights, dtype=torch.float32, device=device))
         is_act_list.append(torch.tensor(is_act, dtype=torch.bool, device=device))
     pad = agent._pad_to_bt
     flat_mask = pad(is_act_list, lengths, False).view(-1)
@@ -208,7 +219,8 @@ def flat_channels(agent, batch, kinds):
     gap_flat = pad(gap_list, lengths, 0.0).view(-1)[flat_mask]
     anchor_bt = pad(anchor_list, lengths, 0.0)
     anchor_flat = anchor_bt.view(-1, anchor_bt.size(-1))[flat_mask]
-    return set_flat, gap_flat, anchor_flat
+    weight_flat = pad(weight_list, lengths, NO_WEIGHT).view(-1)[flat_mask]
+    return set_flat, gap_flat, anchor_flat, weight_flat
 
 
 _IS_PLAY = [name.startswith("PLAY ") for name in ACTIONS]
@@ -334,7 +346,7 @@ def kd_kl(anchor_flat: torch.Tensor, logits_flat: torch.Tensor, tau: float):
 def distill_losses(agent, minibatch, forward, flat, dchan, args):
     """Total loss + telemetry scalars for one minibatch. Policy terms per
     partition (means, lambda-combined); value/aux terms on all rows."""
-    set_flat, gap_flat, anchor_flat = dchan
+    set_flat, gap_flat, anchor_flat, weight_flat = dchan
     stats = {}
 
     logp = F.log_softmax(flat.logits_flat, dim=-1)
@@ -345,6 +357,9 @@ def distill_losses(agent, minibatch, forward, flat, dchan, args):
         target = flat.search_target_flat[ov]
         ce = -(target * logp[ov]).sum(dim=-1)
         omega = omega_weights(gap_flat[ov], args.beta, args.omega_max)
+        # Explicit per-row weights (§20.9) replace the omega rule where set.
+        w_ov = weight_flat[ov]
+        omega = torch.where(w_ov >= 0.0, w_ov, omega)
         override_loss = (omega * ce).mean()
         with torch.no_grad():
             ent = -(target.clamp(min=1e-12) * target.clamp(min=1e-12).log()).sum(-1)
@@ -532,6 +547,7 @@ def run_epoch(agent, episodes, args, train: bool, frozen=None):
                             dchan[0],
                             dchan[1],
                             F.softmax(f_flat.logits_flat, dim=-1),
+                            dchan[3],
                         )
                 accumulate_conventions(
                     conv_counts,

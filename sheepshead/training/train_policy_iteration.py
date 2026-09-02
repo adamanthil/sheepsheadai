@@ -311,6 +311,14 @@ def stage_target(args) -> dict:
     shards, manifest = load_corpus(args.corpus_dir)
     action_size = agent.action_size
     z_abs = built["z"].abs().amax(dim=1)
+    # §20.9 posterior-precision CE weights: 1 / v_post, mean-normalized over
+    # the targeted rows so the dose is unchanged and only its allocation
+    # moves, capped so no row dominates.
+    weights = None
+    if args.weight_mode == "precision":
+        prec = 1.0 / built["v_post"].clamp(min=1e-9)
+        weights = (prec / prec.mean()).clamp(max=args.weight_max)
+        weights = weights / weights.mean()
     kl_prior = (
         built["target"]
         * (
@@ -331,6 +339,7 @@ def stage_target(args) -> dict:
         ev["pi_v_post"] = float(built["v_post"][r])
         ev["pi_z_max"] = float(z_abs[r])
         ev["pi_kl_to_prior"] = float(kl_prior[r])
+        ev["search_weight"] = float(weights[r]) if weights is not None else None
         assert len(ev["search_target"]) == len(valid) and len(t) == action_size
 
     out_dir = os.path.join(args.out_dir, TARGETED_SUBDIR)
@@ -344,6 +353,9 @@ def stage_target(args) -> dict:
         "rows_with_q": int(table.has_q.sum()),
         "sigma_u2": sigma_u2,
         "variance_mode": args.variance_mode,
+        "weight_mode": args.weight_mode,
+        "weight_p50": float(weights.median()) if weights is not None else None,
+        "weight_p90": float(weights.quantile(0.9)) if weights is not None else None,
         "kappa": args.kappa,
         "tilt_max": args.tilt_max,
         "gamma_p50_rows_with_q": float(built["gamma"][table.has_q].median())
@@ -446,6 +458,20 @@ def stage_distill(args) -> list[str]:
             log(f"[distill epoch 0] holdout: {train_distill.fmt_stats(init_stats)}")
             log_row({"kind": "holdout", "epoch": 0, **init_stats})
         for epoch in range(1, args.epochs + 1):
+            # §20.9 head-first projection (LP-FT, Kumar et al. 2022): the
+            # encoder is frozen for the first --freeze-encoder-epochs at
+            # --head-lr, then everything trains at --lr.
+            freeze = epoch <= args.freeze_encoder_epochs
+            for prm in agent.encoder.parameters():
+                prm.requires_grad_(not freeze)
+            agent.set_learning_rates(
+                actor_lr=args.head_lr if freeze else args.lr, critic_lr=args.lr
+            )
+            if args.freeze_encoder_epochs:
+                log(
+                    f"[distill epoch {epoch}] encoder "
+                    f"{'FROZEN, actor lr ' + str(args.head_lr) if freeze else 'unfrozen, lr ' + str(args.lr)}"
+                )
             t0 = time.time()
             train_stats, steps = train_distill.run_epoch(
                 agent, train_eps, dargs, train=True
@@ -561,6 +587,14 @@ def build_parser() -> argparse.ArgumentParser:
         "value, or per node from the heteroscedastic head (§20.8)",
     )
     tgt.add_argument(
+        "--weight-mode",
+        choices=("none", "precision"),
+        default="none",
+        help="per-row CE weight for the projection: none (uniform) or the "
+        "posterior precision 1/v_post, mean-normalized (§20.9)",
+    )
+    tgt.add_argument("--weight-max", type=float, default=5.0)
+    tgt.add_argument(
         "--variance-rows",
         choices=("holdout", "all"),
         default="all",
@@ -578,6 +612,15 @@ def build_parser() -> argparse.ArgumentParser:
     dst.add_argument("--targeted-dir", default=None, help="default <out-dir>/targeted")
     dst.add_argument("--epochs", type=int, default=1)
     dst.add_argument("--lr", type=float, default=1e-4)
+    dst.add_argument(
+        "--freeze-encoder-epochs",
+        type=int,
+        default=0,
+        help="head-first projection: epochs with the encoder frozen (§20.9)",
+    )
+    dst.add_argument(
+        "--head-lr", type=float, default=1e-3, help="actor lr while frozen"
+    )
     dst.add_argument("--lambda-ce", type=float, default=1.0)
     dst.add_argument("--lambda-ret", type=float, default=1.0)
     dst.add_argument("--kd-tau", type=float, default=1.0)

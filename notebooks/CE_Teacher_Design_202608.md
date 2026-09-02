@@ -2934,3 +2934,39 @@ What this leaves for installation, in order of principle:
     iterations the anchor ratchets; before iteration 3 either anchor
     bidding to the fixed 8M seed or bring bidding into search emission
     (§16.9 addendum 7).
+
+### 20.9 Projection-realization experiments — pre-registration (2026-09-02)
+
+Standing recipe = arm 3 (FH-weighted fit, class variance, lambda_ce 1,
+one epoch). Screening base = arm 4b (bilinear model, class variance —
+the same targets every variant below projects). Bar for adoption: no
+regression vs the control on h2h, partner, t0-trump, spread, and a
+measurable gain in lead-row realization (train AND held-out; §20.8
+control ~15%). Screen = realization + the distill's 500-game probe;
+cert (4 x n=1000 + dup h2h) only for variants that pass the screen.
+
+Variants (each ~10 min to screen, ~1 h to cert):
+  P1  Posterior-precision CE weights: omega_n = (1/v_post,n) mean-
+      normalized, capped at 5 — GLS on noisy targets (Fay-Herriot one
+      stage later; Kendall & Gal 2017); same dose, different
+      allocation. Prediction: lead realization up (lead rows have small
+      v_post under the bilinear model), noise-dominated ties down-
+      weighted, EV held or better.
+  P2  Head-first projection (LP-FT, Kumar et al. 2022): epoch 1 with
+      the encoder frozen at actor lr 1e-3, epoch 2 full at 1e-4.
+      Prediction: lead realization up without partner/pick collateral
+      (no feature distortion in epoch 1); the full epoch then behaves
+      like the control.
+  P3  Epoch averaging (Polyak / SWA, Izmailov et al. 2018; Vieillard
+      2020 across iterations): mean of arm 3's ep1 and ep2 weights, no
+      training. Prediction: EV between ep1 and ep2 or above both if
+      ep2's loss was variance; realization ~ep2's.
+  P4  Linear scaling (Goyal et al. 2017): 4x batch (128 segments), 4x
+      lr (4e-4), one epoch. Prediction: same displacement budget, less
+      per-step noise; realization up modestly.
+  P5  Best two combined, if two help independently.
+
+Realization instrument: analysis/lead_row_realization.py (policy vs
+target called-suit mass and argmax at t0/t1 defender leads on the
+train and held-out games of the distill split; realized fraction of
+the target mass shift relative to theta_k).

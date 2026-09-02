@@ -282,7 +282,7 @@ def test_channel_alignment_and_loss_masking():
     res = _generate_game(agent, game_idx=3)
     with torch.no_grad():
         minibatch, forward, flat, dchan = _store_and_batch(agent, res["episodes"])
-        set_flat, gap_flat, anchor_flat = dchan
+        set_flat, gap_flat, anchor_flat, _weight_flat = dchan
 
         src = [e for ep in res["episodes"] for e in ep if e["kind"] == "action"]
         # Row counts per partition match the source events exactly.
@@ -344,6 +344,7 @@ def test_recomputed_anchors_zero_at_init():
             dchan[0],
             dchan[1],
             torch.softmax(f_flat.logits_flat, dim=-1),
+            dchan[3],
         )
     total, stats = distill_losses(
         agent, minibatch, forward, flat, dchan_rc, _trainer_args()
