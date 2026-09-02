@@ -3205,3 +3205,27 @@ Accepted checkpoint = runs/policy_iteration_202609/iter10/
 distill_epoch7.pt (theta_{k+1}). Next: bidding PG phase (bidding
 heads only; trunk + play head frozen; head-routed h2h as instrument),
 then the §20.10 regeneration from theta_{k+1}.
+
+§20.9 P1 SCREEN (2026-09-02 11:00) — PASS, cert launched:
+Targets rebuilt from the iter6 fit with --weight-mode precision (omega =
+1/v_post mean-normalized, cap 5; weight p50 0.94 / p90 1.79); target
+distribution verified IDENTICAL to arm 5f's (same KL/z/clip stats), so
+the screen isolates the weights. Same 5f projection (trunk epoch @1e-4,
+six bilinear-only epochs @1e-3), iter11.
+
+    lead-row realization        arm 5f ep7    P1 ep4    P1 ep7
+    t0 defender lead, train        32%          37%       40%
+    t1 defender lead, train        30%          32%       37%
+    t0 defender lead, held-out     35%          43%       43%
+    t1 defender lead, held-out     15%          41%       38%
+
+Realization up on every row set, train AND held-out, at the same dose;
+the bilinear head's 32% plateau was therefore allocation, not capacity
+(the pre-registered P1 prediction). Held-out target KL 0.089 vs 5f's
+0.085 — the unweighted KL is no longer the objective, so a slightly
+higher value is expected and not a regression. Probe (500 games, ep7):
+called-suit 47.3, partner 98.5, t0-trump 0.0, spread 4.1, pick 36.8,
+alone 12.2 — within the seed's band. Cert (4 x n=1000 + dup h2h vs
+theta_k) launched on iter11/distill_epoch7.pt as p1_bp_ep7; adoption
+bar unchanged (h2h >= 5f's +0.020 within se, partner >= 96.5, t0 <= 1,
+spread >= 3.6, called-suit pooled >= 5f's 46.4).
