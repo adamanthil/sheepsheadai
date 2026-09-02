@@ -513,9 +513,18 @@ def fit_advantage_model(
     patience: int,
     seed: int,
     log=print,
+    extra_var: torch.Tensor | None = None,
 ) -> FitReport:
     """Stage 1 on a cached ``RowTable`` (frozen rungs). Early-stops on the
-    held-out weighted MSE and restores the best epoch's weights."""
+    held-out weighted MSE and restores the best epoch's weights.
+
+    ``extra_var`` (per row) is added to the noise variance in the training
+    weight only: the Fay-Herriot generalized-least-squares weight is
+    1 / (noise_var + sigma_u^2 of the row's cell), which keeps cells whose
+    true advantages vary a lot (picker follows, ~2e-3 Q^2) from dominating
+    the fit over cells whose whole signal is ~1e-4 Q^2 (lead conventions).
+    Held-out diagnostics keep the plain 1 / noise_var weight so reports
+    stay comparable across iterations."""
     if model.capacity == "trunk":
         raise ValueError("the trunk rung re-encodes rows; use fit_advantage_model_live")
     device = ppo_module.device
@@ -526,6 +535,7 @@ def fit_advantage_model(
     )
     report = FitReport(capacity=model.capacity)
     q_train = train_idx[table.has_q[train_idx]]
+    train_var = table.noise_var if extra_var is None else table.noise_var + extra_var
     best_state = copy.deepcopy(model.state_dict())
     since_best = 0
     for epoch in range(1, epochs + 1):
@@ -544,7 +554,7 @@ def fit_advantage_model(
                 pred,
                 table.advantage[b].to(device),
                 table.label_mask[b].to(device),
-                table.noise_var[b].to(device),
+                train_var[b].to(device),
                 var_floor,
             )
             opt.zero_grad()
@@ -590,6 +600,57 @@ def fit_advantage_model(
         report.per_class, report.sigma_u2, CLASS_SHRINK_ROWS
     )
     return report
+
+
+def fit_advantage_model_iterated(
+    make_model,
+    table: RowTable,
+    train_idx: torch.Tensor,
+    holdout_idx: torch.Tensor,
+    *,
+    fh_iterations: int,
+    class_shrink_rows: float,
+    var_floor: float,
+    log=print,
+    **fit_kwargs,
+) -> tuple[AdvantageModel, FitReport]:
+    """Fay-Herriot iterated weighted least squares (§20.6 arm 3): fit with
+    plain 1 / noise_var weights, estimate the per-cell residual variance on
+    every row with Q, refit with 1 / (noise_var + sigma_u^2_cell) weights,
+    repeat. ``make_model()`` returns a fresh model each round (the fit is
+    re-run from scratch so early stopping stays honest). Returns the last
+    round's model and report, the report's ``sigma_u2_by_class`` being the
+    all-rows estimate the target stage should use."""
+    extra = None
+    model = make_model()
+    report = FitReport(capacity=model.capacity)
+    for it in range(fh_iterations):
+        model = make_model()
+        report = fit_advantage_model(
+            model,
+            table,
+            train_idx,
+            holdout_idx,
+            var_floor=var_floor,
+            log=log,
+            extra_var=extra,
+            **fit_kwargs,
+        )
+        all_rows = evaluate_rows(
+            model, table, torch.arange(len(table)), var_floor=var_floor
+        )
+        report.sigma_u2_by_class = class_residual_variances(
+            all_rows.per_class, report.sigma_u2, class_shrink_rows
+        )
+        extra = sigma_u2_rows(
+            table.node_class, report.sigma_u2_by_class, report.sigma_u2
+        )
+        log(
+            f"[fit {model.capacity} FH round {it + 1}/{fh_iterations}] best epoch "
+            f"{report.best_epoch}, holdout wMSE {report.best_holdout_mse:.3e}, "
+            f"sigma_u2 {report.sigma_u2:.3e}"
+        )
+    return model, report
 
 
 # --------------------------------------------------------------------------- #

@@ -57,7 +57,7 @@ from sheepshead.training.search_advantage import (
     build_row_table,
     class_residual_variances,
     evaluate_rows,
-    fit_advantage_model,
+    fit_advantage_model_iterated,
     fit_advantage_model_live,
     sigma_u2_rows,
     split_rows_by_game,
@@ -163,19 +163,21 @@ def stage_fit(args) -> FitReport:
                 log=log,
             )
         else:
-            report = fit_advantage_model(
-                model,
+            model, report = fit_advantage_model_iterated(
+                lambda cap=cap: AdvantageModel(agent, cap),
                 table,
                 train_idx,
                 hold_idx,
+                fh_iterations=args.fh_iterations,
+                class_shrink_rows=args.class_shrink_rows,
+                var_floor=args.var_floor,
+                log=log,
                 epochs=args.fit_epochs,
                 lr=args.fit_lr,
                 weight_decay=args.weight_decay,
                 batch_rows=args.batch_rows,
-                var_floor=args.var_floor,
                 patience=args.patience,
                 seed=args.seed,
-                log=log,
             )
         reports[cap] = report
         torch.save(
@@ -487,6 +489,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="added to every row's noise variance in the 1/var weight (Q^2)",
     )
     fit.add_argument("--rebuild-table", action="store_true")
+    fit.add_argument(
+        "--fh-iterations",
+        type=int,
+        default=2,
+        help="Fay-Herriot iterated-WLS rounds for the frozen rungs (§20.6 arm 3): "
+        "round 1 weights 1/noise_var, later rounds 1/(noise_var + cell sigma_u^2)",
+    )
     # Stage 2
     tgt = ap.add_argument_group("target")
     tgt.add_argument(
