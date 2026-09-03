@@ -25,12 +25,13 @@ import pytest
 import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-from sheepshead.tests.test_ismcts_exit_regression import (
-    _drive_to_second_bury,
-    _head,
-    _is_private,
+from sheepshead.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+    infer_head,
+    is_private_decision,
 )
+from sheepshead.tests.ismcts_test_helpers import drive_to_second_bury, fresh_agent
 
 # Runs real forced replays with network encodes (~1 min).
 pytestmark = pytest.mark.slow
@@ -42,12 +43,6 @@ def _seed():
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
-
-
-def _fresh_agent():
-    from sheepshead.agent.ppo import PPOAgent
-
-    return PPOAgent(len(ACTIONS))
 
 
 def _drive_to_node(game, rng, want_head, min_public=0, trick_boundary=None):
@@ -68,7 +63,7 @@ def _drive_to_node(game, rng, want_head, min_public=0, trick_boundary=None):
                         ACTIONS[a - 1].startswith("PLAY ") for a in valid
                     ):
                         return player.position, forced_public
-                elif not game.is_leaster and _head(valid) == want_head:
+                elif not game.is_leaster and infer_head(valid) == want_head:
                     at_boundary = game.cards_played == 0 and game.current_trick > 0
                     if len(forced_public) >= min_public and (
                         trick_boundary is None
@@ -80,7 +75,7 @@ def _drive_to_node(game, rng, want_head, min_public=0, trick_boundary=None):
                     action_id = pass_id
                 else:
                     action_id = rng.choice(sorted(valid))
-                if not _is_private(valid):
+                if not is_private_decision(valid):
                     forced_public.append((player.position, action_id))
                 player.act(action_id)
                 valid = player.get_valid_action_ids()
@@ -123,7 +118,7 @@ def _collect_panel_nodes():
     found = 0
     for game_seed in range(300):
         game = Game(partner_selection_mode=PARTNER_BY_JD, seed=game_seed)
-        out = _drive_to_second_bury(game)
+        out = drive_to_second_bury(game)
         if out is None or len(game.bury) != 1:
             continue
         observer, forced_public = out
@@ -168,7 +163,7 @@ def test_replay_equivalence_panel():
     """Sequential and lockstep builds agree world-by-world at every root
     category (the control-flow surface the unified director must cover)."""
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
     rng = random.Random(SEED)
     checked = 0
@@ -263,7 +258,7 @@ def test_sequential_drop_on_inconsistent_deal():
     bad_public counter — never raise (the previously untested half of the
     raise-vs-drop contract)."""
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     rng = random.Random(SEED)
     game, observer, forced_public, good, corrupted = _find_corruptible_node_and_deal(
         agent, rng
@@ -289,7 +284,7 @@ def test_batched_fallback_on_organic_inconsistency():
     lockstep raise -> sequential fallback, keep exactly the consistent worlds,
     and produce the exact exception->counter mapping."""
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     rng = random.Random(SEED)
     game, observer, forced_public, good, corrupted = _find_corruptible_node_and_deal(
         agent, rng
@@ -319,7 +314,7 @@ def _drain_director(real_game, deal, forced_public, observer):
     event trace and the finished world."""
     from collections import deque
 
-    from sheepshead.ismcts import ISMCTSTeacher, _PrivateDecision, _replay_events
+    from sheepshead.ismcts import ISMCTSTeacher, PrivateDecision, replay_events
 
     world = Game(partner_selection_mode=real_game.partner_mode_flag)
     for seat in range(1, 6):
@@ -330,10 +325,10 @@ def _drain_director(real_game, deal, forced_public, observer):
     det_bury = deque(deal["bury"])
     det_under = deal["under_card"]
     events = []
-    for event in _replay_events(real_game, world, forced_public, observer):
+    for event in replay_events(real_game, world, forced_public, observer):
         events.append(event)
         player = world.players[event.seat - 1]
-        if isinstance(event, _PrivateDecision):
+        if isinstance(event, PrivateDecision):
             action_id = ISMCTSTeacher._forced_private(
                 player.get_valid_action_ids(), det_bury, det_under
             )
@@ -346,12 +341,12 @@ def _drain_director(real_game, deal, forced_public, observer):
 
 def test_director_event_trace():
     """The director's event sequence is exactly the public record in order
-    (with scheme-B weighted flags) interleaved with one _PrivateDecision per
+    (with scheme-B weighted flags) interleaved with one PrivateDecision per
     completed private action, terminating at the root (no raise)."""
     from sheepshead.ismcts import (
-        _is_weighted_bidding_action,
-        _PrivateDecision,
-        _PublicAction,
+        PrivateDecision,
+        PublicAction,
+        is_weighted_bidding_action,
     )
 
     _seed()
@@ -367,7 +362,7 @@ def test_director_event_trace():
             break
     for game_seed in range(300):  # second-bury private root
         game = Game(partner_selection_mode=PARTNER_BY_JD, seed=game_seed)
-        out = _drive_to_second_bury(game)
+        out = drive_to_second_bury(game)
         if out is not None and len(game.bury) == 1:
             cases.append((game, *out))
             break
@@ -377,14 +372,14 @@ def test_director_event_trace():
         deal = game.sample_determinization(observer, rng)
         world, events = _drain_director(game, deal, forced_public, observer)
 
-        public_events = [e for e in events if isinstance(e, _PublicAction)]
+        public_events = [e for e in events if isinstance(e, PublicAction)]
         assert [(e.seat, e.action_id) for e in public_events] == list(forced_public), (
             "public events must be the forced record, in order"
         )
         for e in public_events:
-            assert e.weighted == _is_weighted_bidding_action(e.action_id)
+            assert e.weighted == is_weighted_bidding_action(e.action_id)
 
-        private_events = [e for e in events if isinstance(e, _PrivateDecision)]
+        private_events = [e for e in events if isinstance(e, PrivateDecision)]
         expected_private = len(game.bury) + (1 if game.under_card else 0)
         assert len(private_events) == expected_private, (
             f"{len(private_events)} private events, expected {expected_private}"

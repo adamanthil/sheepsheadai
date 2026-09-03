@@ -8,19 +8,22 @@ tested on real generated corpora with the same agent that produced them.
 
 import argparse
 import random
-from types import SimpleNamespace
 
 import pytest
 import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE
-from sheepshead.agent.ppo import PPOAgent
-from sheepshead.tests.ppo_test_helpers import seed_all
+from sheepshead.tests.distill_test_helpers import (
+    fresh_agent,
+    generate_game,
+    worker_state,
+)
 from sheepshead.training import policy_iteration
 from sheepshead.training.distill_corpus import (
-    _W,
+    clear_worker_state,
     play_corpus_game,
     schedule_p,
+    set_worker_state,
 )
 from sheepshead.training.policy_iteration import (
     SET_CODES,
@@ -29,68 +32,6 @@ from sheepshead.training.policy_iteration import (
     kd_kl,
     store_episodes,
 )
-
-ARCH = "perceiver-recall"
-
-
-class _ScriptedCommittee:
-    """ISMCTSTeacher stand-in: deterministic committee replicates with a
-    LARGE Q spread (always material under the real shrinkage) favoring the
-    lowest-id valid action. Carries the engine config the target builder
-    reads readout constants from."""
-
-    def __init__(self, replicates=3):
-        self.replicates = replicates
-        self.config = SimpleNamespace(gumbel_c_visit=50.0, gumbel_c_scale=0.1)
-
-    def search_committee(self, game, observer, forced_public, rngs, d_rollout=None):
-        player = game.players[observer - 1]
-        valid = sorted(player.get_valid_action_ids())
-        out = []
-        for rep in range(self.replicates):
-            q = {a: 1.0 - 0.5 * i + 1e-4 * rep for i, a in enumerate(valid)}
-            out.append(
-                {
-                    "ok": True,
-                    "root_q": q,
-                    "root_n": {a: 256.0 for a in valid},
-                    "root_prior": {a: 1.0 / len(valid) for a in valid},
-                }
-            )
-        return out
-
-
-def _worker_state(agent, **overrides):
-    args = {
-        "seed": 7,
-        "collect_oracle": overrides.pop("collect_oracle", False),
-        "iters": 8,
-        "replicates": 3,
-        "d_rollout": 1,
-        "shrink_nu": 4.0,
-        "shrink_s2_global": 6.95e-4,
-        "p_base": overrides.pop("p_base", 1.0),
-        "boost_lead": 1.0,
-        "boost_cs": 1.0,
-        "p_min": overrides.pop("p_min", 1.0),
-        "p_max": overrides.pop("p_max", 1.0),
-    }
-    args.update(overrides)
-    _W.clear()
-    _W.update({"agent": agent, "teacher": _ScriptedCommittee(), "args": args})
-    return args
-
-
-def _fresh_agent():
-    seed_all(0)
-    agent = PPOAgent(len(ACTIONS), arch=ARCH)
-    agent.stash_action_probs = True
-    return agent
-
-
-def _generate_game(agent, game_idx=0, **overrides):
-    _worker_state(agent, **overrides)
-    return play_corpus_game((game_idx, PARTNER_BY_CALLED_ACE))
 
 
 # --------------------------------------------------------------------------- #
@@ -130,8 +71,8 @@ def test_kd_kl_zero_at_anchor():
 # Corpus generation (scripted committee)
 # --------------------------------------------------------------------------- #
 def test_partition_assignment_and_schema():
-    agent = _fresh_agent()
-    res = _generate_game(agent, collect_oracle=True)
+    agent = fresh_agent()
+    res = generate_game(agent, collect_oracle=True)
     assert len(res["episodes"]) == 5
     saw = {"override": 0, "retention": 0, "none": 0, "endorsed": 0}
     for ep in res["episodes"]:
@@ -189,10 +130,10 @@ def test_partition_assignment_and_schema():
 def test_unsearched_play_is_no_loss_not_retention():
     """The §16.9 addendum-3 invariant: eligible-but-unsearched play rows
     carry NO anchor (never merely-unasked anchoring)."""
-    agent = _fresh_agent()
+    agent = fresh_agent()
     play_rows = []
     for game_idx in range(2, 9):  # skip leaster/alone-only draws
-        res = _generate_game(agent, game_idx=game_idx, p_base=0.0, p_min=0.0, p_max=0.0)
+        res = generate_game(agent, game_idx=game_idx, p_base=0.0, p_min=0.0, p_max=0.0)
         play_rows = [
             e
             for ep in res["episodes"]
@@ -240,8 +181,8 @@ def _store_and_batch(agent, episodes):
 
 
 def test_channel_alignment_and_loss_masking():
-    agent = _fresh_agent()
-    res = _generate_game(agent, game_idx=3)
+    agent = fresh_agent()
+    res = generate_game(agent, game_idx=3)
     with torch.no_grad():
         minibatch, forward, flat, dchan = _store_and_batch(agent, res["episodes"])
         set_flat, weight_flat, anchor_flat = dchan
@@ -293,9 +234,8 @@ def test_convention_telemetry_rates():
     """convention_rows + accumulate + report on hand-built rows: a defender
     lead holding both classes (also called-suit eligible), a partner lead,
     and an ineligible follow row."""
-    from sheepshead import ACTIONS
 
-    agent = _fresh_agent()
+    agent = fresh_agent()
     n = agent.action_size
     play_ids = [i + 1 for i, name in enumerate(ACTIONS) if name.startswith("PLAY ")]
     from sheepshead import TRUMP
@@ -371,11 +311,11 @@ def test_split_by_game_keeps_siblings_together():
 
 
 def test_run_epoch_steps_and_updates_weights():
-    agent = _fresh_agent()
+    agent = fresh_agent()
     episodes = []
     overrides = 0
     for g in range(10, 20):  # collect until an override row exists
-        res = _generate_game(agent, game_idx=g)
+        res = generate_game(agent, game_idx=g)
         episodes.extend(res["episodes"])
         overrides += sum(c["override"] for c in res["counts"].values())
         if len(episodes) >= 10 and overrides:
@@ -400,10 +340,15 @@ def test_generator_end_to_end_real_search(tmp_path):
     budget (uncertified; schema only)."""
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
-    agent = _fresh_agent()
-    _worker_state(agent, p_base=0.3, p_min=0.0, p_max=0.3)
-    _W["teacher"] = ISMCTSTeacher(
-        agent, ISMCTSConfig(iters={h: 8 for h in ("pick", "partner", "bury", "play")})
+    agent = fresh_agent()
+    args = worker_state(agent, p_base=0.3, p_min=0.0, p_max=0.3)
+    set_worker_state(
+        agent,
+        ISMCTSTeacher(
+            agent,
+            ISMCTSConfig(iters={h: 8 for h in ("pick", "partner", "bury", "play")}),
+        ),
+        args,
     )
     res = play_corpus_game((0, PARTNER_BY_CALLED_ACE))
     assert len(res["episodes"]) == 5
@@ -414,5 +359,5 @@ def test_generator_end_to_end_real_search(tmp_path):
 
 
 def teardown_function(_fn):
-    _W.clear()
+    clear_worker_state()
     random.seed()

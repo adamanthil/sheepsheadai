@@ -93,7 +93,7 @@ def collect_probe_states(agent) -> list:
     return states
 
 
-def _key_sha(net: torch.nn.Module) -> str:
+def key_sha(net: torch.nn.Module) -> str:
     h = hashlib.sha256()
     for k in sorted(net.state_dict().keys()):
         h.update(k.encode())
@@ -165,7 +165,7 @@ def capture_arch(arch: str) -> dict:
     nets = {"encoder": agent.encoder, "actor": agent.actor, "critic": agent.critic}
     return {
         "arch": arch,
-        "key_sha": {n: _key_sha(net) for n, net in nets.items()},
+        "key_sha": {n: key_sha(net) for n, net in nets.items()},
         "keys": {n: sorted(net.state_dict().keys()) for n, net in nets.items()},
         "weight_sha": {n: _weight_sha(net) for n, net in nets.items()},
         "meta": {

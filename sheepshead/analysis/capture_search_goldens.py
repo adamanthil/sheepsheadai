@@ -37,7 +37,7 @@ import torch
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, infer_head, is_private_action
 from sheepshead.training.training_utils import set_all_seeds
 
 SEED = 20260810
@@ -77,17 +77,6 @@ ARMS = {
 HEADS = ("pick", "partner", "bury", "play", "leaster")
 
 
-def _head(valid):
-    names = [ACTIONS[a - 1] for a in valid]
-    if any(n in ("PICK", "PASS") for n in names):
-        return "pick"
-    if any(n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names):
-        return "partner"
-    if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
-        return "bury"
-    return "play"
-
-
 def _drive_to_head(game, rng, want_head):
     """Random-legal play until the first decision of ``want_head``; returns
     (observer, forced_public) or None. Public actions only in forced_public
@@ -102,7 +91,7 @@ def _drive_to_head(game, rng, want_head):
                 if want_head == "leaster":
                     if game.is_leaster and player.position == 1:
                         return player.position, forced_public
-                elif not game.is_leaster and _head(valid) == want_head:
+                elif not game.is_leaster and infer_head(valid) == want_head:
                     return player.position, forced_public
                 if want_head == "leaster" and pass_id in valid:
                     action_id = pass_id

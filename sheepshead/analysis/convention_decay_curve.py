@@ -46,7 +46,7 @@ from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
+from sheepshead.analysis.conventions import is_secret_partner, lead_options
 from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260719  # same CRN deal set as partner_trump_lead_probe
@@ -82,8 +82,8 @@ def probe_checkpoint(hero, n_deals: int, partner_mode: int, seed: int) -> dict:
                             and not player.is_picker
                             and game.partner != player.position
                         ):
-                            trumps, fails = _lead_options(player)
-                            secret = _is_secret_partner(game, player)
+                            trumps, fails = lead_options(player)
+                            secret = is_secret_partner(game, player)
                             if secret and trumps and fails:
                                 record.append(("partner_trump", set(trumps)))
                             if not secret and trumps and fails:

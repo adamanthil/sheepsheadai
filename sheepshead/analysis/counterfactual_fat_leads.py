@@ -55,9 +55,9 @@ import sheepshead.analysis.counterfactual_trump_leads as cf  # noqa: E402
 import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
 from sheepshead import TRUMP  # noqa: E402
+from sheepshead.analysis.conventions import called_suit_fail  # noqa: E402
 from sheepshead.analysis.scan_called_suit_leads import (  # noqa: E402
-    _called_suit_already_led,
-    _called_suit_fail,
+    called_suit_already_led,
 )
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL
@@ -72,7 +72,7 @@ def _lead_class(card: str, called: Optional[str], called_led: bool) -> str:
     while the suit is unled are 'other' (they belong to the C2 study)."""
     if card in TRUMP:
         return "other"
-    if called and not called_led and _called_suit_fail(card, called):
+    if called and not called_led and called_suit_fail(card, called):
         return "other"
     rank = card[:-1]
     if rank in FAT_RANKS:
@@ -136,11 +136,11 @@ def _classify_spots(resp, seed: int, max_trick: int) -> List[dict]:
         partner = view.get("partner") or 0
         if seat == picker or seat == partner:
             continue
-        if scan._is_secret_partner(view, PARTNER_MODE_CALLED_ACE):
+        if scan.is_secret_partner(view, PARTNER_MODE_CALLED_ACE):
             continue
 
         called = view.get("called_card")
-        called_led = _called_suit_already_led(view) if called else True
+        called_led = called_suit_already_led(view) if called else True
         legal_leads = [
             c for v in ad.validActionIds if (c := cf._card_of(v)) is not None
         ]

@@ -45,7 +45,7 @@ import numpy as np
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
 from sheepshead.agent.observation import observation_for
-from sheepshead.analysis.verify_shrinkage_cells import _lead_class
+from sheepshead.analysis.verify_shrinkage_cells import lead_class
 from sheepshead.game import get_card_points
 
 PUSH_EPS = 0.02
@@ -85,7 +85,7 @@ def _eligible_t0_lead(game, player, valid) -> dict | None:
         name = ACTIONS[a - 1]
         if not name.startswith("PLAY "):
             return None
-        classes[a] = _lead_class(name[5:], called, False)
+        classes[a] = lead_class(name[5:], called, False)
     kinds = set(classes.values())
     if "called" not in kinds or kinds == {"called"}:
         return None

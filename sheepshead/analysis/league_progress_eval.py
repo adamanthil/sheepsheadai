@@ -62,6 +62,7 @@ from sheepshead import (
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
+from sheepshead.analysis.conventions import is_secret_partner, lead_options
 from sheepshead.analysis.panels import PANEL_A
 from sheepshead.analysis.rigorous_eval import (
     DecisionProbe,
@@ -70,7 +71,6 @@ from sheepshead.analysis.rigorous_eval import (
     evaluate_hero_in_field,
     make_panel_field_fn,
 )
-from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
 from sheepshead.training.training_utils import paired_edge
 
 # Frozen experiment constants (pre-registered in notebooks/Extended_League_202607.md)
@@ -139,12 +139,12 @@ class TrumpLeadCollector:
                 player.is_picker
                 or player.is_partner
                 or game.partner == player.position
-                or _is_secret_partner(game, player)
+                or is_secret_partner(game, player)
             )
         )
 
     def record(self, game, player, valid_actions, action, probs) -> None:
-        trumps, fails = _lead_options(player)
+        trumps, fails = lead_options(player)
         tally = self.stats[int(game.current_trick)]
         if trumps and not fails:
             tally["forced"] += 1
@@ -358,7 +358,7 @@ def h2h_duplicate(
     from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
     from sheepshead.analysis.rigorous_eval import (
         ModelRegistry,
-        _bootstrap_deal_indices,
+        bootstrap_deal_indices,
         bootstrap_mean,
         evaluate_hero_in_field,
         make_panel_field_fn,
@@ -369,7 +369,7 @@ def h2h_duplicate(
     anchor = registry.get(Path(prev_ckpt))
     seed_rng = _random.Random(seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(n_deals_per_mode)]
-    boot_idx = _bootstrap_deal_indices(
+    boot_idx = bootstrap_deal_indices(
         n_deals_per_mode, n_boot, np.random.default_rng(seed)
     )
 

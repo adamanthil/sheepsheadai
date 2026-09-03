@@ -62,7 +62,7 @@ _W = {}  # per-worker state
 # --------------------------------------------------------------------------- #
 # Cell classification (mirrors counterfactual_fat_leads / ceiling_h2h)
 # --------------------------------------------------------------------------- #
-def _lead_class(card: str, called: str | None, called_led: bool) -> str:
+def lead_class(card: str, called: str | None, called_led: bool) -> str:
     """'trump' | 'called' | 'fat' | 'nopoint' | 'other' for a LEAD of card.
     Called-suit fails are their own class while the called suit is unled
     (they belong to convention (b), never to the fat/nopoint pools)."""
@@ -96,7 +96,7 @@ def _classify_node(game, player, valid) -> dict | None:
         name = ACTIONS[a - 1]
         if not name.startswith("PLAY "):
             return None
-        classes[a] = _lead_class(name[5:], called, called_led)
+        classes[a] = lead_class(name[5:], called, called_led)
     trick = int(game.current_trick)
     kinds = set(classes.values())
     wash = trick <= 2 and "fat" in kinds and "nopoint" in kinds

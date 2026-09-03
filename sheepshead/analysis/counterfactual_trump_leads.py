@@ -122,11 +122,11 @@ def _lead_cards(leads) -> List[str]:
     return [c for aid, _ in leads if (c := _card_of(aid)) is not None]
 
 
-def _snapshot_memory(agent) -> dict:
+def snapshot_memory(agent) -> dict:
     return agent.snapshot_player_memories()
 
 
-def _restore_memory(agent, snap: dict) -> None:
+def restore_memory(agent, snap: dict) -> None:
     agent.restore_player_memories(snap)
 
 
@@ -344,7 +344,7 @@ def _force_and_play(
     """Deepcopy the snapshot, restore memory, force ``seat`` to lead ``card``,
     then roll to terminal. Both branches start from the identical snapshot."""
     g = copy.deepcopy(node_game)
-    _restore_memory(agent, node_mem)
+    restore_memory(agent, node_mem)
     g.players[seat - 1].act(
         ACTION_IDS[f"PLAY {card}"]
     )  # a lead never completes a trick
@@ -434,7 +434,7 @@ def _replay_to_node(
         if step == target_step:
             # Capture the node: snapshot game + memory (post-forward, pre-act).
             node_game = copy.deepcopy(game)
-            node_mem = _snapshot_memory(agent)
+            node_mem = snapshot_memory(agent)
 
             trump_leads = [
                 (aid, float(logits_np[aid - 1]))
@@ -543,7 +543,7 @@ def _belief_mc(
     """
     from sheepshead.ismcts import pool_ess, pool_probs
 
-    saved = _snapshot_memory(agent)
+    saved = snapshot_memory(agent)
     try:
         pool = teacher.build_belief_pool(
             node_game, observer, list(forced_public), pool_k, rng
@@ -556,7 +556,7 @@ def _belief_mc(
 
         def _rollout_world(world_game, world_mem, card) -> DetBranch:
             g = copy.deepcopy(world_game)
-            _restore_memory(agent, world_mem)
+            restore_memory(agent, world_mem)
             g.players[observer - 1].act(ACTION_IDS[f"PLAY {card}"])
             _play_out(agent, g, device, deterministic=False)
             return _branch_metrics(g, observer)
@@ -567,7 +567,7 @@ def _belief_mc(
             trump_m.append(_rollout_world(world_game, world_mem, card_a))
             fail_m.append(_rollout_world(world_game, world_mem, card_b))
     finally:
-        _restore_memory(agent, saved)
+        restore_memory(agent, saved)
 
     def _branch(ms: List[DetBranch]) -> BeliefMcBranch:
         return BeliefMcBranch(
@@ -695,7 +695,7 @@ def _classify_spots(resp, seed: int, partner_mode: int, max_trick: int) -> List[
         if (
             seat == (view.get("picker") or 0)
             or seat == (view.get("partner") or 0)
-            or scan._is_secret_partner(view, partner_mode)
+            or scan.is_secret_partner(view, partner_mode)
         ):
             continue
         has_trump = any(_card_of(v) in TRUMP_SET for v in ad.validActionIds)

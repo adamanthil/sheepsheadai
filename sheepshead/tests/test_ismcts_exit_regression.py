@@ -36,6 +36,8 @@ from sheepshead import (
     get_card_suit,
 )
 from sheepshead.agent.observation import observation_for
+from sheepshead.ismcts import infer_head, is_private_decision
+from sheepshead.tests.ismcts_test_helpers import drive_to_second_bury, fresh_agent
 
 # Runs real (tiny-budget) ISMCTS searches and distill updates (~50s).
 pytestmark = pytest.mark.slow
@@ -47,30 +49,6 @@ def _seed():
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
-
-
-def _fresh_agent():
-    from sheepshead.agent.ppo import PPOAgent
-
-    return PPOAgent(len(ACTIONS))
-
-
-def _is_private(valid):
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
-
-
-def _head(valid):
-    names = [ACTIONS[a - 1] for a in valid]
-    if any(n in ("PICK", "PASS") for n in names):
-        return "pick"
-    if any(n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names):
-        return "partner"
-    if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
-        return "bury"
-    return "play"
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +116,7 @@ def _drive_to_head(game, rng, want_head, force_pass_for_leaster=False):
             while valid:
                 if (
                     not game.is_leaster
-                    and _head(valid) == want_head
+                    and infer_head(valid) == want_head
                     and want_head != "leaster"
                 ):
                     return player.position, list(fp)
@@ -152,7 +130,7 @@ def _drive_to_head(game, rng, want_head, force_pass_for_leaster=False):
                     a = pass_id
                 else:
                     a = rng.choice(tuple(valid))
-                if not _is_private(valid):
+                if not is_private_decision(valid):
                     fp.append((player.position, a))
                 player.act(a)
                 valid = player.get_valid_action_ids()
@@ -248,7 +226,7 @@ def _replay_reproduces_history(real_game, deal, forced_public, observer):
             while valid:
                 if not pub and player.position == observer:
                     return g.history == real_game.history
-                if _is_private(valid):
+                if is_private_decision(valid):
                     is_under = any(ACTIONS[a - 1].startswith("UNDER ") for a in valid)
                     if is_under:
                         if det_under is None:
@@ -304,43 +282,18 @@ def test_determinizer_legality_and_replay():
         assert found > 0, f"no {head} nodes collected"
 
 
-def _drive_to_second_bury(game):
-    """Force a JD pick, partner choice, and one bury; return the second-bury root."""
-    fp = []
-    while not game.is_done():
-        for player in game.players:
-            valid = player.get_valid_action_ids()
-            while valid:
-                names = [ACTIONS[a - 1] for a in valid]
-                if _is_private(valid) and len(game.bury) == 1:
-                    return player.position, list(fp)
-                if "PICK" in names:
-                    a = ACTIONS.index("PICK") + 1
-                elif "JD PARTNER" in names:
-                    a = ACTIONS.index("JD PARTNER") + 1
-                elif _is_private(valid):
-                    a = sorted(valid)[0]
-                else:
-                    a = sorted(valid)[0]
-                if not _is_private(valid):
-                    fp.append((player.position, a))
-                player.act(a)
-                valid = player.get_valid_action_ids()
-    return None
-
-
 def test_private_root_replay_matches_completed_private_actions():
     """A second BURY root must replay the first BURY before returning the root."""
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     game = Game(partner_selection_mode=PARTNER_BY_JD)
-    out = _drive_to_second_bury(game)
+    out = drive_to_second_bury(game)
     assert out is not None, "could not build a second-bury root"
     observer, fp = out
     assert len(game.bury) == 1, "test setup did not complete exactly one bury"
 
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
     rng = random.Random(SEED)
     deal = game.sample_determinization(observer, rng)
@@ -371,7 +324,7 @@ def test_batched_pool_matches_sequential():
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
     rng = random.Random(SEED)
     K = 16
@@ -423,14 +376,14 @@ def test_batched_pool_matches_sequential():
 
 
 def test_batched_pool_fallback_on_inconsistency():
-    """When the batched lockstep raises _ReplayInconsistency (rare: a redeal makes
+    """When the batched lockstep raises ReplayInconsistency (rare: a redeal makes
     a recorded play illegal — void inference is not exhaustive), _build_worlds_batched
     must fall back to the per-world sequential build and still return a valid pool,
     not abort. Forced here by monkeypatching the lockstep to raise."""
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _ReplayInconsistency
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, ReplayInconsistency
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
     rng = random.Random(SEED)
     K = 12
@@ -448,7 +401,7 @@ def test_batched_pool_fallback_on_inconsistency():
         deals = [game.sample_determinization(observer, rng) for _ in range(K)]
 
         def _raise(*a, **k):
-            raise _ReplayInconsistency("forced for test")
+            raise ReplayInconsistency("forced for test")
 
         teacher._build_worlds_lockstep = _raise  # type: ignore[method-assign]
         pool = teacher._build_worlds_batched(
@@ -489,7 +442,7 @@ def test_search_output_contract():
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(
         agent,
         ISMCTSConfig(
@@ -527,12 +480,12 @@ def test_search_output_contract():
 
 
 def test_ismcts_backup_discount_uses_agent_gamma():
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _Node
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, Node
 
-    agent = _fresh_agent()
+    agent = fresh_agent()
     agent.gamma = 0.5
     teacher = ISMCTSTeacher(agent, ISMCTSConfig())
-    root, child = _Node(), _Node()
+    root, child = Node(), Node()
     a0, a1 = ACTIONS.index("PASS") + 1, ACTIONS.index("PICK") + 1
     for node, action in ((root, a0), (child, a1)):
         node.N[action] = 0.0
@@ -603,9 +556,9 @@ def test_seat_policies_population_grounding():
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     torch.manual_seed(4321)
-    opp = _fresh_agent()  # one distinct controller for all non-observer seats
+    opp = fresh_agent()  # one distinct controller for all non-observer seats
     teacher = ISMCTSTeacher(
         agent,
         ISMCTSConfig(
@@ -704,7 +657,7 @@ def test_greedy_health_probe_side_effect_free():
     from sheepshead.training.training_utils import greedy_health_probe
 
     _seed()
-    a = _fresh_agent()
+    a = fresh_agent()
     a.reset_recurrent_state()
     rng_before = random.getstate()
     mem_before = {pid: t.detach().clone() for pid, t in a._player_memories.items()}

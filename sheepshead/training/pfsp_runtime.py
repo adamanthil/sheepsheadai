@@ -25,7 +25,7 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.ismcts import _minmax_unit, infer_head
+from sheepshead.ismcts import infer_head, minmax_unit
 from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -352,7 +352,7 @@ def tilt_summary_to_target(
     else:
         prior = summary.prior
     scale = (gumbel_c_visit + summary.max_visits) * gumbel_c_scale
-    logits = np.log(np.clip(prior, 1e-12, None)) + scale * summary.w * _minmax_unit(
+    logits = np.log(np.clip(prior, 1e-12, None)) + scale * summary.w * minmax_unit(
         summary.q_mean
     )
     target = np.exp(logits - logits.max())

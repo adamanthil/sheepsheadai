@@ -187,19 +187,27 @@ def worker_init(init_args: dict) -> None:
     # league teacher's teacher_gamma=1.0).
     agent.gamma = 1.0
     iters = int(init_args["iters"])
-    _W.clear()
-    _W.update(
-        {
-            "agent": agent,
-            "teacher": ISMCTSTeacher(
-                agent,
-                ISMCTSConfig(
-                    iters={h: iters for h in ("pick", "partner", "bury", "play")}
-                ),
-            ),
-            "args": init_args,
-        }
+    set_worker_state(
+        agent,
+        ISMCTSTeacher(
+            agent,
+            ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
+        ),
+        init_args,
     )
+
+
+def set_worker_state(agent, teacher, args: dict) -> None:
+    """Install this process's corpus-generation state: the acting agent, the
+    search teacher (anything with ``search_committee`` and ``config``), and
+    the generation args. ``worker_init`` builds these from a checkpoint;
+    tests install stand-ins directly."""
+    _W.clear()
+    _W.update({"agent": agent, "teacher": teacher, "args": args})
+
+
+def clear_worker_state() -> None:
+    _W.clear()
 
 
 def _search_node(game, player, valid_actions, forced_public, det_rng, anchor):

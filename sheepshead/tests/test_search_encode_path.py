@@ -22,7 +22,7 @@ import torch
 
 from sheepshead import ACTION_IDS, Game
 from sheepshead.agent.compiled_encoder import (
-    _DEFAULT_SHAPE_BUDGET,
+    DEFAULT_SHAPE_BUDGET,
     allow_shape_specialisation,
     disable_compiled_encoder,
     enable_compiled_encoder,
@@ -157,7 +157,7 @@ def test_the_shape_budget_clears_dynamos_default():
     allow_shape_specialisation()
     assert dynamo.config.recompile_limit >= 14
     assert dynamo.config.cache_size_limit >= 14
-    assert _DEFAULT_SHAPE_BUDGET >= 14
+    assert DEFAULT_SHAPE_BUDGET >= 14
 
 
 # ----------------------------------------------------------------------------

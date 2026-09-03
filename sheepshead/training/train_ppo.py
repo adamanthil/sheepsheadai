@@ -336,7 +336,7 @@ def _setup_entropy_controller(args, checkpoint_dir: str, context: MainPhaseConte
     return controller, path
 
 
-def _spawn_worker_pool(args, league: League, context: MainPhaseContext):
+def spawn_worker_pool(args, league: League, context: MainPhaseContext):
     """The versioned-weights worker pool (league_worker protocol), or None
     for the in-process sequential path (num_workers <= 1)."""
     inference_flags = (
@@ -652,7 +652,7 @@ def run_phase(
     entropy_controller, entropy_controller_path = _setup_entropy_controller(
         args, checkpoint_dir, context
     )
-    pool = _spawn_worker_pool(args, league, context)
+    pool = spawn_worker_pool(args, league, context)
     stream = (
         parallel_stream(context, pool, args.num_workers)
         if pool is not None

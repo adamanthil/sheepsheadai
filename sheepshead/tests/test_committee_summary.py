@@ -12,7 +12,7 @@ import random
 import numpy as np
 import pytest
 
-from sheepshead.ismcts import _minmax_unit
+from sheepshead.ismcts import minmax_unit
 from sheepshead.training.pfsp_runtime import (
     CommitteeSummary,
     build_ce_search_target,
@@ -82,9 +82,7 @@ def _legacy_build_ce_search_target(
         gumbel_c_visit
         + float(np.mean([max(r["root_n"].values() or [0.0]) for r in usable]))
     ) * gumbel_c_scale
-    logits = np.log(np.clip(prior, 1e-12, None)) + scale * shrink_w * _minmax_unit(
-        q_bar
-    )
+    logits = np.log(np.clip(prior, 1e-12, None)) + scale * shrink_w * minmax_unit(q_bar)
     target = np.exp(logits - logits.max())
     target /= target.sum()
     q_sorted = np.sort(q_bar)[::-1]

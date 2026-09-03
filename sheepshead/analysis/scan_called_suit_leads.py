@@ -42,6 +42,7 @@ import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
 from server.services.analyze import simulate_game  # noqa: E402
 from sheepshead import ACTION_LOOKUP, FAIL, TRUMP_SET, UNDER_TOKEN  # noqa: E402
+from sheepshead.analysis.conventions import called_suit_fail
 
 FAIL_SET = set(FAIL)
 
@@ -125,13 +126,7 @@ class CalledSuitScanStats:
         return self._rate(self.adherentUnder, self.eligibleUnder)
 
 
-def _called_suit_fail(card: str, called_card: str) -> bool:
-    """True when ``card`` is a fail of the called card's suit (QC/JC are trump,
-    never called-suit; the suit letter is the last character for all fails)."""
-    return card in FAIL_SET and card[-1] == called_card[-1]
-
-
-def _called_suit_already_led(view: dict) -> bool:
+def called_suit_already_led(view: dict) -> bool:
     """Was any completed trick led in the called suit? Mirrors the engine's
     ``was_called_suit_played`` (which flips on trick completion when the led
     suit equals the called suit; an UNDER lead counts as the called suit)."""
@@ -146,7 +141,7 @@ def _called_suit_already_led(view: dict) -> bool:
         lead = history[t][leaders[t] - 1]
         if not lead:
             continue
-        if lead == UNDER_TOKEN or _called_suit_fail(lead, called):
+        if lead == UNDER_TOKEN or called_suit_fail(lead, called):
             return True
     return False
 
@@ -197,12 +192,12 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
         if (
             seat == picker
             or seat == partner
-            or scan._is_secret_partner(view, PARTNER_MODE_CALLED_ACE)
+            or scan.is_secret_partner(view, PARTNER_MODE_CALLED_ACE)
         ):
             continue
         stats.defenderLeads += 1
 
-        if _called_suit_already_led(view):
+        if called_suit_already_led(view):
             continue
 
         # Which called-suit fails were legal leads? Eligibility also requires a
@@ -214,14 +209,14 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
             if ACTION_LOOKUP.get(vid, "").startswith("PLAY ")
         ]
         called_options = sorted(
-            (c for c in legal_leads if _called_suit_fail(c, called)),
+            (c for c in legal_leads if called_suit_fail(c, called)),
             key=FAIL.index,
         )
         if not called_options or len(called_options) == len(legal_leads):
             continue
 
         # ELIGIBLE node.
-        adhered = _called_suit_fail(card, called)
+        adhered = called_suit_fail(card, called)
         trick_index = int(view.get("current_trick_index", 0))
         first_opp = seat not in seats_with_opportunity
         seats_with_opportunity.add(seat)
@@ -251,7 +246,7 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
                 p
                 for p in ad.probabilities
                 if p.action.startswith("PLAY ")
-                and _called_suit_fail(p.action[5:], called)
+                and called_suit_fail(p.action[5:], called)
             ),
             None,
         )

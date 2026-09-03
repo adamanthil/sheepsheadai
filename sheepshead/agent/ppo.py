@@ -26,7 +26,7 @@ from sheepshead.agent.architectures.critics import (
     PerceiverAuxCriticNetwork,
     PerceiverCriticNetwork,
     RecurrentCriticNetwork,
-    _TokenReadoutValueMixin,
+    TokenReadoutValueMixin,
 )
 from sheepshead.training.training_utils import RETURN_SCALE
 
@@ -40,7 +40,7 @@ __all__ = [
     "PerceiverAuxCriticNetwork",
     "PerceiverCriticNetwork",
     "RecurrentCriticNetwork",
-    "_TokenReadoutValueMixin",
+    "TokenReadoutValueMixin",
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

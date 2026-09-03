@@ -72,7 +72,7 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.analysis.fail_lead_logit_probe import _masked_logits
+from sheepshead.analysis.fail_lead_logit_probe import masked_logits
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
 from sheepshead.training.pfsp_runtime import play_cell
 
@@ -250,7 +250,7 @@ def _replay_seeds(
                     valid_sorted = sorted(valid)
                     is_play = ACTION_LOOKUP.get(valid_sorted[0], "").startswith("PLAY ")
 
-                    logits = _masked_logits(driver, pos, state, valid_sorted).squeeze(0)
+                    logits = masked_logits(driver, pos, state, valid_sorted).squeeze(0)
                     aid = int(torch.argmax(logits).item()) + 1
                     if aid not in valid:
                         aid = valid_sorted[0]

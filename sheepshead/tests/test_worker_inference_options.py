@@ -115,7 +115,7 @@ def test_absent_options_change_nothing(restore_globals, stub_compiler):
 def test_the_flags_reach_the_pool_initargs():
     """The CLI values have to survive the trip into the spawn initargs; a
     worker cannot read the parent's argparse namespace."""
-    from sheepshead.training.train_ppo import _spawn_worker_pool
+    from sheepshead.training.train_ppo import spawn_worker_pool
 
     args = build_arg_parser().parse_args(
         [
@@ -144,7 +144,7 @@ def test_the_flags_reach_the_pool_initargs():
     original = trainer.get_context
     trainer.get_context = lambda _name: FakeContext()
     try:
-        _spawn_worker_pool(
+        spawn_worker_pool(
             args, cast(League, _FakeLeague()), cast(MainPhaseContext, _FakeContext())
         )
     finally:
@@ -170,13 +170,13 @@ def test_the_options_default_to_off():
 def test_an_inert_flag_is_announced(capsys):
     """With no pool the options do nothing. Silence would be indistinguishable
     from an optimization that simply did not help."""
-    from sheepshead.training.train_ppo import _spawn_worker_pool
+    from sheepshead.training.train_ppo import spawn_worker_pool
 
     args = argparse.Namespace(
         num_workers=1, worker_compile="default", worker_device=None
     )
     assert (
-        _spawn_worker_pool(
+        spawn_worker_pool(
             args, cast(League, _FakeLeague()), cast(MainPhaseContext, _FakeContext())
         )
         is None

@@ -33,7 +33,7 @@ from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.analysis.rigorous_eval import (
     Model,
     ModelRegistry,
-    _bootstrap_deal_indices,
+    bootstrap_deal_indices,
     run_gauntlet,
 )
 from sheepshead.ismcts import infer_head
@@ -90,7 +90,7 @@ def routed_h2h(
 
     seed_rng = random.Random(seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(n_deals_per_mode)]
-    boot_idx = _bootstrap_deal_indices(
+    boot_idx = bootstrap_deal_indices(
         n_deals_per_mode, n_boot, np.random.default_rng(seed)
     )
 

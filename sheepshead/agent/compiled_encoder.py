@@ -41,10 +41,10 @@ from sheepshead.agent.encoder import CardReasoningEncoder
 _ORIGINAL_ENCODE_BATCH = None
 
 #: Bucketing still leaves more shapes than dynamo compiles by default.
-_DEFAULT_SHAPE_BUDGET = 64
+DEFAULT_SHAPE_BUDGET = 64
 
 
-def allow_shape_specialisation(limit: int = _DEFAULT_SHAPE_BUDGET) -> None:
+def allow_shape_specialisation(limit: int = DEFAULT_SHAPE_BUDGET) -> None:
     """Raise dynamo's per-function recompile limit.
 
     It defaults to **8**, and on hitting it dynamo stops compiling and runs the

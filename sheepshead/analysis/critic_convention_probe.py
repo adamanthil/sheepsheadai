@@ -61,7 +61,7 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.analysis.called_suit_probe import _called_suit_fail
+from sheepshead.analysis.conventions import called_suit_fail
 from sheepshead.analysis.critic_calibration import (
     GAMMA,
     policy_and_value,
@@ -151,8 +151,8 @@ def _c2_eligibility(game, leader) -> tuple[list[str], list[str]] | None:
     ):
         return None
     cards = _lead_cards(leader)
-    conv = [c for c in cards if _called_suit_fail(c, game.called_card)]
-    alt = [c for c in cards if not _called_suit_fail(c, game.called_card)]
+    conv = [c for c in cards if called_suit_fail(c, game.called_card)]
+    alt = [c for c in cards if not called_suit_fail(c, game.called_card)]
     if not conv or not alt:
         return None
     return conv, alt

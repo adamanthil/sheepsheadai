@@ -38,7 +38,7 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_decision
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device
@@ -53,13 +53,6 @@ def snapshot_memory(agent):
 
 def restore_memory(agent, snap):
     agent.restore_player_memories(snap)
-
-
-def _is_private(valid):
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
 
 
 def best_in_class(probs, valid, want_trump):
@@ -129,7 +122,7 @@ def collect_trick0(agent, max_games, target, seed, min_raw_trump):
                     a, _, _ = agent.act(
                         observation_for(player, agent), valid, player.position
                     )
-                    if not _is_private(valid):
+                    if not is_private_decision(valid):
                         forced_public.append((player.position, a))
                     player.act(a)
                     if game.play_started:
@@ -276,7 +269,7 @@ def play_game(
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                private = _is_private(valid)
+                private = is_private_decision(valid)
                 use_search = (
                     teacher is not None
                     and player.position == focal_seat

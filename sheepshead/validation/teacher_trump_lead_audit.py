@@ -43,15 +43,8 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_decision
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
-
-
-def _is_private(valid) -> bool:
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
 
 
 def _trump_mass(p, valid) -> float:
@@ -277,7 +270,7 @@ def main():
                         player.position,
                         deterministic=False,
                     )
-                    if not _is_private(valid):
+                    if not is_private_decision(valid):
                         forced_public.append((player.position, a))
                     player.act(a)
                     valid = player.get_valid_action_ids()

@@ -28,34 +28,21 @@ import random
 import numpy as np
 import torch
 
-from sheepshead import ACTIONS, DECK, Game
+from sheepshead import DECK, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+    infer_head,
+    is_private_decision,
+)
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 CKPT = "final_pfsp_swish_ppo.pt"
-
-
-def _is_private(valid):
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
-
-
-def _head(valid):
-    names = [ACTIONS[a - 1] for a in valid]
-    if any(n in ("PICK", "PASS") for n in names):
-        return "pick"
-    if any(n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names):
-        return "partner"
-    if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
-        return "bury"
-    return "play"
 
 
 def collect_node(agent, game, want_head):
@@ -69,7 +56,7 @@ def collect_node(agent, game, want_head):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                if not game.is_leaster and _head(valid) == want_head:
+                if not game.is_leaster and infer_head(valid) == want_head:
                     # Node reached; do NOT act. forced_public holds everything
                     # public before this decision.
                     return player.position, list(forced_public), game
@@ -78,7 +65,7 @@ def collect_node(agent, game, want_head):
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=False
                 )
-                if not _is_private(valid):
+                if not is_private_decision(valid):
                     forced_public.append((player.position, action))
                 player.act(action)
                 valid = player.get_valid_action_ids()

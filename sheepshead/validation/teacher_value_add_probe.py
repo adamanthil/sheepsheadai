@@ -47,18 +47,11 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_decision
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 T_FULL = 1  # production rollout-depth schedule (config.SearchConfig)
 D_SHORT = 2
-
-
-def _is_private(valid) -> bool:
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
 
 
 def _load(model: str) -> PPOAgent:
@@ -124,7 +117,7 @@ def _play_deal(
                     if searched_action != raw_action:
                         n_dev += 1
                     a = searched_action
-                if not _is_private(valid):
+                if not is_private_decision(valid):
                     forced_public.append((player.position, a))
                 player.act(a)
                 valid = player.get_valid_action_ids()

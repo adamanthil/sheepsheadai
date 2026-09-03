@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead.tests.test_distill_pipeline import _fresh_agent, _generate_game
+from sheepshead.tests.distill_test_helpers import fresh_agent, generate_game
 from sheepshead.training import policy_iteration as tpi
 from sheepshead.training.corpus_rows import (
     encode_rows,
@@ -35,7 +35,7 @@ from sheepshead.training.search_advantage import (
 def _corpus(agent, game_indices):
     episodes, games = [], []
     for g in game_indices:
-        res = _generate_game(agent, game_idx=g)
+        res = generate_game(agent, game_idx=g)
         episodes.extend(res["episodes"])
         games.append(
             {
@@ -53,7 +53,7 @@ def test_model_scatter_matches_actor_pointer():
     """With the actor's own pointer weights the pointer-capacity model must
     reproduce the actor's play/bury/under logits at every legal hand-card
     action: same inputs, same scatter."""
-    agent = _fresh_agent()
+    agent = fresh_agent()
     shard = _corpus(agent, [3])
     model = AdvantageModel(agent, "pointer")
     model.pointer_Wg.load_state_dict(agent.actor.pointer_Wg.state_dict())
@@ -90,7 +90,7 @@ def test_fit_recovers_a_token_readout_to_the_noise_floor():
     few times the noise floor, and its top card must agree with the
     (noisy) observation more often than the prior's does — the §20.4
     pooling diagnostic on a case with a known answer."""
-    agent = _fresh_agent()
+    agent = fresh_agent()
     shard = _corpus(agent, list(range(3, 11)))
     table = build_row_table(
         agent,
@@ -195,7 +195,7 @@ def test_blend_and_tilt_identities():
 
 
 def test_end_to_end_stages_on_tiny_corpus(tmp_path):
-    agent = _fresh_agent()
+    agent = fresh_agent()
     ckpt = tmp_path / "theta_k.pt"
     agent.save(str(ckpt))
     shard = _corpus(agent, [3, 4, 5])
@@ -313,7 +313,7 @@ def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
     """The stop rule needs a holdout KL at epoch 0 and a best-epoch record;
     on a tiny corpus with a large coefficient the projection moves the
     policy toward the targets (holdout target KL falls from epoch 0)."""
-    agent = _fresh_agent()
+    agent = fresh_agent()
     ckpt = tmp_path / "theta_k.pt"
     agent.save(str(ckpt))
     shard = _corpus(agent, [3, 4, 5])
@@ -385,7 +385,7 @@ def test_heteroscedastic_head_and_nll():
     with larger learned variance contributes less squared-error pressure."""
     from sheepshead.training.search_advantage import gaussian_nll_rows
 
-    agent = _fresh_agent()
+    agent = fresh_agent()
     shard = _corpus(agent, [3])
     table = build_row_table(
         agent, shard["episodes"], shard_idx=0, game_indices=[3] * len(shard["episodes"])
@@ -456,7 +456,7 @@ def test_fit_fails_loudly_on_a_corpus_without_searched_rows(tmp_path):
     """An all-retention corpus (every game a leaster, or a schedule that
     never fired) must stop the stage with a readable message rather than a
     tensor error deep in the row table."""
-    agent = _fresh_agent()
+    agent = fresh_agent()
     ckpt = tmp_path / "theta_k.pt"
     agent.save(str(ckpt))
     shard = _corpus(agent, [3, 4])
@@ -493,12 +493,12 @@ def test_cert_stage_records_battery_and_enforces_bars(tmp_path):
     """The cert stage on a fresh agent: the battery runs (probes, the
     duplicate h2h with its leaster-hand read), the absolute bars fail for a
     random policy, and --no-bars records the same battery without failing."""
-    agent = _fresh_agent()
+    agent = fresh_agent()
     theta = tmp_path / "theta_k.pt"
     agent.save(str(theta))
     torch.manual_seed(9)
     cand = tmp_path / "cand.pt"
-    _fresh_agent().save(str(cand))
+    fresh_agent().save(str(cand))
     common = [
         "cert",
         "--ckpt",

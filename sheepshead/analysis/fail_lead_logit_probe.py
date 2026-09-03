@@ -53,6 +53,7 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
+from sheepshead.analysis.conventions import called_suit_fail
 from sheepshead.game import CARD_POINTS
 
 DEVICE = torch.device("cpu")
@@ -64,10 +65,6 @@ FAT_FAIL = {c for c in FAIL_SET if CARD_POINTS.get(c, 0) >= 10}
 PLAY_CARD_BY_AID = {
     aid: name[5:] for aid, name in ACTION_LOOKUP.items() if name.startswith("PLAY ")
 }
-
-
-def _called_suit_fail(card: str, called: str) -> bool:
-    return card in FAIL_SET and card[-1] == called[-1]
 
 
 def _called_suit_already_led(game: Game) -> bool:
@@ -82,7 +79,7 @@ def _called_suit_already_led(game: Game) -> bool:
         lead = game.history[t][leader - 1]
         if not lead:
             continue
-        if lead == "U" or _called_suit_fail(lead, game.called_card):
+        if lead == "U" or called_suit_fail(lead, game.called_card):
             return True
     return False
 
@@ -123,7 +120,7 @@ def build_trajectories(driver_path: str, seeds: list[int]) -> list[dict]:
                             called_opts = [
                                 c
                                 for c in lead_cards
-                                if _called_suit_fail(c, game.called_card)
+                                if called_suit_fail(c, game.called_card)
                             ]
                             node = {
                                 "seed": seed,
@@ -160,7 +157,7 @@ def build_trajectories(driver_path: str, seeds: list[int]) -> list[dict]:
     return games
 
 
-def _masked_logits(agent, pos: int, state: dict, valid: list[int]) -> torch.Tensor:
+def masked_logits(agent, pos: int, state: dict, valid: list[int]) -> torch.Tensor:
     """One encode + actor forward, updating the agent's per-seat memory the
     same way training and aux_audit do. Returns masked logits (1, A)."""
     memory_in = agent.get_recurrent_memory(pos, device=DEVICE)
@@ -182,7 +179,7 @@ def _masked_logits(agent, pos: int, state: dict, valid: list[int]) -> torch.Tens
 
 
 def _greedy_action(agent, pos: int, state: dict, valid) -> int:
-    logits = _masked_logits(agent, pos, state, sorted(valid))
+    logits = masked_logits(agent, pos, state, sorted(valid))
     aid = int(torch.argmax(logits.squeeze(0)).item()) + 1
     if aid not in valid:  # numerical guard, matches aux_audit
         aid = sorted(valid)[0]
@@ -202,9 +199,9 @@ def probe_checkpoint(ckpt_path: str, games: list[dict]) -> list[dict]:
                 continue
             if node is None:
                 # Memory must advance on every acting step regardless.
-                _masked_logits(agent, pos, state, valid)
+                masked_logits(agent, pos, state, valid)
                 continue
-            logits = _masked_logits(agent, pos, state, valid).squeeze(0)
+            logits = masked_logits(agent, pos, state, valid).squeeze(0)
             probs = torch.softmax(logits, dim=-1)
 
             def best(cards):

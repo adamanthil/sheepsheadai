@@ -54,9 +54,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 import sheepshead.analysis.counterfactual_trump_leads as cf  # noqa: E402
 import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
+from sheepshead.analysis.conventions import called_suit_fail  # noqa: E402
 from sheepshead.analysis.scan_called_suit_leads import (  # noqa: E402
-    _called_suit_already_led,
-    _called_suit_fail,
+    called_suit_already_led,
 )
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL
@@ -126,7 +126,7 @@ def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int
         ti = int(view.get("current_trick_index", 0))
         if ti > max_trick:
             continue
-        if _called_suit_already_led(view):
+        if called_suit_already_led(view):
             continue
 
         seat = ad.seat
@@ -139,7 +139,7 @@ def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int
             c for v in ad.validActionIds if (c := cf._card_of(v)) is not None
         ]
 
-        if scan._is_secret_partner(view, PARTNER_MODE_CALLED_ACE):
+        if scan.is_secret_partner(view, PARTNER_MODE_CALLED_ACE):
             # PARTNER mirror: surfacing the called card must be legal and a
             # real choice (some alternative lead exists).
             if called in legal_leads and len(legal_leads) >= 2:
@@ -147,13 +147,13 @@ def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int
             else:
                 continue
         else:
-            called_opts = [c for c in legal_leads if _called_suit_fail(c, called)]
+            called_opts = [c for c in legal_leads if called_suit_fail(c, called)]
             if not called_opts or len(called_opts) == len(legal_leads):
                 continue
             if view.get("called_under"):
                 skipped_under += 1
                 continue
-            group = "agree" if _called_suit_fail(card, called) else "disagree"
+            group = "agree" if called_suit_fail(card, called) else "disagree"
 
         spots.append(
             {
@@ -258,8 +258,8 @@ def _pick_branch_cards(node: cf.NodeInfo, spot: dict) -> Optional[tuple[str, str
         if not others:
             return None
         return called, max(others, key=lambda c: others[c])
-    conv_pool = {c: v for c, v in logits.items() if _called_suit_fail(c, called)}
-    alt_pool = {c: v for c, v in logits.items() if not _called_suit_fail(c, called)}
+    conv_pool = {c: v for c, v in logits.items() if called_suit_fail(c, called)}
+    alt_pool = {c: v for c, v in logits.items() if not called_suit_fail(c, called)}
     if not conv_pool or not alt_pool:
         return None
     return (
@@ -354,11 +354,11 @@ def analyze_case(agent, teacher, spot: dict, args, device) -> Optional[C2CaseRes
             if gum_card is not None:
                 gumbel_is_conv = gum_card == spot["calledCard"]
         else:
-            top_q_is_conv = top_q_card is not None and _called_suit_fail(
+            top_q_is_conv = top_q_card is not None and called_suit_fail(
                 top_q_card, spot["calledCard"]
             )
             if gum_card is not None:
-                gumbel_is_conv = _called_suit_fail(gum_card, spot["calledCard"])
+                gumbel_is_conv = called_suit_fail(gum_card, spot["calledCard"])
 
     return C2CaseResult(
         seed=seed,

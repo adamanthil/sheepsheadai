@@ -82,7 +82,7 @@ Code map
 * ``ISMCTSTeacher.search`` -> ``_search_inner`` -> ``_build_pool`` (belief
   pool) -> ``_run_batched``/``_run_chunk`` (leaf-parallel tree search) ->
   ``_finalize`` (``SearchResult``).
-* World reconstruction: the ``_replay_events`` DIRECTOR yields the forced
+* World reconstruction: the ``replay_events`` DIRECTOR yields the forced
   replay's decision structure; two executors run it — ``_build_world``
   (per-world, drops inconsistent worlds) and ``_build_worlds_lockstep``
   (batched fast path, raises for the per-world fallback).
@@ -143,7 +143,7 @@ def _is_play_action(action_id: int) -> bool:
     return ACTIONS[action_id - 1].startswith("PLAY ")
 
 
-def _is_weighted_bidding_action(action_id: int) -> bool:
+def is_weighted_bidding_action(action_id: int) -> bool:
     """Scheme B: only public BIDDING actions (pick / pass / call / alone /
     jd-partner) carry belief weight during the forced replay; plays are forced
     but never weighted, private bury/under never weighted."""
@@ -155,6 +155,12 @@ def is_private_action(action_id: int) -> bool:
     public record fed to the forced replay)."""
     name = ACTIONS[action_id - 1]
     return name.startswith("BURY ") or name.startswith("UNDER ")
+
+
+def is_private_decision(valid) -> bool:
+    """Whether a legal-action set is a private (bury/under) decision — the
+    ones the forced replay never records publicly."""
+    return any(is_private_action(action_id) for action_id in valid)
 
 
 def infer_head(valid) -> str:
@@ -214,7 +220,7 @@ def _draw_from_cumulative(rng, valid, prob_of) -> int:
     return valid[-1]
 
 
-def _minmax_unit(values: np.ndarray) -> np.ndarray:
+def minmax_unit(values: np.ndarray) -> np.ndarray:
     """Min-max normalize to [0, 1]; a degenerate span maps everything to 0.5.
     Root-local Q normalization for the RM update and the gumbel readout (the
     PUCT selection loop keeps its own tree-global normalization)."""
@@ -245,7 +251,7 @@ def _at_replay_root(real_game, world, public_actions, seat, observer, valid) -> 
 
 
 @dataclass(frozen=True)
-class _PrivateDecision:
+class PrivateDecision:
     """Director event: ``seat`` faces a forced bury/under decision. Each world
     resolves its OWN card from its determinization; never belief-weighted."""
 
@@ -253,7 +259,7 @@ class _PrivateDecision:
 
 
 @dataclass(frozen=True)
-class _PublicAction:
+class PublicAction:
     """Director event: ``seat`` must take the recorded public ``action_id``
     (identical across worlds). ``weighted`` marks scheme-B bidding actions
     whose policy log-prob enters the world's belief weight."""
@@ -263,7 +269,7 @@ class _PublicAction:
     weighted: bool
 
 
-def _replay_events(real_game, ref_world, forced_public, observer):
+def replay_events(real_game, ref_world, forced_public, observer):
     """The replay DIRECTOR: yield the forced-replay decision structure derived
     from ``ref_world``, one event per action, until the live root is reached
     (generator return). Both world-build executors run this control flow —
@@ -275,7 +281,7 @@ def _replay_events(real_game, ref_world, forced_public, observer):
     before advancing the generator — the next event is derived from the
     post-action reference state. Owns a fresh copy of the public record;
     structural failures (guard overflow, public-record desync, no seat acted)
-    raise ``_ReplayInconsistency`` with the matching ``FAIL_*`` key. Per-world
+    raise ``ReplayInconsistency`` with the matching ``FAIL_*`` key. Per-world
     failures (a recorded/forced action illegal in one world) are the
     EXECUTORS' to detect, because worlds may diverge from the reference in
     private cards — but never in public flow."""
@@ -284,7 +290,7 @@ def _replay_events(real_game, ref_world, forced_public, observer):
     while True:
         guard += 1
         if guard > _REPLAY_GUARD_LIMIT:
-            raise _ReplayInconsistency(FAIL_GUARD, "forced replay guard exceeded")
+            raise ReplayInconsistency(FAIL_GUARD, "forced replay guard exceeded")
         acted = False
         for seat in range(1, 6):
             player = ref_world.players[seat - 1]
@@ -299,20 +305,20 @@ def _replay_events(real_game, ref_world, forced_public, observer):
                 ):
                     return
                 if any(is_private_action(action_id) for action_id in valid):
-                    yield _PrivateDecision(seat)
+                    yield PrivateDecision(seat)
                 else:
                     if not public_actions or public_actions[0][0] != seat:
-                        raise _ReplayInconsistency(
+                        raise ReplayInconsistency(
                             FAIL_PUB_DESYNC, "forced replay: public action desync"
                         )
                     _, action_id = public_actions.popleft()
-                    yield _PublicAction(
-                        seat, action_id, _is_weighted_bidding_action(action_id)
+                    yield PublicAction(
+                        seat, action_id, is_weighted_bidding_action(action_id)
                     )
                 acted = True
                 valid = player.get_valid_action_ids()
         if not acted:
-            raise _ReplayInconsistency(FAIL_NO_ACTED, "forced replay: no seat acted")
+            raise ReplayInconsistency(FAIL_NO_ACTED, "forced replay: no seat acted")
 
 
 class SearchResult(TypedDict):
@@ -335,7 +341,7 @@ class SearchResult(TypedDict):
     #   root_selection == "rm" produced statistics.
 
 
-class _ReplayInconsistency(Exception):
+class ReplayInconsistency(Exception):
     """A determinized world could not be forced-replayed against the public record
     (a recorded action is illegal in that world, or the lockstep desynced). Rare:
     ``sample_determinization`` is consistent by construction, but void inference is
@@ -457,7 +463,7 @@ class ISMCTSConfig:
                 )
 
 
-class _Node:
+class Node:
     """Statistics-only ISMCTS node, keyed (implicitly, by tree position) on the
     observer's action sequence. All counts are *weighted* by the per-iteration
     determinization importance weight.
@@ -474,7 +480,7 @@ class _Node:
     __slots__ = ("children", "N", "W", "P", "avail", "visited", "vloss")
 
     def __init__(self):
-        self.children: dict[int, _Node] = {}
+        self.children: dict[int, Node] = {}
         self.N: dict[int, float] = {}
         self.W: dict[int, float] = {}
         self.P: dict[int, float] = {}
@@ -707,7 +713,7 @@ class ISMCTSTeacher:
         # Root-readout transient state (reset in ``_search_inner``): the root
         # node, the RM state (root_selection == "rm" only), and the running sum
         # of RAW root priors for the pi_gumbel readout.
-        self._root: _Node | None = None
+        self._root: Node | None = None
         self._root_rm: _RootRM | None = None
         self._root_praw: dict = {}
         self._root_praw_writes = 0
@@ -932,7 +938,7 @@ class ISMCTSTeacher:
         self._max_depth = config.max_depth[head]
 
         # Reset transient search state.
-        root = _Node()
+        root = Node()
         self._qmin = math.inf
         self._qmax = -math.inf
         self._root = root
@@ -995,7 +1001,7 @@ class ISMCTSTeacher:
         for rng in rngs:
             ctx = _CommitteeReplicate()
             ctx.rng = rng
-            ctx.root = _Node()
+            ctx.root = Node()
             ctx.root_rm = _RootRM(valid_real) if config.root_selection == "rm" else None
             ctx.root_praw = {a: 0.0 for a in valid_real}
             ctx.root_praw_writes = 0
@@ -1102,7 +1108,7 @@ class ISMCTSTeacher:
         batch-1 encoder calls per decision — the dominant search cost; see
         profiling), we step all worlds together and batch the encoder/actor over
         the n_worlds worlds at each decision point. Both builds are executors of
-        the shared ``_replay_events`` director; their equivalence is pinned by
+        the shared ``replay_events`` director; their equivalence is pinned by
         the pool tests and the replay goldens."""
         config = self.config
         deals = []
@@ -1172,13 +1178,13 @@ class ISMCTSTeacher:
     def _build_worlds_batched(self, real_game, deals, forced_public, observer):
         """Build the world pool, batched. Fast path is the lockstep replay; if any
         world is inconsistent with the forced replay (rare — see
-        ``_ReplayInconsistency``), fall back to the per-world sequential build,
+        ``ReplayInconsistency``), fall back to the per-world sequential build,
         which drops bad worlds instead of aborting."""
         try:
             return self._build_worlds_lockstep(
                 real_game, deals, forced_public, observer
             )
-        except _ReplayInconsistency:
+        except ReplayInconsistency:
             self.fail[FAIL_BATCHED_FALLBACK] += 1
             return self._build_pool_sequential(
                 real_game, deals, forced_public, observer
@@ -1205,14 +1211,14 @@ class ISMCTSTeacher:
         return pool
 
     def _build_worlds_lockstep(self, real_game, deals, forced_public, observer):
-        """Lockstep batched EXECUTOR of the shared ``_replay_events`` director:
+        """Lockstep batched EXECUTOR of the shared ``replay_events`` director:
         one director instance driven off world 0 (all worlds share the
         public/private decision structure), each event applied to every world
         with batched encodes into local ``seat_memories`` tensors.
 
         Fast path semantics: the lockstep cannot drop a single inconsistent
         world mid-flight, so any pre-root failure raises
-        ``_ReplayInconsistency`` (counter incremented here) for the caller's
+        ``ReplayInconsistency`` (counter incremented here) for the caller's
         per-world fallback; root-stage history mismatches are instead dropped
         per world in ``_collect_lockstep_pool``. The per-world executor is
         ``_build_world``; their equivalence is pinned by
@@ -1230,7 +1236,7 @@ class ISMCTSTeacher:
         }
         log_weights = torch.zeros(n_worlds, device=self.device)
         try:
-            for event in _replay_events(real_game, games[0], forced_public, observer):
+            for event in replay_events(real_game, games[0], forced_public, observer):
                 log_weights = self._apply_event_lockstep(
                     games,
                     event,
@@ -1241,7 +1247,7 @@ class ISMCTSTeacher:
                     log_weights,
                     oracle_prefixes,
                 )
-        except _ReplayInconsistency as exc:
+        except ReplayInconsistency as exc:
             self.fail[exc.key] += 1
             raise
         return self._collect_lockstep_pool(
@@ -1262,9 +1268,9 @@ class ISMCTSTeacher:
         """Apply one director event to every lockstepped world (batched encode,
         per-world act) and run the synchronized end-of-trick observe. Returns
         the updated ``log_weights`` tensor. Any per-world failure raises
-        ``_ReplayInconsistency`` out of the whole build (all-or-nothing)."""
+        ``ReplayInconsistency`` out of the whole build (all-or-nothing)."""
         seat = event.seat
-        if isinstance(event, _PrivateDecision):
+        if isinstance(event, PrivateDecision):
             # Forced bury/under: encode (advance memory), then act each
             # world with its own determinized card. Not weighted.
             self._encode_seat_batched(games, seat, seat_memories)
@@ -1274,7 +1280,7 @@ class ISMCTSTeacher:
                     world_valid, det_buries[i], det_unders[i]
                 )
                 if action_id is None or action_id not in world_valid:
-                    raise _ReplayInconsistency(
+                    raise ReplayInconsistency(
                         FAIL_BAD_PRIVATE, "batched replay: bad forced private action"
                     )
                 if seat == observer:
@@ -1297,7 +1303,7 @@ class ISMCTSTeacher:
             for i, game in enumerate(games):
                 world_valid = game.players[seat - 1].get_valid_action_ids()
                 if action_id not in world_valid:
-                    raise _ReplayInconsistency(
+                    raise ReplayInconsistency(
                         FAIL_BAD_PUBLIC, "batched replay: bad forced public action"
                     )
                 if seat == observer:
@@ -1407,7 +1413,7 @@ class ISMCTSTeacher:
             return None
         v_mix = float((counts[visited] * q[visited]).sum() / counts[visited].sum())
         q_completed = np.where(visited, q, v_mix)
-        qhat = _minmax_unit(q_completed)
+        qhat = minmax_unit(q_completed)
         scale = (
             self.config.gumbel_c_visit + float(counts.max())
         ) * self.config.gumbel_c_scale
@@ -1631,7 +1637,7 @@ class ISMCTSTeacher:
                     action_id = cast(int, sim.pending_action)
                     child = parent.children.get(action_id)
                     if child is None:
-                        child = _Node()
+                        child = Node()
                         parent.children[action_id] = child
                     sim.node, sim.depth, sim.pending_action = child, sim.depth + 1, None
                     sim.phase = "tree"
@@ -1751,7 +1757,7 @@ class ISMCTSTeacher:
         if any(root.N.get(a, 0.0) <= 0.0 for a in rm.regret):
             return
         q = {a: root.W[a] / root.N[a] for a in rm.regret}
-        unit = _minmax_unit(np.array(list(q.values()), dtype=np.float64))
+        unit = minmax_unit(np.array(list(q.values()), dtype=np.float64))
         rm.update(dict(zip(q.keys(), unit.tolist())))
 
     def _select_vl(self, node, valid, use_availability_puct) -> int:
@@ -1932,7 +1938,7 @@ class ISMCTSTeacher:
     # Determinized-world reconstruction (forced replay)
     # ------------------------------------------------------------------
     def _build_world(self, real_game, deal, forced_public, observer):
-        """Per-world sequential EXECUTOR of the shared ``_replay_events``
+        """Per-world sequential EXECUTOR of the shared ``replay_events``
         director: replay the public record into a fresh game whose hidden hands
         are the sampled determinization, rebuilding every seat's recurrent
         memory (through each controller's own ``_player_memories``), and stop
@@ -1958,11 +1964,11 @@ class ISMCTSTeacher:
         log_weight = 0.0
         oracle_prefix: list = []
         try:
-            for event in _replay_events(real_game, world, forced_public, observer):
+            for event in replay_events(real_game, world, forced_public, observer):
                 log_weight += self._apply_event_sequential(
                     world, event, det_bury, det_under, observer, oracle_prefix
                 )
-        except _ReplayInconsistency as exc:
+        except ReplayInconsistency as exc:
             self.fail[exc.key] += 1
             return None, None
         if world.history != real_game.history:
@@ -1977,14 +1983,14 @@ class ISMCTSTeacher:
         """Apply one director event to a sequential world (batch-1 encode via
         the seat controller, which advances its ``_player_memories``) and run
         the end-of-trick observe. Returns the log-weight increment; raises
-        ``_ReplayInconsistency`` if the forced action is illegal here."""
+        ``ReplayInconsistency`` if the forced action is illegal here."""
         player = world.players[event.seat - 1]
         valid = player.get_valid_action_ids()
         log_weight = 0.0
-        if isinstance(event, _PrivateDecision):
+        if isinstance(event, PrivateDecision):
             action_id = self._forced_private(valid, det_bury, det_under)
             if action_id is None or action_id not in valid:
-                raise _ReplayInconsistency(
+                raise ReplayInconsistency(
                     FAIL_BAD_PRIVATE, "replay: bad forced private action"
                 )
             # Advance this seat's memory through the forced decision.
@@ -1995,7 +2001,7 @@ class ISMCTSTeacher:
         else:
             action_id = event.action_id
             if action_id not in valid:
-                raise _ReplayInconsistency(
+                raise ReplayInconsistency(
                     FAIL_BAD_PUBLIC, "replay: bad forced public action"
                 )
             ctrl = self._controller(event.seat)

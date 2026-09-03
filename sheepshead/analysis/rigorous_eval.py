@@ -442,7 +442,7 @@ class Estimate:
     se: float
 
 
-def _bootstrap_deal_indices(
+def bootstrap_deal_indices(
     n_deals: int, n_boot: int, rng: np.random.Generator
 ) -> np.ndarray:
     """(n_boot, n_deals) array of resampled deal indices (with replacement)."""
@@ -880,7 +880,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     seed_rng = random.Random(args.seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(args.deals)]
     boot_rng = np.random.default_rng(args.seed)
-    boot_idx = _bootstrap_deal_indices(args.deals, args.n_boot, boot_rng)
+    boot_idx = bootstrap_deal_indices(args.deals, args.n_boot, boot_rng)
 
     games = len(candidates) * args.deals * NUM_SEATS
     print(
