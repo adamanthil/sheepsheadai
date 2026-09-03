@@ -45,7 +45,7 @@ from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.analysis.conventions import is_secret_partner, lead_options
+from sheepshead.analysis.conventions import lead_options
 from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260719  # same CRN deal set as the decay curve / lead probes
@@ -80,9 +80,7 @@ def probe_checkpoint(shadow, n_deals: int, seed: int) -> dict:
                         trumps, fails = lead_options(player)
                         if trumps and fails:
                             probe_group = (
-                                "partner"
-                                if is_secret_partner(game, player)
-                                else "defender"
+                                "partner" if player.is_secret_partner else "defender"
                             )
                     if probe_group is not None:
                         saved = shadow.snapshot_player_memories()

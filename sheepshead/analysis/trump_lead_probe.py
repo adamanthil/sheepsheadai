@@ -51,7 +51,7 @@ from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.analysis.conventions import is_secret_partner, lead_options
+from sheepshead.analysis.conventions import lead_options
 from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260702  # fixed CRN deal set: results comparable forever
@@ -97,7 +97,7 @@ def probe_agent(hero, n_deals: int, partner_mode: int, seed: int = PROBE_SEED) -
                                 player.is_picker
                                 or player.is_partner
                                 or game.partner == player.position
-                                or is_secret_partner(game, player)
+                                or player.is_secret_partner
                             )
                         ):
                             trumps, fails = lead_options(player)

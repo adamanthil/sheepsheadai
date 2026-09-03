@@ -48,7 +48,7 @@ from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.analysis.conventions import called_suit_fail, is_secret_partner
+from sheepshead.analysis.conventions import called_suit_fail
 from sheepshead.analysis.trump_lead_probe import PROBE_SEED
 from sheepshead.scripted_agent import ScriptedAgent
 
@@ -112,7 +112,7 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
                                 player.is_picker
                                 or player.is_partner
                                 or game.partner == player.position
-                                or is_secret_partner(game, player)
+                                or player.is_secret_partner
                             )
                         ):
                             leads = _legal_lead_cards(player)

@@ -1,26 +1,15 @@
 """Convention geometry shared by the probes, reports and scans.
 
-The three predicates every convention instrument needs, defined once:
-who is the secret partner, what a player could lead, and whether a card
-is a fail of the called suit.
+The two predicates every convention instrument needs, defined once: what
+a player could lead, and whether a card is a fail of the called suit.
+(Who the secret partner is comes from ``Player.is_secret_partner``.)
 """
 
 from __future__ import annotations
 
-from sheepshead import ACTION_LOOKUP, FAIL, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
+from sheepshead import ACTION_LOOKUP, FAIL, TRUMP_SET
 
 FAIL_SET = frozenset(FAIL)
-
-
-def is_secret_partner(game: Game, player) -> bool:
-    """Whether ``player`` is the picker's (still secret) partner: holds the
-    called card in called-ace mode, the Jack of Diamonds in JD mode
-    (never when the picker went alone). The instruments' own predicate,
-    kept separate from ``Player.is_secret_partner`` (which also answers
-    False in a leaster) so calibrated probe numbers stay reproducible."""
-    if game.partner_mode_flag == PARTNER_BY_CALLED_ACE:
-        return bool(game.called_card) and game.called_card in player.hand
-    return not game.alone_called and "JD" in player.hand
 
 
 def lead_options(player) -> tuple[list[str], list[str]]:

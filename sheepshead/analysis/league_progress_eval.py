@@ -62,7 +62,7 @@ from sheepshead import (
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
-from sheepshead.analysis.conventions import is_secret_partner, lead_options
+from sheepshead.analysis.conventions import lead_options
 from sheepshead.analysis.panels import PANEL_A
 from sheepshead.analysis.rigorous_eval import (
     DecisionProbe,
@@ -139,7 +139,7 @@ class TrumpLeadCollector:
                 player.is_picker
                 or player.is_partner
                 or game.partner == player.position
-                or is_secret_partner(game, player)
+                or player.is_secret_partner
             )
         )
 
