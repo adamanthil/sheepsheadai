@@ -9,10 +9,10 @@ from fastapi import WebSocketDisconnect
 from server.runtime.tables import (
     ClientConn,
     Table,
-    _json_default,
     build_player_state,
     get_actor_seat,
     get_valid_action_ids_for_seat,
+    json_default,
 )
 
 
@@ -38,7 +38,7 @@ async def send_to_client(table: Table, conn: ClientConn, text: str) -> None:
 
 async def broadcast_table_event(table: Table, payload: Dict[str, Any]) -> None:
     """Broadcast any table-related event payload to all connected clients."""
-    msg_txt = json.dumps(payload, default=_json_default)
+    msg_txt = json.dumps(payload, default=json_default)
     for conn in list(table.clients.values()):
         await send_to_client(table, conn, msg_txt)
 
@@ -52,7 +52,7 @@ async def broadcast_table_update(table: Table) -> None:
             "table": table_dict,
             "isHost": cid == table.host_client_id,
         }
-        await send_to_client(table, conn, json.dumps(payload, default=_json_default))
+        await send_to_client(table, conn, json.dumps(payload, default=json_default))
 
 
 async def broadcast_table_state(table: Table) -> None:
@@ -83,4 +83,4 @@ async def broadcast_table_state(table: Table) -> None:
             "view": payload["view"],
             "valid_actions": valid_actions if conn.seat == actor_seat else [],
         }
-        await send_to_client(table, conn, json.dumps(msg, default=_json_default))
+        await send_to_client(table, conn, json.dumps(msg, default=json_default))

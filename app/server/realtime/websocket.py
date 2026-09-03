@@ -26,7 +26,7 @@ from server.runtime.seating import (
     find_seat_of_occupant,
     schedule_ai_replacement_for_disconnected_human,
 )
-from server.runtime.tables import _json_default, tables
+from server.runtime.tables import json_default, tables
 
 router = APIRouter()
 
@@ -181,7 +181,7 @@ async def _serve_connection(
                     "table": table.to_public_dict(),
                     "isHost": client_id == table.host_client_id,
                 },
-                default=_json_default,
+                default=json_default,
             )
         )
 

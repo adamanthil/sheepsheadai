@@ -14,6 +14,7 @@ import uuid
 from typing import cast
 
 import pytest
+from anyio.from_thread import start_blocking_portal
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.testclient import TestClient
 
@@ -270,7 +271,15 @@ async def test_socket_cap_refuses_the_extra_tab(registry, monkeypatch):
 
 
 def test_two_real_sockets_share_one_client(app, monkeypatch):
-    """End-to-end through the ASGI stack, not the _ControllableWebSocket fake."""
+    """End-to-end through the ASGI stack, not the _ControllableWebSocket fake.
+
+    Both tabs must live on ONE event loop: a bare ``TestClient`` gives every
+    websocket session its own portal thread and loop, so the chat fan-out
+    from the second tab would write into the first tab's stream from a
+    foreign loop and the wake-up is lost about half the time (a real hang,
+    never a failure). Production sockets all share the server loop; the
+    shared portal reproduces that without running the DB-backed lifespan.
+    """
     player_id = uuid.uuid4()
 
     async def fake_resolve(token):
@@ -280,17 +289,21 @@ def test_two_real_sockets_share_one_client(app, monkeypatch):
     table, conn = _table_with_client("real")
     conn.player_id = str(player_id)
 
-    client = TestClient(app)
     subs = ["sheepshead.client.c1", "sheepshead.token.tok"]
-    with client.websocket_connect("/ws/table/real", subprotocols=subs) as first:
-        assert first.receive_json()["type"] == "chat:init"
-        assert first.receive_json()["type"] == "table_update"
-        with client.websocket_connect("/ws/table/real", subprotocols=subs) as second:
-            assert second.receive_json()["type"] == "chat:init"
-            assert second.receive_json()["type"] == "table_update"
-            assert len(conn.sockets) == 2
-            second.send_text(json.dumps({"type": "chat:send", "message": "hi"}))
-            # The chat append fans out to both tabs of the same player.
-            assert first.receive_json()["type"] == "chat:append"
-            assert second.receive_json()["type"] == "chat:append"
-        assert conn.connected
+    with start_blocking_portal() as portal:
+        client = TestClient(app)
+        client.portal = portal
+        with client.websocket_connect("/ws/table/real", subprotocols=subs) as first:
+            assert first.receive_json()["type"] == "chat:init"
+            assert first.receive_json()["type"] == "table_update"
+            with client.websocket_connect(
+                "/ws/table/real", subprotocols=subs
+            ) as second:
+                assert second.receive_json()["type"] == "chat:init"
+                assert second.receive_json()["type"] == "table_update"
+                assert len(conn.sockets) == 2
+                second.send_text(json.dumps({"type": "chat:send", "message": "hi"}))
+                # The chat append fans out to both tabs of the same player.
+                assert first.receive_json()["type"] == "chat:append"
+                assert second.receive_json()["type"] == "chat:append"
+            assert conn.connected

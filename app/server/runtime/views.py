@@ -19,14 +19,14 @@ from sheepshead import (
 ACTION_SIZE = len(ACTION_IDS)
 
 
-def _try_int(v: Any, default: int = 0) -> int:
+def try_int(v: Any, default: int = 0) -> int:
     try:
         return int(v)
     except ValueError, TypeError:
         return default
 
 
-def _json_default(obj: Any):
+def json_default(obj: Any):
     """JSON serializer for numpy types used in observation dicts."""
     if isinstance(obj, (np.integer,)):
         return int(obj)

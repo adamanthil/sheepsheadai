@@ -12,7 +12,7 @@ from server.config import get_settings
 from server.realtime.chat import emit_doubler_redeal_message
 from server.runtime.models import Table
 from server.runtime.rules import plays_doublers
-from server.runtime.views import _try_int
+from server.runtime.views import try_int
 from server.services.ai_loader import load_agent
 from server.services.persistence.games import (
     persist_passed_out_game,
@@ -50,7 +50,7 @@ def new_game_for_table(table: Table) -> Game:
     rules = table.rules or {}
     return Game(
         double_on_the_bump=bool(rules.get("doubleOnTheBump", True)),
-        partner_selection_mode=_try_int(rules.get("partnerMode", 1), 1),
+        partner_selection_mode=try_int(rules.get("partnerMode", 1), 1),
     )
 
 
