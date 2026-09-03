@@ -643,11 +643,6 @@ def _ppo_update(state: _PhaseState, episode: int) -> None:
         epochs=PPO_EPOCHS,
         batch_size=getattr(args, "minibatch_episodes", 256),
         grad_accum=getattr(args, "grad_accum", False),
-        teacher_epochs=(
-            int(getattr(args, "teacher_epochs", 0))
-            if getattr(args, "teacher", False)
-            else 0
-        ),
     )
     state.context.tx_counter.count = 0
     if state.entropy_controller is not None and stats:
@@ -687,7 +682,6 @@ def _run_interval_probes(state: _PhaseState, episode: int) -> None:
     # League snapshot of the main (replaces population_add_interval)
     if episode % args.snapshot_interval == 0:
         snapshot = copy.deepcopy(training_agent)
-        snapshot.set_anchor(None, 0.0)
         # League members are inference-only: drop the privileged critic
         # so it isn't persisted into every member checkpoint.
         snapshot.strip_oracle()
@@ -1032,7 +1026,6 @@ def _build_training_agent(args) -> tuple[PPOAgent, int]:
         training_agent.gamma = float(args.gamma)
         print(f"γ  discount override: {training_agent.gamma}")
     if getattr(args, "teacher", False):
-        training_agent.teacher_coeff = float(getattr(args, "teacher_coeff", 1.0))
         print(
             f"🎓 CE search teacher ON (always-on): "
             f"prob={getattr(args, 'teacher_prob', 0.1)}, "
@@ -1056,9 +1049,6 @@ def _build_training_agent(args) -> tuple[PPOAgent, int]:
         print(f"🧬 Architecture: {args.arch}")
     if args.critic_mode == "oracle":
         print("🔮 Oracle critic ON: privileged full-information GAE baseline")
-    if getattr(args, "gns_log", False):
-        training_agent.gns_log = True
-        print("📡 GNS logging ON (global + partner-lead, rows)")
     if getattr(args, "oracle_extra_epochs", 0) > 0:
         print(
             f"🔮+ Oracle extra epochs: {args.oracle_extra_epochs} "
@@ -1071,10 +1061,6 @@ def _build_training_agent(args) -> tuple[PPOAgent, int]:
         start_episode = int(args.resume.split("_")[-1].split(".")[0])
     print(f"📍 Main resumed from {args.resume} (episode {start_episode:,})")
 
-    if args.anchor_coeff > 0.0:
-        ref = load_agent(args.anchor_ref or args.resume)
-        training_agent.set_anchor(ref, args.anchor_coeff)
-        print(f"⚓ Bidding anchor ON (coeff={args.anchor_coeff})")
     return training_agent, start_episode
 
 

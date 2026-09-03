@@ -14,7 +14,6 @@ training_utils.py.
 
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -22,7 +21,7 @@ from sheepshead import (
     Game,
 )
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.ismcts import _minmax_unit, infer_head, is_private_action
+from sheepshead.ismcts import _minmax_unit, infer_head
 from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -32,16 +31,6 @@ from sheepshead.training.training_utils import (
     process_terminal_rewards,
     update_intermediate_rewards_for_action,
 )
-
-if TYPE_CHECKING:
-    from sheepshead.ismcts import ISMCTSTeacher
-    from sheepshead.training.config import SearchConfig
-
-
-def _is_private_decision(valid_actions) -> bool:
-    """True when the decision is a private bury/under (excluded from the public
-    record fed to the ISMCTS teacher's forced replay)."""
-    return any(is_private_action(a) for a in valid_actions)
 
 
 def play_cell(game, player) -> str:
@@ -368,96 +357,6 @@ def tilt_summary_to_target(
     return target.astype(np.float32), info
 
 
-def _attach_ce_search_target(
-    game,
-    player,
-    valid_actions,
-    transition: dict,
-    teacher: "ISMCTSTeacher",
-    determinization_rng: "random.Random",
-    search_config: "SearchConfig",
-    forced_public: list[tuple[int, int]],
-    search_diagnostics: dict,
-    live_probs: "np.ndarray | None",
-) -> None:
-    """CE search-teacher emission (CE_Teacher_Design §2): run the lockstep
-    committee at a subsampled eligible node and attach the §1.1 shrink-and-
-    tilt target to the transition.
-
-    Eligibility is CLASS-BLIND (no cell taxonomy, no confidence trigger —
-    §13.3): PLAY head in both partner-selection modes, standard game (no
-    leaster / alone), >= 2 legal actions, then ``teacher_prob`` subsampling
-    (the budget knob; unbiased). Abstention moved from an emission gate
-    into the TARGET itself — a within-noise committee shrinks the target
-    to the expert's label-time prior, so the CE gradient vanishes at ties
-    by construction (no incumbent tax, no emission bookkeeping).
-
-    Stationary expert vs live student (DAgger — Ross et al. 2011): the
-    teacher wraps a FROZEN snapshot of the generation-start policy
-    (priors, rollouts, critic leaves), so the expert cannot chase a
-    drifting student out of its certified regime (the attempt-7/8 lesson).
-    The student's on-policy states still decide WHERE labels happen.
-    ``live_probs`` (the act() stash — a second forward pass would advance
-    the recurrent memory) feeds only the KL(target || policy) telemetry,
-    the self-retirement readout that decays as the student conforms.
-
-    Self-play worlds (no ``seat_policies``): E8 found no ecology effect,
-    and the calibration this teacher rests on searched self-play
-    continuations — population grounding here would decalibrate it.
-    """
-    if game.is_leaster or game.alone_called or len(valid_actions) < 2:
-        return
-    if _search_head(valid_actions) != "play":
-        return
-    if determinization_rng.random() >= search_config.teacher_prob:
-        return
-
-    diag = search_diagnostics["play"]
-    diag["count"] += 1
-    rngs = [
-        random.Random(determinization_rng.getrandbits(64))
-        for _ in range(search_config.teacher_replicates)
-    ]
-    replicates = teacher.search_committee(
-        game,
-        player.position,
-        list(forced_public),
-        rngs,
-        d_rollout=search_config.teacher_d_rollout,
-    )
-    built = build_ce_search_target(
-        replicates,
-        valid_actions,
-        shrink_nu=search_config.shrink_nu,
-        shrink_s2_global=search_config.shrink_s2_global,
-        gumbel_c_visit=teacher.config.gumbel_c_visit,
-        gumbel_c_scale=teacher.config.gumbel_c_scale,
-    )
-    if built is None:
-        return
-    target, info = built
-    transition["search_target"] = target
-    transition["has_search_target"] = True
-    diag["labeled"] += 1
-    diag["w_sum"] += info["w"]
-    diag["spread_sum"] += info["spread"]
-    if info["w"] > 0.0:
-        diag["material"] += 1
-    if live_probs is not None:
-        # KL(target || live policy) at label time: the self-retirement
-        # readout (decays toward 0 as the student adopts the target).
-        acts = sorted(valid_actions)
-        live = np.clip(
-            np.array([float(live_probs[a - 1]) for a in acts], dtype=np.float64),
-            1e-12,
-            None,
-        )
-        live /= live.sum()
-        t = np.clip(target.astype(np.float64), 1e-12, None)
-        diag["kl_sum"] += float((t * np.log(t / live)).sum())
-        diag["kl_n"] += 1
-
-
 def _finalize_rewards(
     episode_transitions: list,
     final_scores: list,
@@ -510,13 +409,6 @@ def _finalize_rewards(
                 "unseen_trump_higher_than_hand_label": ev.get(
                     "unseen_trump_higher_than_hand_label", None
                 ),
-                "has_search_target": ev.get("has_search_target", False),
-                # CE target (float32 aligned to sorted valid_actions):
-                # without it a labeled row contributes ZERO distill loss
-                # (ppo.py hardens a missing target to a no-op), so dropping
-                # this key here would silently disarm the teacher — the
-                # attempt-5a failure mode (Search_Teacher_Design §10.3).
-                "search_target": ev.get("search_target"),
             }
         if ev.get("oracle_state") is not None:
             out["oracle_state"] = ev["oracle_state"]
@@ -531,22 +423,15 @@ def play_population_game(
     training_agent_position: int = 1,
     shaping_weights: dict | None = None,
     reward_mode: str = "shaped",
-    teacher: "ISMCTSTeacher | None" = None,
-    determinization_rng: "random.Random | None" = None,
-    search_config: "SearchConfig | None" = None,
     collect_oracle: bool = False,
     game_seed: int | None = None,
 ) -> tuple:
     """Play a single game with the training agent and population opponents.
 
     ``reward_mode`` selects the return: ``"shaped"`` applies the intermediate
-    reward shaping + per-trick rewards and ``process_episode_rewards``;
-    ``"terminal"`` skips all shaping and uses ``process_terminal_rewards``
-    (final_score-only), optionally attaching CE search-teacher targets to a
-    subsample of the training agent's PLAY decisions (search is teacher-only;
-    the agent still acts on-policy). The league trainer passes the teacher
-    arguments when ``--teacher`` is on; the exploiter never does (the ISMCTS
-    engine lives in ismcts.py).
+    reward shaping + per-trick rewards and ``process_episode_rewards`` (the
+    bootstrap phase); ``"terminal"`` skips all shaping and uses
+    ``process_terminal_rewards`` (final_score-only; the league phases).
 
     ``collect_oracle``: attach a full-information ``oracle_state`` (captured at
     decision time, while the Game holds the hidden cards) to every training-agent
@@ -563,42 +448,6 @@ def play_population_game(
     )
     weights = shaping_weights or {"pick": 1.0, "partner": 1.0, "bury": 1.0, "play": 1.0}
     shaped = reward_mode == "shaped"
-    # Bundled rather than kept as three separate Optionals plus a bool: one
-    # `is not None` check at the emission site below then narrows all three.
-    search_ctx = (
-        (teacher, determinization_rng, search_config)
-        if (
-            reward_mode == "terminal"
-            and teacher is not None
-            and determinization_rng is not None
-            and search_config is not None
-            and search_config.enabled
-        )
-        else None
-    )
-    search_enabled = search_ctx is not None
-    if search_enabled:
-        # The teacher reads the LIVE policy's label-time distribution (the
-        # KL telemetry referent) from the act() stash — see
-        # _attach_ce_search_target.
-        training_agent.stash_action_probs = True
-    # Public (seat, action_id) record for the teacher's forced replay (search only).
-    forced_public: list[tuple[int, int]] = []
-    # Per-game teacher diagnostics (the CE teacher searches PLAY nodes only):
-    # nodes searched (count), nodes labeled, nodes with shrink w > 0
-    # (material), and the w / Q-spread / label-time KL(target||policy) sums.
-    # Attached to training_agent_data so the driver can window + log.
-    search_diagnostics = {
-        "play": {
-            "count": 0,
-            "labeled": 0,
-            "material": 0,
-            "w_sum": 0.0,
-            "spread_sum": 0.0,
-            "kl_sum": 0.0,
-            "kl_n": 0,
-        }
-    }
 
     # Reset recurrent states for all agents
     training_agent.reset_recurrent_state()
@@ -620,7 +469,6 @@ def play_population_game(
 
             while valid_actions:
                 state = player.get_state_dict()
-                is_private = _is_private_decision(valid_actions)
 
                 # Get action from appropriate agent
                 if current_agent == training_agent:
@@ -646,8 +494,6 @@ def play_population_game(
                         "unseen_trump_higher_than_hand_label": compute_any_unseen_trump_higher_than_hand(
                             player
                         ),
-                        "search_target": None,
-                        "has_search_target": False,
                     }
                     if collect_oracle:
                         transition["oracle_state"] = player.get_oracle_state_dict()
@@ -666,30 +512,12 @@ def play_population_game(
                             bury_weight=weights["bury"],
                             play_weight=weights["play"],
                         )
-                    elif search_ctx is not None:
-                        ce_teacher, ce_rng, ce_config = search_ctx
-                        _attach_ce_search_target(
-                            game,
-                            player,
-                            valid_actions,
-                            transition,
-                            ce_teacher,
-                            ce_rng,
-                            ce_config,
-                            forced_public,
-                            search_diagnostics,
-                            training_agent.last_action_probs,
-                        )
 
                 else:
                     # Opponent action (stochastic for diversity)
                     action, _, _ = current_agent.act(
                         state, valid_actions, player.position, deterministic=False
                     )
-
-                # Record this seat's public action for the teacher's forced replay.
-                if search_enabled and not is_private:
-                    forced_public.append((player.position, action))
 
                 player.act(action)
 
@@ -734,7 +562,6 @@ def play_population_game(
         "score": training_agent_score,
         "was_picker": was_picker,
         "position": training_agent_position,
-        "search_diagnostics": search_diagnostics,
     }
 
     episode_events = _finalize_rewards(

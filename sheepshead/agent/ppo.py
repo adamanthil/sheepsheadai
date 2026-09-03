@@ -143,7 +143,6 @@ class _UpdateEpochAccumulator:
         self.early_stop_triggered = False
         self.last_approx_kl = 0.0
         self.build_s = 0.0
-        self.anchor_active = False
 
         # Instrumentation accumulators
         self.ent_pick_sum = 0.0
@@ -180,8 +179,6 @@ class _UpdateEpochAccumulator:
         self.points_loss_count = 0
         self.secret_loss_sum = 0.0
         self.secret_loss_count = 0
-        self.anchor_kl_sum = 0.0
-        self.anchor_batches = 0
 
 
 class PPOAgent:
@@ -323,10 +320,10 @@ class PPOAgent:
         # Used to maintain correct relative scaling when updating learning rates
         self._actor_lr_ratios = self._capture_actor_lr_ratios(base_lr=float(lr_actor))
 
-        # Label-time distribution stash for the gated search teacher: when
-        # enabled, act() keeps the last action distribution so the gate can
-        # read the LIVE policy's referent + clip anchors without a second
-        # forward pass (which would advance the recurrent memory again).
+        # Label-time distribution stash: when enabled, act() keeps the last
+        # action distribution so the corpus generator (distill_corpus.py) can
+        # record theta_k's act-time policy without a second forward pass
+        # (which would advance the recurrent memory again).
         self.stash_action_probs = False
         self.last_action_probs = None
 
@@ -349,9 +346,6 @@ class PPOAgent:
         # Lifetime optimizer-step count (actor/critic steps; persisted in
         # checkpoints so step-matched comparisons survive crash-resume).
         self.optimizer_steps_total = 0
-        # Gradient-noise-scale diagnostic per update (off = zero overhead).
-        self.gns_log = False
-
         # PPO early stopping target for approximate KL (per update)
         self.target_kl = None
         # KL regularization coefficient (added to actor loss)
@@ -365,30 +359,9 @@ class PPOAgent:
         self.seen_trump_mask_loss_coeff = 0.2
         self.unseen_trump_higher_than_hand_loss_coeff = 0.1
 
-        # CE search-teacher distillation (CE_Teacher_Design §1.3) on
-        # transitions carrying a committee target: CE(pi_target || pi_theta)
-        # over the legal set, mean over labeled rows, run as
-        # ``teacher_epochs`` supervised passes AFTER the PPO epochs (see
-        # update() / _run_teacher_ce_epochs — a supervised target needs no
-        # importance ratios, AZ-standard reuse). There is NO PG-mask: PG
-        # stays active on labeled rows (reward and teacher are aligned at
-        # material nodes per §12.16, and PG maintains equilibrium where the
-        # target is flat). Abstention lives in the TARGET, not a gate: a
-        # within-noise committee shrinks the target to the expert's prior,
-        # so the CE gradient vanishes at ties by construction. The §12
-        # pair-hinge apparatus (label weight, pair-gap trust region,
-        # PG-mask knob) was removed 2026-08 with the program (attempts
-        # 5a-10 retired; git tag pre-ce-teacher archives it).
-        self.teacher_coeff = 1.0
-
-        # Bidding-head KL anchor (ExIt warm-start guard): when enabled via
-        # set_anchor(), the actor loss gains
-        #   anchor_coeff * KL(pi_ref || pi_theta)
-        # on pick/partner/bury transitions, toward a frozen reference policy.
-        # Learner-side only (collection/workers untouched); the play head is not
-        # anchored. 0.0 / None disables.
-        self.anchor_coeff = 0.0
-        self._anchor_agent = None
+        # Which actor/encoder parameters the optimizer may move; see
+        # set_trainable_heads (the bidding-only phase freezes the play path).
+        self.trainable_heads = "all"
 
         # Storage for trajectory data
         self.reset_storage()
@@ -565,20 +538,34 @@ class PPOAgent:
                 ):
                     group["lr"] = critic_lr * ratio
 
-    def set_anchor(self, ref_agent, coeff: float):
-        """Enable (or disable) the bidding-head KL anchor toward a frozen
-        reference policy: actor loss gains coeff * KL(pi_ref || pi_theta) on
-        pick/partner/bury transitions. ``ref_agent`` is a loaded PPOAgent whose
-        encoder/actor produce the reference logits; it is frozen and put in eval
-        mode here. Pass (None, 0.0) to disable (population snapshots do this so
-        they don't carry the reference copy)."""
-        self._anchor_agent = ref_agent
-        self.anchor_coeff = float(coeff) if ref_agent is not None else 0.0
-        if ref_agent is not None:
-            for net in (ref_agent.encoder, ref_agent.actor, ref_agent.critic):
-                net.eval()
-                for p in net.parameters():
-                    p.requires_grad_(False)
+    # Actor parameters that belong to the PLAY decision: the shared adapter
+    # every head reads, the hand-slot pointer (additive + bilinear) and the
+    # play-under scalar. Everything else in the actor is a bidding head
+    # (pick, partner basic, two-tower call).
+    PLAY_HEAD_PREFIXES = ("actor_adapter", "pointer_", "play_under_head")
+
+    def set_trainable_heads(self, mode: str) -> None:
+        """Choose which parameters the actor optimizer may move.
+
+        ``"all"``   every encoder and actor parameter (the default).
+        ``"bidding"`` the bidding-only PG phase of Training_Program_Redesign
+                    §4.4: encoder, actor adapter and play head FROZEN; the
+                    pick / partner / call heads train on terminal reward
+                    while the critics keep training. The frozen play head
+                    is what makes the phase composable with search-driven
+                    policy iteration — the two improvement operators never
+                    touch the same parameters.
+        Frozen parameters keep ``requires_grad=False``; Adam skips them.
+        """
+        if mode not in ("all", "bidding"):
+            raise ValueError(f"unknown trainable-heads mode: {mode!r}")
+        train_all = mode == "all"
+        for prm in self.encoder.parameters():
+            prm.requires_grad_(train_all)
+        for name, prm in self.actor.named_parameters():
+            is_play = name.startswith(self.PLAY_HEAD_PREFIXES)
+            prm.requires_grad_(train_all or not is_play)
+        self.trainable_heads = mode
 
     def strip_oracle(self):
         """Drop the oracle critic and its optimizer (reverting to limited
@@ -1464,7 +1451,6 @@ class PPOAgent:
         partner_idx_t,
         bury_idx_t,
         play_idx_t,
-        anchor_logits_flat=None,
     ):
         # Build probabilities fresh from logits to avoid in-place softmax conflicts
         probs_all = F.softmax(logits_flat, dim=-1)
@@ -1499,26 +1485,8 @@ class PPOAgent:
 
         surr1 = ratios * adv_flat
         clipped = torch.clamp(ratios, 1 - eps_flat, 1 + eps_flat) * adv_flat
-        # No PG-mask on teacher-labeled rows (CE_Teacher_Design §1.3): PG
-        # stays active everywhere — reward and teacher are aligned at
-        # material nodes, and PG maintains equilibrium where the CE target
-        # is flat. The CE distillation itself runs as separate supervised
-        # passes after the PPO epochs (see _run_teacher_ce_epochs).
         pg_loss_elements = -torch.min(surr1, clipped)
         policy_loss = (pg_loss_elements * head_weight).mean()
-
-        # Bidding-head KL anchor: forward KL(pi_ref || pi_theta) on the
-        # pick/partner/bury rows toward the frozen reference logits (already
-        # action-masked by the reference actor). Gradient flows through
-        # log pi_theta only; the play head is untouched.
-        anchor_kl = logits_flat.new_zeros(())
-        if anchor_logits_flat is not None:
-            bidding_rows = is_pick | is_partner | is_bury
-            if bidding_rows.any():
-                p_ref = F.softmax(anchor_logits_flat[bidding_rows], dim=-1)
-                logp_ref = torch.log(p_ref.clamp(min=1e-12))
-                logp_cur = torch.log(probs_all[bidding_rows].clamp(min=1e-12))
-                anchor_kl = (p_ref * (logp_ref - logp_cur)).sum(dim=1).mean()
 
         returns_target = returns_flat.view(-1)
         values_old = old_value_flat.view(-1)
@@ -1532,18 +1500,12 @@ class PPOAgent:
         critic_elements = torch.max(critic_loss_unclipped, critic_loss_clipped)
         critic_loss = critic_elements.mean()
 
-        actor_loss = (
-            policy_loss
-            - entropy_term
-            + self.kl_coef * approx_kl_t
-            + self.anchor_coeff * anchor_kl
-        )
+        actor_loss = policy_loss - entropy_term + self.kl_coef * approx_kl_t
         return (
             actor_loss,
             critic_loss,
             approx_kl_t,
             (pick_entropy, partner_entropy, bury_entropy, play_entropy),
-            anchor_kl,
         )
 
     def _compute_update_targets(self) -> UpdateTargets:
@@ -1638,7 +1600,6 @@ class PPOAgent:
         flat,
         points_pred_bt,
         oracle_active,
-        anchor_active,
         pick_idx_tensor_static,
         partner_idx_tensor_static,
         bury_idx_tensor_static,
@@ -1660,20 +1621,6 @@ class PPOAgent:
         ``batch_size``. ``loss_scale`` (rows in this minibatch / rows in
         the buffer) converts the sum of per-minibatch mean losses into
         the full-buffer mean."""
-        # Bidding-head KL anchor: frozen-reference logits on the same
-        # minibatch (no grad), flattened to the action rows like the
-        # policy logits above.
-        anchor_logits_flat = None
-        if anchor_active:
-            with torch.no_grad():
-                ref_logits_bt = self._anchor_agent._forward_vectorized(
-                    minibatch.states_seqs,
-                    minibatch.masks_bt,
-                ).logits_bt
-            anchor_logits_flat = ref_logits_bt.view(-1, ref_logits_bt.size(-1))[
-                minibatch.is_action_bt.view(-1)
-            ]
-
         # Record PICK/PASS advantages across minibatches
         with torch.no_grad():
             pick_mask_specific = flat.actions_flat == self.pick_action_index
@@ -1695,7 +1642,6 @@ class PPOAgent:
             critic_loss,
             approx_kl_t,
             (pick_entropy, partner_entropy, bury_entropy, play_entropy),
-            anchor_kl,
         ) = self._actor_critic_losses(
             flat.logits_flat,
             flat.actions_flat,
@@ -1708,13 +1654,8 @@ class PPOAgent:
             partner_idx_tensor_static,
             bury_idx_tensor_static,
             play_idx_tensor_static,
-            anchor_logits_flat=anchor_logits_flat,
         )
         acc.last_approx_kl = float(approx_kl_t.item())
-
-        if anchor_active:
-            acc.anchor_kl_sum += anchor_kl.item()
-            acc.anchor_batches += 1
 
         acc.value_loss_sum += critic_loss.detach().item()
         acc.value_loss_count += 1
@@ -1950,8 +1891,6 @@ class PPOAgent:
         # Training epochs – vectorized by batching segments
         acc = _UpdateEpochAccumulator()
         acc.build_s = t_build_end - t_build_start
-        anchor_active = self._anchor_agent is not None and self.anchor_coeff > 0.0
-        acc.anchor_active = anchor_active
 
         total_rows = sum(1 for k in kinds if k == "action")
 
@@ -1992,7 +1931,6 @@ class PPOAgent:
                     flat,
                     forward.points_pred_bt,
                     oracle_active,
-                    anchor_active,
                     pick_idx_tensor_static,
                     partner_idx_tensor_static,
                     bury_idx_tensor_static,
@@ -2098,281 +2036,6 @@ class PPOAgent:
                 )
                 self.oracle_optimizer.step()
 
-    def _run_teacher_ce_epochs(self, teacher_epochs, batch_size) -> dict | None:
-        """CE search-teacher passes after the main PPO epochs
-        (CE_Teacher_Design §1.3, "asymmetric epochs").
-
-        The PG loss keeps its own epoch tuning (importance-ratio staleness
-        binds it); the CE term is a SUPERVISED loss toward a label-time-
-        fixed target, so it reuses the buffer's labeled rows for
-        ``teacher_epochs`` extra passes (AZ-standard reuse, no ratios —
-        CE toward a search-improved policy is the AlphaGo Zero /
-        AlphaZero projection step, Silver et al. Nature 550 2017 /
-        Science 362 2018; soft-target CE per Hinton, Vinyals & Dean,
-        arXiv:1503.02531).
-        The target is NOT recomputed against the moving policy —
-        recomputation would iterate the improvement operator and
-        over-sharpen past the intended KL ball. Labels die with the buffer
-        (staleness cap = one update window).
-
-        Loss per pass: teacher_coeff * mean-over-labeled-rows
-        CE(pi_target || pi_theta). Total force therefore does NOT scale
-        with how few labels remain — safe here because abstention lives in
-        the TARGET (a conformed or within-noise row carries ~zero CE
-        gradient), unlike the removed §12 hinge whose per-label force had
-        to be evidence-weighted.
-
-        Mechanics mirror the trainer's grad-accum update: gradients
-        accumulate across minibatches (labeled-row-fraction scaled) and
-        the actor optimizer (actor + encoder groups) steps ONCE per pass;
-        these are policy-path steps and count in optimizer_steps_total.
-        Only segments containing a labeled row are forwarded. Returns the
-        telemetry dict for stats["teacher"] (None when the buffer has no
-        labeled rows)."""
-        states, masks_t, kinds = self._prepare_training_views()
-        segments = [
-            (s, e)
-            for (s, e) in self._segments_from_events(kinds)
-            if any(
-                self.events[i].get("has_search_target")
-                for i in range(s, e + 1)
-                if kinds[i] == "action"
-            )
-        ]
-        if not segments:
-            return None
-        total_labeled = sum(
-            1 for e in self.events if e["kind"] == "action" and e["has_search_target"]
-        )
-        ce_sum = kl_sum = 0.0
-        ce_rows = 0
-        for _ in range(teacher_epochs):
-            perm = torch.randperm(len(segments))
-            self.actor_optimizer.zero_grad()
-            for mb_start in range(0, len(segments), batch_size):
-                batch_idxs = perm[mb_start : mb_start + batch_size].tolist()
-                batch = [segments[i] for i in batch_idxs]
-                minibatch = self._build_minibatch_tensors(batch, states, masks_t, kinds)
-                forward = self._forward_vectorized(
-                    minibatch.states_seqs, minibatch.masks_bt
-                )
-                flat = self._flatten_action_steps(minibatch, forward)
-                if flat is None:
-                    continue
-                labeled = flat.has_search_flat > 0.5
-                if not labeled.any():
-                    continue
-                target = flat.search_target_flat[labeled]
-                logp = torch.log(
-                    F.softmax(flat.logits_flat[labeled], dim=-1).clamp(min=1e-12)
-                )
-                ce_per_row = -(target * logp).sum(dim=1)
-                n_mb = int(labeled.sum().item())
-                # Sum-scaled by the buffer-wide labeled count: accumulated
-                # over minibatches this is the full-buffer mean CE.
-                loss = self.teacher_coeff * ce_per_row.sum() / total_labeled
-                loss.backward()
-                with torch.no_grad():
-                    ce_sum += float(ce_per_row.sum().item())
-                    entropy_t = -(
-                        target.clamp(min=1e-12) * torch.log(target.clamp(min=1e-12))
-                    ).sum(dim=1)
-                    kl_sum += float((ce_per_row.detach() - entropy_t).sum().item())
-                    ce_rows += n_mb
-            # Actor-path step only (actor + encoder param groups). The
-            # shared _clip_and_step would also step the critic optimizer on
-            # whatever stale gradients the main loop left behind.
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
-            torch.nn.utils.clip_grad_norm_(
-                self.encoder.parameters(), self.max_grad_norm
-            )
-            self.actor_optimizer.step()
-            self.optimizer_steps_total += 1
-        return {
-            "ce": ce_sum / max(ce_rows, 1),
-            "kl": kl_sum / max(ce_rows, 1),
-            "rows": total_labeled,
-            "epochs": teacher_epochs,
-            "coeff": self.teacher_coeff,
-        }
-
-    def _partner_lead_flags(self) -> list:
-        """Per-event flag: an action row where the hero, as the picker's
-        (secret or announced) partner, leads a trick in a non-leaster hand.
-        The rare-node stratum of the SNR program."""
-        flags = []
-        for ev in self.events:
-            f = False
-            if ev["kind"] == "action":
-                st = ev["state"]
-                trick_ids = np.asarray(st["trick_card_ids"]).ravel()
-                # rel-seat convention: 0 = none/unknown, 1 = self.
-                f = (
-                    bool(st["play_started"])
-                    and bool((trick_ids == 0).all())
-                    and not bool(st["is_leaster"])
-                    and int(st["picker_rel"]) >= 2
-                    and (
-                        int(st["partner_rel"]) == 1
-                        or float(ev.get("secret_partner", 0.0)) > 0.5
-                    )
-                )
-            flags.append(f)
-        return flags
-
-    def _gns_diagnostic(self, batch_size) -> dict | None:
-        """Gradient noise scale (McCandlish et al. 2018), global and at
-        partner-lead rows, measured on the post-update policy.
-
-        Per minibatch: one forward, then actor-surrogate-only backwards
-        (global rows, then partner-lead rows) over actor+encoder params.
-        The surrogate is the clipped PPO policy loss alone — entropy,
-        distillation and anchor terms are deterministic pulls whose
-        noise-free gradients would deflate the estimate, and per-head
-        entropy means are undefined on single-head row subsets. Paired
-        estimator: E[|g_B|^2] = |G|^2 + tr(Sigma)/B across minibatch
-        sizes vs the row-weighted full-buffer mean. Units of the returned
-        noise scales are action ROWS. No optimizer state is touched;
-        grads are zeroed before and after. Runs only when ``gns_log`` is
-        set — one extra epoch-equivalent of compute per update."""
-        states, masks_t, kinds = self._prepare_training_views()
-        segments = self._segments_from_events(kinds)
-        if len(segments) < 2:
-            return None
-        flags = self._partner_lead_flags()
-        total_rows = sum(1 for k in kinds if k == "action")
-        total_lead = sum(1 for f in flags if f)
-
-        idx_tensors = {
-            head: torch.tensor(self.action_groups[head], device=device)
-            for head in ("pick", "partner", "bury")
-        }
-        clip_by_head = {
-            "pick": self.clip_epsilon_pick,
-            "partner": self.clip_epsilon_partner,
-            "bury": self.clip_epsilon_bury,
-        }
-        params = [
-            p
-            for p in list(self.actor.parameters()) + list(self.encoder.parameters())
-            if p.requires_grad
-        ]
-
-        def zero_grads():
-            for p in params:
-                p.grad = None
-
-        def surrogate(flat, row_mask):
-            if row_mask is not None:
-                flat = FlattenedActionSteps(*[x[row_mask] for x in flat])
-            probs = F.softmax(flat.logits_flat, dim=-1)
-            dist = torch.distributions.Categorical(probs.clamp(min=1e-12))
-            new_lp = dist.log_prob(flat.actions_flat)
-            ratios = torch.exp(new_lp - flat.old_log_probs_flat)
-            eps_row = torch.full_like(flat.advantages_flat, self.clip_epsilon_play)
-            for head, idx_t in idx_tensors.items():
-                m = torch.isin(flat.actions_flat, idx_t)
-                if m.any():
-                    eps_row[m] = clip_by_head[head]
-            adv = flat.advantages_flat
-            surr1 = ratios * adv
-            surr2 = torch.clamp(ratios, 1.0 - eps_row, 1.0 + eps_row) * adv
-            return -torch.min(surr1, surr2).mean()
-
-        keys = ["global"] + (["lead"] if total_lead > 0 else [])
-        totals = {"global": total_rows, "lead": total_lead}
-        g_acc = {k: [torch.zeros_like(p) for p in params] for k in keys}
-        per = {k: {"sq_sum": 0.0, "inv_b_sum": 0.0, "n": 0} for k in keys}
-
-        # Direct per-update SNR readout at partner-lead rows (operator
-        # request 2026-07-24): realized advantage mean/std (NORMALIZED
-        # units — the scale the loss consumes) and mean policy mass on
-        # trump-lead plays, the convention action whose mass detects the
-        # re-ignition regime.
-        from sheepshead import ACTIONS as _ACTIONS
-        from sheepshead.game import TRUMP as _TRUMP
-
-        trump_play_ids = torch.tensor(
-            [
-                i
-                for i, a in enumerate(_ACTIONS)
-                if a.startswith("PLAY ") and a.split()[-1] in set(_TRUMP)
-            ],
-            device=device,
-        )
-        lead_adv_sum = lead_adv_sq = lead_mass_sum = 0.0
-        lead_n = 0
-
-        for mb_start in range(0, len(segments), batch_size):
-            batch = segments[mb_start : mb_start + batch_size]
-            minibatch = self._build_minibatch_tensors(batch, states, masks_t, kinds)
-            forward = self._forward_vectorized(
-                minibatch.states_seqs, minibatch.masks_bt
-            )
-            flat = self._flatten_action_steps(minibatch, forward)
-            if flat is None:
-                continue
-            row_flags = [
-                flags[t]
-                for (s, t_end) in batch
-                for t in range(s, t_end + 1)
-                if kinds[t] == "action"
-            ]
-            lead_mask = torch.tensor(
-                row_flags, dtype=torch.bool, device=flat.advantages_flat.device
-            )
-            if bool(lead_mask.any()):
-                with torch.no_grad():
-                    adv_l = flat.advantages_flat[lead_mask]
-                    probs_l = F.softmax(flat.logits_flat[lead_mask], dim=-1)
-                    mass_l = probs_l[:, trump_play_ids].sum(-1)
-                lead_adv_sum += float(adv_l.sum())
-                lead_adv_sq += float((adv_l**2).sum())
-                lead_mass_sum += float(mass_l.sum())
-                lead_n += int(lead_mask.sum())
-            for key in keys:
-                mask = None if key == "global" else lead_mask
-                b_m = len(row_flags) if mask is None else int(mask.sum())
-                if b_m == 0 or b_m >= totals[key]:
-                    continue
-                loss = surrogate(flat, mask)
-                zero_grads()
-                loss.backward(retain_graph=True)
-                sq = 0.0
-                for i, p in enumerate(params):
-                    if p.grad is not None:
-                        sq += float((p.grad.detach() ** 2).sum())
-                        g_acc[key][i] += p.grad.detach() * (b_m / totals[key])
-                per[key]["sq_sum"] += sq
-                per[key]["inv_b_sum"] += 1.0 / b_m
-                per[key]["n"] += 1
-            del forward, flat
-        zero_grads()
-
-        out: dict[str, Any] = {"lead_rows": total_lead}
-        if lead_n > 0:
-            mean = lead_adv_sum / lead_n
-            var = max(lead_adv_sq / lead_n - mean**2, 0.0)
-            out["lead_adv_mean"] = mean
-            out["lead_adv_std"] = var**0.5
-            out["lead_trump_mass"] = lead_mass_sum / lead_n
-        for key in ("global", "lead"):
-            out[key] = None
-            p = per.get(key)
-            if p is None or p["n"] < 2:
-                continue
-            big_sq = sum(float((g**2).sum()) for g in g_acc[key])
-            mean_sq = p["sq_sum"] / p["n"]
-            inv_b = p["inv_b_sum"] / p["n"]
-            denom = inv_b - 1.0 / totals[key]
-            if denom <= 0:
-                continue
-            s_tr = (mean_sq - big_sq) / denom
-            g2 = big_sq - s_tr / totals[key]
-            if s_tr > 0 and g2 > 0:
-                out[key] = s_tr / g2
-        return out
-
     def _collect_update_stats(self, t_update_start, targets, acc) -> dict:
         """Stage (c) of update(): assemble the returned stats dict from the
         stage-(a) diagnostics (``targets``) and the stage-(b) accumulated
@@ -2453,12 +2116,6 @@ class PPOAgent:
                 else 0.0,
                 "pass_count": acc.pass_adv_count,
             },
-            "anchor": {
-                "active": acc.anchor_active,
-                "kl": acc.anchor_kl_sum / max(acc.anchor_batches, 1),
-                "loss": self.anchor_coeff
-                * (acc.anchor_kl_sum / max(acc.anchor_batches, 1)),
-            },
             "critic_losses": {
                 "value": self.value_loss_coeff
                 * (acc.value_loss_sum / max(acc.value_loss_count, 1)),
@@ -2489,7 +2146,6 @@ class PPOAgent:
         batch_size=256,
         grad_accum=False,
         oracle_extra_epochs=0,
-        teacher_epochs=0,
     ):
         """Update actor and critic networks using PPO with recurrent unrolling.
         Includes performance optimisations and per-update timing logs.
@@ -2499,9 +2155,6 @@ class PPOAgent:
         False preserves the historical per-minibatch stepping exactly.
         ``oracle_extra_epochs``: additional oracle-regression-only passes
         after the main epochs (see _oracle_extra_epochs). Default 0.
-        ``teacher_epochs``: supervised CE passes over the buffer's
-        teacher-labeled rows after the main epochs (see
-        _run_teacher_ce_epochs). Default 0 (no teacher).
         """
         t_update_start = time.time()
         if len(self.events) == 0:
@@ -2511,19 +2164,9 @@ class PPOAgent:
         acc = self._run_update_epochs(
             epochs, batch_size, targets.oracle_active, grad_accum=grad_accum
         )
-        teacher_stats = (
-            self._run_teacher_ce_epochs(teacher_epochs, batch_size)
-            if teacher_epochs > 0
-            else None
-        )
         if oracle_extra_epochs > 0 and targets.oracle_active:
             self._oracle_extra_epochs(oracle_extra_epochs, batch_size)
-        gns = self._gns_diagnostic(batch_size) if self.gns_log else None
-        stats = self._collect_update_stats(t_update_start, targets, acc)
-        stats["teacher"] = teacher_stats
-        if gns is not None:
-            stats["gns"] = gns
-        return stats
+        return self._collect_update_stats(t_update_start, targets, acc)
 
     def save(self, filepath):
         """Save model parameters.

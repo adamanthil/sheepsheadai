@@ -20,7 +20,6 @@ import random
 import sys
 import time
 from types import SimpleNamespace
-from typing import cast
 
 import numpy as np
 import pytest
@@ -582,7 +581,7 @@ def test_terminal_reward_contract():
 
 
 # ---------------------------------------------------------------------------
-# 6. CE teacher path through play_population_game + update
+# 6. Population-game surface
 # ---------------------------------------------------------------------------
 def _make_pop_agent(agent, mode, i):
     """Minimal opponent-seat surface play_population_game needs (``.agent`` plus
@@ -590,222 +589,6 @@ def _make_pop_agent(agent, mode, i):
     league keeps no strategic profiles."""
     return SimpleNamespace(
         agent=agent, metadata=SimpleNamespace(agent_id=f"reg_opp_{i}")
-    )
-
-
-class _DisagreeCommittee:
-    """Deterministic committee stub for the CE teacher: every replicate
-    returns the same completed-Q table with the second-lowest legal action
-    clearly best (spread far above the noise model), so every eligible
-    PLAY node ships a material CE target tilted away from the raw prior."""
-
-    def __init__(self):
-        from sheepshead.ismcts import ISMCTSConfig
-
-        self.config = ISMCTSConfig()
-
-    def search_committee(self, game, observer, forced_public, rngs, d_rollout=None):
-        valid = sorted(game.players[observer - 1].get_valid_action_ids())
-        best = valid[1] if len(valid) > 1 else valid[0]
-        root_q = {}
-        step = 0.0
-        for a in valid:
-            if a == best:
-                root_q[a] = 0.60
-            else:
-                root_q[a] = 0.40 - step
-                step += 0.02
-        replicate = {
-            "ok": True,
-            "root_q": root_q,
-            "root_n": {a: 64.0 for a in valid},
-            "root_prior": {a: 1.0 / len(valid) for a in valid},
-            "valid": valid,
-        }
-        return [dict(replicate) for _ in rngs]
-
-
-def _teacher_all_nodes_config():
-    """SearchConfig labeling every eligible PLAY node (no subsampling)."""
-    from sheepshead.training.config import SearchConfig
-
-    return SearchConfig(teacher_prob=1.0, teacher_replicates=2)
-
-
-def test_ce_teacher_labels_and_dormant():
-    from sheepshead.ismcts import ISMCTSTeacher
-    from sheepshead.training.pfsp_runtime import play_population_game
-
-    _seed()
-    agent = _fresh_agent()
-    mode = PARTNER_BY_JD
-    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = cast(ISMCTSTeacher, _DisagreeCommittee())
-    determinization_rng = random.Random(SEED)
-    sc = _teacher_all_nodes_config()
-
-    labeled = 0
-    for gi in range(8):
-        game, events, _, _, _ = play_population_game(
-            training_agent=agent,
-            opponents=opps,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="terminal",
-            teacher=teacher,
-            determinization_rng=determinization_rng,
-            search_config=sc,
-        )
-        labeled += sum(
-            1 for e in events if e["kind"] == "action" and e.get("has_search_target")
-        )
-        agent.store_episode_events(events)
-    assert labeled > 0, "no CE targets produced"
-    stats = agent.update(epochs=2, batch_size=16, teacher_epochs=2)
-    t = stats.get("teacher")
-    assert stats["num_transitions"] > 0
-    assert t is not None, "teacher pass must report telemetry on labeled rows"
-    assert t["rows"] == labeled and t["epochs"] == 2
-    assert t["ce"] > 0.0
-    assert "value" in stats["critic_losses"], "value loss must be computed"
-
-    # Dormant control: shaped mode with no teacher -> CE pass reports None,
-    # confirming the PPO trainers are unaffected by the teacher plumbing.
-    _seed()
-    agent2 = _fresh_agent()
-    opps2 = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    for gi in range(6):
-        _, events, _, _, _ = play_population_game(
-            training_agent=agent2,
-            opponents=opps2,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="shaped",
-        )
-        agent2.store_episode_events(events)
-    stats2 = agent2.update(epochs=2, batch_size=16, teacher_epochs=2)
-    assert stats2.get("teacher") is None, (
-        "teacher pass must be dormant without labeled rows"
-    )
-
-
-def _generate_searched_events(n_games=5):
-    """Play terminal-mode games with the stub gated teacher and return the
-    concatenated event stream (with search targets on the eligible PLAY
-    transitions)."""
-    from sheepshead.ismcts import ISMCTSTeacher
-    from sheepshead.training.pfsp_runtime import play_population_game
-
-    _seed()
-    gen = _fresh_agent()
-    mode = PARTNER_BY_JD
-    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = cast(ISMCTSTeacher, _DisagreeCommittee())
-    det_rng = random.Random(SEED)
-    sc = _teacher_all_nodes_config()
-    all_events, searched = [], 0
-    for _ in range(n_games):
-        _, events, _, _, _ = play_population_game(
-            training_agent=gen,
-            opponents=opps,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="terminal",
-            teacher=teacher,
-            determinization_rng=det_rng,
-            search_config=sc,
-        )
-        searched += sum(
-            1 for e in events if e["kind"] == "action" and e.get("has_search_target")
-        )
-        all_events.append(events)
-    assert searched > 0, "no search targets generated"
-    return all_events
-
-
-def test_teacher_epochs_reach_gradient():
-    """teacher_epochs must reach the actor gradient: two agents identical
-    except for teacher_epochs (0 vs 2), fed the SAME labeled event stream,
-    must diverge after one update."""
-    event_streams = _generate_searched_events(n_games=5)
-
-    def updated_agent(teacher_epochs):
-        _seed()
-        a = _fresh_agent()  # identical init across the two calls (re-seeded)
-        for events in event_streams:
-            a.store_episode_events(copy.deepcopy(events))
-        a.update(epochs=1, batch_size=16, teacher_epochs=teacher_epochs)
-        return a
-
-    a_plain = updated_agent(0)
-    a_taught = updated_agent(2)
-    max_diff = 0.0
-    for p_plain, p_taught in zip(
-        a_plain.actor.parameters(), a_taught.actor.parameters()
-    ):
-        max_diff = max(max_diff, (p_plain - p_taught).abs().max().item())
-    assert max_diff > 1e-9, (
-        f"teacher_epochs had no effect on the actor update (max param diff {max_diff:.2e})"
-    )
-
-
-def _generate_terminal_events(n_games=5):
-    """Play plain terminal-mode games (no teacher/search) and return the
-    per-game event streams."""
-    from sheepshead.training.pfsp_runtime import play_population_game
-
-    _seed()
-    gen = _fresh_agent()
-    mode = PARTNER_BY_JD
-    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    all_events = []
-    for _ in range(n_games):
-        _, events, _, _, _ = play_population_game(
-            training_agent=gen,
-            opponents=opps,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="terminal",
-        )
-        all_events.append(events)
-    return all_events
-
-
-def test_bidding_anchor_kl():
-    """The bidding-head KL anchor must be dormant by default, report a positive
-    KL(ref||theta) toward a differently-initialized reference, and reach the
-    actor gradient (anchored vs unanchored updates diverge on the SAME events
-    and the SAME update RNG stream)."""
-    assert _fresh_agent().anchor_coeff == 0.0, "anchor must be off by default"
-
-    event_streams = _generate_terminal_events(n_games=5)
-
-    def updated_agent(anchored):
-        _seed()
-        a = _fresh_agent()  # identical init across the two calls (re-seeded)
-        if anchored:
-            torch.manual_seed(999)  # different init => KL(ref||theta) > 0
-            ref = _fresh_agent()
-            a.set_anchor(ref, 1.0)
-        _seed()  # identical update RNG stream across the two branches
-        for events in event_streams:
-            a.store_episode_events(copy.deepcopy(events))
-        stats = a.update(epochs=1, batch_size=16)
-        return a, stats
-
-    a_plain, s_plain = updated_agent(False)
-    a_anch, s_anch = updated_agent(True)
-    assert s_plain["anchor"]["active"] is False, "anchor must report inactive"
-    assert abs(s_plain["anchor"]["loss"]) < 1e-12, "dormant anchor loss must be 0"
-    assert s_anch["anchor"]["active"] is True
-    assert s_anch["anchor"]["kl"] > 0.0, (
-        "anchor KL must be positive toward a different reference"
-    )
-    max_diff = 0.0
-    for p_plain, p_anch in zip(a_plain.actor.parameters(), a_anch.actor.parameters()):
-        max_diff = max(max_diff, (p_plain - p_anch).abs().max().item())
-    assert max_diff > 1e-9, (
-        f"anchor had no effect on the actor update (max param diff {max_diff:.2e})"
     )
 
 
@@ -976,9 +759,6 @@ TESTS = [
     test_search_output_contract,
     test_ismcts_backup_discount_uses_agent_gamma,
     test_terminal_reward_contract,
-    test_ce_teacher_labels_and_dormant,
-    test_teacher_epochs_reach_gradient,
-    test_bidding_anchor_kl,
     test_seat_policies_population_grounding,
     test_greedy_health_probe_side_effect_free,
     test_make_game_summary_roles,
