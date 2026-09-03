@@ -24,7 +24,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | Date (2026) | Decision | § |
 |---|---|---|
 | 09-02 | Restart the program from scratch on `perceiver-recall` to produce the final deployable artifact; simplify the pipeline end to end | 1, 3, 4 |
-| 09-02 | `blind_ids`/`bury_ids` REMOVED from the actor observation dict (oracle dict keeps them); app view builder reads the game object | 3.2 |
+| 09-02 | Observation contract enforced at the ENCODER (`observation.py`, registry `legacy_picker_memory`); the two keys stay in the dict for legacy anchors — amended from "remove the keys" at build time, reasons in §3.2 | 3.2 |
 | 09-02 | Skip the recall-vs-ctxmem architecture pilot; no strength bar on the bootstrap | 3.4, 5.3 |
 | 09-02 | PG phase stop rule = marginal-value handoff (not plateau); one entropy step max; settled-checkpoint handoff | 5.1 |
 | 09-02 | Exploiters dropped from the training loop (post-hoc audit only); PFSP kept | 4.3 |
@@ -123,24 +123,41 @@ attention cost scales with token count squared (15² / 19² ≈ 0.62), but
 the encoder is a minority of wall time; expect ~10–20% on the encoder
 forward, less end to end.
 
-### 3.2 Observation change (enforced at the observation, not the encoder)
+### 3.2 Observation contract (enforced at the encoder; amended 2026-09-02)
 
-`Player.get_state_dict` drops `blind_ids` and `bury_ids`.
-`get_oracle_state_dict` keeps them (true cards, all seats). Consumers
-audited 2026-09-02:
+The contract lives in `sheepshead/agent/observation.py`: `RECALL_KEYS`
+(header flags, called card, seats/roles, hand, trick on the table) is
+what a human at the table sees or is entitled to remember; `blind_ids`
+and `bury_ids` are the legacy picker-memory injection. Every
+`ArchitectureSpec` declares `legacy_picker_memory` (True for every entry
+registered before this program, False for `perceiver-recall`), the
+encoder's `observation_keys()` is the runtime truth, and a test welds
+the two and pins the recall encoder to exactly `RECALL_KEYS` with the
+15-token layout, invariant to the two keys' values.
 
-- `app/server/runtime/views.py:49-55` (the only UI reader) converts the
-  ids back to card names for `view.blind`/`view.bury`; it will read
-  `game.blind`/`game.bury` gated on `player.is_picker` instead (same
-  view shape; no client change). Nothing in the web client reads the raw
-  id fields; the WebSocket zod schemas do not name them.
-- Inference paths (`ai_loop.py`, `analysis_common.run_inference_step`)
-  hand the dict straight to the encoder — /analyze's displayed
-  observation becomes accurate for the deployed agent by construction.
-- Legacy encoders (`full` family, one-hot baseline) marshal the keys;
-  they get a missing-key-means-PAD fallback, reproducing the ablation's
-  masked pass. Tests touching the keys: game rules, oracle critic,
-  scripted agent.
+Why the keys stay in `Player.get_state_dict` rather than being removed
+(the decision recorded in §0 was to remove them; amended at build time):
+
+- Every evaluation anchor and the production 30M are legacy
+  architectures. The review gates (§5.3) compare against PANEL-A and
+  the 30M as they were measured; a removed key would run those models
+  masked (−0.30/picker hand for the 30M, Blind_Bury §3), shifting the
+  panel by ~0.05 and turning "beats the 30M" into "beats a handicapped
+  30M".
+- The h2h instruments seat a recall agent and a legacy agent at the
+  same table, so both observation variants must be producible for one
+  game state; the only per-agent place to differentiate is the encoder.
+- ~140 call sites build observations for an agent (training, search,
+  every analysis instrument, the app); a per-call flag would silently
+  mask any un-migrated legacy consumer. Encoder-side enforcement fails
+  loudly instead: a legacy encoder given a dict without the keys raises.
+
+Consumers audited 2026-09-02: `app/server/runtime/views.py` (the only
+UI reader) now reads the picker's blind/bury from the game object — a
+table fact, not an agent observation; the raw observation dict never
+reaches the web client. Inference paths hand the dict straight to the
+encoder, so the deployed recall agent consumes `RECALL_KEYS` by
+construction. The oracle encoder keeps its full-information dict.
 
 ### 3.3 Registry and gates
 

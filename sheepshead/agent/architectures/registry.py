@@ -24,6 +24,7 @@ from .encoders import (
     PerceiverCtxMemEncoder,
     PerceiverEncoder,
     PooledMemoryEncoder,
+    RecallEncoder,
     SharedReadoutEncoder,
     TokenReadEncoder,
 )
@@ -51,6 +52,13 @@ class ArchitectureSpec:
     # has_aux_heads attribute. sheepshead/tests/test_arch_golden.py welds the two (and
     # the aux modules' state_dict presence) together for every entry.
     has_aux_heads: bool = True
+    # Observation contract (agent/observation.py): True for every
+    # architecture registered before September 2026, whose encoders read the
+    # picker's blind/bury re-injected into each observation; False for the
+    # recall family, which reads exactly observation.RECALL_KEYS. Declarative;
+    # the runtime truth is encoder.observation_keys(), and the golden test
+    # welds the two. New entries default to the recall contract.
+    legacy_picker_memory: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +159,7 @@ def _full_size_variant(
         ),
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=True,
     )
 
@@ -202,6 +211,7 @@ def _perceiver_size_variant(
         ),
         build_actor=build_actor,
         build_critic=build_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 
@@ -234,6 +244,7 @@ register(
         build_encoder=lambda: CardReasoningEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=True,
     )
 )
@@ -246,6 +257,7 @@ register(
         build_encoder=lambda: CardReasoningEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -261,6 +273,7 @@ register(
         build_encoder=lambda: PooledMemoryEncoder(),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -274,6 +287,7 @@ register(
         ),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -291,6 +305,7 @@ register(
             FlatHeadActorNetwork(action_size, action_groups)
         ),
         build_critic=_no_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -359,6 +374,7 @@ register(
         build_encoder=lambda: PerceiverEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_perceiver_actor,
         build_critic=_perceiver_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -376,6 +392,7 @@ register(
         build_encoder=lambda: PerceiverEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_perceiver_actor,
         build_critic=_perceiver_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=True,
     )
 )
@@ -402,6 +419,7 @@ register(
         build_encoder=lambda: TokenReadEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_perceiver_actor,
         build_critic=_no_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -418,6 +436,7 @@ register(
         build_encoder=lambda: TokenReadEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_perceiver_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -437,6 +456,7 @@ register(
         build_encoder=lambda: SharedReadoutEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=True,
     )
 )
@@ -455,6 +475,7 @@ register(
         build_encoder=lambda: SharedReadoutEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -486,6 +507,7 @@ register(
         ),
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=True,
     )
 )
@@ -513,6 +535,7 @@ register(
         ),
         build_actor=_bilinear_pointer_actor,
         build_critic=_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=True,
     )
 )
@@ -533,6 +556,7 @@ register(
         ),
         build_actor=_pointer_actor,
         build_critic=_no_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -548,6 +572,7 @@ register(
         build_encoder=lambda: PerceiverCtxMemEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_perceiver_actor,
         build_critic=_perceiver_critic,
+        legacy_picker_memory=True,
         has_aux_heads=False,
     )
 )
@@ -668,6 +693,7 @@ register(
         build_encoder=lambda: TokenReadEncoder(card_config=CardEmbeddingConfig()),
         build_actor=_tokenread_actor,
         build_critic=_aux_critic,
+        legacy_picker_memory=True,
         has_aux_heads=True,
     )
 )
@@ -682,6 +708,28 @@ register(
         ),
         build_actor=_pointer_actor,
         build_critic=_aux_critic,
+        legacy_picker_memory=True,
+        has_aux_heads=True,
+    )
+)
+
+
+# --- Release-candidate architecture (Training_Program_Redesign §3) --------
+register(
+    ArchitectureSpec(
+        name="perceiver-recall",
+        description=(
+            "perceiver-shared-v2-bp under the human-recall observation "
+            "contract: 15 tokens (no blind/bury re-injection; the picker "
+            "must carry them in memory), the memory GRU driven by the "
+            "post-reasoning MEMORY token, bilinear play pointer, aux critic. "
+            "The from-scratch release-candidate architecture "
+            "(Training_Program_Redesign_202609 §3)."
+        ),
+        build_encoder=lambda: RecallEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_bilinear_pointer_actor,
+        build_critic=_aux_critic,
+        legacy_picker_memory=False,
         has_aux_heads=True,
     )
 )

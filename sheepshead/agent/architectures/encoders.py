@@ -10,7 +10,11 @@ import torch
 import torch.nn as nn
 
 from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
-from sheepshead.agent.token_layout import CONTEXT_TOKEN, MEMORY_TOKEN
+from sheepshead.agent.token_layout import (
+    CONTEXT_TOKEN,
+    MEMORY_TOKEN,
+    RECALL_TOKEN_COUNT,
+)
 
 # ---------------------------------------------------------------------------
 # Pooled-memory encoder (the "no-transformer" rung)
@@ -156,10 +160,11 @@ class PerceiverEncoder(CardReasoningEncoder):
         super().__init__(
             card_config=card_config or CardEmbeddingConfig(), **encoder_kwargs
         )
-        del self.pool_hand
-        del self.pool_trick
-        del self.pool_blind
-        del self.pool_bury
+        # The recall layout (observe_picker_memory=False) never built the
+        # blind/bury pools, so delete whichever pools exist.
+        for name in ("pool_hand", "pool_trick", "pool_blind", "pool_bury"):
+            if hasattr(self, name):
+                delattr(self, name)
         del self.feature_proj
 
     def param_groups(self, base_lr: float, card_lr_scale: float = 0.1):
@@ -173,7 +178,7 @@ class PerceiverEncoder(CardReasoningEncoder):
             self.memory_in_proj.parameters(),
             self.token_mlp_hand.parameters(),
             self.token_mlp_trick.parameters(),
-            self.token_mlp_simple.parameters(),
+            self._picker_memory_parameters(),
             self.card_reasoner.parameters(),
             self.memory_gru.parameters(),
         )
@@ -322,6 +327,80 @@ class SharedReadoutEncoder(PerceiverEncoder):
         # Memory write: context token, as in the base architecture.
         driver = all_tokens[:, CONTEXT_TOKEN, :]
         memory_out = self.memory_gru(driver, memory_in)
+        B = all_tokens.size(0)
+        q = self.readout_query.unsqueeze(0).expand(B, -1, -1)
+        attn_out, _ = self.readout_mha(
+            q,
+            all_tokens,
+            all_tokens,
+            key_padding_mask=~all_mask,
+            need_weights=False,
+        )
+        features = self.readout_proj(
+            attn_out.reshape(B, self.readout_n_queries * self.d_token_dim)
+        )
+        return {
+            "features": features,
+            "hand_tokens": hand_tok_out,
+            "context_token": context_out,
+            "memory_out": memory_out,
+            "all_tokens": all_tokens,
+            "all_mask": all_mask,
+        }
+
+
+class RecallEncoder(SharedReadoutEncoder):
+    """The ``perceiver-recall`` encoder (Training_Program_Redesign §3.1).
+
+    perceiver-shared-v2's shared-readout encoder (16-query/4-head
+    LayerNorm'd readout) with two changes:
+
+    1. **Recall layout.** Built with ``observe_picker_memory=False``: the
+       picker's blind and bury are never read from the observation and the
+       token sequence is the 15-token ``[context, memory, hand x8, trick x5]``
+       (token_layout.RECALL_TOKEN_COUNT). The picker sees the blind once —
+       it passes through ``hand_ids`` during the bury phase — and the bury
+       is the picker's own action, so both must be carried by the memory
+       from then on, as a human carries them (agent/observation.py).
+    2. **Memory driver = post-reasoning MEMORY token.** The GRU consumes the
+       transformer's own "what to remember" slot (the ``perceiver`` rung's
+       design) instead of the context token: under the recall constraint
+       the memory token is the only path by which the blind and bury reach
+       later decisions, so the architecture should make the network learn
+       to write what it must recall and leave the context token as the
+       current-situation summary. Same GRUCell shape, zero parameter change
+       relative to the context driver.
+
+    Transformer, readout and GRU weights are token-count-agnostic, so the
+    module is shape-identical to a perceiver-shared-v2 encoder minus the
+    ~1k-parameter simple-bag MLP.
+    """
+
+    TOKEN_COUNT = RECALL_TOKEN_COUNT
+
+    def __init__(self, card_config: "CardEmbeddingConfig | None" = None, **kw):
+        kw.setdefault("n_readout_queries", 16)
+        kw.setdefault("n_readout_heads", 4)
+        kw.setdefault("normed_readout", True)
+        super().__init__(card_config=card_config, observe_picker_memory=False, **kw)
+
+    def _pool_fuse_update(
+        self,
+        context_out,
+        hand_tok_out,
+        hand_mask,
+        trick_tok_out,
+        trick_mask,
+        blind_tok_out,
+        blind_mask,
+        bury_tok_out,
+        bury_mask,
+        memory_in,
+        all_tokens,
+        all_mask,
+    ):
+        # Memory write: the post-reasoning MEMORY token (index 1).
+        memory_out = self.memory_gru(all_tokens[:, MEMORY_TOKEN, :], memory_in)
         B = all_tokens.size(0)
         q = self.readout_query.unsqueeze(0).expand(B, -1, -1)
         attn_out, _ = self.readout_mha(

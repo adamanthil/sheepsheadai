@@ -1045,6 +1045,11 @@ class Player:
 
         # Sets (fixed sizes)
         hand_ids = to_ids(self.hand, 8)
+        # Legacy picker-memory injection: the picker's blind and bury on
+        # every observation. Only architectures registered before September
+        # 2026 read these (ArchitectureSpec.legacy_picker_memory); the recall
+        # family ignores them and must carry the cards in memory. See
+        # sheepshead/agent/observation.py for the contract.
         blind_ids = to_ids(self.blind if self.is_picker else [], 2)
         bury_ids = to_ids(self.bury if self.is_picker else [], 2)
 

@@ -163,8 +163,16 @@ class CardReasoningEncoder(nn.Module):
       - partner_mode, is_leaster, play_started, current_trick,
         alone_called, called_card_id, called_under,
         picker_rel, partner_rel, leader_rel, picker_position
-      - hand_ids (8,), blind_ids (2,), bury_ids (2,)
-      - trick_card_ids (5,), trick_is_picker (5,), trick_is_partner_known (5,)
+      - hand_ids (8,), trick_card_ids (5,), trick_is_picker (5,),
+        trick_is_partner_known (5,)
+      - blind_ids (2,), bury_ids (2,) ONLY when ``observe_picker_memory``
+        (the legacy picker-memory injection; see agent/observation.py).
+
+    ``observe_picker_memory=False`` builds the 15-token recall layout
+    (token_layout.RECALL_TOKEN_COUNT): no simple-bag MLP, no blind/bury
+    pools, and the two keys are never read. Everything else — embeddings,
+    transformer, memory GRU — is layout-agnostic, so weights are shape-
+    identical across the two layouts.
     """
 
     def __init__(
@@ -175,12 +183,14 @@ class CardReasoningEncoder(nn.Module):
         n_reasoning_heads: int = 4,
         n_reasoning_layers: int = 4,
         d_model: int = 256,
+        observe_picker_memory: bool = True,
     ):
         super().__init__()
         # Allow config to override d_card
         if card_config is not None:
             d_card = card_config.d_card
 
+        self.observe_picker_memory = bool(observe_picker_memory)
         # Expose configured dimensions for downstream modules
         self.d_card_dim = int(d_card)
         self.d_token_dim = int(d_token)
@@ -221,10 +231,11 @@ class CardReasoningEncoder(nn.Module):
             nn.Linear(d_card + 4 + 4, d_token),  # card + seat + role
             nn.SiLU(),
         )
-        self.token_mlp_simple = nn.Sequential(
-            nn.Linear(d_card, d_token),  # blind/bury
-            nn.SiLU(),
-        )
+        if self.observe_picker_memory:
+            self.token_mlp_simple = nn.Sequential(
+                nn.Linear(d_card, d_token),  # blind/bury
+                nn.SiLU(),
+            )
 
         # Card reasoning via transformer
         self.card_reasoner = TransformerCardReasoning(
@@ -234,15 +245,19 @@ class CardReasoningEncoder(nn.Module):
         # Pools per bag
         self.pool_hand = AttentionPool(d_token, pool_big)
         self.pool_trick = AttentionPool(d_token, pool_big)
-        self.pool_blind = AttentionPool(d_token, pool_small)
-        self.pool_bury = AttentionPool(d_token, pool_small)
+        if self.observe_picker_memory:
+            self.pool_blind = AttentionPool(d_token, pool_small)
+            self.pool_bury = AttentionPool(d_token, pool_small)
 
         # Memory update (GRU cell)
         self.memory_gru = nn.GRUCell(d_token, self.d_model)
 
         # Fused feature projection
+        fused_width = 2 * pool_big + d_token
+        if self.observe_picker_memory:
+            fused_width += 2 * pool_small
         self.feature_proj = nn.Sequential(
-            nn.Linear(2 * pool_big + 2 * pool_small + d_token, self.d_model),
+            nn.Linear(fused_width, self.d_model),
             nn.LayerNorm(self.d_model),
         )
 
@@ -342,12 +357,10 @@ class CardReasoningEncoder(nn.Module):
             self.memory_in_proj.parameters(),
             self.token_mlp_hand.parameters(),
             self.token_mlp_trick.parameters(),
-            self.token_mlp_simple.parameters(),
+            self._picker_memory_parameters(),
             self.card_reasoner.parameters(),
             self.pool_hand.parameters(),
             self.pool_trick.parameters(),
-            self.pool_blind.parameters(),
-            self.pool_bury.parameters(),
             self.memory_gru.parameters(),
             self.feature_proj.parameters(),
         )
@@ -356,9 +369,29 @@ class CardReasoningEncoder(nn.Module):
             {"params": other_params, "lr": base_lr},
         ]
 
+    def _picker_memory_parameters(self):
+        """Parameters of the blind/bury modules (empty for the recall
+        layout). Pools are included only where they exist; pool-free
+        subclasses delete them and chain their own groups."""
+        if not self.observe_picker_memory:
+            return iter(())
+        mods = [self.token_mlp_simple]
+        for name in ("pool_blind", "pool_bury"):
+            mod = getattr(self, name, None)
+            if mod is not None:
+                mods.append(mod)
+        return itertools.chain.from_iterable(m.parameters() for m in mods)
+
     @staticmethod
     def _stack_uint8(batch: List[Any], key: str, length: int) -> torch.Tensor:
-        arr = [torch.as_tensor(s[key], dtype=torch.long) for s in batch]
+        try:
+            arr = [torch.as_tensor(s[key], dtype=torch.long) for s in batch]
+        except KeyError as err:
+            raise KeyError(
+                f"observation dict lacks {key!r}: this encoder consumes the "
+                "legacy picker-memory keys (see sheepshead/agent/observation.py); "
+                "pass the full Player.get_state_dict() observation"
+            ) from err
         out = torch.stack(arr, dim=0)
         # Ensure shape
         if out.dim() == 1:
@@ -460,18 +493,32 @@ class CardReasoningEncoder(nn.Module):
         "picker_position",
     )
     SCALAR_FIELDS = ("called_card_id", "picker_rel", "partner_rel")
+    #: Card-id fields every layout reads.
     ID_FIELDS = (
         ("hand_ids", 8),
-        ("blind_ids", 2),
-        ("bury_ids", 2),
         ("trick_card_ids", 5),
         ("trick_is_picker", 5),
         ("trick_is_partner_known", 5),
     )
+    #: The legacy picker-memory injection, read only when observe_picker_memory.
+    PICKER_MEMORY_FIELDS = (("blind_ids", 2), ("bury_ids", 2))
 
-    @classmethod
+    def id_fields(self) -> tuple:
+        fields = self.ID_FIELDS
+        if self.observe_picker_memory:
+            fields = fields + self.PICKER_MEMORY_FIELDS
+        return fields
+
+    def observation_keys(self) -> tuple[str, ...]:
+        """Every observation-dict key this encoder reads, sorted — the
+        runtime statement of the observation contract (agent/observation.py):
+        the recall layout's set is exactly ``observation.RECALL_KEYS``."""
+        keys = set(self.HEADER_FIELDS) | set(self.SCALAR_FIELDS)
+        keys |= {name for name, _ in self.id_fields()}
+        return tuple(sorted(keys))
+
     def marshal_batch(
-        cls, batch: List[Dict[str, Any]], device: "torch.device | None" = None
+        self, batch: List[Dict[str, Any]], device: "torch.device | None" = None
     ) -> Dict[str, torch.Tensor]:
         """Host half of ``encode_batch``: observation dicts -> stacked tensors.
 
@@ -483,6 +530,9 @@ class CardReasoningEncoder(nn.Module):
         to an accelerator and to ``torch.compile`` alike. ``encode_tensors`` is
         the half that benefits from either, which is why
         ``agent.compiled_encoder`` compiles that one and leaves this eager.
+
+        Reads only ``observation_keys()``: a recall encoder never touches
+        the picker-memory keys even when the dict carries them.
         """
 
         def to_device(x: torch.Tensor) -> torch.Tensor:
@@ -490,15 +540,15 @@ class CardReasoningEncoder(nn.Module):
 
         marshalled = {
             "header_scalar": to_device(
-                torch.cat([cls._stack_scalar(batch, k) for k in cls.HEADER_FIELDS], 1)
+                torch.cat([self._stack_scalar(batch, k) for k in self.HEADER_FIELDS], 1)
             )
         }
-        for field in cls.SCALAR_FIELDS:
+        for field in self.SCALAR_FIELDS:
             marshalled[field] = to_device(
                 torch.as_tensor([int(s[field]) for s in batch], dtype=torch.long)
             )
-        for field, width in cls.ID_FIELDS:
-            marshalled[field] = to_device(cls._stack_uint8(batch, field, width))
+        for field, width in self.id_fields():
+            marshalled[field] = to_device(self._stack_uint8(batch, field, width))
         return marshalled
 
     def encode_tensors(
@@ -548,74 +598,50 @@ class CardReasoningEncoder(nn.Module):
 
         # 4. Build card tokens
         hand_ids = obs["hand_ids"]
-        blind_ids = obs["blind_ids"]
-        bury_ids = obs["bury_ids"]
         trick_card_ids = obs["trick_card_ids"]
         trick_is_picker = obs["trick_is_picker"].bool()
         trick_is_partner_known = obs["trick_is_partner_known"].bool()
 
         hand_tok, hand_mask = self._embed_hand(hand_ids, actor_role_id)
-        blind_tok, blind_mask = self._embed_simple_bag(blind_ids)
-        bury_tok, bury_mask = self._embed_simple_bag(bury_ids)
         trick_tok, trick_mask = self._embed_trick(
             trick_card_ids, trick_is_picker, trick_is_partner_known
         )
 
-        # 5. Concatenate: [context, memory, hand×8, trick×5, blind×2, bury×2] = 19 tokens
+        # 5. Concatenate: [context, memory, hand×8, trick×5] (15 tokens), plus
+        # [blind×2, bury×2] (19) under the legacy picker-memory layout.
         device_actual = hand_tok.device
-        all_tokens = torch.cat(
-            [
-                context_tok.unsqueeze(1),  # (B, 1, d_token)
-                memory_tok.unsqueeze(1),  # (B, 1, d_token)
-                hand_tok,  # (B, 8, d_token)
-                trick_tok,  # (B, 5, d_token)
-                blind_tok,  # (B, 2, d_token)
-                bury_tok,  # (B, 2, d_token)
-            ],
-            dim=1,
-        )  # (B, 19, d_token)
-
-        all_mask = torch.cat(
-            [
-                torch.ones(
-                    (B, 1), dtype=torch.bool, device=device_actual
-                ),  # context always valid
-                torch.ones(
-                    (B, 1), dtype=torch.bool, device=device_actual
-                ),  # memory always valid
-                hand_mask,
-                trick_mask,
-                blind_mask,
-                bury_mask,
-            ],
-            dim=1,
-        )  # (B, 19)
-
-        # 6. Add card_type embeddings
-        type_ids = torch.cat(
-            [
-                torch.zeros(
-                    (B, 1), dtype=torch.long, device=device_actual
-                ),  # context = 0
-                torch.ones(
-                    (B, 1), dtype=torch.long, device=device_actual
-                ),  # memory = 1
-                torch.full(
-                    (B, 8), HAND_TYPE_ID, dtype=torch.long, device=device_actual
-                ),  # hand = 2
-                torch.full(
-                    (B, 5), TRICK_TYPE_ID, dtype=torch.long, device=device_actual
-                ),  # trick = 3
+        ones = torch.ones((B, 1), dtype=torch.bool, device=device_actual)
+        token_parts = [
+            context_tok.unsqueeze(1),  # (B, 1, d_token)
+            memory_tok.unsqueeze(1),  # (B, 1, d_token)
+            hand_tok,  # (B, 8, d_token)
+            trick_tok,  # (B, 5, d_token)
+        ]
+        mask_parts = [ones, ones, hand_mask, trick_mask]  # context/memory always valid
+        type_parts = [
+            torch.zeros((B, 1), dtype=torch.long, device=device_actual),  # context
+            torch.ones((B, 1), dtype=torch.long, device=device_actual),  # memory
+            torch.full((B, 8), HAND_TYPE_ID, dtype=torch.long, device=device_actual),
+            torch.full((B, 5), TRICK_TYPE_ID, dtype=torch.long, device=device_actual),
+        ]
+        if self.observe_picker_memory:
+            blind_tok, blind_mask = self._embed_simple_bag(obs["blind_ids"])
+            bury_tok, bury_mask = self._embed_simple_bag(obs["bury_ids"])
+            token_parts += [blind_tok, bury_tok]  # (B, 2, d_token) each
+            mask_parts += [blind_mask, bury_mask]
+            type_parts += [
                 torch.full(
                     (B, 2), BLIND_TYPE_ID, dtype=torch.long, device=device_actual
-                ),  # blind = 4
+                ),
                 torch.full(
                     (B, 2), BURY_TYPE_ID, dtype=torch.long, device=device_actual
-                ),  # bury = 5
-            ],
-            dim=1,
-        )  # (B, 19)
-        all_tokens = all_tokens + self.card_type(type_ids)
+                ),
+            ]
+        all_tokens = torch.cat(token_parts, dim=1)  # (B, N, d_token)
+        all_mask = torch.cat(mask_parts, dim=1)  # (B, N)
+
+        # 6. Add card_type embeddings
+        all_tokens = all_tokens + self.card_type(torch.cat(type_parts, dim=1))
 
         # 7. Run transformer
         all_tokens = self.card_reasoner(all_tokens, all_mask)
@@ -624,8 +650,14 @@ class CardReasoningEncoder(nn.Module):
         context_out = all_tokens[:, CONTEXT_TOKEN, :]  # (B, d_token)
         hand_tok_out = all_tokens[:, HAND_TOKENS, :]  # (B, 8, d_token)
         trick_tok_out = all_tokens[:, TRICK_TOKENS, :]
-        blind_tok_out = all_tokens[:, BLIND_TOKENS, :]
-        bury_tok_out = all_tokens[:, BURY_TOKENS, :]
+        if self.observe_picker_memory:
+            blind_tok_out = all_tokens[:, BLIND_TOKENS, :]
+            bury_tok_out = all_tokens[:, BURY_TOKENS, :]
+        else:
+            # Zero-width bags: the seam signature is layout-agnostic and
+            # pool-free subclasses ignore these entirely.
+            blind_tok_out = bury_tok_out = all_tokens[:, :0, :]
+            blind_mask = bury_mask = all_mask[:, :0]
 
         # 9-11. Pool bags, update memory, fuse features. Overridable seam:
         # pool-free variants (PerceiverEncoder in architectures.encoders) replace
@@ -678,8 +710,11 @@ class CardReasoningEncoder(nn.Module):
         # 9. Pool bags
         hand_vec = self.pool_hand(hand_tok_out, hand_mask)
         trick_vec = self.pool_trick(trick_tok_out, trick_mask)
-        blind_vec = self.pool_blind(blind_tok_out, blind_mask)
-        bury_vec = self.pool_bury(bury_tok_out, bury_mask)
+        if self.observe_picker_memory:
+            blind_vec = self.pool_blind(blind_tok_out, blind_mask)
+            bury_vec = self.pool_bury(bury_tok_out, bury_mask)
+        else:
+            blind_vec = bury_vec = hand_vec[:, :0]  # zero-width, dropped in fusion
 
         # 10-11. Update memory + fuse features (the narrower seam below).
         return self._fuse_and_update_memory(
@@ -720,7 +755,8 @@ class CardReasoningEncoder(nn.Module):
         # Update memory: memory_out = GRU(context_token_out, memory_in)
         memory_out = self.memory_gru(context_out, memory_in)  # (B, 256)
 
-        # Fuse features
+        # Fuse features (the picker-memory bags are zero-width under the
+        # recall layout, so the same cat serves both).
         features = self.feature_proj(
             torch.cat([hand_vec, trick_vec, blind_vec, bury_vec, context_out], dim=1)
         )

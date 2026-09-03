@@ -48,18 +48,17 @@ def build_player_state(player: Player, score_multiplier: int = 1) -> Dict[str, A
     """
     state_dict = player.get_state_dict()
     hand_cards = list(player.hand)
-    blind_cards = [
-        DECK[card_id - 1] for card_id in state_dict["blind_ids"] if card_id > 0
-    ]
-    bury_cards = [
-        DECK[card_id - 1] for card_id in state_dict["bury_ids"] if card_id > 0
-    ]
+    # Game facts the picker knows (it saw the blind and chose the bury), read
+    # off the game rather than the observation dict: whether an AGENT is
+    # shown them is an architecture property (agent/observation.py), not a
+    # property of the table view.
+    game = player.game
+    blind_cards = list(game.blind) if player.is_picker else []
+    bury_cards = list(game.bury) if player.is_picker else []
 
     hand_cards.sort(key=lambda card: DECK.index(card))
     blind_cards.sort(key=lambda card: DECK.index(card))
     bury_cards.sort(key=lambda card: DECK.index(card))
-
-    game = player.game
 
     current_trick = ["", "", "", "", ""]
     if (

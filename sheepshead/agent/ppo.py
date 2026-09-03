@@ -393,6 +393,24 @@ class PPOAgent:
         # Storage for trajectory data
         self.reset_storage()
 
+    @property
+    def observation_keys(self) -> tuple[str, ...]:
+        """Observation-dict keys this agent's encoder reads (sorted): the
+        runtime form of the observation contract in agent/observation.py.
+        Recall architectures return exactly ``observation.RECALL_KEYS``;
+        legacy ones add the picker-memory keys."""
+        try:
+            return tuple(self.encoder.observation_keys())
+        except AttributeError:
+            # Encoders outside the token family (the one-hot baseline) read
+            # the whole legacy dict.
+            from sheepshead.agent.observation import (
+                LEGACY_PICKER_MEMORY_KEYS,
+                RECALL_KEYS,
+            )
+
+            return tuple(sorted(RECALL_KEYS | LEGACY_PICKER_MEMORY_KEYS))
+
     def get_recurrent_memory(
         self, player_id: int | None, device: torch.device | None = None
     ) -> torch.Tensor:
