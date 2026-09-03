@@ -364,36 +364,39 @@ arm if the gen-2 gate fails.
 
 ---
 
-## 6. Code plan
+## 6. Code (built 2026-09-02 on branch `training-program-redesign`)
 
-New / retained modules (`sheepshead/training/`):
+Modules in `sheepshead/training/`:
 
 | module | role | provenance |
 |---|---|---|
-| `train_ppo.py` (unified trainer) | phases 0, 2, and the bidding phase: `--reward {shaped,terminal}`, `--critic {limited,oracle}`, `--train-heads {all,bidding}`, entropy target schedule, population from `league.py` | `train_league_ppo.py` stripped of teacher/exploiter/anchor/GNS/horizon |
-| `league.py` | roster + per-seat PFSP/self sampling + HOF | exploiter role removed |
-| `pfsp_runtime.py` | game primitive, shaped and terminal reward paths | CE emission removed |
-| `pretrain_oracle.py` | phase 1 | from `oracle_moe_offline.py` |
-| `distill_corpus.py` | phase 3 corpus | schema 2 only |
-| `policy_iteration.py` | fit / target / distill / cert | `train_policy_iteration.py` + `train_distill.py` merged, standing defaults |
-| `run_training_program.py` | the orchestrator: resumable `state.json`, phases, gates, reports, `--smoke` | replaces `run_extended_league.py` |
-| `program_config.py` | one dataclass = the pre-registration artifact | new |
+| `train_ppo.py` | the one PPO trainer: `--phase {bootstrap,league,bidding}` with phase presets (`PhaseSpec`), `--until` on an absolute episode clock, the target-entropy controller from generation 2, HOF promotion of every boundary snapshot | `train_league_ppo` stripped of teacher / exploiter / anchor / GNS / clock schedules; `train_selfplay_ppo` retired (the bootstrap is the same loop on an empty population with shaped rewards) |
+| `config.py` | `BootstrapHyperparams`, `LeagueHyperparams` (constant LR, fixed gen-1 coefficients), `CommitteeConfig`, `LeagueConfig` | `PFSPHyperparams` / `SelfPlayHyperparams` / `SearchConfig` replaced |
+| `league.py` | roster + per-seat PFSP/self sampling + HOF | exploiter role, seat heat, retirement clocks, legacy migration removed |
+| `league_streams.py`, `league_worker.py` | episode streams and the worker pool, `reward_mode` threaded through | CE emission removed |
+| `pfsp_runtime.py` | the game primitive, committee summary/tilt (corpus generation) | online CE emission removed |
+| `entropy_controller.py`, `leaster_watchdog.py` | unchanged | — |
+| `pretrain_oracle.py` | phase 1 | from `oracle_moe_offline.py` (MoE arms dropped) |
+| `distill_corpus.py` | phase 3 corpus, schema 2 only | committee acting, alone-only calibration removed |
+| `search_advantage.py` | Stage 1/1b/2 math (pointer/adapter rungs) | trunk rung removed |
+| `policy_iteration.py` | fit / target / distill / cert with the standing recipe as defaults | `train_policy_iteration` + `train_distill` merged; sweep flags, §17 partition machinery, `recover_search_q` removed |
+| `stop_rules.py` | the marginal-value handoff rule, settled-checkpoint rule, iteration stop | replaces `league_stopping` |
+| `program_config.py` | the config tree = the pre-registration artifact (`smoke_config()` for the minutes-long check) | new |
+| `run_training_program.py` | the resumable orchestrator over the five phases, review gates, reports | replaces `run_extended_league` + `league_reports` |
 
-Retired: `train_selfplay_ppo.py`, `exploiter.py` (→ analysis),
-`league_teacher.py`, `league_gates.py`, `recover_search_q.py`,
-`train_distill.py`, `run_extended_league.py`, `run_ablation_matrix.py`;
-`SearchConfig` teacher fields; the corresponding tests (live teacher,
-gated teacher, boundary cert, exploiter gate, recovery, §17 pipeline).
-Golden gates (`capture_arch_goldens`, `capture_search_goldens`), the
-bit-exact fixture suite, basedpyright zero, and prek/CI stay green
-throughout.
+Also: `agent/observation.py` (the contract), `analysis/exploitability_audit.py`
+(the post-hoc audit, from `exploiter.py`), `analysis/league_progress_eval.py`
+(`h2h_duplicate` now returns the leaster-hand paired score).
 
-Build order: (1) architecture + observation change + goldens; (2) unified
-trainer + population cleanup + smoke; (3) policy-iteration consolidation;
-(4) orchestrator + config + smoke of every phase; (5) notebook §7 filled
-with final constants; (6) launch.
+PPOAgent changes: `set_trainable_heads("bidding")`, `observation_keys`; the
+teacher CE passes, GNS diagnostic and bidding anchor are gone.
 
----
+Tests: `test_recall_architecture`, `test_stop_rules`, `test_program`,
+rewritten `test_league_smoke` / `test_trainer_output_contracts` /
+`test_distill_pipeline` / `test_policy_iteration`; the arch goldens were
+recaptured with the new fixture and every legacy fixture verified
+byte-identical against a pre-change capture. Full suite green; the program
+smoke (`--smoke`) exercises every phase end to end.
 
 ## 7. Pre-registration
 

@@ -16,7 +16,7 @@ dependencies = [
 
 [project.scripts]
 train-ppo = "sheepshead.training.train_ppo:main"
-extended-league = "sheepshead.training.run_extended_league:main"
+training-program = "sheepshead.training.run_training_program:main"
 
 [build-system]
 requires = ["hatchling"]

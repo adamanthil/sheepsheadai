@@ -2,7 +2,7 @@
 """
 Per-generation endpoint evaluation for the extended league run.
 
-Called by analysis/run_extended_league.py after each generation; importable
+Called by training/run_training_program.py after each generation; importable
 and usable standalone for manual re-runs. Reuses the anchored-gauntlet
 machinery from analysis/rigorous_eval.py in-process because the stopping rule
 needs the raw per-deal score vectors, which the CSV output discards.

@@ -9,7 +9,8 @@ sheepshead/         installable RL core (uv sync installs it editable)
   game.py           game engine (rules, deals, scoring)
   scripted_agent.py rules baseline    ismcts.py  search / ExIt teacher
   agent/            ppo, encoder, oracle, architectures registry
-  training/         self-play + league trainers, exploiter, orchestrators
+  training/         the PPO trainer, oracle pretraining, corpus + policy
+                    iteration, and the program orchestrator
   analysis/         measurement instruments (rigorous_eval, probes, panels)
   validation/       historical one-off gate checks
   tests/            training/research test suite (kept out of the wheel)
@@ -22,8 +23,8 @@ play.py             CLI game entry point
 ```
 
 Python imports use the `sheepshead.*` (and `server.*`) package names from any
-cwd once `uv sync` has run. Trainer entry points: `uv run train-selfplay`,
-`uv run train-league`, `uv run extended-league` (or `python -m
+cwd once `uv sync` has run. Trainer entry points: `uv run train-ppo`,
+`uv run training-program` (or `python -m
 sheepshead.training.<module>`).
 
 ## Requirements
@@ -271,76 +272,34 @@ architecture and are rebuilt to match on load). All artifacts for a run —
 checkpoints, the final model, plots, CSVs, and the league roster — are written
 under `runs/<run-name>/` (gitignored).
 
-### Step 1 — Self-play PPO (bootstrap)
+### The training program
 
-Train a single agent by self-play. This is the starting point; it needs no
-population. Defaults to 100k episodes and writes `<arch>_checkpoint_<N>.pt`
-snapshots plus an anchored strength curve (`anchored_eval.csv`, paired CRN
-edges vs three frozen yardsticks) under `runs/selfplay_ppo/`:
-
-```bash
-uv run train-selfplay --episodes 100000
-```
-
-Useful flags: `--arch` (architecture variant), `--leaster-watchdog` (guards the
-always-PASS collapse that affects all from-scratch shaped self-play runs).
-
-### Step 2 — League PPO
-
-`sheepshead/training/train_league_ppo.py` is the main trainer: one agent improves under a
-terminal-reward PPO objective against a **league** of its own past snapshots
-plus, optionally, best-response *exploiters*. The usual practice is to **resume
-the policy from the final self-play checkpoint and seed the initial league from
-the self-play snapshots** produced in step 1 (`--resume` for the weights,
-`--seed-checkpoints` for the opponent roster), matching that starting point:
+`sheepshead/training/run_training_program.py` runs the whole release-candidate
+program end to end (design and pre-registration in
+`notebooks/Training_Program_Redesign_202609.md`), crash-resumable from an
+atomic `state.json`, with one config dataclass (`program_config.py`) that
+doubles as the pre-registration artifact:
 
 ```bash
-uv run train-league \
-  --resume runs/selfplay_ppo/full_checkpoint_100000.pt \
-  --seed-checkpoints "runs/selfplay_ppo/full_checkpoint_*.pt" \
-  --league-dir runs/league_ppo/league --run-name league_ppo \
-  --generations 6 --main-episodes 5000000
+uv run training-program --run-name rc_202609        # the pre-registered run
+uv run training-program --smoke --run-name _smoke   # every phase in minutes
+uv run training-program --config my_config.json     # a modified program
 ```
 
-Each generation trains the main agent against league tables (past-main
-snapshots, hot exploiters, and self-play seats), then trains and gates a
-best-response exploiter, appending its measured edge to `exploitability.csv` —
-the empirical-exploitability trend that certifies the run. Artifacts go under
-`runs/league_ppo/`. Instead of `--seed-checkpoints`, pass `--migrate-from
-<legacy population dir>` to ingest an old PFSP population, or neither to
-cold-start the league from pure self-play. Pass `--resume <checkpoint>` pointing
-at a later checkpoint to continue an interrupted run.
+The five phases, each also runnable on its own:
 
-Notable flags: `--critic-mode oracle` trains a privileged full-information
-critic as the GAE baseline (CTDE / asymmetric actor-critic; the deployed policy
-never sees hidden state, and league snapshots strip the oracle before
-insertion); `--anchor-coeff` + `--anchor-ref` enable a bidding-head KL anchor
-for warm-start safety.
+| phase | command | what it does |
+|---|---|---|
+| 0 bootstrap | `uv run train-ppo --phase bootstrap --arch perceiver-recall --run-name r/bootstrap --until 400000` | shaped self-play from scratch on an empty population, limited critic, leaster watchdog |
+| 1 oracle | `uv run python -m sheepshead.training.pretrain_oracle generate/pretrain ...` | supervised pretraining of the privileged critic on the bootstrap policy's games |
+| 2 league | `uv run train-ppo --phase league --resume ... --seed-checkpoints ... --until <g x 1M>` | terminal-only PPO with the oracle GAE baseline against a PFSP population of snapshots; one generation per invocation; the orchestrator's marginal-value rule (`stop_rules.py`) decides when to hand off to search |
+| 3 policy iteration | `distill_corpus` -> `policy_iteration all` -> `policy_iteration cert` -> `train-ppo --phase bidding` | search-Q regularized policy iteration: an ISMCTS-committee corpus from the frozen policy, the pooled advantage fit, the tilted targets, the supervised projection, the certification battery, then a bidding-only PG phase |
+| 4 final | (orchestrator) | duplicate h2h vs the reference agents, a one-time exploitability audit (`analysis/exploitability_audit.py`), `release.pt` |
 
-### Step 3 — Extended league run with automatic stopping
-
-`sheepshead/training/run_extended_league.py` wraps step 2 into a fully instrumented,
-crash-resumable campaign that decides for itself when learning has concluded
-(design pre-registered in `notebooks/Extended_League_202607.md`). It
-calibrates the gen-1 KL-anchor coefficient with short probes, runs generation
-1 anchored and later generations unanchored (one trainer subprocess per
-generation), evaluates every generation on the frozen PANEL-A gauntlet
-(4000-deal composite endpoint + head-to-head vs the previous generation), and
-stops after two consecutive statistically flat generations confirmed on a
-fresh deal set:
-
-```bash
-uv run extended-league \
-  --arch full --resume runs/selfplay_ppo/final_full.pt \
-  --seed-checkpoints "runs/selfplay_ppo/full_checkpoint_*.pt" \
-  --run-name ext_league --critic-mode oracle
-```
-
-Progress lands in `runs/<run-name>/orchestrator/`: `generations.csv`,
-`report.md`, `generations_curve.png` (strength + trick-0/1 defender
-trump-lead-leak trends), and `state.json` (re-invoke with the same arguments
-to resume after any interruption). `--smoke` runs the whole loop in minutes;
-`--dry-run` prints the planned commands without training.
+Every phase writes under `runs/<run-name>/...`; the program's own record
+(`state.json`, `config.json`, `generations.csv`, `report.md`, per-step logs)
+lives in `runs/<run-name>/program/`. `--dry-run` prints the configuration and
+the generation-1 trainer command without training.
 
 ---
 
