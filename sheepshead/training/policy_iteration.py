@@ -177,8 +177,8 @@ def stage_fit(args) -> FitReport:
         t0 = time.time()
         pieces = []
         for shard_idx, shard in enumerate(shards):
-            pieces.append(
-                build_row_table(
+            try:
+                piece = build_row_table(
                     agent,
                     shard["episodes"],
                     shard_idx=shard_idx,
@@ -186,9 +186,18 @@ def stage_fit(args) -> FitReport:
                     buffer_episodes=args.buffer_episodes,
                     batch_segments=args.batch_segments,
                 )
-            )
-            log(f"[fit] encoded shard {shard_idx}: {len(pieces[-1])} targetable rows")
-        table = RowTable.concat(pieces)
+            except ValueError:  # a shard of nothing but retention rows
+                log(f"[fit] encoded shard {shard_idx}: 0 targetable rows")
+                continue
+            pieces.append(piece)
+            log(f"[fit] encoded shard {shard_idx}: {len(piece)} targetable rows")
+        try:
+            table = RowTable.concat(pieces)
+        except ValueError as err:
+            raise SystemExit(
+                "the corpus has no searched play rows (every game a leaster, or "
+                "the search schedule never fired) — nothing to fit"
+            ) from err
         table.save(table_path)
         log(
             f"[fit] row table: {len(table)} targetable rows, "
@@ -945,10 +954,13 @@ def stage_cert(args) -> dict:
         failures.append(f"t0 defender trump lead {means['t0_trump_lead_rate']:.1f}")
     if means["play_logit_spread_med"] < CERT_BARS["play_logit_spread_min"]:
         failures.append(f"play logit spread {means['play_logit_spread_med']:.2f}")
+    # --no-bars (validation runs only): record the battery, enforce nothing.
+    enforced = not getattr(args, "no_bars", False)
     result = {
         "candidate": candidate,
         "theta_k": args.ckpt,
-        "passed": not failures,
+        "passed": (not failures) or not enforced,
+        "bars_enforced": enforced,
         "failures": failures,
         "probes": probes,
         "probe_means": means,
@@ -957,7 +969,11 @@ def stage_cert(args) -> dict:
     }
     with open(os.path.join(args.out_dir, "cert.json"), "w") as f:
         json.dump(result, f, indent=2)
-    log(f"[cert] {'PASS' if result['passed'] else 'FAIL: ' + '; '.join(failures)}")
+    log(
+        "[cert] "
+        + ("PASS" if not failures else "FAIL: " + "; ".join(failures))
+        + ("" if enforced else " (bars not enforced)")
+    )
     return result
 
 
@@ -1006,6 +1022,12 @@ def build_parser() -> argparse.ArgumentParser:
     crt.add_argument("--cert-seeds", type=int, default=len(CERT_SEEDS))
     crt.add_argument("--cert-games", type=int, default=CERT_GAMES)
     crt.add_argument("--h2h-deals", type=int, default=CERT_H2H_DEALS)
+    crt.add_argument(
+        "--no-bars",
+        action="store_true",
+        help="record the battery without enforcing the adoption bars "
+        "(pipeline validation only — never for a real iteration)",
+    )
     return ap
 
 

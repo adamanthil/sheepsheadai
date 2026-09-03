@@ -450,3 +450,80 @@ def test_heteroscedastic_head_and_nll():
     )
     assert float(n0) == pytest.approx(0.5 * (sq / 2e-3 + np.log(2e-3)), rel=1e-4)
     assert float(n1) == pytest.approx(0.5 * (sq / 4e-3 + np.log(4e-3)), rel=1e-4)
+
+
+def test_fit_fails_loudly_on_a_corpus_without_searched_rows(tmp_path):
+    """An all-retention corpus (every game a leaster, or a schedule that
+    never fired) must stop the stage with a readable message rather than a
+    tensor error deep in the row table."""
+    agent = _fresh_agent()
+    ckpt = tmp_path / "theta_k.pt"
+    agent.save(str(ckpt))
+    shard = _corpus(agent, [3, 4])
+    for ep in shard["episodes"]:
+        for e in ep:
+            if e.get("kind") == "action":
+                e["distill_set"] = "retention"
+                e.pop("search_q", None)
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    torch.save(shard, corpus_dir / "corpus_0000.pt")
+    (corpus_dir / "manifest.json").write_text(
+        json.dumps(
+            {"row_schema": ROW_SCHEMA_VERSION, "shards": [{"path": "corpus_0000.pt"}]}
+        )
+    )
+    with pytest.raises(SystemExit, match="no searched play rows"):
+        tpi.main(
+            [
+                "fit",
+                "--corpus-dir",
+                str(corpus_dir),
+                "--ckpt",
+                str(ckpt),
+                "--out-dir",
+                str(tmp_path / "iter"),
+                "--fit-epochs",
+                "1",
+            ]
+        )
+
+
+def test_cert_stage_records_battery_and_enforces_bars(tmp_path):
+    """The cert stage on a fresh agent: the battery runs (probes, the
+    duplicate h2h with its leaster-hand read), the absolute bars fail for a
+    random policy, and --no-bars records the same battery without failing."""
+    agent = _fresh_agent()
+    theta = tmp_path / "theta_k.pt"
+    agent.save(str(theta))
+    torch.manual_seed(9)
+    cand = tmp_path / "cand.pt"
+    _fresh_agent().save(str(cand))
+    common = [
+        "cert",
+        "--ckpt",
+        str(theta),
+        "--out-dir",
+        str(tmp_path / "iter"),
+        "--candidate",
+        str(cand),
+        "--cert-games",
+        "2",
+        "--cert-seeds",
+        "1",
+        "--h2h-deals",
+        "2",
+    ]
+    assert tpi.main(common) == 0
+    cert = json.loads((tmp_path / "iter" / "cert.json").read_text())
+    assert cert["bars_enforced"] is True and cert["passed"] is False
+    assert cert["failures"]
+    assert set(cert["h2h"]) >= {"edge", "se", "modes", "leaster"}
+    assert cert["h2h"]["leaster"]["n"] >= 0
+    assert set(cert["probe_means"]) >= {"partner_trump_lead_rate", "t0_trump_lead_rate"}
+    assert tpi.main(common + ["--no-bars"]) == 0
+    relaxed = json.loads((tmp_path / "iter" / "cert.json").read_text())
+    assert relaxed["bars_enforced"] is False and relaxed["passed"] is True
+    # The battery still ran and still recorded its misses (the strings are
+    # not compared: the two runs draw different probe deals).
+    assert relaxed["failures"] and any("h2h" in f for f in relaxed["failures"])

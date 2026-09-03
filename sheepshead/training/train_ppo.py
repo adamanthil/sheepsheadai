@@ -330,6 +330,9 @@ def _setup_entropy_controller(args, checkpoint_dir: str, context: MainPhaseConte
         print("🎯 Entropy controller fresh (bumpless targets pending)")
     apply_schedules(context.start_episode, context)
     controller.attach(context.training_agent)
+    # The sidecar exists from attach on (targets pending until the first
+    # measurement), so the orchestrator always finds one at a boundary.
+    controller.save(path)
     return controller, path
 
 

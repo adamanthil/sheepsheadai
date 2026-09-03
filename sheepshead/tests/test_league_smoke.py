@@ -130,3 +130,103 @@ class TestRunPhase:
         enc_after = agent.encoder.state_dict()
         assert all(torch.equal(encoder_before[k], enc_after[k]) for k in encoder_before)
         assert any(not torch.equal(bidding_before[k], after[k]) for k in bidding_before)
+
+
+class TestPhaseWiring:
+    """Behaviors the program smoke caught during the build, pinned."""
+
+    def setup_method(self, method):
+        self.dir = tempfile.mkdtemp(prefix="phase_wiring_")
+        self.ckpt_dir = os.path.join(self.dir, "checkpoints")
+        os.makedirs(self.ckpt_dir)
+
+    def teardown_method(self, method):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_controller_sidecar_exists_from_attach(self):
+        """The orchestrator edits the controller sidecar at generation
+        boundaries; it must exist even when no PPO update ran in the phase
+        (targets pending), or the first boundary step has nothing to open."""
+        random.seed(3)
+        torch.manual_seed(3)
+        league = League(os.path.join(self.dir, "league"))
+        spec = PHASE_SPECS["league"]
+        agent = PPOAgent(len(ACTIONS), critic_mode=spec.critic_mode, arch="onehot-ff")
+        args = _args("league", "_wiring_league", entropy_controller=True, until=2)
+        args.update_interval = NEVER  # no update inside the phase
+        ratings = {mode: league.rating_model.rating() for mode in (0, 1)}
+        run_phase(agent, league, ratings, args, 0, 2, self.ckpt_dir)
+        sidecar = os.path.join(self.ckpt_dir, "entropy_controller.json")
+        assert os.path.exists(sidecar)
+        from sheepshead.training.entropy_controller import EntropyTargetController
+
+        ctrl = EntropyTargetController.load(sidecar)
+        assert ctrl.targets["play"] is None  # pending until the first update
+        assert ctrl.step_targets() == {}  # nothing to step, no crash
+
+    def test_worker_pool_plays_shaped_games(self):
+        """The bootstrap through a real spawn pool: workers must receive the
+        phase's reward mode (shaped) — the pool path is the one the
+        program runs, the sequential path is what the other tests use."""
+        random.seed(5)
+        torch.manual_seed(5)
+        # The pool publishes weights under runs/<run_name>, which main()
+        # creates; do the same in an isolated cwd.
+        cwd = os.getcwd()
+        os.chdir(self.dir)
+        os.makedirs(os.path.join("runs", "_wiring_pool"))
+        try:
+            self._pool_body()
+        finally:
+            os.chdir(cwd)
+
+    def _pool_body(self):
+        league = League(os.path.join(self.dir, "league"))
+        agent = PPOAgent(len(ACTIONS), arch="onehot-ff")
+        agent.gamma = PHASE_SPECS["bootstrap"].gamma
+        args = _args("bootstrap", "_wiring_pool", until=4, num_workers=2)
+        args.update_interval = NEVER
+        ratings = {mode: league.rating_model.rating() for mode in (0, 1)}
+        # Capture what the workers hand back by wrapping the ingest step.
+        import sheepshead.training.train_ppo as tp
+
+        seen = []
+        original = tp._ingest_episode
+
+        def spy(state, mode, position, events, *rest):
+            seen.append(events)
+            return original(state, mode, position, events, *rest)
+
+        tp._ingest_episode = spy
+        try:
+            end = run_phase(agent, league, ratings, args, 0, 4, self.ckpt_dir)
+        finally:
+            tp._ingest_episode = original
+        assert end == 4 and len(seen) == 4
+        # Shaped rewards: intermediate (non-terminal) rewards are non-zero
+        # somewhere in a full game; terminal-only would leave them all 0.
+        nonterminal = [
+            ev["reward"]
+            for events in seen
+            for pid in {e["player_id"] for e in events}
+            for ev in [
+                e for e in events if e["kind"] == "action" and e["player_id"] == pid
+            ][:-1]
+        ]
+        assert any(r != 0.0 for r in nonterminal)
+
+
+def test_set_trainable_heads_partitions_the_actor():
+    torch.manual_seed(0)
+    agent = PPOAgent(len(ACTIONS), arch="perceiver-recall")
+    agent.set_trainable_heads("bidding")
+    assert all(not p.requires_grad for p in agent.encoder.parameters())
+    for name, p in agent.actor.named_parameters():
+        assert p.requires_grad == (not name.startswith(agent.PLAY_HEAD_PREFIXES)), name
+    assert any(p.requires_grad for p in agent.actor.parameters())
+    assert all(p.requires_grad for p in agent.critic.parameters())
+    agent.set_trainable_heads("all")
+    assert all(p.requires_grad for p in agent.encoder.parameters())
+    assert all(p.requires_grad for p in agent.actor.parameters())
+    with pytest.raises(ValueError):
+        agent.set_trainable_heads("play")
