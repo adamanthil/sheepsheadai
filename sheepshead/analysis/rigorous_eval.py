@@ -336,6 +336,9 @@ class HeroEval:
     raw_score: np.ndarray  # shape (n_deals, 5)
     # role tallies across all deal x seat games
     role_counts: Dict[str, int] = field(default_factory=dict)
+    # per (deal, hero_seat): the hand was a leaster (for role-conditioned
+    # reads such as the policy-iteration cert's leaster-hand score)
+    raw_leaster: np.ndarray = field(default_factory=lambda: np.zeros((0, 5), bool))
 
 
 def evaluate_hero_in_field(
@@ -349,6 +352,7 @@ def evaluate_hero_in_field(
     n = len(deal_seeds)
     raw_score = np.zeros((n, NUM_SEATS), dtype=np.float64)
     raw_margin = np.zeros((n, NUM_SEATS), dtype=np.float64)
+    raw_leaster = np.zeros((n, NUM_SEATS), dtype=bool)
     role_counts = {"picker": 0, "partner": 0, "defender": 0, "leaster": 0}
 
     for d, seed in enumerate(deal_seeds):
@@ -360,6 +364,7 @@ def evaluate_hero_in_field(
             )
             raw_score[d, k - 1] = res.scores[k - 1]
             raw_margin[d, k - 1] = res.points_margin[k - 1]
+            raw_leaster[d, k - 1] = res.is_leaster
             if res.is_leaster:
                 role_counts["leaster"] += 1
             elif k == res.picker:
@@ -374,6 +379,7 @@ def evaluate_hero_in_field(
         deal_margin=raw_margin.mean(axis=1),
         raw_score=raw_score,
         role_counts=role_counts,
+        raw_leaster=raw_leaster,
     )
 
 

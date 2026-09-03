@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """LeasterWatchdog invariants: min-sample gating, engage/release hysteresis,
-re-engagement, the tick() kick application, and default-off wiring in both
-trainers."""
+re-engagement, the tick() kick application, and the trainer's default-on
+wiring."""
 
-import inspect
 from collections import deque
 from types import SimpleNamespace
 
-from sheepshead.training.league_cli import build_arg_parser
 from sheepshead.training.leaster_watchdog import LeasterWatchdog
-from sheepshead.training.train_selfplay_ppo import train_ppo
+from sheepshead.training.train_ppo import build_arg_parser
 
 
 def _window(rate, n=3000):
@@ -72,18 +70,13 @@ class TestLeasterWatchdog:
         assert agent.entropy_coeff_pick == 0.02
         assert wd.engaged_updates == 2
 
-    def test_selfplay_trainer_default_off(self):
-        sig = inspect.signature(train_ppo)
-        assert sig.parameters["leaster_watchdog"].default is False
-
-    def test_league_trainer_default_on(self):
-        # Retention-run defaults adoption (2026-07-27): the league trainer
-        # watchdog is now default-ON, opt-out via --no-leaster-watchdog.
-        args = build_arg_parser().parse_args(["--resume", "x.pt", "--league-dir", "y"])
-        assert args.leaster_watchdog is True
-        off = build_arg_parser().parse_args(
-            ["--resume", "x.pt", "--league-dir", "y", "--no-leaster-watchdog"]
-        )
+    def test_trainer_default_on(self):
+        # Every phase runs the watchdog unless opted out: the from-scratch
+        # bootstrap enters the all-PASS attractor (Architecture_Ablation §4.5)
+        # and anchor-free league generations re-entered it (stage 1).
+        base = ["--phase", "bootstrap", "--run-name", "x", "--until", "10"]
+        assert build_arg_parser().parse_args(base).leaster_watchdog is True
+        off = build_arg_parser().parse_args(base + ["--no-leaster-watchdog"])
         assert off.leaster_watchdog is False
 
 

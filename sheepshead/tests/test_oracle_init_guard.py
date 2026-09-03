@@ -11,7 +11,7 @@ import sys
 
 from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.training.league_teacher import warn_if_oracle_overwrite
+from sheepshead.training.train_ppo import warn_if_oracle_overwrite
 
 
 def test_load_sets_oracle_loaded_flag(tmp_path):

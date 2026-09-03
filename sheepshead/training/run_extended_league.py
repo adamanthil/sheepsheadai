@@ -366,9 +366,9 @@ class Orchestrator:
         return self.state["baseline_health"]
 
     def _alone_limit(self) -> float:
-        from sheepshead.training.config import PFSPHyperparams
+        from sheepshead.training.config import LeagueHyperparams
 
-        gate = PFSPHyperparams().greedy_gate_max_alone
+        gate = LeagueHyperparams().greedy_gate_max_alone
         base = self.state.get("baseline_health", {}).get("alone_rate", 0.0)
         return max(gate, base + ALONE_BASELINE_MARGIN)
 
@@ -663,9 +663,9 @@ class Orchestrator:
         lo, hi = self.boundary(g - 1), self.boundary(g)
         greedy_csv = os.path.join(self.ckpt_dir, "greedy_health.csv")
         if os.path.exists(greedy_csv):
-            from sheepshead.training.config import PFSPHyperparams
+            from sheepshead.training.config import LeagueHyperparams
 
-            hp = PFSPHyperparams()
+            hp = LeagueHyperparams()
             alone_limit = self._alone_limit()  # baseline-relative
             gates = {
                 "pick": lambda r: float(r["pick_rate"]) < hp.greedy_gate_min_pick,

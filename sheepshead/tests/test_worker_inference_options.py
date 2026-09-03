@@ -24,10 +24,11 @@ from sheepshead.agent.ppo import PPOAgent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training import league_worker
 from sheepshead.training.league import League
-from sheepshead.training.league_cli import build_arg_parser
 from sheepshead.training.league_streams import MainPhaseContext
+from sheepshead.training.train_ppo import build_arg_parser
 
 ARCH = "perceiver-shared-v2"
+BASE_ARGS = ["--phase", "league", "--run-name", "x", "--until", "1"]
 
 
 @pytest.fixture
@@ -114,14 +115,11 @@ def test_absent_options_change_nothing(restore_globals, stub_compiler):
 def test_the_flags_reach_the_pool_initargs():
     """The CLI values have to survive the trip into the spawn initargs; a
     worker cannot read the parent's argparse namespace."""
-    from sheepshead.training.train_league_ppo import _spawn_worker_pool
+    from sheepshead.training.train_ppo import _spawn_worker_pool
 
     args = build_arg_parser().parse_args(
         [
-            "--league-dir",
-            ".",
-            "--resume",
-            "unused.pt",
+            *BASE_ARGS,
             "--num-workers",
             "4",
             "--worker-device",
@@ -141,7 +139,7 @@ def test_the_flags_reach_the_pool_initargs():
     class FakeContext:
         Pool = FakePool
 
-    import sheepshead.training.train_league_ppo as trainer
+    import sheepshead.training.train_ppo as trainer
 
     original = trainer.get_context
     trainer.get_context = lambda _name: FakeContext()
@@ -159,14 +157,12 @@ def test_the_flags_reach_the_pool_initargs():
 
 
 def test_a_bare_worker_compile_means_default_mode():
-    args = build_arg_parser().parse_args(
-        ["--league-dir", ".", "--resume", "unused.pt", "--worker-compile"]
-    )
+    args = build_arg_parser().parse_args([*BASE_ARGS, "--worker-compile"])
     assert args.worker_compile == "default"
 
 
 def test_the_options_default_to_off():
-    args = build_arg_parser().parse_args(["--league-dir", ".", "--resume", "unused.pt"])
+    args = build_arg_parser().parse_args(BASE_ARGS)
     assert args.worker_compile is None
     assert args.worker_device is None
 
@@ -174,12 +170,17 @@ def test_the_options_default_to_off():
 def test_an_inert_flag_is_announced(capsys):
     """With no pool the options do nothing. Silence would be indistinguishable
     from an optimization that simply did not help."""
-    from sheepshead.training.train_league_ppo import _spawn_worker_pool
+    from sheepshead.training.train_ppo import _spawn_worker_pool
 
     args = argparse.Namespace(
         num_workers=1, worker_compile="default", worker_device=None
     )
-    assert _spawn_worker_pool(args, None, None) is None
+    assert (
+        _spawn_worker_pool(
+            args, cast(League, _FakeLeague()), cast(MainPhaseContext, _FakeContext())
+        )
+        is None
+    )
     assert "ignored" in capsys.readouterr().out
 
 
@@ -189,91 +190,10 @@ class _FakeLeague:
 
 class _FakeContext:
     weight_sync = {"base": "unused"}
+    reward_mode = "terminal"
 
     class _Agent:
         gamma = 1.0
+        arch_name = ARCH
 
     training_agent = _Agent()
-
-
-def test_routed_flag_reaches_the_pool_initargs():
-    from sheepshead.training.train_league_ppo import _spawn_worker_pool
-
-    args = build_arg_parser().parse_args(
-        [
-            "--league-dir",
-            ".",
-            "--resume",
-            "unused.pt",
-            "--num-workers",
-            "4",
-            "--worker-routed-encoder",
-        ]
-    )
-    assert args.worker_routed_encoder == "mps"  # bare flag defaults the device
-    captured = {}
-
-    class FakePool:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
-
-    class FakeContext:
-        Pool = FakePool
-
-    import sheepshead.training.train_league_ppo as trainer
-
-    original = trainer.get_context
-    trainer.get_context = lambda _name: FakeContext()
-    try:
-        _spawn_worker_pool(
-            args, cast(League, _FakeLeague()), cast(MainPhaseContext, _FakeContext())
-        )
-    finally:
-        trainer.get_context = original
-
-    assert captured["initargs"][0]["worker_routed_encoder"] == "mps"
-
-
-def test_routed_worker_routes_and_stays_on_cpu(restore_globals, stub_compiler):
-    """Routing must not touch the process device — the whole point is that
-    everything except committee-scale encodes stays eager CPU."""
-    from sheepshead.agent.compiled_encoder import disable_routed_encoder
-
-    before = ppo_module.device
-    league_worker.league_worker_init(
-        {
-            "arch": ARCH,
-            "members_dir": ".",
-            "weight_path_base": "unused",
-            "base_seed": 0,
-            "worker_routed_encoder": "cpu",  # cpu shadow: no MPS needed in CI
-        }
-    )
-    try:
-        assert ppo_module.device is before
-        assert len(stub_compiler) == 1  # the shadow graph was compiled
-    finally:
-        disable_routed_encoder()
-
-
-def test_routed_and_device_refuse_to_combine():
-    import sys
-
-    from sheepshead.training.train_league_ppo import main
-
-    argv = sys.argv
-    sys.argv = [
-        "train_league_ppo",
-        "--league-dir",
-        ".",
-        "--resume",
-        "unused.pt",
-        "--worker-routed-encoder",
-        "--worker-device",
-        "mps",
-    ]
-    try:
-        with pytest.raises(SystemExit, match="mutually exclusive"):
-            main()
-    finally:
-        sys.argv = argv

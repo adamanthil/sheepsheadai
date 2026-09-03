@@ -359,7 +359,9 @@ def h2h_duplicate(
     from sheepshead.analysis.rigorous_eval import (
         ModelRegistry,
         _bootstrap_deal_indices,
-        run_gauntlet,
+        bootstrap_mean,
+        evaluate_hero_in_field,
+        make_panel_field_fn,
     )
 
     registry = ModelRegistry()
@@ -373,15 +375,31 @@ def h2h_duplicate(
 
     mode_edges: Dict[str, Dict[str, float]] = {}
     deal_scores = []
+    leaster_cells = []
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
-        rep = run_gauntlet([cand], [anchor], deal_seeds, mode, boot_idx)[0]
-        mode_edges[name] = {"edge": rep.score.mean, "se": rep.score.se}
-        deal_scores.append(rep.deal_score)
+        # The gauntlet's field construction and seed, kept exactly (the
+        # 2026-07-19 numbers depend on them).
+        field_fn = make_panel_field_fn([anchor], n_deals_per_mode, rng_seed=20260619)
+        ev = evaluate_hero_in_field(cand, field_fn, deal_seeds, mode)
+        score = bootstrap_mean(ev.deal_score, boot_idx)
+        print(
+            f"  [{name}] {cand.model_id:<32} score/hand = {score.mean:+.3f}  "
+            f"[{score.lo:+.3f}, {score.hi:+.3f}]"
+        )
+        mode_edges[name] = {"edge": score.mean, "se": score.se}
+        deal_scores.append(ev.deal_score)
+        leaster_cells.append(ev.raw_score[ev.raw_leaster])
     edge = (mode_edges["called"]["edge"] + mode_edges["jd"]["edge"]) / 2.0
     se = 0.5 * float(
         np.sqrt(mode_edges["called"]["se"] ** 2 + mode_edges["jd"]["se"] ** 2)
     )
     pooled = np.concatenate(deal_scores)
+    # Leaster-hand paired score: the candidate's mean score on the (deal,
+    # seat) cells that were leasters. The anchor's own score in its field
+    # is 0 by symmetry, so this is a paired edge on leaster play alone
+    # (Training_Program_Redesign §A: the policy-iteration cert's leaster
+    # drift read). Cells, not deals, so the SE is a plain cell SE.
+    leaster = np.concatenate(leaster_cells) if leaster_cells else np.zeros(0)
     return {
         "edge": edge,
         "se": se,
@@ -393,6 +411,13 @@ def h2h_duplicate(
         "n_deals": 2 * n_deals_per_mode,
         "instrument": "duplicate_bridge",
         "modes": mode_edges,
+        "leaster": {
+            "edge": float(leaster.mean()) if leaster.size else 0.0,
+            "se": float(leaster.std(ddof=1) / np.sqrt(leaster.size))
+            if leaster.size > 1
+            else 0.0,
+            "n": int(leaster.size),
+        },
     }
 
 

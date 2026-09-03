@@ -1,77 +1,52 @@
 #!/usr/bin/env python3
-"""Offline distillation corpus generator (CE_Teacher_Design §17.3).
+"""Search corpus generator for policy iteration (CE_Teacher_Design §17.3,
+§20.3; Training_Program_Redesign §4.4 step 1).
 
 Plays frozen-theta_k self-play games (all five seats collected, per-seat
-episode streams) and annotates every decision with its §16.9-addendum-6
-policy-loss partition:
+episode streams) and searches a schedule of PLAY decisions with the ISMCTS
+committee (``CommitteeConfig``). Every row carries a partition label the
+projection reads (``policy_iteration.py``):
 
-  override   searched, material (shrink w > 0): carries the §1.1 shrink-
-             and-tilt CE target plus the top-2 pooled-Q gap for the
-             trainer's omega evidence weight (AWR-family — Peng et al.
-             2019, arXiv:1910.00177).
-  endorsed   searched, abstained (w = 0): search spoke and endorsed the
-             policy — the row anchors to theta_k in the trainer.
-  retention  search cannot speak there in this corpus: bidding heads
-             (pick/partner/bury — ALONE declaration included) and
-             leaster play. Alone-game PLAY is searched by default
-             (operator amendment 2026-08-21: same token-pointer play
-             head as standard play, and the 1v4 determinization has no
-             hidden-partner uncertainty; §17.6 records its noise floor).
+  override   searched, material (shrink w > 0): the committee's pooled
+             evidence — the §20 target is built from it in Stage 2.
+  endorsed   searched, abstained (w = 0): same evidence, same Stage-2
+             treatment (the split dissolves there: where the pooled
+             advantage is ~0 the target IS the prior).
+  retention  search cannot speak there: bidding heads (pick/partner/bury,
+             ALONE declaration included) and leaster play — anchored to
+             theta_k's act-time policy. Alone-game PLAY is searched
+             (the 1v4 determinization has no hidden-partner uncertainty).
   none       eligible-but-unsearched play (the p-schedule passed it
-             over), forced nodes, and committee failures: no policy
-             loss, still in the value-regression stream.
-
-The invariant (§16.9 addendum 3): a row carries an anchor only if search
-CANNOT speak there or SPOKE AND ENDORSED — never merely unasked, which
-would teach the policy to distinguish searched twins from unsearched ones.
+             over), forced nodes, committee failures: no policy loss,
+             still in the value-regression stream.
 
 Offline phase purity (Expert Iteration — Anthony et al. 2017; AlphaGo
 Zero / AlphaZero — Silver et al. 2017/2018): nothing updates during
-generation, so the expert, the acting policy and the anchor are all the
-SAME frozen network — the attempt-7 drifting-expert and attempt-11/12
-CE-x-PG interaction mechanisms structurally cannot arise here.
+generation, so the expert, the acting policy and the anchor are the SAME
+frozen network. Acting is the policy's own stochastic self-play (DAgger —
+Ross et al. 2011; committee acting was retired with row schema 2: acting
+the argmax of a near-tie lead reshapes the trajectory and value-target
+distribution around the committee's own noise, §20.1).
 
-State distribution: stochastic self-play acting = on-policy states
-(DAgger — Ross et al. 2011). A pre-registered fraction of games are
-COMMITTEE-ACTING (§16.9 addendum 5; AggreVaTe — Ross & Bagnell 2014,
-scheduled sampling — Bengio et al. 2015): at material searched nodes the
-seat acts the CE target's argmax, so states downstream of the expert's
-improvements enter the corpus and every material search doubles as a
-label row.
+Anchors are theta_k's act-time probability vectors (the ``act()`` stash)
+at the true recurrent state of the realized trajectory, stored on every
+row with two or more legal actions. Every SEARCHED row stores the pooled
+committee evidence (``search_q`` / ``search_q_var`` / ``search_n`` /
+``search_prior`` / ``search_noise_var`` / ``search_spread``; see
+``pfsp_runtime.CommitteeSummary``) — row schema 2.
 
-Anchors are theta_k's act-time probability vectors (the ``act()``
-stash): a DIRECT forward output at the true recurrent state of the
-realized trajectory, which the trainer's replayed unroll reproduces to
-replay noise — the engine's forced replay (and its trick-4 recurrent
-divergence artifact, §13 phase 1) is never used for anchors.
-
-Node telemetry (``--node-telemetry``) writes one JSONL row per searched
-node (class, regime, w, gap, spread, per-replicate top-pair Q diffs) —
-the §17.6 alone-noise calibration instrument and the iteration-2
-p-schedule refinement input.
-
-Row schema 2 (CE_Teacher_Design §20.3, manifest ``row_schema``): every
-SEARCHED row — w = 0 rows included — stores the pooled committee
-evidence (``search_q`` / ``search_q_var`` / ``search_n`` /
-``search_prior`` / ``search_noise_var`` / ``search_spread``, see
-``pfsp_runtime.CommitteeSummary``) so a trainer can build its own
-target from the evidence rather than from the legacy pi_gumbel
-``search_target``; and EVERY row with two or more legal actions stores
-theta_k's act-time stash as ``anchor_probs``. Storing the stash
-everywhere does not violate the anchor-LOSS invariant above — which
-rows carry an anchor loss is the trainer's partition decision
-(``distill_set``), not a property of data presence.
-
-Committee acting defaults OFF since schema 2: acting the argmax of a
-near-tie lead (§20.1: coin-flip top-2 order at t0 leads) reshapes the
-trajectory and value-target distribution around the committee's own
-noise. ``--committee-act-frac`` remains for the §17.3 AggreVaTe arm.
+The search schedule (§20.10): leads at ``p_base * boost_lead`` (clipped
+to ``p_max``), follows at ``p_base``; a nonzero floor keeps every eligible
+class covered (annealed-bias rationale of prioritized sampling — Schaul
+et al. 2016). Node telemetry (``--node-telemetry``) writes one JSONL row
+per searched node (class, regime, w, gap, spread, per-replicate top-pair
+Q diffs), the calibration instrument for the shrinkage noise model.
 
 Usage:
   uv run python -m sheepshead.training.distill_corpus \\
-      --ckpt runs/league_retention_pg/checkpoints/..._checkpoint_8000000.pt \\
-      --out-dir runs/distill_corpus_202608 --games 20000 --workers 8 \\
-      --node-telemetry runs/distill_corpus_202608/nodes.jsonl
+      --ckpt runs/rc/league/final.pt --out-dir runs/rc/pi/iter1/corpus \\
+      --games 2000 --workers 8 --p-base 0.5 --boost-lead 2 --p-max 1.0 \\
+      --node-telemetry runs/rc/pi/iter1/corpus/nodes.jsonl
 """
 
 from __future__ import annotations
@@ -100,10 +75,8 @@ from sheepshead.training.training_utils import RETURN_SCALE
 
 _W: dict = {}  # per-worker state (agent, teacher, config)
 
-# Corpus row schema version written to the manifest. 1 = the §17 pilot rows
-# (legacy target + gap/w, anchors on endorsed/retention rows only); 2 = the
-# §20 rows described in the module docstring. ``recover_search_q.py`` lifts
-# schema-1 corpora to schema-2-equivalent shards.
+# Corpus row schema version written to the manifest (2 = the rows described
+# in the module docstring; the §17 pilot's schema 1 is no longer produced).
 ROW_SCHEMA_VERSION = 2
 
 
@@ -280,7 +253,7 @@ def play_corpus_game(task: tuple) -> dict:
         compute_seen_trump_mask,
     )
 
-    game_idx, mode, committee_act = task
+    game_idx, mode = task
     init_args = _W["args"]
     agent = _W["agent"]
     base_seed = int(init_args["seed"])
@@ -300,7 +273,6 @@ def play_corpus_game(task: tuple) -> dict:
         lambda: {"nodes": 0, "searched": 0, "override": 0, "endorsed": 0, "failed": 0}
     )
     gaps: list[float] = []
-    committee_acted = 0
 
     while not game.is_done():
         for player in game.players:
@@ -365,12 +337,6 @@ def play_corpus_game(task: tuple) -> dict:
                             p_min=float(init_args["p_min"]),
                             p_max=float(init_args["p_max"]),
                         )
-                        # Calibration mode (§17.6): spend search on alone
-                        # nodes only — the game is discarded otherwise, and
-                        # the unsearched standard rows stay "none" (the
-                        # sampling gate, not the regime gate, skips them).
-                        if init_args.get("alone_only") and not game.alone_called:
-                            p = 0.0
                         if det_rng.random() < p:
                             counts[cls]["searched"] += 1
                             target_list, info, summary, (top_pair, pair_diffs) = (
@@ -405,18 +371,6 @@ def play_corpus_game(task: tuple) -> dict:
                                     "pair_diffs": pair_diffs,
                                 }
                             )
-                            if (
-                                committee_act
-                                and dset == "override"
-                                and target_list is not None
-                                and anchor is not None
-                            ):
-                                acts = sorted(valid_actions)
-                                acted = acts[int(np.argmax(target_list))]
-                                if acted != action:
-                                    committee_acted += 1
-                                    action = acted
-                                    log_prob = float(np.log(anchor[acts.index(acted)]))
 
                 transition = {
                     "kind": "action",
@@ -494,8 +448,6 @@ def play_corpus_game(task: tuple) -> dict:
     return {
         "game": game_idx,
         "mode": "called" if mode == PARTNER_BY_CALLED_ACE else "jd",
-        "committee_act": committee_act,
-        "committee_acted": committee_acted,
         "is_leaster": bool(game.is_leaster),
         "alone_called": bool(game.alone_called),
         "episodes": episodes,
@@ -532,9 +484,9 @@ def _file_sha256(path: str) -> str:
 
 
 def main() -> int:
-    from sheepshead.training.config import SearchConfig
+    from sheepshead.training.config import CommitteeConfig
 
-    sc = SearchConfig()
+    sc = CommitteeConfig()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--ckpt", required=True, help="frozen theta_k checkpoint")
     ap.add_argument("--out-dir", required=True)
@@ -543,25 +495,10 @@ def main() -> int:
     ap.add_argument("--torch-threads", type=int, default=1)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--shard-games", type=int, default=200)
-    ap.add_argument(
-        "--committee-act-frac",
-        type=float,
-        default=0.0,
-        help="fraction of games where material searches ACT the legacy "
-        "target's argmax (§17.3 AggreVaTe arm). Default 0 since schema 2: "
-        "at near-tie leads the argmax is a coin flip (§20.1) and acting it "
-        "reshapes the trajectory / value-target distribution",
-    )
-    ap.add_argument(
-        "--alone-only",
-        action="store_true",
-        help="calibration mode: keep only games where ALONE was called "
-        "(size --games so the surviving fraction meets the target)",
-    )
     ap.add_argument("--no-oracle", dest="collect_oracle", action="store_false")
-    ap.add_argument("--iters", type=int, default=sc.teacher_iters)
-    ap.add_argument("--replicates", type=int, default=sc.teacher_replicates)
-    ap.add_argument("--d-rollout", type=int, default=sc.teacher_d_rollout)
+    ap.add_argument("--iters", type=int, default=sc.iters)
+    ap.add_argument("--replicates", type=int, default=sc.replicates)
+    ap.add_argument("--d-rollout", type=int, default=sc.d_rollout)
     ap.add_argument("--shrink-nu", type=float, default=sc.shrink_nu)
     ap.add_argument("--shrink-s2-global", type=float, default=sc.shrink_s2_global)
     # §17.2 schedule
@@ -595,7 +532,6 @@ def main() -> int:
         "seed": args.seed,
         "torch_threads": args.torch_threads,
         "collect_oracle": args.collect_oracle,
-        "alone_only": args.alone_only,
         "iters": args.iters,
         "replicates": args.replicates,
         "d_rollout": args.d_rollout,
@@ -609,17 +545,11 @@ def main() -> int:
         "routed_encoder": args.routed_encoder,
     }
 
-    # Deterministic task schedule: modes alternate; committee-act games are
-    # drawn sequentially at the pre-registered fraction, so a resume must
-    # burn the draws of already-played indices to keep the schedule
-    # identical to an uninterrupted run.
-    sched_rng = random.Random(args.seed ^ 0xD157)
-    tasks = []
-    for g in range(args.games):
-        mode = PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD
-        committee = sched_rng.random() < args.committee_act_frac
-        if g >= args.start_game:
-            tasks.append((g, mode, committee))
+    # Deterministic task schedule: modes alternate by game index.
+    tasks = [
+        (g, PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD)
+        for g in range(args.start_game, args.games)
+    ]
 
     import torch
 
@@ -632,8 +562,6 @@ def main() -> int:
         "games": 0,
         "kept_games": 0,
         "episodes": 0,
-        "committee_act_games": 0,
-        "committee_acted_nodes": 0,
         "classes": {},
         "gap_percentiles": None,
         "shards": [],
@@ -654,13 +582,7 @@ def main() -> int:
         prior_path = os.path.join(args.out_dir, "manifest.json")
         with open(prior_path) as f:
             prior = json.load(f)
-        for key in (
-            "games",
-            "kept_games",
-            "episodes",
-            "committee_act_games",
-            "committee_acted_nodes",
-        ):
+        for key in ("games", "kept_games", "episodes"):
             manifest[key] = prior[key]
         manifest["shards"] = prior["shards"]
         manifest["resumed_at_game"] = args.start_game
@@ -736,16 +658,9 @@ def main() -> int:
         for res in pool.imap_unordered(play_corpus_game, tasks, chunksize=1):
             done += 1
             manifest["games"] += 1
-            if args.alone_only and not res["alone_called"]:
-                if done % 50 == 0:
-                    print(f"[{done}/{len(tasks)}] alone-only: kept {kept}", flush=True)
-                continue
             kept += 1
             manifest["kept_games"] = kept
             manifest["episodes"] += len(res["episodes"])
-            if res["committee_act"]:
-                manifest["committee_act_games"] += 1
-            manifest["committee_acted_nodes"] += res["committee_acted"]
             for cls, c in res["counts"].items():
                 tot = class_totals[cls]
                 for k in tot:
@@ -759,7 +674,6 @@ def main() -> int:
                 {
                     "game": res["game"],
                     "mode": res["mode"],
-                    "committee_act": res["committee_act"],
                     "is_leaster": res["is_leaster"],
                     "alone_called": res["alone_called"],
                 }

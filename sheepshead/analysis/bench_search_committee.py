@@ -39,7 +39,7 @@ import torch
 
 from sheepshead import ACTION_IDS, ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
 
-# Production CE-teacher search settings (training/config.py SearchConfig).
+# Production CE-teacher search settings (training/config.py CommitteeConfig).
 TEACHER_ITERS = 1024
 TEACHER_REPLICATES = 3
 TEACHER_D_ROLLOUT = 1

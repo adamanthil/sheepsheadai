@@ -69,7 +69,7 @@ Literature
   and ``c_puct`` convention follow AlphaGo (Silver et al., Nature 529, 2016).
 * ``pi_gumbel`` completed-Q readout: Danihelka, Guez, Schrittwieser &
   Silver, "Policy Improvement by Planning with Gumbel," ICLR 2022 (see
-  ``SearchConfig.gumbel_*``).
+  ``CommitteeConfig``).
 * Root regret matching (``root_selection="rm"``): sigma(regret+) as in
   regret-matching (Hart & Mas-Colell, Econometrica 68(5), 2000).
 * ``search_committee`` (independent same-node replicates, lockstep-batched):
@@ -351,7 +351,7 @@ class _ReplayInconsistency(Exception):
 class ISMCTSConfig:
     """Engine physics of one ISMCTS search (selection math, belief pool,
     batching, leaf/readout choices). Deliberately separate from the trainer's
-    ``training.config.SearchConfig``, which owns search SCHEDULING — which
+    ``training.config.CommitteeConfig``, which owns the committee BUDGET — which
     decisions get searched (node eligibility + committee gate) and the
     rollout depth injected per call via ``search(d_rollout=...)``;
     ``config.d_rollout`` is only the fallback.

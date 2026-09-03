@@ -15,8 +15,10 @@ Stage 1   ``fit_advantage_model``: heteroscedastic weighted least squares
           of the centered pooled Q (q̄_a − mean over the legal set) on the
           frozen features, per-row weight 1 / noise_var, held-out early
           stopping. Capacity rungs (``AdvantageModel``): ``pointer`` (a
-          fresh pointer scorer over the frozen adapter output), ``adapter``
-          (fresh adapter MLP + pointer), ``trunk`` (encoder unfrozen).
+          fresh pointer scorer over the frozen adapter output) and
+          ``adapter`` (fresh adapter MLP + pointer; the standing recipe).
+          The unfrozen-encoder rung of the §20 screen never beat the
+          adapter on held-out MSE and was retired.
 Stage 1b  ``estimate_residual_variance`` + ``blend_advantages``: the
           Fay-Herriot combination. sigma_u^2 = E[r^2] − E[noise_var] on
           held-out rows; gamma_n = sigma_u^2 / (sigma_u^2 + noise_var_n);
@@ -56,7 +58,7 @@ from sheepshead.training.corpus_rows import (
     store_corpus_episodes,
 )
 
-CAPACITIES = ("pointer", "adapter", "trunk")
+CAPACITIES = ("pointer", "adapter")
 POINTER_HIDDEN = 64  # matches the actor's pointer scorer
 # Heteroscedastic head: log sigma_u^2 init (~ the global residual variance
 # measured on corpus q) and the clamp that keeps the NLL well-conditioned.
@@ -289,9 +291,7 @@ class AdvantageModel(nn.Module):
     Capacity rungs:
       pointer  fresh pointer scorer; adapter and encoder frozen (~20k params)
       adapter  fresh adapter MLP + pointer; encoder frozen (~150k params)
-      trunk    a trainable COPY of the encoder + fresh adapter + pointer
-    Only ``trunk`` re-encodes rows during training; the frozen rungs train
-    on a cached ``RowTable``.
+    Both train on a cached ``RowTable`` of frozen encodings.
 
     The policy's own centered log-probability over the legal set enters as
     a covariate with one learned scale (``prior_scale``, Q per nat): theta_k
@@ -335,7 +335,6 @@ class AdvantageModel(nn.Module):
                 nn.Linear(d_model, d_model),
                 nn.SiLU(),
             )
-        self.encoder = copy.deepcopy(agent.encoder) if capacity == "trunk" else None
         self.pointer_Wg = nn.Linear(d_model, POINTER_HIDDEN)
         self.pointer_Wt = nn.Linear(d_token, POINTER_HIDDEN)
         self.pointer_v = nn.Linear(POINTER_HIDDEN, 1, bias=False)
@@ -601,8 +600,6 @@ def fit_advantage_model(
     the fit over cells whose whole signal is ~1e-4 Q^2 (lead conventions).
     Held-out diagnostics keep the plain 1 / noise_var weight so reports
     stay comparable across iterations."""
-    if model.capacity == "trunk":
-        raise ValueError("the trunk rung re-encodes rows; use fit_advantage_model_live")
     device = ppo_module.device
     model.to(device)
     rng = random.Random(seed)
@@ -901,177 +898,3 @@ def targets_for_table(
         "v_post": torch.cat(out_v),
         "a_hat": torch.cat(out_a),
     }
-
-
-# --------------------------------------------------------------------------- #
-# Stage 1, trunk rung: live re-encoding
-# --------------------------------------------------------------------------- #
-def fit_advantage_model_live(
-    model: AdvantageModel,
-    agent: PPOAgent,
-    shards: list[dict],
-    table: RowTable,
-    train_idx: torch.Tensor,
-    holdout_idx: torch.Tensor,
-    *,
-    epochs: int,
-    lr: float,
-    weight_decay: float,
-    buffer_episodes: int,
-    batch_segments: int,
-    var_floor: float,
-    patience: int,
-    seed: int,
-    log=print,
-) -> FitReport:
-    """Stage 1 for the ``trunk`` rung: the encoder copy is trainable, so
-    rows are re-encoded every epoch instead of read from the cache. The
-    evidence and the train/holdout split come from ``table`` (keyed by
-    row reference); held-out evaluation re-encodes with the trained copy
-    too, through a temporary table swap."""
-    if model.capacity != "trunk":
-        raise ValueError("fit_advantage_model_live is the trunk rung's fit")
-    assert model.encoder is not None
-    device = ppo_module.device
-    model.to(device)
-    rng = random.Random(seed)
-    opt = torch.optim.AdamW(
-        model.trainable_parameters(), lr=lr, weight_decay=weight_decay
-    )
-    report = FitReport(capacity="trunk")
-    ref_to_row = {ref: r for r, ref in enumerate(table.refs)}
-    train_rows = set(train_idx.tolist())
-    best_state = copy.deepcopy(model.state_dict())
-    since_best = 0
-
-    def encoded_table(train_mode: bool) -> RowTable:
-        """Re-encode every targetable row with the model's encoder copy."""
-        feats, toks, ids, masks, order = [], [], [], [], []
-        for shard_idx, shard in enumerate(shards):
-            episodes = shard["episodes"]
-            for start in range(0, len(episodes), buffer_episodes):
-                chunk = episodes[start : start + buffer_episodes]
-                agent.reset_storage()
-                source_map = store_corpus_episodes(agent, chunk)
-                for rows in iter_row_batches(agent, batch_segments=batch_segments):
-                    with torch.no_grad():
-                        enc = encode_rows(agent, rows, encoder=model.encoder)
-                    for r, ev_idx in enumerate(rows.event_indices):
-                        ref = source_map[ev_idx]
-                        assert ref is not None
-                        row = ref_to_row.get((shard_idx, start + ref[0], ref[1]))
-                        if row is None:
-                            continue
-                        order.append(row)
-                        feats.append(enc.features[r].cpu())
-                        toks.append(enc.hand_tokens[r].cpu())
-                        ids.append(enc.hand_ids[r].cpu())
-                        masks.append(enc.masks[r].cpu())
-        agent.reset_storage()
-        idx = torch.tensor(order, dtype=torch.long)
-        inv = torch.empty_like(idx)
-        inv[idx] = torch.arange(len(idx))
-        return RowTable(
-            features=torch.stack(feats)[inv],
-            hand_tokens=torch.stack(toks)[inv],
-            hand_ids=torch.stack(ids)[inv],
-            masks=torch.stack(masks)[inv],
-            advantage=table.advantage,
-            label_mask=table.label_mask,
-            noise_var=table.noise_var,
-            prior=table.prior,
-            has_q=table.has_q,
-            node_class=table.node_class,
-            refs=table.refs,
-            game=table.game,
-        )
-
-    for epoch in range(1, epochs + 1):
-        model.train()
-        tot, n = 0.0, 0
-        for shard_idx, shard in enumerate(shards):
-            episodes = shard["episodes"]
-            for start in range(0, len(episodes), buffer_episodes):
-                chunk = episodes[start : start + buffer_episodes]
-                agent.reset_storage()
-                source_map = store_corpus_episodes(agent, chunk)
-                for rows in iter_row_batches(
-                    agent, batch_segments=batch_segments, shuffle=True, rng=rng
-                ):
-                    keep, tab_rows = [], []
-                    for r, ev_idx in enumerate(rows.event_indices):
-                        ref = source_map[ev_idx]
-                        assert ref is not None
-                        row = ref_to_row.get((shard_idx, start + ref[0], ref[1]))
-                        if (
-                            row is None
-                            or row not in train_rows
-                            or not bool(table.has_q[row])
-                        ):
-                            continue
-                        keep.append(r)
-                        tab_rows.append(row)
-                    if not keep:
-                        continue
-                    enc = encode_rows(agent, rows, encoder=model.encoder)
-                    sel = torch.tensor(keep, dtype=torch.long, device=device)
-                    enc = EncodedRows(
-                        features=enc.features[sel],
-                        hand_tokens=enc.hand_tokens[sel],
-                        hand_ids=enc.hand_ids[sel],
-                        masks=enc.masks[sel],
-                    )
-                    b = torch.tensor(tab_rows, dtype=torch.long)
-                    pred = model(enc, table.prior[b].to(device))
-                    loss, _ = weighted_rows_mse(
-                        pred,
-                        table.advantage[b].to(device),
-                        table.label_mask[b].to(device),
-                        table.noise_var[b].to(device),
-                        var_floor,
-                    )
-                    opt.zero_grad()
-                    loss.backward()
-                    opt.step()
-                    tot += float(loss.detach()) * len(b)
-                    n += len(b)
-        live = encoded_table(train_mode=False)
-        h_all = evaluate_rows(model, live, holdout_idx, var_floor=var_floor).pooled
-        row = {
-            "epoch": epoch,
-            "train_weighted_mse": tot / max(n, 1),
-            "holdout_weighted_mse": h_all.get("weighted_mse", float("nan")),
-            "holdout_noise_floor": h_all.get("noise_floor", float("nan")),
-            "holdout_top_agree_model": h_all.get("top_agree_model", float("nan")),
-            "holdout_top_agree_prior": h_all.get("top_agree_prior", float("nan")),
-        }
-        report.epochs.append(row)
-        log(
-            f"[fit trunk epoch {epoch}] train wMSE {row['train_weighted_mse']:.3e} "
-            f"holdout wMSE {row['holdout_weighted_mse']:.3e} "
-            f"(noise floor {row['holdout_noise_floor']:.3e})"
-        )
-        if row["holdout_weighted_mse"] < report.best_holdout_mse:
-            report.best_holdout_mse = row["holdout_weighted_mse"]
-            report.best_epoch = epoch
-            report.holdout_noise_floor = row["holdout_noise_floor"]
-            best_state = copy.deepcopy(model.state_dict())
-            since_best = 0
-        else:
-            since_best += 1
-            if since_best >= patience:
-                break
-    model.load_state_dict(best_state)
-    live = encoded_table(train_mode=False)
-    final = evaluate_rows(model, live, holdout_idx, var_floor=var_floor)
-    report.per_class = final.per_class
-    report.sigma_u2 = estimate_residual_variance(
-        final.residual_sq_mean, final.noise_var_mean
-    )
-    report.sigma_u2_by_class = class_residual_variances(
-        report.per_class, report.sigma_u2, CLASS_SHRINK_ROWS
-    )
-    # Stage 2 reads encodings from the saved table; the trunk rung's
-    # encoder differs from theta_k's, so refresh the cached encodings.
-    table.features, table.hand_tokens = live.features, live.hand_tokens
-    return report

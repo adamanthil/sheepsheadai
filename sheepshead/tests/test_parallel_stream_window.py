@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Refactor guards for the two episode-stream generators in
-train_league_ppo.py (sequential_stream / parallel_stream):
+league_streams.py (sequential_stream / parallel_stream):
 
   1. parallel_stream's dispatch-window sizing formula (avg_tx_per_game=26.0,
      capped at 256, floored at num_workers).
@@ -85,6 +85,7 @@ def _make_ctx(tmp_path, args, start_episode, end_episode, training_agent=None):
         tx_counter=TransitionCounter(),
         start_episode=start_episode,
         end_episode=end_episode,
+        seat_rotation=bool(getattr(args, "seat_rotation", False)),
     )
 
 

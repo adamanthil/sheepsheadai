@@ -46,13 +46,26 @@ import json
 import re
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
 from sheepshead.analysis.entropy_probe import HEADS, PROBE_SEED, probe_agent
-from sheepshead.training.config import PFSPHyperparams
 
-PFSP_HYPERPARAMS = PFSPHyperparams()
+# The retention run's clock-based entropy schedule (start -> end over a 20M
+# horizon; the league trainer's PFSPHyperparams of July 2026). Frozen here:
+# the current trainer runs a target-entropy controller instead, so this
+# instrument reconstructs the historical coefficients from its own record.
+PFSP_HYPERPARAMS = SimpleNamespace(
+    entropy_pick_start=0.05,
+    entropy_pick_end=0.005,
+    entropy_partner_start=0.05,
+    entropy_partner_end=0.005,
+    entropy_bury_start=0.04,
+    entropy_bury_end=0.002,
+    entropy_play_start=0.015,
+    entropy_play_end=0.001,
+)
 
 DEFAULT_GLOB = (
     "runs/league_retention_pg/checkpoints/pfsp_perceiver-shared-v2_checkpoint_*.pt"

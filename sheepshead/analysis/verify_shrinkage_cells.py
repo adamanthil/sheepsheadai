@@ -116,14 +116,14 @@ def _worker_init(ckpt, iters):
     torch.set_num_threads(1)
     from sheepshead.agent.ppo import load_agent
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-    from sheepshead.training.config import SearchConfig
+    from sheepshead.training.config import CommitteeConfig
 
     _W["agent"] = load_agent(ckpt)
     _W["teacher"] = ISMCTSTeacher(
         load_agent(ckpt),
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
-    _W["search_cfg"] = SearchConfig()
+    _W["search_cfg"] = CommitteeConfig()
 
 
 def _target_row(game, player, valid, forced_public, deal_seed, node_idx, cell):
@@ -133,14 +133,14 @@ def _target_row(game, player, valid, forced_public, deal_seed, node_idx, cell):
     teacher, cfg = _W["teacher"], _W["search_cfg"]
     rngs = [
         random.Random(hash((deal_seed, node_idx, rep)) & 0x7FFFFFFF)
-        for rep in range(cfg.teacher_replicates)
+        for rep in range(cfg.replicates)
     ]
     replicates = teacher.search_committee(
         game,
         player.position,
         list(forced_public),
         rngs,
-        d_rollout=cfg.teacher_d_rollout,
+        d_rollout=cfg.d_rollout,
     )
     built = build_ce_search_target(
         replicates,

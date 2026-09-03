@@ -5,7 +5,7 @@
 Replays the archived §12.8 deflead gating study's per-node 1024/1 replicate
 root-Q tables through the PRODUCTION target builder
 (``pfsp_runtime.build_ce_search_target``) to (a) calibrate the global
-replicate-noise constant ``SearchConfig.shrink_s2_global`` from measured
+replicate-noise constant ``CommitteeConfig.shrink_s2_global`` from measured
 per-action replicate variance, and (b) verify the gate criteria this data
 supports:
 
@@ -48,7 +48,7 @@ import json
 
 import numpy as np
 
-from sheepshead.training.config import SearchConfig
+from sheepshead.training.config import CommitteeConfig
 from sheepshead.training.pfsp_runtime import build_ce_search_target
 
 BUDGET = "1024/1"  # the teacher budget's replicate tables
@@ -94,7 +94,7 @@ def main() -> None:
         "--study",
         default="runs/league_retention_pg_teacher/deflead_gating_study.json",
     )
-    ap.add_argument("--nu", type=float, default=SearchConfig().shrink_nu)
+    ap.add_argument("--nu", type=float, default=CommitteeConfig().shrink_nu)
     args = ap.parse_args()
 
     with open(args.study) as f:
@@ -121,7 +121,7 @@ def main() -> None:
     s2_global = float(v.mean())
     print(
         f"-> calibrated shrink_s2_global = {s2_global:.3e} "
-        f"(config default {SearchConfig().shrink_s2_global:.3e})"
+        f"(config default {CommitteeConfig().shrink_s2_global:.3e})"
     )
 
     # ---- gate criteria on the production builder ----

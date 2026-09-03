@@ -234,29 +234,37 @@ class TestPersistence:
 
 
 class TestWiring:
-    def test_trainer_controller_always_on(self):
-        # CE_Teacher_Design §4: the v2 controller is always on for the
-        # league trainer — the legacy --entropy-mode selector is gone and
-        # entropy_controller arrives as a parser default (not a CLI flag,
-        # so the exploiter's SimpleNamespace args stays on the schedule).
-        from sheepshead.training.league_cli import build_arg_parser
+    def test_trainer_controller_defaults_per_phase(self):
+        # Training_Program_Redesign §4.3: the controller owns the coefficients
+        # in the league phases (bumpless attach at the settled operating
+        # point); the bootstrap runs its own fixed linear schedule; the
+        # orchestrator opts league generation 1 out explicitly.
+        from sheepshead.training.train_ppo import build_arg_parser, resolve_args
 
-        args = build_arg_parser().parse_args(["--resume", "x.pt", "--league-dir", "y"])
-        assert args.entropy_controller is True
-        assert not hasattr(args, "entropy_mode")
-        on = build_arg_parser().parse_args(
+        league = build_arg_parser().parse_args(
+            ["--phase", "league", "--run-name", "x", "--until", "1"]
+        )
+        resolve_args(league)
+        assert league.entropy_controller is True
+        assert league.entropy_play_floor == 0.28
+        boot = build_arg_parser().parse_args(
+            ["--phase", "bootstrap", "--run-name", "x", "--until", "1"]
+        )
+        resolve_args(boot)
+        assert boot.entropy_controller is False
+        off = build_arg_parser().parse_args(
             [
-                "--resume",
-                "x.pt",
-                "--league-dir",
-                "y",
-                "--entropy-target-play",
-                "0.75",
+                "--phase",
+                "league",
+                "--run-name",
+                "x",
+                "--until",
+                "1",
+                "--no-entropy-controller",
             ]
         )
-        assert on.entropy_target_play == 0.75
-        assert on.entropy_target_pick is None
-        assert on.entropy_play_floor == 0.28
+        resolve_args(off)
+        assert off.entropy_controller is False
 
     def test_orchestrator_default_on_with_opt_out(self):
         # --adaptive-entropy now governs only the orchestrator's OUTER loop
