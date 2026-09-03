@@ -57,6 +57,10 @@ from sheepshead import (
     TRUMP,
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 
 R_REPLICATES = 3
 VOTES_NEEDED = 2
@@ -169,7 +173,7 @@ def _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx):
             agent = hero if player.position == hero_seat else anchor
             valid = player.get_valid_action_ids()
             while valid:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=True
                 )
@@ -211,7 +215,9 @@ def _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         (hero if seat.position == hero_seat else anchor).observe(
-                            seat.get_last_trick_state_dict(),
+                            last_trick_observation_for(
+                                seat, (hero if seat.position == hero_seat else anchor)
+                            ),
                             player_id=seat.position,
                         )
     return float(game.players[hero_seat - 1].get_score()), node_rows

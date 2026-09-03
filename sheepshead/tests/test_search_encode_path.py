@@ -27,6 +27,7 @@ from sheepshead.agent.compiled_encoder import (
     disable_compiled_encoder,
     enable_compiled_encoder,
 )
+from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.training_utils import set_all_seeds
 
@@ -44,8 +45,10 @@ def agent():
 
 
 @pytest.fixture(scope="module")
-def states():
-    return [Game(seed=seed).players[0].get_state_dict() for seed in range(11, 15)]
+def states(agent):
+    return [
+        observation_for(Game(seed=seed).players[0], agent) for seed in range(11, 15)
+    ]
 
 
 @pytest.fixture

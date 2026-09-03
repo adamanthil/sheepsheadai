@@ -82,6 +82,10 @@ from sheepshead import (  # noqa: E402
     UNDER_TOKEN,
     Game,
 )
+from sheepshead.agent.observation import (  # noqa: E402
+    last_trick_observation_for,
+    observation_for,
+)
 
 FAIL_SET = set(FAIL)
 
@@ -291,7 +295,7 @@ def _play_out(agent, game, device, deterministic: bool) -> None:
         if actor is None:
             break
         pos = actor.position
-        state = actor.get_state_dict()
+        state = observation_for(actor, agent)
         valid = actor.get_valid_action_ids()
 
         if deterministic:
@@ -319,7 +323,9 @@ def _play_out(agent, game, device, deterministic: bool) -> None:
         actor.act(action_id)
         if game.was_trick_just_completed:
             for seat in game.players:
-                agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                agent.observe(
+                    last_trick_observation_for(seat, agent), player_id=seat.position
+                )
 
 
 def _branch_metrics(game, seat: int) -> DetBranch:
@@ -402,7 +408,7 @@ def _replay_to_node(
             break
 
         pos = actor.position
-        state = actor.get_state_dict()
+        state = observation_for(actor, agent)
         valid = actor.get_valid_action_ids()
         valid_sorted = sorted(valid)
 
@@ -502,7 +508,9 @@ def _replay_to_node(
         actor.act(argmax_action)
         if game.was_trick_just_completed:
             for seat in game.players:
-                agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                agent.observe(
+                    last_trick_observation_for(seat, agent), player_id=seat.position
+                )
         step += 1
 
     return None

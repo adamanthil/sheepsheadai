@@ -41,6 +41,10 @@ from pathlib import Path
 import numpy as np
 
 from sheepshead import ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
 from sheepshead.scripted_agent import ScriptedAgent
 
@@ -83,7 +87,7 @@ def probe_checkpoint(shadow, n_deals: int, seed: int) -> dict:
                     if probe_group is not None:
                         saved = shadow.snapshot_player_memories()
                         probs, _ = shadow.get_action_probs_with_logits(
-                            player.get_state_dict(),
+                            observation_for(player, shadow),
                             valid,
                             player_id=player.position,
                         )
@@ -101,7 +105,7 @@ def probe_checkpoint(shadow, n_deals: int, seed: int) -> dict:
                         nodes[key] = (probe_group, mass)
 
                     a, _, _ = field.act(
-                        player.get_state_dict(),
+                        observation_for(player, field),
                         valid,
                         player.position,
                         deterministic=True,
@@ -111,10 +115,12 @@ def probe_checkpoint(shadow, n_deals: int, seed: int) -> dict:
                     if game.was_trick_just_completed:
                         for pl in game.players:
                             shadow.observe(
-                                pl.get_last_trick_state_dict(), player_id=pl.position
+                                last_trick_observation_for(pl, shadow),
+                                player_id=pl.position,
                             )
                             field.observe(
-                                pl.get_last_trick_state_dict(), player_id=pl.position
+                                last_trick_observation_for(pl, field),
+                                player_id=pl.position,
                             )
                 if game.is_done() or game.current_trick > MAX_TRICK:
                     break

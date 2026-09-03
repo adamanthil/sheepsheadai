@@ -35,6 +35,7 @@ from sheepshead import (
     get_card_points,
     get_card_suit,
 )
+from sheepshead.agent.observation import observation_for
 
 # Runs real (tiny-budget) ISMCTS searches and distill updates (~50s).
 pytestmark = pytest.mark.slow
@@ -631,7 +632,7 @@ def test_seat_policies_population_grounding():
     seat_policies = {s: opp for s in range(1, 6) if s != observer}
 
     # Seed non-trivial live memories on both agents so isolation is meaningful.
-    obs_state = game.players[observer - 1].get_state_dict()
+    obs_state = observation_for(game.players[observer - 1], agent)
     obs_valid = game.players[observer - 1].get_valid_action_ids()
     agent.get_action_probs_with_logits(obs_state, obs_valid, player_id=observer)
     opp.get_action_probs_with_logits(obs_state, obs_valid, player_id=3)

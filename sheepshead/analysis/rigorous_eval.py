@@ -92,6 +92,10 @@ from sheepshead import (
     PARTNER_BY_JD,
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent, load_agent
 
 NUM_SEATS = 5
@@ -280,7 +284,7 @@ def play_hand(
             model = seat_to_model[player.position]
             valid_actions = player.get_valid_action_ids()
             while valid_actions:
-                state = player.get_state_dict()
+                state = observation_for(player, model.agent)
                 probs = None
                 if (
                     probe is not None
@@ -302,7 +306,9 @@ def play_hand(
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         seat_to_model[seat.position].agent.observe(
-                            seat.get_last_trick_state_dict(),
+                            last_trick_observation_for(
+                                seat, seat_to_model[seat.position].agent
+                            ),
                             player_id=seat.position,
                         )
 

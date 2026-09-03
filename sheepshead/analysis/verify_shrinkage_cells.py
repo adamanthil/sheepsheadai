@@ -47,6 +47,10 @@ from multiprocessing import get_context
 import numpy as np
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 
 FAT_RANKS = {"A", "10"}
 NOPOINT_RANKS = {"7", "8", "9"}
@@ -204,7 +208,7 @@ def _run_deal(deal_seed):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=True
                 )
@@ -236,7 +240,7 @@ def _run_deal(deal_seed):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(),
+                            last_trick_observation_for(seat, agent),
                             player_id=seat.position,
                         )
     return {"deal_seed": deal_seed, "rows": rows, "wall_s": time.time() - t0}

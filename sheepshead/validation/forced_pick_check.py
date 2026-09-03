@@ -39,6 +39,10 @@ import argparse
 import numpy as np
 
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import (
     estimate_hand_strength_score,
@@ -101,7 +105,7 @@ def forced_pick_eval(agent, make_field, n_games, seed, min_strength, determinist
                     else:
                         controller = agent if is_agent else ctrl(player.position)
                         a, _, _ = controller.act(
-                            player.get_state_dict(),
+                            observation_for(player, controller),
                             valid,
                             player.position,
                             deterministic=deterministic,
@@ -113,7 +117,7 @@ def forced_pick_eval(agent, make_field, n_games, seed, min_strength, determinist
                         for seat in game.players:
                             c = agent if seat.position == pos else ctrl(seat.position)
                             c.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, c),
                                 player_id=seat.position,
                             )
 

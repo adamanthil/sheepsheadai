@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """Zero-fine-tuning blind/bury observation ablation (picker EV probe).
 
-Measures how much EV the trained agent loses when the blind/bury tokens are
-removed from its observations with NO retraining — i.e. how much information
-those tokens actually carry beyond what the GRU memory already holds. This is
-the cheap go/no-go gate for the planned architecture change that drops
-``blind_ids``/``bury_ids`` from the observation dict entirely (the picker is
-the only seat that ever sees them populated — game.py builds them empty for
-everyone else — so today's encoder re-injects the picker's blind/bury
-knowledge every step instead of requiring the memory to carry it).
+Measures how much EV a legacy agent loses when the picker-memory interface
+is withheld from it with NO retraining — i.e. how much information those
+tokens actually carry beyond what the GRU memory already holds. Two
+interfaces are in play (sheepshead/agent/observation.py):
+
+  * ``Player.get_state_dict``     — the clean observation every actor sees;
+  * ``Player.get_picker_memory``  — the picker's blind/bury, merged in for
+    legacy architectures by ``observation_for(player, agent)``.
+
+The "full" arm observes through ``observation_for`` (exactly what the agent
+was trained on). The "masked" arm observes the clean ``get_state_dict``
+merged with a ZEROED picker memory, i.e. the picker looks like every other
+seat. This was the go/no-go gate for the ``perceiver-recall`` family, which
+never consumes the picker-memory interface at all.
 
 Instrument: duplicate-bridge h2h (league_progress_eval.h2h_duplicate design)
 with an exactly-zero null on non-picker hands. The hero plays the SAME
@@ -21,9 +27,9 @@ diff is nonzero ONLY on hero-picker hands, where the ablation actually binds
 ablated arm only on hero-picker hands (--verify-identity replays every hand
 and asserts the zero-null instead, for validation runs).
 
-The masking is a pure input ablation: masked blind/bury tokens are excluded
-from attention via key_padding_mask, so no weights are touched and no
-architecture surgery is needed — checkpoints load unchanged.
+The masking is a pure input ablation: zeroed (PAD) blind/bury ids are
+excluded from attention via key_padding_mask, so no weights are touched and
+no architecture surgery is needed — checkpoints load unchanged.
 
 Reported: overall duplicate edge (= pick-rate-weighted cost), the
 picker-conditional per-hand EV diff, and the fraction of picker hands whose
@@ -48,6 +54,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.agent.observation import observation_for
 
 H2H_SEED = 42  # matches the h2h_duplicate deal-seed schedule
 N_BOOT = 10_000
@@ -56,37 +63,30 @@ _W: Dict[str, Any] = {}  # per-worker state
 
 
 # --------------------------------------------------------------------------- #
-# Ablation wrapper
+# The two observation conditions
 # --------------------------------------------------------------------------- #
-_ZERO2 = np.zeros(2, dtype=np.uint8)
+def masked_observation(
+    player: Any, trick_index: Optional[int] = None
+) -> Dict[str, Any]:
+    """The clean ``get_state_dict`` observation merged with a ZEROED picker
+    memory: what a legacy encoder sees when the picker-memory interface is
+    withheld. PAD ids produce all-False masks, so the tokens drop out of
+    attention and pooling exactly as always-empty bags do for non-picker
+    seats."""
+    obs = player.get_state_dict(trick_index=trick_index)
+    obs["blind_ids"] = np.zeros(2, dtype=np.uint8)
+    obs["bury_ids"] = np.zeros(2, dtype=np.uint8)
+    return obs
 
 
-def ablate_blind_bury(agent: Any) -> Any:
-    """Patch ``agent`` so its encoder sees PAD blind/bury in every observation.
-
-    Instance-level patch of ``encoder.encode_batch`` (every inference path —
-    act / observe / get_action_probs_with_logits — funnels through it). PAD
-    ids produce all-False masks, so the tokens drop out of attention and
-    pooling exactly as always-empty bags do for non-picker seats.
-    """
-    enc = agent.encoder
-    orig = enc.encode_batch
-
-    def encode_batch_ablated(
-        batch: List[Dict[str, Any]],
-        memory_in: Any = None,
-        device: Any = None,
-    ) -> Dict[str, Any]:
-        stripped = []
-        for s in batch:
-            s2 = dict(s)
-            s2["blind_ids"] = _ZERO2
-            s2["bury_ids"] = _ZERO2
-            stripped.append(s2)
-        return orig(stripped, memory_in=memory_in, device=device)
-
-    enc.encode_batch = encode_batch_ablated
-    return agent
+def _observe(
+    player: Any, agent: Any, masked: bool, trick_index: Optional[int] = None
+) -> Dict[str, Any]:
+    """``masked_observation`` for the ablated arm, ``observation_for`` (the
+    agent's trained interface) otherwise."""
+    if masked:
+        return masked_observation(player, trick_index=trick_index)
+    return observation_for(player, agent, trick_index=trick_index)
 
 
 # --------------------------------------------------------------------------- #
@@ -95,10 +95,12 @@ def ablate_blind_bury(agent: Any) -> Any:
 def _play_hand(
     hero_kind: str, mode: int, deal_seed: int, hero_seat: int
 ) -> Tuple[float, int, bool]:
-    """One hand: hero at ``hero_seat`` (baseline or ablated weights-identical
-    agent), baseline field elsewhere. Returns (hero_score, picker, is_leaster).
+    """One hand: hero at ``hero_seat`` (weights-identical agent observing
+    through the full or the masked interface), baseline field elsewhere.
+    Returns (hero_score, picker, is_leaster).
     """
-    hero = _W["abl"] if hero_kind == "abl" else _W["base"]
+    masked = hero_kind == "abl"
+    hero = _W["abl"] if masked else _W["base"]
     field = _W["base"]
     game = Game(partner_selection_mode=mode, seed=deal_seed)
     hero.reset_recurrent_state()
@@ -106,20 +108,28 @@ def _play_hand(
 
     while not game.is_done():
         for player in game.players:
-            agent = hero if player.position == hero_seat else field
+            is_hero = player.position == hero_seat
+            agent = hero if is_hero else field
             valid = player.get_valid_action_ids()
             while valid:
-                state = player.get_state_dict()
+                state = _observe(player, agent, masked and is_hero)
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=True
                 )
                 player.act(action)
                 valid = player.get_valid_action_ids()
                 if game.was_trick_just_completed:
+                    last_idx = max(0, game.current_trick - 1)
                     for seat in game.players:
-                        seat_agent = hero if seat.position == hero_seat else field
+                        seat_is_hero = seat.position == hero_seat
+                        seat_agent = hero if seat_is_hero else field
                         seat_agent.observe(
-                            seat.get_last_trick_state_dict(),
+                            _observe(
+                                seat,
+                                seat_agent,
+                                masked and seat_is_hero,
+                                trick_index=last_idx,
+                            ),
                             player_id=seat.position,
                         )
 
@@ -137,7 +147,7 @@ def _worker_init(ckpt: str, torch_threads: int) -> None:
     from sheepshead.agent.ppo import load_agent
 
     _W["base"] = load_agent(ckpt)
-    _W["abl"] = ablate_blind_bury(load_agent(ckpt))
+    _W["abl"] = load_agent(ckpt)  # same weights; masked at the observation
 
 
 def _run_deal(task: Tuple[int, int, int, bool]) -> Dict[str, Any]:

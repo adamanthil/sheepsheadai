@@ -367,6 +367,13 @@ class PPOAgent:
         self.reset_storage()
 
     @property
+    def needs_picker_memory(self) -> bool:
+        """Whether this agent's architecture consumes the legacy
+        picker-memory interface (``Player.get_picker_memory``); the
+        registry's ``ArchitectureSpec.legacy_picker_memory`` is the truth."""
+        return bool(architectures.get_spec(self.arch_name).legacy_picker_memory)
+
+    @property
     def observation_keys(self) -> tuple[str, ...]:
         """Observation-dict keys this agent's encoder reads (sorted): the
         runtime form of the observation contract in agent/observation.py.

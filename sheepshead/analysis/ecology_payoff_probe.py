@@ -49,6 +49,10 @@ import numpy as np
 import torch
 
 from sheepshead import ACTION_IDS, ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.counterfactual_trump_leads import (
     _restore_memory,
@@ -85,13 +89,14 @@ def _play_out_multi(agents_by_pos: dict, game: Game) -> None:
         pos = actor.position
         agent = agents_by_pos[pos]
         action, _, _ = agent.act(
-            actor.get_state_dict(), actor.get_valid_action_ids(), pos
+            observation_for(actor, agent), actor.get_valid_action_ids(), pos
         )
         actor.act(action)
         if game.was_trick_just_completed:
             for seat in game.players:
                 agents_by_pos[seat.position].observe(
-                    seat.get_last_trick_state_dict(), player_id=seat.position
+                    last_trick_observation_for(seat, agents_by_pos[seat.position]),
+                    player_id=seat.position,
                 )
 
 
@@ -150,7 +155,7 @@ def main() -> int:
             for player in game.players:
                 valid = player.get_valid_action_ids()
                 while valid:
-                    state = player.get_state_dict()
+                    state = observation_for(player, driver)
                     pos = player.position
                     valid_sorted = sorted(valid)
                     action_kind = ACTION_LOOKUP.get(valid_sorted[0], "")
@@ -287,7 +292,7 @@ def main() -> int:
                     player.act(aid)
                     if game.was_trick_just_completed and not game.is_done():
                         for seat_p in game.players:
-                            st = seat_p.get_last_trick_state_dict()
+                            st = last_trick_observation_for(seat_p, driver)
                             seat_streams[seat_p.position].append(st)
                             driver.observe(st, player_id=seat_p.position)
                     valid = player.get_valid_action_ids()

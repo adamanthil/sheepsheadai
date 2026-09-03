@@ -71,6 +71,10 @@ from sheepshead import (
     TRUMP,
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.training.training_utils import RETURN_SCALE
 
 _W: dict = {}  # per-worker state (agent, teacher, config)
@@ -278,7 +282,7 @@ def play_corpus_game(task: tuple) -> dict:
         for player in game.players:
             valid_actions = player.get_valid_action_ids()
             while valid_actions:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, log_prob, value = agent.act(
                     state, valid_actions, player.position
                 )
@@ -417,7 +421,7 @@ def play_corpus_game(task: tuple) -> dict:
 
                 if game.was_trick_just_completed and not game.is_done():
                     for seat in game.players:
-                        obs_state = seat.get_last_trick_state_dict()
+                        obs_state = last_trick_observation_for(seat, agent)
                         agent.observe(obs_state, player_id=seat.position)
                         obs = {"kind": "observation", "state": obs_state}
                         if collect_oracle:

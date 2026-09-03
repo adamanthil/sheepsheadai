@@ -67,6 +67,10 @@ import numpy as np
 import torch
 
 from sheepshead import ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.fail_lead_logit_probe import _masked_logits
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
@@ -241,7 +245,7 @@ def _replay_seeds(
             for player in game.players:
                 valid = player.get_valid_action_ids()
                 while valid:
-                    state = player.get_state_dict()
+                    state = observation_for(player, driver)
                     pos = player.position
                     valid_sorted = sorted(valid)
                     is_play = ACTION_LOOKUP.get(valid_sorted[0], "").startswith("PLAY ")
@@ -423,7 +427,7 @@ def _replay_seeds(
                     if game.was_trick_just_completed and not game.is_done():
                         for seat_p in game.players:
                             driver.observe(
-                                seat_p.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat_p, driver),
                                 player_id=seat_p.position,
                             )
                     valid = player.get_valid_action_ids()

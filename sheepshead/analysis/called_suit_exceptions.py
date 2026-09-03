@@ -44,6 +44,7 @@ from typing import Any
 import numpy as np
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
+from sheepshead.agent.observation import observation_for
 from sheepshead.analysis.verify_shrinkage_cells import _lead_class
 from sheepshead.game import get_card_points
 
@@ -290,7 +291,7 @@ def _run_deal(deal_seed):
                             row["wall_s"] = time.time() - t0
                     # t0 lead reached (eligible or not): the deal is spent.
                     return row
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=True
                 )

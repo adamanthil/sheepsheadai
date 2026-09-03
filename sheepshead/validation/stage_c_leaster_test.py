@@ -26,6 +26,10 @@ from sheepshead import (
     Game,
     get_card_suit,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
@@ -66,7 +70,9 @@ def drive_to_leaster_play(game, agent, observer, plies_into_play):
             while valid:
                 if player.position == observer and played >= plies_into_play:
                     return forced_public
-                a, _, _ = agent.act(player.get_state_dict(), valid, player.position)
+                a, _, _ = agent.act(
+                    observation_for(player, agent), valid, player.position
+                )
                 forced_public.append((player.position, a))
                 player.act(a)
                 played += 1
@@ -74,7 +80,8 @@ def drive_to_leaster_play(game, agent, observer, plies_into_play):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
     return None
 

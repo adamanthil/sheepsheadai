@@ -45,6 +45,10 @@ from sheepshead import (
     get_card_suit,
 )
 from sheepshead.agent import ppo
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.counterfactual_trump_leads import (
     best_in_class,
@@ -67,7 +71,7 @@ def _is_private_decision(valid):
 def forced_encode(agent, player, pid):
     """Advance a seat's recurrent memory through its current state WITHOUT
     sampling/applying an action (matches a normal act's memory update)."""
-    state = player.get_state_dict()
+    state = observation_for(player, agent)
     mem_in = agent.get_recurrent_memory(pid, device=DEV)
     enc = agent.encoder.encode_batch([state], memory_in=mem_in.unsqueeze(0), device=DEV)
     agent.set_recurrent_memory(pid, enc["memory_out"][0])
@@ -105,7 +109,7 @@ def drive_record(game, agent, target_tricks):
                     and game.leader == player.position
                     and _qualifies(player)
                 ):
-                    state = player.get_state_dict()
+                    state = observation_for(player, agent)
                     probs_t, _ = agent.get_action_probs_with_logits(
                         state, valid, player_id=player.position
                     )
@@ -134,7 +138,7 @@ def drive_record(game, agent, target_tricks):
                     return node, forced_public
 
                 private = _is_private_decision(valid)
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 a, _, _ = agent.act(state, valid, player.position, deterministic=False)
                 if not private:
                     forced_public.append((player.position, a))
@@ -143,7 +147,8 @@ def drive_record(game, agent, target_tricks):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
     return None, None
 
@@ -223,7 +228,7 @@ def build_world(real_game, deal, forced_public, observer, target_trick, agent):
                         return _fail("bad_private")
                     # Advance memory through this (forced, private) decision.
                     agent.get_action_probs_with_logits(
-                        player.get_state_dict(), valid, player_id=player.position
+                        observation_for(player, agent), valid, player_id=player.position
                     )
                     player.act(aid)
                 else:
@@ -233,7 +238,7 @@ def build_world(real_game, deal, forced_public, observer, target_trick, agent):
                     if aid not in valid:
                         return _fail("bad_public")
                     probs_t, _ = agent.get_action_probs_with_logits(
-                        player.get_state_dict(), valid, player_id=player.position
+                        observation_for(player, agent), valid, player_id=player.position
                     )
                     # Inference weights the BIDDING likelihood only. Plays are
                     # honoured as hard void constraints in the determinizer (the
@@ -253,7 +258,8 @@ def build_world(real_game, deal, forced_public, observer, target_trick, agent):
                 if g.was_trick_just_completed:
                     for seat in g.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
         if not acted:
             return _fail("no_acted")

@@ -56,6 +56,10 @@ from sheepshead import (
     Game,
 )
 from sheepshead.agent import ppo
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.called_suit_probe import _called_suit_fail
 from sheepshead.analysis.critic_calibration import (
@@ -196,7 +200,7 @@ def collect_nodes(
             if actor is None:
                 break
             pos = actor.position
-            state = actor.get_state_dict()
+            state = observation_for(actor, agent)
             valid = actor.get_valid_action_ids()
             if want_oracle:
                 oracle_events[pos].append(actor.get_oracle_state_dict())
@@ -240,7 +244,7 @@ def collect_nodes(
             if game.was_trick_just_completed:
                 for seat in game.players:
                     agent.observe(
-                        seat.get_last_trick_state_dict(), player_id=seat.position
+                        last_trick_observation_for(seat, agent), player_id=seat.position
                     )
                     if want_oracle:
                         oracle_events[seat.position].append(
@@ -272,7 +276,7 @@ def probe_branch(
             if actor is None:
                 break
             pos = actor.position
-            state = actor.get_state_dict()
+            state = observation_for(actor, agent)
             valid = actor.get_valid_action_ids()
             if pos == node.leader and orc_events is not None and v_next_orc is None:
                 orc_events.append(actor.get_oracle_state_dict())
@@ -285,7 +289,7 @@ def probe_branch(
             if g.was_trick_just_completed:
                 for seat in g.players:
                     agent.observe(
-                        seat.get_last_trick_state_dict(), player_id=seat.position
+                        last_trick_observation_for(seat, agent), player_id=seat.position
                     )
                     if (
                         orc_events is not None

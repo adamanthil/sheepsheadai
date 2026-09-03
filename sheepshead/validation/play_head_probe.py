@@ -28,6 +28,10 @@ import argparse
 import numpy as np
 
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
@@ -74,7 +78,10 @@ def run(model, deals, seed):
                     )
                     if is_play and len(valid) >= 2:
                         pol_arg, spread, margin, ent, top1p = _play_stats(
-                            agent, player.get_state_dict(), valid, player.position
+                            agent,
+                            observation_for(player, agent),
+                            valid,
+                            player.position,
                         )
                         rows.append(
                             (game.current_trick, len(valid), spread, margin, ent, top1p)
@@ -82,7 +89,7 @@ def run(model, deals, seed):
                         a = pol_arg
                     else:
                         a, _, _ = agent.act(
-                            player.get_state_dict(),
+                            observation_for(player, agent),
                             valid,
                             player.position,
                             deterministic=True,
@@ -92,7 +99,8 @@ def run(model, deals, seed):
                     if game.was_trick_just_completed:
                         for p in game.players:
                             agent.observe(
-                                p.get_last_trick_state_dict(), player_id=p.position
+                                last_trick_observation_for(p, agent),
+                                player_id=p.position,
                             )
     return rows
 

@@ -31,6 +31,10 @@ import numpy as np
 import torch
 
 from sheepshead import ACTIONS, TRUMP, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import get_partner_selection_mode
 
@@ -100,7 +104,9 @@ def selfplay_metrics(agent, n_games, seed, deterministic):
                         # 48.6%) carry the perturbation; mass and h2h do not.
                         saved_mem = agent.snapshot_player_memories()
                         probs, _ = agent.get_action_probs_with_logits(
-                            player.get_state_dict(), valid, player_id=player.position
+                            observation_for(player, agent),
+                            valid,
+                            player_id=player.position,
                         )
                         agent.restore_player_memories(saved_mem)
                         p = probs[0].detach().cpu().numpy()
@@ -114,7 +120,7 @@ def selfplay_metrics(agent, n_games, seed, deterministic):
                         t0_def_leads += 1
 
                     a, _, _ = agent.act(
-                        player.get_state_dict(),
+                        observation_for(player, agent),
                         valid,
                         player.position,
                         deterministic=deterministic,
@@ -137,7 +143,7 @@ def selfplay_metrics(agent, n_games, seed, deterministic):
                     if game.was_trick_just_completed:
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
         if game.is_leaster:
@@ -183,7 +189,7 @@ def h2h(challenger, baseline, n_games, seed):
                 while valid:
                     ag = challenger if player.position == pos else baseline
                     a, _, _ = ag.act(
-                        player.get_state_dict(),
+                        observation_for(player, ag),
                         valid,
                         player.position,
                         deterministic=False,
@@ -194,7 +200,7 @@ def h2h(challenger, baseline, n_games, seed):
                         for seat in game.players:
                             ctrl = challenger if seat.position == pos else baseline
                             ctrl.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, ctrl),
                                 player_id=seat.position,
                             )
         scores.append(game.players[pos - 1].get_score())

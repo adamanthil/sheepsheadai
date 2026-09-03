@@ -47,6 +47,12 @@ FULL_ARCH_KEYS_SHA256 = (
 )
 
 
+def _legacy_obs(player) -> dict:
+    """What a pre-recall encoder consumes: the clean observation plus the
+    picker-memory interface (Player.get_picker_memory)."""
+    return {**player.get_state_dict(), **player.get_picker_memory()}
+
+
 def _seed_all(s: int) -> None:
     random.seed(s)
     np.random.seed(s)
@@ -371,7 +377,7 @@ class TestNoTransformer:
     def test_encode_batch_contract(self):
         enc = PooledMemoryEncoder()
         game = Game(seed=123)
-        out = enc.encode_batch([game.players[0].get_state_dict()])
+        out = enc.encode_batch([_legacy_obs(game.players[0])])
         assert tuple(out["features"].shape) == (1, 256)
         assert tuple(out["hand_tokens"].shape) == (1, 8, enc.d_token_dim)
 
@@ -381,7 +387,7 @@ class TestNoTransformer:
         # recurrent state into the features the heads consume.
         enc = PooledMemoryEncoder()
         game = Game(seed=124)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out1 = enc.encode_batch([s])
         out2 = enc.encode_batch([s], memory_in=out1["memory_out"])
         assert not torch.equal(out1["features"], out2["features"])
@@ -395,7 +401,7 @@ class TestNoTransformer:
             card_config=CardEmbeddingConfig(), n_reasoning_layers=0
         )
         game = Game(seed=125)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out1 = enc.encode_batch([s])
         out2 = enc.encode_batch([s], memory_in=torch.randn(1, 256))
         assert torch.equal(out1["features"], out2["features"])
@@ -419,7 +425,7 @@ class TestTokenRead:
         torch.manual_seed(7)
         enc = architectures.TokenReadEncoder(card_config=CardEmbeddingConfig())
         game = Game(seed=126)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out_b, out_t = base.encode_batch([s]), enc.encode_batch([s])
         assert torch.equal(out_b["features"], out_t["features"])
         assert torch.equal(out_b["memory_out"], out_t["memory_out"])
@@ -433,8 +439,8 @@ class TestTokenRead:
         enc = architectures.TokenReadEncoder(card_config=CardEmbeddingConfig())
         game = Game(seed=127)
         seqs = [
-            [game.players[0].get_state_dict(), game.players[0].get_state_dict()],
-            [game.players[1].get_state_dict()],
+            [_legacy_obs(game.players[0]), _legacy_obs(game.players[0])],
+            [_legacy_obs(game.players[1])],
         ]
         out = enc.encode_sequences(seqs)
         assert tuple(out["all_tokens"].shape) == (2, 2, 19, enc.d_token_dim)
@@ -447,7 +453,7 @@ class TestTokenRead:
         _seed_all(8)
         agent = PPOAgent(len(ACTIONS), arch="full-tokenread")
         game = Game(seed=128)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         enc_out = agent.encoder.encode_batch([s])
         mask = torch.ones(1, len(ACTIONS), dtype=torch.bool)
         hand_ids = torch.as_tensor(s["hand_ids"], dtype=torch.long).view(1, -1)
@@ -477,7 +483,7 @@ class TestTokenRead:
         _seed_all(10)
         agent = PPOAgent(len(ACTIONS), arch="full")
         game = Game(seed=129)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         enc_out = agent.encoder.encode_batch([s])
         assert "all_tokens" not in enc_out
         mask = torch.ones(1, len(ACTIONS), dtype=torch.bool)
@@ -508,7 +514,7 @@ class TestPerceiver:
     def test_memory_token_drives_recurrence(self):
         enc = architectures.PerceiverEncoder()
         game = Game(seed=130)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out1 = enc.encode_batch([s])
         out2 = enc.encode_batch([s], memory_in=out1["memory_out"])
         # Recurrence is live and features carry the recurrent state.
@@ -520,7 +526,7 @@ class TestPerceiver:
         _seed_all(12)
         agent = PPOAgent(len(ACTIONS), arch="perceiver")
         game = Game(seed=131)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         enc_out = agent.encoder.encode_batch([s])
         mask = torch.ones(1, len(ACTIONS), dtype=torch.bool)
         hand_ids = torch.as_tensor(s["hand_ids"], dtype=torch.long).view(1, -1)
@@ -546,7 +552,7 @@ class TestPerceiver:
         _seed_all(13)
         agent = PPOAgent(len(ACTIONS), arch="perceiver")
         game = Game(seed=132)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         enc_out = agent.encoder.encode_batch([s])
         with torch.no_grad():
             v1 = agent.critic(enc_out)
@@ -569,7 +575,7 @@ class TestPerceiver:
         enc = architectures.PerceiverEncoder(d_token=128)
         assert enc.d_token_dim == 128
         game = Game(seed=134)
-        out = enc.encode_batch([game.players[0].get_state_dict()])
+        out = enc.encode_batch([_legacy_obs(game.players[0])])
         assert tuple(out["all_tokens"].shape) == (1, 19, 128)
 
     def test_attention_shape_variants(self):
@@ -581,7 +587,7 @@ class TestPerceiver:
         game = Game(seed=140)
         p = game.players[0]
         valid = p.get_valid_action_ids()
-        a, _, _ = agent.act(p.get_state_dict(), list(valid), p.position)
+        a, _, _ = agent.act(_legacy_obs(p), list(valid), p.position)
         assert a in valid
 
         agent2 = PPOAgent(len(ACTIONS), arch="perceiver-readheads2")
@@ -606,13 +612,13 @@ class TestPerceiver:
         # Encoder is still pool-free.
         assert not hasattr(agent.encoder, "pool_hand")
         game = Game(seed=141)
-        enc_out = agent.encoder.encode_batch([game.players[0].get_state_dict()])
+        enc_out = agent.encoder.encode_batch([_legacy_obs(game.players[0])])
         win_prob, _exp_ret, secret_prob, points = agent.critic.aux_predictions(enc_out)
         assert 0.0 <= win_prob <= 1.0
         assert 0.0 <= secret_prob <= 1.0
         assert len(points) == 5
         # Sequence aux features come from the token readout, (B, T, d_model).
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         seq_out = agent.encoder.encode_sequences([[s, s]])
         aux_bt = agent.critic.aux_sequence_features(seq_out)
         assert tuple(aux_bt.shape) == (1, 2, 256)
@@ -649,7 +655,7 @@ class TestPerceiver:
         assert hasattr(enc, "readout_query")
         assert agent.critic.has_aux_heads
         game = Game(seed=144)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out = enc.encode_batch([s])
         assert tuple(out["features"].shape) == (1, 256)
         # Features flow from the readout (not the memory state) and carry
@@ -679,7 +685,7 @@ class TestPerceiver:
         assert isinstance(enc.readout_proj[1], torch.nn.LayerNorm)
         assert agent.critic.has_aux_heads
         game = Game(seed=145)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out = enc.encode_batch([s])
         assert tuple(out["features"].shape) == (1, 256)
         # LayerNorm pins the feature scale to full's convention (norm =
@@ -709,7 +715,7 @@ class TestPerceiver:
         _seed_all(20)
         enc = architectures.PerceiverCtxMemEncoder()
         game = Game(seed=143)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out = enc.encode_batch([s])
         with torch.no_grad():
             zero_mem = torch.zeros(1, 256)
@@ -725,7 +731,7 @@ class TestPerceiver:
         _seed_all(18)
         agent = PPOAgent(len(ACTIONS), arch="full")
         game = Game(seed=142)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         seq_out = agent.encoder.encode_sequences([[s, s]])
         with torch.no_grad():
             via_seam = agent.critic.aux_sequence_features(seq_out)
@@ -737,7 +743,7 @@ class TestPerceiver:
         _seed_all(14)
         agent = PPOAgent(len(ACTIONS), arch="full")
         game = Game(seed=133)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         seq_out = agent.encoder.encode_sequences([[s, s]])
         with torch.no_grad():
             via_seam = agent.critic.sequence_values(seq_out)
@@ -755,7 +761,7 @@ class TestSizeVariants:
             )
             assert enc.d_model == d_model
             game = Game(seed=200 + d_model)
-            out = enc.encode_batch([game.players[0].get_state_dict()])
+            out = enc.encode_batch([_legacy_obs(game.players[0])])
             assert tuple(out["features"].shape) == (1, d_model)
             assert tuple(out["memory_out"].shape) == (1, d_model)
 
@@ -777,7 +783,7 @@ class TestSizeVariants:
 class TestOneHotState:
     def test_dim_and_determinism(self):
         game = Game(seed=77)
-        state = game.players[0].get_state_dict()
+        state = _legacy_obs(game.players[0])
         v1 = build_onehot_state(state)
         v2 = build_onehot_state(state)
         assert v1.shape == (ONEHOT_STATE_DIM,)
@@ -785,23 +791,30 @@ class TestOneHotState:
 
     def test_hand_multi_hot_matches_hand_ids(self):
         game = Game(seed=78)
-        state = game.players[2].get_state_dict()
+        state = _legacy_obs(game.players[2])
         vec = build_onehot_state(state)
         hand = vec[:34]
         expected = set(int(c) for c in state["hand_ids"] if int(c) > 0)
         assert {i for i in range(34) if hand[i] == 1.0} == expected
         assert hand.sum() == len(expected)
 
-    def test_empty_state_is_zero_safe(self):
-        vec = build_onehot_state({})
-        # header one-hots for rel-seat value 0 are set; everything else zero
+    def test_empty_state_is_zero_safe_given_the_memory_interface(self):
+        # Header scalars default to 0; only the picker-memory keys are strict
+        # (a clean observation must never be encoded as zero memory).
+        memory = {
+            "blind_ids": np.zeros(2, dtype=np.uint8),
+            "bury_ids": np.zeros(2, dtype=np.uint8),
+        }
+        vec = build_onehot_state(memory)
         assert vec.shape == (ONEHOT_STATE_DIM,)
         assert np.isfinite(vec).all()
+        with pytest.raises(KeyError, match="observation_for"):
+            build_onehot_state({})
 
     def test_encoder_contract_no_hand_tokens(self):
         enc = OneHotFeedForwardEncoder()
         game = Game(seed=79)
-        batch = [p.get_state_dict() for p in game.players]
+        batch = [_legacy_obs(p) for p in game.players]
         out = enc.encode_batch(batch)
         assert tuple(out["features"].shape) == (5, 256)
         assert tuple(out["memory_out"].shape) == (5, 256)
@@ -813,7 +826,7 @@ class TestOneHotState:
     def test_memory_actually_recurs(self):
         enc = OneHotFeedForwardEncoder()
         game = Game(seed=80)
-        s = game.players[0].get_state_dict()
+        s = _legacy_obs(game.players[0])
         out1 = enc.encode_batch([s])
         out2 = enc.encode_batch([s], memory_in=out1["memory_out"])
         assert not torch.equal(out1["features"], out2["features"])

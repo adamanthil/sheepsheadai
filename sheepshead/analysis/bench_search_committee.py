@@ -38,6 +38,10 @@ import time
 import torch
 
 from sheepshead import ACTION_IDS, ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 
 # Production CE-teacher search settings (training/config.py CommitteeConfig).
 TEACHER_ITERS = 1024
@@ -61,7 +65,7 @@ def find_play_node(agent, max_seeds: int = 200):
                     ordered = sorted(valid)
                     is_play = ACTION_LOOKUP.get(ordered[0], "").startswith("PLAY ")
                     action, _, _ = agent.act(
-                        player.get_state_dict(),
+                        observation_for(player, agent),
                         ordered,
                         player_id=player.position,
                         deterministic=True,
@@ -80,7 +84,7 @@ def find_play_node(agent, max_seeds: int = 200):
                     if game.was_trick_just_completed and not game.is_done():
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
                     valid = player.get_valid_action_ids()

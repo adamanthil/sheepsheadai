@@ -51,6 +51,10 @@ from typing import Dict
 import numpy as np
 
 from sheepshead import Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import SOFTBAND_HNORM
 from sheepshead.training.training_utils import get_partner_selection_mode
 
@@ -122,7 +126,7 @@ def probe_agent(agent, n_games: int = 200, seed: int = PROBE_SEED) -> Dict:
                 for player in game.players:
                     valid = player.get_valid_action_ids()
                     while valid:
-                        state = player.get_state_dict()
+                        state = observation_for(player, agent)
                         # One forward per node: yields the acting policy AND
                         # advances the recurrent memory exactly once (argmax
                         # over these probs == act(deterministic); sampling
@@ -152,7 +156,7 @@ def probe_agent(agent, n_games: int = 200, seed: int = PROBE_SEED) -> Dict:
                         if game.was_trick_just_completed:
                             for seat in game.players:
                                 agent.observe(
-                                    seat.get_last_trick_state_dict(),
+                                    last_trick_observation_for(seat, agent),
                                     player_id=seat.position,
                                 )
     finally:

@@ -42,6 +42,10 @@ import time
 import numpy as np
 
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
@@ -110,7 +114,7 @@ def _play_deal(
                 # act() advances the recurrent memory for this state either
                 # way; the searched action (if any) overrides its choice.
                 raw_action, _, _ = ag.act(
-                    player.get_state_dict(),
+                    observation_for(player, ag),
                     valid,
                     player.position,
                     deterministic=True,
@@ -128,7 +132,7 @@ def _play_deal(
                     for p in game.players:
                         ctrl = challenger if p.position == seat else field
                         ctrl.observe(
-                            p.get_last_trick_state_dict(), player_id=p.position
+                            last_trick_observation_for(p, ctrl), player_id=p.position
                         )
 
     return float(game.players[seat - 1].get_score()), n_searched, n_dev, n_abort

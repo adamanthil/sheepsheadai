@@ -433,8 +433,6 @@ class TestStateDictContract:
         "leader_rel",
         "picker_position",
         "hand_ids",
-        "blind_ids",
-        "bury_ids",
         "trick_card_ids",
         "trick_is_picker",
         "trick_is_partner_known",
@@ -462,8 +460,7 @@ class TestStateDictContract:
             assert set(obs.keys()) == self.EXPECTED_KEYS
             for k in ("hand_ids",):
                 assert obs[k].shape == (8,) and obs[k].dtype == np.uint8
-            for k in ("blind_ids", "bury_ids"):
-                assert obs[k].shape == (2,) and obs[k].dtype == np.uint8
+            assert "blind_ids" not in obs and "bury_ids" not in obs
             for k in ("trick_card_ids", "trick_is_picker", "trick_is_partner_known"):
                 assert obs[k].shape == (5,) and obs[k].dtype == np.uint8
 
@@ -474,17 +471,33 @@ class TestStateDictContract:
         assert obs5["picker_rel"] == 2
         assert obs5["partner_rel"] == 3  # partner (seat 2) is +2 from seat 5
         assert obs5["picker_position"] == 1
-        # Non-picker never sees blind/bury.
-        assert not obs5["blind_ids"].any()
-        assert not obs5["bury_ids"].any()
         obs1 = game.players[0].get_state_dict()
         assert obs1["picker_rel"] == 1
-        assert sorted(obs1["bury_ids"].tolist()) == sorted(
+
+    def test_picker_memory_interface(self):
+        """Player.get_picker_memory is separate from the observation: the
+        picker's own blind and bury, zeros for everyone else."""
+        game = self._game_mid_trick()
+        for player in game.players:
+            mem = player.get_picker_memory()
+            assert set(mem) == {"blind_ids", "bury_ids"}
+            for k in ("blind_ids", "bury_ids"):
+                assert mem[k].shape == (2,) and mem[k].dtype == np.uint8
+            if not player.is_picker:
+                assert not mem["blind_ids"].any()
+                assert not mem["bury_ids"].any()
+        mem1 = game.players[0].get_picker_memory()
+        assert sorted(mem1["bury_ids"].tolist()) == sorted(
             [DECK_IDS["7C"], DECK_IDS["10D"]]
         )
-        assert sorted(obs1["blind_ids"].tolist()) == sorted(
+        assert sorted(mem1["blind_ids"].tolist()) == sorted(
             [DECK_IDS["KD"], DECK_IDS["8C"]]
         )
+        # Before the pick nobody has a memory to report.
+        fresh = make_game(HANDS_BASIC, BLIND_BASIC)
+        for player in fresh.players:
+            mem = player.get_picker_memory()
+            assert not mem["blind_ids"].any() and not mem["bury_ids"].any()
 
     def test_hand_and_trick_ids(self):
         game = self._game_mid_trick()
@@ -516,10 +529,15 @@ class TestStateDictContract:
         obs = p5.get_oracle_state_dict()
         assert self.EXPECTED_KEYS < set(obs.keys())
         assert obs["opp_hand_ids"].shape == (4, 8)
-        # Oracle sees the true blind/bury even for a non-picker.
+        # Oracle sees the true blind/bury even for a non-picker (the
+        # privileged view builds them in; they are not in get_state_dict).
         assert sorted(obs["bury_ids"].tolist()) == sorted(
             [DECK_IDS["7C"], DECK_IDS["10D"]]
         )
+        assert sorted(obs["blind_ids"].tolist()) == sorted(
+            [DECK_IDS["KD"], DECK_IDS["8C"]]
+        )
+        assert "blind_ids" not in p5.get_state_dict()
         # Partner already revealed (AC played); nobody still holds the called
         # card, so no seat is a secret partner.
         assert obs["secret_partner_rel"] == 0

@@ -19,6 +19,7 @@ from server.services.persistence.games import (
     fire_game_hooks,
 )
 from sheepshead import ACTION_LOOKUP
+from sheepshead.agent.observation import observation_for
 
 
 def _observe_seats(agent, observations: list[tuple[dict, int]]) -> None:
@@ -44,7 +45,7 @@ async def ai_observe_all(table: Table, except_seat: Optional[int] = None) -> Non
         if seat == except_seat:
             continue
         player = table.game.players[seat - 1]
-        observations.append((player.get_state_dict(), seat))
+        observations.append((observation_for(player, table.ai_agent), seat))
     if not observations:
         return
     async with inference_limit:
@@ -77,7 +78,7 @@ async def ai_take_turns(table: Table) -> None:
                 # Human's turn
                 break
             player = table.game.players[actor - 1]
-            state = player.get_state_dict()
+            state = observation_for(player, table.ai_agent)
             valid = player.get_valid_action_ids()
             if not valid:
                 break

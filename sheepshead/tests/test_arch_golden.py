@@ -16,6 +16,7 @@ import torch
 
 from sheepshead import ACTIONS, Game
 from sheepshead.agent import architectures
+from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.analysis.capture_arch_goldens import (
     FIXTURE_DIR,
@@ -121,7 +122,9 @@ class TestLegacyValueTrunkShim:
 
             # The value path must route through the trained adapter exactly.
             game = Game(seed=126)
-            enc_out = loaded.encoder.encode_batch([game.players[0].get_state_dict()])
+            enc_out = loaded.encoder.encode_batch(
+                [observation_for(game.players[0], loaded)]
+            )
             with torch.no_grad():
                 value = loaded.critic(enc_out)
                 expected = loaded.critic.value_head(

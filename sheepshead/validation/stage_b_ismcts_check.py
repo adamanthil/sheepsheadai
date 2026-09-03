@@ -33,6 +33,10 @@ import torch
 
 from sheepshead import ACTIONS, TRUMP, Game
 from sheepshead.agent import ppo
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training.training_utils import get_partner_selection_mode
@@ -80,13 +84,16 @@ def play_out(game, agent):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                a, _, _ = agent.act(player.get_state_dict(), valid, player.position)
+                a, _, _ = agent.act(
+                    observation_for(player, agent), valid, player.position
+                )
                 player.act(a)
                 valid = player.get_valid_action_ids()
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
 
 
@@ -119,7 +126,9 @@ def collect_trick0(agent, max_games, target, seed, min_raw_trump):
             for player in game.players:
                 valid = player.get_valid_action_ids()
                 while valid:
-                    a, _, _ = agent.act(player.get_state_dict(), valid, player.position)
+                    a, _, _ = agent.act(
+                        observation_for(player, agent), valid, player.position
+                    )
                     if not _is_private(valid):
                         forced_public.append((player.position, a))
                     player.act(a)
@@ -136,7 +145,7 @@ def collect_trick0(agent, max_games, target, seed, min_raw_trump):
         leader = game.players[0]
         valid = leader.get_valid_action_ids()
         probs_t, _ = agent.get_action_probs_with_logits(
-            leader.get_state_dict(), valid, player_id=1
+            observation_for(leader, agent), valid, player_id=1
         )
         probs = probs_t[0].detach().cpu().numpy()
         _, trump_mass = best_in_class(probs, valid, True)
@@ -293,10 +302,12 @@ def play_game(
                             )
                         # Advance focal memory through this decision (a normal
                         # act would encode the same state).
-                        agent.observe(player.get_state_dict(), player_id=focal_seat)
+                        agent.observe(
+                            observation_for(player, agent), player_id=focal_seat
+                        )
                 if aid is None:
                     aid, _, _ = agent.act(
-                        player.get_state_dict(), valid, player.position
+                        observation_for(player, agent), valid, player.position
                     )
                 if not private:
                     forced_public.append((player.position, aid))
@@ -305,7 +316,8 @@ def play_game(
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
     return game.players[focal_seat - 1].get_score()
 
@@ -315,7 +327,7 @@ def _oracle_compare(game, agent, focal, teach_aid, valid, rollouts, rows):
     Fully memory-neutral (snapshots the agent's memory first, restores last)."""
     mem = snapshot_memory(agent)
     probs_t, _ = agent.get_action_probs_with_logits(
-        game.players[focal - 1].get_state_dict(), valid, player_id=focal
+        observation_for(game.players[focal - 1], agent), valid, player_id=focal
     )
     probs = probs_t[0].detach().cpu().numpy()
     pol_aid = max(valid, key=lambda a: probs[a - 1])

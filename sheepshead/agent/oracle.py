@@ -253,6 +253,9 @@ class OracleCriticEncoder(CardReasoningEncoder):
 
         # 4. Card tokens.
         hand_ids = to_device(self._stack_uint8(batch, "hand_ids", 8))
+        # blind/bury here come from Player.get_oracle_state_dict (the
+        # privileged full-information view: true cards for every seat), not
+        # from the legacy picker-memory interface.
         blind_ids = to_device(self._stack_uint8(batch, "blind_ids", 2))
         bury_ids = to_device(self._stack_uint8(batch, "bury_ids", 2))
         trick_card_ids = to_device(self._stack_uint8(batch, "trick_card_ids", 5))

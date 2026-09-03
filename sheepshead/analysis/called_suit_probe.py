@@ -44,6 +44,10 @@ from sheepshead import (
     PARTNER_BY_CALLED_ACE,
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.analysis.trump_lead_probe import PROBE_SEED, _is_secret_partner
 from sheepshead.scripted_agent import ScriptedAgent
 
@@ -132,7 +136,7 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
                                 )
                                 hero_had_opportunity = True
                         a, _, _ = ag.act(
-                            player.get_state_dict(),
+                            observation_for(player, ag),
                             valid,
                             player.position,
                             deterministic=True,
@@ -165,7 +169,8 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
                             for p in game.players:
                                 ctrl = hero if p.position == hero_seat else field
                                 ctrl.observe(
-                                    p.get_last_trick_state_dict(), player_id=p.position
+                                    last_trick_observation_for(p, ctrl),
+                                    player_id=p.position,
                                 )
                         # No further eligibility once the called suit has been
                         # led (or the hand has no called-ace structure at all).

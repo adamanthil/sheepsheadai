@@ -99,8 +99,6 @@ class TestTeamInference:
             "leader_rel": np.uint8(1),
             "picker_position": np.uint8(3),
             "hand_ids": np.array(hand_ids + [0] * (8 - len(hand_ids)), dtype=np.uint8),
-            "blind_ids": np.zeros(2, dtype=np.uint8),
-            "bury_ids": np.zeros(2, dtype=np.uint8),
             "trick_card_ids": np.zeros(5, dtype=np.uint8),
             "trick_is_picker": np.zeros(5, dtype=np.uint8),
             "trick_is_partner_known": np.zeros(5, dtype=np.uint8),

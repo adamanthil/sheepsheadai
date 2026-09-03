@@ -28,6 +28,10 @@ from sheepshead import (
 # Re-exported here, unchanged, as a permanent compatibility shim: this
 # module's existing 20+ importers (trainers, analysis/validation scripts,
 # tests) keep working without modification.
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.training.reward_shaping import (  # noqa: F401
     LEASTER_FINAL_REWARD_BONUS,
     RETURN_SCALE,
@@ -77,7 +81,10 @@ def play_paired_deal(deal_seed: int, mode, seat: int, probe, field) -> float:
             while valid:
                 ag = probe if player.position == seat else field
                 a, _, _ = ag.act(
-                    player.get_state_dict(), valid, player.position, deterministic=True
+                    observation_for(player, ag),
+                    valid,
+                    player.position,
+                    deterministic=True,
                 )
                 player.act(a)
                 valid = player.get_valid_action_ids()
@@ -85,7 +92,7 @@ def play_paired_deal(deal_seed: int, mode, seat: int, probe, field) -> float:
                     for p in game.players:
                         ctrl = probe if p.position == seat else field
                         ctrl.observe(
-                            p.get_last_trick_state_dict(), player_id=p.position
+                            last_trick_observation_for(p, ctrl), player_id=p.position
                         )
     return float(game.players[seat - 1].get_score())
 
@@ -168,7 +175,7 @@ def analyze_strategic_decisions(agent, num_samples=100):
             for c in initial_player.hand
         )
 
-        sdict = initial_player.get_state_dict()
+        sdict = observation_for(initial_player, agent)
         initial_actions = initial_player.get_valid_action_ids()
         with torch.no_grad():
             action_probs, _ = agent.get_action_probs_with_logits(
@@ -185,7 +192,7 @@ def analyze_strategic_decisions(agent, num_samples=100):
                 actions = player.get_valid_action_ids()
 
                 if actions:
-                    sdict = player.get_state_dict()
+                    sdict = observation_for(player, agent)
                     with torch.no_grad():
                         action_probs, _ = agent.get_action_probs_with_logits(
                             sdict, actions, player_id=player.position
@@ -584,7 +591,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                                 c in TRUMP or c[-1] != called[-1] for c in player.hand
                             )
                         )
-                        state = player.get_state_dict()
+                        state = observation_for(player, agent)
                         is_play = game.play_started and all(
                             ACTIONS[x - 1].startswith("PLAY ") for x in valid
                         )
@@ -661,7 +668,7 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                         if game.was_trick_just_completed:
                             for seat in game.players:
                                 agent.observe(
-                                    seat.get_last_trick_state_dict(),
+                                    last_trick_observation_for(seat, agent),
                                     player_id=seat.position,
                                 )
             if game.is_leaster:

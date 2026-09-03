@@ -152,7 +152,9 @@ class AttentionPool(nn.Module):
 class CardReasoningEncoder(nn.Module):
     """Token-centric encoder with transformer reasoning and memory.
 
-    Input: dict observation (from get_state_dict)
+    Input: dict observation — ``Player.get_state_dict``, merged with
+    ``Player.get_picker_memory()`` for legacy layouts by
+    ``sheepshead.agent.observation.observation_for``
     Output: dict with:
       - 'features': (B, 256) fused feature vector (for heads)
       - 'hand_tokens': (B, 8, d_token) reasoning-enhanced (post-attention) hand tokens
@@ -166,7 +168,9 @@ class CardReasoningEncoder(nn.Module):
       - hand_ids (8,), trick_card_ids (5,), trick_is_picker (5,),
         trick_is_partner_known (5,)
       - blind_ids (2,), bury_ids (2,) ONLY when ``observe_picker_memory``
-        (the legacy picker-memory injection; see agent/observation.py).
+        (the legacy picker-memory interface, ``Player.get_picker_memory``,
+        merged in by ``observation.observation_for``; not part of
+        ``get_state_dict``).
 
     ``observe_picker_memory=False`` builds the 15-token recall layout
     (token_layout.RECALL_TOKEN_COUNT): no simple-bag MLP, no blind/bury
@@ -389,8 +393,8 @@ class CardReasoningEncoder(nn.Module):
         except KeyError as err:
             raise KeyError(
                 f"observation dict lacks {key!r}: this encoder consumes the "
-                "legacy picker-memory keys (see sheepshead/agent/observation.py); "
-                "pass the full Player.get_state_dict() observation"
+                "legacy picker-memory keys (Player.get_picker_memory); "
+                "observe through sheepshead.agent.observation.observation_for"
             ) from err
         out = torch.stack(arr, dim=0)
         # Ensure shape
@@ -463,7 +467,8 @@ class CardReasoningEncoder(nn.Module):
         """Encode a batch of observations with memory.
 
         Args:
-            batch: List of observation dicts from get_state_dict
+            batch: List of observation dicts (``observation_for(player, agent)``:
+                get_state_dict plus the picker memory for legacy layouts)
             memory_in: (B, 256) previous memory state, or None to use zeros
             device: Target device
 

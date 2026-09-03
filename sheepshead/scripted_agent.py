@@ -66,8 +66,8 @@ no-op), so one instance can fill any number of seats.
 Interface-compatible with PPOAgent for the greedy eval drivers:
 ``act(state_dict, valid_action_ids, player_id, deterministic) -> (id, 0, 0)``,
 plus no-op ``observe`` / ``reset_recurrent_state``. Decisions are pure
-functions of the structured observation dict (sheepshead.Player.get_state_dict)
-and the valid-action set, and fail fast: a decision bug raises rather than
+functions of the clean observation dict (``Player.get_state_dict``; it never
+reads the legacy picker-memory keys) and the valid-action set, and fail fast: a decision bug raises rather than
 silently degrading the instrument.
 """
 

@@ -16,11 +16,15 @@ import torch
 from sheepshead import ACTIONS, Game
 from sheepshead.agent import architectures
 from sheepshead.agent.architectures.encoders import RecallEncoder
+from sheepshead.agent.architectures.onehot import build_onehot_state
+from sheepshead.agent.convention_wrapper import ConventionWrapper
 from sheepshead.agent.observation import (
     HEADER_KEYS,
     LEGACY_PICKER_MEMORY_KEYS,
     RECALL_KEYS,
     TABLE_KEYS,
+    needs_picker_memory,
+    observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.agent.token_layout import (
@@ -28,21 +32,23 @@ from sheepshead.agent.token_layout import (
     MEMORY_TOKEN,
     RECALL_TOKEN_COUNT,
 )
+from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead.tests.ppo_test_helpers import seed_all
 
 
 def _picker_states(agent: PPOAgent, seed: int = 5) -> list:
-    """Observation dicts of a played game where the actor is the picker
-    holding a non-empty blind/bury injection."""
+    """Observation dicts (with the picker-memory interface merged in) of a
+    played game where the actor is the picker holding a non-empty blind/bury."""
     game = Game(seed=seed)
     states = []
     while not game.is_done():
         for player in game.players:
             acts = player.get_valid_action_ids()
             while acts:
-                state = player.get_state_dict()
-                if state["blind_ids"].any() or state["bury_ids"].any():
-                    states.append(state)
+                state = observation_for(player, agent)
+                memory = player.get_picker_memory()
+                if memory["blind_ids"].any() or memory["bury_ids"].any():
+                    states.append({**state, **memory})
                 action, _, _ = agent.act(state, acts, player.position)
                 player.act(action)
                 acts = player.get_valid_action_ids()
@@ -57,11 +63,49 @@ def _masked(state: dict) -> dict:
 
 
 class TestObservationContract:
-    def test_key_sets_partition_the_observation_dict(self):
-        state = Game(seed=1).players[0].get_state_dict()
-        assert set(state) == RECALL_KEYS | LEGACY_PICKER_MEMORY_KEYS
+    def test_key_sets_are_the_two_interfaces(self):
+        player = Game(seed=1).players[0]
+        assert set(player.get_state_dict()) == RECALL_KEYS
+        assert set(player.get_picker_memory()) == LEGACY_PICKER_MEMORY_KEYS
         assert not (RECALL_KEYS & LEGACY_PICKER_MEMORY_KEYS)
         assert set(HEADER_KEYS) | set(TABLE_KEYS) == RECALL_KEYS
+
+    def test_observation_for_merges_only_for_legacy_agents(self):
+        seed_all(0)
+        recall = PPOAgent(len(ACTIONS), arch="perceiver-recall")
+        legacy = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2-bp")
+        player = Game(seed=1).players[0]
+        assert recall.needs_picker_memory is False
+        assert legacy.needs_picker_memory is True
+        assert set(observation_for(player, recall)) == RECALL_KEYS
+        assert (
+            set(observation_for(player, legacy))
+            == RECALL_KEYS | LEGACY_PICKER_MEMORY_KEYS
+        )
+        # Scripted agents and anything without the attribute get the clean
+        # observation; a wrapper delegates to what it wraps.
+        assert needs_picker_memory(ScriptedAgent()) is False
+        assert set(observation_for(player, ScriptedAgent())) == RECALL_KEYS
+        assert needs_picker_memory(ConventionWrapper(legacy)) is True
+        assert needs_picker_memory(ConventionWrapper(recall)) is False
+
+    def test_needs_picker_memory_never_masks_a_broken_property(self):
+        class Broken:
+            @property
+            def needs_picker_memory(self):
+                raise AttributeError("arch attribute missing")
+
+        class Plain:
+            pass
+
+        with pytest.raises(AttributeError, match="arch attribute missing"):
+            needs_picker_memory(Broken())
+        assert needs_picker_memory(Plain()) is False
+
+    def test_onehot_encoder_fails_loudly_on_the_clean_observation(self):
+        state = Game(seed=1).players[0].get_state_dict()
+        with pytest.raises(KeyError, match="observation_for"):
+            build_onehot_state(state)
 
     def test_recall_agent_reads_exactly_recall_keys(self):
         seed_all(0)
@@ -105,11 +149,17 @@ class TestRecallEncoder:
     def test_recall_marshal_never_touches_picker_memory_keys(self):
         seed_all(0)
         agent = PPOAgent(len(ACTIONS), arch="perceiver-recall")
-        state = Game(seed=2).players[0].get_state_dict()
-        stripped = {k: v for k, v in state.items() if k in RECALL_KEYS}
-        a = agent.encoder.encode_batch([state])
-        b = agent.encoder.encode_batch([stripped])
+        player = Game(seed=2).players[0]
+        clean = observation_for(player, agent)
+        assert set(clean) == RECALL_KEYS
+        with_memory = {**clean, **player.get_picker_memory()}
+        a = agent.encoder.encode_batch([clean])
+        b = agent.encoder.encode_batch([with_memory])
         assert torch.equal(a["features"], b["features"])
+        assert (
+            set(agent.encoder.marshal_batch([clean])) & LEGACY_PICKER_MEMORY_KEYS
+            == set()
+        )
 
     def test_legacy_encoder_still_sees_the_injection(self):
         seed_all(0)
@@ -123,10 +173,9 @@ class TestRecallEncoder:
     def test_legacy_encoder_fails_loudly_without_the_keys(self):
         seed_all(0)
         agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2-bp")
-        state = Game(seed=2).players[0].get_state_dict()
-        stripped = {k: v for k, v in state.items() if k in RECALL_KEYS}
+        clean = Game(seed=2).players[0].get_state_dict()
         with pytest.raises(KeyError, match="legacy picker-memory"):
-            agent.encoder.encode_batch([stripped])
+            agent.encoder.encode_batch([clean])
 
     def test_memory_token_drives_recurrence(self):
         """Perturbing the post-reasoning MEMORY token changes memory_out;

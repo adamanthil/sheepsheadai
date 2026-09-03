@@ -40,7 +40,9 @@ def _scalar(state: Dict[str, Any], key: str) -> int:
 
 
 def build_onehot_state(state: Dict[str, Any]) -> np.ndarray:
-    """Flatten a get_state_dict() observation into the legacy one-hot vector."""
+    """Flatten an observation (merged with the picker memory, see
+    ``sheepshead.agent.observation.observation_for``) into the legacy one-hot
+    vector."""
     out = np.zeros(ONEHOT_STATE_DIM, dtype=np.float32)
     off = 0
 
@@ -64,11 +66,19 @@ def build_onehot_state(state: Dict[str, Any]) -> np.ndarray:
         flags = np.asarray(state.get(key, np.zeros(5))).reshape(-1)
         out[off : off + min(5, flags.size)] = flags[:5]
         off += 5
-    # Blind / bury (picker only; zeros otherwise, like the token encoder)
-    multi_hot(state.get("blind_ids", ()))
-    off += _N_CARD
-    multi_hot(state.get("bury_ids", ()))
-    off += _N_CARD
+    # Blind / bury: the legacy picker-memory interface (zeros for everyone
+    # but the picker). Missing keys mean a call site bypassed
+    # observation.observation_for — fail loudly, never encode zeros.
+    try:
+        multi_hot(state["blind_ids"])
+        off += _N_CARD
+        multi_hot(state["bury_ids"])
+        off += _N_CARD
+    except KeyError as err:
+        raise KeyError(
+            f"onehot encoder needs the legacy picker-memory keys ({err}); "
+            "observe through sheepshead.agent.observation.observation_for"
+        ) from err
     # Called card
     called = _scalar(state, "called_card_id")
     if called > 0:

@@ -24,7 +24,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | Date (2026) | Decision | § |
 |---|---|---|
 | 09-02 | Restart the program from scratch on `perceiver-recall` to produce the final deployable artifact; simplify the pipeline end to end | 1, 3, 4 |
-| 09-02 | Observation contract enforced at the ENCODER (`observation.py`, registry `legacy_picker_memory`); the two keys stay in the dict for legacy anchors — amended from "remove the keys" at build time, reasons in §3.2 | 3.2 |
+| 09-02 | Observation contract: `blind_ids`/`bury_ids` REMOVED from `get_state_dict`; legacy architectures read them through a separate `Player.get_picker_memory` interface merged per agent by `observation_for` (an earlier same-day amendment had kept the keys in the dict with encoder-side enforcement) | 3.2 |
 | 09-02 | Skip the recall-vs-ctxmem architecture pilot; no strength bar on the bootstrap | 3.4, 5.3 |
 | 09-02 | PG phase stop rule = marginal-value handoff (not plateau); one entropy step max; settled-checkpoint handoff | 5.1 |
 | 09-02 | Exploiters dropped from the training loop (post-hoc audit only); PFSP kept | 4.3 |
@@ -123,41 +123,55 @@ attention cost scales with token count squared (15² / 19² ≈ 0.62), but
 the encoder is a minority of wall time; expect ~10–20% on the encoder
 forward, less end to end.
 
-### 3.2 Observation contract (enforced at the encoder; amended 2026-09-02)
+### 3.2 Observation contract (two interfaces; amended 2026-09-02)
 
-The contract lives in `sheepshead/agent/observation.py`: `RECALL_KEYS`
-(header flags, called card, seats/roles, hand, trick on the table) is
-what a human at the table sees or is entitled to remember; `blind_ids`
-and `bury_ids` are the legacy picker-memory injection. Every
-`ArchitectureSpec` declares `legacy_picker_memory` (True for every entry
-registered before this program, False for `perceiver-recall`), the
-encoder's `observation_keys()` is the runtime truth, and a test welds
-the two and pins the recall encoder to exactly `RECALL_KEYS` with the
-15-token layout, invariant to the two keys' values.
+The contract lives in `sheepshead/agent/observation.py`.
+`Player.get_state_dict` is the observation: `RECALL_KEYS` (header
+flags, called card, seats/roles, hand, trick on the table) and nothing
+else — what a human at the table sees or is entitled to remember. The
+picker's blind and bury are NOT in it. They live behind a second
+interface, `Player.get_picker_memory` (`LEGACY_PICKER_MEMORY_KEYS`:
+the picker's own blind and bury, zeros for everyone else), which
+exists only so that architectures registered before this program stay
+loadable and evaluable as they were trained. Every `ArchitectureSpec`
+declares `legacy_picker_memory` (True for every entry registered before
+this program, False for `perceiver-recall`); `PPOAgent.needs_picker_memory`
+reads it, and `observation_for(player, agent)` is the one place the two
+interfaces meet — it hands a legacy agent the merged dict and everyone
+else the clean observation. The recall encoder is pinned by test to
+exactly `RECALL_KEYS` with the 15-token layout, and every legacy encoder
+(the token family and the one-hot baseline) raises when handed a dict
+without the memory keys, so a call site that bypasses the helper fails
+loudly rather than running a legacy model with its memory zeroed
+(−0.30/picker hand for the 30M, Blind_Bury §3).
 
-Why the keys stay in `Player.get_state_dict` rather than being removed
-(the decision recorded in §0 was to remove them; amended at build time):
+Why the second interface exists at all (the decision recorded in §0 was
+to remove the keys outright; amended at build time, then restated in
+this form 2026-09-02):
 
 - Every evaluation anchor and the production 30M are legacy
   architectures. The review gates (§5.3) compare against PANEL-A and
-  the 30M as they were measured; a removed key would run those models
-  masked (−0.30/picker hand for the 30M, Blind_Bury §3), shifting the
-  panel by ~0.05 and turning "beats the 30M" into "beats a handicapped
+  the 30M as they were measured; running them masked would shift the
+  panel by ~0.05 and turn "beats the 30M" into "beats a handicapped
   30M".
 - The h2h instruments seat a recall agent and a legacy agent at the
-  same table, so both observation variants must be producible for one
-  game state; the only per-agent place to differentiate is the encoder.
-- ~140 call sites build observations for an agent (training, search,
-  every analysis instrument, the app); a per-call flag would silently
-  mask any un-migrated legacy consumer. Encoder-side enforcement fails
-  loudly instead: a legacy encoder given a dict without the keys raises.
+  same table, so both views must be producible for one game state;
+  `observation_for` differentiates per agent at the table.
+
+The oracle critic's view, `Player.get_oracle_state_dict`, is a third,
+privileged interface: it carries the TRUE blind and bury for every seat
+(the definition of the full-information view, built in rather than
+borrowed from the picker-memory interface) plus the opponents' hands.
+Only the centralized critic ever sees it.
 
 Consumers audited 2026-09-02: `app/server/runtime/views.py` (the only
-UI reader) now reads the picker's blind/bury from the game object — a
-table fact, not an agent observation; the raw observation dict never
-reaches the web client. Inference paths hand the dict straight to the
-encoder, so the deployed recall agent consumes `RECALL_KEYS` by
-construction. The oracle encoder keeps its full-information dict.
+UI reader) reads the picker's blind/bury from the game object — a table
+fact, not an agent observation; the raw observation dict never reaches
+the web client. Every path that feeds an agent — the trainer's streams,
+search (`ismcts.py`), the evaluation instruments, the app's inference
+loop and analysis service, the golden capture — observes through
+`observation_for`, so the deployed recall agent consumes `RECALL_KEYS`
+by construction.
 
 ### 3.3 Registry and gates
 

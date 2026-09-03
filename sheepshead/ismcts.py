@@ -109,6 +109,10 @@ from sheepshead import (
     ACTIONS,
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.training.training_utils import RETURN_SCALE
 
 # Per-head iteration budgets and tree depths (plan §3).
@@ -1130,7 +1134,7 @@ class ISMCTSTeacher:
         seat's controller and advance its (n, 256) recurrent memory. Returns
         (states, encoder_out)."""
         ctrl = self._controller(seat)
-        states = [game.players[seat - 1].get_state_dict() for game in games]
+        states = [observation_for(game.players[seat - 1], ctrl) for game in games]
         encoded = ctrl.encoder.encode_batch(
             states, memory_in=seat_memories[seat], device=self.device
         )
@@ -1157,7 +1161,8 @@ class ISMCTSTeacher:
         for seat in range(1, 6):
             ctrl = self._controller(seat)
             states = [
-                game.players[seat - 1].get_last_trick_state_dict() for game in games
+                last_trick_observation_for(game.players[seat - 1], ctrl)
+                for game in games
             ]
             encoded = ctrl.encoder.encode_batch(
                 states, memory_in=seat_memories[seat], device=self.device
@@ -1499,7 +1504,10 @@ class ISMCTSTeacher:
         critic runs only on groups that contain a bootstrap request. Returns
         ``(probs_np, values_np)`` indexed like ``requests``."""
         states = [
-            req.sim.world.players[req.sim.seat - 1].get_state_dict() for req in requests
+            observation_for(
+                req.sim.world.players[req.sim.seat - 1], self._controller(req.sim.seat)
+            )
+            for req in requests
         ]
         groups: dict[int, tuple] = {}
         for req_idx, req in enumerate(requests):
@@ -1848,7 +1856,7 @@ class ISMCTSTeacher:
         for seat in range(1, 6):
             ctrl = self._controller(seat)
             states = [
-                sim.world.players[seat - 1].get_last_trick_state_dict()
+                last_trick_observation_for(sim.world.players[seat - 1], ctrl)
                 for sim in completers
             ]
             memory_in = torch.stack([sim.mem[seat - 1] for sim in completers])
@@ -1878,7 +1886,11 @@ class ISMCTSTeacher:
         memory_rows = []
         for seat in range(1, 6):
             for sim in completers:
-                states.append(sim.world.players[seat - 1].get_last_trick_state_dict())
+                states.append(
+                    last_trick_observation_for(
+                        sim.world.players[seat - 1], self._controller(seat)
+                    )
+                )
                 memory_rows.append(sim.mem[seat - 1])
         encoded = ctrl.encoder.encode_batch(
             states, memory_in=torch.stack(memory_rows), device=self.device
@@ -1900,7 +1912,8 @@ class ISMCTSTeacher:
         if world.was_trick_just_completed:
             for seat in world.players:
                 self._controller(seat.position).observe(
-                    seat.get_last_trick_state_dict(), player_id=seat.position
+                    last_trick_observation_for(seat, self._controller(seat.position)),
+                    player_id=seat.position,
                 )
 
     @staticmethod
@@ -1975,8 +1988,9 @@ class ISMCTSTeacher:
                     FAIL_BAD_PRIVATE, "replay: bad forced private action"
                 )
             # Advance this seat's memory through the forced decision.
-            self._controller(event.seat).get_action_probs_with_logits(
-                player.get_state_dict(), valid, player_id=event.seat
+            ctrl = self._controller(event.seat)
+            ctrl.get_action_probs_with_logits(
+                observation_for(player, ctrl), valid, player_id=event.seat
             )
         else:
             action_id = event.action_id
@@ -1984,8 +1998,9 @@ class ISMCTSTeacher:
                 raise _ReplayInconsistency(
                     FAIL_BAD_PUBLIC, "replay: bad forced public action"
                 )
-            probs, _ = self._controller(event.seat).get_action_probs_with_logits(
-                player.get_state_dict(), valid, player_id=event.seat
+            ctrl = self._controller(event.seat)
+            probs, _ = ctrl.get_action_probs_with_logits(
+                observation_for(player, ctrl), valid, player_id=event.seat
             )
             if event.weighted:
                 action_prob = float(probs[0][action_id - 1].item())

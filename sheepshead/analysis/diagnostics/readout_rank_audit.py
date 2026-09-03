@@ -28,6 +28,10 @@ import numpy as np
 import torch
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 
 N_GAMES = 15
@@ -83,7 +87,7 @@ def feature_cov_stats(agent) -> dict:
             for player in game.players:
                 va = player.get_valid_action_ids()
                 while va:
-                    s = player.get_state_dict()
+                    s = observation_for(player, agent)
                     mem = agent.get_recurrent_memory(player.position, device=DEVICE)
                     with torch.no_grad():
                         out = agent.encoder.encode_batch(
@@ -98,7 +102,7 @@ def feature_cov_stats(agent) -> dict:
                     if game.was_trick_just_completed and not game.is_done():
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
                     va = player.get_valid_action_ids()

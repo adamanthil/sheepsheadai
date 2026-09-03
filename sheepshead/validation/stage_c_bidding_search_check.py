@@ -29,6 +29,10 @@ import numpy as np
 import torch
 
 from sheepshead import ACTIONS, DECK, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training.training_utils import get_partner_selection_mode
@@ -70,7 +74,7 @@ def collect_node(agent, game, want_head):
                     # public before this decision.
                     return player.position, list(forced_public), game
 
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=False
                 )
@@ -81,7 +85,8 @@ def collect_node(agent, game, want_head):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
     return None
 

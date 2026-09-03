@@ -20,6 +20,10 @@ import numpy as np
 from sheepshead import (
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.ismcts import _minmax_unit, infer_head
 from sheepshead.training.training_utils import (
@@ -468,7 +472,7 @@ def play_population_game(
             valid_actions = player.get_valid_action_ids()
 
             while valid_actions:
-                state = player.get_state_dict()
+                state = observation_for(player, current_agent)
 
                 # Get action from appropriate agent
                 if current_agent == training_agent:
@@ -532,13 +536,15 @@ def play_population_game(
                         if seat_agent == training_agent:
                             # Update training agent's recurrent hidden state and also store for unroll
                             training_agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, training_agent),
                                 player_id=seat.position,
                             )
                             obs_transition = {
                                 "kind": "observation",
                                 "player": seat,
-                                "state": seat.get_last_trick_state_dict(),
+                                "state": last_trick_observation_for(
+                                    seat, training_agent
+                                ),
                             }
                             if collect_oracle:
                                 obs_transition["oracle_state"] = (
@@ -547,7 +553,8 @@ def play_population_game(
                             episode_transitions.append(obs_transition)
                         else:
                             seat_agent.observe(
-                                seat.get_last_trick_state_dict(), seat.position
+                                last_trick_observation_for(seat, seat_agent),
+                                seat.position,
                             )
 
                 valid_actions = player.get_valid_action_ids()
