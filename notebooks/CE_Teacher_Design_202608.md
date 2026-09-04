@@ -3389,3 +3389,157 @@ does not separate from a compounding failure. Disambiguation, fixed now:
   are not re-searched.
 - COMPOUNDS and REGRESSES reads are unchanged; the confound only
   weakens the null.
+
+### 20.13 Iteration-2 results: STALL, diagnosis, and the volume finding (2026-09-04)
+
+Corpus (runs/distill_corpus_iter2_202609): 2000 games, 28.5 h at 0.02
+g/s, 21,630 searched rows (10,821 override / 10,807 endorsed, 2
+committee failures) vs corpus q's 51,728 (25,151 / 26,563). Searched
+follow rows per class are ~1/3 of corpus q's (p 0.5 AND 2000 vs 3000
+games); lead rows ~2/3. Per-row evidence is not weaker (posterior
+z_max p50: t0-def-follow 2.26 vs 1.86, t0-def-lead 3.76 vs 3.21).
+
+Pipeline (runs/policy_iteration_202609/pipeline_iter2.py -> iter12),
+standing recipe throughout:
+- fit: adapter, bilinear + heteroscedastic, best epoch 132/157 (2 FH
+  rounds), holdout wMSE 6.9e-4 vs floor 1.9e-4, top-agree model 0.562
+  vs prior 0.542, sigma_u2 8.1e-4 (iter6: 9.2e-4 / 2.1e-4, 0.619 vs
+  0.602, 1.12e-3). The iteration-1 fit command was never logged; the
+  200-epoch / patience-25 setting reproduces iter6's stop shape.
+- target: weights p50 0.94 p90 1.62 (cap 5 inert), KL(target||prior)
+  p50 0.028 p90 0.232, z clipped 5.1%, gamma p50 0.34 (iter11: 0.94 /
+  1.79, 0.032 / 0.285, 3.1%, 0.54).
+- distill: HOLDOUT override KL 0.101 (ep0) -> 0.115 (ep1, trunk) ->
+  0.0975 (ep4, best) -> 0.100 (ep7). Only -4% vs iteration 1's -28%
+  (0.124 -> 0.089). The trainer's own selection = epoch 4; the
+  pipeline was re-pointed to cert the holdout-best epoch first.
+- lead realization (lead_row_realization, 4 row groups): ep4 33-43%,
+  ep7 30-67% — as good as or better than P1 on iteration 1.
+
+Cert (4 x n=1000 probes + dup h2h; leaster strata via the new
+h2h_duplicate conditional read, edea44d):
+
+    cand      vs        edge      se      called   jd      leaster (n)         non-leaster
+    ep4       iter11   +0.0012  0.0064  +0.0006 +0.0019  +0.023±0.034 (1276)  -0.000±0.006
+    ep4       seed8m   +0.0263  0.0076  +0.0256 +0.0271  -0.057±0.041 (1119)  +0.031±0.008
+    ep7       iter11   -0.0034  0.0067  -0.0068 -0.0001  -0.036±0.033         -0.001±0.007
+    ep7       seed8m   +0.0064  0.0080  +0.0083 +0.0045  -0.129±0.036         +0.014±0.008
+
+Probes (pooled, ep4): called-suit 50.3 (clears the 48 install bar
+iteration 1 missed at 46.4), partner 99.2, t0-trump 0.3, spread 4.6,
+pick 36.4, leaster 5.8. ep7: 49.1 / 98.9 / 0.35 / 4.6.
+
+VERDICT (§20.12 rules): STALL. h2h vs iter11 inside ±0.01; cumulative
+vs the seed +0.0263 = iteration 1's +0.0258 (zero accumulated gain).
+Conventions all pass; bidding at the seed band. The projection moved
+the lead rows (realization, called-suit +4) and EV did not follow.
+
+DIAGNOSIS (pipeline_stall.py, same night; operator-requested):
+
+(1) Matched-volume CONTROL — iter11/targeted (corpus q) subsampled post
+    hoc to the iteration-2 composition (first 2000 games; searched
+    follow rows kept at 0.5: 12,526 of 25,083 demoted to no-loss, all
+    9,408 lead rows kept; analysis/subsample_targeted.py, 12730ba),
+    P1 distill from theta_k_bp, cert vs the seed:
+
+        corpus q, full (iter11 ep7)          +0.0258  se 0.0073   holdout KL -28%
+        corpus q, matched volume  ep5 (best) +0.0093  se 0.0069   holdout KL -18%
+                                  ep7        +0.0102  se 0.0072
+        iteration-2 corpus        ep4        +0.0012  se 0.0064   holdout KL  -4%  (vs iter11)
+
+    Same targets, recipe and anchor; only the row count differs. The
+    gain fell to ~1/3 (difference 0.0165, se ~0.010). Convention
+    install unchanged (called-suit 48.2, partner 97.8, t0 0.2): the
+    convention comes from the lead rows, which the subsample kept; the
+    EV came from the follows, which it halved.
+
+(2) LEAD-vs-FOLLOW attribution — head_routed_h2h --lead-ckpt (6345c4c):
+    bidding pinned to the anchor, play split by is_lead_decision
+    (leader_rel == 1); duplicate gauntlet, 2000 deals/mode:
+
+        arm                 iteration 1 (iter11 vs seed)   iteration 2 (iter12 ep4 vs iter11)
+        A  leads only       +0.0084  se 0.0043              +0.0023  se 0.0033  (called +0.0095 / jd -0.0050)
+        B  follows only     +0.0149  se 0.0054              -0.0011  se 0.0048
+        C  leads + follows  +0.0212  se 0.0066              +0.0020  se 0.0057
+
+    Iteration 1: A + B = +0.0233 ~ C — additive, no interaction;
+    follows carry ~2/3 of the play edge, leads ~1/3; play recovers
+    most of the cert's +0.0258 (bidding heads carry little). Iteration
+    2: flat in BOTH classes; the lead residual lives entirely in
+    called-ace mode (the convention) and is offset in JD.
+
+(3) Leaster instrument: every bilinear-only checkpoint reads negative
+    on leaster hands vs the seed — ctrl ep5 -0.044±0.036, iter12 ep4
+    -0.057±0.041, iter12 ep7 -0.129±0.036 (3.5 sigma) — and it grows
+    with bilinear-only epochs past the holdout-KL minimum (ep7 also
+    scores below ep4 overall vs the seed, +0.006 vs +0.026). Leaster
+    rows carry only the chained retention anchor; the play pointer's
+    bilinear term is shared with leaster play. BASELINE (iter11 ep7
+    vs seed, same deals; pipeline_leaster.py): overall +0.0258 se
+    0.0073 (reproduces the P1 cert exactly), leaster -0.078±0.034
+    (n=1150, 2.3 sigma), non-leaster +0.032±0.008. So iteration 1
+    ALREADY degraded leaster play; iteration 2 at ep4 added nothing
+    (vs iter11 +0.023±0.034) and ep7 added -0.05. Leasters are ~5.5%
+    of hands, so the damage costs ~0.005-0.006 of overall edge per
+    checkpoint — the gap between non-leaster +0.032 and overall
+    +0.026. Mechanism: leaster rows carry only the retention KL to
+    theta_k's stash while the bilinear-only epochs train the shared
+    play pointer on standard-game targets; nothing in the loss holds
+    leaster play at handoff competence.
+
+INTERPRETATION. Two mechanisms, both present:
+- VOLUME (established): the control reproduces ~2/3 of the stall from
+  row count alone, and the iteration-1 attribution says the EV lived in
+  the follows that §20.10 halved. §20.10's premise — "the binding rows
+  are the leads; follows lean on the prior" — was right about the
+  CONVENTION and wrong about EV. The corpus was sized to push the
+  called-suit convention and did (50.3); it was under-sized for EV.
+- A NON-VOLUME residual (suggestive, not established): the iteration-2
+  corpus generalized far less than the matched-volume control (holdout
+  KL -4% vs -18%), and both routed classes are flat where the control
+  would predict ~+0.009 (1.3 sigma below). Candidates: (a) DAgger lag
+  under student acting — labels sit on theta_k's states, the deployed
+  theta_{k+1}'s states arrive one round late and only in proportion to
+  realization (only 28% of h2h deals deviate at all), while committee
+  acting overshoots to states the student never reaches; (b) the
+  residual disagreement after one projection is less class-coherent
+  (harder to generalize) even though per-row z is not weaker. Neither
+  is separable from tonight's data. Skill saturation is NOT indicated:
+  the corpus's own start KL (0.101 vs 0.124) says search still
+  disagrees with iter11 nearly as much as with the seed, and the
+  committee-acting ceiling (+0.18) is ~7x the captured gain.
+
+DECISIONS / NEXT (operator authorized follow-ups at the assistant's
+judgment; verdict presented before the regen):
+1. TOP-UP CORPUS LAUNCHED 2026-09-04 06:40 (runs/distill_corpus_iter2b_
+   202609, pid in run.pid): same theta_k (iter11 ep7), student-acting,
+   fresh seed 20260904, 2000 games, p = 1.0 EVERYWHERE (--p-base 1.0
+   --boost-lead 1 --p-max 1.0), ~34k searches, ~40 h. POOLED with the
+   iteration-2 corpus (same expert, same acting policy, same anchors)
+   -> ~56k searched rows >= corpus q's 51.7k, i.e. the compounding step
+   at iteration 1's volume. Pre-registered reads on the pooled
+   fit/target/distill/cert (h2h vs iter11, ep = holdout-KL best):
+   - COMPOUNDS: >= +0.015, CI > 0 -> volume was the whole story;
+     recipe = >= 50k searched rows per iteration (follows at p = 1.0),
+     phase-3 budget restored.
+   - PARTIAL: +0.008 .. +0.015 -> non-volume component confirmed at
+     about the size the control predicts; next arm = MIXED committee-
+     acting corpus from iter11 (frac pre-registered, not 1.0), volume
+     held at >= 50k.
+   - STALL: < +0.008 -> acting mode / coherence dominates; the
+     committee-acting arm becomes mandatory before any budget decision.
+   Also read: pooled holdout-KL reduction vs the control's -18%.
+2. LEASTER: baseline confirms the drift began in iteration 1.
+   Proposed (operator decision, NOT built): §20.12 escalation step 1 —
+   FIXED-REFERENCE anchor for leaster retention rows (anchor_probs
+   recomputed from the handoff checkpoint's forward pass at distill
+   time, replacing theta_k's stash on those rows only), tested as a
+   separate distill arm on the pooled targets so the compounding read
+   stays clean; expected recovery ~+0.005 overall. Epoch selection by
+   holdout KL stands (ep7 hurt leasters and EV). A leaster-hand
+   score should join the cert bars.
+3. §20.10 amended: 2000 games / follows 0.5 is a CONVENTION-install
+   budget, not an EV budget. §20.12's "STALL -> cut phase-3 to one
+   iteration" is SUSPENDED pending the pooled read.
+4. Bidding PG phase still not run; bidding heads at the seed in every
+   checkpoint (routed C vs cert: bidding carries little).
