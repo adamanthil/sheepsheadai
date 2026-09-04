@@ -3543,3 +3543,37 @@ judgment; verdict presented before the regen):
    iteration" is SUSPENDED pending the pooled read.
 4. Bidding PG phase still not run; bidding heads at the seed in every
    checkpoint (routed C vs cert: bidding carries little).
+
+§20.13 ADDENDUM — operator decisions (2026-09-04 morning):
+- LEASTER: the fixed-reference anchor arm is REJECTED. Leasters are
+  ~5-7% of hands and cost EV, so SEARCH them (leaster play emission via
+  the P4 leaster determinizer, behind the addendum-5 mini-calibration
+  gate; ~+7% searches per corpus) instead of pinning them better. ORDER:
+  first pin the compounding recipe for the standard play nodes, then
+  add leaster emission to the recipe. Until then the leaster-hand score
+  stays a reported cert read, not a bar.
+- ACTING MODE (committee vs student): wanted, but every arm costs a
+  corpus, so the SMALLEST RELIABLE test. Design:
+  * Corpus iter2c = the running iter2b with ONE change,
+    --committee-act-frac 1.0: same theta_k (iter11 ep7), same 2000
+    deals (seed 20260904 — CRN: trajectories are identical up to the
+    first committee-acted deviation), same p = 1.0, same committee.
+    ~34k searches, ~50 h; launched when iter2b finishes so the two
+    do not contend.
+  * Read = distill(iter2c) vs distill(iter2b), each 2000 games alone
+    (matched volume; the pooled corpus is a separate read), standing
+    recipe, holdout-KL-best epoch, cert vs iter11.
+  * Reliability lever is the CERT, not the corpus: h2h at 8000 deals
+    per mode (~2.5 h each, se ~0.0035; difference se ~0.005) so an
+    acting-mode effect of the size the non-volume residual implies
+    (~0.008-0.01) reads at ~2 sigma; at 2000 deals it could not
+    (difference se ~0.01). Same 8000-deal cert on the pooled read.
+  * Also compare the two corpora's held-out KL reduction and the
+    fraction of decision nodes downstream of a committee deviation
+    (corpus q: 9,444 acted nodes / 3000 games, ~3.1 per game).
+  * Smaller corpora do not work: gains at <= 20k rows are ~+0.009 and
+    acting-mode differences inside that are unreadable at any cert n.
+    Frac 1.0 (not mixed) for the cleanest contrast; a mixed fraction
+    is a later dial once the sign is known.
+  * Schedule: iter2b lands ~Sat AM -> pooled compounding read (Sat) +
+    iter2c launch -> iter2c lands ~Mon AM -> acting-mode read (Mon).
