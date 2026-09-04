@@ -39,31 +39,53 @@ from sheepshead.analysis.rigorous_eval import (
 from sheepshead.ismcts import infer_head
 
 
+def is_lead_decision(state) -> bool:
+    """A play decision where the acting seat leads the current trick: the
+    observation's leader is the seat itself (relative seat 1), so no card
+    of this trick has been played yet."""
+    return int(state["leader_rel"]) == 1
+
+
 class HeadRoutedAgent:
     """Routes act() by head: play -> play_agent, everything else ->
-    bid_agent. Both agents act (and observe) on every call so their
-    per-seat recurrent memories track the same realized trajectory."""
+    bid_agent. With ``lead_agent`` set, play decisions split once more:
+    LEADS (``is_lead_decision``) -> lead_agent, FOLLOWS -> play_agent.
+    Every distinct underlying agent acts (and observes) exactly once per
+    call, so their per-seat recurrent memories track the same realized
+    trajectory; an agent used in two roles is not advanced twice."""
 
-    def __init__(self, bid_agent, play_agent):
+    def __init__(self, bid_agent, play_agent, lead_agent=None):
         self.bid_agent = bid_agent
         self.play_agent = play_agent
+        self.lead_agent = lead_agent
+
+    def _agents(self) -> list:
+        unique = {}
+        for agent in (self.bid_agent, self.play_agent, self.lead_agent):
+            if agent is not None:
+                unique.setdefault(id(agent), agent)
+        return list(unique.values())
 
     def reset_recurrent_state(self):
-        self.bid_agent.reset_recurrent_state()
-        self.play_agent.reset_recurrent_state()
+        for agent in self._agents():
+            agent.reset_recurrent_state()
 
     def observe(self, state, player_id=None):
-        self.bid_agent.observe(state, player_id=player_id)
-        self.play_agent.observe(state, player_id=player_id)
+        for agent in self._agents():
+            agent.observe(state, player_id=player_id)
 
     def act(self, state, valid_actions, player_id, deterministic=True):
-        bid_out = self.bid_agent.act(
-            state, valid_actions, player_id, deterministic=deterministic
-        )
-        play_out = self.play_agent.act(
-            state, valid_actions, player_id, deterministic=deterministic
-        )
-        return play_out if infer_head(valid_actions) == "play" else bid_out
+        outs = {
+            id(agent): agent.act(
+                state, valid_actions, player_id, deterministic=deterministic
+            )
+            for agent in self._agents()
+        }
+        if infer_head(valid_actions) != "play":
+            return outs[id(self.bid_agent)]
+        if self.lead_agent is not None and is_lead_decision(state):
+            return outs[id(self.lead_agent)]
+        return outs[id(self.play_agent)]
 
 
 def routed_h2h(
@@ -73,19 +95,25 @@ def routed_h2h(
     n_deals_per_mode: int = 2000,
     seed: int = 42,
     n_boot: int = 5000,
+    lead_ckpt: str | None = None,
 ) -> dict:
     """Duplicate-bridge edge of route(bid, play) vs an all-anchor field.
     Mirrors league_progress_eval.h2h_duplicate (same seed pipeline, so
-    results are comparable row-for-row with the §17.9 cert numbers)."""
+    results are comparable row-for-row with the §17.9 cert numbers).
+    With ``lead_ckpt``, play decisions split into leads (lead_ckpt) and
+    follows (play_ckpt): the lead-vs-follow EV attribution of a distilled
+    checkpoint's edge (CE_Teacher_Design §20.12 stall diagnosis)."""
     registry = ModelRegistry()
     bid = registry.get(Path(bid_ckpt))
     play = registry.get(Path(play_ckpt))
     anchor = registry.get(Path(anchor_ckpt))
+    lead = registry.get(Path(lead_ckpt)) if lead_ckpt else None
+    label = f"{lead.model_id}>{play.model_id}" if lead else play.model_id
     cand = Model(
-        model_id=f"route[{bid.model_id}|{play.model_id}]",
+        model_id=f"route[{bid.model_id}|{label}]",
         filepath=Path(play_ckpt),
         episodes=None,
-        agent=HeadRoutedAgent(bid.agent, play.agent),
+        agent=HeadRoutedAgent(bid.agent, play.agent, lead.agent if lead else None),
     )
 
     seed_rng = random.Random(seed)
@@ -114,6 +142,7 @@ def routed_h2h(
         "instrument": "duplicate_bridge_head_routed",
         "bid_ckpt": bid_ckpt,
         "play_ckpt": play_ckpt,
+        "lead_ckpt": lead_ckpt,
         "anchor_ckpt": anchor_ckpt,
         "modes": mode_edges,
     }
@@ -124,6 +153,11 @@ def main(argv=None) -> int:
     p.add_argument("--bid-ckpt", required=True)
     p.add_argument("--play-ckpt", required=True)
     p.add_argument("--anchor-ckpt", default=None, help="default: --bid-ckpt")
+    p.add_argument(
+        "--lead-ckpt",
+        default=None,
+        help="route LEAD play decisions here; --play-ckpt then serves follows only",
+    )
     p.add_argument("--deals-per-mode", type=int, default=2000)
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args(argv)
@@ -133,6 +167,7 @@ def main(argv=None) -> int:
         args.anchor_ckpt or args.bid_ckpt,
         n_deals_per_mode=args.deals_per_mode,
         seed=args.seed,
+        lead_ckpt=args.lead_ckpt,
     )
     print(json.dumps(res, indent=2))
     return 0
