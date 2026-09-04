@@ -352,6 +352,15 @@ def h2h_duplicate(
     equal deals (se ~0.015 combined vs ~0.055). Pipeline and seed (42)
     match the 2026-07-19 hypothesis-battery runs exactly, so gens 1-2 of
     the perceiver-shared-v2 continuation carry those recorded values.
+
+    ``leaster`` / ``non_leaster``: the same edge conditioned on the hand
+    type of each (deal, seat) hero game (CE_Teacher_Design §20.12 leaster-
+    play instrument). The symmetry argument holds within each stratum
+    (an anchor-only table scores 0 in expectation in leaster hands too),
+    but the stratum is selected by the bidding of both sides, so the
+    conditional edge also moves if the candidate enters leasters on
+    different hands than the anchor. SE by deal-cluster bootstrap of the
+    ratio estimator over the same resamples as the main edge.
     """
     import random as _random
 
@@ -373,10 +382,35 @@ def h2h_duplicate(
 
     mode_edges: Dict[str, Dict[str, float]] = {}
     deal_scores = []
+    raw_scores = []
+    raw_leasters = []
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
         rep = run_gauntlet([cand], [anchor], deal_seeds, mode, boot_idx)[0]
         mode_edges[name] = {"edge": rep.score.mean, "se": rep.score.se}
         deal_scores.append(rep.deal_score)
+        assert rep.raw_score is not None and rep.raw_leaster is not None
+        raw_scores.append(rep.raw_score)
+        raw_leasters.append(rep.raw_leaster)
+
+    def conditional(mask_per_mode: List[np.ndarray]) -> Dict[str, float]:
+        # ratio estimator sum(score * mask) / sum(mask), deals as clusters,
+        # resampled per mode with the shared boot_idx and pooled.
+        num = [(s * m).sum(axis=1) for s, m in zip(raw_scores, mask_per_mode)]
+        den = [m.sum(axis=1) for m in mask_per_mode]
+        hands = int(sum(d.sum() for d in den))
+        if hands == 0:
+            return {"edge": float("nan"), "se": float("nan"), "hands": 0}
+        point = float(sum(x.sum() for x in num) / hands)
+        boot_num = sum(x[boot_idx].sum(axis=1) for x in num)
+        boot_den = sum(x[boot_idx].sum(axis=1) for x in den)
+        boots = boot_num / np.maximum(boot_den, 1)
+        return {
+            "edge": point,
+            "se": float(boots.std(ddof=1)),
+            "hands": hands,
+            "hand_frac": hands / float(sum(m.size for m in mask_per_mode)),
+        }
+
     edge = (mode_edges["called"]["edge"] + mode_edges["jd"]["edge"]) / 2.0
     se = 0.5 * float(
         np.sqrt(mode_edges["called"]["se"] ** 2 + mode_edges["jd"]["se"] ** 2)
@@ -393,6 +427,8 @@ def h2h_duplicate(
         "n_deals": 2 * n_deals_per_mode,
         "instrument": "duplicate_bridge",
         "modes": mode_edges,
+        "leaster": conditional(raw_leasters),
+        "non_leaster": conditional([~m for m in raw_leasters]),
     }
 
 
