@@ -3367,3 +3367,25 @@ is_leaster) to the iteration-2 cert as a baseline read of iteration-1
 (anchor leaster rows to the handoff checkpoint, not theta_k, bounding
 cumulative drift at handoff competence) -> leaster-play emission behind
 the addendum-5 mini-calibration gate (P4 leaster determinizer exists).
+
+§20.12 ADDENDUM — follow-density confound on the STALL read (2026-09-03,
+pre-result; corpus at 1475/2000 games): this corpus searches follows at
+p = 0.5 (corpus q: 1.0), so follow OVERRIDE labels are ~half as dense
+per game. The anchor/override partition (§16.9 addendum 2; corpus
+``distill_set`` "none" = no policy loss) rules out the anti-teaching
+mechanism, and the partial manifest confirms the searched subset is
+unbiased: override share of searched rows per class matches corpus q
+(t0-def-follow 0.51 vs 0.48, t4-def-follow 0.21 vs 0.22, t0-def-lead
+0.78 vs 0.82, t1-def-lead 0.69 vs 0.64). What p DOES change is the
+follow-side label volume behind the h2h, which the STALL read above
+does not separate from a compounding failure. Disambiguation, fixed now:
+- STALL with Stage-1 lead cells at the §20.8 null and follow-class
+  posterior z-scores comparable to corpus q's -> attributed to
+  compounding (phase-3 budget cut as written).
+- STALL with follow-class z-scores visibly weaker than corpus q's
+  (same target settings) -> follows-only top-up: regenerate a subset
+  at --p-base 1.0 --boost-lead 1.0 from the same theta_k and refit
+  before the phase-3 budget is cut. Leads are already at p = 1.0 and
+  are not re-searched.
+- COMPOUNDS and REGRESSES reads are unchanged; the confound only
+  weakens the null.
