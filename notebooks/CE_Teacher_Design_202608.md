@@ -3633,3 +3633,39 @@ iter13; standing recipe P1.
 - Pending (appended when they land): pooled_ep4 vs seed8m; ep7 probes
   + h2h. Leaster stratum vs iter11 is +0.0175 +/- 0.0157 — first
   non-negative leaster read in the lineage (weak; vs iter11, not seed).
+
+§20.13 ADDENDUM 3 — the 2000-deal cert overstated the iteration-1 gain
+(2026-09-06, 18:52). Trigger: pooled_ep4 vs seed8m at 8000 deals/mode =
++0.0106 +/- 0.0041, yet pooled_ep4 ties iter11 (+0.0009 +/- 0.0031) and
+iter11 beat the seed by +0.026 +/- 0.007 at 2000 deals — a 1.8-sigma
+transitivity gap. Direct measurement (h2h_iter11_seed8k.py, 267 min):
+
+    iter11_ep7 vs seed8m, n=8000/mode:
+        edge +0.0141 +/- 0.0036   called +0.0206  jd +0.0075
+        leaster −0.0573 +/- 0.0169 (n=4381)   non-leaster +0.0182 +/- 0.0038
+
+- Transitivity HOLDS: pooled−iter11 via the seed = −0.0035 +/- 0.0055,
+  consistent with the direct +0.0009. The 2000-deal set (the first
+  quarter of the same seed-42 schedule) ran ~1.7 sigma hot: the other
+  6000 deals imply ~+0.010 for iter11 vs seed.
+- The ITERATION-1 GAIN vs the seed is +0.014, not +0.026. Every 2000-
+  deal read this week sat on that same deal set: the matched-volume
+  control (+0.009 vs +0.026, a 1.7-sigma gap) and the routed A/B/C
+  splits are NOT robust to it; "volume ~2/3 of the stall" (§20.13) is
+  DOWNGRADED to suggestive. Robust (8000-deal) facts: iter11 > seed by
+  +0.014; pooled = iter11; pooled > seed by +0.011.
+- Iteration 2 remains a STALL: +0.0009 +/- 0.0031 sits ~4 sigma below
+  a repeat of iteration 1's +0.014. The §20.13 thresholds (+0.008 /
+  +0.015) were calibrated to +0.026 and are superseded for the acting-
+  mode read by: COMPOUNDS if committee−student >= +0.010 at >= 2 sigma
+  (i.e. the arm recovers most of an iteration-1-sized step), else
+  STALL -> theta_1 ceiling h2h per addendum 2. The acting pipeline's
+  8000-deal certs (difference se ~0.005) can read that.
+- LEASTER damage is now firm: iteration 1 cost −0.057 +/- 0.017 on
+  leaster hands (3.4 sigma; ~5.5% of hands => ~−0.003 overall), while
+  non-leaster hands gained +0.018 +/- 0.004. Search emission for leaster
+  (addendum 1) stands.
+- RECIPE AMENDMENT: cert h2h at 8000 deals/mode is now the standard
+  (se ~0.0035). At 2000 deals (se ~0.007) a +0.014 step is a 2-sigma
+  read and comparisons between arms are ~1 sigma — too coarse for the
+  step sizes this program produces. Probes unchanged.
