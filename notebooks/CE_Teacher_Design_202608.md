@@ -3577,3 +3577,59 @@ judgment; verdict presented before the regen):
     is a later dial once the sign is known.
   * Schedule: iter2b lands ~Sat AM -> pooled compounding read (Sat) +
     iter2c launch -> iter2c lands ~Mon AM -> acting-mode read (Mon).
+
+§20.13 ADDENDUM 2 — POOLED COMPOUNDING READ: STALL (2026-09-06, 10:29):
+Top-up corpus iter2b done 04:58 (2000 games, 34,554 searched: lead
+9,425 / follow 25,129, override 49%, 18 failures). Pooled with iter2
+(runs/distill_corpus_iter2_pooled_202609): 4000 games, 56,160 searched
+(lead ~18.7k / follow ~37.5k) — MORE rows than corpus q (51.7k), same
+theta_k (iter11 ep7), student-acting. Pipeline pipeline_pooled.py ->
+iter13; standing recipe P1.
+- fit: sigma_u2 0.0008, holdout mse 0.0007 (= iter12). target: gamma
+  p50 0.205 (iter12 0.34, corpus q 0.54), weight p90 2.35, frac_z_clipped
+  10.4% (q 3.1%, iter12 5.1%) — recorded, not interpreted.
+- distill holdout override-KL vs theta_k: ep4 −15%, ep7 −16%
+  (matched-volume control −14/−18; iteration 2 alone −4/−1). The
+  student FITS the pooled targets as well as it fit corpus q's. Best
+  epoch 4 (KL 0.1034).
+- probes ep4 (4 x n=1000, across-seed mean): called-suit 53.0
+  (50.5/52.7/52.2/56.8), t0 trump-lead 0.5, partner 98.8, pick 36.0,
+  leaster 6.6, spread 4.7 — conventions held; called-suit +3 over iter12.
+- H2H pooled_ep4 vs iter11, n=8000/mode (239 min):
+      edge +0.0009 +/- 0.0031   called −0.0039  jd +0.0058
+      leaster +0.0175 +/- 0.0157 (n=4914 hands)  non-leaster −0.0001 +/- 0.0031
+  VERDICT (pre-registered §20.13 item 1): STALL. The 2-sigma upper bound
+  (+0.007) sits below the PARTIAL line (+0.008); COMPOUNDS (+0.015) is
+  excluded at ~4.5 sigma. Volume is RULED OUT as the stall's cause:
+  56k student-acting rows at theta_1 fit as well as 21.6k committee-
+  acting rows at theta_0 and convert to ZERO EV.
+- Search-gap check (manifest gap_percentiles, search's own Q gap
+  argmax-vs-best at searched nodes): iter2b p50 0.0212 / p90 0.089 /
+  override frac 0.49 vs corpus q p50 0.0197 / p90 0.089 / 0.49. By its
+  OWN measure the one-step teacher disagrees with theta_1 exactly as
+  often and as much as with theta_0 — the label signal did not
+  visibly shrink. Note the median gap (0.02) is below the per-row
+  noise sigma_u (~0.028), for q as well.
+- What remains between iteration 1 (+0.026) and iteration 2 (0): (a)
+  ACTING MODE — q was committee-acting on every game (labels on the
+  search policy's states), iter2/2b student-acting; (b) theta_k-
+  dependent REALIZABILITY — search-Q gaps at theta_1 may be real for
+  the search yet not realizable by the argmax student (or be
+  determinization noise the search cannot tell from signal). (a) is
+  the pre-registered consequence of STALL ("committee-act arm
+  mandatory") and is ALREADY RUNNING: iter2c CRN twin launched 05:01
+  (pid runs/distill_corpus_iter2c_202609/run.pid, ~17.8 searches/game,
+  ETA ~Tue AM), read per the addendum above at 8000 deals/mode.
+- PRE-REGISTERED CONDITIONAL (written before the iter2c read): if
+  distill(iter2c) vs iter11 ALSO reads < +0.008, run a theta_1 CEILING
+  h2h (analysis/ceiling_h2h.py, committee-act at read time vs iter11
+  argmax, 250 deals/mode, ~22 h) to split (b): ceiling >= +0.10 =>
+  headroom intact, the stall is a CAPTURE/label-design problem (target
+  construction, acting mixture, DAgger lag); ceiling <= +0.05 => the
+  1024-iter one-step teacher is near-exhausted at theta_1 and further
+  skill needs a stronger teacher (deeper budget / iterated search) or
+  search at deploy. If iter2c COMPOUNDS (>= +0.015): recipe =
+  committee-acting corpus >= ~35k rows per iteration; no ceiling run.
+- Pending (appended when they land): pooled_ep4 vs seed8m; ep7 probes
+  + h2h. Leaster stratum vs iter11 is +0.0175 +/- 0.0157 — first
+  non-negative leaster read in the lineage (weak; vs iter11, not seed).
