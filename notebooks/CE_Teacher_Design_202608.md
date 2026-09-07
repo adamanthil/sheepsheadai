@@ -3669,3 +3669,57 @@ transitivity gap. Direct measurement (h2h_iter11_seed8k.py, 267 min):
   (se ~0.0035). At 2000 deals (se ~0.007) a +0.014 step is a 2-sigma
   read and comparisons between arms are ~1 sigma — too coarse for the
   step sizes this program produces. Probes unchanged.
+
+§20.13 ADDENDUM 4 — is the label signal still there at theta_1?
+(2026-09-06 evening; operator question: "are the disagreement nodes
+measurably higher in EV than the policy prior, or is the policy just not
+generalizing them?")
+- Per-node replicate diagnostic from the corpus telemetry (nodes.jsonl:
+  pair_diffs = the top-pair Q gap in EACH of the 3 committee replicates;
+  SNR = |mean| / se over replicates):
+
+    corpus (theta_k, acting)           override rows  gap p50  SNR p50  3-rep sign-agree  |mean|>2se
+    q      (theta_0, committee)         25,151         0.0197    2.51      0.62             0.56
+      leads / follows                    8,260/16,891   0.011/0.027  1.47/3.17  0.48/0.68   0.42/0.63
+    iter2b (theta_1, student)           16,946         0.0212    2.52      0.62             0.56
+      leads / follows                    5,429/11,517   0.013/0.027  1.57/3.11  0.49/0.69   0.43/0.63
+    iter2c (theta_1, committee, 30%)     5,071         0.0211    2.54      0.63             0.57
+
+  The search's disagreement with theta_1 is EXACTLY as frequent, as
+  large, and as self-consistent as with theta_0 — in every stratum. The
+  "labels are determinization noise at theta_1" version of the
+  realizability theory is NOT supported: the replicates agree with each
+  other at theta_1 as they did at theta_0, where acting on the same
+  labels realized +0.180 (§13.3). What the diagnostic CANNOT see is a
+  shared bias (all three replicates wrong the same way, e.g. strategy
+  fusion / determinization bias) — that is only visible in realized EV.
+  Note the leads/follows split: follow labels are ~2x the gap and ~2x
+  the SNR of lead labels (sign-agree 0.68 vs 0.48), consistent with the
+  iteration-1 routed read that follows carried the EV.
+- CRN twin confirmed: iter2c's node rows for game 0 are byte-identical
+  to iter2b's up to the first committee-acted deviation.
+- DECISION (my judgement under the standing "run follow-ups"
+  authorization): the theta_1 CEILING h2h is now UNCONDITIONAL, queued
+  after the iter2c corpus DONE (runs/ceiling_h2h_theta1_202609/
+  launch_after_iter2c.sh, launcher.pid; 250 deals/mode, ~22 h, ETA ~Wed
+  AM). It answers the operator's question directly — realized EV of
+  acting on the labels at theta_1 — and calibrates what "compounding"
+  can mean at theta_1 regardless of the acting-mode read. Reads: >= +0.10
+  => labels carry EV, the stall is CAPTURE (student adopts the labels'
+  argmax at too few nodes, or DAgger lag); <= +0.05 => the one-step
+  1024-iter teacher is near-exhausted at theta_1 (shared bias / partial-
+  obs floor), further skill needs a stronger teacher or search at deploy.
+- INSTRUMENT (committed): h2h_duplicate and ceiling_h2h now store per-deal
+  scores (+ leaster-hand counts; ceiling node rows carry a leaster
+  flag). Two candidates certified vs the same anchor on the same schedule
+  can now be compared PAIRED (se well below sqrt(se1^2+se2^2)); the
+  acting-mode read (iter14 vs iter15, both vs iter11 at 8000 deals) will
+  use it. The §13.3 ceiling's leaster share had to be replayed (23/500
+  deal-modes, 416/9,099 nodes; resolution 93%, deviation 43%).
+- Sensitivity of the h2h instrument at current step sizes (operator
+  question): at 8000 deals/mode se = 0.0031 (vs a near-identical policy)
+  to 0.0041 (vs the seed); an iteration-1-sized step (+0.014) is a 4-sigma
+  read; a between-arm difference of +0.010 is ~2 sigma unpaired and
+  ~3 sigma paired. It cannot see steps of +0.005 (would need ~4x deals,
+  ~16 h per h2h). The instrument is adequate for the effects this
+  program is looking for, NOT for fine-tuning within them.
