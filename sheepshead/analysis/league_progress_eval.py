@@ -429,6 +429,11 @@ def h2h_duplicate(
         "modes": mode_edges,
         "leaster": conditional(raw_leasters),
         "non_leaster": conditional([~m for m in raw_leasters]),
+        # Per-deal duplicate scores and leaster-hand counts, one list per
+        # mode in deal-schedule order: lets two candidates certified against
+        # the same anchor on the same schedule be compared PAIRED.
+        "per_deal": [s.tolist() for s in deal_scores],
+        "per_deal_leaster_hands": [m.sum(axis=1).tolist() for m in raw_leasters],
     }
 
 

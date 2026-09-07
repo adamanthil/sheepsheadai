@@ -154,7 +154,8 @@ def _committee_act(game, player, valid, forced_public, node_key):
 def _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx):
     """One hand: hero (committee-act) at ``hero_seat``, anchor field
     elsewhere. Mirrors rigorous_eval.play_hand stepping exactly (deterministic
-    acts, end-of-trick observe propagation). Returns (hero_score, node_rows)."""
+    acts, end-of-trick observe propagation). Returns (hero_score, node_rows,
+    is_leaster)."""
     hero, anchor = _W["hero"], _W["anchor"]
     game = Game(partner_selection_mode=mode, seed=deal_seed)
     hero.reset_recurrent_state()
@@ -195,6 +196,7 @@ def _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx):
                         "votes": {str(k): v for k, v in votes.items()},
                         "policy_action": policy_action,
                         "acted": acted,
+                        "leaster": bool(game.is_leaster),
                     }
                     if cells is not None:
                         called = game.called_card
@@ -214,7 +216,7 @@ def _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx):
                             seat.get_last_trick_state_dict(),
                             player_id=seat.position,
                         )
-    return float(game.players[hero_seat - 1].get_score()), node_rows
+    return float(game.players[hero_seat - 1].get_score()), node_rows, bool(game.is_leaster)
 
 
 def _worker_init(ckpt, torch_threads, iters):
@@ -239,14 +241,19 @@ def _run_deal(task):
     t0 = time.time()
     scores = []
     rows = []
+    leaster_hands = 0
     for hero_seat in range(1, 6):
-        score, node_rows = _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx)
+        score, node_rows, is_leaster = _play_hand_instrumented(
+            mode, deal_seed, hero_seat, deal_idx
+        )
         scores.append(score)
         rows.extend(node_rows)
+        leaster_hands += int(is_leaster)
     return {
         "deal": deal_idx,
         "mode": "called" if mode == PARTNER_BY_CALLED_ACE else "jd",
         "deal_score": float(np.mean(scores)),
+        "leaster_hands": leaster_hands,
         "rows": rows,
         "wall_s": time.time() - t0,
     }
@@ -319,6 +326,7 @@ def main() -> int:
         tasks.append((PARTNER_BY_JD, s, d))
 
     mode_scores = {"called": [], "jd": []}
+    per_deal = []
     all_rows = []
     done = 0
     t_start = time.time()
@@ -334,6 +342,9 @@ def main() -> int:
         for res in pool.imap_unordered(_run_deal, tasks, chunksize=1):
             done += 1
             mode_scores[res["mode"]].append(res["deal_score"])
+            per_deal.append(
+                {k: res[k] for k in ("mode", "deal", "deal_score", "leaster_hands")}
+            )
             all_rows.extend(res["rows"])
             for row in res["rows"]:
                 node_log.write(json.dumps(row) + "\n")
@@ -397,6 +408,9 @@ def main() -> int:
         },
         "adherence_acted_by_trick": _adherence_table(all_rows, "adh_acted"),
         "adherence_policy_by_trick": _adherence_table(all_rows, "adh_policy"),
+        # Per-deal hero scores + leaster-hand counts (0-5): conditional and
+        # paired reads without a replay (the §13.3 run stored neither).
+        "per_deal": per_deal,
     }
     with open(args.out_json, "w") as f:
         json.dump(out, f, indent=2)
