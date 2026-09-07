@@ -3723,3 +3723,15 @@ generalizing them?")
   ~3 sigma paired. It cannot see steps of +0.005 (would need ~4x deals,
   ~16 h per h2h). The instrument is adequate for the effects this
   program is looking for, NOT for fine-tuning within them.
+
+§20.13 ADDENDUM 2 — pending reads landed (2026-09-06 22:55, POOLED DONE):
+  pooled_ep7 probes (4 x 1000, mean): called-suit 54.1, t0 0.7, partner
+    98.2, pick 35.1, leaster 6.3, spread 4.9.
+  pooled_ep7 vs iter11  n=8000/mode: +0.0015 +/- 0.0032 (called −0.0032,
+    jd +0.0062; leaster −0.0090 +/- 0.0162, non-leaster +0.0022)
+  pooled_ep7 vs seed8m  n=8000/mode: +0.0135 +/- 0.0041 (called +0.0179,
+    jd +0.0090; leaster −0.0470 +/- 0.0183, non-leaster +0.0169)
+  Both epochs tie iter11 and both sit at iter11's +0.014 over the seed.
+  Leaster-hand deficit vs the seed persists (−0.032 / −0.047 vs iter11's
+  −0.057). The acting-mode pipeline started iter14 (top-up alone) at
+  22:55.
