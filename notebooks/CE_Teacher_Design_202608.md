@@ -3735,3 +3735,63 @@ generalizing them?")
   Leaster-hand deficit vs the seed persists (−0.032 / −0.047 vs iter11's
   −0.057). The acting-mode pipeline started iter14 (top-up alone) at
   22:55.
+
+§20.13 ADDENDUM 5 — ACTING-MODE READ: NULL; the SHRINK is the capture
+mechanism (2026-09-08, 09:44 / 11:30).
+Twin corpus iter2c done 03:42 (2000 games, 34,669 searched, override 49%,
+11 failures; committee acted at 5,779 nodes = 2.9/game vs corpus q's 3.1;
+lead/follow 9.4k/25.2k = the top-up's split exactly). Both arms: standing
+recipe from iter11 ep7, holdout-KL-best epoch 3 (student −12%, committee
+−13%), probes in band (called-suit 48.6 student / 46.1 committee vs
+iter11 45.4; partner ~98-99, t0 <= 0.4), h2h vs iter11 at 8000/mode:
+
+    student-acting   (iter14, sa_ep3)  −0.0056 +/- 0.0031
+    committee-acting (iter15, ca_ep3)  −0.0048 +/- 0.0032
+    committee − student, PAIRED (per-deal, same schedule): +0.0008 +/- 0.0035
+    both arms averaged vs iter11 (paired):                −0.0052 +/- 0.0026
+
+VERDICT: acting mode has NO effect (+0.010 excluded at ~2.6 sigma). Two
+35k-row distills at theta_1 are mildly HARMFUL (2 sigma), the 56k pooled
+one neutral. The theta_1 CEILING (running, 100/500 deal-modes at 4.2 h):
+called +0.276 +/- 0.089, jd +0.292 +/- 0.105 — the labels DO carry EV
+when acted on. So: volume no, acting mode no, headroom yes => CAPTURE.
+
+MECHANISM (found in the target stage, verified by a flip diagnostic):
+gamma = su2/(su2 + noise) per class, a_hat = gamma*a_obs + (1−gamma)*
+a_model (§20.6). The advantage model fit on theta_1's features explains
+the search's advantages nearly to the replicate-noise floor for defender
+and partner rows (su2 defender-follow 1.2-1.6e-4 at theta_0 -> 1.4-2.8e-5
+at theta_1), so gamma collapsed there while picker rows kept theta_0's
+values:
+
+    class            gamma p50 theta_0  theta_1(twin)   target->search | search!=prior   theta_0  theta_1
+    follow|defender      0.44             0.15                                              0.41     0.22
+    follow|partner       0.58             0.28                                              0.46     0.27
+    follow|picker        0.78             0.81                                              0.34     0.27
+    lead|defender        0.40             0.24                                              0.22     0.16
+    lead|partner         0.52             0.37                                              0.30     0.18
+    lead|picker          0.73             0.77                                              0.30     0.23
+    (search!=prior unchanged: 0.31-0.55 both iterations; pooled iter13 identical to the twin)
+
+  I.e. at theta_1 the targets ask the student to CHANGE its choice at half
+  as many disagreeing defender/partner rows as at theta_0 and instead
+  re-tilt toward the prior — which is exactly the observed signature:
+  holdout KL falls, logit spread rises (4.1 -> 4.6-4.9), conventions
+  sharpen, argmax behaviour barely moves, EV flat. Plausible cause: the
+  linear structure the model can see in the features IS what iteration 1
+  distilled; after one iteration the shrink estimator treats the search's
+  remaining novelty as noise. The per-node replicate SNR (addendum 4)
+  says it is not noise; the ceiling says it is EV.
+
+ARM (launched 11:30, pipeline_gamma.py -> iter16; ceiling still running):
+  twin corpus, standing recipe, ONE change: target --variance-mode global
+  (gamma = global su2 / (su2 + noise) ~0.78, the theta_0 picker level) —
+  an existing §20.6 mode, not a new knob. Cert vs iter11 at 8000/mode +
+  PAIRED reads vs ca_ep3 and sa_ep3 (per-deal scores). PRE-REGISTERED:
+  COMPOUNDS if >= +0.010 vs iter11 AND paired vs ca_ep3 >= +0.010 at 2
+  sigma; PARTIAL +0.005..+0.010; NULL otherwise (then the capture failure
+  sits in the distill stage — bilinear-only-frozen capacity — not the
+  targets). If it compounds, the principled follow-up is a shrink
+  estimator that does not use theta_k's own features to decide what is
+  noise (e.g. su2 from replicate-level cross-validation, or a gamma floor
+  calibrated once at theta_0).
