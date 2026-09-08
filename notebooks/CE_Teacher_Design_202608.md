@@ -3875,3 +3875,16 @@ the model's self-reference is the binding constraint: kappa > gk.
 Classes (regime|trick|role|lead-follow, 85 in the twin) are UNUSED by
 global mode's targets and loss; they remain sampling-schedule and
 reporting strata.
+
+§20.13 ADDENDUM 7 — ARM 1 (global shrink, kappa 1) read: NULL (2026-09-08
+18:05). Distill: holdout target KL never fell below theta_k's (ep7 +1%;
+noisier targets are not fittable on held-out rows), selector -> epoch 0
+-> certed epoch 7 (pipeline fallback added). Probes (4 seeds): called-
+suit 48.0, t0 0.2, partner 98.9, pick 35.1, leaster 6.6, spread 4.3.
+    gamma_ep7 vs iter11, 8000/mode:  −0.0059 +/- 0.0030 (called −0.0134, jd +0.0016)
+    paired vs ca_ep3 (class mode, same corpus): −0.0011 +/- 0.0032
+    paired vs sa_ep3:                            −0.0003 +/- 0.0035
+Raising gamma from 0.15 to 0.81 on defender rows (flip rate 0.23 ->
+0.30) changed nothing. The shrink weight alone is NOT the lever; the
+tilt-temperature arms (ARM 2 gamma=1 kappa 0.5, flip 0.47; ARM 3 global
+kappa 0.5, flip 0.43) are now the live test — kappa cert started 18:05.
