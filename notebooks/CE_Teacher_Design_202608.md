@@ -3795,3 +3795,60 @@ ARM (launched 11:30, pipeline_gamma.py -> iter16; ceiling still running):
   estimator that does not use theta_k's own features to decide what is
   noise (e.g. su2 from replicate-level cross-validation, or a gamma floor
   calibrated once at theta_0).
+
+§20.13 ADDENDUM 6 — the tilt, not only the shrink (2026-09-08, 12:30).
+Target-only pre-checks on the twin corpus (fit reused from iter16; no
+distill), disagreeing defender-follow rows (search argmax != prior
+argmax, n=6130 at theta_1 / 2939 at theta_0):
+
+    targets                              gamma   tilt->search p50/p75   flip   KL(t||prior) p50  z clipped
+    theta_0, class mode (iter11)          0.44      +0.58 / 2.58        0.43      0.032            3%
+    theta_1, class mode (iter15)          0.15      −0.15 / 0.46        0.23      0.031            9%
+    theta_1, global mode (iter16, ARM 1)  0.81      +0.30 / 0.81        0.30      0.019            4%
+    theta_1, gamma=1, kappa 1 (iter17)    1.00      +0.42 / 0.97        0.32      0.019            3%
+    theta_1, gamma=1, kappa 0.5 (iter18)  1.00      +0.81 / 1.91        0.47      0.044           15%
+    theta_1, gamma=1, kappa 0.25          1.00      +1.48 / 3.57        0.59      0.074           36%
+    (prior log-gap on these rows p50 1.05 at theta_1 vs 1.27 at theta_0: the
+     prior is NOT sharper where the search disagrees — that theory is out)
+
+Reading: (1) class mode at theta_1 tilts the median disagreeing
+defender-follow row AWAY from the search (−0.15): with gamma 0.15 the
+target is the advantage model, and the model — which takes theta_k's
+log-prior as a covariate (§20.5 "bilinear") — has learned that the
+prior is right; after one iteration the denoiser regresses the teacher
+onto the student's opinion. (2) Even at gamma = 1 the search's own
+z-scores on the remaining disagreements are weaker than at theta_0 (p75
+0.97 vs 2.58 nats): iteration 1 absorbed the confident disagreements;
+what is left is many low-t rows. The committee acts on ALL of them (2-of-
+3 argmax, no t-weighting) and the theta_1 ceiling is running ~+0.2, so
+in aggregate they are worth taking; "one SE = one nat" (kappa 1) leaves
+most below the prior's gap. §20.7(c) anticipated exactly this lever.
+
+ARM 2 (launched 12:30, pipeline_kappa.py -> iter18_k0.5): twin corpus,
+targets --variance-mode global --sigma-u2 1.0 --kappa 0.5 (gamma = 1:
+the search's own replicate t-statistic, half a nat per SE; the model
+drops out of the targets, keeping only the precision weights), standing
+distill; cert vs iter11 at 8000/mode waits for ARM 1's cert (GAMMA
+DONE). Paired reads vs ca_ep3, sa_ep3 and gamma_ep*. PRE-REGISTERED
+(same bars as ARM 1): COMPOUNDS >= +0.010 vs iter11 and paired vs ca_ep3
+>= +0.010 at 2 sigma. Dose-response expectation: class (−0.005) < global
+< kappa 0.5. If kappa 0.5 compounds and global does not, the capture
+bottleneck is the tilt temperature, and the principled recipe change is
+to calibrate kappa per iteration against the committee's own flip
+profile (the ceiling arm's deviation rate, ~37%) rather than fixing
+"one SE = one nat"; a kappa sweep on the pooled corpus follows.
+
+Operator question (per-class vs global shrink, recorded here): §20.6
+introduced per-class sigma_u^2 at theta_0 because the GLOBAL value was
+dominated by high-variance picker cells and gave t0 defender leads gamma
+0.84 where the local residual implied 0.27 — the pooled convention
+effect (model) entered lead targets at a quarter strength and the single
+node's noise kept the rest; called-suit did not install under global.
+Per-class fixed that (conventions installed in iteration 1). The
+downside of global is therefore real and specific: at low-SNR lead cells
+it trusts one noisy node over the pooled evidence, so convention
+installation is slower/noisier. At theta_1 the same mechanism inverted:
+the pooled model now IS the prior, and per-class shrink blocks the
+follows. The two arms test the trade directly: ARM 1/2 probes will show
+whether called-suit holds (48.6 student / 46.1 committee at kappa 1
+class mode; iter11 45.4) when the model leaves the targets.
