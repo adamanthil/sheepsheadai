@@ -3852,3 +3852,26 @@ the pooled model now IS the prior, and per-class shrink blocks the
 follows. The two arms test the trade directly: ARM 1/2 probes will show
 whether called-suit holds (48.6 student / 46.1 committee at kappa 1
 class mode; iter11 45.4) when the model leaves the targets.
+
+§20.13 ADDENDUM 6b — ARM 3 = global shrink + kappa 0.5 (2026-09-08, 13:10).
+Operator framing recorded: the advantage model's pooling over theta_k's
+frozen features is the ESSENTIAL element of §20 (the unbiased, data-
+driven form of "any called-suit card beats an off-suit card at a
+defender lead, even when the search's specific card is noisy"), chosen
+precisely so no card classes are hand-coded; the role/trick strata were
+a later optimization for the variance bucket only. Consequence: ARM 2
+(gamma = 1) discards that element and is a diagnostic, not a candidate
+recipe; ARM 1 keeps it at ~20% weight. ARM 3 keeps the model in the
+blend (global gamma ~0.8) and halves the tilt temperature — the
+combination that preserves the pooling and restores the theta_0 flip
+profile. Pre-check (targets only, iter19_gk0.5): disagreeing defender-
+follow tilt p50 +0.59 / p75 1.59 nats, flip 0.43 (theta_0: +0.58 / 2.58 /
+0.43); partner-follow +0.92 / 2.46, flip 0.45; KL(t||prior) p50 0.041,
+16% of z clipped. Launched 13:10 (pipeline_gk.py; distill now, cert
+after KAPPA DONE; paired vs ca_ep3 / sa_ep3 / gamma / kappa). Same
+pre-registered bars. Expected ordering if the tilt is the binding
+constraint and the pooling is benign: class < global < gk ~ kappa; if
+the model's self-reference is the binding constraint: kappa > gk.
+Classes (regime|trick|role|lead-follow, 85 in the twin) are UNUSED by
+global mode's targets and loss; they remain sampling-schedule and
+reporting strata.
