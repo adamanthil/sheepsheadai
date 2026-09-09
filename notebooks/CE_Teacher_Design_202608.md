@@ -3936,3 +3936,38 @@ ARMS (launched 23:50, both queued behind ARM 3's cert):
        bidding drift (actor-resident heads train at 1e-4).
 Also queued: theta_1 ceiling final read (450/500: called +0.177 +/-
 0.041, jd +0.148 +/- 0.043).
+
+§20.13 ADDENDUM 9 — theta_1 CEILING: HEADROOM INTACT (2026-09-09, 02:00;
+runs/ceiling_h2h_theta1_202609/, 22.3 h, same instrument as §13.3:
+committee R=3 x 1024/1, 2-of-3 pi_gumbel-argmax at every unforced play
+node, hero = iter11 ep7 weights, anchor field = iter11 argmax, 250
+deals/mode):
+
+    EDGE +0.1664 +/- 0.0281 (n_deals 500, ~5.9 sigma)
+    called +0.1808 +/- 0.0384 | jd +0.1520 +/- 0.0411
+    win_frac 0.581, deals with >= 1 deviation 54%
+    nodes searched 9105, resolved 8477 (93%), deviated 3327 (37%)
+    theta_0 (§13.3): +0.1800 +/- 0.0289; called +0.2096, jd +0.1504;
+    deviated 39%.  Difference −0.014 +/- 0.040: the one-step search
+    ceiling is UNCHANGED after iteration 1 captured +0.014 of it (8%).
+  Leaster (per-deal records now stored): 27/500 deal-modes carry >= 1
+    leaster hand (135/2500 hands); deals with a leaster hand +0.26 +/-
+    0.17, without +0.161 +/- 0.028; leaster nodes 494 (5.4%), resolved
+    93%, deviated 48%. Search acting in leasters is not harmful in
+    aggregate (weak; supports leaster emission later).
+  Adherence at searched lead nodes (acted committee / theta_1 argmax):
+    called_suit        t0 57.5 / 43.8   ALL 60.6 / 47.2   (theta_0: 56.7 / 45.3)
+    def_lead_no_trump  t0 98.5 / 99.5   ALL 88.2 / 96.6   (theta_0: 87.3 / 97.4)
+    partner_trump      t0 65.3 / 98.7   ALL 72.8 / 99.1   (theta_0: 81.5 / 96.9)
+    The committee wants called-suit ~13 points above the policy (the
+    remaining half of the installation); it deviates from the no-trump-
+    lead rule at later tricks as at theta_0; and its partner-trump
+    adherence FELL (t0 85.5 -> 65.3, n=75/80) while the policy's rose to
+    99 — WATCH ITEM: either the search finds partner-trump leads worse
+    in the theta_1 ecology or this is a small-n swing; a targeted
+    partner-lead read (E2-style, §17) before any convention phase.
+
+VERDICT for the §20.13 decision tree: headroom YES (>= +0.10 by 2.4
+sigma); volume NO; acting mode NO; targets NO (four constructions);
+the stall is CAPTURE in the projection (addendum 8). The teacher has
++0.17 to give at theta_1 and the student took 0.
