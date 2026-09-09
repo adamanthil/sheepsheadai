@@ -50,7 +50,7 @@ import random
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -335,12 +335,79 @@ def h2h(
     return paired_edge(challenger, incumbent, incumbent, n_deals, seed=seed)
 
 
+_H2H_WORKER: Dict[str, Any] = {}
+
+
+def _h2h_worker_init(gen_ckpt: str, prev_ckpt: str) -> None:
+    import torch
+
+    from sheepshead.analysis.rigorous_eval import ModelRegistry
+
+    torch.set_num_threads(1)
+    registry = ModelRegistry()
+    _H2H_WORKER["cand"] = registry.get(Path(gen_ckpt))
+    _H2H_WORKER["anchor"] = registry.get(Path(prev_ckpt))
+
+
+def _h2h_worker_chunk(task):
+    """One (mode, chunk of deal seeds): the hero-in-anchor-field evaluation
+    of that chunk, exactly as the serial loop computes it (each hand is an
+    independent deterministic game; the one-member field is the anchor at
+    every seat regardless of deal index)."""
+    from sheepshead.analysis.rigorous_eval import (
+        evaluate_hero_in_field,
+        make_panel_field_fn,
+    )
+
+    mode, start, seeds = task
+    field_fn = make_panel_field_fn([_H2H_WORKER["anchor"]], len(seeds), rng_seed=20260619)
+    ev = evaluate_hero_in_field(_H2H_WORKER["cand"], field_fn, seeds, mode)
+    return start, ev.raw_score, ev.deal_margin, ev.raw_leaster, ev.role_counts
+
+
+def _h2h_parallel_eval(
+    gen_ckpt: str, prev_ckpt: str, deal_seeds: Sequence[int], mode: int, workers: int
+):
+    """evaluate_hero_in_field over ``deal_seeds`` sharded across ``workers``
+    processes (spawn; one torch thread each), merged in deal order."""
+    from multiprocessing import get_context
+
+    from sheepshead.analysis.rigorous_eval import HeroEval
+
+    n = len(deal_seeds)
+    chunk = max(1, -(-n // (workers * 4)))
+    tasks = [(mode, i, list(deal_seeds[i : i + chunk])) for i in range(0, n, chunk)]
+    raw_score = np.zeros((n, 5), dtype=np.float64)
+    deal_margin = np.zeros(n, dtype=np.float64)
+    raw_leaster = np.zeros((n, 5), dtype=bool)
+    role_counts = {"picker": 0, "partner": 0, "defender": 0, "leaster": 0}
+    ctx = get_context("spawn")
+    with ctx.Pool(
+        processes=workers, initializer=_h2h_worker_init, initargs=(gen_ckpt, prev_ckpt)
+    ) as pool:
+        for start, sc, mg, le, rc in pool.imap_unordered(_h2h_worker_chunk, tasks):
+            k = len(sc)
+            raw_score[start : start + k] = sc
+            deal_margin[start : start + k] = mg
+            raw_leaster[start : start + k] = le
+            for key, v in rc.items():
+                role_counts[key] += v
+    return HeroEval(
+        deal_score=raw_score.mean(axis=1),
+        deal_margin=deal_margin,
+        raw_score=raw_score,
+        role_counts=role_counts,
+        raw_leaster=raw_leaster,
+    )
+
+
 def h2h_duplicate(
     gen_ckpt: str,
     prev_ckpt: str,
     n_deals_per_mode: int = 2000,
     seed: int = 42,
     n_boot: int = 5000,
+    workers: Optional[int] = None,
 ) -> Dict:
     """Duplicate-bridge h2h (Extended_League amendment 2026-07-19).
 
@@ -361,6 +428,11 @@ def h2h_duplicate(
     conditional edge also moves if the candidate enters leasters on
     different hands than the anchor. SE by deal-cluster bootstrap of the
     ratio estimator over the same resamples as the main edge.
+
+    ``workers``: deals are independent deterministic games, so they are
+    sharded across processes (spawn, one torch thread each) and merged in
+    deal order — bit-identical to the serial loop (verified by
+    tests/test_h2h_parallel.py). None = os.cpu_count() - 2; 1 = serial.
     """
     import random as _random
 
@@ -368,6 +440,7 @@ def h2h_duplicate(
     from sheepshead.analysis.rigorous_eval import (
         ModelRegistry,
         _bootstrap_deal_indices,
+        bootstrap_mean,
         run_gauntlet,
     )
 
@@ -384,7 +457,19 @@ def h2h_duplicate(
     deal_scores = []
     raw_scores = []
     raw_leasters = []
+    if workers is None:
+        import os as _os
+
+        workers = max(1, (_os.cpu_count() or 3) - 2)
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
+        if workers > 1:
+            ev = _h2h_parallel_eval(gen_ckpt, prev_ckpt, deal_seeds, mode, workers)
+            score = bootstrap_mean(ev.deal_score, boot_idx)
+            mode_edges[name] = {"edge": score.mean, "se": score.se}
+            deal_scores.append(ev.deal_score)
+            raw_scores.append(ev.raw_score)
+            raw_leasters.append(ev.raw_leaster)
+            continue
         rep = run_gauntlet([cand], [anchor], deal_seeds, mode, boot_idx)[0]
         mode_edges[name] = {"edge": rep.score.mean, "se": rep.score.se}
         deal_scores.append(rep.deal_score)
