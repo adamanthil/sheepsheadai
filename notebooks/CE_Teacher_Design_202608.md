@@ -3979,3 +3979,38 @@ kappa_ep3 +0.0021 (all < 1 sigma). Probes: called-suit 50.1 (highest of
 the twin arms), t0 0.9, partner 99.0, pick 35.8, leaster 6.0, spread 4.0.
 Five target constructions, one corpus, one distill recipe: −0.006 ..
 −0.004. Closed: the target stage is not the lever at theta_1.
+
+§20.13 ADDENDUM 10 — GENERALIZATION PRECISION: the theta_1 student's
+behaviour changes on new deals are half wrong (2026-09-09, 10:00).
+Held-out games replayed through theta_k and the distilled arm; "moved" =
+arm argmax != theta_k argmax at a searched row; precision = fraction of
+moves landing on the search's argmax; "away" = fraction of moves leaving
+an action the search AGREED with theta_k on (harmful by the label):
+
+    arm (corpus rows)            class            moved  to search  away-from-agreed
+    iteration 1 (51.7k, theta_0) follow|defender   13%     0.60        0.37
+                                 follow|partner    15%     0.65        0.31
+                                 lead|defender      8%     0.65        0.27
+                                 lead|partner      20%     0.69        0.27
+    ca_ep3 (35k, class mode)     follow|defender    8%     0.50        0.46
+                                 follow|partner     9%     0.47        0.50
+                                 lead|defender      7%     0.50        0.47
+                                 lead|partner      12%     0.26        0.63
+    pooled_ep4 (56k, class)      follow|defender   10%     0.55        0.38
+                                 follow|partner    14%     0.49        0.47
+                                 lead|defender      7%     0.40        0.54
+                                 lead|partner      18%     0.55        0.39
+    kappa_ep3 (35k, gamma=1)     follow|defender    8%     0.38        0.50
+                                 lead|defender      7%     0.34        0.59
+
+Iteration 1 moved with ~2:1 precision (right:wrong by the label); the
+theta_1 arms move with ~1:1, and the sharper-tilt arm worse. A student
+whose changes are half wrong nets ~0 (the prior was already right at the
+"away" rows). Volume helps SLOWLY: 56k vs 35k lifts defender-follow
+precision 0.50 -> 0.55 and cuts "away" 0.46 -> 0.38. Labels are the
+noisy per-row search readings, so a perfect student scores < 1; the
+cross-arm comparison stands. Ties to addendum 6: the remaining
+disagreements at theta_1 carry ~2.5x weaker per-row evidence (p75 z 0.97
+vs 2.58), i.e. the SAME row count carries ~6x less evidence per pattern
+— "insufficient data" in the precise sense of insufficient signal per
+row, and the head memorizes the noise (train/holdout gap 4x).
