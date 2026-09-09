@@ -4237,3 +4237,61 @@ without the log-prior covariate (held-out accuracy on disagreeing rows,
 theta_0 vs theta_1 corpora); belief aux-head held-out accuracy at the
 disagreeing rows; cheap-teacher agreement check. Then the oracle-critic
 scaling read. ROUTED6 (acting replicate, seed 43) in flight.
+
+§20.13 ADDENDUM 15 — LEARNABILITY PROBE on frozen features (2026-09-09,
+17:15; scratch learnability_probe.py on the cached row tables of the
+iter11 (theta_0, seed features) and iter15 (theta_1, iter11 features)
+fits; game-level 10% holdout, seed 0; adapter+bilinear+heteroscedastic
+head, 200 epochs/patience 25, WITH the log-prior covariate (= the recipe's
+model) and BARE (no prior). Held-out rows with Q; "disagreeing" = committee
+top card != prior top card; "moved" = model top != prior top; precision =
+moved rows landing on the committee top; away = moved rows leaving a
+prior top the committee agreed with):
+
+                    agree with committee      disagreeing rows     moves
+    corpus  variant  model   prior    n      hits     n        frac  precision  away
+    theta_0 prior    0.620   0.602   2294    0.303    912      0.28   0.43      0.37
+    theta_0 bare     0.612   0.602   2294    0.338    912      0.33   0.41      0.39
+    theta_1 prior    0.580   0.588   3467    0.228   1429      0.24   0.39      0.42
+    theta_1 bare     0.575   0.588   3467    0.286   1429      0.31   0.38      0.42
+    (lead/follow split in the log; leads worse everywhere: theta_1 bare
+     lead precision 0.36 vs away 0.37, follow 0.39 vs 0.45)
+
+Reads.
+  1. On FROZEN features the head generalizes ~1:1 at BOTH points
+     (precision/away 1.1 at theta_0, 0.9 at theta_1). The 2:1 precision of
+     the iteration-1 student (addendum 10) came from the TRUNK epoch, not
+     from anything the frozen features already separate. Consistent with
+     addendum 14: the trunk is the EV mechanism; the head phase cannot
+     manufacture EV.
+  2. theta_1 is modestly worse than theta_0 on every column (agree −1.3
+     vs +1.0 pts over the prior; disagreeing hits 0.29 vs 0.34), i.e. the
+     residual is somewhat less linearly available in iter11's features
+     than iteration 1's was in the seed's — but the gap is small; the
+     dominant fact is (1).
+  3. The probe is near its NOISE CEILING. The prior's top card matches
+     the committee's 0.60 of the time, and the committee's own three
+     replicates agree on the top-pair sign 0.62 of the time (addendum 4),
+     so a perfect predictor of the TRUE argmax would score only ~0.6-0.7
+     against a single committee draw, and "disagreeing rows" are enriched
+     for coin-flip labels. Per-row argmax agreement cannot discriminate
+     realizability at these noise levels; it says only that nothing
+     large is left on the table at the row level.
+  4. Reconciling with the ceiling (+0.166, C3 of addendum 14): the edge
+     of committee ACTING is the sum over ~30 decisions per deal of small
+     expected gains from a belief-averaged oracle value, taken at EVERY
+     node, coin-flip rows included. That is not "patterns" a student can
+     copy from 35k argmax-shaped labels; it is a calibrated shift of Q
+     everywhere. Iteration 1 skimmed the pattern-shaped part (+0.014,
+     8%); the remaining 92% is diffuse by construction.
+Direction (recommendation, no code yet): stop trying to make the policy
+copy the committee's argmax and make it maximise the committee's OBJECTIVE
+directly — a one-ply expectimax over R determinized worlds with the
+oracle critic at the leaf is cheap (|A|·R forward passes, no tree), dense
+(every play node of ordinary self-play games), and differentiable through
+the actor's action distribution (AWR/regularised policy improvement
+against E_belief[V_oracle] instead of against a noisy argmax). Step 0
+(offline, cheap): measure argmax agreement between the one-ply oracle
+expectimax and the 1024-iteration committee on existing corpus nodes; if
+it is ≥ the committee's own replicate self-agreement, the tree adds
+nothing at teacher depth 1 and the cheap teacher is the teacher.
