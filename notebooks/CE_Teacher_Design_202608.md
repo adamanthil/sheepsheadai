@@ -4035,3 +4035,74 @@ queued pipeline imports lazily — the trunk cert spun 70k dead spawn
 workers for 4 h when its parent held the old evaluator.
 Live: ROUTED2 (lead vs follow attribution, ca_ep3 + kappa_ep3, 8000 deals)
 then HIZ (top-evidence 6,908 rows vs random 6,908, paired).
+
+§20.13 ADDENDUM 12 — ROUTED ATTRIBUTION: the theta_1 loss is a BIDDING
+TAX, not a play loss (2026-09-09, 10:40 – 13:10). Head-routed chimeras
+vs iter11, 8000 deals/mode, sharded h2h (routed_results.jsonl). Route =
+which component comes from the ARM; everything else is iter11:
+
+    arm        route          edge      se      called    jd
+    ca_ep3     full ckpt     −0.0048  0.0032   −0.0091  +0.0003
+               A_leads       +0.0010  0.0017   +0.0002  +0.0019
+               B_follows     −0.0008  0.0022   −0.0006  −0.0011
+               C_play (A+B)  +0.0005  0.0027   −0.0005  +0.0016
+               D_bid         −0.0057  0.0018   −0.0102  −0.0012   ← 3.2σ
+    kappa_ep3  full ckpt     −0.0057  0.0033   −0.0141  +0.0027
+               A_leads       −0.0010  0.0020   −0.0028  +0.0007
+               B_follows     −0.0047  0.0026   −0.0079  −0.0015
+    trunk_ep3  full ckpt     −0.0039  0.0034   −0.0077  −0.0002
+               C_play        −0.0053  0.0031   −0.0117  +0.0012
+               D_bid         +0.0004  0.0016   +0.0028  −0.0021
+
+Reads.
+  1. ca_ep3 (standing recipe): play is at PARITY (leads, follows, and
+     both together all within ±0.001) and the bidding heads alone
+     reproduce the whole deficit (D_bid −0.0057 vs full −0.0048; called
+     −0.0102 vs −0.0091). Routes are additive; no lead×follow interaction.
+     Called mode is where the partner call and the call-dependent bury
+     live, which is why every theta_1 arm lost there and not in JD.
+  2. Mechanism. Epoch 1 (trunk unfrozen, 1e-4) moves the features under
+     the pick/call/bury/alone heads; the ep1-only arm reads −0.0083 with
+     called −0.0170 (addendum 11). The standing recipe then FREEZES the
+     encoder and trains only the bilinear play pointer for six epochs,
+     so the retention KL on bidding rows (lambda_ret 1, ~0.016 nats vs
+     override ~0.15) has nothing it can move: the bidding drift is
+     locked in while the head phase repairs play back to parity.
+  3. trunk_ep3 is the mirror image: three full-actor epochs let the
+     retention term pull bidding back (D_bid +0.0004, clean) but the
+     same unfrozen epochs damage play (C_play −0.0053, called −0.0117).
+     Its full read (−0.0039) is bidding-clean play damage, ca_ep3's is
+     play-clean bidding damage; both land at −0.004 by different roads.
+  4. kappa_ep3 (gamma=1, kappa 0.5, sharpest tilts): the FOLLOW head
+     itself carries most of the loss (−0.0047) with a ~−0.003 residual
+     left for bidding. Unshrunk targets over-move follows, consistent
+     with addendum 10's precision table (0.38 to-search at defender
+     follow).
+Consequences.
+  - Every "theta_1 stall" number in addenda 2–11 is play-parity minus a
+    ~0.005 bidding tax. Correcting for it, the class-mode arm is +0.000,
+    not −0.005: the projection still buys NOTHING at theta_1, but it is
+    not destroying anything either. The compounding question is now
+    purely why play stays at zero (addendum 10: 1:1 move precision).
+  - The bidding tax is a recipe bug, not a teacher property: bidding is
+    never taught by this phase, so theta_{k+1}'s bidding should be
+    theta_k's bit-for-bit. Fix candidates, cheapest first:
+      (a) --lambda-ret 10 on the standing recipe (queued: iter22_ret10
+          on iter15's targets; paired vs ca_ep3 + its own D_bid; pass =
+          D_bid within ±0.002 and full read ≥ ca_ep3 + 0.004);
+      (b) head phase that also trains the bidding heads under the
+          retention KL with the trunk frozen (repair, not prevention;
+          needs a flag);
+      (c) deploy/act-time routing of bidding through theta_0
+          (HeadRoutedAgent already does it at eval; composes across
+          iterations because bidding is inherited, never learned here).
+  - Queued behind ret10: iter11 vs the 8M seed on routes C/D at 8000
+    deals (did iteration 1 pay the same tax? its 2000-deal play-only
+    route read +0.021 vs a +0.026 full read, both on the hot 2000-deal
+    instrument — addendum 3), and student_ep3 (iter14) C_play to compare
+    play-only between acting modes (user request).
+  - HIZ (top-evidence rows vs random, both epoch-7 fallback): hiz_ep7
+    −0.0246 ± 0.0042 vs iter11 (called −0.0305, jd −0.0186, leaster
+    −0.044); ctrl cert running; paired read to follow as addendum 13.
+Pipeline note: pipeline_routed3 crashed once on its idempotency check
+(older routed rows carry "arm", newer "cand"); fixed to .get(), relaunched.
