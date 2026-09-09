@@ -4106,3 +4106,42 @@ Consequences.
     −0.044); ctrl cert running; paired read to follow as addendum 13.
 Pipeline note: pipeline_routed3 crashed once on its idempotency check
 (older routed rows carry "arm", newer "cand"); fixed to .get(), relaunched.
+
+§20.13 ADDENDUM 13 — HIZ read: concentrating the policy loss on the
+highest-evidence rows HURTS (2026-09-09, 13:55). Pre-registration
+(addendum 11): keep override rows with z_raw = search_gap /
+sqrt(search_noise_var) >= Z (6,908 of 34,658 class-mode twin rows, ~20%)
+vs a random matched-count subset (seed 0), demoting the rest to the value
+stream; same standing distill; both selected epoch 7 by fallback
+(holdout KL never beat epoch 0 in either); 8000 deals/mode vs iter11.
+
+    hiz_ep7   −0.0246 ± 0.0042   called −0.0305   jd −0.0186   leaster −0.044
+    ctrl_ep7  −0.0089 ± 0.0034   called −0.0179   jd −0.0000   leaster −0.009
+    paired hiz − ctrl  −0.0156 ± 0.0044  (−3.5σ)   [pre-reg pass was ≥ +0.008]
+
+FAILS in the opposite direction at 3.5σ. Two readings, both consistent
+with addenda 10 and 12:
+  1. The top-z filter is a ROLE filter. Override-row composition (share):
+        subset          fol-def  fol-par  fol-pick  lead-def  lead-par  lead-pick
+        all (iter15)     0.502    0.100    0.126     0.122     0.044     0.106
+        random ctrl      0.507    0.102    0.123     0.118     0.045     0.105
+        top-z hiz        0.506    0.109    0.192     0.052     0.012     0.129
+     Picker rows (the seat with the least hidden information, hence the
+     tightest search noise) are 1.5x over-represented and defender/partner
+     LEADS — the convention nodes — are cut to 40%/27% of their share. High
+     per-row z is where the search is *certain*, not where the student is
+     *wrong*; and certainty is cheapest exactly where the prior is already
+     right (picker follows are the best-learned nodes). Training only there
+     over-moves those rows for 7 epochs and drops the regularising mass of
+     near-prior rows elsewhere; JD (−0.019) is hit as hard as called.
+  2. Row count is not the lever either: the random 20% subset (−0.0089) is
+     the full-row ca_ep3 (−0.0048) minus ~0.004, i.e. an 80% row cut costs
+     roughly what the bidding tax costs — small. Both arms also carry the
+     ~0.005 bidding tax of addendum 12 (epoch-7 standing schedule).
+Net: "label SNR" as a per-row selection criterion is falsified; the
+evidence-quality argument of addendum 6 survives only as a statement about
+the WHOLE corpus (weaker evidence per pattern at theta_1), and the
+per-row precision weights (cap 5) already encode the z ordering without
+discarding the tail. The remaining play-side hypotheses are the
+projection/realizability ones (addendum 8/10), to be re-read once the
+bidding tax is removed (iter22_ret10, iter23_headonly).
