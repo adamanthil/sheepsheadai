@@ -3971,3 +3971,11 @@ VERDICT for the §20.13 decision tree: headroom YES (>= +0.10 by 2.4
 sigma); volume NO; acting mode NO; targets NO (four constructions);
 the stall is CAPTURE in the projection (addendum 8). The teacher has
 +0.17 to give at theta_1 and the student took 0.
+
+§20.13 ADDENDUM 9b — ARM 3 (global shrink + kappa 0.5) read: NULL
+(2026-09-09 03:50). gk_ep7 vs iter11 −0.0036 +/- 0.0033 (called −0.0119,
+jd +0.0047); paired vs ca_ep3 +0.0012, sa_ep3 +0.0020, gamma_ep7 +0.0023,
+kappa_ep3 +0.0021 (all < 1 sigma). Probes: called-suit 50.1 (highest of
+the twin arms), t0 0.9, partner 99.0, pick 35.8, leaster 6.0, spread 4.0.
+Five target constructions, one corpus, one distill recipe: −0.006 ..
+−0.004. Closed: the target stage is not the lever at theta_1.
