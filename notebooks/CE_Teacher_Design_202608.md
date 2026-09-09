@@ -4145,3 +4145,95 @@ per-row precision weights (cap 5) already encode the z ordering without
 discarding the tail. The remaining play-side hypotheses are the
 projection/realizability ones (addendum 8/10), to be re-read once the
 bidding tax is removed (iter22_ret10, iter23_headonly).
+
+§20.13 ADDENDUM 14 — bidding-tax follow-ups, head-only arm, and three
+CORRECTIONS (2026-09-09, 13:10 – 16:45). All h2h at 8000 deals/mode,
+paired per-deal reads share anchor + seed-42 deals.
+
+Reads.
+    iter11 vs 8M seed  C_play  +0.0107 ± 0.0032  (called +0.0113, jd +0.0101)
+                       D_bid   +0.0036 ± 0.0018  (called +0.0097, jd −0.0026)
+                       full    +0.0141 ± 0.0036  → additive; iteration 1's
+                       trunk epoch moved bidding by +0.004, iteration 2's by
+                       −0.006. Same recipe, opposite sign, both in CALLED.
+                       The "tax" is an uncontrolled variance term, not a bias.
+    ret10_ep7 (--lambda-ret 10, iter15 targets; epoch 7 fallback):
+                       full −0.0017 ± 0.0033 (called −0.0036, jd +0.0002)
+                       D_bid +0.0026 ± 0.0022; paired D_bid − ca_ep3 D_bid
+                       +0.0083 ± 0.0027 (3.1σ): tax REMOVED. Paired full −
+                       ca_ep3 +0.0031 ± 0.0039 (0.8σ): play by subtraction
+                       ≈ −0.004. Holdout retention KL after epoch 1 was 0.020
+                       vs 0.015 at lambda 1 — the coefficient did not shrink
+                       the drift as measured by KL, yet the h2h bidding
+                       effect flipped sign; the KL is not the h2h-relevant
+                       drift metric (tie-band pick/call flips cost EV at
+                       ~zero KL).
+    student_ep3 (iter14) C_play −0.0046 ± 0.0028; paired ca_ep3 C_play −
+                       student C_play +0.0052 ± 0.0029 (1.8σ): committee
+                       acting DID help play by ~½ hundredth; the full-ckpt
+                       acting read (+0.0008) was masked because the student
+                       arm's trunk-epoch damage landed in play and the
+                       committee arm's in bidding. Fresh-deal replicate
+                       (seed 43, ROUTED6) running.
+    headonly_ep3 (iter23: --freeze-epochs 1..7 --bilinear-only-frozen;
+                       96/98 tensors bit-identical to theta_k, only
+                       pointer_U/V changed; holdout target KL −11% by ep3,
+                       comparable to ca's −13%; called-suit probe 50-51):
+                       full −0.0035 ± 0.0023 (called −0.0072, jd +0.0002) —
+                       a PURE play read (bidding identical). Paired vs ca_ep3
+                       C_play −0.0041 ± 0.0024 (−1.7σ); vs trunk_ep3 C_play
+                       +0.0018; vs student C_play +0.0011; ret10 − headonly
+                       +0.0018.
+Verdict on the schedule. The head alone fits the targets on held-out
+rows as well as the standing recipe (KL) but LOSES ~0.004 of play EV vs
+iter11; the trunk epoch adds ~+0.004 of play and costs ~0.005 of bidding
+at theta_1. Every combination lands at −0.004..+0.001. The EV mechanism
+of §20.9 (trunk first) is confirmed at theta_1 and it is now roughly
+tax-neutral; the head phase installs conventions (50% called-suit with
+nothing but U/V trained) and repairs, it does not add EV. Holdout target
+KL does not track EV (headonly: best KL, worst EV).
+
+CORRECTIONS.
+ C1. Addenda 6 and 10 claimed the theta_1 disagreements carry "~2.5x
+     weaker per-row evidence (p75 z 0.97 vs 2.58)". That compares the
+     theta_0 CLASS-MODE tilt (pooled advantage model) with the theta_1 RAW
+     replicate z (model off) — a target-construction difference, not a
+     label-quality one. The like-for-like instrument is addendum 4
+     (telemetry pair_diffs, same format for every corpus): gap, replicate
+     SNR (~2.5) and 3-replicate sign agreement (0.62) are IDENTICAL at
+     theta_0 and theta_1. A targeted-row z comparison is also invalid:
+     iteration 1's corpus went through recover_search_q, whose noise_var =
+     (1−w)·var(q) is not the live pipeline's pooled replicate variance.
+     What survives: same evidence per ROW, fewer rows per learnable
+     PATTERN — iteration 1 harvested the deviations shared by thousands
+     of rows (convention-shaped); the remainder is spread across many
+     fine situations. Sample complexity, not label noise. The R=9
+     replicate corpus is therefore NOT the next experiment.
+ C2. The greedy health probe seeds one RNG for dealing and play, so play
+     changes alter the deal stream; headonly (bidding bit-identical to
+     iter11) probes pick 36.0 vs iter11's 34.3 on seed 1. Probe pick/
+     leaster/alone differences between arms are deal noise. Routed h2h
+     (D_bid) is the only bidding instrument; earlier "pick 34→37 drift"
+     readings carried no information.
+ C3. (Operator caught, 16:30) The teacher does NOT roll out to terminal:
+     d_rollout = 1 with the ORACLE critic as leaf evaluator on the
+     observer's full-information stream inside each determinized world
+     (ismcts.py leaf_evaluator="oracle"; config.teacher_d_rollout=1).
+     Terminal rollouts were the deploy-tuning 4096-iteration study.
+     Consequence: the +0.166 ceiling is ~entirely "oracle value averaged
+     over sampled consistent worlds, one ply of prior in between" — a
+     belief-marginalised PRIVILEGED value, not lookahead. So (a) a better
+     oracle critic raises the ceiling directly and trains on search-free
+     self-play outcomes; the ceiling stayed 0.180→0.166 because the
+     oracle critic barely changed; (b) a one-ply expectimax over R worlds
+     with oracle leaves is a candidate CHEAP teacher (|A|·R forward
+     passes vs 1024 iterations) — validate argmax agreement vs the
+     committee on existing corpus rows offline; (c) the function the
+     actor must learn is E_belief[V_oracle] — the limited critic could be
+     trained to that dense target with no search as a feature source.
+
+Next (offline, no search): learnability probe on frozen theta_1 features
+without the log-prior covariate (held-out accuracy on disagreeing rows,
+theta_0 vs theta_1 corpora); belief aux-head held-out accuracy at the
+disagreeing rows; cheap-teacher agreement check. Then the oracle-critic
+scaling read. ROUTED6 (acting replicate, seed 43) in flight.
