@@ -4014,3 +4014,24 @@ disagreements at theta_1 carry ~2.5x weaker per-row evidence (p75 z 0.97
 vs 2.58), i.e. the SAME row count carries ~6x less evidence per pattern
 — "insufficient data" in the precise sense of insufficient signal per
 row, and the head memorizes the noise (train/holdout gap 4x).
+
+§20.13 ADDENDUM 11 — EP1 and ARM 4 reads (2026-09-09, 04:16 / 09:57):
+  ca_ep1 (trunk epoch only, class targets):  −0.0083 +/- 0.0031 (called −0.0170, jd +0.0005)
+      paired vs ca_ep3 −0.0035 +/- 0.0024: the head phase RECOVERS part of
+      the trunk epoch's damage; it does not give anything back.
+  trunk_ep3 (3 full epochs @1e-4, nothing frozen): −0.0039 +/- 0.0034
+      (called −0.0077, jd −0.0002); paired vs ca_ep3 +0.0008, vs ca_ep1
+      +0.0043 +/- 0.0041. Probes: called-suit 48.6, partner 99.3, t0 0.6,
+      pick 34.5, spread 4.5 — conventions and bidding held.
+  trunk_ep1 is numerically IDENTICAL to ca_ep1 (same epoch, same targets;
+  the pipeline reproduces bit-for-bit).
+Trunk capacity is not the lever: more unfrozen epochs neither help nor
+hurt beyond epoch 1. Every distill of theta_1 on this corpus, whatever
+the targets or the schedule (7 arms), sits at −0.004 .. −0.008 with the
+loss in CALLED mode (−0.008 .. −0.017) and JD flat (−0.002 .. +0.005).
+Instrument note: the sharded h2h (af6f985/29e1fcc) certs 8000 deals/mode
+in 16-17 min; a full cert is now ~30 min. Lesson: never edit a module a
+queued pipeline imports lazily — the trunk cert spun 70k dead spawn
+workers for 4 h when its parent held the old evaluator.
+Live: ROUTED2 (lead vs follow attribution, ca_ep3 + kappa_ep3, 8000 deals)
+then HIZ (top-evidence 6,908 rows vs random 6,908, paired).
