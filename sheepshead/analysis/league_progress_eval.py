@@ -44,6 +44,7 @@ Example
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import random
@@ -338,15 +339,19 @@ def h2h(
 _H2H_WORKER: Dict[str, Any] = {}
 
 
-def _h2h_worker_init(gen_ckpt: str, prev_ckpt: str) -> None:
-    import torch
-
+def load_model(ckpt: str):
+    """Picklable candidate builder for the sharded h2h: one checkpoint."""
     from sheepshead.analysis.rigorous_eval import ModelRegistry
 
+    return ModelRegistry().get(Path(ckpt))
+
+
+def _h2h_worker_init(build_cand, prev_ckpt: str) -> None:
+    import torch
+
     torch.set_num_threads(1)
-    registry = ModelRegistry()
-    _H2H_WORKER["cand"] = registry.get(Path(gen_ckpt))
-    _H2H_WORKER["anchor"] = registry.get(Path(prev_ckpt))
+    _H2H_WORKER["cand"] = build_cand()
+    _H2H_WORKER["anchor"] = load_model(prev_ckpt)
 
 
 def _h2h_worker_chunk(task):
@@ -365,11 +370,14 @@ def _h2h_worker_chunk(task):
     return start, ev.raw_score, ev.deal_margin, ev.raw_leaster, ev.role_counts
 
 
-def _h2h_parallel_eval(
-    gen_ckpt: str, prev_ckpt: str, deal_seeds: Sequence[int], mode: int, workers: int
+def h2h_parallel_eval(
+    build_cand, prev_ckpt: str, deal_seeds: Sequence[int], mode: int, workers: int
 ):
     """evaluate_hero_in_field over ``deal_seeds`` sharded across ``workers``
-    processes (spawn; one torch thread each), merged in deal order."""
+    processes (spawn; one torch thread each), merged in deal order.
+    ``build_cand`` is a picklable zero-argument callable returning the
+    candidate Model (``functools.partial(load_model, path)`` for a plain
+    checkpoint; head_routed_h2h passes a chimera builder)."""
     from multiprocessing import get_context
 
     from sheepshead.analysis.rigorous_eval import HeroEval
@@ -383,7 +391,7 @@ def _h2h_parallel_eval(
     role_counts = {"picker": 0, "partner": 0, "defender": 0, "leaster": 0}
     ctx = get_context("spawn")
     with ctx.Pool(
-        processes=workers, initializer=_h2h_worker_init, initargs=(gen_ckpt, prev_ckpt)
+        processes=workers, initializer=_h2h_worker_init, initargs=(build_cand, prev_ckpt)
     ) as pool:
         for start, sc, mg, le, rc in pool.imap_unordered(_h2h_worker_chunk, tasks):
             k = len(sc)
@@ -463,7 +471,9 @@ def h2h_duplicate(
         workers = max(1, (_os.cpu_count() or 3) - 2)
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
         if workers > 1:
-            ev = _h2h_parallel_eval(gen_ckpt, prev_ckpt, deal_seeds, mode, workers)
+            ev = h2h_parallel_eval(
+                functools.partial(load_model, gen_ckpt), prev_ckpt, deal_seeds, mode, workers
+            )
             score = bootstrap_mean(ev.deal_score, boot_idx)
             mode_edges[name] = {"edge": score.mean, "se": score.se}
             deal_scores.append(ev.deal_score)

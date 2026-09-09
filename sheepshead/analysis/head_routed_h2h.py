@@ -22,7 +22,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -30,10 +32,12 @@ from pathlib import Path
 import numpy as np
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead.analysis.league_progress_eval import h2h_parallel_eval
 from sheepshead.analysis.rigorous_eval import (
     Model,
     ModelRegistry,
     _bootstrap_deal_indices,
+    bootstrap_mean,
     run_gauntlet,
 )
 from sheepshead.ismcts import infer_head
@@ -88,6 +92,21 @@ class HeadRoutedAgent:
         return outs[id(self.play_agent)]
 
 
+def build_routed_model(bid_ckpt: str, play_ckpt: str, lead_ckpt: str | None) -> Model:
+    """Picklable chimera builder (used by the sharded h2h workers)."""
+    registry = ModelRegistry()
+    bid = registry.get(Path(bid_ckpt))
+    play = registry.get(Path(play_ckpt))
+    lead = registry.get(Path(lead_ckpt)) if lead_ckpt else None
+    label = f"{lead.model_id}>{play.model_id}" if lead else play.model_id
+    return Model(
+        model_id=f"route[{bid.model_id}|{label}]",
+        filepath=Path(play_ckpt),
+        episodes=None,
+        agent=HeadRoutedAgent(bid.agent, play.agent, lead.agent if lead else None),
+    )
+
+
 def routed_h2h(
     bid_ckpt: str,
     play_ckpt: str,
@@ -96,6 +115,7 @@ def routed_h2h(
     seed: int = 42,
     n_boot: int = 5000,
     lead_ckpt: str | None = None,
+    workers: int | None = None,
 ) -> dict:
     """Duplicate-bridge edge of route(bid, play) vs an all-anchor field.
     Mirrors league_progress_eval.h2h_duplicate (same seed pipeline, so
@@ -103,18 +123,11 @@ def routed_h2h(
     With ``lead_ckpt``, play decisions split into leads (lead_ckpt) and
     follows (play_ckpt): the lead-vs-follow EV attribution of a distilled
     checkpoint's edge (CE_Teacher_Design §20.12 stall diagnosis)."""
-    registry = ModelRegistry()
-    bid = registry.get(Path(bid_ckpt))
-    play = registry.get(Path(play_ckpt))
-    anchor = registry.get(Path(anchor_ckpt))
-    lead = registry.get(Path(lead_ckpt)) if lead_ckpt else None
-    label = f"{lead.model_id}>{play.model_id}" if lead else play.model_id
-    cand = Model(
-        model_id=f"route[{bid.model_id}|{label}]",
-        filepath=Path(play_ckpt),
-        episodes=None,
-        agent=HeadRoutedAgent(bid.agent, play.agent, lead.agent if lead else None),
-    )
+    build = functools.partial(build_routed_model, bid_ckpt, play_ckpt, lead_ckpt)
+    if workers is None:
+        workers = max(1, (os.cpu_count() or 3) - 2)
+    cand = build() if workers <= 1 else None
+    anchor = ModelRegistry().get(Path(anchor_ckpt)) if workers <= 1 else None
 
     seed_rng = random.Random(seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(n_deals_per_mode)]
@@ -125,6 +138,13 @@ def routed_h2h(
     mode_edges = {}
     deal_scores = []
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
+        if workers > 1:
+            ev = h2h_parallel_eval(build, anchor_ckpt, deal_seeds, mode, workers)
+            score = bootstrap_mean(ev.deal_score, boot_idx)
+            mode_edges[name] = {"edge": score.mean, "se": score.se}
+            deal_scores.append(ev.deal_score)
+            continue
+        assert cand is not None and anchor is not None
         rep = run_gauntlet([cand], [anchor], deal_seeds, mode, boot_idx)[0]
         mode_edges[name] = {"edge": rep.score.mean, "se": rep.score.se}
         deal_scores.append(rep.deal_score)
@@ -145,6 +165,7 @@ def routed_h2h(
         "lead_ckpt": lead_ckpt,
         "anchor_ckpt": anchor_ckpt,
         "modes": mode_edges,
+        "per_deal": [d.tolist() for d in deal_scores],
     }
 
 
@@ -160,12 +181,14 @@ def main(argv=None) -> int:
     )
     p.add_argument("--deals-per-mode", type=int, default=2000)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--workers", type=int, default=None, help="deal shards (default cpu-2; 1 = serial)")
     args = p.parse_args(argv)
     res = routed_h2h(
         args.bid_ckpt,
         args.play_ckpt,
         args.anchor_ckpt or args.bid_ckpt,
         n_deals_per_mode=args.deals_per_mode,
+        workers=args.workers,
         seed=args.seed,
         lead_ckpt=args.lead_ckpt,
     )
