@@ -3888,3 +3888,51 @@ Raising gamma from 0.15 to 0.81 on defender rows (flip rate 0.23 ->
 0.30) changed nothing. The shrink weight alone is NOT the lever; the
 tilt-temperature arms (ARM 2 gamma=1 kappa 0.5, flip 0.47; ARM 3 global
 kappa 0.5, flip 0.43) are now the live test — kappa cert started 18:05.
+
+§20.13 ADDENDUM 8 — ARM 2 (gamma=1, kappa 0.5) read: NULL; the loss is in
+the PROJECTION (2026-09-08, 23:40-23:55).
+    kappa_ep3 vs iter11, 8000/mode: −0.0057 +/- 0.0033 (called −0.0141, jd +0.0028)
+    paired vs ca_ep3 −0.0009 +/- 0.0035 | vs sa_ep3 −0.0001 | vs gamma_ep7 +0.0002
+    probes: called-suit 48.8, t0 0.5, partner 98.8, pick 35.5, leaster 7.0,
+    spread 3.6 (softer than every other arm's 4.3-4.9)
+Four target constructions on the same theta_1 corpus (class 0.15 /
+global 0.81 / observation-only, kappa 1 / 0.5; flip profiles 0.23 ->
+0.47) all read −0.005 +/- 0.003 vs iter11. The targets are NOT where
+the EV is lost.
+
+Held-out REALIZATION (scratch realization_all.py: replay the held-out
+games through theta_k and the arm; "flip rows" = target argmax !=
+theta_k's replayed argmax; adoption = arm argmax == target argmax):
+
+    arm (targets)               defender-follow flip rows  adopted   partner-follow adopted   lead-defender adopted
+    iteration 1 (theta_0 -> iter11)      14%                0.53          0.53                  0.36
+    ca_ep3   (class, theta_1)            10%                0.41          0.33                  0.33
+    gamma_ep7 (global)                   10%                0.23          0.31                  0.13
+    kappa_ep3 (gamma=1, kappa 0.5)       16%                0.19          0.35                  0.11
+
+Train/holdout target-KL gap at the final epoch: iteration 1 6%
+(0.084/0.089); theta_1 arms 17-26% (class 0.083/0.101, global
+0.076/0.096, kappa 0.182/0.213, gk 0.157/0.184). The head phase FITS the
+training rows as well as at theta_0 and TRANSFERS half as well: at
+theta_1 the bilinear-only epochs memorize row-specific corrections. The
+kappa arm asked for the most flips and adopted the fewest (0.19) — the
+same capacity spread thinner, and the policy softened everywhere (spread
+3.6). Consistent with §20.9: the trunk epoch was the EV carrier at
+theta_0 (arm 5: 1 full epoch +0.0127; head phase +0.002); the flips
+that remain at theta_1 need features the frozen trunk does not have.
+
+ARMS (launched 23:50, both queued behind ARM 3's cert):
+  EP1: cert iter15/distill_epoch1.pt (the trunk epoch alone, before any
+       head phase) vs iter11 at 8000 deals, paired vs ca_ep3. Reads: ep1
+       > ep3 by >= +0.005 at 2 sigma => the head phase GIVES BACK the
+       trunk epoch's gain at theta_1 (drop it); ep1 ~ ep3 ~ −0.005 =>
+       one trunk epoch @1e-4 carries nothing at theta_1 either.
+  ARM 4 (pipeline_trunk.py -> iter20_trunk): class-mode twin targets,
+       3 full epochs @1e-4 with nothing frozen (the §17.8 "epoch 2+
+       damages" hazard was one-hot noise-fitting; calibrated targets
+       bound the per-row move). Cert best + ep3 vs iter11, paired vs
+       ca_ep3 / ca_ep1. COMPOUNDS >= +0.010 vs iter11. Watch items:
+       conventions (the head phase is what installs them), leaster,
+       bidding drift (actor-resident heads train at 1e-4).
+Also queued: theta_1 ceiling final read (450/500: called +0.177 +/-
+0.041, jd +0.148 +/- 0.043).
