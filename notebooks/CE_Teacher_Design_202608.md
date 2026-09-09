@@ -4295,3 +4295,25 @@ against E_belief[V_oracle] instead of against a noisy argmax). Step 0
 expectimax and the 1024-iteration committee on existing corpus nodes; if
 it is ≥ the committee's own replicate self-agreement, the tree adds
 nothing at teacher depth 1 and the cheap teacher is the teacher.
+
+§20.13 ADDENDUM 16 — ACTING MODE, replicated: committee acting helps
+PLAY (2026-09-09, 17:30; pipeline_routed6.py). Play-only route C_play
+(bidding from iter11) for ca_ep3 (committee-acted twin, iter15) and
+student_ep3 (student-acted corpus, iter14), same deals, same recipe:
+
+    deals      ca_ep3 C_play        student_ep3 C_play     paired committee − student
+    seed 42    +0.0005 ± 0.0027     −0.0046 ± 0.0028       +0.0052 ± 0.0029 (1.8σ)
+    seed 43    −0.0027 ± 0.0027     −0.0085 ± 0.0028       +0.0058 ± 0.0030 (1.9σ)
+    pooled     −0.0011              −0.0066                +0.0055 ± 0.0021 (2.6σ)
+
+CONFIRMED at 2.6σ on 16,000 deals/mode: the committee-acted corpus
+teaches ~+0.005 better play than the student-acted corpus at theta_1,
+with the same labels per row (same search at every node). The full-
+checkpoint acting read of addendum 3 (+0.0008) was masked by where each
+arm's trunk-epoch damage landed (bidding for the committee arm, play for
+the student arm; addendum 12). Mechanism is the state distribution:
+committee acting samples the lines the search prefers, so the student
+is taught where it will find itself once it adopts them. NOTE the
+absolute level: even the committee-acted play route is at parity with
+iter11 (−0.001 pooled); acting mode is a half-hundredth lever, not the
+compounding lever. Standing recipe: committee acting stays.
