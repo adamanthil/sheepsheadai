@@ -4420,3 +4420,27 @@ Reads.
      games / ~140k override rows, distilled with the bidding-tax fix
      (--lambda-ret 10 or theta_0 bidding routing), certed at 8000 deals
      vs iter11. Pre-registration to follow.
+
+§20.13 ADDENDUM 19 — PRE-REGISTRATION: the learning-curve corpus at 256
+iterations (2026-09-09, 21:10; launched).
+Corpus D  runs/distill_corpus_iter2d_256_202609: theta_k = iter11 ep7
+          (theta_1), 8000 games (4x the twin), committee acting 1.0,
+          R=3 x 256 iterations, d_rollout 1, oracle leaves, same p/boost
+          schedule as the twin (p_base 1.0, boost_lead 1.0, boost_cs 1.5),
+          seed 20260909, 40 shards of 200 games, node telemetry on.
+          Expected ~140k override rows; twin cost was ~42 h for 2000
+          games at 1024 (shared machine), so ~2 days here.
+Arms (after DONE; standing recipe + --lambda-ret 10, the validated
+bidding-tax fix; class targets; holdout-KL-best epoch with the epoch-7
+fallback; cert 8000 deals/mode vs iter11, paired per-deal reads):
+    D2k   shards 0-9   (2000 games @256)  — equal rows to the twin: the
+          BUDGET cost at fixed rows, paired vs ret10_ep7 (twin @1024,
+          same recipe) — pre-reg: within ±0.004 = 256 is free.
+    D4k   shards 0-19  (4000 games)
+    D8k   shards 0-39  (8000 games)      — the compounding read.
+Reads: h2h vs iter11 against log(rows) = the learning-curve slope
+(points: twin/ret10 35k, D2k, D4k, D8k). COMPOUNDS if D8k ≥ +0.010 with
+CI > 0 (the §20.13 item-1 bar after the bidding fix); PARTIAL +0.005..
++0.010; STALL < +0.005 ⇒ the exchange rate is not worth paying and the
+skill path is deploy-time search (addendum 17). Each arm also gets the
+D_bid route once, to confirm the tax stays removed at 4x rows.
