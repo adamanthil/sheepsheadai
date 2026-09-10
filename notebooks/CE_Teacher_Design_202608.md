@@ -4444,3 +4444,29 @@ CI > 0 (the §20.13 item-1 bar after the bidding fix); PARTIAL +0.005..
 +0.010; STALL < +0.005 ⇒ the exchange rate is not worth paying and the
 skill path is deploy-time search (addendum 17). Each arm also gets the
 D_bid route once, to confirm the tax stays removed at 4x rows.
+
+§20.13 ADDENDUM 18b — budget agreement by stratum (2026-09-10; same
+node file; "rep" = a 256/64 replicate's top vs a 1024 replicate's top,
+"bar" = 1024 replicate self-agreement, "dev same" = same 2-of-3 winner
+where the 1024 committee deviates from the policy, "conf" = the low-
+budget committee's own deviations confirmed by the 1024 winner):
+
+    stratum         n    bar    rep@256  policy | dev-same@256  conf@256 | rep@64  dev-same@64  conf@64
+    leads           86  0.547   0.553    0.477  |  0.750 (28)   0.700     |  0.499   0.360        0.474
+      t0-1 leads    33  0.374   0.434    0.424  |  0.600 (10)   0.750     |  0.355   0.222        0.286
+      t2+ leads     53  0.654   0.627    0.509  |  0.833 (18)   0.682     |  0.576   0.438        0.583
+    follows        205  0.665   0.637    0.644  |  0.569 (51)   0.569     |  0.596   0.388        0.413
+      t0-1 follows  87  0.567   0.576    0.609  |  0.545 (22)   0.632     |  0.508   0.200        0.250
+      t2+ follows  118  0.737   0.683    0.669  |  0.586 (29)   0.531     |  0.657   0.517        0.500
+    called mode    147  0.658   0.643    0.578  |  0.659 (44)   0.725     |  0.563   0.366        0.417
+    jd mode        144  0.602   0.581    0.611  |  0.600 (35)   0.512     |  0.574   0.394        0.448
+
+Reads: at LEADS the 256 committee is AT the bar (0.553 vs 0.547) and
+its deviations are confirmed 0.70 — no sign of the 384-iter raw-Q
+inversion the readout study saw at defender leads (that was a single-
+search raw-Q readout; here 3 replicates + pi_gumbel). The budget's cost
+concentrates at LATE FOLLOWS (t2+: 0.683 vs 0.737 bar), the counting/
+schmear nodes where the E9 matrix put the largest headroom (t4-picker-
+lead +0.039) and where the tree's in-world continuation does the work.
+Early leads are the near-tie zone at any budget (bar 0.37). 64
+iterations is below the prior at every stratum.
