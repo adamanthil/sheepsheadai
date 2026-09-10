@@ -4317,3 +4317,47 @@ is taught where it will find itself once it adopts them. NOTE the
 absolute level: even the committee-acted play route is at parity with
 iter11 (−0.001 pooled); acting mode is a half-hundredth lever, not the
 compounding lever. Standing recipe: committee acting stays.
+
+§20.13 ADDENDUM 17 — amendments to C3 / addendum 15 and the CRN evaluator
+proposal, restated (2026-09-09, 17:50; operator review).
+ A1. C3 overstated "no lookahead". The play tree is a real multi-ply PUCT
+     tree (max_depth 6 observer decisions, opponents' plies searched in-
+     tree within each determinized world, policy priors); d_rollout = 1
+     is the frontier rollout (one further observer play via the policy)
+     BEFORE the oracle bootstrap. The ceiling is belief-averaged, trick-
+     level lookahead with oracle leaves — not one ply.
+ A2. Addendum 15's "argmax-shaped labels" was wrong: the target is the
+     full distribution prior·exp(a_hat/(kappa·sqrt(v_post))) over all
+     legal actions (pi_gumbel on shrunk Q). What the argmax-agreement
+     probe measures is therefore only the top card; the deficiency is
+     not the target's form but its per-row SNR: with R = 3 replicates the
+     typical |Q gap| / noise is ~1, so the tilt is ~0 at most rows and
+     the rows that do move are noise-enriched, at 35k rows/iteration.
+ A3. Training-time only, as now: the oracle enters only inside sampled
+     worlds on the teacher side; the actor conditions on the observation
+     alone; the shipped network never searches (ismcts.py docstring).
+Proposal, restated as a LABEL-SNR-PER-COMPUTE design, not a new target:
+  The tilt uses only DIFFERENCES between root actions' Q. PUCT estimates
+  each action's Q from its own visits and its own world draws: the top
+  action gets most visits, the runner-up few, so the GAP's noise is
+  dominated by the less-visited action and by unpaired world sampling.
+  A common-random-numbers (CRN) evaluator scores every legal root action
+  on the SAME R worlds with the same continuation rule, so the gap is a
+  paired difference: same worlds, equal allocation. Two rungs:
+    (a) CRN one-ply: continuation = policy (argmax or sample) to the
+        observer's next decision, then oracle bootstrap. Cost ~ |A|·R·
+        (≤4 policy passes + 1 oracle pass); R = 32 ≈ 1.3k forward passes
+        vs ~10-15k for 3×1024 iterations. Shallow: no in-tree opponent
+        search — biased where trick tactics matter.
+    (b) CRN shallow tree: per world, exhaustive/PUCT expansion to the end
+        of the CURRENT trick (≤4 plies), oracle at the trick boundary;
+        same paired structure, most of the committee's lookahead, cost
+        between (a) and the committee.
+  Step 0 (offline, ~200 deals, ceiling_h2h replay machinery): at each
+  searched node compute (a) and (b) alongside the committee; report top-
+  card agreement with the 2-of-3 committee argmax and gap correlation,
+  against the committee's own replicate self-agreement (0.62 sign) as the
+  bar. If (b) ≥ bar at ≤1/5 the cost, the next corpus is 5x the rows at
+  paired-variance labels for the same compute, targets unchanged.
+  Independent lever: the oracle critic bounds every leaf; it trains on
+  search-free self-play outcomes and has not been scaled.
