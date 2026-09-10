@@ -4470,3 +4470,25 @@ schmear nodes where the E9 matrix put the largest headroom (t4-picker-
 lead +0.039) and where the tree's in-world continuation does the work.
 Early leads are the near-tie zone at any budget (bar 0.37). 64
 iterations is below the prior at every stratum.
+
+§20.13 ADDENDUM 19b — D2k read (early, first 10 shards; 2026-09-10 11:00)
++ primary-read amendment.
+  D2k_ep7 (2000 games @256, --lambda-ret 10; epoch 7 fallback; probes
+  called-suit 44-51, partner 97-99, t0 0-0.6):
+    vs iter11  −0.0030 ± 0.0027  (called −0.0111, jd +0.0052)
+    paired vs ret10_ep7 (twin @1024, same recipe) −0.0013 ± 0.0036 (−0.4σ)
+      → inside the pre-registered ±0.004 band: 256 IS FREE at equal rows.
+    D_bid −0.0015 ± 0.0012 (called −0.0065, jd +0.0035) → play by
+      subtraction ≈ −0.0015: parity, as every theta_1 arm.
+  Fit diagnostics vs the twin: noise floor 2.26e-4 vs 1.90e-4 (+19%),
+  prior top-agree 0.579 vs 0.588 — the expected noise signature only.
+  Bidding component across arms at lambda_ret 10: ret10 +0.0026, D2k
+  −0.0015 (called −0.0065) — still a ±0.005 variance term. AMENDMENT
+  (before any D4k/D8k result): the PRIMARY compounding read for each
+  curve arm is the play-only route C_play (bidding from iter11), se
+  ~0.0027; the full-checkpoint read stays as the secondary. pipeline_
+  curve.py relaunched with C_play per arm; D2k's C_play running.
+  Ops lesson (again): a pipeline script that calls the sharded h2h MUST
+  have an ``if __name__ == "__main__"`` guard — the first D2k C_play
+  launch lacked one, spawn workers re-imported it and respawned (load 57
+  within 3 min); killed by process group, no data lost.
