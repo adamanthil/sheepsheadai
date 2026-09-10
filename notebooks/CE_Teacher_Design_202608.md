@@ -4361,3 +4361,62 @@ Proposal, restated as a LABEL-SNR-PER-COMPUTE design, not a new target:
   paired-variance labels for the same compute, targets unchanged.
   Independent lever: the oracle critic bounds every leaf; it trains on
   search-free self-play outcomes and has not been scaled.
+
+§20.13 ADDENDUM 18 — STEP 0 RESULTS: the tree-free CRN evaluator FAILS;
+the 256-iteration committee is the cheap teacher (2026-09-09, 19:45 –
+21:05; runs/crn_probe_202609/: crn_probe.py, crn_analysis.py,
+crn_budget.py + jsonl/logs). 295 unforced hero play nodes on 80 hands
+(40 CRN deals/mode, hero = iter11 argmax acting, anchor = iter11), the
+1024-iteration R=3 committee at every node alongside:
+  crn_det   24 belief-pool worlds (scheme-B weights, ESS ~10), every
+            legal root action continued on every world with the policy
+            ARGMAX to the teacher's own leaf (one further observer play,
+            oracle bootstrap at the next play decision / terminal score,
+            same discount clock);  3.8 s/node vs 60.2 s.
+  crn_samp  same worlds, SAMPLED continuation (1 draw/world);  3.9 s.
+  and, on the SAME nodes, the R=3 committee at 256 and 64 iterations.
+
+    predictor of a 1024 replicate's top card    pi_gumbel   by root Q   wall
+    another 1024 replicate (the BAR)              0.633       0.631     60.2 s
+    policy argmax                                 0.598       0.581      —
+    crn_det                                       0.538       0.532      3.8 s
+    crn_samp                                      0.519       0.516      3.9 s
+    committee @256 (replicate)                    0.612         —       14.5 s
+    committee @64  (replicate)                    0.568         —        3.8 s
+
+    where the 1024 committee DEVIATES from the policy (n=79):
+      crn_det ranks the winner above the policy card   0.45   (coin flip)
+      committee@256: same winner 0.63; Q ranks winner > policy 0.71
+      committee@64 : same winner 0.38; Q ranks winner > policy 0.61
+    the low-budget evaluator's OWN deviations confirmed by 1024:
+      crn_det 0.37 | @256 0.62 | @64 0.43
+    crn_det Q vs 1024 mean Q: pooled Pearson 0.91 (centered per node),
+      per-node Spearman 0.50 — agrees on the clearly-bad cards, diverges
+      among the close candidates, which is where the tilt lives.
+    committee-confidence terciles (1024 mean-Q gap): high tercile bar
+      0.90, crn_det 0.745, policy 0.789; crn_det's OWN confident nodes
+      (paired z ≥ 2, n=77): 0.60 vs policy 0.64 → BIAS, not noise.
+
+Reads.
+  1. Rung (a) is falsified: a belief average over 24 worlds with policy
+     continuation and an oracle leaf ~2 tricks out predicts the committee
+     WORSE than the prior does, on both readouts, and its deviations are
+     wrong by the committee's Q 63% of the time. Confidence does not
+     rescue it. The in-tree opponent responses and tree-optimised observer
+     plays inside each world carry the discrimination among close cards;
+     the oracle leaf alone does not. (Operator's point in addendum 17 A1
+     confirmed: the depth-6 tree does real work.)
+  2. The cheap teacher is the same tree at 256 iterations: 0.612 vs the
+     0.633 bar (Δ −0.02, ~1σ at n≈870 comparisons), winner agreement
+     0.775, deviations confirmed at the 1024's own self-rate (0.62), at
+     4.1x lower cost. 64 iterations is below the policy prior (0.568) and
+     its deviations are mostly wrong (0.43): the knee is between 64 and
+     256. Replicate self-agreement does NOT discriminate budgets (@256
+     0.557, @64 0.555); agreement with the 1024 committee does.
+  3. Consequence for the data question (addendum 17): the next corpus
+     should be searched at 256 iterations, R=3 — ~4x the rows for the
+     same compute, targets unchanged (the precision weights absorb the
+     higher per-row noise). That is the learning-curve corpus: ~8000
+     games / ~140k override rows, distilled with the bidding-tax fix
+     (--lambda-ret 10 or theta_0 bidding routing), certed at 8000 deals
+     vs iter11. Pre-registration to follow.
