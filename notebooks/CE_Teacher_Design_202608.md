@@ -4580,3 +4580,37 @@ of E8 is multiplicative REALIZATION: a chained payoff needs both
 adoptions (p² at ~0.3 adoption ≈ 0.1), which collapses into the per-node
 adoption/precision limit above, and predicts a small (not large) acting-
 mode effect — as measured (+0.0055, addendum 16).
+
+§20.13 ADDENDUM 22 — U1024 read (2026-09-11, 13:30): 1024-iteration
+labels at 91k rows do NOT rescue the curve; bidding drift dominates the
+full read.
+    U1024_ep3 (twin + pooled @1024, 38% committee-acted; epoch 3 by
+    plateau rule, holdout target KL −9%; called-suit probe 49.8 ± 1.2):
+      full   −0.0142 ± 0.0038 (called −0.0209, jd −0.0075, leaster −0.037)
+      D_bid  −0.0100 ± 0.0023 (called −0.0160)   ← bidding drift
+      C_play −0.0050 ± 0.0030 (called −0.0074, jd −0.0026)  ← PRIMARY
+      paired C_play vs D4k / D2k / ca_ep3 / student: see log line below
+      paired full vs D4k −0.0111 ± 0.0041 (−2.7σ) — almost all bidding.
+Reads.
+  1. Pre-registered pass (C_play ≥ +0.005 over D4k at 2σ) FAILS; the
+     play-only read at 91k rows @1024 sits at −0.005, within noise of
+     D4k's −0.0038 @256/70k and of every theta_1 arm. Label budget is
+     NOT the limiter; the stall is row-count-invariant at both budgets.
+     Caveat: 62% student-acted rows (~−0.005 by addendum 16), so a
+     pure committee-acted 1024 corpus at this size could read ~0 —
+     parity, not compounding.
+  2. The bidding component is now measured at +0.0036, −0.0057,
+     +0.0026, −0.0015, +0.0006, −0.0100 across arms with lambda_ret 1
+     or 10: uncontrolled variance, largest here. lambda_ret does not
+     pin it. Structural fix for any shipped checkpoint from this phase:
+     route bidding through theta_0 (HeadRoutedAgent), since bidding is
+     never taught; for the program's reads, C_play stays primary.
+  3. Leaster −0.037 reproduces the pooled-corpus leaster pathology
+     (§20.13 item 3: bilinear-only checkpoints read negative on leaster
+     hands); D2k/D4k (committee-acted corpus D) read +0.011/+0.014 on
+     leasters — the student-acted pooled rows are the carrier.
+    paired C_play: U1024 − D4k −0.0012 ± 0.0031; − D2k −0.0034 ± 0.0031;
+    − ca_ep3 −0.0056 ± 0.0031 (−1.8σ); − student_ep3 −0.0004 ± 0.0031.
+    On the play route U1024 is indistinguishable from the student-acted
+    twin arm and ~0.005 below the committee-acted one — the acting-mode
+    price of addendum 16, exactly.
