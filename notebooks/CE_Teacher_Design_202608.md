@@ -4614,3 +4614,21 @@ Reads.
     On the play route U1024 is indistinguishable from the student-acted
     twin arm and ~0.005 below the committee-acted one — the acting-mode
     price of addendum 16, exactly.
+
+§20.13 ADDENDUM 23 — PRE-REGISTRATION (2026-09-11, 14:30; operator-
+approved): optimisation-at-scale arm + pooled power read, queued after
+D8k (pipeline_d8k_t3.py).
+  D8k_t3   same D8k targets (140k rows @256), distill with THREE unfrozen
+           trunk epochs at lr 3e-5 then bilinear-only head epochs 4-7 at
+           1e-3, --lambda-ret 10. Tests the "trunk saw each row once at
+           a few hundred small steps" bottleneck at a row count where
+           the 35k-row 3-epoch overfit (trunk_ep3, addendum 11) need
+           not recur. Reads: C_play vs iter11 and paired vs D8k (standard
+           recipe). PASS: C_play ≥ D8k + 0.005 at 2σ ⇒ optimisation was a
+           binding bottleneck; else rows and steps are both exhausted at
+           this recipe.
+  POWER    pooled play-only route over D2k/D4k/D8k (same seed-42 deals):
+           se ≈ 0.0016. Reads: ≥ +0.003 at 2σ ⇒ the true iteration-2
+           gain is small-positive (compounds slowly: ~+0.03 per 10
+           iterations); ≤ 0 ⇒ the standard recipe at theta_1 does not
+           compound at any tested scale.
