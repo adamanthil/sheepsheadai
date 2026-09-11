@@ -4531,3 +4531,21 @@ acting mode, row selection, budget nor 4x rows compounds; the distill
 phase's deliverable is conventions + prior/leaf quality, and skill
 above theta_1 comes from deploy-time search (addendum 17) or from a
 teacher whose per-row signal is not the committee's argmax tilt.
+
+§20.13 ADDENDUM 21 — PRE-REGISTRATION: U1024 (2026-09-11, launched).
+Operator question: is 256-iteration label quality the limiter? Existing-
+data test: pool the two 1024-iteration theta_1 corpora (twin iter2c,
+committee-acted, 34.7k searched rows; pooled iter2+iter2b, student-
+acted, 56.2k) → ~91k rows @1024, ~1.3x D4k's rows and 2.6x the twin's.
+Same recipe as the curve arms; cert 8000 vs iter11; paired vs D4k
+(70k @256), D2k, ret10; D_bid + C_play. Reads: C_play ≥ +0.005 over
+D4k's −0.0038 at 2σ ⇒ label quality at 256 IS a limiter (the 1024 tree
+carries signal 256 loses); |Δ| < 0.004 ⇒ budget is not the limiter and
+the stall is row-count-invariant at both budgets. Caveat: mixed acting
+mode (38% committee-acted rows), which addendum 16 prices at ~+0.005 in
+favour of committee acting — U1024 is thus slightly handicapped vs a
+pure committee-acted 1024 corpus.
+Also queued as thought-tests (no compute yet): (a) joint-improvement
+ceiling — committee acting at a random half of nodes; (b) DAgger-style
+aggregation — distill theta_0 on corpus q ∪ corpus D; (c) oracle-critic
+retrain + ceiling re-read; (d) rich-feature realizability probe.
