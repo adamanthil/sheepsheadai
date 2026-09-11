@@ -4549,3 +4549,34 @@ Also queued as thought-tests (no compute yet): (a) joint-improvement
 ceiling — committee acting at a random half of nodes; (b) DAgger-style
 aggregation — distill theta_0 on corpus q ∪ corpus D; (c) oracle-critic
 retrain + ceiling re-read; (d) rich-feature realizability probe.
+
+§20.13 ADDENDUM 20b — held-out ADOPTION for the curve arms + a correction
+to the joint-improvement framing (2026-09-11, 09:30; realization_all.py,
+holdout games replayed through iter11 and the arm; "adopted" = arm
+argmax equals the target's argmax at rows where target argmax != iter11
+argmax; precision = of the arm's moves, fraction landing on the target
+argmax; away = fraction leaving a target-agreed prior):
+
+    class            D2k adopted  moved  prec/away    D4k adopted  moved  prec/away
+    follow|defender     0.32       7%    0.50/0.47      0.36        8%    0.52/0.45
+    follow|partner      0.27       7%    0.42/0.58      0.22        8%    0.50/0.43
+    follow|picker       0.21       8%    0.42/0.56      0.18        8%    0.39/0.55
+    lead|defender       0.13       4%    0.35/0.65      0.31        8%    0.42/0.47
+    lead|partner        0.30       9%    0.64/0.21      0.38       15%    0.51/0.42
+    lead|picker         0.20       5%    0.50/0.50      0.14        6%    0.30/0.67
+    (iteration 1: adoption 53%, precision ~2:1; ca_ep3: 19-41%, ~1:1)
+
+Doubling rows raised adoption at defender leads (0.13 → 0.31) and
+partner leads (0.30 → 0.38) but precision stayed ~1:1 everywhere — the
+student moves MORE and is still half wrong by the label. Rows buy
+movement, not precision.
+Correction (operator, 09:15): the corpus is generated with committee
+acting at every searched node (act_frac 1.0, p = 1.0 at eligible play
+nodes), so the follow-up states after a committee deviation ARE in the
+corpus with their own labels — there is no continuation-coverage gap,
+and the "half-the-nodes ceiling" test of addendum 21 would measure
+superadditivity of the committee's edge, not a data gap. What survives
+of E8 is multiplicative REALIZATION: a chained payoff needs both
+adoptions (p² at ~0.3 adoption ≈ 0.1), which collapses into the per-node
+adoption/precision limit above, and predicts a small (not large) acting-
+mode effect — as measured (+0.0055, addendum 16).
