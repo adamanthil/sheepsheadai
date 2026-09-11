@@ -4492,3 +4492,42 @@ iterations is below the prior at every stratum.
   have an ``if __name__ == "__main__"`` guard — the first D2k C_play
   launch lacked one, spawn workers re-imported it and respawned (load 57
   within 3 min); killed by process group, no data lost.
+
+§20.13 ADDENDUM 20 — LEARNING CURVE, first two points (2026-09-11,
+00:40; D8k pending the corpus, ~4400/8000 games). Both arms standing
+recipe + --lambda-ret 10, epoch 7 (D4k: genuine holdout-KL best, −9%
+monotone; D2k: fallback), 8000 deals/mode vs iter11, seed-42 deals:
+
+    arm    rows(games)  full read           called    jd      D_bid            C_play (PRIMARY)
+    ret10  35k (2000@1024) −0.0017 ± 0.0033  −0.0036  +0.0002  +0.0026 ± 0.0022  (by subtraction ≈ −0.004)
+    D2k    35k (2000@256)  −0.0030 ± 0.0027  −0.0111  +0.0052  −0.0015 ± 0.0012  −0.0016 ± 0.0025 (called −0.0043)
+    D4k    70k (4000@256)  −0.0031 ± 0.0031  −0.0078  +0.0016  +0.0006 ± 0.0017  −0.0038 ± 0.0027 (called −0.0090)
+    paired: D4k − D2k (C_play) −0.0022 ± 0.0029; D4k − ret10 (full)
+    −0.0015 ± 0.0035; D4k − ca_ep3 (C_play) −0.0043 ± 0.0030 (−1.4σ).
+    Conventions (4-seed called-suit): iter11 45.4, D2k 47.8 ± 1.5, D4k
+    46.7 ± 1.7 (pooled_ep4 @1024/56k rows: 53.0 — not reproduced);
+    partner 98, t0-trump 0.35-0.4 everywhere.
+
+Reads.
+  1. Doubling rows at 256 moved NOTHING: play-only −0.0016 → −0.0038,
+     full −0.0030 → −0.0031, called mode still the losing mode. The
+     slope of the learning curve through 70k rows is ≤ 0 within ±0.003.
+     The bidding fix held (D_bid +0.0006), so this is a clean play read.
+  2. The fit got BETTER with rows (holdout target KL −9% monotone, best
+     epoch 7 genuine; retention KL 0.008 vs 0.020) while EV did not —
+     holdout target KL is confirmed NOT to track EV (addendum 14).
+  3. The one theta_1 arm with a convention gain (pooled_ep4, 53.0) was
+     56k rows at 1024 iterations; 70k rows at 256 gives 46.7. Consistent
+     with E8/E9: the convention-lead edge exists under search-improved
+     continuations, which a 256 tree resolves less often (addendum 18b:
+     the budget's agreement cost sits at late follows, but the label
+     SNR at early leads is the near-tie zone at any budget).
+Pre-registered bar for D8k: COMPOUNDS ≥ +0.010 CI > 0. On the two
+points so far the expected D8k read is ≈ −0.003 ± 0.003; a pass would
+require a slope change of ~+0.013 between 70k and 140k rows that the
+35k→70k step gave no sign of. If D8k reads STALL (< +0.005), the
+§20.13 decision tree closes: at theta_1, neither targets, schedule,
+acting mode, row selection, budget nor 4x rows compounds; the distill
+phase's deliverable is conventions + prior/leaf quality, and skill
+above theta_1 comes from deploy-time search (addendum 17) or from a
+teacher whose per-row signal is not the committee's argmax tilt.
