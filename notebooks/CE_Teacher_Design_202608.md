@@ -4674,3 +4674,40 @@ Instrument notes: the bidding component ranged −0.0023..+0.0006 on the
 three D arms (λ_ret 10) and −0.0100 on U1024 — variance, unpinned;
 leaster reads swing −0.033..+0.014 across arms at n≈5000 hands (se
 0.015) — noise-grade, not read.
+
+§20.13 ADDENDUM 25 — D8k_t3 read: optimisation at scale is the first
+arm at-or-above parity on every read, but the pre-registered pass FAILS
+(2026-09-12, 04:45).
+  D8k_t3 (D8k targets, 140k rows @256; trunk epochs 1-3 @3e-5, head
+  epochs 4-7 @1e-3, --lambda-ret 10; epoch 7 genuine best; holdout
+  target KL −21% (program best; D8k −12%), retention KL 0.0015;
+  called-suit 47.2 ± 0.5, partner 98.6, t0 0.3):
+    full   +0.0034 ± 0.0028 (called +0.0028, jd +0.0040)  ← first theta_1
+           arm positive in BOTH modes on the full checkpoint
+    D_bid  +0.0014 ± 0.0008
+    C_play +0.0024 ± 0.0027 (called +0.0023, jd +0.0025)  ← PRIMARY
+    paired full:   − D8k +0.0063 ± 0.0030 (2.1σ); − D4k +0.0066 (2.0σ);
+                   − ret10 +0.0051 ± 0.0036
+    paired C_play: − D8k +0.0022 ± 0.0027 (0.8σ); − D4k +0.0062 ± 0.0028
+                   (2.2σ); − D2k +0.0040; − ca_ep3 +0.0019; − student
+                   +0.0071 (2.3σ); − trunk_ep3 +0.0077 (2.2σ); − U1024
+                   +0.0074 (2.4σ).
+Reads.
+  1. Pass rule (C_play ≥ D8k + 0.005 at 2σ): FAILS — +0.0022 ± 0.0027.
+     Of the +0.0063 full-checkpoint gap to D8k, ~+0.0037 is the bidding
+     component (D8k −0.0023 → +0.0014) and ~+0.0022 is play.
+  2. Nonetheless the best theta_1 checkpoint of the program: every read
+     positive, both modes, bidding intact, conventions held (47.2 vs
+     44.5 for D8k), and the largest held-out target-KL reduction. Against
+     iter11 the play component is +0.0024 ± 0.0027 — a "small positive"
+     regime (≤ +0.008 at 2σ), not the +0.010 bar.
+  3. Mechanism reading: three passes at a third of the learning rate
+     let the trunk absorb the 140k-row signal without the collateral the
+     35k-row 3-epoch arm showed (trunk_ep3: play −0.0053). Rows and
+     optimisation are complementary — neither alone moved EV; together
+     they moved the fit a lot and EV a little. This is the first
+     evidence that the trunk CAN still learn from theta_1 labels; the
+     dose is the open question.
+Queued (addendum 26 pre-reg): D8k_t6 — six trunk epochs @3e-5 then
+head epochs 7-10, same targets; pass = C_play ≥ +0.005 vs iter11 at 2σ
+AND ≥ D8k_t3; harm line = C_play < D8k_t3 − 0.004 (over-fitting).
