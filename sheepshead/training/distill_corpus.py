@@ -210,22 +210,39 @@ def worker_init(init_args: dict) -> None:
     # league teacher's teacher_gamma=1.0).
     agent.gamma = 1.0
     iters = int(init_args["iters"])
+    # Per-class budget (CE_Teacher_Design §20.13 addendum 29): called-suit-
+    # eligible defender leads get their own committee budget (256 does not
+    # resolve the convention; 512-1024 does, and these cells are ~5% of
+    # searched nodes). Same teacher object when the budgets coincide.
+    iters_cs = int(init_args.get("iters_cs") or iters)
+    teacher = ISMCTSTeacher(
+        agent,
+        ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
+    )
+    teacher_cs = (
+        teacher
+        if iters_cs == iters
+        else ISMCTSTeacher(
+            agent,
+            ISMCTSConfig(
+                iters={h: iters_cs for h in ("pick", "partner", "bury", "play")}
+            ),
+        )
+    )
     _W.clear()
     _W.update(
         {
             "agent": agent,
-            "teacher": ISMCTSTeacher(
-                agent,
-                ISMCTSConfig(
-                    iters={h: iters for h in ("pick", "partner", "bury", "play")}
-                ),
-            ),
+            "teacher": teacher,
+            "teacher_cs": teacher_cs,
             "args": init_args,
         }
     )
 
 
-def _search_node(game, player, valid_actions, forced_public, det_rng, anchor):
+def _search_node(
+    game, player, valid_actions, forced_public, det_rng, anchor, teacher=None
+):
     """Run the committee, pool it (``CommitteeSummary``) and build the legacy
     CE target (base_prior = the act-time stash, the §16.6 zero-gradient
     abstention referent). Returns
@@ -238,11 +255,12 @@ def _search_node(game, player, valid_actions, forced_public, det_rng, anchor):
     )
 
     init_args = _W["args"]
+    teacher = teacher if teacher is not None else _W["teacher"]
     rngs = [
         random.Random(det_rng.getrandbits(64))
         for _ in range(int(init_args["replicates"]))
     ]
-    replicates = _W["teacher"].search_committee(
+    replicates = teacher.search_committee(
         game,
         player.position,
         list(forced_public),
@@ -260,8 +278,8 @@ def _search_node(game, player, valid_actions, forced_public, det_rng, anchor):
         return None, None, None, (top_pair, pair_diffs)
     target, info = tilt_summary_to_target(
         summary,
-        gumbel_c_visit=_W["teacher"].config.gumbel_c_visit,
-        gumbel_c_scale=_W["teacher"].config.gumbel_c_scale,
+        gumbel_c_visit=teacher.config.gumbel_c_visit,
+        gumbel_c_scale=teacher.config.gumbel_c_scale,
         base_prior=anchor,
     )
     return [float(x) for x in target], info, summary, (top_pair, pair_diffs)
@@ -381,6 +399,9 @@ def play_corpus_game(task: tuple) -> dict:
                                     forced_public,
                                     det_rng,
                                     anchor,
+                                    teacher=_W["teacher_cs"]
+                                    if cs_elig
+                                    else _W["teacher"],
                                 )
                             )
                             if target_list is None:
@@ -397,6 +418,11 @@ def play_corpus_game(task: tuple) -> dict:
                                 {
                                     "game": game_idx,
                                     "class": cls,
+                                    "iters": int(
+                                        init_args.get("iters_cs") or init_args["iters"]
+                                    )
+                                    if cs_elig
+                                    else int(init_args["iters"]),
                                     "n_valid": len(valid_actions),
                                     "w": info["w"] if info else None,
                                     "gap": info["gap"] if info else None,
@@ -560,6 +586,14 @@ def main() -> int:
     )
     ap.add_argument("--no-oracle", dest="collect_oracle", action="store_false")
     ap.add_argument("--iters", type=int, default=sc.teacher_iters)
+    ap.add_argument(
+        "--iters-cs",
+        type=int,
+        default=None,
+        help="committee budget at called-suit-eligible defender leads "
+        "(§20.13 addendum 29: 256 does not resolve the convention, 512-1024 "
+        "does; ~5%% of searched nodes). Default: same as --iters",
+    )
     ap.add_argument("--replicates", type=int, default=sc.teacher_replicates)
     ap.add_argument("--d-rollout", type=int, default=sc.teacher_d_rollout)
     ap.add_argument("--shrink-nu", type=float, default=sc.shrink_nu)
@@ -597,6 +631,7 @@ def main() -> int:
         "collect_oracle": args.collect_oracle,
         "alone_only": args.alone_only,
         "iters": args.iters,
+        "iters_cs": args.iters_cs,
         "replicates": args.replicates,
         "d_rollout": args.d_rollout,
         "shrink_nu": args.shrink_nu,
