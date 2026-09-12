@@ -4806,7 +4806,11 @@ STEP 1 — corpus (sheepshead.training.distill_corpus):
   --ckpt <theta_k>  --games 8000  --workers 8  --torch-threads 1
   --committee-act-frac 1.0            (committee acts at every resolved node;
                                        +0.0055 play vs student acting, add. 16)
-  --iters 256  --replicates 3  --d-rollout 1      (oracle leaves default)
+  --iters 256  --iters-cs 1024  --replicates 3  --d-rollout 1
+       (oracle leaves default; --iters-cs = committee budget at called-
+        suit-eligible defender leads, added 2026-09-12 per addendum 29:
+        256 does not resolve the convention, 512 is the knee, 1024 costs
+        ~+13% corpus time because these cells are ~5% of searched nodes)
   --p-base 1.0 --boost-lead 1.0 --boost-cs 1.5 --p-min 0.05 --p-max 1.0
   --shrink-nu 4.0 --shrink-s2-global 0.000695   (legacy row fields only)
   --node-telemetry <out>/nodes.jsonl  --routed-encoder mps  --seed <new>
@@ -4814,8 +4818,9 @@ STEP 1 — corpus (sheepshead.training.distill_corpus):
   searched, 66.8k override); 0.04-0.05 games/s on the M1 Max (~45 h).
   Budget note: 256 iterations = 1024's EV at equal rows (add. 19b, 22)
   at 4.1x lower cost; it does NOT install the called-suit convention
-  (44-48 vs 53 at 1024/56k rows) — avenue 1 (add. 28) is measuring the
-  per-cell budget that does.
+  (44-48 vs 53 at 1024/56k rows) — hence --iters-cs (add. 29). The
+  installed rate under this per-class budget is NOT yet measured (the
+  next corpus is the test).
 
 STEP 2 — fit (train_policy_iteration fit):
   --capacity adapter --bilinear --heteroscedastic --fit-epochs 200
