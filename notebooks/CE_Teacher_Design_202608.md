@@ -4806,11 +4806,15 @@ STEP 1 — corpus (sheepshead.training.distill_corpus):
   --ckpt <theta_k>  --games 8000  --workers 8  --torch-threads 1
   --committee-act-frac 1.0            (committee acts at every resolved node;
                                        +0.0055 play vs student acting, add. 16)
-  --iters 256  --iters-cs 1024  --replicates 3  --d-rollout 1
-       (oracle leaves default; --iters-cs = committee budget at called-
-        suit-eligible defender leads, added 2026-09-12 per addendum 29:
-        256 does not resolve the convention, 512 is the knee, 1024 costs
-        ~+13% corpus time because these cells are ~5% of searched nodes)
+  --iters 256  --iters-schedule "t0-lead:1024,t1-lead:512"
+  --replicates 3  --d-rollout 1          (oracle leaves default)
+       (trick-indexed lead budget, operator amendment to addendum 29,
+        2026-09-12: 256 does not resolve the lead conventions; t0 leads
+        want 1024 (probe t0 subset), t1 leads 512 (the knee); leads are
+        ~5.5% of searched nodes per trick, so this costs ~+22% search
+        time over all-256 and covers all three conventions plus the most
+        branching / farthest-from-terminal decisions without a cell-
+        specific special case)
   --p-base 1.0 --boost-lead 1.0 --boost-cs 1.5 --p-min 0.05 --p-max 1.0
   --shrink-nu 4.0 --shrink-s2-global 0.000695   (legacy row fields only)
   --node-telemetry <out>/nodes.jsonl  --routed-encoder mps  --seed <new>
@@ -4818,9 +4822,9 @@ STEP 1 — corpus (sheepshead.training.distill_corpus):
   searched, 66.8k override); 0.04-0.05 games/s on the M1 Max (~45 h).
   Budget note: 256 iterations = 1024's EV at equal rows (add. 19b, 22)
   at 4.1x lower cost; it does NOT install the called-suit convention
-  (44-48 vs 53 at 1024/56k rows) — hence --iters-cs (add. 29). The
-  installed rate under this per-class budget is NOT yet measured (the
-  next corpus is the test).
+  (44-48 vs 53 at 1024/56k rows) — hence the lead schedule (add. 29).
+  The installed rate under this schedule is NOT yet measured (the next
+  corpus is the test).
 
 STEP 2 — fit (train_policy_iteration fit):
   --capacity adapter --bilinear --heteroscedastic --fit-epochs 200
@@ -4937,3 +4941,17 @@ RECOMMENDATION (for the RC recipe): per-class committee budget —
   43.6% at these nodes, matching the ceiling's 60.6 vs 47.2 at all
   leads) at 256's cost, so the head phase can install the shift the
   pooled@1024 arm showed (53.0) without paying 4x on every node.
+
+§20.13 ADDENDUM 29b — operator amendment (2026-09-12, 13:00): per-cell
+special-casing replaced by a TRICK-INDEXED LEAD SCHEDULE — t0 leads 1024,
+t1 leads 512, everything else 256 (--iters-schedule "t0-lead:1024,
+t1-lead:512", commit replacing --iters-cs). Rationale: covers all three
+lead conventions (called-suit, partner-trump, no-trump defender lead)
+and puts compute at the most branching / farthest-from-terminal nodes;
+less biased than a cell filter and misses fewer sub-noise EV effects.
+Cost from corpus D's class shares (leads 5.5% of searched nodes per
+trick, follows ~14.5%): ×1.22 vs all-256 (cs-cells-only ×1.13; all leads
+at 1024 ×1.83; all 1024 ×4.0). Evidence: probe t0 subset favours 1024
+(59.1 vs 52.7 at 512); t1+ subset 512 ≥ 1024; E9 depth ladder qualified
+t0-defender-lead only at 1024/1. Smoke: t0 leads / t1 leads / others
+take 64 / 32 / 16 under a test schedule; telemetry carries the budget.
