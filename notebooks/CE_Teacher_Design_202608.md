@@ -4757,3 +4757,34 @@ D8k_t6; a theta_2 corpus would test whether +0.003 holds or decays),
 push dose/rows further, pursue aggregation / oracle-critic / aggregate-
 then-teach targets, or pin conventions-plus-parity and take skill from
 search.
+
+§20.13 ADDENDUM 28 — PRE-REGISTRATION (2026-09-12, 10:30; operator
+direction): two avenues toward a refined policy-iteration recipe for the
+release-candidate branch (perceiver-recall restart).
+AVENUE 1 — the called-suit budget knee (runs/budget_cs_probe_202609/).
+  At every called-suit-eligible defender lead (ceiling_h2h cell
+  definition) in 60 called-ace deals × 5 hero seats (hero = iter11
+  argmax; shared trajectory), R=3 committees at 256 / 384 / 512 / 768 /
+  1024 on the SAME node. Per budget: resolution rate, ACTED called-suit
+  rate (winner else policy; the ceiling's readout, 60.6% at 1024 vs
+  policy 47), winner-called-suit rate, winner agreement with the 1024
+  winner, replicate bar, mean Q direction (best called-suit − best
+  other), seconds/node. Reads: the cheapest budget whose acted rate is
+  within 3 pts of 1024's and whose Q direction has the same sign at 2σ
+  becomes the teacher budget AT THESE CELLS (per-class iters; the
+  generator's boost schedule already keys on the class). Expect ~200
+  nodes, ~90 min.
+AVENUE 2 — aggregation (pipeline_agg.py; optimised recipe; after the
+  probe): A2a = D ∪ twin (175k committee-acted rows, 256 + 1024 mixed);
+  A2b = D ∪ q re-anchored to theta_1 (reanchor_corpus.py replays q's
+  episodes through iter11 and rewrites anchor_probs — smoke: 66% of
+  anchored rows moved > 0.01, search Q kept). Reads (C_play, paired vs
+  D8k_t6 +0.0038): A2a ≥ +0.004 ⇒ same-gen volume/1024-mix helps (and
+  read its called-suit probe vs D8k_t6's 45.6); A2b ≥ +0.004 ⇒ the
+  AlphaZero window helps and theta_2's corpus should be trained with D
+  retained; A2b ≤ −0.004 ⇒ stale-generation evidence hurts at this
+  re-anchoring. Cost: ~5 h each, sequential.
+Recipe elements already pinned for the RC branch: committee acting,
+--lambda-ret 10 + theta_0 bidding routing for deployment, ≥ 3 trunk
+epochs @3e-5 then bilinear-only head epochs, 256 iterations except at
+the convention cells (avenue 1 decides), C_play as the primary read.
