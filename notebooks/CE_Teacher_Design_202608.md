@@ -4788,3 +4788,85 @@ Recipe elements already pinned for the RC branch: committee acting,
 --lambda-ret 10 + theta_0 bidding routing for deployment, ≥ 3 trunk
 epochs @3e-5 then bilinear-only head epochs, 256 iterations except at
 the convention cells (avenue 1 decides), C_play as the primary read.
+
+## §20.14 COMPOUNDING BASELINE RECIPE (pinned 2026-09-12)
+
+The policy-iteration step that measurably compounds at theta_1 (addenda
+25-27: D8k_t6 play-only +0.0038 ± 0.0019 vs iter11 over 16k deals, both
+modes positive, bidding intact, conventions held). Every element below is
+the value actually run; deviations tested and rejected are listed at the
+end. This is the baseline any refinement (addendum 28 avenues) is read
+against.
+
+STEP 0 — theta_k.  A checkpoint with an oracle critic (CTDE head) and the
+  bilinear play pointer (§20.9). Iteration 1 started from the 8M league
+  seed; iteration 2 from iter11/distill_epoch7.pt.
+
+STEP 1 — corpus (sheepshead.training.distill_corpus):
+  --ckpt <theta_k>  --games 8000  --workers 8  --torch-threads 1
+  --committee-act-frac 1.0            (committee acts at every resolved node;
+                                       +0.0055 play vs student acting, add. 16)
+  --iters 256  --replicates 3  --d-rollout 1      (oracle leaves default)
+  --p-base 1.0 --boost-lead 1.0 --boost-cs 1.5 --p-min 0.05 --p-max 1.0
+  --shrink-nu 4.0 --shrink-s2-global 0.000695   (legacy row fields only)
+  --node-telemetry <out>/nodes.jsonl  --routed-encoder mps  --seed <new>
+  Yield: ~17 searched / ~8.3 override rows per game (8000 games → 137.6k
+  searched, 66.8k override); 0.04-0.05 games/s on the M1 Max (~45 h).
+  Budget note: 256 iterations = 1024's EV at equal rows (add. 19b, 22)
+  at 4.1x lower cost; it does NOT install the called-suit convention
+  (44-48 vs 53 at 1024/56k rows) — avenue 1 (add. 28) is measuring the
+  per-cell budget that does.
+
+STEP 2 — fit (train_policy_iteration fit):
+  --capacity adapter --bilinear --heteroscedastic --fit-epochs 200
+  --patience 25   (10% game-level holdout, seed 0; log-prior covariate on)
+
+STEP 3 — targets (train_policy_iteration target):
+  --variance-mode class --variance-rows all --weight-mode precision
+  --weight-max 5   (kappa 1, tilt clip ±8; Fay-Herriot blend per class)
+
+STEP 4 — distill (train_policy_iteration distill), THE CHANGE THAT MADE
+  IT COMPOUND:
+  --epochs 7  --freeze-epochs 4,5,6,7  --bilinear-only-frozen
+  --lr 3e-5        (trunk + full actor, epochs 1-3; was 1 epoch @1e-4)
+  --head-lr 1e-3   (bilinear pointer only, epochs 4-7)
+  --lambda-ce 1  --lambda-ret 10   (retention KL ×10: bidding/unsearched
+                                   rows; halves the bidding drift, does
+                                   not pin it)
+  oracle/value aux on (default).
+  Dose ladder on identical 140k targets (play-only vs theta_k): 1 epoch
+  @1e-4 +0.0002 | 3 @3e-5 +0.0024 | 6 @3e-5 +0.0043 (6 epochs: --epochs
+  10 --freeze-epochs 7,8,9,10). Three-epoch collateral seen at 35k rows
+  (trunk_ep3, −0.0053) does not recur at 140k rows at 3e-5.
+  Selection: holdout-target-KL best (plateau rule) with fallback to the
+  last epoch; NOTE holdout KL does not track EV (add. 14, 20) — every
+  optimised arm selected its last epoch.
+
+STEP 5 — certification (all reads vs theta_k):
+  greedy_health_probe 4 × n=1000 (called-suit, partner-trump, t0-trump,
+  spread; pick/leaster rates are deal noise, add. 14 C2);
+  h2h_duplicate 8000 deals/mode (sharded, ~17 min);
+  PRIMARY: head-routed C_play (bidding from theta_k, leads + follows from
+  the candidate) — the bidding component is a ±0.005 variance term that
+  lambda_ret does not pin (add. 22, 26); D_bid once as the check;
+  paired per-deal reads against the previous candidates on the seed-42
+  deals; a seed-43 replicate when a read sits near 2σ.
+
+STEP 6 — deployment / next theta_k:
+  play (lead + follow heads, trunk) from theta_{k+1}; BIDDING routed from
+  the last checkpoint whose bidding was trained (HeadRoutedAgent), since
+  this phase never teaches bidding and each trunk epoch perturbs it.
+  theta_{k+1} = D8k_t6-style checkpoint is the next corpus's --ckpt.
+
+MEASURED: iteration 1 (standard recipe, 1024, 51.7k rows): full +0.0141
+± 0.0036, play +0.0107 ± 0.0032. Iteration 2 (this recipe, 256, 140k
+rows): play +0.0038 ± 0.0019 (t6), +0.0022 ± 0.0019 (t3); full +0.0031.
+Exchange rate ≈ +0.003-0.004 play per ~50 machine-hours; the deploy-time
+search ceiling over the same policy is +0.166.
+
+REJECTED at theta_1 (each read at 8000 deals): global / gamma=1 / kappa
+0.5 targets; ep1-only, 3 epochs @1e-4 at 35k rows, head-only, lambda_ret
+1 (bidding tax); student acting; top-z row selection; 64-iteration
+committee; tree-free CRN oracle evaluator; the student-acted pooled
+corpus in any union (leaster pathology); rows alone (35k→140k flat) and
+budget alone (256 vs 1024 at equal rows) without the trunk-epoch change.
