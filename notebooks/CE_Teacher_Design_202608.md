@@ -4865,6 +4865,18 @@ STEP 6 — deployment / next theta_k (amended 2026-09-12, operator):
   the ±0.0015 bidding variance from the compounding signal, not because
   routing is needed at deploy.
 
+PLANNED, NOT IN THE BASELINE (operator, 2026-09-12): between policy-
+  iteration steps, a policy-gradient phase with the PLAY heads pinned
+  that trains the bidding heads (pick / partner / bury / alone) and the
+  value heads on fresh on-policy play — the retention-branch PG phase
+  (training-program-redesign trainer phases; built, unrun in this
+  lineage). Purpose: bidding is only retention-anchored here and the
+  value stream only sees corpus outcomes, so both can stagnate or drift
+  across iterations; the PG phase re-grounds them without touching the
+  distilled play. Sequencing decision: refine the policy-iteration step
+  first (addendum 28 avenues), then add this phase when the recipe moves
+  to the release-candidate branch.
+
 MEASURED: iteration 1 (standard recipe, 1024, 51.7k rows): full +0.0141
 ± 0.0036, play +0.0107 ± 0.0032. Iteration 2 (this recipe, 256, 140k
 rows): play +0.0038 ± 0.0019 (t6), +0.0022 ± 0.0019 (t3); full +0.0031.
