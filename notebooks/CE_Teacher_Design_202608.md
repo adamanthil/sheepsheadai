@@ -4711,3 +4711,27 @@ Reads.
 Queued (addendum 26 pre-reg): D8k_t6 — six trunk epochs @3e-5 then
 head epochs 7-10, same targets; pass = C_play ≥ +0.005 vs iter11 at 2σ
 AND ≥ D8k_t3; harm line = C_play < D8k_t3 − 0.004 (over-fitting).
+
+§20.13 ADDENDUM 26 — D8k_t6 dose read (2026-09-12, 08:15): flat vs t3
+on the paired read; the optimised recipe sits in a small-positive regime.
+  D8k_t6 (six trunk epochs @3e-5, head epochs 7-10; epoch 10 genuine
+  best; holdout target KL −23% (t3 −21%); retention KL 0.0026;
+  called-suit 45.6):
+    full   +0.0031 ± 0.0030 (called −0.0015, jd +0.0078)
+    D_bid  −0.0005 ± 0.0013 (called −0.0043, jd +0.0034)
+    C_play +0.0043 ± 0.0028 (called +0.0027, jd +0.0059)
+    paired full:   − t3 −0.0003 ± 0.0027; − D8k +0.0060 ± 0.0033
+    paired C_play: − t3 +0.0019 ± 0.0024; − D8k +0.0042 ± 0.0029;
+                   − D4k +0.0081 ± 0.0029 (2.8σ); − D2k +0.0060 (2.0σ)
+    pooled t3+t6 C_play vs iter11: +0.0034 ± 0.0025 (1.4σ)
+  Trunk-dose ladder on the same 140k targets (C_play vs iter11):
+    1 epoch @1e-4  +0.0002 | 3 @3e-5  +0.0024 | 6 @3e-5  +0.0043
+Reads: pass (C_play ≥ +0.005 vs iter11 at 2σ) FAILS; harm line not hit.
+The ladder is monotone but each step is inside one sigma; the best
+estimate of the optimised recipe's iteration-2 play gain is +0.003..
++0.004 with a 2σ upper bound near +0.009. This is the "small positive"
+regime the POWER read (addendum 24) could not resolve at the standard
+recipe. A seed-43 C_play replicate for t3 and t6 is running (pooled 2
+arms × 2 seeds, se ≈ 0.0018) to separate small-positive from zero.
+Cost accounting: this iteration = ~45 h corpus + ~5 h distill/cert for
+≈ +0.004 play; the deploy-time search ceiling remains +0.166.
