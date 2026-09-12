@@ -210,34 +210,56 @@ def worker_init(init_args: dict) -> None:
     # league teacher's teacher_gamma=1.0).
     agent.gamma = 1.0
     iters = int(init_args["iters"])
-    # Per-class budget (CE_Teacher_Design §20.13 addendum 29): called-suit-
-    # eligible defender leads get their own committee budget (256 does not
-    # resolve the convention; 512-1024 does, and these cells are ~5% of
-    # searched nodes). Same teacher object when the budgets coincide.
-    iters_cs = int(init_args.get("iters_cs") or iters)
-    teacher = ISMCTSTeacher(
-        agent,
-        ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
-    )
-    teacher_cs = (
-        teacher
-        if iters_cs == iters
-        else ISMCTSTeacher(
+    # Trick-indexed committee budget (CE_Teacher_Design §20.13 addendum 29 +
+    # operator amendment): lead nodes at listed tricks get their own budget
+    # (t0 leads 1024, t1 leads 512 in the pinned recipe — the convention
+    # cells plus the most branching / farthest-from-terminal decisions);
+    # everything else runs at --iters. One teacher instance per distinct
+    # budget; the trick-indexed rollout-depth schedule is the precedent.
+    schedule = parse_iters_schedule(init_args.get("iters_schedule"))
+    teachers = {
+        budget: ISMCTSTeacher(
             agent,
             ISMCTSConfig(
-                iters={h: iters_cs for h in ("pick", "partner", "bury", "play")}
+                iters={h: budget for h in ("pick", "partner", "bury", "play")}
             ),
         )
-    )
+        for budget in {iters, *schedule.values()}
+    }
     _W.clear()
     _W.update(
         {
             "agent": agent,
-            "teacher": teacher,
-            "teacher_cs": teacher_cs,
+            "teacher": teachers[iters],
+            "teachers": teachers,
+            "schedule": schedule,
             "args": init_args,
         }
     )
+
+
+def parse_iters_schedule(spec) -> dict:
+    """``"t0-lead:1024,t1-lead:512"`` -> ``{(0, True): 1024, (1, True): 512}``,
+    keyed by (trick, is_lead). Empty/None -> {} (every node at --iters)."""
+    out: dict = {}
+    if not spec:
+        return out
+    for item in str(spec).split(","):
+        item = item.strip()
+        if not item:
+            continue
+        key, budget = item.split(":")
+        trick_s, kind = key.strip().split("-")
+        if not trick_s.startswith("t") or kind not in ("lead", "follow"):
+            raise SystemExit(f"bad --iters-schedule entry {item!r}")
+        out[(int(trick_s[1:]), kind == "lead")] = int(budget)
+    return out
+
+
+def teacher_for_node(trick: int, is_lead: bool):
+    """The committee teacher for a play node under the trick-indexed schedule."""
+    budget = _W["schedule"].get((int(trick), bool(is_lead)))
+    return _W["teachers"][budget] if budget is not None else _W["teacher"]
 
 
 def _search_node(
@@ -399,9 +421,9 @@ def play_corpus_game(task: tuple) -> dict:
                                     forced_public,
                                     det_rng,
                                     anchor,
-                                    teacher=_W["teacher_cs"]
-                                    if cs_elig
-                                    else _W["teacher"],
+                                    teacher=teacher_for_node(
+                                        game.current_trick, is_lead
+                                    ),
                                 )
                             )
                             if target_list is None:
@@ -419,10 +441,10 @@ def play_corpus_game(task: tuple) -> dict:
                                     "game": game_idx,
                                     "class": cls,
                                     "iters": int(
-                                        init_args.get("iters_cs") or init_args["iters"]
-                                    )
-                                    if cs_elig
-                                    else int(init_args["iters"]),
+                                        teacher_for_node(
+                                            game.current_trick, is_lead
+                                        ).config.iters["play"]
+                                    ),
                                     "n_valid": len(valid_actions),
                                     "w": info["w"] if info else None,
                                     "gap": info["gap"] if info else None,
@@ -587,12 +609,13 @@ def main() -> int:
     ap.add_argument("--no-oracle", dest="collect_oracle", action="store_false")
     ap.add_argument("--iters", type=int, default=sc.teacher_iters)
     ap.add_argument(
-        "--iters-cs",
-        type=int,
+        "--iters-schedule",
         default=None,
-        help="committee budget at called-suit-eligible defender leads "
-        "(§20.13 addendum 29: 256 does not resolve the convention, 512-1024 "
-        "does; ~5%% of searched nodes). Default: same as --iters",
+        help="trick-indexed committee budget for LEAD/FOLLOW nodes, e.g. "
+        "'t0-lead:1024,t1-lead:512' (§20.13 addendum 29 + amendment: 256 does "
+        "not resolve the lead conventions; t0 leads want 1024, t1 leads 512; "
+        "leads are ~5.5%% of searched nodes per trick, so this costs ~+22%%). "
+        "Unlisted nodes run at --iters",
     )
     ap.add_argument("--replicates", type=int, default=sc.teacher_replicates)
     ap.add_argument("--d-rollout", type=int, default=sc.teacher_d_rollout)
@@ -631,7 +654,7 @@ def main() -> int:
         "collect_oracle": args.collect_oracle,
         "alone_only": args.alone_only,
         "iters": args.iters,
-        "iters_cs": args.iters_cs,
+        "iters_schedule": args.iters_schedule,
         "replicates": args.replicates,
         "d_rollout": args.d_rollout,
         "shrink_nu": args.shrink_nu,
