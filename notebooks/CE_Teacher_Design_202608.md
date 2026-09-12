@@ -4852,11 +4852,18 @@ STEP 5 — certification (all reads vs theta_k):
   paired per-deal reads against the previous candidates on the seed-42
   deals; a seed-43 replicate when a read sits near 2σ.
 
-STEP 6 — deployment / next theta_k:
-  play (lead + follow heads, trunk) from theta_{k+1}; BIDDING routed from
-  the last checkpoint whose bidding was trained (HeadRoutedAgent), since
-  this phase never teaches bidding and each trunk epoch perturbs it.
-  theta_{k+1} = D8k_t6-style checkpoint is the next corpus's --ckpt.
+STEP 6 — deployment / next theta_k (amended 2026-09-12, operator):
+  SINGLE NETWORK. theta_{k+1} ships and seeds the next corpus as-is —
+  play AND bidding. Under this recipe the bidding component is neutral
+  (D8k_t3 +0.0014 ± 0.0008, D8k_t6 −0.0005 ± 0.0013; iteration 1's trunk
+  epoch IMPROVED bidding, +0.0036 vs the seed); the drift that motivated
+  head routing came from lambda_ret 1 (−0.0057) and the student-acted
+  union (−0.0100), neither of which is in the recipe. The D_bid route
+  stays in the cert as a per-iteration GUARD: a read below −0.003 at 2σ
+  flags the iteration (lower trunk lr / reject) before it becomes
+  theta_{k+1}. C_play remains the primary read only because it removes
+  the ±0.0015 bidding variance from the compounding signal, not because
+  routing is needed at deploy.
 
 MEASURED: iteration 1 (standard recipe, 1024, 51.7k rows): full +0.0141
 ± 0.0036, play +0.0107 ± 0.0032. Iteration 2 (this recipe, 256, 140k
