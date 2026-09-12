@@ -4735,3 +4735,25 @@ recipe. A seed-43 C_play replicate for t3 and t6 is running (pooled 2
 arms × 2 seeds, se ≈ 0.0018) to separate small-positive from zero.
 Cost accounting: this iteration = ~45 h corpus + ~5 h distill/cert for
 ≈ +0.004 play; the deploy-time search ceiling remains +0.166.
+
+§20.13 ADDENDUM 27 — seed-43 replicate of the optimised arms (2026-09-12,
+08:55): SMALL-POSITIVE confirmed at the 2σ edge.
+    play-only route vs iter11     seed 42            seed 43            pooled 16k/mode
+    D8k_t3 (3 trunk epochs)       +0.0024 ± 0.0027   +0.0020 ± 0.0026   +0.0022 ± 0.0019 (1.1σ)
+    D8k_t6 (6 trunk epochs)       +0.0043 ± 0.0028   +0.0033 ± 0.0026   +0.0038 ± 0.0019 (2.0σ)
+    pooled t3+t6 × 2 seeds                                              +0.0030 ± 0.0017 (1.8σ)
+Both arms replicate positive on fresh deals with the same magnitude.
+D8k_t6 is the first theta_1 checkpoint to clear 2σ above iter11 on the
+play-only instrument (pooled +0.0038 ± 0.0019); the optimised recipe's
+iteration-2 play gain is +0.003 ± 0.002. Compounding EXISTS at theta_1
+under rows × trunk optimisation, at roughly a quarter of iteration 1's
++0.011 play gain and ~50 machine-hours per iteration. Program state:
+  - standard recipe (1 trunk epoch @1e-4): STALL at any scale (add. 24)
+  - optimised recipe (140k rows @256, ≥3 trunk epochs @3e-5, λ_ret 10,
+    bidding routed through theta_0 for deployment): +0.003/iteration
+  - deploy-time search: +0.166 over the same policy, unchanged.
+Decision for the operator: iterate at this exchange rate (theta_2 =
+D8k_t6; a theta_2 corpus would test whether +0.003 holds or decays),
+push dose/rows further, pursue aggregation / oracle-critic / aggregate-
+then-teach targets, or pin conventions-plus-parity and take skill from
+search.
