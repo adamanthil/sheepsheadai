@@ -4889,3 +4889,46 @@ REJECTED at theta_1 (each read at 8000 deals): global / gamma=1 / kappa
 committee; tree-free CRN oracle evaluator; the student-acted pooled
 corpus in any union (leaster pathology); rows alone (35k→140k flat) and
 budget alone (256 vs 1024 at equal rows) without the trunk-epoch change.
+
+§20.13 ADDENDUM 29 — AVENUE 1 RESULT: the called-suit budget knee is 512;
+1024 at these cells is nearly free (2026-09-12, 12:05;
+runs/budget_cs_probe_202609/, 266 called-suit-eligible defender leads
+(93 at t0) over 1500 hands, hero = iter11 argmax, R=3 per budget on
+identical nodes; policy called-suit rate at these nodes 0.436):
+
+    budget  resolved  ACTED-cs        paired vs 1024   winner-cs  agree-1024  rep-bar  Qdir (cs−other)     s/node
+      256    0.799    0.466 ± 0.031   −0.079 ± 0.031    0.507      0.634      0.426   +0.0010 ± 0.0018 (0.5σ)   15.6
+      384    0.801    0.519 ± 0.031   −0.026 ± 0.030    0.577      0.656      0.445   +0.0032 ± 0.0017 (1.9σ)   23.1
+      512    0.820    0.538 ± 0.031   −0.008 ± 0.030    0.596      0.711      0.491   +0.0051 ± 0.0018 (2.9σ)   30.9
+      768    0.820    0.526 ± 0.031   −0.019 ± 0.029    0.601      0.719      0.506   +0.0053 ± 0.0015 (3.5σ)   44.7
+     1024    0.857    0.545 ± 0.031        —            0.601      1.000      0.519   +0.0055 ± 0.0016 (3.5σ)   57.1
+    t0 only (n=93): acted-cs 256 0.505 | 384 0.527 | 512 0.527 | 768 0.495
+    | 1024 0.591 (paired 512−1024 −0.065 ± 0.045); Qdir 512 +0.0048
+    (1.7σ), 1024 +0.0061 (2.7σ).  t1+ (n=173): 512 ≥ 1024 on both.
+
+Reads.
+  1. 256 does NOT resolve the convention: acted rate +3 pts over the
+     policy, Q direction indistinguishable from zero. This is the
+     mechanism behind D2k/D4k/D8k's flat called-suit probes (44-48).
+  2. The knee is 512: Q direction +0.0051 (2.9σ) vs 1024's +0.0055,
+     winner-cs 0.596 vs 0.601, acted 0.538 vs 0.545 (paired −0.008 ±
+     0.030), at 54% of 1024's cost. 384 is marginal (Qdir 1.9σ, acted
+     −2.6 pts). At trick 0 specifically the evidence favours 1024
+     (0.591 vs 0.527, 1.4σ; n=93) — the t0 lead is the hardest cell
+     (E9 cert: never qualified at ≤1024 as a fixed arm).
+  3. COST: called-suit-eligible defender leads are ~0.18 nodes/hand
+     (266 per 1500 hands) against ~3.4 searched nodes/hand — ~5% of
+     searched nodes; all defender leads are 12% (t0 3%). Running 1024
+     at the cs cells and 256 elsewhere costs ~+13% corpus time; 1024 at
+     ALL defender leads ~+35%. So the budget question at these cells is
+     not an economy question at all.
+RECOMMENDATION (for the RC recipe): per-class committee budget —
+  1024 at called-suit-eligible defender leads (the convention target;
+  covers t0), 256 elsewhere; 512 is the fallback if the +13% matters.
+  Implementation: --iters-cs on distill_corpus (a second teacher
+  instance per worker, selected at the node where called_suit_eligible
+  is already computed for the boost schedule). Expected effect: the
+  corpus carries 1024-quality convention labels (acted 54.5% vs policy
+  43.6% at these nodes, matching the ceiling's 60.6 vs 47.2 at all
+  leads) at 256's cost, so the head phase can install the shift the
+  pooled@1024 arm showed (53.0) without paying 4x on every node.
