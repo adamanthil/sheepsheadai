@@ -4632,3 +4632,45 @@ D8k (pipeline_d8k_t3.py).
            gain is small-positive (compounds slowly: ~+0.03 per 10
            iterations); ≤ 0 ⇒ the standard recipe at theta_1 does not
            compound at any tested scale.
+
+§20.13 ADDENDUM 24 — LEARNING-CURVE VERDICT: STALL (2026-09-12, 02:00).
+Corpus D complete (8000 games @256, 137,591 searched / 66,808 override
+rows, 446 failed, 0.04-0.05 g/s, 45 h). All arms standing recipe +
+--lambda-ret 10, 8000 deals/mode vs iter11, seed-42 deals:
+
+    arm   rows   full read          called   jd      D_bid            C_play (PRIMARY)          called-suit
+    D2k    35k  −0.0030 ± 0.0027  −0.0111  +0.0052  −0.0015 ± 0.0012  −0.0016 ± 0.0025          47.8
+    D4k    70k  −0.0031 ± 0.0031  −0.0078  +0.0016  +0.0006 ± 0.0017  −0.0038 ± 0.0027          46.7
+    D8k   140k  −0.0029 ± 0.0033  −0.0035  −0.0022  −0.0023 ± 0.0014  +0.0002 ± 0.0030          44.5
+    paired full: D8k − D2k +0.0001 ± 0.0036; D8k − D4k +0.0003 ± 0.0037;
+      D8k − ret10 −0.0012 ± 0.0039.
+    paired C_play: D8k − D4k +0.0039 ± 0.0032; D8k − D2k +0.0018 ± 0.0033;
+      D8k − ca_ep3 −0.0004 ± 0.0032; D8k − U1024 +0.0052 ± 0.0032.
+    POWER (pooled C_play over the three arms, same deals):
+      −0.0017 ± 0.0021 (called −0.0047, jd +0.0013)
+      ⇒ the true iteration-2 play gain under the standard recipe is
+      ≤ +0.0025 at 2σ. Not small-positive; consistent with zero.
+    D8k fit: holdout target KL −12% (best of the program), retention KL
+    0.006; conventions unchanged (44.5 vs iter11's 45.4).
+
+VERDICT. Pre-registered bar (addendum 19) COMPOUNDS ≥ +0.010: FAILS.
+STALL (< +0.005) at 35k, 70k and 140k rows; slope zero within ±0.003
+across a 4x row range; pooled bound ≤ +0.0025. With addendum 22 (91k
+rows @1024: same), the §20.13 decision tree for the STANDARD RECIPE at
+theta_1 closes: neither target construction (class / global / gamma=1
+/ kappa), schedule (ep1 / trunk / head-only / ret10), acting mode, row
+selection (HIZ), search budget (256 / 1024), nor row count (35k → 140k)
+compounds. The distill phase's deliverable at theta_1 is bit-parity
+play plus whatever conventions the head phase installs; skill above
+theta_1 comes from deploy-time search (+0.166 ceiling, unchanged) or
+from a teacher/objective that is not the committee's per-row tilt.
+NOT closed (addendum 23, running): optimisation at scale (D8k_t3, three
+trunk epochs @3e-5 on the same 140k targets) — the one recipe axis
+never varied at scale. Also open, per the operator's framing
+(addendum 21 list): DAgger-style aggregation from theta_0 on q ∪ D;
+oracle-critic retraining + ceiling re-read; aggregate-then-teach
+targets over feature neighbourhoods.
+Instrument notes: the bidding component ranged −0.0023..+0.0006 on the
+three D arms (λ_ret 10) and −0.0100 on U1024 — variance, unpinned;
+leaster reads swing −0.033..+0.014 across arms at n≈5000 hands (se
+0.015) — noise-grade, not read.
