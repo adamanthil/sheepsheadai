@@ -248,11 +248,16 @@ def parse_iters_schedule(spec) -> dict:
         item = item.strip()
         if not item:
             continue
-        key, budget = item.split(":")
-        trick_s, kind = key.strip().split("-")
-        if not trick_s.startswith("t") or kind not in ("lead", "follow"):
-            raise SystemExit(f"bad --iters-schedule entry {item!r}")
-        out[(int(trick_s[1:]), kind == "lead")] = int(budget)
+        try:
+            key, budget = item.split(":")
+            trick_s, kind = key.strip().split("-")
+            if not trick_s.startswith("t") or kind not in ("lead", "follow"):
+                raise ValueError(item)
+            out[(int(trick_s[1:]), kind == "lead")] = int(budget)
+        except ValueError:
+            raise SystemExit(
+                f"bad --iters-schedule entry {item!r} (expected e.g. t0-lead:1024)"
+            ) from None
     return out
 
 
