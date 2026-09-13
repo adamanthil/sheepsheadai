@@ -1146,10 +1146,18 @@ def main(argv=None) -> int:
     if args.dry_run:
         program.log("DRY RUN — configuration:")
         program.log(cfg.to_json())
-        program.log(
-            "gen-1 league command: "
-            + " ".join(program.league_trainer_cmd(1, "<bootstrap final>"))
-        )
+        if cfg.start_phase == "bootstrap":
+            program.log(
+                "gen-1 league command: "
+                + " ".join(program.league_trainer_cmd(1, "<bootstrap final>"))
+            )
+        else:
+            program.log(
+                f"start_phase={cfg.start_phase}: theta_0 = "
+                f"{cfg.policy_iteration.theta_0}, league_dir = "
+                f"{cfg.policy_iteration.league_dir}, bidding_first = "
+                f"{cfg.policy_iteration.bidding_first}"
+            )
         return 0
     return program.run()
 
