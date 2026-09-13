@@ -222,7 +222,11 @@ def _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx):
                             ),
                             player_id=seat.position,
                         )
-    return float(game.players[hero_seat - 1].get_score()), node_rows, bool(game.is_leaster)
+    return (
+        float(game.players[hero_seat - 1].get_score()),
+        node_rows,
+        bool(game.is_leaster),
+    )
 
 
 def _worker_init(ckpt, torch_threads, iters):

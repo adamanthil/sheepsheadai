@@ -22,7 +22,9 @@ def test_parallel_h2h_matches_serial_bitwise():
     serial = h2h_duplicate(CAND, ANCHOR, n_deals_per_mode=12, n_boot=50, workers=1)
     par = h2h_duplicate(CAND, ANCHOR, n_deals_per_mode=12, n_boot=50, workers=4)
     for m in range(2):
-        assert np.array_equal(np.array(serial["per_deal"][m]), np.array(par["per_deal"][m]))
+        assert np.array_equal(
+            np.array(serial["per_deal"][m]), np.array(par["per_deal"][m])
+        )
         assert serial["per_deal_leaster_hands"][m] == par["per_deal_leaster_hands"][m]
     assert serial["edge"] == par["edge"] and serial["se"] == par["se"]
     for key in ("leaster", "non_leaster"):
