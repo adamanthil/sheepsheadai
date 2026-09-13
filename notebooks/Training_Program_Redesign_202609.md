@@ -32,6 +32,12 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-02 | Bidding channel = frozen-trunk PG phase between iterations; bidding emission = contingency | 4.4 |
 | 09-02 | Leaster play: measure drift first; fixed-reference anchor, then emission, if it drifts | 4.4, A |
 | 09-02 | Validate iteration 2 of policy iteration on the CURRENT lineage before building/launching | 7 |
+| 09-12 | §7.0 gate RESULT: the standard recipe STALLS at theta_1 on every axis (targets, schedule, acting mode, rows 35k→140k, budget 256/1024); the OPTIMISED recipe compounds small-positive (+0.003 ± 0.002 play per iteration; D8k_t6 +0.0038 ± 0.0019 at 2σ, replicated) — CE_Teacher §20.13 add. 24-27, §20.14 | 4.4, 7.0 |
+| 09-12 | Phase 3 recipe pinned to CE_Teacher §20.14: 8000 committee-acted games, 256 iterations with the trick-indexed lead schedule (t0 leads 1024, t1 leads 512), six trunk epochs @3e-5 then bilinear-only head epochs, retention KL ×10, 8000-deal cert with head-routed play-only (compounding statistic) and bidding-only (guard) reads, NON-INFERIORITY adoption gate; single-network deployment (no head routing) | 4.4 |
+| 09-12 | Committee acting RESTORED (act fraction 1.0; +0.0055 play vs student acting, add. 16) — reverses the 09-02 "decided 0" | 4.4 |
+| 09-12 | No replay window: the previous generation's corpus, even re-anchored to the current prior, reads at the harm line (add. 30); one corpus per iteration | 4.4 |
+| 09-12 | Bidding/value PG phase kept between iterations (play heads, adapter and encoder pinned); validation order on the v2 lineage: bidding phase on theta_2 FIRST, then iteration 3 from the adopted checkpoint | 4.4, 7.0 |
+| 09-12 | `training-program-redesign` merged into master (sharded h2h kept; public helper names; `--iters-schedule`); validation run `rc_validate_v2` from `runs/policy_iteration_202609/iter29_d8k_t6/distill_epoch10.pt` | 6 |
 
 ---
 
@@ -277,12 +283,16 @@ The CE_Teacher §20 standing recipe (§20.9 P1 + §20.10 + §20.11), one
 iteration = corpus → fit → target → distill → cert → bidding phase →
 cert:
 
-1. **Corpus** from frozen θ_k: 2,000 student-acting games (DAgger-
-   correct state distribution[^dagger]), committee R = 3 × 1024
-   iterations, d_rollout 1 with oracle leaves (ISMCTS[^ismcts]; E9
-   certified budget), leads searched at p = 1.0, follows at 0.5, schema
-   2 (pooled q̄, per-action variance, act-time prior on every row),
-   oracle states stored. ~36 h.
+1. **Corpus** from frozen θ_k (amended 09-12, CE_Teacher §20.14): 8,000
+   COMMITTEE-ACTING games (`--committee-act-frac 1.0`; the corpus samples
+   the search-preferred lines, +0.0055 play vs student acting, add. 16),
+   committee R = 3, `--iters 256` with the trick-indexed lead schedule
+   `--iters-schedule t0-lead:1024,t1-lead:512` (256 does not resolve the
+   lead conventions; t0 leads want 1024, t1 leads 512; leads are ~5.5% of
+   searched nodes per trick so the schedule costs ~+22% over all-256, add.
+   29/29b), d_rollout 1 with oracle leaves, every play node searched
+   (p_base 1.0, boost_lead 1.0, boost_cs 1.5, p_min 0.05), schema 2,
+   oracle states stored. ~55 h on the M1 Max (0.04-0.05 games/s).
 2. **Stage 1 (evaluation)** — heteroscedastic weighted least squares of
    the centered committee Q onto θ_k's frozen features through a twin of
    the play pointer, with the centered log-prior as a covariate; held-out
@@ -294,33 +304,55 @@ cert:
    the posterior SE as temperature[^vieillard][^awr]; precision weights
    ω_n ∝ 1/v_n, mean-normalized, cap 5 (never binds; §20.11).
 4. **Stage 3 (projection)** — PG off. Weighted CE on searched play rows;
-   retention KL(p_θk ‖ π_θ) on bidding-head and leaster-play rows[^lwf];
-   value/aux/oracle regression on all rows. Schedule: one trunk epoch
-   at 1e-4, then bilinear-only head epochs at 1e-3 with the encoder
-   frozen, to the holdout-KL plateau (~6)[^lpft].
-5. **Cert** — 4 × n=1000 convention/health probes + duplicate h2h vs θ_k
-   (adoption bar: h2h CI lower bound > 0, partner ≥ 96.5, t0 trump ≤ 1.0,
-   spread ≥ 3.6) + the leaster-conditioned paired score (new, §A);
-   WiSE-FT interpolation as the walk-back if EV fails with conventions
-   installed[^wise].
+   retention KL(p_θk ‖ π_θ) on bidding-head and leaster-play rows[^lwf]
+   at λ_ret = 10 (halves the bidding drift; does not pin it); value/aux/
+   oracle regression on all rows. Schedule (amended 09-12): SIX trunk
+   epochs at 3e-5 (everything trains), then bilinear-only head epochs at
+   1e-3 with the encoder frozen (4 by default, to the holdout-KL plateau).
+   The trunk dose is the change that made iteration 2 compound: on the
+   same 140k-row targets, 1 epoch @1e-4 read +0.0002, 3 @3e-5 +0.0024,
+   6 @3e-5 +0.0043 (play-only, vs θ_k). The candidate is the holdout-KL
+   best epoch, falling back to the LAST epoch (holdout KL does not track
+   EV; every optimised arm selected its last epoch)[^lpft].
+5. **Cert** (amended 09-12) — 4 × n=1000 convention/health probes +
+   duplicate h2h vs θ_k at 8,000 deals/mode (sharded, ~17 min) + the
+   head-routed reads: PLAY-ONLY (bidding from θ_k, play from the
+   candidate) is the compounding statistic the stop rule reads — it
+   strips the ±0.005 bidding variance the trunk epochs add — and
+   BIDDING-ONLY is the drift guard (flag below −0.003 at 2 SE). Adoption
+   gate = NON-INFERIORITY on the full checkpoint (edge + 2·SE ≥ 0) plus
+   the convention guards (partner ≥ 96.5, t0 trump ≤ 1.0, spread ≥ 3.6):
+   the per-iteration gain (~+0.003) sits inside the 8000-deal SE, so a
+   positivity gate would reject every real step; compounding is judged
+   at the program level by the slope of the play-only reads. WiSE-FT
+   walk-back stays the operator's option[^wise].
 6. **Bidding phase** — PG under terminal reward with the encoder, actor
-   adapter and play head frozen; bidding heads (pick, partner basic,
-   two-tower call), limited critic and oracle train; ~200k episodes;
-   certified by head-routed h2h. The a11/a12 interaction (CE on play vs
-   PG on the trunk) structurally cannot occur. Contingency if the frozen-
-   trunk phase yields nothing: bidding-node search emission (P4 pre-pick
-   determinizers exist) behind the addendum-5 mini-calibration gate.
-7. Iterate: θ_{k+1} generates the next corpus. Stop when the h2h gain vs
-   θ_k is below 2 SE for two consecutive iterations, or on a cert fail
-   the walk-back cannot rescue. Expected 3–5 iterations at ~2.5 days
-   each, subject to the §7 compounding test.
+   adapter, play pointer (which also carries bury) and play-under scalar
+   FROZEN (`PPOAgent.set_trainable_heads("bidding")`); the pick, partner
+   and call heads, limited critic and oracle train against the league
+   population; 200k episodes; certified vs the candidate (non-inferiority
+   on the same battery) and adopted if it passes. Deployment is the
+   SINGLE network — head routing was a hedge against the λ_ret-1 drift
+   and is not needed under the pinned recipe (bidding read +0.0014 /
+   −0.0005 on the optimised arms; iteration 1's trunk epoch improved
+   bidding by +0.0036).
+7. Iterate: θ_{k+1} generates the next corpus — ONE generation of corpus
+   per iteration (no replay window: corpus D ∪ the re-anchored iteration-1
+   corpus read −0.0052 ± 0.0028 on the play route vs corpus D alone,
+   CE_Teacher add. 30; the search advantages are continuation-dependent
+   and do not transfer across generations). Stop when the play-only gain
+   is below 2 SE for two consecutive iterations, or at the cap. Measured
+   exchange rate on the v2 lineage: ≈ +0.003–0.004 play per ~55 h
+   iteration against a deploy-time search ceiling of +0.166 over the same
+   policy.
 
 Code consolidation: the §17 partition trainer (`train_distill.py`:
 override/endorsed/retention partition, AWR ω, KD temperature) merges
 into the policy-iteration module with the standing recipe as defaults;
 capacity/variance-mode/weight-mode sweep flags removed; schema-1 support
-and `recover_search_q.py` deleted; `--committee-act-frac` removed
-(decided 0).
+and `recover_search_q.py` deleted. `--committee-act-frac` was removed on
+09-02 (decided 0) and RESTORED on 09-12 at 1.0 after the acting-mode
+replicate (CE_Teacher add. 16); `--iters-schedule` added (add. 29b).
 
 ### 4.5 Phase 4 — final certification and release
 
@@ -405,6 +437,15 @@ Also: `agent/observation.py` (the contract), `analysis/exploitability_audit.py`
 PPOAgent changes: `set_trainable_heads("bidding")`, `observation_keys`; the
 teacher CE passes, GNS diagnostic and bidding anchor are gone.
 
+09-12 merge into master: `analysis/league_progress_eval.h2h_duplicate` is
+the SHARDED evaluator (spawn workers, bit-identical to serial; per-deal
+scores stored for paired reads, leaster read carries `hands` and `n`);
+`analysis/head_routed_h2h.routed_h2h` (sharded) provides the cert's
+play-only / bidding-only routes; `policy_iteration.cert` writes `routed`
+and `compounding`; `program_config.ProgramConfig.start_phase` +
+`PolicyIterationConfig.{theta_0, league_dir, bidding_first}` enter phase 3
+from an external lineage (`run_bidding_phase` extracted).
+
 Tests: `test_recall_architecture`, `test_stop_rules`, `test_program`,
 rewritten `test_league_smoke` / `test_trainer_output_contracts` /
 `test_distill_pipeline` / `test_policy_iteration`; the arch goldens were
@@ -421,6 +462,21 @@ written. STALLS (h2h vs iter11 inside ±0.01) ⇒ phase 3 budget = one
 iteration + bidding phase, and the §4.4 stop rule is moot. REGRESSES ⇒
 student-acting corpus suspect; committee-acting rerun before launch.
 
+**RESULT (2026-09-12; CE_Teacher §20.13 addenda 2–30, §20.14).** The
+recipe as written on 09-02 STALLED: every theta_1 arm read −0.005..+0.001
+on the full checkpoint, and the loss was a bidding drift the frozen head
+phase could not repair (add. 12). With the bidding fix (λ_ret 10) the
+play was at parity at 35k, 70k, 91k and 140k rows and at 256 or 1024
+iterations (add. 20–24). The lever was trunk OPTIMISATION at scale: six
+trunk epochs at 3e-5 on 140k rows read +0.0043 ± 0.0028 play-only (pooled
+two seeds +0.0038 ± 0.0019, 2σ; add. 25–27). Verdict: COMPOUNDS, small
+(≈ +0.003/iteration ≈ 1/4 of iteration 1's +0.011). Phase 3 proceeds with
+the §4.4 recipe as amended; the exchange rate (~55 h per +0.003) is the
+operator's call per iteration. The v2-lineage validation run
+(`rc_validate_v2`: bidding phase on θ_2 = D8k_t6, then iteration 3 under
+the merged scripts) is the last check before the fresh perceiver-recall
+launch.
+
 ### 7.1 Per-phase expectations
 
 - **Bootstrap.** Escape ≤ 30k; scripted-probe and PANEL-A curves
@@ -429,9 +485,13 @@ student-acting corpus suspect; committee-acting rerun before launch.
 - **League.** Gen-1 h2h ≥ +0.05 and gen-2 ≥ +0.05; B2 held from gen 1;
   panel ≥ +0.20 by gen 6 (v2: +0.206); C2 in the 38–52% band; handoff
   at gen 4–6.
-- **Policy iteration.** Iteration 1 h2h vs θ_k ≥ +0.015; iteration 2
-  ≥ 0 vs θ_{k+1} with cumulative gain above iteration 1; leaster paired
-  score within noise of θ_k at every cert.
+- **Policy iteration** (amended 09-12). Iteration 1 play-only vs θ_0
+  ≥ +0.010; later iterations play-only ≥ 0 (non-inferior) with the pooled
+  slope over iterations positive at 2σ; bidding route within ±0.003;
+  called-suit ≥ 50 pooled by the end of phase 3 under the lead schedule
+  (the schedule's installed rate is unmeasured — iteration 3 of the
+  validation run reads it first); leaster paired score within noise of
+  θ_k at every cert.
 - **Final.** Bars per §5.3; conventions as EXPECTATIONS: defender t0
   trump ≤ 1%, partner ≥ 96%, called-suit pooled ≥ 50% (terminal-only
   optimum estimated 60–70%, E6; the 30M's 90% is shaped over-adherence);
@@ -455,7 +515,7 @@ student-acting corpus suspect; committee-acting rerun before launch.
 | bootstrap 400k | 6–8 h (unified) / 21 h (legacy) |
 | oracle pretrain | ~3 h |
 | league, 4–8 gens × ~48 h | 8–16 days |
-| policy iteration, 1–5 iterations × ~2.5 days | 2.5–12 days |
+| policy iteration, 1–5 iterations × ~3 days (55 h corpus + 3 h distill + 2 h cert + bidding phase) | 3–15 days |
 | final cert + audit | ~1 day |
 | total | 2.5–5 weeks |
 
