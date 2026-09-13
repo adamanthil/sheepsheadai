@@ -21,6 +21,10 @@ import random
 import time
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 
 
 def pure_game_workload(n_games, seed=0):
@@ -100,7 +104,9 @@ def time_ismcts(n_searches):
                         nodes.append((game, observer, list(fp)))
                         captured = True
                         break
-                    a, _, _ = agent.act(player.get_state_dict(), valid, player.position)
+                    a, _, _ = agent.act(
+                        observation_for(player, agent), valid, player.position
+                    )
                     name = A[a - 1]
                     if not (name.startswith("BURY ") or name.startswith("UNDER ")):
                         fp.append((player.position, a))
@@ -109,7 +115,7 @@ def time_ismcts(n_searches):
                     if game.was_trick_just_completed:
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
                 if captured:

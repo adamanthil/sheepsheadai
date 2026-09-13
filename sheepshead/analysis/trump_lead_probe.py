@@ -47,29 +47,15 @@ from sheepshead import (
     TRUMP_SET,
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
+from sheepshead.analysis.conventions import lead_options
 from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260702  # fixed CRN deal set: results comparable forever
 LEAK_COST_SCORE = 0.19  # −score per occurrence (investigation §5, belief-pool MC)
-
-
-def _is_secret_partner(game: Game, player) -> bool:
-    if game.partner_mode_flag == PARTNER_BY_CALLED_ACE:
-        return bool(game.called_card) and game.called_card in player.hand
-    return not game.alone_called and "JD" in player.hand
-
-
-def _lead_options(player) -> tuple[list[str], list[str]]:
-    """(trump, fail) cards among the player's currently legal PLAY actions."""
-    cards = [
-        ACTION_LOOKUP[a].split(" ", 1)[1]
-        for a in player.get_valid_action_ids()
-        if ACTION_LOOKUP[a].startswith("PLAY ")
-    ]
-    return (
-        [c for c in cards if c in TRUMP_SET],
-        [c for c in cards if c not in TRUMP_SET],
-    )
 
 
 def probe_agent(hero, n_deals: int, partner_mode: int, seed: int = PROBE_SEED) -> dict:
@@ -111,17 +97,17 @@ def probe_agent(hero, n_deals: int, partner_mode: int, seed: int = PROBE_SEED) -
                                 player.is_picker
                                 or player.is_partner
                                 or game.partner == player.position
-                                or _is_secret_partner(game, player)
+                                or player.is_secret_partner
                             )
                         ):
-                            trumps, fails = _lead_options(player)
+                            trumps, fails = lead_options(player)
                             if trumps and fails:
                                 record = (
                                     game.current_trick,
                                     sum(1 for c in player.hand if c in TRUMP_SET),
                                 )
                         a, _, _ = ag.act(
-                            player.get_state_dict(),
+                            observation_for(player, ag),
                             valid,
                             player.position,
                             deterministic=True,
@@ -148,7 +134,8 @@ def probe_agent(hero, n_deals: int, partner_mode: int, seed: int = PROBE_SEED) -
                             for p in game.players:
                                 ctrl = hero if p.position == hero_seat else field
                                 ctrl.observe(
-                                    p.get_last_trick_state_dict(), player_id=p.position
+                                    last_trick_observation_for(p, ctrl),
+                                    player_id=p.position,
                                 )
                     if game.is_done() or game.current_trick > 1:
                         break

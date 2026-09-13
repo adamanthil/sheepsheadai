@@ -13,6 +13,10 @@ import time
 import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
@@ -33,7 +37,9 @@ def collect_play_node(agent, game, observer):
                     and not game.is_leaster
                 ):
                     return list(fp)
-                a, _, _ = agent.act(player.get_state_dict(), valid, player.position)
+                a, _, _ = agent.act(
+                    observation_for(player, agent), valid, player.position
+                )
                 name = ACTIONS[a - 1]
                 if not (name.startswith("BURY ") or name.startswith("UNDER ")):
                     fp.append((player.position, a))
@@ -42,7 +48,8 @@ def collect_play_node(agent, game, observer):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
     return None
 

@@ -46,6 +46,10 @@ import numpy as np
 import torch
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import (
     compute_any_unseen_trump_higher_than_hand,
@@ -122,7 +126,7 @@ def audit_checkpoint(ckpt_path: str, n_games: int) -> dict:
                 valid_actions = player.get_valid_action_ids()
                 while valid_actions:
                     trick = int(game.current_trick)
-                    state = player.get_state_dict()
+                    state = observation_for(player, agent)
                     memory_in = agent.get_recurrent_memory(
                         player.position, device=DEVICE
                     )
@@ -191,7 +195,7 @@ def audit_checkpoint(ckpt_path: str, n_games: int) -> dict:
                     if game.was_trick_just_completed and not game.is_done():
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
                     valid_actions = player.get_valid_action_ids()

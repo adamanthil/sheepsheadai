@@ -242,7 +242,7 @@ def main() -> int:
 
     set_all_seeds(args.seed)
     agent = PPOAgent(action_size=len(ACTION_IDS), arch=args.arch)
-    states = collect_probe_states()
+    states = collect_probe_states(agent)
 
     batch_sizes = tuple(args.batch_sizes)
     print(

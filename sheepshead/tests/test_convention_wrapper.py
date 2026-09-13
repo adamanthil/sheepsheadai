@@ -33,9 +33,10 @@ from sheepshead.agent.convention_wrapper import (
     parse_wrap_spec,
     wrap_agent,
 )
-from sheepshead.analysis.called_suit_probe import _called_suit_fail, probe_agent
+from sheepshead.analysis.called_suit_probe import probe_agent
+from sheepshead.analysis.conventions import called_suit_fail
 from sheepshead.analysis.trump_lead_probe import probe_agent as probe_trump
-from sheepshead.scripted_agent import ScriptedAgent, _card
+from sheepshead.scripted_agent import ScriptedAgent, card_name
 
 _TRUMP = set(TRUMP)
 _FAIL = set(FAIL)
@@ -99,12 +100,12 @@ def _c2_shape(game, p, valid):
     ):
         return False
     plays = _lead_cards(valid)
-    conv = [a for a, c in plays if _called_suit_fail(c, game.called_card)]
+    conv = [a for a, c in plays if called_suit_fail(c, game.called_card)]
     return bool(conv) and len(conv) < len(plays)
 
 
 def _conv_ids(game, valid):
-    return [a for a, c in _lead_cards(valid) if _called_suit_fail(c, game.called_card)]
+    return [a for a, c in _lead_cards(valid) if called_suit_fail(c, game.called_card)]
 
 
 def _collect(nodes_iter, predicate, n):
@@ -426,9 +427,9 @@ class TrumpLeader(ScriptedAgent):
 
 class CalledSuitAvoider(ScriptedAgent):
     def _lead(self, state, cards):
-        called = _card(int(state["called_card_id"]))
+        called = card_name(int(state["called_card_id"]))
         if called:
-            off = [c for c in cards if not _called_suit_fail(c, called)]
+            off = [c for c in cards if not called_suit_fail(c, called)]
             if off:
                 return off[0]
         return super()._lead(state, cards)

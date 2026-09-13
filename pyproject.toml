@@ -15,9 +15,8 @@ dependencies = [
 ]
 
 [project.scripts]
-train-selfplay = "sheepshead.training.train_selfplay_ppo:main"
-train-league = "sheepshead.training.train_league_ppo:main"
-extended-league = "sheepshead.training.run_extended_league:main"
+train-ppo = "sheepshead.training.train_ppo:main"
+training-program = "sheepshead.training.run_training_program:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -65,6 +64,9 @@ known-first-party = ["sheepshead", "server"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# A test that blocks this long dumps every thread's traceback to stderr, so a
+# hang names its culprit instead of sitting silent (it does not abort the run).
+faulthandler_timeout = 300
 testpaths = ["sheepshead/tests", "app/server/tests"]
 markers = [
     "slow: long-running training/architecture tests; deselect with -m 'not slow'",

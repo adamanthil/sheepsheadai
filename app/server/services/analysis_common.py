@@ -23,6 +23,7 @@ from server.api.schemas import (
     AnalyzeTrumpSeenMaskEntry,
 )
 from sheepshead import ACTION_LOOKUP, TRUMP, Game
+from sheepshead.agent.observation import observation_for
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
@@ -230,7 +231,7 @@ def run_inference_step(
     """Run the encoder/actor/critic forward pass for the current actor and
     extract the auxiliary-head predictions (seen-trump mask, known-points
     estimate, win probability, etc)."""
-    state = actor_player.get_state_dict()
+    state = observation_for(actor_player, agent)
     valid_actions = actor_player.get_valid_action_ids()
 
     # Get or init memory for this player

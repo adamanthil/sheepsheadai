@@ -51,8 +51,12 @@ import time
 import numpy as np
 
 from sheepshead import ACTIONS, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_decision
 from sheepshead.training.training_utils import (
     RETURN_SCALE,
     get_partner_selection_mode,
@@ -75,13 +79,6 @@ FIELDS = [
     "ess",
     "ok",
 ]
-
-
-def _is_private(valid) -> bool:
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
 
 
 def _load(model: str) -> PPOAgent:
@@ -126,7 +123,7 @@ def _run_deal(deal_seed, mode, seat, agent, field, teacher, det_rng, rows, deal_
                     # Policy distribution (this forward advances the probe's
                     # recurrent memory exactly once — do NOT also call act()).
                     probs_t, _ = agent.get_action_probs_with_logits(
-                        player.get_state_dict(), valid, player_id=player.position
+                        observation_for(player, agent), valid, player_id=player.position
                     )
                     probs = probs_t[0].detach().cpu().numpy()
                     pol_arg, margin, entropy, top1p = _policy_features(probs, vlist)
@@ -168,12 +165,12 @@ def _run_deal(deal_seed, mode, seat, agent, field, teacher, det_rng, rows, deal_
                 else:
                     ag = agent if is_probe else field
                     a, _, _ = ag.act(
-                        player.get_state_dict(),
+                        observation_for(player, ag),
                         valid,
                         player.position,
                         deterministic=True,
                     )
-                if not _is_private(valid):
+                if not is_private_decision(valid):
                     forced_public.append((player.position, a))
                 player.act(a)
                 valid = player.get_valid_action_ids()
@@ -181,7 +178,7 @@ def _run_deal(deal_seed, mode, seat, agent, field, teacher, det_rng, rows, deal_
                     for p in game.players:
                         ctrl = agent if p.position == seat else field
                         ctrl.observe(
-                            p.get_last_trick_state_dict(), player_id=p.position
+                            last_trick_observation_for(p, ctrl), player_id=p.position
                         )
 
     return float(game.players[seat - 1].get_score())

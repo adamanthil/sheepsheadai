@@ -31,6 +31,7 @@ import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
+from sheepshead.tests.ismcts_test_helpers import fresh_agent
 
 pytestmark = pytest.mark.slow
 
@@ -42,12 +43,6 @@ def _seed():
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
-
-
-def _fresh_agent():
-    from sheepshead.agent.ppo import PPOAgent
-
-    return PPOAgent(len(ACTIONS))
 
 
 def _tiny_config(iters=48):
@@ -88,7 +83,7 @@ def test_committee_r1_bitexact_vs_serial():
     batches are identical, so only a state-swap bug could differ."""
     _seed()
     torch.set_num_threads(1)
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, _tiny_config())
     game, observer, fp = _to_play_node()
 
@@ -120,7 +115,7 @@ def test_committee_r3_matches_per_seed_serial():
     match); tree-phase outputs equal up to merged-batch float tiling."""
     _seed()
     torch.set_num_threads(1)
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, _tiny_config())
     game, observer, fp = _to_play_node()
     seeds = (11, 22, 33)
@@ -158,7 +153,7 @@ def test_committee_replicates_independent_and_contract():
     """Distinct rngs must produce distinct searches (no accidental rng
     sharing), and every replicate honors the SearchResult contract."""
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, _tiny_config())
     game, observer, fp = _to_play_node()
 
@@ -194,7 +189,7 @@ def test_committee_deterministic():
     threads pinned)."""
     _seed()
     torch.set_num_threads(1)
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, _tiny_config(iters=32))
     game, observer, fp = _to_play_node()
 

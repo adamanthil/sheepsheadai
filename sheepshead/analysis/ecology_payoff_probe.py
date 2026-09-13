@@ -49,17 +49,21 @@ import numpy as np
 import torch
 
 from sheepshead import ACTION_IDS, ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.counterfactual_trump_leads import (
-    _restore_memory,
-    _snapshot_memory,
+    restore_memory,
+    snapshot_memory,
 )
 from sheepshead.analysis.fail_lead_logit_probe import (
     FAT_FAIL,
     LOW_FAIL,
     PLAY_CARD_BY_AID,
-    _called_suit_already_led,
-    _masked_logits,
+    called_suit_already_led,
+    masked_logits,
 )
 
 DEVICE = torch.device("cpu")
@@ -85,13 +89,14 @@ def _play_out_multi(agents_by_pos: dict, game: Game) -> None:
         pos = actor.position
         agent = agents_by_pos[pos]
         action, _, _ = agent.act(
-            actor.get_state_dict(), actor.get_valid_action_ids(), pos
+            observation_for(actor, agent), actor.get_valid_action_ids(), pos
         )
         actor.act(action)
         if game.was_trick_just_completed:
             for seat in game.players:
                 agents_by_pos[seat.position].observe(
-                    seat.get_last_trick_state_dict(), player_id=seat.position
+                    last_trick_observation_for(seat, agents_by_pos[seat.position]),
+                    player_id=seat.position,
                 )
 
 
@@ -106,7 +111,7 @@ def _run_arm(
     scores = []
     for _ in range(rollouts):
         for agent, snap in snapshots:
-            _restore_memory(agent, snap)
+            restore_memory(agent, snap)
         g = copy.deepcopy(node_game)
         g.players[seat - 1].act(ACTION_IDS[f"PLAY {card}"])  # a lead never
         _play_out_multi(agents_by_pos, g)  # completes a trick
@@ -150,7 +155,7 @@ def main() -> int:
             for player in game.players:
                 valid = player.get_valid_action_ids()
                 while valid:
-                    state = player.get_state_dict()
+                    state = observation_for(player, driver)
                     pos = player.position
                     valid_sorted = sorted(valid)
                     action_kind = ACTION_LOOKUP.get(valid_sorted[0], "")
@@ -181,10 +186,10 @@ def main() -> int:
                                     c[-1] == game.called_card[-1] and c not in TRUMP_SET
                                     for c in lead_cards
                                 )
-                                and not _called_suit_already_led(game),
+                                and not called_suit_already_led(game),
                             }
 
-                    logits = _masked_logits(driver, pos, state, valid_sorted).squeeze(0)
+                    logits = masked_logits(driver, pos, state, valid_sorted).squeeze(0)
                     seat_streams[pos].append(state)
                     aid = int(torch.argmax(logits).item()) + 1
                     if aid not in valid:
@@ -208,7 +213,7 @@ def main() -> int:
                             best(set(node["fat"])),
                         )
                         node_game = copy.deepcopy(game)
-                        node_mem = _snapshot_memory(driver)
+                        node_mem = snapshot_memory(driver)
 
                         rng = random.Random(BASE_RNG_SEED + seed * 100 + len(rows))
                         member_paths = rng.sample(roster_paths, 4)
@@ -221,7 +226,7 @@ def main() -> int:
                             for st in seat_streams[s]:
                                 m.observe(st, player_id=s)
                             pop_agents[s] = m
-                            pop_snaps.append((m, _snapshot_memory(m)))
+                            pop_snaps.append((m, snapshot_memory(m)))
 
                         torch.manual_seed(BASE_RNG_SEED + seed * 100 + len(rows))
                         self_agents = {s: driver for s in (1, 2, 3, 4, 5)}
@@ -248,7 +253,7 @@ def main() -> int:
                                     args.rollouts,
                                 ),
                             }
-                        _restore_memory(driver, node_mem)
+                        restore_memory(driver, node_mem)
 
                         row = {
                             "seed": seed,
@@ -287,7 +292,7 @@ def main() -> int:
                     player.act(aid)
                     if game.was_trick_just_completed and not game.is_done():
                         for seat_p in game.players:
-                            st = seat_p.get_last_trick_state_dict()
+                            st = last_trick_observation_for(seat_p, driver)
                             seat_streams[seat_p.position].append(st)
                             driver.observe(st, player_id=seat_p.position)
                     valid = player.get_valid_action_ids()

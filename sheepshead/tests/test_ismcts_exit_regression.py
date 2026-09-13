@@ -20,7 +20,6 @@ import random
 import sys
 import time
 from types import SimpleNamespace
-from typing import cast
 
 import numpy as np
 import pytest
@@ -36,6 +35,9 @@ from sheepshead import (
     get_card_points,
     get_card_suit,
 )
+from sheepshead.agent.observation import observation_for
+from sheepshead.ismcts import infer_head, is_private_decision
+from sheepshead.tests.ismcts_test_helpers import drive_to_second_bury, fresh_agent
 
 # Runs real (tiny-budget) ISMCTS searches and distill updates (~50s).
 pytestmark = pytest.mark.slow
@@ -47,30 +49,6 @@ def _seed():
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
-
-
-def _fresh_agent():
-    from sheepshead.agent.ppo import PPOAgent
-
-    return PPOAgent(len(ACTIONS))
-
-
-def _is_private(valid):
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
-
-
-def _head(valid):
-    names = [ACTIONS[a - 1] for a in valid]
-    if any(n in ("PICK", "PASS") for n in names):
-        return "pick"
-    if any(n == "ALONE" or n == "JD PARTNER" or n.startswith("CALL ") for n in names):
-        return "partner"
-    if any(n.startswith("BURY ") or n.startswith("UNDER ") for n in names):
-        return "bury"
-    return "play"
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +116,7 @@ def _drive_to_head(game, rng, want_head, force_pass_for_leaster=False):
             while valid:
                 if (
                     not game.is_leaster
-                    and _head(valid) == want_head
+                    and infer_head(valid) == want_head
                     and want_head != "leaster"
                 ):
                     return player.position, list(fp)
@@ -152,7 +130,7 @@ def _drive_to_head(game, rng, want_head, force_pass_for_leaster=False):
                     a = pass_id
                 else:
                     a = rng.choice(tuple(valid))
-                if not _is_private(valid):
+                if not is_private_decision(valid):
                     fp.append((player.position, a))
                 player.act(a)
                 valid = player.get_valid_action_ids()
@@ -248,7 +226,7 @@ def _replay_reproduces_history(real_game, deal, forced_public, observer):
             while valid:
                 if not pub and player.position == observer:
                     return g.history == real_game.history
-                if _is_private(valid):
+                if is_private_decision(valid):
                     is_under = any(ACTIONS[a - 1].startswith("UNDER ") for a in valid)
                     if is_under:
                         if det_under is None:
@@ -304,43 +282,18 @@ def test_determinizer_legality_and_replay():
         assert found > 0, f"no {head} nodes collected"
 
 
-def _drive_to_second_bury(game):
-    """Force a JD pick, partner choice, and one bury; return the second-bury root."""
-    fp = []
-    while not game.is_done():
-        for player in game.players:
-            valid = player.get_valid_action_ids()
-            while valid:
-                names = [ACTIONS[a - 1] for a in valid]
-                if _is_private(valid) and len(game.bury) == 1:
-                    return player.position, list(fp)
-                if "PICK" in names:
-                    a = ACTIONS.index("PICK") + 1
-                elif "JD PARTNER" in names:
-                    a = ACTIONS.index("JD PARTNER") + 1
-                elif _is_private(valid):
-                    a = sorted(valid)[0]
-                else:
-                    a = sorted(valid)[0]
-                if not _is_private(valid):
-                    fp.append((player.position, a))
-                player.act(a)
-                valid = player.get_valid_action_ids()
-    return None
-
-
 def test_private_root_replay_matches_completed_private_actions():
     """A second BURY root must replay the first BURY before returning the root."""
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
     game = Game(partner_selection_mode=PARTNER_BY_JD)
-    out = _drive_to_second_bury(game)
+    out = drive_to_second_bury(game)
     assert out is not None, "could not build a second-bury root"
     observer, fp = out
     assert len(game.bury) == 1, "test setup did not complete exactly one bury"
 
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
     rng = random.Random(SEED)
     deal = game.sample_determinization(observer, rng)
@@ -371,7 +324,7 @@ def test_batched_pool_matches_sequential():
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
     rng = random.Random(SEED)
     K = 16
@@ -423,14 +376,14 @@ def test_batched_pool_matches_sequential():
 
 
 def test_batched_pool_fallback_on_inconsistency():
-    """When the batched lockstep raises _ReplayInconsistency (rare: a redeal makes
+    """When the batched lockstep raises ReplayInconsistency (rare: a redeal makes
     a recorded play illegal — void inference is not exhaustive), _build_worlds_batched
     must fall back to the per-world sequential build and still return a valid pool,
     not abort. Forced here by monkeypatching the lockstep to raise."""
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _ReplayInconsistency
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, ReplayInconsistency
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(agent, ISMCTSConfig(det_max_tries=2000))
     rng = random.Random(SEED)
     K = 12
@@ -448,7 +401,7 @@ def test_batched_pool_fallback_on_inconsistency():
         deals = [game.sample_determinization(observer, rng) for _ in range(K)]
 
         def _raise(*a, **k):
-            raise _ReplayInconsistency("forced for test")
+            raise ReplayInconsistency("forced for test")
 
         teacher._build_worlds_lockstep = _raise  # type: ignore[method-assign]
         pool = teacher._build_worlds_batched(
@@ -489,7 +442,7 @@ def test_search_output_contract():
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     teacher = ISMCTSTeacher(
         agent,
         ISMCTSConfig(
@@ -527,12 +480,12 @@ def test_search_output_contract():
 
 
 def test_ismcts_backup_discount_uses_agent_gamma():
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, _Node
+    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, Node
 
-    agent = _fresh_agent()
+    agent = fresh_agent()
     agent.gamma = 0.5
     teacher = ISMCTSTeacher(agent, ISMCTSConfig())
-    root, child = _Node(), _Node()
+    root, child = Node(), Node()
     a0, a1 = ACTIONS.index("PASS") + 1, ACTIONS.index("PICK") + 1
     for node, action in ((root, a0), (child, a1)):
         node.N[action] = 0.0
@@ -582,7 +535,7 @@ def test_terminal_reward_contract():
 
 
 # ---------------------------------------------------------------------------
-# 6. CE teacher path through play_population_game + update
+# 6. Population-game surface
 # ---------------------------------------------------------------------------
 def _make_pop_agent(agent, mode, i):
     """Minimal opponent-seat surface play_population_game needs (``.agent`` plus
@@ -590,222 +543,6 @@ def _make_pop_agent(agent, mode, i):
     league keeps no strategic profiles."""
     return SimpleNamespace(
         agent=agent, metadata=SimpleNamespace(agent_id=f"reg_opp_{i}")
-    )
-
-
-class _DisagreeCommittee:
-    """Deterministic committee stub for the CE teacher: every replicate
-    returns the same completed-Q table with the second-lowest legal action
-    clearly best (spread far above the noise model), so every eligible
-    PLAY node ships a material CE target tilted away from the raw prior."""
-
-    def __init__(self):
-        from sheepshead.ismcts import ISMCTSConfig
-
-        self.config = ISMCTSConfig()
-
-    def search_committee(self, game, observer, forced_public, rngs, d_rollout=None):
-        valid = sorted(game.players[observer - 1].get_valid_action_ids())
-        best = valid[1] if len(valid) > 1 else valid[0]
-        root_q = {}
-        step = 0.0
-        for a in valid:
-            if a == best:
-                root_q[a] = 0.60
-            else:
-                root_q[a] = 0.40 - step
-                step += 0.02
-        replicate = {
-            "ok": True,
-            "root_q": root_q,
-            "root_n": {a: 64.0 for a in valid},
-            "root_prior": {a: 1.0 / len(valid) for a in valid},
-            "valid": valid,
-        }
-        return [dict(replicate) for _ in rngs]
-
-
-def _teacher_all_nodes_config():
-    """SearchConfig labeling every eligible PLAY node (no subsampling)."""
-    from sheepshead.training.config import SearchConfig
-
-    return SearchConfig(teacher_prob=1.0, teacher_replicates=2)
-
-
-def test_ce_teacher_labels_and_dormant():
-    from sheepshead.ismcts import ISMCTSTeacher
-    from sheepshead.training.pfsp_runtime import play_population_game
-
-    _seed()
-    agent = _fresh_agent()
-    mode = PARTNER_BY_JD
-    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = cast(ISMCTSTeacher, _DisagreeCommittee())
-    determinization_rng = random.Random(SEED)
-    sc = _teacher_all_nodes_config()
-
-    labeled = 0
-    for gi in range(8):
-        game, events, _, _, _ = play_population_game(
-            training_agent=agent,
-            opponents=opps,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="terminal",
-            teacher=teacher,
-            determinization_rng=determinization_rng,
-            search_config=sc,
-        )
-        labeled += sum(
-            1 for e in events if e["kind"] == "action" and e.get("has_search_target")
-        )
-        agent.store_episode_events(events)
-    assert labeled > 0, "no CE targets produced"
-    stats = agent.update(epochs=2, batch_size=16, teacher_epochs=2)
-    t = stats.get("teacher")
-    assert stats["num_transitions"] > 0
-    assert t is not None, "teacher pass must report telemetry on labeled rows"
-    assert t["rows"] == labeled and t["epochs"] == 2
-    assert t["ce"] > 0.0
-    assert "value" in stats["critic_losses"], "value loss must be computed"
-
-    # Dormant control: shaped mode with no teacher -> CE pass reports None,
-    # confirming the PPO trainers are unaffected by the teacher plumbing.
-    _seed()
-    agent2 = _fresh_agent()
-    opps2 = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    for gi in range(6):
-        _, events, _, _, _ = play_population_game(
-            training_agent=agent2,
-            opponents=opps2,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="shaped",
-        )
-        agent2.store_episode_events(events)
-    stats2 = agent2.update(epochs=2, batch_size=16, teacher_epochs=2)
-    assert stats2.get("teacher") is None, (
-        "teacher pass must be dormant without labeled rows"
-    )
-
-
-def _generate_searched_events(n_games=5):
-    """Play terminal-mode games with the stub gated teacher and return the
-    concatenated event stream (with search targets on the eligible PLAY
-    transitions)."""
-    from sheepshead.ismcts import ISMCTSTeacher
-    from sheepshead.training.pfsp_runtime import play_population_game
-
-    _seed()
-    gen = _fresh_agent()
-    mode = PARTNER_BY_JD
-    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    teacher = cast(ISMCTSTeacher, _DisagreeCommittee())
-    det_rng = random.Random(SEED)
-    sc = _teacher_all_nodes_config()
-    all_events, searched = [], 0
-    for _ in range(n_games):
-        _, events, _, _, _ = play_population_game(
-            training_agent=gen,
-            opponents=opps,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="terminal",
-            teacher=teacher,
-            determinization_rng=det_rng,
-            search_config=sc,
-        )
-        searched += sum(
-            1 for e in events if e["kind"] == "action" and e.get("has_search_target")
-        )
-        all_events.append(events)
-    assert searched > 0, "no search targets generated"
-    return all_events
-
-
-def test_teacher_epochs_reach_gradient():
-    """teacher_epochs must reach the actor gradient: two agents identical
-    except for teacher_epochs (0 vs 2), fed the SAME labeled event stream,
-    must diverge after one update."""
-    event_streams = _generate_searched_events(n_games=5)
-
-    def updated_agent(teacher_epochs):
-        _seed()
-        a = _fresh_agent()  # identical init across the two calls (re-seeded)
-        for events in event_streams:
-            a.store_episode_events(copy.deepcopy(events))
-        a.update(epochs=1, batch_size=16, teacher_epochs=teacher_epochs)
-        return a
-
-    a_plain = updated_agent(0)
-    a_taught = updated_agent(2)
-    max_diff = 0.0
-    for p_plain, p_taught in zip(
-        a_plain.actor.parameters(), a_taught.actor.parameters()
-    ):
-        max_diff = max(max_diff, (p_plain - p_taught).abs().max().item())
-    assert max_diff > 1e-9, (
-        f"teacher_epochs had no effect on the actor update (max param diff {max_diff:.2e})"
-    )
-
-
-def _generate_terminal_events(n_games=5):
-    """Play plain terminal-mode games (no teacher/search) and return the
-    per-game event streams."""
-    from sheepshead.training.pfsp_runtime import play_population_game
-
-    _seed()
-    gen = _fresh_agent()
-    mode = PARTNER_BY_JD
-    opps = [_make_pop_agent(_fresh_agent(), mode, i) for i in range(4)]
-    all_events = []
-    for _ in range(n_games):
-        _, events, _, _, _ = play_population_game(
-            training_agent=gen,
-            opponents=opps,
-            partner_mode=mode,
-            training_agent_position=random.randint(1, 5),
-            reward_mode="terminal",
-        )
-        all_events.append(events)
-    return all_events
-
-
-def test_bidding_anchor_kl():
-    """The bidding-head KL anchor must be dormant by default, report a positive
-    KL(ref||theta) toward a differently-initialized reference, and reach the
-    actor gradient (anchored vs unanchored updates diverge on the SAME events
-    and the SAME update RNG stream)."""
-    assert _fresh_agent().anchor_coeff == 0.0, "anchor must be off by default"
-
-    event_streams = _generate_terminal_events(n_games=5)
-
-    def updated_agent(anchored):
-        _seed()
-        a = _fresh_agent()  # identical init across the two calls (re-seeded)
-        if anchored:
-            torch.manual_seed(999)  # different init => KL(ref||theta) > 0
-            ref = _fresh_agent()
-            a.set_anchor(ref, 1.0)
-        _seed()  # identical update RNG stream across the two branches
-        for events in event_streams:
-            a.store_episode_events(copy.deepcopy(events))
-        stats = a.update(epochs=1, batch_size=16)
-        return a, stats
-
-    a_plain, s_plain = updated_agent(False)
-    a_anch, s_anch = updated_agent(True)
-    assert s_plain["anchor"]["active"] is False, "anchor must report inactive"
-    assert abs(s_plain["anchor"]["loss"]) < 1e-12, "dormant anchor loss must be 0"
-    assert s_anch["anchor"]["active"] is True
-    assert s_anch["anchor"]["kl"] > 0.0, (
-        "anchor KL must be positive toward a different reference"
-    )
-    max_diff = 0.0
-    for p_plain, p_anch in zip(a_plain.actor.parameters(), a_anch.actor.parameters()):
-        max_diff = max(max_diff, (p_plain - p_anch).abs().max().item())
-    assert max_diff > 1e-9, (
-        f"anchor had no effect on the actor update (max param diff {max_diff:.2e})"
     )
 
 
@@ -819,9 +556,9 @@ def test_seat_policies_population_grounding():
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
     _seed()
-    agent = _fresh_agent()
+    agent = fresh_agent()
     torch.manual_seed(4321)
-    opp = _fresh_agent()  # one distinct controller for all non-observer seats
+    opp = fresh_agent()  # one distinct controller for all non-observer seats
     teacher = ISMCTSTeacher(
         agent,
         ISMCTSConfig(
@@ -848,7 +585,7 @@ def test_seat_policies_population_grounding():
     seat_policies = {s: opp for s in range(1, 6) if s != observer}
 
     # Seed non-trivial live memories on both agents so isolation is meaningful.
-    obs_state = game.players[observer - 1].get_state_dict()
+    obs_state = observation_for(game.players[observer - 1], agent)
     obs_valid = game.players[observer - 1].get_valid_action_ids()
     agent.get_action_probs_with_logits(obs_state, obs_valid, player_id=observer)
     opp.get_action_probs_with_logits(obs_state, obs_valid, player_id=3)
@@ -920,7 +657,7 @@ def test_greedy_health_probe_side_effect_free():
     from sheepshead.training.training_utils import greedy_health_probe
 
     _seed()
-    a = _fresh_agent()
+    a = fresh_agent()
     a.reset_recurrent_state()
     rng_before = random.getstate()
     mem_before = {pid: t.detach().clone() for pid, t in a._player_memories.items()}
@@ -976,9 +713,6 @@ TESTS = [
     test_search_output_contract,
     test_ismcts_backup_discount_uses_agent_gamma,
     test_terminal_reward_contract,
-    test_ce_teacher_labels_and_dormant,
-    test_teacher_epochs_reach_gradient,
-    test_bidding_anchor_kl,
     test_seat_policies_population_grounding,
     test_greedy_health_probe_side_effect_free,
     test_make_game_summary_roles,

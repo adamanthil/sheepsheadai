@@ -1,10 +1,6 @@
-"""League worker pool: the league flavor of the pfsp_runtime worker
-protocol (same versioned-weights scheme, opponents loaded from the league
-members dir, SELF_PLAY seats played by the worker's own current-weights
-copy) plus the weight-publishing side the main process drives.
-
-Split out of train_league_ppo.py as pure code motion (Stage 1 of the
-league-trainer maintainability refactor).
+"""Worker pool for train_ppo: versioned weights published by the main
+process, opponents loaded from the league members dir, SELF_PLAY seats
+played by the worker's own current-weights copy.
 """
 
 from __future__ import annotations
@@ -105,15 +101,10 @@ def league_worker_init(init_args: dict) -> None:
 
     _torch.set_num_threads(1)
     _apply_inference_options(init_args)
-    agent = PPOAgent(
-        len(ACTIONS),
-        arch=init_args.get("arch", "full"),
-        # Oracle-mode workers exist for the gated search teacher: the
-        # worker's ISMCTS oracle leaves must evaluate with the SAME head the
-        # main process trains (state arrives via the weight payload).
-        critic_mode=init_args.get("critic_mode", "limited"),
-        oracle_aux_heads=bool(init_args.get("oracle_aux_heads", False)),
-    )
+    # Workers only act: a limited-critic agent whatever the main process
+    # trains with (the oracle observation is captured from the game, not
+    # from a network).
+    agent = PPOAgent(len(ACTIONS), arch=init_args.get("arch", "full"))
     seed = init_args["base_seed"] ^ (os.getpid() & 0xFFFFFFFF)
     random.seed(seed)
     WORKER_STATE.clear()
@@ -122,42 +113,11 @@ def league_worker_init(init_args: dict) -> None:
             "agent": agent,
             "members_dir": init_args["members_dir"],
             "weight_path_base": init_args["weight_path_base"],
+            "reward_mode": init_args.get("reward_mode", "terminal"),
             "version": 0,
             "cache": {},
         }
     )
-    if init_args.get("teacher"):
-        from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-        from sheepshead.training.config import SearchConfig
-
-        search_config = SearchConfig(
-            teacher_prob=float(
-                init_args.get("teacher_prob", SearchConfig().teacher_prob)
-            ),
-            teacher_replicates=int(
-                init_args.get("teacher_replicates", SearchConfig().teacher_replicates)
-            ),
-        )
-        iters_per_head = int(
-            init_args.get("teacher_iters", SearchConfig().teacher_iters)
-        )
-        # Closed-loop expert (CE_Teacher_Design §15a): the committee runs
-        # on the worker's own current-weights copy. Weight refreshes in
-        # league_worker_play mutate these same networks in place, so the
-        # expert follows the student with at most one version of lag. The
-        # engine snapshots/restores per-seat memories around each search
-        # (keyed by id, the shared agent included), so sharing the rollout
-        # agent is side-effect free.
-        agent.gamma = float(init_args.get("teacher_gamma", 1.0))
-        WORKER_STATE["teacher"] = ISMCTSTeacher(
-            agent,
-            ISMCTSConfig(
-                iters={
-                    head: iters_per_head for head in ("pick", "partner", "bury", "play")
-                }
-            ),
-        )
-        WORKER_STATE["search_config"] = search_config
 
 
 def _get_cached_member(member_id: str) -> OpponentAdapter:
@@ -185,9 +145,8 @@ def league_worker_play(job: WorkerJob) -> dict:
         )
         worker["version"] = job.weight_version
         # No-op unless the routed encoder is enabled: the refresh above
-        # mutated the live encoder in place, so its compiled shadow (which
-        # the closed-loop teacher's committees run on) must follow or it
-        # keeps labeling with stale weights.
+        # mutated the live encoder in place, so its compiled shadow must
+        # follow or it keeps encoding with stale weights.
         sync_routed_encoder(worker["agent"].encoder)
 
     opponents = [
@@ -196,28 +155,15 @@ def league_worker_play(job: WorkerJob) -> dict:
         else _get_cached_member(member_id_or_self)
         for member_id_or_self in job.opponent_ids
     ]
-    teacher_kwargs = {}
-    if worker.get("teacher") is not None:
-        teacher_kwargs = {
-            "teacher": worker["teacher"],
-            # Per-job stream: reproducible given the job, independent across
-            # jobs (episode is unique; game_seed repeats across seat
-            # rotations of one deal, so fold both in).
-            "determinization_rng": random.Random(
-                (job.episode << 20) ^ (job.game_seed or 0) ^ 0x5EA6C4
-            ),
-            "search_config": worker["search_config"],
-        }
     game, episode_events, final_scores, training_data_single, pos_to_seat = (
         play_population_game(
             training_agent=worker["agent"],
             opponents=opponents,
             partner_mode=job.partner_mode,
             training_agent_position=job.training_position,
-            reward_mode="terminal",
+            reward_mode=worker.get("reward_mode", "terminal"),
             collect_oracle=job.collect_oracle,
             game_seed=job.game_seed,
-            **teacher_kwargs,
         )
     )
     return {

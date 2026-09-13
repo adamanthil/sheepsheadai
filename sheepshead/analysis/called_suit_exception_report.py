@@ -33,15 +33,12 @@ import math
 from pathlib import Path
 
 from sheepshead import FAIL, TRUMP_SET
-from sheepshead.analysis.convention_exception_report import _wilson
+from sheepshead.analysis.convention_exception_report import wilson_interval
+from sheepshead.analysis.conventions import called_suit_fail
 from sheepshead.game import CARD_POINTS
 
 FAIL_SET = set(FAIL)
 FAIL_ACES = {"AS", "AH", "AC"}
-
-
-def _called_suit_fail(card: str, called: str) -> bool:
-    return card in FAIL_SET and card[-1] == called[-1]
 
 
 def _row(case: dict) -> dict | None:
@@ -54,7 +51,7 @@ def _row(case: dict) -> dict | None:
         return None
     gum_card = gum_action[5:]
     called = case["calledCard"]
-    exception = not _called_suit_fail(gum_card, called)
+    exception = not called_suit_fail(gum_card, called)
 
     # Tier: does the belief-MC sign agree with the verdict? Δ = conv − alt, so
     # an exception expects Δ ≤ 0 and a conv verdict expects Δ ≥ 0. Neutral
@@ -77,8 +74,8 @@ def _row(case: dict) -> dict | None:
 
     hand = case["hand"]
     lead_logits = (case.get("node") or {}).get("leadLogits") or {}
-    called_opts = [c for c in lead_logits if _called_suit_fail(c, called)]
-    called_held = [c for c in hand if _called_suit_fail(c, called)]
+    called_opts = [c for c in lead_logits if called_suit_fail(c, called)]
+    called_held = [c for c in hand if called_suit_fail(c, called)]
     alt_card = case["altCard"]
 
     # Replacement class of the search-preferred card (exceptions only).
@@ -113,7 +110,7 @@ def _row(case: dict) -> dict | None:
             default=0,
         ),
         "sideAce": any(
-            c in FAIL_ACES and not _called_suit_fail(c, called) for c in hand
+            c in FAIL_ACES and not called_suit_fail(c, called) for c in hand
         ),
         "relPos": case["relPosFromPicker"],
         "calledLen": len(called_held),
@@ -139,7 +136,7 @@ def _split(rows: list[dict], name: str, pred) -> str:
         k = sum(r["exception"] for r in grp)
         n = len(grp)
         if n:
-            lo, hi = _wilson(k, n)
+            lo, hi = wilson_interval(k, n)
             parts.append(f"{label}: {k}/{n} = {k / n:.0%} [{lo:.0%},{hi:.0%}]")
         else:
             parts.append(f"{label}: n=0")
@@ -159,7 +156,7 @@ def main() -> int:
 
     k = sum(r["exception"] for r in rows)
     n = len(rows)
-    lo, hi = _wilson(k, n)
+    lo, hi = wilson_interval(k, n)
     print(f"Nodes labeled: {n} ({dropped} dropped: ESS-low or no search verdict)")
     print(f"POOLED exception rate: {k}/{n} = {k / n:.1%}  Wilson95 [{lo:.1%},{hi:.1%}]")
     tier_a = [r for r in rows if r["tier"] == "A"]
@@ -174,7 +171,7 @@ def main() -> int:
         sub = [r for r in rows if r["group"] == grp]
         if sub:
             gk, gn = sum(r["exception"] for r in sub), len(sub)
-            glo, ghi = _wilson(gk, gn)
+            glo, ghi = wilson_interval(gk, gn)
             print(
                 f"  {grp.upper():>8}: exceptions {gk}/{gn} = {gk / gn:.0%} "
                 f"[{glo:.0%},{ghi:.0%}]"

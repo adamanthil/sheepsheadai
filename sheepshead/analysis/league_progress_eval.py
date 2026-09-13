@@ -2,7 +2,7 @@
 """
 Per-generation endpoint evaluation for the extended league run.
 
-Called by analysis/run_extended_league.py after each generation; importable
+Called by training/run_training_program.py after each generation; importable
 and usable standalone for manual re-runs. Reuses the anchored-gauntlet
 machinery from analysis/rigorous_eval.py in-process because the stopping rule
 needs the raw per-deal score vectors, which the CSV output discards.
@@ -63,6 +63,7 @@ from sheepshead import (
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
+from sheepshead.analysis.conventions import lead_options
 from sheepshead.analysis.panels import PANEL_A
 from sheepshead.analysis.rigorous_eval import (
     DecisionProbe,
@@ -71,7 +72,6 @@ from sheepshead.analysis.rigorous_eval import (
     evaluate_hero_in_field,
     make_panel_field_fn,
 )
-from sheepshead.analysis.trump_lead_probe import _is_secret_partner, _lead_options
 from sheepshead.training.training_utils import paired_edge
 
 # Frozen experiment constants (pre-registered in notebooks/Extended_League_202607.md)
@@ -140,12 +140,12 @@ class TrumpLeadCollector:
                 player.is_picker
                 or player.is_partner
                 or game.partner == player.position
-                or _is_secret_partner(game, player)
+                or player.is_secret_partner
             )
         )
 
     def record(self, game, player, valid_actions, action, probs) -> None:
-        trumps, fails = _lead_options(player)
+        trumps, fails = lead_options(player)
         tally = self.stats[int(game.current_trick)]
         if trumps and not fails:
             tally["forced"] += 1
@@ -365,7 +365,9 @@ def _h2h_worker_chunk(task):
     )
 
     mode, start, seeds = task
-    field_fn = make_panel_field_fn([_H2H_WORKER["anchor"]], len(seeds), rng_seed=20260619)
+    field_fn = make_panel_field_fn(
+        [_H2H_WORKER["anchor"]], len(seeds), rng_seed=20260619
+    )
     ev = evaluate_hero_in_field(_H2H_WORKER["cand"], field_fn, seeds, mode)
     return start, ev.raw_score, ev.deal_margin, ev.raw_leaster, ev.role_counts
 
@@ -391,7 +393,9 @@ def h2h_parallel_eval(
     role_counts = {"picker": 0, "partner": 0, "defender": 0, "leaster": 0}
     ctx = get_context("spawn")
     with ctx.Pool(
-        processes=workers, initializer=_h2h_worker_init, initargs=(build_cand, prev_ckpt)
+        processes=workers,
+        initializer=_h2h_worker_init,
+        initargs=(build_cand, prev_ckpt),
     ) as pool:
         for start, sc, mg, le, rc in pool.imap_unordered(_h2h_worker_chunk, tasks):
             k = len(sc)
@@ -447,7 +451,7 @@ def h2h_duplicate(
     from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
     from sheepshead.analysis.rigorous_eval import (
         ModelRegistry,
-        _bootstrap_deal_indices,
+        bootstrap_deal_indices,
         bootstrap_mean,
         run_gauntlet,
     )
@@ -457,7 +461,7 @@ def h2h_duplicate(
     anchor = registry.get(Path(prev_ckpt))
     seed_rng = _random.Random(seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(n_deals_per_mode)]
-    boot_idx = _bootstrap_deal_indices(
+    boot_idx = bootstrap_deal_indices(
         n_deals_per_mode, n_boot, np.random.default_rng(seed)
     )
 
@@ -472,7 +476,11 @@ def h2h_duplicate(
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
         if workers > 1:
             ev = h2h_parallel_eval(
-                functools.partial(load_model, gen_ckpt), prev_ckpt, deal_seeds, mode, workers
+                functools.partial(load_model, gen_ckpt),
+                prev_ckpt,
+                deal_seeds,
+                mode,
+                workers,
             )
             score = bootstrap_mean(ev.deal_score, boot_idx)
             mode_edges[name] = {"edge": score.mean, "se": score.se}
@@ -494,7 +502,7 @@ def h2h_duplicate(
         den = [m.sum(axis=1) for m in mask_per_mode]
         hands = int(sum(d.sum() for d in den))
         if hands == 0:
-            return {"edge": float("nan"), "se": float("nan"), "hands": 0}
+            return {"edge": float("nan"), "se": float("nan"), "hands": 0, "n": 0}
         point = float(sum(x.sum() for x in num) / hands)
         boot_num = sum(x[boot_idx].sum(axis=1) for x in num)
         boot_den = sum(x[boot_idx].sum(axis=1) for x in den)
@@ -503,6 +511,7 @@ def h2h_duplicate(
             "edge": point,
             "se": float(boots.std(ddof=1)),
             "hands": hands,
+            "n": hands,
             "hand_frac": hands / float(sum(m.size for m in mask_per_mode)),
         }
 
@@ -511,6 +520,9 @@ def h2h_duplicate(
         np.sqrt(mode_edges["called"]["se"] ** 2 + mode_edges["jd"]["se"] ** 2)
     )
     pooled = np.concatenate(deal_scores)
+    # Leaster-hand paired score: the candidate's mean score on the (deal,
+    # seat) cells that were leasters. The anchor's own score in its field
+    # is 0 by symmetry, so this is a paired edge on leaster play alone
     return {
         "edge": edge,
         "se": se,

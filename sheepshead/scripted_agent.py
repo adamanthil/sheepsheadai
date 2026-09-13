@@ -66,8 +66,8 @@ no-op), so one instance can fill any number of seats.
 Interface-compatible with PPOAgent for the greedy eval drivers:
 ``act(state_dict, valid_action_ids, player_id, deterministic) -> (id, 0, 0)``,
 plus no-op ``observe`` / ``reset_recurrent_state``. Decisions are pure
-functions of the structured observation dict (sheepshead.Player.get_state_dict)
-and the valid-action set, and fail fast: a decision bug raises rather than
+functions of the clean observation dict (``Player.get_state_dict``; it never
+reads the legacy picker-memory keys) and the valid-action set, and fail fast: a decision bug raises rather than
 silently degrading the instrument.
 """
 
@@ -86,7 +86,7 @@ from sheepshead import (
 )
 
 
-def _card(card_id: int) -> str | None:
+def card_name(card_id: int) -> str | None:
     """Card string for a deck id (1..32); None for PAD(0)/UNDER(33)."""
     if 1 <= card_id <= len(DECK):
         return DECK[card_id - 1]
@@ -176,7 +176,7 @@ class ScriptedAgent:
     # -------------------------------------------------------------- decision
     def _decide(self, state, ids: list[int]) -> int:
         options = {ACTION_LOOKUP[i]: i for i in ids}
-        hand = [c for c in (_card(cid) for cid in state["hand_ids"]) if c]
+        hand = [c for c in (card_name(cid) for cid in state["hand_ids"]) if c]
         strength = hand_strength(hand)
 
         if "PICK" in options:
@@ -252,7 +252,7 @@ class ScriptedAgent:
             self._pending_lead = None
         if self._pending_lead is not None and self._pending_lead[0] < trick:
             _, card = self._pending_lead
-            called = _card(int(state["called_card_id"]))
+            called = card_name(int(state["called_card_id"]))
             if called and card[-1] == called[-1]:
                 self._called_suit_led = True
             self._pending_lead = None
@@ -263,13 +263,13 @@ class ScriptedAgent:
         leader at ``leader_rel``, and this seat plays in every trick, so it
         sees every led card (or led it — see ``_pending_lead``)."""
         self._advance(state)
-        called = _card(int(state["called_card_id"]))
+        called = card_name(int(state["called_card_id"]))
         if not called or self._called_suit_led:
             return
         trick_ids = [int(x) for x in state["trick_card_ids"]]
         if not any(trick_ids):
             return
-        led = _card(trick_ids[int(state["leader_rel"]) - 1])
+        led = card_name(trick_ids[int(state["leader_rel"]) - 1])
         if led and not _is_trump(led) and led[-1] == called[-1]:
             self._called_suit_led = True
 
@@ -288,7 +288,7 @@ class ScriptedAgent:
             return plays[choice]
 
         # Current trick state: led suit + best card/seat so far.
-        led_card = _card(trick_ids[leader_rel - 1])
+        led_card = card_name(trick_ids[leader_rel - 1])
         led_suit = (
             ("T" if led_card and _is_trump(led_card) else _fail_suit(led_card))
             if led_card
@@ -301,7 +301,7 @@ class ScriptedAgent:
             cid = trick_ids[rel - 1]
             if not cid:
                 continue
-            card = _card(cid)
+            card = card_name(cid)
             trick_points += _points(card) if cid != UNDER_CARD_ID else 0
             p = _power(card, led_suit)
             if p > best_pow:
@@ -341,7 +341,7 @@ class ScriptedAgent:
         # Defender: NEVER lead trump while holding fail (the exact tell the
         # 30M lineage leaks). Called suit through first, then fail aces.
         if fails:
-            called = _card(int(state["called_card_id"]))
+            called = card_name(int(state["called_card_id"]))
             if called and not self._called_suit_led:
                 through = [c for c in fails if c[-1] == called[-1]]
                 if through:
@@ -383,8 +383,8 @@ class ScriptedAgent:
         card / the JD in JD mode)."""
         picker_rel = int(state["picker_rel"])
         partner_rel = int(state["partner_rel"])
-        hand = [c for c in (_card(cid) for cid in state["hand_ids"]) if c]
-        called = _card(int(state["called_card_id"]))
+        hand = [c for c in (card_name(cid) for cid in state["hand_ids"]) if c]
+        called = card_name(int(state["called_card_id"]))
         # Holding the called card / the JD makes me the (maybe secret)
         # partner — unless the picker declared ALONE, in which case there is
         # no partner and the JD holder is an ordinary defender.

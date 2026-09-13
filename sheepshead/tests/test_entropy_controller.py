@@ -234,87 +234,34 @@ class TestPersistence:
 
 
 class TestWiring:
-    def test_trainer_controller_always_on(self):
-        # CE_Teacher_Design §4: the v2 controller is always on for the
-        # league trainer — the legacy --entropy-mode selector is gone and
-        # entropy_controller arrives as a parser default (not a CLI flag,
-        # so the exploiter's SimpleNamespace args stays on the schedule).
-        from sheepshead.training.league_cli import build_arg_parser
+    def test_trainer_controller_defaults_per_phase(self):
+        # Training_Program_Redesign §4.3: the controller owns the coefficients
+        # in the league phases (bumpless attach at the settled operating
+        # point); the bootstrap runs its own fixed linear schedule; the
+        # orchestrator opts league generation 1 out explicitly.
+        from sheepshead.training.train_ppo import build_arg_parser, resolve_args
 
-        args = build_arg_parser().parse_args(["--resume", "x.pt", "--league-dir", "y"])
-        assert args.entropy_controller is True
-        assert not hasattr(args, "entropy_mode")
-        on = build_arg_parser().parse_args(
-            [
-                "--resume",
-                "x.pt",
-                "--league-dir",
-                "y",
-                "--entropy-target-play",
-                "0.75",
-            ]
+        league = build_arg_parser().parse_args(
+            ["--phase", "league", "--run-name", "x", "--until", "1"]
         )
-        assert on.entropy_target_play == 0.75
-        assert on.entropy_target_pick is None
-        assert on.entropy_play_floor == 0.28
-
-    def test_orchestrator_default_on_with_opt_out(self):
-        # --adaptive-entropy now governs only the orchestrator's OUTER loop
-        # (target stepping + flat absorption); the trainer controller is
-        # always on regardless.
-        from sheepshead.training.run_extended_league import parse_args
-
-        args = parse_args(["--resume", "x.pt", "--run-name", "t", "--panel", "a.pt"])
-        assert args.adaptive_entropy is True
-        assert args.entropy_play_floor == 0.28
-        off = parse_args(
+        resolve_args(league)
+        assert league.entropy_controller is True
+        assert league.entropy_play_floor == 0.28
+        boot = build_arg_parser().parse_args(
+            ["--phase", "bootstrap", "--run-name", "x", "--until", "1"]
+        )
+        resolve_args(boot)
+        assert boot.entropy_controller is False
+        off = build_arg_parser().parse_args(
             [
-                "--resume",
-                "x.pt",
+                "--phase",
+                "league",
                 "--run-name",
-                "t",
-                "--panel",
-                "a.pt",
-                "--no-adaptive-entropy",
+                "x",
+                "--until",
+                "1",
+                "--no-entropy-controller",
             ]
         )
-        assert off.adaptive_entropy is False
-
-    def test_trainer_cmd_forwards_floor_not_mode(self, tmp_path, monkeypatch):
-        """Every generation's trainer command forwards the play floor and
-        never the removed --entropy-mode selector; gen 1 and gen 2 carry
-        identical entropy flags (the old gen-1 deferral is gone — bumpless
-        attachment makes switch-on a no-op at any operating point)."""
-        monkeypatch.chdir(tmp_path)
-        from sheepshead.training.run_extended_league import Orchestrator, parse_args
-
-        args = parse_args(
-            [
-                "--resume",
-                "seed.pt",
-                "--run-name",
-                "t",
-                "--panel",
-                "a.pt",
-                "--adaptive-entropy",
-            ]
-        )
-        args.arch = "perceiver-shared-v2"  # normally set by preflight
-        orch = Orchestrator(args)
-        # _resume_for(2) globs for the gen-1 boundary checkpoint by name.
-        ckpt_dir = tmp_path / "runs" / "t" / "checkpoints"
-        ckpt_dir.mkdir(parents=True)
-        (ckpt_dir / "pfsp_perceiver-shared-v2_checkpoint_1000000.pt").touch()
-        gen1 = " ".join(orch.trainer_cmd(1, None))
-        gen2 = " ".join(orch.trainer_cmd(2, None))
-        assert "--entropy-mode" not in gen1 and "--entropy-mode" not in gen2
-        assert "--entropy-play-floor 0.28" in gen1
-        assert "--entropy-play-floor 0.28" in gen2
-
-
-if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))
+        resolve_args(off)
+        assert off.entropy_controller is False

@@ -49,25 +49,27 @@ class TestOracleStateSchema:
             limited = player.get_state_dict()
             oracle = player.get_oracle_state_dict()
 
-            # Superset: every limited key present; identical except the
-            # de-masked blind/bury.
+            # Superset: every limited key present and identical. The clean
+            # observation never carries blind/bury.
+            assert "blind_ids" not in limited and "bury_ids" not in limited
             for k, v in limited.items():
                 assert k in oracle
-                if k in ("blind_ids", "bury_ids"):
-                    continue
                 np.testing.assert_array_equal(np.asarray(oracle[k]), np.asarray(v))
 
-            # True blind/bury for every seat; picker's limited view already
-            # equals the truth.
+            # True blind/bury for every seat (the privileged view); the
+            # picker's own memory interface already equals the truth.
             def ids(cards, n):
                 out = [DECK_IDS[c] for c in cards] + [0] * n
                 return np.array(out[:n], dtype=np.uint8)
 
             np.testing.assert_array_equal(oracle["blind_ids"], ids(game.blind, 2))
             np.testing.assert_array_equal(oracle["bury_ids"], ids(game.bury, 2))
+            memory = player.get_picker_memory()
             if player.is_picker:
-                np.testing.assert_array_equal(oracle["blind_ids"], limited["blind_ids"])
-                np.testing.assert_array_equal(oracle["bury_ids"], limited["bury_ids"])
+                np.testing.assert_array_equal(oracle["blind_ids"], memory["blind_ids"])
+                np.testing.assert_array_equal(oracle["bury_ids"], memory["bury_ids"])
+            else:
+                assert not memory["blind_ids"].any() and not memory["bury_ids"].any()
 
             # Opponent hands at relative seats 2..5.
             assert oracle["opp_hand_ids"].shape == (4, 8)

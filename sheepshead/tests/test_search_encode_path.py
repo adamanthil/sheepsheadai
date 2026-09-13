@@ -22,11 +22,12 @@ import torch
 
 from sheepshead import ACTION_IDS, Game
 from sheepshead.agent.compiled_encoder import (
-    _DEFAULT_SHAPE_BUDGET,
+    DEFAULT_SHAPE_BUDGET,
     allow_shape_specialisation,
     disable_compiled_encoder,
     enable_compiled_encoder,
 )
+from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.training_utils import set_all_seeds
 
@@ -44,8 +45,10 @@ def agent():
 
 
 @pytest.fixture(scope="module")
-def states():
-    return [Game(seed=seed).players[0].get_state_dict() for seed in range(11, 15)]
+def states(agent):
+    return [
+        observation_for(Game(seed=seed).players[0], agent) for seed in range(11, 15)
+    ]
 
 
 @pytest.fixture
@@ -154,7 +157,7 @@ def test_the_shape_budget_clears_dynamos_default():
     allow_shape_specialisation()
     assert dynamo.config.recompile_limit >= 14
     assert dynamo.config.cache_size_limit >= 14
-    assert _DEFAULT_SHAPE_BUDGET >= 14
+    assert DEFAULT_SHAPE_BUDGET >= 14
 
 
 # ----------------------------------------------------------------------------

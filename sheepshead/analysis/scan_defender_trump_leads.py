@@ -126,7 +126,7 @@ class ScanStats:
         return self.trumpLeadCases / self.defenderLeadsWithFail
 
 
-def _is_secret_partner(view: dict, partner_mode: int) -> bool:
+def is_secret_partner(view: dict, partner_mode: int) -> bool:
     """Mirror Player.is_secret_partner using only the trace view + meta.
 
     JD mode: holds the Jack of Diamonds. Called-ace mode: holds the called
@@ -174,7 +174,7 @@ def scan_game(
         partner = view.get("partner") or 0
         is_picker = seat == picker
         is_partner = seat == partner  # 0 until revealed, so safe
-        if is_picker or is_partner or _is_secret_partner(view, partner_mode):
+        if is_picker or is_partner or is_secret_partner(view, partner_mode):
             continue
 
         # This is a defender lead. Which fail cards were legal to lead?

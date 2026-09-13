@@ -32,7 +32,7 @@ import math
 from pathlib import Path
 
 
-def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson score interval for a binomial proportion."""
     if n == 0:
         return 0.0, 0.0
@@ -106,7 +106,7 @@ def main() -> int:
 
     exceptions = [r for r in rows if r["delta"] - args.z * r["se"] > args.epsilon]
     supported = [r for r in rows if r["delta"] + args.z * r["se"] < -args.epsilon]
-    lo, hi = _wilson(len(exceptions), n)
+    lo, hi = wilson_interval(len(exceptions), n)
 
     print(f"Cases: {n}  (Δ = trump − fail, true-deal MC, leader score)")
     print(

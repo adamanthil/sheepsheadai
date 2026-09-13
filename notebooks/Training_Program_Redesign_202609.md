@@ -24,7 +24,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | Date (2026) | Decision | § |
 |---|---|---|
 | 09-02 | Restart the program from scratch on `perceiver-recall` to produce the final deployable artifact; simplify the pipeline end to end | 1, 3, 4 |
-| 09-02 | `blind_ids`/`bury_ids` REMOVED from the actor observation dict (oracle dict keeps them); app view builder reads the game object | 3.2 |
+| 09-02 | Observation contract: `blind_ids`/`bury_ids` REMOVED from `get_state_dict`; legacy architectures read them through a separate `Player.get_picker_memory` interface merged per agent by `observation_for` (an earlier same-day amendment had kept the keys in the dict with encoder-side enforcement) | 3.2 |
 | 09-02 | Skip the recall-vs-ctxmem architecture pilot; no strength bar on the bootstrap | 3.4, 5.3 |
 | 09-02 | PG phase stop rule = marginal-value handoff (not plateau); one entropy step max; settled-checkpoint handoff | 5.1 |
 | 09-02 | Exploiters dropped from the training loop (post-hoc audit only); PFSP kept | 4.3 |
@@ -123,24 +123,55 @@ attention cost scales with token count squared (15² / 19² ≈ 0.62), but
 the encoder is a minority of wall time; expect ~10–20% on the encoder
 forward, less end to end.
 
-### 3.2 Observation change (enforced at the observation, not the encoder)
+### 3.2 Observation contract (two interfaces; amended 2026-09-02)
 
-`Player.get_state_dict` drops `blind_ids` and `bury_ids`.
-`get_oracle_state_dict` keeps them (true cards, all seats). Consumers
-audited 2026-09-02:
+The contract lives in `sheepshead/agent/observation.py`.
+`Player.get_state_dict` is the observation: `RECALL_KEYS` (header
+flags, called card, seats/roles, hand, trick on the table) and nothing
+else — what a human at the table sees or is entitled to remember. The
+picker's blind and bury are NOT in it. They live behind a second
+interface, `Player.get_picker_memory` (`LEGACY_PICKER_MEMORY_KEYS`:
+the picker's own blind and bury, zeros for everyone else), which
+exists only so that architectures registered before this program stay
+loadable and evaluable as they were trained. Every `ArchitectureSpec`
+declares `legacy_picker_memory` (True for every entry registered before
+this program, False for `perceiver-recall`); `PPOAgent.needs_picker_memory`
+reads it, and `observation_for(player, agent)` is the one place the two
+interfaces meet — it hands a legacy agent the merged dict and everyone
+else the clean observation. The recall encoder is pinned by test to
+exactly `RECALL_KEYS` with the 15-token layout, and every legacy encoder
+(the token family and the one-hot baseline) raises when handed a dict
+without the memory keys, so a call site that bypasses the helper fails
+loudly rather than running a legacy model with its memory zeroed
+(−0.30/picker hand for the 30M, Blind_Bury §3).
 
-- `app/server/runtime/views.py:49-55` (the only UI reader) converts the
-  ids back to card names for `view.blind`/`view.bury`; it will read
-  `game.blind`/`game.bury` gated on `player.is_picker` instead (same
-  view shape; no client change). Nothing in the web client reads the raw
-  id fields; the WebSocket zod schemas do not name them.
-- Inference paths (`ai_loop.py`, `analysis_common.run_inference_step`)
-  hand the dict straight to the encoder — /analyze's displayed
-  observation becomes accurate for the deployed agent by construction.
-- Legacy encoders (`full` family, one-hot baseline) marshal the keys;
-  they get a missing-key-means-PAD fallback, reproducing the ablation's
-  masked pass. Tests touching the keys: game rules, oracle critic,
-  scripted agent.
+Why the second interface exists at all (the decision recorded in §0 was
+to remove the keys outright; amended at build time, then restated in
+this form 2026-09-02):
+
+- Every evaluation anchor and the production 30M are legacy
+  architectures. The review gates (§5.3) compare against PANEL-A and
+  the 30M as they were measured; running them masked would shift the
+  panel by ~0.05 and turn "beats the 30M" into "beats a handicapped
+  30M".
+- The h2h instruments seat a recall agent and a legacy agent at the
+  same table, so both views must be producible for one game state;
+  `observation_for` differentiates per agent at the table.
+
+The oracle critic's view, `Player.get_oracle_state_dict`, is a third,
+privileged interface: it carries the TRUE blind and bury for every seat
+(the definition of the full-information view, built in rather than
+borrowed from the picker-memory interface) plus the opponents' hands.
+Only the centralized critic ever sees it.
+
+Consumers audited 2026-09-02: `app/server/runtime/views.py` (the only
+UI reader) reads the picker's blind/bury from the game object — a table
+fact, not an agent observation; the raw observation dict never reaches
+the web client. Every path that feeds an agent — the trainer's streams,
+search (`ismcts.py`), the evaluation instruments, the app's inference
+loop and analysis service, the golden capture — observes through
+`observation_for`, so the deployed recall agent consumes `RECALL_KEYS`
+by construction.
 
 ### 3.3 Registry and gates
 
@@ -347,36 +378,39 @@ arm if the gen-2 gate fails.
 
 ---
 
-## 6. Code plan
+## 6. Code (built 2026-09-02 on branch `training-program-redesign`)
 
-New / retained modules (`sheepshead/training/`):
+Modules in `sheepshead/training/`:
 
 | module | role | provenance |
 |---|---|---|
-| `train_ppo.py` (unified trainer) | phases 0, 2, and the bidding phase: `--reward {shaped,terminal}`, `--critic {limited,oracle}`, `--train-heads {all,bidding}`, entropy target schedule, population from `league.py` | `train_league_ppo.py` stripped of teacher/exploiter/anchor/GNS/horizon |
-| `league.py` | roster + per-seat PFSP/self sampling + HOF | exploiter role removed |
-| `pfsp_runtime.py` | game primitive, shaped and terminal reward paths | CE emission removed |
-| `pretrain_oracle.py` | phase 1 | from `oracle_moe_offline.py` |
-| `distill_corpus.py` | phase 3 corpus | schema 2 only |
-| `policy_iteration.py` | fit / target / distill / cert | `train_policy_iteration.py` + `train_distill.py` merged, standing defaults |
-| `run_training_program.py` | the orchestrator: resumable `state.json`, phases, gates, reports, `--smoke` | replaces `run_extended_league.py` |
-| `program_config.py` | one dataclass = the pre-registration artifact | new |
+| `train_ppo.py` | the one PPO trainer: `--phase {bootstrap,league,bidding}` with phase presets (`PhaseSpec`), `--until` on an absolute episode clock, the target-entropy controller from generation 2, HOF promotion of every boundary snapshot | `train_league_ppo` stripped of teacher / exploiter / anchor / GNS / clock schedules; `train_selfplay_ppo` retired (the bootstrap is the same loop on an empty population with shaped rewards) |
+| `config.py` | `BootstrapHyperparams`, `LeagueHyperparams` (constant LR, fixed gen-1 coefficients), `CommitteeConfig`, `LeagueConfig` | `PFSPHyperparams` / `SelfPlayHyperparams` / `SearchConfig` replaced |
+| `league.py` | roster + per-seat PFSP/self sampling + HOF | exploiter role, seat heat, retirement clocks, legacy migration removed |
+| `league_streams.py`, `league_worker.py` | episode streams and the worker pool, `reward_mode` threaded through | CE emission removed |
+| `pfsp_runtime.py` | the game primitive, committee summary/tilt (corpus generation) | online CE emission removed |
+| `entropy_controller.py`, `leaster_watchdog.py` | unchanged | — |
+| `pretrain_oracle.py` | phase 1 | from `oracle_moe_offline.py` (MoE arms dropped) |
+| `distill_corpus.py` | phase 3 corpus, schema 2 only | committee acting, alone-only calibration removed |
+| `search_advantage.py` | Stage 1/1b/2 math (pointer/adapter rungs) | trunk rung removed |
+| `policy_iteration.py` | fit / target / distill / cert with the standing recipe as defaults | `train_policy_iteration` + `train_distill` merged; sweep flags, §17 partition machinery, `recover_search_q` removed |
+| `stop_rules.py` | the marginal-value handoff rule, settled-checkpoint rule, iteration stop | replaces `league_stopping` |
+| `program_config.py` | the config tree = the pre-registration artifact (`smoke_config()` for the minutes-long check) | new |
+| `run_training_program.py` | the resumable orchestrator over the five phases, review gates, reports | replaces `run_extended_league` + `league_reports` |
 
-Retired: `train_selfplay_ppo.py`, `exploiter.py` (→ analysis),
-`league_teacher.py`, `league_gates.py`, `recover_search_q.py`,
-`train_distill.py`, `run_extended_league.py`, `run_ablation_matrix.py`;
-`SearchConfig` teacher fields; the corresponding tests (live teacher,
-gated teacher, boundary cert, exploiter gate, recovery, §17 pipeline).
-Golden gates (`capture_arch_goldens`, `capture_search_goldens`), the
-bit-exact fixture suite, basedpyright zero, and prek/CI stay green
-throughout.
+Also: `agent/observation.py` (the contract), `analysis/exploitability_audit.py`
+(the post-hoc audit, from `exploiter.py`), `analysis/league_progress_eval.py`
+(`h2h_duplicate` now returns the leaster-hand paired score).
 
-Build order: (1) architecture + observation change + goldens; (2) unified
-trainer + population cleanup + smoke; (3) policy-iteration consolidation;
-(4) orchestrator + config + smoke of every phase; (5) notebook §7 filled
-with final constants; (6) launch.
+PPOAgent changes: `set_trainable_heads("bidding")`, `observation_keys`; the
+teacher CE passes, GNS diagnostic and bidding anchor are gone.
 
----
+Tests: `test_recall_architecture`, `test_stop_rules`, `test_program`,
+rewritten `test_league_smoke` / `test_trainer_output_contracts` /
+`test_distill_pipeline` / `test_policy_iteration`; the arch goldens were
+recaptured with the new fixture and every legacy fixture verified
+byte-identical against a pre-change capture. Full suite green; the program
+smoke (`--smoke`) exercises every phase end to end.
 
 ## 7. Pre-registration
 

@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from fastapi import WebSocket
 
 from server.realtime.broadcast import broadcast_table_event
-from server.runtime.tables import ClientConn, Table, _json_default
+from server.runtime.tables import ClientConn, Table, json_default
 from sheepshead import CARD_FULL_NAMES
 
 CHAT_MAX_LEN = 500
@@ -108,6 +108,6 @@ async def send_chat_init(table: Table, websocket: WebSocket) -> None:
                 "type": "chat:init",
                 "messages": messages,
             },
-            default=_json_default,
+            default=json_default,
         )
     )

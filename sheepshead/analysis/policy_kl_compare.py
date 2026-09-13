@@ -45,6 +45,10 @@ import statistics as st
 import torch
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent, load_agent
 
 _MODE_BY_NAME = {"jd": PARTNER_BY_JD, "called-ace": PARTNER_BY_CALLED_ACE}
@@ -106,12 +110,11 @@ def compare(
                 valid = player.get_valid_action_ids()
                 while valid:
                     vs = sorted(valid)
-                    state = player.get_state_dict()
                     pa, _ = agent_a.get_action_probs_with_logits(
-                        state, valid, player.position
+                        observation_for(player, agent_a), valid, player.position
                     )
                     pb, _ = agent_b.get_action_probs_with_logits(
-                        state, valid, player.position
+                        observation_for(player, agent_b), valid, player.position
                     )
                     qa = _valid_dist(pa, vs)
                     qb = _valid_dist(pb, vs)
@@ -136,9 +139,14 @@ def compare(
                     # Keep both models' recurrent memories in sync at trick end.
                     if game.was_trick_just_completed:
                         for seat in game.players:
-                            lt = seat.get_last_trick_state_dict()
-                            agent_a.observe(lt, player_id=seat.position)
-                            agent_b.observe(lt, player_id=seat.position)
+                            agent_a.observe(
+                                last_trick_observation_for(seat, agent_a),
+                                player_id=seat.position,
+                            )
+                            agent_b.observe(
+                                last_trick_observation_for(seat, agent_b),
+                                player_id=seat.position,
+                            )
 
     return {
         "decision_points": n,

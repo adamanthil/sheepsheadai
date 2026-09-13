@@ -64,6 +64,10 @@ from multiprocessing import get_context
 import numpy as np
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 
 _W = {}  # per-worker state
 
@@ -74,14 +78,14 @@ def _worker_init(ckpt, iters, node_prob, teacher_ckpt=None):
     torch.set_num_threads(1)
     from sheepshead.agent.ppo import load_agent
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-    from sheepshead.training.config import SearchConfig
+    from sheepshead.training.config import CommitteeConfig
 
     _W["agent"] = load_agent(ckpt)
     _W["teacher"] = ISMCTSTeacher(
         load_agent(teacher_ckpt or ckpt),
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
-    _W["search_cfg"] = SearchConfig()
+    _W["search_cfg"] = CommitteeConfig()
     _W["node_prob"] = node_prob
 
 
@@ -105,14 +109,14 @@ def _node_row(game, player, valid, forced_public, deal_seed, node_idx, pi):
     teacher, cfg = _W["teacher"], _W["search_cfg"]
     rngs = [
         random.Random(hash((deal_seed, node_idx, rep)) & 0x7FFFFFFF)
-        for rep in range(cfg.teacher_replicates)
+        for rep in range(cfg.replicates)
     ]
     replicates = teacher.search_committee(
         game,
         player.position,
         list(forced_public),
         rngs,
-        d_rollout=cfg.teacher_d_rollout,
+        d_rollout=cfg.d_rollout,
     )
     kwargs = dict(
         shrink_nu=cfg.shrink_nu,
@@ -176,7 +180,7 @@ def _run_deal(deal_seed):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 eligible = (
                     game.play_started
                     and not game.is_leaster
@@ -210,7 +214,7 @@ def _run_deal(deal_seed):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(),
+                            last_trick_observation_for(seat, agent),
                             player_id=seat.position,
                         )
     return {"deal_seed": deal_seed, "rows": rows, "wall_s": time.time() - t0}

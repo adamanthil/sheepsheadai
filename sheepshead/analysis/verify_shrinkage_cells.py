@@ -47,6 +47,10 @@ from multiprocessing import get_context
 import numpy as np
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 
 FAT_RANKS = {"A", "10"}
 NOPOINT_RANKS = {"7", "8", "9"}
@@ -58,7 +62,7 @@ _W = {}  # per-worker state
 # --------------------------------------------------------------------------- #
 # Cell classification (mirrors counterfactual_fat_leads / ceiling_h2h)
 # --------------------------------------------------------------------------- #
-def _lead_class(card: str, called: str | None, called_led: bool) -> str:
+def lead_class(card: str, called: str | None, called_led: bool) -> str:
     """'trump' | 'called' | 'fat' | 'nopoint' | 'other' for a LEAD of card.
     Called-suit fails are their own class while the called suit is unled
     (they belong to convention (b), never to the fat/nopoint pools)."""
@@ -92,7 +96,7 @@ def _classify_node(game, player, valid) -> dict | None:
         name = ACTIONS[a - 1]
         if not name.startswith("PLAY "):
             return None
-        classes[a] = _lead_class(name[5:], called, called_led)
+        classes[a] = lead_class(name[5:], called, called_led)
     trick = int(game.current_trick)
     kinds = set(classes.values())
     wash = trick <= 2 and "fat" in kinds and "nopoint" in kinds
@@ -116,14 +120,14 @@ def _worker_init(ckpt, iters):
     torch.set_num_threads(1)
     from sheepshead.agent.ppo import load_agent
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-    from sheepshead.training.config import SearchConfig
+    from sheepshead.training.config import CommitteeConfig
 
     _W["agent"] = load_agent(ckpt)
     _W["teacher"] = ISMCTSTeacher(
         load_agent(ckpt),
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
-    _W["search_cfg"] = SearchConfig()
+    _W["search_cfg"] = CommitteeConfig()
 
 
 def _target_row(game, player, valid, forced_public, deal_seed, node_idx, cell):
@@ -133,14 +137,14 @@ def _target_row(game, player, valid, forced_public, deal_seed, node_idx, cell):
     teacher, cfg = _W["teacher"], _W["search_cfg"]
     rngs = [
         random.Random(hash((deal_seed, node_idx, rep)) & 0x7FFFFFFF)
-        for rep in range(cfg.teacher_replicates)
+        for rep in range(cfg.replicates)
     ]
     replicates = teacher.search_committee(
         game,
         player.position,
         list(forced_public),
         rngs,
-        d_rollout=cfg.teacher_d_rollout,
+        d_rollout=cfg.d_rollout,
     )
     built = build_ce_search_target(
         replicates,
@@ -204,7 +208,7 @@ def _run_deal(deal_seed):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=True
                 )
@@ -236,7 +240,7 @@ def _run_deal(deal_seed):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(),
+                            last_trick_observation_for(seat, agent),
                             player_id=seat.position,
                         )
     return {"deal_seed": deal_seed, "rows": rows, "wall_s": time.time() - t0}

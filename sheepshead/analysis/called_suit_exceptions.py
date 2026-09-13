@@ -44,7 +44,8 @@ from typing import Any
 import numpy as np
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
-from sheepshead.analysis.verify_shrinkage_cells import _lead_class
+from sheepshead.agent.observation import observation_for
+from sheepshead.analysis.verify_shrinkage_cells import lead_class
 from sheepshead.game import get_card_points
 
 PUSH_EPS = 0.02
@@ -84,7 +85,7 @@ def _eligible_t0_lead(game, player, valid) -> dict | None:
         name = ACTIONS[a - 1]
         if not name.startswith("PLAY "):
             return None
-        classes[a] = _lead_class(name[5:], called, False)
+        classes[a] = lead_class(name[5:], called, False)
     kinds = set(classes.values())
     if "called" not in kinds or kinds == {"called"}:
         return None
@@ -121,14 +122,14 @@ def _worker_init(ckpt, iters, singleton_low_called=False, long_side_fail=False):
     torch.set_num_threads(1)
     from sheepshead.agent.ppo import load_agent
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
-    from sheepshead.training.config import SearchConfig
+    from sheepshead.training.config import CommitteeConfig
 
     _W["agent"] = load_agent(ckpt)
     _W["teacher"] = ISMCTSTeacher(
         load_agent(ckpt),
         ISMCTSConfig(iters={h: iters for h in ("pick", "partner", "bury", "play")}),
     )
-    _W["search_cfg"] = SearchConfig()
+    _W["search_cfg"] = CommitteeConfig()
     _W["singleton_low_called"] = singleton_low_called
     _W["long_side_fail"] = long_side_fail
 
@@ -155,14 +156,14 @@ def _committee_row(game, player, valid, forced_public, deal_seed, classes):
     teacher, cfg = _W["teacher"], _W["search_cfg"]
     rngs = [
         random.Random(hash((deal_seed, "cse", rep)) & 0x7FFFFFFF)
-        for rep in range(cfg.teacher_replicates)
+        for rep in range(cfg.replicates)
     ]
     replicates = teacher.search_committee(
         game,
         player.position,
         list(forced_public),
         rngs,
-        d_rollout=cfg.teacher_d_rollout,
+        d_rollout=cfg.d_rollout,
     )
     built = build_ce_search_target(
         replicates,
@@ -290,7 +291,7 @@ def _run_deal(deal_seed):
                             row["wall_s"] = time.time() - t0
                     # t0 lead reached (eligible or not): the deal is spent.
                     return row
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, _, _ = agent.act(
                     state, valid, player.position, deterministic=True
                 )

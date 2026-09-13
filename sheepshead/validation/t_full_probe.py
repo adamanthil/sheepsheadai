@@ -25,6 +25,7 @@ import torch
 
 from sheepshead import Game
 from sheepshead.agent import ppo
+from sheepshead.agent.observation import last_trick_observation_for
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import (
     RETURN_SCALE,
@@ -57,7 +58,7 @@ def collect_terminal(agent, n_games, seed):
                     if game.was_trick_just_completed:
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
         term = {p: game.players[p - 1].get_score() / RETURN_SCALE for p in range(1, 6)}

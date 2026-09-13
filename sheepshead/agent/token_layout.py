@@ -4,6 +4,13 @@ Base token sequence (19 tokens, emitted by ``CardReasoningEncoder``):
     [context, memory, hand x8, trick x5, blind x2, bury x2]
       index 0    1      2:10     10:15     15:17     17:19
 
+Recall layout (15 tokens; ``observe_picker_memory=False`` encoders, i.e.
+the ``perceiver-recall`` family — see agent/observation.py): the same
+sequence without the picker-memory bags, so every index up to 15 is
+shared and the transformer / readout / GRU weights are layout-agnostic:
+    [context, memory, hand x8, trick x5]
+      index 0    1      2:10     10:15
+
 The oracle encoder (``OracleCriticEncoder``) extends this with 32
 opponent-hand tokens to a 51-token sequence:
     [context, memory, hand x8, trick x5, blind x2, bury x2, opp x32]
@@ -20,6 +27,7 @@ TRICK_TOKENS = slice(10, 15)
 BLIND_TOKENS = slice(15, 17)
 BURY_TOKENS = slice(17, 19)
 BASE_TOKEN_COUNT = 19
+RECALL_TOKEN_COUNT = 15
 
 OPPONENT_TOKENS = slice(19, 51)
 ORACLE_TOKEN_COUNT = 51

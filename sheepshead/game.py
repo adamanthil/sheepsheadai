@@ -1045,8 +1045,6 @@ class Player:
 
         # Sets (fixed sizes)
         hand_ids = to_ids(self.hand, 8)
-        blind_ids = to_ids(self.blind if self.is_picker else [], 2)
-        bury_ids = to_ids(self.bury if self.is_picker else [], 2)
 
         # Trick arrays in relative seat order 1..5
         idx = cur_trick_idx
@@ -1086,13 +1084,30 @@ class Player:
             "leader_rel": leader_rel,
             "picker_position": picker_position,
             "hand_ids": np.array(hand_ids, dtype=np.uint8),
-            "blind_ids": np.array(blind_ids, dtype=np.uint8),
-            "bury_ids": np.array(bury_ids, dtype=np.uint8),
             "trick_card_ids": np.array(trick_card_ids, dtype=np.uint8),
             "trick_is_picker": np.array(trick_is_picker, dtype=np.uint8),
             "trick_is_partner_known": np.array(trick_is_partner_known, dtype=np.uint8),
         }
         return obs
+
+    def get_picker_memory(self):
+        """The legacy picker-memory interface: this player's own blind and
+        bury as fixed-size id arrays (zeros for everyone but the picker).
+
+        Not part of the observation (``get_state_dict``): a human picker saw
+        the blind once and chose the bury, and re-showing both every step is
+        the recall violation the ``perceiver-recall`` family removes. Only
+        architectures registered before September 2026 consume it, merged in
+        by ``sheepshead.agent.observation.observation_for``.
+        """
+        blind_ids = np.zeros(2, dtype=np.uint8)
+        bury_ids = np.zeros(2, dtype=np.uint8)
+        if self.is_picker:
+            for i, c in enumerate(self.blind[:2]):
+                blind_ids[i] = DECK_IDS[c]
+            for i, c in enumerate(self.bury[:2]):
+                bury_ids[i] = DECK_IDS[c]
+        return {"blind_ids": blind_ids, "bury_ids": bury_ids}
 
     def get_last_trick_state_dict(self):
         last_idx = max(0, self.game.current_trick - 1)
@@ -1122,8 +1137,9 @@ class Player:
 
         obs = self.get_state_dict(trick_index=trick_index)
 
-        # True blind/bury for every seat (limited obs zeroes these for
-        # non-pickers; for the picker they already equal the truth).
+        # True blind/bury for every seat: the full-information view is the
+        # oracle's definition, so the privileged cards are built in here
+        # rather than borrowed from the picker-memory interface.
         obs["blind_ids"] = to_ids(self.game.blind, 2)
         obs["bury_ids"] = to_ids(self.game.bury, 2)
 

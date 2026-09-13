@@ -51,6 +51,7 @@ import torch
 
 from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from sheepshead.agent import ppo
+from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import load_agent
 
 # Reuse the validated paired-rollout scaffolding.
@@ -69,7 +70,7 @@ def forced_encode(agent, player, pid):
     """Advance a seat's recurrent memory through its current state WITHOUT
     sampling/applying an action (used to force a recorded public action while
     keeping memory identical to a normal `act`)."""
-    state = player.get_state_dict()
+    state = observation_for(player, agent)
     mem_in = agent.get_recurrent_memory(pid, device=DEV)
     enc = agent.encoder.encode_batch([state], memory_in=mem_in.unsqueeze(0), device=DEV)
     agent.set_recurrent_memory(pid, enc["memory_out"][0])
@@ -99,7 +100,7 @@ def advance_to_trick0_recording(game, agent):
             valid = player.get_valid_action_ids()
             while valid:
                 private = _is_private_decision(valid)
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 a, _, _ = agent.act(state, valid, player.position, deterministic=False)
                 if not private:
                     forced_public.append((player.position, a))
@@ -149,7 +150,7 @@ def build_determinized_world(real_game, deal, forced_public, agent, observer=1):
             valid = player.get_valid_action_ids()
             while valid:
                 if _is_private_decision(valid):
-                    state = player.get_state_dict()
+                    state = observation_for(player, agent)
                     a, _, _ = agent.act(
                         state, valid, player.position, deterministic=False
                     )
@@ -159,7 +160,7 @@ def build_determinized_world(real_game, deal, forced_public, agent, observer=1):
                     _, a = fq.popleft()
                     if a not in valid:
                         return None, None, None
-                    state = player.get_state_dict()
+                    state = observation_for(player, agent)
                     probs_t, _ = agent.get_action_probs_with_logits(
                         state, valid, player_id=player.position
                     )
@@ -213,7 +214,7 @@ def collect(agent, max_games, target, seed):
         if leader.is_picker or leader.is_partner or leader.is_secret_partner:
             continue
         valid = leader.get_valid_action_ids()
-        state = leader.get_state_dict()
+        state = observation_for(leader, agent)
         probs_t, _ = agent.get_action_probs_with_logits(state, valid, player_id=1)
         probs = probs_t[0].detach().cpu().numpy()
 

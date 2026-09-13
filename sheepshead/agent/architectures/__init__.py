@@ -27,6 +27,7 @@ from .encoders import (
     PerceiverCtxMemEncoder,
     PerceiverEncoder,
     PooledMemoryEncoder,
+    RecallEncoder,
     SharedReadoutEncoder,
     TokenReadEncoder,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "PerceiverEncoder",
     "PerceiverCtxMemEncoder",
     "SharedReadoutEncoder",
+    "RecallEncoder",
     "ONEHOT_STATE_DIM",
     "build_onehot_state",
     "OneHotFeedForwardEncoder",

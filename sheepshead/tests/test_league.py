@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""League roster / sampling / rating / migration tests (Exploiter_League_Plan §4)."""
+"""League roster / sampling / rating tests."""
 
-import json
-import os
 import random
 import shutil
 import tempfile
-import time
-from types import SimpleNamespace
 
 import pytest
 import torch
@@ -17,7 +13,6 @@ from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.config import LeagueConfig
 from sheepshead.training.league import (
     ROLE_HOF_ANCHOR,
-    ROLE_MAIN_EXPLOITER,
     ROLE_PAST_MAIN,
     SELF_PLAY,
     League,
@@ -47,14 +42,7 @@ class TestLeagueRoster:
     def test_roundtrip_persistence(self):
         league = League(self.dir)
         mid = league.add_member(_agent(1), ROLE_PAST_MAIN, training_episodes=1000)
-        xid = league.add_member(
-            _agent(2),
-            ROLE_MAIN_EXPLOITER,
-            training_episodes=2000,
-            generation=1,
-            gate_edge=0.25,
-            initial_ema=0.72,
-        )
+        xid = league.add_member(_agent(2), ROLE_HOF_ANCHOR, training_episodes=2000)
         m = league.get(mid)
         m.ratings[PARTNER_BY_JD] = league.rating_model.rating(mu=30.0, sigma=2.0)
         m.exploitation_win_rate_ema = 0.61
@@ -70,10 +58,7 @@ class TestLeagueRoster:
         assert m2.exploitation_win_rate_ema == pytest.approx(0.61, abs=10**-6)
         assert m2.exploitation_samples == 40
         x2 = reloaded.get(xid)
-        assert x2.role == ROLE_MAIN_EXPLOITER
-        assert x2.meta.generation == 1
-        assert x2.meta.gate_edge == pytest.approx(0.25, abs=10**-7)
-        assert x2.exploitation_win_rate_ema == pytest.approx(0.72, abs=10**-6)
+        assert x2.role == ROLE_HOF_ANCHOR
         # Weights actually round-trip (not just metadata)
         p_orig = next(league.get(mid).agent.actor.parameters()).detach()
         p_load = next(m2.agent.actor.parameters()).detach()
@@ -120,14 +105,14 @@ class TestLeagueRoster:
         assert m.ratings[PARTNER_BY_CALLED_ACE].sigma == pytest.approx(4.0, abs=10**-5)
 
     def test_inherited_ratings_scale_and_sigma_floor(self):
-        from sheepshead.training.train_league_ppo import _inherited_ratings
+        from sheepshead.training.train_ppo import inherited_ratings
 
         league = League(self.dir)
         training_ratings = {
             PARTNER_BY_JD: league.rating_model.rating(mu=-3.2, sigma=0.4),
             PARTNER_BY_CALLED_ACE: league.rating_model.rating(mu=-4.8, sigma=9.0),
         }
-        inherited = _inherited_ratings(league, training_ratings)
+        inherited = inherited_ratings(league, training_ratings)
         default_sigma = league.rating_model.rating().sigma
         # mu carries over; a collapsed sigma is floored at half the prior so
         # the snapshot can still be re-rated as the field evolves.
@@ -164,55 +149,11 @@ class TestLeagueRoster:
         assert len(reloaded.by_role(ROLE_HOF_ANCHOR)) == 2
         assert reloaded.get(ids[0]).role == ROLE_PAST_MAIN
 
-    def test_exploiter_retirement(self):
-        # Retirement is purely age-based: a high EMA no longer saves an old
-        # exploiter (that EMA-driven reprieve was the ratchet we removed).
-        cfg = LeagueConfig(exploiter_retire_generations=2)
-        league = League(self.dir, cfg)
-        old_hot = league.add_member(
-            _agent(1),
-            ROLE_MAIN_EXPLOITER,
-            training_episodes=0,
-            generation=1,
-            initial_ema=0.70,
-        )
-        young = league.add_member(
-            _agent(3),
-            ROLE_MAIN_EXPLOITER,
-            training_episodes=0,
-            generation=3,
-            initial_ema=0.45,
-        )
-        assert league.get(old_hot).role == ROLE_PAST_MAIN  # old -> retired
-        assert league.get(young).role == ROLE_MAIN_EXPLOITER  # still young
-
-    def test_exploiter_retirement_by_generation_clock(self):
-        # F5: the clock advances at every boundary (note_generation), so a
-        # beaten exploiter retires after N elapsed generations even when no
-        # later exploiter ever passes its gate (no insertion required).
-        cfg = LeagueConfig(exploiter_retire_generations=2)
-        league = League(self.dir, cfg)
-        xid = league.add_member(
-            _agent(1), ROLE_MAIN_EXPLOITER, training_episodes=0, generation=1
-        )
-        league.note_generation(2)
-        assert league.get(xid).role == ROLE_MAIN_EXPLOITER  # age 1
-        league.note_generation(3)
-        assert league.get(xid).role == ROLE_PAST_MAIN  # age 2 -> retired
-        # The clock persists across reloads and never runs backward.
-        reloaded = League(self.dir, cfg)
-        assert reloaded.current_generation == 3
-        reloaded.note_generation(1)
-        assert reloaded.current_generation == 3
-
 
 class TestSampling:
     def setup_method(self, method):
         self.dir = tempfile.mkdtemp(prefix="league_test_")
-        cfg = LeagueConfig(
-            exploiter_seat_cap=0.30, exploiter_edge_full=0.30, self_play_share=0.15
-        )
-        self.league = League(self.dir, cfg)
+        self.league = League(self.dir, LeagueConfig(self_play_share=0.15))
         for i in range(6):
             self.league.add_member(_agent(i), ROLE_PAST_MAIN, training_episodes=i)
         self.league.add_member(_agent(50), ROLE_HOF_ANCHOR, training_episodes=0)
@@ -220,64 +161,35 @@ class TestSampling:
     def teardown_method(self, method):
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def test_no_exploiter_means_no_exploiter_seats(self):
-        assert self.league.exploiter_share() == 0.0
-        rng = random.Random(0)
-        seats = [
-            s for _ in range(200) for s in self.league.sample_table(PARTNER_BY_JD, rng)
-        ]
-        assert not any(
-            isinstance(s, LeagueMember) and s.role == ROLE_MAIN_EXPLOITER for s in seats
-        )
-
-    def test_mixture_shares_and_cap(self):
-        # gate_edge 0.30 => 0.30/0.30 = 1.0 => full cap
-        self.league.add_member(
-            _agent(60),
-            ROLE_MAIN_EXPLOITER,
-            training_episodes=0,
-            generation=1,
-            gate_edge=0.30,
-        )
-        assert self.league.exploiter_share() == pytest.approx(0.30, abs=10**-6)
+    def test_mixture_shares(self):
         rng = random.Random(1)
-        n_tables = 1500
         seats = [
-            s
-            for _ in range(n_tables)
-            for s in self.league.sample_table(PARTNER_BY_JD, rng)
+            s for _ in range(1500) for s in self.league.sample_table(PARTNER_BY_JD, rng)
         ]
-        n = len(seats)
-        exp_frac = (
-            sum(
-                1
-                for s in seats
-                if isinstance(s, LeagueMember) and s.role == ROLE_MAIN_EXPLOITER
-            )
-            / n
-        )
-        self_frac = sum(1 for s in seats if s == SELF_PLAY) / n
-        # One exploiter per table max (sampled without replacement) => the
-        # realized share is min(p_exp per-seat draws, 1 per table) — with one
-        # exploiter the expected fraction is < 0.30/4*4 but bounded by 1/4.
-        assert exp_frac > 0.10
-        assert exp_frac <= 0.25 + 0.02
+        self_frac = sum(1 for s in seats if s == SELF_PLAY) / len(seats)
         assert self_frac == pytest.approx(0.15, abs=0.03)
-
-    def test_seat_share_survives_ema_collapse(self):
-        # Regression: a passing exploiter whose binary table EMA decays below
-        # neutral must keep its seat share, which is driven by the frozen
-        # gate_edge, not the EMA (the ratchet that previously zeroed it out).
-        mid = self.league.add_member(
-            _agent(61),
-            ROLE_MAIN_EXPLOITER,
-            training_episodes=0,
-            generation=1,
-            gate_edge=0.15,
+        assert all(
+            s == SELF_PLAY or s.role in (ROLE_PAST_MAIN, ROLE_HOF_ANCHOR) for s in seats
         )
-        assert self.league.exploiter_share() == pytest.approx(0.15, abs=10**-6)
-        self.league.get(mid).exploitation_win_rate_ema = 0.40  # tanked below neutral
-        assert self.league.exploiter_share() == pytest.approx(0.15, abs=10**-6)
+
+    def test_hof_floor_draws_the_anchor(self):
+        rng = random.Random(3)
+        seats = [
+            s for _ in range(1500) for s in self.league.sample_table(PARTNER_BY_JD, rng)
+        ]
+        hof_frac = sum(
+            1
+            for s in seats
+            if isinstance(s, LeagueMember) and s.role == ROLE_HOF_ANCHOR
+        ) / len(seats)
+        # Forced floor (0.05 of PFSP seats) plus its ordinary PFSP share.
+        assert hof_frac > 0.05 * 0.85
+
+    def test_empty_league_is_pure_self_play(self):
+        empty = League(tempfile.mkdtemp(prefix="league_empty_"))
+        rng = random.Random(4)
+        for _ in range(50):
+            assert empty.sample_table(PARTNER_BY_JD, rng) == [SELF_PLAY] * 4
 
     def test_table_has_no_duplicate_members(self):
         rng = random.Random(2)
@@ -361,167 +273,3 @@ class TestRatings:
         assert new_tr.mu > tr.mu  # training won the leaster
         for m in self.opps.values():
             assert m.exploitation_win_rate_ema < 0.5
-
-
-class TestMigration:
-    def setup_method(self, method):
-        self.old = tempfile.mkdtemp(prefix="legacy_pop_")
-        self.new = tempfile.mkdtemp(prefix="league_mig_")
-        for sub in ("jd_agents", "called_ace_agents"):
-            os.makedirs(os.path.join(self.old, sub))
-
-    def teardown_method(self, method):
-        shutil.rmtree(self.old, ignore_errors=True)
-        shutil.rmtree(self.new, ignore_errors=True)
-
-    def _write_legacy(self, sub, agent_id, agent, mode, episodes, mu, created):
-        d = os.path.join(self.old, sub)
-        agent.save(os.path.join(d, f"{agent_id}.pt"))
-        with open(os.path.join(d, f"{agent_id}_metadata.json"), "w") as f:
-            json.dump(
-                {
-                    "agent_id": agent_id,
-                    "creation_time": created,
-                    "parent_id": None,
-                    "training_episodes": episodes,
-                    "partner_mode": mode,
-                    "activation": "swish",
-                    "games_played": 10,
-                    "total_score": 5.0,
-                    "picker_games": 2,
-                    "picker_score": 1.0,
-                    "rating_mu": mu,
-                    "rating_sigma": 3.0,
-                    "exploitation_win_rate_ema": 0.55,
-                    "exploitation_samples": 20,
-                },
-                f,
-            )
-
-    def test_migrate_dedups_twins_and_assigns_roles(self):
-        t0 = time.time()
-        # Three snapshots, each saved twice (JD + CA copies of the SAME
-        # weights, as the old trainer did), with different per-mode ratings.
-        for i in range(3):
-            ag = _agent(i)
-            self._write_legacy(
-                "jd_agents",
-                f"0_{1000 + i}_{i}",
-                ag,
-                0,
-                (i + 1) * 1000,
-                mu=20.0 + i * 5,
-                created=t0 + i,
-            )
-            self._write_legacy(
-                "called_ace_agents",
-                f"1_{1000 + i}_{i}",
-                ag,
-                1,
-                (i + 1) * 1000,
-                mu=22.0 + i * 5,
-                created=t0 + i,
-            )
-        cfg = LeagueConfig(hof_quota=1, protect_newest=1)
-        league = League.migrate_legacy(self.old, self.new, cfg, keep_top_k=3)
-        assert len(league) == 3  # twins merged, not 6
-        # Per-mode ratings preserved from each twin
-        strongest = max(league.members, key=lambda m: m.skill())
-        assert strongest.ratings[PARTNER_BY_JD].mu == pytest.approx(30.0, abs=10**-4)
-        assert strongest.ratings[PARTNER_BY_CALLED_ACE].mu == pytest.approx(
-            32.0, abs=10**-4
-        )
-        assert strongest.role == ROLE_HOF_ANCHOR
-        assert len(league.by_role(ROLE_HOF_ANCHOR)) == 1
-        # EMA carried over
-        for m in league.members:
-            assert m.exploitation_win_rate_ema == pytest.approx(0.55, abs=10**-6)
-        # Round-trips through normal load
-        reloaded = League(self.new)
-        assert len(reloaded) == 3
-
-    def test_migrate_keeps_top_k(self):
-        t0 = time.time()
-        for i in range(5):
-            ag = _agent(i + 10)
-            self._write_legacy(
-                "jd_agents",
-                f"0_{2000 + i}_{i}",
-                ag,
-                0,
-                (i + 1) * 1000,
-                mu=40.0 - i * 5,
-                created=t0 + i,
-            )
-        cfg = LeagueConfig(hof_quota=1, protect_newest=1)
-        league = League.migrate_legacy(self.old, self.new, cfg, keep_top_k=3)
-        assert len(league) == 3
-        episodes = sorted(m.meta.training_episodes for m in league.members)
-        # Newest (5000, weakest) protected; then two strongest (1000, 2000)
-        assert episodes == [1000, 2000, 5000]
-
-
-class TestExploiterPhaseCommand:
-    """run_exploiter_generation must forward the main run's critic mode
-    (an oracle main gated by limited exploiters weakens the gate)."""
-
-    def _capture_cmd(self, ns):
-        import sheepshead.training.train_league_ppo as tlp
-
-        captured = {}
-        exp_run = f"{ns.run_name}_exploiter_gen1"
-        cwd = os.getcwd()
-        tmp = tempfile.mkdtemp()
-        os.chdir(tmp)
-        try:
-            os.makedirs(os.path.join("runs", exp_run))
-            with open(os.path.join("runs", exp_run, "gate_result.json"), "w") as f:
-                json.dump({"passed": False, "edge": 0.0}, f)
-
-            def fake_run(cmd, env=None):
-                captured["cmd"] = cmd
-                return SimpleNamespace(returncode=0)
-
-            orig = tlp.subprocess.run
-            tlp.subprocess.run = fake_run
-            try:
-                tlp.run_exploiter_generation(ns, 1, "main.pt")
-            finally:
-                tlp.subprocess.run = orig
-        finally:
-            os.chdir(cwd)
-            shutil.rmtree(tmp, ignore_errors=True)
-        return captured["cmd"]
-
-    def _ns(self, **extra):
-        base = dict(
-            run_name="cmdtest",
-            exploiter_episodes=10,
-            gate_deals=4,
-            screen_deals=2,
-            league_dir="league",
-            seed=1,
-            arch="full",
-            num_workers=0,
-        )
-        base.update(extra)
-        return SimpleNamespace(**base)
-
-    def test_forwards_oracle_critic_mode(self):
-        cmd = self._capture_cmd(self._ns(critic_mode="oracle"))
-        i = cmd.index("--critic-mode")
-        assert cmd[i + 1] == "oracle"
-
-    def test_defaults_to_limited_without_field(self):
-        # e.g. legacy SimpleNamespace callers without a critic_mode field
-        cmd = self._capture_cmd(self._ns())
-        i = cmd.index("--critic-mode")
-        assert cmd[i + 1] == "limited"
-
-
-if __name__ == "__main__":
-    import sys
-
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))

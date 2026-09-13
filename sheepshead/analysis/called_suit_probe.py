@@ -44,17 +44,15 @@ from sheepshead import (
     PARTNER_BY_CALLED_ACE,
     Game,
 )
-from sheepshead.analysis.trump_lead_probe import PROBE_SEED, _is_secret_partner
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
+from sheepshead.analysis.conventions import called_suit_fail
+from sheepshead.analysis.trump_lead_probe import PROBE_SEED
 from sheepshead.scripted_agent import ScriptedAgent
 
 _FAIL_SET = set(FAIL)
-
-
-def _called_suit_fail(card: str, called_card: str | None) -> bool:
-    """True when ``card`` is a fail of the called card's suit (the suit letter
-    is the last character for all fail cards; QC/JC etc. are trump). A hand
-    with no called card has no called suit, so nothing matches."""
-    return called_card is not None and card in _FAIL_SET and card[-1] == called_card[-1]
 
 
 def _legal_lead_cards(player) -> list[str]:
@@ -114,14 +112,14 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
                                 player.is_picker
                                 or player.is_partner
                                 or game.partner == player.position
-                                or _is_secret_partner(game, player)
+                                or player.is_secret_partner
                             )
                         ):
                             leads = _legal_lead_cards(player)
                             called_fails = [
                                 c
                                 for c in leads
-                                if _called_suit_fail(c, game.called_card)
+                                if called_suit_fail(c, game.called_card)
                             ]
                             if called_fails and len(called_fails) < len(leads):
                                 record = (
@@ -132,7 +130,7 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
                                 )
                                 hero_had_opportunity = True
                         a, _, _ = ag.act(
-                            player.get_state_dict(),
+                            observation_for(player, ag),
                             valid,
                             player.position,
                             deterministic=True,
@@ -140,7 +138,7 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
                         if record is not None:
                             trick, rel_pos, under, first_opp = record
                             name = ACTION_LOOKUP[a]
-                            adhered = name.startswith("PLAY ") and _called_suit_fail(
+                            adhered = name.startswith("PLAY ") and called_suit_fail(
                                 name.split(" ", 1)[1], game.called_card
                             )
                             if under:
@@ -165,7 +163,8 @@ def probe_agent(hero, n_deals: int, seed: int = PROBE_SEED) -> dict:
                             for p in game.players:
                                 ctrl = hero if p.position == hero_seat else field
                                 ctrl.observe(
-                                    p.get_last_trick_state_dict(), player_id=p.position
+                                    last_trick_observation_for(p, ctrl),
+                                    player_id=p.position,
                                 )
                         # No further eligibility once the called suit has been
                         # led (or the hand has no called-ace structure at all).

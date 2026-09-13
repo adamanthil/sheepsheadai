@@ -27,6 +27,7 @@ from server.services.analysis_common import (
     set_seed,
 )
 from sheepshead import Game
+from sheepshead.agent.observation import last_trick_observation_for
 from sheepshead.training.reward_shaping import (
     handle_trick_completion,
     process_episode_rewards,
@@ -356,7 +357,9 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             # Propagate an observation for the just-completed trick to all seats
             for seat in game.players:
                 memory_before = agent.get_recurrent_memory(seat.position, device=device)
-                agent.observe(seat.get_last_trick_state_dict(), player_id=seat.position)
+                agent.observe(
+                    last_trick_observation_for(seat, agent), player_id=seat.position
+                )
                 memory_after = agent.get_recurrent_memory(seat.position, device=device)
                 distance, norm = memory_drift(memory_before, memory_after)
                 memory_observes.append(

@@ -41,6 +41,10 @@ import torch
 
 from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from sheepshead.agent import ppo
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import (
     RETURN_SCALE,
@@ -84,7 +88,7 @@ def advance_to_trick0(game, agent):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 a, _, _ = agent.act(state, valid, player.position, deterministic=False)
                 player.act(a)
                 if game.play_started:
@@ -100,14 +104,15 @@ def play_out(game, agent):
         for player in game.players:
             valid = player.get_valid_action_ids()
             while valid:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 a, _, _ = agent.act(state, valid, player.position, deterministic=False)
                 player.act(a)
                 valid = player.get_valid_action_ids()
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
 
 
@@ -183,7 +188,7 @@ def collect(agent, max_games, cap_cal, cap_trump, seed):
             continue
         valid = leader.get_valid_action_ids()
         mem_m0 = snapshot_memory(agent)  # memory BEFORE the decision forward
-        state = leader.get_state_dict()
+        state = observation_for(leader, agent)
         probs, value = policy_and_value(agent, state, valid, pid=1)
         card_probs = play_card_distribution(probs, valid)
         trump_card = best_in_class(card_probs, True)

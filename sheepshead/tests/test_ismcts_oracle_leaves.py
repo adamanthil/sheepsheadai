@@ -12,6 +12,7 @@ from typing import Any
 import torch
 
 from sheepshead import ACTION_LOOKUP, ACTIONS, PARTNER_BY_CALLED_ACE, Game
+from sheepshead.agent.observation import last_trick_observation_for, observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
 from sheepshead.tests.ppo_test_helpers import seed_all
@@ -39,7 +40,7 @@ def _to_first_play_node(agent, game_seed=11):
                 if ACTION_LOOKUP[valid_sorted[0]].startswith("PLAY "):
                     return game, player.position, forced_public
                 probs, _ = agent.get_action_probs_with_logits(
-                    player.get_state_dict(), valid, player_id=player.position
+                    observation_for(player, agent), valid, player_id=player.position
                 )
                 aid = int(torch.argmax(probs.squeeze(0)).item()) + 1
                 if aid not in valid:
@@ -50,7 +51,8 @@ def _to_first_play_node(agent, game_seed=11):
                 if game.was_trick_just_completed and not game.is_done():
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
                 valid = player.get_valid_action_ids()
     raise AssertionError("no play node reached")

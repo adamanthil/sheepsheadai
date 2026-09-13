@@ -1,11 +1,6 @@
-"""Episode streams for run_main_phase: the sequential (in-process) and
-parallel (worker-pool) generators that produce one training episode's
+"""Episode streams for train_ppo.run_phase: the sequential (in-process)
+and parallel (worker-pool) generators that produce one training episode's
 results at a time, plus the shared context/state types they close over.
-
-Split out of train_league_ppo.py as pure code motion (Stage 1 of the
-league-trainer maintainability refactor). apply_schedules and
-fresh_entropy_targets stay in train_league_ppo.py (entropy/schedule
-concerns, not stream mechanics).
 """
 
 from __future__ import annotations
@@ -14,9 +9,7 @@ import random
 from dataclasses import dataclass
 
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.training.config import PFSPHyperparams
 from sheepshead.training.league import SELF_PLAY, League
-from sheepshead.training.league_teacher import build_teacher_kwargs
 from sheepshead.training.league_worker import (
     OpponentAdapter,
     WorkerJob,
@@ -51,10 +44,9 @@ class TransitionCounter:
 
 @dataclass
 class MainPhaseContext:
-    """Explicit bundle of the state run_main_phase's nested helpers
-    (setup_episode, apply_schedules, sequential_stream, publish_weights,
-    parallel_stream) used to close over, now that they are module-level
-    functions."""
+    """Explicit bundle of the state run_phase's helpers (setup_episode,
+    apply_schedules, sequential_stream, publish_weights, parallel_stream)
+    share."""
 
     training_agent: PPOAgent
     league: League
@@ -65,13 +57,16 @@ class MainPhaseContext:
     tx_counter: TransitionCounter
     start_episode: int
     end_episode: int
+    # Phase hyperparameters (BootstrapHyperparams | LeagueHyperparams).
+    hyperparams: object = None
+    # "shaped" (bootstrap) or "terminal" (league phases).
+    reward_mode: str = "terminal"
+    # Deal-paired collection: groups of 5 consecutive episodes share one
+    # sampled (mode, table, deal) with the hero rotating through the seats.
+    seat_rotation: bool = False
     # Seat-rotation group state carried across parallel_stream's dispatch
     # windows (a window boundary can cut through a 5-episode group).
     rot_state: dict | None = None
-    # Schedule/gate hyperparameters. None = the trainer's module-level
-    # PFSP_HYPERPARAMS singleton; tests inject a custom instance here
-    # instead of monkeypatching the module.
-    hyperparams: PFSPHyperparams | None = None
 
 
 def setup_episode(episode: int, context: MainPhaseContext):
@@ -87,8 +82,8 @@ def rotation_plan(episode: int, start_episode: int, rot_state: dict | None, cont
     (mode, table, deal); the hero plays every seat of the same deal against
     the same opponents (the train-time duplicate instrument). The deal seed
     is drawn once per group so the cards are identical across the 5
-    rotations. When --seat-rotation is off, falls through to a fresh
-    setup_episode draw every call (no grouping, no game_seed).
+    rotations. When the context's seat_rotation is off, falls through to a
+    fresh setup_episode draw every call (no grouping, no game_seed).
 
     Returns (mode, table, position, game_seed, rot_state) — rot_state is
     the (possibly newly created) group state to pass into the next call in
@@ -96,7 +91,7 @@ def rotation_plan(episode: int, start_episode: int, rot_state: dict | None, cont
     a local var, parallel_stream on context.rot_state so it survives a window
     split).
     """
-    rotate = bool(getattr(context.args, "seat_rotation", False))
+    rotate = bool(context.seat_rotation)
     game_seed = None
     if rotate:
         phase = (episode - start_episode - 1) % 5
@@ -122,7 +117,6 @@ def sequential_stream(context: MainPhaseContext):
     # duplicate instrument. The deal seed is drawn once per group so the
     # cards are identical across the 5 rotations.
     rot_state = {}
-    teacher_kwargs = build_teacher_kwargs(context)
     for episode in range(context.start_episode + 1, context.end_episode + 1):
         mode, table, position, game_seed, rot_state = rotation_plan(
             episode, context.start_episode, rot_state, context
@@ -138,10 +132,9 @@ def sequential_stream(context: MainPhaseContext):
             opponents=opponents,
             partner_mode=mode,
             training_agent_position=position,
-            reward_mode="terminal",
+            reward_mode=context.reward_mode,
             collect_oracle=context.collect_oracle,
             game_seed=game_seed,
-            **teacher_kwargs,
         )
         yield (
             episode,

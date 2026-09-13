@@ -36,7 +36,7 @@ from sheepshead.analysis.league_progress_eval import h2h_parallel_eval
 from sheepshead.analysis.rigorous_eval import (
     Model,
     ModelRegistry,
-    _bootstrap_deal_indices,
+    bootstrap_deal_indices,
     bootstrap_mean,
     run_gauntlet,
 )
@@ -131,7 +131,7 @@ def routed_h2h(
 
     seed_rng = random.Random(seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(n_deals_per_mode)]
-    boot_idx = _bootstrap_deal_indices(
+    boot_idx = bootstrap_deal_indices(
         n_deals_per_mode, n_boot, np.random.default_rng(seed)
     )
 
@@ -181,7 +181,12 @@ def main(argv=None) -> int:
     )
     p.add_argument("--deals-per-mode", type=int, default=2000)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--workers", type=int, default=None, help="deal shards (default cpu-2; 1 = serial)")
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="deal shards (default cpu-2; 1 = serial)",
+    )
     args = p.parse_args(argv)
     res = routed_h2h(
         args.bid_ckpt,

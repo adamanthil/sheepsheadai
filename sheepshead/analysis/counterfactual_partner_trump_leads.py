@@ -95,7 +95,7 @@ def _classify_cp_spots(
         if not led_trump and card not in cf.FAIL_SET:
             continue  # UNDER token lead: neither class
 
-        if scan._is_secret_partner(view, partner_mode):
+        if scan.is_secret_partner(view, partner_mode):
             group = "agree" if led_trump else "disagree"
         else:
             group = "defender_mirror"

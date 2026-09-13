@@ -8,7 +8,7 @@ import torch.nn as nn
 from sheepshead import DECK_IDS, TRUMP
 
 
-class _TokenReadoutValueMixin:
+class TokenReadoutValueMixin:
     """Token-readout value path shared by the perceiver critics.
 
     Provides the cross-attention readout construction and the value
@@ -64,7 +64,7 @@ class _TokenReadoutValueMixin:
         return self.value_head(self.value_trunk(r)).view(B, T)
 
 
-class PerceiverCriticNetwork(_TokenReadoutValueMixin, nn.Module):
+class PerceiverCriticNetwork(TokenReadoutValueMixin, nn.Module):
     """Value network with its own cross-attention readout over the token set.
 
     The `perceiver` rung's critic: no shared trunk features — M learned
@@ -295,7 +295,7 @@ class RecurrentCriticNetwork(nn.Module):
         return self.unseen_trump_higher_than_hand_head(h).squeeze(-1)
 
 
-class PerceiverAuxCriticNetwork(_TokenReadoutValueMixin, RecurrentCriticNetwork):
+class PerceiverAuxCriticNetwork(TokenReadoutValueMixin, RecurrentCriticNetwork):
     """Perceiver critic WITH the full auxiliary-head stack.
 
     The operator's intended perceiver design: inherits every aux head
@@ -305,7 +305,7 @@ class PerceiverAuxCriticNetwork(_TokenReadoutValueMixin, RecurrentCriticNetwork)
     BOTH the value trunk and the shallow aux adapter, so aux gradients
     shape the readout + encoder exactly as they shape the pooled trunk in
     `full`. The readout and the value forward/sequence path come from
-    _TokenReadoutValueMixin (ahead of RecurrentCriticNetwork in the MRO),
+    TokenReadoutValueMixin (ahead of RecurrentCriticNetwork in the MRO),
     shared with PerceiverCriticNetwork.
     """
 

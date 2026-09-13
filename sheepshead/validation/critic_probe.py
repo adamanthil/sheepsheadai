@@ -33,6 +33,10 @@ import torch.nn as nn
 
 from sheepshead import ACTIONS, Game
 from sheepshead.agent import ppo
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.training_utils import (
     RETURN_SCALE,
@@ -46,7 +50,7 @@ DEV = ppo.device
 def encode_decide(agent, game, player):
     """One encode (advance memory like act), sample an action, and return
     (action_id, features, is_play_decision, is_lead, is_defender)."""
-    state = player.get_state_dict()
+    state = observation_for(player, agent)
     valid = player.get_valid_action_ids()
     mem_in = agent.get_recurrent_memory(player.position, device=DEV)
     enc = agent.encoder.encode_batch([state], memory_in=mem_in.unsqueeze(0), device=DEV)
@@ -105,7 +109,7 @@ def collect(agent, n_games, gamma, seed):
                     if game.was_trick_just_completed:
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
         if game.is_leaster:

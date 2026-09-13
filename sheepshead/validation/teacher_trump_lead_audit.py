@@ -38,16 +38,13 @@ import time
 import numpy as np
 
 from sheepshead import ACTIONS, TRUMP, Game
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import load_agent
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_decision
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
-
-
-def _is_private(valid) -> bool:
-    return any(
-        ACTIONS[a - 1].startswith("BURY ") or ACTIONS[a - 1].startswith("UNDER ")
-        for a in valid
-    )
 
 
 def _trump_mass(p, valid) -> float:
@@ -171,7 +168,9 @@ def main():
                     if is_t0_def_lead and len(rows) < args.nodes:
                         saved_mem = agent.snapshot_player_memories()
                         probs, _ = agent.get_action_probs_with_logits(
-                            player.get_state_dict(), valid, player_id=player.position
+                            observation_for(player, agent),
+                            valid,
+                            player_id=player.position,
                         )
                         agent.restore_player_memories(saved_mem)
                         prior = probs[0].detach().cpu().numpy()
@@ -266,19 +265,19 @@ def main():
                         else:
                             aborted += 1
                     a, _, _ = agent.act(
-                        player.get_state_dict(),
+                        observation_for(player, agent),
                         valid,
                         player.position,
                         deterministic=False,
                     )
-                    if not _is_private(valid):
+                    if not is_private_decision(valid):
                         forced_public.append((player.position, a))
                     player.act(a)
                     valid = player.get_valid_action_ids()
                     if game.was_trick_just_completed:
                         for seat in game.players:
                             agent.observe(
-                                seat.get_last_trick_state_dict(),
+                                last_trick_observation_for(seat, agent),
                                 player_id=seat.position,
                             )
 

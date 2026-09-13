@@ -18,12 +18,12 @@ from server.runtime.manager import (
 from server.runtime.models import ClientConn, Occupant, Table
 from server.runtime.views import (
     ACTION_SIZE,
-    _json_default,
-    _try_int,
     build_player_state,
     get_actor_seat,
     get_valid_action_ids_for_seat,
+    json_default,
     record_hand_result,
+    try_int,
 )
 
 __all__ = [
@@ -35,8 +35,8 @@ __all__ = [
     "Table",
     "TableLimitError",
     "TableManager",
-    "_json_default",
-    "_try_int",
+    "json_default",
+    "try_int",
     "build_player_state",
     "get_actor_seat",
     "get_valid_action_ids_for_seat",

@@ -61,37 +61,6 @@ def test_grad_accum_steps_once_per_epoch_in_counter():
     assert agent.optimizer_steps_total == 3
 
 
-def test_gns_diagnostic_measures_without_touching_training_state():
-    agent = _agent()
-    play_episodes(agent, 10, collect_oracle=False, seed0=SEED + 100)
-    agent.gns_log = True
-    snap_before_update = _params_snapshot(agent.actor, agent.encoder)
-    stats = agent.update(epochs=1, batch_size=2)
-    assert "gns" in stats
-    gns = stats["gns"]
-    assert set(gns) >= {"global", "lead", "lead_rows"}
-    # global estimate should be computable on a 10-episode buffer
-    assert gns["global"] is None or gns["global"] > 0
-    # partner-lead SNR readout rides along whenever lead rows were sampled
-    if gns["lead_rows"] > 0:
-        assert gns["lead_adv_std"] >= 0
-        assert 0.0 <= gns["lead_trump_mass"] <= 1.0
-    # diagnostic leaves no gradients behind
-    assert all(
-        p.grad is None or not p.grad.abs().any()
-        for p in list(agent.actor.parameters()) + list(agent.encoder.parameters())
-    )
-    # params did change (the update itself ran)
-    assert not _params_equal(snap_before_update, agent.actor, agent.encoder)
-
-
-def test_gns_off_is_absent_from_stats():
-    agent = _agent()
-    play_episodes(agent, 4, collect_oracle=False, seed0=SEED + 150)
-    stats = agent.update(epochs=1, batch_size=2)
-    assert "gns" not in stats
-
-
 def test_oracle_extra_epochs_touch_only_the_oracle():
     agent = _agent(critic_mode="oracle")
     play_episodes(agent, 6, collect_oracle=True, seed0=SEED + 200)

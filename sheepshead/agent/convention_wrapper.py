@@ -24,7 +24,11 @@ card within the convention):
 Everything else — non-lead plays, bidding, bury, leasters, picker/partner
 seats — passes through untouched. All logic reads the per-seat observation
 dict only (no game object access), so the wrapper is deployable anywhere the
-raw agent is.
+raw agent is. The wrapper declares nothing about observations itself:
+``needs_picker_memory`` (like every other attribute it does not define)
+delegates to the wrapped agent via ``__getattr__``, so
+``observation_for(player, wrapper)`` observes exactly as the inner agent
+would.
 
 Evaluation hook: ``rigorous_eval`` accepts ``model.pt@c1`` / ``model.pt@c2`` /
 ``model.pt@c1c2`` specs to seat wrapped arms against raw anchors.

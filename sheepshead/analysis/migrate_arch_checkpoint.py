@@ -28,6 +28,10 @@ import torch
 
 from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent import ppo as ppo_module
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent, load_agent
 
 
@@ -87,20 +91,32 @@ def max_prob_divergence(
             for player in game.players:
                 valid = player.get_valid_action_ids()
                 while valid:
-                    state = player.get_state_dict()
                     action, _, _ = a.act(
-                        state, valid, player.position, deterministic=True
+                        observation_for(player, a),
+                        valid,
+                        player.position,
+                        deterministic=True,
                     )
                     pa = np.asarray(a.last_action_probs, dtype=np.float64)
-                    b.act(state, valid, player.position, deterministic=True)
+                    b.act(
+                        observation_for(player, b),
+                        valid,
+                        player.position,
+                        deterministic=True,
+                    )
                     pb = np.asarray(b.last_action_probs, dtype=np.float64)
                     worst = max(worst, float(np.abs(pa - pb).max()))
                     player.act(action)
                     if game.was_trick_just_completed and not game.is_done():
                         for seat in game.players:
-                            obs = seat.get_last_trick_state_dict()
-                            a.observe(obs, player_id=seat.position)
-                            b.observe(obs, player_id=seat.position)
+                            a.observe(
+                                last_trick_observation_for(seat, a),
+                                player_id=seat.position,
+                            )
+                            b.observe(
+                                last_trick_observation_for(seat, b),
+                                player_id=seat.position,
+                            )
                     valid = player.get_valid_action_ids()
     return worst
 

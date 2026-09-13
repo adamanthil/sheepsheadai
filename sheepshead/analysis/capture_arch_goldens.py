@@ -40,6 +40,7 @@ import torch
 
 from sheepshead import ACTIONS, Game
 from sheepshead.agent import architectures, ppo
+from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.training.training_utils import set_all_seeds
 
@@ -75,22 +76,24 @@ def _advance_deterministically(game: Game, n_actions: int) -> None:
             return
 
 
-def collect_probe_states() -> list:
+def collect_probe_states(agent) -> list:
     """Deterministic probe observations shared by every architecture:
     three fresh pre-pick states plus three mid-game states at different
-    depths/seats of one deterministically advanced deal."""
+    depths/seats of one deterministically advanced deal, observed as
+    ``agent`` would see them (legacy agents get the picker memory merged
+    in, exactly as the goldens were captured)."""
     states = []
     for seed in (126, 130, 144):
         g = Game(seed=seed)
-        states.append(g.players[0].get_state_dict())
+        states.append(observation_for(g.players[0], agent))
     g = Game(seed=137)
     for extra, pos in ((3, 1), (5, 2), (10, 4)):
         _advance_deterministically(g, extra)
-        states.append(g.players[pos].get_state_dict())
+        states.append(observation_for(g.players[pos], agent))
     return states
 
 
-def _key_sha(net: torch.nn.Module) -> str:
+def key_sha(net: torch.nn.Module) -> str:
     h = hashlib.sha256()
     for k in sorted(net.state_dict().keys()):
         h.update(k.encode())
@@ -117,7 +120,7 @@ def capture_outputs(agent: PPOAgent) -> dict:
     exercised with nonzero memory, and includes a two-sequence
     encode_sequences pass for the sequence seams.
     """
-    states = collect_probe_states()
+    states = collect_probe_states(agent)
     mask = torch.ones(1, len(ACTIONS), dtype=torch.bool)
     out: dict = {}
     with torch.no_grad():
@@ -162,7 +165,7 @@ def capture_arch(arch: str) -> dict:
     nets = {"encoder": agent.encoder, "actor": agent.actor, "critic": agent.critic}
     return {
         "arch": arch,
-        "key_sha": {n: _key_sha(net) for n, net in nets.items()},
+        "key_sha": {n: key_sha(net) for n, net in nets.items()},
         "keys": {n: sorted(net.state_dict().keys()) for n, net in nets.items()},
         "weight_sha": {n: _weight_sha(net) for n, net in nets.items()},
         "meta": {

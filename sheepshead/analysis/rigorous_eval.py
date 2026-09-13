@@ -92,6 +92,10 @@ from sheepshead import (
     PARTNER_BY_JD,
     Game,
 )
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent, load_agent
 
 NUM_SEATS = 5
@@ -280,7 +284,7 @@ def play_hand(
             model = seat_to_model[player.position]
             valid_actions = player.get_valid_action_ids()
             while valid_actions:
-                state = player.get_state_dict()
+                state = observation_for(player, model.agent)
                 probs = None
                 if (
                     probe is not None
@@ -302,7 +306,9 @@ def play_hand(
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         seat_to_model[seat.position].agent.observe(
-                            seat.get_last_trick_state_dict(),
+                            last_trick_observation_for(
+                                seat, seat_to_model[seat.position].agent
+                            ),
                             player_id=seat.position,
                         )
 
@@ -336,8 +342,9 @@ class HeroEval:
     raw_score: np.ndarray  # shape (n_deals, 5)
     # role tallies across all deal x seat games
     role_counts: Dict[str, int] = field(default_factory=dict)
-    # per (deal, hero_seat): was that hand a leaster? (conditional reads)
-    raw_leaster: Optional[np.ndarray] = None  # shape (n_deals, 5), bool
+    # per (deal, hero_seat): the hand was a leaster (for role-conditioned
+    # reads such as the policy-iteration cert's leaster-hand score)
+    raw_leaster: np.ndarray = field(default_factory=lambda: np.zeros((0, 5), bool))
 
 
 def evaluate_hero_in_field(
@@ -435,7 +442,7 @@ class Estimate:
     se: float
 
 
-def _bootstrap_deal_indices(
+def bootstrap_deal_indices(
     n_deals: int, n_boot: int, rng: np.random.Generator
 ) -> np.ndarray:
     """(n_boot, n_deals) array of resampled deal indices (with replacement)."""
@@ -878,7 +885,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     seed_rng = random.Random(args.seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(args.deals)]
     boot_rng = np.random.default_rng(args.seed)
-    boot_idx = _bootstrap_deal_indices(args.deals, args.n_boot, boot_rng)
+    boot_idx = bootstrap_deal_indices(args.deals, args.n_boot, boot_rng)
 
     games = len(candidates) * args.deals * NUM_SEATS
     print(
