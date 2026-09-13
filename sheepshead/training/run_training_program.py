@@ -676,10 +676,20 @@ class Program:
     # ------------------------------------------------------------------ #
     def _pi_stage_flags(self) -> list[str]:
         pi = self.cfg.policy_iteration
-        flags = []
+        flags = [
+            "--trunk-epochs",
+            str(pi.trunk_epochs),
+            "--lr",
+            str(pi.lr),
+            "--lambda-ret",
+            str(pi.lambda_ret),
+            "--head-epochs",
+            str(
+                pi.head_epochs if pi.head_epochs is not None else pi.head_epochs_default
+            ),
+        ]
         for name, val in (
             ("--fit-epochs", pi.fit_epochs),
-            ("--head-epochs", pi.head_epochs),
             ("--holdout-frac", pi.holdout_frac),
             ("--batch-rows", pi.batch_rows),
             ("--buffer-episodes", pi.buffer_episodes),
@@ -688,6 +698,22 @@ class Program:
         ):
             if val is not None:
                 flags += [name, str(val)]
+        return flags
+
+    def _cert_flags(self, routed: bool) -> list[str]:
+        pi = self.cfg.policy_iteration
+        flags = [
+            "--cert-games",
+            str(pi.cert_games),
+            "--cert-seeds",
+            str(pi.cert_seeds),
+            "--h2h-deals",
+            str(pi.cert_h2h_deals),
+        ]
+        if not (routed and pi.routed_reads):
+            flags.append("--no-routed-reads")
+        if self.cfg.smoke:
+            flags.append("--no-bars")
         return flags
 
     def run_iteration(self, k: int, theta_k: str) -> tuple[str, dict]:
@@ -717,8 +743,14 @@ class Program:
                 str(pi.p_base),
                 "--boost-lead",
                 str(pi.boost_lead),
+                "--boost-cs",
+                str(pi.boost_cs),
+                "--p-min",
+                str(pi.p_min),
                 "--p-max",
                 str(pi.p_max),
+                "--committee-act-frac",
+                str(pi.committee_act_frac),
                 "--iters",
                 str(pi.iters),
                 "--replicates",
@@ -726,6 +758,8 @@ class Program:
                 "--node-telemetry",
                 os.path.join(corpus_dir, "nodes.jsonl"),
             )
+            if pi.iters_schedule:
+                cmd += ["--iters-schedule", pi.iters_schedule]
             if pi.routed_encoder:
                 cmd += ["--routed-encoder", pi.routed_encoder]
             self._run(f"iter {k} corpus", cmd, f"pi_iter{k}.log")
@@ -756,13 +790,7 @@ class Program:
                     theta_k,
                     "--out-dir",
                     it_dir,
-                    "--cert-games",
-                    str(pi.cert_games),
-                    "--cert-seeds",
-                    str(pi.cert_seeds),
-                    "--h2h-deals",
-                    str(pi.cert_h2h_deals),
-                    *(["--no-bars"] if self.cfg.smoke else []),
+                    *self._cert_flags(routed=True),
                 ),
                 f"pi_iter{k}.log",
             )
@@ -770,7 +798,18 @@ class Program:
             cert = json.load(f)
         rec["cert"] = {
             k2: cert[k2]
-            for k2 in ("candidate", "passed", "failures", "h2h", "probe_means")
+            for k2 in (
+                "candidate",
+                "passed",
+                "failures",
+                "h2h",
+                "probe_means",
+                "compounding",
+            )
+        }
+        rec["cert"]["routed"] = {
+            name: {k3: v[k3] for k3 in ("edge", "se") if k3 in v}
+            for name, v in cert.get("routed", {}).items()
         }
         if not cert["passed"]:
             self._save_state()
@@ -779,9 +818,17 @@ class Program:
                 "(WiSE-FT walk-back is an operator decision)"
             )
         candidate = cert["candidate"]
-        # Bidding-only PG phase from the certified candidate, against the
-        # league population; adopted if not significantly worse than the
-        # candidate on the same battery.
+        theta_next = self.run_bidding_phase(k, candidate, it_dir, rec)
+        rec["theta_next"] = theta_next
+        self._save_state()
+        return theta_next, rec
+
+    def run_bidding_phase(self, k: int, candidate: str, it_dir: str, rec: dict) -> str:
+        """Bidding-only PG phase (play heads pinned, oracle critic on) from
+        ``candidate`` against the league population; adopted if not
+        significantly worse than the candidate on the same battery.
+        Returns the checkpoint to carry forward."""
+        pi = self.cfg.policy_iteration
         bidding_dir = os.path.join(it_dir, "bidding")
         bidding_final = os.path.join(bidding_dir, "final.pt")
         if pi.bidding_episodes > 0 and not os.path.exists(bidding_final):
@@ -794,7 +841,7 @@ class Program:
                 "--run-name",
                 f"{self.cfg.run_name}/pi/iter{k}/bidding",
                 "--league-dir",
-                os.path.join(self.league_dir, "league"),
+                pi.league_dir or os.path.join(self.league_dir, "league"),
                 "--until",
                 str(pi.bidding_episodes),
                 "--save-interval",
@@ -825,13 +872,7 @@ class Program:
                         bcert_dir,
                         "--candidate",
                         bidding_final,
-                        "--cert-games",
-                        str(pi.cert_games),
-                        "--cert-seeds",
-                        str(pi.cert_seeds),
-                        "--h2h-deals",
-                        str(pi.cert_h2h_deals),
-                        *(["--no-bars"] if self.cfg.smoke else []),
+                        *self._cert_flags(routed=False),
                     ),
                     f"pi_iter{k}.log",
                 )
@@ -852,7 +893,7 @@ class Program:
             )
         rec["theta_next"] = theta_next
         self._save_state()
-        return theta_next, rec
+        return theta_next
 
     @staticmethod
     def _corpus_incomplete(corpus_dir: str, games: int) -> bool:
@@ -870,13 +911,25 @@ class Program:
         if state.get("theta"):
             return state["theta"]
         theta = theta_0
+        if self.cfg.start_phase == "policy_iteration" and pi.bidding_first:
+            # Validation entry: the external theta_0 is a certified distill
+            # candidate; run its bidding phase first (iteration 0), then the
+            # next corpus comes from the adopted checkpoint.
+            it0 = self.iter_dir(0)
+            os.makedirs(it0, exist_ok=True)
+            rec0 = state["iterations"].setdefault("0", {"theta_k": theta_0})
+            theta = self.run_bidding_phase(0, theta_0, it0, rec0)
+            self._event(f"iteration 0 (bidding phase on theta_0): theta = {theta}")
         gains: list[tuple[float, float]] = []
         k = 1
         while True:
             theta, rec = self.run_iteration(k, theta)
-            gains.append((rec["cert"]["h2h"]["edge"], rec["cert"]["h2h"]["se"]))
+            comp = rec["cert"].get("compounding") or rec["cert"]["h2h"]
+            gains.append((comp["edge"], comp["se"]))
             self._event(
-                f"iter {k}: certified gain {gains[-1][0]:+.4f}±{gains[-1][1]:.4f}; "
+                f"iter {k}: compounding gain ({comp.get('source', 'h2h')}) "
+                f"{gains[-1][0]:+.4f}±{gains[-1][1]:.4f}; full h2h "
+                f"{rec['cert']['h2h']['edge']:+.4f}±{rec['cert']['h2h']['se']:.4f}; "
                 f"theta_{k} = {theta}"
             )
             stop, reason = iteration_stop(gains, rule)
@@ -1032,12 +1085,22 @@ class Program:
             self._event("resuming a needs_review run (operator override implied)")
             self.state["status"] = "running"
         try:
-            self.state["phase"] = "bootstrap"
-            self.ensure_bootstrap()
-            self.state["phase"] = "oracle"
-            self.ensure_oracle()
-            self.state["phase"] = "league"
-            theta_0 = self.run_league()
+            if self.cfg.start_phase == "policy_iteration":
+                # Validation entry (Training_Program_Redesign §7.0 / §4.4):
+                # phase 3 on an external lineage from policy_iteration.theta_0.
+                theta_0 = self.cfg.policy_iteration.theta_0
+                if not theta_0 or not os.path.exists(theta_0):
+                    raise NeedsReview(
+                        "start_phase=policy_iteration needs policy_iteration.theta_0"
+                    )
+                self._event(f"starting at policy iteration from {theta_0}")
+            else:
+                self.state["phase"] = "bootstrap"
+                self.ensure_bootstrap()
+                self.state["phase"] = "oracle"
+                self.ensure_oracle()
+                self.state["phase"] = "league"
+                theta_0 = self.run_league()
             self.state["phase"] = "policy_iteration"
             theta = self.run_policy_iteration(theta_0)
             self.state["phase"] = "final"

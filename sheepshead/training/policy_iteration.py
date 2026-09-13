@@ -89,11 +89,14 @@ SET_CODES = {"none": 0, "override": 1, "retention": 3}
 # Adoption bars for ``cert`` (Training_Program_Redesign §4.4 / §20.9).
 CERT_SEEDS = (98765, 98766, 98767, 98768)
 CERT_GAMES = 1000
-CERT_H2H_DEALS = 2000
+CERT_H2H_DEALS = 8000
 CERT_BARS = {
     "partner_trump_lead_min": 96.5,
     "t0_trump_lead_max": 1.0,
     "play_logit_spread_min": 3.6,
+    # bidding-only route (§20.14 step 6): flag the iteration if the bidding
+    # heads drifted below this at 2 SE.
+    "bidding_route_min": -0.003,
 }
 
 
@@ -869,20 +872,26 @@ def stage_distill(args) -> list[str]:
                     f"({best_kl:.4f}, epoch {best_epoch}); stopping after epoch {epoch}"
                 )
                 break
+        # Holdout target KL does not track EV (CE_Teacher_Design §20.13 add.
+        # 14/20); when it never beats epoch 0 the candidate is the LAST epoch
+        # (§20.14 step 4), never "none".
+        chosen = best_epoch if best_epoch else n_epochs
         with open(os.path.join(args.out_dir, "distill_best.json"), "w") as f:
             json.dump(
                 {
-                    "best_epoch": best_epoch,
+                    "best_epoch": chosen,
+                    "best_epoch_by_kl": best_epoch,
                     "holdout_override_kl": best_kl,
                     "checkpoint": os.path.join(
-                        args.out_dir, f"distill_epoch{best_epoch}.pt"
-                    )
-                    if best_epoch
-                    else None,
+                        args.out_dir, f"distill_epoch{chosen}.pt"
+                    ),
                 },
                 f,
             )
-        log(f"[distill] best epoch by holdout target KL: {best_epoch} ({best_kl:.4f})")
+        log(
+            f"[distill] candidate epoch {chosen} "
+            f"(holdout target KL best: {best_epoch} at {best_kl:.4f})"
+        )
     return saved
 
 
@@ -945,9 +954,40 @@ def stage_cert(args) -> dict:
         f"leaster hands {h2h['leaster']['edge']:+.4f} se {h2h['leaster']['se']:.4f} "
         f"(n={h2h['leaster']['n']})"
     )
+    routed = {}
+    if getattr(args, "routed_reads", True):
+        from sheepshead.analysis.head_routed_h2h import routed_h2h
+
+        # §20.14 step 5: the play-only route (bidding from theta_k) is the
+        # compounding statistic — it strips the +-0.005 bidding variance the
+        # trunk epochs add — and the bidding-only route is the drift guard.
+        for name, bid, play in (
+            ("play_only", args.ckpt, candidate),
+            ("bidding_only", candidate, args.ckpt),
+        ):
+            t0 = time.time()
+            res = routed_h2h(
+                bid, play, args.ckpt, n_deals_per_mode=args.h2h_deals, lead_ckpt=play
+            )
+            routed[name] = {
+                k: res[k] for k in ("edge", "se", "modes", "per_deal") if k in res
+            }
+            log(
+                f"[cert] routed {name} vs theta_k ({(time.time() - t0) / 60:.0f} min): "
+                f"{res['edge']:+.4f} se {res['se']:.4f}"
+            )
     failures = []
-    if h2h["edge"] - 2.0 * h2h["se"] <= 0.0:
-        failures.append(f"h2h vs theta_k not positive at 2 SE ({h2h['edge']:+.4f})")
+    # Adoption gate (operator decision 2026-09-12): NON-INFERIORITY on the
+    # full checkpoint — the per-iteration gain (~+0.003) sits inside the
+    # 8000-deal SE, so positivity at 2 SE would reject every real step;
+    # compounding is judged by the program-level slope of the play-only
+    # route (stop_rules.iteration_stop), conventions are guards.
+    if h2h["edge"] + 2.0 * h2h["se"] < 0.0:
+        failures.append(f"h2h vs theta_k inferior at 2 SE ({h2h['edge']:+.4f})")
+    if "bidding_only" in routed:
+        b = routed["bidding_only"]
+        if b["edge"] + 2.0 * b["se"] < CERT_BARS["bidding_route_min"]:
+            failures.append(f"bidding drift {b['edge']:+.4f} (route guard)")
     if means["partner_trump_lead_rate"] < CERT_BARS["partner_trump_lead_min"]:
         failures.append(f"partner trump lead {means['partner_trump_lead_rate']:.1f}")
     if means["t0_trump_lead_rate"] > CERT_BARS["t0_trump_lead_max"]:
@@ -965,6 +1005,16 @@ def stage_cert(args) -> dict:
         "probes": probes,
         "probe_means": means,
         "h2h": h2h,
+        "routed": routed,
+        # The compounding statistic for stop_rules: play-only route when
+        # read, else the full h2h.
+        "compounding": {
+            "edge": routed["play_only"]["edge"]
+            if "play_only" in routed
+            else h2h["edge"],
+            "se": routed["play_only"]["se"] if "play_only" in routed else h2h["se"],
+            "source": "play_only" if "play_only" in routed else "h2h",
+        },
         "bars": CERT_BARS,
     }
     with open(os.path.join(args.out_dir, "cert.json"), "w") as f:
@@ -1008,12 +1058,14 @@ def build_parser() -> argparse.ArgumentParser:
     tgt.add_argument("--tilt-max", type=float, default=8.0, help="|z| clip (nats)")
     tgt.add_argument("--weight-max", type=float, default=5.0, help="CE weight cap")
     dst = ap.add_argument_group("distill")
-    dst.add_argument("--trunk-epochs", type=int, default=1)
-    dst.add_argument("--head-epochs", type=int, default=6)
-    dst.add_argument("--lr", type=float, default=1e-4)
+    # §20.14 step 4 (pinned 2026-09-12): six trunk epochs at 3e-5, then
+    # bilinear-only head epochs at 1e-3; retention KL x10.
+    dst.add_argument("--trunk-epochs", type=int, default=6)
+    dst.add_argument("--head-epochs", type=int, default=4)
+    dst.add_argument("--lr", type=float, default=3e-5)
     dst.add_argument("--head-lr", type=float, default=1e-3)
     dst.add_argument("--lambda-ce", type=float, default=1.0)
-    dst.add_argument("--lambda-ret", type=float, default=1.0)
+    dst.add_argument("--lambda-ret", type=float, default=10.0)
     dst.add_argument("--kl-min-improve", type=float, default=0.02)
     dst.add_argument("--no-oracle", dest="train_oracle", action="store_false")
     dst.add_argument("--probe-games", type=int, default=500)
@@ -1022,6 +1074,12 @@ def build_parser() -> argparse.ArgumentParser:
     crt.add_argument("--cert-seeds", type=int, default=len(CERT_SEEDS))
     crt.add_argument("--cert-games", type=int, default=CERT_GAMES)
     crt.add_argument("--h2h-deals", type=int, default=CERT_H2H_DEALS)
+    crt.add_argument(
+        "--no-routed-reads",
+        dest="routed_reads",
+        action="store_false",
+        help="skip the head-routed play-only / bidding-only h2h reads",
+    )
     crt.add_argument(
         "--no-bars",
         action="store_true",

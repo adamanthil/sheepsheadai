@@ -526,4 +526,8 @@ def test_cert_stage_records_battery_and_enforces_bars(tmp_path):
     assert relaxed["bars_enforced"] is False and relaxed["passed"] is True
     # The battery still ran and still recorded its misses (the strings are
     # not compared: the two runs draw different probe deals).
-    assert relaxed["failures"] and any("h2h" in f for f in relaxed["failures"])
+    # The h2h gate is non-inferiority (§20.14 step 5): a candidate at parity
+    # with theta_k does not fail it; the convention bars still fire here.
+    assert relaxed["failures"] and not any("inferior" in f for f in relaxed["failures"])
+    assert relaxed["compounding"]["source"] in ("h2h", "play_only")
+    assert relaxed["h2h"]["edge"] + 2.0 * relaxed["h2h"]["se"] >= 0.0

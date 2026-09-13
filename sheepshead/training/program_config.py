@@ -72,23 +72,48 @@ class LeagueConfig:
 
 @dataclass
 class PolicyIterationConfig:
-    """Phase 3: search-Q policy iteration to convergence (§4.4)."""
+    """Phase 3: search-Q policy iteration to convergence (§4.4; the
+    compounding recipe of CE_Teacher_Design §20.14, pinned 2026-09-12)."""
 
-    games: int = 2_000
-    p_base: float = 0.5
-    boost_lead: float = 2.0
+    games: int = 8_000
+    p_base: float = 1.0
+    boost_lead: float = 1.0
+    boost_cs: float = 1.5
+    p_min: float = 0.05
     p_max: float = 1.0
-    iters: int = 1024
+    committee_act_frac: float = 1.0
+    iters: int = 256
+    # Trick-indexed lead budget (§20.13 add. 29b): t0 leads 1024, t1 leads
+    # 512, everything else at ``iters`` (~+22% search time over all-256).
+    iters_schedule: str | None = "t0-lead:1024,t1-lead:512"
     replicates: int = 3
     routed_encoder: str | None = "mps"
     corpus_seed_base: int = 20260902
+    # Distill schedule (§20.14 step 4): six trunk epochs at 3e-5, then
+    # bilinear-only head epochs at 1e-3; retention KL x10.
+    trunk_epochs: int = 6
+    lr: float = 3e-5
+    head_epochs_default: int = 4
+    lambda_ret: float = 10.0
     max_iterations: int = 5
     stop_se_multiple: float = 2.0
     stop_flat_iterations: int = 2
     bidding_episodes: int = 200_000
     cert_games: int = 1000
     cert_seeds: int = 4
-    cert_h2h_deals: int = 2000
+    cert_h2h_deals: int = 8000
+    # Head-routed reads in the cert (§20.14 step 5): the play-only route is
+    # the compounding statistic; the bidding route is the drift guard.
+    routed_reads: bool = True
+    # Start the phase from an external theta_0 (validation on an existing
+    # lineage) instead of the run's league handoff; the bidding phase then
+    # samples opponents from ``league_dir``.
+    theta_0: str | None = None
+    league_dir: str | None = None
+    # With start_phase="policy_iteration": run the bidding phase on theta_0
+    # first (it is a certified distill candidate), then iterate from the
+    # adopted checkpoint.
+    bidding_first: bool = True
     # Smoke-only knobs for the fit/distill stages (None = module defaults).
     fit_epochs: int | None = None
     head_epochs: int | None = None
@@ -143,6 +168,10 @@ class ProgramConfig:
     final: FinalConfig = field(default_factory=FinalConfig)
     gates: GateConfig = field(default_factory=GateConfig)
     smoke: bool = False
+    # "bootstrap" runs every phase; "policy_iteration" skips to phase 3 from
+    # ``policy_iteration.theta_0`` (validation of the final phases on an
+    # existing lineage).
+    start_phase: str = "bootstrap"
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
@@ -202,7 +231,11 @@ class ProgramConfig:
             boost_lead=1.0,
             p_max=1.0,
             iters=8,
+            iters_schedule=None,
             replicates=2,
+            trunk_epochs=1,
+            lr=1e-4,
+            routed_reads=False,
             routed_encoder=None,
             max_iterations=1,
             bidding_episodes=20,

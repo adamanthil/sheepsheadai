@@ -326,7 +326,9 @@ def play_corpus_game(task: tuple) -> dict:
         compute_seen_trump_mask,
     )
 
-    game_idx, mode = task
+    # (game_idx, mode[, committee_act]); tests still pass the two-tuple.
+    game_idx, mode = task[0], task[1]
+    committee_act = bool(task[2]) if len(task) > 2 else False
     init_args = _W["args"]
     agent = _W["agent"]
     base_seed = int(init_args["seed"])
@@ -346,6 +348,7 @@ def play_corpus_game(task: tuple) -> dict:
         lambda: {"nodes": 0, "searched": 0, "override": 0, "endorsed": 0, "failed": 0}
     )
     gaps: list[float] = []
+    committee_acted = 0
 
     while not game.is_done():
         for player in game.players:
@@ -451,6 +454,23 @@ def play_corpus_game(task: tuple) -> dict:
                                     "pair_diffs": pair_diffs,
                                 }
                             )
+                            # Committee acting (§20.13 addendum 16: +0.0055
+                            # play vs student acting): play the resolved
+                            # target's argmax so the corpus samples the lines
+                            # the search prefers; the stored log_prob is the
+                            # act-time policy's for the acted card.
+                            if (
+                                committee_act
+                                and dset == "override"
+                                and target_list is not None
+                                and anchor is not None
+                            ):
+                                acts = sorted(valid_actions)
+                                acted = acts[int(np.argmax(target_list))]
+                                if acted != action:
+                                    committee_acted += 1
+                                    action = acted
+                                    log_prob = float(np.log(anchor[acts.index(acted)]))
 
                 transition = {
                     "kind": "action",
@@ -528,6 +548,8 @@ def play_corpus_game(task: tuple) -> dict:
     return {
         "game": game_idx,
         "mode": "called" if mode == PARTNER_BY_CALLED_ACE else "jd",
+        "committee_act": committee_act,
+        "committee_acted": committee_acted,
         "is_leaster": bool(game.is_leaster),
         "alone_called": bool(game.alone_called),
         "episodes": episodes,
@@ -596,6 +618,15 @@ def main() -> int:
     ap.add_argument("--boost-cs", type=float, default=1.5)
     ap.add_argument("--p-min", type=float, default=0.05)
     ap.add_argument("--p-max", type=float, default=0.25)
+    ap.add_argument(
+        "--committee-act-frac",
+        type=float,
+        default=1.0,
+        help="fraction of games in which resolved search targets are ACTED "
+        "(the committee's argmax replaces the policy's card): the corpus then "
+        "samples the search-preferred lines. 1.0 = the §20.14 recipe "
+        "(+0.0055 play vs student acting, CE_Teacher_Design §20.13 add. 16)",
+    )
     ap.add_argument("--node-telemetry", default=None)
     ap.add_argument(
         "--start-game",
@@ -636,8 +667,15 @@ def main() -> int:
     }
 
     # Deterministic task schedule: modes alternate by game index.
+    # Deterministic task schedule: modes alternate by game index; the
+    # committee-act draw is seeded by game index so a resumed run makes the
+    # same draw for the same game.
     tasks = [
-        (g, PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD)
+        (
+            g,
+            PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD,
+            random.Random((args.seed << 21) ^ g).random() < args.committee_act_frac,
+        )
         for g in range(args.start_game, args.games)
     ]
 
@@ -652,6 +690,8 @@ def main() -> int:
         "games": 0,
         "kept_games": 0,
         "episodes": 0,
+        "committee_act_games": 0,
+        "committee_acted_nodes": 0,
         "classes": {},
         "gap_percentiles": None,
         "shards": [],
@@ -673,7 +713,7 @@ def main() -> int:
         with open(prior_path) as f:
             prior = json.load(f)
         for key in ("games", "kept_games", "episodes"):
-            manifest[key] = prior[key]
+            manifest[key] = prior.get(key, 0)
         manifest["shards"] = prior["shards"]
         manifest["resumed_at_game"] = args.start_game
         for cls, c in prior.get("classes", {}).items():
@@ -751,6 +791,8 @@ def main() -> int:
             kept += 1
             manifest["kept_games"] = kept
             manifest["episodes"] += len(res["episodes"])
+            manifest["committee_act_games"] += int(res["committee_act"])
+            manifest["committee_acted_nodes"] += int(res["committee_acted"])
             for cls, c in res["counts"].items():
                 tot = class_totals[cls]
                 for k in tot:
