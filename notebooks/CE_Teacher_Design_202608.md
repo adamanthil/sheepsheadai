@@ -4829,6 +4829,9 @@ STEP 1 — corpus (sheepshead.training.distill_corpus):
 STEP 2 — fit (train_policy_iteration fit):
   --capacity adapter --bilinear --heteroscedastic --fit-epochs 200
   --patience 25   (10% game-level holdout, seed 0; log-prior covariate on)
+  (the merged policy_iteration module defaulted to 120 / 4 until
+  2026-09-15; the rc_validate_v2 iteration fit 66 epochs, best 62, at a
+  comparable held-out error — add. 31)
 
 STEP 3 — targets (train_policy_iteration target):
   --variance-mode class --variance-rows all --weight-mode precision
@@ -4847,9 +4850,12 @@ STEP 4 — distill (train_policy_iteration distill), THE CHANGE THAT MADE
   @1e-4 +0.0002 | 3 @3e-5 +0.0024 | 6 @3e-5 +0.0043 (6 epochs: --epochs
   10 --freeze-epochs 7,8,9,10). Three-epoch collateral seen at 35k rows
   (trunk_ep3, −0.0053) does not recur at 140k rows at 3e-5.
-  Selection: holdout-target-KL best (plateau rule) with fallback to the
-  last epoch; NOTE holdout KL does not track EV (add. 14, 20) — every
-  optimised arm selected its last epoch.
+  Selection (amended 2026-09-15, add. 31): the CANDIDATE IS THE LAST
+  EPOCH of the schedule (6 trunk + 4 head). Held-out target KL is logged
+  per epoch as a fidelity check and selects nothing — it does not track
+  EV (add. 14, 20), and the plateau rule it drove ended iteration 3's
+  head phase after one epoch and discarded +0.0030 ± 0.0023 of certified
+  play (add. 31). The cert is the guard against overfitting the labels.
 
 STEP 5 — certification (all reads vs theta_k):
   greedy_health_probe 4 × n=1000 (called-suit, partner-trump, t0-trump,
@@ -4994,3 +5000,237 @@ Reads.
      generations even after re-anchoring.
 Avenue 2 is closed. Avenue 1 (add. 29/29b) delivered the trick-indexed
 lead schedule. The pinned recipe (§20.14) stands with that addition.
+
+§20.13 ADDENDUM 31 — ITERATION 3 UNDER THE RELEASE-CANDIDATE PIPELINE:
+the recipe compounds a third time, the lead schedule installs called
+suit, the candidate rule is corrected (2026-09-13..16; run
+runs/rc_validate_v2, orchestrator run_training_program with
+start_phase policy_iteration; theta_2 = iter29_d8k_t6/distill_epoch10.pt;
+all reads at 8000 deals/mode on the seed-42 deals, paired reads on the
+same deals).
+
+Timeline (M1 Max, 8 workers).
+    stage                                     wall     result
+    bidding phase on theta_2 (200k eps)       7.96 h   pick 35.8 -> 33.4, leaster 5.9 -> 8.2, alone 15.8 -> 12.9
+    bidding cert (h2h + probes)               0.38 h   +0.0054 ± 0.0036 vs theta_2 (called +0.0089 / jd +0.0018);
+                                                       leaster hands +0.0236 ± 0.0086 -> ADOPTED (theta_2' = bidding/final.pt)
+    corpus, 8000 committee-acted games        60.56 h  133,292 searched / 64,515 override / 68,331 endorsed / 446 failed
+      256 + t0-lead:1024, t1-lead:512                  (corpus D at all-256: 137.6k / 66.8k; x1.34 wall for x1.22 search
+                                                       predicted — the schedule's extra cost lands where predicted)
+    fit / target / distill (6 trunk + head)   2.08 h   held-out target KL 0.1243 -> 0.1007 (ep 5) -> 0.1003 (ep 7)
+    cert, candidate ep 5 (routed reads)       1.20 h   below
+    cert, LAST epoch 7 (supplementary)        1.20 h   below
+
+Reads vs theta_2' (the PG-adopted checkpoint; single network unless routed):
+    read                     ep 5 (holdout-KL candidate)   ep 7 (last epoch)         paired ep7 − ep5
+    full h2h                 +0.0029 ± 0.0025              +0.0058 ± 0.0026          +0.0029 ± 0.0024 (1.2σ)
+      called / jd            +0.0043 / +0.0014             +0.0105 / +0.0010
+      leaster hands          −0.0077 ± 0.0102              +0.0222 ± 0.0116
+    C_play (PRIMARY)         +0.0036 ± 0.0023              +0.0066 ± 0.0024          +0.0030 ± 0.0023 (1.3σ)
+    D_bid (guard −0.003)     −0.0008 ± 0.0008              −0.0010 ± 0.0008                 −0.0003 ± 0.0009
+    called-suit (4 x 1000)   53.7 (51.7-54.6)              56.3 (53.8-58.3)          theta_2 45.6, theta_2' 49.2
+    t0 trump / partner       0.2 / 98.8                    0.4 / 98.8
+    pick / leaster           32.9 / 8.6                    33.4 / 8.3
+    adoption bars            all pass                      all pass
+
+Per-epoch probes during distillation (500 greedy games each; noise ±3):
+    epoch       1     2     3     4     5     6     7
+    holdout KL  .1095 .1069 .1029 .1018 .1007 .1019 .1003
+    called-suit 48.2  54.1  53.9  50.9  54.8  57.9  59.6
+
+Reads.
+  1. COMPOUNDS AGAIN. The play-only route reads +0.0036 ± 0.0023 (ep 5)
+     / +0.0066 ± 0.0024 (ep 7) over theta_2', the same slope as
+     iteration 2 (+0.0038 ± 0.0019 over theta_1) and from a checkpoint
+     that had a bidding PG phase in between. Three iterations of the
+     lineage: theta_0 -> theta_1 +0.0107 (1024, standard recipe),
+     theta_1 -> theta_2 +0.0038, theta_2' -> theta_3 +0.0066 (ep 7).
+     The full single network carries the gain (+0.0058 ± 0.0026 at ep 7,
+     2.2σ) — the single-network deployment decision (§20.14 step 6)
+     holds; the bidding route stays inside the guard.
+  2. THE LEAD SCHEDULE INSTALLS CALLED SUIT. 45.6 (theta_2, all-256
+     corpora) -> 49.2 after the bidding phase (a population shift: the
+     play network was bit-identical, the call head changed which suits
+     are called and which hands are picked) -> 53.7 (ep 5) / 56.3
+     (ep 7) after one corpus under t0-lead:1024,t1-lead:512. The
+     override rate at t0 defender leads rose 71.5 -> 74.8% while every
+     other lead class fell (the stronger anchor agrees more often), i.e.
+     the 1024 budget produced convention labels the 256 corpora did not
+     carry (add. 29). The distill epochs 5 -> 7 add +5 points on the
+     probe; the holdout-KL candidate rule threw those epochs away.
+  3. CANDIDATE RULE CORRECTED. The plateau rule (no >= 2% held-out-KL
+     gain over the best -> stop the head phase, candidate = best) ended
+     the head phase after ONE epoch and named epoch 5 (a mid-trunk
+     checkpoint with no head epochs) although epoch 7 had the lowest
+     KL of all (0.1003 vs 0.1007, 0.4% — inside the holdout's resampling
+     noise). Every earlier optimised arm had selected its last epoch,
+     so the rule and the pinned schedule had never diverged. On the
+     cert the discarded epochs are worth +0.0030 ± 0.0023 (1.3σ) on the play
+     route, paired on the same deals. RULE (amended §20.14 step 4): the
+     candidate is the LAST epoch of the pinned schedule (6 trunk + 4
+     head); held-out target KL is logged as a fidelity check and stops
+     nothing. Held-out KL is a fidelity-to-targets average over all
+     override rows; EV lives in a decisive minority of them (add. 14,
+     20) — the guard against overfitting the noisy labels is the cert,
+     not the KL.
+  4. PIPELINE DEFECTS FOUND BY THE VALIDATION RUN (fixed, master):
+     (a) the head-routed chimera lacked ``needs_picker_memory``, so the
+     harness fed it the clean observation and the legacy encoders
+     inside it raised — the routed cert reads crashed after the plain
+     h2h had passed (commit 0fba76c; delegation + a real-checkpoint
+     routed smoke test); (b) the merged fit stage defaulted to 120
+     epochs / patience 4 against the recipe's 200 / 25 — this iteration
+     fit 66 epochs (best 62) where the D8k arm fit 107 (best 82), at a
+     comparable held-out error (6c3511d aligns the defaults); (c) the
+     orchestrator's bidding phase on the adopted candidate started
+     immediately after the cert, before the epoch question was settled
+     — stopped by the operator at minute 3, resumed after this read.
+  5. Bidding phase (the retention-branch PG phase, first run in this
+     lineage): +0.0054 ± 0.0036 vs theta_2 with the leaster stratum the
+     clearest mover (+0.024 ± 0.009); pick rate down 2.3 points, alone
+     down 2.9; the play network untouched (bit-identical: the only
+     actor parameters outside pick/partner that trained are the call
+     scorer's two towers). It re-grounds bidding and the value stream
+     as intended and passes the non-inferiority gate; whether it adds
+     EV beyond noise needs more than one phase to say.
+  6. DECISION (2026-09-15, 23:10): theta_3 = distill_epoch7.pt. Epoch 7 is
+     non-inferior to epoch 5 on both routes paired on the same deals
+     (play +0.0030 ± 0.0023 in its favour, bidding −0.0003 ± 0.0009), it
+     passes every bar, and it carries the higher convention rate. The
+     orchestrator's iteration-1 record is re-pointed at epoch 7 (its
+     cert.json replaced by the epoch-7 battery; the epoch-5 battery kept
+     as cert_ep5.json) and the run resumes with the bidding phase on
+     theta_3; the code change (policy_iteration distill: candidate = last
+     epoch, --kl-min-improve removed) is on master.
+
+
+## §21 CLOSE-OUT — what the search-teacher investigation found, and the recipe it leaves (2026-09-16)
+
+This closes §20. It states, for the write-up and for the release-candidate
+program (Training_Program_Redesign_202609 §4.4), what was established, with
+the addendum that carries each claim; the pinned recipe with every value;
+what was tried and rejected; and what is open. The perceiver-shared-v2
+lineage on which all of it was measured stops here — its last artifact is
+theta_3 (§21.4) — and the next run is the fresh perceiver-recall program.
+
+### 21.1 Findings
+
+1. **Search-Q regularized policy iteration compounds, at ≈ +0.003–0.007
+   play EV per iteration on this lineage.** Three iterations from the 8M
+   league seed, each certified against its own theta_k on 8,000 duplicate
+   deals per mode with the play-only head-routed read as the statistic
+   (bidding held at theta_k, play from the candidate):
+
+       iteration  theta_k -> theta_{k+1}                recipe                              play-only        full network
+       1          8M seed -> iter11 ep7                 standard (1024, 51.7k rows, 1 ep)   +0.0107 ± 0.0032  +0.0141 ± 0.0036
+       2          iter11 -> iter29_d8k_t6 ep10          optimised (256, 140k rows, 6 ep)    +0.0038 ± 0.0019  +0.0031
+       3          theta_2' -> rc_validate_v2 iter1 ep7  optimised + lead schedule + PG      +0.0066 ± 0.0024  +0.0058 ± 0.0026
+       (iteration 2 pooled over two seeds; theta_2' = theta_2 after the bidding PG phase, +0.0054 ± 0.0036 over theta_2)
+
+   Iteration 1 is the large first step every warm-started distillation
+   showed (§17, §20.8); iterations 2 and 3 are the steady-state slope. The
+   deploy-time search ceiling over the same policy is +0.166 (add. 9; mechanism add. 15), so
+   the projection recovers ~2–4% of the ceiling per ~65 machine-hours.
+2. **The stall at theta_1 was two things, neither a ceiling** (add. 12–27):
+   a *bidding tax* — trunk epochs move the bidding features, the frozen
+   head phase cannot repair them, and the loss is a ±0.005 variance term
+   (handled: retention KL ×10 on bidding rows plus the bidding-only read
+   as a guard; the single network ends up neutral-to-positive on bidding);
+   and *under-optimisation* — at 35k–140k rows the one-epoch projection
+   read flat on every axis (rows, budget, targets, acting mode, row
+   selection), and six trunk epochs at 3e-5 on 140k rows are what moved
+   it (1 ep +0.0002, 3 ep +0.0024, 6 ep +0.0043 on identical targets,
+   add. 25–27). "Per-row evidence is weaker at theta_1" was retracted
+   (add. 14): rows carry the same evidence, patterns need more of them.
+3. **Committee acting is the right corpus** (+0.0055 ± 0.0021 play vs
+   student acting on the same recipe, add. 16): the corpus samples the
+   search-preferred lines, which is where the next iteration's
+   improvement lives.
+4. **256 iterations equal 1,024 in EV at equal rows** (add. 19b, 22) at
+   4.1× lower cost — but 256 does *not* resolve the lead conventions
+   (add. 29: at called-suit-eligible defender leads the 256 committee's Q
+   direction is indistinguishable from zero; the knee is 512, trick-0
+   wants 1,024). The trick-indexed lead schedule (t0 leads 1,024, t1
+   leads 512, else 256; +22% search, +34% wall measured) installs the
+   convention: called-suit lead 45.6 → 56–60 in one corpus (add. 31).
+5. **Corpus reuse across generations does not work here** (add. 30): the
+   previous generation's corpus, even re-anchored to the current prior,
+   reads at the harm line (−0.0052 ± 0.0027 paired), because the targets
+   are continuation-dependent advantages, not absolute visit counts. One
+   corpus per iteration.
+6. **Held-out target KL does not select the candidate** (add. 14, 20, 31):
+   it is a fidelity average over every override row; the EV lives in a
+   decisive minority. The KL-best epoch of iteration 3 left +0.0030 ± 0.0023 (1.3σ)
+   of certified play on the table. Candidate = the last epoch of the
+   pinned schedule; the cert is the overfitting guard.
+7. **The teacher is a one-ply, oracle-leaf PUCT committee** (add. 15), so
+   its ceiling is the belief-averaged privileged value, not terminal
+   rollouts; raising the ceiling is an oracle-critic / deeper-teacher
+   question left open (§21.5). The tree-free CRN oracle evaluator was
+   tried as a cheap teacher and fails (biased, add. 18).
+8. **The bidding PG phase between iterations works as designed** (add.
+   31): play heads pinned, the pick / partner / call heads and both
+   critics re-ground on fresh on-policy games against the league
+   population; non-inferior in its first run (+0.0054 ± 0.0036, leaster
+   +0.024 ± 0.009), the play network bit-identical.
+
+### 21.2 The recipe (final; §20.14 as amended, the values the RC pipeline runs)
+
+    corpus     distill_corpus --games 8000 --workers 8 --committee-act-frac 1.0
+               --iters 256 --iters-schedule t0-lead:1024,t1-lead:512 --replicates 3
+               --d-rollout 1 (oracle leaves) --p-base 1.0 --boost-lead 1.0 --boost-cs 1.5
+               --p-min 0.05 --p-max 1.0 --routed-encoder mps --seed <base + k>
+               (~60 h on the M1 Max; ~133k searched / ~65k override rows)
+    fit        policy_iteration fit: capacity adapter, heteroscedastic, log-prior
+               covariate, 200 epochs, patience 25, 10% game-level holdout
+    target     class-mode Fay–Herriot posterior variance, kappa 1, tilt clip ±8,
+               precision weights capped at 5
+    distill    6 trunk epochs @ 3e-5 (everything trains), then 4 bilinear-only head
+               epochs @ 1e-3; lambda_ce 1, lambda_ret 10; oracle / value aux on;
+               CANDIDATE = LAST EPOCH (held-out KL logged, selects nothing)
+    cert       4 × 1000-game probes (seeds 98765–98768) + duplicate h2h 8000 deals/mode
+               + routed play-only (the compounding statistic) + routed bidding-only
+               (guard ≥ −0.003); adopt on non-inferiority (edge + 2 SE ≥ 0) and the
+               convention bars (partner ≥ 96.5, t0 trump ≤ 1.0, spread ≥ 3.6)
+    bidding    train_ppo --phase bidding, 200k episodes vs the league population, play
+               heads / adapter / encoder frozen; certified vs the candidate, adopted on
+               non-inferiority; theta_{k+1} = the adopted SINGLE network
+    stop       play-only gain below 2 SE for two consecutive iterations, or the cap
+    per iteration ≈ 60 h corpus + 2 h fit/distill + 1.2 h cert + 8 h PG + 0.4 h cert
+
+### 21.3 Rejected (each at 8,000 deals unless noted; addendum in brackets)
+
+global-shrink / gamma-1 / kappa-0.5 targets [6b–9b]; one trunk epoch @1e-4, three
+@1e-4 at 35k rows, head-only, lambda_ret 1 [11–14]; student acting [5, 16];
+top-z row selection [13]; 64-iteration committee [18b]; tree-free CRN
+oracle evaluator [18]; 1,024 labels at 91k rows (U1024) [22]; rows alone
+35k→140k at one epoch [20–24]; the student-acted pooled corpus in any
+union (leaster pathology) [2, 22]; same-generation twin union D∪twin [30];
+two-generation replay window, re-anchored [30]; cell-specific called-suit
+budget (superseded by the trick-indexed schedule) [29/29b]; held-out-KL
+candidate selection [31]; head routing at deploy [§20.14 step 6].
+
+### 21.4 Artifacts
+
+    theta_1   runs/policy_iteration_202609/iter11/distill_epoch7.pt
+    theta_2   runs/policy_iteration_202609/iter29_d8k_t6/distill_epoch10.pt
+    theta_2'  runs/rc_validate_v2/pi/iter0/bidding/final.pt          (bidding phase on theta_2)
+    theta_3   runs/rc_validate_v2/pi/iter1/distill_epoch7.pt          (best v2-lineage play; cert PASS; play-only +0.0066 ± 0.0024, full +0.0058 ± 0.0026 vs theta_2')
+    corpora   runs/distill_corpus_iter2d_256_202609 (D), runs/rc_validate_v2/pi/iter1/corpus (schedule)
+    certs     runs/policy_iteration_202609/cert_results.jsonl; runs/rc_validate_v2/pi/iter1/{cert.json,cert_ep7/cert.json}
+    code      sheepshead/training/{distill_corpus,policy_iteration,run_training_program,program_config}.py,
+              sheepshead/analysis/head_routed_h2h.py (routed reads), league_progress_eval.py (sharded h2h)
+
+### 21.5 Open
+
+- The teacher's ceiling (belief-averaged oracle value at one ply): oracle-
+  critic scaling, a deeper teacher, or a learnability probe on the
+  residual +0.16 — not started.
+- Called-suit at 56–60 under the schedule: the operator's target is ≥ 60;
+  whether a second scheduled corpus reaches it, or 768/1,024 at t1 is
+  needed, is one more iteration's read.
+- The PG phase's EV contribution beyond non-inferiority: one run cannot
+  separate it from noise.
+- Leaster-play drift across iterations: within noise at every cert so far
+  (−0.008 / +0.022 on the leaster stratum); the fixed-reference anchor
+  (Training_Program_Redesign App. A) stays a contingency.

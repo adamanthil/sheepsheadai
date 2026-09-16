@@ -38,6 +38,11 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-12 | No replay window: the previous generation's corpus, even re-anchored to the current prior, reads at the harm line (add. 30); one corpus per iteration | 4.4 |
 | 09-12 | Bidding/value PG phase kept between iterations (play heads, adapter and encoder pinned); validation order on the v2 lineage: bidding phase on theta_2 FIRST, then iteration 3 from the adopted checkpoint | 4.4, 7.0 |
 | 09-12 | `training-program-redesign` merged into master (sharded h2h kept; public helper names; `--iters-schedule`); validation run `rc_validate_v2` from `runs/policy_iteration_202609/iter29_d8k_t6/distill_epoch10.pt` | 6 |
+| 09-13 | Bidding phase on θ₂ ADOPTED (+0.0054 ± 0.0036; leaster +0.024 ± 0.009; play network bit-identical) — first run of the between-iteration PG phase | 4.4, 7.0 |
+| 09-15 | Iteration 3 under the RC pipeline COMPOUNDS: play-only +0.0066 ± 0.0024 (last epoch) / +0.0036 ± 0.0023 (KL-best epoch) over θ₂′; full network +0.0058 ± 0.0026; bidding route −0.0010 ± 0.0008; called-suit 45.6 → 56.3 under the lead schedule (CE_Teacher add. 31) | 4.4, 7.0 |
+| 09-15 | Distill candidate = the LAST epoch of the schedule; the held-out-KL plateau rule retired (it stopped the head phase after one epoch and discarded +0.003 of certified play); fit defaults aligned to 200 epochs / patience 25 | 4.4 |
+| 09-15 | Routed-chimera observation defect fixed (`needs_picker_memory` delegation); orchestrator log restructured with phase banners, sub-headers, stage/decision markers and per-phase timings; README training guide rewritten | 6 |
+| 09-16 | CE_Teacher_Design investigation CLOSED (§21); the v2 lineage ends at θ₃ = `rc_validate_v2/pi/iter1/distill_epoch7.pt` (+ its bidding phase); next: the fresh perceiver-recall run | 7 |
 
 ---
 
@@ -308,12 +313,16 @@ cert:
    at λ_ret = 10 (halves the bidding drift; does not pin it); value/aux/
    oracle regression on all rows. Schedule (amended 09-12): SIX trunk
    epochs at 3e-5 (everything trains), then bilinear-only head epochs at
-   1e-3 with the encoder frozen (4 by default, to the holdout-KL plateau).
-   The trunk dose is the change that made iteration 2 compound: on the
-   same 140k-row targets, 1 epoch @1e-4 read +0.0002, 3 @3e-5 +0.0024,
-   6 @3e-5 +0.0043 (play-only, vs θ_k). The candidate is the holdout-KL
-   best epoch, falling back to the LAST epoch (holdout KL does not track
-   EV; every optimised arm selected its last epoch)[^lpft].
+   1e-3 with the encoder frozen (4). The trunk dose is the change that
+   made iteration 2 compound: on the same 140k-row targets, 1 epoch @1e-4
+   read +0.0002, 3 @3e-5 +0.0024, 6 @3e-5 +0.0043 (play-only, vs θ_k).
+   The candidate is the LAST epoch of the schedule (amended 09-15): the
+   held-out target KL is logged per epoch as a fidelity check but selects
+   nothing — it does not track EV, and the plateau rule it drove ended
+   iteration 3's head phase after one epoch and discarded +0.0030 ±
+   0.0023 of certified play (CE_Teacher add. 31)[^lpft]. The advantage
+   fit runs 200 epochs with patience 25 (the recipe's values; the module
+   defaulted to 120 / 4 until 09-15).
 5. **Cert** (amended 09-12) — 4 × n=1000 convention/health probes +
    duplicate h2h vs θ_k at 8,000 deals/mode (sharded, ~17 min) + the
    head-routed reads: PLAY-ONLY (bidding from θ_k, play from the
@@ -477,6 +486,21 @@ operator's call per iteration. The v2-lineage validation run
 the merged scripts) is the last check before the fresh perceiver-recall
 launch.
 
+**VALIDATION RESULT (2026-09-15; CE_Teacher add. 31, §21).** The pipeline
+ran end to end from `start_phase: policy_iteration`: bidding phase on θ₂
+(7.96 h) ADOPTED at +0.0054 ± 0.0036; corpus of 8,000 committee-acted
+games under the lead schedule (60.6 h; 133k searched / 64.5k override
+rows); fit + target + distill 2.1 h; cert 1.2 h. Iteration 3 COMPOUNDS:
+play-only +0.0066 ± 0.0024 over θ₂′ on the last epoch (+0.0036 ± 0.0023
+on the KL-best epoch 5), full single network +0.0058 ± 0.0026, bidding
+route −0.0010 ± 0.0008 (inside the guard), every bar passed. Three
+iterations of the lineage now read +0.0107 / +0.0038 / +0.0066 on the
+play route, each vs its own θ_k. The lead schedule installed called suit:
+45.6 → 56.3 in one corpus. Two pipeline defects surfaced and were fixed
+(routed-chimera observation; fit defaults) and the candidate rule was
+corrected (last epoch). The run continues with the bidding phase on θ₃
+and the final phase; the perceiver-recall launch is unblocked.
+
 ### 7.1 Per-phase expectations
 
 - **Bootstrap.** Escape ≤ 30k; scripted-probe and PANEL-A curves
@@ -489,9 +513,9 @@ launch.
   ≥ +0.010; later iterations play-only ≥ 0 (non-inferior) with the pooled
   slope over iterations positive at 2σ; bidding route within ±0.003;
   called-suit ≥ 50 pooled by the end of phase 3 under the lead schedule
-  (the schedule's installed rate is unmeasured — iteration 3 of the
-  validation run reads it first); leaster paired score within noise of
-  θ_k at every cert.
+  (measured on the v2 lineage: 45.6 → 56.3 after one scheduled corpus,
+  add. 31; the operator's target is ≥ 60); leaster paired score within
+  noise of θ_k at every cert.
 - **Final.** Bars per §5.3; conventions as EXPECTATIONS: defender t0
   trump ≤ 1%, partner ≥ 96%, called-suit pooled ≥ 50% (terminal-only
   optimum estimated 60–70%, E6; the 30M's 90% is shaped over-adherence);
@@ -515,7 +539,7 @@ launch.
 | bootstrap 400k | 6–8 h (unified) / 21 h (legacy) |
 | oracle pretrain | ~3 h |
 | league, 4–8 gens × ~48 h | 8–16 days |
-| policy iteration, 1–5 iterations × ~3 days (55 h corpus + 3 h distill + 2 h cert + bidding phase) | 3–15 days |
+| policy iteration, 1–5 iterations × ~3 days (measured: 60.6 h corpus + 2.1 h fit/distill + 1.2 h cert + 8.0 h bidding phase + 0.4 h its cert ≈ 72 h) | 3–15 days |
 | final cert + audit | ~1 day |
 | total | 2.5–5 weeks |
 
