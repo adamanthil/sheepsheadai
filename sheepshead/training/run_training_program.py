@@ -78,6 +78,20 @@ def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _hours_since(stamp: str) -> float:
+    return (
+        time.time() - time.mktime(time.strptime(stamp, "%Y-%m-%d %H:%M:%S"))
+    ) / 3600.0
+
+
+def _fmt_hours(hours: float) -> str:
+    if hours < 1.0:
+        return f"{hours * 60:.0f} min"
+    if hours < 48.0:
+        return f"{hours:.1f} h"
+    return f"{hours / 24:.1f} d ({hours:.0f} h)"
+
+
 class Program:
     def __init__(self, cfg: ProgramConfig):
         self.cfg = cfg
@@ -90,10 +104,87 @@ class Program:
     # State / logging / subprocesses
     # ------------------------------------------------------------------ #
     def log(self, msg: str) -> None:
-        line = f"[{_now()}] {msg}"
-        print(line, flush=True)
+        """One timestamped line per line of ``msg`` in program.log (and on
+        stdout), so a multi-line entry still greps line by line."""
+        stamp = _now()
+        lines = [f"[{stamp}] {part}" for part in msg.split("\n")]
+        print("\n".join(lines), flush=True)
         with open(os.path.join(self.program_dir, "program.log"), "a") as f:
-            f.write(line + "\n")
+            f.write("\n".join(lines) + "\n")
+
+    RULE = "=" * 72
+
+    def banner(self, title: str, *details: str) -> None:
+        """A phase boundary: a ruled header (grep for "] ==") with the facts
+        the phase starts from indented beneath it."""
+        self.log(self.RULE)
+        self.log(title)
+        for detail in details:
+            self.log(f"    {detail}")
+        self.log(self.RULE)
+
+    def section(self, title: str) -> None:
+        """A sub-boundary inside a phase (a generation, an iteration)."""
+        self.log(f"---- {title} " + "-" * max(4, 66 - len(title)))
+
+    def skip(self, label: str, evidence: str) -> None:
+        """A stage the resume found already complete."""
+        self.log(f"↷ {label}: already complete ({evidence})")
+
+    PHASE_TITLES = {
+        "bootstrap": "PHASE 0 — SHAPED SELF-PLAY BOOTSTRAP",
+        "oracle": "PHASE 1 — ORACLE PRETRAINING",
+        "league": "PHASE 2 — TERMINAL-ONLY LEAGUE POLICY GRADIENT",
+        "policy_iteration": "PHASE 3 — SEARCH-Q POLICY ITERATION",
+        "final": "PHASE 4 — FINAL CERTIFICATION",
+    }
+
+    def begin_phase(self, name: str, *details: str) -> None:
+        """Enter a phase: record its first start (a resume keeps it) and
+        print the phase banner."""
+        self.state["phase"] = name
+        times = self.state.setdefault("phase_times", {}).setdefault(name, {})
+        if "started" in times:
+            since = f"resumed; first started {times['started']}"
+        else:
+            times["started"] = _now()
+            since = f"started {times['started']}"
+        self.banner(self.PHASE_TITLES[name], *details, since)
+        self._save_state()
+
+    def end_phase(self, name: str) -> None:
+        """Leave a phase: record the finish and print the elapsed time —
+        wall clock since the first start (pauses included) and the hours
+        its stage subprocesses actually ran."""
+        times = self.state["phase_times"][name]
+        times["finished"] = _now()
+        times["wall_hours"] = _hours_since(times["started"])
+        self.log(
+            f"✔ {self.PHASE_TITLES[name]} complete: "
+            f"{_fmt_hours(times['wall_hours'])} wall clock since {times['started']}"
+            f" (stages ran {_fmt_hours(times.get('stage_hours', 0.0))})"
+        )
+        self._save_state()
+
+    def phase_time_lines(self) -> list[str]:
+        """One line per recorded phase for the closing banner / report."""
+        lines = []
+        for name in self.PHASE_TITLES:
+            times = self.state.get("phase_times", {}).get(name)
+            if not times or "started" not in times:
+                continue
+            wall = times.get("wall_hours")
+            wall_s = _fmt_hours(wall) if wall is not None else "in progress"
+            lines.append(
+                f"{name:17s} {wall_s:>16s} wall   stages {_fmt_hours(times.get('stage_hours', 0.0)):>12s}"
+                f"   {times['started']} -> {times.get('finished', '…')}"
+            )
+        started = self.state.get("started")
+        if started:
+            lines.append(
+                f"{'program':17s} {_fmt_hours(_hours_since(started)):>16s} wall   since {started}"
+            )
+        return lines
 
     def _state_path(self) -> str:
         return os.path.join(self.program_dir, "state.json")
@@ -110,6 +201,8 @@ class Program:
             "policy_iteration": {"iterations": {}, "theta": None},
             "final": {},
             "events": [],
+            "started": _now(),
+            "phase_times": {},
         }
 
     def _save_state(self) -> None:
@@ -120,14 +213,23 @@ class Program:
         with open(os.path.join(self.program_dir, "config.json"), "w") as f:
             f.write(self.cfg.to_json())
 
-    def _event(self, msg: str) -> None:
+    def _event(
+        self, msg: str, log_msg: str | None = None, decision: bool = False
+    ) -> None:
+        """Record ``msg`` in the state's event list (plain, what report.md
+        shows) and write ``log_msg`` (default ``msg``) to program.log;
+        ``decision`` marks a line the operator would look for first."""
         self.state["events"].append({"time": _now(), "msg": msg})
-        self.log(msg)
+        rendered = log_msg if log_msg is not None else msg
+        self.log(f"★ {rendered}" if decision else rendered)
         self._save_state()
 
     def _run(self, label: str, cmd: list[str], log_name: str) -> None:
         log_path = os.path.join(self.program_dir, log_name)
-        self._event(f"{label}: {' '.join(cmd)} [log: {log_path}]")
+        self._event(
+            f"{label}: {' '.join(cmd)} [log: {log_path}]",
+            log_msg=f"▶ {label}  (stdout -> {log_path})\n    $ {' '.join(cmd)}",
+        )
         t0 = time.time()
         with open(log_path, "a") as logf:
             proc = subprocess.run(
@@ -137,9 +239,16 @@ class Program:
                 env=dict(os.environ, PYTHONPATH="."),
             )
         hours = (time.time() - t0) / 3600.0
+        times = self.state.setdefault("phase_times", {}).setdefault(
+            self.state["phase"], {}
+        )
+        times["stage_hours"] = times.get("stage_hours", 0.0) + hours
         if proc.returncode != 0:
             raise NeedsReview(f"{label} exited rc={proc.returncode}; see {log_path}")
-        self._event(f"{label}: done in {hours:.2f} h")
+        self._event(
+            f"{label}: done in {hours:.2f} h",
+            log_msg=f"✔ {label}: done in {hours:.2f} h",
+        )
 
     def _py(self, module: str, *args: str) -> list[str]:
         return [sys.executable, "-m", module, *args]
@@ -203,6 +312,7 @@ class Program:
     def ensure_bootstrap(self) -> None:
         cfg = self.cfg
         if os.path.exists(self.bootstrap_final):
+            self.skip("bootstrap", self.bootstrap_final)
             return
         cmd = self._py(
             "sheepshead.training.train_ppo",
@@ -261,6 +371,7 @@ class Program:
     def ensure_oracle(self) -> None:
         cfg = self.cfg
         if os.path.exists(self.oracle_init):
+            self.skip("oracle pretraining", self.oracle_init)
             return
         dataset = os.path.join(self.run_dir, "oracle", "dataset.pt")
         if not os.path.exists(dataset):
@@ -354,6 +465,7 @@ class Program:
 
     def ensure_generation_trained(self, g: int) -> None:
         if os.path.exists(self.boundary_ckpt(g)):
+            self.skip(f"league gen {g} training", self.boundary_ckpt(g))
             return
         resume = self._latest_checkpoint_below(
             self.league_ckpt_dir, self.boundary(g)
@@ -493,6 +605,7 @@ class Program:
         )
         rec = self._gen_record(g)
         if "decision" in rec:
+            self.skip(f"gen {g} evaluation", f"decision {rec['decision']['action']}")
             return rec["decision"]["action"]
         self._health(g)
         primary = self._h2h(g, PANEL_SEED, "")
@@ -539,7 +652,8 @@ class Program:
         )
         rec["decision"] = {"action": decision.action, "reason": decision.reason}
         self._event(
-            f"gen {g}: h2h {primary['edge']:+.4f}±{primary['se']:.4f}"
+            decision=True,
+            msg=f"gen {g}: h2h {primary['edge']:+.4f}±{primary['se']:.4f}"
             + (
                 f" (confirm {confirm['edge']:+.4f}±{confirm['se']:.4f})"
                 if confirm
@@ -547,7 +661,7 @@ class Program:
             )
             + f" improving={verdict.improving}"
             + (f" panel {rec['panel']['mean']:+.4f}" if rec["panel"] else "")
-            + f" -> {decision.action} ({decision.reason})"
+            + f" -> {decision.action} ({decision.reason})",
         )
         if decision.action == "entropy_step":
             self._entropy_step(g)
@@ -635,13 +749,19 @@ class Program:
             return league["handoff"]["checkpoint"]
         g = 1
         while True:
+            self.section(
+                f"league generation {g}: train to episode {self.boundary(g):,}"
+            )
             self.ensure_generation_trained(g)
             action = self.judge_generation(g)
             if action == "handoff":
                 settled = settled_generation(g, league["step_generation"])
                 ckpt = self.boundary_ckpt(settled)
                 league["handoff"] = {"generation": settled, "checkpoint": ckpt}
-                self._event(f"HANDOFF after gen {g}: theta_0 = gen {settled} ({ckpt})")
+                self._event(
+                    f"HANDOFF after gen {g}: theta_0 = gen {settled} ({ckpt})",
+                    decision=True,
+                )
                 self._handoff_gate(ckpt)
                 self._save_state()
                 return ckpt
@@ -663,7 +783,8 @@ class Program:
         self.state["league"]["handoff_gate"] = res
         lower = res["edge"] - 2.0 * res["se"]
         self._event(
-            f"handoff gate vs {os.path.basename(ref)}: {res['edge']:+.4f}±{res['se']:.4f}"
+            f"handoff gate vs {os.path.basename(ref)}: {res['edge']:+.4f}±{res['se']:.4f}",
+            decision=True,
         )
         if lower < self.cfg.gates.handoff_h2h_lower_min:
             raise NeedsReview(
@@ -724,6 +845,7 @@ class Program:
         os.makedirs(it_dir, exist_ok=True)
         rec = self.state["policy_iteration"]["iterations"].setdefault(str(k), {})
         rec["theta_k"] = theta_k
+        self.section(f"policy iteration {k}: theta_{k - 1} = {theta_k}")
         if not os.path.exists(os.path.join(corpus_dir, "manifest.json")) or (
             self._corpus_incomplete(corpus_dir, pi.games)
         ):
@@ -763,7 +885,14 @@ class Program:
             if pi.routed_encoder:
                 cmd += ["--routed-encoder", pi.routed_encoder]
             self._run(f"iter {k} corpus", cmd, f"pi_iter{k}.log")
-        if not os.path.exists(os.path.join(it_dir, "distill_best.json")):
+        else:
+            self.skip(f"iter {k} corpus", os.path.join(corpus_dir, "manifest.json"))
+        if os.path.exists(os.path.join(it_dir, "distill_best.json")):
+            self.skip(
+                f"iter {k} fit/target/distill",
+                os.path.join(it_dir, "distill_best.json"),
+            )
+        else:
             self._run(
                 f"iter {k} fit/target/distill",
                 self._py(
@@ -780,7 +909,9 @@ class Program:
                 f"pi_iter{k}.log",
             )
         cert_path = os.path.join(it_dir, "cert.json")
-        if not os.path.exists(cert_path):
+        if os.path.exists(cert_path):
+            self.skip(f"iter {k} cert", cert_path)
+        else:
             self._run(
                 f"iter {k} cert",
                 self._py(
@@ -831,6 +962,8 @@ class Program:
         pi = self.cfg.policy_iteration
         bidding_dir = os.path.join(it_dir, "bidding")
         bidding_final = os.path.join(bidding_dir, "final.pt")
+        if pi.bidding_episodes > 0 and os.path.exists(bidding_final):
+            self.skip(f"iter {k} bidding phase", bidding_final)
         if pi.bidding_episodes > 0 and not os.path.exists(bidding_final):
             cmd = self._py(
                 "sheepshead.training.train_ppo",
@@ -860,7 +993,9 @@ class Program:
             bcert_dir = os.path.join(it_dir, "bidding_cert")
             os.makedirs(bcert_dir, exist_ok=True)
             bcert_path = os.path.join(bcert_dir, "cert.json")
-            if not os.path.exists(bcert_path):
+            if os.path.exists(bcert_path):
+                self.skip(f"iter {k} bidding cert", bcert_path)
+            else:
                 self._run(
                     f"iter {k} bidding cert",
                     self._py(
@@ -889,7 +1024,8 @@ class Program:
             self._event(
                 f"iter {k} bidding phase: h2h vs candidate "
                 f"{bcert['h2h']['edge']:+.4f}±{bcert['h2h']['se']:.4f} -> "
-                f"{'ADOPTED' if non_inferior else 'not adopted'}"
+                f"{'ADOPTED' if non_inferior else 'not adopted'}",
+                decision=True,
             )
         rec["theta_next"] = theta_next
         self._save_state()
@@ -917,9 +1053,13 @@ class Program:
             # next corpus comes from the adopted checkpoint.
             it0 = self.iter_dir(0)
             os.makedirs(it0, exist_ok=True)
+            self.section(f"policy iteration 0: bidding phase on theta_0 = {theta_0}")
             rec0 = state["iterations"].setdefault("0", {"theta_k": theta_0})
             theta = self.run_bidding_phase(0, theta_0, it0, rec0)
-            self._event(f"iteration 0 (bidding phase on theta_0): theta = {theta}")
+            self._event(
+                f"iteration 0 (bidding phase on theta_0): theta = {theta}",
+                decision=True,
+            )
         gains: list[tuple[float, float]] = []
         k = 1
         while True:
@@ -930,11 +1070,12 @@ class Program:
                 f"iter {k}: compounding gain ({comp.get('source', 'h2h')}) "
                 f"{gains[-1][0]:+.4f}±{gains[-1][1]:.4f}; full h2h "
                 f"{rec['cert']['h2h']['edge']:+.4f}±{rec['cert']['h2h']['se']:.4f}; "
-                f"theta_{k} = {theta}"
+                f"theta_{k} = {theta}",
+                decision=True,
             )
             stop, reason = iteration_stop(gains, rule)
             if stop:
-                self._event(f"policy iteration STOP: {reason}")
+                self._event(f"policy iteration STOP: {reason}", decision=True)
                 state["theta"] = theta
                 self._save_state()
                 return theta
@@ -964,7 +1105,10 @@ class Program:
             with open(path) as f:
                 res = json.load(f)
             rec[f"h2h_vs_{name}"] = {"edge": res["edge"], "se": res["se"]}
-            self._event(f"final h2h vs {name}: {res['edge']:+.4f}±{res['se']:.4f}")
+            self._event(
+                f"final h2h vs {name}: {res['edge']:+.4f}±{res['se']:.4f}",
+                decision=True,
+            )
         rec["conventions"] = self._conventions(release, "final")
         gate_path = os.path.join(
             "runs", f"{cfg.run_name}/final/exploit", "gate_result.json"
@@ -999,7 +1143,8 @@ class Program:
             }
             self._event(
                 f"exploitability audit: {gate['edge']:+.4f}±{gate['se']:.4f} "
-                f"({'EXPLOITABLE' if gate['passed'] else 'gate not cleared'})"
+                f"({'EXPLOITABLE' if gate['passed'] else 'gate not cleared'})",
+                decision=True,
             )
         self._save_state()
         self._write_report()
@@ -1058,7 +1203,9 @@ class Program:
                 f"| {(f'{b["h2h"]["edge"]:+.4f}±{b["h2h"]["se"]:.4f} ' + ('adopted' if rec.get('bidding_adopted') else 'not adopted')) if b else '—'} "
                 f"| `{rec.get('theta_next', '')}` |"
             )
-        lines += ["", "## Final", ""]
+        lines += ["", "## Phase times", "", "```"]
+        lines += self.phase_time_lines()
+        lines += ["```", "", "## Final", ""]
         for key, val in s["final"].items():
             if key.startswith("h2h_vs_"):
                 lines.append(f"- {key}: {val['edge']:+.4f}±{val['se']:.4f}")
@@ -1078,41 +1225,88 @@ class Program:
     # Main loop
     # ------------------------------------------------------------------ #
     def run(self) -> int:
+        cfg = self.cfg
         if self.state["status"] == "finished":
             self.log("program already finished; see program/report.md")
             return 0
+        resumed = bool(self.state["events"])
+        self.banner(
+            f"TRAINING PROGRAM {cfg.run_name}" + (" (resumed)" if resumed else ""),
+            f"config: {os.path.join(self.program_dir, 'config.json')}",
+            f"state:  {self._state_path()} (status {self.state['status']}, "
+            f"phase {self.state['phase']})",
+            f"arch {cfg.arch}, seed {cfg.seed}, workers {cfg.num_workers}, "
+            f"start_phase {cfg.start_phase}" + (", SMOKE" if cfg.smoke else ""),
+        )
         if self.state["status"] == "needs_review":
             self._event("resuming a needs_review run (operator override implied)")
             self.state["status"] = "running"
         try:
-            if self.cfg.start_phase == "policy_iteration":
+            if cfg.start_phase == "policy_iteration":
                 # Validation entry (Training_Program_Redesign §7.0 / §4.4):
                 # phase 3 on an external lineage from policy_iteration.theta_0.
-                theta_0 = self.cfg.policy_iteration.theta_0
+                theta_0 = cfg.policy_iteration.theta_0
                 if not theta_0 or not os.path.exists(theta_0):
                     raise NeedsReview(
                         "start_phase=policy_iteration needs policy_iteration.theta_0"
                     )
                 self._event(f"starting at policy iteration from {theta_0}")
             else:
-                self.state["phase"] = "bootstrap"
+                self.begin_phase(
+                    "bootstrap",
+                    f"{cfg.bootstrap.episodes:,} episodes -> {self.bootstrap_final}",
+                )
                 self.ensure_bootstrap()
-                self.state["phase"] = "oracle"
+                self.end_phase("bootstrap")
+                self.begin_phase(
+                    "oracle", f"{cfg.oracle.episodes:,} episodes -> {self.oracle_init}"
+                )
                 self.ensure_oracle()
-                self.state["phase"] = "league"
+                self.end_phase("oracle")
+                self.begin_phase(
+                    "league",
+                    f"{cfg.league.generation_episodes:,} episodes/generation, "
+                    f"{cfg.league.min_generations}-{cfg.league.max_generations} generations; "
+                    f"handoff when h2h gain < {cfg.league.h2h_min_gain:+.3f} "
+                    f"(CI z {cfg.league.h2h_ci_z}) twice",
+                )
                 theta_0 = self.run_league()
-            self.state["phase"] = "policy_iteration"
+                self.end_phase("league")
+            pi = cfg.policy_iteration
+            self.begin_phase(
+                "policy_iteration",
+                f"theta_0 = {theta_0}",
+                f"{pi.games:,} committee-acted games/iteration at {pi.iters} iters"
+                + (f" ({pi.iters_schedule})" if pi.iters_schedule else "")
+                + f", {pi.trunk_epochs} trunk epochs @ {pi.lr:g}, lambda_ret {pi.lambda_ret:g}",
+                f"stop: play-only gain < {pi.stop_se_multiple:g} SE for "
+                f"{pi.stop_flat_iterations} iterations, cap {pi.max_iterations}",
+            )
             theta = self.run_policy_iteration(theta_0)
-            self.state["phase"] = "final"
+            self.end_phase("policy_iteration")
+            self.begin_phase("final", f"release candidate = {theta}")
             self.run_final(theta)
+            self.end_phase("final")
             self.state["status"] = "finished"
-            self._event("PROGRAM FINISHED")
+            self._event("PROGRAM FINISHED", decision=True)
+            self._write_report()
+            self.banner(
+                "PROGRAM FINISHED",
+                f"report: {os.path.join(self.program_dir, 'report.md')}",
+                *self.phase_time_lines(),
+            )
             return 0
         except NeedsReview as exc:
             self.state["status"] = "needs_review"
-            self._event(f"NEEDS REVIEW: {exc}")
+            self._event(f"NEEDS REVIEW: {exc}", log_msg=f"✖ NEEDS REVIEW: {exc}")
             self._save_state()
             self._write_report()
+            self.banner(
+                "PROGRAM STOPPED — NEEDS REVIEW",
+                str(exc),
+                "fix the cause and re-run the same command to resume",
+                *self.phase_time_lines(),
+            )
             return 2
 
 
