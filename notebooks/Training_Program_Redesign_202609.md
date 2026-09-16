@@ -42,6 +42,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-15 | Iteration 3 under the RC pipeline COMPOUNDS: play-only +0.0066 ± 0.0024 (last epoch) / +0.0036 ± 0.0023 (KL-best epoch) over θ₂′; full network +0.0058 ± 0.0026; bidding route −0.0010 ± 0.0008; called-suit 45.6 → 56.3 under the lead schedule (CE_Teacher add. 31) | 4.4, 7.0 |
 | 09-15 | Distill candidate = the LAST epoch of the schedule; the held-out-KL plateau rule retired (it stopped the head phase after one epoch and discarded +0.003 of certified play); fit defaults aligned to 200 epochs / patience 25 | 4.4 |
 | 09-15 | Routed-chimera observation defect fixed (`needs_picker_memory` delegation); orchestrator log restructured with phase banners, sub-headers, stage/decision markers and per-phase timings; README training guide rewritten | 6 |
+| 09-16 | Pre-launch config audit: final references + the v2 release, final h2h 8,000 deals; league workers on MPS + torch.compile (bit-exact, 1.36x); seen-trump recall added to the greedy probe (informational); goldens/export = manual step; `--dry-run` side-effect fix | 4.3, 4.5, 7.1 |
 | 09-16 | CE_Teacher_Design investigation CLOSED (§21); the v2 lineage ends at θ₃ = `rc_validate_v2/pi/iter1/distill_epoch7.pt` (+ its bidding phase); next: the fresh perceiver-recall run | 7 |
 
 ---
@@ -365,10 +366,14 @@ replicate (CE_Teacher add. 16); `--iters-schedule` added (add. 29b).
 
 ### 4.5 Phase 4 — final certification and release
 
-Duplicate h2h vs iter11 P1 and vs the 30M (2,000 deals/mode each); the
-convention battery; ONE exploitability audit (a best-response run + gate,
-`exploiter.py` retained as an analysis tool); golden capture for the
-release checkpoint; export.
+Duplicate h2h vs the v2-lineage release (θ₃ after its bidding phase),
+iter11 P1 and the 30M at 8,000 deals/mode each (amended 09-16: the
+final bars — 30M positive at 2 SE, iter11 excluding −0.02 — are
+underpowered at 2,000); the convention battery; ONE exploitability audit
+(a best-response run + gate, `exploiter.py` retained as an analysis
+tool). Golden capture for the release checkpoint
+(`analysis/capture_arch_goldens`) and the export to the app's model path
+are MANUAL steps after the program finishes (amended 09-16).
 
 ---
 
@@ -504,8 +509,12 @@ and the final phase; the perceiver-recall launch is unblocked.
 ### 7.1 Per-phase expectations
 
 - **Bootstrap.** Escape ≤ 30k; scripted-probe and PANEL-A curves
-  recorded, no bar. Seen-trump aux accuracy on picker hands after bury
-  ≥ 0.95 by 400k (the memory carries the blind).
+  recorded, no bar. Seen-trump recall at the picker's play nodes
+  (greedy probe columns `seen_trump_acc_picker` / `_hidden`, added
+  09-16): expected ≥ 95% over all trumps and high on the HIDDEN
+  blind/bury trumps by 400k (the memory carries the blind).
+  INFORMATIONAL ONLY — it is recorded every probe interval and never
+  gates or changes anything.
 - **League.** Gen-1 h2h ≥ +0.05 and gen-2 ≥ +0.05; B2 held from gen 1;
   panel ≥ +0.20 by gen 6 (v2: +0.206); C2 in the 38–52% band; handoff
   at gen 4–6.

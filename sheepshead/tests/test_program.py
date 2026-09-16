@@ -50,6 +50,11 @@ def test_league_commands_distinguish_generation_one(tmp_path, monkeypatch):
     assert gen1[gen1.index("--until") + 1] == str(p.cfg.league.generation_episodes)
     assert gen2[gen2.index("--until") + 1] == str(2 * p.cfg.league.generation_episodes)
     assert "--phase" in gen1 and gen1[gen1.index("--phase") + 1] == "league"
+    # League generations run their workers on MPS + compile (LeagueConfig);
+    # the program-level default (CPU) stays for the other phases.
+    assert gen1[gen1.index("--worker-device") + 1] == p.cfg.league.worker_device
+    assert gen1[gen1.index("--worker-compile") + 1] == p.cfg.league.worker_compile
+    assert "--worker-device" not in p._worker_flags()
     # Rendering the command materializes nothing (--dry-run renders it
     # before any bootstrap exists); the seeds appear when generation 1
     # is about to train.

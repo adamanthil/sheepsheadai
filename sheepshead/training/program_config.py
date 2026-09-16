@@ -55,6 +55,12 @@ class LeagueConfig:
     greedy_eval_interval: int = 50_000
     greedy_eval_games: int = 200
     entropy_play_floor: float = 0.28
+    # Worker inference device for the league generations (throughput only;
+    # bit-exact vs CPU, Distributed_Inference_202608: MPS + torch.compile
+    # 1.36x at 8 workers). The bootstrap and bidding phases keep the
+    # program-level setting (CPU by default).
+    worker_device: str | None = "mps"
+    worker_compile: str | None = "default"
     # Handoff rule: continue while the duplicate h2h gain over the previous
     # generation is >= h2h_min_gain with the CI lower bound above zero.
     h2h_deals: int = 2_000  # per mode
@@ -128,13 +134,20 @@ class PolicyIterationConfig:
 class FinalConfig:
     """Phase 4: final certification and audit (§4.5)."""
 
+    # Objective 2 (§1): beat the current best and the production 30M on the
+    # deployment instrument. theta_3 = the last artifact of the
+    # perceiver-shared-v2 lineage (its bidding phase's release, CE_Teacher
+    # §21.4). Missing files are skipped with a log line.
     references: dict[str, str] = field(
         default_factory=lambda: {
+            "v2_release": "runs/rc_validate_v2/final/release.pt",
             "iter11_p1": "runs/policy_iteration_202609/iter11/distill_epoch7.pt",
             "prod_30m": "final_pfsp_swish_ppo.pt",
         }
     )
-    h2h_deals: int = 2000
+    # 8000 deals/mode (SE ~0.0025): the final bars (30M positive at 2 SE,
+    # iter11 excluding -0.02) are underpowered at 2000.
+    h2h_deals: int = 8000
     exploit_episodes: int = 50_000
     exploit_gate_deals: int = 3000
 
@@ -218,6 +231,8 @@ class ProgramConfig:
             greedy_eval_interval=10,
             greedy_eval_games=2,
             h2h_deals=3,
+            worker_device=None,
+            worker_compile=None,
             panel=[],  # the run's own bootstrap seeds
             panel_deals=6,
             convention_probe_games=3,

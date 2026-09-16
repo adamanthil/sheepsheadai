@@ -253,13 +253,19 @@ class Program:
     def _py(self, module: str, *args: str) -> list[str]:
         return [sys.executable, "-m", module, *args]
 
-    def _worker_flags(self) -> list[str]:
+    def _worker_flags(
+        self, device: str | None = None, compile_: str | None = None
+    ) -> list[str]:
+        """Worker-pool flags; a phase may override the program-level device
+        and compile setting (the league generations run on MPS + compile)."""
         cfg = self.cfg
         flags = ["--num-workers", str(cfg.num_workers), "--seed", str(cfg.seed)]
-        if cfg.worker_device:
-            flags += ["--worker-device", cfg.worker_device]
-        if cfg.worker_compile:
-            flags += ["--worker-compile", cfg.worker_compile]
+        device = device or cfg.worker_device
+        compile_ = compile_ or cfg.worker_compile
+        if device:
+            flags += ["--worker-device", device]
+        if compile_:
+            flags += ["--worker-compile", compile_]
         return flags
 
     # ------------------------------------------------------------------ #
@@ -448,7 +454,7 @@ class Program:
             str(cfg.league.greedy_eval_games),
             "--entropy-play-floor",
             str(cfg.league.entropy_play_floor),
-            *self._worker_flags(),
+            *self._worker_flags(cfg.league.worker_device, cfg.league.worker_compile),
         )
         if cfg.league.update_interval:
             cmd += ["--update-interval", str(cfg.league.update_interval)]
