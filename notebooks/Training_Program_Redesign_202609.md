@@ -43,6 +43,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-15 | Distill candidate = the LAST epoch of the schedule; the held-out-KL plateau rule retired (it stopped the head phase after one epoch and discarded +0.003 of certified play); fit defaults aligned to 200 epochs / patience 25 | 4.4 |
 | 09-15 | Routed-chimera observation defect fixed (`needs_picker_memory` delegation); orchestrator log restructured with phase banners, sub-headers, stage/decision markers and per-phase timings; README training guide rewritten | 6 |
 | 09-16 | Pre-launch config audit: final references + the v2 release, final h2h 8,000 deals; league workers on MPS + torch.compile (bit-exact, 1.36x); seen-trump recall added to the greedy probe (informational); goldens/export = manual step; `--dry-run` side-effect fix | 4.3, 4.5, 7.1 |
+| 09-16 | `rc_validate_v2` COMPLETE: release = θ₃ + bidding phase; +0.0505 ± 0.0062 vs the 30M, +0.0135 ± 0.0046 vs iter11 P1 (8,000 deals/mode) — the program's strongest agent and the fresh run's bar; two consecutive bidding phases lowered the pick rate ~2 points each (watch in the fresh run) | 7.0 |
 | 09-16 | PANEL-B added (tentative): strong-skill / cross-ecology yardstick (30M, v2 release, iter11 P1, v2 8M seed), recorded per generation and at the final, no gate; membership provisional until the v2 release's reads vs the 30M land | 5.3 |
 | 09-16 | CE_Teacher_Design investigation CLOSED (§21); the v2 lineage ends at θ₃ = `rc_validate_v2/pi/iter1/distill_epoch7.pt` (+ its bidding phase); next: the fresh perceiver-recall run | 7 |
 
@@ -505,8 +506,15 @@ iterations of the lineage now read +0.0107 / +0.0038 / +0.0066 on the
 play route, each vs its own θ_k. The lead schedule installed called suit:
 45.6 → 56.3 in one corpus. Two pipeline defects surfaced and were fixed
 (routed-chimera observation; fit defaults) and the candidate rule was
-corrected (last epoch). The run continues with the bidding phase on θ₃
-and the final phase; the perceiver-recall launch is unblocked.
+corrected (last epoch). The run then completed (bidding phase on θ₃
+−0.0015 ± 0.0025, adopted; stop at the cap; final phase; PROGRAM
+FINISHED 09-16 08:10). The RELEASE (`runs/rc_validate_v2/final/
+release.pt`) at 8,000 deals/mode: **+0.0505 ± 0.0062 vs the production
+30M** (jd +0.078, called +0.023), **+0.0135 ± 0.0046 vs iter11 P1**,
++0.0069 ± 0.0043 vs θ₂; conventions called-suit 60.3, partner 98.6, t0
+trump 0.2. Both objective-2 bars are cleared by the old lineage's
+release, which therefore sets the bar for the fresh run and joins the
+final references and PANEL-B. The perceiver-recall launch is unblocked.
 
 ### 7.1 Per-phase expectations
 

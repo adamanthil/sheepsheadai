@@ -5093,6 +5093,25 @@ Reads.
      scorer's two towers). It re-grounds bidding and the value stream
      as intended and passes the non-inferiority gate; whether it adds
      EV beyond noise needs more than one phase to say.
+  7. RUN COMPLETE (2026-09-16, 08:10; PROGRAM FINISHED through the stop
+     rule and the final phase). Bidding phase on theta_3 (8.28 h):
+     −0.0015 ± 0.0025 vs theta_3 (called −0.0016 / jd −0.0013; leaster
+     +0.0082 ± 0.0050) -> ADOPTED on non-inferiority; probes pick 33.4 ->
+     31.8, leaster 8.3 -> 10.2, called-suit 56.3 -> 60.3 (play heads
+     pinned: a population shift). Two PG phases in a row moved the pick
+     rate down ~2 points each (35.8 -> 33.4 -> 31.8) with the leaster
+     stratum the only positive mover — a pattern to watch in the fresh
+     run, not a finding from two reads. RELEASE = pi/iter1/bidding/
+     final.pt (final/release.pt). Its strength, 8000 deals/mode:
+         vs production 30M    +0.0505 ± 0.0062  (called +0.0230 / jd +0.0780; leaster +0.066 ± 0.021)
+         vs iter11 P1         +0.0135 ± 0.0046  (called +0.0129 / jd +0.0141; leaster +0.039 ± 0.016)
+         vs theta_2           +0.0069 ± 0.0043  (called +0.0126 / jd +0.0013; leaster +0.040 ± 0.016)
+         vs theta_3           −0.0015 ± 0.0025  (the bidding cert)
+     The v2 lineage's release is the strongest agent the program has
+     produced: +0.05 over the deployed 30M at 8σ, +0.0135 over the
+     checkpoint that was "current best" on 09-02. theta_2 -> release
+     (+0.0069) is consistent with the additive chain PG +0.0054, PI
+     +0.0058, PG −0.0015 within noise.
   6. DECISION (2026-09-15, 23:10): theta_3 = distill_epoch7.pt. Epoch 7 is
      non-inferior to epoch 5 on both routes paired on the same deals
      (play +0.0030 ± 0.0023 in its favour, bidding −0.0003 ± 0.0009), it
@@ -5216,6 +5235,9 @@ candidate selection [31]; head routing at deploy [§20.14 step 6].
     theta_2   runs/policy_iteration_202609/iter29_d8k_t6/distill_epoch10.pt
     theta_2'  runs/rc_validate_v2/pi/iter0/bidding/final.pt          (bidding phase on theta_2)
     theta_3   runs/rc_validate_v2/pi/iter1/distill_epoch7.pt          (best v2-lineage play; cert PASS; play-only +0.0066 ± 0.0024, full +0.0058 ± 0.0026 vs theta_2')
+    RELEASE   runs/rc_validate_v2/final/release.pt (= pi/iter1/bidding/final.pt; theta_3 + bidding phase, −0.0015 ± 0.0025 vs theta_3)
+              vs 30M +0.0505 ± 0.0062 | vs iter11 P1 +0.0135 ± 0.0046 | vs theta_2 +0.0069 ± 0.0043 (8000 deals/mode; add. 31 item 7)
+              — the strongest agent of the program; PANEL-B member; the app's stand-in until the fresh run beats it
     corpora   runs/distill_corpus_iter2d_256_202609 (D), runs/rc_validate_v2/pi/iter1/corpus (schedule)
     certs     runs/policy_iteration_202609/cert_results.jsonl; runs/rc_validate_v2/pi/iter1/{cert.json,cert_ep7/cert.json}
     code      sheepshead/training/{distill_corpus,policy_iteration,run_training_program,program_config}.py,
