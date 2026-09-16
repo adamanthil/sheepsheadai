@@ -1284,6 +1284,18 @@ class Program:
                 lines.append(
                     f"- {label}: {val['mean']:+.4f} [{val['lo']:+.4f}, {val['hi']:+.4f}]"
                 )
+        conv = s["final"].get("conventions")
+        if conv:
+            lines.append(
+                "- conventions (4 x 1000 greedy games): "
+                f"called-suit {conv.get('called_suit_lead_rate', 0):.1f}, "
+                f"partner trump {conv.get('partner_trump_lead_rate', 0):.1f}, "
+                f"t0 trump {conv.get('t0_trump_lead_rate', 0):.2f}, "
+                f"pick {conv.get('pick_rate', 0):.1f}, "
+                f"leaster {conv.get('leaster_rate', 0):.1f}"
+            )
+        if s["final"].get("release"):
+            lines.append(f"- release: `{s['final']['release']}`")
         if "exploit_audit" in s["final"]:
             a = s["final"]["exploit_audit"]
             lines.append(
