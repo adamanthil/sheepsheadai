@@ -35,9 +35,15 @@ repos:
       # The tree is held at zero errors; see pyrightconfig.json for the rule
       # set. Pinned to the same version the editor's language server runs, so
       # a clean editor and a clean commit mean the same thing.
+      #
+      # pass_filenames: false -- type errors are not local to the file that
+      # causes them. Handed only the staged paths, basedpyright checks just
+      # those, so changing a signature passes while its unstaged callers
+      # break. It must check the whole project, exactly as CI does.
       - id: basedpyright
         name: basedpyright
         entry: uv run --frozen basedpyright
         language: system
         types_or: [python, pyi]
+        pass_filenames: false
         require_serial: true
