@@ -621,11 +621,8 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                             # that would advance recurrent memory a second time.
                             # argmax over post-mix probs == act(deterministic).
                             probs_t, logits_t, enc_out = (
-                                agent.get_action_probs_with_logits(
-                                    state,
-                                    valid,
-                                    player_id=player.position,
-                                    return_encoder_out=True,
+                                agent.get_action_probs_logits_and_encoder_out(
+                                    state, valid, player_id=player.position
                                 )
                             )
                             a = int(torch.argmax(probs_t, dim=1).item()) + 1
