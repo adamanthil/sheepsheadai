@@ -357,13 +357,20 @@ class Program:
                     )
         self._save_state()
 
+    @property
+    def seeds_glob(self) -> str:
+        return os.path.join(self.seeds_dir, "*.pt")
+
     def ensure_seeds(self) -> str:
+        """Materialize the generation-1 population seeds (copies of the
+        bootstrap final); called right before generation 1 trains, never
+        while merely rendering its command (--dry-run)."""
         os.makedirs(self.seeds_dir, exist_ok=True)
         for i in range(self.cfg.league.seed_copies):
             dst = os.path.join(self.seeds_dir, f"seed_{i}.pt")
             if not os.path.exists(dst):
                 shutil.copyfile(self.bootstrap_final, dst)
-        return os.path.join(self.seeds_dir, "*.pt")
+        return self.seeds_glob
 
     # ------------------------------------------------------------------ #
     # Phase 1: oracle pretraining
@@ -450,7 +457,7 @@ class Program:
             # entropy coefficients (the controller attaches at the boundary).
             cmd += [
                 "--seed-checkpoints",
-                self.ensure_seeds(),
+                self.seeds_glob,
                 "--oracle-init",
                 self.oracle_init,
                 "--no-entropy-controller",
@@ -471,6 +478,8 @@ class Program:
             self.league_ckpt_dir, self.boundary(g)
         ) or self._prev_ckpt(g)
         rec = self._gen_record(g)
+        if g == 1:
+            self.ensure_seeds()
         t0 = time.time()
         self._run(
             f"league gen {g}", self.league_trainer_cmd(g, resume), f"league_gen{g}.log"

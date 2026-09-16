@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+import sheepshead.training.run_training_program as rtp
 from sheepshead.training.program_config import ProgramConfig
 from sheepshead.training.run_training_program import Program
 
@@ -49,8 +50,20 @@ def test_league_commands_distinguish_generation_one(tmp_path, monkeypatch):
     assert gen1[gen1.index("--until") + 1] == str(p.cfg.league.generation_episodes)
     assert gen2[gen2.index("--until") + 1] == str(2 * p.cfg.league.generation_episodes)
     assert "--phase" in gen1 and gen1[gen1.index("--phase") + 1] == "league"
-    # Seeds were materialized as copies of the bootstrap final.
+    # Rendering the command materializes nothing (--dry-run renders it
+    # before any bootstrap exists); the seeds appear when generation 1
+    # is about to train.
+    assert not os.path.exists(p.seeds_dir)
+    assert p.ensure_seeds() == gen1[gen1.index("--seed-checkpoints") + 1]
     assert len(os.listdir(p.seeds_dir)) == p.cfg.league.seed_copies
+
+
+def test_dry_run_of_a_fresh_program_has_no_side_effects(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(rtp, "_REPO_ROOT", str(tmp_path))
+    assert rtp.main(["--dry-run", "--run-name", "fresh"]) == 0
+    assert not os.path.exists(os.path.join("runs", "fresh", "seeds"))
+    assert not os.path.exists(os.path.join("runs", "fresh", "bootstrap"))
 
 
 def test_state_is_persisted_with_the_config(tmp_path, monkeypatch):
