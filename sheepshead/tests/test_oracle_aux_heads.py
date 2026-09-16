@@ -148,3 +148,17 @@ def test_greedy_probe_reports_partner_convention():
     assert "called_suit_lead_rate" in probe
     assert "called_leads" in probe
     assert 0.0 <= probe["called_suit_lead_rate"] <= 100.0
+
+
+def test_greedy_probe_reports_seen_trump_recall():
+    """The probe reads the aux critic's seen-trump mask at the picker's play
+    nodes (all trumps and the hidden blind/bury ones); informational keys,
+    present and bounded, with nodes counted only when the picker played."""
+    agent = _agent(oracle_aux_heads=True)
+    assert agent.critic.has_aux_heads
+    probe = greedy_health_probe(agent, n_games=6, seed=1)
+    for key in ("seen_trump_acc_picker", "seen_trump_acc_picker_hidden"):
+        assert 0.0 <= probe[key] <= 100.0
+    assert probe["seen_trump_picker_nodes"] >= 0
+    if probe["seen_trump_picker_nodes"]:
+        assert probe["seen_trump_acc_picker"] > 0.0

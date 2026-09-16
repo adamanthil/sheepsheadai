@@ -603,11 +603,16 @@ class PPOAgent:
         """Clear memory states (call at the start of every new game)."""
         self._player_memories = {}
 
-    def get_action_probs_with_logits(self, state, valid_actions, player_id=None):
+    def get_action_probs_with_logits(
+        self, state, valid_actions, player_id=None, return_encoder_out=False
+    ):
         """Return post-mixture action probabilities and pre-mix logits for a single dict state.
 
         Applies partner CALL-uniform mixture if enabled. Keeps PPO on-policy by
-        exposing the same transformed distribution that sampling uses.
+        exposing the same transformed distribution that sampling uses. With
+        ``return_encoder_out`` the encoder output of this same forward pass is
+        returned as a third element, so a probe can read the aux heads
+        without a second pass (which would advance the recurrent memory).
         """
         # Get or init memory for this player
         memory_in = self.get_recurrent_memory(player_id, device=device)
@@ -638,7 +643,17 @@ class PPOAgent:
                 self.encoder.card,
             )
 
+        if return_encoder_out:
+            return probs, logits, encoder_out
         return probs, logits
+
+    def seen_trump_probs(self, encoder_out):
+        """Seen/known-trump probabilities (len(TRUMP),) from an encoder output
+        of this agent, or None when its critic carries no aux heads."""
+        critic = self.critic
+        if not getattr(critic, "has_aux_heads", False):
+            return None
+        return critic.seen_trump_probs(encoder_out, self.encoder.card)
 
     def act(self, state, valid_actions, player_id=None, deterministic=False):
         """Select action given state and valid actions"""

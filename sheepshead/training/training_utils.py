@@ -532,6 +532,14 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     deflead_fat = 0  # ...that led A/10
     deflead_nopoint = 0  # ...that led 7/8/9
     deflead_top1min = []  # top1 - min legal-play logit at those nodes
+    # Seen-trump recall (Training_Program_Redesign §7.1, informational): at
+    # the picker's play nodes, the aux head's seen/known-trump mask against
+    # the truth (compute_seen_trump_mask), over all 14 trumps and over the
+    # HIDDEN ones — blind/bury trumps not in hand, which a recall-constrained
+    # observation no longer shows and the memory must carry.
+    seen_nodes = 0
+    seen_correct = seen_total = 0
+    hidden_correct = hidden_total = 0
     try:
         for g in range(n_games):
             game = Game(partner_selection_mode=get_partner_selection_mode(g))
@@ -612,10 +620,33 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                             # legal-play logit spread. Do NOT also call act():
                             # that would advance recurrent memory a second time.
                             # argmax over post-mix probs == act(deterministic).
-                            probs_t, logits_t = agent.get_action_probs_with_logits(
-                                state, valid, player_id=player.position
+                            probs_t, logits_t, enc_out = (
+                                agent.get_action_probs_with_logits(
+                                    state,
+                                    valid,
+                                    player_id=player.position,
+                                    return_encoder_out=True,
+                                )
                             )
                             a = int(torch.argmax(probs_t, dim=1).item()) + 1
+                            if player.is_picker and not game.is_leaster:
+                                seen_p = agent.seen_trump_probs(enc_out)
+                                if seen_p is not None:
+                                    truth = compute_seen_trump_mask(player)
+                                    pred = [int(x > 0.5) for x in seen_p.tolist()]
+                                    hidden = {
+                                        c
+                                        for c in (*player.blind, *player.bury)
+                                        if c in TRUMP and c not in player.hand
+                                    }
+                                    seen_nodes += 1
+                                    for i, card in enumerate(TRUMP):
+                                        ok = int(pred[i] == int(truth[i]))
+                                        seen_total += 1
+                                        seen_correct += ok
+                                        if card in hidden:
+                                            hidden_total += 1
+                                            hidden_correct += ok
                             lv = logits_t[0][[x - 1 for x in valid]]
                             play_spreads.append(float(lv.max() - lv.min()))
                             if is_deflead:
@@ -708,6 +739,13 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
             float(np.median(play_spreads)) if play_spreads else 0.0
         ),
         "play_nodes": len(play_spreads),
+        # Seen-trump recall at picker play nodes (informational, §7.1): %
+        # of trump seen/known bits the aux head gets right, over all 14
+        # trumps and over the hidden (blind/bury, not in hand) ones. 0 with
+        # no nodes or no aux heads.
+        "seen_trump_acc_picker": 100.0 * seen_correct / max(seen_total, 1),
+        "seen_trump_acc_picker_hidden": 100.0 * hidden_correct / max(hidden_total, 1),
+        "seen_trump_picker_nodes": seen_nodes,
     }
 
 

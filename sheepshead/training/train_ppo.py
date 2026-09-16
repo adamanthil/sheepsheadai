@@ -134,6 +134,10 @@ GREEDY_CSV_HEADER = [
     "partner_leads",
     "called_suit_lead_rate",
     "called_leads",
+    # Seen-trump recall at picker play nodes (informational, §7.1).
+    "seen_trump_acc_picker",
+    "seen_trump_acc_picker_hidden",
+    "seen_trump_picker_nodes",
 ]
 
 
@@ -564,7 +568,10 @@ def _run_interval_probes(state: _PhaseState, episode: int) -> None:
             f"(n={probe['partner_leads']}), "
             f"called-suit lead {probe['called_suit_lead_rate']:.1f}% "
             f"(n={probe['called_leads']}), "
-            f"play-spread {probe['play_logit_spread_med']:.2f}",
+            f"play-spread {probe['play_logit_spread_med']:.2f}, "
+            f"seen-trump recall {probe['seen_trump_acc_picker']:.1f}% "
+            f"(hidden {probe['seen_trump_acc_picker_hidden']:.1f}%, "
+            f"n={probe['seen_trump_picker_nodes']})",
             flush=True,
         )
         if isinstance(hp, LeagueHyperparams):
@@ -600,6 +607,9 @@ def _run_interval_probes(state: _PhaseState, episode: int) -> None:
                     probe["partner_leads"],
                     f"{probe['called_suit_lead_rate']:.2f}",
                     probe["called_leads"],
+                    f"{probe['seen_trump_acc_picker']:.2f}",
+                    f"{probe['seen_trump_acc_picker_hidden']:.2f}",
+                    probe["seen_trump_picker_nodes"],
                 ]
             )
 

@@ -288,6 +288,18 @@ class RecurrentCriticNetwork(nn.Module):
         logits = torch.matmul(flat_q, k.t())  # (N, 14)
         return logits.view(*q.shape[:-1], len(TRUMP))
 
+    def seen_trump_probs(
+        self, encoder_out: Dict[str, torch.Tensor], card_embedding: nn.Embedding
+    ) -> torch.Tensor:
+        """Single-step seen/known-trump probabilities, (len(TRUMP),), from a
+        batch-of-one encoder output: the same adapter-feature seam and head
+        the training loss uses (PPOAgent.forward_sequences), for probes."""
+        self._require_aux("seen_trump_probs")
+        with torch.no_grad():
+            feat = self._aux_features_single(encoder_out)
+            logits = self.seen_trump_mask_logits(feat, card_embedding)
+        return torch.sigmoid(logits).reshape(-1)
+
     def unseen_trump_higher_than_hand_logits(self, feat: torch.Tensor) -> torch.Tensor:
         """Return logits for 'exists unseen trump higher than best trump in hand'."""
         self._require_aux("unseen_trump_higher_than_hand_logits")
