@@ -3,10 +3,17 @@ diagnosis)."""
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
+import pytest
 
 from sheepshead import ACTION_IDS, ACTIONS
-from sheepshead.analysis.head_routed_h2h import HeadRoutedAgent, is_lead_decision
+from sheepshead.analysis.head_routed_h2h import (
+    HeadRoutedAgent,
+    is_lead_decision,
+    routed_h2h,
+)
 
 PICK = ACTION_IDS["PICK"]
 PASS = ACTION_IDS["PASS"]
@@ -67,3 +74,44 @@ class TestLeadFollowRouting:
         assert chimera.act(state_with_leader(2), PLAY, 1)[0] == "other"
         assert (shared.acts, shared.resets, shared.observes) == (2, 1, 1)
         assert (other.acts, other.resets, other.observes) == (2, 1, 1)
+
+    def test_picker_memory_need_delegates_to_any_routed_agent(self):
+        """The harness observes through observation_for, which reads
+        needs_picker_memory off the acting agent (the chimera). A legacy
+        member must pull the picker-memory keys in for everyone."""
+        from sheepshead.agent.observation import needs_picker_memory
+
+        class Legacy(TagAgent):
+            needs_picker_memory = True
+
+        class Clean(TagAgent):
+            needs_picker_memory = False
+
+        assert (
+            needs_picker_memory(HeadRoutedAgent(TagAgent("b"), TagAgent("p"))) is False
+        )
+        assert needs_picker_memory(HeadRoutedAgent(Clean("b"), Clean("p"))) is False
+        assert needs_picker_memory(HeadRoutedAgent(Clean("b"), Legacy("p"))) is True
+        assert (
+            needs_picker_memory(
+                HeadRoutedAgent(Legacy("b"), Clean("p"), lead_agent=Clean("l"))
+            )
+            is True
+        )
+
+
+CAND = "runs/policy_iteration_202609/iter11/distill_epoch7.pt"
+ANCHOR = "runs/league_retention_pg/checkpoints/pfsp_perceiver-shared-v2_checkpoint_8000000.pt"
+
+
+@pytest.mark.slow
+def test_routed_h2h_runs_on_legacy_checkpoints():
+    """The routed cert read on real (legacy-observation) checkpoints; the
+    iteration-3 cert crashed here when the chimera was fed the clean
+    observation. Skipped when the checkpoints are absent (CI)."""
+    if not (os.path.exists(CAND) and os.path.exists(ANCHOR)):
+        pytest.skip("real checkpoints not available")
+    res = routed_h2h(
+        ANCHOR, CAND, ANCHOR, n_deals_per_mode=4, n_boot=20, lead_ckpt=CAND, workers=2
+    )
+    assert np.isfinite(res["edge"]) and np.isfinite(res["se"])

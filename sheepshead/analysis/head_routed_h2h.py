@@ -32,6 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead.agent.observation import needs_picker_memory
 from sheepshead.analysis.league_progress_eval import h2h_parallel_eval
 from sheepshead.analysis.rigorous_eval import (
     Model,
@@ -69,6 +70,14 @@ class HeadRoutedAgent:
             if agent is not None:
                 unique.setdefault(id(agent), agent)
         return list(unique.values())
+
+    @property
+    def needs_picker_memory(self) -> bool:
+        """The harness observes through ``observation_for``, which reads
+        this off the acting agent: the legacy picker-memory keys are needed
+        if ANY routed agent consumes them (a clean encoder ignores the extra
+        keys; a legacy one raises without them)."""
+        return any(needs_picker_memory(agent) for agent in self._agents())
 
     def reset_recurrent_state(self):
         for agent in self._agents():
