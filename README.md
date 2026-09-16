@@ -263,43 +263,343 @@ process by design; the runbook covers deploys, drains, and restores.
 
 ## Training the AI
 
-Training has two stages — a self-play bootstrap followed by league-based PPO —
-plus an orchestrator that runs the league stage end-to-end with an automatic
-stopping rule. All build on the shared game primitives in `pfsp_runtime.py`,
-the hyperparameters in `config.py`, and the architecture registry in
-`architectures.py` (`--arch` on every trainer; checkpoints record their
-architecture and are rebuilt to match on load). All artifacts for a run —
-checkpoints, the final model, plots, CSVs, and the league roster — are written
-under `runs/<run-name>/` (gitignored).
+The agent is produced by one **training program**: a shaped self-play
+bootstrap, supervised pretraining of a privileged critic, terminal-reward
+league policy gradient with an automatic handoff rule, search-Q regularized
+policy iteration to convergence, and a final certification. The design, the
+pre-registered expectations and the decision log are in
+[`notebooks/Training_Program_Redesign_202609.md`](notebooks/Training_Program_Redesign_202609.md);
+the policy-iteration recipe and the investigation that produced it are in
+[`notebooks/CE_Teacher_Design_202608.md`](notebooks/CE_Teacher_Design_202608.md)
+(§20.14 is the pinned recipe, §21 the close-out summary). This section is
+the operator's guide: what to run, what appears on disk, what the logs say,
+and which numbers decide each phase.
 
-### The training program
+Everything below was developed and timed on a 10-core M1 Max with CPU game
+workers (`--num-workers 8`). `runs/` is gitignored; every artifact of a run
+lives under `runs/<run-name>/`.
 
-`sheepshead/training/run_training_program.py` runs the whole release-candidate
-program end to end (design and pre-registration in
-`notebooks/Training_Program_Redesign_202609.md`), crash-resumable from an
-atomic `state.json`, with one config dataclass (`program_config.py`) that
-doubles as the pre-registration artifact:
+### Setup
 
 ```bash
-uv run training-program --run-name rc_202609        # the pre-registered run
-uv run training-program --smoke --run-name _smoke   # every phase in minutes
-uv run training-program --config my_config.json     # a modified program
+uv sync --extra dev                            # torch, the sheepshead package, test tools
+uv run pytest sheepshead/tests -m "not slow"   # ~15 s sanity check
+uv run python -m sheepshead.analysis.capture_arch_goldens --check   # encoder goldens
+uv run training-program --smoke --run-name _smoke                    # every phase, ~5 min
 ```
 
-The five phases, each also runnable on its own:
+The smoke run exercises every phase and stage of the orchestrator on a toy
+configuration and must end with `PROGRAM FINISHED`; it proves the plumbing,
+not the learning (its policy never leaves the initial weights). Reference
+checkpoints used by the review gates (the 8M league seed of the July run,
+the iteration-1 policy-iteration checkpoint) are training artifacts and are
+not distributed; the orchestrator skips a reference read with a log line
+when the file is absent. The one reference that ships with the repository
+is `final_pfsp_swish_ppo.pt`, the 30M-episode production model the web app
+serves — point `final.references` at it to compare a fresh run against it.
 
-| phase | command | what it does |
+### The orchestrator
+
+`sheepshead/training/run_training_program.py` runs the whole program,
+crash-resumable, from one configuration tree (`program_config.py`) whose
+defaults ARE the pre-registered run:
+
+```bash
+uv run training-program --run-name rc_202609            # the pre-registered run (all defaults)
+uv run training-program --config runs/x/config.json     # a modified program
+uv run training-program --dry-run --run-name rc_202609  # print the config and the first command
+uv run training-program --smoke --run-name _smoke       # minutes-long end-to-end check
+```
+
+`--config` takes a JSON file with the same shape as
+`ProgramConfig` (any omitted field keeps its default). The run's own record
+is written under `runs/<run-name>/program/`:
+
+| file | what |
+|---|---|
+| `config.json` | the configuration actually run — the pre-registration artifact |
+| `state.json` | atomic resume state: every recorded number of every phase |
+| `program.log` | timestamped, one line per event: ruled banners at phase boundaries (with each phase's start time and, on completion, its wall-clock and stage hours), dashed sub-headers per generation / iteration, `▶` stage starts with the full command indented beneath, `✔` completions with elapsed hours, `★` decisions, `↷` stages a resume found complete, `✖` NEEDS REVIEW |
+| `<stage>.log` | the stdout of each stage subprocess (`bootstrap.log`, `oracle.log`, `league_gen<g>.log`, `pi_iter<k>.log`, `final.log`) |
+| `generations.csv` | one row per league generation (h2h, panel, conventions, decision) |
+| `report.md` | regenerated at every phase boundary: generation table, iteration table, final reads, event log |
+
+**Resuming.** Every stage is skipped when its output already exists (the
+bootstrap's `final.pt`, `oracle_init.pt`, a generation's boundary
+checkpoint, a corpus manifest with all games kept, `distill_best.json`,
+`cert.json`, a bidding phase's `final.pt`), so re-running the same command
+continues where the run stopped — including mid-phase, since the trainers
+resume from their last checkpoint. A gate failure or a stage that exits
+non-zero stops the program with exit code 2 and a `NEEDS REVIEW: ...` line
+in `program.log`; fix the cause and re-run the same command (the status
+flips back to running). Exit code 0 means `PROGRAM FINISHED`.
+
+### Phase by phase
+
+Each phase is a standalone command the orchestrator issues; the commands
+below are the ones it runs (`uv run python -m ...` outside the orchestrator,
+which calls the venv's python directly). `uv run train-ppo` is an alias for
+`python -m sheepshead.training.train_ppo`.
+
+**Phase 0 — shaped self-play bootstrap** (400k episodes; 6–8 h estimated)
+
+```bash
+uv run train-ppo --phase bootstrap --arch perceiver-recall \
+    --run-name rc_202609/bootstrap --until 400000 \
+    --save-interval 50000 --greedy-eval-interval 50000 --greedy-eval-games 200 \
+    --num-workers 8 --seed 42
+```
+
+Intermediate trick rewards plus a leaster bonus (`reward_shaping.py`), the
+limited critic, an empty population (every seat is the training agent), the
+leaster watchdog against the all-PASS attractor. Artifacts under
+`runs/rc_202609/bootstrap/`: `checkpoints/checkpoint_<episode>.pt`,
+`checkpoints/training_progress.csv` (one row per PPO update),
+`checkpoints/greedy_health.csv` (one row per greedy probe) and `final.pt`.
+The only gate is health: the last greedy probe's leaster rate must be below
+50% (`bootstrap.max_final_leaster_rate`) — there is no strength bar on the
+bootstrap by design.
+
+**Phase 1 — oracle pretraining** (~3 h)
+
+```bash
+uv run python -m sheepshead.training.pretrain_oracle generate \
+    --ckpt runs/rc_202609/bootstrap/final.pt --episodes 40000 --workers 8 \
+    --gamma 1.0 --seed 42 --out runs/rc_202609/oracle/dataset.pt
+uv run python -m sheepshead.training.pretrain_oracle pretrain \
+    --dataset runs/rc_202609/oracle/dataset.pt --max-epochs 25 --patience 3 \
+    --seed 42 --out runs/rc_202609/oracle/oracle_init.pt
+```
+
+Fits the privileged (full-information) critic and its two aux heads on the
+bootstrap policy's own terminal-reward games, so the league phase has a
+calibrated GAE baseline from its first update. `oracle.log` records the
+per-epoch validation MSE and the per-stratum explained variance.
+
+**Phase 2 — terminal-only league policy gradient** (1M episodes per
+generation, ~2 days each estimated; 3–8 generations)
+
+```bash
+# generation g trains to the ABSOLUTE episode g x 1,000,000
+uv run train-ppo --phase league --resume <previous boundary checkpoint> \
+    --run-name rc_202609/league --league-dir runs/rc_202609/league/league \
+    --until 1000000 --save-interval 50000 --snapshot-interval 50000 \
+    --greedy-eval-interval 50000 --greedy-eval-games 200 \
+    --entropy-play-floor 0.28 --num-workers 8 --seed 42 \
+    --seed-checkpoints 'runs/rc_202609/seeds/*.pt' \
+    --oracle-init runs/rc_202609/oracle/oracle_init.pt --no-entropy-controller
+```
+
+Generation 1 seeds the population with four copies of the bootstrap final
+(`runs/rc_202609/seeds/`), loads the pretrained oracle and runs with fixed
+entropy coefficients; from generation 2 the target-entropy controller owns
+them (`checkpoints/entropy_controller.json`). Terminal reward only, the
+oracle as GAE baseline, a per-seat PFSP population of snapshots with a
+self-play share, seat-rotated deal-paired collection. Each generation ends
+at its boundary checkpoint (`checkpoints/checkpoint_<g000000>.pt`), which
+is also promoted to a hall-of-fame anchor in the population.
+
+After every generation the orchestrator records, in `state.json` and
+`generations.csv`:
+
+- the duplicate-deal h2h vs the previous boundary (2,000 deals per partner
+  mode, seed 42; a fresh-seed confirmation when the read is near the bar);
+- the PANEL-A anchored gauntlet (3,996 deals) as the absolute yardstick;
+- the convention battery (4 × 1,000 greedy games): partner trump lead,
+  defender trick-0 trump lead, called-suit lead, pick and leaster rates.
+
+The **handoff rule** (`stop_rules.py`, §5.1 of the notebook): a generation
+is *improving* when its h2h gain is at least +0.02 with the 2-SE lower
+bound above zero. After the 3-generation floor, the first non-improving
+generation fires the single play-entropy step; the second hands off to
+search with θ₀ = the boundary checkpoint of the last generation wholly at a
+settled entropy target. The cap is 8 generations. Two review gates stop the
+program for the operator instead of deciding: the generation-2 panel must
+read at least +0.06, and the handoff checkpoint's h2h vs the July 8M
+reference must have a lower bound above −0.02 (skipped when the reference
+is absent). The B2 bounds (partner trump lead ≥ 50%, defender trick-0 trump
+lead ≤ 10%) are hard health checks at every generation. The decision line
+in `program.log` reads:
+
+```
+gen 3: h2h +0.0312±0.0118 improving=True panel +0.0840 -> continue (...)
+```
+
+**Phase 3 — search-Q regularized policy iteration** (~3 days per
+iteration; up to 5)
+
+One iteration k from θ_k, everything under `runs/rc_202609/pi/iter<k>/`:
+
+```bash
+# 1. corpus: 8,000 committee-acted games, every play node searched (~60 h)
+uv run python -m sheepshead.training.distill_corpus --ckpt <theta_k> \
+    --out-dir runs/rc_202609/pi/iter1/corpus --games 8000 --workers 8 --seed 20260903 \
+    --p-base 1.0 --boost-lead 1.0 --boost-cs 1.5 --p-min 0.05 --p-max 1.0 \
+    --committee-act-frac 1.0 --iters 256 --iters-schedule t0-lead:1024,t1-lead:512 \
+    --replicates 3 --node-telemetry runs/rc_202609/pi/iter1/corpus/nodes.jsonl \
+    --routed-encoder mps
+# 2. advantage fit, tilted targets, supervised projection (~2 h)
+uv run python -m sheepshead.training.policy_iteration all \
+    --corpus-dir runs/rc_202609/pi/iter1/corpus --ckpt <theta_k> \
+    --out-dir runs/rc_202609/pi/iter1 --trunk-epochs 6 --lr 3e-5 --lambda-ret 10.0 --head-epochs 4
+# 3. certification (~1.2 h)
+uv run python -m sheepshead.training.policy_iteration cert --ckpt <theta_k> \
+    --out-dir runs/rc_202609/pi/iter1 --cert-games 1000 --cert-seeds 4 --h2h-deals 8000
+# 4. bidding-only PG phase from the certified candidate (~8 h) and its cert (~0.4 h)
+uv run train-ppo --phase bidding --resume runs/rc_202609/pi/iter1/distill_epoch<N>.pt \
+    --run-name rc_202609/pi/iter1/bidding --league-dir runs/rc_202609/league/league \
+    --until 200000 --save-interval 200000 --snapshot-interval 0 --greedy-eval-interval 0 \
+    --num-workers 8 --seed 42
+uv run python -m sheepshead.training.policy_iteration cert --ckpt runs/rc_202609/pi/iter1/distill_epoch<N>.pt \
+    --out-dir runs/rc_202609/pi/iter1/bidding_cert --candidate runs/rc_202609/pi/iter1/bidding/final.pt \
+    --cert-games 1000 --cert-seeds 4 --h2h-deals 8000 --no-routed-reads
+```
+
+What each step does and leaves behind:
+
+1. **Corpus.** The frozen θ_k plays 8,000 games; at every play node an
+   ISMCTS committee (3 replicates, 256 iterations; 1,024 at trick-0 leads
+   and 512 at trick-1 leads, one-ply rollouts to oracle-valued leaves)
+   scores the legal cards, and the committee's choice is played
+   (`--committee-act-frac 1.0`). Rows are partitioned into *override*
+   (search disagrees with the policy), *endorsed* and *retention* (bidding
+   and leaster nodes, unsearched). Output: `corpus/corpus_<shard>.pt`,
+   `corpus/manifest.json` (per-class counts), `corpus/nodes.jsonl`
+   (per-node telemetry incl. the budget used). Progress line:
+   `[1150/8000 games, 0.04 g/s] searched 19199 override 9386 endorsed 9723 failed 90`,
+   ending in `DONE: 8000 games kept, 40000 episodes, 40 shards -> ...`.
+   An interrupted corpus resumes with `--start-game <n>`.
+2. **fit / target / distill** (`policy_iteration all`). *fit*: a
+   heteroscedastic advantage model (an adapter twin of the play pointer with
+   the log-prior as covariate) is fit to the committee Q on a 10% game-level
+   holdout → `advantage_model.pt`, `fit_report.json`, `row_table.pt`.
+   *target*: per-row Fay–Herriot posterior variances and the tilted class-
+   mode targets t(a) ∝ p_θk(a) · exp(Â(a)/√v), precision weights capped at
+   5 → `targeted/`, `target_report.json`. *distill*: six trunk epochs at
+   3e-5 (everything trains: weighted CE on searched rows, retention KL ×10
+   to θ_k on bidding and leaster rows, value / oracle regression), then
+   bilinear-only head epochs at 1e-3 → `distill_epoch<e>.pt`,
+   `distill_log.jsonl`, `distill_best.json` naming the candidate: the
+   LAST epoch of the schedule (held-out target KL is logged per epoch as
+   a fidelity check but selects nothing — CE_Teacher add. 31). Per-epoch
+   lines: `[distill epoch 6] train (1152 steps, 15.3 min): override_ce 0.3855  override_kl 0.0949 ... retention_kl 0.0014 ...`,
+   a `holdout:` line, a `probe:` line (500 greedy games) and `saved ...`.
+3. **cert** — the adoption battery vs θ_k, `cert.json`: four 1,000-game
+   convention probes (seeds 98765–98768), the duplicate-deal h2h at 8,000
+   deals per partner mode (sharded across processes, ~20 min), and two
+   head-routed reads at the same size: **play-only** (bidding heads from
+   θ_k, play from the candidate — the *compounding statistic*) and
+   **bidding-only** (the drift guard). Adoption = non-inferiority on the
+   full checkpoint (edge + 2·SE ≥ 0), bidding route ≥ −0.003, partner trump
+   lead ≥ 96.5%, defender trick-0 trump lead ≤ 1.0%, play logit spread ≥
+   3.6. Lines: `[cert] probe seed 98765 (2 min): called_suit_lead_rate 54.6 ...`,
+   `[cert] h2h vs theta_k (19 min): edge +0.0029 se 0.0025 (called +0.0043 / jd +0.0014); leaster hands -0.0077 se 0.0102 (n=6586)`,
+   `[cert] routed play_only vs theta_k (23 min): +0.0036 se 0.0023`.
+   A failed cert raises `NEEDS REVIEW` (the walk-back is the operator's).
+4. **Bidding phase.** PPO under terminal reward against the league
+   population with the encoder, actor adapter, play pointer and play-under
+   head frozen: only the pick / partner / call heads and both critics
+   train, so search's play is untouched while bidding and the value stream
+   re-ground on fresh on-policy games. Its `final.pt` is certified against
+   the candidate on the same battery (no routed reads) and adopted on
+   non-inferiority; θ_{k+1} is the adopted checkpoint. `program.log`:
+   `iter 1 bidding phase: h2h vs candidate +0.0054±0.0036 -> ADOPTED`.
+
+The iteration's summary line and the stop rule:
+
+```
+iter 1: compounding gain (play_only) +0.0036±0.0023; full h2h +0.0029±0.0025; theta_1 = runs/.../bidding/final.pt
+policy iteration STOP: <reason>
+```
+
+Policy iteration stops when the play-only gain has been below 2 SE for two
+consecutive iterations, or at `max_iterations` (5). One corpus per
+iteration, generated by the current θ_k; earlier corpora are never reused
+(they read at the harm line, CE_Teacher add. 30).
+
+**Phase 4 — final certification.** `runs/rc_202609/final/release.pt` is
+the adopted checkpoint; `h2h_vs_<name>.json` for every entry of
+`final.references` that exists on disk; the convention battery; and a
+one-time exploitability audit (`analysis/exploitability_audit.py`: 50k
+episodes of best-response PPO against the frozen release, gated on a
+3,000-deal duplicate edge → `final/exploit/gate_result.json`). `report.md`
+is regenerated with everything above. To serve the model, point the API's
+`SHEEPSHEAD_MODEL_PATH` at `release.pt`.
+
+### Validating the final phases on an existing lineage
+
+`start_phase: "policy_iteration"` runs phase 3 and 4 from an external
+checkpoint, sampling the bidding phase's opponents from an existing league
+population. This is how the pipeline was validated before the fresh run
+(`runs/rc_validate_v2/config.json`, reproduced here in full):
+
+```json
+{
+  "run_name": "rc_validate_v2",
+  "arch": "perceiver-shared-v2",
+  "start_phase": "policy_iteration",
+  "policy_iteration": {
+    "theta_0": "runs/policy_iteration_202609/iter29_d8k_t6/distill_epoch10.pt",
+    "league_dir": "runs/league_retention_pg/league",
+    "bidding_first": true,
+    "max_iterations": 1,
+    "corpus_seed_base": 20260913
+  },
+  "final": {"references": {}, "exploit_episodes": 0},
+  "gates": {"gen2_panel_min": -10.0, "handoff_reference": "", "handoff_h2h_lower_min": -10.0}
+}
+```
+
+With `bidding_first` the external θ₀ (a certified distill candidate) gets
+its bidding phase as iteration 0, and iteration 1's corpus comes from the
+adopted checkpoint. Measured on the perceiver-shared-v2 lineage
+(September 2026; details in CE_Teacher §21):
+
+| stage | wall time | read vs the previous checkpoint |
 |---|---|---|
-| 0 bootstrap | `uv run train-ppo --phase bootstrap --arch perceiver-recall --run-name r/bootstrap --until 400000` | shaped self-play from scratch on an empty population, limited critic, leaster watchdog |
-| 1 oracle | `uv run python -m sheepshead.training.pretrain_oracle generate/pretrain ...` | supervised pretraining of the privileged critic on the bootstrap policy's games |
-| 2 league | `uv run train-ppo --phase league --resume ... --seed-checkpoints ... --until <g x 1M>` | terminal-only PPO with the oracle GAE baseline against a PFSP population of snapshots; one generation per invocation; the orchestrator's marginal-value rule (`stop_rules.py`) decides when to hand off to search |
-| 3 policy iteration | `distill_corpus` -> `policy_iteration all` -> `policy_iteration cert` -> `train-ppo --phase bidding` | search-Q regularized policy iteration: an ISMCTS-committee corpus from the frozen policy, the pooled advantage fit, the tilted targets, the supervised projection, the certification battery, then a bidding-only PG phase |
-| 4 final | (orchestrator) | duplicate h2h vs the reference agents, a one-time exploitability audit (`analysis/exploitability_audit.py`), `release.pt` |
+| bidding phase, 200k episodes | 8.0 h | +0.0054 ± 0.0036 (adopted); leaster hands +0.024 ± 0.009 |
+| corpus, 8,000 games | 60.6 h | 133k searched / 64.5k override rows |
+| fit + target + distill | 2.1 h | held-out target KL 0.124 → 0.100 |
+| cert with routed reads | 1.2 h | play-only +0.0036 ± 0.0023, bidding-only −0.0008 ± 0.0008 |
 
-Every phase writes under `runs/<run-name>/...`; the program's own record
-(`state.json`, `config.json`, `generations.csv`, `report.md`, per-step logs)
-lives in `runs/<run-name>/program/`. `--dry-run` prints the configuration and
-the generation-1 trainer command without training.
+### Running the instruments by hand
+
+```bash
+# the adoption battery on any checkpoint pair
+uv run python -m sheepshead.training.policy_iteration cert --ckpt <reference.pt> \
+    --out-dir <dir> --candidate <candidate.pt> --h2h-deals 8000
+# a head-routed chimera read (bidding from one checkpoint, play from another)
+uv run python -m sheepshead.analysis.head_routed_h2h --bid-ckpt <a.pt> --play-ckpt <b.pt> --deals-per-mode 8000
+# duplicate-deal h2h of two league boundaries
+uv run python -m sheepshead.analysis.league_progress_eval --h2h <gen.pt> <prev.pt>
+# the anchored PANEL-A gauntlet / rigorous paired comparison
+uv run python -m sheepshead.analysis.rigorous_eval --help
+```
+
+### Reading the trainer log
+
+Every `train-ppo` phase prints one line per PPO update:
+
+```
+Ep 41,594 | picker_avg +1.54 | pick 19% | leaster 6.9% | advσ all/pick/play 0.123/0.154/0.108 | 6.8 eps/s  ev O/L 0.67/0.54 | Hn 0.04/0.11/0.15/0.44
+```
+
+`picker_avg` is the training agent's mean score over its last 3,000 picked
+hands, `pick`/`leaster` the rates in the training games (against the sampled
+population, so not comparable to the greedy self-play probes), `advσ` the
+advantage standard deviations, `ev O/L` the oracle and limited critics'
+explained variance of the empirical return, and `Hn` the normalized
+entropies of the pick, partner, bury and play heads. The same numbers land
+in `checkpoints/training_progress.csv`; the greedy probes (pick, leaster,
+conventions, logit spread) in `checkpoints/greedy_health.csv`.
+
+### Where the methodology is documented
+
+- `notebooks/Training_Program_Redesign_202609.md` — the program: objectives, architecture, phases, stop rules, pre-registration, decision log.
+- `notebooks/CE_Teacher_Design_202608.md` — §20 policy iteration: the corpus, advantage model, targets, projection; §20.13 the 31 addenda of the stall diagnosis and the compounding finding; §20.14 the pinned recipe; §21 the close-out.
+- `notebooks/Learning_System_Redesign_202607.md` — the league trainer's terminal-reward / oracle-critic / retention design.
+- `notebooks/Architecture_Ablation_202607.md`, `Blind_Bury_Ablation_202608.md` — how `perceiver-shared-v2` and the recall constraint were chosen.
+- `notebooks/Evaluation_Harnesses_202607.md` — the duplicate-deal instrument, PANEL-A, the probes.
 
 ---
 
