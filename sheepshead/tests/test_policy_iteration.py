@@ -280,7 +280,7 @@ def test_end_to_end_stages_on_tiny_corpus(tmp_path):
     assert train["override_rows"] > 0 and train["retention_rows"] > 0
     assert np.isfinite(train["override_ce"])
     best = json.loads((out_dir / "distill_best.json").read_text())
-    assert best["best_epoch"] in (0, 1)
+    assert best["best_epoch"] == 1  # the last epoch of the schedule
 
 
 def test_class_residual_variances_shrink_toward_global():
@@ -309,10 +309,12 @@ def test_class_residual_variances_shrink_toward_global():
     assert torch.allclose(v_post, gamma * nv)
 
 
-def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
-    """The stop rule needs a holdout KL at epoch 0 and a best-epoch record;
-    on a tiny corpus with a large coefficient the projection moves the
-    policy toward the targets (holdout target KL falls from epoch 0)."""
+def test_distill_runs_the_full_schedule_and_certifies_the_last_epoch(tmp_path):
+    """The candidate is the last epoch of the schedule; held-out target KL
+    is recorded (epoch 0 and every epoch) for the fidelity check but
+    selects nothing. On a tiny corpus with a large coefficient the
+    projection moves the policy toward the targets (holdout target KL
+    falls from epoch 0)."""
     agent = fresh_agent()
     ckpt = tmp_path / "theta_k.pt"
     agent.save(str(ckpt))
@@ -354,8 +356,6 @@ def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
             "1",
             "--head-epochs",
             "2",
-            "--kl-min-improve",
-            "0",
             "--lambda-ce",
             "5",
             "--lr",
@@ -373,7 +373,9 @@ def test_distill_kl_stop_rule_and_best_epoch(tmp_path):
     assert 0 in hold and 1 in hold
     assert hold[1]["override_kl"] < hold[0]["override_kl"]
     best = json.loads((out_dir / "distill_best.json").read_text())
-    assert best["best_epoch"] >= 1
+    assert best["best_epoch"] == 3  # 1 trunk + 2 head epochs: the last one
+    assert best["best_epoch_by_kl"] >= 1
+    assert best["checkpoint"].endswith("distill_epoch3.pt")
     log_text = (out_dir / "policy_iteration.log").read_text()
     assert "[distill epoch 1] trunk, lr" in log_text
     assert "[distill epoch 2] bilinear head only" in log_text

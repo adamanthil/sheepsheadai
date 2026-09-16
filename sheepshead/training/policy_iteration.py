@@ -15,13 +15,16 @@ iteration from a frozen theta_k corpus to a certified candidate.
              tilt of theta_k's prior, and posterior-precision CE weights;
              writes the TARGETED CORPUS (search_target / search_weight on
              every searched play row) and target_report.json.
-    distill  Stage 3. PG-off supervised projection: one trunk epoch at --lr
-             (everything trains), then bilinear-only head epochs at
-             --head-lr with the encoder frozen, to the held-out target-KL
-             plateau. Retention KL to theta_k on bidding-head and leaster-
-             play rows; value / aux / oracle regression on every row.
-             Checkpoints + greedy probes per epoch; distill_best.json
-             names the epoch to certify.
+    distill  Stage 3. PG-off supervised projection: --trunk-epochs at --lr
+             (everything trains), then --head-epochs bilinear-only epochs
+             at --head-lr with the encoder frozen. Retention KL to theta_k
+             on bidding-head and leaster-play rows; value / aux / oracle
+             regression on every row. Checkpoints + greedy probes per
+             epoch; the candidate is the LAST epoch of the schedule
+             (distill_best.json) — held-out target KL is logged as a
+             fidelity check and selects nothing (CE_Teacher_Design §20.13
+             add. 31: the KL-best epoch left +0.003 of certified play on
+             the table).
     cert     The adoption battery: n=1000 greedy probes on 4 fixed seeds,
              duplicate h2h vs theta_k (with the leaster-hand paired score),
              the pre-registered bars; writes cert.json.
@@ -845,14 +848,12 @@ def stage_distill(args) -> list[str]:
                 f"{(time.time() - t0) / 60:.1f} min): {fmt_stats(train_stats)}"
             )
             log_row({"kind": "train", "epoch": epoch, **train_stats})
-            improved = True
             if holdout:
                 hold_stats, _ = run_epoch(agent, holdout, args, train=False)
                 log(f"[distill epoch {epoch}] holdout: {fmt_stats(hold_stats)}")
                 log_row({"kind": "holdout", "epoch": epoch, **hold_stats})
                 kl = float(hold_stats.get("override_kl", float("inf")))
-                improved = kl < best_kl * (1.0 - args.kl_min_improve)
-                if improved:
+                if kl < best_kl:
                     best_kl, best_epoch = kl, epoch
             if args.probe_games:
                 probe = greedy_health_probe(agent, n_games=args.probe_games, seed=0)
@@ -865,17 +866,11 @@ def stage_distill(args) -> list[str]:
             agent.save(ckpt_path)
             saved.append(ckpt_path)
             log(f"[distill epoch {epoch}] saved {ckpt_path}")
-            if head_phase and holdout and not improved:
-                log(
-                    f"[distill] held-out target KL plateau: no >= "
-                    f"{100 * args.kl_min_improve:.0f}% gain over the best "
-                    f"({best_kl:.4f}, epoch {best_epoch}); stopping after epoch {epoch}"
-                )
-                break
-        # Holdout target KL does not track EV (CE_Teacher_Design §20.13 add.
-        # 14/20); when it never beats epoch 0 the candidate is the LAST epoch
-        # (§20.14 step 4), never "none".
-        chosen = best_epoch if best_epoch else n_epochs
+        # The candidate is the last epoch of the pinned schedule (§20.14
+        # step 4, amended add. 31). Held-out target KL is a fidelity
+        # average over every override row and does not track EV (add. 14,
+        # 20); selecting on it dropped the epochs that carried the gain.
+        chosen = n_epochs
         with open(os.path.join(args.out_dir, "distill_best.json"), "w") as f:
             json.dump(
                 {
@@ -1066,7 +1061,6 @@ def build_parser() -> argparse.ArgumentParser:
     dst.add_argument("--head-lr", type=float, default=1e-3)
     dst.add_argument("--lambda-ce", type=float, default=1.0)
     dst.add_argument("--lambda-ret", type=float, default=10.0)
-    dst.add_argument("--kl-min-improve", type=float, default=0.02)
     dst.add_argument("--no-oracle", dest="train_oracle", action="store_false")
     dst.add_argument("--probe-games", type=int, default=500)
     crt = ap.add_argument_group("cert")
