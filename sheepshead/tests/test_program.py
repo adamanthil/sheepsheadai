@@ -98,6 +98,7 @@ class _Stub:
         program.ensure_generation_trained = self.train
         program._h2h = self.h2h
         program._panel = lambda g: None
+        program._panel_b = lambda g: None
         program._conventions = lambda ckpt, label: {
             "pick_rate": 30.0,
             "alone_rate": 5.0,

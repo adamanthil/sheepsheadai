@@ -524,25 +524,26 @@ class Program:
             out.append(p if os.path.exists(p) else self.boundary_ckpt(g))
         return out
 
-    def _panel(self, g: int) -> Optional[dict]:
+    def _panel_read(
+        self, ckpts: list[str], members: list[str], label: str, npz_name: str
+    ) -> Optional[dict]:
+        """Anchored-gauntlet endpoint of ``ckpts`` (a 3-checkpoint composite)
+        on the ``members`` field; cached in program/<npz_name>."""
         cfg = self.cfg.league
-        panel = cfg.panel or sorted(glob.glob(os.path.join(self.seeds_dir, "*.pt")))
-        missing = [p for p in panel if not os.path.exists(p)]
-        if len(panel) < 4 or missing:
-            self.log(
-                f"panel skipped for gen {g}: {len(panel)} members, missing {missing}"
-            )
+        missing = [p for p in members if not os.path.exists(p)]
+        if len(members) < 4 or missing:
+            self.log(f"{label} skipped: {len(members)} members, missing {missing}")
             return None
-        npz = Path(self.program_dir) / f"panel_gen{g}.npz"
+        npz = Path(self.program_dir) / npz_name
         if npz.exists():
             e = load_endpoint(npz)
         else:
-            self.log(f"panel endpoint gen {g}: {cfg.panel_deals} deals ...")
+            self.log(f"{label}: {cfg.panel_deals} deals ...")
             e = eval_endpoint(
-                self._composite_ckpts(g),
+                ckpts,
                 n_deals=cfg.panel_deals,
                 seed=PANEL_SEED,
-                panel_paths=tuple(panel),
+                panel_paths=tuple(members),
                 out_npz=npz,
             )
         return {
@@ -553,6 +554,27 @@ class Program:
             "modes": e.mode_means,
             "trump_lead": e.trump_lead,
         }
+
+    def _panel(self, g: int) -> Optional[dict]:
+        """PANEL-A (the pre-registered yardstick; the gen-2 gate reads it).
+        Without a configured panel the run's own bootstrap seeds serve."""
+        cfg = self.cfg.league
+        panel = cfg.panel or sorted(glob.glob(os.path.join(self.seeds_dir, "*.pt")))
+        return self._panel_read(
+            self._composite_ckpts(g), panel, f"panel gen {g}", f"panel_gen{g}.npz"
+        )
+
+    def _panel_b(self, g: int) -> Optional[dict]:
+        """PANEL-B (tentative): strong-skill / cross-ecology field, recorded
+        only — no gate reads it. Not run when the list is empty."""
+        if not self.cfg.league.panel_b:
+            return None
+        return self._panel_read(
+            self._composite_ckpts(g),
+            self.cfg.league.panel_b,
+            f"panel-B gen {g}",
+            f"panelB_gen{g}.npz",
+        )
 
     def _conventions(self, ckpt: str, label: str) -> dict:
         """Convention battery: greedy probes on fixed seeds, means across
@@ -639,6 +661,7 @@ class Program:
         rec["h2h_confirm"] = confirm
         rec["improving"] = verdict.improving
         rec["panel"] = self._panel(g)
+        rec["panel_b"] = self._panel_b(g)
         rec["conventions"] = self._conventions(self.boundary_ckpt(g), f"gen{g}")
         conv = rec["conventions"]
         if conv["partner_trump_lead_rate"] < cfg.partner_trump_lead_min:
@@ -676,6 +699,11 @@ class Program:
             )
             + f" improving={verdict.improving}"
             + (f" panel {rec['panel']['mean']:+.4f}" if rec["panel"] else "")
+            + (
+                f" panel-B {panel_b['mean']:+.4f}"
+                if (panel_b := rec.get("panel_b"))
+                else ""
+            )
             + f" -> {decision.action} ({decision.reason})",
         )
         if decision.action == "entropy_step":
@@ -714,6 +742,9 @@ class Program:
             "panel_mean",
             "panel_lo",
             "panel_hi",
+            "panel_b_mean",
+            "panel_b_lo",
+            "panel_b_hi",
             "partner_trump_lead",
             "t0_trump_lead",
             "called_suit_lead",
@@ -734,6 +765,7 @@ class Program:
                     continue
                 conv = rec.get("conventions") or {}
                 panel = rec.get("panel") or {}
+                panel_b = rec.get("panel_b") or {}
                 confirm = rec.get("h2h_confirm") or {}
                 w.writerow(
                     {
@@ -747,6 +779,9 @@ class Program:
                         "panel_mean": f"{panel['mean']:.4f}" if panel else "",
                         "panel_lo": f"{panel['lo']:.4f}" if panel else "",
                         "panel_hi": f"{panel['hi']:.4f}" if panel else "",
+                        "panel_b_mean": f"{panel_b['mean']:.4f}" if panel_b else "",
+                        "panel_b_lo": f"{panel_b['lo']:.4f}" if panel_b else "",
+                        "panel_b_hi": f"{panel_b['hi']:.4f}" if panel_b else "",
                         "partner_trump_lead": f"{conv.get('partner_trump_lead_rate', 0):.1f}",
                         "t0_trump_lead": f"{conv.get('t0_trump_lead_rate', 0):.2f}",
                         "called_suit_lead": f"{conv.get('called_suit_lead_rate', 0):.1f}",
@@ -1125,6 +1160,23 @@ class Program:
                 decision=True,
             )
         rec["conventions"] = self._conventions(release, "final")
+        for key, members, label in (
+            ("panel", cfg.league.panel, "panel final"),
+            ("panel_b", cfg.league.panel_b, "panel-B final"),
+        ):
+            if members and key not in rec:
+                rec[key] = self._panel_read(
+                    [release, release, release],
+                    members,
+                    label,
+                    f"{label.replace(' ', '_')}.npz",
+                )
+                if rec[key]:
+                    self._event(
+                        f"final {label.split()[0]}: {rec[key]['mean']:+.4f} "
+                        f"[{rec[key]['lo']:+.4f}, {rec[key]['hi']:+.4f}]",
+                        decision=True,
+                    )
         gate_path = os.path.join(
             "runs", f"{cfg.run_name}/final/exploit", "gate_result.json"
         )
@@ -1173,8 +1225,8 @@ class Program:
             "",
             "## League generations",
             "",
-            "| gen | h2h vs prev | confirm | improving | panel | partner | t0 trump | called-suit | decision |",
-            "|---|---|---|---|---|---|---|---|---|",
+            "| gen | h2h vs prev | confirm | improving | panel A | panel B | partner | t0 trump | called-suit | decision |",
+            "|---|---|---|---|---|---|---|---|---|---|",
         ]
         for g in sorted(int(k) for k in s["league"]["generations"]):
             rec = s["league"]["generations"][str(g)]
@@ -1182,12 +1234,14 @@ class Program:
                 continue
             conv = rec.get("conventions") or {}
             panel = rec.get("panel")
+            panel_b = rec.get("panel_b")
             confirm = rec.get("h2h_confirm")
             lines.append(
                 f"| {g} | {rec['h2h']['edge']:+.4f}±{rec['h2h']['se']:.4f} "
                 f"| {(f'{confirm["edge"]:+.4f}±{confirm["se"]:.4f}') if confirm else '—'} "
                 f"| {rec['improving']} "
                 f"| {(f'{panel["mean"]:+.4f}') if panel else '—'} "
+                f"| {(f'{panel_b["mean"]:+.4f}') if panel_b else '—'} "
                 f"| {conv.get('partner_trump_lead_rate', 0):.1f} "
                 f"| {conv.get('t0_trump_lead_rate', 0):.2f} "
                 f"| {conv.get('called_suit_lead_rate', 0):.1f} "
@@ -1224,6 +1278,12 @@ class Program:
         for key, val in s["final"].items():
             if key.startswith("h2h_vs_"):
                 lines.append(f"- {key}: {val['edge']:+.4f}±{val['se']:.4f}")
+        for key, label in (("panel", "PANEL-A"), ("panel_b", "PANEL-B")):
+            val = s["final"].get(key)
+            if val:
+                lines.append(
+                    f"- {label}: {val['mean']:+.4f} [{val['lo']:+.4f}, {val['hi']:+.4f}]"
+                )
         if "exploit_audit" in s["final"]:
             a = s["final"]["exploit_audit"]
             lines.append(

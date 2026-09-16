@@ -407,7 +407,9 @@ After every generation the orchestrator records, in `state.json` and
 
 - the duplicate-deal h2h vs the previous boundary (2,000 deals per partner
   mode, seed 42; a fresh-seed confirmation when the read is near the bar);
-- the PANEL-A anchored gauntlet (3,996 deals) as the absolute yardstick;
+- the PANEL-A anchored gauntlet (3,996 deals) as the absolute yardstick,
+  and PANEL-B (the 30M, the v2 release, iter11 P1, the v2 8M seed: a
+  strong-skill, cross-ecology field) recorded beside it, gating nothing;
 - the convention battery (4 × 1,000 greedy games): partner trump lead,
   defender trick-0 trump lead, called-suit lead, pick and leaster rates.
 

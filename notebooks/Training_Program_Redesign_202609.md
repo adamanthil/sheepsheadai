@@ -43,6 +43,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-15 | Distill candidate = the LAST epoch of the schedule; the held-out-KL plateau rule retired (it stopped the head phase after one epoch and discarded +0.003 of certified play); fit defaults aligned to 200 epochs / patience 25 | 4.4 |
 | 09-15 | Routed-chimera observation defect fixed (`needs_picker_memory` delegation); orchestrator log restructured with phase banners, sub-headers, stage/decision markers and per-phase timings; README training guide rewritten | 6 |
 | 09-16 | Pre-launch config audit: final references + the v2 release, final h2h 8,000 deals; league workers on MPS + torch.compile (bit-exact, 1.36x); seen-trump recall added to the greedy probe (informational); goldens/export = manual step; `--dry-run` side-effect fix | 4.3, 4.5, 7.1 |
+| 09-16 | PANEL-B added (tentative): strong-skill / cross-ecology yardstick (30M, v2 release, iter11 P1, v2 8M seed), recorded per generation and at the final, no gate; membership provisional until the v2 release's reads vs the 30M land | 5.3 |
 | 09-16 | CE_Teacher_Design investigation CLOSED (§21); the v2 lineage ends at θ₃ = `rc_validate_v2/pi/iter1/distill_epoch7.pt` (+ its bidding phase); next: the fresh perceiver-recall run | 7 |
 
 ---
@@ -414,6 +415,7 @@ realization).
 | gate | instrument | v2-lineage reference | bar |
 |---|---|---|---|
 | gen-2 boundary | PANEL-A absolute endpoint | +0.132 | ≥ +0.06 (one MDE below) |
+| (recorded) | PANEL-B absolute endpoint (tentative, 09-16): the 30M, the v2 release, iter11 P1, the v2 8M seed — a strong-skill, cross-ecology field where PANEL-A's weak anchors compress candidate differences; per generation and at the final | — | none; a bar, if any, is defined from this run |
 | handoff | duplicate h2h vs the v2 8M seed | parity | CI lower bound > −0.02 |
 | end of phase 3 | duplicate h2h vs iter11 P1; vs 30M | +0.026 vs seed; +0.039 vs 30M | CI excludes −0.02 vs P1; > 0 at 2 SE vs 30M |
 

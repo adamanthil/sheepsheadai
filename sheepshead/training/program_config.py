@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import MISSING, asdict, dataclass, field, fields, is_dataclass
 
-from sheepshead.analysis.panels import PANEL_A
+from sheepshead.analysis.panels import PANEL_A, PANEL_B
 
 
 @dataclass
@@ -69,6 +69,10 @@ class LeagueConfig:
     # Absolute yardstick (recorded; the gen-2 review gate reads it).
     panel: list[str] = field(default_factory=lambda: list(PANEL_A))
     panel_deals: int = 3996
+    # PANEL-B (tentative, 09-16): the strong-skill / cross-ecology yardstick,
+    # recorded per generation and at the final; no gate reads it. Empty
+    # list = not run.
+    panel_b: list[str] = field(default_factory=lambda: list(PANEL_B))
     # Convention battery (guards, not triggers) and the B2 hard bounds.
     convention_probe_games: int = 1000
     convention_probe_seeds: int = 4
@@ -234,6 +238,7 @@ class ProgramConfig:
             worker_device=None,
             worker_compile=None,
             panel=[],  # the run's own bootstrap seeds
+            panel_b=[],
             panel_deals=6,
             convention_probe_games=3,
             convention_probe_seeds=1,
