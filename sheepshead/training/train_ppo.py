@@ -134,11 +134,68 @@ GREEDY_CSV_HEADER = [
     "partner_leads",
     "called_suit_lead_rate",
     "called_leads",
-    # Seen-trump recall at picker play nodes (informational, §7.1).
-    "seen_trump_acc_picker",
-    "seen_trump_acc_picker_hidden",
-    "seen_trump_picker_nodes",
+    # Seen-trump memory at every seat's play nodes (informational, §7.1):
+    # accuracy over the 14 trumps, recall over the must-remember trumps
+    # (overall and per trick 0-5), false-seen on unseen trumps, counts.
+    "seen_trump_acc",
+    "seen_trump_recall",
+    "seen_trump_recall_t0",
+    "seen_trump_recall_t1",
+    "seen_trump_recall_t2",
+    "seen_trump_recall_t3",
+    "seen_trump_recall_t4",
+    "seen_trump_recall_t5",
+    "seen_trump_false_seen",
+    "seen_trump_false_seen_t0",
+    "seen_trump_false_seen_t1",
+    "seen_trump_false_seen_t2",
+    "seen_trump_false_seen_t3",
+    "seen_trump_false_seen_t4",
+    "seen_trump_false_seen_t5",
+    "seen_trump_nodes",
+    "seen_trump_recall_cards",
 ]
+
+
+def greedy_csv_row(episode: int, probe: dict) -> list:
+    """One ``GREEDY_CSV_HEADER`` row for ``probe`` (greedy_health_probe's
+    dict) at ``episode``; the trainer and the checkpoint re-probe instrument
+    (analysis/reprobe_checkpoints.py) write the same schema."""
+    return [
+        episode,
+        f"{probe['pick_rate']:.2f}",
+        f"{probe['alone_rate']:.2f}",
+        f"{probe['leaster_rate']:.2f}",
+        f"{probe['t0_trump_lead_rate']:.2f}",
+        probe["t0_def_leads"],
+        f"{probe['play_logit_spread_med']:.3f}",
+        probe["play_nodes"],
+        probe["games"],
+        f"{probe['partner_trump_lead_rate']:.2f}",
+        probe["partner_leads"],
+        f"{probe['called_suit_lead_rate']:.2f}",
+        probe["called_leads"],
+        f"{probe['seen_trump_acc']:.2f}",
+        f"{probe['seen_trump_recall']:.2f}",
+        *(f"{r:.2f}" for r in probe["seen_trump_recall_by_trick"]),
+        f"{probe['seen_trump_false_seen']:.2f}",
+        *(f"{r:.2f}" for r in probe["seen_trump_false_seen_by_trick"]),
+        probe["seen_trump_nodes"],
+        probe["seen_trump_recall_cards"],
+    ]
+
+
+def seen_trump_summary(probe: dict) -> str:
+    """The seen-trump clause of the greedy-probe log line."""
+    recall_t = "/".join(f"{r:.0f}" for r in probe["seen_trump_recall_by_trick"])
+    false_t = "/".join(f"{r:.0f}" for r in probe["seen_trump_false_seen_by_trick"])
+    return (
+        f"seen-trump acc {probe['seen_trump_acc']:.1f}%, "
+        f"recall {probe['seen_trump_recall']:.1f}% "
+        f"(t0-5 {recall_t}, cards={probe['seen_trump_recall_cards']}), "
+        f"false-seen {probe['seen_trump_false_seen']:.1f}% "
+        f"(t0-5 {false_t}, n={probe['seen_trump_nodes']})"
+    )
 
 
 def checkpoint_path(checkpoint_dir: str, episode: int) -> str:
@@ -569,9 +626,7 @@ def _run_interval_probes(state: _PhaseState, episode: int) -> None:
             f"called-suit lead {probe['called_suit_lead_rate']:.1f}% "
             f"(n={probe['called_leads']}), "
             f"play-spread {probe['play_logit_spread_med']:.2f}, "
-            f"seen-trump recall {probe['seen_trump_acc_picker']:.1f}% "
-            f"(hidden {probe['seen_trump_acc_picker_hidden']:.1f}%, "
-            f"n={probe['seen_trump_picker_nodes']})",
+            f"{seen_trump_summary(probe)}",
             flush=True,
         )
         if isinstance(hp, LeagueHyperparams):
@@ -592,26 +647,7 @@ def _run_interval_probes(state: _PhaseState, episode: int) -> None:
             writer = csv.writer(f)
             if write_header:
                 writer.writerow(GREEDY_CSV_HEADER)
-            writer.writerow(
-                [
-                    episode,
-                    f"{probe['pick_rate']:.2f}",
-                    f"{probe['alone_rate']:.2f}",
-                    f"{probe['leaster_rate']:.2f}",
-                    f"{probe['t0_trump_lead_rate']:.2f}",
-                    probe["t0_def_leads"],
-                    f"{probe['play_logit_spread_med']:.3f}",
-                    probe["play_nodes"],
-                    probe["games"],
-                    f"{probe['partner_trump_lead_rate']:.2f}",
-                    probe["partner_leads"],
-                    f"{probe['called_suit_lead_rate']:.2f}",
-                    probe["called_leads"],
-                    f"{probe['seen_trump_acc_picker']:.2f}",
-                    f"{probe['seen_trump_acc_picker_hidden']:.2f}",
-                    probe["seen_trump_picker_nodes"],
-                ]
-            )
+            writer.writerow(greedy_csv_row(episode, probe))
 
     if args.save_interval > 0 and episode % args.save_interval == 0:
         training_agent.save(checkpoint_path(state.checkpoint_dir, episode))

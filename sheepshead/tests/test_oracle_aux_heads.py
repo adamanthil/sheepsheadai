@@ -2,13 +2,20 @@
 checkpoint compatibility, deal-seeded games (seat rotation), and the
 extended greedy probe."""
 
+import random
+
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE
+from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP
 from sheepshead.agent.oracle import team_aux_labels
 from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.game import Game
 from sheepshead.tests.ppo_test_helpers import play_episodes, seed_all
-from sheepshead.training.training_utils import greedy_health_probe
+from sheepshead.training.reward_shaping import compute_seen_trump_mask
+from sheepshead.training.training_utils import (
+    greedy_health_probe,
+    seen_trump_recall_cards,
+)
 
 SEED = 20260725
 ARCH = "perceiver-shared-v2"
@@ -151,14 +158,68 @@ def test_greedy_probe_reports_partner_convention():
 
 
 def test_greedy_probe_reports_seen_trump_recall():
-    """The probe reads the aux critic's seen-trump mask at the picker's play
-    nodes (all trumps and the hidden blind/bury ones); informational keys,
-    present and bounded, with nodes counted only when the picker played."""
+    """The probe reads the aux critic's seen-trump mask at every seat's
+    scored play node (not the picker's alone): accuracy over the 14 trumps,
+    recall over the must-remember trumps overall and per trick, and the
+    false-seen rate. Informational keys, present and bounded."""
     agent = _agent(oracle_aux_heads=True)
     assert agent.critic.has_aux_heads
     probe = greedy_health_probe(agent, n_games=6, seed=1)
-    for key in ("seen_trump_acc_picker", "seen_trump_acc_picker_hidden"):
+    for key in ("seen_trump_acc", "seen_trump_recall", "seen_trump_false_seen"):
         assert 0.0 <= probe[key] <= 100.0
-    assert probe["seen_trump_picker_nodes"] >= 0
-    if probe["seen_trump_picker_nodes"]:
-        assert probe["seen_trump_acc_picker"] > 0.0
+    for key in ("seen_trump_recall_by_trick", "seen_trump_false_seen_by_trick"):
+        assert len(probe[key]) == 6
+        assert all(0.0 <= r <= 100.0 for r in probe[key])
+    # Every play node of every seat is scored, the single-legal last-trick
+    # nodes included (play_nodes counts only the multi-legal ones).
+    assert probe["seen_trump_nodes"] > probe["play_nodes"] > 0
+    assert probe["seen_trump_recall_cards"] > 0
+
+
+def test_greedy_probe_seen_trump_absent_without_aux_heads():
+    """A critic without aux heads (the `no-aux` ablation arch) scores no
+    seen-trump nodes; the keys stay present and zero."""
+    seed_all(SEED)
+    agent = PPOAgent(len(ACTIONS), critic_mode="limited", arch="no-aux")
+    assert not agent.critic.has_aux_heads
+    probe = greedy_health_probe(agent, n_games=3, seed=1)
+    assert probe["seen_trump_nodes"] == 0
+    assert probe["seen_trump_recall_cards"] == 0
+    assert probe["seen_trump_recall"] == 0.0
+
+
+def test_seen_trump_recall_cards_is_memory_only():
+    """The must-remember set: trumps the seat has seen that are neither in
+    its hand nor on the table now — earlier tricks' trumps for every seat,
+    the bury/discarded blind for the picker; never the visible ones."""
+    rng = random.Random(5)
+    checked_table = checked_history = checked_bury = 0
+    for g in range(40):
+        game = Game(seed=g)
+        while not game.is_done():
+            for player in game.players:
+                valid = player.get_valid_action_ids()
+                while valid:
+                    if game.play_started:
+                        cards = seen_trump_recall_cards(player)
+                        truth = compute_seen_trump_mask(player)
+                        idx = int(game.current_trick)
+                        on_table = (
+                            set(game.history[idx]) if idx < len(game.history) else set()
+                        )
+                        for card, seen in zip(TRUMP, truth):
+                            if card in player.hand or card in on_table:
+                                assert card not in cards
+                                checked_table += card in on_table
+                            elif seen:
+                                assert card in cards
+                                checked_history += card not in (
+                                    *player.blind,
+                                    *player.bury,
+                                )
+                                checked_bury += card in player.bury
+                            else:
+                                assert card not in cards
+                    player.act(rng.choice(sorted(valid)))
+                    valid = player.get_valid_action_ids()
+    assert checked_table and checked_history and checked_bury

@@ -46,6 +46,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-16 | `rc_validate_v2` COMPLETE: release = θ₃ + bidding phase; +0.0505 ± 0.0062 vs the 30M, +0.0135 ± 0.0046 vs iter11 P1 (8,000 deals/mode) — the program's strongest agent and the fresh run's bar; two consecutive bidding phases lowered the pick rate ~2 points each (watch in the fresh run) | 7.0 |
 | 09-16 | PANEL-B added (tentative): strong-skill / cross-ecology yardstick (30M, v2 release, iter11 P1, v2 8M seed), recorded per generation and at the final, no gate; membership provisional until the v2 release's reads vs the 30M land | 5.3 |
 | 09-16 | CE_Teacher_Design investigation CLOSED (§21); the v2 lineage ends at θ₃ = `rc_validate_v2/pi/iter1/distill_epoch7.pt` (+ its bidding phase); next: the fresh perceiver-recall run | 7 |
+| 09-16 | `202609_recall_rc` LAUNCHED 13:25 (bootstrap escape at ~5k episodes, watchdog engaged once). Seen-trump probe REDEFINED mid-bootstrap: all seats, recall = must-remember trumps (earlier tricks + picker bury/blind) by trick, false-seen; the picker-only/blind-bury first cut mistook the recall problem. Bootstrap checkpoints re-probed offline; later phases record the new definition (informational either way) | 7.1 |
 
 ---
 
@@ -519,12 +520,27 @@ final references and PANEL-B. The perceiver-recall launch is unblocked.
 ### 7.1 Per-phase expectations
 
 - **Bootstrap.** Escape ≤ 30k; scripted-probe and PANEL-A curves
-  recorded, no bar. Seen-trump recall at the picker's play nodes
-  (greedy probe columns `seen_trump_acc_picker` / `_hidden`, added
-  09-16): expected ≥ 95% over all trumps and high on the HIDDEN
-  blind/bury trumps by 400k (the memory carries the blind).
-  INFORMATIONAL ONLY — it is recorded every probe interval and never
-  gates or changes anything.
+  recorded, no bar. Seen-trump memory at every seat's play nodes
+  (greedy probe columns `seen_trump_acc` / `_recall` / `_recall_t0..t5`
+  / `_false_seen` / `_false_seen_t0..t5`, redefined 09-16 evening — the
+  first definition scored
+  the picker alone and only its blind/bury trumps, which mistook the
+  recall problem: play history is never re-shown (§3.2), so every trump
+  played in an earlier trick is a memory item for every seat, and
+  perceiver-recall adds the picker's bury/discarded blind to that set).
+  `recall` = % of the must-remember trumps (seen, but neither in hand
+  nor on the table) the aux head still reports seen; per trick, trick 0
+  is the picker's bury/blind alone and later tricks add the played
+  cards, so forgetting reads as decay across the row; `false_seen`
+  (overall and per trick) guards against a head that says "seen" for
+  everything — rising recall at rising false-seen is bias, rising recall
+  at flat false-seen is memory. Expected: acc ≥ 95%, recall high and
+  flat across tricks at low false-seen by 400k. INFORMATIONAL ONLY
+  — it is recorded every probe interval and never gates or changes
+  anything. The bootstrap of `202609_recall_rc` ran under the first
+  definition; its checkpoints were re-probed under the second
+  (`analysis/reprobe_checkpoints.py` → `checkpoints/greedy_health_recall.csv`),
+  and every later phase records the second.
 - **League.** Gen-1 h2h ≥ +0.05 and gen-2 ≥ +0.05; B2 held from gen 1;
   panel ≥ +0.20 by gen 6 (v2: +0.206); C2 in the 38–52% band; handoff
   at gen 4–6.

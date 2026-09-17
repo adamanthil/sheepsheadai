@@ -533,13 +533,20 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     deflead_nopoint = 0  # ...that led 7/8/9
     deflead_top1min = []  # top1 - min legal-play logit at those nodes
     # Seen-trump recall (Training_Program_Redesign §7.1, informational): at
-    # the picker's play nodes, the aux head's seen/known-trump mask against
-    # the truth (compute_seen_trump_mask), over all 14 trumps and over the
-    # HIDDEN ones — blind/bury trumps not in hand, which a recall-constrained
-    # observation no longer shows and the memory must carry.
+    # every scored play node of every seat, the aux head's seen/known-trump
+    # mask against the truth (compute_seen_trump_mask) — accuracy over all
+    # 14 trumps, recall over the trumps the seat must REMEMBER
+    # (seen_trump_recall_cards: seen, but neither in hand nor on the table,
+    # which the observation never shows), the same recall by trick index
+    # (forgetting reads as decay across tricks), and the false-seen rate on
+    # trumps the seat has not seen (a head that says "seen" for everything
+    # scores 100% recall and is caught here).
     seen_nodes = 0
     seen_correct = seen_total = 0
-    hidden_correct = hidden_total = 0
+    recall_correct = recall_total = 0
+    recall_by_trick = [[0, 0] for _ in range(6)]  # [correct, total] per trick
+    false_seen = unseen_total = 0
+    false_seen_by_trick = [[0, 0] for _ in range(6)]  # [false-seen, unseen]
     try:
         for g in range(n_games):
             game = Game(partner_selection_mode=get_partner_selection_mode(g))
@@ -615,47 +622,54 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                                 or player.is_secret_partner
                             )
                         )
-                        if is_play and len(valid) >= 2:
-                            # One forward yields both the greedy action and the
-                            # legal-play logit spread. Do NOT also call act():
-                            # that would advance recurrent memory a second time.
-                            # argmax over post-mix probs == act(deterministic).
+                        if is_play:
+                            # One forward yields the greedy action, the aux
+                            # heads' read and the legal-play logit spread. Do
+                            # NOT also call act(): that would advance recurrent
+                            # memory a second time (the same forward + memory
+                            # update as act; argmax over post-mix probs ==
+                            # act(deterministic)). Single-legal nodes (the
+                            # last trick) are scored for memory, not spread.
                             probs_t, logits_t, enc_out = (
                                 agent.get_action_probs_logits_and_encoder_out(
                                     state, valid, player_id=player.position
                                 )
                             )
                             a = int(torch.argmax(probs_t, dim=1).item()) + 1
-                            if player.is_picker and not game.is_leaster:
-                                seen_p = agent.seen_trump_probs(enc_out)
-                                if seen_p is not None:
-                                    truth = compute_seen_trump_mask(player)
-                                    pred = [int(x > 0.5) for x in seen_p.tolist()]
-                                    hidden = {
-                                        c
-                                        for c in (*player.blind, *player.bury)
-                                        if c in TRUMP and c not in player.hand
-                                    }
-                                    seen_nodes += 1
-                                    for i, card in enumerate(TRUMP):
-                                        ok = int(pred[i] == int(truth[i]))
-                                        seen_total += 1
-                                        seen_correct += ok
-                                        if card in hidden:
-                                            hidden_total += 1
-                                            hidden_correct += ok
-                            lv = logits_t[0][[x - 1 for x in valid]]
-                            play_spreads.append(float(lv.max() - lv.min()))
-                            if is_deflead:
-                                deflead_top1min.append(float(lv.max() - lv.min()))
-                                gcard = ACTIONS[a - 1][5:]
-                                if gcard not in TRUMP:
-                                    deflead_fail += 1
-                                    rank = gcard[:-1]
-                                    if rank in ("A", "10"):
-                                        deflead_fat += 1
-                                    elif rank in ("7", "8", "9"):
-                                        deflead_nopoint += 1
+                            seen_p = agent.seen_trump_probs(enc_out)
+                            if seen_p is not None:
+                                truth = compute_seen_trump_mask(player)
+                                pred = [int(x > 0.5) for x in seen_p.tolist()]
+                                must_recall = seen_trump_recall_cards(player)
+                                trick_bin = min(int(game.current_trick), 5)
+                                seen_nodes += 1
+                                for i, card in enumerate(TRUMP):
+                                    ok = int(pred[i] == int(truth[i]))
+                                    seen_total += 1
+                                    seen_correct += ok
+                                    if card in must_recall:
+                                        recall_total += 1
+                                        recall_correct += ok
+                                        recall_by_trick[trick_bin][0] += ok
+                                        recall_by_trick[trick_bin][1] += 1
+                                    elif not truth[i]:
+                                        unseen_total += 1
+                                        false_seen += pred[i]
+                                        false_seen_by_trick[trick_bin][0] += pred[i]
+                                        false_seen_by_trick[trick_bin][1] += 1
+                            if len(valid) >= 2:
+                                lv = logits_t[0][[x - 1 for x in valid]]
+                                play_spreads.append(float(lv.max() - lv.min()))
+                                if is_deflead:
+                                    deflead_top1min.append(float(lv.max() - lv.min()))
+                                    gcard = ACTIONS[a - 1][5:]
+                                    if gcard not in TRUMP:
+                                        deflead_fail += 1
+                                        rank = gcard[:-1]
+                                        if rank in ("A", "10"):
+                                            deflead_fat += 1
+                                        elif rank in ("7", "8", "9"):
+                                            deflead_nopoint += 1
                         else:
                             a, _, _ = agent.act(
                                 state,
@@ -736,13 +750,50 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
             float(np.median(play_spreads)) if play_spreads else 0.0
         ),
         "play_nodes": len(play_spreads),
-        # Seen-trump recall at picker play nodes (informational, §7.1): %
-        # of trump seen/known bits the aux head gets right, over all 14
-        # trumps and over the hidden (blind/bury, not in hand) ones. 0 with
-        # no nodes or no aux heads.
-        "seen_trump_acc_picker": 100.0 * seen_correct / max(seen_total, 1),
-        "seen_trump_acc_picker_hidden": 100.0 * hidden_correct / max(hidden_total, 1),
-        "seen_trump_picker_nodes": seen_nodes,
+        # Seen-trump memory at the scored play nodes of every seat
+        # (informational, §7.1). `acc`: % of the 14 seen/known bits the aux
+        # head gets right. `recall`: % of the trumps the seat must remember
+        # (seen_trump_recall_cards) that it still reports seen; `recall_by_
+        # trick` the same per trick index 0-5 (trick 0 is the picker's
+        # bury/discarded-blind trumps alone — nothing has been played yet).
+        # `false_seen`: % of the trumps the seat has NOT seen that it reports
+        # seen, overall and per trick (read beside recall by trick: a head
+        # that says "seen" for more and more as the deal goes on scores
+        # rising recall AND rising false-seen; memory scores rising recall
+        # at flat false-seen). `nodes` = play nodes scored (every play node
+        # of every seat,
+        # single-legal last-trick nodes included, when the critic has aux
+        # heads, else 0); `recall_cards` = must-remember trump-node pairs
+        # scored. All 0 with no nodes or no aux heads.
+        "seen_trump_acc": 100.0 * seen_correct / max(seen_total, 1),
+        "seen_trump_recall": 100.0 * recall_correct / max(recall_total, 1),
+        "seen_trump_recall_by_trick": [
+            100.0 * c / max(n, 1) for c, n in recall_by_trick
+        ],
+        "seen_trump_false_seen": 100.0 * false_seen / max(unseen_total, 1),
+        "seen_trump_false_seen_by_trick": [
+            100.0 * c / max(n, 1) for c, n in false_seen_by_trick
+        ],
+        "seen_trump_nodes": seen_nodes,
+        "seen_trump_recall_cards": recall_total,
+    }
+
+
+def seen_trump_recall_cards(player) -> set[str]:
+    """The trumps ``player`` has seen (compute_seen_trump_mask's truth) that
+    its observation does not show right now: neither in hand nor on the
+    table in the current trick. Every one of these the network can only
+    know from its own memory — trumps played in earlier tricks for every
+    seat, plus the bury and the discarded blind for the picker
+    (Training_Program_Redesign §3.2: play history is never re-shown)."""
+    game = player.game
+    idx = int(game.current_trick)
+    on_table = set(game.history[idx]) if idx < len(game.history) else set()
+    truth = compute_seen_trump_mask(player)
+    return {
+        card
+        for card, seen in zip(TRUMP, truth)
+        if seen and card not in player.hand and card not in on_table
     }
 
 
