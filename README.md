@@ -598,7 +598,18 @@ advantage standard deviations, `ev O/L` the oracle and limited critics'
 explained variance of the empirical return, and `Hn` the normalized
 entropies of the pick, partner, bury and play heads. The same numbers land
 in `checkpoints/training_progress.csv`; the greedy probes (pick, leaster,
-conventions, logit spread) in `checkpoints/greedy_health.csv`.
+conventions, logit spread, seen-trump memory) in
+`checkpoints/greedy_health.csv`. The `seen-trump` clause of the probe line
+reads the aux critic's seen-trump head at every seat's play node: `acc` over
+all 14 trumps, `recall` over the trumps the seat can only know from memory
+(played in an earlier trick, or the picker's bury/discarded blind; nothing
+in the hand or on the table), the same per trick `t0-5` so forgetting shows
+as decay, and `false-seen` on trumps the seat has not seen, overall and per
+trick (rising recall at flat false-seen is memory; at rising false-seen it
+is a head that says "seen" for everything). Informational
+only; nothing gates on it. To re-probe saved checkpoints (for instance
+after a probe change) run
+`uv run python -m sheepshead.analysis.reprobe_checkpoints <run>/checkpoints/checkpoint_*.pt --out <run>/checkpoints/greedy_health_recall.csv`.
 
 ### Where the methodology is documented
 
