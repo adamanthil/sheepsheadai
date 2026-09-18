@@ -165,8 +165,16 @@ def test_greedy_probe_reports_seen_trump_recall():
     agent = _agent(oracle_aux_heads=True)
     assert agent.critic.has_aux_heads
     probe = greedy_health_probe(agent, n_games=6, seed=1)
-    for key in ("seen_trump_acc", "seen_trump_recall", "seen_trump_false_seen"):
+    for key in (
+        "seen_trump_acc",
+        "seen_trump_recall",
+        "seen_trump_false_seen",
+        "aux_secret_acc",
+        "aux_points_exact",
+        "aux_unseen_higher_acc",
+    ):
         assert 0.0 <= probe[key] <= 100.0
+    assert probe["aux_points_mae"] >= 0.0
     for key in ("seen_trump_recall_by_trick", "seen_trump_false_seen_by_trick"):
         assert len(probe[key]) == 6
         assert all(0.0 <= r <= 100.0 for r in probe[key])

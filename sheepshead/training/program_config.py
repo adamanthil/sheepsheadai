@@ -14,6 +14,7 @@ import json
 from dataclasses import MISSING, asdict, dataclass, field, fields, is_dataclass
 
 from sheepshead.analysis.panels import PANEL_A, PANEL_B
+from sheepshead.training.stop_rules import AuxReadinessConfig
 
 
 @dataclass
@@ -78,6 +79,10 @@ class LeagueConfig:
     convention_probe_seeds: int = 4
     partner_trump_lead_min: float = 50.0
     defender_t0_trump_lead_max: float = 10.0
+    # Aux-head readiness (§5.4, 09-18): the handoff's precondition, read
+    # off the same battery. Bars from the v2 retention lineage's converged
+    # checkpoints (7.7M) re-probed under the 09-16 probe definition.
+    aux_bars: AuxReadinessConfig = field(default_factory=AuxReadinessConfig)
 
 
 @dataclass
@@ -176,6 +181,11 @@ class ProgramConfig:
     num_workers: int = 8
     worker_device: str | None = None
     worker_compile: str | None = None
+    # Loss-coefficient multiplier of the four deterministic aux heads
+    # (§4.3, 09-18), passed to every stage that trains them: bootstrap,
+    # league generations, the distill trunk epochs, the bidding phase.
+    # `202609_recall_rc` ran its bootstrap and league gen 1 at 1.0.
+    aux_det_scale: float = 2.5
     bootstrap: BootstrapConfig = field(default_factory=BootstrapConfig)
     oracle: OracleConfig = field(default_factory=OracleConfig)
     league: LeagueConfig = field(default_factory=LeagueConfig)
@@ -244,6 +254,14 @@ class ProgramConfig:
             convention_probe_seeds=1,
             partner_trump_lead_min=0.0,
             defender_t0_trump_lead_max=100.0,
+            aux_bars=AuxReadinessConfig(
+                seen_trump_acc_min=0.0,
+                seen_trump_false_seen_max=100.0,
+                seen_trump_recall_min=0.0,
+                unseen_higher_acc_min=0.0,
+                points_mae_max=1e9,
+                secret_acc_min=0.0,
+            ),
         )
         cfg.policy_iteration = PolicyIterationConfig(
             games=12,

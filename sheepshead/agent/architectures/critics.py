@@ -288,17 +288,30 @@ class RecurrentCriticNetwork(nn.Module):
         logits = torch.matmul(flat_q, k.t())  # (N, 14)
         return logits.view(*q.shape[:-1], len(TRUMP))
 
-    def seen_trump_probs(
+    def aux_probe(
         self, encoder_out: Dict[str, torch.Tensor], card_embedding: nn.Embedding
-    ) -> torch.Tensor:
-        """Single-step seen/known-trump probabilities, (len(TRUMP),), from a
-        batch-of-one encoder output: the same adapter-feature seam and head
-        the training loss uses (PPOAgent.forward_sequences), for probes."""
-        self._require_aux("seen_trump_probs")
+    ) -> Dict[str, torch.Tensor]:
+        """Single-step reads of the four DETERMINISTIC aux heads from a
+        batch-of-one encoder output — the same adapter-feature seam and heads
+        the training loss uses (PPOAgent.forward_sequences) — for the greedy
+        probe's memory columns: ``seen_trump`` (len(TRUMP),) seen/known
+        probabilities, ``unseen_higher`` () the probability that an unseen
+        trump beats the hand's best, ``secret`` () the probability of being
+        the secret partner, ``points`` (5,) known points per relative seat.
+        Win and return are outcome predictions and are not read here."""
+        self._require_aux("aux_probe")
         with torch.no_grad():
             feat = self._aux_features_single(encoder_out)
-            logits = self.seen_trump_mask_logits(feat, card_embedding)
-        return torch.sigmoid(logits).reshape(-1)
+            seen = torch.sigmoid(self.seen_trump_mask_logits(feat, card_embedding))
+            unseen = torch.sigmoid(self.unseen_trump_higher_than_hand_logits(feat))
+            secret = torch.sigmoid(self.secret_partner_head(feat))
+            points = self.points_head(feat)
+        return {
+            "seen_trump": seen.reshape(-1),
+            "unseen_higher": unseen.reshape(-1)[0],
+            "secret": secret.reshape(-1)[0],
+            "points": points.reshape(-1),
+        }
 
     def unseen_trump_higher_than_hand_logits(self, feat: torch.Tensor) -> torch.Tensor:
         """Return logits for 'exists unseen trump higher than best trump in hand'."""

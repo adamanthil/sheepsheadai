@@ -79,9 +79,75 @@ def generation_verdict(
     )
 
 
+@dataclass(frozen=True)
+class AuxReadinessConfig:
+    """The aux-head readiness precondition of the handoff (§5.4, 09-18).
+
+    The four DETERMINISTIC aux heads — seen-trump mask, unseen-trump-higher,
+    known points, secret partner — are exact functions of what the seat has
+    observed, so 100% is their true ceiling; and the league is the only
+    phase that can build the trunk memory they read (policy iteration
+    maintains the heads on 8,000 games at 3e-5, the bidding phase freezes
+    the encoder). Before the handoff they must be essentially never wrong on
+    the boundary battery (4 x 1,000 greedy games, every seat's play nodes).
+    Percent units; the recall and false-seen bars apply to each of tricks
+    1-5 (trick 0 is the picker's bury alone: too few cards, and erratic even
+    with the bury in the observation). Known points is a regression head
+    under a smooth-L1 loss, never integer-exact, so its bar is the mean
+    absolute error in points at the v2 lineage's converged level (0.88 at
+    league 7.7M; it read 5-9 points at 0.7-4.7M while seen-trump converged,
+    which this bar catches); the exact-after-rounding rate is recorded
+    beside it. Win and return predict outcomes with irreducible uncertainty
+    and are not gated."""
+
+    seen_trump_acc_min: float = 99.5
+    seen_trump_false_seen_max: float = 0.5
+    seen_trump_recall_min: float = 99.0
+    unseen_higher_acc_min: float = 99.0
+    points_mae_max: float = 1.0
+    secret_acc_min: float = 99.5
+
+
+def aux_readiness(reads: dict, cfg: AuxReadinessConfig) -> tuple[bool, list[str]]:
+    """``reads`` = the boundary battery's means (the greedy probe's aux keys).
+    Returns (ready, failures); every failing bar is named."""
+    failures: list[str] = []
+
+    def at_least(key: str, bar: float, label: str) -> None:
+        v = float(reads.get(key, 0.0))
+        if v < bar:
+            failures.append(f"{label} {v:.2f} < {bar}")
+
+    at_least("seen_trump_acc", cfg.seen_trump_acc_min, "seen-trump acc")
+    fs = float(reads.get("seen_trump_false_seen", 100.0))
+    if fs > cfg.seen_trump_false_seen_max:
+        failures.append(
+            f"seen-trump false-seen {fs:.2f} > {cfg.seen_trump_false_seen_max}"
+        )
+    recall_t = list(reads.get("seen_trump_recall_by_trick") or [])
+    false_t = list(reads.get("seen_trump_false_seen_by_trick") or [])
+    for t in range(1, 6):
+        r = float(recall_t[t]) if t < len(recall_t) else 0.0
+        if r < cfg.seen_trump_recall_min:
+            failures.append(
+                f"seen-trump recall t{t} {r:.2f} < {cfg.seen_trump_recall_min}"
+            )
+        f = float(false_t[t]) if t < len(false_t) else 100.0
+        if f > cfg.seen_trump_false_seen_max:
+            failures.append(
+                f"seen-trump false-seen t{t} {f:.2f} > {cfg.seen_trump_false_seen_max}"
+            )
+    at_least("aux_unseen_higher_acc", cfg.unseen_higher_acc_min, "unseen-higher acc")
+    mae = float(reads.get("aux_points_mae", 1e9))
+    if mae > cfg.points_mae_max:
+        failures.append(f"points mae {mae:.2f} > {cfg.points_mae_max}")
+    at_least("aux_secret_acc", cfg.secret_acc_min, "secret-partner acc")
+    return not failures, failures
+
+
 @dataclass
 class HandoffDecision:
-    action: str  # "continue" | "entropy_step" | "handoff"
+    action: str  # "continue" | "entropy_step" | "handoff" | "review"
     reason: str
 
 
@@ -90,10 +156,34 @@ def decide_handoff(
     generation: int,
     step_generation: Optional[int],
     cfg: HandoffRuleConfig,
+    aux_ready: bool = True,
 ) -> HandoffDecision:
     """Decision after ``generation`` given the improving flags for
     generations 1..generation and the generation at whose boundary the
-    entropy step fired (None if it has not)."""
+    entropy step fired (None if it has not). ``aux_ready`` (aux_readiness)
+    is the handoff's precondition: a handoff the marginal-value rule would
+    make is deferred (``continue``) while the deterministic aux heads are
+    not ready, and becomes ``review`` at the generation cap."""
+    base = _marginal_value_decision(improving_history, generation, step_generation, cfg)
+    if base.action != "handoff" or aux_ready:
+        return base
+    if generation >= cfg.max_generations:
+        return HandoffDecision(
+            "review",
+            f"max_generations cap ({cfg.max_generations}) reached with the "
+            "deterministic aux heads not ready",
+        )
+    return HandoffDecision(
+        "continue", f"handoff deferred, aux heads not ready ({base.reason})"
+    )
+
+
+def _marginal_value_decision(
+    improving_history: Sequence[bool],
+    generation: int,
+    step_generation: Optional[int],
+    cfg: HandoffRuleConfig,
+) -> HandoffDecision:
     if len(improving_history) != generation:
         raise ValueError(
             f"improving_history covers {len(improving_history)} generations, "

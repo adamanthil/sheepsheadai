@@ -798,6 +798,9 @@ def stage_distill(args) -> list[str]:
             "the standing projection trains the play pointer's bilinear term; "
             f"{args.ckpt} ({agent.arch_name}) has none"
         )
+    if args.aux_det_scale != 1.0:
+        agent.set_deterministic_aux_scale(args.aux_det_scale)
+        log(f"deterministic aux-head loss coefficients x{args.aux_det_scale:g}")
     episodes = load_episodes(targeted_dir)
     train_eps, holdout = split_by_game(episodes, args.holdout_frac, args.seed)
     log(f"[distill] {len(train_eps)} train / {len(holdout)} holdout episodes")
@@ -1035,6 +1038,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--holdout-frac", type=float, default=0.10)
     ap.add_argument("--buffer-episodes", type=int, default=250)
     ap.add_argument("--batch-segments", type=int, default=32)
+    ap.add_argument(
+        "--aux-det-scale",
+        type=float,
+        default=1.0,
+        help="distill: multiply the four deterministic aux-head loss "
+        "coefficients by this factor (the trainer's --aux-det-scale)",
+    )
     fit = ap.add_argument_group("fit")
     fit.add_argument("--capacity", default="adapter", choices=CAPACITIES)
     fit.add_argument("--fit-epochs", type=int, default=200)

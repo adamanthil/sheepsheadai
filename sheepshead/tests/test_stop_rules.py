@@ -4,8 +4,10 @@ numbers, including the July retention run's actual h2h series."""
 import pytest
 
 from sheepshead.training.stop_rules import (
+    AuxReadinessConfig,
     HandoffRuleConfig,
     IterationRuleConfig,
+    aux_readiness,
     decide_handoff,
     gain_improving,
     generation_verdict,
@@ -80,6 +82,70 @@ def test_floor_and_cap():
 def test_history_length_must_match():
     with pytest.raises(ValueError):
         decide_handoff([True], 2, None, CFG)
+
+
+# The v2 retention lineage at league 7.7M under the 09-16 probe (converged)
+# and at 700k (the partial-memory regime), runs/202609_recall_rc/recall_compare.
+V2_CONVERGED = {
+    "seen_trump_acc": 99.8,
+    "seen_trump_false_seen": 0.2,
+    "seen_trump_recall_by_trick": [46.0, 100.0, 100.0, 100.0, 100.0, 100.0],
+    "seen_trump_false_seen_by_trick": [0.0, 0.0, 0.0, 0.0, 0.5, 0.0],
+    "aux_unseen_higher_acc": 100.0,
+    "aux_points_exact": 45.6,
+    "aux_points_mae": 0.88,
+    "aux_secret_acc": 100.0,
+}
+V2_EARLY = {
+    "seen_trump_acc": 92.8,
+    "seen_trump_false_seen": 12.2,
+    "seen_trump_recall_by_trick": [37.0, 82.0, 90.0, 96.0, 99.0, 100.0],
+    "seen_trump_false_seen_by_trick": [3.0, 9.0, 17.0, 25.0, 32.0, 35.0],
+    "aux_unseen_higher_acc": 99.9,
+    "aux_points_exact": 10.4,
+    "aux_points_mae": 5.31,
+    "aux_secret_acc": 99.5,
+}
+# v2 at league 4.7M: seen-trump converged, the points head astray.
+V2_MID = {**V2_CONVERGED, "aux_points_exact": 5.5, "aux_points_mae": 9.40}
+
+
+def test_aux_readiness_bars():
+    bars = AuxReadinessConfig()
+    ready, failures = aux_readiness(V2_CONVERGED, bars)
+    assert ready and failures == []
+    ready, failures = aux_readiness(V2_EARLY, bars)
+    assert not ready
+    # Every failing bar is named; trick 0 is never read.
+    assert any(f.startswith("seen-trump acc") for f in failures)
+    assert any("false-seen t5" in f for f in failures)
+    assert any("recall t1" in f for f in failures)
+    assert not any("t0" in f for f in failures)
+    assert any(f.startswith("points mae") for f in failures)
+    # The points head alone can hold the handoff (v2 at 4.7M).
+    ready, failures = aux_readiness(V2_MID, bars)
+    assert not ready and failures == ["points mae 9.40 > 1.0"]
+    # A missing per-trick series fails closed.
+    ready, _ = aux_readiness(
+        {k: v for k, v in V2_CONVERGED.items() if "trick" not in k}, bars
+    )
+    assert not ready
+
+
+def test_handoff_waits_for_aux_readiness():
+    """A handoff the marginal-value rule makes is deferred while the aux
+    heads are not ready, and becomes a review at the cap; the entropy step
+    and plain continues are untouched."""
+    assert decide_handoff([False] * 3, 3, None, CFG, aux_ready=False).action == (
+        "entropy_step"
+    )
+    d = decide_handoff([False] * 4, 4, 3, CFG, aux_ready=False)
+    assert d.action == "continue" and "deferred" in d.reason
+    assert decide_handoff([False] * 4, 4, 3, CFG, aux_ready=True).action == "handoff"
+    cap = HandoffRuleConfig(max_generations=4)
+    d = decide_handoff([True] * 4, 4, None, cap, aux_ready=False)
+    assert d.action == "review"
+    assert decide_handoff([True] * 4, 4, None, cap, aux_ready=True).action == "handoff"
 
 
 def test_iteration_stop():

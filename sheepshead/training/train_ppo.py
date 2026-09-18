@@ -118,6 +118,14 @@ PROGRESS_CSV_HEADER = [
     "approx_kl",
     "lr_actor",
     "eps_per_s",
+    # Unweighted aux-head losses (per-minibatch means over the update):
+    # comparable across --aux-det-scale settings.
+    "aux_loss_seen_trump",
+    "aux_loss_unseen_higher",
+    "aux_loss_points",
+    "aux_loss_secret",
+    "aux_loss_win",
+    "aux_loss_return",
 ]
 
 GREEDY_CSV_HEADER = [
@@ -154,6 +162,11 @@ GREEDY_CSV_HEADER = [
     "seen_trump_false_seen_t5",
     "seen_trump_nodes",
     "seen_trump_recall_cards",
+    # The other deterministic aux heads at the same nodes (§5.4).
+    "aux_secret_acc",
+    "aux_points_exact",
+    "aux_points_mae",
+    "aux_unseen_higher_acc",
 ]
 
 
@@ -182,11 +195,15 @@ def greedy_csv_row(episode: int, probe: dict) -> list:
         *(f"{r:.2f}" for r in probe["seen_trump_false_seen_by_trick"]),
         probe["seen_trump_nodes"],
         probe["seen_trump_recall_cards"],
+        f"{probe['aux_secret_acc']:.2f}",
+        f"{probe['aux_points_exact']:.2f}",
+        f"{probe['aux_points_mae']:.3f}",
+        f"{probe['aux_unseen_higher_acc']:.2f}",
     ]
 
 
-def seen_trump_summary(probe: dict) -> str:
-    """The seen-trump clause of the greedy-probe log line."""
+def aux_summary(probe: dict) -> str:
+    """The deterministic aux heads' clause of the greedy-probe log line."""
     recall_t = "/".join(f"{r:.0f}" for r in probe["seen_trump_recall_by_trick"])
     false_t = "/".join(f"{r:.0f}" for r in probe["seen_trump_false_seen_by_trick"])
     return (
@@ -194,7 +211,11 @@ def seen_trump_summary(probe: dict) -> str:
         f"recall {probe['seen_trump_recall']:.1f}% "
         f"(t0-5 {recall_t}, cards={probe['seen_trump_recall_cards']}), "
         f"false-seen {probe['seen_trump_false_seen']:.1f}% "
-        f"(t0-5 {false_t}, n={probe['seen_trump_nodes']})"
+        f"(t0-5 {false_t}, n={probe['seen_trump_nodes']}), "
+        f"secret {probe['aux_secret_acc']:.1f}%, "
+        f"points exact {probe['aux_points_exact']:.1f}% "
+        f"(mae {probe['aux_points_mae']:.2f}), "
+        f"unseen-higher {probe['aux_unseen_higher_acc']:.1f}%"
     )
 
 
@@ -494,6 +515,7 @@ def _emit_progress(state: _PhaseState, episode: int, stats: dict) -> None:
     )
     head_entropy = stats.get("head_entropy_norm") or {}
     head_softband = stats.get("head_softband") or {}
+    aux_raw = stats.get("aux_losses_raw") or {}
 
     def fmt(v):
         return f"{v:.2f}" if v is not None else "-"
@@ -546,6 +568,17 @@ def _emit_progress(state: _PhaseState, episode: int, stats: dict) -> None:
                 f"{stats.get('approx_kl', 0.0):.6f}",
                 f"{training_agent.actor_optimizer.param_groups[0]['lr']:.2e}",
                 f"{eps_per_s:.2f}",
+                *[
+                    f"{aux_raw[k]:.5f}" if k in aux_raw else ""
+                    for k in (
+                        "seen_trump_mask",
+                        "unseen_trump_higher_than_hand",
+                        "points",
+                        "secret_partner",
+                        "win",
+                        "return",
+                    )
+                ],
             ]
         )
 
@@ -626,7 +659,7 @@ def _run_interval_probes(state: _PhaseState, episode: int) -> None:
             f"called-suit lead {probe['called_suit_lead_rate']:.1f}% "
             f"(n={probe['called_leads']}), "
             f"play-spread {probe['play_logit_spread_med']:.2f}, "
-            f"{seen_trump_summary(probe)}",
+            f"{aux_summary(probe)}",
             flush=True,
         )
         if isinstance(hp, LeagueHyperparams):
@@ -831,6 +864,13 @@ def build_training_agent(args) -> tuple[PPOAgent, int]:
         print(f"🆕 Fresh {args.arch} agent ({n:,} parameters)")
     agent.gamma = spec.gamma
     agent.set_trainable_heads(spec.trainable_heads)
+    scale = float(getattr(args, "aux_det_scale", 1.0))
+    if scale != 1.0:
+        agent.set_deterministic_aux_scale(scale)
+        print(
+            f"🎯 Deterministic aux-head loss coefficients x{scale:g} "
+            "(seen-trump, unseen-higher, points, secret partner)"
+        )
     if getattr(args, "oracle_init", None):
         warn_if_oracle_overwrite(agent, args.oracle_init, args.resume)
         state_dict = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
@@ -910,6 +950,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--aux-det-scale",
+        type=float,
+        default=1.0,
+        help="multiply the four deterministic aux-head loss coefficients "
+        "(seen-trump mask, unseen-trump-higher, known points, secret partner) "
+        "by this factor; win/return keep theirs (Redesign §4.3, 09-18)",
+    )
     p.add_argument(
         "--worker-device",
         default=None,

@@ -547,6 +547,13 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     recall_by_trick = [[0, 0] for _ in range(6)]  # [correct, total] per trick
     false_seen = unseen_total = 0
     false_seen_by_trick = [[0, 0] for _ in range(6)]  # [false-seen, unseen]
+    # The other three deterministic aux heads at the same nodes (§5.4):
+    # secret partner (self label: holds the called card), known points per
+    # relative seat (exact after rounding, and MAE), unseen-trump-higher.
+    secret_correct = 0
+    points_abs_err = 0.0
+    points_exact = points_total = 0
+    unseen_higher_correct = 0
     try:
         for g in range(n_games):
             game = Game(partner_selection_mode=get_partner_selection_mode(g))
@@ -636,10 +643,32 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                                 )
                             )
                             a = int(torch.argmax(probs_t, dim=1).item()) + 1
-                            seen_p = agent.seen_trump_probs(enc_out)
-                            if seen_p is not None:
+                            aux = agent.aux_probe(enc_out)
+                            if aux is not None:
                                 truth = compute_seen_trump_mask(player)
-                                pred = [int(x > 0.5) for x in seen_p.tolist()]
+                                pred = [
+                                    int(x > 0.5) for x in aux["seen_trump"].tolist()
+                                ]
+                                secret_correct += int(
+                                    (float(aux["secret"]) > 0.5)
+                                    == bool(player.is_secret_partner)
+                                )
+                                unseen_higher_correct += int(
+                                    (float(aux["unseen_higher"]) > 0.5)
+                                    == bool(
+                                        compute_any_unseen_trump_higher_than_hand(
+                                            player
+                                        )
+                                    )
+                                )
+                                for p_pred, p_true in zip(
+                                    aux["points"].tolist(),
+                                    compute_known_points_rel(player),
+                                ):
+                                    err = abs(float(p_pred) - float(p_true))
+                                    points_abs_err += err
+                                    points_exact += int(err < 0.5)
+                                    points_total += 1
                                 must_recall = seen_trump_recall_cards(player)
                                 trick_bin = min(int(game.current_trick), 5)
                                 seen_nodes += 1
@@ -776,6 +805,14 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         ],
         "seen_trump_nodes": seen_nodes,
         "seen_trump_recall_cards": recall_total,
+        # The other deterministic heads at the same nodes: % of nodes where
+        # the secret-partner read matches the self label; % of per-seat
+        # known-points reads exact after rounding (and their MAE, points);
+        # % of nodes where the unseen-trump-higher read matches the truth.
+        "aux_secret_acc": 100.0 * secret_correct / max(seen_nodes, 1),
+        "aux_points_exact": 100.0 * points_exact / max(points_total, 1),
+        "aux_points_mae": points_abs_err / max(points_total, 1),
+        "aux_unseen_higher_acc": 100.0 * unseen_higher_correct / max(seen_nodes, 1),
     }
 
 

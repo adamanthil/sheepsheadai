@@ -2,6 +2,7 @@
 commands carry the pre-registered flags, the config round-trips as the
 pre-registration artifact, and the smoke preset covers every phase."""
 
+import csv
 import json
 import os
 
@@ -55,6 +56,12 @@ def test_league_commands_distinguish_generation_one(tmp_path, monkeypatch):
     assert gen1[gen1.index("--worker-device") + 1] == p.cfg.league.worker_device
     assert gen1[gen1.index("--worker-compile") + 1] == p.cfg.league.worker_compile
     assert "--worker-device" not in p._worker_flags()
+    # The deterministic aux-head coefficient multiplier reaches every stage
+    # that trains those heads (§4.3, 09-18).
+    assert gen2[gen2.index("--aux-det-scale") + 1] == str(p.cfg.aux_det_scale)
+    assert "--aux-det-scale" in p._pi_stage_flags()
+    p.cfg.aux_det_scale = 1.0
+    assert "--aux-det-scale" not in p.league_trainer_cmd(2, p.boundary_ckpt(1))
     # Rendering the command materializes nothing (--dry-run renders it
     # before any bootstrap exists); the seeds appear when generation 1
     # is about to train.
@@ -85,10 +92,13 @@ class _Stub:
     touched, h2h/panel/conventions are scripted, the controller sidecar is
     a real one so the entropy step edits real state."""
 
-    def __init__(self, program, edges):
+    def __init__(self, program, edges, aux_ready_from=1):
         self.p = program
         self.edges = edges  # {gen: (primary_edge, confirm_edge)}; se fixed
         self.judged = []
+        # The deterministic aux heads read as converged from this generation
+        # on (the battery's aux keys, §5.4); before it, they miss every bar.
+        self.aux_ready_from = aux_ready_from
         os.makedirs(program.league_ckpt_dir, exist_ok=True)
         from sheepshead.training.entropy_controller import EntropyTargetController
 
@@ -99,7 +109,12 @@ class _Stub:
         program._h2h = self.h2h
         program._panel = lambda g: None
         program._panel_b = lambda g: None
-        program._conventions = lambda ckpt, label: {
+        program._conventions = self.conventions
+
+    def conventions(self, ckpt, label):
+        g = int(label.replace("gen", ""))
+        ready = g >= self.aux_ready_from
+        return {
             "pick_rate": 30.0,
             "alone_rate": 5.0,
             "leaster_rate": 8.0,
@@ -107,6 +122,15 @@ class _Stub:
             "partner_trump_lead_rate": 97.0,
             "called_suit_lead_rate": 45.0,
             "play_logit_spread_med": 4.0,
+            "seen_trump_acc": 99.8 if ready else 90.0,
+            "seen_trump_recall": 99.8 if ready else 95.0,
+            "seen_trump_false_seen": 0.2 if ready else 16.0,
+            "seen_trump_recall_by_trick": [60.0] + [99.5 if ready else 80.0] * 5,
+            "seen_trump_false_seen_by_trick": [0.0] + [0.2 if ready else 30.0] * 5,
+            "aux_secret_acc": 99.9 if ready else 97.0,
+            "aux_points_exact": 99.5 if ready else 90.0,
+            "aux_points_mae": 0.05 if ready else 1.5,
+            "aux_unseen_higher_acc": 99.5 if ready else 95.0,
         }
 
     def train(self, g):
@@ -156,6 +180,45 @@ def test_league_loop_steps_once_then_hands_off_from_a_settled_boundary(
     p2._h2h = lambda *a: calls.append(a) or {"edge": 0.0, "se": 0.0, "modes": {}}
     assert p2.run_league() == theta_0 and calls == []
     assert os.path.exists(os.path.join(p.program_dir, "generations.csv"))
+
+
+def test_handoff_waits_for_the_aux_heads(tmp_path, monkeypatch):
+    """The marginal-value rule would hand off after gen 4; the aux heads
+    read ready only from gen 5, so gen 4 defers (continue) and gen 5 hands
+    off — from its own boundary (the step was at gen 3, so gen 5 is
+    settled)."""
+    monkeypatch.chdir(tmp_path)
+    cfg = ProgramConfig(run_name="auxwait")
+    cfg.gates.handoff_reference = ""
+    p = Program(cfg)
+    _Stub(
+        p,
+        {1: (0.08, 0.0), 2: (0.10, 0.0), 3: (0.0, 0.0), 4: (0.0, 0.0), 5: (0.0, 0.0)},
+        aux_ready_from=5,
+    )
+    theta_0 = p.run_league()
+    gens = p.state["league"]["generations"]
+    assert gens["4"]["aux_ready"] is False and gens["4"]["aux_failures"]
+    assert gens["4"]["decision"]["action"] == "continue"
+    assert "deferred" in gens["4"]["decision"]["reason"]
+    assert gens["5"]["aux_ready"] is True
+    assert gens["5"]["decision"]["action"] == "handoff"
+    assert theta_0 == p.boundary_ckpt(5)
+    with open(os.path.join(p.program_dir, "generations.csv")) as f:
+        rows = list(csv.DictReader(f))
+    assert [r["aux_ready"] for r in rows] == ["False"] * 4 + ["True"]
+
+
+def test_aux_heads_not_ready_at_the_cap_is_a_review(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg = ProgramConfig(run_name="auxcap")
+    cfg.league.max_generations = 4
+    cfg.gates.handoff_reference = ""
+    p = Program(cfg)
+    _Stub(p, {g: (0.08, 0.0) for g in range(1, 5)}, aux_ready_from=99)
+    with pytest.raises(rtp.NeedsReview, match="aux heads not ready"):
+        p.run_league()
+    assert p.state["league"]["generations"]["4"]["decision"]["action"] == "review"
 
 
 def test_confirmation_rescues_a_noise_miss(tmp_path, monkeypatch):

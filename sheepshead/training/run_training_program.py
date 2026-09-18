@@ -57,12 +57,26 @@ from sheepshead.training.program_config import ProgramConfig
 from sheepshead.training.stop_rules import (
     HandoffRuleConfig,
     IterationRuleConfig,
+    aux_readiness,
     decide_handoff,
     generation_verdict,
     iteration_stop,
     settled_generation,
 )
 from sheepshead.training.train_ppo import episode_of
+
+# The deterministic aux heads' greedy-probe keys the boundary battery
+# averages (aux_readiness reads them; §5.4).
+AUX_SCALAR_KEYS = (
+    "seen_trump_acc",
+    "seen_trump_recall",
+    "seen_trump_false_seen",
+    "aux_secret_acc",
+    "aux_points_exact",
+    "aux_points_mae",
+    "aux_unseen_higher_acc",
+)
+AUX_TRICK_KEYS = ("seen_trump_recall_by_trick", "seen_trump_false_seen_by_trick")
 
 _REPO_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -337,6 +351,7 @@ class Program:
             "--greedy-eval-games",
             str(cfg.bootstrap.greedy_eval_games),
             *self._worker_flags(),
+            *self._aux_flags(),
         )
         if cfg.bootstrap.update_interval:
             cmd += ["--update-interval", str(cfg.bootstrap.update_interval)]
@@ -455,6 +470,7 @@ class Program:
             "--entropy-play-floor",
             str(cfg.league.entropy_play_floor),
             *self._worker_flags(cfg.league.worker_device, cfg.league.worker_compile),
+            *self._aux_flags(),
         )
         if cfg.league.update_interval:
             cmd += ["--update-interval", str(cfg.league.update_interval)]
@@ -602,6 +618,12 @@ class Program:
             "play_logit_spread_med",
         )
         out: dict = {k: float(np.mean([p[k] for p in probes])) for k in keys}
+        # The deterministic aux heads' reads (§5.4): means across seeds, the
+        # per-trick series elementwise (what aux_readiness reads).
+        for k in AUX_SCALAR_KEYS:
+            out[k] = float(np.mean([p[k] for p in probes]))
+        for k in AUX_TRICK_KEYS:
+            out[k] = [float(np.mean([p[k][t] for p in probes])) for t in range(6)]
         out["probes"] = probes
         with open(path, "w") as f:
             json.dump(out, f, indent=2)
@@ -681,12 +703,19 @@ class Program:
                     f"gen-2 review gate: panel {rec['panel']['mean']:+.4f} below "
                     f"{self.cfg.gates.gen2_panel_min:+.3f}"
                 )
+        ready, failures = aux_readiness(conv, cfg.aux_bars)
+        rec["aux_ready"] = ready
+        rec["aux_failures"] = failures
+        self.log(
+            f"aux readiness gen {g}: "
+            + ("READY" if ready else "NOT READY: " + "; ".join(failures))
+        )
         history = [
             bool(self.state["league"]["generations"][str(h)]["improving"])
             for h in range(1, g + 1)
         ]
         decision = decide_handoff(
-            history, g, self.state["league"]["step_generation"], rule
+            history, g, self.state["league"]["step_generation"], rule, aux_ready=ready
         )
         rec["decision"] = {"action": decision.action, "reason": decision.reason}
         self._event(
@@ -704,11 +733,15 @@ class Program:
                 if (panel_b := rec.get("panel_b"))
                 else ""
             )
+            + f" aux_ready={ready}"
             + f" -> {decision.action} ({decision.reason})",
         )
         if decision.action == "entropy_step":
             self._entropy_step(g)
         self._write_generations_csv()
+        if decision.action == "review":
+            self._save_state()
+            raise NeedsReview(f"gen {g}: {decision.reason}: {'; '.join(failures)}")
         return decision.action
 
     def _entropy_step(self, g: int) -> None:
@@ -750,6 +783,13 @@ class Program:
             "called_suit_lead",
             "pick_rate",
             "leaster_rate",
+            "seen_trump_acc",
+            "seen_trump_false_seen",
+            "aux_unseen_higher_acc",
+            "aux_points_mae",
+            "aux_points_exact",
+            "aux_secret_acc",
+            "aux_ready",
             "decision",
             "train_hours",
         ]
@@ -787,6 +827,13 @@ class Program:
                         "called_suit_lead": f"{conv.get('called_suit_lead_rate', 0):.1f}",
                         "pick_rate": f"{conv.get('pick_rate', 0):.1f}",
                         "leaster_rate": f"{conv.get('leaster_rate', 0):.1f}",
+                        "seen_trump_acc": f"{conv.get('seen_trump_acc', 0):.2f}",
+                        "seen_trump_false_seen": f"{conv.get('seen_trump_false_seen', 0):.2f}",
+                        "aux_unseen_higher_acc": f"{conv.get('aux_unseen_higher_acc', 0):.2f}",
+                        "aux_points_mae": f"{conv.get('aux_points_mae', 0):.3f}",
+                        "aux_points_exact": f"{conv.get('aux_points_exact', 0):.2f}",
+                        "aux_secret_acc": f"{conv.get('aux_secret_acc', 0):.2f}",
+                        "aux_ready": rec.get("aux_ready", ""),
                         "decision": rec["decision"]["action"],
                         "train_hours": f"{rec.get('train_hours', 0.0):.2f}",
                     }
@@ -869,7 +916,13 @@ class Program:
         ):
             if val is not None:
                 flags += [name, str(val)]
-        return flags
+        return flags + self._aux_flags()
+
+    def _aux_flags(self) -> list[str]:
+        """The deterministic aux-head coefficient multiplier (§4.3, 09-18)
+        for every stage that trains those heads."""
+        scale = self.cfg.aux_det_scale
+        return ["--aux-det-scale", str(scale)] if scale != 1.0 else []
 
     def _cert_flags(self, routed: bool) -> list[str]:
         pi = self.cfg.policy_iteration
@@ -1034,6 +1087,7 @@ class Program:
                 "--greedy-eval-interval",
                 "0",
                 *self._worker_flags(),
+                *self._aux_flags(),
             )
             if self.cfg.league.update_interval:
                 cmd += ["--update-interval", str(self.cfg.league.update_interval)]
@@ -1225,8 +1279,8 @@ class Program:
             "",
             "## League generations",
             "",
-            "| gen | h2h vs prev | confirm | improving | panel A | panel B | partner | t0 trump | called-suit | decision |",
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "| gen | h2h vs prev | confirm | improving | panel A | panel B | partner | t0 trump | called-suit | seen-trump acc / false-seen | aux ready | decision |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         for g in sorted(int(k) for k in s["league"]["generations"]):
             rec = s["league"]["generations"][str(g)]
@@ -1245,6 +1299,8 @@ class Program:
                 f"| {conv.get('partner_trump_lead_rate', 0):.1f} "
                 f"| {conv.get('t0_trump_lead_rate', 0):.2f} "
                 f"| {conv.get('called_suit_lead_rate', 0):.1f} "
+                f"| {conv.get('seen_trump_acc', 0):.2f} / {conv.get('seen_trump_false_seen', 0):.2f} "
+                f"| {rec.get('aux_ready', '—')} "
                 f"| {rec['decision']['action']} |"
             )
         if s["league"].get("handoff"):

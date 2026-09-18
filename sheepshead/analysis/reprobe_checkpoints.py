@@ -23,9 +23,9 @@ import time
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.train_ppo import (
     GREEDY_CSV_HEADER,
+    aux_summary,
     episode_of,
     greedy_csv_row,
-    seen_trump_summary,
 )
 from sheepshead.training.training_utils import greedy_health_probe
 
@@ -53,7 +53,7 @@ def main() -> None:
                 f"{os.path.basename(path)} (ep {episode:,}, {time.time() - t0:.0f}s): "
                 f"PICK {probe['pick_rate']:.1f}%, leaster {probe['leaster_rate']:.1f}%, "
                 f"called-suit lead {probe['called_suit_lead_rate']:.1f}%, "
-                f"{seen_trump_summary(probe)}",
+                f"{aux_summary(probe)}",
                 flush=True,
             )
     print(f"wrote {len(paths)} rows -> {args.out}")

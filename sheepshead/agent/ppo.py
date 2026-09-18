@@ -358,6 +358,16 @@ class PPOAgent:
         self.points_loss_coeff = 0.2
         self.seen_trump_mask_loss_coeff = 0.2
         self.unseen_trump_higher_than_hand_loss_coeff = 0.1
+        # The deterministic four, at scale 1.0 (set_deterministic_aux_scale).
+        self._aux_base_coeffs = {
+            "secret_loss_coeff": self.secret_loss_coeff,
+            "points_loss_coeff": self.points_loss_coeff,
+            "seen_trump_mask_loss_coeff": self.seen_trump_mask_loss_coeff,
+            "unseen_trump_higher_than_hand_loss_coeff": (
+                self.unseen_trump_higher_than_hand_loss_coeff
+            ),
+        }
+        self.aux_det_scale = 1.0
 
         # Which actor/encoder parameters the optimizer may move; see
         # set_trainable_heads (the bidding-only phase freezes the play path).
@@ -652,13 +662,29 @@ class PPOAgent:
 
         return probs, logits, encoder_out
 
-    def seen_trump_probs(self, encoder_out):
-        """Seen/known-trump probabilities (len(TRUMP),) from an encoder output
-        of this agent, or None when its critic carries no aux heads."""
+    def aux_probe(self, encoder_out):
+        """The deterministic aux heads' reads (critics.aux_probe) from an
+        encoder output of this agent, or None when its critic carries no aux
+        heads."""
         critic = self.critic
         if not getattr(critic, "has_aux_heads", False):
             return None
-        return critic.seen_trump_probs(encoder_out, self.encoder.card)
+        return critic.aux_probe(encoder_out, self.encoder.card)
+
+    def set_deterministic_aux_scale(self, scale: float) -> None:
+        """Set the loss coefficients of the four DETERMINISTIC aux heads
+        (seen-trump mask, unseen-trump-higher, known points, secret partner)
+        to ``scale`` times their base values (Training_Program_Redesign §4.3,
+        09-18: the heads are exact functions of what the seat has observed,
+        so once learned they contribute no loss, and a larger coefficient
+        only shortens the transient in which the trunk is pushed to carry
+        the memory they read). Win and return predict outcomes with
+        irreducible uncertainty and keep their coefficients. Idempotent
+        (from the base values, never compounding); not saved in checkpoints
+        — a trainer applies it at start (``--aux-det-scale``)."""
+        self.aux_det_scale = float(scale)
+        for name, base in self._aux_base_coeffs.items():
+            setattr(self, name, base * self.aux_det_scale)
 
     def act(self, state, valid_actions, player_id=None, deterministic=False):
         """Select action given state and valid actions"""
@@ -2142,6 +2168,22 @@ class PPOAgent:
                 if acc.pass_adv_count > 0
                 else 0.0,
                 "pass_count": acc.pass_adv_count,
+            },
+            # Unweighted per-minibatch means of the aux losses: comparable
+            # across coefficient settings (the trainer logs these).
+            "aux_losses_raw": {
+                "win": acc.win_loss_sum / max(acc.win_loss_count, 1),
+                "return": acc.return_loss_sum / max(acc.return_loss_count, 1),
+                "points": acc.points_loss_sum / max(acc.points_loss_count, 1),
+                "secret_partner": acc.secret_loss_sum / max(acc.secret_loss_count, 1),
+                "seen_trump_mask": (
+                    acc.seen_trump_mask_loss_sum
+                    / max(acc.seen_trump_mask_loss_count, 1)
+                ),
+                "unseen_trump_higher_than_hand": (
+                    acc.unseen_trump_higher_than_hand_loss_sum
+                    / max(acc.unseen_trump_higher_than_hand_loss_count, 1)
+                ),
             },
             "critic_losses": {
                 "value": self.value_loss_coeff
