@@ -47,6 +47,9 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-16 | PANEL-B added (tentative): strong-skill / cross-ecology yardstick (30M, v2 release, iter11 P1, v2 8M seed), recorded per generation and at the final, no gate; membership provisional until the v2 release's reads vs the 30M land | 5.3 |
 | 09-16 | CE_Teacher_Design investigation CLOSED (§21); the v2 lineage ends at θ₃ = `rc_validate_v2/pi/iter1/distill_epoch7.pt` (+ its bidding phase); next: the fresh perceiver-recall run | 7 |
 | 09-16 | `202609_recall_rc` LAUNCHED 13:25 (bootstrap escape at ~5k episodes, watchdog engaged once). Seen-trump probe REDEFINED mid-bootstrap: all seats, recall = must-remember trumps (earlier tricks + picker bury/blind) by trick, false-seen; the picker-only/blind-bury first cut mistook the recall problem. Bootstrap checkpoints re-probed offline; later phases record the new definition (informational either way) | 7.1 |
+| 09-18 | Seen-trump memory expectation RECALIBRATED against the v2 retention lineage re-probed under the new definition: reliable recall is a league-scale outcome (v2 false-seen 12 → 1% between league 0.7M and 4.7M, gens 3–5), not a bootstrap one; perceiver-recall at league 700k a few points behind v2 on the harder task, same regime; trick 0 erratic for both | 7.1 |
+| 09-18 | AUX-HEAD READINESS GATE added as the handoff's precondition (§5.4): the four deterministic heads (seen-trump, unseen-higher, known points, secret partner) must be essentially never wrong on the boundary battery before the league hands off — the league is the only phase that builds the trunk memory they read; deferral = continue, cap without readiness = NEEDS REVIEW. Bars from v2 at 7.7M. Probe extended to the other three heads; reads recorded per generation and at every PI cert | 4.3, 5.4, 7.1 |
+| 09-18 | Deterministic aux-head loss coefficients ×2.5 (`aux_det_scale`, every stage that trains them; win/return unchanged) to shorten the memory transient; applied from `202609_recall_rc` league gen 2 (bootstrap and gen 1 ran at 1.0). Unweighted aux losses now logged per update. The running orchestrator (old code) is replaced at the gen-1 boundary by a resume under the new code | 4.3, 5.4 |
 
 ---
 
@@ -282,9 +285,15 @@ generation (2,000 deals/mode, all-seat CRN, deal-clustered
 bootstrap)[^duplicate]; PANEL-A absolute endpoint (the 30M-lineage
 yardstick, kept because it is available and absolute); the three
 convention probes at n=1000 × 4 seeds; greedy health (pick/leaster/alone/
-spread); the E7 frozen-node logit ladder (scale-free low-mass share, C2
-mass); role-conditioned h2h (picker hands) as the recall diagnostic.
-Cost ≈ 47 h/gen training + ~1 h evals (retention run measured 44–63 h).
+spread) and, from the same battery, the deterministic aux heads' reads
+(seen-trump accuracy / recall / false-seen by trick, unseen-higher,
+known points, secret partner — the handoff's readiness precondition,
+§5.4, added 09-18); the E7 frozen-node logit ladder (scale-free
+low-mass share, C2 mass); role-conditioned h2h (picker hands) as the
+recall diagnostic. The four deterministic aux heads train at 2.5× their
+base loss coefficients (§5.4). Cost ≈ 47 h/gen training + ~1 h evals
+(retention run measured 44–63 h; `202609_recall_rc` gen 1: 5.0 eps/s ≈
+55 h).
 
 ### 4.4 Phase 3 — search-Q regularized policy iteration, to convergence
 
@@ -426,6 +435,76 @@ h2h (picker hands) separates a recall-routing deficit from a general
 one; the `perceiver-recall-ctxmem` twin becomes the first diagnostic
 arm if the gen-2 gate fails.
 
+### 5.4 Aux-head readiness: the handoff's precondition (added 09-18)
+
+The league is the only phase that can BUILD the trunk memory the aux
+heads read: policy iteration trains the six aux losses too, but on
+8,000 games at 3e-5 (maintenance), and the bidding phase freezes the
+encoder. Four of the six heads are exact functions of what the seat has
+observed — the seen-trump mask (own history), unseen-trump-higher (that
+mask + hand), known points per seat (trick history + own bury), secret
+partner (the self label, hand + call) — so 100% is their true ceiling
+and "essentially never wrong" is a fair bar. Win and return predict
+outcomes with irreducible uncertainty and are never gated.
+
+Rule (`stop_rules.aux_readiness`, `LeagueConfig.aux_bars`): a handoff
+the marginal-value rule would make is DEFERRED (the generation reads
+`continue`, reason "handoff deferred, aux heads not ready") until the
+boundary battery's means (4 × 1,000 greedy games, every seat's play
+nodes) clear every bar; at the generation cap without readiness the
+program exits NEEDS REVIEW. The entropy step and plain continues are
+untouched. Bars, from the v2 retention lineage's converged checkpoint
+(league 7.7M) re-probed under the 09-16 probe definition (values in
+`runs/202609_recall_rc/recall_compare/`): seen-trump accuracy ≥ 99.5%,
+false-seen ≤ 0.5% overall and at each of tricks 1–5, recall ≥ 99% at
+each of tricks 1–5; unseen-higher accuracy ≥ 99%; known points MAE
+≤ 1.0 point; secret-partner accuracy ≥ 99.5%. Trick 0 (the picker's
+bury alone) is never read. The reads are recorded per generation in
+`generations.csv` (`seen_trump_acc`, `seen_trump_false_seen`,
+`aux_unseen_higher_acc`, `aux_points_mae`, `aux_points_exact`,
+`aux_secret_acc`, `aux_ready`) and the same probe runs at every policy
+iteration cert, so a trunk-epoch regression of the memory is visible.
+
+Measured basis (400 games per checkpoint, every seat's play nodes):
+
+| league episodes | seen acc / false-seen | secret | unseen-higher | points exact / MAE |
+|---|---|---|---|---|
+| v2 0.7M | 92.8 / 12.2 | 99.5 | 99.9 | 10.4 / 5.31 |
+| v2 2.7M | 95.8 / 6.1 | 99.9 | 99.9 | 7.6 / 8.35 |
+| v2 4.7M | 99.4 / 0.9 | 100.0 | 100.0 | 5.5 / 9.40 |
+| v2 7.7M | 99.8 / 0.2 | 100.0 | 100.0 | 45.6 / 0.88 |
+| recall 0.7M | 90.2 / 16.7 | 99.9 | 99.8 | 42.2 / 1.02 |
+
+Secret partner and unseen-higher are at ceiling from the first
+checkpoint in both lineages; seen-trump is the memory head and the
+binding bar. The KNOWN-POINTS head is the exception to "never wrong":
+it is a regression under a smooth-L1 loss, so it is never integer-exact
+(45.6% at v2's best), and in the v2 lineage it wandered to a 9-point
+error while seen-trump converged, then recovered to 0.88 at the end.
+Its bar is therefore the demonstrated converged MAE, which would have
+held v2's handoff at 4.7M — the gate's protective function — rather
+than an exactness no lineage has reached. OPEN: a "never wrong" points
+head is a classification head over per-seat totals (0–120, or the
+score-relevant thresholds); not changed mid-run.
+
+Coefficients (same date): the four deterministic heads train at 2.5×
+their base loss coefficients (`ProgramConfig.aux_det_scale`, the
+trainers' `--aux-det-scale`; seen-trump 0.2 → 0.5, points 0.2 → 0.5,
+secret 0.1 → 0.25, unseen-higher 0.1 → 0.25; win 0.05 and return 0.1
+unchanged), in every stage that trains them. Both losses are
+residual-driven, so a converged head contributes nothing at any
+coefficient; the multiplier only shortens the transient in which the
+trunk is pushed to carry the memory. Kept modest because the trunk is
+shared and the play head's SNR at rare lead nodes is the league's
+binding constraint. `202609_recall_rc` ran its bootstrap and league
+gen 1 at 1.0, so gens 1 and 2 are not a single-condition series
+against v2. Rejected: a standalone trunk memory pretrain (moves the
+trunk under frozen policy heads → policy drift); learned uncertainty
+weighting (Kendall & Gal) as more machinery than the static bump plus
+the gate need — revisit if the bump proves insufficient. The
+unweighted aux losses are now logged per update
+(`training_progress.csv` `aux_loss_*`), so the effect is visible.
+
 ---
 
 ## 6. Code (built 2026-09-02 on branch `training-program-redesign`)
@@ -555,7 +634,13 @@ final references and PANEL-B. The perceiver-recall launch is unblocked.
   and every later phase records the second.
 - **League.** Gen-1 h2h ≥ +0.05 and gen-2 ≥ +0.05; B2 held from gen 1;
   panel ≥ +0.20 by gen 6 (v2: +0.206); C2 in the 38–52% band; handoff
-  at gen 4–6.
+  at gen 4–6. Aux readiness (§5.4, added 09-18): v2 at 1.0× cleared the
+  seen-trump bars between league 2.7M and 4.7M (false-seen 6.2 → 1.0%),
+  i.e. gens 3–5; at 2.5× on the harder recall task the expectation is
+  readiness by gen 4, so the gate is expected NOT to defer the handoff.
+  A deferral is informative (the handoff was about to fire on an
+  unready trunk); readiness still missing at the cap is the failure
+  reading (§7.2).
 - **Policy iteration** (amended 09-12). Iteration 1 play-only vs θ_0
   ≥ +0.010; later iterations play-only ≥ 0 (non-inferior) with the pooled
   slope over iterations positive at 2σ; bidding route within ±0.003;

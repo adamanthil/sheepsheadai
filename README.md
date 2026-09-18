@@ -386,10 +386,16 @@ uv run train-ppo --phase league --resume <previous boundary checkpoint> \
     --until 1000000 --save-interval 50000 --snapshot-interval 50000 \
     --greedy-eval-interval 50000 --greedy-eval-games 200 \
     --entropy-play-floor 0.28 --num-workers 8 --seed 42 \
-    --worker-device mps --worker-compile default \
+    --worker-device mps --worker-compile default --aux-det-scale 2.5 \
     --seed-checkpoints 'runs/rc_202609/seeds/*.pt' \
     --oracle-init runs/rc_202609/oracle/oracle_init.pt --no-entropy-controller
 ```
+
+`--aux-det-scale 2.5` trains the four deterministic aux heads (seen-trump
+mask, unseen-trump-higher, known points, secret partner) at 2.5× their base
+loss coefficients; win and return keep theirs. The orchestrator passes it to
+every stage that trains those heads (bootstrap, league, the distill trunk
+epochs, the bidding phase) from `ProgramConfig.aux_det_scale`.
 
 Generation 1 seeds the population with four copies of the bootstrap final
 (`runs/rc_202609/seeds/`), loads the pretrained oracle and runs with fixed
@@ -411,23 +417,36 @@ After every generation the orchestrator records, in `state.json` and
   and PANEL-B (the 30M, the v2 release, iter11 P1, the v2 8M seed: a
   strong-skill, cross-ecology field) recorded beside it, gating nothing;
 - the convention battery (4 × 1,000 greedy games): partner trump lead,
-  defender trick-0 trump lead, called-suit lead, pick and leaster rates.
+  defender trick-0 trump lead, called-suit lead, pick and leaster rates,
+  and the deterministic aux heads' reads from the same games (seen-trump
+  accuracy / false-seen / recall by trick, unseen-higher, known points,
+  secret partner).
 
 The **handoff rule** (`stop_rules.py`, §5.1 of the notebook): a generation
 is *improving* when its h2h gain is at least +0.02 with the 2-SE lower
 bound above zero. After the 3-generation floor, the first non-improving
 generation fires the single play-entropy step; the second hands off to
 search with θ₀ = the boundary checkpoint of the last generation wholly at a
-settled entropy target. The cap is 8 generations. Two review gates stop the
+settled entropy target. The cap is 8 generations. The handoff has a
+**readiness precondition** (§5.4): the four deterministic aux heads must
+be essentially never wrong on the battery (seen-trump accuracy ≥ 99.5%,
+false-seen ≤ 0.5% overall and per trick 1–5, recall ≥ 99% per trick 1–5;
+unseen-higher ≥ 99%; known points mean absolute error ≤ 1.0 point; secret
+partner ≥ 99.5%),
+because the league is the only phase that builds the trunk memory they
+read. A handoff the rule would make is deferred (`continue`, "handoff
+deferred, aux heads not ready") until they clear; at the cap without
+readiness the program exits NEEDS REVIEW. Two review gates stop the
 program for the operator instead of deciding: the generation-2 panel must
 read at least +0.06, and the handoff checkpoint's h2h vs the July 8M
 reference must have a lower bound above −0.02 (skipped when the reference
 is absent). The B2 bounds (partner trump lead ≥ 50%, defender trick-0 trump
-lead ≤ 10%) are hard health checks at every generation. The decision line
-in `program.log` reads:
+lead ≤ 10%) are hard health checks at every generation. The log carries an
+`aux readiness gen g: READY` / `NOT READY: <every failing bar>` line and
+the decision line reads:
 
 ```
-gen 3: h2h +0.0312±0.0118 improving=True panel +0.0840 -> continue (...)
+gen 3: h2h +0.0312±0.0118 improving=True panel +0.0840 aux_ready=True -> continue (...)
 ```
 
 **Phase 3 — search-Q regularized policy iteration** (~3 days per
@@ -606,9 +625,14 @@ all 14 trumps, `recall` over the trumps the seat can only know from memory
 in the hand or on the table), the same per trick `t0-5` so forgetting shows
 as decay, and `false-seen` on trumps the seat has not seen, overall and per
 trick (rising recall at flat false-seen is memory; at rising false-seen it
-is a head that says "seen" for everything). Informational
-only; nothing gates on it. To re-probe saved checkpoints (for instance
-after a probe change) run
+is a head that says "seen" for everything); then `secret` (the
+secret-partner self label), `points exact` (known points per seat, exact
+after rounding, with the MAE) and `unseen-higher`, the other three
+deterministic aux heads at the same nodes. In the bootstrap and the policy
+iteration certs these are informational; at the league boundaries they are
+the handoff's readiness precondition (above). The unweighted aux losses of
+every update land in `training_progress.csv` as `aux_loss_*`. To re-probe
+saved checkpoints (for instance after a probe change) run
 `uv run python -m sheepshead.analysis.reprobe_checkpoints <run>/checkpoints/checkpoint_*.pt --out <run>/checkpoints/greedy_health_recall.csv`.
 
 ### Where the methodology is documented
