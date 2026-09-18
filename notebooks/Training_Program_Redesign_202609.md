@@ -534,11 +534,23 @@ final references and PANEL-B. The perceiver-recall launch is unblocked.
   cards, so forgetting reads as decay across the row; `false_seen`
   (overall and per trick) guards against a head that says "seen" for
   everything — rising recall at rising false-seen is bias, rising recall
-  at flat false-seen is memory. Expected: acc ≥ 95%, recall high and
-  flat across tricks at low false-seen by 400k. INFORMATIONAL ONLY
-  — it is recorded every probe interval and never gates or changes
-  anything. The bootstrap of `202609_recall_rc` ran under the first
-  definition; its checkpoints were re-probed under the second
+  at flat false-seen is memory. Expected (recalibrated 09-18 against
+  the v2 retention lineage, re-probed under this definition —
+  `runs/202609_recall_rc/recall_compare/`): the bootstrap ends in the
+  partial-memory regime (acc ~89%, false-seen ~18%, rising with the
+  trick index); reliable recall is a LEAGUE-scale outcome, not a
+  bootstrap one — v2 read acc 93/94/96/99.3/99.8% and false-seen
+  12/11/6/1.0/0.2% at league episodes 0.7/1.7/2.7/4.7/7.7M, i.e. the
+  clean-up came between gens 3 and 5, in false-seen (recall was ~96%
+  from the start, by bias). At league 700k perceiver-recall reads acc
+  90.3 / false-seen 16.7 (t1–5 12/23/36/46/46) vs v2's 93.2 / 11.7
+  (9/15/24/33/33): a few points behind on the harder task, same regime.
+  Trick 0 (the picker's bury alone, ~100–200 cards per probe) is
+  erratic for BOTH lineages (v2 0–67% with the bury in its
+  observation), so read tricks 1–5. INFORMATIONAL ONLY — it is
+  recorded every probe interval and never gates or changes anything.
+  The bootstrap of `202609_recall_rc` ran under the first definition;
+  its checkpoints were re-probed under the second
   (`analysis/reprobe_checkpoints.py` → `checkpoints/greedy_health_recall.csv`),
   and every later phase records the second.
 - **League.** Gen-1 h2h ≥ +0.05 and gen-2 ≥ +0.05; B2 held from gen 1;
