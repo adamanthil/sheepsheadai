@@ -171,6 +171,15 @@ class Program:
         wall clock since the first start (pauses included) and the hours
         its stage subprocesses actually ran."""
         times = self.state["phase_times"][name]
+        if "finished" in times:
+            # A resume passing through a phase it found complete: keep the
+            # recorded finish (re-closing it would count the time since as
+            # wall clock).
+            self.log(
+                f"↷ {self.PHASE_TITLES[name]}: finished {times['finished']} "
+                f"({_fmt_hours(times['wall_hours'])} wall clock)"
+            )
+            return
         times["finished"] = _now()
         times["wall_hours"] = _hours_since(times["started"])
         self.log(
