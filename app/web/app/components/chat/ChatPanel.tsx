@@ -6,18 +6,24 @@ import type { ChatMessage } from "../../../lib/types";
 
 export type { ChatMessage };
 
-interface ChatPanelProps {
+export interface ChatPanelProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => void;
   /** Controls offered for a player message's author (e.g. remove, mute),
    * or null for none. Clicking the author's name shows them. */
   authorActions?: (msg: ChatMessage) => React.ReactNode;
+  /** Authors this viewer muted (client id -> name), listed in the header
+   * so they can be unmuted; the caller filters their messages out. */
+  muted?: Record<string, string>;
+  onUnmute?: (clientId: string) => void;
 }
 
 export function ChatPanel({
   messages,
   onSendMessage,
   authorActions,
+  muted,
+  onUnmute,
 }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   // The message whose author controls are open, if any.
@@ -49,6 +55,21 @@ export function ChatPanel({
     <div className={styles.chatPanel}>
       <div className={styles.chatHeader}>
         <span className={styles.headerTitle}>Chat</span>
+        {muted && Object.keys(muted).length > 0 && (
+          <div className={styles.mutedList}>
+            {Object.entries(muted).map(([id, name]) => (
+              <button
+                key={id}
+                type="button"
+                className={styles.mutedChip}
+                onClick={() => onUnmute?.(id)}
+                title={`Unmute ${name}`}
+              >
+                {name} muted ×
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div ref={messagesContainerRef} className={styles.messagesContainer}>
         {messages.length === 0 ? (

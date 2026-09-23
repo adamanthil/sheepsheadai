@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Browser, type Page } from "@playwright/test";
 
 /** Create a table from the home page and land in its waiting room. Returns
  * the table id. */
@@ -64,4 +64,31 @@ export async function createTableAndDeal(
   await page.getByRole("button", { name: /Fill (empty )?with AI/ }).click();
   await page.getByRole("button", { name: "Deal cards →" }).click();
   await page.waitForURL(/\/table\//);
+}
+
+const apiBase = "http://127.0.0.1:9100";
+
+/** Join ``tableId`` as ``name`` through the API in a fresh browser context
+ * (its own identity) and open the waiting room there. */
+export async function joinInNewPage(
+  browser: Browser,
+  tableId: string,
+  name: string,
+): Promise<Page> {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const res = await page.request.post(`${apiBase}/api/tables/${tableId}/join`, {
+    data: { display_name: name },
+  });
+  expect(res.ok()).toBe(true);
+  const joined = await res.json();
+  await page.addInitScript(
+    ([id, clientId, token]) => {
+      window.localStorage.setItem(`sheepshead_client_id_${id}`, clientId);
+      window.localStorage.setItem("sheepshead_session_token", token);
+    },
+    [tableId, joined.client_id, joined.session_token],
+  );
+  await page.goto(`/waiting/${tableId}`);
+  return page;
 }

@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 
 import { STORAGE_KEYS } from "../../../lib/storage";
 import { useCountdown } from "../../../lib/hooks/useCountdown";
-import { useIsMobile, useMediaQuery } from "../../../lib/ds";
+import { useChatMutes } from "../../../lib/hooks/useChatMutes";
+import { ds, useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
 import { isAiSeat, nameForSeat } from "./utils/seatMath";
 import { RemovePlayerButton } from "../../components/RemovePlayerButton";
@@ -133,6 +134,7 @@ export default function TablePage() {
   });
 
   const secondsLeft = useCountdown(turnDeadline);
+  const mutes = useChatMutes(params?.id);
   const [showScores, setShowScores] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
@@ -201,7 +203,8 @@ export default function TablePage() {
   const hasLastTrick = computeHasLastTrick(view);
   const prevText = computePrevText(showPrev, hasLastTrick, view, table);
 
-  const lastMessage = computeLastMessage(chatMessages);
+  const shownChat = mutes.visible(chatMessages);
+  const lastMessage = computeLastMessage(shownChat);
 
   // Host-only Remove for another human, offered on scoreboard rows and on
   // chat authors (the only place an unseated spectator shows up).
@@ -219,8 +222,32 @@ export default function TablePage() {
           table.seatOccupants[String(seat)],
           nameForSeat(seat, table),
         );
-  const authorActions = (msg: ChatMessage) =>
-    removeControl(msg.author_id, msg.author ?? "this player");
+  // Anyone can mute another player's chat for themselves; the host can
+  // also remove them.
+  const authorActions = (msg: ChatMessage) => {
+    const author = msg.author_id;
+    if (!author || author === clientId) return null;
+    const name = msg.author ?? "this player";
+    return (
+      <>
+        <button
+          type="button"
+          className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+          onClick={() => mutes.mute(author, name)}
+        >
+          Mute
+        </button>
+        {removeControl(author, name)}
+      </>
+    );
+  };
+  const chat = {
+    messages: shownChat,
+    onSendMessage: sendChatMessage,
+    authorActions,
+    muted: mutes.muted,
+    onUnmute: mutes.unmute,
+  };
 
   const stage = (
     <Stage
@@ -375,10 +402,8 @@ export default function TablePage() {
           <MobileLogScreen
             table={table}
             yourSeat={yourSeat}
-            chatMessages={chatMessages}
-            onSendMessage={sendChatMessage}
+            chat={chat}
             seatControls={seatControls}
-            authorActions={authorActions}
             onClose={() => setShowMobileLog(false)}
           />
           {overlays}
@@ -421,10 +446,8 @@ export default function TablePage() {
         <RightRail
           table={table}
           yourSeat={yourSeat}
-          chatMessages={chatMessages}
-          onSendMessage={sendChatMessage}
+          chat={chat}
           seatControls={seatControls}
-          authorActions={authorActions}
         />
       </div>
       {overlays}

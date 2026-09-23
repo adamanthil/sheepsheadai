@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChatPanel, type ChatMessage } from "../../../components/chat";
+import { ChatPanel, type ChatPanelProps } from "../../../components/chat";
 import type { TableView } from "../../../../lib/types";
 import Scoreboard from "./Scoreboard";
 import styles from "./MobileLogScreen.module.css";
@@ -7,10 +7,8 @@ import styles from "./MobileLogScreen.module.css";
 interface MobileLogScreenProps {
   table: TableView;
   yourSeat: number | null;
-  chatMessages: ChatMessage[];
-  onSendMessage: (msg: string) => void;
+  chat: ChatPanelProps;
   seatControls?: (seat: number) => React.ReactNode;
-  authorActions?: (msg: ChatMessage) => React.ReactNode;
   onClose: () => void;
 }
 
@@ -19,10 +17,8 @@ type Tab = "scores" | "chat";
 export default function MobileLogScreen({
   table,
   yourSeat,
-  chatMessages,
-  onSendMessage,
+  chat,
   seatControls,
-  authorActions,
   onClose,
 }: MobileLogScreenProps) {
   const [tab, setTab] = useState<Tab>("chat");
@@ -62,11 +58,7 @@ export default function MobileLogScreen({
             />
           </div>
         ) : (
-          <ChatPanel
-            messages={chatMessages}
-            onSendMessage={onSendMessage}
-            authorActions={authorActions}
-          />
+          <ChatPanel {...chat} />
         )}
       </div>
     </div>

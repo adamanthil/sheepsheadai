@@ -5,12 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import type { TableSummary } from "../../../lib/types";
 import { apiFetch } from "../../../lib/api";
 import { useTableSocket } from "../../../lib/hooks/useTableSocket";
+import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import styles from "./page.module.css";
 import { ChatPanel } from "../../components/chat";
 import { RemovePlayerButton } from "../../components/RemovePlayerButton";
 import type { SeatInfo } from "./components/SeatCard";
-import { useIsMobile } from "../../../lib/ds";
+import { ds, useIsMobile } from "../../../lib/ds";
 import {
   DesktopWaitingLayout,
   MobileWaitingLayout,
@@ -250,6 +251,7 @@ export default function WaitingRoom() {
   }, [table, removableId]);
 
   const isMobile = useIsMobile();
+  const mutes = useChatMutes(params?.id);
   const shortId = `#${String(params?.id || "")
     .slice(0, 4)
     .toUpperCase()}`;
@@ -259,18 +261,36 @@ export default function WaitingRoom() {
   const seatedCount = seatItems.filter((s) => !!s.name).length;
   const emptyCount = seatItems.filter((s) => !s.name).length;
 
+  // Anyone can mute another player's chat for themselves; the host can
+  // also remove them.
   const chat = (
     <ChatPanel
-      messages={chatMessages}
+      messages={mutes.visible(chatMessages)}
       onSendMessage={sendChatMessage}
+      muted={mutes.muted}
+      onUnmute={mutes.unmute}
       authorActions={(msg) => {
-        const target = removableId(msg.author_id);
-        return target ? (
-          <RemovePlayerButton
-            name={msg.author ?? "this player"}
-            onRemove={() => void kickPlayer(target)}
-          />
-        ) : null;
+        const author = msg.author_id;
+        if (!author || author === clientId) return null;
+        const name = msg.author ?? "this player";
+        const target = removableId(author);
+        return (
+          <>
+            <button
+              type="button"
+              className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+              onClick={() => mutes.mute(author, name)}
+            >
+              Mute
+            </button>
+            {target && (
+              <RemovePlayerButton
+                name={name}
+                onRemove={() => void kickPlayer(target)}
+              />
+            )}
+          </>
+        );
       }}
     />
   );

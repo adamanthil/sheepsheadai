@@ -1,5 +1,5 @@
 import React from "react";
-import { ChatPanel, type ChatMessage } from "../../../components/chat";
+import { ChatPanel, type ChatPanelProps } from "../../../components/chat";
 import type { TableView } from "../../../../lib/types";
 import Scoreboard from "./Scoreboard";
 import styles from "./RightRail.module.css";
@@ -7,20 +7,16 @@ import styles from "./RightRail.module.css";
 interface RightRailProps {
   table: TableView;
   yourSeat: number | null;
-  chatMessages: ChatMessage[];
-  onSendMessage: (msg: string) => void;
+  chat: ChatPanelProps;
   seatControls?: (seat: number) => React.ReactNode;
-  authorActions?: (msg: ChatMessage) => React.ReactNode;
 }
 
 /** Desktop right rail: scoreboard on top, chat filling the rest. */
 export default function RightRail({
   table,
   yourSeat,
-  chatMessages,
-  onSendMessage,
+  chat,
   seatControls,
-  authorActions,
 }: RightRailProps) {
   return (
     <div className={styles.rail}>
@@ -32,11 +28,7 @@ export default function RightRail({
         />
       </div>
       <div className={styles.chat}>
-        <ChatPanel
-          messages={chatMessages}
-          onSendMessage={onSendMessage}
-          authorActions={authorActions}
-        />
+        <ChatPanel {...chat} />
       </div>
     </div>
   );

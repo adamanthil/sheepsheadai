@@ -199,3 +199,22 @@
   align-items: center;
   margin-top: 6px;
 }
+
+/* Muted authors in the header; clicking one unmutes them. */
+.mutedList {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+.mutedChip {
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}

@@ -1,33 +1,8 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
-import { createTable } from "./helpers";
+import { expect, test } from "@playwright/test";
+import { createTable, joinInNewPage } from "./helpers";
 
 // The host removes a player, from their seat card or from one of their
 // chat messages; the removed player is sent home with a notice.
-
-const apiBase = "http://127.0.0.1:9100";
-
-async function joinInNewPage(
-  browser: Browser,
-  tableId: string,
-  name: string,
-): Promise<Page> {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  const res = await page.request.post(`${apiBase}/api/tables/${tableId}/join`, {
-    data: { display_name: name },
-  });
-  expect(res.ok()).toBe(true);
-  const joined = await res.json();
-  await page.addInitScript(
-    ([id, clientId, token]) => {
-      window.localStorage.setItem(`sheepshead_client_id_${id}`, clientId);
-      window.localStorage.setItem("sheepshead_session_token", token);
-    },
-    [tableId, joined.client_id, joined.session_token],
-  );
-  await page.goto(`/waiting/${tableId}`);
-  return page;
-}
 
 test("host removes a player from their seat", async ({ browser, page }) => {
   const tableId = await createTable(page, "Host", "e2e-kick-seat");
