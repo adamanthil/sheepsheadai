@@ -76,6 +76,8 @@ class Table:
     ai_task: Optional[asyncio.Task] = None
     # background task to auto-close the table when humans disconnect
     autoclose_task: Optional[asyncio.Task] = None
+    # pending host handoff after the host's last tab closed
+    host_handoff_task: Optional[asyncio.Task] = None
     running_scores: Dict[str, int] = field(
         default_factory=dict
     )  # occupant_id -> cumulative score

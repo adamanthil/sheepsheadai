@@ -145,8 +145,12 @@ export function useTableSocket(
         } else if (data.type === "table_update") {
           const tbl = data.table;
           callbacksRef.current?.onTableUpdate?.(tbl, data.isHost);
+          // isHost rides along so a host handoff shows up without waiting
+          // for the next state message.
           setLastState((prev: TableStateMsg | null) =>
-            prev ? { ...prev, table: tbl } : prev,
+            prev
+              ? { ...prev, table: tbl, isHost: data.isHost ?? prev.isHost }
+              : prev,
           );
         } else if (data.type === "chat:init") {
           // Initialize chat with full history

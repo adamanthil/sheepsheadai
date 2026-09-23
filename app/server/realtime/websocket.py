@@ -20,6 +20,11 @@ from server.realtime.chat import (
     send_chat_init,
 )
 from server.runtime.ai_loop import schedule_ai_turns
+from server.runtime.host import (
+    cancel_host_handoff,
+    host_is_away,
+    schedule_host_handoff,
+)
 from server.runtime.lifecycle import schedule_autoclose_if_no_humans
 from server.runtime.seating import (
     cancel_disconnect_task,
@@ -131,6 +136,11 @@ async def _serve_connection(
             conn.sockets.add(websocket)
             conn.disconnected_at = None
             if first_socket:
+                if client_id == table.host_client_id:
+                    cancel_host_handoff(table)
+                elif host_is_away(table):
+                    # A handoff that found nobody connected re-arms here.
+                    schedule_host_handoff(table)
                 # Cancel any pending replacement and attempt to reclaim
                 # reserved AI seat if needed.
                 cancel_disconnect_task(table, client_id)
@@ -219,6 +229,8 @@ async def _serve_connection(
             # take the game away from someone still sitting at it.
             if not c.sockets:
                 c.disconnected_at = time.time()
+                if client_id == table.host_client_id:
+                    schedule_host_handoff(table)
                 try:
                     if c.seat is not None:
                         schedule_ai_replacement_for_disconnected_human(table, client_id)
