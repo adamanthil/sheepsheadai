@@ -18,6 +18,7 @@ def capture_pre_state(game: Game) -> Dict[str, Any]:
         "bury_len": len(game.bury),
         "partner": game.partner,
         "current_trick": game.current_trick,
+        "play_started": bool(game.play_started),
     }
 
 

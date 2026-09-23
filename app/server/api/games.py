@@ -223,7 +223,7 @@ async def post_action(
         post = capture_post_state(table.game)
 
     if pre is not None and post is not None:
-        await fire_game_hooks(table, pre, post)
+        await fire_game_hooks(table, pre, post, seat=conn.seat, by_ai=False)
 
     action_str = ACTION_LOOKUP.get(req.action_id, "")
     await emit_bid_chat_message(table, action_str, conn.display_name)

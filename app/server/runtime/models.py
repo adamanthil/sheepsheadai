@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import WebSocket
 
@@ -100,6 +100,13 @@ class Table:
     current_game_id: Optional[str] = None
     # Phase 5 persistence: seat (1-5) -> game_player_id (DB bigint) for current hand
     game_player_ids: Dict[int, int] = field(default_factory=dict)
+    # Whether each seat's game_player row belongs to the AI. A move made by
+    # the other kind of controller -- the AI for a disconnected or timed-out
+    # human, or a human who took over an AI seat -- is flagged substituted.
+    game_player_is_ai: Dict[int, bool] = field(default_factory=dict)
+    # (trick index, seat) of substituted card plays, held until the trick's
+    # trick_card rows are written.
+    substituted_plays: Set[Tuple[int, int]] = field(default_factory=set)
 
     def to_public_dict(self) -> Dict[str, Any]:
         def seat_name(occ_id: Optional[str]) -> Optional[str]:

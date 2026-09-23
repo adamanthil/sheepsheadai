@@ -67,12 +67,14 @@ async def persist_trick_completed(
                     else:
                         card_id = DECK_IDS[card_str]
                     gp_id = table.game_player_ids[seat]
-                    rows.append((trick_id, card_id, gp_id, k))
+                    substituted = (trick_idx, seat) in table.substituted_plays
+                    rows.append((trick_id, card_id, gp_id, k, substituted))
 
                 await conn.executemany(
                     """
-                    INSERT INTO trick_card (trick_id, card_id, game_player_id, index)
-                    VALUES ($1, $2, $3, $4)
+                    INSERT INTO trick_card
+                        (trick_id, card_id, game_player_id, index, is_substituted)
+                    VALUES ($1, $2, $3, $4, $5)
                     """,
                     rows,
                 )
@@ -125,6 +127,8 @@ async def persist_passed_out_game(pool: asyncpg.Pool, table: "Table") -> None:
         # would misfile its rows.
         table.current_game_id = None
         table.game_player_ids = {}
+        table.game_player_is_ai = {}
+        table.substituted_plays = set()
 
 
 async def persist_finalize_game(
@@ -152,6 +156,8 @@ async def persist_finalize_game(
         # Clear so the next hand starts fresh.
         table.current_game_id = None
         table.game_player_ids = {}
+        table.game_player_is_ai = {}
+        table.substituted_plays = set()
     except Exception:
         logger.exception(
             "persist_finalize_game failed (table=%s game=%s)",

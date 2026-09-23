@@ -69,6 +69,7 @@ async def persist_started_game(
 
                 # game_player rows
                 new_gp_ids: Dict[int, int] = {}
+                new_gp_is_ai: Dict[int, bool] = {}
                 for seat in range(1, 6):
                     occ_id = table.seats.get(seat)
                     occ = table.occupants.get(occ_id) if occ_id else None
@@ -131,10 +132,13 @@ async def persist_started_game(
                         starting_hand_id,
                     )
                     new_gp_ids[seat] = gp_id
+                    new_gp_is_ai[seat] = is_ai
 
         # Only update table state after the transaction commits successfully.
         table.current_game_id = game_id
         table.game_player_ids = new_gp_ids
+        table.game_player_is_ai = new_gp_is_ai
+        table.substituted_plays = set()
 
     except Exception:
         logger.exception(
@@ -266,5 +270,38 @@ async def persist_partner_revealed(
             "persist_partner_revealed failed (table=%s game=%s)",
             table.id,
             table.current_game_id,
+            extra={"table_id": table.id, "game_id": table.current_game_id},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Substitution: a pre-play decision made by someone other than the row owner
+# ---------------------------------------------------------------------------
+
+
+async def persist_substituted_pick(
+    pool: asyncpg.Pool,
+    table: "Table",
+    seat: int,
+) -> None:
+    """Flag the seat's row when any bidding-phase decision (pick/pass,
+    call, alone, bury, under) was made by a substitute controller."""
+    if not table.current_game_id:
+        return
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE game_player SET is_substituted_pick = true
+                WHERE game_player_id = $1
+                """,
+                table.game_player_ids[seat],
+            )
+    except Exception:
+        logger.exception(
+            "persist_substituted_pick failed (table=%s game=%s seat=%s)",
+            table.id,
+            table.current_game_id,
+            seat,
             extra={"table_id": table.id, "game_id": table.current_game_id},
         )

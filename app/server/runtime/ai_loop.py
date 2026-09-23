@@ -107,7 +107,7 @@ async def ai_take_turns(table: Table) -> None:
         await ai_observe_all(table, except_seat=actor)
 
         if pre is not None and post is not None:
-            await fire_game_hooks(table, pre, post)
+            await fire_game_hooks(table, pre, post, seat=actor, by_ai=True)
 
         action_str = ACTION_LOOKUP.get(action_id, "")
         display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"

@@ -35,6 +35,7 @@ from server.services.persistence.hand_setup import (
     persist_pick_resolved,
     persist_picker_decisions,
     persist_started_game,
+    persist_substituted_pick,
 )
 from server.services.persistence.pool import get_db_pool
 from server.services.persistence.snapshots import (
@@ -57,22 +58,37 @@ __all__ = [
     "persist_pick_resolved",
     "persist_picker_decisions",
     "persist_started_game",
+    "persist_substituted_pick",
     "persist_trick_completed",
 ]
 
 
 async def fire_game_hooks(
-    table: "Table", pre: Dict[str, Any], post: Dict[str, Any]
+    table: "Table",
+    pre: Dict[str, Any],
+    post: Dict[str, Any],
+    seat: int,
+    by_ai: bool,
 ) -> None:
     """Check state transitions and fire the appropriate hooks.
 
     ``pre`` and ``post`` are snapshots taken inside ``game_lock``; we never
     dereference the live ``Game`` here so that concurrent ``player.act()``
-    cannot race with our DB I/O.
+    cannot race with our DB I/O. ``seat`` made the move, and ``by_ai`` says
+    whether the AI chose it.
     """
     if table.current_game_id is None:
         return  # Hook 1 never ran; skip all subsequent hooks.
     pool = get_db_pool()
+
+    # Substitution comes first: a PASS can close a thrown-in deal below, and
+    # a card play can complete the trick whose rows hook 5 writes.
+    owner_is_ai = table.game_player_is_ai.get(seat)
+    if owner_is_ai is not None and owner_is_ai != by_ai:
+        if pre["play_started"]:
+            table.substituted_plays.add((pre["current_trick"], seat))
+        else:
+            await persist_substituted_pick(pool, table, seat)
 
     # Hook 2: pick resolved (picker set OR leaster declared)
     if not pre["picker"] and post["picker"]:
