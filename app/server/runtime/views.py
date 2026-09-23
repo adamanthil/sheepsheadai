@@ -220,6 +220,7 @@ def record_hand_result(table: Table) -> None:
         pscore = int(table.game.players[i - 1].get_score()) * multiplier
         table.running_scores[occ] = table.running_scores.get(occ, 0) + pscore
     table.results_counted = True
+    table.hand_finished_at = time.monotonic()
 
     try:
         entry: Dict[str, Any] = {

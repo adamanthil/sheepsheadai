@@ -167,9 +167,11 @@ def create_app() -> FastAPI:
             ai_player_id,
         )
 
+        sweeper = asyncio.create_task(lifecycle.run_idle_sweeper())
         try:
             yield
         finally:
+            sweeper.cancel()
             await close_pool()
 
     app = FastAPI(title="Sheepshead Realtime API", lifespan=lifespan)

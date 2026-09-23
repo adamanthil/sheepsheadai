@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -59,6 +60,12 @@ class Table:
     rules: Dict[str, Any] = field(default_factory=dict)
     fill_with_ai: bool = True
     host_client_id: Optional[str] = None
+    # time.monotonic() stamps for the idle sweep (runtime.lifecycle): a
+    # table never dealt expires some time after creation, and a finished
+    # hand nobody redeals some time after it ended.
+    created_at: float = field(default_factory=time.monotonic)
+    ever_dealt: bool = False
+    hand_finished_at: Optional[float] = None
     # Who opened the table, for the per-player and per-IP open-table caps.
     # The player is known at creation only if they already had a session;
     # otherwise it is recorded when they use the host key.

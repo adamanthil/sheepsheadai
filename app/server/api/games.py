@@ -120,6 +120,8 @@ async def start_game(
         game = new_game_for_table(table)
         table.game = game
         table.status = "playing"
+        table.ever_dealt = True
+        table.hand_finished_at = None
         table.results_counted = False
         # A fresh hand is played for the base stake; only a passed-out
         # doublers deal raises it, and only until that hand is played out.

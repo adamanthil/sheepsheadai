@@ -150,7 +150,10 @@ export function useTableSocket(
         } else if (data.type === "table_closed") {
           callbacksRef.current?.onTableClosed?.();
           socket.close();
-          window.location.href = "/";
+          // A table the server closed for sitting idle says so on arrival.
+          const idle =
+            data.reason === "lobby_expired" || data.reason === "hand_idle";
+          window.location.href = idle ? "/?notice=idle" : "/";
         } else if (data.type === "lobby_event") {
           if (data.message) {
             callbacksRef.current?.onLobbyEvent?.(data.message);

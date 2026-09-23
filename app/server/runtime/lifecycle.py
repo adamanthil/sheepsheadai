@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 from server.realtime.broadcast import broadcast_table_event
 from server.runtime.tables import Table, tables
@@ -114,3 +115,41 @@ def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -
     if table.autoclose_task and not table.autoclose_task.done():
         table.autoclose_task.cancel()
     table.autoclose_task = asyncio.create_task(_auto())
+
+
+# Idle sweep: tables close on these even with players connected, so an
+# abandoned lobby or a table left on its final scores can't hold a slot
+# (and its creator's open-table allowance) indefinitely.
+LOBBY_EXPIRY_SECONDS = 20 * 60  # never dealt, this long after creation
+HAND_IDLE_SECONDS = 5 * 60  # finished hand not redealt for this long
+SWEEP_INTERVAL_SECONDS = 30.0
+
+
+def idle_tables(now: float) -> list[tuple[Table, str]]:
+    """Tables due to close at monotonic time ``now``, with the reason."""
+    due: list[tuple[Table, str]] = []
+    for table in list(tables.tables.values()):
+        if not table.ever_dealt and now - table.created_at >= LOBBY_EXPIRY_SECONDS:
+            due.append((table, "lobby_expired"))
+        elif (
+            table.hand_finished_at is not None
+            and now - table.hand_finished_at >= HAND_IDLE_SECONDS
+        ):
+            due.append((table, "hand_idle"))
+    return due
+
+
+async def sweep_idle_tables() -> None:
+    for table, reason in idle_tables(time.monotonic()):
+        logging.info("closing idle table %s (%s)", table.id, reason)
+        await close_table(table, reason=reason)
+
+
+async def run_idle_sweeper() -> None:
+    """Run the idle sweep forever; started by the app lifespan."""
+    while True:
+        await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
+        try:
+            await sweep_idle_tables()
+        except Exception:
+            logging.exception("idle table sweep failed")

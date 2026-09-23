@@ -15,6 +15,12 @@ import styles from "./page.module.css";
 /** How often the lobby refetches the table list while the tab is visible. */
 const LOBBY_POLL_MS = 5000;
 
+// Why a table sent the player back here (the ?notice= query).
+const NOTICES: Record<string, string> = {
+  removed: "The host removed you from that table.",
+  idle: "That table closed after sitting idle.",
+};
+
 // Why the server refused to open a table, in the player's terms.
 const CREATE_REFUSED: Record<string, string> = {
   table_limit_per_player:
@@ -42,11 +48,11 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // A table's host removed this player (useTableSocket sends them here).
+  // Why the player was sent back here from a table (useTableSocket).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("notice") !== "removed") return;
-    setError("The host removed you from that table.");
+    const notice = new URLSearchParams(window.location.search).get("notice");
+    if (!notice || !(notice in NOTICES)) return;
+    setError(NOTICES[notice]);
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
