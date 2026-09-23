@@ -9,10 +9,19 @@ export type { ChatMessage };
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => void;
+  /** Controls offered for a player message's author (e.g. remove, mute),
+   * or null for none. Clicking the author's name shows them. */
+  authorActions?: (msg: ChatMessage) => React.ReactNode;
 }
 
-export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
+export function ChatPanel({
+  messages,
+  onSendMessage,
+  authorActions,
+}: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
+  // The message whose author controls are open, if any.
+  const [actionsOpenFor, setActionsOpenFor] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom within the messages container (not the page)
@@ -47,24 +56,43 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
             No messages yet. Say hello! 👋
           </div>
         ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`${styles.message} ${msg.type === "system" ? styles.systemMessage : styles.playerMessage}`}
-            >
-              {msg.type === "system" ? (
-                <div className={styles.systemText}>{msg.body}</div>
-              ) : (
-                <div className={styles.playerMessageContent}>
-                  <span className={styles.author}>{msg.author}:</span>
-                  <span className={styles.body}>{msg.body}</span>
+          messages.map((msg) => {
+            const actions =
+              msg.type === "player" && authorActions
+                ? authorActions(msg)
+                : null;
+            const open = actions !== null && actionsOpenFor === msg.id;
+            return (
+              <div
+                key={msg.id}
+                className={`${styles.message} ${msg.type === "system" ? styles.systemMessage : styles.playerMessage}`}
+              >
+                {msg.type === "system" ? (
+                  <div className={styles.systemText}>{msg.body}</div>
+                ) : (
+                  <div className={styles.playerMessageContent}>
+                    {actions !== null ? (
+                      <button
+                        type="button"
+                        className={`${styles.author} ${styles.authorButton}`}
+                        aria-expanded={open}
+                        onClick={() => setActionsOpenFor(open ? null : msg.id)}
+                      >
+                        {msg.author}:
+                      </button>
+                    ) : (
+                      <span className={styles.author}>{msg.author}:</span>
+                    )}
+                    <span className={styles.body}>{msg.body}</span>
+                  </div>
+                )}
+                {open && <div className={styles.authorActions}>{actions}</div>}
+                <div className={styles.timestamp}>
+                  {formatTime(msg.timestamp)}
                 </div>
-              )}
-              <div className={styles.timestamp}>
-                {formatTime(msg.timestamp)}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
       <form onSubmit={handleSubmit} className={styles.inputForm}>

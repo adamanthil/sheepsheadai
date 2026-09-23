@@ -1,17 +1,22 @@
 import React from "react";
 import { SeatAvatar, ds } from "../../../../lib/ds";
+import { RemovePlayerButton } from "../../../components/RemovePlayerButton";
 import styles from "./SeatCard.module.css";
 
 export interface SeatInfo {
   seat: number;
   name: string | null;
   isAI: boolean;
+  /** The seated human's client id, when the viewer (the host) may remove
+   * them; null otherwise. */
+  removableId: string | null;
 }
 
 interface SeatCardProps {
   seat: SeatInfo;
   variant: "card" | "row";
   onTake: (seat: number) => void;
+  onRemove: (clientId: string) => void;
 }
 
 /**
@@ -19,9 +24,21 @@ interface SeatCardProps {
  * mobile single-line variant. Empty seats (and AI seats, which a human may
  * take over) expose a "take this seat" affordance.
  */
-export default function SeatCard({ seat, variant, onTake }: SeatCardProps) {
+export default function SeatCard({
+  seat,
+  variant,
+  onTake,
+  onRemove,
+}: SeatCardProps) {
   const empty = !seat.name;
   const takeable = empty || seat.isAI;
+  const removableId = seat.removableId;
+  const remove = removableId ? (
+    <RemovePlayerButton
+      name={seat.name ?? "this player"}
+      onRemove={() => onRemove(removableId)}
+    />
+  ) : null;
 
   if (variant === "row") {
     if (empty) {
@@ -70,6 +87,7 @@ export default function SeatCard({ seat, variant, onTake }: SeatCardProps) {
             Take →
           </button>
         )}
+        {remove}
       </div>
     );
   }
@@ -111,7 +129,7 @@ export default function SeatCard({ seat, variant, onTake }: SeatCardProps) {
           Take over →
         </button>
       ) : (
-        <span />
+        (remove ?? <span />)
       )}
     </div>
   );

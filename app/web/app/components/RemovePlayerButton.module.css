@@ -1,0 +1,16 @@
+.danger {
+  color: var(--accent-2);
+  border-color: transparent;
+}
+.confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.prompt {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--muted);
+}

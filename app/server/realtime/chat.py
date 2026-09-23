@@ -30,15 +30,24 @@ def is_chat_rate_limited(conn: ClientConn) -> bool:
 
 
 async def add_chat_message(
-    table: Table, msg_type: str, body: str, author: Optional[str] = None
+    table: Table,
+    msg_type: str,
+    body: str,
+    author: Optional[str] = None,
+    author_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Add a chat message to the table's chat log and return the message dict."""
+    """Add a chat message to the table's chat log and return the message dict.
+
+    ``author_id`` is a player message's client id, so other clients can act
+    on its author (mute, or the host removing them).
+    """
     msg_id = str(uuid.uuid4())
     msg_dict: Dict[str, Any] = {
         "id": msg_id,
         "table_id": table.id,
         "type": msg_type,
         "author": author,
+        "author_id": author_id,
         "body": body,
         "timestamp": time.time(),
     }

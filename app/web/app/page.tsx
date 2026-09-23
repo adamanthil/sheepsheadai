@@ -33,6 +33,14 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // A table's host removed this player (useTableSocket sends them here).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("notice") !== "removed") return;
+    setError("The host removed you from that table.");
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
   // `showLoading` only on the first fetch: the poll below must not flash the
   // list back to "Loading…" every few seconds.
   const refresh = async (showLoading = true) => {
@@ -183,8 +191,11 @@ export default function HomePage() {
       });
 
       if (!res.ok) {
+        const detail = (await res.json().catch(() => ({})))?.detail;
         throw new Error(
-          `Failed to join table: ${res.status} ${res.statusText}`,
+          detail === "removed_from_table"
+            ? "The host removed you from that table."
+            : `Failed to join table: ${res.status} ${res.statusText}`,
         );
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { TableSummary } from "../../../lib/types";
 import { apiFetch } from "../../../lib/api";
@@ -8,6 +8,8 @@ import { useTableSocket } from "../../../lib/hooks/useTableSocket";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import styles from "./page.module.css";
 import { ChatPanel } from "../../components/chat";
+import { RemovePlayerButton } from "../../components/RemovePlayerButton";
+import type { SeatInfo } from "./components/SeatCard";
 import { useIsMobile } from "../../../lib/ds";
 import {
   DesktopWaitingLayout,
@@ -87,10 +89,8 @@ export default function WaitingRoom() {
 
   // Shared socket hook: lobby updates, chat, auto-navigation on game start,
   // and reconnect-with-backoff all come from useTableSocket.
-  const { lastState, chatMessages, sendChatMessage } = useTableSocket(
-    params?.id,
-    clientId,
-    {
+  const { lastState, chatMessages, sendChatMessage, kickPlayer } =
+    useTableSocket(params?.id, clientId, {
       onTableUpdate: (t, hostFlag) => {
         setTable(t as TableInfo);
         if (typeof hostFlag === "boolean") setIsHost(hostFlag);
@@ -108,8 +108,7 @@ export default function WaitingRoom() {
         setTimeout(() => setCallout(null), 1800);
       },
       onTableClosed: () => setCallout("Table closed"),
-    },
-  );
+    });
 
   // A state message while in the waiting room means the game has started.
   useEffect(() => {
@@ -227,18 +226,28 @@ export default function WaitingRoom() {
     });
   }
 
+  // Host-only Remove for another human: on their seat, and on their chat
+  // messages (the only place an unseated spectator shows up).
+  const removableId = useCallback(
+    (target: string | null | undefined) =>
+      isHost && target && target !== clientId ? target : null,
+    [isHost, clientId],
+  );
+
   const seatItems = useMemo(() => {
-    if (!table)
-      return [] as Array<{ seat: number; name: string | null; isAI: boolean }>;
-    const out: Array<{ seat: number; name: string | null; isAI: boolean }> = [];
-    for (let i = 1; i <= 5; i++)
+    if (!table) return [] as SeatInfo[];
+    const out: SeatInfo[] = [];
+    for (let i = 1; i <= 5; i++) {
+      const isAI = Boolean(table.seatIsAI?.[String(i)]);
       out.push({
         seat: i,
         name: table.seats[String(i)] || null,
-        isAI: Boolean(table.seatIsAI?.[String(i)]),
+        isAI,
+        removableId: isAI ? null : removableId(table.seatOccupants[String(i)]),
       });
+    }
     return out;
-  }, [table]);
+  }, [table, removableId]);
 
   const isMobile = useIsMobile();
   const shortId = `#${String(params?.id || "")
@@ -251,7 +260,19 @@ export default function WaitingRoom() {
   const emptyCount = seatItems.filter((s) => !s.name).length;
 
   const chat = (
-    <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
+    <ChatPanel
+      messages={chatMessages}
+      onSendMessage={sendChatMessage}
+      authorActions={(msg) => {
+        const target = removableId(msg.author_id);
+        return target ? (
+          <RemovePlayerButton
+            name={msg.author ?? "this player"}
+            onRemove={() => void kickPlayer(target)}
+          />
+        ) : null;
+      }}
+    />
   );
   const rules = (
     <RulesPanel
@@ -278,6 +299,7 @@ export default function WaitingRoom() {
     confirmClose,
     setConfirmClose,
     chooseSeat,
+    removePlayer: (target: string) => void kickPlayer(target),
     fillAI,
     startGame,
     closeTable,

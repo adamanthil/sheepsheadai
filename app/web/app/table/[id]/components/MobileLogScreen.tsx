@@ -9,6 +9,8 @@ interface MobileLogScreenProps {
   yourSeat: number | null;
   chatMessages: ChatMessage[];
   onSendMessage: (msg: string) => void;
+  seatControls?: (seat: number) => React.ReactNode;
+  authorActions?: (msg: ChatMessage) => React.ReactNode;
   onClose: () => void;
 }
 
@@ -19,6 +21,8 @@ export default function MobileLogScreen({
   yourSeat,
   chatMessages,
   onSendMessage,
+  seatControls,
+  authorActions,
   onClose,
 }: MobileLogScreenProps) {
   const [tab, setTab] = useState<Tab>("chat");
@@ -50,10 +54,19 @@ export default function MobileLogScreen({
       <div className={styles.body}>
         {tab === "scores" ? (
           <div className={styles.scoresPane}>
-            <Scoreboard table={table} yourSeat={yourSeat} compact />
+            <Scoreboard
+              table={table}
+              yourSeat={yourSeat}
+              seatControls={seatControls}
+              compact
+            />
           </div>
         ) : (
-          <ChatPanel messages={chatMessages} onSendMessage={onSendMessage} />
+          <ChatPanel
+            messages={chatMessages}
+            onSendMessage={onSendMessage}
+            authorActions={authorActions}
+          />
         )}
       </div>
     </div>

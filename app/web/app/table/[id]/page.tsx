@@ -7,7 +7,9 @@ import { STORAGE_KEYS } from "../../../lib/storage";
 import { useCountdown } from "../../../lib/hooks/useCountdown";
 import { useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
-import { nameForSeat } from "./utils/seatMath";
+import { isAiSeat, nameForSeat } from "./utils/seatMath";
+import { RemovePlayerButton } from "../../components/RemovePlayerButton";
+import type { ChatMessage } from "../../../lib/types";
 import {
   derivePhase,
   playStarted as playStartedFn,
@@ -111,6 +113,7 @@ export default function TablePage() {
     closeTable,
     redeal,
     takeSeat,
+    kickPlayer,
     sendChatMessage,
   } = useTableSocket(params?.id, clientId, {
     onTrickComplete: triggerCollect,
@@ -199,6 +202,25 @@ export default function TablePage() {
   const prevText = computePrevText(showPrev, hasLastTrick, view, table);
 
   const lastMessage = computeLastMessage(chatMessages);
+
+  // Host-only Remove for another human, offered on scoreboard rows and on
+  // chat authors (the only place an unseated spectator shows up).
+  const removeControl = (target: string | null | undefined, name: string) =>
+    isHost && target && target !== clientId ? (
+      <RemovePlayerButton
+        name={name}
+        onRemove={() => void kickPlayer(target)}
+      />
+    ) : null;
+  const seatControls = (seat: number) =>
+    isAiSeat(seat, table)
+      ? null
+      : removeControl(
+          table.seatOccupants[String(seat)],
+          nameForSeat(seat, table),
+        );
+  const authorActions = (msg: ChatMessage) =>
+    removeControl(msg.author_id, msg.author ?? "this player");
 
   const stage = (
     <Stage
@@ -355,6 +377,8 @@ export default function TablePage() {
             yourSeat={yourSeat}
             chatMessages={chatMessages}
             onSendMessage={sendChatMessage}
+            seatControls={seatControls}
+            authorActions={authorActions}
             onClose={() => setShowMobileLog(false)}
           />
           {overlays}
@@ -399,6 +423,8 @@ export default function TablePage() {
           yourSeat={yourSeat}
           chatMessages={chatMessages}
           onSendMessage={sendChatMessage}
+          seatControls={seatControls}
+          authorActions={authorActions}
         />
       </div>
       {overlays}

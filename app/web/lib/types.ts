@@ -24,6 +24,8 @@ export interface ChatMessage {
   table_id: string;
   type: "player" | "system";
   author: string | null;
+  /** The author's client id on player messages; null on system messages. */
+  author_id?: string | null;
   body: string;
   timestamp: number;
 }

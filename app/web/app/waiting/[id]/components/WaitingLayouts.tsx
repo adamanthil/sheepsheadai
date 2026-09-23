@@ -1,13 +1,13 @@
 import React from "react";
 import { ds, Wordmark } from "../../../../lib/ds";
-import SeatCard from "./SeatCard";
+import SeatCard, { type SeatInfo } from "./SeatCard";
 import styles from "../page.module.css";
 
 export interface WaitingLayoutProps {
   roomName: string;
   shortId: string;
   hostName: string | null;
-  seatItems: Array<{ seat: number; name: string | null; isAI: boolean }>;
+  seatItems: SeatInfo[];
   humanCount: number;
   seatedCount: number;
   emptyCount: number;
@@ -16,6 +16,7 @@ export interface WaitingLayoutProps {
   confirmClose: boolean;
   setConfirmClose: (v: boolean) => void;
   chooseSeat: (seat: number) => void;
+  removePlayer: (clientId: string) => void;
   fillAI: () => void;
   startGame: () => void;
   closeTable: () => void;
@@ -99,6 +100,7 @@ export function MobileWaitingLayout(props: WaitingLayoutProps) {
                 seat={s}
                 variant="row"
                 onTake={chooseSeat}
+                onRemove={props.removePlayer}
               />
             ))}
           </div>
@@ -242,6 +244,7 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
                 seat={s}
                 variant="card"
                 onTake={chooseSeat}
+                onRemove={props.removePlayer}
               />
             ))}
           </div>

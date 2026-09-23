@@ -209,6 +209,7 @@ async def _serve_connection(
                                     "player",
                                     message_text,
                                     author=conn.display_name,
+                                    author_id=conn.client_id,
                                 )
                                 await broadcast_chat_append(table, msg_dict)
                 except json.JSONDecodeError:

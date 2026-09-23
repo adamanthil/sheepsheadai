@@ -35,6 +35,7 @@ const chatMessage = z.looseObject({
   table_id: z.string(),
   type: z.enum(["player", "system"]),
   author: z.string().nullable(),
+  author_id: z.string().nullable().optional(),
   body: z.string(),
   timestamp: z.number(),
 });
@@ -115,6 +116,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     message: chatMessage,
   }),
   z.looseObject({ type: z.literal("server_restart") }),
+  z.looseObject({ type: z.literal("kicked") }),
   z.looseObject({
     type: z.literal("turn_timer"),
     seat: z.number(),

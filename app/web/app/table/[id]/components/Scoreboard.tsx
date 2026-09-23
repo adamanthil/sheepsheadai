@@ -6,6 +6,8 @@ interface ScoreboardProps {
   table: TableView;
   yourSeat: number | null;
   compact?: boolean;
+  /** Extra controls on a seat's row (the host's Remove), or null. */
+  seatControls?: (seat: number) => React.ReactNode;
 }
 
 /** Running totals per seat, sourced from table.runningBySeat. */
@@ -13,6 +15,7 @@ export default function Scoreboard({
   table,
   yourSeat,
   compact,
+  seatControls,
 }: ScoreboardProps) {
   const running = (table.runningBySeat || {}) as Record<string, number>;
   const seatIsAI = (table.seatIsAI || {}) as Record<string, boolean>;
@@ -46,6 +49,8 @@ export default function Scoreboard({
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              flexWrap: "wrap",
+              gap: 6,
             }}
           >
             <div
@@ -81,6 +86,7 @@ export default function Scoreboard({
                 </span>
               )}
             </div>
+            {seatControls?.(r.seat)}
             <div
               style={{
                 fontFamily: "var(--font-mono)",

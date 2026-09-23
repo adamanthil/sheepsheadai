@@ -9,6 +9,8 @@ interface RightRailProps {
   yourSeat: number | null;
   chatMessages: ChatMessage[];
   onSendMessage: (msg: string) => void;
+  seatControls?: (seat: number) => React.ReactNode;
+  authorActions?: (msg: ChatMessage) => React.ReactNode;
 }
 
 /** Desktop right rail: scoreboard on top, chat filling the rest. */
@@ -17,14 +19,24 @@ export default function RightRail({
   yourSeat,
   chatMessages,
   onSendMessage,
+  seatControls,
+  authorActions,
 }: RightRailProps) {
   return (
     <div className={styles.rail}>
       <div className={styles.scores}>
-        <Scoreboard table={table} yourSeat={yourSeat} />
+        <Scoreboard
+          table={table}
+          yourSeat={yourSeat}
+          seatControls={seatControls}
+        />
       </div>
       <div className={styles.chat}>
-        <ChatPanel messages={chatMessages} onSendMessage={onSendMessage} />
+        <ChatPanel
+          messages={chatMessages}
+          onSendMessage={onSendMessage}
+          authorActions={authorActions}
+        />
       </div>
     </div>
   );

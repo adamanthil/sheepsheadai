@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChatMessage, TableStateMsg, TableView } from "../types";
 import { apiFetch, wsSubprotocols, wsUrl } from "../api";
+import { STORAGE_KEYS } from "../storage";
 import { parseWsMessage } from "../wsMessages";
 import { diffCallouts } from "../callouts";
 
@@ -40,6 +41,8 @@ export interface UseTableSocketReturn {
   redeal: () => Promise<void>;
   /** Spectator only: take over the AI at ``seat``. */
   takeSeat: (seat: number) => Promise<void>;
+  /** Host only: remove a player (by client id) from the table. */
+  kickPlayer: (targetClientId: string) => Promise<void>;
   sendChatMessage: (message: string) => void;
 }
 
@@ -167,6 +170,12 @@ export function useTableSocket(
           setChatMessages(data.messages);
         } else if (data.type === "chat:append") {
           setChatMessages((prev) => [...prev, data.message]);
+        } else if (data.type === "kicked") {
+          // Forget this table's connection so the lobby's Join doesn't try
+          // to resume it, and say why on the home page.
+          window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+          socket.close();
+          window.location.href = "/?notice=removed";
         } else if (data.type === "turn_timer") {
           setTurnDeadline(Date.now() + data.secondsLeft * 1000);
         } else if (data.type === "server_restart") {
@@ -265,6 +274,33 @@ export function useTableSocket(
     [tableId, clientId],
   );
 
+  const kickPlayer = useCallback(
+    async (targetClientId: string) => {
+      if (!tableId || !clientId) return;
+      try {
+        const res = await apiFetch(`/api/tables/${tableId}/kick`, {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: clientId,
+            target_client_id: targetClientId,
+          }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          callbacksRef.current?.onError?.(
+            `Couldn't remove player: ${j?.detail || res.status}`,
+          );
+        }
+      } catch (err) {
+        console.warn("kick POST failed", err);
+        callbacksRef.current?.onError?.(
+          "Couldn't remove player: network error",
+        );
+      }
+    },
+    [tableId, clientId],
+  );
+
   const sendChatMessage = useCallback((message: string) => {
     if (!wsRef.current || !message.trim()) return;
     try {
@@ -290,6 +326,7 @@ export function useTableSocket(
     closeTable,
     redeal,
     takeSeat,
+    kickPlayer,
     sendChatMessage,
   };
 }
