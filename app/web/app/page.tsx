@@ -15,6 +15,15 @@ import styles from "./page.module.css";
 /** How often the lobby refetches the table list while the tab is visible. */
 const LOBBY_POLL_MS = 5000;
 
+// Why the server refused to open a table, in the player's terms.
+const CREATE_REFUSED: Record<string, string> = {
+  table_limit_per_player:
+    "You already have 2 open tables. Close one to start another.",
+  table_limit_per_ip:
+    "Too many tables are open from your network right now. Try again once one closes.",
+  table_limit_reached: "The server is full right now. Try again in a bit.",
+};
+
 export default function HomePage() {
   const router = useRouter();
   const [tables, setTables] = useState<TableSummary[]>([]);
@@ -121,8 +130,10 @@ export default function HomePage() {
       });
 
       if (!res.ok) {
+        const detail = (await res.json().catch(() => ({})))?.detail;
         throw new Error(
-          `Failed to create table: ${res.status} ${res.statusText}`,
+          CREATE_REFUSED[detail as string] ??
+            `Failed to create table: ${res.status} ${res.statusText}`,
         );
       }
 

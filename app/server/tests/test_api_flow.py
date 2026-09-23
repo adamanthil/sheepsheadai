@@ -167,6 +167,14 @@ async def test_only_the_host_key_takes_host(db_app):
             json={"display_name": "Creator", "host_key": created["host_key"]},
         )
         assert creator.json()["is_host"] is True
+        # A creator without a session at creation is recorded here, for the
+        # per-player open-table cap.
+        from server.runtime.tables import tables
+
+        assert (
+            tables.get_table(table_id).creator_player_id
+            == (creator.json()["player_id"])
+        )
 
         # The key is spent once used.
         replay = await client.post(

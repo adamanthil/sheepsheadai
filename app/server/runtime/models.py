@@ -59,6 +59,11 @@ class Table:
     rules: Dict[str, Any] = field(default_factory=dict)
     fill_with_ai: bool = True
     host_client_id: Optional[str] = None
+    # Who opened the table, for the per-player and per-IP open-table caps.
+    # The player is known at creation only if they already had a session;
+    # otherwise it is recorded when they use the host key.
+    creator_ip: Optional[str] = None
+    creator_player_id: Optional[str] = None
     # Players the host removed; they may not rejoin this table.
     banned_player_ids: Set[str] = field(default_factory=set)
     # One-time key handed to the creator; cleared once used to take host.

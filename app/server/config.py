@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     # scanners measure the unwrapped policy. See
     # sheepshead/agent/convention_wrapper.py + Convention_Optimality notebook.
     sheepshead_convention_wrap: str = ""
+    # Open tables one creator may hold at once (server.runtime.manager). The
+    # IP allowance is higher: several people behind one home or office
+    # network may each open a table.
+    sheepshead_max_tables_per_player: int = 2
+    sheepshead_max_tables_per_ip: int = 5
     env: str = "development"
     log_format: str = "text"
 

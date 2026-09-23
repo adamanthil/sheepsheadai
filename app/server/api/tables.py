@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api.auth import PlayerIdentity, current_player, optional_player
-from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, limiter
+from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, client_ip, limiter
 from server.api.schemas import (
     CloseTableRequest,
     CreateTableRequest,
@@ -21,6 +21,7 @@ from server.api.schemas import (
     TablePublic,
     UpdateTableRulesRequest,
 )
+from server.config import get_settings
 from server.realtime.broadcast import (
     broadcast_table_event,
     broadcast_table_state,
@@ -33,6 +34,7 @@ from server.runtime.lifecycle import (
     is_draining,
     schedule_autoclose_if_no_humans,
 )
+from server.runtime.manager import IpTableLimitError, PlayerTableLimitError
 from server.runtime.occupants import allocate_ai_occupant, give_seat_to_ai
 from server.runtime.seating import (
     cancel_disconnect_task,
@@ -90,10 +92,22 @@ def list_tables():
 async def create_table(request: Request, req: CreateTableRequest):
     if is_draining():
         raise HTTPException(status_code=503, detail="server_restarting")
+    identity = await optional_player(request)
+    settings = get_settings()
     try:
         table = await tables.create_table(
-            req.name, req.fillWithAI, req.rules.model_dump()
+            req.name,
+            req.fillWithAI,
+            req.rules.model_dump(),
+            creator_ip=client_ip(request),
+            creator_player_id=str(identity.id) if identity else None,
+            max_per_player=settings.sheepshead_max_tables_per_player,
+            max_per_ip=settings.sheepshead_max_tables_per_ip,
         )
+    except PlayerTableLimitError:
+        raise HTTPException(status_code=429, detail="table_limit_per_player")
+    except IpTableLimitError:
+        raise HTTPException(status_code=429, detail="table_limit_per_ip")
     except TableLimitError:
         raise HTTPException(status_code=503, detail="table_limit_reached")
     # A table whose players never open a websocket would otherwise linger
@@ -165,6 +179,9 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         ):
             table.host_client_id = client_id
             table.host_key = None
+            # A first-time creator had no identity to record at creation.
+            if table.creator_player_id is None:
+                table.creator_player_id = str(player_uuid)
 
         if table.status == "playing":
             ai_seat = pick_join_ai_seat(table)

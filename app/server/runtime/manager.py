@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from server.runtime.models import Table
 
@@ -19,19 +19,57 @@ class TableLimitError(RuntimeError):
     """Raised when creating a table would exceed MAX_TABLES."""
 
 
+class PlayerTableLimitError(TableLimitError):
+    """The creating player already has their share of open tables."""
+
+
+class IpTableLimitError(TableLimitError):
+    """The creating IP already has its share of open tables."""
+
+
 class TableManager:
     def __init__(self):
         self.tables: Dict[str, Table] = {}
         self._lock = asyncio.Lock()
 
     async def create_table(
-        self, name: str, fill_with_ai: bool, rules: Dict[str, Any]
+        self,
+        name: str,
+        fill_with_ai: bool,
+        rules: Dict[str, Any],
+        creator_ip: Optional[str] = None,
+        creator_player_id: Optional[str] = None,
+        max_per_player: Optional[int] = None,
+        max_per_ip: Optional[int] = None,
     ) -> Table:
+        """Register a new table. The optional per-creator shares keep any
+        one client from using up MAX_TABLES."""
         async with self._lock:
             if len(self.tables) >= MAX_TABLES:
                 raise TableLimitError()
+            open_tables = list(self.tables.values())
+            if (
+                creator_player_id
+                and max_per_player is not None
+                and sum(t.creator_player_id == creator_player_id for t in open_tables)
+                >= max_per_player
+            ):
+                raise PlayerTableLimitError()
+            if (
+                creator_ip
+                and max_per_ip is not None
+                and sum(t.creator_ip == creator_ip for t in open_tables) >= max_per_ip
+            ):
+                raise IpTableLimitError()
             tid = str(uuid.uuid4())
-            table = Table(id=tid, name=name, fill_with_ai=fill_with_ai, rules=rules)
+            table = Table(
+                id=tid,
+                name=name,
+                fill_with_ai=fill_with_ai,
+                rules=rules,
+                creator_ip=creator_ip,
+                creator_player_id=creator_player_id,
+            )
             self.tables[tid] = table
             return table
 

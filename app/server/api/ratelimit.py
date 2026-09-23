@@ -11,10 +11,18 @@ uvicorn folds into ``request.client`` when run with ``--proxy-headers``.
 
 from __future__ import annotations
 
+from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-limiter = Limiter(key_func=get_remote_address)
+
+def client_ip(request: Request) -> str:
+    """The key every per-client limit is counted under (rate limits here,
+    open-table caps in server.runtime.manager)."""
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=client_ip)
 
 # Budgets, per client IP. Mutating endpoints only; reads stay unlimited.
 CREATE_JOIN = "10/minute"  # table creation / join: cheap to abuse, rare in play

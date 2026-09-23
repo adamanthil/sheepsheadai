@@ -37,6 +37,11 @@ export default defineConfig({
         SHEEPSHEAD_MODEL_LABEL: "e2e-smoke",
         DATABASE_URL: E2E_DATABASE_URL,
         ENV: "development",
+        // Every spec creates and joins from 127.0.0.1, which a whole run
+        // would push past the per-IP table cap and rate limits (both have
+        // their own server tests).
+        SHEEPSHEAD_MAX_TABLES_PER_IP: "100",
+        RATELIMIT_ENABLED: "false",
       },
     },
     {
