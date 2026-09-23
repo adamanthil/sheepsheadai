@@ -42,6 +42,8 @@ export default defineConfig({
         // their own server tests).
         SHEEPSHEAD_MAX_TABLES_PER_IP: "100",
         RATELIMIT_ENABLED: "false",
+        // A short turn clock so specs that sit out turns finish quickly.
+        SHEEPSHEAD_TURN_TIMEOUT_SECONDS: "2",
       },
     },
     {

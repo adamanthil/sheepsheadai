@@ -67,7 +67,7 @@ def _table_with_human_to_act() -> tuple[Table, ClientConn, _RecordingSocket]:
 
 @pytest.fixture
 def hooks(monkeypatch) -> list[tuple[int, bool]]:
-    monkeypatch.setattr(turn_timer, "TURN_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(turn_timer, "turn_timeout_seconds", lambda: 0.01)
     calls: list[tuple[int, bool]] = []
 
     async def record(table, pre, post, seat, by_ai):

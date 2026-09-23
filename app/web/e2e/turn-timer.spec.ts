@@ -3,13 +3,12 @@ import { createTableAndDeal } from "./helpers";
 
 // A player who never moves: the turn clock shows, the AI plays each timed
 // out turn for them, and after three in a row they are moved to spectator
-// — from where "Take seat" puts them back at the table. Runs on the real
-// 20s clock, so it takes a little over a minute.
+// — from where "Take seat" puts them back at the table. The e2e server
+// runs a 2s clock (playwright.config.ts).
 
 test("an idle player is moved to spectator and can take a seat back", async ({
   page,
 }) => {
-  test.setTimeout(240_000);
   await createTableAndDeal(page, "Idle Tester", "e2e-idle");
 
   await expect(page.getByLabel(/seconds left to move/)).toBeVisible({

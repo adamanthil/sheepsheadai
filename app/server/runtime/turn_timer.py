@@ -15,6 +15,7 @@ import logging
 import time
 from typing import Callable, Optional
 
+from server.config import get_settings
 from server.realtime.broadcast import (
     broadcast_table_event,
     broadcast_table_state,
@@ -32,8 +33,11 @@ from server.runtime.occupants import give_seat_to_ai
 from server.runtime.views import get_actor_seat
 from server.services.persistence.games import fire_game_hooks
 
-TURN_TIMEOUT_SECONDS = 20.0
 MAX_TIMEOUT_STRIKES = 3
+
+
+def turn_timeout_seconds() -> float:
+    return get_settings().sheepshead_turn_timeout_seconds
 
 
 def _human_to_act(table: Table) -> Optional[tuple[int, ClientConn]]:
@@ -68,20 +72,23 @@ async def arm_turn_timer(table: Table, on_expired: Callable[[Table], None]) -> N
     if table.turn_timer_key == key and live:
         return
     cancel_turn_timer(table)
+    seconds = turn_timeout_seconds()
     table.turn_timer_key = key
-    table.turn_deadline = time.monotonic() + TURN_TIMEOUT_SECONDS
-    table.turn_timer_task = asyncio.create_task(_expire(table, key, on_expired))
+    table.turn_deadline = time.monotonic() + seconds
+    table.turn_timer_task = asyncio.create_task(
+        _expire(table, key, on_expired, seconds)
+    )
     await broadcast_table_event(
         table,
-        {"type": "turn_timer", "seat": seat, "secondsLeft": TURN_TIMEOUT_SECONDS},
+        {"type": "turn_timer", "seat": seat, "secondsLeft": seconds},
     )
 
 
 async def _expire(
-    table: Table, key: tuple, on_expired: Callable[[Table], None]
+    table: Table, key: tuple, on_expired: Callable[[Table], None], seconds: float
 ) -> None:
     try:
-        await asyncio.sleep(TURN_TIMEOUT_SECONDS)
+        await asyncio.sleep(seconds)
         async with table.game_lock:
             # Any move, deal, or seat change since arming makes this stale.
             turn = _human_to_act(table) if table.game else None

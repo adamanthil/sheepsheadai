@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # network may each open a table.
     sheepshead_max_tables_per_player: int = 2
     sheepshead_max_tables_per_ip: int = 5
+    # Seconds a human has to move before the AI moves for them
+    # (server.runtime.turn_timer).
+    sheepshead_turn_timeout_seconds: float = 20.0
     env: str = "development"
     log_format: str = "text"
 
