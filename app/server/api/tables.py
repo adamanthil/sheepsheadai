@@ -18,8 +18,13 @@ from server.api.schemas import (
     TablePublic,
     UpdateTableRulesRequest,
 )
-from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
+from server.realtime.broadcast import (
+    broadcast_table_event,
+    broadcast_table_state,
+    broadcast_table_update,
+)
 from server.realtime.chat import add_chat_message, broadcast_chat_append
+from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.lifecycle import (
     close_table,
     is_draining,
@@ -240,7 +245,18 @@ async def choose_seat(
             else False
         ):
             raise HTTPException(status_code=409, detail="seat_taken")
-        require_client(table, req.client_id, identity)
+        conn = require_client(table, req.client_id, identity)
+
+        # Once a hand is dealt, a seat change is only an unseated client
+        # taking over from an AI. Letting a seated player move would show
+        # them another seat's hand and strand their own seat empty, which
+        # stalls the AI turn loop.
+        in_play = table.status != "open"
+        if in_play:
+            if conn.seat is not None:
+                raise HTTPException(status_code=409, detail="seat_locked_in_play")
+            if not is_ai_occupant(table, current):
+                raise HTTPException(status_code=409, detail="seat_not_ai")
 
         for i in range(1, 6):
             if table.seats[i] == req.client_id:
@@ -264,6 +280,11 @@ async def choose_seat(
     )
     await broadcast_chat_append(table, msg_dict)
     await broadcast_table_update(table)
+    if in_play:
+        # The new occupant needs the seat's hand, and the AI loop must stop
+        # acting for a seat a human now holds.
+        await broadcast_table_state(table)
+        schedule_ai_turns(table)
 
     return table.to_public_dict()
 
