@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from server.runtime import dealing
+from server.runtime import dealing, turn_timer
 from server.runtime.ai_loop import ai_take_turns
 from server.runtime.dealing import new_game_for_table
 from server.runtime.tables import ClientConn, Occupant, Table, get_actor_seat
@@ -39,9 +39,13 @@ async def test_seat_lost_to_ai_on_an_all_human_deal_is_played(monkeypatch):
         dealing, "build_table_agent", lambda settings, table_id: StubAgent()
     )
     monkeypatch.setattr(dealing, "get_settings", lambda: None)
+    # The loop arms the human's turn clock when it hands the turn back.
+    monkeypatch.setattr(turn_timer, "turn_timeout_seconds", lambda: 60.0)
 
     await ai_take_turns(table)
 
     assert isinstance(table.ai_agent, StubAgent)
     # Seat 1's bid was made; the turn has moved on to the humans.
     assert get_actor_seat(table) != 1
+    if table.turn_timer_task:
+        table.turn_timer_task.cancel()
