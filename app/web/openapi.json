@@ -1037,6 +1037,136 @@
         "title": "CreateTableRequest",
         "type": "object"
       },
+      "CreateTableResponse": {
+        "properties": {
+          "fillWithAI": {
+            "title": "Fillwithai",
+            "type": "boolean"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "host_key": {
+            "title": "Host Key",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "initialNames": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Initialnames",
+            "type": "object"
+          },
+          "initialSeatOrder": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Initialseatorder",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "resultsHistory": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Resultshistory",
+            "type": "array"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/RulesInput"
+          },
+          "runningBySeat": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Runningbyseat",
+            "type": "object"
+          },
+          "scoreMultiplier": {
+            "default": 1,
+            "title": "Scoremultiplier",
+            "type": "integer"
+          },
+          "seatIsAI": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Seatisai",
+            "type": "object"
+          },
+          "seatOccupants": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Seatoccupants",
+            "type": "object"
+          },
+          "seats": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Seats",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "playing",
+              "finished"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "rules",
+          "fillWithAI",
+          "seats",
+          "runningBySeat",
+          "seatOccupants",
+          "seatIsAI",
+          "host",
+          "resultsHistory",
+          "initialSeatOrder",
+          "initialNames",
+          "host_key"
+        ],
+        "title": "CreateTableResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1078,6 +1208,17 @@
           "display_name": {
             "title": "Display Name",
             "type": "string"
+          },
+          "host_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host Key"
           }
         },
         "required": [
@@ -1769,7 +1910,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TablePublic"
+                  "$ref": "#/components/schemas/CreateTableResponse"
                 }
               }
             },

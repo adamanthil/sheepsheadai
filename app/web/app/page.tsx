@@ -123,7 +123,11 @@ export default function HomePage() {
       // Auto-join the table; identity rides on the Authorization header.
       const res2 = await apiFetch(`/api/tables/${t.id}/join`, {
         method: "POST",
-        body: JSON.stringify({ display_name: resolvedDisplayName }),
+        // The one-time key from the create response makes this join host.
+        body: JSON.stringify({
+          display_name: resolvedDisplayName,
+          host_key: t.host_key,
+        }),
       });
 
       if (!res2.ok) {

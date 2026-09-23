@@ -44,6 +44,8 @@ class CreateTableRequest(BaseModel):
 class JoinTableRequest(BaseModel):
     # Identity is derived from the Authorization header, never the body.
     display_name: str
+    # The key from CreateTableResponse; the join presenting it becomes host.
+    host_key: Optional[str] = None
 
     @field_validator("display_name")
     @classmethod
@@ -119,6 +121,12 @@ class TablePublic(BaseModel):
     resultsHistory: List[Dict[str, Any]]
     initialSeatOrder: List[str]
     initialNames: Dict[str, str]
+
+
+class CreateTableResponse(TablePublic):
+    # One-time key for the creator's own /join, so nobody who spots the new
+    # table in the public list can join first and take host.
+    host_key: str
 
 
 class JoinTableResponse(BaseModel):

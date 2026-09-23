@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import uuid
 from typing import Optional
 
@@ -10,6 +11,7 @@ from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, limiter
 from server.api.schemas import (
     CloseTableRequest,
     CreateTableRequest,
+    CreateTableResponse,
     JoinTableRequest,
     JoinTableResponse,
     OkResponse,
@@ -81,7 +83,7 @@ def list_tables():
     return tables.list_tables()
 
 
-@router.post("/api/tables", response_model=TablePublic)
+@router.post("/api/tables", response_model=CreateTableResponse)
 @limiter.limit(CREATE_JOIN)
 async def create_table(request: Request, req: CreateTableRequest):
     if is_draining():
@@ -96,7 +98,7 @@ async def create_table(request: Request, req: CreateTableRequest):
     # forever: the other autoclose triggers live in the ws connect/disconnect
     # paths. Give it a generous window to acquire its first connection.
     schedule_autoclose_if_no_humans(table, delay_seconds=300.0)
-    return table.to_public_dict()
+    return {**table.to_public_dict(), "host_key": table.host_key}
 
 
 @router.post("/api/tables/{table_id}/join", response_model=JoinTableResponse)
@@ -151,8 +153,14 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
                 "table": table.to_public_dict(),
             }
         table.clients[client_id] = conn
-        if not table.host_client_id:
+        if (
+            not table.host_client_id
+            and req.host_key
+            and table.host_key
+            and secrets.compare_digest(req.host_key, table.host_key)
+        ):
             table.host_client_id = client_id
+            table.host_key = None
 
         if table.status == "playing":
             ai_seat = pick_join_ai_seat(table)

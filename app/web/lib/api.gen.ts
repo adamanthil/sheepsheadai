@@ -648,6 +648,56 @@ export interface components {
             name: string;
             rules?: components["schemas"]["RulesInput"];
         };
+        /** CreateTableResponse */
+        CreateTableResponse: {
+            /** Fillwithai */
+            fillWithAI: boolean;
+            /** Host */
+            host: string | null;
+            /** Host Key */
+            host_key: string;
+            /** Id */
+            id: string;
+            /** Initialnames */
+            initialNames: {
+                [key: string]: string;
+            };
+            /** Initialseatorder */
+            initialSeatOrder: string[];
+            /** Name */
+            name: string;
+            /** Resultshistory */
+            resultsHistory: {
+                [key: string]: unknown;
+            }[];
+            rules: components["schemas"]["RulesInput"];
+            /** Runningbyseat */
+            runningBySeat: {
+                [key: string]: number;
+            };
+            /**
+             * Scoremultiplier
+             * @default 1
+             */
+            scoreMultiplier: number;
+            /** Seatisai */
+            seatIsAI: {
+                [key: string]: boolean;
+            };
+            /** Seatoccupants */
+            seatOccupants: {
+                [key: string]: string | null;
+            };
+            /** Seats */
+            seats: {
+                [key: string]: string | null;
+            };
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "playing" | "finished";
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -666,6 +716,8 @@ export interface components {
         JoinTableRequest: {
             /** Display Name */
             display_name: string;
+            /** Host Key */
+            host_key?: string | null;
         };
         /** JoinTableResponse */
         JoinTableResponse: {
@@ -1043,7 +1095,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TablePublic"];
+                    "application/json": components["schemas"]["CreateTableResponse"];
                 };
             };
             /** @description Validation Error */

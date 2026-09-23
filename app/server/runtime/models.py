@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -56,6 +57,8 @@ class Table:
     rules: Dict[str, Any] = field(default_factory=dict)
     fill_with_ai: bool = True
     host_client_id: Optional[str] = None
+    # One-time key handed to the creator; cleared once used to take host.
+    host_key: Optional[str] = field(default_factory=lambda: secrets.token_urlsafe(16))
     # seat index 1..5 → occupant_id (humans use client_id; AIs use ephemeral uuid)
     seats: Dict[int, Optional[str]] = field(
         default_factory=lambda: {i: None for i in range(1, 6)}

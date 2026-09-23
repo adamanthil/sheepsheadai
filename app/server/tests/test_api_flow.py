@@ -76,9 +76,11 @@ async def test_create_join_start_flow(db_app):
         created = await client.post("/api/tables", json={"name": "flow"})
         assert created.status_code == 200
         table_id = created.json()["id"]
+        host_key = created.json()["host_key"]
 
         joined = await client.post(
-            f"/api/tables/{table_id}/join", json={"display_name": "Flo"}
+            f"/api/tables/{table_id}/join",
+            json={"display_name": "Flo", "host_key": host_key},
         )
         assert joined.status_code == 200
         j = joined.json()
@@ -140,6 +142,40 @@ async def test_create_join_start_flow(db_app):
         assert again.json()["detail"] == "already_started"
 
 
+async def test_only_the_host_key_takes_host(db_app):
+    app, _ = db_app
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        created = (await client.post("/api/tables", json={"name": "keyed"})).json()
+        table_id = created["id"]
+
+        # Someone who spots the table in the public list and joins first
+        # is an ordinary player.
+        sniper = await client.post(
+            f"/api/tables/{table_id}/join", json={"display_name": "Snipe"}
+        )
+        assert sniper.status_code == 200
+        assert sniper.json()["is_host"] is False
+        wrong = await client.post(
+            f"/api/tables/{table_id}/join",
+            json={"display_name": "Guess", "host_key": "not-the-key"},
+        )
+        assert wrong.json()["is_host"] is False
+
+        creator = await client.post(
+            f"/api/tables/{table_id}/join",
+            json={"display_name": "Creator", "host_key": created["host_key"]},
+        )
+        assert creator.json()["is_host"] is True
+
+        # The key is spent once used.
+        replay = await client.post(
+            f"/api/tables/{table_id}/join",
+            json={"display_name": "Replay", "host_key": created["host_key"]},
+        )
+        assert replay.json()["is_host"] is False
+
+
 async def test_expired_session_is_rejected(db_app):
     app, pool = db_app
     transport = httpx.ASGITransport(app=app)
@@ -190,7 +226,8 @@ async def test_doublers_pass_out_persists_the_thrown_in_deal_and_doubled_stake(d
         table_id = created.json()["id"]
 
         joined = await client.post(
-            f"/api/tables/{table_id}/join", json={"display_name": "Dub"}
+            f"/api/tables/{table_id}/join",
+            json={"display_name": "Dub", "host_key": created.json()["host_key"]},
         )
         j = joined.json()
         auth = {"Authorization": f"Bearer {j['session_token']}"}
