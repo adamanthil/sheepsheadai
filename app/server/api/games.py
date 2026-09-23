@@ -26,8 +26,8 @@ from server.runtime.dealing import (
     refresh_table_agent,
 )
 from server.runtime.lifecycle import is_draining
+from server.runtime.occupants import AI_NAME_POOL
 from server.runtime.rules import plays_doublers
-from server.runtime.seating import AI_NAME_POOL
 from server.runtime.tables import (
     Occupant,
     get_actor_seat,

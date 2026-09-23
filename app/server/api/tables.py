@@ -32,8 +32,8 @@ from server.runtime.lifecycle import (
     is_draining,
     schedule_autoclose_if_no_humans,
 )
+from server.runtime.occupants import allocate_ai_occupant
 from server.runtime.seating import (
-    allocate_ai_occupant,
     is_ai_occupant,
     lowest_non_human_seat,
     pick_join_ai_seat,

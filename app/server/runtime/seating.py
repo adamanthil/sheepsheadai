@@ -2,23 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-import uuid
 from typing import Optional, Set
 
 from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.ai_loop import schedule_ai_turns
+from server.runtime.occupants import allocate_ai_occupant
 from server.runtime.tables import Occupant, Table
 
-# Name pool for auto-generated AI occupants (disconnect replacement here,
-# and table auto-fill in server.api.games). Content and order are shared;
-# each call site keeps its own indexing scheme (time-indexed here,
-# seat-indexed in games.py) so behavior is unchanged.
-AI_NAME_POOL = ("Dan", "Kyle", "John", "Trevor", "Tim", "Tom")
-
 # Fixed seat-label names for the /analyze simulate trace (server.services.
-# analyze). This list has different content/order than AI_NAME_POOL above
+# analyze). This list has different content/order than server.runtime.occupants.AI_NAME_POOL
 # (it includes "Andrew" and is always exactly 5 long, one per seat) -- kept
 # as a separate constant rather than unified, since changing it would alter
 # user-visible analyze output.
@@ -69,15 +62,6 @@ def find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
         if table.seats.get(i) == occ_id:
             return i
     return None
-
-
-def allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
-    occ_id = str(uuid.uuid4())
-    return Occupant(
-        id=occ_id,
-        display_name=display_name or AI_NAME_POOL[int(time.time()) % len(AI_NAME_POOL)],
-        is_ai=True,
-    )
 
 
 async def replace_ai_with_human_and_reserve(
