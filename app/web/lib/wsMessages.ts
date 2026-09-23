@@ -36,6 +36,7 @@ const chatMessage = z.looseObject({
   type: z.enum(["player", "system"]),
   author: z.string().nullable(),
   author_id: z.string().nullable().optional(),
+  author_is_ai: z.boolean().optional(),
   body: z.string(),
   timestamp: z.number(),
 });

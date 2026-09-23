@@ -218,3 +218,11 @@
   color: var(--muted);
   cursor: pointer;
 }
+
+/* Who a system line is about, set apart from the event text so a display
+   name can't pass as part of it. */
+.systemActor {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--ink);
+}

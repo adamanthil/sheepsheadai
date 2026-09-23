@@ -49,7 +49,8 @@ async def test_seated_human_preferred_over_earlier_spectator():
     await _run_handoff(table)
 
     assert table.host_client_id == "late"
-    assert table.chat_log[-1]["body"] == "late is now the host"
+    last = table.chat_log[-1]
+    assert (last["author"], last["body"]) == ("late", "is now the host")
 
 
 async def test_spectator_takes_host_when_no_one_is_seated():

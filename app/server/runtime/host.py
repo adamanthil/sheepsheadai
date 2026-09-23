@@ -56,7 +56,7 @@ def schedule_host_handoff(table: Table) -> None:
                     return
                 table.host_client_id = successor.client_id
             msg_dict = await add_chat_message(
-                table, "system", f"{successor.display_name} is now the host"
+                table, "system", "is now the host", author=successor.display_name
             )
             await broadcast_chat_append(table, msg_dict)
             await broadcast_table_update(table)

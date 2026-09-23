@@ -26,6 +26,9 @@ export interface ChatMessage {
   author: string | null;
   /** The author's client id on player messages; null on system messages. */
   author_id?: string | null;
+  /** On a system message, ``author`` is who the event is about (kept out of
+   * ``body``); this marks them as an AI. */
+  author_is_ai?: boolean;
   body: string;
   timestamp: number;
 }

@@ -51,7 +51,7 @@ async def ai_take_turns(table: Table) -> None:
 
         action_str = move.action_str
         display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"
-        await emit_bid_chat_message(table, action_str, display_name)
+        await emit_bid_chat_message(table, action_str, display_name, is_ai=True)
 
         # A doublers table that just passed out swaps in a fresh deal before
         # any state goes out, so the momentary leaster state is never

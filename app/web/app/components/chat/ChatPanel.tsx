@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { ds } from "../../../lib/ds";
 import styles from "./ChatPanel.module.css";
 import type { ChatMessage } from "../../../lib/types";
 
@@ -89,7 +90,22 @@ export function ChatPanel({
                 className={`${styles.message} ${msg.type === "system" ? styles.systemMessage : styles.playerMessage}`}
               >
                 {msg.type === "system" ? (
-                  <div className={styles.systemText}>{msg.body}</div>
+                  <div className={styles.systemText}>
+                    {msg.author && (
+                      <>
+                        <span className={styles.systemActor}>{msg.author}</span>
+                        {msg.author_is_ai && (
+                          <span
+                            className={`${ds.badge} ${ds.badgeQuiet}`}
+                            style={{ fontSize: 8, marginLeft: 4 }}
+                          >
+                            AI
+                          </span>
+                        )}{" "}
+                      </>
+                    )}
+                    {msg.body}
+                  </div>
                 ) : (
                   <div className={styles.playerMessageContent}>
                     {actions !== null ? (

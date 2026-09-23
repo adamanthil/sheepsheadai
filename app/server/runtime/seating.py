@@ -87,7 +87,7 @@ async def replace_ai_with_human_and_reserve(
         else "A player"
     )
     msg_dict = await add_chat_message(
-        table, "system", f"{display_name} joined and took seat {seat}"
+        table, "system", f"joined and took seat {seat}", author=display_name
     )
     await broadcast_chat_append(table, msg_dict)
     await broadcast_table_event(
@@ -147,7 +147,10 @@ def schedule_ai_replacement_for_disconnected_human(
                 table.seats[seat_idx] = ai_id
                 conn.seat = None
             msg_dict = await add_chat_message(
-                table, "system", f"{conn.display_name} disconnected. Seat filled by AI."
+                table,
+                "system",
+                "disconnected. Seat filled by AI.",
+                author=conn.display_name,
             )
             await broadcast_chat_append(table, msg_dict)
             await broadcast_table_event(

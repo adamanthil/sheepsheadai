@@ -108,7 +108,8 @@ async def _expire(
             msg_dict = await add_chat_message(
                 table,
                 "system",
-                f"{conn.display_name} ran out of time; the AI played for them",
+                "ran out of time; the AI played for them",
+                author=conn.display_name,
             )
             await broadcast_chat_append(table, msg_dict)
         await broadcast_table_state(table)
@@ -127,8 +128,9 @@ async def _move_to_spectator(table: Table, conn: ClientConn, seat: int) -> None:
     msg_dict = await add_chat_message(
         table,
         "system",
-        f"{conn.display_name} missed {MAX_TIMEOUT_STRIKES} turns in a row "
-        f"and is now watching. Seat {seat} went to the AI.",
+        f"missed {MAX_TIMEOUT_STRIKES} turns in a row and is now watching. "
+        f"Seat {seat} went to the AI.",
+        author=conn.display_name,
     )
     await broadcast_chat_append(table, msg_dict)
     await broadcast_table_update(table)

@@ -212,7 +212,8 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
                     msg_dict = await add_chat_message(
                         table,
                         "system",
-                        f"{req.display_name} joined and took seat {seat_to_take}",
+                        f"joined and took seat {seat_to_take}",
+                        author=req.display_name,
                     )
                     await broadcast_chat_append(table, msg_dict)
                     await broadcast_table_event(
@@ -226,7 +227,7 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
                     await broadcast_table_update(table)
             else:
                 msg_dict = await add_chat_message(
-                    table, "system", f"{req.display_name} joined the table"
+                    table, "system", "joined the table", author=req.display_name
                 )
                 await broadcast_chat_append(table, msg_dict)
                 await broadcast_table_event(
@@ -305,7 +306,7 @@ async def choose_seat(
 
     display_name = table.clients[req.client_id].display_name
     msg_dict = await add_chat_message(
-        table, "system", f"{display_name} took seat {req.seat}"
+        table, "system", f"took seat {req.seat}", author=display_name
     )
     await broadcast_chat_append(table, msg_dict)
     await broadcast_table_update(table)
@@ -402,7 +403,7 @@ async def kick_player(
             pass  # already gone
 
     msg_dict = await add_chat_message(
-        table, "system", f"{target.display_name} was removed by the host"
+        table, "system", "was removed by the host", author=target.display_name
     )
     await broadcast_chat_append(table, msg_dict)
     await broadcast_table_update(table)

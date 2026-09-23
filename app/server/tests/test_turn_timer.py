@@ -96,7 +96,11 @@ async def test_timeout_plays_for_the_human_and_strikes(hooks):
     assert conn.seat == 1
     assert continued == [table]
     assert ws.sent[0] == {"type": "turn_timer", "seat": 1, "secondsLeft": 0.01}
-    assert table.chat_log[-1]["body"] == "Pat ran out of time; the AI played for them"
+    last = table.chat_log[-1]
+    assert (last["author"], last["body"]) == (
+        "Pat",
+        "ran out of time; the AI played for them",
+    )
 
 
 async def test_a_move_in_time_leaves_the_timer_stale(hooks):

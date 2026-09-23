@@ -35,11 +35,16 @@ async def add_chat_message(
     body: str,
     author: Optional[str] = None,
     author_id: Optional[str] = None,
+    author_is_ai: bool = False,
 ) -> Dict[str, Any]:
     """Add a chat message to the table's chat log and return the message dict.
 
-    ``author_id`` is a player message's client id, so other clients can act
-    on its author (mute, or the host removing them).
+    On a player message ``author`` wrote it; ``author_id`` is their client
+    id, so other clients can act on them (mute, or the host removing them).
+    On a system message ``author`` is who the event is about, kept out of
+    ``body`` so clients render the name apart from the event text and a
+    display name can never pass as part of the event; ``author_is_ai``
+    marks an AI occupant.
     """
     msg_id = str(uuid.uuid4())
     msg_dict: Dict[str, Any] = {
@@ -48,6 +53,7 @@ async def add_chat_message(
         "type": msg_type,
         "author": author,
         "author_id": author_id,
+        "author_is_ai": author_is_ai,
         "body": body,
         "timestamp": time.time(),
     }
@@ -67,7 +73,7 @@ async def broadcast_chat_append(table: Table, msg_dict: Dict[str, Any]) -> None:
 
 
 async def emit_bid_chat_message(
-    table: Table, action_str: str, display_name: str
+    table: Table, action_str: str, display_name: str, is_ai: bool = False
 ) -> None:
     """Post + broadcast a system chat message for a bid/partner-call action.
 
@@ -76,25 +82,27 @@ async def emit_bid_chat_message(
     this unconditionally after resolving an action.
     """
     if action_str == "PICK":
-        body = f"{display_name} picked"
+        body = "picked"
     elif action_str == "PASS":
-        body = f"{display_name} passed"
+        body = "passed"
     elif action_str == "ALONE":
-        body = f"{display_name} goes alone"
+        body = "goes alone"
     elif action_str == "JD PARTNER":
-        body = f"{display_name} chose JD partner"
+        body = "chose JD partner"
     elif action_str.startswith("CALL "):
         parts = action_str.split()
         called_card = parts[1] if len(parts) > 1 else ""
         under = "under" if len(parts) > 2 and parts[2] == "UNDER" else ""
         card_display = CARD_FULL_NAMES.get(called_card, called_card)
-        body = f"{display_name} calls {card_display}"
+        body = f"calls {card_display}"
         if under:
             body += " under"
     else:
         return
 
-    msg_dict = await add_chat_message(table, "system", body)
+    msg_dict = await add_chat_message(
+        table, "system", body, author=display_name, author_is_ai=is_ai
+    )
     await broadcast_chat_append(table, msg_dict)
 
 

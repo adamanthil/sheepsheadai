@@ -95,7 +95,8 @@ async def test_host_removes_a_seated_player(client):
     assert pest.player_id in table.banned_player_ids
     assert ws.sent == [{"type": "kicked"}]
     assert ws.closed_with == 4403
-    assert table.chat_log[-1]["body"] == "pest was removed by the host"
+    last = table.chat_log[-1]
+    assert (last["author"], last["body"]) == ("pest", "was removed by the host")
 
 
 async def test_only_the_host_can_remove(client):

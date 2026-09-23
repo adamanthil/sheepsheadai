@@ -164,7 +164,9 @@ export function computePrevText(
 }
 
 export function computeLastMessage(chatMessages: ChatMessage[]): string {
-  return chatMessages.length
-    ? chatMessages[chatMessages.length - 1].body
-    : "Hand in progress";
+  const last = chatMessages[chatMessages.length - 1];
+  if (!last) return "Hand in progress";
+  return last.type === "system" && last.author
+    ? `${last.author} ${last.body}`
+    : last.body;
 }
