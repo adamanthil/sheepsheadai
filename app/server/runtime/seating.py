@@ -4,8 +4,8 @@ import asyncio
 import logging
 from typing import Optional, Set
 
-from server.realtime.broadcast import broadcast_table_event, broadcast_table_update
-from server.realtime.chat import add_chat_message, broadcast_chat_append
+from server.realtime.broadcast import broadcast_table_update
+from server.realtime.chat import post_presence_notice
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.occupants import allocate_ai_occupant
 from server.runtime.tables import Occupant, Table
@@ -81,23 +81,9 @@ async def replace_ai_with_human_and_reserve(
             table.reserved_ai_by_human[client_id] = placeholder.id
         else:
             table.reserved_ai_by_human[client_id] = prev_occ
-    display_name = (
-        table.clients.get(client_id).display_name
-        if client_id in table.clients
-        else "A player"
-    )
-    msg_dict = await add_chat_message(
-        table, "system", f"joined and took seat {seat}", author=display_name
-    )
-    await broadcast_chat_append(table, msg_dict)
-    await broadcast_table_event(
-        table,
-        {
-            "type": "lobby_event",
-            "message": f"{display_name} joined and took seat {seat}",
-            "table": table.to_public_dict(),
-        },
-    )
+    conn = table.clients.get(client_id)
+    if conn is not None:
+        await post_presence_notice(table, conn, f"joined and took seat {seat}")
     await broadcast_table_update(table)
     schedule_ai_turns(table)
 
@@ -146,21 +132,7 @@ def schedule_ai_replacement_for_disconnected_human(
                         )
                 table.seats[seat_idx] = ai_id
                 conn.seat = None
-            msg_dict = await add_chat_message(
-                table,
-                "system",
-                "disconnected. Seat filled by AI.",
-                author=conn.display_name,
-            )
-            await broadcast_chat_append(table, msg_dict)
-            await broadcast_table_event(
-                table,
-                {
-                    "type": "lobby_event",
-                    "message": f"{conn.display_name} disconnected. Seat filled by AI.",
-                    "table": table.to_public_dict(),
-                },
-            )
+            await post_presence_notice(table, conn, "disconnected. Seat filled by AI.")
             await broadcast_table_update(table)
             schedule_ai_turns(table)
         except asyncio.CancelledError:

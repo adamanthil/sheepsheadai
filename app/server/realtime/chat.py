@@ -13,6 +13,9 @@ from server.runtime.tables import ClientConn, Table, json_default
 from sheepshead import CARD_FULL_NAMES
 
 CHAT_MAX_LEN = 500
+# A player's join/leave notices are posted at most once per this window, so
+# rejoining or hopping seats in a loop can't flood the table.
+PRESENCE_NOTICE_COOLDOWN_SECONDS = 60.0
 _CHAT_RATE_LIMIT = 5  # max messages
 _CHAT_RATE_WINDOW = 5.0  # seconds
 
@@ -70,6 +73,40 @@ async def broadcast_chat_append(table: Table, msg_dict: Dict[str, Any]) -> None:
             "message": msg_dict,
         },
     )
+
+
+async def post_presence_notice(
+    table: Table,
+    conn: ClientConn,
+    event: str,
+    *,
+    chat: bool = True,
+    toast: bool = True,
+) -> None:
+    """Announce a join/leave-type event about ``conn`` (e.g. "joined the
+    table") as a chat line and/or a lobby toast -- unless this player had
+    one within PRESENCE_NOTICE_COOLDOWN_SECONDS, in which case it is dropped
+    (the seat display still updates through table_update)."""
+    who = conn.player_id or conn.client_id
+    now = time.monotonic()
+    last = table.presence_notice_at.get(who)
+    if last is not None and now - last < PRESENCE_NOTICE_COOLDOWN_SECONDS:
+        return
+    table.presence_notice_at[who] = now
+    if chat:
+        msg_dict = await add_chat_message(
+            table, "system", event, author=conn.display_name
+        )
+        await broadcast_chat_append(table, msg_dict)
+    if toast:
+        await broadcast_table_event(
+            table,
+            {
+                "type": "lobby_event",
+                "message": f"{conn.display_name} {event}",
+                "table": table.to_public_dict(),
+            },
+        )
 
 
 async def emit_bid_chat_message(

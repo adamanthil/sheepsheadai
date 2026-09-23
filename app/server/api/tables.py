@@ -23,11 +23,14 @@ from server.api.schemas import (
 )
 from server.config import get_settings
 from server.realtime.broadcast import (
-    broadcast_table_event,
     broadcast_table_state,
     broadcast_table_update,
 )
-from server.realtime.chat import add_chat_message, broadcast_chat_append
+from server.realtime.chat import (
+    add_chat_message,
+    broadcast_chat_append,
+    post_presence_notice,
+)
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.lifecycle import (
     close_table,
@@ -209,35 +212,12 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
                 else:
                     table.seats[seat_to_take] = client_id
                     conn.seat = seat_to_take
-                    msg_dict = await add_chat_message(
-                        table,
-                        "system",
-                        f"joined and took seat {seat_to_take}",
-                        author=req.display_name,
-                    )
-                    await broadcast_chat_append(table, msg_dict)
-                    await broadcast_table_event(
-                        table,
-                        {
-                            "type": "lobby_event",
-                            "message": f"{req.display_name} joined and took seat {seat_to_take}",
-                            "table": table.to_public_dict(),
-                        },
+                    await post_presence_notice(
+                        table, conn, f"joined and took seat {seat_to_take}"
                     )
                     await broadcast_table_update(table)
             else:
-                msg_dict = await add_chat_message(
-                    table, "system", "joined the table", author=req.display_name
-                )
-                await broadcast_chat_append(table, msg_dict)
-                await broadcast_table_event(
-                    table,
-                    {
-                        "type": "lobby_event",
-                        "message": f"{req.display_name} joined the table",
-                        "table": table.to_public_dict(),
-                    },
-                )
+                await post_presence_notice(table, conn, "joined the table")
 
     return {
         "client_id": client_id,
@@ -304,11 +284,9 @@ async def choose_seat(
             else:
                 table.reserved_ai_by_human[req.client_id] = prev_occ  # type: ignore[assignment]
 
-    display_name = table.clients[req.client_id].display_name
-    msg_dict = await add_chat_message(
-        table, "system", f"took seat {req.seat}", author=display_name
+    await post_presence_notice(
+        table, table.clients[req.client_id], f"took seat {req.seat}", toast=False
     )
-    await broadcast_chat_append(table, msg_dict)
     await broadcast_table_update(table)
     if in_play:
         # The new occupant needs the seat's hand, and the AI loop must stop

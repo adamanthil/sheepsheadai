@@ -9,7 +9,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from server.api.auth import resolve_player
 from server.api.ratelimit import client_key
 from server.realtime.broadcast import (
-    broadcast_table_event,
     broadcast_table_state,
     broadcast_table_update,
 )
@@ -18,6 +17,7 @@ from server.realtime.chat import (
     add_chat_message,
     broadcast_chat_append,
     is_chat_rate_limited,
+    post_presence_notice,
     send_chat_init,
 )
 from server.runtime.ai_loop import schedule_ai_turns
@@ -170,13 +170,11 @@ async def _serve_connection(
     # suppresses the idle autoclose and keeps the table alive with no players.
     try:
         if reclaimed_seat is not None:
-            await broadcast_table_event(
+            await post_presence_notice(
                 table,
-                {
-                    "type": "lobby_event",
-                    "message": f"{conn.display_name} reconnected and reclaimed seat {reclaimed_seat}",
-                    "table": table.to_public_dict(),
-                },
+                conn,
+                f"reconnected and reclaimed seat {reclaimed_seat}",
+                chat=False,
             )
             await broadcast_table_update(table)
             schedule_ai_turns(table)

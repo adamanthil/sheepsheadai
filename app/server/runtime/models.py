@@ -122,6 +122,9 @@ class Table:
     disconnect_tasks: Dict[str, asyncio.Task] = field(default_factory=dict)
     # Reserved AI occupant id to reclaim per human client id
     reserved_ai_by_human: Dict[str, str] = field(default_factory=dict)
+    # Last join/leave notice per player (monotonic), for the notice
+    # cooldown in server.realtime.chat.post_presence_notice
+    presence_notice_at: Dict[str, float] = field(default_factory=dict)
     # Chat log: bounded deque of chat messages (max 200 entries)
     chat_log: deque = field(default_factory=lambda: deque(maxlen=200))
     # Phase 5 persistence: game_id of the hand currently being persisted
