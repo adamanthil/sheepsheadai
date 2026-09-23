@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     sheepshead_max_tables_per_ip: int = 5
     # Seconds a human has to move before the AI moves for them
     # (server.runtime.turn_timer).
-    sheepshead_turn_timeout_seconds: float = 20.0
+    sheepshead_turn_timeout_seconds: float = 30.0
     env: str = "development"
     log_format: str = "text"
 
