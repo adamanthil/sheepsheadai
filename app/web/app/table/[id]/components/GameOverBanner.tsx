@@ -86,9 +86,18 @@ export default function GameOverBanner({
         {scoresGrid(final.scores, "Scores by player")}
         {isLeaster && scoresGrid(final.points_taken, "Points taken")}
         <div className={styles.buttons}>
-          <button className={`${ds.btn} ${ds.btnAccent}`} onClick={onRedeal}>
-            Redeal →
-          </button>
+          {/* Only the host can redeal (the server refuses anyone else). */}
+          {isHost ? (
+            <button className={`${ds.btn} ${ds.btnAccent}`} onClick={onRedeal}>
+              Redeal →
+            </button>
+          ) : (
+            <span className={styles.waitingHost}>
+              {table.host
+                ? `Waiting for ${table.host} to redeal…`
+                : "Waiting for the host to redeal…"}
+            </span>
+          )}
           <button className={`${ds.btn} ${ds.btnGhost}`} onClick={onShowScores}>
             Show scores
           </button>
