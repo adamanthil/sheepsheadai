@@ -13,6 +13,7 @@ from sheepshead import (
     ACTION_IDS,
     CARD_FULL_NAMES,
     DECK,
+    Game,
     Player,
 )
 
@@ -140,6 +141,45 @@ def build_player_state(player: Player, score_multiplier: int = 1) -> Dict[str, A
     return {
         "state": state_dict,
         "view": view,
+    }
+
+
+# View fields everyone at the table sees: bids, played cards, a revealed
+# partner, and the result. An allowlist rather than a denylist so a private
+# field added to the per-seat view never leaks to spectators by default.
+_PUBLIC_VIEW_KEYS = (
+    "picker",
+    "partner",
+    "alone",
+    "called_card",
+    "called_card_display",
+    "called_under",
+    "is_leaster",
+    "current_trick_index",
+    "current_trick",
+    "last_trick_index",
+    "last_trick",
+    "last_trick_winner",
+    "last_trick_points",
+    "was_trick_just_completed",
+    "leaders",
+    "trick_points",
+    "trick_winners",
+    "history",
+    "is_done",
+    "final",
+)
+
+
+def build_spectator_state(game: Game, score_multiplier: int = 1) -> Dict[str, Any]:
+    """The state payload for an unseated client: public fields only, with
+    the private card lists present but empty so it shares the seat shape."""
+    view = build_player_state(game.players[0], score_multiplier)["view"]
+    public: Dict[str, Any] = {k: view[k] for k in _PUBLIC_VIEW_KEYS}
+    public.update(hand=[], blind=[], bury=[])
+    return {
+        "state": {"play_started": int(bool(game.play_started))},
+        "view": public,
     }
 
 

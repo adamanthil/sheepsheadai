@@ -14,6 +14,7 @@ from server.runtime.tables import (
     get_valid_action_ids_for_seat,
     json_default,
 )
+from server.runtime.views import build_spectator_state
 
 
 async def send_to_client(table: Table, conn: ClientConn, text: str) -> None:
@@ -56,23 +57,31 @@ async def broadcast_table_update(table: Table) -> None:
 
 
 async def broadcast_table_state(table: Table) -> None:
-    """Send each connected human client their own masked state + valid actions.
+    """Send each connected client their own masked state + valid actions.
 
     State is masked by ``conn.seat``, which is per-client, so every tab of one
     player receives identical content -- multi-tab reveals nothing a single
-    tab would not.
+    tab would not. Unseated clients (spectators) get the public view with
+    ``yourSeat`` null.
     """
     if not table.game:
         return
     actor_seat = get_actor_seat(table)
+    spectator_payload = None
     for cid, conn in list(table.clients.items()):
         if not conn.connected:
             continue
-        if not conn.seat:
-            continue
-        player = table.game.players[conn.seat - 1]
-        payload = build_player_state(player, table.score_multiplier)
-        valid_actions = get_valid_action_ids_for_seat(table, conn.seat)
+        if conn.seat:
+            player = table.game.players[conn.seat - 1]
+            payload = build_player_state(player, table.score_multiplier)
+            valid_actions = get_valid_action_ids_for_seat(table, conn.seat)
+        else:
+            if spectator_payload is None:
+                spectator_payload = build_spectator_state(
+                    table.game, table.score_multiplier
+                )
+            payload = spectator_payload
+            valid_actions = []
         msg = {
             "type": "state",
             "table": table.to_public_dict(),
