@@ -22,6 +22,7 @@ from server.api.schemas import (
     AnalyzeProbability,
     AnalyzeTrumpSeenMaskEntry,
 )
+from server.services.ai_loader import inference_turn_in_thread
 from sheepshead import ACTION_LOOKUP, TRUMP, Game
 from sheepshead.agent.observation import observation_for
 from sheepshead.training.reward_shaping import (
@@ -129,7 +130,8 @@ def compute_oracle_values(
     values_by_seat: Dict[int, List[float]] = {}
     with torch.no_grad():
         for seat, events in oracle_events.items():
-            vals = agent.oracle_critic.forward_sequences([events], device=device)
+            with inference_turn_in_thread():
+                vals = agent.oracle_critic.forward_sequences([events], device=device)
             values_by_seat[seat] = [float(v) for v in vals[0].cpu().tolist()]
     for action_detail, (seat, idx) in zip(trace, oracle_decision_pos):
         action_detail.oracleValue = values_by_seat[seat][idx]
@@ -231,6 +233,17 @@ def run_inference_step(
     """Run the encoder/actor/critic forward pass for the current actor and
     extract the auxiliary-head predictions (seen-trump mask, known-points
     estimate, win probability, etc)."""
+    with inference_turn_in_thread():
+        return _run_inference_step(agent, actor_player, actor_seat, players, device)
+
+
+def _run_inference_step(
+    agent: Any,
+    actor_player: Any,
+    actor_seat: int,
+    players: List[str],
+    device: torch.device,
+) -> StepInference:
     state = observation_for(actor_player, agent)
     valid_actions = actor_player.get_valid_action_ids()
 

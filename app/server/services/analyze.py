@@ -16,7 +16,7 @@ from server.api.schemas import (
 from server.config import get_settings
 from server.runtime.seating import ANALYZE_SEAT_NAMES
 from server.runtime.tables import build_player_state
-from server.services.ai_loader import load_agent
+from server.services.ai_loader import inference_turn_in_thread, load_agent
 from server.services.analysis_common import (
     build_action_detail,
     compute_oracle_values,
@@ -357,9 +357,11 @@ def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
             # Propagate an observation for the just-completed trick to all seats
             for seat in game.players:
                 memory_before = agent.get_recurrent_memory(seat.position, device=device)
-                agent.observe(
-                    last_trick_observation_for(seat, agent), player_id=seat.position
-                )
+                with inference_turn_in_thread():
+                    agent.observe(
+                        last_trick_observation_for(seat, agent),
+                        player_id=seat.position,
+                    )
                 memory_after = agent.get_recurrent_memory(seat.position, device=device)
                 distance, norm = memory_drift(memory_before, memory_after)
                 memory_observes.append(
