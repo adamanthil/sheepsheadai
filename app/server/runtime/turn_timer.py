@@ -25,7 +25,7 @@ from server.realtime.chat import (
     broadcast_chat_append,
     emit_bid_chat_message,
 )
-from server.runtime.ai_move import ai_act_for_seat, ai_observe_all
+from server.runtime.ai_move import ai_act_for_seat
 from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.models import ClientConn, Table
 from server.runtime.occupants import give_seat_to_ai
@@ -102,7 +102,6 @@ async def _expire(
         if move is None:
             return
 
-        await ai_observe_all(table, except_seat=seat)
         await fire_game_hooks(table, move.pre, move.post, seat=seat, by_ai=True)
         await emit_bid_chat_message(table, move.action_str, conn.display_name)
         await redeal_passed_out_hand(table)

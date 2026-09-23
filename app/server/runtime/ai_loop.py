@@ -5,7 +5,7 @@ import logging
 
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import emit_bid_chat_message
-from server.runtime.ai_move import ai_act_for_seat, ai_observe_all
+from server.runtime.ai_move import ai_act_for_seat
 from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.tables import (
     Table,
@@ -44,7 +44,6 @@ async def ai_take_turns(table: Table) -> None:
 
         if actor is None or move is None:
             break
-        await ai_observe_all(table, except_seat=actor)
 
         await fire_game_hooks(table, move.pre, move.post, seat=actor, by_ai=True)
 
@@ -56,7 +55,6 @@ async def ai_take_turns(table: Table) -> None:
         # any state goes out, so the momentary leaster state is never
         # broadcast. Loop round onto the new deal from the top.
         if await redeal_passed_out_hand(table):
-            await ai_observe_all(table)
             await broadcast_table_state(table)
             # Beat before the new deal's first bid, so the throw-in callout
             # is readable rather than being overrun by the next PICK.

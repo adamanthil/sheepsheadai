@@ -20,7 +20,7 @@ from server.realtime.broadcast import (
 )
 from server.realtime.chat import emit_bid_chat_message
 from server.runtime.ai_loop import schedule_ai_turns
-from server.runtime.ai_move import ai_observe_all
+from server.runtime.ai_move import observe_human_decision, observe_trick_end
 from server.runtime.dealing import (
     new_game_for_table,
     redeal_passed_out_hand,
@@ -46,6 +46,7 @@ from server.services.persistence.games import (
 )
 from server.services.persistence.pool import get_db_pool
 from sheepshead import ACTION_LOOKUP
+from sheepshead.agent.observation import observation_for
 
 router = APIRouter()
 
@@ -221,11 +222,19 @@ async def post_action(
 
         player = table.game.players[conn.seat - 1]
         pre = capture_pre_state(table.game)
+        decision_state = (
+            observation_for(player, table.ai_agent) if table.ai_agent else None
+        )
         ok = player.act(int(req.action_id))
         if not ok:
             raise HTTPException(status_code=400, detail="apply_failed")
         table.move_seq += 1
         post = capture_post_state(table.game)
+        # The AI's memory for this seat follows the human's play, in
+        # training order: the decision, then any trick it completed.
+        if decision_state is not None:
+            await observe_human_decision(table, conn.seat, decision_state)
+        await observe_trick_end(table)
     # Moving in time clears the player's timeout strikes.
     conn.timeout_strikes = 0
     cancel_turn_timer(table)
@@ -238,11 +247,9 @@ async def post_action(
 
     # A doublers table that just passed out swaps in a fresh deal here, before
     # anything is broadcast, so the momentary leaster state never reaches a
-    # client. The new deal has its own seats to observe, so this precedes
-    # ai_observe_all.
+    # client.
     await redeal_passed_out_hand(table)
 
-    await ai_observe_all(table, except_seat=conn.seat)
     await broadcast_table_state(table)
     schedule_ai_turns(table)
 
