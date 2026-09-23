@@ -14,7 +14,7 @@ from uuid import UUID
 import asyncpg
 
 from server.services.persistence.cards import upsert_cardset
-from server.services.persistence.pool import get_ai_player_id
+from server.services.persistence.pool import DB_UNAVAILABLE, get_ai_player_id
 from sheepshead import DECK_IDS, Game
 
 if TYPE_CHECKING:
@@ -297,7 +297,7 @@ async def persist_substituted_pick(
                 """,
                 table.game_player_ids[seat],
             )
-    except Exception:
+    except DB_UNAVAILABLE:
         logger.exception(
             "persist_substituted_pick failed (table=%s game=%s seat=%s)",
             table.id,

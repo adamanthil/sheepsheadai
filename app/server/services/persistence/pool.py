@@ -15,6 +15,18 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+# The database being unreachable or refusing connections: the failures a
+# periodic job or a best-effort write should expect and ride out. SQL errors
+# (bad statements, constraint violations) are bugs and are not included.
+DB_UNAVAILABLE: tuple[type[BaseException], ...] = (
+    OSError,
+    TimeoutError,
+    asyncpg.PostgresConnectionError,
+    asyncpg.InterfaceError,
+    asyncpg.CannotConnectNowError,
+    asyncpg.TooManyConnectionsError,
+)
+
 # Module-level state set at startup so background tasks (ai_loop, lifecycle)
 # can access the pool and AI identity without holding a request/app reference.
 _pool: Optional[asyncpg.Pool] = None

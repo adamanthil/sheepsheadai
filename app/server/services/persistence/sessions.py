@@ -17,6 +17,8 @@ from uuid import UUID
 
 import asyncpg
 
+from server.services.persistence.pool import DB_UNAVAILABLE
+
 SESSION_TTL = "30 days"
 # Refresh last_seen/expires_at at most this often.
 BUMP_AFTER = "1 hour"
@@ -105,6 +107,6 @@ async def run_identity_purge(pool: asyncpg.Pool) -> None:
                     sessions,
                     players,
                 )
-        except Exception:
-            logging.exception("identity purge failed")
+        except DB_UNAVAILABLE:
+            logging.warning("identity purge skipped: database unavailable")
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)

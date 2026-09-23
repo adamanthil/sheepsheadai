@@ -11,7 +11,6 @@ take back with the spectator view's "Take seat" button.
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from typing import Callable, Optional
 
@@ -30,6 +29,7 @@ from server.runtime.ai_move import ai_act_for_seat, ai_observe_all
 from server.runtime.dealing import ensure_table_agent, redeal_passed_out_hand
 from server.runtime.models import ClientConn, Table
 from server.runtime.occupants import give_seat_to_ai
+from server.runtime.tasks import spawn
 from server.runtime.views import get_actor_seat
 from server.services.persistence.games import fire_game_hooks
 
@@ -75,8 +75,8 @@ async def arm_turn_timer(table: Table, on_expired: Callable[[Table], None]) -> N
     seconds = turn_timeout_seconds()
     table.turn_timer_key = key
     table.turn_deadline = time.monotonic() + seconds
-    table.turn_timer_task = asyncio.create_task(
-        _expire(table, key, on_expired, seconds)
+    table.turn_timer_task = spawn(
+        _expire(table, key, on_expired, seconds), f"turn-timer:{table.id}"
     )
     await broadcast_table_event(
         table,
@@ -123,8 +123,6 @@ async def _expire(
         on_expired(table)
     except asyncio.CancelledError:
         return
-    except Exception:
-        logging.exception("turn timer failed for table %s", table.id)
 
 
 async def _move_to_spectator(table: Table, conn: ClientConn, seat: int) -> None:

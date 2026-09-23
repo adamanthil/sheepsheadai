@@ -4,7 +4,7 @@ import secrets
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocketDisconnect
 
 from server.api.auth import PlayerIdentity, current_player, optional_player
 from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, client_ip, limiter
@@ -385,8 +385,8 @@ async def kick_player(
         try:
             await ws.send_text('{"type": "kicked"}')
             await ws.close(code=4403)
-        except Exception:
-            pass  # already gone
+        except WebSocketDisconnect:
+            pass  # that tab was already gone
 
     msg_dict = await add_chat_message(
         table, "system", "was removed by the host", author=target.display_name

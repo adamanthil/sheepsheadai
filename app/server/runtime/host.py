@@ -7,12 +7,12 @@ redealt, or closed again by anyone left at it.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Optional
 
 from server.realtime.broadcast import broadcast_table_state, broadcast_table_update
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.models import ClientConn, Table
+from server.runtime.tasks import spawn
 
 # Same grace as a disconnected player's seat, so a page refresh keeps host.
 HOST_HANDOFF_GRACE_SECONDS = 10.0
@@ -63,13 +63,11 @@ def schedule_host_handoff(table: Table) -> None:
             await broadcast_table_state(table)
         except asyncio.CancelledError:
             return
-        except Exception:
-            logging.exception("host handoff failed for table %s", table.id)
         finally:
             if table.host_handoff_task is asyncio.current_task():
                 table.host_handoff_task = None
 
-    table.host_handoff_task = asyncio.create_task(_runner())
+    table.host_handoff_task = spawn(_runner(), f"host-handoff:{table.id}")
 
 
 def host_is_away(table: Table) -> bool:

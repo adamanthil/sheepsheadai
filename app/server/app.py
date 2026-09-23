@@ -24,6 +24,7 @@ from server.api.ratelimit import limiter
 from server.config import get_settings
 from server.realtime import websocket as websocket_router
 from server.runtime import lifecycle
+from server.runtime.tasks import spawn
 from server.services.ai_loader import load_agent
 from server.services.persistence.pool import close_pool, open_pool, set_db_state
 from server.services.persistence.sessions import run_identity_purge
@@ -169,8 +170,8 @@ def create_app() -> FastAPI:
         )
 
         background = [
-            asyncio.create_task(lifecycle.run_idle_sweeper()),
-            asyncio.create_task(run_identity_purge(pool)),
+            spawn(lifecycle.run_idle_sweeper(), "idle-sweeper"),
+            spawn(run_identity_purge(pool), "identity-purge"),
         ]
         try:
             yield

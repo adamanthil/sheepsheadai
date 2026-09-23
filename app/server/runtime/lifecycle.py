@@ -149,7 +149,4 @@ async def run_idle_sweeper() -> None:
     """Run the idle sweep forever; started by the app lifespan."""
     while True:
         await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
-        try:
-            await sweep_idle_tables()
-        except Exception:
-            logging.exception("idle table sweep failed")
+        await sweep_idle_tables()
