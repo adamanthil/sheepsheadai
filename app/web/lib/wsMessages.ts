@@ -83,7 +83,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
   z.looseObject({
     type: z.literal("state"),
     table: looseTable,
-    yourSeat: z.number(),
+    yourSeat: z.number().nullable(),
     actorSeat: z.number().nullable(),
     isHost: z.boolean(),
     state: tableState,

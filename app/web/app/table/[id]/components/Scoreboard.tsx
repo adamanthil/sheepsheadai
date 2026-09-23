@@ -4,7 +4,7 @@ import type { TableView } from "../../../../lib/types";
 
 interface ScoreboardProps {
   table: TableView;
-  yourSeat: number;
+  yourSeat: number | null;
   compact?: boolean;
 }
 

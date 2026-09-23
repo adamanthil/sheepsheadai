@@ -36,6 +36,8 @@ export interface UseTableSocketReturn {
   takeAction: (actionId: number) => Promise<boolean>;
   closeTable: () => Promise<void>;
   redeal: () => Promise<void>;
+  /** Spectator only: take over the AI at ``seat``. */
+  takeSeat: (seat: number) => Promise<void>;
   sendChatMessage: (message: string) => void;
 }
 
@@ -225,6 +227,28 @@ export function useTableSocket(
     }
   }, [tableId, clientId]);
 
+  const takeSeat = useCallback(
+    async (seat: number) => {
+      if (!tableId || !clientId) return;
+      try {
+        const res = await apiFetch(`/api/tables/${tableId}/seat`, {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId, seat }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          callbacksRef.current?.onError?.(
+            `Couldn't take seat: ${j?.detail || res.status}`,
+          );
+        }
+      } catch (err) {
+        console.warn("seat POST failed", err);
+        callbacksRef.current?.onError?.("Couldn't take seat: network error");
+      }
+    },
+    [tableId, clientId],
+  );
+
   const sendChatMessage = useCallback((message: string) => {
     if (!wsRef.current || !message.trim()) return;
     try {
@@ -248,6 +272,7 @@ export function useTableSocket(
     takeAction,
     closeTable,
     redeal,
+    takeSeat,
     sendChatMessage,
   };
 }

@@ -33,6 +33,12 @@
   position: relative;
 }
 
+/* Stands in for the hand while spectating (see page.tsx). */
+.spectatorSpacer {
+  flex: 1;
+  min-height: 120px;
+}
+
 /* Connection indicator */
 .connDot {
   position: absolute;

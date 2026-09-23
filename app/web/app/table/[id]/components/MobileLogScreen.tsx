@@ -6,7 +6,7 @@ import styles from "./MobileLogScreen.module.css";
 
 interface MobileLogScreenProps {
   table: TableView;
-  yourSeat: number;
+  yourSeat: number | null;
   chatMessages: ChatMessage[];
   onSendMessage: (msg: string) => void;
   onClose: () => void;

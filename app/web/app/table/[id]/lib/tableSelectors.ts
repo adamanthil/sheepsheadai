@@ -66,7 +66,9 @@ export function buildCallOptions(
 }
 
 export function computeIsYourTurn(lastState: TableStateMsg): boolean {
-  return lastState.actorSeat === lastState.yourSeat;
+  return (
+    lastState.yourSeat !== null && lastState.actorSeat === lastState.yourSeat
+  );
 }
 
 export function computeIsHost(lastState: TableStateMsg): boolean {
@@ -114,12 +116,14 @@ export function computeKind(
 export function buildSeats(
   lastState: TableStateMsg,
   table: TableView,
-  yourSeat: number,
+  yourSeat: number | null,
   started: boolean,
 ): SeatView[] {
+  // A spectator sees the ring from seat 1, with no seat marked as theirs.
+  const pov = yourSeat ?? 1;
   return [1, 2, 3, 4, 5].map((absSeat) => ({
     absSeat,
-    rel: relSeat(absSeat, yourSeat),
+    rel: relSeat(absSeat, pov),
     name: nameForSeat(absSeat, table),
     isAI: isAiSeat(absSeat, table),
     role: getSeatRole(lastState, absSeat, started),

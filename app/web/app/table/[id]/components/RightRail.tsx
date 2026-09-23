@@ -6,7 +6,7 @@ import styles from "./RightRail.module.css";
 
 interface RightRailProps {
   table: TableView;
-  yourSeat: number;
+  yourSeat: number | null;
   chatMessages: ChatMessage[];
   onSendMessage: (msg: string) => void;
 }

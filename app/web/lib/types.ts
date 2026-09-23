@@ -70,7 +70,8 @@ export type GameView = {
 export type TableStateMsg = {
   type: "state";
   table: TableView;
-  yourSeat: number;
+  /** null for a spectator, who gets the public view only. */
+  yourSeat: number | null;
   actorSeat: number | null;
   isHost: boolean;
   state: {

@@ -42,6 +42,7 @@ import TableHeader from "./components/TableHeader";
 import Stage from "./components/Stage";
 import PlayerHand from "./components/PlayerHand";
 import ActionBar from "./components/ActionBar";
+import SpectatorBar from "./components/SpectatorBar";
 import RightRail from "./components/RightRail";
 import MobileLogScreen from "./components/MobileLogScreen";
 
@@ -107,6 +108,7 @@ export default function TablePage() {
     takeAction,
     closeTable,
     redeal,
+    takeSeat,
     sendChatMessage,
   } = useTableSocket(params?.id, clientId, {
     onTrickComplete: triggerCollect,
@@ -172,6 +174,8 @@ export default function TablePage() {
   const view = lastState.view;
   const table = lastState.table;
   const yourSeat = lastState.yourSeat;
+  // Spectators (yourSeat null) watch the ring from seat 1's point of view.
+  const viewSeat = yourSeat ?? 1;
   const started = playStartedFn(lastState);
   const { phase, isLeaster } = derivePhase(lastState);
   const yourMode = interludeMode(validActionStrings);
@@ -196,7 +200,7 @@ export default function TablePage() {
   const stage = (
     <Stage
       seats={seats}
-      yourSeat={yourSeat}
+      yourSeat={viewSeat}
       phase={phase}
       isLeaster={isLeaster}
       yourMode={yourMode}
@@ -227,43 +231,59 @@ export default function TablePage() {
     />
   );
 
-  const hand = (
-    <PlayerHand
-      hand={view.hand}
-      isYourTurn={isYourTurn}
-      phase={phase}
-      yourMode={yourMode}
-      validActionStrings={validActionStrings}
-      onCardClick={handleCardClick}
-      stagedCards={stagedCards}
-      yourRole={yourRole}
-      isMobile={isMobile}
-      uiScale={uiScale}
-    />
-  );
+  // A spectator has no hand. On desktop the stage is fixed-height and the
+  // hand fills the rest of the column, so a spacer takes its place to keep
+  // seat 1's name plate (drawn where "you" would sit) clear of the bar
+  // below; on mobile the stage itself absorbs the space.
+  const hand =
+    yourSeat === null ? (
+      !isMobile && <div className={styles.spectatorSpacer} aria-hidden="true" />
+    ) : (
+      <PlayerHand
+        hand={view.hand}
+        isYourTurn={isYourTurn}
+        phase={phase}
+        yourMode={yourMode}
+        validActionStrings={validActionStrings}
+        onCardClick={handleCardClick}
+        stagedCards={stagedCards}
+        yourRole={yourRole}
+        isMobile={isMobile}
+        uiScale={uiScale}
+      />
+    );
 
-  const actionBar = (
-    <ActionBar
-      yourName={nameForSeat(yourSeat, table)}
-      yourSeat={yourSeat}
-      yourRole={yourRole}
-      isYourTurn={isYourTurn}
-      actorName={nameForSeat(lastState.actorSeat, table)}
-      helper={HELPER[kind]}
-      validActions={lastState.valid_actions}
-      actionLookup={actionLookup}
-      onTakeAction={takeAction}
-      hasLastTrick={hasLastTrick}
-      showPrev={showPrev}
-      onTogglePrev={() => setShowPrev(!showPrev)}
-      onShowScores={() => setShowScores(true)}
-      isHost={isHost}
-      confirmClose={confirmClose}
-      onConfirmClose={setConfirmClose}
-      onCloseTable={closeTable}
-      isMobile={isMobile}
-    />
-  );
+  const actionBar =
+    yourSeat === null ? (
+      <SpectatorBar
+        table={table}
+        actorName={nameForSeat(lastState.actorSeat, table)}
+        onTakeSeat={(seat) => void takeSeat(seat)}
+        onShowScores={() => setShowScores(true)}
+        isMobile={isMobile}
+      />
+    ) : (
+      <ActionBar
+        yourName={nameForSeat(yourSeat, table)}
+        yourSeat={yourSeat}
+        yourRole={yourRole}
+        isYourTurn={isYourTurn}
+        actorName={nameForSeat(lastState.actorSeat, table)}
+        helper={HELPER[kind]}
+        validActions={lastState.valid_actions}
+        actionLookup={actionLookup}
+        onTakeAction={takeAction}
+        hasLastTrick={hasLastTrick}
+        showPrev={showPrev}
+        onTogglePrev={() => setShowPrev(!showPrev)}
+        onShowScores={() => setShowScores(true)}
+        isHost={isHost}
+        confirmClose={confirmClose}
+        onConfirmClose={setConfirmClose}
+        onCloseTable={closeTable}
+        isMobile={isMobile}
+      />
+    );
 
   const overlays = (
     <>

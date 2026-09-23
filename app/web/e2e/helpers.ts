@@ -1,16 +1,12 @@
 import { expect, type Page } from "@playwright/test";
 
-/**
- * Create a table, fill the empty seats with AI, and deal — landing on the
- * table view. Seat assignment is not deterministic; pass `takeSeat` to sit
- * in a specific seat before dealing (seat 1 holds the first pick decision).
- */
-export async function createTableAndDeal(
+/** Create a table from the home page and land in its waiting room. Returns
+ * the table id. */
+export async function createTable(
   page: Page,
   playerName: string,
   tableName: string,
-  opts: { takeSeat?: number } = {},
-) {
+): Promise<string> {
   await page.goto("/");
 
   // The home page hydrates identity from localStorage after mount, which can
@@ -32,6 +28,21 @@ export async function createTableAndDeal(
   await createButton.click();
 
   await page.waitForURL(/\/waiting\//);
+  return page.url().split("/waiting/")[1];
+}
+
+/**
+ * Create a table, fill the empty seats with AI, and deal — landing on the
+ * table view. Seat assignment is not deterministic; pass `takeSeat` to sit
+ * in a specific seat before dealing (seat 1 holds the first pick decision).
+ */
+export async function createTableAndDeal(
+  page: Page,
+  playerName: string,
+  tableName: string,
+  opts: { takeSeat?: number } = {},
+) {
+  await createTable(page, playerName, tableName);
 
   if (opts.takeSeat) {
     const seatCard = page
