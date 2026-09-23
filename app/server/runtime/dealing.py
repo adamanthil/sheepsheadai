@@ -61,6 +61,16 @@ def table_has_ai(table: Table) -> bool:
     )
 
 
+def ensure_table_agent(table: Table) -> None:
+    """Load the table's AI the first time a seat needs it mid-hand.
+
+    An all-human deal starts without one (refresh_table_agent), but a seat
+    can still fall to the AI during the hand when its player disconnects.
+    """
+    if table.ai_agent is None:
+        table.ai_agent = build_table_agent(get_settings(), table.id)
+
+
 def refresh_table_agent(table: Table) -> None:
     """Give the table a fresh AI for a new deal, or none if every seat is human.
 
