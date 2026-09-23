@@ -190,6 +190,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/{table_id}/kick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Kick Player
+         * @description Host removes a player: an AI takes their seat, their tabs are closed,
+         *     and their identity may not rejoin this table.
+         */
+        post: operations["kick_player_api_tables__table_id__kick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{table_id}/redeal": {
         parameters: {
             query?: never;
@@ -731,6 +752,13 @@ export interface components {
             session_token: string | null;
             table: components["schemas"]["TablePublic"];
         };
+        /** KickRequest */
+        KickRequest: {
+            /** Client Id */
+            client_id: string;
+            /** Target Client Id */
+            target_client_id: string;
+        };
         /** OkResponse */
         OkResponse: {
             /** Ok */
@@ -1236,6 +1264,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JoinTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kick_player_api_tables__table_id__kick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
                 };
             };
             /** @description Validation Error */

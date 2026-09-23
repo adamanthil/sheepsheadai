@@ -14,6 +14,7 @@ from server.api.schemas import (
     CreateTableResponse,
     JoinTableRequest,
     JoinTableResponse,
+    KickRequest,
     OkResponse,
     RulesUpdateResponse,
     SeatRequest,
@@ -32,8 +33,9 @@ from server.runtime.lifecycle import (
     is_draining,
     schedule_autoclose_if_no_humans,
 )
-from server.runtime.occupants import allocate_ai_occupant
+from server.runtime.occupants import allocate_ai_occupant, give_seat_to_ai
 from server.runtime.seating import (
+    cancel_disconnect_task,
     is_ai_occupant,
     lowest_non_human_seat,
     pick_join_ai_seat,
@@ -118,6 +120,8 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
     # fresh player + session token and returns the token once.
     identity = await optional_player(request)
     session_token: Optional[str] = None
+    if identity is not None and str(identity.id) in table.banned_player_ids:
+        raise HTTPException(status_code=403, detail="removed_from_table")
     if identity is not None:
         player_uuid = identity.id
         await players_db.ensure_player(pool, player_uuid)
@@ -339,4 +343,53 @@ async def api_close_table(
     require_host(table, req.client_id, identity)
 
     await close_table(table, reason="host_closed")
+    return {"ok": True}
+
+
+@router.post("/api/tables/{table_id}/kick", response_model=OkResponse)
+@limiter.limit(HOST_ACTIONS)
+async def kick_player(
+    request: Request,
+    table_id: str,
+    req: KickRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """Host removes a player: an AI takes their seat, their tabs are closed,
+    and their identity may not rejoin this table."""
+    try:
+        table = tables.get_table(table_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table_not_found")
+
+    require_host(table, req.client_id, identity)
+    if req.target_client_id == req.client_id:
+        raise HTTPException(status_code=400, detail="cannot_remove_self")
+
+    async with table.state_lock:
+        target = table.clients.get(req.target_client_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="client_not_found")
+        if target.player_id:
+            table.banned_player_ids.add(target.player_id)
+        seat = give_seat_to_ai(table, target)
+        cancel_disconnect_task(table, target.client_id)
+        del table.clients[target.client_id]
+        sockets = list(target.sockets)
+        target.sockets.clear()
+
+    for ws in sockets:
+        try:
+            await ws.send_text('{"type": "kicked"}')
+            await ws.close(code=4403)
+        except Exception:
+            pass  # already gone
+
+    msg_dict = await add_chat_message(
+        table, "system", f"{target.display_name} was removed by the host"
+    )
+    await broadcast_chat_append(table, msg_dict)
+    await broadcast_table_update(table)
+    if seat is not None and table.game is not None:
+        await broadcast_table_state(table)
+        schedule_ai_turns(table)
     return {"ok": True}

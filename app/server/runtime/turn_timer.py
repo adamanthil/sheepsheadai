@@ -28,7 +28,7 @@ from server.realtime.chat import (
 from server.runtime.ai_move import ai_act_for_seat, ai_observe_all
 from server.runtime.dealing import ensure_table_agent, redeal_passed_out_hand
 from server.runtime.models import ClientConn, Table
-from server.runtime.occupants import allocate_ai_occupant
+from server.runtime.occupants import give_seat_to_ai
 from server.runtime.views import get_actor_seat
 from server.services.persistence.games import fire_game_hooks
 
@@ -120,18 +120,9 @@ async def _expire(
 
 
 async def _move_to_spectator(table: Table, conn: ClientConn, seat: int) -> None:
-    """Hand the seat to an AI for good: the player's AI reservation is
-    dropped so a reconnect doesn't quietly seat them again."""
     async with table.state_lock:
-        if table.seats.get(seat) != conn.client_id:
+        if give_seat_to_ai(table, conn) is None:
             return
-        reserved = table.reserved_ai_by_human.pop(conn.client_id, None)
-        occ = table.occupants.get(reserved) if reserved else None
-        if occ is None:
-            occ = allocate_ai_occupant()
-            table.occupants[occ.id] = occ
-        table.seats[seat] = occ.id
-        conn.seat = None
         conn.timeout_strikes = 0
     msg_dict = await add_chat_message(
         table,

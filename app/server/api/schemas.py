@@ -100,6 +100,11 @@ class RedealRequest(BaseModel):
     client_id: Optional[str] = None
 
 
+class KickRequest(BaseModel):
+    client_id: str  # the host's own connection
+    target_client_id: str
+
+
 class CloseTableRequest(BaseModel):
     client_id: str
 

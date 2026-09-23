@@ -1266,6 +1266,24 @@
         "title": "JoinTableResponse",
         "type": "object"
       },
+      "KickRequest": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "target_client_id": {
+            "title": "Target Client Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "target_client_id"
+        ],
+        "title": "KickRequest",
+        "type": "object"
+      },
       "OkResponse": {
         "properties": {
           "ok": {
@@ -2131,6 +2149,56 @@
           }
         },
         "summary": "Join Table"
+      }
+    },
+    "/api/tables/{table_id}/kick": {
+      "post": {
+        "description": "Host removes a player: an AI takes their seat, their tabs are closed,\nand their identity may not rejoin this table.",
+        "operationId": "kick_player_api_tables__table_id__kick_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_id",
+            "required": true,
+            "schema": {
+              "title": "Table Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Kick Player"
       }
     },
     "/api/tables/{table_id}/redeal": {

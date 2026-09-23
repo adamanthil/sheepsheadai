@@ -59,6 +59,8 @@ class Table:
     rules: Dict[str, Any] = field(default_factory=dict)
     fill_with_ai: bool = True
     host_client_id: Optional[str] = None
+    # Players the host removed; they may not rejoin this table.
+    banned_player_ids: Set[str] = field(default_factory=set)
     # One-time key handed to the creator; cleared once used to take host.
     host_key: Optional[str] = field(default_factory=lambda: secrets.token_urlsafe(16))
     # seat index 1..5 → occupant_id (humans use client_id; AIs use ephemeral uuid)
