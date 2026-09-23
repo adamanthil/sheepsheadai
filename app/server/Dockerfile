@@ -32,7 +32,11 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
 # Exactly ONE worker: all live game state (tables, websockets, locks) lives
 # in this process's memory. More workers would shard tables across processes
 # and break the app. Scale up, not out.
+# --ws-max-size: clients only ever send chat (500 chars max), so a 64 KiB
+# frame cap replaces uvicorn's 16 MiB default, which let each socket make
+# the server buffer and JSON-parse 16 MiB at a time.
 CMD ["uvicorn", "server.app:create_app", "--factory", \
      "--host", "0.0.0.0", "--port", "9000", "--workers", "1", \
      "--proxy-headers", "--forwarded-allow-ips", "*", \
+     "--ws-max-size", "65536", \
      "--timeout-graceful-shutdown", "25"]
