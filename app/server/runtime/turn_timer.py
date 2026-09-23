@@ -26,7 +26,7 @@ from server.realtime.chat import (
     emit_bid_chat_message,
 )
 from server.runtime.ai_move import ai_act_for_seat, ai_observe_all
-from server.runtime.dealing import ensure_table_agent, redeal_passed_out_hand
+from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.models import ClientConn, Table
 from server.runtime.occupants import give_seat_to_ai
 from server.runtime.tasks import spawn
@@ -97,7 +97,6 @@ async def _expire(
             seat, conn = turn
             if key != (id(table.game), table.move_seq, seat):
                 return
-            ensure_table_agent(table)
             move = await ai_act_for_seat(table, seat)
         table.turn_timer_key = None
         if move is None:

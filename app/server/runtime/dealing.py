@@ -54,33 +54,19 @@ def new_game_for_table(table: Table) -> Game:
     )
 
 
-def table_has_ai(table: Table) -> bool:
-    return any(
-        (occ_id and (occ := table.occupants.get(occ_id)) and occ.is_ai)
-        for occ_id in table.seats.values()
-    )
-
-
-def ensure_table_agent(table: Table) -> None:
-    """Load the table's AI the first time a seat needs it mid-hand.
-
-    An all-human deal starts without one (refresh_table_agent), but a seat
-    can still fall to the AI during the hand when its player disconnects.
-    """
-    if table.ai_agent is None:
-        table.ai_agent = build_table_agent(get_settings(), table.id)
-
-
 def refresh_table_agent(table: Table) -> None:
-    """Give the table a fresh AI for a new deal, or none if every seat is human.
+    """Give the table a fresh AI for a new deal.
+
+    Every deal gets one, even with five humans: it keeps memory for every
+    seat from the first decision (runtime.ai_move), so it can take over any
+    seat mid-hand -- a disconnect, a timeout, a removal -- as if it had been
+    playing that seat all along.
 
     A new agent per deal rather than a reset one: recurrent memory is keyed
     by seat, and carrying last deal's memory into this one would have the AI
     reading a hand nobody holds any more.
     """
-    table.ai_agent = (
-        build_table_agent(get_settings(), table.id) if table_has_ai(table) else None
-    )
+    table.ai_agent = build_table_agent(get_settings(), table.id)
 
 
 def hand_passed_out(table: Table) -> bool:

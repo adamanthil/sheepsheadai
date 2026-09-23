@@ -6,7 +6,7 @@ import logging
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import emit_bid_chat_message
 from server.runtime.ai_move import ai_act_for_seat, ai_observe_all
-from server.runtime.dealing import ensure_table_agent, redeal_passed_out_hand
+from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.tables import (
     Table,
     get_actor_seat,
@@ -39,7 +39,6 @@ async def ai_take_turns(table: Table) -> None:
             if not occ or not occ.is_ai:
                 # Human's turn
                 break
-            ensure_table_agent(table)
             move = await ai_act_for_seat(table, actor)
             ai_occupant = occ
 
