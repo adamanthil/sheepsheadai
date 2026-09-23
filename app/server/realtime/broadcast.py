@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict
+import time
+from typing import Any, Dict, Optional
 
 from fastapi import WebSocketDisconnect
 
@@ -56,6 +57,16 @@ async def broadcast_table_update(table: Table) -> None:
         await send_to_client(table, conn, json.dumps(payload, default=json_default))
 
 
+def _turn_seconds_left(table: Table, actor_seat: Optional[int]) -> Optional[float]:
+    """What is left of the running turn timer, if it is for this turn."""
+    key = table.turn_timer_key
+    if key is None or table.turn_deadline is None or actor_seat is None:
+        return None
+    if key != (id(table.game), table.move_seq, actor_seat):
+        return None
+    return max(0.0, table.turn_deadline - time.monotonic())
+
+
 async def broadcast_table_state(table: Table) -> None:
     """Send each connected client their own masked state + valid actions.
 
@@ -67,6 +78,7 @@ async def broadcast_table_state(table: Table) -> None:
     if not table.game:
         return
     actor_seat = get_actor_seat(table)
+    seconds_left = _turn_seconds_left(table, actor_seat)
     spectator_payload = None
     for cid, conn in list(table.clients.items()):
         if not conn.connected:
@@ -91,5 +103,6 @@ async def broadcast_table_state(table: Table) -> None:
             "state": payload["state"],
             "view": payload["view"],
             "valid_actions": valid_actions if conn.seat == actor_seat else [],
+            "turnSecondsLeft": seconds_left,
         }
         await send_to_client(table, conn, json.dumps(msg, default=json_default))

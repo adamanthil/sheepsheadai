@@ -4,6 +4,19 @@ import type { YourRole } from "../lib/phase";
 import { roleBadge } from "./stage/chrome";
 import styles from "./ActionBar.module.css";
 
+/** Seconds left on the acting player's turn clock, red for the last 5. */
+export function TurnClock({ secondsLeft }: { secondsLeft: number | null }) {
+  if (secondsLeft === null) return null;
+  return (
+    <span
+      className={`${styles.clock} ${secondsLeft <= 5 ? styles.clockUrgent : ""}`}
+      aria-label={`${secondsLeft} seconds left to move`}
+    >
+      {secondsLeft}s
+    </span>
+  );
+}
+
 interface ActionBarProps {
   yourName: string;
   yourSeat: number;
@@ -23,6 +36,7 @@ interface ActionBarProps {
   onConfirmClose: (v: boolean) => void;
   onCloseTable: () => void;
   isMobile: boolean;
+  secondsLeft: number | null;
 }
 
 export default function ActionBar(props: ActionBarProps) {
@@ -112,6 +126,7 @@ export default function ActionBar(props: ActionBarProps) {
       <div className={styles.mob}>
         <div className={styles.mobHelper}>
           {props.isYourTurn ? props.helper : `Waiting for ${props.actorName}…`}
+          <TurnClock secondsLeft={props.secondsLeft} />
         </div>
         <div className={styles.mobRow}>{primaries}</div>
         <div className={styles.mobRow}>{utils}</div>
@@ -143,6 +158,7 @@ export default function ActionBar(props: ActionBarProps) {
         ) : (
           <span className={styles.waiting}>Waiting for {props.actorName}…</span>
         )}
+        <TurnClock secondsLeft={props.secondsLeft} />
         {primaries}
         {utils}
       </div>

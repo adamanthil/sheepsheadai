@@ -37,8 +37,9 @@ async def close_table(table: Table, reason: str = "closed") -> None:
         and not table.autoclose_task.done()
     ):
         table.autoclose_task.cancel()
-    if table.host_handoff_task and not table.host_handoff_task.done():
-        table.host_handoff_task.cancel()
+    for task in (table.host_handoff_task, table.turn_timer_task):
+        if task and not task.done():
+            task.cancel()
     for cid, task in list(table.disconnect_tasks.items()):
         try:
             if task and not task.done():

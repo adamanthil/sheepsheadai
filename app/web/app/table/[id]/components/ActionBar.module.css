@@ -79,3 +79,16 @@
   color: var(--accent-2);
   border-color: transparent;
 }
+
+/* Turn clock (runtime/turn_timer on the server): seconds left to move. */
+.clock {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  margin-left: 8px;
+}
+.clockUrgent {
+  color: var(--accent-2);
+  font-weight: 600;
+}

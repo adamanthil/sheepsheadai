@@ -84,4 +84,6 @@ export type TableStateMsg = {
   };
   view: GameView;
   valid_actions: number[];
+  /** Seconds left on the acting human's turn clock, or null when none runs. */
+  turnSecondsLeft?: number | null;
 };

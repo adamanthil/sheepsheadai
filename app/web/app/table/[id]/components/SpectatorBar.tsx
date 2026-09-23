@@ -2,6 +2,7 @@ import React from "react";
 import { ds } from "../../../../lib/ds";
 import type { TableView } from "../../../../lib/types";
 import { isAiSeat, nameForSeat } from "../utils/seatMath";
+import { TurnClock } from "./ActionBar";
 import styles from "./ActionBar.module.css";
 
 interface SpectatorBarProps {
@@ -10,6 +11,7 @@ interface SpectatorBarProps {
   onTakeSeat: (seat: number) => void;
   onShowScores: () => void;
   isMobile: boolean;
+  secondsLeft: number | null;
 }
 
 /** Stands in for the ActionBar while you watch: one button per AI seat,
@@ -41,7 +43,10 @@ export default function SpectatorBar(props: SpectatorBarProps) {
   if (props.isMobile) {
     return (
       <div className={styles.mob}>
-        <div className={styles.mobHelper}>{status}</div>
+        <div className={styles.mobHelper}>
+          {status}
+          <TurnClock secondsLeft={props.secondsLeft} />
+        </div>
         <div className={styles.mobRow}>{seatButtons}</div>
         <div className={styles.mobRow}>{scores}</div>
       </div>
@@ -50,7 +55,10 @@ export default function SpectatorBar(props: SpectatorBarProps) {
 
   return (
     <div className={styles.desk}>
-      <span className={styles.waiting}>{status}</span>
+      <span className={styles.waiting}>
+        {status}
+        <TurnClock secondsLeft={props.secondsLeft} />
+      </span>
       <div className={styles.deskRight}>
         {seatButtons.length ? (
           seatButtons

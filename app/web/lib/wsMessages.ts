@@ -89,6 +89,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     state: tableState,
     view: gameView,
     valid_actions: z.array(z.number()),
+    turnSecondsLeft: z.number().nullable().optional(),
   }),
   z.looseObject({
     type: z.literal("table_update"),
@@ -114,6 +115,11 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     message: chatMessage,
   }),
   z.looseObject({ type: z.literal("server_restart") }),
+  z.looseObject({
+    type: z.literal("turn_timer"),
+    seat: z.number(),
+    secondsLeft: z.number(),
+  }),
 ]);
 
 export type WsMessage = z.infer<typeof wsMessageSchema>;

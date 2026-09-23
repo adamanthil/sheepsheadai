@@ -31,6 +31,8 @@ class ClientConn:
     # Wall-clock time the *last* socket dropped; None while any tab is open.
     # Drives pruning of clients that never came back (prune_table_state).
     disconnected_at: Optional[float] = None
+    # Consecutive turns the AI had to play for this player (turn_timer).
+    timeout_strikes: int = 0
 
     @property
     def connected(self) -> bool:
@@ -81,6 +83,13 @@ class Table:
     autoclose_task: Optional[asyncio.Task] = None
     # pending host handoff after the host's last tab closed
     host_handoff_task: Optional[asyncio.Task] = None
+    # Count of moves applied at this table; a turn is identified by the
+    # game, this count, and the seat to act (runtime.turn_timer).
+    move_seq: int = 0
+    turn_timer_task: Optional[asyncio.Task] = None
+    turn_timer_key: Optional[Tuple[int, int, int]] = None
+    # time.monotonic() at which the running turn timer expires
+    turn_deadline: Optional[float] = None
     running_scores: Dict[str, int] = field(
         default_factory=dict
     )  # occupant_id -> cumulative score

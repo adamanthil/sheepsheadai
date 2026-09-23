@@ -12,6 +12,7 @@ from server.runtime.tables import (
     get_actor_seat,
     record_hand_result,
 )
+from server.runtime.turn_timer import arm_turn_timer
 from server.services.persistence.games import fire_game_hooks
 
 
@@ -77,6 +78,9 @@ async def ai_take_turns(table: Table) -> None:
         table.status = "finished"
         record_hand_result(table)
         await broadcast_table_state(table)
+
+    # Whenever the loop stops on a human's turn, their clock starts.
+    await arm_turn_timer(table, on_expired=schedule_ai_turns)
 
 
 def schedule_ai_turns(table: Table, initial_delay: float = 0.0) -> None:

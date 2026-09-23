@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { STORAGE_KEYS } from "../../../lib/storage";
+import { useCountdown } from "../../../lib/hooks/useCountdown";
 import { useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
 import { nameForSeat } from "./utils/seatMath";
@@ -103,6 +104,7 @@ export default function TablePage() {
     connected,
     connectionState,
     lastState,
+    turnDeadline,
     actionLookup,
     chatMessages,
     takeAction,
@@ -127,6 +129,7 @@ export default function TablePage() {
     onError: (msg) => showCallout("PICK", msg, 2500),
   });
 
+  const secondsLeft = useCountdown(turnDeadline);
   const [showScores, setShowScores] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
@@ -261,6 +264,7 @@ export default function TablePage() {
         onTakeSeat={(seat) => void takeSeat(seat)}
         onShowScores={() => setShowScores(true)}
         isMobile={isMobile}
+        secondsLeft={secondsLeft}
       />
     ) : (
       <ActionBar
@@ -282,6 +286,7 @@ export default function TablePage() {
         onConfirmClose={setConfirmClose}
         onCloseTable={closeTable}
         isMobile={isMobile}
+        secondsLeft={secondsLeft}
       />
     );
 

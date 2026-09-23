@@ -30,6 +30,8 @@ export interface UseTableSocketReturn {
   connected: boolean;
   connectionState: ConnectionState;
   lastState: TableStateMsg | null;
+  /** Local-clock ms when the acting human's turn runs out, or null. */
+  turnDeadline: number | null;
   actionLookup: Record<string, string>;
   chatMessages: ChatMessage[];
   /** POST one action. Resolves true when the server accepted it. */
@@ -50,6 +52,9 @@ export function useTableSocket(
     useState<ConnectionState>("connecting");
   const connected = connectionState === "connected";
   const [lastState, setLastState] = useState<TableStateMsg | null>(null);
+  // Kept on the local clock: the server sends seconds left, not a
+  // timestamp, so a skewed device clock can't distort the countdown.
+  const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
   const [actionLookup, setActionLookup] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
@@ -111,6 +116,11 @@ export function useTableSocket(
 
         if (data.type === "state") {
           const msg: TableStateMsg = data;
+          setTurnDeadline(
+            msg.turnSecondsLeft != null
+              ? Date.now() + msg.turnSecondsLeft * 1000
+              : null,
+          );
 
           setLastState((prev: TableStateMsg | null) => {
             const cbs = callbacksRef.current;
@@ -157,6 +167,8 @@ export function useTableSocket(
           setChatMessages(data.messages);
         } else if (data.type === "chat:append") {
           setChatMessages((prev) => [...prev, data.message]);
+        } else if (data.type === "turn_timer") {
+          setTurnDeadline(Date.now() + data.secondsLeft * 1000);
         } else if (data.type === "server_restart") {
           // Deploy in progress: the socket is about to drop; the reconnect
           // loop keeps retrying until the server is back.
@@ -271,6 +283,7 @@ export function useTableSocket(
     connected,
     connectionState,
     lastState,
+    turnDeadline,
     actionLookup,
     chatMessages,
     takeAction,

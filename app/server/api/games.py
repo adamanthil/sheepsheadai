@@ -36,6 +36,7 @@ from server.runtime.tables import (
     record_hand_result,
     tables,
 )
+from server.runtime.turn_timer import cancel_turn_timer
 from server.services.persistence.games import (
     capture_post_state,
     capture_pre_state,
@@ -221,7 +222,11 @@ async def post_action(
         ok = player.act(int(req.action_id))
         if not ok:
             raise HTTPException(status_code=400, detail="apply_failed")
+        table.move_seq += 1
         post = capture_post_state(table.game)
+    # Moving in time clears the player's timeout strikes.
+    conn.timeout_strikes = 0
+    cancel_turn_timer(table)
 
     if pre is not None and post is not None:
         await fire_game_hooks(table, pre, post, seat=conn.seat, by_ai=False)

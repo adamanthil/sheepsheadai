@@ -60,6 +60,7 @@ async def ai_act_for_seat(table: Table, seat: int) -> Optional[AppliedMove]:
         raise RuntimeError(
             f"AI produced invalid action_id {action_id} for seat {seat}; valid set: {sorted(list(valid))}"
         )
+    table.move_seq += 1
     return AppliedMove(
         action_id=int(action_id),
         action_str=ACTION_LOOKUP.get(int(action_id), ""),
