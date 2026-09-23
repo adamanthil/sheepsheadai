@@ -2,54 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import emit_bid_chat_message
+from server.runtime.ai_move import ai_act_for_seat, ai_observe_all
 from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.tables import (
     Table,
     get_actor_seat,
     record_hand_result,
 )
-from server.services.ai_loader import inference_limit
-from server.services.persistence.games import (
-    capture_post_state,
-    capture_pre_state,
-    fire_game_hooks,
-)
-from sheepshead import ACTION_LOOKUP
-from sheepshead.agent.observation import observation_for
-
-
-def _observe_seats(agent, observations: list[tuple[dict, int]]) -> None:
-    for state, seat in observations:
-        agent.observe(state, player_id=seat)
-
-
-async def ai_observe_all(table: Table, except_seat: Optional[int] = None) -> None:
-    """Update the AI's recurrent memory for every AI seat.
-
-    observe() is a torch forward pass; run the batch in a worker thread so
-    the event loop (all tables, websockets, /health) never blocks on it.
-    """
-    if not table.ai_agent or not table.game:
-        return
-    observations: list[tuple[dict, int]] = []
-    for seat, occupant in table.seats.items():
-        if not occupant:
-            continue
-        occ = table.occupants.get(occupant)
-        if not occ or not occ.is_ai:
-            continue
-        if seat == except_seat:
-            continue
-        player = table.game.players[seat - 1]
-        observations.append((observation_for(player, table.ai_agent), seat))
-    if not observations:
-        return
-    async with inference_limit:
-        await asyncio.to_thread(_observe_seats, table.ai_agent, observations)
+from server.services.persistence.games import fire_game_hooks
 
 
 async def ai_take_turns(table: Table) -> None:
@@ -60,10 +23,8 @@ async def ai_take_turns(table: Table) -> None:
         return
     while table.game and not table.game.is_done():
         actor = None
-        action_id = None
+        move = None
         ai_occupant = None
-        pre = None
-        post = None
         async with table.game_lock:
             if not table.game or not table.ai_agent:
                 break
@@ -77,39 +38,16 @@ async def ai_take_turns(table: Table) -> None:
             if not occ or not occ.is_ai:
                 # Human's turn
                 break
-            player = table.game.players[actor - 1]
-            state = observation_for(player, table.ai_agent)
-            valid = player.get_valid_action_ids()
-            if not valid:
-                break
-            pre = capture_pre_state(table.game)
-            # Torch inference runs in a worker thread while game_lock is held:
-            # this table stays consistent, every other table (and the event
-            # loop itself) keeps moving.
-            async with inference_limit:
-                action_id, _, _ = await asyncio.to_thread(
-                    table.ai_agent.act,
-                    state,
-                    valid_actions=valid,
-                    player_id=actor,
-                    deterministic=True,
-                )
-            ok = player.act(int(action_id))
-            if not ok:
-                raise RuntimeError(
-                    f"AI produced invalid action_id {action_id} for seat {actor}; valid set: {sorted(list(valid))}"
-                )
-            post = capture_post_state(table.game)
+            move = await ai_act_for_seat(table, actor)
             ai_occupant = occ
 
-        if actor is None or action_id is None:
+        if actor is None or move is None:
             break
         await ai_observe_all(table, except_seat=actor)
 
-        if pre is not None and post is not None:
-            await fire_game_hooks(table, pre, post, seat=actor, by_ai=True)
+        await fire_game_hooks(table, move.pre, move.post, seat=actor, by_ai=True)
 
-        action_str = ACTION_LOOKUP.get(action_id, "")
+        action_str = move.action_str
         display_name = ai_occupant.display_name if ai_occupant else f"Seat {actor}"
         await emit_bid_chat_message(table, action_str, display_name)
 

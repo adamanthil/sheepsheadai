@@ -19,7 +19,8 @@ from server.realtime.broadcast import (
     broadcast_table_update,
 )
 from server.realtime.chat import emit_bid_chat_message
-from server.runtime.ai_loop import ai_observe_all, schedule_ai_turns
+from server.runtime.ai_loop import schedule_ai_turns
+from server.runtime.ai_move import ai_observe_all
 from server.runtime.dealing import (
     new_game_for_table,
     redeal_passed_out_hand,
