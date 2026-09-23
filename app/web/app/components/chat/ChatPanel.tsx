@@ -97,7 +97,14 @@ export function ChatPanel({
                         {msg.author_is_ai && (
                           <span
                             className={`${ds.badge} ${ds.badgeQuiet}`}
-                            style={{ fontSize: 8, marginLeft: 4 }}
+                            // Tighter than a stock badge so it sits inline
+                            // with the name; the right side is 1px less to
+                            // offset the trailing letter-spacing.
+                            style={{
+                              fontSize: 8,
+                              marginLeft: 4,
+                              padding: "2px 3px 1px 4px",
+                            }}
                           >
                             AI
                           </span>
