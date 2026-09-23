@@ -11,15 +11,33 @@ uvicorn folds into ``request.client`` when run with ``--proxy-headers``.
 
 from __future__ import annotations
 
+import ipaddress
+
 from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 
+def client_key(host: str) -> str:
+    """The per-client identity for a remote address. IPv6 is counted per
+    /64: one subscriber is routinely handed a whole /64, so a per-address
+    key would let a single host rotate through effectively unlimited keys.
+    IPv4-mapped IPv6 counts as its IPv4 address."""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return host  # not an IP (e.g. a test client's placeholder)
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped is not None:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.IPv6Network((addr, 64), strict=False))
+    return str(addr)
+
+
 def client_ip(request: Request) -> str:
     """The key every per-client limit is counted under (rate limits here,
     open-table caps in server.runtime.manager)."""
-    return get_remote_address(request)
+    return client_key(get_remote_address(request))
 
 
 limiter = Limiter(key_func=client_ip)

@@ -7,6 +7,7 @@ import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from server.api.auth import resolve_player
+from server.api.ratelimit import client_key
 from server.realtime.broadcast import (
     broadcast_table_event,
     broadcast_table_state,
@@ -39,7 +40,8 @@ router = APIRouter()
 _CLIENT_SUBPROTO_PREFIX = "sheepshead.client."
 _TOKEN_SUBPROTO_PREFIX = "sheepshead.token."
 
-# DoS backstop: one IP may hold at most this many concurrent sockets. Counted
+# DoS backstop: one IP (IPv6: one /64) may hold at most this many concurrent
+# sockets. Counted
 # only for connections that pass validation; check+increment happen with no
 # await in between, so the asyncio event loop makes them atomic.
 MAX_SOCKETS_PER_IP = 20
@@ -103,7 +105,7 @@ async def table_ws(websocket: WebSocket, table_id: str):
         await websocket.close(code=4403)
         return
 
-    ip = websocket.client.host if websocket.client else "unknown"
+    ip = client_key(websocket.client.host) if websocket.client else "unknown"
     if _sockets_by_ip.get(ip, 0) >= MAX_SOCKETS_PER_IP:
         await websocket.accept(subprotocol=chosen_subproto)
         await websocket.close(code=4429)
