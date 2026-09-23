@@ -26,6 +26,7 @@ from server.realtime import websocket as websocket_router
 from server.runtime import lifecycle
 from server.services.ai_loader import load_agent
 from server.services.persistence.pool import close_pool, open_pool, set_db_state
+from server.services.persistence.sessions import run_identity_purge
 
 # Dev-only CORS: local Next.js dev servers. Anchored so hostile origins that
 # merely *contain* a local-looking suffix (e.g. http://evil.com:3000) never match.
@@ -167,11 +168,15 @@ def create_app() -> FastAPI:
             ai_player_id,
         )
 
-        sweeper = asyncio.create_task(lifecycle.run_idle_sweeper())
+        background = [
+            asyncio.create_task(lifecycle.run_idle_sweeper()),
+            asyncio.create_task(run_identity_purge(pool)),
+        ]
         try:
             yield
         finally:
-            sweeper.cancel()
+            for task in background:
+                task.cancel()
             await close_pool()
 
     app = FastAPI(title="Sheepshead Realtime API", lifespan=lifespan)

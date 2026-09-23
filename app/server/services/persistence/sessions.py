@@ -8,7 +8,9 @@ to once an hour so routine traffic doesn't write on every request.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 import secrets
 from typing import Optional
 from uuid import UUID
@@ -60,3 +62,49 @@ async def resolve_token(pool: asyncpg.Pool, token: str) -> Optional[UUID]:
         hash_token(token),
     )
     return row["player_id"] if row is not None else None
+
+
+# How long a new player row is spared by the purge. /join writes the
+# player row and then its session as two statements, so a purge landing
+# between them must not take the row out from under the session insert.
+PURGE_GRACE = "1 hour"
+PURGE_INTERVAL_SECONDS = 3600.0
+
+
+async def purge_expired_identities(pool: asyncpg.Pool) -> tuple[int, int]:
+    """Delete expired sessions, then players left with no session and no
+    recorded hands (a player with hands keeps their row for the history).
+    Returns (sessions deleted, players deleted)."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            sessions = await conn.execute(
+                "DELETE FROM session WHERE expires_at <= now()"
+            )
+            players = await conn.execute(
+                f"""
+                DELETE FROM player p
+                WHERE p.time_created < now() - interval '{PURGE_GRACE}'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM session s WHERE s.player_id = p.player_id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM game_player gp WHERE gp.player_id = p.player_id)
+                """
+            )
+    # asyncpg returns the command tag, e.g. "DELETE 3".
+    return int(sessions.split()[-1]), int(players.split()[-1])
+
+
+async def run_identity_purge(pool: asyncpg.Pool) -> None:
+    """Purge expired identities hourly, forever; started by the app lifespan."""
+    while True:
+        try:
+            sessions, players = await purge_expired_identities(pool)
+            if sessions or players:
+                logging.info(
+                    "purged %d expired sessions and %d orphaned players",
+                    sessions,
+                    players,
+                )
+        except Exception:
+            logging.exception("identity purge failed")
+        await asyncio.sleep(PURGE_INTERVAL_SECONDS)
