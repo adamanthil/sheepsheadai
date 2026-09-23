@@ -34,6 +34,10 @@ class ClientConn:
     disconnected_at: Optional[float] = None
     # Consecutive turns the AI had to play for this player (turn_timer).
     timeout_strikes: int = 0
+    # The AI occupant that took this player's seat when the turn timer moved
+    # them to spectator. While it holds a seat, that seat is the only one
+    # they may take (an occupant id, not a seat number: redeals rotate seats).
+    home_occupant: Optional[str] = None
 
     @property
     def connected(self) -> bool:

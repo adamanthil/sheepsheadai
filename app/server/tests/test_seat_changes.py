@@ -93,3 +93,42 @@ async def test_unseated_client_cannot_take_human_seat_mid_hand(client):
     assert r.status_code == 409
     assert table.seats[2] == "seated"
     assert table.clients["spectator"].seat is None
+
+
+async def test_timed_out_player_may_only_take_back_their_own_seat(client):
+    table, _, spectator = _table_in_play()
+    # The turn timer moved them out of the seat ai4 now holds.
+    table.clients["spectator"].home_occupant = "ai4"
+    headers = {"x-test-player": str(spectator)}
+
+    elsewhere = await client.post(
+        "/api/tables/t/seat",
+        json={"client_id": "spectator", "seat": 1},
+        headers=headers,
+    )
+    assert elsewhere.status_code == 409
+    assert elsewhere.json()["detail"] == "not_your_seat"
+
+    home = await client.post(
+        "/api/tables/t/seat",
+        json={"client_id": "spectator", "seat": 4},
+        headers=headers,
+    )
+    assert home.status_code == 200
+    assert table.seats[4] == "spectator"
+    assert table.clients["spectator"].home_occupant is None
+
+
+async def test_timed_out_player_whose_seat_was_taken_may_take_any_ai_seat(client):
+    table, _, spectator = _table_in_play()
+    # Their seat's AI was since taken over by someone else.
+    table.clients["spectator"].home_occupant = "ai-no-longer-seated"
+
+    r = await client.post(
+        "/api/tables/t/seat",
+        json={"client_id": "spectator", "seat": 1},
+        headers={"x-test-player": str(spectator)},
+    )
+
+    assert r.status_code == 200
+    assert table.seats[1] == "spectator"

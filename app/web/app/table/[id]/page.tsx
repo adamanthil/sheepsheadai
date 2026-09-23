@@ -314,6 +314,7 @@ export default function TablePage() {
         onShowScores={() => setShowScores(true)}
         isMobile={isMobile}
         secondsLeft={secondsLeft}
+        homeOccupant={lastState.homeOccupant}
       />
     ) : (
       <ActionBar

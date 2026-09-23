@@ -12,12 +12,24 @@ interface SpectatorBarProps {
   onShowScores: () => void;
   isMobile: boolean;
   secondsLeft: number | null;
+  /** Set when the turn clock moved this spectator out of a seat. */
+  homeOccupant?: string | null;
 }
 
 /** Stands in for the ActionBar while you watch: one button per AI seat,
- * each taking over that AI's hand where it stands. */
+ * each taking over that AI's hand where it stands. A player the turn clock
+ * moved out is offered only their own seat back while its AI still holds
+ * it (the server enforces the same rule). */
 export default function SpectatorBar(props: SpectatorBarProps) {
-  const aiSeats = [1, 2, 3, 4, 5].filter((s) => isAiSeat(s, props.table));
+  const homeSeat = [1, 2, 3, 4, 5].find(
+    (s) =>
+      props.homeOccupant &&
+      props.table.seatOccupants[String(s)] === props.homeOccupant,
+  );
+  const aiSeats =
+    homeSeat !== undefined
+      ? [homeSeat]
+      : [1, 2, 3, 4, 5].filter((s) => isAiSeat(s, props.table));
   const status = props.actorName
     ? `Watching · waiting for ${props.actorName}…`
     : "Watching";
@@ -28,7 +40,9 @@ export default function SpectatorBar(props: SpectatorBarProps) {
       className={`${ds.btn} ${ds.btnAccent}`}
       onClick={() => props.onTakeSeat(seat)}
     >
-      Take seat {seat} · {nameForSeat(seat, props.table)}
+      {seat === homeSeat
+        ? `Take back seat ${seat}`
+        : `Take seat ${seat} · ${nameForSeat(seat, props.table)}`}
     </button>
   ));
   const scores = (

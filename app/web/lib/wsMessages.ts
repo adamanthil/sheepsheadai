@@ -92,6 +92,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     view: gameView,
     valid_actions: z.array(z.number()),
     turnSecondsLeft: z.number().nullable().optional(),
+    homeOccupant: z.string().nullable().optional(),
   }),
   z.looseObject({
     type: z.literal("table_update"),

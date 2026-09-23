@@ -25,9 +25,10 @@ test("an idle player is moved to spectator and can take a seat back", async ({
     page.getByText(/Idle Tester missed 3 turns in a row/).first(),
   ).toBeVisible();
 
-  await page
-    .getByRole("button", { name: /^Take seat \d/ })
-    .first()
-    .click();
+  // Only their own seat is on offer, like a reconnect.
+  const takeButtons = page.getByRole("button", { name: /^Take/ });
+  await expect(takeButtons).toHaveCount(1);
+  await expect(takeButtons).toHaveText(/^Take back seat \d$/);
+  await takeButtons.click();
   await expect(page.getByText(/^Watching/)).toHaveCount(0);
 });

@@ -268,6 +268,14 @@ async def choose_seat(
             if not is_ai_occupant(table, current):
                 raise HTTPException(status_code=409, detail="seat_not_ai")
 
+        # A player the turn timer moved out may only take back their own
+        # seat, like a reconnect; if someone has taken it since, any seat.
+        home = conn.home_occupant
+        if home is not None and home in table.seats.values():
+            if current != home:
+                raise HTTPException(status_code=409, detail="not_your_seat")
+        conn.home_occupant = None
+
         for i in range(1, 6):
             if table.seats[i] == req.client_id:
                 table.seats[i] = None

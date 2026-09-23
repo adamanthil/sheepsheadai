@@ -132,6 +132,7 @@ async def _move_to_spectator(table: Table, conn: ClientConn, seat: int) -> None:
         if give_seat_to_ai(table, conn) is None:
             return
         conn.timeout_strikes = 0
+        conn.home_occupant = table.seats[seat]
     msg_dict = await add_chat_message(
         table,
         "system",

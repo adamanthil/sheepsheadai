@@ -104,5 +104,8 @@ async def broadcast_table_state(table: Table) -> None:
             "view": payload["view"],
             "valid_actions": valid_actions if conn.seat == actor_seat else [],
             "turnSecondsLeft": seconds_left,
+            # A spectator the turn timer moved out: the AI now in their seat,
+            # which is the one seat they may take back.
+            "homeOccupant": None if conn.seat else conn.home_occupant,
         }
         await send_to_client(table, conn, json.dumps(msg, default=json_default))

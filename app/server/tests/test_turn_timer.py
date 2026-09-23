@@ -133,6 +133,8 @@ async def test_third_strike_in_a_row_moves_the_player_to_spectator(hooks):
     assert table.occupants["ai-held"].is_ai
     # No reservation left, so reconnecting doesn't seat them again.
     assert "human" not in table.reserved_ai_by_human
+    # ...but the seat stays theirs to take back by hand.
+    assert conn.home_occupant == "ai-held"
     assert conn.timeout_strikes == 0
     assert "is now watching" in table.chat_log[-1]["body"]
 
