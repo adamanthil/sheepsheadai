@@ -1,4 +1,4 @@
-"""Play one deterministic hand with a trained perceiver-shared-v2 PPO agent
+"""Play one deterministic hand with a trained perceiver-recall PPO agent
 and dump the forward-pass activations at several decision points to JSON for
 the 3D architecture visualization.
 
@@ -17,13 +17,21 @@ walkthrough follows a single player's perspective through the whole hand.
 A seed is scanned until one hand contains all five decision types from
 that seat.
 
+The agent sees the human-recall observation (agent/observation.py): 15
+tokens, no blind/bury re-injection. What the picker nonetheless KNOWS about
+its blind and bury (get_picker_memory) is exported alongside, flagged as
+knowledge the observation does not carry, so the viz can show what the
+memory must remember.
+
 Captured per decision: the whole transformer (per-layer, per-head attention
-maps, per-layer token norms, FFN hidden-activation norms), the encoder's
-SHARED readout cross-attention (16 learned queries x 4 heads over the 19
-post-reasoning tokens -> one 256-d `features` vector both networks consume),
-the actor's opened-up heads (two-tower CALL scores, Bahdanau pointer
-intermediates over the hand tokens), and the critic's value + full auxiliary
-stack (win/return/secret-partner/points and the trump tracker).
+maps, per-layer token norms, FFN hidden-activation norms), the memory-token
+GRU write, the encoder's SHARED readout cross-attention (16 learned queries x
+4 heads over the 15 post-reasoning tokens -> one 256-d `features` vector
+both networks consume), the actor's opened-up heads (two-tower CALL scores,
+the pointer's additive Bahdanau and bilinear terms over the hand tokens),
+and the critic's value + full auxiliary stack (win/return/secret-partner/
+points and the trump tracker). The manual policy capture is cross-checked
+against the modules' own forward passes.
 
 The dump ALSO captures the ORACLE CRITIC (oracle.py: OracleValueNetwork, the
 CTDE privileged critic) on the same five decision states: its 51-token
@@ -62,20 +70,36 @@ from sheepshead import (  # noqa: E402
     TRUMP,
     Game,
 )
-from sheepshead.agent.architectures import SharedReadoutEncoder  # noqa: E402
+from sheepshead.agent.architectures import RecallEncoder  # noqa: E402
+from sheepshead.agent.observation import (  # noqa: E402
+    last_trick_observation_for,
+    observation_for,
+)
 from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels  # noqa: E402
 from sheepshead.agent.ppo import (  # noqa: E402
     MultiHeadRecurrentActorNetwork,
     RecurrentCriticNetwork,
     load_agent,
 )
+from sheepshead.agent.token_layout import (  # noqa: E402
+    CONTEXT_TOKEN,
+    CONTEXT_TYPE_ID,
+    HAND_TOKENS,
+    HAND_TYPE_ID,
+    MEMORY_TOKEN,
+    MEMORY_TYPE_ID,
+    RECALL_TOKEN_COUNT,
+    TRICK_TOKENS,
+    TRICK_TYPE_ID,
+)
 
 DEFAULT_CHECKPOINT = (
     ROOT
     / "runs"
-    / "league_retention_pg"
+    / "202609_recall_rc"
+    / "league"
     / "checkpoints"
-    / "pfsp_perceiver-shared-v2_checkpoint_7000000.pt"
+    / "checkpoint_2000000.pt"
 )
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
@@ -233,7 +257,7 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
         for player in game.players:
             valid_actions = player.get_valid_action_ids()
             while valid_actions:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 # Privileged state must be captured pre-action (hands shrink).
                 ostate = player.get_oracle_state_dict() if oracle is not None else None
                 names = [ACTION_LOOKUP[a] for a in sorted(valid_actions)]
@@ -249,6 +273,8 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
                         "memory_in": agent.get_recurrent_memory(
                             player.position
                         ).clone(),
+                        # What this seat knows but the observation omits.
+                        "picker_memory": copy.deepcopy(player.get_picker_memory()),
                     }
                     if oracle is not None:
                         snap["oracle_state"] = copy.deepcopy(ostate)
@@ -289,7 +315,7 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
                 if game.was_trick_just_completed:
                     for seat in game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(),
+                            last_trick_observation_for(seat, agent),
                             player_id=seat.position,
                         )
                         if oracle is not None:
@@ -308,7 +334,8 @@ def select_snapshots(game, snapshots):
 
     Every scenario comes from the SAME seat — the eventual picker — so the
     walkthrough follows one player's perspective through the whole hand
-    (and the picker-only blind/bury tokens stay live into the play phases).
+    (and the picker's blind/bury knowledge — carried only by its memory
+    under the recall contract — matters in every later phase).
     A seed only qualifies when the picker also leads some trick and has a
     late multi-card follow."""
     if game.is_leaster or not game.picker or game.called_card is None:
@@ -398,10 +425,12 @@ def capture_transformer(card_reasoner, tokens, all_mask):
 
 
 def capture_forward(agent, state, valid_actions, memory_in):
-    """Manually replicate PerceiverEncoder.encode_batch (mirrors encoder.py /
-    the architectures package) so every intermediate — per-layer per-head attention,
-    FFN hidden activations, both readout cross-attentions — can be captured,
-    then run the actor and critic heads. Returns the per-scenario payload."""
+    """Manually replicate RecallEncoder.encode_batch (mirrors encoder.py /
+    architectures.encoders) over the 15-token recall layout so every
+    intermediate — per-layer per-head attention, FFN hidden activations, the
+    shared readout cross-attention, the pointer's two terms — can be
+    captured, then run the actor and critic heads and cross-check the manual
+    pass against the modules' own forward. Returns the per-scenario payload."""
     enc = agent.encoder
     device = next(enc.parameters()).device
 
@@ -438,12 +467,6 @@ def capture_forward(agent, state, valid_actions, memory_in):
         hand_ids = torch.as_tensor(
             state["hand_ids"], dtype=torch.long, device=device
         ).view(1, 8)
-        blind_ids = torch.as_tensor(
-            state["blind_ids"], dtype=torch.long, device=device
-        ).view(1, 2)
-        bury_ids = torch.as_tensor(
-            state["bury_ids"], dtype=torch.long, device=device
-        ).view(1, 2)
         trick_card_ids = torch.as_tensor(
             state["trick_card_ids"], dtype=torch.long, device=device
         ).view(1, 5)
@@ -461,43 +484,37 @@ def capture_forward(agent, state, valid_actions, memory_in):
         )
 
         hand_tok, hand_mask = enc._embed_hand(hand_ids, actor_role_id)
-        blind_tok, blind_mask = enc._embed_simple_bag(blind_ids)
-        bury_tok, bury_mask = enc._embed_simple_bag(bury_ids)
         trick_tok, trick_mask = enc._embed_trick(
             trick_card_ids, trick_is_picker, trick_is_partner_known
         )
 
+        # Recall layout: [context, memory, hand x8, trick x5] — no blind/bury
+        # tokens; the picker's memory is the only carrier of those cards.
         all_tokens_pre = torch.cat(
             [
                 context_tok.unsqueeze(1),
                 memory_tok.unsqueeze(1),
                 hand_tok,
                 trick_tok,
-                blind_tok,
-                bury_tok,
             ],
             dim=1,
-        )  # (1, 19, d_token)
+        )  # (1, 15, d_token)
         all_mask = torch.cat(
             [
                 torch.ones((1, 1), dtype=torch.bool, device=device),
                 torch.ones((1, 1), dtype=torch.bool, device=device),
                 hand_mask,
                 trick_mask,
-                blind_mask,
-                bury_mask,
             ],
             dim=1,
         )
 
         type_ids = torch.cat(
             [
-                torch.zeros((1, 1), dtype=torch.long, device=device),
-                torch.ones((1, 1), dtype=torch.long, device=device),
-                torch.full((1, 8), 2, dtype=torch.long, device=device),
-                torch.full((1, 5), 3, dtype=torch.long, device=device),
-                torch.full((1, 2), 4, dtype=torch.long, device=device),
-                torch.full((1, 2), 5, dtype=torch.long, device=device),
+                torch.full((1, 1), CONTEXT_TYPE_ID, dtype=torch.long, device=device),
+                torch.full((1, 1), MEMORY_TYPE_ID, dtype=torch.long, device=device),
+                torch.full((1, 8), HAND_TYPE_ID, dtype=torch.long, device=device),
+                torch.full((1, 5), TRICK_TYPE_ID, dtype=torch.long, device=device),
             ],
             dim=1,
         )
@@ -506,30 +523,28 @@ def capture_forward(agent, state, valid_actions, memory_in):
         # Run the transformer manually, capturing every layer's per-head
         # attention, post-attention/post-FFN token norms, and the FFN's
         # 128-d hidden activation norms. Policy maps stay dense on disk
-        # (19x19 is small).
+        # (15x15 is small).
         all_tokens_post, cap_layers = capture_transformer(
             enc.card_reasoner, all_tokens_in, all_mask
         )
         layers_out = [
             {
-                "attn": tensor_to_py(L["attn"]),  # (H, 19, 19)
+                "attn": tensor_to_py(L["attn"]),  # (H, 15, 15)
                 "token_norms_attn": L["token_norms_attn"],
                 "token_norms_ffn": L["token_norms_ffn"],
                 "ffn_hidden_norms": L["ffn_hidden_norms"],
             }
             for L in cap_layers
         ]
-        context_out = all_tokens_post[:, 0, :]
-        memory_tok_out = all_tokens_post[:, 1, :]
-        hand_tok_out = all_tokens_post[:, 2:10, :]
-        trick_tok_out = all_tokens_post[:, 10:15, :]
-        blind_tok_out = all_tokens_post[:, 15:17, :]
-        bury_tok_out = all_tokens_post[:, 17:19, :]
+        context_out = all_tokens_post[:, CONTEXT_TOKEN, :]
+        memory_tok_out = all_tokens_post[:, MEMORY_TOKEN, :]
+        hand_tok_out = all_tokens_post[:, HAND_TOKENS, :]
+        trick_tok_out = all_tokens_post[:, TRICK_TOKENS, :]
 
-        # Memory write: the policy encoder drives the GRU from the
-        # post-reasoning CONTEXT token (index 0, as in `full`); only the
-        # oracle keeps the original perceiver's MEMORY-token wiring.
-        memory_out = enc.memory_gru(all_tokens_post[:, 0, :], memory_in)
+        # Memory write: the post-reasoning MEMORY token drives the GRU (the
+        # recall encoder's wiring — under the recall contract it is the only
+        # path by which the blind and bury reach later decisions).
+        memory_out = enc.memory_gru(memory_tok_out, memory_in)
 
         # ---- Shared encoder readout: one 16-query x 4-head cross-attention
         # over the token set produces the 256-d `features` vector that BOTH
@@ -543,7 +558,7 @@ def capture_forward(agent, state, valid_actions, memory_in):
             key_padding_mask=~all_mask,
             need_weights=True,
             average_attn_weights=False,
-        )  # (1, M, d_token), (1, H, M, 19)
+        )  # (1, M, d_token), (1, H, M, 15)
         features = enc.readout_proj(
             ro_out.reshape(1, M * enc.d_token_dim)
         )  # (1, d_model); v2 readout_proj = Linear + LayerNorm
@@ -561,12 +576,18 @@ def capture_forward(agent, state, valid_actions, memory_in):
         K_tw = actor.tw_We(enc.card.weight)  # (34, 64)
         card_scores = torch.matmul(q_tw, K_tw.t())  # (1, 34)
 
-        # Pointer over hand slots, opened up so the viz can show the
-        # Bahdanau combine: score_i = v . tanh(Wg(feat) + Wt(token_i))
+        # Pointer over hand slots, opened up so the viz can show both terms:
+        # score_i = v . tanh(Wg(feat) + Wt(tok_i))  +  (U feat) . (V tok_i) / sqrt(h)
         ptr_g = actor.pointer_Wg(feat)  # (1, h)
         ptr_t = actor.pointer_Wt(hand_tok_out)  # (1, 8, h)
         ptr_hidden = torch.tanh(ptr_g.unsqueeze(1) + ptr_t)  # (1, 8, h)
-        slot_scores = actor.pointer_v(ptr_hidden).squeeze(-1)  # (1, 8)
+        additive_scores = actor.pointer_v(ptr_hidden).squeeze(-1)  # (1, 8)
+        ptr_u = actor.pointer_U(feat)  # (1, h)
+        ptr_v = actor.pointer_V(hand_tok_out)  # (1, 8, h)
+        bilinear_scores = (ptr_u.unsqueeze(1) * ptr_v).sum(-1) / (
+            actor.pointer_hidden**0.5
+        )  # (1, 8)
+        slot_scores = additive_scores + bilinear_scores
 
         # full action logits via the model
         action_mask_t = (
@@ -585,6 +606,17 @@ def capture_forward(agent, state, valid_actions, memory_in):
             hand_ids,
             enc.card,
         )
+
+        # ---- Cross-check the manual pass against the modules themselves ----
+        ref = enc.encode_batch([state], memory_in=memory_in, device=device)
+        for key, mine in (
+            ("all_tokens", all_tokens_post),
+            ("memory_out", memory_out),
+            ("features", features),
+        ):
+            assert torch.allclose(ref[key], mine, atol=1e-5), f"policy {key} drift"
+        ref_slots = actor._score_hand_pointer(feat, hand_tok_out)
+        assert torch.allclose(ref_slots, slot_scores, atol=1e-5), "pointer drift"
 
         # ---- Critic: value trunk + auxiliary stack on the same features ----
         critic = agent.critic
@@ -608,8 +640,6 @@ def capture_forward(agent, state, valid_actions, memory_in):
             "memory": tensor_to_py(memory_tok[0]),
             "hand": tensor_to_py(hand_tok[0]),  # (8, d_token)
             "trick": tensor_to_py(trick_tok[0]),  # (5, d_token)
-            "blind": tensor_to_py(blind_tok[0]),  # (2, d_token)
-            "bury": tensor_to_py(bury_tok[0]),  # (2, d_token)
             "mask": all_mask[0].tolist(),
         },
         "tokens_post_attn": {
@@ -617,17 +647,15 @@ def capture_forward(agent, state, valid_actions, memory_in):
             "memory": tensor_to_py(memory_tok_out[0]),
             "hand": tensor_to_py(hand_tok_out[0]),
             "trick": tensor_to_py(trick_tok_out[0]),
-            "blind": tensor_to_py(blind_tok_out[0]),
-            "bury": tensor_to_py(bury_tok_out[0]),
         },
         "transformer": {"layers": layers_out},
         "memory": {
             "memory_in": tensor_to_py(memory_in[0]),
             "memory_out": tensor_to_py(memory_out[0]),
-            "driver": "context",
+            "driver": "memory",
         },
         "encoder_readout": {
-            "attn": tensor_to_py(ro_w[0]),  # (H, M, 19)
+            "attn": tensor_to_py(ro_w[0]),  # (H, M, 15)
             "features": tensor_to_py(features[0]),  # (d_model,)
         },
         "actor": {
@@ -641,6 +669,10 @@ def capture_forward(agent, state, valid_actions, memory_in):
                 "g_norm": float(ptr_g[0].norm().item()),
                 "t_norms": ptr_t[0].norm(dim=-1).tolist(),  # (8,)
                 "hidden_norms": ptr_hidden[0].norm(dim=-1).tolist(),  # (8,)
+                "u_norm": float(ptr_u[0].norm().item()),
+                "v_norms": ptr_v[0].norm(dim=-1).tolist(),  # (8,)
+                "additive_scores": tensor_to_py(additive_scores[0]),  # (8,)
+                "bilinear_scores": tensor_to_py(bilinear_scores[0]),  # (8,)
                 "slot_scores": tensor_to_py(slot_scores[0]),  # (8,)
             },
             "full_probs": tensor_to_py(probs[0]),
@@ -997,14 +1029,15 @@ def build_sample_block(kind, snap, game):
         # the per-slot trick flags (slot i = relative seat +i, 0 = me) —
         # surfaced so the viz can show real numbers, not just field names.
         "header": {k: int(state[k]) for k in HEADER_FIELDS},
-        # Blind/bury contents AS THE POLICY SEES THEM: the state dict zeroes
-        # these for every seat but the picker, so exporting them leaks
-        # nothing — empty lists simply mean "hidden from this seat".
-        "blind_card_codes": [
-            ID_TO_CODE[int(c)] for c in state["blind_ids"] if int(c) != 0
+        # The blind/bury this seat KNOWS (get_picker_memory: zeros for every
+        # seat but the picker). Not in the observation — under the recall
+        # contract the network must carry them in its memory — so the viz
+        # shows them as remembered, never as tokens.
+        "known_blind_codes": [
+            ID_TO_CODE[int(c)] for c in snap["picker_memory"]["blind_ids"] if int(c)
         ],
-        "bury_card_codes": [
-            ID_TO_CODE[int(c)] for c in state["bury_ids"] if int(c) != 0
+        "known_bury_codes": [
+            ID_TO_CODE[int(c)] for c in snap["picker_memory"]["bury_ids"] if int(c)
         ],
         "trick_is_picker": [int(v) for v in state["trick_is_picker"]],
         "trick_is_partner_known": [int(v) for v in state["trick_is_partner_known"]],
@@ -1031,8 +1064,7 @@ def main():
         type=Path,
         default=DEFAULT_CHECKPOINT,
         help=(
-            "perceiver-shared-v2-arch checkpoint to visualize "
-            "(loaded via ppo.load_agent)."
+            "perceiver-recall-arch checkpoint to visualize (loaded via ppo.load_agent)."
         ),
     )
     parser.add_argument(
@@ -1056,12 +1088,13 @@ def main():
     print(f"Loading checkpoint: {args.checkpoint}")
     agent = load_agent(str(args.checkpoint), load_optimizers=False)
     enc = agent.encoder
-    if not isinstance(enc, SharedReadoutEncoder):
+    if not isinstance(enc, RecallEncoder):
         raise SystemExit(
-            f"Checkpoint arch is not a shared-readout perceiver variant "
-            f"(encoder is {type(enc).__name__}); this dump captures the "
-            f"perceiver-shared-v2 forward pass only."
+            f"Checkpoint arch is not perceiver-recall (encoder is "
+            f"{type(enc).__name__}); this dump captures the recall-layout "
+            f"forward pass only."
         )
+    assert agent.actor.bilinear_pointer, "expected the bilinear play pointer"
     assert type(agent.actor) is MultiHeadRecurrentActorNetwork
     assert type(agent.critic) is RecurrentCriticNetwork
     assert agent.critic.has_aux_heads, "expected the aux-head critic stack"
@@ -1150,6 +1183,7 @@ def main():
             "d_model": enc.d_model,
             "n_layers": n_layers,
             "n_heads": n_heads,
+            "n_tokens": RECALL_TOKEN_COUNT,
             "n_readout_queries": enc.readout_n_queries,
             "n_readout_heads": enc.readout_mha.num_heads,
             "pointer_hidden": agent.actor.pointer_hidden,

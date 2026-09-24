@@ -210,7 +210,7 @@
 
 <div id="ui-top">
   <div class="panel" id="title">
-    Sheepshead PPO <span class="sub" id="title-sub">3D · perceiver-shared-v2 forward pass</span>
+    Sheepshead PPO <span class="sub" id="title-sub">3D · perceiver-recall forward pass</span>
   </div>
   <div class="panel controls">
     <button id="btn-play" class="primary">▶ Play tour</button>
@@ -855,20 +855,18 @@ for (const [code, id] of Object.entries(deckIds)) idToCode[id] = code;
 idToCode[0] = "PAD";
 idToCode[33] = "UNDER";
 
-// Policy token bank order: context(1), memory(1), hand(8), trick(5),
-// blind(2), bury(2) — 19 tokens.
+// Policy token bank order (the recall layout): context(1), memory(1),
+// hand(8), trick(5) — 15 tokens. No blind/bury tokens: the picker must
+// carry those cards in its memory.
 const POLICY_TOKEN_INFO = [
   { type: "context", color: 0xf4a261 },
   { type: "memory", color: 0xf4a261 },
 ];
 for (let i = 0; i < 8; i++) POLICY_TOKEN_INFO.push({ type: "hand", color: 0x4cc9f0, idx: i });
 for (let i = 0; i < 5; i++) POLICY_TOKEN_INFO.push({ type: "trick", color: 0x6fb1ff, idx: i });
-for (let i = 0; i < 2; i++) POLICY_TOKEN_INFO.push({ type: "blind", color: 0x88e0e8, idx: i });
-for (let i = 0; i < 2; i++) POLICY_TOKEN_INFO.push({ type: "bury", color: 0xa6f0c1, idx: i });
 
-// Oracle token bank: the 19 familiar tokens (blind/bury violet-shifted —
-// they carry the TRUE cards here) + 32 opponent-hand tokens in per-seat
-// tints — 51 tokens.
+// Oracle token bank: the policy's 15 + the TRUE blind/bury (4, violet) +
+// 32 opponent-hand tokens in per-seat tints — 51 tokens.
 const ORACLE_TOKEN_INFO = [
   { type: "context", color: 0xf4a261 },
   { type: "memory", color: 0xf4a261 },
@@ -936,7 +934,7 @@ function tokenMask(i) {
 function tokenPreNorm(i) {
   if (NETWORK_MODE === 1) return SO.tokens_pre.norms[i];
   const p = S.tokens_pre_attn;
-  const flat = [p.context, p.memory, ...p.hand, ...p.trick, ...p.blind, ...p.bury];
+  const flat = [p.context, p.memory, ...p.hand, ...p.trick];
   return vecMag(flat[i]);
 }
 // Directed attention triples {h, i, j, w} of layer l — dense policy maps
@@ -960,12 +958,8 @@ function layerTriples(l) {
   return out;
 }
 
-// Which actual card (if any) a token carries. Opponent hands are oracle-only
-// (NETWORK_MODE gate — the policy never sees them). Blind/bury need no gate
-// in policy mode: the dump exports blind_card_codes/bury_card_codes straight
-// from the policy state dict, which zeroes them for every seat but the
-// picker — data presence IS the permission check. The oracle payload always
-// carries the true cards.
+// Which actual card (if any) a token carries. Blind/bury and opponent-hand
+// tokens exist only in the oracle's layout (the policy has neither).
 function tokenCardCode(i) {
   const info = TOKEN_INFO[i];
   if (info.type === "hand") {
@@ -976,14 +970,8 @@ function tokenCardCode(i) {
     const code = S.sample.trick_card_codes[info.idx];
     return code && code !== "PAD" ? code : null;
   }
-  if (info.type === "blind") {
-    if (NETWORK_MODE === 1 && SO) return SO.sample.blind_cards[info.idx] || null;
-    return (S.sample.blind_card_codes || [])[info.idx] || null;
-  }
-  if (info.type === "bury") {
-    if (NETWORK_MODE === 1 && SO) return SO.sample.bury_cards[info.idx] || null;
-    return (S.sample.bury_card_codes || [])[info.idx] || null;
-  }
+  if (info.type === "blind") return SO ? SO.sample.blind_cards[info.idx] || null : null;
+  if (info.type === "bury") return SO ? SO.sample.bury_cards[info.idx] || null : null;
   if (NETWORK_MODE === 1 && SO && info.type === "opp") {
     const cid = SO.sample.opp_hand_ids[info.seat][info.idx];
     const code = idToCode[cid];
@@ -1043,7 +1031,7 @@ let XSA = XS;                                       // active spine
 const xfX = (l) => XSA.xf0 + l * XSA.xfSpacing;    // ring x of layer l
 let RING_R = 9;    // 14 in oracle mode (51 tokens per ring)
 const RING_CY = 5; // ring center height
-let N_TOK = 19;    // 51 in oracle mode
+let N_TOK = DATA.dims.n_tokens; // 15 (recall layout); 51 in oracle mode
 
 // ============================================================
 // Rebuildable scene root + registries
@@ -1246,9 +1234,9 @@ function buildInputCards() {
       cl.position.copy(card.position).add(new THREE.Vector3(0.4, cardW * 0.725 + 1.0, 0));
       g.add(cl);
     }
-    // Cards the picker took from the blind — knowledge the other seats
-    // don't have; the blind tokens carry the same two cards.
-    if ((S.sample.blind_card_codes || []).includes(code)) {
+    // Cards the picker took from the blind — seen once, here in the hand;
+    // after the bury only the memory remembers where they came from.
+    if ((S.sample.known_blind_codes || []).includes(code)) {
       const fb = makeLabel("from blind", "#b9a8e8", 0.34);
       fb.position.copy(card.position).add(new THREE.Vector3(0.3, -(cardW * 0.725) - 0.6, 0));
       g.add(fb);
@@ -1285,7 +1273,7 @@ function buildInputCards() {
   sumLab.position.set(XS.input, FAN_TOP + 3.6, 0);
   g.add(sumLab);
 
-  // --- cards already played this trick, lying on the table ----------
+  // --- cards already played this trick ------------------------------
   const trickCodes = S.sample.trick_card_codes
     .map((code, seatOff) => ({ code, seatOff }))
     .filter(t => t.code !== "PAD");
@@ -1301,7 +1289,7 @@ function buildInputCards() {
       const { code, seatOff } = trickCodes[i];
       const card = makeCardMesh(code, 2.5);
       card.position.set(XS.input + i * 0.05, TABLE_Y + 1.15, 3.4 + i * 2.9);
-      card.rotation.set(-Math.PI / 2 + 0.62, 0.4, 0); // leaning back on the table
+      card.rotation.set(-Math.PI / 2 + 0.62, 0.4, 0); // leaning back, face up
       g.add(card);
       trickObjs.push(card);
       trickAnchors.push({
@@ -1329,50 +1317,7 @@ function buildInputCards() {
     }
   }
 
-  // --- the bury: once this seat has buried (picker, play phases), the two
-  // buried cards sit face up on the table — this seat knows exactly where
-  // those points went, and the bury tokens carry them.
-  const buryCodes = S.sample.bury_card_codes || [];
-  if (buryCodes.length) {
-    const buLab = makeLabel("bury · yours", "#a6f0c1", 0.42);
-    buLab.position.set(XS.input, TABLE_Y + 3.4, -6.4);
-    g.add(buLab);
-    for (let i = 0; i < buryCodes.length; i++) {
-      const bc = makeCardMesh(buryCodes[i], 2.3);
-      bc.position.set(XS.input + i * 0.06, TABLE_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
-      bc.rotation.set(-Math.PI / 2 + 0.55, 0.35, 0);
-      g.add(bc);
-      registerCardPickable(bc, {
-        title: `${buryCodes[i]} · buried`,
-        badge: "input",
-        kv: { "points": String(cardPoints(buryCodes[i])) },
-        body: `<p>Buried by this seat — ${cardPoints(buryCodes[i])} points banked for the picker team. Feeds bury token ${i}; only the picker's observation carries it.</p>` + embRowHtml(buryCodes[i]),
-      });
-    }
-  }
-
-  // --- the blind: two face-down backs on the table. Only shown while its
-  // contents are actually hidden from this seat (blind tokens masked);
-  // the oracle walkthrough shows the same cards face up.
-  const preMask = S.tokens_pre_attn.mask;
-  if (!preMask[15] && !preMask[16]) {
-    const bLab = makeLabel("blind · face down", "#8e9bd1", 0.42);
-    bLab.position.set(XS.input, TABLE_Y + 3.4, -6.4);
-    g.add(bLab);
-    for (let i = 0; i < 2; i++) {
-      const back = makeCardMesh("__", 2.3, { faceDown: true });
-      back.position.set(XS.input + i * 0.06, TABLE_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
-      back.rotation.set(-Math.PI / 2 + 0.55, 0.35, 0);
-      g.add(back);
-      registerCardPickable(back, {
-        title: "blind card (face down)",
-        badge: "input",
-        body: `<p>One of the two blind cards — hidden from every seat until someone picks, and hidden from this network always (its blind tokens are PAD here). Switch to the <b>Oracle critic</b> network up top to watch them flip face up.</p>`,
-      });
-    }
-  }
-
-  // --- header + memory chips, floating behind the cards --------------
+  // --- header + memory chips, behind the cards -----------------------
   const chipY = -1.2, chipZ = -10.5;
   const headerChip = new THREE.Mesh(
     new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14),
@@ -1432,6 +1377,31 @@ function buildInputCards() {
   registerPickable(memStrip, memInfoPick);
   const memAnchor = new THREE.Vector3(XS.input + 2, chipY - 2.2, chipZ);
 
+  // --- the bury, remembered: once the picker has buried, the two cards
+  // are in no observation (the recall contract) — only the memory can
+  // carry them. Drawn as ghosts beside the memory chip, not as inputs.
+  const buryCodes = S.sample.known_bury_codes || [];
+  if (buryCodes.length) {
+    const buLab = makeLabel("your bury · memory only", "#ffd99c", 0.4);
+    buLab.position.set(XS.input, chipY - 4.1, chipZ + 0.2);
+    g.add(buLab);
+    for (let i = 0; i < buryCodes.length; i++) {
+      const bc = makeCardMesh(buryCodes[i], 1.5, { withVec: false });
+      bc.position.set(XS.input, chipY - 6.0, chipZ - 0.9 + i * 1.9);
+      bc.rotation.y = 0.45;
+      bc.traverse(o => {
+        if (o.material) { o.material.transparent = true; o.material.opacity = 0.45; }
+      });
+      g.add(bc);
+      registerCardPickable(bc, {
+        title: `${buryCodes[i]} · buried (remembered)`,
+        badge: "input",
+        kv: { "points": String(cardPoints(buryCodes[i])), "in observation": "no" },
+        body: `<p>Buried by this seat — ${cardPoints(buryCodes[i])} points banked for the picker team. A human picker remembers the bury; so must the network. It is <b>not</b> in the observation and has no token — if it reaches this decision at all, it arrives through the memory hₜ₋₁.</p>`,
+      });
+    }
+  }
+
   return { cardObjs, trickObjs, handAnchors, trickAnchors, headerAnchor, memAnchor };
 }
 
@@ -1454,20 +1424,13 @@ function buildEmbeddingTable() {
   const totalH = ROWS * (cellH + gap);
 
   // Rows referenced by this scenario: hand + cards on the table + called
-  // card + the blind/bury contents when this seat legitimately knows them
-  // (the picker's own view — the dump zeroes these for other seats).
+  // card (the observation — nothing the seat merely remembers).
   const usedIds = new Set(handCardIds.filter(id => id !== 0));
   for (const code of S.sample.trick_card_codes) {
     if (code !== "PAD") usedIds.add(code === "UNDER" ? 33 : deckIds[code]);
   }
   if (S.sample.called_card && deckIds[S.sample.called_card]) {
     usedIds.add(deckIds[S.sample.called_card]);
-  }
-  for (const code of [
-    ...(S.sample.blind_card_codes || []),
-    ...(S.sample.bury_card_codes || []),
-  ]) {
-    if (deckIds[code]) usedIds.add(deckIds[code]);
   }
   if (NETWORK_MODE === 1 && SO) {
     // The oracle also embeds every hidden card it sees.
@@ -1593,7 +1556,7 @@ function buildEmbeddingTable() {
 }
 
 // ============================================================
-// STAGE 3: TOKEN BANK (19 tokens, 64-d each)
+// STAGE 3: TOKEN BANK (15 tokens, 64-d each)
 // ============================================================
 function buildTokens() {
   const g = group("tokens");
@@ -1666,18 +1629,17 @@ function buildTokens() {
   };
 
   if (NETWORK_MODE === 0) {
-    // Column geometry: 19 rows must fit between the floor grid (y = −10,
-    // where the stage label lies) and a reasonable top. Center at +2 with
-    // 1.15 spacing puts the last token (bury[1]) at y ≈ −8.4 — above the
-    // floor even when trick tokens are live.
+    // Column geometry: the rows must fit between the floor grid (y = −10,
+    // where the stage label lies) and a reasonable top, centered at +2.
     const spacingY = 1.15;
-    const topY = 2 + ((19 - 1) * spacingY) / 2;
+    const topY = 2 + ((N_TOK - 1) * spacingY) / 2;
     for (let i = 0; i < N_TOK; i++) {
       addChip(i, new THREE.Vector3(XSA.tokensPre, topY - i * spacingY, 0), 3.5, 0.45);
     }
   } else {
-    // Oracle: the 19 familiar tokens in a column, plus the 32 opponent-hand
-    // tokens as a 4-column grid (one column per hidden seat) beside it.
+    // Oracle: its 19 base tokens (the policy's 15 + true blind/bury) in a
+    // column, plus the 32 opponent-hand tokens as a 4-column grid (one
+    // column per hidden seat) beside it.
     const spacingY = 1.05;
     const topY = 2 + ((19 - 1) * spacingY) / 2;
     for (let i = 0; i < 19; i++) {
@@ -2034,13 +1996,14 @@ function buildMemory() {
   const memOutMag = vecMag(mem.memory_out);
   const driverIsMemory = mem.driver === "memory";
   const driverName = driverIsMemory ? "memory token" : "context token";
+  const netName = NETWORK_MODE === 1 ? "oracle" : "policy";
   registerPickable(gru, {
     title: "memory_gru (GRUCell)",
     badge: "share",
     kv: { "‖memory_in‖": memInMag.toFixed(2), "‖memory_out‖": memOutMag.toFixed(2), "driver": driverName },
     body: `<p>The only true recurrence in the network. memory_out = GRU(<b>${driverName}</b> after reasoning, memory_in) — ${driverIsMemory
-      ? "the transformer's own \"what to remember\" slot drives the write (the perceiver wiring; the policy network feeds the GRU the context token instead)"
-      : "shared-v2 keeps <code>full</code>'s wiring: the context token, a strong prior at game start, drives the write (the original perceiver used the memory token instead)"}.</p>
+      ? `the transformer's own "what to remember" slot drives the write (the ${netName} network's wiring), leaving the context token as the current-situation summary`
+      : "the context token drives the write"}.</p>
       <p>Stored per-player and read back on the next decision step — the curved arc going back to the left is exactly that feedback.</p>`,
   });
 
@@ -2087,7 +2050,7 @@ function buildMemory() {
 
 // ============================================================
 // STAGE 6: SHARED READOUT — ONE set of 16 learned queries (4×4 grid)
-// cross-attends over the 19 post-reasoning tokens and produces the
+// cross-attends over the 15 post-reasoning tokens and produces the
 // single 256-d `features` vector that BOTH actor and critic consume.
 // Default view: each gem shows only its top-3 attended tokens (averaged
 // over the heads enabled via the H1–H4 chips). Clicking a gem reveals its
@@ -2511,52 +2474,74 @@ function buildActor() {
 }
 
 // ============================================================
-// STAGE 8: POINTER — Bahdanau scorer over the hand tokens.
+// STAGE 8: POINTER — two-term scorer over the hand tokens.
 // The 8 post-reasoning hand tokens are re-materialized as a ghost
-// row (tethered to the final ring); each slot's combine node mixes
-// Wg(features-adapter) with Wt(token) through tanh, and pointer_v
-// turns the blend into the score bar above it.
+// row (tethered to the final ring). Per slot, an additive node mixes
+// g = Wg·f with Wt·token through tanh (read out by pointer_v), and a
+// bilinear node dots u = U·f with V·token; the bar is their sum.
 // ============================================================
+const BILINEAR_COLOR = 0xe6f59a;
 function buildPointer() {
   const g = group("pointer");
   const live = liveHead();
   const st = headStyle(live === "pointer");
-  const lab = makeStageLabel(`8 · POINTER · v·tanh(Wg·feat + Wt·tok)${st.suffix}`, "#b8f0a2");
+  const lab = makeStageLabel(`8 · POINTER · additive + bilinear${st.suffix}`, "#b8f0a2");
   lab.position.set(XS.pointer, -9.7, 12);
   g.add(lab);
 
   const PY = 1.5;              // ghost row height
+  const ADD_Y = PY + 2.6;      // additive (tanh) node row
+  const BIL_Y = PY + 4.4;      // bilinear (dot) node row
+  const BAR_Y = PY + 6.2;      // score bars start here
   const SLOT_DZ = 2.6;
   const slotZ = (i) => (i - 3.5) * SLOT_DZ;
   const ptr = S.actor.pointer;
+  const hP = DATA.dims.pointer_hidden;
   const slotScores = ptr.slot_scores;
   const realSlots = handCardIds.map((cid, i) => ({ cid, i })).filter(s => s.cid !== 0);
   const minSlot = Math.min(...realSlots.map(s => slotScores[s.i]));
   const maxSlot = Math.max(...realSlots.map(s => slotScores[s.i]));
   const maxHid = Math.max(...realSlots.map(s => ptr.hidden_norms[s.i]));
+  const maxBil = Math.max(1e-6, ...realSlots.map(s => Math.abs(ptr.bilinear_scores[s.i])));
 
-  // Wg node: the situation summary, broadcast to every slot.
-  const gNode = new THREE.Mesh(
-    new THREE.SphereGeometry(0.55, 18, 14),
-    new THREE.MeshStandardMaterial({
-      color: 0xb8f0a2, emissive: 0xb8f0a2,
-      emissiveIntensity: 0.6 * st.emissiveBoost,
-      metalness: 0.4, roughness: 0.3,
-      transparent: st.opacity < 1, opacity: st.opacity,
-    }),
-  );
-  gNode.position.set(XS.pointer - 6, PY + 6.5, 0);
+  const matOpts = (color, intensity) => ({
+    color, emissive: color,
+    emissiveIntensity: intensity * st.emissiveBoost,
+    metalness: 0.4, roughness: 0.3,
+    transparent: st.opacity < 1, opacity: st.opacity,
+  });
+
+  // The two situation queries, broadcast to every slot.
+  const gNode = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 14),
+    new THREE.MeshStandardMaterial(matOpts(0xb8f0a2, 0.6)));
+  gNode.position.set(XS.pointer - 6.5, ADD_Y, 0);
   g.add(gNode);
-  const gLab = makeLabel(`g = pointer_Wg(feat) · ${DATA.dims.d_model}→${DATA.dims.pointer_hidden}`, st.labelColor, 0.42);
-  gLab.position.set(XS.pointer - 6, PY + 8.1, 0);
+  const gLab = makeLabel(`g = Wg·f  (${DATA.dims.d_model}→${hP})`, st.labelColor, 0.42);
+  gLab.position.set(XS.pointer - 6.5, ADD_Y - 1.4, 0);
   g.add(gLab);
   registerPickable(gNode, {
-    title: "pointer_Wg · situation query",
+    title: "pointer_Wg · additive query",
     badge: "actor",
     kv: { "‖g‖": ptr.g_norm.toFixed(2) },
-    body: `<p>The actor-adapted features projected to ${DATA.dims.pointer_hidden}d — the "what does this situation want" half of the Bahdanau scorer, broadcast identically to all 8 hand slots.</p>`,
+    body: `<p>The actor-adapted features projected to ${hP}d — the situation half of the additive (Bahdanau) term, broadcast identically to all 8 hand slots. Added to each card's projection and squashed by tanh, it can move every card's score together, but can only make a card attribute matter <i>differently</i> in this state through tanh saturation.</p>`,
   });
-  g.add(makeGlowLine(actorInfo.adapter.position.clone(), gNode.position.clone(), 0xb8f0a2, live === "pointer" ? 0.5 : 0.15));
+  const uNode = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 14),
+    new THREE.MeshStandardMaterial(matOpts(BILINEAR_COLOR, 0.6)));
+  uNode.position.set(XS.pointer - 6.5, BIL_Y + 1.6, 0);
+  g.add(uNode);
+  const uLab = makeLabel(`u = U·f  (${DATA.dims.d_model}→${hP})`, st.labelColor, 0.42);
+  uLab.position.set(XS.pointer - 6.5, BIL_Y + 3.0, 0);
+  g.add(uLab);
+  registerPickable(uNode, {
+    title: "pointer_U · bilinear query",
+    badge: "actor",
+    kv: { "‖u‖": ptr.u_norm.toFixed(2) },
+    body: `<p>A second ${hP}-d projection of the features, dotted (not added) with each card's V projection. A product can re-weight individual card attributes per situation — "in this state, trump strength matters; in that one, points do" — which the additive term expresses only indirectly. U starts at zero, so the term grows only as far as training finds it useful.</p>`,
+  });
+  for (const node of [gNode, uNode]) {
+    g.add(makeGlowLine(actorInfo.adapter.position.clone(), node.position.clone(),
+      node === gNode ? 0xb8f0a2 : BILINEAR_COLOR, live === "pointer" ? 0.5 : 0.15));
+  }
 
   const combines = [];
   for (let i = 0; i < 8; i++) {
@@ -2583,88 +2568,103 @@ function buildPointer() {
       const glab = makeLabel(code, "#5d6790", 0.4);
       glab.position.set(XS.pointer + 0.2, PY - 1.3, slotZ(i));
       g.add(glab);
-    } else {
-      // The slot's actual card, as a mini face under its ghost token.
-      const mini = makeCardMesh(code, 1.0, { withVec: false });
-      mini.position.set(XS.pointer + 0.2, PY - 1.8, slotZ(i));
-      mini.rotation.y = 0.45;
-      g.add(mini);
+      continue;
     }
-    if (!isPad) {
-      // Tether back to the final transformer ring — same token, same state.
-      const src = xfInfo.exitPos[2 + i].clone();
-      const mid = src.clone().add(gp).multiplyScalar(0.5);
-      mid.y -= 4; // duck under the readout grid on the way over
-      const tether = registerConn(
-        makeFatLine(new THREE.QuadraticBezierCurve3(src, mid, gp).getPoints(24),
-          0x4cc9f0, 0.10, 1.0), 0.10);
-      g.add(tether);
-      registerPickable(ghost, {
-        title: `hand token · ${code}${isTrump ? " (trump)" : ""}`,
-        badge: "actor",
-        kv: { "‖Wt·tok‖": ptr.t_norms[i].toFixed(2) },
-        body: `<p>The same post-reasoning ${DATA.dims.d_token}-d hand token from the final transformer ring (the faint tether), re-materialized here. pointer_Wt projects it to ${DATA.dims.pointer_hidden}d — the "what is this card" half of the scorer.</p>`,
-      });
+    // The slot's actual card, as a mini face under its ghost token.
+    const mini = makeCardMesh(code, 1.0, { withVec: false });
+    mini.position.set(XS.pointer + 0.2, PY - 1.8, slotZ(i));
+    mini.rotation.y = 0.45;
+    g.add(mini);
 
-      // tanh-combine node above the ghost token.
-      const hidNorm = ptr.hidden_norms[i] / Math.max(maxHid, 1e-6);
-      const comb = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.5),
-        new THREE.MeshStandardMaterial({
-          color: 0xb8f0a2, emissive: 0xb8f0a2,
-          emissiveIntensity: (0.15 + hidNorm * 0.7) * st.emissiveBoost,
-          metalness: 0.5, roughness: 0.25,
-          transparent: st.opacity < 1, opacity: st.opacity,
-        }),
-      );
-      comb.position.set(XS.pointer, PY + 3.0, slotZ(i));
-      comb.userData.pulsePhase = i * 0.8;
-      g.add(comb);
-      combines.push(comb);
-      registerPickable(comb, {
-        title: `tanh combine · slot ${i} (${code})`,
-        badge: "actor",
-        kv: { "‖tanh(g + t)‖": ptr.hidden_norms[i].toFixed(2), "score": slotScores[i].toFixed(2) },
-        body: `<p>e = tanh(g + Wt·token): the situation query and this card's token added and squashed. pointer_v (the beam upward) reads the blend out as one scalar score.</p>`,
-      });
-      g.add(makeGlowLine(gNode.position.clone(), comb.position.clone(), 0xb8f0a2,
-        (live === "pointer" ? 0.28 : 0.10)));
-      g.add(makeGlowLine(gp.clone(), comb.position.clone(), 0x4cc9f0,
-        (live === "pointer" ? 0.4 : 0.14)));
+    // Tether back to the final transformer ring — same token, same state.
+    const src = xfInfo.exitPos[2 + i].clone();
+    const mid = src.clone().add(gp).multiplyScalar(0.5);
+    mid.y -= 4; // duck under the readout grid on the way over
+    const tether = registerConn(
+      makeFatLine(new THREE.QuadraticBezierCurve3(src, mid, gp).getPoints(24),
+        0x4cc9f0, 0.10, 1.0), 0.10);
+    g.add(tether);
+    registerPickable(ghost, {
+      title: `hand token · ${code}${isTrump ? " (trump)" : ""}`,
+      badge: "actor",
+      kv: { "‖Wt·tok‖": ptr.t_norms[i].toFixed(2), "‖V·tok‖": ptr.v_norms[i].toFixed(2) },
+      body: `<p>The same post-reasoning ${DATA.dims.d_token}-d hand token from the final transformer ring (the faint tether), re-materialized here. Wt and V each project it to ${hP}d — the "what is this card" half of the two terms.</p>`,
+    });
 
-      // Score bar: v · e, height/heat by within-hand normalized score.
-      const norm = (slotScores[i] - minSlot) / Math.max(1e-6, maxSlot - minSlot);
-      const barH = 0.4 + norm * 3.4;
-      const bcolor = new THREE.Color().setHSL(0.32, 0.7, 0.28 + norm * 0.42);
-      const bar = new THREE.Mesh(
-        new RoundedBoxGeometry(0.85, barH, 0.85, 2, 0.08),
-        new THREE.MeshStandardMaterial({
-          color: bcolor, emissive: bcolor,
-          emissiveIntensity: (0.2 + norm * 0.65) * st.emissiveBoost,
-          transparent: st.opacity < 1, opacity: st.opacity,
-          roughness: 0.4,
-        }),
-      );
-      bar.position.set(XS.pointer, PY + 5.2 + barH / 2, slotZ(i));
-      g.add(bar);
-      const blab = makeLabel(slotScores[i].toFixed(1), st.labelColor, 0.36);
-      blab.position.set(XS.pointer, PY + 5.9 + barH, slotZ(i));
-      g.add(blab);
-      registerPickable(bar, {
-        title: `pointer score · ${code}`,
-        badge: "actor",
-        kv: { "score": slotScores[i].toFixed(3) },
-        body: `<p>This slot's scalar is scattered into the BURY ${code} / UNDER ${code} / PLAY ${code} action logits via precomputed card-id maps — one scorer serves all three phases.</p>`,
-      });
-      g.add(makeGlowLine(comb.position.clone(), new THREE.Vector3(XS.pointer, PY + 5.2, slotZ(i)), bcolor.getHex(),
-        (0.15 + norm * 0.5) * (live === "pointer" ? 1 : 0.35)));
-    }
+    const addS = ptr.additive_scores[i], bilS = ptr.bilinear_scores[i];
+    const termKv = {
+      "additive": addS.toFixed(2), "bilinear": bilS.toFixed(2), "score": slotScores[i].toFixed(2),
+    };
+
+    // Additive node: tanh(g + Wt·t), read out by pointer_v.
+    const hidNorm = ptr.hidden_norms[i] / Math.max(maxHid, 1e-6);
+    const comb = new THREE.Mesh(new THREE.OctahedronGeometry(0.5),
+      new THREE.MeshStandardMaterial({ ...matOpts(0xb8f0a2, 0.15 + hidNorm * 0.7), metalness: 0.5, roughness: 0.25 }));
+    comb.position.set(XS.pointer, ADD_Y, slotZ(i));
+    comb.userData.pulsePhase = i * 0.8;
+    g.add(comb);
+    combines.push(comb);
+    registerPickable(comb, {
+      title: `additive term · slot ${i} (${code})`,
+      badge: "actor",
+      kv: { "‖tanh(g + Wt·t)‖": ptr.hidden_norms[i].toFixed(2), ...termKv },
+      body: `<p>v · tanh(g + Wt·token): the situation query and this card's projection added and squashed; pointer_v reads the blend out as one scalar.</p>`,
+    });
+
+    // Bilinear node: (u · V·t) / √h — a ring, sized and lit by |term|.
+    const bilNorm = Math.abs(bilS) / maxBil;
+    const bil = new THREE.Mesh(new THREE.TorusGeometry(0.34 + bilNorm * 0.22, 0.12, 10, 28),
+      new THREE.MeshStandardMaterial(matOpts(BILINEAR_COLOR, 0.12 + bilNorm * 0.75)));
+    bil.position.set(XS.pointer + 0.9, BIL_Y, slotZ(i));
+    bil.rotation.y = 0.45;
+    g.add(bil);
+    registerPickable(bil, {
+      title: `bilinear term · slot ${i} (${code})`,
+      badge: "actor",
+      kv: termKv,
+      body: `<p>(U·f) · (V·token) / √${hP}: a dot product between the bilinear situation query and this card. ${bilS >= 0 ? "Positive — this state favors this card's attributes." : "Negative — this state disfavors this card's attributes."}</p>`,
+    });
+
+    const on = live === "pointer";
+    g.add(makeGlowLine(gNode.position.clone(), comb.position.clone(), 0xb8f0a2, on ? 0.26 : 0.10));
+    g.add(makeGlowLine(uNode.position.clone(), bil.position.clone(), BILINEAR_COLOR, on ? 0.26 : 0.10));
+    g.add(makeGlowLine(gp.clone(), comb.position.clone(), 0x4cc9f0, on ? 0.4 : 0.14));
+    g.add(makeGlowLine(gp.clone(), bil.position.clone(), 0x4cc9f0, on ? 0.3 : 0.10));
+
+    // Score bar: the sum, height/heat by within-hand normalized score.
+    const norm = (slotScores[i] - minSlot) / Math.max(1e-6, maxSlot - minSlot);
+    const barH = 0.4 + norm * 3.4;
+    const bcolor = new THREE.Color().setHSL(0.32, 0.7, 0.28 + norm * 0.42);
+    const bar = new THREE.Mesh(
+      new RoundedBoxGeometry(0.85, barH, 0.85, 2, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: bcolor, emissive: bcolor,
+        emissiveIntensity: (0.2 + norm * 0.65) * st.emissiveBoost,
+        transparent: st.opacity < 1, opacity: st.opacity,
+        roughness: 0.4,
+      }),
+    );
+    bar.position.set(XS.pointer + 0.45, BAR_Y + barH / 2, slotZ(i));
+    g.add(bar);
+    const blab = makeLabel(slotScores[i].toFixed(1), st.labelColor, 0.36);
+    blab.position.set(XS.pointer + 0.45, BAR_Y + 0.7 + barH, slotZ(i));
+    g.add(blab);
+    registerPickable(bar, {
+      title: `pointer score · ${code}`,
+      badge: "actor",
+      kv: termKv,
+      body: `<p>Additive + bilinear. This slot's scalar is scattered into the BURY ${code} / UNDER ${code} / PLAY ${code} action logits via precomputed card-id maps — one scorer serves all three phases.</p>`,
+    });
+    const barBase = new THREE.Vector3(XS.pointer + 0.45, BAR_Y, slotZ(i));
+    const barOp = (0.15 + norm * 0.5) * (on ? 1 : 0.35);
+    g.add(makeGlowLine(comb.position.clone(), barBase, bcolor.getHex(), barOp));
+    g.add(makeGlowLine(bil.position.clone(), barBase.clone(), BILINEAR_COLOR, barOp));
   }
-  const vLab = makeLabel(`score = pointer_v · e  (${DATA.dims.pointer_hidden}→1)`, st.labelColor, 0.42);
-  vLab.position.set(XS.pointer, PY + 4.3, -(3.5 * SLOT_DZ) - 3.4);
+  const vLab = makeLabel(`score = v·tanh(g + Wt·t) + (u · V·t)/√${hP}`, st.labelColor, 0.42);
+  vLab.position.set(XS.pointer, BAR_Y - 0.8, -(3.5 * SLOT_DZ) - 4.4);
   g.add(vLab);
 
-  return { gNode, combines };
+  return { gNode, uNode, combines };
 }
 
 // ============================================================
@@ -3084,7 +3084,7 @@ function buildOracleObservation() {
         title: `${code} · ${tag}${isTrump ? " · trump" : ""}`,
         badge: "input",
         kv: { "points": String(cardPoints(code)) },
-        body: `<p>${tag === "under" ? "The face-down under card." : `In the ${tag.split(" ")[0]} — face down on the table.`} Only the oracle's observation carries it${tag.startsWith("blind") ? " for every seat (the policy sees the blind only as the picker)" : ""}.</p>` + embRowHtml(code),
+        body: `<p>${tag === "under" ? "The face-down under card." : `In the ${tag.split(" ")[0]} — face down on the table.`} Only the oracle's observation carries it — the policy never observes the blind or bury (the picker sees the blind once, in its hand, and must remember it).</p>` + embRowHtml(code),
       });
     }
   }
@@ -3680,13 +3680,13 @@ const xfLayerStage = (l) => ({
 function buildPolicyStages() {
   return [
   {
-    title: "Sheepshead PPO — perceiver-shared-v2 forward pass",
+    title: "Sheepshead PPO — perceiver-recall forward pass",
     label: "intro",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
     body: () => `<p>A live forward pass through the <code>${DATA.arch}</code> network (<code>${DATA.checkpoint}</code>) on a real hand it played against itself (seed ${DATA.seed}).</p>
       <p><b>${S.label}:</b> ${S.description}</p>
-      <p>Token-centric with one shared trunk: embeddings → transformer → a single <b>${DATA.dims.n_readout_queries}-query shared readout</b> → one 256-d features vector that the actor's heads <i>and</i> the critic's value + auxiliary stack all consume. No pooling bags.</p>
+      <p>Token-centric with one shared trunk: embeddings → ${DATA.dims.n_tokens} tokens → transformer → a single <b>${DATA.dims.n_readout_queries}-query shared readout</b> → one 256-d features vector that the actor's heads <i>and</i> the critic's value + auxiliary stack all consume. It observes only what a human player may see or is entitled to remember without bookkeeping — everything else, including the picker's own blind and bury, has to live in its recurrent memory.</p>
       <p>Use the <b>decision</b> buttons up top to switch scenarios. Drag to orbit · scroll to zoom · click anything for details · <b>▶ Play tour</b> to walk the architecture.</p>`,
   },
   {
@@ -3694,13 +3694,13 @@ function buildPolicyStages() {
     label: "input",
     badge: "input",
     cam: { pos: [XS.input + 22, 6, 24], target: [XS.input, 0, 2] },
-    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds ${cardListHtml(S.sample.hand_cards)} — gold-rimmed cards are trump; the badge in each corner is the card's point value${S.sample.trick_card_codes.some(c => c !== "PAD") ? "; cards already played this trick lie on the table" : ""}.</p>
+    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds ${cardListHtml(S.sample.hand_cards)} — gold-rimmed cards are trump; the badge in each corner is the card's point value${S.sample.trick_card_codes.some(c => c !== "PAD") ? "; cards already played this trick lie in front of it" : ""}.</p>
       <p>The barcode on each face is the card <i>as the network sees it</i>: its 16-d row of the stage-2 embedding table (dims 0–3 suit · 4–7 rank · 8 points · 9 UNDER · 10–15 learned). Click any card to inspect the values — the lines to the right are exactly these row lookups.</p>
-      ${(S.sample.blind_card_codes || []).length
-        ? `<p>This seat is the picker, so it knows the blind — ${cardListHtml(S.sample.blind_card_codes)}${(S.sample.bury_card_codes || []).length
-            ? ` — and its own bury (${cardListHtml(S.sample.bury_card_codes)}, face up on the table)`
-            : " — tagged in the fan"}. The blind/bury tokens carry exactly these cards; no other seat's observation has them.</p>`
-        : ""}
+      ${(S.sample.known_bury_codes || []).length
+        ? `<p>This seat picked and buried ${cardListHtml(S.sample.known_bury_codes)} — but the bury is <b>not in the observation</b> (no token carries it; the ghosted cards by the memory chip mark what the memory must remember). A human picker remembers the bury; so must the network.</p>`
+        : (S.sample.known_blind_codes || []).length
+          ? `<p>This seat picked: the blind (${cardListHtml(S.sample.known_blind_codes)}, tagged in the fan) is in its hand right now — the one time it is observed. Once buried or played, only the memory keeps track.</p>`
+          : ""}
       <p>Alongside the cards: the 10 header scalars and the ${DATA.dims.d_model}-d prior memory hₜ₋₁ (its heat strip paints all 256 dims).</p>`,
   },
   {
@@ -3717,17 +3717,18 @@ function buildPolicyStages() {
       </ul>`,
   },
   {
-    title: "3 · Tokenize · 19 tokens",
+    title: `3 · Tokenize · ${DATA.dims.n_tokens} tokens`,
     label: "tokens",
     badge: "enc",
     cam: { pos: [XS.tokensPre + 18, 6, 18], target: [XS.tokensPre, 2, 0] },
-    body: () => `<p>19 entity tokens are assembled, each ${DATA.dims.d_token}-d:</p>
+    body: () => `<p>${DATA.dims.n_tokens} entity tokens are assembled, each ${DATA.dims.d_token}-d:</p>
       <ul>
         <li><b>1 context</b> = header scalars + called-card embedding → MLP</li>
         <li><b>1 memory</b> = prior ${DATA.dims.d_model}-d projected to ${DATA.dims.d_token}-d</li>
         <li><b>8 hand</b> = card embedding ⊕ actor role → MLP</li>
-        <li><b>5 trick</b>, <b>2 blind</b>, <b>2 bury</b>, each via their MLP</li>
+        <li><b>5 trick</b> = card ⊕ is-picker / is-known-partner flags → MLP</li>
       </ul>
+      <p>No blind or bury tokens: under the recall contract the picker's own blind and bury are never re-shown — the memory token is the only way they reach this decision.</p>
       <p>Dim slots are PAD — masked out of attention. From here on, <i>everything</i> the network does is a read of these tokens.</p>`,
   },
   {
@@ -3745,14 +3746,14 @@ function buildPolicyStages() {
     badge: "share",
     cam: { pos: [XS.gru + 8, 30, 32], target: [(XS.input + XS.gru) / 2, 14, 0] },
     body: () => `<p>The post-reasoning <b>${S.memory.driver} token</b> feeds the GRU cell, producing the new ${DATA.dims.d_model}-d memory state (‖in‖ ${vecMag(S.memory.memory_in).toFixed(1)} → ‖out‖ ${vecMag(S.memory.memory_out).toFixed(1)}).</p>
-      <p>shared-v2 keeps <code>full</code>'s wiring here: the <i>context</i> token — a strong summary prior from the very first decision — drives the write. That state is stored per player and read back on the next decision step; the orange arc going left is exactly this feedback, the only true recurrence in the whole network.</p>`,
+      <p>The <i>memory</i> token is the transformer's own "what to remember" slot: it attends over everything during reasoning, and the GRU writes what it holds. Under the recall contract this is the only path by which the blind and bury reach later decisions, so the network has to learn to write what it must recall — the context token stays the current-situation summary. The state is stored per player and read back on the next decision step; the orange arc going left is exactly this feedback, the only true recurrence in the whole network.</p>`,
   },
   {
     title: `6 · Shared readout · ${DATA.dims.n_readout_queries} learned queries`,
     label: "readout",
     badge: "share",
     cam: { pos: [XS.readout - 16, RING_CY + 10, 34], target: [XS.readout + 5, RING_CY, 0] },
-    body: () => `<p>ONE readout for the whole network: ${DATA.dims.n_readout_queries} learned query gems (the 4×4 grid) cross-attend (${N_HEADS} heads) over the 19 post-reasoning tokens — ${DATA.dims.n_readout_queries}×${N_HEADS} = ${DATA.dims.n_readout_queries * N_HEADS} attention distributions, channel parity with <code>full</code>'s four pools. The answers are concatenated (${DATA.dims.n_readout_queries}×${DATA.dims.d_token}) and projected + LayerNormed to the ${DATA.dims.d_model}-d <b>features</b> vector.</p>
+    body: () => `<p>ONE readout for the whole network: ${DATA.dims.n_readout_queries} learned query gems (the 4×4 grid) cross-attend (${N_HEADS} heads) over the ${DATA.dims.n_tokens} post-reasoning tokens — ${DATA.dims.n_readout_queries}×${N_HEADS} = ${DATA.dims.n_readout_queries * N_HEADS} attention distributions, channel parity with <code>full</code>'s four pools. The answers are concatenated (${DATA.dims.n_readout_queries}×${DATA.dims.d_token}) and projected + LayerNormed to the ${DATA.dims.d_model}-d <b>features</b> vector.</p>
       <p>Each gem shows only its <b>top-3</b> links, averaged over the enabled heads — the <b>H1–H4</b> chips re-average them (one chip on = that head's own top-3). <b>Click a gem</b> to expand its full per-head fan (click again to collapse). Actor and critic both read the features hub: decision-time attention runs once, here.</p>`,
   },
   {
@@ -3781,8 +3782,12 @@ function buildPolicyStages() {
     cam: { pos: [XS.pointer + 16, 12, 24], target: [XS.pointer - 2, 4.5, 0] },
     body: () => {
       const live = liveHead() === "pointer";
-      return `<p>The bury / under / play decisions are a <b>pointer</b>: for each hand slot, score = v · tanh( Wg·feat + Wt·token ).${live ? " ← <b>live head</b> for this decision" : " (idle here)"}</p>
-      <p>The blue spheres are the <i>same</i> post-reasoning hand tokens from the final transformer ring (faint tethers) — the pointer reads cards at token level, conditioned by the situation query <b>g</b> broadcast from the left. Each slot's spinning combine node glows with how hard tanh(g+t) fired; the bar above is its score, scattered into the BURY / UNDER / PLAY logits.</p>`;
+      const p = S.actor.pointer;
+      const real = handCardIds.map((cid, i) => i).filter(i => handCardIds[i] !== 0);
+      const spread = (arr) => Math.max(...real.map(i => arr[i])) - Math.min(...real.map(i => arr[i]));
+      return `<p>The bury / under / play decisions are a <b>pointer</b> over the hand slots with two terms:${live ? " ← <b>live head</b> for this decision" : " (idle here)"}</p>
+      <p style="text-align:center"><code>v · tanh(W<sub>g</sub>f + W<sub>t</sub>t)</code> + <code>(Uf) · (Vt) / √${DATA.dims.pointer_hidden}</code></p>
+      <p>The blue spheres are the <i>same</i> post-reasoning hand tokens from the final transformer ring (faint tethers). The <b>additive</b> term (octahedra, fed by <b>g</b>) lets the situation shift every card's score together; the <b>bilinear</b> term (the dot-product rings, fed by <b>u</b>) lets it say "this card attribute matters differently in this state". Across this hand the additive term spans ${spread(p.additive_scores).toFixed(1)} logits and the bilinear term ${spread(p.bilinear_scores).toFixed(1)}. The bar is their sum, scattered into the BURY / UNDER / PLAY logits.</p>`;
     },
   },
   {
@@ -3823,7 +3828,7 @@ function buildPolicyStages() {
     label: "overview",
     badge: "input",
     cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: () => `<p>Zoomed out: observation → embedding table → 19 tokens → ${N_LAYERS}-layer transformer tunnel → context-token GRU + one shared ${DATA.dims.n_readout_queries}-query readout → features hub → actor heads &amp; pointer / critic value + aux stack → π(a|s). Drag the scene to explore. Click any object for details (click a readout gem for its full attention fan). Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
+    body: () => `<p>Zoomed out: observation → embedding table → ${DATA.dims.n_tokens} tokens → ${N_LAYERS}-layer transformer tunnel → memory-token GRU + one shared ${DATA.dims.n_readout_queries}-query readout → features hub → actor heads &amp; pointer / critic value + aux stack → π(a|s). Drag the scene to explore. Click any object for details (click a readout gem for its full attention fan). Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
   },
   ];
 }
@@ -3876,7 +3881,7 @@ function buildOracleStages() {
     label: "oTokens",
     badge: "enc",
     cam: { pos: [XSA.tokensPre + 13, 8, 32], target: [XSA.tokensPre - 3, 2, 0] },
-    body: () => `<p>The policy's 19 tokens <i>plus</i> <b>32 opponent-hand tokens</b> (4 seats × 8 slots, seat-tinted columns; the secret partner's column glows gold). Blind and bury tokens carry the TRUE cards here.</p>
+    body: () => `<p>The policy's ${DATA.dims.n_tokens} tokens <i>plus</i> 4 <b>true blind/bury</b> tokens and <b>32 opponent-hand tokens</b> (4 seats × 8 slots, seat-tinted columns; the secret partner's column glows gold) — privileged cards no seat's observation carries.</p>
       <p>Each opp token = card ⊕ seat ⊕ role embedding → MLP; the context token additionally packs points-taken, the partner's seat, and the under card.</p>`,
   },
   {
@@ -3893,7 +3898,7 @@ function buildOracleStages() {
     label: "oGru",
     badge: "share",
     cam: { pos: [XSA.gru + 8, 30, 36], target: [(XSA.input + XSA.gru) / 2, 14, 0] },
-    body: () => `<p>The oracle is <b>recurrent</b>: the post-reasoning <b>memory token</b> (the perceiver wiring — unlike the policy's context-token driver) feeds its own GRU (‖in‖ ${vecMag(curMemory().memory_in).toFixed(1)} → ‖out‖ ${vecMag(curMemory().memory_out).toFixed(1)}), threaded over the same per-seat event stream the agent sees.</p>
+    body: () => `<p>The oracle is <b>recurrent</b>: the post-reasoning <b>memory token</b> (the same wiring as the policy) feeds its own GRU (‖in‖ ${vecMag(curMemory().memory_in).toFixed(1)} → ‖out‖ ${vecMag(curMemory().memory_out).toFixed(1)}), threaded over the same per-seat event stream the agent sees.</p>
       <p>Why memory at all, when it sees everything? A critic conditioned on the hidden state alone is biased under partial observability — the sound target is the history-state value U(h,s), so history rides along.</p>`,
   },
   {
@@ -4119,7 +4124,7 @@ function switchNetwork(m) {
   if (m === 1 && !DATA.oracle) return;
   stopTour();
   NETWORK_MODE = m;
-  N_TOK = m ? DATA.oracle.dims.n_tokens : 19;
+  N_TOK = m ? DATA.oracle.dims.n_tokens : DATA.dims.n_tokens;
   TOKEN_INFO = m ? ORACLE_TOKEN_INFO : POLICY_TOKEN_INFO;
   RING_R = m ? 14 : 9;
   XSA = m ? XS_O : XS;
@@ -4129,7 +4134,7 @@ function switchNetwork(m) {
   netButtons.forEach((b, i) => b.classList.toggle("active", i === m));
   titleSub.textContent = m
     ? `3D · oracle critic U(h,s)${DATA.oracle.untrained ? " · random init (untrained)" : ""}`
-    : "3D · perceiver-shared-v2 forward pass";
+    : `3D · ${DATA.arch} forward pass`;
   disposeScene();
   buildScene();
   showStage(0); // stage index spaces differ between modes
