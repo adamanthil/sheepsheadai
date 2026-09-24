@@ -158,3 +158,24 @@ to catch JS errors.
 - `build_3d_html.py` — template + JSON + vendor → single-file HTML
 - `vendor/` — pinned three.js core, OrbitControls, and an esbuild addons
   bundle; see `vendor/README.md` for the rebuild recipe
+
+# Training program infographic
+
+`training_program.html` is a single, self-contained page (no build step, no
+dependencies): a vertical flowchart of the training pipeline run by
+`sheepshead/training/run_training_program.py`, written for the blog. Five
+stage cards (bootstrap, oracle critic, league, search-guided policy
+iteration, certification) with an icon, one line each and a pill naming the
+stage's learning signal; decision diamonds between them, and loop-back
+arrows on the two iterative stages. Clicking a card opens the same three
+bullets on every stage (method with a paper reference, why, ends when);
+clicking a dotted term opens a one-sentence popover. It deliberately names
+no scripts, flags or files; update it when the pipeline's shape changes,
+not when its parameters do.
+
+It is light-only to sit on the blog's white article card, and all of its
+CSS, ids and script are scoped under `figure.tp`, so the `<style>`,
+`<figure>` and `<script>` blocks can be pasted inline into a post (it
+picks up the blog's Transat fonts there) or the file can be iframed. Sizing
+uses container queries on the figure, not the viewport. Open it directly in
+a browser to preview.
