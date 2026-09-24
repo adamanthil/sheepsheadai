@@ -30,7 +30,7 @@ gold point badge on trump, and the hatched green back for face-down cards.
 Each face also carries its own 16-d embedding-table row as a color barcode
 (grouped by the informed-init dims: suit / rank / pts / under / learned) —
 clicking any card shows the exact values. The Observation stage lays the
-situation out on a felt table: the hand as an arced fan (with a hand-summary
+situation out directly in the scene: the hand as an arced fan (with a hand-summary
 line and a marker on the card the policy ends up choosing), trick cards with
 seat/role attribution, the face-down blind (face-up in oracle mode), the
 header scalars with their real values, and the 256-d memory as a heat strip.

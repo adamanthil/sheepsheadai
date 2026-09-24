@@ -805,26 +805,6 @@ function registerCardPickable(cardGrp, info) {
   for (const m of cardGrp.userData.pickMeshes) registerPickable(m, info);
 }
 
-// Soft-gradient felt disc the table situation sits on.
-function feltTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 256;
-  const ctx = c.getContext("2d");
-  const grad = ctx.createRadialGradient(128, 128, 20, 128, 128, 130);
-  grad.addColorStop(0, "#1d4234");
-  grad.addColorStop(0.75, "#173427");
-  grad.addColorStop(1, "#10231b");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 900; i++) {
-    ctx.fillStyle = `rgba(255,255,255,${0.008 + Math.random() * 0.02})`;
-    ctx.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
 // 256-d memory vector as a 2×128 heat strip (signed: warm +, cool −).
 function memoryStripTexture(vec) {
   const c = document.createElement("canvas");
@@ -1214,7 +1194,7 @@ function styleConn() {
 }
 
 // ============================================================
-// STAGE 1: OBSERVATION (hand fan + trick on the felt + header + memory)
+// STAGE 1: OBSERVATION (hand fan + trick cards + header + memory)
 // ============================================================
 function buildInputCards() {
   const g = group("input");
@@ -1222,20 +1202,7 @@ function buildInputCards() {
   handLabel.position.set(XS.input, -9.7, 0);
   g.add(handLabel);
 
-  // --- felt table: what's physically on the table sits on it -------
-  const FELT_Y = -6.2;
-  const feltGeom = new THREE.CircleGeometry(1, 64);
-  feltGeom.rotateX(-Math.PI / 2);
-  const felt = new THREE.Mesh(
-    feltGeom,
-    new THREE.MeshStandardMaterial({
-      map: feltTexture(), roughness: 0.96, metalness: 0,
-      emissive: 0x1d4234, emissiveIntensity: 0.14,
-    }),
-  );
-  felt.position.set(XS.input, FELT_Y, 1.5);
-  felt.scale.set(10.5, 1, 14);
-  g.add(felt);
+  const TABLE_Y = -6.2; // height the played cards lie at
 
   // --- the hand: an arced fan of app-styled card faces -------------
   const n = handCardCodes.length;
@@ -1318,7 +1285,7 @@ function buildInputCards() {
   sumLab.position.set(XS.input, FAN_TOP + 3.6, 0);
   g.add(sumLab);
 
-  // --- cards already played this trick, lying on the felt ----------
+  // --- cards already played this trick, lying on the table ----------
   const trickCodes = S.sample.trick_card_codes
     .map((code, seatOff) => ({ code, seatOff }))
     .filter(t => t.code !== "PAD");
@@ -1326,15 +1293,15 @@ function buildInputCards() {
   const trickAnchors = [];
   if (trickCodes.length) {
     const tLab = makeLabel("on the table", "#b58bff", 0.5);
-    tLab.position.set(XS.input, FELT_Y + 4.8, 8.5);
+    tLab.position.set(XS.input, TABLE_Y + 4.8, 8.5);
     g.add(tLab);
     const tip = S.sample.trick_is_picker || [];
     const tipk = S.sample.trick_is_partner_known || [];
     for (let i = 0; i < trickCodes.length; i++) {
       const { code, seatOff } = trickCodes[i];
       const card = makeCardMesh(code, 2.5);
-      card.position.set(XS.input + i * 0.05, FELT_Y + 1.15, 3.4 + i * 2.9);
-      card.rotation.set(-Math.PI / 2 + 0.62, 0.4, 0); // leaning back on the felt
+      card.position.set(XS.input + i * 0.05, TABLE_Y + 1.15, 3.4 + i * 2.9);
+      card.rotation.set(-Math.PI / 2 + 0.62, 0.4, 0); // leaning back on the table
       g.add(card);
       trickObjs.push(card);
       trickAnchors.push({
@@ -1347,7 +1314,7 @@ function buildInputCards() {
       const roleTag = tip[seatOff] ? " · picker" : tipk[seatOff] ? " · partner ★" : "";
       const sl = makeLabel(`${who}${roleTag}`,
         tipk[seatOff] ? "#ffe1a3" : "#b9c6f2", 0.38);
-      sl.position.set(XS.input, FELT_Y + 3.5, 3.4 + i * 2.9);
+      sl.position.set(XS.input, TABLE_Y + 3.5, 3.4 + i * 2.9);
       g.add(sl);
       registerCardPickable(card, {
         title: `${code} (on table)`,
@@ -1363,16 +1330,16 @@ function buildInputCards() {
   }
 
   // --- the bury: once this seat has buried (picker, play phases), the two
-  // buried cards sit face up on the felt — this seat knows exactly where
+  // buried cards sit face up on the table — this seat knows exactly where
   // those points went, and the bury tokens carry them.
   const buryCodes = S.sample.bury_card_codes || [];
   if (buryCodes.length) {
     const buLab = makeLabel("bury · yours", "#a6f0c1", 0.42);
-    buLab.position.set(XS.input, FELT_Y + 3.4, -6.4);
+    buLab.position.set(XS.input, TABLE_Y + 3.4, -6.4);
     g.add(buLab);
     for (let i = 0; i < buryCodes.length; i++) {
       const bc = makeCardMesh(buryCodes[i], 2.3);
-      bc.position.set(XS.input + i * 0.06, FELT_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
+      bc.position.set(XS.input + i * 0.06, TABLE_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
       bc.rotation.set(-Math.PI / 2 + 0.55, 0.35, 0);
       g.add(bc);
       registerCardPickable(bc, {
@@ -1384,17 +1351,17 @@ function buildInputCards() {
     }
   }
 
-  // --- the blind: two face-down backs on the felt. Only shown while its
+  // --- the blind: two face-down backs on the table. Only shown while its
   // contents are actually hidden from this seat (blind tokens masked);
   // the oracle walkthrough shows the same cards face up.
   const preMask = S.tokens_pre_attn.mask;
   if (!preMask[15] && !preMask[16]) {
     const bLab = makeLabel("blind · face down", "#8e9bd1", 0.42);
-    bLab.position.set(XS.input, FELT_Y + 3.4, -6.4);
+    bLab.position.set(XS.input, TABLE_Y + 3.4, -6.4);
     g.add(bLab);
     for (let i = 0; i < 2; i++) {
       const back = makeCardMesh("__", 2.3, { faceDown: true });
-      back.position.set(XS.input + i * 0.06, FELT_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
+      back.position.set(XS.input + i * 0.06, TABLE_Y + 0.95 + i * 0.02, -7.4 + i * 1.7);
       back.rotation.set(-Math.PI / 2 + 0.55, 0.35, 0);
       g.add(back);
       registerCardPickable(back, {
@@ -1405,7 +1372,7 @@ function buildInputCards() {
     }
   }
 
-  // --- header + memory chips, floating behind the felt --------------
+  // --- header + memory chips, floating behind the cards --------------
   const chipY = -1.2, chipZ = -10.5;
   const headerChip = new THREE.Mesh(
     new RoundedBoxGeometry(3.6, 1.4, 0.3, 3, 0.14),
@@ -3727,11 +3694,11 @@ function buildPolicyStages() {
     label: "input",
     badge: "input",
     cam: { pos: [XS.input + 22, 6, 24], target: [XS.input, 0, 2] },
-    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds ${cardListHtml(S.sample.hand_cards)} — gold-rimmed cards are trump; the badge in each corner is the card's point value${S.sample.trick_card_codes.some(c => c !== "PAD") ? "; cards already played this trick lie on the felt" : ""}.</p>
+    body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds ${cardListHtml(S.sample.hand_cards)} — gold-rimmed cards are trump; the badge in each corner is the card's point value${S.sample.trick_card_codes.some(c => c !== "PAD") ? "; cards already played this trick lie on the table" : ""}.</p>
       <p>The barcode on each face is the card <i>as the network sees it</i>: its 16-d row of the stage-2 embedding table (dims 0–3 suit · 4–7 rank · 8 points · 9 UNDER · 10–15 learned). Click any card to inspect the values — the lines to the right are exactly these row lookups.</p>
       ${(S.sample.blind_card_codes || []).length
         ? `<p>This seat is the picker, so it knows the blind — ${cardListHtml(S.sample.blind_card_codes)}${(S.sample.bury_card_codes || []).length
-            ? ` — and its own bury (${cardListHtml(S.sample.bury_card_codes)}, face up on the felt)`
+            ? ` — and its own bury (${cardListHtml(S.sample.bury_card_codes)}, face up on the table)`
             : " — tagged in the fan"}. The blind/bury tokens carry exactly these cards; no other seat's observation has them.</p>`
         : ""}
       <p>Alongside the cards: the 10 header scalars and the ${DATA.dims.d_model}-d prior memory hₜ₋₁ (its heat strip paints all 256 dims).</p>`,
