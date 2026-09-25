@@ -492,9 +492,16 @@ it is a regression under a smooth-L1 loss, so it is never integer-exact
 error while seen-trump converged, then recovered to 0.88 at the end.
 Its bar is therefore the demonstrated converged MAE, which would have
 held v2's handoff at 4.7M — the gate's protective function — rather
-than an exactness no lineage has reached. OPEN: a "never wrong" points
-head is a classification head over per-seat totals (0–120, or the
-score-relevant thresholds); not changed mid-run.
+than an exactness no lineage has reached. CLOSED 09-24 (operator): the
+regression form STAYS. The head exists to force the trunk to build
+recall structure that helps play, and for that the continuous error —
+near misses cheap, far misses dear — carries more useful gradient than a
+121-way classifier whose cross-entropy treats off-by-one like
+off-by-fifty; integer exactness would not make the policy play better.
+The MAE bar is the head's permanent readiness form; "exact" stays a
+reported diagnostic only. (The classifier sketch, for the record: a
+121-way softmax per relative seat, ~35-55k params with a shared bin
+projection or bottleneck, argmax accuracy as the bar — rejected.)
 
 Coefficients (same date): the four deterministic heads train at 2.5×
 their base loss coefficients (`ProgramConfig.aux_det_scale`, the
