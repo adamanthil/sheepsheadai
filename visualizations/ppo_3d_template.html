@@ -1,259 +1,266 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8" />
-<title>Sheepshead PPO — 3D Architecture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sheepshead Network Architecture</title>
 <style>
+  /* Two themes: the original dark "glow" look and a light "paper diagram"
+     look that matches the blog (white card, grey ink, Transat type). The
+     scene reads the same choice from <html data-theme> (see THEMES). */
   :root {
-    --bg: #05070f;
-    --panel: rgba(15, 21, 48, 0.78);
-    --line: #2a3470;
-    --text: #e6ecff;
-    --muted: #8e9bd1;
-    --accent: #7cc4ff;
-    --accent-2: #b58bff;
-    --pulse: #fffa9e;
-    --good: #80ed99;
-    /* Bottom edge of #ui-top and height of #legend, measured at runtime — the
-       top bar wraps to 2-3 rows on narrow windows, so the panels below it
-       cannot use fixed offsets. Fallbacks match the widest-window layout. */
-    --top-bottom: 56px;
-    --legend-h: 180px;
+    --sans: TransatStandard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --bold: TransatBold, var(--sans);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --b-input: #b58bff; --b-enc: #4cc9f0; --b-share: #f4a261;
+    --b-actor: #80ed99; --b-critic: #ff9ec7; --b-output: #ff6b6b;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #05070f; --stage: #070b1c; --panel: #0d1330; --panel-2: rgba(20, 26, 54, 0.9);
+    --line: #1f2854; --line-2: #34407c;
+    --ink: #c9d1f0; --heading: #eef2ff; --muted: #8e9bd1;
+    --accent: #7cc4ff; --accent-soft: rgba(124, 196, 255, 0.14);
+    --tip: rgba(10, 14, 32, 0.95); --tip-ink: #e6ecff;
+    --tool: rgba(13, 19, 48, 0.72);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page: #fff; --stage: #fff; --panel: #fff; --panel-2: #f4f4f2;
+    --line: #ececec; --line-2: #d6d6d2;
+    --ink: #555; --heading: #4a4a4a; --muted: #8a8a85;
+    --accent: #2f63b0; --accent-soft: #e5edf8;
+    --tip: #3d3d3d; --tip-ink: #fff;
+    --tool: rgba(255, 255, 255, 0.86);
+    --b-input: #6b4fb0; --b-enc: #2f7fa8; --b-share: #a8651a;
+    --b-actor: #1e7a60; --b-critic: #a83d62; --b-output: #b0443c;
   }
   * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0;
-    width: 100%; height: 100%;
+  html, body { margin: 0; padding: 0; background: var(--page); }
+  body { padding: 16px; }
+  body.embedded { padding: 0; } /* the host page supplies the margins */
+
+  .viz {
+    container-type: inline-size;
+    max-width: 960px; margin: 0 auto;
+    font-family: var(--sans); font-size: 15px; line-height: 1.5; color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .viz *, .viz *::before, .viz *::after { min-width: 0; }
+  :where(.viz) button { font: inherit; color: inherit; }
+
+  /* ---------- the figure ---------- */
+  .viz-stage {
+    position: relative; aspect-ratio: 16 / 10;
+    background: var(--stage); border: 1px solid var(--line);
     overflow: hidden;
-    background: var(--bg);
-    color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    font-size: 13px;
-    line-height: 1.45;
   }
-  canvas { display: block; }
-  #ui-top {
-    position: fixed; top: 14px; left: 14px; right: 14px;
-    z-index: 20;
-    display: flex; gap: 14px; align-items: center; pointer-events: none;
-    flex-wrap: wrap;
+  @container (max-width: 560px) { .viz-stage { aspect-ratio: 1 / 1; } }
+  /* A dark scene on a light page (the "Dark scene" theme): soften the hard
+     black edge with a thin pale mat, a hairline outer edge and a low shadow —
+     square corners, like the blog's. */
+  :root[data-theme="light"][data-scene="dark"] .viz-stage {
+    border: 1px solid #1a1b1e;
+    box-shadow: 0 0 0 5px #f4f4f2, 0 0 0 6px #dcdcd7, 0 10px 26px -6px rgba(0, 0, 0, 0.28);
+    margin: 6px;
   }
-  .panel {
-    background: var(--panel);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 12px 14px;
-    pointer-events: auto;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
-  }
-  #title { font-size: 15px; font-weight: 600; }
-  #title .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 8px; }
-  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .controls button, #scenario-bar button, #network-bar button {
-    background: rgba(20,26,54,0.9);
-    border: 1px solid var(--line); color: var(--text);
-    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
-    transition: border-color .15s, background .15s;
-  }
-  .controls button:hover, #scenario-bar button:hover, #network-bar button:hover { border-color: var(--accent); background: rgba(35,45,90,0.95); }
-  .controls button.primary {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #0b1020; font-weight: 600; border: none;
-  }
-  .controls label { color: var(--muted); font-size: 11px; display: flex; gap: 6px; align-items: center; }
-  .controls input[type=range] { accent-color: var(--accent); width: 90px; }
+  :root[data-theme="light"][data-scene="dark"] .viz.expanded .viz-stage { box-shadow: none; margin: 0; }
+  .viz-stage canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+  .viz-stage.inactive canvas { touch-action: pan-y !important; }
 
-  #scenario-bar, #network-bar { display: flex; gap: 8px; align-items: center; }
-  #scenario-bar .scen-head, #network-bar .scen-head {
-    font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
-    color: var(--muted); margin-right: 4px;
+  .viz-tools { position: absolute; top: 8px; right: 8px; z-index: 5; display: flex; gap: 6px; }
+  .tool {
+    width: 32px; height: 32px; display: grid; place-items: center;
+    border-radius: 8px; border: 1px solid var(--line-2); background: var(--tool);
+    backdrop-filter: blur(6px); cursor: pointer; color: var(--heading);
   }
-  #scenario-bar button.active, #network-bar button.active {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #0b1020; font-weight: 600; border-color: transparent;
-  }
-  #network-bar button.net-oracle.active {
-    background: linear-gradient(135deg, #8b6cff, #c9b8ff);
-  }
-  .mini-badge {
-    display: inline-block; margin-left: 6px; padding: 1px 6px;
-    border-radius: 8px; font-size: 9px; font-weight: 700;
-    letter-spacing: 0.4px; text-transform: uppercase;
-    background: rgba(255,198,92,0.18); color: #ffc65c;
-    border: 1px solid rgba(255,198,92,0.5);
-  }
-  #network-bar button.net-oracle.active .mini-badge {
-    background: rgba(11,16,32,0.35); color: #0b1020; border-color: rgba(11,16,32,0.4);
-  }
+  .tool:hover { border-color: var(--accent); }
+  .tool svg { width: 16px; height: 16px; }
 
-  #ui-side {
-    position: fixed; top: calc(var(--top-bottom) + 12px); right: 14px; width: 340px;
-    z-index: 20; pointer-events: none;
+  .viz-hint {
+    position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 4;
+    font-size: 12px; color: var(--muted); background: var(--tool); border: 1px solid var(--line);
+    padding: 3px 10px; border-radius: 999px; pointer-events: none; white-space: nowrap;
+    opacity: 0; transition: opacity .2s;
   }
-  #info {
-    pointer-events: auto;
-    max-height: calc(100vh - var(--top-bottom) - 26px);
-    overflow: auto;
-  }
-  #info h2 { margin: 0 0 4px 0; font-size: 14px; }
-  #info .stage-num { color: var(--accent); font-weight: 600; font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; }
-  #info p { margin: 8px 0; color: var(--text); }
-  #info .meta { color: var(--muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 8px; }
-  #info code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
-
-  #legend {
-    position: fixed; bottom: 14px; left: 14px;
-    z-index: 20; max-width: 320px;
-  }
-  #legend .row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin: 2px 0; }
-  #legend .swatch { width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 6px currentColor; }
-
-  #status {
-    position: fixed; bottom: 14px; right: 14px;
-    z-index: 20;
-    min-width: 320px;
-  }
-  #status .step-line { display: flex; justify-content: space-between; align-items: center; }
-  #status .step-label { font-weight: 600; }
-  #status .step-counter { color: var(--muted); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  #status .progress { height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-top: 6px; }
-  #status .progress > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0%; transition: width 0.4s; }
-
-  #stage-nav {
-    position: fixed; top: calc(var(--top-bottom) + 12px); left: 14px;
-    z-index: 20; width: 232px;
-    max-height: max(120px, calc(100vh - var(--top-bottom) - var(--legend-h) - 52px));
-    overflow: auto;
-    display: flex; flex-direction: column; gap: 2px;
-  }
-  #stage-nav .nav-head {
-    font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 6px;
-  }
-  #stage-nav .nav-item {
-    display: flex; align-items: center; gap: 8px;
-    background: transparent; border: 1px solid transparent;
-    color: var(--text); text-align: left; width: 100%;
-    padding: 5px 8px; border-radius: 8px; cursor: pointer;
-    font-size: 11px; font-family: inherit; line-height: 1.3;
-    transition: background .12s, border-color .12s;
-  }
-  #stage-nav .nav-item:hover { background: rgba(35,45,90,0.6); }
-  #stage-nav .nav-item.active { background: rgba(35,45,90,0.95); border-color: var(--accent); }
-  #stage-nav .dot {
-    width: 9px; height: 9px; border-radius: 50%;
-    background: currentColor; box-shadow: 0 0 6px currentColor; flex: 0 0 auto;
-  }
+  .viz-hint.show { opacity: 1; }
 
   #tooltip {
-    position: fixed; pointer-events: none;
-    background: rgba(10, 14, 32, 0.95);
-    border: 1px solid var(--line);
-    color: var(--text);
-    font-size: 11px;
-    padding: 6px 9px;
-    border-radius: 6px;
-    transform: translate(12px, 12px);
-    z-index: 30;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    white-space: pre;
-    display: none;
-    max-width: 260px;
-  }
-  .badge {
-    display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 999px;
-    margin-right: 6px; vertical-align: middle;
-    border: 1px solid currentColor;
-  }
-  .b-input { color: #b58bff; }
-  .b-enc { color: #4cc9f0; }
-  .b-share { color: #f4a261; }
-  .b-actor { color: #80ed99; }
-  .b-critic { color: #ff9ec7; }
-  .b-output { color: #ff6b6b; }
-
-  #head-chips { display: flex; gap: 5px; align-items: center; }
-  #head-chips .chips-head {
-    font-size: 10px; letter-spacing: 0.6px; text-transform: uppercase;
-    color: var(--muted); margin: 0 2px 0 6px;
-  }
-  #head-chips button {
-    width: 26px; padding: 4px 0; text-align: center;
-    font-size: 10px; font-weight: 600;
-    background: rgba(20,26,54,0.9);
-    border: 1px solid var(--hc, var(--line));
-    color: var(--hc, var(--text));
-    border-radius: 8px; cursor: pointer;
-    box-shadow: 0 0 7px color-mix(in srgb, var(--hc) 55%, transparent);
-    transition: opacity .15s, box-shadow .15s;
-  }
-  #head-chips button.off {
-    opacity: 0.32; box-shadow: none; border-color: var(--line); color: var(--muted);
+    position: absolute; pointer-events: none; z-index: 6; display: none;
+    background: var(--tip); color: var(--tip-ink);
+    font: 11px/1.45 var(--mono); padding: 6px 9px; border-radius: 6px;
+    white-space: pre; max-width: 280px; overflow: hidden;
   }
 
-  .pill {
-    display: inline-block;
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.06);
-    color: var(--muted);
-    margin-left: 6px;
+  /* ---------- options menu ---------- */
+  .viz-menu {
+    position: absolute; top: 46px; right: 8px; z-index: 7; width: min(290px, calc(100% - 16px));
+    max-height: calc(100% - 56px); overflow: auto;
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18); padding: 12px 14px; font-size: 13px;
   }
-  .kv { display: grid; grid-template-columns: 110px 1fr; row-gap: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; margin: 8px 0; }
+  .viz-menu[hidden] { display: none; }
+  .viz-menu h4 {
+    margin: 12px 0 6px; font: 600 10.5px/1 var(--mono); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .viz-menu h4:first-child { margin-top: 0; }
+  .viz-menu label { display: flex; align-items: center; gap: 8px; margin: 4px 0; cursor: pointer; }
+  .viz-menu input[type=range] { accent-color: var(--accent); flex: 1; }
+  .heads { display: flex; gap: 6px; }
+  .heads button {
+    width: 34px; padding: 3px 0; font-size: 11px; font-weight: 700; cursor: pointer;
+    border-radius: 7px; border: 1.5px solid var(--hc); color: var(--hc); background: none;
+  }
+  .heads button.off { opacity: .35; border-color: var(--line-2); color: var(--muted); }
+  .legend .row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 3px 0; }
+  .legend .swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+
+  /* ---------- caption panel ---------- */
+  .viz-panel { padding: 12px 2px 0; }
+  .viz-pickers { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+  .viz-pickers label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .viz-pickers select {
+    font: inherit; font-size: 13px; color: var(--heading); background: var(--panel-2);
+    border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 6px;
+  }
+  .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 7px; overflow: hidden; }
+  .seg button { border: 0; background: none; padding: 3px 11px; font-size: 13px; cursor: pointer; color: var(--muted); }
+  .seg button + button { border-left: 1px solid var(--line-2); }
+  .seg button.on { background: var(--accent-soft); color: var(--heading); font-weight: 600; }
+  .seg .mini-badge { margin-left: 5px; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #c98a1a; }
+
+  .viz-chapters { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; margin: 14px 0 10px; }
+  .viz-chapters button {
+    border: 0; background: none; padding: 7px 0 0; cursor: pointer; position: relative;
+    font-size: 11px; color: var(--muted); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .viz-chapters button::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; border-radius: 2px; background: var(--line-2);
+  }
+  .viz-chapters button.done::before { background: color-mix(in srgb, var(--accent) 40%, var(--line-2)); }
+  .viz-chapters button.on::before { background: var(--accent); }
+  .viz-chapters button.on { color: var(--heading); }
+  .viz-chapters button:first-child { max-width: 100%; }
+  @container (max-width: 640px) { .viz-chapters button { font-size: 0; padding-top: 10px; } }
+
+  .kicker { font: 600 10.5px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .viz h2 { margin: 3px 0 6px; font-family: var(--bold); font-weight: 600; font-size: 18px; line-height: 1.3; color: var(--heading); }
+  .subs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+  .subs:empty { display: none; }
+  .subs button {
+    border: 1px solid var(--line-2); background: none; border-radius: 999px;
+    padding: 1px 10px; font-size: 12px; cursor: pointer; color: var(--muted);
+  }
+  .subs button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--heading); }
+  .back { border: 0; background: none; padding: 0; font-size: 13px; color: var(--accent); cursor: pointer; margin-bottom: 6px; }
+
+  .viz-body { font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere; }
+  .viz-body p { margin: 0 0 8px; }
+  .viz-body ul { margin: 0 0 8px; padding-left: 18px; }
+  .viz-body code { font: 12px var(--mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+  .viz-body b { color: var(--heading); }
+
+  .viz-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+  .viz-nav button {
+    border: 1px solid var(--line-2); background: var(--panel); border-radius: 7px;
+    padding: 4px 12px; font-size: 13px; cursor: pointer; color: var(--heading);
+  }
+  .viz-nav button:disabled { opacity: .35; cursor: default; }
+  .viz-nav .play { display: inline-flex; align-items: center; gap: 6px; }
+
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; font: 12px/1.5 var(--mono); margin: 4px 0 10px; }
   .kv .k { color: var(--muted); }
-  .kv .v { color: var(--text); }
+  .kv .v { color: var(--heading); overflow-wrap: anywhere; }
+  .badge {
+    display: inline-block; font: 600 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 999px; border: 1px solid currentColor; vertical-align: 2px; margin-right: 6px;
+  }
+  .b-input { color: var(--b-input); } .b-enc { color: var(--b-enc); } .b-share { color: var(--b-share); }
+  .b-actor { color: var(--b-actor); } .b-critic { color: var(--b-critic); } .b-output { color: var(--b-output); }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+
+  /* ---------- expanded: the scene fills the window, the caption floats ---------- */
+  .viz-side-legend { display: none; }
+  body.viz-open { overflow: hidden; }
+  .viz.expanded { position: fixed; inset: 0; z-index: 1000; max-width: none; margin: 0; background: var(--page); }
+  .viz.expanded .viz-stage { position: absolute; inset: 0; aspect-ratio: auto; border: 0; border-radius: 0; }
+  .viz.expanded .viz-tools { right: auto; left: 12px; top: 12px; }
+  .viz.expanded .viz-menu { right: auto; left: 12px; top: 52px; }
+  .viz.expanded .viz-panel {
+    position: absolute; top: 12px; right: 12px; bottom: 12px; width: 360px; overflow: auto;
+    padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px;
+    /* Near-opaque: over the dark scene ("Dark scene" theme) a see-through
+       light panel turns muddy grey. */
+    background: color-mix(in srgb, var(--panel) 97%, transparent); backdrop-filter: blur(10px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  }
+  .viz.expanded .viz-side-legend { display: block; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .viz.expanded .viz-chapters { grid-auto-flow: row; grid-auto-columns: auto; gap: 0; }
+  .viz.expanded .viz-chapters button { padding: 5px 0 5px 12px; font-size: 13px; }
+  .viz.expanded .viz-chapters button::before { top: 6px; bottom: 6px; left: 0; right: auto; width: 3px; height: auto; }
+  @media (max-width: 760px) {
+    .viz.expanded .viz-panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 45%; padding: 12px 14px; }
+    .viz.expanded .viz-side-legend { display: none; }
+    .viz.expanded .viz-chapters { grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
+    .viz.expanded .viz-chapters button { font-size: 0; padding: 10px 0 0; }
+    .viz.expanded .viz-chapters button::before { left: 0; right: 0; top: 0; bottom: auto; width: auto; height: 3px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .viz-hint { transition: none; } }
 </style>
 </head>
 <body>
 
-<div id="ui-top">
-  <div class="panel" id="title">
-    Sheepshead PPO <span class="sub" id="title-sub">3D · perceiver-recall forward pass</span>
+<figure class="viz" id="viz">
+  <div class="viz-stage inactive" id="viz-stage">
+    <div class="viz-tools">
+      <button class="tool" id="btn-menu" aria-label="Options" aria-expanded="false" aria-controls="viz-menu">
+        <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="13" cy="8" r="1.6"/></svg>
+      </button>
+      <button class="tool" id="btn-expand" aria-label="Expand">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path id="expand-icon" d="M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5"/></svg>
+      </button>
+    </div>
+    <div class="viz-menu" id="viz-menu" hidden>
+      <h4>Attention heads</h4>
+      <div class="heads" id="head-chips"></div>
+      <h4>View</h4>
+      <label><input type="checkbox" id="chk-flow" checked /> Data-flow particles</label>
+      <label><input type="checkbox" id="chk-rotate" /> Auto-rotate</label>
+      <label><input type="checkbox" id="chk-floor" /> Stage names on the floor</label>
+      <label><input type="checkbox" id="chk-stars" checked /> Background stars (dark scene)</label>
+      <label>Tour speed <input type="range" id="speed" min="1200" max="6000" step="200" value="3500" /></label>
+      <h4>Theme</h4>
+      <div class="seg" id="theme-seg"><button data-theme="dark">Dark</button><button data-theme="light">Light</button><button data-theme="mixed">Dark scene</button></div>
+      <h4>Key</h4>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="viz-hint" id="viz-hint"></div>
+    <div id="tooltip"></div>
   </div>
-  <div class="panel controls">
-    <button id="btn-play" class="primary">▶ Play tour</button>
-    <button id="btn-prev">◀ Prev</button>
-    <button id="btn-next">Next ▶</button>
-    <button id="btn-reset">↻ Reset</button>
-    <label>speed
-      <input type="range" id="speed" min="1200" max="6000" step="200" value="3000" />
-    </label>
-    <label><input type="checkbox" id="chk-rotate" /> auto-rotate</label>
-    <label><input type="checkbox" id="chk-flow" checked /> flow</label>
-    <span id="head-chips"><span class="chips-head">heads</span></span>
+
+  <div class="viz-panel">
+    <div class="viz-pickers">
+      <label>Decision <select id="sel-scenario"></select></label>
+      <div class="seg" id="net-seg">
+        <button data-net="0" class="on">Policy</button>
+        <button data-net="1">Oracle critic<span class="mini-badge" id="oracle-badge">untrained</span></button>
+      </div>
+    </div>
+    <nav class="viz-chapters" id="chapters" aria-label="Chapters"></nav>
+    <div class="kicker" id="i-stage"></div>
+    <h2 id="i-title">Loading…</h2>
+    <button class="back" id="btn-back" hidden></button>
+    <div class="subs" id="subs"></div>
+    <div class="viz-body" id="i-body"></div>
+    <div class="viz-nav">
+      <button id="btn-prev">‹ Prev</button>
+      <button id="btn-play" class="play">▶ Tour</button>
+      <button id="btn-next">Next ›</button>
+    </div>
+    <div class="viz-side-legend legend" id="side-legend"></div>
   </div>
-  <div class="panel" id="scenario-bar"></div>
-  <div class="panel" id="network-bar">
-    <span class="scen-head">Network</span>
-    <button id="net-policy" class="active">Policy</button>
-    <button id="net-oracle" class="net-oracle">Oracle critic<span class="mini-badge" id="oracle-badge">untrained</span></button>
-  </div>
-</div>
-
-<div id="ui-side">
-  <div class="panel" id="info">
-    <div class="stage-num" id="i-stage"></div>
-    <h2 id="i-title">Sheepshead PPO — 3D architecture</h2>
-    <div id="i-body"><p>Loading…</p></div>
-    <div class="meta" id="i-meta"></div>
-  </div>
-</div>
-
-<div class="panel" id="stage-nav"></div>
-
-<div class="panel" id="legend"></div>
-
-<div class="panel" id="status">
-  <div class="step-line">
-    <span class="step-label" id="s-label">Ready</span>
-    <span class="step-counter" id="s-counter">— / —</span>
-  </div>
-  <div class="progress"><div id="s-bar"></div></div>
-</div>
-
-<div id="tooltip"></div>
+</figure>
 
 <script type="module">
 // three.js is inlined by build_3d_html.py (vendor/three.module.min.js +
@@ -278,6 +285,74 @@ const {
 const DATA = __DATA_JSON__;
 
 // ============================================================
+// Themes. The dark theme is the original glow look (additive blending,
+// emissive materials, bloom). The light theme is a matte "paper diagram"
+// for white pages: normal blending, the same hues pulled down to ink
+// strength (paperColor / inkColor), no bloom. <html data-theme> holds the
+// choice; ?theme=light|dark picks it at load.
+// ============================================================
+const THEMES = {
+  dark: {
+    dark: true, bg: 0x05070f, dim: 0x223060, grid: [0x27336b, 0x151c3d],
+    labelStrip: "rgba(8,11,28,0.5)", memBg: "#1a2142",
+  },
+  light: {
+    dark: false, bg: 0xffffff, dim: 0xd9dbe3, grid: [0xe4e4e0, 0xf0f0ee],
+    labelStrip: "rgba(255,255,255,0.75)", memBg: "#eef0f4",
+  },
+};
+// A theme name picks two things independently: the scene (THEMES) and the
+// page chrome (CSS on <html data-theme>). "mixed" = the dark glowing scene
+// framed by the light page and caption, for a white blog post.
+const THEME_PARTS = {
+  dark: { scene: "dark", chrome: "dark", backdrop: "navy" },
+  light: { scene: "light", chrome: "light", backdrop: "paper" },
+  mixed: { scene: "dark", chrome: "light", backdrop: "grey" },
+};
+// Backdrop of a dark scene: the original navy, or a neutral near-black grey
+// that sits more quietly inside a white page.
+const BACKDROPS = {
+  navy: { stops: ["#0d1330", "#070b1c", "#05070f"], fog: 0x05070f, grid: [0x27336b, 0x151c3d] },
+  grey: { stops: ["#232427", "#1a1b1e", "#131416"], fog: 0x131416, grid: [0x3b3d43, 0x26282c] },
+};
+const themeParam = new URLSearchParams(location.search).get("theme");
+let themeName = THEME_PARTS[themeParam] ? themeParam : "dark";
+let TH = THEMES[THEME_PARTS[themeName].scene];
+function applyThemeAttrs() {
+  const { chrome, scene } = THEME_PARTS[themeName];
+  document.documentElement.dataset.theme = chrome;
+  document.documentElement.dataset.scene = scene; // lets CSS frame a dark scene on a light page
+}
+applyThemeAttrs();
+// Scene hue → a mesh color that holds up under white-ground lighting.
+function paperColor(hex) {
+  const c = new THREE.Color(hex);
+  if (TH.dark) return c;
+  const hsl = {};
+  c.getHSL(hsl);
+  return c.setHSL(hsl.h, Math.min(0.72, hsl.s), 0.24 + hsl.l * 0.26);
+}
+// Unlit ink (lines, labels): lightness in display sRGB, not three's linear
+// working space — there 0.3 would display as a washed-out ~0.6.
+const SRGB = THREE.SRGBColorSpace;
+function lineInk(hex) {
+  const c = new THREE.Color(hex);
+  const hsl = {};
+  c.getHSL(hsl, SRGB);
+  return c.setHSL(hsl.h, Math.min(hsl.s, 0.75), 0.3 + hsl.l * 0.18, SRGB);
+}
+// Label ink: same hue, dark enough to read on white.
+function inkColor(css) {
+  const c = new THREE.Color(css);
+  if (TH.dark) return css;
+  const hsl = {};
+  c.getHSL(hsl, SRGB);
+  c.setHSL(hsl.h, Math.min(hsl.s, 0.6), hsl.s < 0.2 ? 0.3 : 0.36, SRGB);
+  return "#" + c.getHexString(SRGB);
+}
+const flowBlending = () => (TH.dark ? THREE.AdditiveBlending : THREE.NormalBlending);
+
+// ============================================================
 // Color palette
 // ============================================================
 const C = {
@@ -290,7 +365,7 @@ const C = {
   critic: 0xff9ec7,
   output: 0xff6b6b,
   pulse: 0xfffa9e,
-  dim: 0x223060,
+  dim: TH.dim,
   text: 0xe6ecff,
 };
 // One hue per attention head — used by the transformer chords, the shared
@@ -322,33 +397,24 @@ function readoutGemColor(q) {
 // Scene setup
 // ============================================================
 const scene = new THREE.Scene();
-// Vertical gradient backdrop (bgTop → bgBot); fog still blends to bgBot.
-{
-  const bgCanvas = document.createElement("canvas");
-  bgCanvas.width = 2; bgCanvas.height = 512;
-  const bctx = bgCanvas.getContext("2d");
-  const grad = bctx.createLinearGradient(0, 0, 0, 512);
-  grad.addColorStop(0, "#0d1330");
-  grad.addColorStop(0.55, "#070b1c");
-  grad.addColorStop(1, "#05070f");
-  bctx.fillStyle = grad;
-  bctx.fillRect(0, 0, 2, 512);
-  const bgTex = new THREE.CanvasTexture(bgCanvas);
-  bgTex.colorSpace = THREE.SRGBColorSpace;
-  scene.background = bgTex;
-}
-scene.fog = new THREE.Fog(C.bgBot, 220, 900);
+const stageEl = document.getElementById("viz-stage");
+const vizEl = document.getElementById("viz");
+const stageSize = () => ({
+  w: Math.max(1, stageEl.clientWidth), h: Math.max(1, stageEl.clientHeight),
+});
 
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1200);
+// near = 0.5 (not 0.1): depth precision near the far stages is what keeps
+// each card's face from z-fighting its body.
+const camera = new THREE.PerspectiveCamera(45, stageSize().w / stageSize().h, 0.5, 1200);
 camera.position.set(35, 38, 70);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+// updateStyle=false: CSS stretches the canvas to the figure. An inline
+// pixel size here would pin it at its first size when the figure grows.
+renderer.setSize(stageSize().w, stageSize().h, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
-document.body.appendChild(renderer.domElement);
+stageEl.prepend(renderer.domElement);
 
 // Soft image-based lighting so metallic surfaces pick up believable
 // reflections; intensity is dialed down per material after each build.
@@ -357,12 +423,13 @@ document.body.appendChild(renderer.domElement);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 }
 
-// Post-processing: bloom makes the emissive "glow" the legend promises real.
+// Post-processing: bloom makes the dark theme's emissive "glow" real. The
+// light theme turns it off — bloom on a white ground just greys it out.
 const composer = new EffectComposer(renderer);
 composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  new THREE.Vector2(stageSize().w, stageSize().h),
   0.5,   // strength
   0.55,  // radius
   0.6,   // luminance threshold
@@ -374,38 +441,151 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.target.set(0, 5, 0);
+// Zoom-out cap: past this the diagram is a speck anyway, and it keeps the
+// camera well inside the background star shell.
+controls.maxDistance = 300;
 
-// Lights
-scene.add(new THREE.AmbientLight(0x445588, 0.45));
+// Lights (intensities are per theme — see applyThemeEnvironment)
+const ambLight = new THREE.AmbientLight(0x445588, 0.45);
+scene.add(ambLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
 dirLight.position.set(20, 50, 40);
 scene.add(dirLight);
 const rim = new THREE.PointLight(0xb58bff, 0.6, 200);
 rim.position.set(-30, 20, -30);
 scene.add(rim);
+// Light theme only: sky/ground fill for shading, and the key light casts
+// soft shadows onto an otherwise invisible floor — paper's stand-in for the
+// dark theme's bloom as the source of depth.
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd9d4c8, 0);
+scene.add(hemiLight);
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+dirLight.shadow.mapSize.set(4096, 4096);
+Object.assign(dirLight.shadow.camera, { left: -110, right: 110, top: 70, bottom: -70, near: 1, far: 260 });
+dirLight.shadow.bias = -0.0004;
+dirLight.shadow.normalBias = 0.02;
+dirLight.shadow.radius = 6;
+const shadowFloor = new THREE.Mesh(
+  new THREE.PlaneGeometry(400, 400),
+  new THREE.ShadowMaterial({ opacity: 0.11 }),
+);
+shadowFloor.rotation.x = -Math.PI / 2;
+shadowFloor.position.y = -10.02;
+shadowFloor.receiveShadow = true;
+scene.add(shadowFloor);
 
-// Floor grid for spatial reference — translucent so it recedes
-const grid = new THREE.GridHelper(220, 44, 0x27336b, 0x151c3d);
-grid.position.y = -10;
-grid.material.transparent = true;
-grid.material.opacity = 0.45;
-scene.add(grid);
+// Floor grid for spatial reference — rebuilt per theme, translucent so it
+// recedes.
+let grid = null;
 
-// Subtle background nebula spheres (static; survives scenario rebuilds)
-for (let i = 0; i < 30; i++) {
-  const s = new THREE.Mesh(
-    new THREE.SphereGeometry(0.15, 8, 6),
-    new THREE.MeshBasicMaterial({
-      color: i % 2 === 0 ? 0x7cc4ff : 0xb58bff, transparent: true, opacity: 0.4,
-    }),
-  );
-  s.position.set(
-    (Math.random() - 0.5) * 200,
-    (Math.random() - 0.3) * 60,
-    (Math.random() - 0.5) * 80,
-  );
-  scene.add(s);
+// Background stars (dark scenes): faint points scattered through a volume
+// much larger than the diagram. They carry no meaning — when the camera
+// orbits, near and far points slide at different rates, and that parallax
+// is what makes the 3D layout easier to read. Seeded, so every load (and
+// every screenshot) places them identically.
+let showStars = true;
+const starfield = (() => {
+  let seed = 20260924;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const N = 420;
+  const pos = new Float32Array(N * 3);
+  const col = new Float32Array(N * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < N; i++) {
+    // A thick shell 380–760 units out: beyond the camera's zoom-out cap
+    // (controls.maxDistance), so the camera can never reach a star.
+    const r = 380 + rnd() * 380;
+    const th = rnd() * Math.PI * 2;
+    const ph = Math.acos(2 * rnd() - 1);
+    pos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+    pos[i * 3 + 1] = Math.abs(r * Math.cos(ph)) * 0.6 - 20; // mostly above the floor
+    pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+    c.setHSL(0.58 + rnd() * 0.12, 0.35, 0.55 + rnd() * 0.3);
+    const k = 0.25 + rnd() * 0.45; // dim: stays under the bloom threshold
+    col[i * 3] = c.r * k; col[i * 3 + 1] = c.g * k; col[i * 3 + 2] = c.b * k;
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geom.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  const tex = (() => {
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 32;
+    const x = cv.getContext("2d");
+    const g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.4, "rgba(255,255,255,0.35)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    x.fillStyle = g;
+    x.fillRect(0, 0, 32, 32);
+    return new THREE.CanvasTexture(cv);
+  })();
+  const pts = new THREE.Points(geom, new THREE.PointsMaterial({
+    // Fixed screen size (px): no star can balloon, and depth still reads
+    // through parallax as the camera orbits.
+    size: 3, map: tex, vertexColors: true, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, sizeAttenuation: false, fog: false,
+  }));
+  pts.frustumCulled = false;
+  scene.add(pts);
+  return pts;
+})();
+
+function applyThemeEnvironment() {
+  const BD = BACKDROPS[THEME_PARTS[themeName].backdrop];
+  if (TH.dark) {
+    const bgCanvas = document.createElement("canvas");
+    bgCanvas.width = 2; bgCanvas.height = 512;
+    const bctx = bgCanvas.getContext("2d");
+    const grad = bctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, BD.stops[0]);
+    grad.addColorStop(0.55, BD.stops[1]);
+    grad.addColorStop(1, BD.stops[2]);
+    bctx.fillStyle = grad;
+    bctx.fillRect(0, 0, 2, 512);
+    const bgTex = new THREE.CanvasTexture(bgCanvas);
+    bgTex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = bgTex;
+  } else {
+    // Faint cool-to-warm fall-off: white at the top, a breath of grey at
+    // the horizon, so the far stages recede into the page.
+    const bgCanvas = document.createElement("canvas");
+    bgCanvas.width = 2; bgCanvas.height = 512;
+    const bctx = bgCanvas.getContext("2d");
+    const grad = bctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, "#ffffff");
+    grad.addColorStop(0.6, "#fcfcfb");
+    grad.addColorStop(1, "#f4f3f0");
+    bctx.fillStyle = grad;
+    bctx.fillRect(0, 0, 2, 512);
+    const bgTex = new THREE.CanvasTexture(bgCanvas);
+    bgTex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = bgTex;
+  }
+  scene.fog = TH.dark ? new THREE.Fog(BD.fog, 220, 900) : new THREE.Fog(0xf8f7f5, 200, 700);
+  starfield.visible = TH.dark && showStars;
+  renderer.toneMapping = TH.dark ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+  renderer.toneMappingExposure = TH.dark ? 1.1 : 1.0;
+  bloomPass.enabled = TH.dark;
+  ambLight.color.set(TH.dark ? 0x445588 : 0xffffff);
+  ambLight.intensity = TH.dark ? 0.45 : 0.3;
+  hemiLight.intensity = TH.dark ? 0 : 0.75;
+  dirLight.intensity = TH.dark ? 0.9 : 1.25;
+  dirLight.position.set(TH.dark ? 20 : 40, TH.dark ? 50 : 100, TH.dark ? 40 : 60);
+  rim.intensity = TH.dark ? 0.6 : 0;
+  renderer.shadowMap.enabled = !TH.dark;
+  dirLight.castShadow = !TH.dark;
+  shadowFloor.visible = !TH.dark;
+  renderer.shadowMap.needsUpdate = true;
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
+  const gridCols = TH.dark ? BD.grid : TH.grid;
+  grid = new THREE.GridHelper(220, 44, gridCols[0], gridCols[1]);
+  grid.position.y = -10;
+  grid.material.transparent = true;
+  grid.material.opacity = TH.dark ? 0.45 : 0.55;
+  scene.add(grid);
 }
+applyThemeEnvironment();
 
 // ============================================================
 // Helpers
@@ -423,10 +603,13 @@ function makeLabel(text, color = "#e6ecff", scale = 1) {
   canvas.width = w;
   canvas.height = px + 24 * SS;
   ctx.font = `600 ${px}px ui-sans-serif, system-ui, -apple-system`;
-  ctx.fillStyle = color;
+  ctx.fillStyle = inkColor(color);
   ctx.textBaseline = "middle";
   ctx.fillText(text, 16 * SS, canvas.height / 2);
   const tex = new THREE.CanvasTexture(canvas);
+  // Light theme: tag the canvas as sRGB so the ink displays as painted (the
+  // dark theme's pastel labels were tuned untagged — leave them be).
+  if (!TH.dark) tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
   const sprite = new THREE.Sprite(mat);
@@ -451,6 +634,9 @@ function updateLabelFade() {
 
 // Stage labels are painted flat on the ground, reading along Z (perpendicular
 // to the +X data flow) so they never overlap each other or face the camera.
+// Off by default (the caption names the stage); the options menu shows them.
+let showFloorLabels = false;
+const floorLabels = [];
 function makeStageLabel(text, color = "#7cc4ff") {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -458,10 +644,10 @@ function makeStageLabel(text, color = "#7cc4ff") {
   const w = ctx.measureText(text).width + 60;
   canvas.width = w; canvas.height = 80;
   // faint backing strip so text stays legible against the floor grid
-  ctx.fillStyle = "rgba(8,11,28,0.5)";
+  ctx.fillStyle = TH.labelStrip;
   if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(4, 10, w - 8, 60, 12); ctx.fill(); }
   ctx.font = "bold 56px ui-sans-serif, system-ui";
-  ctx.fillStyle = color;
+  ctx.fillStyle = inkColor(color);
   ctx.textBaseline = "middle";
   ctx.fillText(text, 30, 42);
   const tex = new THREE.CanvasTexture(canvas);
@@ -473,6 +659,8 @@ function makeStageLabel(text, color = "#7cc4ff") {
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), mat);
   mesh.rotateX(-Math.PI / 2); // lay flat on the ground
   mesh.rotateZ(Math.PI / 2);  // turn text to run along Z, across the flow
+  mesh.visible = showFloorLabels;
+  floorLabels.push(mesh);
   return mesh;
 }
 
@@ -776,6 +964,7 @@ function makeCardMesh(code, w, { faceDown = false, withVec = true } = {}) {
       metalness: 0.2, roughness: 0.55,
     }),
   );
+  body.material.userData.keepColor = true;
   grp.add(body);
   const backTex = cardTexture("back", "__");
   const faceTex = faceDown ? backTex
@@ -787,9 +976,14 @@ function makeCardMesh(code, w, { faceDown = false, withVec = true } = {}) {
     const m = new THREE.Mesh(
       new THREE.PlaneGeometry(w * 0.995, h * 0.995),
       new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, color: 0xc8c5bb,
+        map: tex, transparent: true, color: TH.dark ? 0xc8c5bb : 0xffffff,
+        // Pulled toward the camera in depth so the face never fights the body.
+        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
       }),
     );
+    // Draw after the body: once stage dimming makes both transparent, the
+    // distance sort would otherwise flip face and body frame to frame.
+    m.renderOrder = 1;
     m.position.z = zOff;
     if (flip) m.rotation.y = Math.PI;
     grp.add(m);
@@ -811,7 +1005,7 @@ function memoryStripTexture(vec) {
   c.width = 128;
   c.height = 16;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = "#1a2142";
+  ctx.fillStyle = TH.memBg;
   ctx.fillRect(0, 0, 128, 16);
   let amax = 0;
   for (const v of vec) amax = Math.max(amax, Math.abs(v));
@@ -819,7 +1013,8 @@ function memoryStripTexture(vec) {
     const col = new THREE.Color();
     for (let i = 0; i < 256; i++) {
       const t = clamp(vec[i] / amax, -1, 1);
-      col.setHSL(t >= 0 ? 0.085 : 0.62, 0.85, 0.12 + Math.abs(t) * 0.45);
+      col.setHSL(t >= 0 ? 0.085 : 0.62, 0.85,
+        TH.dark ? 0.12 + Math.abs(t) * 0.45 : 0.94 - Math.abs(t) * 0.5);
       ctx.fillStyle = "#" + col.getHexString();
       ctx.fillRect(i % 128, i < 128 ? 0 : 8, 1, 8);
     }
@@ -1005,13 +1200,16 @@ const XS = {
   gru: 14,
   readout: 22,     // shared 4×4 query-gem grid, centered on the tunnel axis
   hub: 32,         // features hub: concat 16×64 → Linear+LN → 256
-  actor: 44,       // actor adapter; pick / call heads spread to the right
-  heads: 50,
-  pointer: 58,     // pointer assembly (ghost hand row + combine nodes)
-  output: 76,
-  criticTrunk: 44, // value lane (z −12)
-  criticV: 54,
-  aux: 44,         // aux lane (z −24)
+  // Actor side (+z): adapter, then three decision lanes (see ACTOR_Z).
+  actor: 40,       // actor adapter
+  heads: 47,       // pick + partner lanes start here
+  pointer: 51,     // first slot of the cards lane (slots run along +x)
+  softmax: 76,     // the single masked softmax all heads feed
+  output: 80,      // ranked π(a|s) list
+  // Critic side (−z): value lane at CRITIC_VZ, aux lane at CRITIC_AZ.
+  criticTrunk: 40,
+  criticV: 50,
+  aux: 40,
 };
 // Oracle spine: value-only walkthrough, larger rings, wider spacing. Shares
 // key NAMES with XS so the mode-shared builders read either via XSA.
@@ -1072,10 +1270,12 @@ function makeFatLine(points, color, opacity, linewidth = 1.7) {
   const geom = new LineGeometry();
   geom.setPositions(positions);
   const mat = new LineMaterial({
-    color, transparent: true, opacity, linewidth,
-    blending: THREE.AdditiveBlending, depthWrite: false,
+    color, transparent: true, opacity,
+    // Paper strokes get a floor width: the thin rails vanish on white.
+    linewidth: TH.dark ? linewidth : Math.max(1.8, linewidth * 1.3),
+    blending: flowBlending(), depthWrite: false,
   });
-  mat.resolution.set(window.innerWidth, window.innerHeight);
+  mat.resolution.set(stageSize().w, stageSize().h);
   const line = new Line2(geom, mat);
   line.computeLineDistances();
   return line;
@@ -1109,6 +1309,7 @@ function disposeScene() {
   connLines = [];
   allChords = [];
   labelRegistry.length = 0;
+  floorLabels.length = 0;
   flowState = null;
   hovered = null;
   selectedQuery = null;
@@ -1127,7 +1328,7 @@ function chordRadius(norm) {
   return 0.035 + norm * 0.18;
 }
 function chordBaseOpacity(norm) {
-  return 0.18 + norm * 0.5;
+  return TH.dark ? 0.18 + norm * 0.5 : 0.3 + norm * 0.6;
 }
 function chordVisible(c) {
   // Readout gem fans: a gem's full per-head fan shows only while selected;
@@ -1144,6 +1345,11 @@ function chordGeometry(curve, norm) {
 // as brightness toward the hot pulse tone plus thickness.
 function chordColor(c) {
   const t = c.norm;
+  if (!TH.dark) {
+    // Paper: ink throughout, strong links a shade deeper; weight reads
+    // mostly through thickness and opacity.
+    return paperColor(c.baseColor).multiplyScalar(1 - t * 0.2);
+  }
   const cold = new THREE.Color(c.baseColor).multiplyScalar(0.42);
   const hot = new THREE.Color(c.baseColor).lerp(new THREE.Color(C.pulse), 0.55);
   return cold.lerp(hot, t);
@@ -1163,9 +1369,11 @@ function styleChords() {
 function addChord(g, curve, norm, baseColor, groupName, head) {
   const mat = new THREE.MeshBasicMaterial({
     color: 0xffffff, transparent: true, opacity: chordBaseOpacity(norm),
-    blending: THREE.AdditiveBlending, depthWrite: false,
+    blending: flowBlending(), depthWrite: false,
   });
+  mat.userData.themed = true; // styleChords owns its color
   const mesh = new THREE.Mesh(chordGeometry(curve, norm), mat);
+  mesh.userData.chord = true;
   g.add(mesh);
   const c = { mesh, curve, norm, baseColor, group: groupName, head,
     baseOpacity: chordBaseOpacity(norm) };
@@ -1175,8 +1383,12 @@ function addChord(g, curve, norm, baseColor, groupName, head) {
 }
 function styleConn() {
   // Write into baseOpacity: applyStageDim() owns the final material opacity.
+  // Strokes on white need more ink than additive strokes on black, and the
+  // faint ones (rails, entry lines, readout→hub) most of all: lift the low
+  // end instead of scaling, so 0.16 → ~0.52 while strong edges cap at 0.9.
+  const ink = (b) => (TH.dark ? Math.min(0.95, b) : Math.min(0.9, 0.3 + b * 1.4));
   for (const c of connLines) {
-    c.obj.material.userData.baseOpacity = Math.min(0.95, c.base);
+    c.obj.material.userData.baseOpacity = ink(c.base);
     c.obj.material.opacity = c.obj.material.userData.baseOpacity;
   }
 }
@@ -1250,7 +1462,7 @@ function buildInputCards() {
         "trump": isTrump ? "yes (gold rim)" : "no",
         ...(isChosen ? { "chosen": S.sample.chosen_action } : {}),
       },
-      body: `<p>${isTrump ? "<b>Trump.</b> " : ""}Card id ${handCardIds[i]} (DECK_IDS) — looked up as one row of the 34×${curDims().d_card} embedding table (stage 2). The barcode on the face <i>is</i> that row, in the table's colors:</p>` + embRowHtml(code)
+      body: `<p>${isTrump ? "<b>Trump.</b> " : ""}Card id ${handCardIds[i]} (DECK_IDS) — looked up as one row of the 34×${curDims().d_card} embedding table (the Tokens chapter). The barcode on the face <i>is</i> that row, in the table's colors:</p>` + embRowHtml(code)
         + `<p class="meta" style="margin-top:6px">dims 0–3 suit · 4–7 rank · 8 points/11 · 9 UNDER · 10–15 learned</p>`,
     });
   }
@@ -1369,8 +1581,8 @@ function buildInputCards() {
     badge: "input",
     kv: { "‖memory_in‖": memMag.toFixed(2) },
     body: (memMag < 1e-6
-      ? `<p>256-d recurrent state from this player's previous decision. Zeros here — this is the seat's first decision of the hand (the strip is dark). Carried via a GRU cell — see stage 5.</p>`
-      : `<p>256-d recurrent state carried from this seat's previous decisions — it has already seen the earlier phases of this hand. Updated by the GRU cell in stage 5.</p>`)
+      ? `<p>256-d recurrent state from this player's previous decision. Zeros here — this is the seat's first decision of the hand (the strip is dark). Carried via a GRU cell — see the Memory chapter.</p>`
+      : `<p>256-d recurrent state carried from this seat's previous decisions — it has already seen the earlier phases of this hand. Updated by the GRU cell in the Memory chapter.</p>`)
       + `<p>The strip paints all 256 dims (two rows of 128): warm = positive, cool = negative, dark = near zero.</p>`,
   };
   registerPickable(memBody, memInfoPick);
@@ -2128,7 +2340,7 @@ function buildSharedReadout() {
       title: `${NETWORK_MODE === 1 ? "oracle" : "shared"} readout query ${q + 1} / ${nQ}`,
       badge: "share",
       kv: { "attends most to": top },
-      body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens. Only its <b>top-3</b> links are drawn by default, averaged over the heads enabled up top (H1–H4) — <b>click to expand the full per-head fan</b> (colored by head, chips filter it too). Click again to collapse.</p>`,
+      body: `<p>A learned ${DATA.dims.d_token}-d query. It cross-attends (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens. Only its <b>top-3</b> links are drawn by default, averaged over the heads enabled in the ⋯ menu — <b>click to expand the full per-head fan</b> (colored by head, the head toggles filter it too). Click again to collapse.</p>`,
       onPick: () => selectQuery(q),
     });
 
@@ -2238,8 +2450,24 @@ function buildSharedReadout() {
 }
 
 // ============================================================
-// STAGE 7: ACTOR heads
+// STAGE 7: ACTOR heads, laid out by DECISION GROUP on the actor side
+// of the scene (+z; the critic owns −z). Each lane holds exactly the heads
+// whose logits compete in one masked softmax:
+//   pick lane      pick_head → PICK / PASS
+//   partner lane   partner_basic_head (ALONE / JD PARTNER) + two-tower CALL
+//   cards lane     pointer over hand slots (BURY / UNDER / PLAY) + PLAY UNDER
+// Every legal-action element records where it sits in actionSources, so
+// the output stage draws each action's flow from the head that scored it.
 // ============================================================
+// All actor lanes share one depth plane (ACTOR_PLANE_Z) and read as rows
+// from the front: the top row holds the pre-play decisions in game order
+// (pick, then partner call), the bottom row the cards lane.
+const ACTOR_PLANE_Z = 12;
+const TOP_ROW_Y = 24;  // pick + partner lanes
+const HEAD_Y = 14;     // adapter height, and the softmax's
+const OUT_Z = ACTOR_PLANE_Z;
+let actionSources = {}; // action name → { pos: Vector3, color }
+
 // Live-vs-idle styling: the head that actually decides this scenario is shown
 // at full strength; the others stay visible but dimmed.
 function headStyle(isLive) {
@@ -2250,148 +2478,139 @@ function headStyle(isLive) {
     suffix: isLive ? "" : " · idle",
   };
 }
+function laneCaption(g, text, pos, live) {
+  const lab = makeLabel(live ? `${text} · live` : text, live ? "#b8f0a2" : "#7f8bb8", 0.55);
+  lab.position.copy(pos);
+  g.add(lab);
+}
+// Big title over each side of the network: ACTOR (+z) / CRITIC (−z).
+function sideTitle(g, text, pos, color) {
+  const t = makeLabel(text, color, 0.95);
+  t.position.copy(pos);
+  g.add(t);
+}
 
 function buildActor() {
+  actionSources = {};
   const g = group("actor");
   const lab = makeStageLabel("7 · ACTOR · policy heads", "#80ed99");
-  lab.position.set(XS.actor + 4, -9.7, 18);
+  lab.position.set(XS.heads + 6, -9.7, ACTOR_PLANE_Z + 6);
   g.add(lab);
 
-  const ACTOR_BASE_Y = 12;
   const live = liveHead();
 
-  // adapter cube
-  const adapterGeom = new THREE.BoxGeometry(1.6, 3.2, 1.6);
-  const adapterMat = new THREE.MeshStandardMaterial({
-    color: 0x80ed99, emissive: 0x80ed99, emissiveIntensity: 0.35,
-    metalness: 0.35, roughness: 0.4,
-  });
-  const adapter = new THREE.Mesh(adapterGeom, adapterMat);
-  adapter.position.set(XS.actor, ACTOR_BASE_Y, 8);
+  // adapter cube, at the mouth of the actor side
+  const adapter = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 3.2, 1.6),
+    new THREE.MeshStandardMaterial({
+      color: 0x80ed99, emissive: 0x80ed99, emissiveIntensity: 0.35,
+      metalness: 0.35, roughness: 0.4,
+    }),
+  );
+  adapter.position.set(XS.actor, HEAD_Y, ACTOR_PLANE_Z);
   g.add(adapter);
   const adapterLab = makeLabel("actor_adapter (256→256)", "#cdf5d8", 0.5);
-  adapterLab.position.set(XS.actor, ACTOR_BASE_Y + 2.6, 8);
+  adapterLab.position.set(XS.actor, HEAD_Y + 2.6, ACTOR_PLANE_Z);
   g.add(adapterLab);
+  sideTitle(g, "ACTOR", new THREE.Vector3(XS.actor, HEAD_Y + 5, ACTOR_PLANE_Z), "#80ed99");
   registerPickable(adapter, {
     title: "actor_adapter",
     badge: "actor",
-    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Its input is the encoder's shared 256-d <code>features</code> vector — the same one the critic reads. Everything the policy knows arrives through it.</p>`,
+    body: `<p>LayerNorm → Linear(256→256) → SiLU → Linear(256→256) → SiLU. Its input is the encoder's shared 256-d <code>features</code> vector — the same one the critic reads. Everything the policy knows arrives through it, and it fans out to the three decision lanes to its right.</p>`,
   });
+  g.add(makeGlowLine(readoutInfo.hubPos.clone(), adapter.position.clone(), C.actor, 0.5));
 
-  g.add(makeGlowLine(
-    readoutInfo.hubPos.clone(),
-    adapter.position,
-    C.actor, 0.5,
-  ));
-
-  // ----- (a) pick head — 2 small balls -----
+  // ----- (a) pick lane: PICK vs PASS -----
+  const zP = ACTOR_PLANE_Z;
   const pickStyle = headStyle(live === "pick");
   const pickProbs = softmax(S.actor.pick_logits);
-  const headX = XS.heads;
-  const pickPositions = [
-    { name: "PICK", y: ACTOR_BASE_Y + 1.5, z: 13, prob: pickProbs[0], labelDir: 1 },
-    { name: "PASS", y: ACTOR_BASE_Y - 1.5, z: 13, prob: pickProbs[1], labelDir: -1 },
+  laneCaption(g, "pick", new THREE.Vector3(XS.heads + 1, TOP_ROW_Y + 5.5, zP), live === "pick");
+  const pickDefs = [
+    { name: "PICK", y: TOP_ROW_Y + 2, prob: pickProbs[0], logit: S.actor.pick_logits[0], dir: 1 },
+    { name: "PASS", y: TOP_ROW_Y - 2, prob: pickProbs[1], logit: S.actor.pick_logits[1], dir: -1 },
   ];
-  for (const p of pickPositions) {
+  for (const p of pickDefs) {
     // Idle probabilities can still be extreme (e.g. PASS ≈ 1 mid-hand);
     // keep the idle balls modest so they don't dominate the live head.
-    const r = 0.45 + p.prob * (live === "pick" ? 1.6 : 0.5);
+    const r = 0.45 + p.prob * (live === "pick" ? 1.4 : 0.5);
     const ball = new THREE.Mesh(
       new THREE.SphereGeometry(r, 22, 16),
       new THREE.MeshStandardMaterial({
-        color: 0x80ed99,
-        emissive: 0x80ed99,
+        color: 0x80ed99, emissive: 0x80ed99,
         emissiveIntensity: (0.3 + p.prob * 0.7) * pickStyle.emissiveBoost,
         metalness: 0.4, roughness: 0.35,
         transparent: pickStyle.opacity < 1, opacity: pickStyle.opacity,
       }),
     );
-    ball.position.set(headX, p.y, p.z);
+    ball.position.set(XS.heads + 1, p.y, zP);
     g.add(ball);
-    const pl = makeLabel(
-      `${p.name}: ${(p.prob * 100).toFixed(1)}%${pickStyle.suffix}`,
-      pickStyle.labelColor, 0.55);
-    // Billboarded sprite: offset outward (PICK above, PASS below) past the
-    // ball's radius so the label clears the sphere from any camera angle.
-    pl.position.set(headX, p.y + p.labelDir * (r + 0.75), p.z);
+    const pl = makeLabel(`${p.name} · logit ${p.logit.toFixed(1)}${pickStyle.suffix}`, pickStyle.labelColor, 0.48);
+    pl.position.set(XS.heads + 1, p.y + p.dir * (r + 0.7), zP);
     g.add(pl);
     registerPickable(ball, {
       title: `pick_head · ${p.name}`,
       badge: "actor",
-      kv: {
-        "logit": (p.name === "PICK" ? S.actor.pick_logits[0] : S.actor.pick_logits[1]).toFixed(3),
-        "prob": p.prob.toFixed(4),
-        "live here": live === "pick" ? "yes" : "no",
-      },
-      body: `<p>pick_head is a Linear(256→2). Logits get divided by <code>temperature_pick</code>, masked to legal actions, and softmaxed against the rest of the action space.${live === "pick" ? "" : " Not the deciding head for this scenario."}</p>`,
+      kv: { "logit": p.logit.toFixed(3), "live here": live === "pick" ? "yes" : "no" },
+      body: `<p>pick_head is a Linear(256→2). Its two logits are divided by <code>temperature_pick</code>, masked to the legal actions and softmaxed — the output stage shows the result.${live === "pick" ? "" : " Not the deciding head for this scenario."}</p>`,
     });
-    g.add(makeGlowLine(adapter.position, ball.position, 0x80ed99, live === "pick" ? 0.5 : 0.15));
+    g.add(makeGlowLine(adapter.position.clone(), ball.position.clone(), 0x80ed99, live === "pick" ? 0.5 : 0.15));
+    actionSources[p.name] = { pos: ball.position.clone(), color: 0x80ed99 };
   }
 
-  // ----- (b) two-tower CALL scorer -----
+  // ----- (b) partner lane: ALONE / JD PARTNER + two-tower CALL -----
+  const zC = ACTOR_PLANE_Z;
+  const PX = XS.heads + 6; // partner lane starts right of the pick lane
   const callStyle = headStyle(live === "call");
+  laneCaption(g, "partner call", new THREE.Vector3(PX + 5, TOP_ROW_Y + 5.5, zC), live === "call");
   const callable = S.sample.callable_cards.length
     ? S.sample.callable_cards.map(c => c.code)
     : ["AC", "AS", "AH", "10C", "10S", "10H"]; // illustrative when no call is legal
   const callableIds = callable.map(c => deckIds[c]);
   const cardScores = S.actor.card_scores_all;
+  const fadeOpts = (color, intensity) => ({
+    color, emissive: color, emissiveIntensity: intensity * callStyle.emissiveBoost,
+    metalness: 0.4, roughness: 0.4,
+    transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
+  });
 
-  const callLab = makeLabel(
-    `two-tower CALL scorer${callStyle.suffix}`, callStyle.labelColor, 0.5);
-  callLab.position.set(XS.heads + 4, ACTOR_BASE_Y + 8, 6);
-  g.add(callLab);
-
-  const qNode = new THREE.Mesh(
-    new THREE.SphereGeometry(0.4, 16, 12),
-    new THREE.MeshStandardMaterial({
-      color: 0x80ed99, emissive: 0x80ed99,
-      emissiveIntensity: 0.6 * callStyle.emissiveBoost,
-      transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
-    }),
-  );
-  qNode.position.set(XS.heads - 3, ACTOR_BASE_Y + 5, 6);
+  // Tower 1 (query from the features) and tower 2 (the card table).
+  const qNode = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12),
+    new THREE.MeshStandardMaterial(fadeOpts(0x80ed99, 0.6)));
+  qNode.position.set(PX, TOP_ROW_Y + 0.5, zC);
   g.add(qNode);
+  const qLab = makeLabel("q = tw_Wg(feat)", callStyle.labelColor, 0.4);
+  qLab.position.set(PX, TOP_ROW_Y - 0.6, zC);
+  g.add(qLab);
   registerPickable(qNode, {
     title: "two-tower query q = tw_Wg(feat)",
     badge: "actor",
-    body: `<p>${DATA.dims.tw_latent}-d query produced from the ${DATA.dims.d_model}-d actor features (tower 1). Dot-producted against tw_We's projection of every card embedding to score CALL actions.</p>`,
+    body: `<p>${DATA.dims.tw_latent}-d query produced from the ${DATA.dims.d_model}-d actor features (tower 1). Dot-producted against tw_We's projection of every card embedding to score the CALL actions.</p>`,
   });
-  g.add(makeGlowLine(adapter.position, qNode.position, 0x80ed99, live === "call" ? 0.5 : 0.15));
-
-  // Tower 2: the shared 34-card embedding table, projected by tw_We.
-  const tableNode = new THREE.Mesh(
-    new THREE.BoxGeometry(1.0, 1.8, 0.5),
-    new THREE.MeshStandardMaterial({
-      color: 0xb58bff, emissive: 0xb58bff,
-      emissiveIntensity: 0.35 * callStyle.emissiveBoost,
-      metalness: 0.4, roughness: 0.4,
-      transparent: callStyle.opacity < 1, opacity: callStyle.opacity,
-    }),
-  );
-  tableNode.position.set(XS.heads - 3, ACTOR_BASE_Y + 7.6, 6);
+  g.add(makeGlowLine(adapter.position.clone(), qNode.position.clone(), 0x80ed99, live === "call" ? 0.5 : 0.15));
+  const tableNode = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.8, 0.5),
+    new THREE.MeshStandardMaterial(fadeOpts(0xb58bff, 0.35)));
+  tableNode.position.set(PX, TOP_ROW_Y + 3.3, zC);
   g.add(tableNode);
-  const tableLab = makeLabel(`tw_We(card table 34×${DATA.dims.d_card})`, callStyle.labelColor, 0.4);
-  tableLab.position.set(XS.heads - 3, ACTOR_BASE_Y + 9.2, 6);
+  const tableLab = makeLabel(`tw_We(card table 34×${DATA.dims.d_card})`, callStyle.labelColor, 0.38);
+  tableLab.position.set(PX, TOP_ROW_Y + 4.6, zC);
   g.add(tableLab);
   registerPickable(tableNode, {
     title: "two-tower keys K = tw_We(card_emb)",
     badge: "actor",
     kv: { "keys": `34 × ${DATA.dims.tw_latent}` },
-    body: `<p>Tower 2: every row of the shared 34×${DATA.dims.d_card} card embedding table (stage 2, far left) projected to ${DATA.dims.tw_latent}d. Score for a card = q · K[card]ᵀ, so the CALL head inherits everything the embedding learned elsewhere in the network.</p>`,
+    body: `<p>Tower 2: every row of the shared 34×${DATA.dims.d_card} card embedding table (far left) projected to ${DATA.dims.tw_latent}d. Score for a card = q · K[card]ᵀ, so the CALL head inherits everything the embedding learned elsewhere in the network.</p>`,
   });
-  g.add(makeGlowLine(tableNode.position, qNode.position, 0xb58bff, live === "call" ? 0.35 : 0.12));
+  g.add(makeGlowLine(tableNode.position.clone(), qNode.position.clone(), 0xb58bff, live === "call" ? 0.35 : 0.12));
 
   const minCS = Math.min(...callableIds.map(cid => cardScores[cid]));
   const maxCS = Math.max(...callableIds.map(cid => cardScores[cid]));
   for (let i = 0; i < callable.length; i++) {
     const cid = callableIds[i];
-    const s = cardScores[cid];
-    const norm = (s - minCS) / Math.max(1e-6, maxCS - minCS);
-    const x = XS.heads + i * 1.4;
-    const ccolor = new THREE.Color().setHSL(0.33, 0.6, 0.3 + norm * 0.4);
-    // The callable card itself; its score reads as the halo behind it.
+    const sc = cardScores[cid];
+    const norm = (sc - minCS) / Math.max(1e-6, maxCS - minCS);
+    const pos = new THREE.Vector3(PX + 2.8 + i * 1.5, TOP_ROW_Y + 0.5, zC);
     const card = makeCardMesh(callable[i], 0.95, { withVec: false });
-    card.position.set(x, ACTOR_BASE_Y + 5, 6);
+    card.position.copy(pos);
     g.add(card);
     if (callStyle.opacity < 1) {
       card.traverse(o => {
@@ -2401,100 +2620,81 @@ function buildActor() {
     const halo = new THREE.Mesh(
       new THREE.PlaneGeometry(1.3, 1.9),
       new THREE.MeshBasicMaterial({
-        color: ccolor, transparent: true,
+        color: new THREE.Color().setHSL(0.33, 0.6, 0.3 + norm * 0.4), transparent: true,
         opacity: (0.2 + norm * 0.5) * callStyle.opacity,
         blending: THREE.AdditiveBlending, depthWrite: false,
       }),
     );
-    halo.position.set(x, ACTOR_BASE_Y + 5, 5.9);
+    halo.position.copy(pos).add(new THREE.Vector3(0, 0, -0.1));
     g.add(halo);
-    const lab2 = makeLabel(s.toFixed(1), callStyle.labelColor, 0.36);
-    lab2.position.set(x, ACTOR_BASE_Y + 6.6, 6);
-    g.add(lab2);
-    g.add(makeGlowLine(qNode.position, card.position, 0x80ed99,
+    const sl = makeLabel(sc.toFixed(1), callStyle.labelColor, 0.36);
+    sl.position.copy(pos).add(new THREE.Vector3(0, 1.3, 0));
+    g.add(sl);
+    g.add(makeGlowLine(qNode.position.clone(), pos.clone(), 0x80ed99,
       (0.15 + norm * 0.55) * (live === "call" ? 1 : 0.35)));
     registerCardPickable(card, {
       title: `CALL ${callable[i]}`,
       badge: "actor",
-      kv: { "score": s.toFixed(2), "live here": live === "call" ? "yes" : "no (illustrative)" },
+      kv: { "score": sc.toFixed(2), "live here": live === "call" ? "yes" : "no (illustrative)" },
       body: `<p>Score = q · tw_We(card_emb[${cid}])ᵀ. Reusing the shared card embedding means the actor inherits everything the embedding has learned elsewhere.</p>`,
     });
+    const top = pos.clone().add(new THREE.Vector3(0, 0.8, 0));
+    actionSources[`CALL ${callable[i]}`] = { pos: top, color: 0x80ed99 };
+    actionSources[`CALL ${callable[i]} UNDER`] = { pos: top.clone(), color: 0x80ed99 };
   }
 
-  // ----- (c) small scalar heads: partner-basic + play-under -----
-  const pbStyle = headStyle(live === "call");
+  // partner_basic_head: the two non-card partner options, in the same lane
+  // (and the same softmax) as the CALL scores.
   const pbNames = ["ALONE", "JD PARTNER"];
   for (let i = 0; i < 2; i++) {
     const chip = new THREE.Mesh(
-      new RoundedBoxGeometry(1.4, 0.8, 0.2, 2, 0.08),
+      new RoundedBoxGeometry(1.8, 0.8, 0.2, 2, 0.08),
       new THREE.MeshStandardMaterial({
-        color: 0x5fd9a4, emissive: 0x5fd9a4,
-        emissiveIntensity: 0.25 * pbStyle.emissiveBoost,
-        transparent: pbStyle.opacity < 1, opacity: pbStyle.opacity,
-        roughness: 0.45,
+        ...fadeOpts(0x5fd9a4, 0.25), roughness: 0.45, metalness: 0,
       }),
     );
-    chip.position.set(headX + i * 2.2, ACTOR_BASE_Y - 3.2, 11);
+    chip.position.set(PX + 3.2 + i * 3.4, TOP_ROW_Y - 3, zC);
     g.add(chip);
-    const cl = makeLabel(pbNames[i], pbStyle.labelColor, 0.34);
-    cl.position.set(headX + i * 2.2, ACTOR_BASE_Y - 2.3, 11);
+    const cl = makeLabel(`${pbNames[i]} · ${S.actor.partner_basic_logits[i].toFixed(1)}`, callStyle.labelColor, 0.36);
+    cl.position.copy(chip.position).add(new THREE.Vector3(0, -0.95, 0));
     g.add(cl);
     registerPickable(chip, {
       title: `partner_basic_head · ${pbNames[i]}`,
       badge: "actor",
       kv: { "logit": S.actor.partner_basic_logits[i].toFixed(3) },
-      body: `<p>Linear(256→2): the two non-card partner options, sharing the softmax with the two-tower CALL scores. Only live in JD-partner mode.</p>`,
+      body: `<p>Linear(256→2): the two non-card partner options. They share one softmax with the two-tower CALL scores above them — which is why they sit in the same lane.</p>`,
     });
-    g.add(makeGlowLine(adapter.position, chip.position, 0x5fd9a4, 0.12));
+    g.add(makeGlowLine(adapter.position.clone(), chip.position.clone(), 0x5fd9a4, live === "call" ? 0.4 : 0.12));
+    actionSources[pbNames[i]] = { pos: chip.position.clone(), color: 0x5fd9a4 };
   }
-  const puStyle = headStyle(live === "pointer");
-  const puChip = new THREE.Mesh(
-    new RoundedBoxGeometry(1.4, 0.8, 0.2, 2, 0.08),
-    new THREE.MeshStandardMaterial({
-      color: 0xb8f0a2, emissive: 0xb8f0a2,
-      emissiveIntensity: 0.25 * puStyle.emissiveBoost,
-      transparent: puStyle.opacity < 1, opacity: puStyle.opacity,
-      roughness: 0.45,
-    }),
-  );
-  puChip.position.set(headX + 4.4, ACTOR_BASE_Y - 3.2, 11);
-  g.add(puChip);
-  const puLab = makeLabel("PLAY UNDER", puStyle.labelColor, 0.34);
-  puLab.position.set(headX + 4.4, ACTOR_BASE_Y - 2.3, 11);
-  g.add(puLab);
-  registerPickable(puChip, {
-    title: "play_under_head",
-    badge: "actor",
-    kv: { "logit": S.actor.play_under_logit.toFixed(3) },
-    body: `<p>Linear(256→1): the one play action that isn't a hand slot — playing the face-down UNDER card. It joins the pointer's slot scores in the play softmax.</p>`,
-  });
-  g.add(makeGlowLine(adapter.position, puChip.position, 0xb8f0a2, 0.12));
 
   return { adapter };
 }
 
 // ============================================================
-// STAGE 8: POINTER — two-term scorer over the hand tokens.
-// The 8 post-reasoning hand tokens are re-materialized as a ghost
-// row (tethered to the final ring). Per slot, an additive node mixes
-// g = Wg·f with Wt·token through tanh (read out by pointer_v), and a
-// bilinear node dots u = U·f with V·token; the bar is their sum.
+// STAGE 8: POINTER — the cards lane. The 8 post-reasoning hand tokens
+// re-materialize as a ghost row (tethered to the final ring), left to
+// right. Per slot, an additive node mixes g = Wg·f with Wt·token through
+// tanh (read out by pointer_v), and a bilinear ring dots u = U·f with
+// V·token; the bar is their sum. PLAY UNDER — the one play action that
+// is not a hand slot — closes the row, in the same softmax.
 // ============================================================
 const BILINEAR_COLOR = 0xe6f59a;
 function buildPointer() {
   const g = group("pointer");
   const live = liveHead();
   const st = headStyle(live === "pointer");
+  const zc = ACTOR_PLANE_Z;
   const lab = makeStageLabel(`8 · POINTER · additive + bilinear${st.suffix}`, "#b8f0a2");
-  lab.position.set(XS.pointer, -9.7, 12);
+  lab.position.set(XS.pointer + 8, -9.7, zc + 3);
   g.add(lab);
 
-  const PY = 1.5;              // ghost row height
+  const PY = 3.5;              // ghost row height
   const ADD_Y = PY + 2.6;      // additive (tanh) node row
   const BIL_Y = PY + 4.4;      // bilinear (dot) node row
   const BAR_Y = PY + 6.2;      // score bars start here
-  const SLOT_DZ = 2.6;
-  const slotZ = (i) => (i - 3.5) * SLOT_DZ;
+  const SLOT_DX = 2.4;
+  const slotX = (i) => XS.pointer + i * SLOT_DX;
   const ptr = S.actor.pointer;
   const hP = DATA.dims.pointer_hidden;
   const slotScores = ptr.slot_scores;
@@ -2503,6 +2703,12 @@ function buildPointer() {
   const maxSlot = Math.max(...realSlots.map(s => slotScores[s.i]));
   const maxHid = Math.max(...realSlots.map(s => ptr.hidden_norms[s.i]));
   const maxBil = Math.max(1e-6, ...realSlots.map(s => Math.abs(ptr.bilinear_scores[s.i])));
+  const on = live === "pointer";
+
+  laneCaption(g, "bury · under · play", new THREE.Vector3(slotX(4), BAR_Y + 7.4, zc), on);
+  const fLab = makeLabel(`score = v·tanh(g + Wt·t) + (u · V·t)/√${hP}`, st.labelColor, 0.4);
+  fLab.position.set(slotX(4), BAR_Y + 6.2, zc);
+  g.add(fLab);
 
   const matOpts = (color, intensity) => ({
     color, emissive: color,
@@ -2514,10 +2720,10 @@ function buildPointer() {
   // The two situation queries, broadcast to every slot.
   const gNode = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 14),
     new THREE.MeshStandardMaterial(matOpts(0xb8f0a2, 0.6)));
-  gNode.position.set(XS.pointer - 6.5, ADD_Y, 0);
+  gNode.position.set(XS.pointer - 4.5, ADD_Y, zc);
   g.add(gNode);
-  const gLab = makeLabel(`g = Wg·f  (${DATA.dims.d_model}→${hP})`, st.labelColor, 0.42);
-  gLab.position.set(XS.pointer - 6.5, ADD_Y - 1.4, 0);
+  const gLab = makeLabel(`g = Wg·f  (${DATA.dims.d_model}→${hP})`, st.labelColor, 0.4);
+  gLab.position.set(XS.pointer - 4.5, ADD_Y - 1.3, zc);
   g.add(gLab);
   registerPickable(gNode, {
     title: "pointer_Wg · additive query",
@@ -2527,10 +2733,10 @@ function buildPointer() {
   });
   const uNode = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 14),
     new THREE.MeshStandardMaterial(matOpts(BILINEAR_COLOR, 0.6)));
-  uNode.position.set(XS.pointer - 6.5, BIL_Y + 1.6, 0);
+  uNode.position.set(XS.pointer - 4.5, BIL_Y + 1.4, zc);
   g.add(uNode);
-  const uLab = makeLabel(`u = U·f  (${DATA.dims.d_model}→${hP})`, st.labelColor, 0.42);
-  uLab.position.set(XS.pointer - 6.5, BIL_Y + 3.0, 0);
+  const uLab = makeLabel(`u = U·f  (${DATA.dims.d_model}→${hP})`, st.labelColor, 0.4);
+  uLab.position.set(XS.pointer - 4.5, BIL_Y + 2.7, zc);
   g.add(uLab);
   registerPickable(uNode, {
     title: "pointer_U · bilinear query",
@@ -2540,15 +2746,36 @@ function buildPointer() {
   });
   for (const node of [gNode, uNode]) {
     g.add(makeGlowLine(actorInfo.adapter.position.clone(), node.position.clone(),
-      node === gNode ? 0xb8f0a2 : BILINEAR_COLOR, live === "pointer" ? 0.5 : 0.15));
+      node === gNode ? 0xb8f0a2 : BILINEAR_COLOR, on ? 0.5 : 0.15));
   }
+
+  const scoreBar = (x, score, lo, hi, color) => {
+    const norm = clamp((score - lo) / Math.max(1e-6, hi - lo), 0, 1);
+    const barH = 0.4 + norm * 3.4;
+    const bcolor = color ?? new THREE.Color().setHSL(0.32, 0.7, 0.28 + norm * 0.42);
+    const bar = new THREE.Mesh(
+      new RoundedBoxGeometry(0.85, barH, 0.85, 2, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: bcolor, emissive: bcolor,
+        emissiveIntensity: (0.2 + norm * 0.65) * st.emissiveBoost,
+        transparent: st.opacity < 1, opacity: st.opacity,
+        roughness: 0.4,
+      }),
+    );
+    bar.position.set(x, BAR_Y + barH / 2, zc);
+    g.add(bar);
+    const blab = makeLabel(score.toFixed(1), st.labelColor, 0.36);
+    blab.position.set(x, BAR_Y + 0.7 + barH, zc);
+    g.add(blab);
+    return { bar, norm, bcolor, top: new THREE.Vector3(x, BAR_Y + barH, zc) };
+  };
 
   const combines = [];
   for (let i = 0; i < 8; i++) {
     const cid = handCardIds[i];
     const isPad = cid === 0;
     const code = isPad ? "PAD" : (idToCode[cid] || `id${cid}`);
-    const gp = new THREE.Vector3(XS.pointer, PY, slotZ(i));
+    const gp = new THREE.Vector3(slotX(i), PY, zc);
 
     // Ghost hand token (tethered to its final-ring position).
     const ghost = new THREE.Mesh(
@@ -2566,14 +2793,13 @@ function buildPointer() {
     const isTrump = !isPad && trumpCardCodes.includes(code);
     if (isPad) {
       const glab = makeLabel(code, "#5d6790", 0.4);
-      glab.position.set(XS.pointer + 0.2, PY - 1.3, slotZ(i));
+      glab.position.set(slotX(i), PY - 1.3, zc);
       g.add(glab);
       continue;
     }
     // The slot's actual card, as a mini face under its ghost token.
     const mini = makeCardMesh(code, 1.0, { withVec: false });
-    mini.position.set(XS.pointer + 0.2, PY - 1.8, slotZ(i));
-    mini.rotation.y = 0.45;
+    mini.position.set(slotX(i), PY - 1.8, zc);
     g.add(mini);
 
     // Tether back to the final transformer ring — same token, same state.
@@ -2600,7 +2826,7 @@ function buildPointer() {
     const hidNorm = ptr.hidden_norms[i] / Math.max(maxHid, 1e-6);
     const comb = new THREE.Mesh(new THREE.OctahedronGeometry(0.5),
       new THREE.MeshStandardMaterial({ ...matOpts(0xb8f0a2, 0.15 + hidNorm * 0.7), metalness: 0.5, roughness: 0.25 }));
-    comb.position.set(XS.pointer, ADD_Y, slotZ(i));
+    comb.position.set(slotX(i) - 0.45, ADD_Y, zc);
     comb.userData.pulsePhase = i * 0.8;
     g.add(comb);
     combines.push(comb);
@@ -2615,8 +2841,7 @@ function buildPointer() {
     const bilNorm = Math.abs(bilS) / maxBil;
     const bil = new THREE.Mesh(new THREE.TorusGeometry(0.34 + bilNorm * 0.22, 0.12, 10, 28),
       new THREE.MeshStandardMaterial(matOpts(BILINEAR_COLOR, 0.12 + bilNorm * 0.75)));
-    bil.position.set(XS.pointer + 0.9, BIL_Y, slotZ(i));
-    bil.rotation.y = 0.45;
+    bil.position.set(slotX(i) + 0.45, BIL_Y, zc);
     g.add(bil);
     registerPickable(bil, {
       title: `bilinear term · slot ${i} (${code})`,
@@ -2625,55 +2850,66 @@ function buildPointer() {
       body: `<p>(U·f) · (V·token) / √${hP}: a dot product between the bilinear situation query and this card. ${bilS >= 0 ? "Positive — this state favors this card's attributes." : "Negative — this state disfavors this card's attributes."}</p>`,
     });
 
-    const on = live === "pointer";
     g.add(makeGlowLine(gNode.position.clone(), comb.position.clone(), 0xb8f0a2, on ? 0.26 : 0.10));
     g.add(makeGlowLine(uNode.position.clone(), bil.position.clone(), BILINEAR_COLOR, on ? 0.26 : 0.10));
     g.add(makeGlowLine(gp.clone(), comb.position.clone(), 0x4cc9f0, on ? 0.4 : 0.14));
     g.add(makeGlowLine(gp.clone(), bil.position.clone(), 0x4cc9f0, on ? 0.3 : 0.10));
 
     // Score bar: the sum, height/heat by within-hand normalized score.
-    const norm = (slotScores[i] - minSlot) / Math.max(1e-6, maxSlot - minSlot);
-    const barH = 0.4 + norm * 3.4;
-    const bcolor = new THREE.Color().setHSL(0.32, 0.7, 0.28 + norm * 0.42);
-    const bar = new THREE.Mesh(
-      new RoundedBoxGeometry(0.85, barH, 0.85, 2, 0.08),
-      new THREE.MeshStandardMaterial({
-        color: bcolor, emissive: bcolor,
-        emissiveIntensity: (0.2 + norm * 0.65) * st.emissiveBoost,
-        transparent: st.opacity < 1, opacity: st.opacity,
-        roughness: 0.4,
-      }),
-    );
-    bar.position.set(XS.pointer + 0.45, BAR_Y + barH / 2, slotZ(i));
-    g.add(bar);
-    const blab = makeLabel(slotScores[i].toFixed(1), st.labelColor, 0.36);
-    blab.position.set(XS.pointer + 0.45, BAR_Y + 0.7 + barH, slotZ(i));
-    g.add(blab);
-    registerPickable(bar, {
+    const sb = scoreBar(slotX(i), slotScores[i], minSlot, maxSlot);
+    registerPickable(sb.bar, {
       title: `pointer score · ${code}`,
       badge: "actor",
       kv: termKv,
-      body: `<p>Additive + bilinear. This slot's scalar is scattered into the BURY ${code} / UNDER ${code} / PLAY ${code} action logits via precomputed card-id maps — one scorer serves all three phases.</p>`,
+      body: `<p>Additive + bilinear. This slot's scalar becomes the BURY ${code} / UNDER ${code} / PLAY ${code} logit (whichever the phase allows) via precomputed card-id maps — one scorer serves all three phases.</p>`,
     });
-    const barBase = new THREE.Vector3(XS.pointer + 0.45, BAR_Y, slotZ(i));
-    const barOp = (0.15 + norm * 0.5) * (on ? 1 : 0.35);
-    g.add(makeGlowLine(comb.position.clone(), barBase, bcolor.getHex(), barOp));
+    const barBase = new THREE.Vector3(slotX(i), BAR_Y, zc);
+    const barOp = (0.15 + sb.norm * 0.5) * (on ? 1 : 0.35);
+    g.add(makeGlowLine(comb.position.clone(), barBase, sb.bcolor.getHex(), barOp));
     g.add(makeGlowLine(bil.position.clone(), barBase.clone(), BILINEAR_COLOR, barOp));
+    for (const verb of ["PLAY", "BURY", "UNDER"]) {
+      actionSources[`${verb} ${code}`] = { pos: sb.top.clone(), color: 0xb8f0a2 };
+    }
   }
-  const vLab = makeLabel(`score = v·tanh(g + Wt·t) + (u · V·t)/√${hP}`, st.labelColor, 0.42);
-  vLab.position.set(XS.pointer, BAR_Y - 0.8, -(3.5 * SLOT_DZ) - 4.4);
-  g.add(vLab);
+
+  // PLAY UNDER: play_under_head, a plain Linear(256→1) — not a hand slot,
+  // but it competes in the same play softmax, so it closes the row.
+  const xU = slotX(8) + 0.6;
+  const puChip = new THREE.Mesh(
+    new RoundedBoxGeometry(1.2, 0.8, 0.5, 2, 0.08),
+    new THREE.MeshStandardMaterial({ ...matOpts(0xb8f0a2, 0.3), metalness: 0, roughness: 0.45 }),
+  );
+  puChip.position.set(xU, ADD_Y, zc);
+  g.add(puChip);
+  const puLab = makeLabel("PLAY UNDER", st.labelColor, 0.36);
+  puLab.position.set(xU, PY - 0.2, zc);
+  g.add(puLab);
+  const puLogit = S.actor.play_under_logit;
+  const pu = scoreBar(xU, puLogit, minSlot, maxSlot, new THREE.Color(0xb8f0a2));
+  registerPickable(puChip, {
+    title: "play_under_head",
+    badge: "actor",
+    kv: { "logit": puLogit.toFixed(3) },
+    body: `<p>Linear(256→1): the one play action that isn't a hand slot — playing the face-down UNDER card. Its logit joins the pointer's slot scores in the same play softmax (the bar uses the slots' scale; legal only when this seat holds the under).</p>`,
+  });
+  g.add(makeGlowLine(actorInfo.adapter.position.clone(), puChip.position.clone(), 0xb8f0a2, on ? 0.3 : 0.1));
+  g.add(makeGlowLine(puChip.position.clone(), new THREE.Vector3(xU, BAR_Y, zc), 0xb8f0a2, on ? 0.3 : 0.1));
+  actionSources["PLAY UNDER"] = { pos: pu.top.clone(), color: 0xb8f0a2 };
 
   return { gNode, uNode, combines };
 }
 
 // ============================================================
-// STAGE 9: OUTPUT · π(a | s) — generic top-K action bars
+// STAGE 9: OUTPUT · π(a | s). Every legal action's logit — wherever its
+// head sits — flows into ONE softmax node (the heads share a single masked
+// softmax), and the node feeds a ranked list of horizontal probability
+// bars: a summary of the whole actor, deliberately unlike the heads' own
+// vertical logit bars.
 // ============================================================
 function buildOutput() {
   const g = group("output");
   const lab = makeStageLabel("9 · OUTPUT · π(a | s)", "#ff6b6b");
-  lab.position.set(XS.output, -9.7, 0);
+  lab.position.set(XS.output + 4, -9.7, OUT_Z + 4);
   g.add(lab);
 
   const probs = S.actor.full_probs;
@@ -2683,35 +2919,62 @@ function buildOutput() {
   const shown = entries.slice(0, 8);
   const hidden = entries.length - shown.length;
 
-  const barSpacing = 3.4;
-  const z0 = -((shown.length - 1) / 2) * barSpacing;
+  // The softmax: one ring, fed by every legal action's head output.
+  const node = new THREE.Mesh(
+    new THREE.TorusGeometry(1.0, 0.22, 12, 40),
+    new THREE.MeshStandardMaterial({
+      color: C.output, emissive: C.output, emissiveIntensity: 0.5,
+      metalness: 0.4, roughness: 0.3,
+    }),
+  );
+  node.position.set(XS.softmax, HEAD_Y, OUT_Z);
+  g.add(node);
+  const nodeLab = makeLabel(`softmax · ${entries.length} legal action${entries.length > 1 ? "s" : ""}`, "#ffc2c2", 0.45);
+  nodeLab.position.copy(node.position).add(new THREE.Vector3(0, 1.9, 0));
+  g.add(nodeLab);
+  registerPickable(node, {
+    title: "masked softmax",
+    badge: "output",
+    kv: { "legal actions": String(entries.length) },
+    body: `<p>All heads write into one action vector; illegal actions are masked out and a single softmax runs over what is left. Only one decision lane ever has legal actions at a time — the lines feeding this ring come from exactly those elements.</p>`,
+  });
+  for (const e of entries) {
+    const src = actionSources[e.name];
+    if (!src) continue;
+    g.add(makeGlowLine(src.pos.clone(), node.position.clone(), src.color, 0.12 + e.prob * 0.6));
+  }
+
+  // The ranked list: rows top-down, bars growing along +x.
+  const LIST_X = XS.output;
+  const ROW_TOP = HEAD_Y + 6.5;
+  const ROW_DY = 1.6;
   const barObjs = [];
   for (let i = 0; i < shown.length; i++) {
     const e = shown[i];
     const chosen = e.name === S.sample.chosen_action;
-    const h = 0.5 + e.prob * 10;
+    const y = ROW_TOP - i * ROW_DY;
+    const L = 0.3 + e.prob * 9;
     const color = chosen ? 0x80ed99 : 0x8aa0e0;
     const m = new THREE.Mesh(
-      new RoundedBoxGeometry(2.4, h, 2.4, 2, 0.12),
+      new RoundedBoxGeometry(L, 0.95, 0.95, 2, 0.12),
       new THREE.MeshStandardMaterial({
         color, emissive: color, emissiveIntensity: 0.25 + e.prob * 0.5,
         metalness: 0.3, roughness: 0.4,
       }),
     );
-    m.position.set(XS.output, h / 2, z0 + i * barSpacing);
+    m.position.set(LIST_X + L / 2, y, OUT_Z);
     g.add(m);
-    barObjs.push({ mesh: m, entry: e, targetH: h });
+    barObjs.push({ mesh: m, entry: e, L, x0: LIST_X });
     const labOut = makeLabel(
       `${e.name}  ${(e.prob * 100).toFixed(1)}%${chosen ? " ✓" : ""}`,
-      chosen ? "#dffbe6" : "#cdd9ff", 0.55);
-    labOut.position.set(XS.output, h + 0.8, z0 + i * barSpacing);
+      chosen ? "#dffbe6" : "#cdd9ff", 0.5);
+    labOut.position.set(LIST_X + L + 0.6 + labOut.scale.x / 2, y, OUT_Z);
     g.add(labOut);
-    // Card actions wear their card above the bar.
+    // Card actions wear their card at the head of the row.
     const cm = e.name.match(/^(?:PLAY|BURY|UNDER|CALL)\s+(\S+)/);
     if (cm && (deckIds[cm[1]] !== undefined || cm[1] === "UNDER")) {
-      const mini = makeCardMesh(cm[1], 1.25, { withVec: false });
-      mini.position.set(XS.output, h + 2.6, z0 + i * barSpacing);
-      mini.rotation.y = 0.35;
+      const mini = makeCardMesh(cm[1], 0.62, { withVec: false });
+      mini.position.set(LIST_X - 0.9, y, OUT_Z);
       g.add(mini);
       registerCardPickable(mini, {
         title: `π(${e.name})`,
@@ -2728,30 +2991,30 @@ function buildOutput() {
         "logit": S.actor.full_logits[e.idx].toFixed(3),
         "chosen": chosen ? "yes (argmax)" : "no",
       },
-      body: `<p>Final action probability after masking illegal actions and applying softmax across all ${entries.length} legal actions of this decision.</p>`,
+      body: `<p>Final action probability after masking illegal actions and one softmax across all ${entries.length} legal actions of this decision. The bars in the head lanes are raw logits; these are the probabilities they turn into.</p>`,
     });
+    g.add(makeGlowLine(node.position.clone(), new THREE.Vector3(LIST_X - 1.5, y, OUT_Z), C.output, 0.12 + e.prob * 0.5));
   }
+  const title = makeLabel("π(a | s)", "#ffc2c2", 0.6);
+  title.position.set(LIST_X + 2.5, ROW_TOP + 1.9, OUT_Z);
+  g.add(title);
   if (hidden > 0) {
-    const moreLab = makeLabel(`+ ${hidden} more legal actions`, "#8e9bd1", 0.45);
-    moreLab.position.set(XS.output, 0.6, z0 + shown.length * barSpacing);
+    const moreLab = makeLabel(`+ ${hidden} more legal actions`, "#8e9bd1", 0.42);
+    moreLab.position.set(LIST_X + 3, ROW_TOP - shown.length * ROW_DY, OUT_Z);
     g.add(moreLab);
   }
 
-  // actor adapter → output bars
-  const adapterPos = new THREE.Vector3(XS.actor, 12, 8);
-  for (const b of barObjs) {
-    g.add(makeGlowLine(adapterPos, b.mesh.position, C.output, 0.2));
-  }
-
-  return { barObjs, entries };
+  return { barObjs, entries, node };
 }
 
 // ============================================================
 // STAGE 10: CRITIC VALUE — shared features → deep trunk → V(s)
 // ============================================================
-const CRITIC_Y = -2;   // keep the critic lanes above the floor grid at y=-10
-const CRITIC_VZ = -12; // value lane
-const CRITIC_AZ = -24; // aux lane
+// Low, below the actor's plane, so from the front the two sides separate
+// vertically on screen as well as in depth (still above the floor at y=-10).
+const CRITIC_Y = -6;
+const CRITIC_VZ = -16; // value lane
+const CRITIC_AZ = -30; // aux lane
 
 function buildCriticValue() {
   const g = group("criticV");
@@ -2769,6 +3032,7 @@ function buildCriticValue() {
   );
   trunk.position.set(XS.criticTrunk, CRITIC_Y, CRITIC_VZ);
   g.add(trunk);
+  sideTitle(g, "CRITIC", new THREE.Vector3(XS.criticTrunk, CRITIC_Y + 5.2, CRITIC_VZ), "#ff9ec7");
   const trunkLab = makeLabel("value_trunk (256→256→256)", "#ffd6e8", 0.5);
   trunkLab.position.set(XS.criticTrunk, CRITIC_Y + 2.6, CRITIC_VZ);
   g.add(trunkLab);
@@ -3478,10 +3742,43 @@ function buildScene() {
       o.material.envMapIntensity = 0.45;
     }
   });
+  applyThemeToScene(sceneRoot);
   buildFlowSystem();
   styleChords();
   styleConn();
   applyStageDim();
+}
+
+// Light theme: pull every glowing scene material down to matte ink. Cards,
+// the instanced embedding table (its per-cell colors carry the data), PAD
+// ghosts (already the theme's dim color) and anything a builder themed
+// itself are left alone.
+function applyThemeToScene(root) {
+  if (TH.dark) return;
+  root.traverse((o) => {
+    // Solid meshes cast onto the floor; lines, chords and sprites don't.
+    if (o.isMesh && o.material && o.material.isMeshStandardMaterial) o.userData.casts = true;
+    if (!o.material || o.isSprite || o.isInstancedMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (m.map || m.userData.keepColor || m.userData.themed) continue;
+      m.userData.themed = true;
+      if (m.isLineMaterial) m.color.copy(lineInk(m.color.getHex()));
+      else if (m.color && m.color.getHex() !== TH.dim) m.color.copy(paperColor(m.color.getHex()));
+      if (m.emissive) {
+        m.emissive.copy(m.color);
+        m.emissiveIntensity *= 0.2;
+      }
+      if (m.isMeshStandardMaterial) {
+        m.metalness = Math.min(m.metalness, 0.1);
+        m.roughness = clamp(m.roughness + 0.1, 0.4, 0.6);
+        // Keep reflections faint: the room environment's light panels
+        // show up as white stripes on flat faces.
+        m.envMapIntensity = 0.35;
+      }
+      if (m.blending === THREE.AdditiveBlending) m.blending = THREE.NormalBlending;
+    }
+  });
 }
 
 // ============================================================
@@ -3517,7 +3814,7 @@ function buildFlowSystem() {
       edges.push({
         curve: o.userData.flowCurve,
         group: name,
-        colorObj: new THREE.Color(o.userData.flowColor),
+        colorObj: paperColor(o.userData.flowColor),
         intensity: o.userData.flowIntensity,
         boost: o.userData.flowBoost || 1,
         length: o.userData.flowCurve.getLength(),
@@ -3537,14 +3834,18 @@ function buildFlowSystem() {
   }
   const geom = new THREE.BufferGeometry();
   const positions = new Float32Array(particles.length * 3);
-  const colors = new Float32Array(particles.length * 3);
+  // Dark: RGB brightness under additive blending. Light: RGBA — ink color
+  // with the brightness in alpha, so dim particles fade instead of greying.
+  const cw = TH.dark ? 3 : 4;
+  const colors = new Float32Array(particles.length * cw);
   geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geom.setAttribute("color", new THREE.BufferAttribute(colors, cw));
   const mat = new THREE.PointsMaterial({
-    size: 0.7, map: makeFlowTexture(), vertexColors: true,
+    size: TH.dark ? 0.7 : 0.8, map: makeFlowTexture(), vertexColors: true,
     transparent: true, depthWrite: false,
-    blending: THREE.AdditiveBlending, sizeAttenuation: true,
+    blending: flowBlending(), sizeAttenuation: true,
   });
+  mat.userData.themed = true;
   const points = new THREE.Points(geom, mat);
   points.frustumCulled = false;
   sceneRoot.add(points);
@@ -3574,9 +3875,16 @@ function updateFlow(nowMs, dt) {
     const wave = 0.7 + 0.3 * Math.sin((p.t * 5 + pulseT * 0.4) * Math.PI * 2);
     const b = clamp(e.intensity * 1.7, 0.3, 0.95) * dim * wave
       * (inBurst ? 1 + 2.2 * burstK : 1) * (e.boost > 1 ? 1.25 : 1);
-    col[i * 3] = e.colorObj.r * b;
-    col[i * 3 + 1] = e.colorObj.g * b;
-    col[i * 3 + 2] = e.colorObj.b * b;
+    if (TH.dark) {
+      col[i * 3] = e.colorObj.r * b;
+      col[i * 3 + 1] = e.colorObj.g * b;
+      col[i * 3 + 2] = e.colorObj.b * b;
+    } else {
+      col[i * 4] = e.colorObj.r * 0.8;
+      col[i * 4 + 1] = e.colorObj.g * 0.8;
+      col[i * 4 + 2] = e.colorObj.b * 0.8;
+      col[i * 4 + 3] = Math.min(1, b * 1.25);
+    }
   }
   flowState.geom.attributes.position.needsUpdate = true;
   flowState.geom.attributes.color.needsUpdate = true;
@@ -3618,19 +3926,49 @@ const STAGE_GROUPS = {
   oAux: ["oValue", "oAux"],
 };
 const chordDimMap = {}; // per-group chord dim factors, read by animate()
+// How far out-of-focus stages recede. On black, faint strokes still glow;
+// on white they vanish, so the light theme dims less and desaturates
+// instead — inactive reads as "grey", not "gone".
+const STAGE_DIM = {
+  dark: { chord: 0.12, flow: 0.15, obj: 0.3, emissive: 0.25, sprite: 0.22, desat: 0 },
+  light: { chord: 0.32, flow: 0.3, obj: 0.5, emissive: 0.25, sprite: 0.45, desat: 0.55 },
+};
+const _grey = new THREE.Color();
+// Which side of the network a stage (or scene group) belongs to. Focusing
+// either side pushes the OTHER side much further back than an ordinary
+// inactive stage: from any front-facing actor view the critic lines up
+// right behind the cards lane, and vice versa.
+const NET_SIDE = {
+  actor: "actor", pointer: "actor", output: "actor",
+  criticV: "critic", criticAux: "critic",
+};
+// × the inactive levels. Dark needs more: on near-black even 9% glows.
+const FAR_SIDE_DIM = { dark: 0.16, light: 0.35 };
 function applyStageDim() {
+  const D0 = STAGE_DIM[TH.dark ? "dark" : "light"];
+  const far = FAR_SIDE_DIM[TH.dark ? "dark" : "light"];
+  const focusSide = STAGES[curStage] ? NET_SIDE[STAGES[curStage].label] : undefined;
   const s = STAGES[curStage];
   const active = s ? STAGE_GROUPS[s.label] ?? null : null;
   for (const [name, grp] of Object.entries(stageGroups)) {
     const on = !active || active.includes(name);
+    const isFar = !on && focusSide && NET_SIDE[name] && NET_SIDE[name] !== focusSide;
+    const D = isFar
+      ? {
+        ...D0, chord: D0.chord * far, flow: D0.flow * far, obj: D0.obj * far,
+        emissive: D0.emissive * far, sprite: D0.sprite * far,
+      }
+      : D0;
     // Additive chords stay hot even at 0.3 — push inactive bundles way down
     // so the focused stage's attention actually owns the frame.
-    chordDimMap[name] = on ? 1 : 0.12;
-    groupDimMap[name] = on ? 1 : 0.15; // flow particles follow stage focus
-    const om = on ? 1 : 0.3;
-    const em = on ? 1 : 0.25;
+    chordDimMap[name] = on ? 1 : D.chord;
+    groupDimMap[name] = on ? 1 : D.flow; // flow particles follow stage focus
+    const om = on ? 1 : D.obj;
+    const em = on ? 1 : D.emissive;
     grp.traverse((o) => {
-      if (o.isSprite) { o.userData.dimFactor = on ? 1 : 0.22; return; }
+      if (o.isSprite) { o.userData.dimFactor = on ? 1 : D.sprite; return; }
+      // Only the stage in focus casts shadows (light theme).
+      if (o.userData.casts) o.castShadow = on;
       const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) {
         if (m.userData.baseOpacity === undefined) {
@@ -3640,14 +3978,28 @@ function applyStageDim() {
             m.userData.baseEmissive = m.emissiveIntensity;
           }
         }
+        if (m.userData.baseDepthWrite === undefined) m.userData.baseDepthWrite = m.depthWrite;
         m.transparent = m.userData.baseTransparent || !on;
         m.opacity = m.userData.baseOpacity * om;
+        // A receded object must not occlude: faint as it is, writing depth
+        // would still cut dark holes in whatever glows behind it.
+        m.depthWrite = on ? m.userData.baseDepthWrite : false;
+        // Desaturate toward the color's own grey (textured card faces and
+        // chords, whose color styleChords owns, keep theirs).
+        if (D.desat && m.color && !m.map && !o.userData.chord) {
+          if (!m.userData.baseColor) m.userData.baseColor = m.color.clone();
+          const b = m.userData.baseColor;
+          const lum = 0.3 * b.r + 0.59 * b.g + 0.11 * b.b;
+          m.color.copy(b);
+          if (!on) m.color.lerp(_grey.setRGB(lum, lum, lum), D.desat);
+        }
         if (m.userData.baseEmissive !== undefined) {
           m.emissiveIntensity = m.userData.baseEmissive * em;
         }
       }
     });
   }
+  renderer.shadowMap.needsUpdate = true;
 }
 
 // ============================================================
@@ -3672,7 +4024,7 @@ const xfLayerStage = (l) => ({
     pos: [xfX(l) - 13, RING_CY + 8, 26],
     target: [xfX(l) + 2, RING_CY, 0],
   },
-  body: () => `<p>Layer ${l + 1} of ${N_LAYERS}. Chords = this layer's self-attention, one hue per head (toggle heads with the <b>H1–H4</b> chips up top). Strongest links this layer:</p>
+  body: () => `<p>Layer ${l + 1} of ${N_LAYERS}. Chords = this layer's self-attention, one hue per head (toggle heads in the <b>⋯</b> menu). Strongest links this layer:</p>
     <p style="line-height:1.8">${topPairsHtml(l)}</p>
     <p>Behind the ring, the FFN lens: each token expands ${DATA.dims.d_token}→${DATA.dims.d_token * 2} (SiLU) and back — gem glow shows how hard the hidden layer fired. Sphere size tracks each token's norm at this depth.</p>`,
 });
@@ -3680,14 +4032,13 @@ const xfLayerStage = (l) => ({
 function buildPolicyStages() {
   return [
   {
-    title: "Sheepshead PPO — perceiver-recall forward pass",
+    title: "The policy network, one decision at a time",
     label: "intro",
     badge: "input",
-    cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: () => `<p>A live forward pass through the <code>${DATA.arch}</code> network (<code>${DATA.checkpoint}</code>) on a real hand it played against itself (seed ${DATA.seed}).</p>
-      <p><b>${S.label}:</b> ${S.description}</p>
-      <p>Token-centric with one shared trunk: embeddings → ${DATA.dims.n_tokens} tokens → transformer → a single <b>${DATA.dims.n_readout_queries}-query shared readout</b> → one 256-d features vector that the actor's heads <i>and</i> the critic's value + auxiliary stack all consume. It observes only what a human player may see or is entitled to remember without bookkeeping — everything else, including the picker's own blind and bury, has to live in its recurrent memory.</p>
-      <p>Use the <b>decision</b> buttons up top to switch scenarios. Drag to orbit · scroll to zoom · click anything for details · <b>▶ Play tour</b> to walk the architecture.</p>`,
+    cam: { pos: [42, 42, 80], target: [8, 3, 0] },
+    body: () => `<p><b>${S.label}.</b> ${S.description}</p>
+      <p>Left to right: the cards and game state become ${DATA.dims.n_tokens} tokens, a ${N_LAYERS}-layer transformer reasons over them, a recurrent memory carries the hand so far, and one shared readout produces the features that both the policy's heads and the critic read. The network observes only what a human player may see or is entitled to remember without bookkeeping; everything else, including the picker's own blind and bury, has to live in its memory.</p>
+      <p>Step through the chapters below, or drag to orbit and click anything in the scene for its details. Every number is from a real forward pass of <code>${DATA.arch}</code> on a hand it played against itself (seed ${DATA.seed}).</p>`,
   },
   {
     title: "1 · Observation",
@@ -3695,7 +4046,7 @@ function buildPolicyStages() {
     badge: "input",
     cam: { pos: [XS.input + 22, 6, 24], target: [XS.input, 0, 2] },
     body: () => `<p>Seat ${S.sample.seat} (${seatRole()}) holds ${cardListHtml(S.sample.hand_cards)} — gold-rimmed cards are trump; the badge in each corner is the card's point value${S.sample.trick_card_codes.some(c => c !== "PAD") ? "; cards already played this trick lie in front of it" : ""}.</p>
-      <p>The barcode on each face is the card <i>as the network sees it</i>: its 16-d row of the stage-2 embedding table (dims 0–3 suit · 4–7 rank · 8 points · 9 UNDER · 10–15 learned). Click any card to inspect the values — the lines to the right are exactly these row lookups.</p>
+      <p>The barcode on each face is the card <i>as the network sees it</i>: its 16-d row of the embedding table (dims 0–3 suit · 4–7 rank · 8 points · 9 UNDER · 10–15 learned). Click any card to inspect the values — the lines to the right are exactly these row lookups.</p>
       ${(S.sample.known_bury_codes || []).length
         ? `<p>This seat picked and buried ${cardListHtml(S.sample.known_bury_codes)} — but the bury is <b>not in the observation</b> (no token carries it; the ghosted cards by the memory chip mark what the memory must remember). A human picker remembers the bury; so must the network.</p>`
         : (S.sample.known_blind_codes || []).length
@@ -3712,8 +4063,8 @@ function buildPolicyStages() {
       <p>This same table is read by:</p>
       <ul>
         <li>the encoder (here)</li>
-        <li>the actor's two-tower CALL scorer (stage 7)</li>
-        <li>the critic's trump tracker (stage 11)</li>
+        <li>the actor's two-tower CALL scorer (Policy chapter)</li>
+        <li>the critic's trump tracker (Critic chapter)</li>
       </ul>`,
   },
   {
@@ -3754,32 +4105,30 @@ function buildPolicyStages() {
     badge: "share",
     cam: { pos: [XS.readout - 16, RING_CY + 10, 34], target: [XS.readout + 5, RING_CY, 0] },
     body: () => `<p>ONE readout for the whole network: ${DATA.dims.n_readout_queries} learned query gems (the 4×4 grid) cross-attend (${N_HEADS} heads) over the ${DATA.dims.n_tokens} post-reasoning tokens — ${DATA.dims.n_readout_queries}×${N_HEADS} = ${DATA.dims.n_readout_queries * N_HEADS} attention distributions, channel parity with <code>full</code>'s four pools. The answers are concatenated (${DATA.dims.n_readout_queries}×${DATA.dims.d_token}) and projected + LayerNormed to the ${DATA.dims.d_model}-d <b>features</b> vector.</p>
-      <p>Each gem shows only its <b>top-3</b> links, averaged over the enabled heads — the <b>H1–H4</b> chips re-average them (one chip on = that head's own top-3). <b>Click a gem</b> to expand its full per-head fan (click again to collapse). Actor and critic both read the features hub: decision-time attention runs once, here.</p>`,
+      <p>Each gem shows only its <b>top-3</b> links, averaged over the enabled heads — the head toggles in the <b>⋯</b> menu re-average them (one head on = its own top-3). <b>Click a gem</b> to expand its full per-head fan (click again to collapse). Actor and critic both read the features hub: decision-time attention runs once, here.</p>`,
   },
   {
     title: "7 · Actor heads",
     label: "actor",
     badge: "actor",
-    cam: { pos: [XS.actor + 16, 19, 30], target: [XS.heads + 1, 12, 7] },
+    cam: { pos: [57, 20, 42], target: [57, 15, ACTOR_PLANE_Z] },
     body: () => {
       const live = liveHead();
-      const liveName = { pick: "pick_head", call: "two-tower CALL scorer", pointer: "pointer scorer" }[live];
-      return `<p>The shared features flow through the actor adapter, then split into the policy heads:</p>
+      const liveName = { pick: "pick", call: "partner call", pointer: "bury · under · play" }[live];
+      return `<p>The shared features flow through the actor adapter into three decision lanes. Each lane holds exactly the heads whose logits compete in one softmax:</p>
       <ul>
-        <li><b>pick_head</b> · PICK vs PASS${live === "pick" ? " ← <b>live</b>" : ""}</li>
-        <li><b>partner_basic_head</b> · ALONE / JD PARTNER (JD mode only)</li>
-        <li><b>two-tower CALL scorer</b> · tw_Wg(feat) · tw_We(card emb) per callable card${live === "call" ? " ← <b>live</b>" : ""}</li>
-        <li><b>play_under_head</b> · the one non-slot play action</li>
-        <li><b>pointer scorer</b> · next stage${live === "pointer" ? " ← <b>live</b>" : ""}</li>
+        <li><b>pick</b> · pick_head: PICK vs PASS${live === "pick" ? " ← <b>live</b>" : ""}</li>
+        <li><b>partner call</b> · the two-tower CALL scorer (tw_Wg(feat) · tw_We(card emb) per callable card) plus partner_basic_head's ALONE / JD PARTNER${live === "call" ? " ← <b>live</b>" : ""}</li>
+        <li><b>bury · under · play</b> · the pointer over the hand slots plus play_under_head${live === "pointer" ? " ← <b>live</b>" : ""} (next step)</li>
       </ul>
-      <p>For this decision the <b>${liveName}</b> is the head that matters — the others are dimmed. The two-tower scorer reuses the shared card embedding table (purple block above the query node).</p>`;
+      <p>For this decision the <b>${liveName}</b> lane is the one that matters; the others are dimmed. The two-tower scorer reuses the shared card embedding table (the purple block above its query node).</p>`;
     },
   },
   {
     title: "8 · Pointer over hand tokens",
     label: "pointer",
     badge: "actor",
-    cam: { pos: [XS.pointer + 16, 12, 24], target: [XS.pointer - 2, 4.5, 0] },
+    cam: { pos: [61, 12, ACTOR_PLANE_Z + 21], target: [61, 9, ACTOR_PLANE_Z] },
     body: () => {
       const live = liveHead() === "pointer";
       const p = S.actor.pointer;
@@ -3787,15 +4136,15 @@ function buildPolicyStages() {
       const spread = (arr) => Math.max(...real.map(i => arr[i])) - Math.min(...real.map(i => arr[i]));
       return `<p>The bury / under / play decisions are a <b>pointer</b> over the hand slots with two terms:${live ? " ← <b>live head</b> for this decision" : " (idle here)"}</p>
       <p style="text-align:center"><code>v · tanh(W<sub>g</sub>f + W<sub>t</sub>t)</code> + <code>(Uf) · (Vt) / √${DATA.dims.pointer_hidden}</code></p>
-      <p>The blue spheres are the <i>same</i> post-reasoning hand tokens from the final transformer ring (faint tethers). The <b>additive</b> term (octahedra, fed by <b>g</b>) lets the situation shift every card's score together; the <b>bilinear</b> term (the dot-product rings, fed by <b>u</b>) lets it say "this card attribute matters differently in this state". Across this hand the additive term spans ${spread(p.additive_scores).toFixed(1)} logits and the bilinear term ${spread(p.bilinear_scores).toFixed(1)}. The bar is their sum, scattered into the BURY / UNDER / PLAY logits.</p>`;
+      <p>The blue spheres are the <i>same</i> post-reasoning hand tokens from the final transformer ring (faint tethers). The <b>additive</b> term (octahedra, fed by <b>g</b>) lets the situation shift every card's score together; the <b>bilinear</b> term (the dot-product rings, fed by <b>u</b>) lets it say "this card attribute matters differently in this state". Across this hand the additive term spans ${spread(p.additive_scores).toFixed(1)} logits and the bilinear term ${spread(p.bilinear_scores).toFixed(1)}. The bar is their sum, scattered into the BURY / UNDER / PLAY logits. PLAY UNDER (play_under_head, the one play action that isn't a hand slot) closes the row: it competes in the same softmax.</p>`;
     },
   },
   {
     title: "9 · Output · π(a | s)",
     label: "output",
     badge: "output",
-    cam: { pos: [XS.output + 14, 12, 24], target: [XS.output, 4, 0] },
-    body: () => `<p>${outputInfo.entries.length} legal action${outputInfo.entries.length > 1 ? "s" : ""} after masking + softmax. The network's answer:</p>
+    cam: { pos: [72, 17, ACTOR_PLANE_Z + 21], target: [77, 14, ACTOR_PLANE_Z] },
+    body: () => `<p>Every legal action's logit flows from the head that scored it into <b>one</b> masked softmax (the red ring); the ranked bars are the resulting probabilities over ${outputInfo.entries.length} legal action${outputInfo.entries.length > 1 ? "s" : ""}. The network's answer:</p>
       <p style="font-size:14px">${topActionsHtml()}</p>
       <p>The agent played ${actionHtml(S.sample.chosen_action)} (✓ bar).</p>`,
   },
@@ -3803,7 +4152,7 @@ function buildPolicyStages() {
     title: "10 · Critic · features → V(s)",
     label: "criticV",
     badge: "critic",
-    cam: { pos: [XS.criticTrunk + 8, 3, CRITIC_VZ - 26], target: [XS.criticTrunk + 5, -1, CRITIC_VZ] },
+    cam: { pos: [52, CRITIC_Y + 7, CRITIC_VZ - 22], target: [46, CRITIC_Y + 1, CRITIC_VZ] },
     body: () => `<p>The critic reads the <i>same</i> shared ${DATA.dims.d_model}-d features as the actor — no separate readout — through a deep dedicated value trunk: <b>V(s) = ${S.critic.value.toFixed(3)}</b>, the baseline for GAE advantages.</p>
       <p>Because actor and critic share the trunk, everything the auxiliary heads (next stage) teach the features is also directly available to the policy — <code>full</code>'s forcing mechanism, restored on the token-centric base.</p>`,
   },
@@ -3811,7 +4160,7 @@ function buildPolicyStages() {
     title: "11 · Critic aux heads",
     label: "criticAux",
     badge: "critic",
-    cam: { pos: [XS.aux + 15, 9, CRITIC_AZ - 32], target: [XS.aux + 14, 0, CRITIC_AZ] },
+    cam: { pos: [58, CRITIC_Y + 11, CRITIC_AZ - 26], target: [56, CRITIC_Y + 2, CRITIC_AZ] },
     body: () => {
       const aux = S.critic.aux;
       return `<p>Training-only prediction heads off a shallow adapter — their gradients sculpt the shared features:</p>
@@ -3822,13 +4171,6 @@ function buildPolicyStages() {
       </ul>
       <p>At play time these are ignored — but the card counting they force into the features is exactly what the pointer and CALL heads read.</p>`;
     },
-  },
-  {
-    title: "Full architecture",
-    label: "overview",
-    badge: "input",
-    cam: { pos: [35, 38, 70], target: [0, 5, 0] },
-    body: () => `<p>Zoomed out: observation → embedding table → ${DATA.dims.n_tokens} tokens → ${N_LAYERS}-layer transformer tunnel → memory-token GRU + one shared ${DATA.dims.n_readout_queries}-query readout → features hub → actor heads &amp; pointer / critic value + aux stack → π(a|s). Drag the scene to explore. Click any object for details (click a readout gem for its full attention fan). Switch decisions up top, or tour again with <b>▶ Play</b>.</p>`,
   },
   ];
 }
@@ -3851,14 +4193,14 @@ const oXfLayerStage = (l) => ({
 function buildOracleStages() {
   return [
   {
-    title: "Oracle critic — U(h,s) forward pass",
+    title: "The oracle critic: value from full information",
     label: "ointro",
     badge: "critic",
     cam: { pos: [30, 34, 70], target: [0, 5, 0] },
     body: () => `<p>The CTDE <b>privileged critic</b> (<code>oracle.py</code>) on the same decision: it sees every hand, the true blind/bury, the under card, and the secret partner — and estimates the history-state value <b>U(h,s)</b> used as the GAE baseline during league training. The deployed agent never runs it.</p>
       ${DATA.oracle.untrained ? `<p><span class="badge b-critic">untrained</span> This is a <b>random init</b> (seed ${DATA.oracle.init_seed}) — an architecture smoke test. Values and attention are meaningless; the structure is the point.</p>` : `<p>Loaded from <code>${DATA.oracle.checkpoint}</code>.</p>`}
       <p><b>${S.label}:</b> ${S.description}</p>
-      <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack${ORACLE_AUX ? " — including two deterministic team aux heads that shape the oracle's own representation and nothing else (stage 8)" : ""}. Toggle back with the <b>Network</b> buttons up top.</p>`,
+      <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack${ORACLE_AUX ? ", including two deterministic team aux heads that shape the oracle's own representation and nothing else" : ""}. Switch back with <b>Policy</b> above.</p>`,
   },
   {
     title: "1 · Full-information observation",
@@ -3907,7 +4249,7 @@ function buildOracleStages() {
     badge: "share",
     cam: { pos: [XSA.readout - 16, RING_CY + 10, 34], target: [XSA.readout + 5, RING_CY, 0] },
     body: () => `<p>${DATA.oracle.dims.n_readout_queries} learned queries cross-attend (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens — the 32 hidden-hand tokens reach the value trunk <b>unsqueezed</b> (the old pooled-oracle squeezed them through one bag; that squeeze is gone).</p>
-      <p>Same interaction as the policy view: top-3 links per gem averaged over the enabled heads (H1–H4 chips re-average), <b>click a gem</b> for its full per-head fan.</p>`,
+      <p>Same interaction as the policy view: top-3 links per gem averaged over the enabled heads (the ⋯ menu's head toggles re-average), <b>click a gem</b> for its full per-head fan.</p>`,
   },
   {
     title: "7 · Value · U(h,s)",
@@ -3945,21 +4287,64 @@ function buildOracleStages() {
       <p>Unlike the policy's aux stack, these gradients stay <i>inside</i> the oracle: they sharpen its own team representation and can never reach the actor, so the CTDE isolation guarantee is untouched.</p>`;
     },
   }] : []),
-  {
-    title: "Oracle architecture",
-    label: "ooverview",
-    badge: "critic",
-    // Re-centered right/forward so the aux lane at +x/+z stays in frame.
-    cam: { pos: [28, 38, 80], target: [6, 4, 6] },
-    body: () => `<p>Zoomed out: full-information observation → own embedding table → ${DATA.oracle.dims.n_tokens} tokens → ${N_LAYERS}-layer tunnel → memory-token GRU + ${DATA.oracle.dims.n_readout_queries}-query readout → value trunk → U(h,s)${ORACLE_AUX ? " + the two deterministic team aux heads" : ""}. ${DATA.oracle.n_params.toLocaleString()} params, all its own. Switch decisions up top, or flip back to the <b>Policy</b> network.</p>`,
-  },
   ];
 }
 
 let STAGES = buildPolicyStages();
 
 // ============================================================
-// Camera tween + tour controller
+// Chapters: the reader's path. Each chapter groups one or more stages;
+// Prev/Next and the tour step chapter to chapter, landing on the chapter's
+// lead stage, and the chips under the title drill into the rest.
+// ============================================================
+const xfSubs = (prefix) => [
+  [prefix, "All layers"],
+  ...Array.from({ length: N_LAYERS }, (_, l) => [`${prefix}L${l + 1}`, `Layer ${l + 1}`]),
+];
+const CHAPTER_DEFS = [
+  [
+    { title: "Overview", stages: [["intro", ""]] },
+    { title: "Observation", stages: [["input", ""]] },
+    { title: "Tokens", stages: [["embed", "Embedding table"], ["tokens", "Tokens"]] },
+    { title: "Transformer", stages: xfSubs("xf") },
+    { title: "Memory", stages: [["gru", ""]] },
+    { title: "Readout", stages: [["readout", ""]] },
+    {
+      title: "Policy", stages: [["actor", "Heads"], ["pointer", "Pointer"], ["output", "Output"]],
+      // Land on the head that actually decides this scenario.
+      lead: () => (liveHead() === "pointer" ? "pointer" : "actor"),
+    },
+    { title: "Critic", stages: [["criticV", "Value"], ["criticAux", "Aux heads"]] },
+  ],
+  [
+    { title: "Overview", stages: [["ointro", ""]] },
+    { title: "Observation", stages: [["oObs", ""]] },
+    { title: "Tokens", stages: [["oEmbed", "Embedding table"], ["oTokens", "Tokens"]] },
+    { title: "Transformer", stages: xfSubs("oXf") },
+    { title: "Memory", stages: [["oGru", ""]] },
+    { title: "Readout", stages: [["oReadout", ""]] },
+    { title: "Value", stages: [["oValue", "Value"], ["oAux", "Aux heads"]] },
+  ],
+];
+const stageIndex = (label) => STAGES.findIndex(s => s.label === label);
+// The current network's chapters, restricted to stages that exist (the
+// oracle's aux stage is absent for checkpoints trained without it).
+function chapters() {
+  return CHAPTER_DEFS[NETWORK_MODE]
+    .map(ch => ({ ...ch, stages: ch.stages.filter(([label]) => stageIndex(label) >= 0) }))
+    .filter(ch => ch.stages.length);
+}
+function chapterOf(i) {
+  const label = STAGES[i].label;
+  return chapters().findIndex(ch => ch.stages.some(([l]) => l === label));
+}
+function chapterLead(ci) {
+  const ch = chapters()[ci];
+  return stageIndex(ch.lead ? ch.lead() : ch.stages[0][0]);
+}
+
+// ============================================================
+// Camera tween
 // ============================================================
 const camState = {
   curPos: camera.position.clone(),
@@ -3974,48 +4359,99 @@ function tweenTo(pos, target, duration = 1500) {
   camState.curTarget = controls.target.clone();
   camState.tgtPos = new THREE.Vector3(...pos);
   camState.tgtTarget = new THREE.Vector3(...target);
-  camState.t = 0;
+  camState.t = reducedMotion ? 0.999 : 0;
   camState.duration = duration;
-  camState.startTime = performance.now();
+  camState.startTime = performance.now() - (reducedMotion ? duration : 0);
   controls.autoRotate = false; // don't fight the tween; restored when done
 }
 function updateCameraTween() {
   if (camState.t >= 1) return;
   const elapsed = performance.now() - camState.startTime;
-  let t = clamp(elapsed / camState.duration, 0, 1);
+  const t = clamp(elapsed / camState.duration, 0, 1);
   // ease in-out cubic
   const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   camera.position.lerpVectors(camState.curPos, camState.tgtPos, e);
   controls.target.lerpVectors(camState.curTarget, camState.tgtTarget, e);
   camState.t = t;
-  if (t >= 1) {
-    controls.autoRotate = document.getElementById("chk-rotate").checked;
-  }
+  if (t >= 1) controls.autoRotate = chkRotate.checked;
+}
+const ZOOM_OUT = 1.6; // >1 frames more of each stage; 1 = original distances
+// Stage cameras were framed for a ~16:10 view; narrower views pull back so
+// the same content still fits across.
+function frameFactor() {
+  const a = camera.aspect;
+  return a < 1.55 ? Math.pow(1.55 / a, 0.55) : 1;
+}
+function frameStage(s) {
+  const tgt = new THREE.Vector3(...s.cam.target);
+  const pos = new THREE.Vector3(...s.cam.pos).sub(tgt)
+    .multiplyScalar(ZOOM_OUT * frameFactor()).add(tgt);
+  tweenTo([pos.x, pos.y, pos.z], s.cam.target);
 }
 
-let curStage = 0;
-const ZOOM_OUT = 1.6; // >1 frames more of each stage; 1 = original distances
+// ============================================================
+// Caption panel
+// ============================================================
 const els = {
-  stage: document.getElementById("i-stage"),
+  kicker: document.getElementById("i-stage"),
   title: document.getElementById("i-title"),
+  back: document.getElementById("btn-back"),
+  subs: document.getElementById("subs"),
   body: document.getElementById("i-body"),
-  meta: document.getElementById("i-meta"),
-  sLabel: document.getElementById("s-label"),
-  sCounter: document.getElementById("s-counter"),
-  sBar: document.getElementById("s-bar"),
+  chapters: document.getElementById("chapters"),
+  prev: document.getElementById("btn-prev"),
+  next: document.getElementById("btn-next"),
+  play: document.getElementById("btn-play"),
 };
+const stripNum = (t) => t.replace(/^[\d.]+ · /, "");
+let curStage = 0;
+
+function renderChapters() {
+  const chs = chapters();
+  els.chapters.innerHTML = "";
+  chs.forEach((ch, ci) => {
+    const b = document.createElement("button");
+    b.textContent = ch.title;
+    b.title = ch.title;
+    b.addEventListener("click", () => { stopTour(); showStage(chapterLead(ci)); });
+    els.chapters.appendChild(b);
+  });
+}
+function setBody(html) {
+  els.body.innerHTML = html;
+  applyViewOffset(); // the floating panel may have changed height
+}
+
 function showStage(i, moveCamera = true) {
   curStage = clamp(i, 0, STAGES.length - 1);
   const s = STAGES[curStage];
-  els.stage.textContent = `${curStage + 1} / ${STAGES.length} · ${s.label} · ${S.label.toLowerCase()}`;
-  els.title.innerHTML = `<span class="badge b-${s.badge}">${s.badge}</span> ${s.title}`;
-  els.body.innerHTML = s.body();
-  els.meta.textContent = "";
-  els.sLabel.textContent = s.title;
-  els.sCounter.textContent = `${curStage + 1} / ${STAGES.length}`;
-  els.sBar.style.width = `${((curStage + 1) / STAGES.length) * 100}%`;
-  navItems.forEach((b, idx) => b.classList.toggle("active", idx === curStage));
-  if (navItems[curStage]) navItems[curStage].scrollIntoView({ block: "nearest" });
+  const chs = chapters();
+  const ci = chapterOf(curStage);
+  const ch = chs[ci];
+
+  els.kicker.textContent = ci === 0
+    ? `${NETWORK_MODE === 1 ? "Oracle critic" : "Policy network"} · ${S.label}`
+    : `${ci} / ${chs.length - 1} · ${ch.title}`;
+  els.title.textContent = stripNum(s.title);
+  els.back.hidden = true;
+  els.subs.innerHTML = "";
+  if (ch.stages.length > 1) {
+    for (const [label, name] of ch.stages) {
+      const b = document.createElement("button");
+      b.textContent = name;
+      b.classList.toggle("on", label === s.label);
+      b.addEventListener("click", () => { stopTour(); showStage(stageIndex(label)); });
+      els.subs.appendChild(b);
+    }
+  }
+  setBody(s.body());
+  [...els.chapters.children].forEach((b, k) => {
+    b.classList.toggle("on", k === ci);
+    b.classList.toggle("done", k < ci);
+  });
+  els.prev.disabled = ci === 0;
+  els.next.disabled = ci === chs.length - 1;
+
   applyStageDim();
   // Fire a particle burst along the newly active stage's edges, and grow
   // the output bars in when that stage arrives.
@@ -4026,98 +4462,57 @@ function showStage(i, moveCamera = true) {
   if (s.label === "output" && !reducedMotion) {
     outputAnim = { t0: performance.now() };
   }
-  if (moveCamera) {
-    // Pull the camera back along its view direction so more of each stage fits.
-    const tgt = new THREE.Vector3(...s.cam.target);
-    const pos = new THREE.Vector3(...s.cam.pos).sub(tgt).multiplyScalar(ZOOM_OUT).add(tgt);
-    tweenTo([pos.x, pos.y, pos.z], s.cam.target);
-  }
+  if (moveCamera) frameStage(s);
+}
+function stepChapter(d) {
+  const ci = chapterOf(curStage) + d;
+  if (ci < 0 || ci >= chapters().length) return false;
+  showStage(chapterLead(ci));
+  return true;
+}
+els.prev.addEventListener("click", () => { stopTour(); stepChapter(-1); });
+els.next.addEventListener("click", () => { stopTour(); stepChapter(1); });
+els.back.addEventListener("click", () => showStage(curStage, false));
+
+// A clicked scene object takes over the caption until "back".
+function showSelection(info) {
+  const ch = chapters()[chapterOf(curStage)];
+  els.kicker.textContent = "Selected";
+  els.title.innerHTML = `<span class="badge b-${info.badge}">${info.badge}</span>${info.title}`;
+  els.back.hidden = false;
+  els.back.textContent = `‹ Back to ${ch.title.toLowerCase()}`;
+  els.subs.innerHTML = "";
+  const kv = info.kv
+    ? `<div class="kv">${Object.entries(info.kv).map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join("")}</div>`
+    : "";
+  setBody(kv + (info.body || ""));
 }
 
-// Clickable stage navigator — jump straight to any stage and read its description.
-const navEl = document.getElementById("stage-nav");
-let navItems = [];
-function rebuildNav() {
-  navEl.innerHTML = '<div class="nav-head">Stages · click to jump</div>';
-  navItems = STAGES.map((s, i) => {
-    const b = document.createElement("button");
-    b.className = "nav-item";
-    b.innerHTML = `<span class="dot b-${s.badge}"></span><span>${s.title}</span>`;
-    b.addEventListener("click", () => { stopTour(); showStage(i); });
-    navEl.appendChild(b);
-    return b;
-  });
-}
-rebuildNav();
-
 // ============================================================
-// Scenario selector
+// Pickers: decision scenario, network, theme
 // ============================================================
-const scenBar = document.getElementById("scenario-bar");
-scenBar.innerHTML = '<span class="scen-head">Decision</span>';
-const scenButtons = DATA.scenarios.map((sc, i) => {
-  const b = document.createElement("button");
-  b.textContent = sc.label;
-  b.addEventListener("click", () => switchScenario(i));
-  scenBar.appendChild(b);
-  return b;
-});
+const scenSel = document.getElementById("sel-scenario");
+DATA.scenarios.forEach((sc, i) => scenSel.add(new Option(sc.label, String(i))));
+scenSel.addEventListener("change", () => switchScenario(parseInt(scenSel.value, 10)));
 function switchScenario(i) {
   if (i === scenIdx) return;
   stopTour();
+  // A chapter's lead can depend on the scenario (Policy lands on the head
+  // that decides it). If the reader is on the lead, follow it to the new
+  // scenario's lead; a sub-step they chose themselves stays put.
+  const ci = chapterOf(curStage);
+  const onLead = chapterLead(ci) === curStage;
   setScenarioData(i);
-  scenButtons.forEach((b, bi) => b.classList.toggle("active", bi === i));
+  scenSel.value = String(i);
   disposeScene();
   buildScene();
-  // Refresh the current stage's text (and reframe its camera) for the new data.
-  showStage(curStage);
+  // Refresh the stage's text (and reframe its camera) for the new data.
+  showStage(onLead ? chapterLead(ci) : curStage);
 }
 
-// ============================================================
-// Network toggle: policy walkthrough ⇄ oracle critic walkthrough
-// ============================================================
-const LEGEND_POLICY = `
-  <div class="row"><span class="swatch" style="background:#b58bff;color:#b58bff"></span>Input / observation</div>
-  <div class="row"><span class="swatch" style="background:#d4af37;color:#d4af37"></span>Trump · gold card rim</div>
-  <div class="row"><span class="swatch" style="background:#4cc9f0;color:#4cc9f0"></span>Encoder tokens</div>
-  <div class="row">
-    <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
-    Attention heads 1–4
-  </div>
-  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · recurrence</div>
-  <div class="row"><span class="swatch" style="background:#ffc65c;color:#ffc65c"></span>Shared readout → features</div>
-  <div class="row"><span class="swatch" style="background:#80ed99;color:#80ed99"></span>Actor heads + pointer</div>
-  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Critic value + aux</div>
-  <div class="row"><span class="swatch" style="background:#fffa9e;color:#fffa9e"></span>Active flow / connection</div>`;
-const LEGEND_ORACLE = `
-  <div class="row"><span class="swatch" style="background:#c9b8ff;color:#c9b8ff"></span>Privileged observation</div>
-  <div class="row">
-    <span class="swatch" style="background:#8f7bff;color:#8f7bff;width:6px"></span><span class="swatch" style="background:#a86ef5;color:#a86ef5;width:6px"></span><span class="swatch" style="background:#c17bea;color:#c17bea;width:6px"></span><span class="swatch" style="background:#d88fdd;color:#d88fdd;width:6px"></span>
-    Hidden hands · seats +1…+4
-  </div>
-  <div class="row"><span class="swatch" style="background:#ffd166;color:#ffd166"></span>Secret partner</div>
-  <div class="row"><span class="swatch" style="background:#d4af37;color:#d4af37"></span>Trump · gold card rim</div>
-  <div class="row">
-    <span class="swatch" style="background:#4cc9f0;color:#4cc9f0;width:6px"></span><span class="swatch" style="background:#3ee6b0;color:#3ee6b0;width:6px"></span><span class="swatch" style="background:#6f8dff;color:#6f8dff;width:6px"></span><span class="swatch" style="background:#c77bff;color:#c77bff;width:6px"></span>
-    Attention heads 1–4
-  </div>
-  <div class="row"><span class="swatch" style="background:#f4a261;color:#f4a261"></span>GRU memory · U(h,s) recurrence</div>
-  <div class="row"><span class="swatch" style="background:#8b6cff;color:#8b6cff"></span>Oracle readout</div>
-  <div class="row"><span class="swatch" style="background:#ff9ec7;color:#ff9ec7"></span>Value trunk · U(h,s)</div>
-  ${ORACLE_AUX ? `<div class="row"><span class="swatch" style="background:#e0b8ff;color:#e0b8ff"></span>Team aux heads · training-only</div>` : ""}`;
-function renderLegend() {
-  document.getElementById("legend").innerHTML =
-    NETWORK_MODE === 1 ? LEGEND_ORACLE : LEGEND_POLICY;
-}
-renderLegend();
-
-const netButtons = [
-  document.getElementById("net-policy"),
-  document.getElementById("net-oracle"),
-];
-const titleSub = document.getElementById("title-sub");
+const netButtons = [...document.querySelectorAll("#net-seg button")];
 if (DATA.oracle && !DATA.oracle.untrained) {
-  document.getElementById("oracle-badge").style.display = "none";
+  document.getElementById("oracle-badge").remove();
 }
 function switchNetwork(m) {
   if (m === NETWORK_MODE) return;
@@ -4129,63 +4524,108 @@ function switchNetwork(m) {
   RING_R = m ? 14 : 9;
   XSA = m ? XS_O : XS;
   STAGES = m ? buildOracleStages() : buildPolicyStages();
-  rebuildNav();
+  netButtons.forEach((b, i) => b.classList.toggle("on", i === m));
+  renderChapters();
   renderLegend();
-  netButtons.forEach((b, i) => b.classList.toggle("active", i === m));
-  titleSub.textContent = m
-    ? `3D · oracle critic U(h,s)${DATA.oracle.untrained ? " · random init (untrained)" : ""}`
-    : `3D · ${DATA.arch} forward pass`;
   disposeScene();
   buildScene();
   showStage(0); // stage index spaces differ between modes
 }
-netButtons[0].addEventListener("click", () => switchNetwork(0));
-netButtons[1].addEventListener("click", () => switchNetwork(1));
+netButtons.forEach((b) => b.addEventListener("click", () => switchNetwork(parseInt(b.dataset.net, 10))));
+
+const themeButtons = [...document.querySelectorAll("#theme-seg button")];
+function syncThemeButtons() {
+  themeButtons.forEach(b => b.classList.toggle("on", b.dataset.theme === themeName));
+}
+function setTheme(name) {
+  if (name === themeName || !THEME_PARTS[name]) return;
+  themeName = name;
+  applyThemeAttrs();
+  syncThemeButtons();
+  const scene = THEMES[THEME_PARTS[name].scene];
+  if (scene === TH) { applyThemeEnvironment(); return; } // backdrop only: no rebuild
+  TH = scene;
+  C.dim = TH.dim;
+  applyThemeEnvironment();
+  renderLegend();
+  disposeScene();
+  buildScene();
+  applyStageDim();
+}
+themeButtons.forEach(b => b.addEventListener("click", () => setTheme(b.dataset.theme)));
+syncThemeButtons();
 
 // ============================================================
-// Tour playback
+// Legend (in the options menu; also in the side panel when expanded)
 // ============================================================
-let playing = false;
-let timer = null;
-const speed = document.getElementById("speed");
-function nextStage() {
-  if (curStage + 1 >= STAGES.length) return false;
-  showStage(curStage + 1);
-  return true;
+const LEGEND_POLICY = [
+  [[0xb58bff], "Input / observation"],
+  [[0xd4af37], "Trump · gold card rim"],
+  [[0x4cc9f0], "Encoder tokens"],
+  [HEAD_COLORS, "Attention heads 1–4"],
+  [[0xf4a261], "GRU memory · recurrence"],
+  [[0xffc65c], "Shared readout → features"],
+  [[0x80ed99], "Actor heads + pointer"],
+  [[BILINEAR_COLOR], "Pointer bilinear term"],
+  [[0xff9ec7], "Critic value + aux"],
+];
+const LEGEND_ORACLE = () => [
+  [[0xc9b8ff], "Privileged observation"],
+  [OPP_SEAT_COLORS, "Hidden hands · seats +1…+4"],
+  [[0xffd166], "Secret partner"],
+  [[0xd4af37], "Trump · gold card rim"],
+  [HEAD_COLORS, "Attention heads 1–4"],
+  [[0xf4a261], "GRU memory · U(h,s) recurrence"],
+  [[0x8b6cff], "Oracle readout"],
+  [[0xff9ec7], "Value trunk · U(h,s)"],
+  ...(ORACLE_AUX ? [[[0xe0b8ff], "Team aux heads · training-only"]] : []),
+];
+const cssHex = (hex) => "#" + paperColor(hex).getHexString();
+function renderLegend() {
+  const rows = (NETWORK_MODE === 1 ? LEGEND_ORACLE() : LEGEND_POLICY).map(([cols, name]) =>
+    `<div class="row">${cols.map(c =>
+      `<span class="swatch" style="background:${cssHex(c)};${cols.length > 1 ? "width:6px" : ""}"></span>`).join("")}${name}</div>`
+  ).join("");
+  document.getElementById("legend").innerHTML = rows;
+  document.getElementById("side-legend").innerHTML = rows;
 }
-function startTour() {
-  if (playing) return;
-  playing = true;
-  document.getElementById("btn-play").textContent = "⏸ Pause";
-  const tick = () => {
-    if (!playing) return;
-    if (!nextStage()) { stopTour(); return; }
-    timer = setTimeout(tick, parseInt(speed.value, 10));
-  };
-  timer = setTimeout(tick, parseInt(speed.value, 10));
+
+// ============================================================
+// Options menu
+// ============================================================
+const menuEl = document.getElementById("viz-menu");
+const menuBtn = document.getElementById("btn-menu");
+function setMenu(open) {
+  menuEl.hidden = !open;
+  menuBtn.setAttribute("aria-expanded", String(open));
 }
-function stopTour() {
-  playing = false;
-  if (timer) { clearTimeout(timer); timer = null; }
-  document.getElementById("btn-play").textContent = "▶ Play tour";
-}
-document.getElementById("btn-play").addEventListener("click", () => playing ? stopTour() : startTour());
-document.getElementById("btn-prev").addEventListener("click", () => { stopTour(); showStage(curStage - 1); });
-document.getElementById("btn-next").addEventListener("click", () => { stopTour(); showStage(curStage + 1); });
-document.getElementById("btn-reset").addEventListener("click", () => { stopTour(); showStage(0); });
-document.getElementById("chk-rotate").addEventListener("change", (e) => {
+menuBtn.addEventListener("click", (e) => { e.stopPropagation(); setMenu(menuEl.hidden); });
+document.addEventListener("pointerdown", (e) => {
+  if (!menuEl.hidden && !menuEl.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
+});
+
+const chkRotate = document.getElementById("chk-rotate");
+chkRotate.addEventListener("change", (e) => {
   controls.autoRotate = e.target.checked;
   controls.autoRotateSpeed = 0.6;
 });
 const chkFlow = document.getElementById("chk-flow");
 chkFlow.checked = flowEnabled;
 chkFlow.addEventListener("change", (e) => { flowEnabled = e.target.checked; });
+document.getElementById("chk-stars").addEventListener("change", (e) => {
+  showStars = e.target.checked;
+  starfield.visible = TH.dark && showStars;
+});
+document.getElementById("chk-floor").addEventListener("change", (e) => {
+  showFloorLabels = e.target.checked;
+  for (const m of floorLabels) m.visible = showFloorLabels;
+});
 
-// H1–H4 chips: hide/show one attention head's chords in every attention
+// Head toggles: hide/show one attention head's chords in every attention
 // block — the tunnel's self-attention layers, the readout gem fans, and the
 // readout's default top-3 chords (whose head-average is recomputed over the
 // enabled heads). Head k is an independent parameter set in each block; the
-// chips are a per-block lens, not one head tracked through the network.
+// toggles are a per-block lens, not one head tracked through the network.
 const headChipsEl = document.getElementById("head-chips");
 for (let h = 0; h < N_HEADS; h++) {
   const b = document.createElement("button");
@@ -4202,95 +4642,206 @@ for (let h = 0; h < N_HEADS; h++) {
 }
 
 // ============================================================
+// Tour playback (chapter to chapter)
+// ============================================================
+let playing = false;
+let timer = null;
+const speed = document.getElementById("speed");
+function startTour() {
+  if (playing) return;
+  playing = true;
+  els.play.textContent = "❚❚ Pause";
+  if (chapterOf(curStage) === chapters().length - 1) showStage(0);
+  const tick = () => {
+    if (!playing) return;
+    if (!stepChapter(1)) { stopTour(); return; }
+    timer = setTimeout(tick, parseInt(speed.value, 10));
+  };
+  timer = setTimeout(tick, parseInt(speed.value, 10));
+}
+function stopTour() {
+  playing = false;
+  if (timer) { clearTimeout(timer); timer = null; }
+  els.play.textContent = "▶ Tour";
+}
+els.play.addEventListener("click", () => (playing ? stopTour() : startTour()));
+
+// ============================================================
+// Expand: the figure fills the current window (not OS fullscreen) — the
+// scene takes the whole space and the caption floats over it. Inside an
+// iframe the page asks its host to do the same for the frame (see the
+// README's embed snippet).
+// ============================================================
+let expanded = false;
+const expandBtn = document.getElementById("btn-expand");
+const panelEl = document.querySelector(".viz-panel");
+const inFrame = window.parent !== window;
+document.body.classList.toggle("embedded", inFrame);
+function setExpanded(on) {
+  if (on === expanded) return;
+  expanded = on;
+  vizEl.classList.toggle("expanded", on);
+  document.body.classList.toggle("viz-open", on);
+  if (inFrame) window.parent.postMessage({ type: "sheepshead-viz:expand", expanded: on }, "*");
+  expandBtn.setAttribute("aria-label", on ? "Collapse" : "Expand");
+  document.getElementById("expand-icon").setAttribute("d", on
+    ? "M14 6h-4V2M2 10h4v4M10 6l4.5-4.5M6 10l-4.5 4.5"
+    : "M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5");
+  setActive(on);
+  requestAnimationFrame(() => { onResize(); showStage(curStage); });
+}
+expandBtn.addEventListener("click", () => setExpanded(!expanded));
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!menuEl.hidden) setMenu(false);
+  else if (expanded) setExpanded(false);
+  else setActive(false);
+});
+// Expanded, the floating caption covers part of the scene: shift the
+// projection so the diagram centers in the space that is left (beside the
+// panel on wide windows, above it on narrow ones). Picking stays correct —
+// the raycaster uses the same projection.
+function applyViewOffset() {
+  const { w, h } = stageSize();
+  if (!expanded) { camera.clearViewOffset(); return; }
+  const r = panelEl.getBoundingClientRect();
+  if (window.innerWidth > 760) camera.setViewOffset(w, h, (r.width + 12) / 2, 0, w, h);
+  else camera.setViewOffset(w, h, 0, (r.height + 8) / 2, w, h);
+}
+
+// ============================================================
+// Interaction: inline, the figure must not hijack page scrolling. Mouse
+// drag orbits right away but the wheel zooms only after a click in the
+// figure; touch scrolls the page until a tap hands gestures to the scene.
+// Expanded, everything is live.
+// ============================================================
+let active = false;
+const hintEl = document.getElementById("viz-hint");
+let hintTimer = null;
+function flashHint(text, ms = 2200) {
+  hintEl.textContent = text;
+  hintEl.classList.add("show");
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => hintEl.classList.remove("show"), ms);
+}
+function setActive(on) {
+  active = on || expanded;
+  stageEl.classList.toggle("inactive", !active);
+  controls.enableZoom = active;
+  renderer.domElement.style.touchAction = active ? "none" : "pan-y";
+}
+setActive(false);
+// Capture on the parent runs before OrbitControls' own canvas listener.
+stageEl.addEventListener("pointerdown", (e) => {
+  controls.enabled = active || e.pointerType === "mouse";
+}, true);
+renderer.domElement.addEventListener("wheel", () => {
+  if (!active) flashHint("Click the diagram to zoom with the scroll wheel");
+}, { passive: true });
+document.addEventListener("pointerdown", (e) => {
+  if (active && !expanded && !vizEl.contains(e.target)) setActive(false);
+});
+
+// ============================================================
 // Picking (click + hover tooltip)
 // ============================================================
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const tooltip = document.getElementById("tooltip");
 let hovered = null;
+let downAt = null;
 
+function pickAt(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(PICKABLES, false);
+  return hits.length ? hits[0].object : null;
+}
 function setHovered(obj) {
   if (hovered === obj) return;
   hovered = obj;
   if (obj && obj.userData.pickInfo) {
     const info = obj.userData.pickInfo;
     let txt = info.title;
-    if (info.kv) {
-      for (const [k, v] of Object.entries(info.kv)) {
-        txt += `\n${k}: ${v}`;
-      }
-    }
+    if (info.kv) for (const [k, v] of Object.entries(info.kv)) txt += `\n${k}: ${v}`;
     tooltip.textContent = txt;
     tooltip.style.display = "block";
   } else {
     tooltip.style.display = "none";
   }
 }
-renderer.domElement.addEventListener("mousemove", (e) => {
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-  tooltip.style.left = e.clientX + "px";
-  tooltip.style.top = e.clientY + "px";
-  raycaster.setFromCamera(mouse, camera);
-  const hits = raycaster.intersectObjects(PICKABLES, false);
-  setHovered(hits.length ? hits[0].object : null);
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (e.pointerType !== "mouse") return;
+  const r = stageEl.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  setHovered(pickAt(e));
+  if (tooltip.style.display === "block") {
+    // Keep the tooltip inside the figure.
+    const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    tooltip.style.left = `${Math.min(x + 12, r.width - tw - 6)}px`;
+    tooltip.style.top = `${y + 14 + th > r.height ? y - th - 8 : y + 14}px`;
+  }
 });
-renderer.domElement.addEventListener("click", (e) => {
-  if (!hovered) return;
-  const info = hovered.userData.pickInfo;
-  if (!info) return;
+renderer.domElement.addEventListener("pointerleave", () => setHovered(null));
+renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", (e) => {
+  // A drag (orbit) is not a click.
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
+  downAt = null;
+  if (!active) {
+    setActive(true);
+    flashHint(e.pointerType === "mouse"
+      ? "Drag to orbit · scroll to zoom · click anything for details"
+      : "Drag to orbit · pinch to zoom · tap outside to release");
+  }
+  const obj = pickAt(e);
+  if (!obj || !obj.userData.pickInfo) return;
+  const info = obj.userData.pickInfo;
+  stopTour();
   if (info.onPick) info.onPick(); // e.g. readout gems toggle their full fan
-  els.stage.textContent = "selection";
-  els.title.innerHTML = `<span class="badge b-${info.badge}">${info.badge}</span> ${info.title}`;
-  let kvHtml = "";
-  if (info.kv) {
-    kvHtml = `<div class="kv">${Object.entries(info.kv).map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join("")}</div>`;
-  }
-  els.body.innerHTML = kvHtml + (info.body || "");
+  showSelection(info);
 });
 
 // ============================================================
-// Panel layout: keep the side/nav panels clear of the wrapping top bar
+// Resize (the figure, not the window, sets the size), iframe height
+// reporting, and pausing while scrolled out of view.
 // ============================================================
-// #ui-top wraps to 2-3 rows as the window narrows and the legend grows/shrinks
-// with the network mode, so both offsets are measured rather than hardcoded.
-function syncPanelOffsets() {
-  const root = document.documentElement.style;
-  const top = document.getElementById("ui-top");
-  const legend = document.getElementById("legend");
-  if (top) root.setProperty("--top-bottom", `${Math.round(top.getBoundingClientRect().bottom)}px`);
-  if (legend) root.setProperty("--legend-h", `${Math.round(legend.getBoundingClientRect().height)}px`);
-}
-if (window.ResizeObserver) {
-  const ro = new ResizeObserver(syncPanelOffsets);
-  ro.observe(document.getElementById("ui-top"));
-  ro.observe(document.getElementById("legend"));
-}
-syncPanelOffsets();
-
-// ============================================================
-// Resize + render loop
-// ============================================================
-window.addEventListener("resize", () => {
-  syncPanelOffsets();
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  composer.setSize(window.innerWidth, window.innerHeight);
+function onResize() {
+  const { w, h } = stageSize();
+  camera.aspect = w / h;
+  applyViewOffset(); // also refreshes the projection matrix
+  renderer.setSize(w, h, false);
+  composer.setSize(w, h);
   for (const c of connLines) {
-    if (c.obj.material.isLineMaterial) {
-      c.obj.material.resolution.set(window.innerWidth, window.innerHeight);
-    }
+    if (c.obj.material.isLineMaterial) c.obj.material.resolution.set(w, h);
   }
-});
+}
+new ResizeObserver(onResize).observe(stageEl);
+if (inFrame) {
+  // Let an embedding page size its iframe to the figure + caption.
+  new ResizeObserver(() => {
+    if (expanded) return;
+    window.parent.postMessage(
+      { type: "sheepshead-viz:height", height: Math.ceil(document.documentElement.scrollHeight) }, "*");
+  }).observe(vizEl);
+}
+let onScreen = true;
+new IntersectionObserver((entries) => {
+  onScreen = entries[0].isIntersecting;
+}).observe(stageEl);
 
+// ============================================================
 // Render loop: chord breathing, flow particles, output grow-in, idle motion.
+// ============================================================
 let pulseT = 0;
 let frameCount = 0;
 let lastNow = 0;
 let outputAnim = null;
 function animate(now) {
   requestAnimationFrame(animate);
+  if (!onScreen && !expanded) return;
   controls.update();
   updateCameraTween();
   now = now || 0;
@@ -4334,22 +4885,18 @@ function animate(now) {
     const t = Math.min((now - outputAnim.t0) / 800, 1);
     const e = 1 - Math.pow(1 - t, 3);
     for (const b of outputInfo.barObjs) {
-      b.mesh.scale.y = Math.max(e, 0.02);
-      b.mesh.position.y = (b.targetH * b.mesh.scale.y) / 2;
+      b.mesh.scale.x = Math.max(e, 0.02);
+      b.mesh.position.x = b.x0 + (b.L * b.mesh.scale.x) / 2;
     }
     if (t >= 1) outputAnim = null;
   }
 
-  // Idle micro-motion: hand cards bob, the GRU prism slowly turns.
-  if (flowEnabled && !reducedMotion) {
-    if (memInfo) memInfo.gru.rotation.y += dt * 0.3;
-    if (inputInfo) {
-      for (let i = 0; i < inputInfo.cardObjs.length; i++) {
-        const card = inputInfo.cardObjs[i];
-        card.position.y = card.userData.baseY + Math.sin(pulseT * 0.9 + i * 0.8) * 0.07;
-      }
-    }
-  }
+  // Idle micro-motion: the GRU prism slowly turns. (Cards stay still —
+  // any motion makes their fine print shimmer.)
+  if (flowEnabled && !reducedMotion && memInfo) memInfo.gru.rotation.y += dt * 0.3;
+
+  // Light theme: shadows are cheap to keep a few frames stale.
+  if (!TH.dark && frameCount % 3 === 0) renderer.shadowMap.needsUpdate = true;
 
   if (frameCount++ % 5 === 0) updateLabelFade();
   composer.render();
@@ -4359,7 +4906,9 @@ function animate(now) {
 // Boot
 // ============================================================
 buildScene();
-scenButtons[0].classList.add("active");
+renderChapters();
+renderLegend();
+onResize();
 showStage(0);
 requestAnimationFrame(animate);
 </script>

@@ -9,23 +9,73 @@ chords, FFN lens behind each ring, residual rails carrying each token
 through) → memory-token GRU recurrence → ONE **shared 16-query ×
 4-head readout** (a 4×4 gem grid; each gem draws its top-3 attended tokens,
 and clicking a gem expands its full per-head attention fan) → a 256-d
-features hub that both networks consume → the actor's heads (pick / two-tower
-call over the card table / a fully opened-up **pointer stage** where the 8
-post-reasoning hand tokens re-materialize as a ghost row and are scored by
-two terms — the additive Bahdanau term, v·tanh(Wg·f + Wt·t), through
-per-slot tanh nodes, and the bilinear term, (U·f)·(V·t)/√64, through
-per-slot dot-product rings — whose sum is each slot's score bar) →
-action output; and, on the critic side, the deep value trunk → V(s) crystal
-plus a dedicated **aux stage** (win / E[return] / secret-partner gauges,
-per-seat points bars, and the 14-chip trump tracker with the unseen-higher
-lamp). A **Decision** bar switches between five scenarios captured from a
-single real self-played hand (pick, partner call, bury, opening lead, late
-follow), a guided tour steps through the 17 stages (dollying through the
-tunnel layer by layer) with data-flow particle animation, and **H1–H4** chips
-toggle individual attention heads' chords in every attention block: tunnel
-self-attention, readout gem fans, and the gems' default top-3 chords (whose
-head-average is recomputed over just the enabled heads — one chip on shows
-that head's own top-3).
+features hub that both networks consume, which feeds two clearly separated
+sides of the scene (focusing either side pushes the other far back). The
+**actor** side (+z, titled ACTOR) runs from the actor adapter into three
+decision lanes, each holding exactly the heads whose logits share one
+masked softmax. The top row, in game order, holds **pick** (PICK / PASS)
+and **partner call** (the two-tower CALL scorer over the card table plus
+ALONE / JD PARTNER). The bottom row is the **cards** lane: the 8
+post-reasoning hand tokens re-materialize as a ghost row, left to right,
+and are scored by two terms. The additive Bahdanau term,
+v·tanh(Wg·f + Wt·t), goes through per-slot tanh nodes, and the bilinear
+term, (U·f)·(V·t)/√64, through per-slot dot-product rings. Their sum is
+each slot's score bar, and PLAY UNDER closes the row. Every legal action
+then flows from the element that scored it into a single **softmax** ring,
+which feeds a ranked list of horizontal π(a | s) bars: a summary of the
+whole actor, deliberately unlike the heads' vertical logit bars. The
+**critic** side (−z, lower, titled CRITIC) holds the deep value trunk →
+V(s) crystal and the **aux** lane (win / E[return] / secret-partner
+gauges, per-seat points bars, and the 14-chip trump tracker with the
+unseen-higher lamp).
+
+The page is laid out as a figure with a caption, sized for a blog column
+(it is headed for an embedded writeup) and working down to phone width.
+The canvas carries only two buttons, **⋯** (options) and **⤢** (expand);
+everything else sits below it:
+
+- a **Decision** select (five scenarios captured from one real self-played
+  hand: pick, partner call, bury, a lead, a late follow) and a
+  **Policy | Oracle critic** switch;
+- a chapter rail: Overview, then Observation · Tokens · Transformer ·
+  Memory · Readout · Policy · Critic. Prev/Next and **▶ Tour** step chapter
+  to chapter. Chapters with more than one view show sub-step chips
+  (Transformer: all layers / layer 1–4; Policy: heads / pointer / output;
+  Critic: value / aux heads). The Policy chapter lands on whichever head
+  decides the current scenario;
+- the narration, shown in full. Clicking anything in the scene replaces it
+  with that object's details and a **‹ Back** link.
+
+The **⋯** menu holds the per-head attention toggles (H1–H4, filtering
+chords in every attention block: tunnel self-attention, readout gem fans,
+and the gems' default top-3 chords, whose head-average is recomputed over
+the enabled heads), data-flow particles, auto-rotate, the floor stage
+names (off by default), tour speed, the theme, and the color key.
+**⤢** expands the figure to fill the current window (not OS fullscreen):
+the scene takes the whole window and the caption becomes a floating panel
+on the right (along the bottom on narrow windows) with a vertical chapter
+list and the key. The camera's projection is offset so the diagram centers
+in the space beside the panel.
+
+Inline, the figure does not capture page scrolling. A mouse can orbit
+immediately, but the wheel zooms only after a click in the figure. On
+touch, the page scrolls until a tap hands gestures to the scene, and
+tapping outside hands them back. Rendering pauses while the figure is
+scrolled out of view.
+
+**Themes.** `dark` (default) is the original glow look: additive blending,
+emissive materials, bloom. `light` is a "paper diagram" for white pages in
+the blog's palette (white ground, #555 ink, Transat type when the host page
+provides it). It uses the same hues pulled down to ink strength, with normal
+blending and no bloom (bloom would wash out a white ground). Depth comes
+from a hemisphere fill plus a key light, soft shadows on an invisible floor
+(cast only by the stage in focus), a faint backdrop fall-off, and bolder
+connection strokes. Pick one at load with `?theme=light` or
+`?theme=dark`, or switch in the ⋯ menu. A third option, **Dark scene**
+(`?theme=mixed`), frames the dark glowing scene in the light page and
+caption: the page chrome (CSS, `<html data-theme>`) and the scene
+(`THEMES`) are chosen independently (`THEME_PARTS`). The light and mixed
+themes are still experiments.
 
 Cards throughout the scene render in the product app's visual language
 (`app/web/lib/ds/PlayingCard`, copied into the template — no dependency):
@@ -41,7 +91,7 @@ seat/role attribution, the header scalars with their real values, and the
 cards appear as ghosts beside the memory chip: known to the seat, absent
 from the observation, so only the memory can carry them.
 
-A **Network** toggle switches to an analogous 13-stage walkthrough of the
+The **Oracle critic** switch changes to an analogous walkthrough of the
 **oracle critic** (`oracle.py: OracleValueNetwork`, the CTDE privileged
 critic) on the *same* five decision states, in a violet "privileged
 information" identity: full-information observation (all five hands face up,
@@ -64,8 +114,8 @@ init and the UI badges the network **untrained** everywhere.
 Use the project venv — the system python lacks torch.
 
 - `dump_forward_pass.py` loads a perceiver-recall checkpoint (default
-  `runs/202609_recall_rc/league/checkpoints/checkpoint_2000000.pt`, the
-  gen-2 boundary; override with `--checkpoint`; loaded via `ppo.load_agent`
+  `runs/202609_recall_rc/league/checkpoints/checkpoint_3000000.pt`, the
+  gen-3 boundary; override with `--checkpoint`; loaded via `ppo.load_agent`
   so arch metadata is honored), plays one deterministic hand with the agent
   in all five seats (per-seat GRU memory, observations via
   `observation_for`), snapshots the five decision points with their
@@ -143,10 +193,13 @@ chosen seed higher or require raising `max_seeds` in `find_hand()`.
 ## Headless verification
 
 To eyeball the built page without a display: copy it to a temp dir, pin a
-scenario/stage by replacing the boot line `showStage(0);` (find it with
-`grep -n "^showStage(0);$"`) with e.g. `switchScenario(2); showStage(9);`
-— prepend `switchNetwork(1);` to land in the oracle walkthrough (13 stages,
-own index space) — then screenshot:
+view by replacing the boot line `showStage(0);` (find it with
+`grep -n "^showStage(0);$"`) with e.g.
+`switchScenario(2); showStage(stageIndex('pointer'));`. Prepend
+`switchNetwork(1);` for the oracle walkthrough (its stage labels are
+`oObs`, `oXfL2`, …), `setMenu(true);` to open the options menu, or
+`setExpanded(true);` for the expanded layout, and append `?theme=light`
+to the file URL for the light theme. Then screenshot:
 
 ```sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -158,7 +211,43 @@ own index space) — then screenshot:
 Use the SwiftShader flags, not `--disable-gpu` (which kills WebGL context
 creation). Headless captures can come out color-inverted — a capture artifact,
 not a page bug. Add `--enable-logging=stderr` and grep for `CONSOLE.*error`
-to catch JS errors.
+to catch JS errors. Headless Chrome will not make a window narrower than
+about 500px, so to check phone width, load the page in a 375px-wide
+`<iframe>` inside a small wrapper page. That also exercises the embed path
+below.
+
+## Embedding
+
+Embed it in an `<iframe>`, which keeps the page's three.js payload and CSS
+out of the host. Inside a frame, the page drops its own padding and posts
+two messages to the parent. One reports its content height, so the frame
+can fit the figure and caption as the caption changes length. The other
+asks the host to expand or collapse the frame when **⤢** is used (a frame
+cannot grow past its own box by itself):
+
+```html
+<iframe id="ppo-viz" src="ppo_architecture_3d.html?theme=light"
+  style="width:100%;height:760px;border:0;display:block"
+  loading="lazy" title="Sheepshead network architecture"></iframe>
+<script>
+  addEventListener("message", (e) => {
+    const f = document.getElementById("ppo-viz");
+    if (!e.data || e.source !== f.contentWindow) return;
+    if (e.data.type === "sheepshead-viz:height" && !f.dataset.expanded)
+      f.style.height = e.data.height + "px";
+    if (e.data.type === "sheepshead-viz:expand") {
+      f.dataset.expanded = e.data.expanded ? "1" : "";
+      Object.assign(f.style, e.data.expanded
+        ? { position: "fixed", inset: "0", width: "100vw", height: "100vh", zIndex: "1000" }
+        : { position: "", inset: "", width: "100%", zIndex: "" });
+      document.body.style.overflow = e.data.expanded ? "hidden" : "";
+    }
+  });
+</script>
+```
+
+The blog's Transat webfonts don't reach into the frame, so the figure falls
+back to the system sans unless the fonts are also served to it.
 
 ## Files
 

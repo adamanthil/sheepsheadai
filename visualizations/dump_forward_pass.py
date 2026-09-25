@@ -99,7 +99,7 @@ DEFAULT_CHECKPOINT = (
     / "202609_recall_rc"
     / "league"
     / "checkpoints"
-    / "checkpoint_2000000.pt"
+    / "checkpoint_3000000.pt"
 )
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
