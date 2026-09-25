@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sheepshead Training Program</title>
-<meta name="description" content="A flowchart of how the Sheepshead agent is trained: bootstrap, oracle critic, league, search-guided policy iteration, certification." />
+<meta name="description" content="A flowchart of how the Sheepshead agent is trained: bootstrap, oracle-critic pretraining, league, search-guided policy iteration, certification." />
 <style>
   /* Everything is scoped under .tp so the figure can be pasted inline into a
      blog post as well as opened (or iframed) on its own. Light only: it sits
@@ -63,7 +63,19 @@
   .tp .node:focus-visible { outline: 2px solid var(--c); outline-offset: 3px; }
   .tp .icon { width: 76px; height: 58px; color: var(--c); }
   .tp .icon svg { width: 100%; height: 100%; overflow: visible; }
-  .tp .k { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--c); font-weight: 700; }
+  .tp .k { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--c); font-weight: 700; }
+  /* method shorthand for practitioners: muted so a lay reader skips past it */
+  .tp .k .ml { color: var(--muted); font-weight: 500; letter-spacing: .02em; }
+  .tp abbr { text-decoration: none; cursor: help; }
+
+  /* The three stages that update the player's own network wear a pi badge
+     in the empty left lane; the supporting stages sit a little quieter. */
+  .tp .pm { position: absolute; right: calc(100% + 10px); top: 50%; width: 27px; height: 18px; transform: translateY(-50%); color: var(--c); }
+  .tp .stage.aux .node { border-width: 1px; box-shadow: none; }
+  .tp .stage.aux .node:hover { box-shadow: var(--shadow); }
+  .tp .key { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12px; color: var(--muted); }
+  .tp .key svg { width: 24px; height: 16px; flex: none; color: var(--heading); }
+  .tp .key b { color: var(--heading); font-weight: 600; }
   .tp .node h3 { font-family: var(--bold); font-weight: 600; font-size: 18px; line-height: 1.25; color: var(--heading); margin-top: 1px; }
   .tp .one { font-size: 14px; margin-top: 3px; }
   /* two-part pill: a constant "learns from" key, then the stage's signal */
@@ -113,6 +125,7 @@
     .tp .flow { --lane: 28px; }
     .tp .node { grid-template-columns: 1fr; padding-left: 14px; }
     .tp .icon { display: none; }
+    .tp .pm { right: calc(100% + 4px); width: 21px; height: 14px; }
     .tp .gate .side.l, .tp .gate .side.r i { display: none; }
   }
 </style>
@@ -131,6 +144,7 @@
 
 <div class="flow">
 
+<p class="key"><svg aria-hidden="true"><use href="#tp-pi"/></svg><span><b>π</b> marks the three stages that train the player itself (its <i>policy</i>)</span></p>
 <div class="term">random network</div>
 <div class="arrow"></div>
 
@@ -138,8 +152,9 @@
 <div class="stage" data-p="0">
   <button class="node" type="button" aria-expanded="false" aria-controls="tp-d0">
     <span class="tag"><i>learns from</i><b>shaped reward</b></span>
+    <svg class="pm" aria-hidden="true"><use href="#tp-pi"/></svg>
     <span class="icon"><svg viewBox="0 0 100 76"><circle cx="50" cy="40" r="22" fill="#f4f4f2" stroke="#b9b9b3" stroke-width="1.4"/><use href="#tp-pi" x="36" y="2" width="28" height="19"/><use href="#tp-pi" x="70" y="24" width="28" height="19"/><use href="#tp-pi" x="58" y="56" width="28" height="19"/><use href="#tp-pi" x="14" y="56" width="28" height="19"/><use href="#tp-pi" x="2" y="24" width="28" height="19"/></svg></span>
-    <span><span class="k">0 · BOOTSTRAP</span><h3>Learn to play at all</h3><p class="one">One network plays all five seats against itself, rewarded for tricks it wins and nudged by <span class="t" tabindex="0">rough strategy hints<span class="pop">Small bonuses and penalties from common table wisdom: pick with strong hands, bury fail rather than trump, defenders lead fail or the called suit, partners lead trump. Together with per-trick points they give a random network frequent feedback to learn from. All of it is dropped after this stage.</span></span>.</p></span>
+    <span><span class="k">0 · BOOTSTRAP<span class="ml"><abbr title="Proximal Policy Optimization">PPO</abbr> · self-play</span></span><h3>Learn to play at all</h3><p class="one">One network plays all five seats against itself, rewarded for tricks it wins and nudged by <span class="t" tabindex="0">rough strategy hints<span class="pop">Small bonuses and penalties from common table wisdom: pick with strong hands, bury fail rather than trump, defenders lead fail or the called suit, partners lead trump. Together with per-trick points they give a random network frequent feedback to learn from. All of it is dropped after this stage.</span></span>.</p></span>
     <span class="more" aria-hidden="true"></span>
   </button>
   <div class="detail" id="tp-d0"><ul>
@@ -153,15 +168,15 @@
 <div class="arrow"><span class="al"><b>yes</b></span></div>
 
 <!-- 1 -->
-<div class="stage" data-p="1">
+<div class="stage aux" data-p="1">
   <button class="node" type="button" aria-expanded="false" aria-controls="tp-d1">
     <span class="tag"><i>learns from</i><b>final score</b></span>
     <span class="icon"><svg viewBox="0 0 100 76"><g stroke="#b9b9b3" fill="#fff"><rect x="8" y="30" width="18" height="26" rx="3" transform="rotate(-14 17 43)"/><rect x="20" y="24" width="18" height="26" rx="3"/></g><g fill="currentColor"><circle cx="29" cy="31" r="2.2"/><circle cx="16" cy="38" r="2.2"/></g><use href="#tp-oracle" x="46" y="22" width="52" height="36"/></svg></span>
-    <span><span class="k">1 · ORACLE CRITIC</span><h3>Learn to judge positions</h3><p class="one">A second network that <span class="t" tabindex="0">sees every hand<span class="pop">Training only. It sees all hands, the blind and the bury. It is discarded afterwards; the player never sees hidden cards.</span></span> learns to predict each hand's final score.</p></span>
+    <span><span class="k">1 · PRETRAIN ORACLE CRITIC<span class="ml">asymmetric critic · V(s)</span></span><h3>Learn to judge positions</h3><p class="one">A second network that <span class="t" tabindex="0">sees every hand<span class="pop">Training only. It sees all hands, the blind and the bury. It is discarded afterwards; the player never sees hidden cards.</span></span> learns to predict each hand's final score.</p></span>
     <span class="more" aria-hidden="true"></span>
   </button>
   <div class="detail" id="tp-d1"><ul>
-    <li><b>Method.</b> Supervised regression for an asymmetric critic. <a class="ref" href="https://arxiv.org/abs/1710.06542" target="_blank" rel="noopener">Pinto et al., 2017</a></li>
+    <li><b>Method.</b> Supervised regression of a state-value function V(s) for an asymmetric critic. <a class="ref" href="https://arxiv.org/abs/1710.06542" target="_blank" rel="noopener">Pinto et al., 2017</a></li>
     <li><b>Why.</b> Its prediction is subtracted from the real score, filtering the luck of the deal out of the learning signal.</li>
     <li><b>Ends when.</b> Its accuracy on held-out hands stops improving.</li>
   </ul></div>
@@ -174,13 +189,14 @@
   <div class="stage" data-p="2">
     <button class="node" type="button" aria-expanded="false" aria-controls="tp-d2">
       <span class="tag"><i>learns from</i><b>final score</b></span>
+      <svg class="pm" aria-hidden="true"><use href="#tp-pi"/></svg>
       <span class="icon"><svg viewBox="0 0 100 76"><use href="#tp-pi" x="2" y="22" width="40" height="27"/><text x="52" y="41" font-size="12" fill="#8a8a85" text-anchor="middle">vs</text><use href="#tp-pi-ghost" x="70" y="6" width="30" height="20"/><use href="#tp-pi-ghost" x="66" y="28" width="30" height="20"/><use href="#tp-pi-ghost" x="62" y="50" width="30" height="20"/></svg></span>
-      <span><span class="k">2 · LEAGUE</span><h3>Get strong against past selves</h3><p class="one">The player trains against earlier snapshots of itself on the <span class="t" tabindex="0">final score alone<span class="pop">No per-trick points and no strategy hints. Any table convention that survives is one that actually wins points.</span></span>, measured against the <span class="t" tabindex="0">all-seeing critic<span class="pop">Centralized training, decentralized execution: the critic from stage 1 sees every card while learning, but the player it grades only ever sees its own.</span></span> from stage 1.</p></span>
+      <span><span class="k">2 · LEAGUE<span class="ml"><abbr title="Proximal Policy Optimization">PPO</abbr> · <abbr title="centralized training, decentralized execution">CTDE</abbr> · <abbr title="prioritized fictitious self-play">PFSP</abbr></span></span><h3>Get strong against past selves</h3><p class="one">The player trains against earlier snapshots of itself on the <span class="t" tabindex="0">final score alone<span class="pop">No per-trick points and no strategy hints. Any table convention that survives is one that actually wins points.</span></span>, measured against the <span class="t" tabindex="0">all-seeing critic<span class="pop">Centralized training, decentralized execution: the critic from stage 1 sees every card while learning, but the player it grades only ever sees its own.</span></span> from stage 1.</p></span>
       <span class="more" aria-hidden="true"></span>
     </button>
     <div class="detail" id="tp-d2"><ul>
-      <li><b>Method.</b> PPO with centralized training, decentralized execution (CTDE), against past snapshots weighted toward the ones it loses to (prioritized fictitious self-play). <a class="ref" href="https://arxiv.org/abs/1706.02275" target="_blank" rel="noopener">Lowe et al., 2017</a>; <a class="ref" href="https://doi.org/10.1038/s41586-019-1724-z" target="_blank" rel="noopener">Vinyals et al., 2019</a></li>
-      <li><b>Why.</b> Varied opponents keep it from overfitting to its own habits. And the oracle critic extracts more learning signal from each noisy hand.</li>
+      <li><b>Method.</b> PPO with centralized training, decentralized execution (CTDE), against past snapshots weighted toward the ones it loses to (prioritized fictitious self-play, PFSP). <a class="ref" href="https://arxiv.org/abs/1706.02275" target="_blank" rel="noopener">Lowe et al., 2017</a>; <a class="ref" href="https://doi.org/10.1038/s41586-019-1724-z" target="_blank" rel="noopener">Vinyals et al., 2019</a></li>
+      <li><b>Why.</b> Varied opponents keep it from overfitting to its own habits. And the oracle critic helps extract more learning signal from each noisy hand.</li>
       <li><b>Ends when.</b> A generation (1M hands) beats the last by less than search would add for the same compute. Additionally, the network must also have nearly perfect recall of which trump has been played and how many points each person has taken.</li>
     </ul></div>
   </div>
@@ -195,12 +211,13 @@
   <div class="stage" data-p="3">
     <button class="node" type="button" aria-expanded="false" aria-controls="tp-d3">
       <span class="tag"><i>learns from</i><b>search</b></span>
+    <svg class="pm" aria-hidden="true"><use href="#tp-pi"/></svg>
       <span class="icon"><svg viewBox="0 0 100 76"><use href="#tp-tree" x="2" y="4" width="60" height="48"/><path d="M60 60 H 70" stroke="currentColor" stroke-width="2"/><path d="M66 56 L72 60 L66 64" fill="none" stroke="currentColor" stroke-width="2"/><use href="#tp-pi" x="72" y="46" width="28" height="19"/></svg></span>
-      <span><span class="k">3 · POLICY ITERATION</span><h3>Let search teach the network</h3><p class="one"><span class="t" tabindex="0">Look-ahead search<span class="pop">It deals out many guesses at the hidden cards and plays each line forward, trying moves the network would never have tried.</span></span> re-examines the network's card play, and the network learns to prefer what search preferred.</p></span>
+      <span><span class="k">3 · POLICY ITERATION<span class="ml"><abbr title="Expert Iteration">ExIt</abbr> · <abbr title="information-set Monte Carlo tree search">IS-MCTS</abbr></span></span><h3>Let search teach the network</h3><p class="one"><span class="t" tabindex="0">Look-ahead search<span class="pop">It deals out many guesses at the hidden cards and plays each line forward, trying moves the network would never have tried.</span></span> re-examines the network's card play, and the network learns to prefer what search preferred.</p></span>
       <span class="more" aria-hidden="true"></span>
     </button>
     <div class="detail" id="tp-d3"><ul>
-      <li><b>Method.</b> Expert iteration with information-set Monte Carlo tree search. <a class="ref" href="https://arxiv.org/abs/1705.08439" target="_blank" rel="noopener">Anthony et al., 2017</a>; <a class="ref" href="https://doi.org/10.1109/TCIAIG.2012.2200894" target="_blank" rel="noopener">Cowling et al., 2012</a></li>
+      <li><b>Method.</b> Expert iteration (ExIt) with information-set Monte Carlo tree search (IS-MCTS). <a class="ref" href="https://arxiv.org/abs/1705.08439" target="_blank" rel="noopener">Anthony et al., 2017</a>; <a class="ref" href="https://doi.org/10.1109/TCIAIG.2012.2200894" target="_blank" rel="noopener">Cowling et al., 2012</a></li>
       <li><b>Why.</b> Search finds small play advantages that trial and error cannot easily see by building the tree of future game states and simulating it under many hypothetical deals. This improved play behavior then serves as an expert teacher the neural network learns to imitate.</li>
       <li><b>Ends when.</b> Two rounds in a row fail to gain clearly above noise.</li>
     </ul></div>
@@ -211,11 +228,11 @@
 <div class="arrow"><span class="al"><b>no</b> · done</span></div>
 
 <!-- 4 -->
-<div class="stage" data-p="4">
+<div class="stage aux" data-p="4">
   <button class="node" type="button" aria-expanded="false" aria-controls="tp-d4">
     <span class="tag"><b>test only</b></span>
     <span class="icon"><svg viewBox="0 0 100 76"><use href="#tp-medal" x="30" y="6" width="40" height="64"/></svg></span>
-    <span><span class="k">4 · CERTIFICATION</span><h3>Prove it</h3><p class="one">Matched against reference agents on <span class="t" tabindex="0">identical deals<span class="pop">Both agents play the same deals from swapped seats, so the luck of the cards cancels out.</span></span>, then attacked by an opponent trained to exploit it.</p></span>
+    <span><span class="k">4 · CERTIFICATION<span class="ml">duplicate · exploitability</span></span><h3>Prove it</h3><p class="one">Matched against reference agents on <span class="t" tabindex="0">identical deals<span class="pop">Both agents play the same deals from swapped seats, so the luck of the cards cancels out.</span></span>, then attacked by an opponent trained to exploit it.</p></span>
     <span class="more" aria-hidden="true"></span>
   </button>
   <div class="detail" id="tp-d4"><ul>
