@@ -48,7 +48,7 @@ class LeagueConfig:
 
     generation_episodes: int = 1_000_000
     min_generations: int = 3
-    max_generations: int = 8
+    max_generations: int = 10
     seed_copies: int = 4  # sample_table draws without replacement
     update_interval: int | None = None  # None = LeagueHyperparams
     save_interval: int = 50_000

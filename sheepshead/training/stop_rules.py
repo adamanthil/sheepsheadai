@@ -33,7 +33,7 @@ class HandoffRuleConfig:
     min_gain: float = 0.02
     ci_z: float = 2.0
     min_generations: int = 3
-    max_generations: int = 8
+    max_generations: int = 10
 
 
 def gain_improving(edge: float, se: float, cfg: HandoffRuleConfig) -> bool:

@@ -377,7 +377,7 @@ calibrated GAE baseline from its first update. `oracle.log` records the
 per-epoch validation MSE and the per-stratum explained variance.
 
 **Phase 2 — terminal-only league policy gradient** (1M episodes per
-generation, ~2 days each estimated; 3–8 generations)
+generation, ~2 days each estimated; 3–10 generations)
 
 ```bash
 # generation g trains to the ABSOLUTE episode g x 1,000,000
@@ -427,7 +427,7 @@ is *improving* when its h2h gain is at least +0.02 with the 2-SE lower
 bound above zero. After the 3-generation floor, the first non-improving
 generation fires the single play-entropy step; the second hands off to
 search with θ₀ = the boundary checkpoint of the last generation wholly at a
-settled entropy target. The cap is 8 generations. The handoff has a
+settled entropy target. The cap is 10 generations (raised from 8 on 2026-09-26 so the aux gate can run its course; §5.4). The handoff has a
 **readiness precondition** (§5.4): the four deterministic aux heads must
 be essentially never wrong on the battery (seen-trump accuracy ≥ 99.5%,
 false-seen ≤ 0.5% overall and per trick 1–5, recall ≥ 99% per trick 1–5;
