@@ -44,7 +44,7 @@ from server.services.persistence.snapshots import (
 )
 
 if TYPE_CHECKING:
-    from server.runtime.tables import Table
+    from server.runtime.models import Table
 
 __all__ = [
     "capture_post_state",

@@ -24,7 +24,9 @@ from server.api.auth import PlayerIdentity, current_player
 from server.runtime import ai_loop, turn_timer
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.dealing import new_game_for_table
-from server.runtime.tables import ClientConn, Occupant, Table, get_actor_seat, tables
+from server.runtime.manager import tables
+from server.runtime.models import ClientConn, Occupant, Table
+from server.runtime.views import get_actor_seat
 from sheepshead.agent.observation import last_trick_observation_for, observation_for
 from sheepshead.agent.ppo import PPOAgent, device
 from sheepshead.game import ACTIONS

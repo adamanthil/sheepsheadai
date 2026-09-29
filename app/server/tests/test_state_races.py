@@ -10,13 +10,8 @@ import httpx
 from fastapi import Request
 
 from server.api.auth import PlayerIdentity, current_player
-from server.runtime.tables import (
-    ClientConn,
-    Occupant,
-    Table,
-    prune_table_state,
-    tables,
-)
+from server.runtime.manager import prune_table_state, tables
+from server.runtime.models import ClientConn, Occupant, Table
 
 
 async def test_concurrent_seat_grab_yields_one_winner(app):

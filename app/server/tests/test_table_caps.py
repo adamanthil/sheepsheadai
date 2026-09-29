@@ -9,7 +9,7 @@ import httpx
 
 from server.api import auth
 from server.config import get_settings
-from server.runtime.tables import tables
+from server.runtime.manager import tables
 from server.services.persistence.sessions import hash_token
 
 

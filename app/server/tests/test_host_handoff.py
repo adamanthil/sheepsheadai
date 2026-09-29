@@ -8,7 +8,7 @@ import pytest
 
 from server.runtime import host as host_mod
 from server.runtime.host import cancel_host_handoff, schedule_host_handoff
-from server.runtime.tables import ClientConn, Table
+from server.runtime.models import ClientConn, Table
 
 
 class _Socket:

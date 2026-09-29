@@ -14,7 +14,8 @@ from server.api import auth
 from server.api import tables as tables_api
 from server.api.auth import PlayerIdentity, current_player
 from server.runtime.dealing import new_game_for_table
-from server.runtime.tables import ClientConn, Occupant, Table, tables
+from server.runtime.manager import tables
+from server.runtime.models import ClientConn, Occupant, Table
 from server.services.persistence.sessions import hash_token
 
 

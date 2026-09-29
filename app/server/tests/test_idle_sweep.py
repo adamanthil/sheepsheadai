@@ -13,7 +13,8 @@ from server.runtime.lifecycle import (
     idle_tables,
     sweep_idle_tables,
 )
-from server.runtime.tables import ClientConn, Table, tables
+from server.runtime.manager import tables
+from server.runtime.models import ClientConn, Table
 
 
 class _Socket:

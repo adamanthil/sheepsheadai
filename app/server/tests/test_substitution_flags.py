@@ -10,7 +10,7 @@ from typing import Callable
 import pytest
 
 from server.runtime.dealing import new_game_for_table
-from server.runtime.tables import Table
+from server.runtime.models import Table
 from server.services.persistence import games as games_hooks
 from server.services.persistence.snapshots import (
     capture_post_state,

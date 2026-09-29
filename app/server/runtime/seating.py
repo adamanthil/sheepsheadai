@@ -7,8 +7,8 @@ from typing import Optional, Set
 from server.realtime.broadcast import broadcast_table_update
 from server.realtime.chat import post_presence_notice
 from server.runtime.ai_loop import schedule_ai_turns
+from server.runtime.models import Occupant, Table
 from server.runtime.occupants import allocate_ai_occupant
-from server.runtime.tables import Occupant, Table
 
 # Fixed seat-label names for the /analyze simulate trace (server.services.
 # analyze). This list has different content/order than server.runtime.occupants.AI_NAME_POOL

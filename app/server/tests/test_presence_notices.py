@@ -8,8 +8,8 @@ from server.realtime.chat import (
     PRESENCE_NOTICE_COOLDOWN_SECONDS,
     post_presence_notice,
 )
+from server.runtime.models import ClientConn, Occupant, Table
 from server.runtime.seating import replace_ai_with_human_and_reserve
-from server.runtime.tables import ClientConn, Occupant, Table
 
 
 def _conn(table: Table, cid: str, player: str) -> ClientConn:

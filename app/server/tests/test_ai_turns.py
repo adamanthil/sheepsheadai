@@ -5,7 +5,8 @@ from __future__ import annotations
 from server.runtime import dealing, turn_timer
 from server.runtime.ai_loop import ai_take_turns
 from server.runtime.dealing import new_game_for_table
-from server.runtime.tables import ClientConn, Occupant, Table, get_actor_seat
+from server.runtime.models import ClientConn, Occupant, Table
+from server.runtime.views import get_actor_seat
 
 
 class StubAgent:

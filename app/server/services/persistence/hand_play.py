@@ -15,7 +15,7 @@ import asyncpg
 from sheepshead.game import DECK_IDS, UNDER_TOKEN
 
 if TYPE_CHECKING:
-    from server.runtime.tables import Table
+    from server.runtime.models import Table
 
 logger = logging.getLogger(__name__)
 

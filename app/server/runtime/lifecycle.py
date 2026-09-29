@@ -6,7 +6,8 @@ import logging
 import time
 
 from server.realtime.broadcast import broadcast_table_event
-from server.runtime.tables import Table, tables
+from server.runtime.manager import tables
+from server.runtime.models import Table
 from server.services.persistence.games import close_game_table
 from server.services.persistence.pool import get_db_pool
 

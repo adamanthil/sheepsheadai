@@ -27,12 +27,13 @@ from server.runtime.host import (
     schedule_host_handoff,
 )
 from server.runtime.lifecycle import schedule_autoclose_if_no_humans
+from server.runtime.manager import tables
 from server.runtime.seating import (
     cancel_disconnect_task,
     find_seat_of_occupant,
     schedule_ai_replacement_for_disconnected_human,
 )
-from server.runtime.tables import json_default, tables
+from server.runtime.views import json_default
 
 router = APIRouter()
 

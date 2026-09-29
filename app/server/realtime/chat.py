@@ -9,7 +9,8 @@ from typing import Any, Dict, Optional
 from fastapi import WebSocket
 
 from server.realtime.broadcast import broadcast_table_event
-from server.runtime.tables import ClientConn, Table, json_default
+from server.runtime.models import ClientConn, Table
+from server.runtime.views import json_default
 from sheepshead.game import CARD_FULL_NAMES
 
 CHAT_MAX_LEN = 500

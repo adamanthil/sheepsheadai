@@ -13,14 +13,9 @@ from fastapi import Request
 from server.api.auth import PlayerIdentity, current_player
 from server.runtime import turn_timer
 from server.runtime.dealing import new_game_for_table
-from server.runtime.tables import (
-    ClientConn,
-    Occupant,
-    Table,
-    get_actor_seat,
-    get_valid_action_ids_for_seat,
-    tables,
-)
+from server.runtime.manager import tables
+from server.runtime.models import ClientConn, Occupant, Table
+from server.runtime.views import get_actor_seat, get_valid_action_ids_for_seat
 
 
 class StubAgent:

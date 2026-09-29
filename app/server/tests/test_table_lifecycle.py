@@ -22,7 +22,8 @@ import server.realtime.websocket as ws_module
 import server.runtime.lifecycle as lifecycle
 from server.api.auth import PlayerIdentity
 from server.realtime.broadcast import broadcast_table_update
-from server.runtime.tables import ClientConn, Occupant, Table, tables
+from server.runtime.manager import tables
+from server.runtime.models import ClientConn, Occupant, Table
 
 
 @pytest.fixture

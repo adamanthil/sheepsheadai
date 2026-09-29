@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from server.realtime.chat import emit_bid_chat_message
-from server.runtime.tables import Table
+from server.runtime.models import Table
 
 
 async def test_bid_line_carries_the_actor_separately():

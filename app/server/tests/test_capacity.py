@@ -9,12 +9,11 @@ from starlette.testclient import TestClient
 
 import server.realtime.websocket as ws_module
 import server.runtime.manager as manager_module
-import server.runtime.tables as tables_module
 from server.api.auth import PlayerIdentity
+from server.runtime.models import ClientConn, Table
 
 
 async def test_table_cap_returns_503(app, monkeypatch):
-    # Patch the module the manager actually reads, not the tables facade.
     monkeypatch.setattr(manager_module, "MAX_TABLES", 2)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -25,12 +24,12 @@ async def test_table_cap_returns_503(app, monkeypatch):
     assert resp.json()["detail"] == "table_limit_reached"
 
 
-def _table_with_client(player_id: uuid.UUID) -> tables_module.Table:
-    table = tables_module.Table(id="t1", name="capped")
-    table.clients["c1"] = tables_module.ClientConn(
+def _table_with_client(player_id: uuid.UUID) -> Table:
+    table = Table(id="t1", name="capped")
+    table.clients["c1"] = ClientConn(
         client_id="c1", display_name="x", player_id=str(player_id)
     )
-    tables_module.tables.tables["t1"] = table
+    manager_module.tables.tables["t1"] = table
     return table
 
 

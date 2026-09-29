@@ -37,7 +37,14 @@ from server.runtime.lifecycle import (
     is_draining,
     schedule_autoclose_if_no_humans,
 )
-from server.runtime.manager import IpTableLimitError, PlayerTableLimitError
+from server.runtime.manager import (
+    IpTableLimitError,
+    PlayerTableLimitError,
+    TableLimitError,
+    prune_table_state,
+    tables,
+)
+from server.runtime.models import ClientConn, Table
 from server.runtime.occupants import allocate_ai_occupant, give_seat_to_ai
 from server.runtime.seating import (
     cancel_disconnect_task,
@@ -46,13 +53,6 @@ from server.runtime.seating import (
     pick_join_ai_seat,
     replace_ai_with_human_and_reserve,
     reserved_ai_ids,
-)
-from server.runtime.tables import (
-    ClientConn,
-    Table,
-    TableLimitError,
-    prune_table_state,
-    tables,
 )
 from server.services.persistence import players as players_db
 from server.services.persistence import sessions as sessions_db

@@ -18,7 +18,7 @@ from server.services.persistence.pool import DB_UNAVAILABLE, get_ai_player_id
 from sheepshead.game import DECK_IDS, Game
 
 if TYPE_CHECKING:
-    from server.runtime.tables import Table
+    from server.runtime.models import Table
 
 logger = logging.getLogger(__name__)
 

@@ -59,7 +59,7 @@ async def db_app(app, monkeypatch):
         yield app, pool
     finally:
         # Cancel background tasks owned by tables created in this test.
-        from server.runtime.tables import tables
+        from server.runtime.manager import tables
 
         for table in list(tables.tables.values()):
             for task in (table.ai_task, table.autoclose_task):
@@ -169,7 +169,7 @@ async def test_only_the_host_key_takes_host(db_app):
         assert creator.json()["is_host"] is True
         # A creator without a session at creation is recorded here, for the
         # per-player open-table cap.
-        from server.runtime.tables import tables
+        from server.runtime.manager import tables
 
         assert (
             tables.get_table(table_id).creator_player_id
@@ -220,7 +220,7 @@ async def test_doublers_pass_out_persists_the_thrown_in_deal_and_doubled_stake(d
     import uuid
 
     from server.runtime.dealing import redeal_passed_out_hand
-    from server.runtime.tables import tables
+    from server.runtime.manager import tables
     from sheepshead.game import ACTION_IDS
 
     app, pool = db_app

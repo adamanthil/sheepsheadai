@@ -44,7 +44,8 @@ async def test_players_patch_requires_ownership(app):
 
 async def test_foreign_client_id_is_403(app):
     """Even with a valid token, acting through someone else's client_id fails."""
-    from server.runtime.tables import ClientConn, Table, tables
+    from server.runtime.manager import tables
+    from server.runtime.models import ClientConn, Table
 
     victim = uuid.uuid4()
     attacker = uuid.uuid4()

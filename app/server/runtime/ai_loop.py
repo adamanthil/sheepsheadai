@@ -7,12 +7,9 @@ from server.realtime.broadcast import broadcast_table_state
 from server.realtime.chat import emit_bid_chat_message
 from server.runtime.ai_move import ai_act_for_seat
 from server.runtime.dealing import redeal_passed_out_hand
-from server.runtime.tables import (
-    Table,
-    get_actor_seat,
-    record_hand_result,
-)
+from server.runtime.models import Table
 from server.runtime.turn_timer import arm_turn_timer
+from server.runtime.views import get_actor_seat, record_hand_result
 from server.services.persistence.games import fire_game_hooks
 
 

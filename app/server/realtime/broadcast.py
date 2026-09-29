@@ -7,15 +7,14 @@ from typing import Any, Dict, Optional
 
 from fastapi import WebSocketDisconnect
 
-from server.runtime.tables import (
-    ClientConn,
-    Table,
+from server.runtime.models import ClientConn, Table
+from server.runtime.views import (
     build_player_state,
+    build_spectator_state,
     get_actor_seat,
     get_valid_action_ids_for_seat,
     json_default,
 )
-from server.runtime.views import build_spectator_state
 
 
 async def send_to_client(table: Table, conn: ClientConn, text: str) -> None:

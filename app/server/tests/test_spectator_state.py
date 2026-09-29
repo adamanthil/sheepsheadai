@@ -6,7 +6,7 @@ import json
 
 from server.realtime.broadcast import broadcast_table_state
 from server.runtime.dealing import new_game_for_table
-from server.runtime.tables import ClientConn, Occupant, Table
+from server.runtime.models import ClientConn, Occupant, Table
 
 
 class _RecordingSocket:

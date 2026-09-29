@@ -27,16 +27,16 @@ from server.runtime.dealing import (
     refresh_table_agent,
 )
 from server.runtime.lifecycle import is_draining
+from server.runtime.manager import tables
+from server.runtime.models import Occupant
 from server.runtime.occupants import AI_NAME_POOL
 from server.runtime.rules import plays_doublers
-from server.runtime.tables import (
-    Occupant,
+from server.runtime.turn_timer import cancel_turn_timer
+from server.runtime.views import (
     get_actor_seat,
     get_valid_action_ids_for_seat,
     record_hand_result,
-    tables,
 )
-from server.runtime.turn_timer import cancel_turn_timer
 from server.services.persistence.games import (
     capture_post_state,
     capture_pre_state,

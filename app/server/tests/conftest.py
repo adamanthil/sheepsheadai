@@ -27,7 +27,7 @@ def app(monkeypatch, tmp_path):
 
     import server.app as app_module
     from server.api.ratelimit import limiter
-    from server.runtime.tables import tables
+    from server.runtime.manager import tables
 
     monkeypatch.setattr(app_module, "load_agent", lambda path: object())
     # The limiter and TableManager are module-level state; reset so earlier

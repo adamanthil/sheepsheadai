@@ -135,7 +135,7 @@ def create_app() -> FastAPI:
 
             async def _drain() -> None:
                 from server.realtime.broadcast import broadcast_table_event
-                from server.runtime.tables import tables
+                from server.runtime.manager import tables
 
                 for table in list(tables.tables.values()):
                     try:
