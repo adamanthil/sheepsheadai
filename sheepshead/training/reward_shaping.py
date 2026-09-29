@@ -5,9 +5,7 @@ web /analyze service.
 Split out of ``training_utils.py`` so that consumers who only need the
 reward math (e.g. the web server's analysis endpoint) don't have to import
 the rest of the trainer-internals module (league/CSV/plotting helpers,
-agent-dependent probes, etc). ``training_utils.py`` re-imports everything
-from here for backward compatibility, so existing importers of
-``sheepshead.training.training_utils`` are unaffected.
+agent-dependent probes, etc).
 """
 
 from typing import Dict, List

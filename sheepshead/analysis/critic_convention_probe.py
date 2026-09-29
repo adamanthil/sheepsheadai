@@ -68,7 +68,7 @@ from sheepshead.analysis.critic_calibration import (
     restore_memory,
     snapshot_memory,
 )
-from sheepshead.training.training_utils import RETURN_SCALE, TRICK_POINT_RATIO
+from sheepshead.training.reward_shaping import RETURN_SCALE, TRICK_POINT_RATIO
 
 DEV = ppo.device
 _FAIL_SET = set(FAIL)

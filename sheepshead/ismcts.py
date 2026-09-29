@@ -113,7 +113,7 @@ from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.training.training_utils import RETURN_SCALE
+from sheepshead.training.reward_shaping import RETURN_SCALE
 
 # Per-head iteration budgets and tree depths (plan §3).
 _DEFAULT_ITERS = {"pick": 48, "partner": 64, "bury": 96, "play": 96}

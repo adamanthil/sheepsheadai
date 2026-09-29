@@ -46,11 +46,8 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.training.training_utils import (
-    RETURN_SCALE,
-    TRICK_POINT_RATIO,
-    get_partner_selection_mode,
-)
+from sheepshead.training.reward_shaping import RETURN_SCALE, TRICK_POINT_RATIO
+from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device
 GAMMA = 0.95  # must match PPOAgent.gamma

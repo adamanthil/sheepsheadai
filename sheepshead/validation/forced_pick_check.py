@@ -44,11 +44,8 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.training.training_utils import (
-    estimate_hand_strength_score,
-    get_partner_selection_mode,
-    set_all_seeds,
-)
+from sheepshead.training.reward_shaping import estimate_hand_strength_score
+from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 PICK_ID = ACTIONS.index("PICK") + 1
 PASS_ID = ACTIONS.index("PASS") + 1

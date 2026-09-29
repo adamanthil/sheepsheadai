@@ -65,6 +65,7 @@ from sheepshead import ACTIONS, TRUMP
 from sheepshead.agent import ppo as ppo_module
 from sheepshead.agent.ppo import load_agent
 from sheepshead.training.corpus_rows import load_shard, shard_paths
+from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     CAPACITIES,
     AdvantageModel,
@@ -78,7 +79,7 @@ from sheepshead.training.search_advantage import (
     split_rows_by_game,
     targets_for_table,
 )
-from sheepshead.training.training_utils import RETURN_SCALE, greedy_health_probe
+from sheepshead.training.training_utils import greedy_health_probe
 
 TARGETED_SUBDIR = "targeted"
 

@@ -28,7 +28,7 @@ from sheepshead.agent.architectures.critics import (
     RecurrentCriticNetwork,
     TokenReadoutValueMixin,
 )
-from sheepshead.training.training_utils import RETURN_SCALE
+from sheepshead.training.reward_shaping import RETURN_SCALE
 
 # Re-exported for external code that historically imported these network
 # classes from sheepshead.agent.ppo (they now live in

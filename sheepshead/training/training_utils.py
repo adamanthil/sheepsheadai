@@ -21,33 +21,14 @@ from sheepshead import (
     TRUMP,
     Game,
 )
-
-# Reward-shaping / auxiliary-target math lives in reward_shaping.py so that
-# consumers who only need that pure math (e.g. the web server's /analyze
-# service) don't have to import the rest of this trainer-internals module.
-# Re-exported here, unchanged, as a permanent compatibility shim: this
-# module's existing 20+ importers (trainers, analysis/validation scripts,
-# tests) keep working without modification.
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.training.reward_shaping import (  # noqa: F401
-    LEASTER_FINAL_REWARD_BONUS,
-    RETURN_SCALE,
-    TRICK_POINT_RATIO,
-    apply_leaster_trick_rewards,
-    apply_trick_rewards,
-    calculate_trick_reward,
+from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,
-    estimate_hand_strength_score,
-    handle_trick_completion,
-    is_same_team_as_winner,
-    process_episode_rewards,
-    process_terminal_rewards,
-    update_intermediate_rewards_for_action,
 )
 
 
