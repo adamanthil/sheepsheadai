@@ -50,29 +50,24 @@ own encode_batch, so the dump doubles as an architecture smoke test.
 import argparse
 import copy
 import json
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import torch
 
-HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
-sys.path.insert(0, str(ROOT))
-
-from sheepshead.agent.architectures.actors import (  # noqa: E402
+from sheepshead.agent.architectures.actors import (
     MultiHeadRecurrentActorNetwork,
 )
-from sheepshead.agent.architectures.critics import RecurrentCriticNetwork  # noqa: E402
-from sheepshead.agent.architectures.encoders import RecallEncoder  # noqa: E402
-from sheepshead.agent.observation import (  # noqa: E402
+from sheepshead.agent.architectures.critics import RecurrentCriticNetwork
+from sheepshead.agent.architectures.encoders import RecallEncoder
+from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels  # noqa: E402
-from sheepshead.agent.ppo import load_agent  # noqa: E402
-from sheepshead.agent.token_layout import (  # noqa: E402
+from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels
+from sheepshead.agent.ppo import load_agent
+from sheepshead.agent.token_layout import (
     CONTEXT_TOKEN,
     CONTEXT_TYPE_ID,
     HAND_TOKENS,
@@ -83,7 +78,7 @@ from sheepshead.agent.token_layout import (  # noqa: E402
     TRICK_TOKENS,
     TRICK_TYPE_ID,
 )
-from sheepshead.game import (  # noqa: E402
+from sheepshead.game import (
     ACTION_IDS,
     ACTION_LOOKUP,
     ACTIONS,
@@ -92,6 +87,9 @@ from sheepshead.game import (  # noqa: E402
     TRUMP,
     Game,
 )
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
 
 DEFAULT_CHECKPOINT = (
     ROOT
