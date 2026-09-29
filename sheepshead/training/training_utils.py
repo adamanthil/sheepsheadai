@@ -545,6 +545,12 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
     seen_correct = seen_total = 0
     recall_correct = recall_total = 0
     recall_by_trick = [[0, 0] for _ in range(6)]  # [correct, total] per trick
+    # The must-remember trumps split by source: played in an earlier trick
+    # (history; empty at trick 0 by construction) vs the picker's own bury
+    # (or under-card), which only ~7% of deals contain a trump in, so its
+    # entries are rare and its recall is a separate, harder read.
+    recall_hist_by_trick = [[0, 0] for _ in range(6)]
+    recall_bury_correct = recall_bury_total = 0
     false_seen = unseen_total = 0
     false_seen_by_trick = [[0, 0] for _ in range(6)]  # [false-seen, unseen]
     # The other three deterministic aux heads at the same nodes (§5.4):
@@ -671,6 +677,11 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                                     points_total += 1
                                 must_recall = seen_trump_recall_cards(player)
                                 trick_bin = min(int(game.current_trick), 5)
+                                played = {
+                                    c
+                                    for tr in game.history[: int(game.current_trick)]
+                                    for c in tr
+                                }
                                 seen_nodes += 1
                                 for i, card in enumerate(TRUMP):
                                     ok = int(pred[i] == int(truth[i]))
@@ -681,6 +692,12 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
                                         recall_correct += ok
                                         recall_by_trick[trick_bin][0] += ok
                                         recall_by_trick[trick_bin][1] += 1
+                                        if card in played:
+                                            recall_hist_by_trick[trick_bin][0] += ok
+                                            recall_hist_by_trick[trick_bin][1] += 1
+                                        else:
+                                            recall_bury_correct += ok
+                                            recall_bury_total += 1
                                     elif not truth[i]:
                                         unseen_total += 1
                                         false_seen += pred[i]
@@ -799,6 +816,16 @@ def greedy_health_probe(agent, n_games: int = 200, seed: int = 0) -> Dict:
         "seen_trump_recall_by_trick": [
             100.0 * c / max(n, 1) for c, n in recall_by_trick
         ],
+        # The same recall split by source: played-history entries per trick
+        # (t0 has none, so the series starts at t1) and the picker's bury
+        # entries pooled over all tricks (a 200-game probe holds ~12).
+        "seen_trump_recall_hist_by_trick": [
+            100.0 * c / max(n, 1) for c, n in recall_hist_by_trick[1:]
+        ],
+        "seen_trump_recall_bury": (
+            100.0 * recall_bury_correct / max(recall_bury_total, 1)
+        ),
+        "seen_trump_bury_cards": recall_bury_total,
         "seen_trump_false_seen": 100.0 * false_seen / max(unseen_total, 1),
         "seen_trump_false_seen_by_trick": [
             100.0 * c / max(n, 1) for c, n in false_seen_by_trick

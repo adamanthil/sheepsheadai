@@ -182,6 +182,13 @@ def test_greedy_probe_reports_seen_trump_recall():
     # nodes included (play_nodes counts only the multi-legal ones).
     assert probe["seen_trump_nodes"] > probe["play_nodes"] > 0
     assert probe["seen_trump_recall_cards"] > 0
+    # Recall by source: history entries per trick t1-5 (t0 has none by
+    # construction) and the bury pool, which together partition the
+    # must-remember entries.
+    assert len(probe["seen_trump_recall_hist_by_trick"]) == 5
+    assert all(0.0 <= r <= 100.0 for r in probe["seen_trump_recall_hist_by_trick"])
+    assert 0.0 <= probe["seen_trump_recall_bury"] <= 100.0
+    assert 0 <= probe["seen_trump_bury_cards"] <= probe["seen_trump_recall_cards"]
 
 
 def test_greedy_probe_seen_trump_absent_without_aux_heads():

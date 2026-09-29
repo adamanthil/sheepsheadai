@@ -167,6 +167,15 @@ GREEDY_CSV_HEADER = [
     "aux_points_exact",
     "aux_points_mae",
     "aux_unseen_higher_acc",
+    # Recall split by source: played history per trick (t1-5; t0 has none)
+    # and the picker's bury pooled over tricks, with its entry count.
+    "seen_trump_recall_hist_t1",
+    "seen_trump_recall_hist_t2",
+    "seen_trump_recall_hist_t3",
+    "seen_trump_recall_hist_t4",
+    "seen_trump_recall_hist_t5",
+    "seen_trump_recall_bury",
+    "seen_trump_bury_cards",
 ]
 
 
@@ -199,17 +208,23 @@ def greedy_csv_row(episode: int, probe: dict) -> list:
         f"{probe['aux_points_exact']:.2f}",
         f"{probe['aux_points_mae']:.3f}",
         f"{probe['aux_unseen_higher_acc']:.2f}",
+        *(f"{r:.2f}" for r in probe["seen_trump_recall_hist_by_trick"]),
+        f"{probe['seen_trump_recall_bury']:.2f}",
+        probe["seen_trump_bury_cards"],
     ]
 
 
 def aux_summary(probe: dict) -> str:
     """The deterministic aux heads' clause of the greedy-probe log line."""
     recall_t = "/".join(f"{r:.0f}" for r in probe["seen_trump_recall_by_trick"])
+    hist_t = "/".join(f"{r:.0f}" for r in probe["seen_trump_recall_hist_by_trick"])
     false_t = "/".join(f"{r:.0f}" for r in probe["seen_trump_false_seen_by_trick"])
     return (
         f"seen-trump acc {probe['seen_trump_acc']:.1f}%, "
         f"recall {probe['seen_trump_recall']:.1f}% "
-        f"(t0-5 {recall_t}, cards={probe['seen_trump_recall_cards']}), "
+        f"(t0-5 {recall_t}, cards={probe['seen_trump_recall_cards']}; "
+        f"history t1-5 {hist_t}, bury {probe['seen_trump_recall_bury']:.0f}% "
+        f"n={probe['seen_trump_bury_cards']}), "
         f"false-seen {probe['seen_trump_false_seen']:.1f}% "
         f"(t0-5 {false_t}, n={probe['seen_trump_nodes']}), "
         f"secret {probe['aux_secret_acc']:.1f}%, "
