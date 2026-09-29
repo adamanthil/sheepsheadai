@@ -38,11 +38,11 @@ from typing import Dict, List, Optional
 
 # Importing the trump-lead scanner installs the cached load_agent patch on the
 # analyze service and provides set_scan_model + the secret-partner helper.
-import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
-from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
-from server.services.analyze import simulate_game  # noqa: E402
+import sheepshead.analysis.scan_defender_trump_leads as scan
+from server.api.schemas import AnalyzeSimulateRequest
+from server.services.analyze import simulate_game
 from sheepshead.analysis.conventions import called_suit_fail
-from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET, UNDER_TOKEN  # noqa: E402
+from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET, UNDER_TOKEN
 
 FAIL_SET = set(FAIL)
 

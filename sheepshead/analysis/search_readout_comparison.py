@@ -48,10 +48,10 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
-import sheepshead.analysis.counterfactual_partner_trump_leads as cfp  # noqa: E402
-import sheepshead.analysis.counterfactual_trump_leads as cf  # noqa: E402
-import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
-from sheepshead.game import ACTION_IDS, TRUMP_SET  # noqa: E402
+import sheepshead.analysis.counterfactual_partner_trump_leads as cfp
+import sheepshead.analysis.counterfactual_trump_leads as cf
+import sheepshead.analysis.scan_defender_trump_leads as scan
+from sheepshead.game import ACTION_IDS, TRUMP_SET
 
 GROUPS = cfp.GROUPS  # ("agree", "disagree", "defender_mirror")
 
