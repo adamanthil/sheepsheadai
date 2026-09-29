@@ -31,6 +31,7 @@ from sheepshead.game import (
     DECK,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
+    TRUMP,
     UNDER_TOKEN,
     Game,
     get_card_points,
@@ -56,7 +57,7 @@ def _seed():
 # ---------------------------------------------------------------------------
 def test_card_lookup_equivalence():
     def ref_suit(card):
-        return "T" if card in __import__("sheepshead").TRUMP else card[-1]
+        return "T" if card in TRUMP else card[-1]
 
     def ref_pts(card):
         if "A" in card:
