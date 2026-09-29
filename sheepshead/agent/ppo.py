@@ -7,17 +7,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from sheepshead.agent import architectures
-from sheepshead.agent.architectures.actors import (
-    MultiHeadRecurrentActorNetwork,
-    PerceiverActorNetwork,
-    TokenReadActorNetwork,
-)
-from sheepshead.agent.architectures.critics import (
-    PerceiverAuxCriticNetwork,
-    PerceiverCriticNetwork,
-    RecurrentCriticNetwork,
-    TokenReadoutValueMixin,
-)
 from sheepshead.game import (
     ACTION_IDS,
     BURY_ACTIONS,
@@ -29,19 +18,6 @@ from sheepshead.game import (
     UNDER_TOKEN,
 )
 from sheepshead.training.reward_shaping import RETURN_SCALE
-
-# Re-exported for external code that historically imported these network
-# classes from sheepshead.agent.ppo (they now live in
-# sheepshead.agent.architectures.actors/critics).
-__all__ = [
-    "MultiHeadRecurrentActorNetwork",
-    "PerceiverActorNetwork",
-    "TokenReadActorNetwork",
-    "PerceiverAuxCriticNetwork",
-    "PerceiverCriticNetwork",
-    "RecurrentCriticNetwork",
-    "TokenReadoutValueMixin",
-]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

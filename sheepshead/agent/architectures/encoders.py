@@ -86,7 +86,7 @@ class TokenReadEncoder(CardReasoningEncoder):
     Zero new parameters and no change to features or memory: the standard
     outputs are byte-identical to the base class; 'all_tokens'
     (B, 19, d_token) and 'all_mask' (B, 19) are emitted alongside them so a
-    readout-equipped actor (ppo.TokenReadActorNetwork) can attend over the
+    readout-equipped actor (actors.TokenReadActorNetwork) can attend over the
     tokens directly instead of seeing them only through the per-bag
     attention pools. The memory recurrence is untouched: context token →
     GRUCell → d_model state, re-projected to a memory token next step by

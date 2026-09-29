@@ -62,16 +62,16 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 from sheepshead.agent.architectures import RecallEncoder  # noqa: E402
+from sheepshead.agent.architectures.actors import (  # noqa: E402
+    MultiHeadRecurrentActorNetwork,
+)
+from sheepshead.agent.architectures.critics import RecurrentCriticNetwork  # noqa: E402
 from sheepshead.agent.observation import (  # noqa: E402
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.oracle import OracleValueNetwork, team_aux_labels  # noqa: E402
-from sheepshead.agent.ppo import (  # noqa: E402
-    MultiHeadRecurrentActorNetwork,
-    RecurrentCriticNetwork,
-    load_agent,
-)
+from sheepshead.agent.ppo import load_agent  # noqa: E402
 from sheepshead.agent.token_layout import (  # noqa: E402
     CONTEXT_TOKEN,
     CONTEXT_TYPE_ID,

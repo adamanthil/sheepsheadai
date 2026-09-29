@@ -26,12 +26,10 @@ from sheepshead.agent.architectures import (
     PooledMemoryEncoder,
     build_onehot_state,
 )
+from sheepshead.agent.architectures.actors import MultiHeadRecurrentActorNetwork
+from sheepshead.agent.architectures.critics import RecurrentCriticNetwork
 from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
-from sheepshead.agent.ppo import (
-    MultiHeadRecurrentActorNetwork,
-    PPOAgent,
-    RecurrentCriticNetwork,
-)
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.training import pfsp_runtime
 
@@ -624,9 +622,11 @@ class TestPerceiver:
         assert tuple(aux_bt.shape) == (1, 2, 256)
 
     def test_decomposition_hybrids(self):
-        from sheepshead.agent.ppo import (
+        from sheepshead.agent.architectures.actors import (
             MultiHeadRecurrentActorNetwork,
             PerceiverActorNetwork,
+        )
+        from sheepshead.agent.architectures.critics import (
             PerceiverCriticNetwork,
             RecurrentCriticNetwork,
         )
