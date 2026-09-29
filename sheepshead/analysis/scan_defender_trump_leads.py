@@ -33,9 +33,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET
 
-from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET  # noqa: E402
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 FAIL_SET = set(FAIL)
 

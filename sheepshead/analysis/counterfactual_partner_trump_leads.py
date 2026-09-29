@@ -46,12 +46,10 @@ from typing import Dict, List, Optional
 import numpy as np
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-
-import sheepshead.analysis.counterfactual_trump_leads as cf  # noqa: E402
-import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
-from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
-from sheepshead.game import TRUMP_SET  # noqa: E402
+import sheepshead.analysis.counterfactual_trump_leads as cf
+import sheepshead.analysis.scan_defender_trump_leads as scan
+from server.api.schemas import AnalyzeSimulateRequest
+from sheepshead.game import TRUMP_SET
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL
 GROUPS = ("agree", "disagree", "defender_mirror")

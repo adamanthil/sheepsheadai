@@ -67,17 +67,15 @@ from typing import Any, Dict, List, NamedTuple, Optional, cast
 import numpy as np
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-
 # Importing the scanner installs the cached load_agent patch on the analyze
 # service and gives us its case-detection helpers + simulate_game.
-import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
-from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
-from sheepshead.agent.observation import (  # noqa: E402
+import sheepshead.analysis.scan_defender_trump_leads as scan
+from server.api.schemas import AnalyzeSimulateRequest
+from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
-from sheepshead.game import (  # noqa: E402
+from sheepshead.game import (
     ACTION_IDS,
     ACTION_LOOKUP,
     FAIL,
