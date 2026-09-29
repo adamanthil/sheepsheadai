@@ -56,12 +56,6 @@ def test_league_commands_distinguish_generation_one(tmp_path, monkeypatch):
     assert gen1[gen1.index("--worker-device") + 1] == p.cfg.league.worker_device
     assert gen1[gen1.index("--worker-compile") + 1] == p.cfg.league.worker_compile
     assert "--worker-device" not in p._worker_flags()
-    # The deterministic aux-head coefficient multiplier reaches every stage
-    # that trains those heads (§4.3, 09-18).
-    assert gen2[gen2.index("--aux-det-scale") + 1] == str(p.cfg.aux_det_scale)
-    assert "--aux-det-scale" in p._pi_stage_flags()
-    p.cfg.aux_det_scale = 1.0
-    assert "--aux-det-scale" not in p.league_trainer_cmd(2, p.boundary_ckpt(1))
     # Rendering the command materializes nothing (--dry-run renders it
     # before any bootstrap exists); the seeds appear when generation 1
     # is about to train.

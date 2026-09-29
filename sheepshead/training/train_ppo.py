@@ -119,7 +119,7 @@ PROGRESS_CSV_HEADER = [
     "lr_actor",
     "eps_per_s",
     # Unweighted aux-head losses (per-minibatch means over the update):
-    # comparable across --aux-det-scale settings.
+    # comparable across coefficient changes.
     "aux_loss_seen_trump",
     "aux_loss_unseen_higher",
     "aux_loss_points",
@@ -879,13 +879,6 @@ def build_training_agent(args) -> tuple[PPOAgent, int]:
         print(f"🆕 Fresh {args.arch} agent ({n:,} parameters)")
     agent.gamma = spec.gamma
     agent.set_trainable_heads(spec.trainable_heads)
-    scale = float(getattr(args, "aux_det_scale", 1.0))
-    if scale != 1.0:
-        agent.set_deterministic_aux_scale(scale)
-        print(
-            f"🎯 Deterministic aux-head loss coefficients x{scale:g} "
-            "(seen-trump, unseen-higher, points, secret partner)"
-        )
     if getattr(args, "oracle_init", None):
         warn_if_oracle_overwrite(agent, args.oracle_init, args.resume)
         state_dict = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
@@ -965,14 +958,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument(
-        "--aux-det-scale",
-        type=float,
-        default=1.0,
-        help="multiply the four deterministic aux-head loss coefficients "
-        "(seen-trump mask, unseen-trump-higher, known points, secret partner) "
-        "by this factor; win/return keep theirs (Redesign §4.3, 09-18)",
-    )
     p.add_argument(
         "--worker-device",
         default=None,

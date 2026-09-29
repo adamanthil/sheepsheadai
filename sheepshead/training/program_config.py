@@ -181,11 +181,6 @@ class ProgramConfig:
     num_workers: int = 8
     worker_device: str | None = None
     worker_compile: str | None = None
-    # Loss-coefficient multiplier of the four deterministic aux heads
-    # (§4.3, 09-18), passed to every stage that trains them: bootstrap,
-    # league generations, the distill trunk epochs, the bidding phase.
-    # `202609_recall_rc` ran its bootstrap and league gen 1 at 1.0.
-    aux_det_scale: float = 2.5
     bootstrap: BootstrapConfig = field(default_factory=BootstrapConfig)
     oracle: OracleConfig = field(default_factory=OracleConfig)
     league: LeagueConfig = field(default_factory=LeagueConfig)

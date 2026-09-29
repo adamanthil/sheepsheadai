@@ -271,7 +271,7 @@ class PPOAgent:
         # launch code warn before --oracle-init overwrites a trained oracle.
         self.oracle_loaded_from_checkpoint = False
         self.oracle_value_loss_coeff = 1.0
-        # Oracle aux-head loss coefficients (mirror the limited critic's
+        # Oracle aux-head loss coefficients (the limited critic's original
         # secret/points coefficients; inert without oracle aux heads).
         self.oracle_membership_coeff = 0.1
         self.oracle_points_coeff = 0.2
@@ -330,20 +330,18 @@ class PPOAgent:
         # Auxiliary loss coefficients
         self.win_loss_coeff = 0.05
         self.return_loss_coeff = 0.1
-        self.secret_loss_coeff = 0.1
-        self.points_loss_coeff = 0.2
-        self.seen_trump_mask_loss_coeff = 0.2
-        self.unseen_trump_higher_than_hand_loss_coeff = 0.1
-        # The deterministic four, at scale 1.0 (set_deterministic_aux_scale).
-        self._aux_base_coeffs = {
-            "secret_loss_coeff": self.secret_loss_coeff,
-            "points_loss_coeff": self.points_loss_coeff,
-            "seen_trump_mask_loss_coeff": self.seen_trump_mask_loss_coeff,
-            "unseen_trump_higher_than_hand_loss_coeff": (
-                self.unseen_trump_higher_than_hand_loss_coeff
-            ),
-        }
-        self.aux_det_scale = 1.0
+        # The four DETERMINISTIC heads (secret partner, known points,
+        # seen-trump mask, unseen-trump-higher) are exact functions of what
+        # the seat has observed, so once learned they contribute no loss; a
+        # larger coefficient only shortens the transient in which the trunk
+        # is pushed to carry the memory they read. They run at 2.5x their
+        # original values (0.1/0.2/0.2/0.1; Training_Program_Redesign §4.3,
+        # 09-18). Win and return predict outcomes with irreducible
+        # uncertainty and keep theirs.
+        self.secret_loss_coeff = 0.25
+        self.points_loss_coeff = 0.5
+        self.seen_trump_mask_loss_coeff = 0.5
+        self.unseen_trump_higher_than_hand_loss_coeff = 0.25
 
         # Which actor/encoder parameters the optimizer may move; see
         # set_trainable_heads (the bidding-only phase freezes the play path).
@@ -646,21 +644,6 @@ class PPOAgent:
         if not getattr(critic, "has_aux_heads", False):
             return None
         return critic.aux_probe(encoder_out, self.encoder.card)
-
-    def set_deterministic_aux_scale(self, scale: float) -> None:
-        """Set the loss coefficients of the four DETERMINISTIC aux heads
-        (seen-trump mask, unseen-trump-higher, known points, secret partner)
-        to ``scale`` times their base values (Training_Program_Redesign §4.3,
-        09-18: the heads are exact functions of what the seat has observed,
-        so once learned they contribute no loss, and a larger coefficient
-        only shortens the transient in which the trunk is pushed to carry
-        the memory they read). Win and return predict outcomes with
-        irreducible uncertainty and keep their coefficients. Idempotent
-        (from the base values, never compounding); not saved in checkpoints
-        — a trainer applies it at start (``--aux-det-scale``)."""
-        self.aux_det_scale = float(scale)
-        for name, base in self._aux_base_coeffs.items():
-            setattr(self, name, base * self.aux_det_scale)
 
     def act(self, state, valid_actions, player_id=None, deterministic=False):
         """Select action given state and valid actions"""

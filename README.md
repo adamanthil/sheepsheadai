@@ -386,16 +386,15 @@ uv run train-ppo --phase league --resume <previous boundary checkpoint> \
     --until 1000000 --save-interval 50000 --snapshot-interval 50000 \
     --greedy-eval-interval 50000 --greedy-eval-games 200 \
     --entropy-play-floor 0.28 --num-workers 8 --seed 42 \
-    --worker-device mps --worker-compile default --aux-det-scale 2.5 \
+    --worker-device mps --worker-compile default \
     --seed-checkpoints 'runs/rc_202609/seeds/*.pt' \
     --oracle-init runs/rc_202609/oracle/oracle_init.pt --no-entropy-controller
 ```
 
-`--aux-det-scale 2.5` trains the four deterministic aux heads (seen-trump
-mask, unseen-trump-higher, known points, secret partner) at 2.5× their base
-loss coefficients; win and return keep theirs. The orchestrator passes it to
-every stage that trains those heads (bootstrap, league, the distill trunk
-epochs, the bidding phase) from `ProgramConfig.aux_det_scale`.
+The four deterministic aux heads (seen-trump mask, unseen-trump-higher,
+known points, secret partner) train at 2.5× their original loss
+coefficients in every stage (`PPOAgent` defaults, §4.3); win and return
+keep theirs.
 
 Generation 1 seeds the population with four copies of the bootstrap final
 (`runs/rc_202609/seeds/`), loads the pretrained oracle and runs with fixed

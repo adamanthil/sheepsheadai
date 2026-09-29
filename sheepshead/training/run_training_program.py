@@ -360,7 +360,6 @@ class Program:
             "--greedy-eval-games",
             str(cfg.bootstrap.greedy_eval_games),
             *self._worker_flags(),
-            *self._aux_flags(),
         )
         if cfg.bootstrap.update_interval:
             cmd += ["--update-interval", str(cfg.bootstrap.update_interval)]
@@ -479,7 +478,6 @@ class Program:
             "--entropy-play-floor",
             str(cfg.league.entropy_play_floor),
             *self._worker_flags(cfg.league.worker_device, cfg.league.worker_compile),
-            *self._aux_flags(),
         )
         if cfg.league.update_interval:
             cmd += ["--update-interval", str(cfg.league.update_interval)]
@@ -925,13 +923,7 @@ class Program:
         ):
             if val is not None:
                 flags += [name, str(val)]
-        return flags + self._aux_flags()
-
-    def _aux_flags(self) -> list[str]:
-        """The deterministic aux-head coefficient multiplier (§4.3, 09-18)
-        for every stage that trains those heads."""
-        scale = self.cfg.aux_det_scale
-        return ["--aux-det-scale", str(scale)] if scale != 1.0 else []
+        return flags
 
     def _cert_flags(self, routed: bool) -> list[str]:
         pi = self.cfg.policy_iteration
@@ -1096,7 +1088,6 @@ class Program:
                 "--greedy-eval-interval",
                 "0",
                 *self._worker_flags(),
-                *self._aux_flags(),
             )
             if self.cfg.league.update_interval:
                 cmd += ["--update-interval", str(self.cfg.league.update_interval)]
