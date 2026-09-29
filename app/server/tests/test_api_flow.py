@@ -221,7 +221,7 @@ async def test_doublers_pass_out_persists_the_thrown_in_deal_and_doubled_stake(d
 
     from server.runtime.dealing import redeal_passed_out_hand
     from server.runtime.tables import tables
-    from sheepshead import ACTION_IDS
+    from sheepshead.game import ACTION_IDS
 
     app, pool = db_app
     transport = httpx.ASGITransport(app=app)

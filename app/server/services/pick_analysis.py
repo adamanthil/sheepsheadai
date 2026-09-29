@@ -38,7 +38,7 @@ from server.services.analysis_common import (
     select_action_id,
     set_seed,
 )
-from sheepshead import DECK, Game
+from sheepshead.game import DECK, Game
 
 # Pre-play is at most 5 picks/passes + call + under + 2 buries; anything
 # past this indicates a bug rather than a legal phase sequence.

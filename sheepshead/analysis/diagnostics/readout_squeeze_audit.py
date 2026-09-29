@@ -20,12 +20,12 @@ import random
 import numpy as np
 import torch
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 N_GAMES = 30
 BASE_SEED = 20260709

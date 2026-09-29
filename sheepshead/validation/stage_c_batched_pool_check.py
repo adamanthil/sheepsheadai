@@ -12,12 +12,12 @@ import time
 
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
 CKPT = "final_pfsp_swish_ppo.pt"

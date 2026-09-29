@@ -24,11 +24,11 @@ from server.services.persistence.snapshots import (
     capture_post_state,
     capture_pre_state,
 )
-from sheepshead import ACTION_LOOKUP
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.game import ACTION_LOOKUP
 
 
 @dataclass(frozen=True)

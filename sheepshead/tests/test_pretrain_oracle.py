@@ -7,9 +7,9 @@ import json
 import pytest
 import torch
 
-from sheepshead import ACTIONS
 from sheepshead.agent.oracle import OracleValueNetwork
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.training import pretrain_oracle
 
 pytestmark = pytest.mark.slow

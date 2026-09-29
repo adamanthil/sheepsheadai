@@ -12,7 +12,7 @@ from uuid import UUID
 
 import asyncpg
 
-from sheepshead import DECK_IDS, UNDER_TOKEN
+from sheepshead.game import DECK_IDS, UNDER_TOKEN
 
 if TYPE_CHECKING:
     from server.runtime.tables import Table

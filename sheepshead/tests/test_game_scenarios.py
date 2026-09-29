@@ -23,12 +23,7 @@ Scenarios:
 
 import sys
 
-from sheepshead import (
-    ACTION_IDS,
-    PARTNER_BY_JD,
-    UNDER_TOKEN,
-    get_trick_points,
-)
+from sheepshead.game import ACTION_IDS, PARTNER_BY_JD, UNDER_TOKEN, get_trick_points
 from sheepshead.tests.game_test_utils import (
     act,
     make_game,

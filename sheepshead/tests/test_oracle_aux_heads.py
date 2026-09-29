@@ -6,10 +6,9 @@ import random
 
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP
 from sheepshead.agent.oracle import team_aux_labels
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.game import Game
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
 from sheepshead.tests.ppo_test_helpers import play_episodes, seed_all
 from sheepshead.training.reward_shaping import compute_seen_trump_mask
 from sheepshead.training.training_utils import (

@@ -19,7 +19,7 @@ from server.services.persistence.games import (
     persist_started_game,
 )
 from server.services.persistence.pool import get_db_pool
-from sheepshead import Game
+from sheepshead.game import Game
 
 
 def build_table_agent(settings, table_id: str):

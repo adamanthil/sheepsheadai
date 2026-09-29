@@ -10,8 +10,8 @@ the selfplay trainer's per-player stream semantics."""
 import numpy as np
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.league_worker import OpponentAdapter

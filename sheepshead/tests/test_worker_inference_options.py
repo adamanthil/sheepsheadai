@@ -17,10 +17,10 @@ from typing import cast
 import pytest
 import torch
 
-from sheepshead import ACTIONS
 from sheepshead.agent import ppo as ppo_module
 from sheepshead.agent.compiled_encoder import disable_compiled_encoder
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.training import league_worker
 from sheepshead.training.league import League

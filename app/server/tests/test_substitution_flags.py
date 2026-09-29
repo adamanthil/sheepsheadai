@@ -16,7 +16,7 @@ from server.services.persistence.snapshots import (
     capture_post_state,
     capture_pre_state,
 )
-from sheepshead import ACTION_LOOKUP
+from sheepshead.game import ACTION_LOOKUP
 
 
 class _RecordingConn:

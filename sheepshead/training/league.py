@@ -29,8 +29,8 @@ from typing import Optional
 import numpy as np
 from openskill.models import PlackettLuce
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.training.config import LeagueConfig
 
 ROLE_PAST_MAIN = "past_main"

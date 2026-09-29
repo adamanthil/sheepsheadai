@@ -19,8 +19,7 @@ from server.api.schemas import (
 )
 from server.config import get_settings
 from server.services.ai_loader import load_agent
-from sheepshead import DECK_IDS
-from sheepshead.game import UNDER_CARD_ID, UNDER_TOKEN
+from sheepshead.game import DECK_IDS, UNDER_CARD_ID, UNDER_TOKEN
 
 _ID_TO_CARD = {v: k for k, v in DECK_IDS.items()}
 _ID_TO_CARD[UNDER_CARD_ID] = UNDER_TOKEN

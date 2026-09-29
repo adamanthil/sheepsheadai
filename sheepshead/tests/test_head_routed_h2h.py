@@ -8,12 +8,12 @@ import os
 import numpy as np
 import pytest
 
-from sheepshead import ACTION_IDS, ACTIONS
 from sheepshead.analysis.head_routed_h2h import (
     HeadRoutedAgent,
     is_lead_decision,
     routed_h2h,
 )
+from sheepshead.game import ACTION_IDS, ACTIONS
 
 PICK = ACTION_IDS["PICK"]
 PASS = ACTION_IDS["PASS"]

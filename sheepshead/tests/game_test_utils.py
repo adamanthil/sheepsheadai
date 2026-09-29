@@ -5,7 +5,7 @@ construction and a scripted-action driver so scenario tests can assert
 hand-computed expectations against fully deterministic games.
 """
 
-from sheepshead import ACTION_IDS, DECK, Game
+from sheepshead.game import ACTION_IDS, DECK, Game
 
 
 def make_game(hands, blind, **kwargs):
@@ -52,7 +52,7 @@ def run_script(game, script):
 def valid_action_names(game, position):
     """The set of legal action strings for a seat right now."""
     player = game.players[position - 1]
-    from sheepshead import ACTION_LOOKUP
+    from sheepshead.game import ACTION_LOOKUP
 
     return {ACTION_LOOKUP[a] for a in player.get_valid_action_ids()}
 

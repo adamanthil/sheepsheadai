@@ -26,8 +26,8 @@ def analyze_env(monkeypatch, tmp_path):
 @pytest.fixture
 def pick_agent(monkeypatch):
     import server.services.pick_analysis as pick_mod
-    from sheepshead import ACTIONS
     from sheepshead.agent.ppo import PPOAgent
+    from sheepshead.game import ACTIONS
 
     agent = PPOAgent(len(ACTIONS), arch="full")
     monkeypatch.setattr(pick_mod, "load_agent", lambda path: agent)

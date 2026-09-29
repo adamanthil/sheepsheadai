@@ -18,7 +18,7 @@ import sys
 
 import numpy as np
 
-from sheepshead import (
+from sheepshead.game import (
     ACTION_IDS,
     ACTION_LOOKUP,
     ACTIONS,

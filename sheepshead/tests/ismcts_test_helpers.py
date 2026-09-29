@@ -1,8 +1,8 @@
 """Shared fixtures for the ISMCTS suites: an unseeded default agent and a
 deal driver that stops at the second-bury root."""
 
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.ismcts import is_private_decision
 
 

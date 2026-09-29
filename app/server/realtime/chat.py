@@ -10,7 +10,7 @@ from fastapi import WebSocket
 
 from server.realtime.broadcast import broadcast_table_event
 from server.runtime.tables import ClientConn, Table, json_default
-from sheepshead import CARD_FULL_NAMES
+from sheepshead.game import CARD_FULL_NAMES
 
 CHAT_MAX_LEN = 500
 # A player's join/leave notices are posted at most once per this window, so

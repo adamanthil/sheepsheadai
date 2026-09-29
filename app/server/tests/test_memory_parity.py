@@ -25,9 +25,9 @@ from server.runtime import ai_loop, turn_timer
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.dealing import new_game_for_table
 from server.runtime.tables import ClientConn, Occupant, Table, get_actor_seat, tables
-from sheepshead import ACTIONS
 from sheepshead.agent.observation import last_trick_observation_for, observation_for
 from sheepshead.agent.ppo import PPOAgent, device
+from sheepshead.game import ACTIONS
 
 HUMAN_SEATS = (2, 4)
 

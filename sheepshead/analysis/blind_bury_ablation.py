@@ -53,8 +53,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent.observation import observation_for
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 H2H_SEED = 42  # matches the h2h_duplicate deal-seed schedule
 N_BOOT = 10_000

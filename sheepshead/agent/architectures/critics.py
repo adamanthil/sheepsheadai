@@ -5,7 +5,7 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
-from sheepshead import DECK_IDS, TRUMP
+from sheepshead.game import DECK_IDS, TRUMP
 
 
 class TokenReadoutValueMixin:

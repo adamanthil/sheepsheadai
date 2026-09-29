@@ -14,7 +14,6 @@ import tempfile
 import pytest
 import torch
 
-from sheepshead import ACTIONS, Game
 from sheepshead.agent import architectures
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
@@ -27,6 +26,7 @@ from sheepshead.analysis.capture_arch_goldens import (
     manifest_path,
     runtime_matches_manifest,
 )
+from sheepshead.game import ACTIONS, Game
 
 _HAVE_FIXTURES = os.path.exists(manifest_path())
 

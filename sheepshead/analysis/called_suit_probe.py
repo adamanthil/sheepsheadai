@@ -38,18 +38,13 @@ import argparse
 import json
 import time
 
-from sheepshead import (
-    ACTION_LOOKUP,
-    FAIL,
-    PARTNER_BY_CALLED_ACE,
-    Game,
-)
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.analysis.conventions import called_suit_fail
 from sheepshead.analysis.trump_lead_probe import PROBE_SEED
+from sheepshead.game import ACTION_LOOKUP, FAIL, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.scripted_agent import ScriptedAgent
 
 _FAIL_SET = set(FAIL)

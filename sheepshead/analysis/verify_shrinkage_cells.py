@@ -46,11 +46,11 @@ from multiprocessing import get_context
 
 import numpy as np
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
 
 FAT_RANKS = {"A", "10"}
 NOPOINT_RANKS = {"7", "8", "9"}

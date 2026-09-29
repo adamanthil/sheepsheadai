@@ -31,7 +31,6 @@ from pathlib import Path
 
 import numpy as np
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.agent.observation import needs_picker_memory
 from sheepshead.analysis.league_progress_eval import h2h_parallel_eval
 from sheepshead.analysis.rigorous_eval import (
@@ -41,6 +40,7 @@ from sheepshead.analysis.rigorous_eval import (
     bootstrap_mean,
     run_gauntlet,
 )
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.ismcts import infer_head
 
 

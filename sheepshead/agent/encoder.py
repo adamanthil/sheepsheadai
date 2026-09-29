@@ -5,7 +5,6 @@ from typing import Any, Dict, List
 import torch
 import torch.nn as nn
 
-from sheepshead import DECK_IDS, TRUMP, UNDER_CARD_ID
 from sheepshead.agent.token_layout import (
     BASE_TYPE_COUNT,
     BLIND_TOKENS,
@@ -18,6 +17,7 @@ from sheepshead.agent.token_layout import (
     TRICK_TOKENS,
     TRICK_TYPE_ID,
 )
+from sheepshead.game import DECK_IDS, TRUMP, UNDER_CARD_ID
 
 PAD_CARD_ID = 0
 

@@ -73,7 +73,7 @@ silently degrading the instrument.
 
 from __future__ import annotations
 
-from sheepshead import (
+from sheepshead.game import (
     ACTION_LOOKUP,
     DECK,
     FAIL_POWER,

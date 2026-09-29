@@ -50,12 +50,12 @@ from typing import Dict
 
 import numpy as np
 
-from sheepshead import Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import SOFTBAND_HNORM
+from sheepshead.game import Game
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 PROBE_SEED = 20260728

@@ -73,7 +73,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # service and gives us its case-detection helpers + simulate_game.
 import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
-from sheepshead import (  # noqa: E402
+from sheepshead.agent.observation import (  # noqa: E402
+    last_trick_observation_for,
+    observation_for,
+)
+from sheepshead.game import (  # noqa: E402
     ACTION_IDS,
     ACTION_LOOKUP,
     FAIL,
@@ -81,10 +85,6 @@ from sheepshead import (  # noqa: E402
     TRUMP_SET,
     UNDER_TOKEN,
     Game,
-)
-from sheepshead.agent.observation import (  # noqa: E402
-    last_trick_observation_for,
-    observation_for,
 )
 
 FAIL_SET = set(FAIL)

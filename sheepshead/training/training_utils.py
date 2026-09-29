@@ -12,7 +12,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from sheepshead import (
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
+from sheepshead.game import (
     ACTION_IDS,
     ACTION_LOOKUP,
     ACTIONS,
@@ -20,10 +24,6 @@ from sheepshead import (
     PARTNER_BY_JD,
     TRUMP,
     Game,
-)
-from sheepshead.agent.observation import (
-    last_trick_observation_for,
-    observation_for,
 )
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,

@@ -15,7 +15,7 @@ import asyncpg
 
 from server.services.persistence.cards import upsert_cardset
 from server.services.persistence.pool import DB_UNAVAILABLE, get_ai_player_id
-from sheepshead import DECK_IDS, Game
+from sheepshead.game import DECK_IDS, Game
 
 if TYPE_CHECKING:
     from server.runtime.tables import Table

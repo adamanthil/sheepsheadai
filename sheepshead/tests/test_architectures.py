@@ -19,7 +19,6 @@ import pytest
 import torch
 import torch.nn as nn
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent import architectures, ppo
 from sheepshead.agent.architectures import (
     ONEHOT_STATE_DIM,
@@ -33,6 +32,7 @@ from sheepshead.agent.ppo import (
     PPOAgent,
     RecurrentCriticNetwork,
 )
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.training import pfsp_runtime
 
 # Builds, plays, and updates every registered architecture (~30s+).

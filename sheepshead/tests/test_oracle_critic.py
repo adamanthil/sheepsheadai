@@ -13,12 +13,7 @@ import pickle
 import numpy as np
 import pytest
 
-from sheepshead import (
-    DECK_IDS,
-    PARTNER_BY_CALLED_ACE,
-    PARTNER_BY_JD,
-    Game,
-)
+from sheepshead.game import DECK_IDS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.scripted_agent import ScriptedAgent
 
 # Collects real games and runs PPO update mechanics (~10s).
@@ -224,8 +219,8 @@ def _collect_episodes(agent, n_episodes, collect_oracle):
 class TestOracleEventCollection:
     @classmethod
     def setup_class(cls):
-        from sheepshead import ACTIONS
         from sheepshead.agent.ppo import PPOAgent
+        from sheepshead.game import ACTIONS
 
         cls.agent = PPOAgent(len(ACTIONS))  # limited: shared inference agent
 
@@ -253,8 +248,8 @@ class TestOracleEventCollection:
 class TestOracleUpdate:
     @classmethod
     def setup_class(cls):
-        from sheepshead import ACTIONS
         from sheepshead.agent.ppo import PPOAgent
+        from sheepshead.game import ACTIONS
 
         cls.ACTIONS = ACTIONS
         cls.PPOAgent = PPOAgent
@@ -305,8 +300,8 @@ class TestGradientIsolation:
         import torch
         import torch.nn.functional as F
 
-        from sheepshead import ACTIONS
         from sheepshead.agent.ppo import PPOAgent, device
+        from sheepshead.game import ACTIONS
 
         agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
 
@@ -350,8 +345,8 @@ class TestOracleCheckpoints:
     def test_roundtrips(self):
         import torch
 
-        from sheepshead import ACTIONS
         from sheepshead.agent.ppo import PPOAgent
+        from sheepshead.game import ACTIONS
 
         path = os.path.join(self.dir, "a.pt")
         oracle_agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
@@ -385,8 +380,8 @@ class TestOracleCheckpoints:
 
         import torch
 
-        from sheepshead import ACTIONS
         from sheepshead.agent.ppo import PPOAgent
+        from sheepshead.game import ACTIONS
 
         agent = PPOAgent(len(ACTIONS), critic_mode="oracle")
         snap = copy.deepcopy(agent)

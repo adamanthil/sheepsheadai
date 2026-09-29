@@ -9,8 +9,8 @@ per epoch when the buffer spans several minibatches."""
 import pytest
 import torch
 
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.tests.ppo_test_helpers import play_episodes, seed_all
 
 SEED = 20260722

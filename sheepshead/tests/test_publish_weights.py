@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import torch
 
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.league_worker import (
     WORKER_STATE,

@@ -13,9 +13,9 @@ bumplessly from measured values (Astrom & Wittenmark, Adaptive Control)."""
 
 import random
 
-from sheepshead import ACTIONS, PARTNER_BY_JD
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.analysis.entropy_probe import HEADS, probe_agent
+from sheepshead.game import ACTIONS, PARTNER_BY_JD
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.league_worker import OpponentAdapter

@@ -50,17 +50,11 @@ from multiprocessing import get_context
 
 import numpy as np
 
-from sheepshead import (
-    ACTIONS,
-    PARTNER_BY_CALLED_ACE,
-    PARTNER_BY_JD,
-    TRUMP,
-    Game,
-)
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, TRUMP, Game
 
 R_REPLICATES = 3
 VOTES_NEEDED = 2

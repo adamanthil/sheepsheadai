@@ -87,16 +87,12 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-from sheepshead import (
-    PARTNER_BY_CALLED_ACE,
-    PARTNER_BY_JD,
-    Game,
-)
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 NUM_SEATS = 5
 

@@ -4,7 +4,8 @@ from argparse import ArgumentParser
 
 import torch
 
-from sheepshead import (
+from sheepshead.agent.ppo import load_agent
+from sheepshead.game import (
     ACTION_IDS,
     ACTIONS,
     PARTNER_BY_CALLED_ACE,
@@ -14,7 +15,6 @@ from sheepshead import (
     Player,
     colorize_card,
 )
-from sheepshead.agent.ppo import load_agent
 
 parser = ArgumentParser(
     prog="Play Sheepshead",

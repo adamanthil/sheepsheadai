@@ -29,7 +29,7 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, Game
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
 from sheepshead.tests.ismcts_test_helpers import fresh_agent
 

@@ -58,9 +58,9 @@ from multiprocessing import get_context
 import numpy as np
 import torch
 
-from sheepshead import ACTIONS
 from sheepshead.agent import architectures
 from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.game import ACTIONS
 from sheepshead.training.config import (
     BootstrapHyperparams,
     LeagueConfig,

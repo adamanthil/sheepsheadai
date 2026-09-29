@@ -27,8 +27,8 @@ from typing import cast
 
 import pytest
 
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.training import league_streams
 from sheepshead.training.league import SELF_PLAY, League
 from sheepshead.training.league_streams import (

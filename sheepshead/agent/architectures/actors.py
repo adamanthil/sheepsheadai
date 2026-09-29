@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from sheepshead import ACTION_IDS
+from sheepshead.game import ACTION_IDS
 
 
 class MultiHeadRecurrentActorNetwork(nn.Module):

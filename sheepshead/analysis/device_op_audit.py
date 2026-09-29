@@ -51,7 +51,7 @@ import numpy as np
 import torch
 from torch.utils._python_dispatch import TorchDispatchMode
 
-from sheepshead import ACTION_IDS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead.game import ACTION_IDS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 # Ops that force a device-to-host round trip. Not exhaustive over aten, but
 # these are the ones reachable from our forward/backward/update paths.

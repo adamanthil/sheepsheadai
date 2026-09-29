@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Trump-lead incidence probe invariants (sheepshead/analysis/trump_lead_probe.py)."""
 
-from sheepshead import PARTNER_BY_CALLED_ACE
 from sheepshead.analysis.trump_lead_probe import PROBE_SEED, probe_agent
+from sheepshead.game import PARTNER_BY_CALLED_ACE
 from sheepshead.scripted_agent import ScriptedAgent
 
 
@@ -25,7 +25,7 @@ class TestTrumpLeadProbe:
     def test_always_trump_leader_is_fully_flagged(self):
         # A hero that always leads trump when it can must be flagged on 100%
         # of opportunities: validates the detection logic end to end.
-        from sheepshead import TRUMP
+        from sheepshead.game import TRUMP
 
         trump = set(TRUMP)
 

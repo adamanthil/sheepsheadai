@@ -104,15 +104,11 @@ from typing import Literal, NamedTuple, TypedDict, cast
 import numpy as np
 import torch
 
-from sheepshead import (
-    ACTION_IDS,
-    ACTIONS,
-    Game,
-)
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.game import ACTION_IDS, ACTIONS, Game
 from sheepshead.training.reward_shaping import RETURN_SCALE
 
 # Per-head iteration budgets and tree depths (plan §3).

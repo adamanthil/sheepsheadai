@@ -54,11 +54,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 import sheepshead.analysis.counterfactual_trump_leads as cf  # noqa: E402
 import sheepshead.analysis.scan_defender_trump_leads as scan  # noqa: E402
 from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
-from sheepshead import TRUMP  # noqa: E402
 from sheepshead.analysis.conventions import called_suit_fail  # noqa: E402
 from sheepshead.analysis.scan_called_suit_leads import (  # noqa: E402
     called_suit_already_led,
 )
+from sheepshead.game import TRUMP  # noqa: E402
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL
 PARTNER_MODE_CALLED_ACE = 1

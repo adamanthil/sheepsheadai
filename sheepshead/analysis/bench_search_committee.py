@@ -37,11 +37,11 @@ import time
 
 import torch
 
-from sheepshead import ACTION_IDS, ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.game import ACTION_IDS, ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
 
 # Production CE-teacher search settings (training/config.py CommitteeConfig).
 TEACHER_ITERS = 1024

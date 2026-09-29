@@ -12,8 +12,8 @@ records, so this mapping is pinned directly with hand-built events.
 import pytest
 import torch
 
-from sheepshead import ACTIONS, TRUMP
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS, TRUMP
 
 
 @pytest.fixture(scope="module")

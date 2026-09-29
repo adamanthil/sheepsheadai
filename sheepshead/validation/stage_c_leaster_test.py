@@ -18,7 +18,12 @@ import random
 
 import numpy as np
 
-from sheepshead import (
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
+from sheepshead.agent.ppo import load_agent
+from sheepshead.game import (
     ACTIONS,
     DECK,
     PARTNER_BY_JD,
@@ -26,11 +31,6 @@ from sheepshead import (
     Game,
     get_card_suit,
 )
-from sheepshead.agent.observation import (
-    last_trick_observation_for,
-    observation_for,
-)
-from sheepshead.agent.ppo import load_agent
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
 CKPT = "final_pfsp_swish_ppo.pt"

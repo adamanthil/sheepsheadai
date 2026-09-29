@@ -55,12 +55,6 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
-from sheepshead import (
-    ACTION_LOOKUP,
-    PARTNER_BY_CALLED_ACE,
-    PARTNER_BY_JD,
-    TRUMP_SET,
-)
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
 from sheepshead.analysis.conventions import lead_options
@@ -71,6 +65,12 @@ from sheepshead.analysis.rigorous_eval import (
     ModelRegistry,
     evaluate_hero_in_field,
     make_panel_field_fn,
+)
+from sheepshead.game import (
+    ACTION_LOOKUP,
+    PARTNER_BY_CALLED_ACE,
+    PARTNER_BY_JD,
+    TRUMP_SET,
 )
 from sheepshead.training.training_utils import paired_edge
 
@@ -448,13 +448,13 @@ def h2h_duplicate(
     """
     import random as _random
 
-    from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
     from sheepshead.analysis.rigorous_eval import (
         ModelRegistry,
         bootstrap_deal_indices,
         bootstrap_mean,
         run_gauntlet,
     )
+    from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
     registry = ModelRegistry()
     cand = registry.get(Path(gen_ckpt))

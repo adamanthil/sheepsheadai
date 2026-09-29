@@ -42,8 +42,8 @@ import time
 import numpy as np
 import torch
 
-from sheepshead import ACTION_IDS
 from sheepshead.analysis.capture_arch_goldens import collect_probe_states
+from sheepshead.game import ACTION_IDS
 
 DEFAULT_BATCH_SIZES = (1, 32, 96, 160, 320, 480, 1024)
 

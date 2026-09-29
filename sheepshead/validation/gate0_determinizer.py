@@ -49,7 +49,6 @@ from collections import deque
 import numpy as np
 import torch
 
-from sheepshead import ACTION_IDS, ACTIONS, TRUMP, Game
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import load_agent
@@ -61,6 +60,7 @@ from sheepshead.analysis.counterfactual_trump_leads import (
     restore_memory,
     snapshot_memory,
 )
+from sheepshead.game import ACTION_IDS, ACTIONS, TRUMP, Game
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device

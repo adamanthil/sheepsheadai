@@ -28,12 +28,12 @@ import random
 import numpy as np
 import torch
 
-from sheepshead import DECK, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
+from sheepshead.game import DECK, Game
 from sheepshead.ismcts import (
     ISMCTSConfig,
     ISMCTSTeacher,

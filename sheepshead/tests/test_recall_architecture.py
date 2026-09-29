@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead import ACTIONS, Game
 from sheepshead.agent import architectures
 from sheepshead.agent.architectures.encoders import RecallEncoder
 from sheepshead.agent.architectures.onehot import build_onehot_state
@@ -32,6 +31,7 @@ from sheepshead.agent.token_layout import (
     MEMORY_TOKEN,
     RECALL_TOKEN_COUNT,
 )
+from sheepshead.game import ACTIONS, Game
 from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead.tests.ppo_test_helpers import seed_all
 

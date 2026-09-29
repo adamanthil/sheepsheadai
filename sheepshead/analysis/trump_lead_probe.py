@@ -40,18 +40,18 @@ import argparse
 import json
 import time
 
-from sheepshead import (
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+)
+from sheepshead.analysis.conventions import lead_options
+from sheepshead.game import (
     ACTION_LOOKUP,
     PARTNER_BY_CALLED_ACE,
     PARTNER_BY_JD,
     TRUMP_SET,
     Game,
 )
-from sheepshead.agent.observation import (
-    last_trick_observation_for,
-    observation_for,
-)
-from sheepshead.analysis.conventions import lead_options
 from sheepshead.scripted_agent import ScriptedAgent
 
 PROBE_SEED = 20260702  # fixed CRN deal set: results comparable forever

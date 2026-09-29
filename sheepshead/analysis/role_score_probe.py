@@ -29,8 +29,8 @@ import csv
 import time
 from pathlib import Path
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.analysis.rigorous_eval import ModelRegistry, play_hand
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 PROBE_SEED = 20260719
 MODE_NAMES = {PARTNER_BY_CALLED_ACE: "called", PARTNER_BY_JD: "jd"}

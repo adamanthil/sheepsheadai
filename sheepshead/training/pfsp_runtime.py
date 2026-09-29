@@ -17,14 +17,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from sheepshead import (
-    Game,
-)
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import Game
 from sheepshead.ismcts import infer_head, minmax_unit
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,

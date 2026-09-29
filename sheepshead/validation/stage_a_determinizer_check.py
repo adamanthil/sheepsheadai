@@ -34,16 +34,6 @@ from collections import deque
 import numpy as np
 import torch
 
-from sheepshead import (
-    ACTION_IDS,
-    ACTIONS,
-    DECK,
-    TRUMP,
-    UNDER_TOKEN,
-    Game,
-    get_callable_cards,
-    get_card_suit,
-)
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import (
     last_trick_observation_for,
@@ -55,6 +45,16 @@ from sheepshead.analysis.counterfactual_trump_leads import (
     play_out,
     restore_memory,
     snapshot_memory,
+)
+from sheepshead.game import (
+    ACTION_IDS,
+    ACTIONS,
+    DECK,
+    TRUMP,
+    UNDER_TOKEN,
+    Game,
+    get_callable_cards,
+    get_card_suit,
 )
 from sheepshead.training.training_utils import get_partner_selection_mode
 

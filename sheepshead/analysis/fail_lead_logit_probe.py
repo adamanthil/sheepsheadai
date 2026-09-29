@@ -47,14 +47,20 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from sheepshead import ACTION_LOOKUP, FAIL, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.conventions import called_suit_fail
-from sheepshead.game import CARD_POINTS
+from sheepshead.game import (
+    ACTION_LOOKUP,
+    CARD_POINTS,
+    FAIL,
+    PARTNER_BY_CALLED_ACE,
+    TRUMP_SET,
+    Game,
+)
 
 DEVICE = torch.device("cpu")
 FAIL_SET = set(FAIL)

@@ -24,7 +24,7 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.ismcts import (
     ISMCTSConfig,
     ISMCTSTeacher,

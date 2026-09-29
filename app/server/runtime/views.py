@@ -9,13 +9,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from server.runtime.models import Table
-from sheepshead import (
-    ACTION_IDS,
-    CARD_FULL_NAMES,
-    DECK,
-    Game,
-    Player,
-)
+from sheepshead.game import ACTION_IDS, CARD_FULL_NAMES, DECK, Game, Player
 
 ACTION_SIZE = len(ACTION_IDS)
 

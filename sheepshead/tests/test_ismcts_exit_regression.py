@@ -25,7 +25,8 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead import (
+from sheepshead.agent.observation import observation_for
+from sheepshead.game import (
     ACTIONS,
     DECK,
     PARTNER_BY_CALLED_ACE,
@@ -35,7 +36,6 @@ from sheepshead import (
     get_card_points,
     get_card_suit,
 )
-from sheepshead.agent.observation import observation_for
 from sheepshead.ismcts import infer_head, is_private_decision
 from sheepshead.tests.ismcts_test_helpers import drive_to_second_bury, fresh_agent
 
@@ -106,7 +106,7 @@ def _drive_to_head(game, rng, want_head, force_pass_for_leaster=False):
     """Random-legal play until the first decision of want_head; return
     (observer, forced_public) at that node, or None. Public actions only in
     forced_public (matches pfsp_runtime / the teacher's replay contract)."""
-    from sheepshead import ACTIONS as A
+    from sheepshead.game import ACTIONS as A
 
     fp = []
     pass_id = A.index("PASS") + 1
@@ -204,7 +204,7 @@ def _replay_reproduces_history(real_game, deal, forced_public, observer):
     reproduce the public history exactly."""
     from collections import deque
 
-    from sheepshead import ACTION_IDS
+    from sheepshead.game import ACTION_IDS
 
     g = Game(partner_selection_mode=real_game.partner_mode_flag)
     for s in range(1, 6):

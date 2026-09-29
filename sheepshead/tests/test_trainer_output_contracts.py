@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.training import train_ppo
 from sheepshead.training.league import League
 

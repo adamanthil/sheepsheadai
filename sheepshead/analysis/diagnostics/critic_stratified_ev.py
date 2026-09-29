@@ -37,8 +37,8 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from sheepshead import ACTIONS, DECK, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.agent.ppo import load_agent
+from sheepshead.game import ACTIONS, DECK, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.training.pfsp_runtime import play_population_game
 from sheepshead.training.reward_shaping import estimate_hand_strength_score
 

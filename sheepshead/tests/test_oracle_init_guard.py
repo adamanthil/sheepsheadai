@@ -9,8 +9,8 @@ both launch-time overwrite sites.
 
 import sys
 
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.training.train_ppo import warn_if_oracle_overwrite
 
 

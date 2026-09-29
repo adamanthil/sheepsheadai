@@ -12,8 +12,8 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.training import pfsp_runtime
 
 

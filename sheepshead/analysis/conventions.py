@@ -7,7 +7,7 @@ a player could lead, and whether a card is a fail of the called suit.
 
 from __future__ import annotations
 
-from sheepshead import ACTION_LOOKUP, FAIL, TRUMP_SET
+from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET
 
 FAIL_SET = frozenset(FAIL)
 

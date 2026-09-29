@@ -47,14 +47,6 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from sheepshead import (
-    ACTION_IDS,
-    ACTIONS,
-    FAIL,
-    PARTNER_BY_CALLED_ACE,
-    TRUMP_SET,
-    Game,
-)
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import (
     last_trick_observation_for,
@@ -67,6 +59,14 @@ from sheepshead.analysis.critic_calibration import (
     policy_and_value,
     restore_memory,
     snapshot_memory,
+)
+from sheepshead.game import (
+    ACTION_IDS,
+    ACTIONS,
+    FAIL,
+    PARTNER_BY_CALLED_ACE,
+    TRUMP_SET,
+    Game,
 )
 from sheepshead.training.reward_shaping import RETURN_SCALE, TRICK_POINT_RATIO
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sheepshead import CARD_FULL_NAMES, DECK, DECK_IDS, SUIT_NAMES
+from sheepshead.game import CARD_FULL_NAMES, DECK, DECK_IDS, SUIT_NAMES
 
 APP_DIR = Path(__file__).resolve().parent.parent
 OUT_PATH = APP_DIR / "db" / "fixtures" / "afterReset.sql"

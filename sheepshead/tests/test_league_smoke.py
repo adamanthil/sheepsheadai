@@ -18,8 +18,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from sheepshead import ACTIONS
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS
 from sheepshead.training.league import ROLE_PAST_MAIN, League
 from sheepshead.training.train_ppo import PHASE_SPECS, run_phase
 

@@ -4,8 +4,8 @@ teacher, and the worker-state install the corpus generator expects."""
 
 from types import SimpleNamespace
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.distill_corpus import play_corpus_game, set_worker_state
 

@@ -63,11 +63,11 @@ from multiprocessing import get_context
 
 import numpy as np
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, Game
 
 _W = {}  # per-worker state
 

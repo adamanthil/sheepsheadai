@@ -6,16 +6,6 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from sheepshead import (
-    ACTION_IDS,
-    BURY_ACTIONS,
-    CALL_ACTIONS,
-    DECK_IDS,
-    PLAY_ACTIONS,
-    TRUMP,
-    UNDER_ACTIONS,
-    UNDER_TOKEN,
-)
 from sheepshead.agent import architectures
 from sheepshead.agent.architectures.actors import (
     MultiHeadRecurrentActorNetwork,
@@ -27,6 +17,16 @@ from sheepshead.agent.architectures.critics import (
     PerceiverCriticNetwork,
     RecurrentCriticNetwork,
     TokenReadoutValueMixin,
+)
+from sheepshead.game import (
+    ACTION_IDS,
+    BURY_ACTIONS,
+    CALL_ACTIONS,
+    DECK_IDS,
+    PLAY_ACTIONS,
+    TRUMP,
+    UNDER_ACTIONS,
+    UNDER_TOKEN,
 )
 from sheepshead.training.reward_shaping import RETURN_SCALE
 
@@ -2464,7 +2464,7 @@ def load_agent(
     This is the canonical loader for eval tooling, league members, and the
     game server — anywhere the caller does not already know the arch.
     """
-    from sheepshead import ACTIONS
+    from sheepshead.game import ACTIONS
 
     if checkpoint is None:
         checkpoint = torch.load(filepath, map_location=device)

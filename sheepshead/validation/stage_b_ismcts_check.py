@@ -31,13 +31,13 @@ import random
 import numpy as np
 import torch
 
-from sheepshead import ACTIONS, TRUMP, Game
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
+from sheepshead.game import ACTIONS, TRUMP, Game
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_decision
 from sheepshead.training.training_utils import get_partner_selection_mode
 

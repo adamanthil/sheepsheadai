@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import WebSocket
 
-from sheepshead import Game
 from sheepshead.agent.ppo import PPOAgent
+from sheepshead.game import Game
 
 
 @dataclass

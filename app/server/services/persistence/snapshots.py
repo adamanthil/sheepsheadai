@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from sheepshead import Game
+from sheepshead.game import Game
 
 
 def capture_pre_state(game: Game) -> Dict[str, Any]:

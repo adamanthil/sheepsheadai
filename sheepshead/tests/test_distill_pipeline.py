@@ -12,7 +12,7 @@ import random
 import pytest
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE
 from sheepshead.tests.distill_test_helpers import (
     fresh_agent,
     generate_game,
@@ -238,7 +238,7 @@ def test_convention_telemetry_rates():
     agent = fresh_agent()
     n = agent.action_size
     play_ids = [i + 1 for i, name in enumerate(ACTIONS) if name.startswith("PLAY ")]
-    from sheepshead import TRUMP
+    from sheepshead.game import TRUMP
 
     trump_id = next(a for a in play_ids if ACTIONS[a - 1][5:] in TRUMP)
     fail_id = next(a for a in play_ids if ACTIONS[a - 1][5:] not in TRUMP)

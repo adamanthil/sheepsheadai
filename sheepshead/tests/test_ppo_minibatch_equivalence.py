@@ -16,13 +16,13 @@ padding fill values are, and which rows survive action-flattening.
 import pytest
 import torch
 
-from sheepshead import ACTIONS, TRUMP
 from sheepshead.agent.ppo import (
     FlattenedActionSteps,
     MinibatchTensors,
     PPOAgent,
     device,
 )
+from sheepshead.game import ACTIONS, TRUMP
 from sheepshead.tests.ppo_test_helpers import (
     play_episodes,
     prepare_minibatch_inputs,

@@ -3,7 +3,7 @@
 
 import numpy as np
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.scripted_agent import ScriptedAgent
 
 
@@ -38,7 +38,7 @@ class TestScriptedAgent:
     def test_defender_never_leads_trump_holding_fail(self):
         # The convention the 30M lineage leaks against: as an unrevealed
         # defender with fail in hand, the scripted agent must not lead trump.
-        from sheepshead import TRUMP
+        from sheepshead.game import TRUMP
 
         trump_set = set(TRUMP)
         ag = ScriptedAgent()
@@ -66,7 +66,7 @@ class TestScriptedAgent:
                             player.is_picker or player.is_partner or is_hidden_partner
                         ):
                             card_played = None
-                            from sheepshead import ACTION_LOOKUP
+                            from sheepshead.game import ACTION_LOOKUP
 
                             name = ACTION_LOOKUP[a]
                             if name.startswith("PLAY "):
@@ -108,7 +108,7 @@ class TestTeamInference:
         # C2 across tricks: a defender holding a called-suit fail leads it
         # whenever the called suit has not yet been led — not just trick 0 —
         # and reverts to normal fail leads once it has been played.
-        from sheepshead import DECK_IDS
+        from sheepshead.game import DECK_IDS
 
         ag = ScriptedAgent()
         hand = [DECK_IDS["9H"], DECK_IDS["AS"], DECK_IDS["7C"]]
@@ -146,7 +146,7 @@ class TestTeamInference:
         # JD-mode: holding the JD marks the secret partner — but not when
         # ALONE was declared; then the JD holder is an ordinary defender and
         # must not lead trump (the exact tell the conventions forbid).
-        from sheepshead import DECK_IDS
+        from sheepshead.game import DECK_IDS
 
         ag = ScriptedAgent()
         jd_hand = [DECK_IDS["JD"], DECK_IDS["7C"], DECK_IDS["8S"]]

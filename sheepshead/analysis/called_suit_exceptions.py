@@ -43,10 +43,9 @@ from typing import Any
 
 import numpy as np
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
 from sheepshead.agent.observation import observation_for
 from sheepshead.analysis.verify_shrinkage_cells import lead_class
-from sheepshead.game import get_card_points
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game, get_card_points
 
 PUSH_EPS = 0.02
 NOISE_EPS = 0.006  # §12.8 replicate noise floor on pooled-Q gaps

@@ -32,10 +32,9 @@ import json
 import math
 from pathlib import Path
 
-from sheepshead import FAIL, TRUMP_SET
 from sheepshead.analysis.convention_exception_report import wilson_interval
 from sheepshead.analysis.conventions import called_suit_fail
-from sheepshead.game import CARD_POINTS
+from sheepshead.game import CARD_POINTS, FAIL, TRUMP_SET
 
 FAIL_SET = set(FAIL)
 FAIL_ACES = {"AS", "AH", "AC"}

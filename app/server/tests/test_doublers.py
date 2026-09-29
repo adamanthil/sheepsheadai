@@ -12,7 +12,7 @@ import pytest
 from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.models import Occupant, Table
 from server.runtime.views import record_hand_result
-from sheepshead import ACTION_IDS, Game
+from sheepshead.game import ACTION_IDS, Game
 
 
 def _passed_out_table(all_pass_mode: str) -> Table:

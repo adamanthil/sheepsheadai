@@ -10,7 +10,7 @@ measurement (rigorous_eval, paired gates, terminal rewards) on ~tied
 leasters. The winner is now drawn once and cached.
 """
 
-from sheepshead import ACTION_IDS, Game
+from sheepshead.game import ACTION_IDS, Game
 
 # Seeds whose forced-pass games (everyone passes, then plays the lowest legal
 # action id) end in a leaster with MULTIPLE tied minimum-point qualifiers.

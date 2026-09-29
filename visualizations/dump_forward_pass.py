@@ -61,15 +61,6 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
-from sheepshead import (  # noqa: E402
-    ACTION_IDS,
-    ACTION_LOOKUP,
-    ACTIONS,
-    DECK_IDS,
-    PARTNER_BY_CALLED_ACE,
-    TRUMP,
-    Game,
-)
 from sheepshead.agent.architectures import RecallEncoder  # noqa: E402
 from sheepshead.agent.observation import (  # noqa: E402
     last_trick_observation_for,
@@ -91,6 +82,15 @@ from sheepshead.agent.token_layout import (  # noqa: E402
     RECALL_TOKEN_COUNT,
     TRICK_TOKENS,
     TRICK_TYPE_ID,
+)
+from sheepshead.game import (  # noqa: E402
+    ACTION_IDS,
+    ACTION_LOOKUP,
+    ACTIONS,
+    DECK_IDS,
+    PARTNER_BY_CALLED_ACE,
+    TRUMP,
+    Game,
 )
 
 DEFAULT_CHECKPOINT = (

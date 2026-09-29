@@ -27,12 +27,12 @@ import argparse
 
 import numpy as np
 
-from sheepshead import ACTIONS, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.game import ACTIONS, Game
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 

@@ -36,7 +36,7 @@ Evaluation hook: ``rigorous_eval`` accepts ``model.pt@c1`` / ``model.pt@c2`` /
 
 from __future__ import annotations
 
-from sheepshead import ACTIONS, DECK_IDS, FAIL, PARTNER_BY_CALLED_ACE, TRUMP_SET
+from sheepshead.game import ACTIONS, DECK_IDS, FAIL, PARTNER_BY_CALLED_ACE, TRUMP_SET
 
 _FAIL_SET = set(FAIL)
 _JD_ID = DECK_IDS["JD"]

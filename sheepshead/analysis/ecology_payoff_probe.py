@@ -48,7 +48,6 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from sheepshead import ACTION_IDS, ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, TRUMP_SET, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
@@ -64,6 +63,13 @@ from sheepshead.analysis.fail_lead_logit_probe import (
     PLAY_CARD_BY_AID,
     called_suit_already_led,
     masked_logits,
+)
+from sheepshead.game import (
+    ACTION_IDS,
+    ACTION_LOOKUP,
+    PARTNER_BY_CALLED_ACE,
+    TRUMP_SET,
+    Game,
 )
 
 DEVICE = torch.device("cpu")

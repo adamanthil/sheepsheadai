@@ -20,11 +20,11 @@ import pstats
 import random
 import time
 
-from sheepshead import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 
 def pure_game_workload(n_games, seed=0):
@@ -92,7 +92,7 @@ def time_ismcts(n_searches):
                 valid = player.get_valid_action_ids()
                 while valid:
                     # Capture a mid-game PLAY decision for the observer.
-                    from sheepshead import ACTIONS as A
+                    from sheepshead.game import ACTIONS as A
 
                     is_play = any(A[a - 1].startswith("PLAY ") for a in valid)
                     if (

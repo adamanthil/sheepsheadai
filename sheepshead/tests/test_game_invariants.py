@@ -12,7 +12,7 @@ table, and byte-identical replay determinism from the recorded action log.
 import random
 import sys
 
-from sheepshead import (
+from sheepshead.game import (
     ACTION_LOOKUP,
     DECK,
     PARTNER_BY_CALLED_ACE,

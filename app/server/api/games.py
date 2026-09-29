@@ -45,8 +45,8 @@ from server.services.persistence.games import (
     persist_started_game,
 )
 from server.services.persistence.pool import get_db_pool
-from sheepshead import ACTION_LOOKUP
 from sheepshead.agent.observation import observation_for
+from sheepshead.game import ACTION_LOOKUP
 
 router = APIRouter()
 

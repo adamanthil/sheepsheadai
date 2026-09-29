@@ -26,8 +26,8 @@ from server.services.analysis_common import (
     select_action_id,
     set_seed,
 )
-from sheepshead import Game
 from sheepshead.agent.observation import last_trick_observation_for
+from sheepshead.game import Game
 from sheepshead.training.reward_shaping import (
     handle_trick_completion,
     process_episode_rewards,

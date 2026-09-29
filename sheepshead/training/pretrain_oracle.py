@@ -50,7 +50,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from sheepshead import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
 STRATA_ORDER = [
     "all",
