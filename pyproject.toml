@@ -53,7 +53,10 @@ dev = [
 # `ruff check` flags it (I001) and `ruff check --fix` rewrites it. That is what
 # both CI and .githooks/pre-commit already run, so neither needed a new step.
 [tool.ruff.lint]
-extend-select = ["I"]
+# BLE: a blanket `except Exception` must say why (noqa) or catch less.
+# RUF100: a noqa that no longer suppresses anything is an error, so stale
+# suppressions cannot pile up.
+extend-select = ["I", "BLE", "RUF100"]
 
 # `server` is rooted at app/, not at the project root, so ruff cannot infer it
 # as first-party the way it does `sheepshead`. Name both explicitly to keep
