@@ -259,8 +259,12 @@ def _boot_ci(rows, stat, n_boot=2000, seed=20260810):
 
 
 def summarize(label: str, rows: list[dict]) -> dict:
-    med = lambda rs: float(np.median([r["gapLogit"] for r in rs]))  # noqa: E731
-    pos = lambda rs: float(np.mean([r["gapLogit"] > 0 for r in rs]))  # noqa: E731
+    def med(rs: list[dict]) -> float:
+        return float(np.median([r["gapLogit"] for r in rs]))
+
+    def pos(rs: list[dict]) -> float:
+        return float(np.mean([r["gapLogit"] > 0 for r in rs]))
+
     lo, hi = _boot_ci(rows, med)
     out = {
         "label": label,

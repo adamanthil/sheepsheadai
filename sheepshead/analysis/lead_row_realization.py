@@ -94,7 +94,10 @@ def main(argv=None) -> int:
     train_eps, hold = train_distill.split_by_game(
         episodes, args.holdout_frac, args.seed
     )
-    keep = lambda eps: [ep for ep in eps if any(_is_lead_row(e) for e in ep)]  # noqa: E731
+
+    def keep(eps):
+        return [ep for ep in eps if any(_is_lead_row(e) for e in ep)]
+
     train_eps = keep(train_eps)[: args.max_train_episodes]
     hold = keep(hold)
     results = {}

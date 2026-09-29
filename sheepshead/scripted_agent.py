@@ -214,9 +214,12 @@ class ScriptedAgent:
             return options["ALONE"]
         plain = {a: i for a, i in calls.items() if not a.endswith(" UNDER")}
         pool = plain or calls
-        suit_len = lambda a: sum(  # noqa: E731
-            1 for c in hand if not _is_trump(c) and c[-1] == a.split(" ")[1][-1]
-        )
+
+        def suit_len(a: str) -> int:
+            return sum(
+                1 for c in hand if not _is_trump(c) and c[-1] == a.split(" ")[1][-1]
+            )
+
         # Thinnest callable suit: fewest of our fail cards blocking the
         # called ace's suit (and the closest thing to a future void).
         best = min(pool, key=lambda a: (suit_len(a), a))

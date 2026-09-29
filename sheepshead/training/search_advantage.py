@@ -183,7 +183,10 @@ class RowTable:
         tables = [t for t in tables if len(t)]
         if not tables:
             raise ValueError("no targetable rows in corpus")
-        cat = lambda name: torch.cat([getattr(t, name) for t in tables], dim=0)  # noqa: E731
+
+        def cat(name: str) -> torch.Tensor:
+            return torch.cat([getattr(t, name) for t in tables], dim=0)
+
         return RowTable(
             features=cat("features"),
             hand_tokens=cat("hand_tokens"),
