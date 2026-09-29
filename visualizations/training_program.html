@@ -115,6 +115,8 @@
   .tp .back::before { content: ""; position: absolute; left: -3px; top: -8px; border: 7px solid transparent; border-right: 9px solid var(--c); border-left: 0; }
   .tp .loop .gate::after { content: ""; position: absolute; left: calc(50% + 98px); right: -3px; top: 50%; height: 2px; margin-top: -1px; background: var(--c); }
   .tp .loop .gate .side.r { left: calc(50% + 108px); transform: translateY(-135%); }
+  /* an upper gate in a two-gate loop joins the lane's vertical run instead */
+  .tp .loop .gate.join::after { right: calc(13px - var(--lane)); }
 
   /* clickable terms */
   .tp .t { position: relative; text-decoration: underline dotted; text-decoration-color: var(--c); text-underline-offset: 3px; cursor: help; }
@@ -201,9 +203,11 @@
     </ul></div>
   </div>
   <div class="arrow"></div>
-  <div class="gate"><div class="dia"><svg aria-hidden="true"><use href="#tp-diamond"/></svg><span>still gaining more than search would?</span></div><span class="side r"><b>yes</b><i> · next generation</i></span></div>
+  <div class="gate join"><div class="dia"><svg aria-hidden="true"><use href="#tp-diamond"/></svg><span>still gaining more than search would?</span></div><span class="side r"><b>yes</b><i> · next generation</i></span></div>
+  <div class="arrow"><span class="al"><b>no</b></span></div>
+  <div class="gate"><div class="dia"><svg aria-hidden="true"><use href="#tp-diamond"/></svg><span>recalls trump played &amp; points taken?</span></div><span class="side r"><b>no</b><i> · next generation</i></span></div>
 </div>
-<div class="arrow"><span class="al"><b>no</b> · hand off</span></div>
+<div class="arrow"><span class="al"><b>yes</b> · hand off</span></div>
 
 <!-- 3 (loop) -->
 <div class="loop" style="--c:var(--p3)">
