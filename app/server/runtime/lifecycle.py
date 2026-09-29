@@ -5,6 +5,8 @@ import json
 import logging
 import time
 
+from fastapi import WebSocketDisconnect
+
 from server.realtime.broadcast import broadcast_table_event
 from server.runtime.manager import tables
 from server.runtime.models import Table
@@ -42,26 +44,16 @@ async def close_table(table: Table, reason: str = "closed") -> None:
     for task in (table.host_handoff_task, table.turn_timer_task):
         if task and not task.done():
             task.cancel()
-    for cid, task in list(table.disconnect_tasks.items()):
-        try:
-            if task and not task.done():
-                task.cancel()
-        except Exception:
-            logging.debug(
-                "failed to cancel disconnect task for client %s on table %s",
-                cid,
-                table.id,
-            )
-        finally:
-            table.disconnect_tasks.pop(cid, None)
+    for task in table.disconnect_tasks.values():
+        if task and not task.done():
+            task.cancel()
+    table.disconnect_tasks.clear()
     table.status = "finished"
     try:
-        try:
-            await broadcast_table_event(
-                table, {"type": "table_closed", "reason": reason, "tableId": table.id}
-            )
-        except Exception:
-            logging.debug("failed to broadcast table_closed for table %s", table.id)
+        # Send failures are handled per socket inside the broadcast.
+        await broadcast_table_event(
+            table, {"type": "table_closed", "reason": reason, "tableId": table.id}
+        )
         closed_msg = json.dumps(
             {"type": "table_closed", "reason": reason, "tableId": table.id}
         )
@@ -70,7 +62,10 @@ async def close_table(table: Table, reason: str = "closed") -> None:
                 try:
                     await ws.send_text(closed_msg)
                     await ws.close()
-                except Exception:
+                # The peer already left (WebSocketDisconnect), the transport
+                # dropped (OSError), or starlette refuses a send/close on a
+                # socket that is already closing (RuntimeError).
+                except WebSocketDisconnect, OSError, RuntimeError:
                     logging.debug(
                         "failed to close websocket for client %s on table %s",
                         cid,

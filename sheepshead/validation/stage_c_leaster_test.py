@@ -190,6 +190,7 @@ def main():
 
         try:
             res = teacher.search(game, observer, fp, rng, d_rollout=6)
+        # Any search failure is a finding to report, not a crash.
         except Exception as e:  # noqa: BLE001
             print(f"  SEARCH RAISED ({type(e).__name__}): {e}", flush=True)
             continue

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import pickle
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -390,7 +391,20 @@ class League:
                 )
                 member.exploitation_samples = int(data.get("exploitation_samples", 0))
                 self.members.append(member)
-            except Exception as err:  # noqa: BLE001 - skip corrupt entries, keep loading
+            # Skip an unreadable or corrupt entry and keep loading the rest:
+            # missing/unreadable files (OSError), malformed JSON or values
+            # (ValueError), absent or mistyped fields (KeyError, TypeError),
+            # and truncated or incompatible checkpoints, which torch reports
+            # as RuntimeError, EOFError or UnpicklingError.
+            except (
+                OSError,
+                ValueError,
+                KeyError,
+                TypeError,
+                RuntimeError,
+                EOFError,
+                pickle.UnpicklingError,
+            ) as err:
                 logging.warning("failed to load league member %s: %s", js, err)
 
     # ------------------------------------------------------------------

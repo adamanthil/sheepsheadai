@@ -729,6 +729,7 @@ def main():
         try:
             t()
             print(f"PASS  {name}  ({time.perf_counter() - t0:.1f}s)")
+        # Script runner: report every failing test, not just the first.
         except Exception as e:  # noqa: BLE001
             failures += 1
             print(f"FAIL  {name}: {type(e).__name__}: {e}")

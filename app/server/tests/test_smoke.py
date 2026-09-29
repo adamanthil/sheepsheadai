@@ -16,7 +16,8 @@ def test_all_server_modules_import():
     for mod in pkgutil.walk_packages(server.__path__, prefix="server."):
         try:
             importlib.import_module(mod.name)
-        except Exception as exc:  # noqa: BLE001 - collect all failures
+        # Collect every module that fails to import, whatever the error.
+        except Exception as exc:  # noqa: BLE001
             failures.append(f"{mod.name}: {exc!r}")
     assert not failures, "modules failed to import:\n" + "\n".join(failures)
 

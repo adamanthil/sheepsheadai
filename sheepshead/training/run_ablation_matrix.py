@@ -191,7 +191,9 @@ class Orchestrator:
                 a, s = futures[fut]
                 try:
                     st = fut.result()
-                except Exception as e:  # never kill the matrix for one job
+                # fut.result() re-raises whatever the job raised; one failed
+                # job must not take down the rest of the matrix.
+                except Exception as e:  # noqa: BLE001
                     st = {"arch": a, "seed": s, "status": f"error: {e}"}
                     self.log(f"ERROR {a}_s{s}: {e}")
                 results.append(st)

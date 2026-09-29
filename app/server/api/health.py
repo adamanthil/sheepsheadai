@@ -7,7 +7,7 @@ from fastapi import APIRouter
 
 from server.api.schemas import HealthResponse
 from server.config import get_settings
-from server.services.persistence.pool import get_db_pool
+from server.services.persistence.pool import DB_UNAVAILABLE, get_db_pool
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,8 @@ async def health():
         pool = get_db_pool()
         await asyncio.wait_for(pool.fetchval("SELECT 1"), timeout=1.0)
         db_ok = True
-    except Exception:
+    # RuntimeError: the pool is not initialised (lifespan has not run).
+    except (RuntimeError, *DB_UNAVAILABLE):
         logger.warning("health check: database unreachable", exc_info=True)
     return {
         "status": "ok",

@@ -154,7 +154,8 @@ def run_head(agent, teacher, head, n_games, seed):
         # All heads: run the real teacher search.
         try:
             res = teacher.search(gnode, observer, forced_public, rng)
-        except Exception as e:  # noqa: BLE001 - we want to surface ANY failure
+        # Any search failure is a finding to report, not a crash.
+        except Exception as e:  # noqa: BLE001
             print(f"  SEARCH RAISED ({type(e).__name__}): {e}", flush=True)
             continue
         searched += 1
