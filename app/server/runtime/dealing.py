@@ -14,10 +14,8 @@ from server.runtime.models import Table
 from server.runtime.rules import plays_doublers
 from server.runtime.views import try_int
 from server.services.ai_loader import load_agent
-from server.services.persistence.games import (
-    persist_passed_out_game,
-    persist_started_game,
-)
+from server.services.persistence.hand_play import persist_passed_out_game
+from server.services.persistence.hand_setup import persist_started_game
 from server.services.persistence.pool import get_db_pool
 from sheepshead.game import Game
 

@@ -8,7 +8,7 @@ import time
 from server.realtime.broadcast import broadcast_table_event
 from server.runtime.manager import tables
 from server.runtime.models import Table
-from server.services.persistence.games import close_game_table
+from server.services.persistence.game_table import close_game_table
 from server.services.persistence.pool import get_db_pool
 
 # Set on SIGTERM (deploy/restart): new tables/games are refused with a 503

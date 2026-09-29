@@ -21,10 +21,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict
 
 from server.runtime.rules import plays_doublers
-from server.services.persistence.game_table import (
-    close_game_table,
-    ensure_game_table,
-)
 from server.services.persistence.hand_play import (
     persist_finalize_game,
     persist_passed_out_game,
@@ -34,33 +30,12 @@ from server.services.persistence.hand_setup import (
     persist_partner_revealed,
     persist_pick_resolved,
     persist_picker_decisions,
-    persist_started_game,
     persist_substituted_pick,
 )
 from server.services.persistence.pool import get_db_pool
-from server.services.persistence.snapshots import (
-    capture_post_state,
-    capture_pre_state,
-)
 
 if TYPE_CHECKING:
     from server.runtime.models import Table
-
-__all__ = [
-    "capture_post_state",
-    "capture_pre_state",
-    "close_game_table",
-    "ensure_game_table",
-    "fire_game_hooks",
-    "persist_finalize_game",
-    "persist_partner_revealed",
-    "persist_passed_out_game",
-    "persist_pick_resolved",
-    "persist_picker_decisions",
-    "persist_started_game",
-    "persist_substituted_pick",
-    "persist_trick_completed",
-]
 
 
 async def fire_game_hooks(

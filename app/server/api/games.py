@@ -37,14 +37,11 @@ from server.runtime.views import (
     get_valid_action_ids_for_seat,
     record_hand_result,
 )
-from server.services.persistence.games import (
-    capture_post_state,
-    capture_pre_state,
-    ensure_game_table,
-    fire_game_hooks,
-    persist_started_game,
-)
+from server.services.persistence.game_table import ensure_game_table
+from server.services.persistence.games import fire_game_hooks
+from server.services.persistence.hand_setup import persist_started_game
 from server.services.persistence.pool import get_db_pool
+from server.services.persistence.snapshots import capture_post_state, capture_pre_state
 from sheepshead.agent.observation import observation_for
 from sheepshead.game import ACTION_LOOKUP
 
