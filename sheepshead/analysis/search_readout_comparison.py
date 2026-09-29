@@ -329,8 +329,7 @@ def main() -> int:
     args = parser.parse_args()
 
     device = cf._device()
-    scan.set_scan_model(args.model)
-    agent = scan._cached_load_agent(args.model)
+    agent = scan.load_scan_agent(args.model)
 
     groups, scanned = cfp._find_cases(args)
     records: List[dict] = []

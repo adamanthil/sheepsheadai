@@ -11,7 +11,7 @@ The scanner drives the *exact* same deterministic simulation path that
 ``/analyze`` uses (``server.services.analyze.simulate_game``), so every
 ``(seed, partnerMode)`` it reports reproduces byte-for-byte when you type that
 seed + partner mode into the Analyze page. The only deviation from calling the
-service repeatedly is that the model is loaded once and cached (the analyze
+service repeatedly is that the model is loaded once and passed in (the analyze
 service reloads it per request), which is safe because ``simulate_game`` resets
 the agent's recurrent state at the start of every game.
 
@@ -28,11 +28,16 @@ inspect the action logits and full game state for that decision.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from server.api.schemas import AnalyzeSimulateRequest
+from server.services.ai_loader import load_agent
+from server.services.analyze import simulate_game
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -42,46 +47,17 @@ FAIL_SET = set(FAIL)
 DEFAULT_MODEL = str(REPO_ROOT / "final_pfsp_swish_ppo.pt")
 
 
-# ---------------------------------------------------------------------------
-# Load the model once and reuse it across seeds. ``simulate_game`` looks up
-# ``load_agent`` from its own module namespace at call time, so patching the
-# name there transparently swaps in our cached loader without touching any
-# service code. ``simulate_game`` calls ``agent.reset_recurrent_state()`` at the
-# start of every game, so a shared agent yields identical results to a fresh one.
-# ---------------------------------------------------------------------------
-import server.services.analyze as analyze_mod  # noqa: E402
-from server.services.ai_loader import load_agent as _real_load_agent  # noqa: E402
+@functools.cache
+def load_scan_agent(model_path: str) -> PPOAgent:
+    """Load ``model_path`` once per process and share it across seeds.
 
-_AGENT_CACHE: dict[str, object] = {}
-_FORCED_MODEL: Optional[str] = None
-
-
-def set_scan_model(model_path: str) -> None:
-    """Route the analyze service's model loads to ``model_path``.
-
-    The hardened ``AnalyzeSimulateRequest`` no longer carries a modelPath (the
-    field let API clients point ``torch.load`` at arbitrary files), so scanners
-    select the model here instead: ``simulate_game`` resolves the configured
-    settings path through the patched loader below, which defers to this
-    override when set.
+    The hardened ``AnalyzeSimulateRequest`` carries no modelPath (the field let
+    API clients point ``torch.load`` at arbitrary files), so scanners load the
+    agent here and pass it to ``simulate_game(req, agent=...)``. Sharing one
+    agent is safe because ``simulate_game`` resets its recurrent state at the
+    start of every game.
     """
-    global _FORCED_MODEL
-    _FORCED_MODEL = model_path
-
-
-def _cached_load_agent(model_path: str):
-    path = _FORCED_MODEL or model_path
-    agent = _AGENT_CACHE.get(path)
-    if agent is None:
-        agent = _real_load_agent(path)
-        _AGENT_CACHE[path] = agent
-    return agent
-
-
-analyze_mod.load_agent = _cached_load_agent
-
-from server.api.schemas import AnalyzeSimulateRequest  # noqa: E402
-from server.services.analyze import simulate_game  # noqa: E402
+    return load_agent(model_path)
 
 
 @dataclass
@@ -282,7 +258,7 @@ def main() -> int:
     stats = ScanStats()
     all_cases: List[DefenderTrumpLeadCase] = []
 
-    set_scan_model(args.model)
+    agent = load_scan_agent(args.model)
     end_seed = args.start_seed + args.num_seeds
     for seed in range(args.start_seed, end_seed):
         req = AnalyzeSimulateRequest(
@@ -291,7 +267,7 @@ def main() -> int:
             deterministic=True,
             maxSteps=args.max_steps,
         )
-        resp = simulate_game(req)
+        resp = simulate_game(req, agent=agent)
         stats.seedsScanned += 1
 
         cases = scan_game(resp, seed, args.partner_mode, stats)

@@ -49,6 +49,7 @@ import torch
 import sheepshead.analysis.counterfactual_trump_leads as cf
 import sheepshead.analysis.scan_defender_trump_leads as scan
 from server.api.schemas import AnalyzeSimulateRequest
+from server.services.analyze import simulate_game
 from sheepshead.game import TRUMP_SET
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL
@@ -115,7 +116,7 @@ def _classify_cp_spots(
 
 
 def _find_cases(args) -> tuple[Dict[str, List[dict]], Dict[str, int]]:
-    scan.set_scan_model(args.model)
+    agent = scan.load_scan_agent(args.model)
     groups: Dict[str, List[dict]] = {g: [] for g in GROUPS}
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
         req = AnalyzeSimulateRequest(
@@ -124,7 +125,7 @@ def _find_cases(args) -> tuple[Dict[str, List[dict]], Dict[str, int]]:
             deterministic=True,
             maxSteps=args.max_steps,
         )
-        resp = scan.simulate_game(req)
+        resp = simulate_game(req, agent=agent)
         for spot in _classify_cp_spots(resp, seed, args.partner_mode, args.max_trick):
             groups[spot["group"]].append(spot)
 
@@ -371,8 +372,7 @@ def main() -> int:
     args = parser.parse_args()
 
     device = cf._device()
-    scan.set_scan_model(args.model)
-    agent = scan._cached_load_agent(args.model)
+    agent = scan.load_scan_agent(args.model)
 
     teacher = None
     if not (args.no_search and args.no_belief_mc):

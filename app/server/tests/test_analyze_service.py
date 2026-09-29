@@ -214,3 +214,24 @@ def test_model_info_card_embeddings(analyze_env, monkeypatch):
     assert len(emb.pcaCoords) == 33 and len(emb.pcaCoords[0]) == 2
     assert len(emb.pcaExplainedVariance) == 2
     assert 0.0 < sum(emb.pcaExplainedVariance) <= 1.0 + 1e-6
+
+
+def test_simulate_with_supplied_agent_skips_the_loader(analyze_env, monkeypatch):
+    """A caller-supplied agent replaces the configured model without the
+    service touching the loader, and replays the same deterministic game."""
+    import server.services.analyze as analyze_mod
+    from sheepshead.agent.ppo import PPOAgent
+    from sheepshead.game import ACTIONS
+
+    agent = PPOAgent(len(ACTIONS))
+    monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
+    req = AnalyzeSimulateRequest(seed=11, deterministic=True)
+    via_loader = analyze_mod.simulate_game(req)
+
+    def fail_load(path):
+        raise AssertionError("load_agent must not run when an agent is supplied")
+
+    monkeypatch.setattr(analyze_mod, "load_agent", fail_load)
+    supplied = analyze_mod.simulate_game(req, agent=agent)
+
+    assert supplied.model_dump() == via_loader.model_dump()

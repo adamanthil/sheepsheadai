@@ -36,8 +36,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# Importing the trump-lead scanner installs the cached load_agent patch on the
-# analyze service and provides set_scan_model + the secret-partner helper.
+# The trump-lead scanner provides load_scan_agent + the secret-partner helper.
 import sheepshead.analysis.scan_defender_trump_leads as scan
 from server.api.schemas import AnalyzeSimulateRequest
 from server.services.analyze import simulate_game
@@ -357,7 +356,7 @@ def main() -> int:
     parser.add_argument("--quiet", action="store_true", help="Suppress per-node lines.")
     args = parser.parse_args()
 
-    scan.set_scan_model(args.model)
+    agent = scan.load_scan_agent(args.model)
     stats = CalledSuitScanStats()
     all_nodes: List[CalledSuitLeadNode] = []
 
@@ -369,7 +368,7 @@ def main() -> int:
             deterministic=True,
             maxSteps=args.max_steps,
         )
-        resp = simulate_game(req)
+        resp = simulate_game(req, agent=agent)
         stats.seedsScanned += 1
 
         nodes = scan_game(resp, seed, stats)

@@ -52,6 +52,7 @@ import torch
 import sheepshead.analysis.counterfactual_trump_leads as cf
 import sheepshead.analysis.scan_defender_trump_leads as scan
 from server.api.schemas import AnalyzeSimulateRequest
+from server.services.analyze import simulate_game
 from sheepshead.analysis.conventions import called_suit_fail
 from sheepshead.analysis.scan_called_suit_leads import (
     called_suit_already_led,
@@ -167,7 +168,7 @@ def _classify_spots(resp, seed: int, max_trick: int) -> List[dict]:
 
 
 def _find_cases(args) -> Dict[str, List[dict]]:
-    scan.set_scan_model(args.model)
+    agent = scan.load_scan_agent(args.model)
     groups: Dict[str, List[dict]] = {"fat": [], "nopoint": [], "other": []}
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
         req = AnalyzeSimulateRequest(
@@ -176,7 +177,7 @@ def _find_cases(args) -> Dict[str, List[dict]]:
             deterministic=True,
             maxSteps=args.max_steps,
         )
-        resp = scan.simulate_game(req)
+        resp = simulate_game(req, agent=agent)
         for spot in _classify_spots(resp, seed, args.max_trick):
             groups[spot["group"]].append(spot)
 
@@ -399,8 +400,7 @@ def main() -> int:
     args = parser.parse_args()
 
     device = cf._device()
-    scan.set_scan_model(args.model)
-    agent = scan._cached_load_agent(args.model)
+    agent = scan.load_scan_agent(args.model)
 
     teacher = None
     if not args.no_belief_mc:

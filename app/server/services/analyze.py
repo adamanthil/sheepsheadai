@@ -27,6 +27,7 @@ from server.services.analysis_common import (
     set_seed,
 )
 from sheepshead.agent.observation import last_trick_observation_for
+from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import Game
 from sheepshead.training.reward_shaping import (
     handle_trick_completion,
@@ -38,8 +39,9 @@ from sheepshead.training.reward_shaping import (
 
 def _setup_simulation(
     req: AnalyzeSimulateRequest,
-) -> tuple[Any, Any, Game]:
-    """Seed RNGs, load the configured agent, and deal the game.
+    agent: PPOAgent | None,
+) -> tuple[PPOAgent, Any, Game]:
+    """Seed RNGs, resolve the agent, and deal the game.
 
     Stage (a) of ``simulate_game``: deal/agent setup + seeding.
     """
@@ -47,9 +49,11 @@ def _setup_simulation(
     if req.seed is not None:
         set_seed(req.seed)
 
-    # Load the configured agent; clients cannot influence which file is read.
+    # Load the configured agent unless the caller supplied one; clients of
+    # the API cannot influence which file is read.
     settings = get_settings()
-    agent = load_agent(settings.sheepshead_model_path)
+    if agent is None:
+        agent = load_agent(settings.sheepshead_model_path)
 
     # Reset recurrent state before simulation
     agent.reset_recurrent_state()
@@ -270,10 +274,18 @@ def _assemble_response(
     )
 
 
-def simulate_game(req: AnalyzeSimulateRequest) -> AnalyzeSimulateResponse:
-    """Simulate a full Sheepshead game and return detailed analysis trace."""
+def simulate_game(
+    req: AnalyzeSimulateRequest, agent: PPOAgent | None = None
+) -> AnalyzeSimulateResponse:
+    """Simulate a full Sheepshead game and return detailed analysis trace.
 
-    agent, settings, game = _setup_simulation(req)
+    ``agent`` defaults to the configured server model. Offline analysis
+    passes its own (already loaded) agent to replay the same deterministic
+    path against another checkpoint; its recurrent state is reset here, so
+    one agent can be reused across calls.
+    """
+
+    agent, settings, game = _setup_simulation(req, agent)
 
     # Player display names
     players = ANALYZE_SEAT_NAMES

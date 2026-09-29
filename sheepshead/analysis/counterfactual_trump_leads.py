@@ -67,10 +67,10 @@ from typing import Any, Dict, List, NamedTuple, Optional, cast
 import numpy as np
 import torch
 
-# Importing the scanner installs the cached load_agent patch on the analyze
-# service and gives us its case-detection helpers + simulate_game.
+# The scanner provides the shared model loader and its case-detection helpers.
 import sheepshead.analysis.scan_defender_trump_leads as scan
 from server.api.schemas import AnalyzeSimulateRequest
+from server.services.analyze import simulate_game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
@@ -725,7 +725,7 @@ def _find_cases(args) -> tuple[List[dict], List[dict]]:
     FAIL-PREF controls are randomly subsampled to ``len(trump) * control_ratio``
     (seeded), mirroring the original validation script's balanced control set.
     """
-    scan.set_scan_model(args.model)
+    agent = scan.load_scan_agent(args.model)
     trump_spots: List[dict] = []
     fail_spots: List[dict] = []
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
@@ -735,7 +735,7 @@ def _find_cases(args) -> tuple[List[dict], List[dict]]:
             deterministic=True,
             maxSteps=args.max_steps,
         )
-        resp = scan.simulate_game(req)
+        resp = simulate_game(req, agent=agent)
         for spot in _classify_spots(resp, seed, args.partner_mode, args.max_trick):
             (trump_spots if spot["group"] == "trump" else fail_spots).append(spot)
 
@@ -1248,8 +1248,7 @@ def main() -> int:
     args = parser.parse_args()
 
     device = _device()
-    scan.set_scan_model(args.model)
-    agent = scan._cached_load_agent(args.model)
+    agent = scan.load_scan_agent(args.model)
 
     # The teacher is needed for ISMCTS search AND for the belief-pool MC (it owns
     # the determinizer / belief-weighting). Build it if either is enabled.
@@ -1277,7 +1276,7 @@ def main() -> int:
                 deterministic=True,
                 maxSteps=args.max_steps,
             )
-            resp = scan.simulate_game(req)
+            resp = simulate_game(req, agent=agent)
             spots = [
                 s
                 for s in _classify_spots(resp, seed, args.partner_mode, args.max_trick)
