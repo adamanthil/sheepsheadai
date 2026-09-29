@@ -19,15 +19,22 @@ import pytest
 import torch
 import torch.nn as nn
 
-from sheepshead.agent import architectures, ppo
-from sheepshead.agent.architectures import (
-    ONEHOT_STATE_DIM,
-    OneHotFeedForwardEncoder,
-    PooledMemoryEncoder,
-    build_onehot_state,
-)
+from sheepshead.agent import ppo
 from sheepshead.agent.architectures.actors import MultiHeadRecurrentActorNetwork
 from sheepshead.agent.architectures.critics import RecurrentCriticNetwork
+from sheepshead.agent.architectures.encoders import (
+    PerceiverCtxMemEncoder,
+    PerceiverEncoder,
+    PooledMemoryEncoder,
+    SharedReadoutEncoder,
+    TokenReadEncoder,
+)
+from sheepshead.agent.architectures.onehot import (
+    ONEHOT_STATE_DIM,
+    OneHotFeedForwardEncoder,
+    build_onehot_state,
+)
+from sheepshead.agent.architectures.registry import available_architectures, get_spec
 from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
@@ -90,7 +97,7 @@ def _play_episodes(agent: PPOAgent, n: int, seed0: int = 900_000) -> None:
 
 class TestRegistry:
     def test_available_architectures(self):
-        names = architectures.available_architectures()
+        names = available_architectures()
         for expected in (
             "full",
             "full-uninformed",
@@ -103,10 +110,10 @@ class TestRegistry:
 
     def test_unknown_arch_raises_with_names(self):
         with pytest.raises(KeyError) as ctx:
-            architectures.get_spec("bogus")
+            get_spec("bogus")
         assert "full" in str(ctx.value)
 
-    @pytest.mark.parametrize("arch", architectures.available_architectures())
+    @pytest.mark.parametrize("arch", available_architectures())
     def test_all_archs_build_play_update(self, arch):
         _seed_all(11)
         agent = PPOAgent(len(ACTIONS), arch=arch)
@@ -179,7 +186,7 @@ class TestCheckpointArchMetadata:
             for k, v in agent.encoder.state_dict().items():
                 assert torch.equal(v, loaded.encoder.state_dict()[k])
 
-    @pytest.mark.parametrize("arch", architectures.available_architectures())
+    @pytest.mark.parametrize("arch", available_architectures())
     def test_roundtrip_every_arch(self, arch):
         self._roundtrip(arch)
 
@@ -421,7 +428,7 @@ class TestTokenRead:
         torch.manual_seed(7)
         base = CardReasoningEncoder(card_config=CardEmbeddingConfig())
         torch.manual_seed(7)
-        enc = architectures.TokenReadEncoder(card_config=CardEmbeddingConfig())
+        enc = TokenReadEncoder(card_config=CardEmbeddingConfig())
         game = Game(seed=126)
         s = _legacy_obs(game.players[0])
         out_b, out_t = base.encode_batch([s]), enc.encode_batch([s])
@@ -434,7 +441,7 @@ class TestTokenRead:
         assert bool(out_t["all_mask"][:, :2].all())
 
     def test_encode_sequences_carries_tokens(self):
-        enc = architectures.TokenReadEncoder(card_config=CardEmbeddingConfig())
+        enc = TokenReadEncoder(card_config=CardEmbeddingConfig())
         game = Game(seed=127)
         seqs = [
             [_legacy_obs(game.players[0]), _legacy_obs(game.players[0])],
@@ -495,7 +502,7 @@ class TestTokenRead:
 
 class TestPerceiver:
     def test_pools_and_trunk_gone(self):
-        enc = architectures.PerceiverEncoder()
+        enc = PerceiverEncoder()
         for name in (
             "pool_hand",
             "pool_trick",
@@ -510,7 +517,7 @@ class TestPerceiver:
         assert n_perc < n_base - 150_000
 
     def test_memory_token_drives_recurrence(self):
-        enc = architectures.PerceiverEncoder()
+        enc = PerceiverEncoder()
         game = Game(seed=130)
         s = _legacy_obs(game.players[0])
         out1 = enc.encode_batch([s])
@@ -570,7 +577,7 @@ class TestPerceiver:
         _seed_all(15)
         agent = PPOAgent(len(ACTIONS), arch="perceiver-dmodel128")
         assert agent.state_size == 128
-        enc = architectures.PerceiverEncoder(d_token=128)
+        enc = PerceiverEncoder(d_token=128)
         assert enc.d_token_dim == 128
         game = Game(seed=134)
         out = enc.encode_batch([_legacy_obs(game.players[0])])
@@ -707,13 +714,13 @@ class TestPerceiver:
         )
         # v1 stays byte-compatible: default ctor keeps the bare Linear
         # projection, 4 queries, and the context-token driver.
-        v1 = architectures.SharedReadoutEncoder()
+        v1 = SharedReadoutEncoder()
         assert isinstance(v1.readout_proj, torch.nn.Linear)
         assert v1.readout_n_queries == 4
 
     def test_ctxmem_context_token_drives_recurrence(self):
         _seed_all(20)
-        enc = architectures.PerceiverCtxMemEncoder()
+        enc = PerceiverCtxMemEncoder()
         game = Game(seed=143)
         s = _legacy_obs(game.players[0])
         out = enc.encode_batch([s])
@@ -722,7 +729,7 @@ class TestPerceiver:
             expect = enc.memory_gru(out["all_tokens"][:, 0, :], zero_mem)
         assert torch.allclose(out["memory_out"], expect, atol=1e-6)
         # Param-identical to the perceiver encoder (driver change only).
-        base = architectures.PerceiverEncoder()
+        base = PerceiverEncoder()
         assert sum(p.numel() for p in enc.parameters()) == sum(
             p.numel() for p in base.parameters()
         )

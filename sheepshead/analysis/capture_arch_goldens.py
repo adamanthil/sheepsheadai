@@ -38,7 +38,8 @@ import sys
 import numpy as np
 import torch
 
-from sheepshead.agent import architectures, ppo
+from sheepshead.agent import ppo
+from sheepshead.agent.architectures.registry import available_architectures
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, Game
@@ -258,7 +259,7 @@ def main() -> int:
         return 2
     torch.set_num_threads(1)
 
-    archs = args.arch or architectures.available_architectures()
+    archs = args.arch or available_architectures()
 
     if args.check:
         manifest = load_manifest(args.fixture_dir)

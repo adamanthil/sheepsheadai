@@ -13,9 +13,13 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead.agent import architectures
 from sheepshead.agent.architectures.encoders import RecallEncoder
 from sheepshead.agent.architectures.onehot import build_onehot_state
+from sheepshead.agent.architectures.registry import (
+    ARCHITECTURES,
+    available_architectures,
+    get_spec,
+)
 from sheepshead.agent.convention_wrapper import ConventionWrapper
 from sheepshead.agent.observation import (
     HEADER_KEYS,
@@ -117,9 +121,9 @@ class TestObservationContract:
         agent = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2-bp")
         assert set(agent.observation_keys) == RECALL_KEYS | LEGACY_PICKER_MEMORY_KEYS
 
-    @pytest.mark.parametrize("arch", architectures.available_architectures())
+    @pytest.mark.parametrize("arch", available_architectures())
     def test_registry_flag_matches_encoder(self, arch):
-        spec = architectures.get_spec(arch)
+        spec = get_spec(arch)
         seed_all(0)
         agent = PPOAgent(len(ACTIONS), arch=arch)
         reads_legacy = bool(set(agent.observation_keys) & LEGACY_PICKER_MEMORY_KEYS)
@@ -128,7 +132,7 @@ class TestObservationContract:
     def test_only_the_recall_family_is_recall(self):
         recall = {
             name
-            for name, spec in architectures.ARCHITECTURES.items()
+            for name, spec in ARCHITECTURES.items()
             if not spec.legacy_picker_memory
         }
         assert recall == {"perceiver-recall"}

@@ -14,7 +14,10 @@ import tempfile
 import pytest
 import torch
 
-from sheepshead.agent import architectures
+from sheepshead.agent.architectures.registry import (
+    ARCHITECTURES,
+    available_architectures,
+)
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.analysis.capture_arch_goldens import (
@@ -40,9 +43,9 @@ class TestRegistryConsistency:
     spec.has_aux_heads == built critic.has_aux_heads == aux-module presence
     in the critic state_dict, and the encoder attribute contract."""
 
-    @pytest.mark.parametrize("key", list(architectures.ARCHITECTURES.keys()))
+    @pytest.mark.parametrize("key", list(ARCHITECTURES.keys()))
     def test_every_entry(self, key):
-        spec = architectures.ARCHITECTURES[key]
+        spec = ARCHITECTURES[key]
         assert key == spec.name
         agent = build_agent(key)
         assert agent.critic.has_aux_heads == spec.has_aux_heads
@@ -85,7 +88,7 @@ class TestNumericalGoldens:
                 "with sheepshead/analysis/capture_arch_goldens.py to restore it"
             )
 
-    @pytest.mark.parametrize("arch", architectures.available_architectures())
+    @pytest.mark.parametrize("arch", available_architectures())
     def test_all_archs_bit_identical(self, arch):
         # Goldens were captured single-threaded; restore afterwards so later
         # tests in the same process keep their own numeric environment.

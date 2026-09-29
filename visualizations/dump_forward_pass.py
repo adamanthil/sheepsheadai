@@ -61,11 +61,11 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
-from sheepshead.agent.architectures import RecallEncoder  # noqa: E402
 from sheepshead.agent.architectures.actors import (  # noqa: E402
     MultiHeadRecurrentActorNetwork,
 )
 from sheepshead.agent.architectures.critics import RecurrentCriticNetwork  # noqa: E402
+from sheepshead.agent.architectures.encoders import RecallEncoder  # noqa: E402
 from sheepshead.agent.observation import (  # noqa: E402
     last_trick_observation_for,
     observation_for,

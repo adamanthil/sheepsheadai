@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from sheepshead.agent import architectures
+from sheepshead.agent.architectures.registry import get_spec
 from sheepshead.game import (
     ACTION_IDS,
     BURY_ACTIONS,
@@ -182,7 +182,7 @@ class PPOAgent:
         # Networks are built from a named ArchitectureSpec (architectures.registry).
         # The default "full" spec constructs exactly the pre-registry
         # networks, in the same order, so seeded runs are bit-identical.
-        spec = architectures.get_spec(arch)
+        spec = get_spec(arch)
         self.arch_name = spec.name
         self.arch_spec = spec
 
@@ -357,7 +357,7 @@ class PPOAgent:
         """Whether this agent's architecture consumes the legacy
         picker-memory interface (``Player.get_picker_memory``); the
         registry's ``ArchitectureSpec.legacy_picker_memory`` is the truth."""
-        return bool(architectures.get_spec(self.arch_name).legacy_picker_memory)
+        return bool(get_spec(self.arch_name).legacy_picker_memory)
 
     @property
     def observation_keys(self) -> tuple[str, ...]:

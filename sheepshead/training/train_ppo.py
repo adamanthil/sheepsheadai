@@ -58,7 +58,7 @@ from multiprocessing import get_context
 import numpy as np
 import torch
 
-from sheepshead.agent import architectures
+from sheepshead.agent.architectures.registry import available_architectures
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.game import ACTIONS
 from sheepshead.training.config import (
@@ -910,7 +910,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--arch",
         default="perceiver-recall",
-        choices=architectures.available_architectures(),
+        choices=available_architectures(),
         help="architecture of a fresh bootstrap agent (resumed phases read it "
         "from the checkpoint)",
     )
