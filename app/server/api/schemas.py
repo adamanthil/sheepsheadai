@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -230,6 +232,38 @@ class AccountStatsResponse(BaseModel):
     rank: Optional[int]
     qualifies_in: Optional[int]
     min_hands: int
+
+
+class HandOpponents(BaseModel):
+    humans: int
+    ai: int
+
+
+class HandHistoryRow(BaseModel):
+    game_id: UUID
+    time_closed: datetime
+    table_name: str
+    role: Literal["picker", "partner", "defender", "leaster"]
+    # The picker played alone (no partner) this hand.
+    alone: bool
+    multiplier: int
+    # The hand's result, and what stats count it as: 0 for an abandoned win.
+    score: int
+    counted_score: int
+    # Card points taken: the player's team's (with the bury, as the engine
+    # scores it) or, in a leaster, the player's own.
+    points_taken: int
+    points_scope: Literal["team", "own"]
+    ai_assisted: bool
+    abandoned: bool
+    # The other four seats of the hand, by who was dealt them.
+    opponents: HandOpponents
+
+
+class HandHistoryResponse(BaseModel):
+    hands: List[HandHistoryRow]
+    # Pass as ?before= for the next (older) page; None on the last page.
+    next_cursor: Optional[str]
 
 
 class UpdateTableRulesRequest(BaseModel):

@@ -21,6 +21,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/hands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account Hands
+         * @description The caller's finished hands, newest first, a page at a time; pass
+         *     the previous page's next_cursor as ``before`` for the next.
+         */
+        get: operations["account_hands_api_account_hands_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/login": {
         parameters: {
             query?: never;
@@ -992,6 +1013,60 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HandHistoryResponse */
+        HandHistoryResponse: {
+            /** Hands */
+            hands: components["schemas"]["HandHistoryRow"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** HandHistoryRow */
+        HandHistoryRow: {
+            /** Abandoned */
+            abandoned: boolean;
+            /** Ai Assisted */
+            ai_assisted: boolean;
+            /** Alone */
+            alone: boolean;
+            /** Counted Score */
+            counted_score: number;
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Multiplier */
+            multiplier: number;
+            opponents: components["schemas"]["HandOpponents"];
+            /**
+             * Points Scope
+             * @enum {string}
+             */
+            points_scope: "team" | "own";
+            /** Points Taken */
+            points_taken: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "picker" | "partner" | "defender" | "leaster";
+            /** Score */
+            score: number;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Time Closed
+             * Format: date-time
+             */
+            time_closed: string;
+        };
+        /** HandOpponents */
+        HandOpponents: {
+            /** Ai */
+            ai: number;
+            /** Humans */
+            humans: number;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Db */
@@ -1271,6 +1346,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    account_hands_api_account_hands_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandHistoryResponse"];
                 };
             };
             /** @description Validation Error */

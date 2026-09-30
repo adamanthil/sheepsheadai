@@ -1459,6 +1459,136 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HandHistoryResponse": {
+        "properties": {
+          "hands": {
+            "items": {
+              "$ref": "#/components/schemas/HandHistoryRow"
+            },
+            "title": "Hands",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "hands",
+          "next_cursor"
+        ],
+        "title": "HandHistoryResponse",
+        "type": "object"
+      },
+      "HandHistoryRow": {
+        "properties": {
+          "abandoned": {
+            "title": "Abandoned",
+            "type": "boolean"
+          },
+          "ai_assisted": {
+            "title": "Ai Assisted",
+            "type": "boolean"
+          },
+          "alone": {
+            "title": "Alone",
+            "type": "boolean"
+          },
+          "counted_score": {
+            "title": "Counted Score",
+            "type": "integer"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "multiplier": {
+            "title": "Multiplier",
+            "type": "integer"
+          },
+          "opponents": {
+            "$ref": "#/components/schemas/HandOpponents"
+          },
+          "points_scope": {
+            "enum": [
+              "team",
+              "own"
+            ],
+            "title": "Points Scope",
+            "type": "string"
+          },
+          "points_taken": {
+            "title": "Points Taken",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "picker",
+              "partner",
+              "defender",
+              "leaster"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          },
+          "time_closed": {
+            "format": "date-time",
+            "title": "Time Closed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id",
+          "time_closed",
+          "table_name",
+          "role",
+          "alone",
+          "multiplier",
+          "score",
+          "counted_score",
+          "points_taken",
+          "points_scope",
+          "ai_assisted",
+          "abandoned",
+          "opponents"
+        ],
+        "title": "HandHistoryRow",
+        "type": "object"
+      },
+      "HandOpponents": {
+        "properties": {
+          "ai": {
+            "title": "Ai",
+            "type": "integer"
+          },
+          "humans": {
+            "title": "Humans",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "humans",
+          "ai"
+        ],
+        "title": "HandOpponents",
+        "type": "object"
+      },
       "HealthResponse": {
         "properties": {
           "db": {
@@ -2198,6 +2328,53 @@
           }
         },
         "summary": "Forgot Password"
+      }
+    },
+    "/api/account/hands": {
+      "get": {
+        "description": "The caller's finished hands, newest first, a page at a time; pass\nthe previous page's next_cursor as ``before`` for the next.",
+        "operationId": "account_hands_api_account_hands_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Account Hands"
       }
     },
     "/api/account/login": {

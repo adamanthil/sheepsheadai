@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from typing import Optional
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api.auth import PlayerIdentity, current_player, optional_player
-from server.api.schemas import AccountStatsResponse, LeaderboardResponse
+from server.api.schemas import (
+    AccountStatsResponse,
+    HandHistoryResponse,
+    LeaderboardResponse,
+)
 from server.services.persistence import accounts as accounts_db
+from server.services.persistence import history as history_db
 from server.services.persistence import stats as stats_db
+from server.services.persistence.history import BadCursor
 from server.services.persistence.pool import get_db_pool
 from server.services.persistence.stats import (
     ABANDON_AI_ACTIONS,
@@ -57,14 +64,19 @@ async def leaderboard(request: Request, sort: SortKey = "total"):
     }
 
 
-@router.get("/api/account/stats", response_model=AccountStatsResponse)
-async def account_stats(identity: PlayerIdentity = Depends(current_player)):
-    pool = get_db_pool()
+async def _verified_account(pool: asyncpg.Pool, identity: PlayerIdentity):
     account = await accounts_db.get_account(pool, identity.id)
     if account is None:
         raise HTTPException(status_code=403, detail="account_required")
     if not account.email_verified:
         raise HTTPException(status_code=403, detail="email_unverified")
+    return account
+
+
+@router.get("/api/account/stats", response_model=AccountStatsResponse)
+async def account_stats(identity: PlayerIdentity = Depends(current_player)):
+    pool = get_db_pool()
+    account = await _verified_account(pool, identity)
     stats = await stats_db.player_stats(pool, identity.id)
     mine = stats_db.row_of(await stats_db.ranking(pool, "total"), identity.id)
     qualifies_in: Optional[int] = None
@@ -80,3 +92,18 @@ async def account_stats(identity: PlayerIdentity = Depends(current_player)):
         "qualifies_in": qualifies_in,
         "min_hands": LEADERBOARD_MIN_HANDS,
     }
+
+
+@router.get("/api/account/hands", response_model=HandHistoryResponse)
+async def account_hands(
+    before: Optional[str] = None,
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """The caller's finished hands, newest first, a page at a time; pass
+    the previous page's next_cursor as ``before`` for the next."""
+    pool = get_db_pool()
+    await _verified_account(pool, identity)
+    try:
+        return await history_db.hand_history(pool, identity.id, before)
+    except BadCursor:
+        raise HTTPException(status_code=400, detail="invalid_cursor")
