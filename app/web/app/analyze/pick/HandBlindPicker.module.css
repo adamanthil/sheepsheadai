@@ -24,7 +24,9 @@
   background: var(--an-sunk);
   border: 1px solid var(--an-rule);
   border-radius: 10px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .targetActive {
@@ -111,7 +113,9 @@
   border: 1px solid var(--an-rule);
   border-radius: 6px;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .miniButton:hover {

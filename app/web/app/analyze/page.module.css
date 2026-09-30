@@ -45,7 +45,9 @@
   font-size: 0.875rem;
   background: var(--an-panel);
   color: var(--an-ink);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .input {
