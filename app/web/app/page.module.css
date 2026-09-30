@@ -247,6 +247,11 @@
   padding-top: 16px;
   gap: 12px;
 }
+.footerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
 .version {
   font-family: var(--font-mono);
   font-size: 10px;

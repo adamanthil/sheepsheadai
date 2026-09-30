@@ -1,0 +1,34 @@
+.page {
+  min-height: 100dvh;
+  background: var(--bg-page);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  overflow-x: hidden;
+}
+.inner {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+.wide {
+  max-width: 880px;
+}
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.navLinks {
+  display: flex;
+  gap: 18px;
+}
+.title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(40px, 8vw, 64px);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  margin: 28px 0 24px;
+}

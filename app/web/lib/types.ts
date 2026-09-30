@@ -6,6 +6,13 @@ export type TablePublic = components["schemas"]["TablePublic"];
 export type Rules = components["schemas"]["RulesInput"];
 export type JoinTableResponse = components["schemas"]["JoinTableResponse"];
 export type PlayerPublic = components["schemas"]["PlayerPublic"];
+export type AccountPublic = components["schemas"]["AccountPublic"];
+export type AccountMe = components["schemas"]["AccountMeResponse"];
+export type AccountSession = components["schemas"]["AccountSessionResponse"];
+export type AccountStats = components["schemas"]["AccountStatsResponse"];
+export type Leaderboard = components["schemas"]["LeaderboardResponse"];
+export type LeaderboardRow = components["schemas"]["LeaderboardRow"];
+export type LeaderboardSort = Leaderboard["sort"];
 
 export type TableSummary = TablePublic;
 

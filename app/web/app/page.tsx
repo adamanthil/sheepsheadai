@@ -8,6 +8,7 @@ import { STORAGE_KEYS } from "../lib/storage";
 import { ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
+import AccountLine from "./components/home/AccountLine";
 import MastheadBand from "./components/home/MastheadBand";
 import Strapline from "./components/home/Strapline";
 import styles from "./page.module.css";
@@ -318,6 +319,7 @@ export default function HomePage() {
               </button>
               <span className={styles.createHint}>or join an open table</span>
             </div>
+            <AccountLine />
           </div>
         </div>
 
@@ -400,9 +402,18 @@ export default function HomePage() {
           </div>
 
           <div className={styles.lobbyFooter}>
-            <a className={ds.link} href="/analyze" style={{ fontSize: 13 }}>
-              Inspect AI model decisions ↗
-            </a>
+            <span className={styles.footerLinks}>
+              <a
+                className={ds.link}
+                href="/leaderboard"
+                style={{ fontSize: 13 }}
+              >
+                Leaderboard
+              </a>
+              <a className={ds.link} href="/analyze" style={{ fontSize: 13 }}>
+                Inspect AI model decisions ↗
+              </a>
+            </span>
             <div className={styles.version}>v0.7 · Jun 2026</div>
           </div>
         </div>
