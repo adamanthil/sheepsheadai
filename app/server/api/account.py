@@ -16,6 +16,7 @@ from server.api.auth import (
     PlayerIdentity,
     bearer_token,
     current_player,
+    forget_player,
     forget_token,
     optional_player,
 )
@@ -31,9 +32,11 @@ from server.api.schemas import (
     AccountPublic,
     AccountSessionResponse,
     EmailTokenRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     OkResponse,
     RegisterRequest,
+    ResetPasswordRequest,
     UsernameAvailability,
     validate_username,
 )
@@ -214,3 +217,62 @@ async def resend_verification(
         raise HTTPException(status_code=400, detail="already_verified")
     await send_verification(account)
     return {"ok": True}
+
+
+async def _send_reset(email: str) -> None:
+    """Email a reset link if ``email`` has an account; otherwise nothing."""
+    pool = get_db_pool()
+    account = await accounts_db.get_account_by_login(pool, email)
+    if account is None:
+        return
+    token = await accounts_db.create_email_token(pool, account.player_id, "reset")
+    link = f"{get_settings().public_base_url}/account/reset#token={token}"
+    await send_email(
+        account.email,
+        "Reset your Sheepshead password",
+        f"Hi {account.username},\n\nChoose a new password here:\n\n{link}\n\n"
+        "The link expires in 1 hour and signs you out everywhere else. If "
+        "you didn't ask for this, ignore this email.",
+        f"<p>Hi {account.username},</p>"
+        f'<p><a href="{link}">Choose a new password</a></p>'
+        "<p>The link expires in 1 hour and signs you out everywhere else. "
+        "If you didn't ask for this, ignore this email.</p>",
+    )
+
+
+@router.post("/api/account/forgot", response_model=OkResponse, status_code=202)
+@limiter.limit(AUTH_EMAIL)
+async def forgot_password(request: Request, req: ForgotPasswordRequest):
+    # The lookup runs in the background too, so neither the answer nor the
+    # response time says whether the address has an account.
+    spawn(_send_reset(req.email), name="email:reset")
+    return {"ok": True}
+
+
+@router.post("/api/account/reset", response_model=AccountSessionResponse)
+@limiter.limit(AUTH_LOGIN)
+async def reset_password(request: Request, req: ResetPasswordRequest):
+    pool = get_db_pool()
+    player_id = await accounts_db.consume_email_token(pool, req.token, "reset")
+    # Receiving the link proves the address, which also settles an
+    # unverified account registered with someone else's email. (None: the
+    # token outlived its account, dropped unverified by the purge.)
+    account = (
+        await accounts_db.mark_verified(pool, player_id)
+        if player_id is not None
+        else None
+    )
+    if player_id is None or account is None:
+        raise HTTPException(status_code=400, detail="invalid_or_expired_token")
+    await accounts_db.set_password(pool, player_id, await hash_password(req.password))
+    # Whoever knew the old password is signed out everywhere.
+    await sessions_db.delete_player_sessions(pool, player_id)
+    forget_player(player_id)
+    session_token = await sessions_db.create_session(pool, player_id)
+    player = await players_db.get_player(pool, player_id)
+    return {
+        "player_id": str(player_id),
+        "name": player["name"] if player else None,
+        "session_token": session_token,
+        "account": _public(account),
+    }

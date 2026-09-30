@@ -35,6 +35,12 @@ def clear_cache() -> None:
     _cache.clear()
 
 
+def forget_player(player_id: UUID) -> None:
+    """Drop every cached token of one player (all their sessions ended)."""
+    for key in [k for k, (pid, _) in _cache.items() if pid == player_id]:
+        del _cache[key]
+
+
 def forget_token(token: str) -> None:
     """Drop one token from the cache, so a signed-out session stops
     resolving at once rather than after CACHE_TTL."""

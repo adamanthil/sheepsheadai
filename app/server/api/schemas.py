@@ -142,6 +142,21 @@ class EmailTokenRequest(BaseModel):
     token: str = Field(min_length=1, max_length=128)
 
 
+class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: EmailStr
+
+    _email = field_validator("email", mode="after")(normalize_email)
+
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=1, max_length=128)
+    password: str
+
+    _password = field_validator("password")(validate_password)
+
+
 class AccountPublic(BaseModel):
     username: str
     email: str

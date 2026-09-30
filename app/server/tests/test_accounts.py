@@ -251,3 +251,64 @@ async def test_resend_verification(client, outbox):
     await client.post("/api/account/verify", json={"token": second})
     r = await client.post("/api/account/resend-verification", headers=_bearer(token))
     assert r.json()["detail"] == "already_verified"
+
+
+async def test_password_reset_signs_out_everywhere(client, outbox):
+    _, guest_token = await _guest(client)
+    username, email = _fresh()
+    await client.post(
+        "/api/account/register",
+        json={"username": username, "email": email, "password": "hunter22!"},
+        headers=_bearer(guest_token),
+    )
+    login = await client.post(
+        "/api/account/login", json={"login": email, "password": "hunter22!"}
+    )
+    other_device = login.json()["session_token"]
+    # Prime the auth cache so the reset has to evict, not just delete.
+    assert (
+        await client.get("/api/account/me", headers=_bearer(other_device))
+    ).status_code == 200
+
+    # Unknown addresses get the same answer and no email.
+    sent_before = len(outbox)
+    r = await client.post("/api/account/forgot", json={"email": _fresh()[1]})
+    await asyncio.sleep(0)
+    assert r.status_code == 202 and len(outbox) == sent_before
+
+    r = await client.post("/api/account/forgot", json={"email": email.upper()})
+    assert r.status_code == 202
+    for _ in range(5):  # the lookup itself runs in the background
+        await asyncio.sleep(0.02)
+        if len(outbox) > sent_before:
+            break
+    reset_token = await _emailed_token(outbox)
+
+    r = await client.post(
+        "/api/account/reset", json={"token": reset_token, "password": "new-pass-99"}
+    )
+    assert r.status_code == 200, r.text
+    fresh_token = r.json()["session_token"]
+    # The reset proved the address.
+    assert r.json()["account"]["email_verified"] is True
+
+    for old in (guest_token, other_device):
+        assert (
+            await client.get("/api/account/me", headers=_bearer(old))
+        ).status_code == 401
+    assert (
+        await client.get("/api/account/me", headers=_bearer(fresh_token))
+    ).status_code == 200
+
+    old_pw = await client.post(
+        "/api/account/login", json={"login": email, "password": "hunter22!"}
+    )
+    new_pw = await client.post(
+        "/api/account/login", json={"login": email, "password": "new-pass-99"}
+    )
+    assert (old_pw.status_code, new_pw.status_code) == (401, 200)
+
+    again = await client.post(
+        "/api/account/reset", json={"token": reset_token, "password": "another-1"}
+    )
+    assert again.status_code == 400
