@@ -56,6 +56,7 @@ from server.runtime.seating import (
     cancel_disconnect_task,
     is_ai_occupant,
     lowest_non_human_seat,
+    may_reclaim_seat,
     pick_join_ai_seat,
     replace_ai_with_human_and_reserve,
     reserved_ai_ids,
@@ -201,12 +202,11 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         if table.status == "playing":
             ai_seat = pick_join_ai_seat(table)
             if ai_seat is None:
-                try:
-                    del table.clients[client_id]
-                except KeyError:
-                    pass
-                raise HTTPException(status_code=400, detail="no_ai_seat_available")
-            await replace_ai_with_human_and_reserve(table, ai_seat, client_id)
+                # Every AI seat is holding a human's hand: watch until the
+                # hand ends, then take a seat once the table reopens.
+                await post_presence_notice(table, conn, "joined and is watching")
+            else:
+                await replace_ai_with_human_and_reserve(table, ai_seat, client_id)
         else:
             seat_to_take: Optional[int] = None
             if table.host_client_id == client_id:
@@ -279,6 +279,10 @@ async def choose_seat(
                 raise HTTPException(status_code=409, detail="seat_locked_in_play")
             if not is_ai_occupant(table, current):
                 raise HTTPException(status_code=409, detail="seat_not_ai")
+            if not table.seat_takeable(req.seat) and not may_reclaim_seat(
+                table, conn, req.seat
+            ):
+                raise HTTPException(status_code=409, detail="seat_owned_by_player")
 
         # A player the turn timer moved out may only take back their own
         # seat, like a reconnect; if someone has taken it since, any seat.

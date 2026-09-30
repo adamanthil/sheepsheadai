@@ -1,7 +1,7 @@
 import React from "react";
 import { ds } from "../../../../lib/ds";
 import type { TableView } from "../../../../lib/types";
-import { isAiSeat, nameForSeat } from "../utils/seatMath";
+import { isAiSeat, isTakeableSeat, nameForSeat } from "../utils/seatMath";
 import { TurnClock } from "./ActionBar";
 import styles from "./ActionBar.module.css";
 
@@ -16,10 +16,10 @@ interface SpectatorBarProps {
   homeOccupant?: string | null;
 }
 
-/** Stands in for the ActionBar while you watch: one button per AI seat,
- * each taking over that AI's hand where it stands. A player the turn clock
- * moved out is offered only their own seat back while its AI still holds
- * it (the server enforces the same rule). */
+/** Stands in for the ActionBar while you watch: one button per AI seat
+ * that was dealt to the AI, each taking over that AI's hand where it
+ * stands. A player the turn clock moved out is offered only their own seat
+ * back while its AI still holds it (the server enforces both rules). */
 export default function SpectatorBar(props: SpectatorBarProps) {
   const homeSeat = [1, 2, 3, 4, 5].find(
     (s) =>
@@ -29,7 +29,9 @@ export default function SpectatorBar(props: SpectatorBarProps) {
   const aiSeats =
     homeSeat !== undefined
       ? [homeSeat]
-      : [1, 2, 3, 4, 5].filter((s) => isAiSeat(s, props.table));
+      : [1, 2, 3, 4, 5].filter(
+          (s) => isAiSeat(s, props.table) && isTakeableSeat(s, props.table),
+        );
   const status = props.actorName
     ? `Watching · waiting for ${props.actorName}…`
     : "Watching";
@@ -77,7 +79,7 @@ export default function SpectatorBar(props: SpectatorBarProps) {
         {seatButtons.length ? (
           seatButtons
         ) : (
-          <span className={styles.helper}>No AI seats to take over</span>
+          <span className={styles.helper}>No seats to take over this hand</span>
         )}
         {scores}
       </div>

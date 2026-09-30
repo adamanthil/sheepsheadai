@@ -270,6 +270,8 @@ class TablePublic(BaseModel):
     seatIsAI: Dict[int, bool] | Dict[str, bool]
     # Verified account username of each seat's human, for the account badge.
     seatAccount: Dict[int, Optional[str]] | Dict[str, Optional[str]]
+    # Whether another player may move into each seat now (Table.seat_takeable).
+    seatTakeable: Dict[int, bool] | Dict[str, bool]
     host: Optional[str]
     resultsHistory: List[Dict[str, Any]]
     initialSeatOrder: List[str]

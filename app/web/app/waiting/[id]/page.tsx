@@ -246,6 +246,7 @@ export default function WaitingRoom() {
         isAI,
         account: table.seatAccount?.[String(i)] ?? null,
         removableId: isAI ? null : removableId(table.seatOccupants[String(i)]),
+        takeable: Boolean(table.seatTakeable?.[String(i)]),
       });
     }
     return out;

@@ -147,6 +147,33 @@ class Table:
     # trick_card rows are written.
     substituted_plays: Set[Tuple[int, int]] = field(default_factory=set)
 
+    @property
+    def hand_in_play(self) -> bool:
+        return (
+            self.status == "playing"
+            and self.game is not None
+            and not self.game.is_done()
+        )
+
+    def seat_takeable(self, seat: int) -> bool:
+        """Whether a player may move into ``seat``: it is empty or the AI
+        holds it. While a hand is in play, the AI must also hold the seat's
+        own row -- a seat dealt to a human stays with the AI until the hand
+        ends, so nobody finishes (and is credited for) someone else's hand.
+        Only its owner may take it back (seating.may_reclaim_seat).
+
+        A hand whose deal was never persisted has no row owners recorded;
+        its seats count as AI-dealt, since nothing about it reaches stats.
+        """
+        occ_id = self.seats.get(seat)
+        if occ_id:
+            occ = self.occupants.get(occ_id)
+            if not (occ and occ.is_ai):
+                return False
+        if not self.hand_in_play:
+            return True
+        return self.game_player_is_ai.get(seat, True)
+
     def to_public_dict(self) -> Dict[str, Any]:
         def seat_name(occ_id: Optional[str]) -> Optional[str]:
             if not occ_id:
@@ -196,6 +223,7 @@ class Table:
             "seatOccupants": seats_ids,
             "seatIsAI": seat_is_ai,
             "seatAccount": seat_account,
+            "seatTakeable": {i: self.seat_takeable(i) for i in self.seats},
             "host": (
                 self.clients[self.host_client_id].display_name
                 if self.host_client_id and self.host_client_id in self.clients

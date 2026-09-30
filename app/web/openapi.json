@@ -1331,6 +1331,13 @@
             "title": "Seatoccupants",
             "type": "object"
           },
+          "seatTakeable": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Seattakeable",
+            "type": "object"
+          },
           "seats": {
             "additionalProperties": {
               "anyOf": [
@@ -1366,6 +1373,7 @@
           "seatOccupants",
           "seatIsAI",
           "seatAccount",
+          "seatTakeable",
           "host",
           "resultsHistory",
           "initialSeatOrder",
@@ -1975,6 +1983,13 @@
             "title": "Seatoccupants",
             "type": "object"
           },
+          "seatTakeable": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Seattakeable",
+            "type": "object"
+          },
           "seats": {
             "additionalProperties": {
               "anyOf": [
@@ -2010,6 +2025,7 @@
           "seatOccupants",
           "seatIsAI",
           "seatAccount",
+          "seatTakeable",
           "host",
           "resultsHistory",
           "initialSeatOrder",

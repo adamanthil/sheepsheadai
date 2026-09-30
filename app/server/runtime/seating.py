@@ -7,7 +7,7 @@ from typing import Optional, Set
 from server.realtime.broadcast import broadcast_table_update
 from server.realtime.chat import post_presence_notice
 from server.runtime.ai_loop import schedule_ai_turns
-from server.runtime.models import Occupant, Table
+from server.runtime.models import ClientConn, Occupant, Table
 from server.runtime.occupants import allocate_ai_occupant
 
 # Fixed seat-label names for the /analyze simulate trace (server.services.
@@ -30,22 +30,28 @@ def reserved_ai_ids(table: Table) -> Set[str]:
 
 
 def pick_join_ai_seat(table: Table) -> Optional[int]:
-    """Pick an AI seat for a newcomer, preferring AIs not reserved for disconnected humans."""
+    """Pick a seat for a mid-hand newcomer: the first takeable AI seat not
+    reserved for a disconnected human's reclaim, or None to join unseated."""
     reserved_ids = reserved_ai_ids(table)
-    non_reserved: list = []
-    reserved: list = []
     for i in range(1, 6):
         occ = table.seats.get(i)
-        if is_ai_occupant(table, occ):
-            if occ in reserved_ids:
-                reserved.append(i)
-            else:
-                non_reserved.append(i)
-    if non_reserved:
-        return non_reserved[0]
-    if reserved:
-        return reserved[0]
+        if (
+            is_ai_occupant(table, occ)
+            and occ not in reserved_ids
+            and table.seat_takeable(i)
+        ):
+            return i
     return None
+
+
+def may_reclaim_seat(table: Table, conn: ClientConn, seat: int) -> bool:
+    """Whether ``conn`` owns the AI now holding ``seat``: the AI that took
+    over when they disconnected or the turn timer moved them out."""
+    occ = table.seats.get(seat)
+    return occ is not None and occ in (
+        conn.home_occupant,
+        table.reserved_ai_by_human.get(conn.client_id),
+    )
 
 
 def lowest_non_human_seat(table: Table) -> Optional[int]:

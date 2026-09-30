@@ -531,12 +531,12 @@ export interface components {
             min_hands: number;
             /** Pick Pct */
             pick_pct: number | null;
-            /** sph */
-            sph: number | null;
             /** Qualifies In */
             qualifies_in: number | null;
             /** Rank */
             rank: number | null;
+            /** Sph */
+            sph: number | null;
             /** Total */
             total: number;
             /** Username */
@@ -950,6 +950,10 @@ export interface components {
             seatOccupants: {
                 [key: string]: string | null;
             };
+            /** Seattakeable */
+            seatTakeable: {
+                [key: string]: boolean;
+            };
             /** Seats */
             seats: {
                 [key: string]: string | null;
@@ -1034,10 +1038,10 @@ export interface components {
             is_you: boolean;
             /** Pick Pct */
             pick_pct: number;
-            /** sph */
-            sph: number;
             /** Rank */
             rank: number;
+            /** Sph */
+            sph: number;
             /** Total */
             total: number;
             /** Username */
@@ -1184,6 +1188,10 @@ export interface components {
             /** Seatoccupants */
             seatOccupants: {
                 [key: string]: string | null;
+            };
+            /** Seattakeable */
+            seatTakeable: {
+                [key: string]: boolean;
             };
             /** Seats */
             seats: {

@@ -162,7 +162,7 @@ async def redeal(
 
     # Redeal is the between-hands step. Mid-hand it would throw away a
     # live deal unrecorded, letting a host erase a losing hand.
-    if table.status == "playing" and table.game and not table.game.is_done():
+    if table.hand_in_play:
         raise HTTPException(status_code=409, detail="hand_in_progress")
 
     async with table.state_lock:

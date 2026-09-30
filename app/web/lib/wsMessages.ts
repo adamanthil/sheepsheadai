@@ -27,6 +27,7 @@ const looseTable = z.looseObject({
   runningBySeat: z.record(z.string(), z.number()),
   seatIsAI: z.record(z.string(), z.boolean()),
   seatAccount: z.record(z.string(), z.string().nullable()),
+  seatTakeable: z.record(z.string(), z.boolean()),
   seatOccupants: z.record(z.string(), z.string().nullable()),
   seats: z.record(z.string(), z.string().nullable()),
 });

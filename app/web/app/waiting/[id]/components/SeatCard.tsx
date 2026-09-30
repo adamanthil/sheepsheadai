@@ -12,6 +12,8 @@ export interface SeatInfo {
   /** The seated human's client id, when the viewer (the host) may remove
    * them; null otherwise. */
   removableId: string | null;
+  /** Whether the viewer may move into this seat (empty or AI-held). */
+  takeable: boolean;
 }
 
 interface SeatCardProps {
@@ -33,7 +35,7 @@ export default function SeatCard({
   onRemove,
 }: SeatCardProps) {
   const empty = !seat.name;
-  const takeable = empty || seat.isAI;
+  const takeable = seat.takeable;
   const removableId = seat.removableId;
   const remove = removableId ? (
     <RemovePlayerButton

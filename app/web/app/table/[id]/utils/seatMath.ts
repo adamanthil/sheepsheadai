@@ -17,6 +17,15 @@ export function accountForSeat(
   return table?.seatAccount?.[String(seat)] ?? null;
 }
 
+// Whether a spectator may take over a seat now: the AI holds it and, mid-
+// hand, was also dealt it (a human's hand stays theirs to reclaim)
+export function isTakeableSeat(
+  seat: number,
+  table: TableView | null | undefined,
+): boolean {
+  return Boolean(table?.seatTakeable?.[String(seat)]);
+}
+
 // Check if a seat is AI-controlled
 export function isAiSeat(
   seat: number,
