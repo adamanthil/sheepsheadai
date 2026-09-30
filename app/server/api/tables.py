@@ -54,6 +54,7 @@ from server.runtime.models import ClientConn, Table
 from server.runtime.occupants import allocate_ai_occupant, give_seat_to_ai
 from server.runtime.seating import (
     cancel_disconnect_task,
+    home_seat,
     is_ai_occupant,
     lowest_non_human_seat,
     may_reclaim_seat,
@@ -362,7 +363,12 @@ async def api_close_table(
 
     require_host(table, req.client_id, identity)
 
-    await close_table(table, reason="host_closed")
+    # Settlement of a live hand is the host's doing: it counts against the
+    # host's own seat and is excused for everyone else.
+    host_seat = home_seat(table, table.clients[req.client_id])
+    await close_table(
+        table, reason="host_closed", charge=lambda seat: seat == host_seat
+    )
     return {"ok": True}
 
 
@@ -394,11 +400,9 @@ async def kick_player(
         # The AI finishing a removed player's hand is the host's doing, so
         # a kick can't be used to turn their win into an abandon. They may
         # already be away, with their reserved AI holding the seat.
-        home_seat = target.seat or next(
-            (s for s in range(1, 6) if may_reclaim_seat(table, target, s)), None
-        )
-        if home_seat is not None and table.hand_in_play:
-            table.excused_seats.add(home_seat)
+        owned = home_seat(table, target)
+        if owned is not None and table.hand_in_play:
+            table.excused_seats.add(owned)
         seat = give_seat_to_ai(table, target)
         cancel_disconnect_task(table, target.client_id)
         del table.clients[target.client_id]

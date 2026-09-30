@@ -154,6 +154,10 @@ class Table:
     ai_actions_excused: Dict[int, int] = field(default_factory=dict)
     # Seats whose AI moves are excused for the rest of the hand.
     excused_seats: Set[int] = field(default_factory=set)
+    # Set once the AI starts playing out the last hand before the table
+    # closes or the server exits (runtime.settle); from then on no human
+    # move or AI turn loop may touch the game.
+    settling: bool = False
 
     @property
     def hand_in_play(self) -> bool:

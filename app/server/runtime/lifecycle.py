@@ -4,12 +4,14 @@ import asyncio
 import json
 import logging
 import time
+from typing import Callable
 
 from fastapi import WebSocketDisconnect
 
 from server.realtime.broadcast import broadcast_table_event
 from server.runtime.manager import tables
 from server.runtime.models import Table
+from server.runtime.settle import settle_hand
 from server.services.persistence.game_table import close_game_table
 from server.services.persistence.pool import get_db_pool
 
@@ -27,8 +29,31 @@ def is_draining() -> bool:
     return _draining
 
 
-async def close_table(table: Table, reason: str = "closed") -> None:
-    """Gracefully close a table: cancel AI, notify clients, close websockets, and remove from manager."""
+def charge_everyone(seat: int) -> bool:
+    return True
+
+
+def charge_no_one(seat: int) -> bool:
+    return False
+
+
+async def close_table(
+    table: Table,
+    reason: str = "closed",
+    charge: Callable[[int], bool] = charge_everyone,
+) -> None:
+    """Gracefully close a table: settle a live hand, cancel AI, notify
+    clients, close websockets, and remove from manager.
+
+    ``charge`` is passed to settle_hand: whose seats' settlement moves
+    count against them. By default everyone's, as when all have left.
+    """
+    try:
+        await settle_hand(table, charge)
+    except RuntimeError:
+        # The AI produced an invalid move; the hand stays unfinished, but
+        # the table must still close.
+        logging.exception("settling table %s failed", table.id)
     if table.ai_task and not table.ai_task.done():
         table.ai_task.cancel()
     # The idle path calls this from *inside* autoclose_task. Cancelling that
@@ -82,6 +107,33 @@ async def close_table(table: Table, reason: str = "closed") -> None:
             tables.delete_table(table.id)
         except Exception:
             logging.exception("failed deleting table %s", table.id)
+
+
+# Hands still in play at shutdown get this long to be played out; the rest
+# of the compose stop_grace_period (30 s) covers the broadcast and exit.
+DRAIN_SETTLE_SECONDS = 15.0
+
+
+async def settle_all_for_restart(timeout: float = DRAIN_SETTLE_SECONDS) -> None:
+    """Play out every live hand before the server exits. A restart is no
+    player's doing, so every settlement move is excused."""
+    live = [t for t in tables.tables.values() if t.hand_in_play]
+    if not live:
+        return
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                *(settle_hand(t, charge_no_one) for t in live),
+                return_exceptions=True,
+            ),
+            timeout,
+        )
+    except TimeoutError:
+        logging.warning("drain: hands still unsettled after %.0fs", timeout)
+        return
+    for table, result in zip(live, results):
+        if isinstance(result, BaseException):
+            logging.error("drain: settling table %s failed", table.id, exc_info=result)
 
 
 def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -> None:

@@ -146,6 +146,7 @@ def create_app() -> FastAPI:
                         logging.exception(
                             "server_restart broadcast failed for %s", table.id
                         )
+                await lifecycle.settle_all_for_restart()
                 await asyncio.sleep(2.0)
                 signal.raise_signal(signal.SIGINT)
 

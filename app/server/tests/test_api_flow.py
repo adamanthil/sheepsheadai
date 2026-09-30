@@ -234,3 +234,47 @@ async def test_doublers_pass_out_persists_the_thrown_in_deal_and_doubled_stake(d
     # The redeal is open and carries the doubled stake.
     assert redealt["score_multiplier"] == 2
     assert redealt["time_closed"] is None
+
+
+async def test_host_close_mid_hand_records_the_settled_hand(db_app):
+    app, pool = db_app
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/api/tables", json={"name": "closer"})
+        table_id = created.json()["id"]
+        joined = await client.post(
+            f"/api/tables/{table_id}/join",
+            json={"display_name": "Host", "host_key": created.json()["host_key"]},
+        )
+        j = joined.json()
+        auth = {"Authorization": f"Bearer {j['session_token']}"}
+        started = await client.post(
+            f"/api/tables/{table_id}/start",
+            json={"client_id": j["client_id"]},
+            headers=auth,
+        )
+        assert started.status_code == 200, started.text
+
+        closed = await client.post(
+            f"/api/tables/{table_id}/close",
+            json={"client_id": j["client_id"]},
+            headers=auth,
+        )
+        assert closed.status_code == 200, closed.text
+
+    # The hand was played out and scored, not left open with NULL scores;
+    # the AI's moves for the host count against the host.
+    rows = await pool.fetch(
+        """
+        SELECT g.time_closed, gp.score, gp.player_id, gp.ai_actions,
+               gp.ai_actions_excused
+        FROM game g JOIN game_player gp USING (game_id)
+        WHERE g.game_table_id = $1
+        """,
+        __import__("uuid").UUID(table_id),
+    )
+    assert len(rows) == 5
+    assert all(r["time_closed"] is not None and r["score"] is not None for r in rows)
+    (host_row,) = [r for r in rows if r["player_id"] is not None]
+    assert host_row["ai_actions"] > 0 and host_row["ai_actions_excused"] == 0
+    assert all(r["ai_actions"] == 0 for r in rows if r["player_id"] is None)

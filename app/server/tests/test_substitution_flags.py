@@ -4,7 +4,6 @@ flagged: bidding decisions on the row, card plays on each trick_card."""
 from __future__ import annotations
 
 import uuid
-from contextlib import asynccontextmanager
 from typing import Callable
 
 import pytest
@@ -17,40 +16,13 @@ from server.services.persistence.snapshots import (
     capture_post_state,
     capture_pre_state,
 )
+from server.tests.recording_pool import RecordingPool
 from sheepshead.game import ACTION_LOOKUP
 
 
-class _RecordingConn:
-    def __init__(self, log: list) -> None:
-        self.log = log
-
-    async def execute(self, sql: str, *args) -> None:
-        self.log.append((" ".join(sql.split()), args))
-
-    async def executemany(self, sql: str, rows) -> None:
-        self.log.append((" ".join(sql.split()), list(rows)))
-
-    async def fetchval(self, sql: str, *args) -> int:
-        self.log.append((" ".join(sql.split()), args))
-        return 1
-
-    @asynccontextmanager
-    async def transaction(self):
-        yield
-
-
-class _RecordingPool:
-    def __init__(self) -> None:
-        self.log: list = []
-
-    @asynccontextmanager
-    async def acquire(self):
-        yield _RecordingConn(self.log)
-
-
 @pytest.fixture
-def pool(monkeypatch) -> _RecordingPool:
-    pool = _RecordingPool()
+def pool(monkeypatch) -> RecordingPool:
+    pool = RecordingPool()
     monkeypatch.setattr(games_hooks, "get_db_pool", lambda: pool)
     return pool
 
@@ -90,11 +62,11 @@ async def _play_first_trick(
         )
 
 
-def _pick_flags(pool: _RecordingPool) -> set[int]:
+def _pick_flags(pool: RecordingPool) -> set[int]:
     return {args[0] for sql, args in pool.log if "SET is_substituted_pick" in sql}
 
 
-def _trick_card_flags(pool: _RecordingPool) -> dict[int, bool]:
+def _trick_card_flags(pool: RecordingPool) -> dict[int, bool]:
     (rows,) = [args for sql, args in pool.log if "INSERT INTO trick_card" in sql]
     return {gp_id: substituted for _, _, gp_id, _, substituted in rows}
 

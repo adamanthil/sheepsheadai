@@ -44,6 +44,14 @@ def pick_join_ai_seat(table: Table) -> Optional[int]:
     return None
 
 
+def home_seat(table: Table, conn: ClientConn) -> Optional[int]:
+    """The seat ``conn`` plays, or would take back if the AI holds it for
+    them."""
+    return conn.seat or next(
+        (s for s in range(1, 6) if may_reclaim_seat(table, conn, s)), None
+    )
+
+
 def may_reclaim_seat(table: Table, conn: ClientConn, seat: int) -> bool:
     """Whether ``conn`` owns the AI now holding ``seat``: the AI that took
     over when they disconnected or the turn timer moved them out."""

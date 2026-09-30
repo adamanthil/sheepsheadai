@@ -214,6 +214,8 @@ async def post_action(
         # Validate under the lock: turn order and the valid-action set can
         # change between an unlocked check and the apply (e.g. a concurrent
         # AI move or a double-submitted request).
+        if table.settling:
+            raise HTTPException(status_code=409, detail="table_closing")
         actor_seat = get_actor_seat(table)
         if actor_seat != conn.seat:
             raise HTTPException(status_code=400, detail="not_your_turn")

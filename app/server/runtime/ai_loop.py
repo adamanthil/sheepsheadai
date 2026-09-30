@@ -79,6 +79,8 @@ async def ai_take_turns(table: Table) -> None:
 
 def schedule_ai_turns(table: Table, initial_delay: float = 0.0) -> None:
     """Schedule background AI turns for a table, cancelling any prior task."""
+    if table.settling:
+        return  # settle_hand is playing every seat itself
 
     async def _runner():
         if initial_delay > 0:
