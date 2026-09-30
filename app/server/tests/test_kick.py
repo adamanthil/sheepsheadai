@@ -143,3 +143,19 @@ async def test_removed_player_cannot_rejoin(client, monkeypatch):
 
     assert r.status_code == 403
     assert r.json()["detail"] == "removed_from_table"
+
+
+async def test_host_cannot_redeal_a_hand_in_play(client):
+    # Redeal is for between hands; mid-hand it would discard the deal
+    # unrecorded, erasing a hand the host was losing.
+    table = _table_in_play()
+    game = table.game
+
+    r = await client.post(
+        "/api/tables/t/redeal",
+        json={"client_id": "host"},
+        headers=_as(table.clients["host"]),
+    )
+
+    assert (r.status_code, r.json()["detail"]) == (409, "hand_in_progress")
+    assert table.game is game and table.status == "playing"

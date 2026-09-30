@@ -160,6 +160,11 @@ async def redeal(
 
     require_host(table, req.client_id if req else None, identity)
 
+    # Redeal is the between-hands step. Mid-hand it would throw away a
+    # live deal unrecorded, letting a host erase a losing hand.
+    if table.status == "playing" and table.game and not table.game.is_done():
+        raise HTTPException(status_code=409, detail="hand_in_progress")
+
     async with table.state_lock:
         old = {i: table.seats[i] for i in range(1, 6)}
         new_map = {
