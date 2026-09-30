@@ -98,6 +98,8 @@ async def test_host_removes_a_seated_player(client):
     assert ws.closed_with == 4403
     last = table.chat_log[-1]
     assert (last["author"], last["body"]) == ("pest", "was removed by the host")
+    # The AI finishing their hand is the host's doing, not theirs.
+    assert table.excused_seats == {2}
 
 
 async def test_only_the_host_can_remove(client):
@@ -159,3 +161,23 @@ async def test_host_cannot_redeal_a_hand_in_play(client):
 
     assert (r.status_code, r.json()["detail"]) == (409, "hand_in_progress")
     assert table.game is game and table.status == "playing"
+
+
+async def test_removing_an_away_player_excuses_the_seat_their_ai_holds(client):
+    table = _table_in_play()
+    pest = table.clients["pest"]
+    # They disconnected; their reserved AI plays seat 2 for them.
+    table.occupants["ai2"] = Occupant(id="ai2", display_name="AI", is_ai=True)
+    table.seats[2] = "ai2"
+    table.reserved_ai_by_human["pest"] = "ai2"
+    pest.seat = None
+
+    r = await client.post(
+        "/api/tables/t/kick",
+        json={"client_id": "host", "target_client_id": "pest"},
+        headers=_as(table.clients["host"]),
+    )
+
+    assert r.status_code == 200, r.text
+    assert table.excused_seats == {2}
+    assert "pest" not in table.reserved_ai_by_human

@@ -139,6 +139,9 @@ async def persist_started_game(
         table.game_player_ids = new_gp_ids
         table.game_player_is_ai = new_gp_is_ai
         table.substituted_plays = set()
+        table.ai_actions = {}
+        table.ai_actions_excused = {}
+        table.excused_seats = set()
 
     except Exception:
         logger.exception(

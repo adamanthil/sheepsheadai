@@ -12,6 +12,7 @@ import pytest
 from server.runtime.dealing import new_game_for_table
 from server.runtime.models import Table
 from server.services.persistence import games as games_hooks
+from server.services.persistence.hand_play import persist_finalize_game
 from server.services.persistence.snapshots import (
     capture_post_state,
     capture_pre_state,
@@ -134,3 +135,56 @@ async def test_owners_playing_their_own_seats_flag_nothing(pool):
 
     assert _pick_flags(pool) == set()
     assert not any(_trick_card_flags(pool).values())
+
+
+async def test_ai_decisions_for_a_human_row_are_counted(pool):
+    # Seat 2 is a human's row the AI plays throughout: every decision it
+    # makes there counts (pick, bury cards, call, card play), and no other
+    # seat's does.
+    table = _persisted_table(ai_rows={1, 3, 4, 5})
+    seat2_moves = []
+
+    def by_ai(seat: int, _started: bool) -> bool:
+        if seat == 2:
+            seat2_moves.append(seat)
+        return True
+
+    await _play_first_trick(table, picker=2, by_ai=by_ai)
+
+    assert len(seat2_moves) >= 4  # pick, two bury cards, a card play
+    assert table.ai_actions == {2: len(seat2_moves)}
+    assert table.ai_actions_excused == {}
+
+
+async def test_ai_decisions_on_an_excused_seat_are_excused(pool):
+    table = _persisted_table(ai_rows={1, 3, 4, 5})
+    table.excused_seats = {2}
+
+    await _play_first_trick(table, picker=2, by_ai=lambda seat, _: True)
+
+    assert table.ai_actions_excused == table.ai_actions
+    assert table.ai_actions[2] > 0
+
+
+async def test_human_moves_are_never_counted_as_ai_decisions(pool):
+    # A human on their own row, and a human who took over an AI row.
+    table = _persisted_table(ai_rows={1, 3, 4, 5})
+
+    await _play_first_trick(
+        table, picker=1, by_ai=lambda seat, started: seat not in (2, 3)
+    )
+
+    assert table.ai_actions == {}
+
+
+async def test_finalize_writes_the_counters(pool):
+    table = _persisted_table(ai_rows={1, 3, 4, 5})
+    table.ai_actions = {2: 5}
+    table.ai_actions_excused = {2: 3}
+
+    await persist_finalize_game(pool, table, [2, -4, 1, 1, 0])
+
+    updates = {args[-1]: args[:-1] for sql, args in pool.log if "SET score" in sql}
+    assert updates[102] == (-4, 5, 3)
+    assert updates[101] == (2, 0, 0)
+    assert table.ai_actions == {} and table.excused_seats == set()

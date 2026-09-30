@@ -129,6 +129,9 @@ async def persist_passed_out_game(pool: asyncpg.Pool, table: "Table") -> None:
         table.game_player_ids = {}
         table.game_player_is_ai = {}
         table.substituted_plays = set()
+        table.ai_actions = {}
+        table.ai_actions_excused = {}
+        table.excused_seats = set()
 
 
 async def persist_finalize_game(
@@ -149,8 +152,14 @@ async def persist_finalize_game(
                 for seat in range(1, 6):
                     gp_id = table.game_player_ids[seat]
                     await conn.execute(
-                        "UPDATE game_player SET score = $1 WHERE game_player_id = $2",
+                        """
+                        UPDATE game_player
+                        SET score = $1, ai_actions = $2, ai_actions_excused = $3
+                        WHERE game_player_id = $4
+                        """,
                         scores[seat - 1],
+                        table.ai_actions.get(seat, 0),
+                        table.ai_actions_excused.get(seat, 0),
                         gp_id,
                     )
         # Clear so the next hand starts fresh.
@@ -158,6 +167,9 @@ async def persist_finalize_game(
         table.game_player_ids = {}
         table.game_player_is_ai = {}
         table.substituted_plays = set()
+        table.ai_actions = {}
+        table.ai_actions_excused = {}
+        table.excused_seats = set()
     except Exception:
         logger.exception(
             "persist_finalize_game failed (table=%s game=%s)",

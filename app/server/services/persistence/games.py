@@ -60,6 +60,12 @@ async def fire_game_hooks(
     # a card play can complete the trick whose rows hook 5 writes.
     owner_is_ai = table.game_player_is_ai.get(seat)
     if owner_is_ai is not None and owner_is_ai != by_ai:
+        if by_ai:
+            table.ai_actions[seat] = table.ai_actions.get(seat, 0) + 1
+            if seat in table.excused_seats:
+                table.ai_actions_excused[seat] = (
+                    table.ai_actions_excused.get(seat, 0) + 1
+                )
         if pre["play_started"]:
             table.substituted_plays.add((pre["current_trick"], seat))
         else:

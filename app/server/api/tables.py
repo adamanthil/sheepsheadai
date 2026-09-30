@@ -391,6 +391,14 @@ async def kick_player(
             raise HTTPException(status_code=404, detail="client_not_found")
         if target.player_id:
             table.banned_player_ids.add(target.player_id)
+        # The AI finishing a removed player's hand is the host's doing, so
+        # a kick can't be used to turn their win into an abandon. They may
+        # already be away, with their reserved AI holding the seat.
+        home_seat = target.seat or next(
+            (s for s in range(1, 6) if may_reclaim_seat(table, target, s)), None
+        )
+        if home_seat is not None and table.hand_in_play:
+            table.excused_seats.add(home_seat)
         seat = give_seat_to_ai(table, target)
         cancel_disconnect_task(table, target.client_id)
         del table.clients[target.client_id]

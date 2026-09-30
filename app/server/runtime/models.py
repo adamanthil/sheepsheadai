@@ -146,6 +146,14 @@ class Table:
     # (trick index, seat) of substituted card plays, held until the trick's
     # trick_card rows are written.
     substituted_plays: Set[Tuple[int, int]] = field(default_factory=set)
+    # Decisions the AI made for each human-dealt seat this hand, and the
+    # subset excused -- made because of someone else's action (a kick, a
+    # host close, a server restart) rather than the player's absence.
+    # Written to game_player when the hand is finalized.
+    ai_actions: Dict[int, int] = field(default_factory=dict)
+    ai_actions_excused: Dict[int, int] = field(default_factory=dict)
+    # Seats whose AI moves are excused for the rest of the hand.
+    excused_seats: Set[int] = field(default_factory=set)
 
     @property
     def hand_in_play(self) -> bool:

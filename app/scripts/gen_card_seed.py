@@ -2,7 +2,7 @@
 """Generate db/fixtures/afterReset.sql from sheepshead.py constants.
 
 Run from the repo root after any change to DECK / SUIT_NAMES /
-CARD_FULL_NAMES so the seed stays in sync with the game engine:
+CARD_FULL_NAMES / CARD_POINTS so the seed stays in sync with the game engine:
 
     uv run python app/scripts/gen_card_seed.py
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sheepshead.game import CARD_FULL_NAMES, DECK, DECK_IDS, SUIT_NAMES
+from sheepshead.game import CARD_FULL_NAMES, CARD_POINTS, DECK, DECK_IDS, SUIT_NAMES
 
 APP_DIR = Path(__file__).resolve().parent.parent
 OUT_PATH = APP_DIR / "db" / "fixtures" / "afterReset.sql"
@@ -31,19 +31,21 @@ def render() -> str:
     lines.append("")
     lines.append("BEGIN;")
     lines.append("")
-    lines.append("-- Reference rows are static; clear and reinsert on every reset.")
-    lines.append("DELETE FROM cardset_card;")
-    lines.append("DELETE FROM card;")
-    lines.append("DELETE FROM suit;")
-    lines.append("")
+    lines.append(
+        "-- Reference rows are static. ON CONFLICT DO NOTHING makes this safe to run"
+    )
+    lines.append(
+        "-- multiple times (afterAllMigrations fires after every migrate, not just reset)."
+    )
     lines.append("INSERT INTO suit (suit_id, code, name) VALUES")
     suit_values = []
     for code, suit_id in SUIT_ORDER:
         name = SUIT_NAMES[code].replace("'", "''")
         suit_values.append(f"    ({suit_id}, '{code}', '{name}')")
-    lines.append(",\n".join(suit_values) + ";")
+    lines.append(",\n".join(suit_values))
+    lines.append("ON CONFLICT (suit_id) DO NOTHING;")
     lines.append("")
-    lines.append("INSERT INTO card (card_id, suit_id, code, name) VALUES")
+    lines.append("INSERT INTO card (card_id, suit_id, code, name, points) VALUES")
     suit_id_by_code = {c: i for c, i in SUIT_ORDER}
     card_values = []
     for code in DECK:
@@ -51,8 +53,12 @@ def render() -> str:
         suit_letter = code[-1]
         suit_id = suit_id_by_code[suit_letter]
         full_name = CARD_FULL_NAMES[code].replace("'", "''")
-        card_values.append(f"    ({card_id}, {suit_id}, '{code}', '{full_name}')")
-    lines.append(",\n".join(card_values) + ";")
+        points = CARD_POINTS[code]
+        card_values.append(
+            f"    ({card_id}, {suit_id}, '{code}', '{full_name}', {points})"
+        )
+    lines.append(",\n".join(card_values))
+    lines.append("ON CONFLICT (card_id) DO NOTHING;")
     lines.append("")
     lines.append("COMMIT;")
     lines.append("")
