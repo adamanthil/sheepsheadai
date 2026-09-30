@@ -1,0 +1,80 @@
+.caption {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.empty {
+  font-size: 14px;
+  color: var(--muted);
+  padding: 16px 0;
+  margin: 0;
+}
+
+/* The table scrolls sideways inside its box on narrow phones; the page
+   itself never does. */
+.scroller {
+  /* Contains the absolutely placed .srOnly header, which would otherwise
+     escape the scroll box and widen the page. */
+  position: relative;
+  overflow-x: auto;
+  border-top: 3px double var(--rule-strong);
+  margin-bottom: 16px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.table th,
+.table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+  text-align: left;
+}
+.table thead th {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom-color: var(--rule-strong);
+}
+.table .num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.when {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.tableName {
+  composes: nameClamp from "../../../lib/ds/ds.module.css";
+  --name-clamp: 16ch;
+  color: var(--ink);
+}
+.muted {
+  color: var(--muted);
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .table {
+    font-size: 13px;
+  }
+  .table th,
+  .table td {
+    padding: 8px 5px;
+  }
+}

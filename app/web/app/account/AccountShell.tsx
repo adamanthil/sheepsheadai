@@ -3,10 +3,11 @@ import Link from "next/link";
 import PageShell from "../components/PageShell";
 import styles from "./account.module.css";
 
-export type AccountTab = "overview";
+export type AccountTab = "overview" | "history";
 
 const TABS: { key: AccountTab; label: string; href: string }[] = [
   { key: "overview", label: "Overview", href: "/account" },
+  { key: "history", label: "Hand history", href: "/account/history" },
 ];
 
 /** The account area: the page shell plus, for a signed-in account, the

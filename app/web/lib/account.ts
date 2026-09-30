@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getSessionToken } from "./api";
 import { STORAGE_KEYS } from "./storage";
-import type { AccountMe, AccountSession } from "./types";
+import type { AccountMe, AccountSession, HandHistory } from "./types";
 
 /** A failed account call, carrying the server's `detail` code. */
 export class AccountError extends Error {
@@ -118,6 +118,15 @@ export const forgotPassword = (email: string) =>
 
 export const resetPassword = (token: string, password: string) =>
   post<AccountSession>("/api/account/reset", { token, password });
+
+/** One page of the account's hands, newest first; pass the previous
+ * page's next_cursor for the next. */
+export const fetchHands = (before?: string | null) =>
+  call<HandHistory>(
+    before
+      ? `/api/account/hands?before=${encodeURIComponent(before)}`
+      : "/api/account/hands",
+  );
 
 export async function usernameAvailable(username: string): Promise<boolean> {
   const data = await call<{ available: boolean }>(
