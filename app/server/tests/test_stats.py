@@ -68,6 +68,8 @@ class Seeder:
         *,
         picker: list[bool] | None = None,
         leaster: list[bool] | None = None,
+        ai_actions: list[int] | None = None,
+        excused: list[int] | None = None,
         closed: bool = True,
     ) -> None:
         n = len(scores)
@@ -89,15 +91,19 @@ class Seeder:
         await self.pool.execute(
             """
             INSERT INTO game_player (game_id, player_id, name, position,
-                                     starting_hand_id, is_picker, score)
-            SELECT g, $2, 'p', 1, $3, pk, sc
-            FROM unnest($1::uuid[], $4::bool[], $5::smallint[]) AS t(g, pk, sc)
+                                     starting_hand_id, is_picker, score,
+                                     ai_actions, ai_actions_excused)
+            SELECT g, $2, 'p', 1, $3, pk, sc, ai, ex
+            FROM unnest($1::uuid[], $4::bool[], $5::smallint[],
+                        $6::smallint[], $7::smallint[]) AS t(g, pk, sc, ai, ex)
             """,
             games,
             pid,
             self.cardset,
             picker or [False] * n,
             scores,
+            ai_actions or [0] * n,
+            excused or [0] * n,
         )
 
     async def cleanup(self):
@@ -156,6 +162,34 @@ async def test_personal_stats_count_only_finished_scored_hands(seeded):
     assert s["win_pct"] == pytest.approx(0.5)
     assert s["pick_pct"] == pytest.approx(0.5)
     assert (s["rank"], s["qualifies_in"], s["min_hands"]) == (None, 46, 50)
+    assert (s["abandoned_hands"], s["ai_assisted_hands"]) == (0, 0)
+    assert s["completion_rate"] == 1.0
+
+
+async def test_abandoned_hands_count_losses_but_not_wins(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"quit_{_tag()}")
+    # AI decisions (not excused) per hand: 2 is within the threshold, 3 is
+    # over it; excused moves never count.
+    await seeder.hands(
+        pid,
+        [4, 6, -4, 2, 3],
+        ai_actions=[2, 3, 3, 5, 0],
+        excused=[0, 0, 0, 4, 0],
+    )
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    s = r.json()
+    # The +6 is zeroed; the abandoned -4 counts in full.
+    assert (s["hands"], s["total"], s["forfeited_score"]) == (5, 5, 6)
+    assert s["win_pct"] == pytest.approx(0.6)
+    assert (s["abandoned_hands"], s["ai_assisted_hands"]) == (2, 4)
+    assert s["completion_rate"] == pytest.approx(0.6)
+    assert s["abandon_threshold"] == 2
 
 
 async def test_stats_need_a_verified_account(seeded):
@@ -225,3 +259,21 @@ async def test_leaderboard_serves_only_the_top_of_eligible_accounts(seeded):
 
     bad = await client.get("/api/leaderboard", params={"sort": "worst"})
     assert bad.status_code == 422
+
+
+async def test_leaderboard_ranks_by_counted_scores(seeded):
+    seeder, client = seeded
+    tag = _tag()
+    quitter = await seeder.player(username=f"aquit_{tag}")
+    await seeder.hands(quitter, [5] * 50, ai_actions=[3] * 50)
+    steady = await seeder.player(username=f"asteady_{tag}")
+    await seeder.hands(steady, [1] * 50)
+
+    r = await client.get("/api/leaderboard")
+
+    ours = [row for row in r.json()["rows"] if row["username"].endswith(tag)]
+    assert [(row["username"], row["total"]) for row in ours] == [
+        (f"asteady_{tag}", 50),
+        (f"aquit_{tag}", 0),
+    ]
+    assert ours[1]["win_pct"] == 0

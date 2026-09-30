@@ -189,7 +189,8 @@ class LeaderboardRow(BaseModel):
     username: str
     hands: int
     total: int
-    # Points per hand; win and pick rates are fractions in [0, 1].
+    # Score per hand; win and pick rates are fractions in [0, 1]. All
+    # count an abandoned hand's win as 0 (persistence.stats).
     sph: float
     win_pct: float
     pick_pct: float
@@ -214,6 +215,16 @@ class AccountStatsResponse(BaseModel):
     win_pct: Optional[float]
     pick_pct: Optional[float]
     leaster_hands: int
+    # Hands where the AI made more than abandon_threshold of the player's
+    # decisions (excused moves aside): their losses count in full, their
+    # wins as 0. forfeited_score is the winnings zeroed that way, and the
+    # score figures above already exclude it.
+    abandoned_hands: int
+    completion_rate: Optional[float]
+    forfeited_score: int
+    # Hands where the AI made any of the player's decisions.
+    ai_assisted_hands: int
+    abandon_threshold: int
     # Rank on the default (total score) board, or None when not yet
     # eligible; then qualifies_in says how many more hands it takes.
     rank: Optional[int]

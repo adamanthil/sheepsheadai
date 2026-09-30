@@ -103,6 +103,33 @@
       },
       "AccountStatsResponse": {
         "properties": {
+          "abandon_threshold": {
+            "title": "Abandon Threshold",
+            "type": "integer"
+          },
+          "abandoned_hands": {
+            "title": "Abandoned Hands",
+            "type": "integer"
+          },
+          "ai_assisted_hands": {
+            "title": "Ai Assisted Hands",
+            "type": "integer"
+          },
+          "completion_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Rate"
+          },
+          "forfeited_score": {
+            "title": "Forfeited Score",
+            "type": "integer"
+          },
           "hands": {
             "title": "Hands",
             "type": "integer"
@@ -187,6 +214,11 @@
           "win_pct",
           "pick_pct",
           "leaster_hands",
+          "abandoned_hands",
+          "completion_rate",
+          "forfeited_score",
+          "ai_assisted_hands",
+          "abandon_threshold",
           "rank",
           "qualifies_in",
           "min_hands"

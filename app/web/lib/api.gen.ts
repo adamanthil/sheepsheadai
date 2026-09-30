@@ -523,6 +523,16 @@ export interface components {
         };
         /** AccountStatsResponse */
         AccountStatsResponse: {
+            /** Abandon Threshold */
+            abandon_threshold: number;
+            /** Abandoned Hands */
+            abandoned_hands: number;
+            /** Ai Assisted Hands */
+            ai_assisted_hands: number;
+            /** Completion Rate */
+            completion_rate: number | null;
+            /** Forfeited Score */
+            forfeited_score: number;
             /** Hands */
             hands: number;
             /** Leaster Hands */

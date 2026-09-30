@@ -12,6 +12,7 @@ from server.services.persistence import accounts as accounts_db
 from server.services.persistence import stats as stats_db
 from server.services.persistence.pool import get_db_pool
 from server.services.persistence.stats import (
+    ABANDON_AI_ACTIONS,
     LEADERBOARD_MIN_HANDS,
     LEADERBOARD_SIZE,
     SortKey,
@@ -69,9 +70,12 @@ async def account_stats(identity: PlayerIdentity = Depends(current_player)):
     qualifies_in: Optional[int] = None
     if mine is None:
         qualifies_in = max(0, LEADERBOARD_MIN_HANDS - stats["hands"])
+    hands = stats["hands"]
     return {
         "username": account.username,
         **stats,
+        "completion_rate": (1 - stats["abandoned_hands"] / hands if hands else None),
+        "abandon_threshold": ABANDON_AI_ACTIONS,
         "rank": mine["rank"] if mine is not None else None,
         "qualifies_in": qualifies_in,
         "min_hands": LEADERBOARD_MIN_HANDS,

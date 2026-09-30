@@ -5,6 +5,12 @@ once it is closed and scored, which leaves out hands still in play and
 passed-out doublers deals (closed, but never scored). Scores already
 include the doublers stake. Hands the AI finished for a player (timeouts,
 disconnects) count as theirs, so walking away can't hide a loss.
+
+Nor can it bank a win: a hand is abandoned when the AI made more than
+ABANDON_AI_ACTIONS of the player's decisions in it (excused moves aside --
+a kick, a host close, a restart). An abandoned hand's loss counts in full,
+but a positive score counts as 0. The rule is applied here, at query time,
+so changing the threshold re-grades all history consistently.
 """
 
 from __future__ import annotations
@@ -18,18 +24,31 @@ import asyncpg
 SortKey = Literal["total", "sph", "win_pct", "pick_pct", "hands"]
 SORT_KEYS: tuple[SortKey, ...] = ("total", "sph", "win_pct", "pick_pct", "hands")
 
+# More AI decisions than this in a hand, not excused, abandon it.
+ABANDON_AI_ACTIONS = 2
+
+# SQL over a game_player row aliased gp.
+AI_ASSISTED_SQL = "(gp.ai_actions > 0)"
+ABANDONED_SQL = f"(gp.ai_actions - gp.ai_actions_excused > {ABANDON_AI_ACTIONS})"
+COUNTED_SCORE_SQL = (
+    f"(CASE WHEN {ABANDONED_SQL} AND gp.score > 0 THEN 0 ELSE gp.score END)"
+)
+
 LEADERBOARD_MIN_HANDS = 50
 LEADERBOARD_SIZE = 20
 _CACHE_TTL = 60.0
 
-_HAND_STATS = """
+_HAND_STATS = f"""
     SELECT gp.player_id,
-           count(*)::int                               AS hands,
-           sum(gp.score)::int                          AS total,
-           avg(gp.score)::float8                       AS sph,
-           avg((gp.score > 0)::int)::float8            AS win_pct,
-           avg((gp.is_picker IS TRUE)::int)::float8    AS pick_pct,
-           (count(*) FILTER (WHERE g.is_leaster))::int AS leaster_hands
+           count(*)::int                                    AS hands,
+           sum({COUNTED_SCORE_SQL})::int                    AS total,
+           avg({COUNTED_SCORE_SQL})::float8                 AS sph,
+           avg(({COUNTED_SCORE_SQL} > 0)::int)::float8      AS win_pct,
+           avg((gp.is_picker IS TRUE)::int)::float8         AS pick_pct,
+           (count(*) FILTER (WHERE g.is_leaster))::int      AS leaster_hands,
+           (count(*) FILTER (WHERE {ABANDONED_SQL}))::int   AS abandoned_hands,
+           (count(*) FILTER (WHERE {AI_ASSISTED_SQL}))::int AS ai_assisted_hands,
+           sum(gp.score - {COUNTED_SCORE_SQL})::int         AS forfeited_score
     FROM game_player gp
     JOIN game g ON g.game_id = gp.game_id
     WHERE g.time_closed IS NOT NULL
@@ -58,6 +77,9 @@ async def player_stats(pool: asyncpg.Pool, player_id: UUID) -> dict:
             "win_pct": None,
             "pick_pct": None,
             "leaster_hands": 0,
+            "abandoned_hands": 0,
+            "ai_assisted_hands": 0,
+            "forfeited_score": 0,
         }
     return {k: row[k] for k in row.keys() if k != "player_id"}
 
