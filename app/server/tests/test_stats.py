@@ -152,7 +152,7 @@ async def test_personal_stats_count_only_finished_scored_hands(seeded):
     assert r.status_code == 200, r.text
     s = r.json()
     assert (s["hands"], s["total"], s["leaster_hands"]) == (4, 4, 1)
-    assert s["pph"] == pytest.approx(1.0)
+    assert s["sph"] == pytest.approx(1.0)
     assert s["win_pct"] == pytest.approx(0.5)
     assert s["pick_pct"] == pytest.approx(0.5)
     assert (s["rank"], s["qualifies_in"], s["min_hands"]) == (None, 46, 50)

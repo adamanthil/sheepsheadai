@@ -480,8 +480,8 @@ const signed = (x: number) => (x > 0 ? `+${x}` : String(x));
 function StatsPanel({ stats }: { stats: AccountStats }) {
   const tiles: [string, string][] = [
     ["Hands", String(stats.hands)],
-    ["Total", signed(stats.total)],
-    ["Points / hand", stats.pph == null ? "—" : stats.pph.toFixed(2)],
+    ["Total score", signed(stats.total)],
+    ["Score / hand", stats.sph == null ? "—" : stats.sph.toFixed(2)],
     ["Win rate", pct(stats.win_pct)],
     ["Pick rate", pct(stats.pick_pct)],
     ["Leasters", String(stats.leaster_hands)],

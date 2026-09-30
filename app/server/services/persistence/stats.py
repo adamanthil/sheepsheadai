@@ -15,8 +15,8 @@ from uuid import UUID
 
 import asyncpg
 
-SortKey = Literal["total", "pph", "win_pct", "pick_pct", "hands"]
-SORT_KEYS: tuple[SortKey, ...] = ("total", "pph", "win_pct", "pick_pct", "hands")
+SortKey = Literal["total", "sph", "win_pct", "pick_pct", "hands"]
+SORT_KEYS: tuple[SortKey, ...] = ("total", "sph", "win_pct", "pick_pct", "hands")
 
 LEADERBOARD_MIN_HANDS = 50
 LEADERBOARD_SIZE = 20
@@ -26,7 +26,7 @@ _HAND_STATS = """
     SELECT gp.player_id,
            count(*)::int                               AS hands,
            sum(gp.score)::int                          AS total,
-           avg(gp.score)::float8                       AS pph,
+           avg(gp.score)::float8                       AS sph,
            avg((gp.score > 0)::int)::float8            AS win_pct,
            avg((gp.is_picker IS TRUE)::int)::float8    AS pick_pct,
            (count(*) FILTER (WHERE g.is_leaster))::int AS leaster_hands
@@ -54,7 +54,7 @@ async def player_stats(pool: asyncpg.Pool, player_id: UUID) -> dict:
         return {
             "hands": 0,
             "total": 0,
-            "pph": None,
+            "sph": None,
             "win_pct": None,
             "pick_pct": None,
             "leaster_hands": 0,

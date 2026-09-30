@@ -16,8 +16,8 @@ import styles from "./leaderboard.module.css";
 
 const COLUMNS: { key: LeaderboardSort; label: string; short: string }[] = [
   { key: "hands", label: "Hands", short: "Hands" },
-  { key: "total", label: "Total", short: "Total" },
-  { key: "pph", label: "Points / hand", short: "Pts/h" },
+  { key: "total", label: "Total Score", short: "Total" },
+  { key: "sph", label: "Score / hand", short: "Score/h" },
   { key: "win_pct", label: "Win rate", short: "Win" },
   { key: "pick_pct", label: "Pick rate", short: "Pick" },
 ];
@@ -33,8 +33,8 @@ function cell(row: LeaderboardRow, key: LeaderboardSort): string {
       return String(row.hands);
     case "total":
       return signed(row.total);
-    case "pph":
-      return row.pph.toFixed(2);
+    case "sph":
+      return row.sph.toFixed(2);
     case "win_pct":
       return pct(row.win_pct);
     case "pick_pct":

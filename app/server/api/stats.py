@@ -26,7 +26,7 @@ def _public_row(row: dict, you: bool) -> dict:
         "username": row["username"],
         "hands": row["hands"],
         "total": row["total"],
-        "pph": row["pph"],
+        "sph": row["sph"],
         "win_pct": row["win_pct"],
         "pick_pct": row["pick_pct"],
         "is_you": you,

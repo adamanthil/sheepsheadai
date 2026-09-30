@@ -126,17 +126,6 @@
             ],
             "title": "Pick Pct"
           },
-          "pph": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pph"
-          },
           "qualifies_in": {
             "anyOf": [
               {
@@ -158,6 +147,17 @@
               }
             ],
             "title": "Rank"
+          },
+          "sph": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sph"
           },
           "total": {
             "title": "Total",
@@ -183,7 +183,7 @@
           "username",
           "hands",
           "total",
-          "pph",
+          "sph",
           "win_pct",
           "pick_pct",
           "leaster_hands",
@@ -1539,7 +1539,7 @@
           "sort": {
             "enum": [
               "total",
-              "pph",
+              "sph",
               "win_pct",
               "pick_pct",
               "hands"
@@ -1581,13 +1581,13 @@
             "title": "Pick Pct",
             "type": "number"
           },
-          "pph": {
-            "title": "Pph",
-            "type": "number"
-          },
           "rank": {
             "title": "Rank",
             "type": "integer"
+          },
+          "sph": {
+            "title": "Sph",
+            "type": "number"
           },
           "total": {
             "title": "Total",
@@ -1607,7 +1607,7 @@
           "username",
           "hands",
           "total",
-          "pph",
+          "sph",
           "win_pct",
           "pick_pct",
           "is_you"
@@ -2543,7 +2543,7 @@
               "default": "total",
               "enum": [
                 "total",
-                "pph",
+                "sph",
                 "win_pct",
                 "pick_pct",
                 "hands"

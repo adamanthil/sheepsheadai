@@ -190,14 +190,14 @@ class LeaderboardRow(BaseModel):
     hands: int
     total: int
     # Points per hand; win and pick rates are fractions in [0, 1].
-    pph: float
+    sph: float
     win_pct: float
     pick_pct: float
     is_you: bool
 
 
 class LeaderboardResponse(BaseModel):
-    sort: Literal["total", "pph", "win_pct", "pick_pct", "hands"]
+    sort: Literal["total", "sph", "win_pct", "pick_pct", "hands"]
     min_hands: int
     # The top of the board only; nothing below it is ever served.
     rows: List[LeaderboardRow]
@@ -210,7 +210,7 @@ class AccountStatsResponse(BaseModel):
     hands: int
     total: int
     # None until the first finished hand.
-    pph: Optional[float]
+    sph: Optional[float]
     win_pct: Optional[float]
     pick_pct: Optional[float]
     leaster_hands: int

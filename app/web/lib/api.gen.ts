@@ -531,8 +531,8 @@ export interface components {
             min_hands: number;
             /** Pick Pct */
             pick_pct: number | null;
-            /** Pph */
-            pph: number | null;
+            /** sph */
+            sph: number | null;
             /** Qualifies In */
             qualifies_in: number | null;
             /** Rank */
@@ -1023,7 +1023,7 @@ export interface components {
              * Sort
              * @enum {string}
              */
-            sort: "total" | "pph" | "win_pct" | "pick_pct" | "hands";
+            sort: "total" | "sph" | "win_pct" | "pick_pct" | "hands";
             you: components["schemas"]["LeaderboardRow"] | null;
         };
         /** LeaderboardRow */
@@ -1034,8 +1034,8 @@ export interface components {
             is_you: boolean;
             /** Pick Pct */
             pick_pct: number;
-            /** Pph */
-            pph: number;
+            /** sph */
+            sph: number;
             /** Rank */
             rank: number;
             /** Total */
@@ -1618,7 +1618,7 @@ export interface operations {
     leaderboard_api_leaderboard_get: {
         parameters: {
             query?: {
-                sort?: "total" | "pph" | "win_pct" | "pick_pct" | "hands";
+                sort?: "total" | "sph" | "win_pct" | "pick_pct" | "hands";
             };
             header?: never;
             path?: never;
