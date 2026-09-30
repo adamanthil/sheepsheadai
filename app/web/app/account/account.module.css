@@ -115,3 +115,12 @@
 .buttonLink {
   text-decoration: none;
 }
+.tabLink {
+  text-decoration: none;
+}
+.tabLink:hover {
+  color: var(--ink);
+}
+.subHead {
+  margin-top: 32px;
+}
