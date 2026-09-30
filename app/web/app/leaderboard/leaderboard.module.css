@@ -1,0 +1,145 @@
+.caption {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.error {
+  font-size: 13px;
+  color: var(--accent-2);
+}
+.empty {
+  font-size: 14px;
+  color: var(--muted);
+  padding: 16px 0;
+  margin: 0;
+}
+.standing {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 16px 0 0;
+}
+
+/* The table scrolls sideways inside its box on narrow phones; the page
+   itself never does. */
+.scroller {
+  overflow-x: auto;
+  border-top: 3px double var(--rule-strong);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.table th,
+.table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.table thead th {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom-color: var(--rule-strong);
+}
+
+.rank {
+  width: 2.5em;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.table thead .rank {
+  font-family: var(--font-ui);
+}
+.player {
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--ink);
+}
+.table thead .player {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.numActive {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.sortButton {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.sortButton:hover {
+  color: var(--accent);
+}
+.sortActive {
+  color: var(--ink);
+}
+.arrow {
+  display: inline-block;
+  width: 1em;
+  font-size: 8px;
+}
+
+.you {
+  background: var(--bg-sunk);
+}
+.you .player {
+  font-weight: 500;
+}
+.youBadge {
+  margin-left: 8px;
+  font-size: 9px;
+  vertical-align: middle;
+}
+.gap td {
+  text-align: center;
+  color: var(--muted);
+  padding: 4px;
+}
+
+.shortLabel {
+  display: none;
+}
+@media (max-width: 640px) {
+  .longLabel {
+    display: none;
+  }
+  .shortLabel {
+    display: inline;
+  }
+  .table th,
+  .table td {
+    padding: 8px 5px;
+  }
+  .player {
+    font-size: 17px;
+  }
+  .num {
+    font-size: 12px;
+  }
+}
