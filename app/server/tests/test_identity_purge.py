@@ -1,5 +1,5 @@
 """Expired sessions and orphaned anonymous players are purged; players with
-recorded hands, live sessions, or brand-new rows are kept.
+recorded hands, live sessions, accounts, or brand-new rows are kept.
 
 Opt-in like test_api_flow: set TEST_DATABASE_URL to a migrated database.
 """
@@ -37,6 +37,16 @@ async def _session(conn, pid: uuid.UUID, *, expires_in: str) -> None:
         f"expires_at) VALUES ($1, $2, now(), now(), now() + interval '{expires_in}')",
         pid,
         uuid.uuid4().hex,
+    )
+
+
+async def _account_for(conn, pid: uuid.UUID) -> None:
+    await conn.execute(
+        "INSERT INTO account (player_id, username, email, password_hash, "
+        "time_created, last_updated) VALUES ($1, $2, $3, 'x', now(), now())",
+        pid,
+        f"u{pid.hex[:12]}",
+        f"{pid.hex}@example.com",
     )
 
 
@@ -80,6 +90,11 @@ async def test_purge_keeps_live_played_and_new_players():
             await _session(conn, played, expires_in="-1 day")
             await _hand_for(conn, played)
             fresh = await _player(conn, age="1 minute")
+            # Signed out long ago and never finished a hand: the account
+            # must survive (the purge would otherwise cascade into it).
+            member = await _player(conn, age="2 days")
+            await _session(conn, member, expires_in="-1 day")
+            await _account_for(conn, member)
 
         sessions, players = await purge_expired_identities(pool)
 
@@ -88,13 +103,13 @@ async def test_purge_keeps_live_played_and_new_players():
                 r["player_id"]
                 for r in await conn.fetch(
                     "SELECT player_id FROM player WHERE player_id = ANY($1)",
-                    [gone, live, played, fresh],
+                    [gone, live, played, fresh, member],
                 )
             }
             played_sessions = await conn.fetchval(
                 "SELECT count(*) FROM session WHERE player_id = $1", played
             )
-        assert left == {live, played, fresh}
+        assert left == {live, played, fresh, member}
         assert played_sessions == 0
         assert sessions >= 2 and players >= 1
     finally:

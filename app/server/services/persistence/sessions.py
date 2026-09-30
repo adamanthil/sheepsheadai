@@ -74,13 +74,17 @@ PURGE_INTERVAL_SECONDS = 3600.0
 
 
 async def purge_expired_identities(pool: asyncpg.Pool) -> tuple[int, int]:
-    """Delete expired sessions, then players left with no session and no
-    recorded hands (a player with hands keeps their row for the history).
+    """Delete expired sessions and spent email tokens, then players left
+    with no session, no recorded hands, and no account (a player with hands
+    keeps their row for the history; an account holder signs back in).
     Returns (sessions deleted, players deleted)."""
     async with pool.acquire() as conn:
         async with conn.transaction():
             sessions = await conn.execute(
                 "DELETE FROM session WHERE expires_at <= now()"
+            )
+            await conn.execute(
+                "DELETE FROM email_token WHERE expires_at <= now() OR used_at IS NOT NULL"
             )
             players = await conn.execute(
                 f"""
@@ -90,6 +94,8 @@ async def purge_expired_identities(pool: asyncpg.Pool) -> tuple[int, int]:
                       SELECT 1 FROM session s WHERE s.player_id = p.player_id)
                   AND NOT EXISTS (
                       SELECT 1 FROM game_player gp WHERE gp.player_id = p.player_id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM account a WHERE a.player_id = p.player_id)
                 """
             )
     # asyncpg returns the command tag, e.g. "DELETE 3".
