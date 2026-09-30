@@ -101,6 +101,99 @@
         "title": "AccountSessionResponse",
         "type": "object"
       },
+      "AccountStatsResponse": {
+        "properties": {
+          "hands": {
+            "title": "Hands",
+            "type": "integer"
+          },
+          "leaster_hands": {
+            "title": "Leaster Hands",
+            "type": "integer"
+          },
+          "min_hands": {
+            "title": "Min Hands",
+            "type": "integer"
+          },
+          "pick_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pick Pct"
+          },
+          "pph": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pph"
+          },
+          "qualifies_in": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualifies In"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "win_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Win Pct"
+          }
+        },
+        "required": [
+          "username",
+          "hands",
+          "total",
+          "pph",
+          "win_pct",
+          "pick_pct",
+          "leaster_hands",
+          "rank",
+          "qualifies_in",
+          "min_hands"
+        ],
+        "title": "AccountStatsResponse",
+        "type": "object"
+      },
       "ActionRequest": {
         "properties": {
           "action_id": {
@@ -1430,6 +1523,98 @@
         "title": "KickRequest",
         "type": "object"
       },
+      "LeaderboardResponse": {
+        "properties": {
+          "min_hands": {
+            "title": "Min Hands",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sort": {
+            "enum": [
+              "total",
+              "pph",
+              "win_pct",
+              "pick_pct",
+              "hands"
+            ],
+            "title": "Sort",
+            "type": "string"
+          },
+          "you": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaderboardRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sort",
+          "min_hands",
+          "rows",
+          "you"
+        ],
+        "title": "LeaderboardResponse",
+        "type": "object"
+      },
+      "LeaderboardRow": {
+        "properties": {
+          "hands": {
+            "title": "Hands",
+            "type": "integer"
+          },
+          "is_you": {
+            "title": "Is You",
+            "type": "boolean"
+          },
+          "pick_pct": {
+            "title": "Pick Pct",
+            "type": "number"
+          },
+          "pph": {
+            "title": "Pph",
+            "type": "number"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "win_pct": {
+            "title": "Win Pct",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rank",
+          "username",
+          "hands",
+          "total",
+          "pph",
+          "win_pct",
+          "pick_pct",
+          "is_you"
+        ],
+        "title": "LeaderboardRow",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2135,6 +2320,24 @@
         "summary": "Reset Password"
       }
     },
+    "/api/account/stats": {
+      "get": {
+        "operationId": "account_stats_api_account_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Account Stats"
+      }
+    },
     "/api/account/username-available": {
       "get": {
         "operationId": "username_available_api_account_username_available_get",
@@ -2326,6 +2529,53 @@
           }
         },
         "summary": "Analyze Simulate"
+      }
+    },
+    "/api/leaderboard": {
+      "get": {
+        "operationId": "leaderboard_api_leaderboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "total",
+              "enum": [
+                "total",
+                "pph",
+                "win_pct",
+                "pick_pct",
+                "hands"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaderboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leaderboard"
       }
     },
     "/api/players/{player_id}": {

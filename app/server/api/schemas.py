@@ -184,6 +184,43 @@ class UsernameAvailability(BaseModel):
     available: bool
 
 
+class LeaderboardRow(BaseModel):
+    rank: int
+    username: str
+    hands: int
+    total: int
+    # Points per hand; win and pick rates are fractions in [0, 1].
+    pph: float
+    win_pct: float
+    pick_pct: float
+    is_you: bool
+
+
+class LeaderboardResponse(BaseModel):
+    sort: Literal["total", "pph", "win_pct", "pick_pct", "hands"]
+    min_hands: int
+    # The top of the board only; nothing below it is ever served.
+    rows: List[LeaderboardRow]
+    # The caller's own row when they qualify but rank below `rows`.
+    you: Optional[LeaderboardRow]
+
+
+class AccountStatsResponse(BaseModel):
+    username: str
+    hands: int
+    total: int
+    # None until the first finished hand.
+    pph: Optional[float]
+    win_pct: Optional[float]
+    pick_pct: Optional[float]
+    leaster_hands: int
+    # Rank on the default (total score) board, or None when not yet
+    # eligible; then qualifies_in says how many more hands it takes.
+    rank: Optional[int]
+    qualifies_in: Optional[int]
+    min_hands: int
+
+
 class UpdateTableRulesRequest(BaseModel):
     client_id: str
     rules: RulesUpdate

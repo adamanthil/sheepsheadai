@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Account Stats */
+        get: operations["account_stats_api_account_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/username-available": {
         parameters: {
             query?: never;
@@ -233,6 +250,23 @@ export interface paths {
          * @description Simulate a full Sheepshead game and return detailed analysis trace.
          */
         post: operations["analyze_simulate_api_analyze_simulate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Leaderboard */
+        get: operations["leaderboard_api_leaderboard_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -486,6 +520,29 @@ export interface components {
             player_id: string;
             /** Session Token */
             session_token: string | null;
+        };
+        /** AccountStatsResponse */
+        AccountStatsResponse: {
+            /** Hands */
+            hands: number;
+            /** Leaster Hands */
+            leaster_hands: number;
+            /** Min Hands */
+            min_hands: number;
+            /** Pick Pct */
+            pick_pct: number | null;
+            /** Pph */
+            pph: number | null;
+            /** Qualifies In */
+            qualifies_in: number | null;
+            /** Rank */
+            rank: number | null;
+            /** Total */
+            total: number;
+            /** Username */
+            username: string;
+            /** Win Pct */
+            win_pct: number | null;
         };
         /** ActionRequest */
         ActionRequest: {
@@ -956,6 +1013,38 @@ export interface components {
             /** Target Client Id */
             target_client_id: string;
         };
+        /** LeaderboardResponse */
+        LeaderboardResponse: {
+            /** Min Hands */
+            min_hands: number;
+            /** Rows */
+            rows: components["schemas"]["LeaderboardRow"][];
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "total" | "pph" | "win_pct" | "pick_pct" | "hands";
+            you: components["schemas"]["LeaderboardRow"] | null;
+        };
+        /** LeaderboardRow */
+        LeaderboardRow: {
+            /** Hands */
+            hands: number;
+            /** Is You */
+            is_you: boolean;
+            /** Pick Pct */
+            pick_pct: number;
+            /** Pph */
+            pph: number;
+            /** Rank */
+            rank: number;
+            /** Total */
+            total: number;
+            /** Username */
+            username: string;
+            /** Win Pct */
+            win_pct: number;
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Login */
@@ -1336,6 +1425,26 @@ export interface operations {
             };
         };
     };
+    account_stats_api_account_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountStatsResponse"];
+                };
+            };
+        };
+    };
     username_available_api_account_username_available_get: {
         parameters: {
             query: {
@@ -1493,6 +1602,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyzeSimulateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leaderboard_api_leaderboard_get: {
+        parameters: {
+            query?: {
+                sort?: "total" | "pph" | "win_pct" | "pick_pct" | "hands";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderboardResponse"];
                 };
             };
             /** @description Validation Error */

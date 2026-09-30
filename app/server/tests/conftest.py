@@ -41,8 +41,10 @@ def app(monkeypatch, tmp_path):
     tables.tables.clear()
 
     from server.api import auth
+    from server.services.persistence import stats
 
     auth.clear_cache()
+    stats.clear_cache()
     try:
         yield app_module.create_app()
     finally:
