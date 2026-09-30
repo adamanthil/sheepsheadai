@@ -92,7 +92,7 @@ export default function LeaderboardPage() {
     <PageShell title="Leaderboard" wide>
       <p className={styles.caption}>
         Confirmed accounts with {board?.min_hands ?? 50}+ finished hands · top
-        20. Click a column to rank by it.
+        20.
       </p>
       {failed && (
         <p className={styles.error}>Couldn&rsquo;t load the leaderboard.</p>
