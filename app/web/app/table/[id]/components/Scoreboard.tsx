@@ -73,7 +73,13 @@ export default function Scoreboard({
                 tone={r.you ? "you" : "default"}
                 size={compact ? 24 : 26}
               />
-              <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  minWidth: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
                 <div
                   className={ds.nameClamp}
                   title={r.name}

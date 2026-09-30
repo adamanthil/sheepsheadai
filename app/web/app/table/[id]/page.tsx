@@ -8,7 +8,7 @@ import { useCountdown } from "../../../lib/hooks/useCountdown";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { ds, useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
-import { isAiSeat, nameForSeat } from "./utils/seatMath";
+import { accountForSeat, isAiSeat, nameForSeat } from "./utils/seatMath";
 import { RemovePlayerButton } from "../../components/RemovePlayerButton";
 import type { ChatMessage } from "../../../lib/types";
 import {
@@ -319,6 +319,7 @@ export default function TablePage() {
     ) : (
       <ActionBar
         yourName={nameForSeat(yourSeat, table)}
+        yourAccount={accountForSeat(yourSeat, table)}
         yourSeat={yourSeat}
         yourRole={yourRole}
         isYourTurn={isYourTurn}

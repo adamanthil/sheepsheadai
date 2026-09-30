@@ -19,6 +19,8 @@ export function TurnClock({ secondsLeft }: { secondsLeft: number | null }) {
 
 interface ActionBarProps {
   yourName: string;
+  /** Your verified account username, for the avatar's seal. */
+  yourAccount: string | null;
   yourSeat: number;
   yourRole: YourRole;
   isYourTurn: boolean;
@@ -137,7 +139,12 @@ export default function ActionBar(props: ActionBarProps) {
   return (
     <div className={styles.desk}>
       <div className={styles.deskWho}>
-        <SeatAvatar name={props.yourName} size={32} tone="you" />
+        <SeatAvatar
+          name={props.yourName}
+          account={props.yourAccount}
+          size={32}
+          tone="you"
+        />
         <div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <div className={styles.whoName}>{props.yourName}</div>
