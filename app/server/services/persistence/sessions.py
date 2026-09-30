@@ -42,6 +42,16 @@ async def create_session(pool: asyncpg.Pool, player_id: UUID) -> str:
     return token
 
 
+async def delete_session(pool: asyncpg.Pool, token: str) -> None:
+    """End one session (sign out)."""
+    await pool.execute("DELETE FROM session WHERE token_hash = $1", hash_token(token))
+
+
+async def delete_player_sessions(pool: asyncpg.Pool, player_id: UUID) -> None:
+    """End every session a player holds (password reset)."""
+    await pool.execute("DELETE FROM session WHERE player_id = $1", player_id)
+
+
 async def resolve_token(pool: asyncpg.Pool, token: str) -> Optional[UUID]:
     """Return the player_id for a live token, sliding its expiry; else None."""
     row = await pool.fetchrow(
@@ -71,13 +81,18 @@ async def resolve_token(pool: asyncpg.Pool, token: str) -> Optional[UUID]:
 # between them must not take the row out from under the session insert.
 PURGE_GRACE = "1 hour"
 PURGE_INTERVAL_SECONDS = 3600.0
+# Unverified accounts are dropped after this long (the player row and its
+# hands stay), so nobody can hold a username, or an address they don't
+# own, indefinitely.
+UNVERIFIED_ACCOUNT_TTL = "7 days"
 
 
 async def purge_expired_identities(pool: asyncpg.Pool) -> tuple[int, int]:
-    """Delete expired sessions and spent email tokens, then players left
-    with no session, no recorded hands, and no account (a player with hands
-    keeps their row for the history; an account holder signs back in).
-    Returns (sessions deleted, players deleted)."""
+    """Delete expired sessions, spent email tokens, and stale unverified
+    accounts, then players left with no session, no recorded hands, and no
+    account (a player with hands keeps their row for the history; an
+    account holder signs back in). Returns (sessions deleted, players
+    deleted)."""
     async with pool.acquire() as conn:
         async with conn.transaction():
             sessions = await conn.execute(
@@ -85,6 +100,13 @@ async def purge_expired_identities(pool: asyncpg.Pool) -> tuple[int, int]:
             )
             await conn.execute(
                 "DELETE FROM email_token WHERE expires_at <= now() OR used_at IS NOT NULL"
+            )
+            await conn.execute(
+                f"""
+                DELETE FROM account
+                WHERE email_verified_at IS NULL
+                  AND time_created < now() - interval '{UNVERIFIED_ACCOUNT_TTL}'
+                """
             )
             players = await conn.execute(
                 f"""

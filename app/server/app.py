@@ -14,6 +14,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.types import ExceptionHandler
 
+from server.api import account as account_router
 from server.api import actions as actions_router
 from server.api import analyze as analyze_router
 from server.api import games as games_router
@@ -234,6 +235,7 @@ def create_app() -> FastAPI:
     app.include_router(actions_router.router)
     app.include_router(analyze_router.router)
     app.include_router(players_router.router)
+    app.include_router(account_router.router)
     app.include_router(websocket_router.router)
 
     return app

@@ -35,7 +35,13 @@ def clear_cache() -> None:
     _cache.clear()
 
 
-def _bearer_token(request: Request) -> Optional[str]:
+def forget_token(token: str) -> None:
+    """Drop one token from the cache, so a signed-out session stops
+    resolving at once rather than after CACHE_TTL."""
+    _cache.pop(hash_token(token), None)
+
+
+def bearer_token(request: Request) -> Optional[str]:
     header = request.headers.get("authorization")
     if not header or not header.lower().startswith("bearer "):
         return None
@@ -60,14 +66,14 @@ async def resolve_player(token: str) -> Optional[PlayerIdentity]:
 
 
 async def optional_player(request: Request) -> Optional[PlayerIdentity]:
-    token = _bearer_token(request)
+    token = bearer_token(request)
     if not token:
         return None
     return await resolve_player(token)
 
 
 async def current_player(request: Request) -> PlayerIdentity:
-    token = _bearer_token(request)
+    token = bearer_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="missing_token")
     identity = await resolve_player(token)

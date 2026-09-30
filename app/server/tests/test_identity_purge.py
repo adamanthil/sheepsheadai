@@ -114,3 +114,48 @@ async def test_purge_keeps_live_played_and_new_players():
         assert sessions >= 2 and players >= 1
     finally:
         await pool.close()
+
+
+async def test_purge_drops_stale_unverified_accounts_but_not_players():
+    pool = await open_pool(TEST_DB)
+    try:
+        async with pool.acquire() as conn:
+            stale = await _player(conn, age="10 days")
+            await _session(conn, stale, expires_in="1 day")
+            await _account_for(conn, stale)
+            await conn.execute(
+                "UPDATE account SET time_created = now() - interval '8 days' "
+                "WHERE player_id = $1",
+                stale,
+            )
+            recent = await _player(conn, age="10 days")
+            await _session(conn, recent, expires_in="1 day")
+            await _account_for(conn, recent)
+            verified = await _player(conn, age="10 days")
+            await _session(conn, verified, expires_in="1 day")
+            await _account_for(conn, verified)
+            await conn.execute(
+                "UPDATE account SET time_created = now() - interval '8 days', "
+                "email_verified_at = now() WHERE player_id = $1",
+                verified,
+            )
+
+        await purge_expired_identities(pool)
+
+        async with pool.acquire() as conn:
+            accounts = {
+                r["player_id"]
+                for r in await conn.fetch(
+                    "SELECT player_id FROM account WHERE player_id = ANY($1)",
+                    [stale, recent, verified],
+                )
+            }
+            players = await conn.fetchval(
+                "SELECT count(*) FROM player WHERE player_id = ANY($1)",
+                [stale, recent, verified],
+            )
+        assert accounts == {recent, verified}
+        # The guest identity under a dropped account lives on.
+        assert players == 3
+    finally:
+        await pool.close()

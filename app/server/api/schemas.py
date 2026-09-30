@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class RulesInput(BaseModel):
@@ -73,6 +74,99 @@ class UpdatePlayerRequest(BaseModel):
         if len(v) > 32:
             raise ValueError("name must be at most 32 characters")
         return v
+
+
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,20}$")
+# Names that would read as the site itself or as a bot. Compared
+# case-insensitively; the DB enforces only the character set.
+RESERVED_USERNAMES = frozenset(
+    {
+        "admin",
+        "administrator",
+        "ai",
+        "anonymous",
+        "bot",
+        "guest",
+        "host",
+        "mod",
+        "moderator",
+        "null",
+        "root",
+        "sheepshead",
+        "support",
+        "system",
+        "undefined",
+    }
+)
+
+
+def validate_username(v: str) -> str:
+    v = v.strip()
+    if not USERNAME_PATTERN.match(v):
+        raise ValueError("username must be 3-20 characters: letters, digits, _ or -")
+    if v.lower() in RESERVED_USERNAMES:
+        raise ValueError("username is reserved")
+    return v
+
+
+def validate_password(v: str) -> str:
+    if not 8 <= len(v) <= 128:
+        raise ValueError("password must be 8-128 characters")
+    return v
+
+
+def normalize_email(v: str) -> str:
+    return v.strip().lower()
+
+
+class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    username: str
+    email: EmailStr
+    password: str
+
+    _username = field_validator("username")(validate_username)
+    _password = field_validator("password")(validate_password)
+    _email = field_validator("email", mode="after")(normalize_email)
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Email address or username.
+    login: str = Field(min_length=1, max_length=320)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class EmailTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str = Field(min_length=1, max_length=128)
+
+
+class AccountPublic(BaseModel):
+    username: str
+    email: str
+    email_verified: bool
+
+
+class AccountMeResponse(BaseModel):
+    player_id: str
+    name: Optional[str]
+    # None for a guest.
+    account: Optional[AccountPublic]
+
+
+class AccountSessionResponse(BaseModel):
+    player_id: str
+    name: Optional[str]
+    # Present only when a new session was minted (always on login; on
+    # register only for a caller with no identity yet). The client stores
+    # it as its bearer token, replacing any guest token it held.
+    session_token: Optional[str]
+    account: AccountPublic
+
+
+class UsernameAvailability(BaseModel):
+    available: bool
 
 
 class UpdateTableRulesRequest(BaseModel):

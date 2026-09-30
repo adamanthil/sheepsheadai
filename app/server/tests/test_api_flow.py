@@ -22,53 +22,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class StubAgent:
-    """Deterministic stand-in for PPOAgent: always the lowest valid action."""
-
-    def act(self, state, valid_actions=None, player_id=None, deterministic=False):
-        assert valid_actions is not None, "the server always passes valid actions"
-        return (sorted(valid_actions)[0], None, None)
-
-    def observe(self, *args, **kwargs):
-        pass
-
-    def reset_recurrent_state(self):
-        pass
-
-
-@pytest.fixture
-async def db_app(app, monkeypatch):
-    """The hermetic app fixture, but with a live pool wired to TEST_DATABASE_URL
-    (httpx's ASGITransport does not run the lifespan, so do its DB work here)."""
-    import server.app as app_module
-    import server.runtime.dealing as dealing_module
-    from server.services.persistence.pool import (
-        close_pool,
-        open_pool,
-        set_db_state,
-    )
-
-    monkeypatch.setattr(dealing_module, "load_agent", lambda path: StubAgent())
-
-    pool = await open_pool(TEST_DB)
-    async with pool.acquire() as conn:
-        ai_model_id = await app_module._upsert_ai_model(conn, "test-model")
-        ai_player_id = await app_module._upsert_ai_player(conn, ai_model_id)
-    set_db_state(pool, ai_player_id)
-    try:
-        yield app, pool
-    finally:
-        # Cancel background tasks owned by tables created in this test.
-        from server.runtime.manager import tables
-
-        for table in list(tables.tables.values()):
-            for task in (table.ai_task, table.autoclose_task):
-                if task and not task.done():
-                    task.cancel()
-        tables.tables.clear()
-        await close_pool()
-
-
 async def test_create_join_start_flow(db_app):
     app, pool = db_app
     transport = httpx.ASGITransport(app=app)
