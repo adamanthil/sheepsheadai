@@ -6,7 +6,7 @@ import type {
 } from "../../../../lib/types";
 import { parseCard } from "../../../../lib/ds";
 import { gameModeLabel, scoringModeLabel } from "../../../../lib/rules";
-import { nameForSeat, isAiSeat } from "../utils/seatMath";
+import { accountForSeat, nameForSeat, isAiSeat } from "../utils/seatMath";
 import { relSeat } from "./seatLayout";
 import { getSeatRole, type InterludeMode, type TablePhase } from "./phase";
 import type { CallOption, SeatView } from "../components/stage/types";
@@ -126,6 +126,7 @@ export function buildSeats(
     rel: relSeat(absSeat, pov),
     name: nameForSeat(absSeat, table),
     isAI: isAiSeat(absSeat, table),
+    account: accountForSeat(absSeat, table),
     role: getSeatRole(lastState, absSeat, started),
     you: absSeat === yourSeat,
   }));

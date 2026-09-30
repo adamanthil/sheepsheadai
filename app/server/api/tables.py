@@ -60,6 +60,7 @@ from server.runtime.seating import (
     replace_ai_with_human_and_reserve,
     reserved_ai_ids,
 )
+from server.services.persistence import accounts as accounts_db
 from server.services.persistence import players as players_db
 from server.services.persistence import sessions as sessions_db
 from server.services.persistence.pool import get_db_pool
@@ -154,12 +155,15 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         await players_db.ensure_player(pool, player_uuid, ip)
         session_token = await sessions_db.create_session(pool, player_uuid)
 
+    account_username = await accounts_db.verified_username(pool, player_uuid)
+
     client_id = str(uuid.uuid4())
     conn = ClientConn(
         client_id=client_id,
         display_name=req.display_name,
         seat=None,
         player_id=str(player_uuid),
+        account_username=account_username,
     )
     async with table.state_lock:
         prune_table_state(table)
@@ -173,6 +177,7 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         )
         if existing is not None:
             existing.display_name = req.display_name
+            existing.account_username = account_username
             return {
                 "client_id": existing.client_id,
                 "player_id": str(player_uuid),

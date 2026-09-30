@@ -29,6 +29,10 @@ class ClientConn:
     chat_timestamps: deque = field(default_factory=deque)
     # Long-lived cross-table identity (Phase 4). Set on /join.
     player_id: Optional[str] = None
+    # The player's account username when the account is verified, else
+    # None. Shown as the seat's account badge; the seat label stays the
+    # (non-unique) display_name. Set on /join, updated on verification.
+    account_username: Optional[str] = None
     # Wall-clock time the *last* socket dropped; None while any tab is open.
     # Drives pruning of clients that never came back (prune_table_state).
     disconnected_at: Optional[float] = None
@@ -170,6 +174,16 @@ class Table:
             occ = self.occupants.get(occ_id or "") if occ_id else None
             seat_is_ai[i] = bool(occ and occ.is_ai)
 
+        # Humans only: a seat the AI took over shows no badge.
+        seat_account = {
+            i: (
+                self.clients[occ_id].account_username
+                if occ_id and occ_id in self.clients
+                else None
+            )
+            for i, occ_id in self.seats.items()
+        }
+
         return {
             "id": self.id,
             "name": self.name,
@@ -181,6 +195,7 @@ class Table:
             "runningBySeat": running_by_seat,
             "seatOccupants": seats_ids,
             "seatIsAI": seat_is_ai,
+            "seatAccount": seat_account,
             "host": (
                 self.clients[self.host_client_id].display_name
                 if self.host_client_id and self.host_client_id in self.clients

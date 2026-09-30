@@ -881,6 +881,10 @@ export interface components {
              * @default 1
              */
             scoreMultiplier: number;
+            /** Seataccount */
+            seatAccount: {
+                [key: string]: string | null;
+            };
             /** Seatisai */
             seatIsAI: {
                 [key: string]: boolean;
@@ -1080,6 +1084,10 @@ export interface components {
              * @default 1
              */
             scoreMultiplier: number;
+            /** Seataccount */
+            seatAccount: {
+                [key: string]: string | null;
+            };
             /** Seatisai */
             seatIsAI: {
                 [key: string]: boolean;

@@ -94,6 +94,7 @@ export function RingChip({
       <SeatAvatar
         name={seat.name}
         isAI={seat.isAI}
+        account={seat.account}
         tone={tone(seat.role)}
         size={compact ? 26 : 32}
       />

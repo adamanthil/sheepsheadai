@@ -7,6 +7,8 @@ export interface SeatInfo {
   seat: number;
   name: string | null;
   isAI: boolean;
+  /** The seated human's verified account username, or null. */
+  account: string | null;
   /** The seated human's client id, when the viewer (the host) may remove
    * them; null otherwise. */
   removableId: string | null;
@@ -60,7 +62,12 @@ export default function SeatCard({
     }
     return (
       <div className={styles.row}>
-        <SeatAvatar name={seat.name ?? undefined} isAI={seat.isAI} size={36} />
+        <SeatAvatar
+          name={seat.name ?? undefined}
+          isAI={seat.isAI}
+          account={seat.account}
+          size={36}
+        />
         <div className={styles.rowMain}>
           <div className={styles.rowNameLine}>
             <div className={styles.rowName}>{seat.name}</div>
@@ -75,6 +82,18 @@ export default function SeatCard({
                 style={{ fontSize: 9 }}
               >
                 AI bot
+              </span>
+            )}
+            {seat.account && (
+              <span
+                className={`${ds.badge} ${ds.badgeQuiet}`}
+                style={{
+                  fontSize: 9,
+                  textTransform: "none",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                @{seat.account}
               </span>
             )}
           </div>
@@ -115,10 +134,23 @@ export default function SeatCard({
         <div className={ds.overline}>Seat {seat.seat}</div>
       </div>
       <div className={styles.cardBody}>
-        <SeatAvatar name={seat.name ?? undefined} isAI={seat.isAI} size={44} />
+        <SeatAvatar
+          name={seat.name ?? undefined}
+          isAI={seat.isAI}
+          account={seat.account}
+          size={44}
+        />
         <div className={styles.name}>{seat.name}</div>
         {seat.isAI && (
           <span className={`${ds.badge} ${ds.badgeQuiet}`}>AI Bot</span>
+        )}
+        {seat.account && (
+          <span
+            className={`${ds.badge} ${ds.badgeQuiet}`}
+            style={{ textTransform: "none", letterSpacing: "0.02em" }}
+          >
+            @{seat.account}
+          </span>
         )}
       </div>
       {takeable ? (

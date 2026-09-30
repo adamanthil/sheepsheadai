@@ -9,6 +9,14 @@ export function nameForSeat(
   return table?.seats?.[String(seat)] || `Seat ${seat}`;
 }
 
+// The seated human's verified account username, if any
+export function accountForSeat(
+  seat: number,
+  table: TableView | null | undefined,
+): string | null {
+  return table?.seatAccount?.[String(seat)] ?? null;
+}
+
 // Check if a seat is AI-controlled
 export function isAiSeat(
   seat: number,

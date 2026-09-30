@@ -41,6 +41,8 @@ from server.api.schemas import (
     validate_username,
 )
 from server.config import get_settings
+from server.realtime.broadcast import broadcast_table_update
+from server.runtime.manager import tables
 from server.runtime.tasks import spawn
 from server.services.email import send_email
 from server.services.passwords import hash_password, needs_rehash, verify_password
@@ -89,6 +91,20 @@ async def send_verification(account: Account) -> None:
         ),
         name="email:verify",
     )
+
+
+async def show_account_badge(account: Account) -> None:
+    """Badge the newly verified player wherever they are seated now, so it
+    appears without a rejoin."""
+    for table in list(tables.tables.values()):
+        conns = [
+            c for c in table.clients.values() if c.player_id == str(account.player_id)
+        ]
+        if not conns:
+            continue
+        for conn in conns:
+            conn.account_username = account.username
+        await broadcast_table_update(table)
 
 
 @router.get("/api/account/username-available", response_model=UsernameAvailability)
@@ -202,6 +218,7 @@ async def verify_email(req: EmailTokenRequest):
     )
     if account is None:
         raise HTTPException(status_code=400, detail="invalid_or_expired_token")
+    await show_account_badge(account)
     return _public(account)
 
 
@@ -268,6 +285,7 @@ async def reset_password(request: Request, req: ResetPasswordRequest):
     # Whoever knew the old password is signed out everywhere.
     await sessions_db.delete_player_sessions(pool, player_id)
     forget_player(player_id)
+    await show_account_badge(account)
     session_token = await sessions_db.create_session(pool, player_id)
     player = await players_db.get_player(pool, player_id)
     return {

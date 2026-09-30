@@ -13,6 +13,8 @@ export interface SeatView {
   rel: number;
   name: string;
   isAI: boolean;
+  /** Verified account username, shown as the avatar's seal. */
+  account: string | null;
   role: SeatRole;
   you: boolean;
 }

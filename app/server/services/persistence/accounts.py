@@ -107,6 +107,17 @@ async def get_account(pool: asyncpg.Pool, player_id: UUID) -> Optional[Account]:
     return _account(row)
 
 
+async def verified_username(pool: asyncpg.Pool, player_id: UUID) -> Optional[str]:
+    """The player's username if they hold a verified account, else None."""
+    return await pool.fetchval(
+        """
+        SELECT username FROM account
+        WHERE player_id = $1 AND email_verified_at IS NOT NULL
+        """,
+        player_id,
+    )
+
+
 async def get_account_by_login(pool: asyncpg.Pool, login: str) -> Optional[Account]:
     """Look an account up by email (anything containing "@") or username."""
     if "@" in login:

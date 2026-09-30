@@ -312,3 +312,49 @@ async def test_password_reset_signs_out_everywhere(client, outbox):
         "/api/account/reset", json={"token": reset_token, "password": "another-1"}
     )
     assert again.status_code == 400
+
+
+async def test_badge_shows_only_once_verified_and_without_rejoin(client, outbox):
+    from server.runtime.manager import tables
+
+    created = await client.post("/api/tables", json={"name": "badge"})
+    table_id = created.json()["id"]
+    joined = (
+        await client.post(
+            f"/api/tables/{table_id}/join",
+            json={"display_name": "Bea", "host_key": created.json()["host_key"]},
+        )
+    ).json()
+    token = joined["session_token"]
+    seat = next(
+        s
+        for s, occ in joined["table"]["seatOccupants"].items()
+        if occ == joined["client_id"]
+    )
+    assert joined["table"]["seatAccount"][seat] is None
+
+    username, email = _fresh()
+    await client.post(
+        "/api/account/register",
+        json={"username": username, "email": email, "password": "hunter22!"},
+        headers=_bearer(token),
+    )
+    # Unverified: no badge, even on a fresh join.
+    again = await client.post(
+        f"/api/tables/{table_id}/join",
+        json={"display_name": "Bea"},
+        headers=_bearer(token),
+    )
+    assert again.json()["table"]["seatAccount"][seat] is None
+
+    await client.post(
+        "/api/account/verify", json={"token": await _emailed_token(outbox)}
+    )
+    table = tables.get_table(table_id).to_public_dict()
+    assert table["seatAccount"][int(seat)] == username
+    # The seat keeps showing the in-game name, not the username.
+    assert table["seats"][int(seat)] == "Bea"
+    # An AI seat never carries a badge.
+    assert all(
+        table["seatAccount"][s] is None for s, ai in table["seatIsAI"].items() if ai
+    )

@@ -231,6 +231,8 @@ class TablePublic(BaseModel):
     runningBySeat: Dict[int, int] | Dict[str, int]
     seatOccupants: Dict[int, Optional[str]] | Dict[str, Optional[str]]
     seatIsAI: Dict[int, bool] | Dict[str, bool]
+    # Verified account username of each seat's human, for the account badge.
+    seatAccount: Dict[int, Optional[str]] | Dict[str, Optional[str]]
     host: Optional[str]
     resultsHistory: List[Dict[str, Any]]
     initialSeatOrder: List[str]

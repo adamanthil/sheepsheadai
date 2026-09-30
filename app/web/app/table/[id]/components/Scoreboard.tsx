@@ -19,6 +19,10 @@ export default function Scoreboard({
 }: ScoreboardProps) {
   const running = (table.runningBySeat || {}) as Record<string, number>;
   const seatIsAI = (table.seatIsAI || {}) as Record<string, boolean>;
+  const seatAccount = (table.seatAccount || {}) as Record<
+    string,
+    string | null
+  >;
   const handCount = table.resultsHistory?.length ?? 0;
 
   const rows = [1, 2, 3, 4, 5]
@@ -27,6 +31,7 @@ export default function Scoreboard({
       name: table.seats?.[String(seat)] || `Seat ${seat}`,
       pts: running[String(seat)] ?? 0,
       isAI: !!seatIsAI[String(seat)],
+      account: seatAccount[String(seat)] ?? null,
       you: seat === yourSeat,
       seated: !!table.seats?.[String(seat)],
     }))
@@ -64,21 +69,37 @@ export default function Scoreboard({
               <SeatAvatar
                 name={r.name}
                 isAI={r.isAI}
+                account={r.account}
                 tone={r.you ? "you" : "default"}
                 size={compact ? 24 : 26}
               />
-              <div
-                className={ds.nameClamp}
-                title={r.name}
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: compact ? 16 : 16,
-                  color: r.you ? "var(--ink)" : "var(--ink-soft)",
-                  fontWeight: r.you ? 500 : 400,
-                  ["--name-clamp" as string]: compact ? "12ch" : "14ch",
-                }}
-              >
-                {r.name}
+              <div style={{ minWidth: 0 }}>
+                <div
+                  className={ds.nameClamp}
+                  title={r.name}
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontSize: compact ? 16 : 16,
+                    color: r.you ? "var(--ink)" : "var(--ink-soft)",
+                    fontWeight: r.you ? 500 : 400,
+                    ["--name-clamp" as string]: compact ? "12ch" : "14ch",
+                  }}
+                >
+                  {r.name}
+                </div>
+                {r.account && (
+                  <div
+                    className={ds.nameClamp}
+                    style={{
+                      fontFamily: "var(--font-ui)",
+                      fontSize: 10,
+                      color: "var(--muted)",
+                      ["--name-clamp" as string]: compact ? "12ch" : "14ch",
+                    }}
+                  >
+                    @{r.account}
+                  </div>
+                )}
               </div>
               {r.you && (
                 <span className={ds.badge} style={{ fontSize: 9 }}>
