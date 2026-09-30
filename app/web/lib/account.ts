@@ -116,6 +116,13 @@ export const resendVerification = () =>
 export const forgotPassword = (email: string) =>
   post("/api/account/forgot", { email });
 
+/** Change the password, signing out every other session. */
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  post("/api/account/password", {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+
 export const resetPassword = (token: string, password: string) =>
   post<AccountSession>("/api/account/reset", { token, password });
 

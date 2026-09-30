@@ -4,14 +4,11 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ds } from "../../lib/ds";
 import { apiFetch } from "../../lib/api";
-import {
-  accountErrorMessage,
-  resendVerification,
-  useAccount,
-} from "../../lib/account";
+import { useAccount } from "../../lib/account";
 import type { AccountStats } from "../../lib/types";
 import AccountShell from "./AccountShell";
 import AuthForms from "./components/AuthForms";
+import ResendVerification from "./components/ResendVerification";
 import SignOut from "./components/SignOut";
 import StatsPanel from "./components/StatsPanel";
 import styles from "./account.module.css";
@@ -28,7 +25,7 @@ export default function AccountPage() {
   } else if (!account.email_verified) {
     body = <Unverified email={account.email} onSignOut={refresh} />;
   } else {
-    body = <Verified username={account.username} onSignOut={refresh} />;
+    body = <Verified username={account.username} />;
   }
 
   return (
@@ -49,8 +46,6 @@ function Unverified({
   email: string;
   onSignOut: () => Promise<void>;
 }) {
-  const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   return (
     <div className={styles.form}>
       <p className={styles.lede}>
@@ -61,39 +56,15 @@ function Unverified({
       <p className={styles.note}>
         Unconfirmed accounts are removed after 7 days (your hands stay).
       </p>
-      {status && <p className={styles.note}>{status}</p>}
       <div className={styles.actions}>
-        <button
-          type="button"
-          className={`${ds.btn} ${ds.btnSm}`}
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await resendVerification();
-              setStatus("Sent. Check your inbox (and spam folder).");
-            } catch (err) {
-              setStatus(accountErrorMessage(err));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Resend the email
-        </button>
+        <ResendVerification />
         <SignOut onSignOut={onSignOut} />
       </div>
     </div>
   );
 }
 
-function Verified({
-  username,
-  onSignOut,
-}: {
-  username: string;
-  onSignOut: () => Promise<void>;
-}) {
+function Verified({ username }: { username: string }) {
   const [stats, setStats] = useState<AccountStats | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -119,12 +90,17 @@ function Verified({
       {stats && <StatsPanel stats={stats} />}
       <div className={styles.actions}>
         <Link
-          href="/leaderboard"
+          href="/account/history"
           className={`${ds.btn} ${ds.btnSm} ${styles.buttonLink}`}
         >
-          Leaderboard →
+          See your hand history →
         </Link>
-        <SignOut onSignOut={onSignOut} />
+        <Link href="/leaderboard" className={ds.link}>
+          Leaderboard
+        </Link>
+        <Link href="/account/settings" className={ds.link}>
+          Settings
+        </Link>
       </div>
     </div>
   );
