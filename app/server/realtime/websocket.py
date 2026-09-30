@@ -7,7 +7,7 @@ import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from server.api.auth import resolve_player
-from server.api.ratelimit import client_key
+from server.api.ratelimit import client_key, remote_address
 from server.realtime.broadcast import (
     broadcast_table_state,
     broadcast_table_update,
@@ -34,6 +34,8 @@ from server.runtime.seating import (
     schedule_ai_replacement_for_disconnected_human,
 )
 from server.runtime.views import json_default
+from server.services.persistence import players as players_db
+from server.services.persistence.pool import DB_UNAVAILABLE, get_db_pool
 
 router = APIRouter()
 
@@ -114,6 +116,15 @@ async def table_ws(websocket: WebSocket, table_id: str):
     _sockets_by_ip[ip] = _sockets_by_ip.get(ip, 0) + 1
 
     try:
+        address = remote_address(websocket.client.host if websocket.client else None)
+        if address is not None:
+            # Reconnects can span days at one table, so the join alone
+            # would leave last_ip stale. Best-effort: never refuse a
+            # socket over a bookkeeping write.
+            try:
+                await players_db.touch_player_ip(get_db_pool(), identity.id, address)
+            except DB_UNAVAILABLE:
+                logging.warning("last_ip not recorded: database unavailable")
         await _serve_connection(websocket, table, client_id, chosen_subproto)
     finally:
         _release_ip_slot(ip)

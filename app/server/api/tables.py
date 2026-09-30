@@ -7,7 +7,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocketDisconnect
 
 from server.api.auth import PlayerIdentity, current_player, optional_player
-from server.api.ratelimit import CREATE_JOIN, HOST_ACTIONS, client_ip, limiter
+from server.api.ratelimit import (
+    CREATE_JOIN,
+    HOST_ACTIONS,
+    client_ip,
+    limiter,
+    remote_address,
+)
 from server.api.schemas import (
     CloseTableRequest,
     CreateTableRequest,
@@ -139,12 +145,13 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
     session_token: Optional[str] = None
     if identity is not None and str(identity.id) in table.banned_player_ids:
         raise HTTPException(status_code=403, detail="removed_from_table")
+    ip = remote_address(request.client.host if request.client else None)
     if identity is not None:
         player_uuid = identity.id
-        await players_db.ensure_player(pool, player_uuid)
+        await players_db.ensure_player(pool, player_uuid, ip)
     else:
         player_uuid = uuid.uuid4()
-        await players_db.ensure_player(pool, player_uuid)
+        await players_db.ensure_player(pool, player_uuid, ip)
         session_token = await sessions_db.create_session(pool, player_uuid)
 
     client_id = str(uuid.uuid4())

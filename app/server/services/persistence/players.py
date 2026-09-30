@@ -23,19 +23,37 @@ async def get_player(pool: asyncpg.Pool, player_id: UUID) -> Optional[dict]:
     return {"player_id": str(row["player_id"]), "name": row["name"]}
 
 
-async def ensure_player(pool: asyncpg.Pool, player_id: UUID) -> None:
-    """Idempotently insert a player row with NULL name.
+async def ensure_player(
+    pool: asyncpg.Pool, player_id: UUID, ip: Optional[str] = None
+) -> None:
+    """Idempotently insert a player row with NULL name, recording ``ip``.
 
     Used when a client presents a `player_id` the server has no record of —
-    e.g. after a DB reset. Bumps `last_updated` only on first insert.
+    e.g. after a DB reset. Bumps `last_updated` only on first insert; an
+    existing row is written only when its `last_ip` actually changes.
     """
     await pool.execute(
         """
-        INSERT INTO player (player_id, name, time_created, last_updated)
-        VALUES ($1, NULL, now(), now())
-        ON CONFLICT (player_id) DO NOTHING
+        INSERT INTO player (player_id, name, last_ip, time_created, last_updated)
+        VALUES ($1, NULL, $2::inet, now(), now())
+        ON CONFLICT (player_id) DO UPDATE SET last_ip = EXCLUDED.last_ip
+        WHERE EXCLUDED.last_ip IS NOT NULL
+          AND player.last_ip IS DISTINCT FROM EXCLUDED.last_ip
         """,
         player_id,
+        ip,
+    )
+
+
+async def touch_player_ip(pool: asyncpg.Pool, player_id: UUID, ip: str) -> None:
+    """Record the address an existing player was last seen from."""
+    await pool.execute(
+        """
+        UPDATE player SET last_ip = $2::inet
+        WHERE player_id = $1 AND last_ip IS DISTINCT FROM $2::inet
+        """,
+        player_id,
+        ip,
     )
 
 

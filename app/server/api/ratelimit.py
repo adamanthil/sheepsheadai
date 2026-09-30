@@ -34,6 +34,21 @@ def client_key(host: str) -> str:
     return str(addr)
 
 
+def remote_address(host: str | None) -> str | None:
+    """The exact client address for recording (player.last_ip), or None
+    when ``host`` is not an IP. Unlike client_key there is no /64 folding;
+    IPv4-mapped IPv6 is still reported as its IPv4 address."""
+    if host is None:
+        return None
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return str(addr.ipv4_mapped)
+    return str(addr)
+
+
 def client_ip(request: Request) -> str:
     """The key every per-client limit is counted under (rate limits here,
     open-table caps in server.runtime.manager)."""
