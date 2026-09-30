@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     # Seconds a human has to move before the AI moves for them
     # (server.runtime.turn_timer).
     sheepshead_turn_timeout_seconds: float = 30.0
+    # Transactional email via Resend (server.services.email). With no key
+    # (development, tests) messages and their links are logged instead of
+    # sent; production refuses to boot without one.
+    resend_api_key: str = ""
+    email_from: str = "Sheepshead <noreply@localhost>"
+    # Origin of the web app, for links in emails (verify, password reset).
+    public_base_url: str = "http://localhost:3000"
     env: str = "development"
     log_format: str = "text"
 

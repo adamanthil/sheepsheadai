@@ -189,6 +189,12 @@ def create_app() -> FastAPI:
         RateLimitExceeded, cast(ExceptionHandler, _rate_limit_exceeded_handler)
     )
 
+    if settings.env == "production" and not settings.resend_api_key:
+        raise RuntimeError(
+            "RESEND_API_KEY must be set in production (account verification "
+            "and password reset emails)"
+        )
+
     origins = parse_cors_origins(settings.sheepshead_cors_origins)
     if settings.env == "production":
         if not origins:

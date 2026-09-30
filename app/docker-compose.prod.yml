@@ -51,6 +51,9 @@ services:
       LOG_FORMAT: json
       # Same-origin via Caddy, but the allowlist must be non-empty in prod.
       SHEEPSHEAD_CORS_ORIGINS: https://${DOMAIN:?set DOMAIN}
+      PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN}
+      RESEND_API_KEY: ${RESEND_API_KEY:?set RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
     volumes:
       - ${MODEL_FILE:?set MODEL_FILE to the checkpoint path on the host}:/models/model.pt:ro
     depends_on:
