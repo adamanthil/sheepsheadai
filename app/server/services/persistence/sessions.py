@@ -52,6 +52,17 @@ async def delete_player_sessions(pool: asyncpg.Pool, player_id: UUID) -> None:
     await pool.execute("DELETE FROM session WHERE player_id = $1", player_id)
 
 
+async def delete_player_sessions_except(
+    pool: asyncpg.Pool, player_id: UUID, token: str
+) -> None:
+    """End every session a player holds but ``token``'s (password change)."""
+    await pool.execute(
+        "DELETE FROM session WHERE player_id = $1 AND token_hash <> $2",
+        player_id,
+        hash_token(token),
+    )
+
+
 async def resolve_token(pool: asyncpg.Pool, token: str) -> Optional[UUID]:
     """Return the player_id for a live token, sliding its expiry; else None."""
     row = await pool.fetchrow(

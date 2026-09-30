@@ -31,6 +31,7 @@ from server.api.schemas import (
     AccountMeResponse,
     AccountPublic,
     AccountSessionResponse,
+    ChangePasswordRequest,
     EmailTokenRequest,
     ForgotPasswordRequest,
     LoginRequest,
@@ -294,3 +295,28 @@ async def reset_password(request: Request, req: ResetPasswordRequest):
         "session_token": session_token,
         "account": _public(account),
     }
+
+
+@router.post("/api/account/password", response_model=OkResponse)
+@limiter.limit(AUTH_LOGIN)
+async def change_password(
+    request: Request,
+    req: ChangePasswordRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
+    pool = get_db_pool()
+    account = await accounts_db.get_account(pool, identity.id)
+    if account is None:
+        raise HTTPException(status_code=403, detail="account_required")
+    if not await verify_password(account.password_hash, req.current_password):
+        raise HTTPException(status_code=403, detail="invalid_credentials")
+    await accounts_db.set_password(
+        pool, identity.id, await hash_password(req.new_password)
+    )
+    # Every other device is signed out; this one stays signed in. The
+    # current token re-resolves from the database on its next request.
+    token = bearer_token(request)
+    assert token is not None  # current_player rejected a missing token
+    await sessions_db.delete_player_sessions_except(pool, identity.id, token)
+    forget_player(identity.id)
+    return {"ok": True}

@@ -358,3 +358,67 @@ async def test_badge_shows_only_once_verified_and_without_rejoin(client, outbox)
     assert all(
         table["seatAccount"][s] is None for s, ai in table["seatIsAI"].items() if ai
     )
+
+
+async def test_password_change_keeps_this_session_and_ends_the_rest(client, outbox):
+    _, this_device = await _guest(client)
+    username, email = _fresh()
+    await client.post(
+        "/api/account/register",
+        json={"username": username, "email": email, "password": "hunter22!"},
+        headers=_bearer(this_device),
+    )
+    login = await client.post(
+        "/api/account/login", json={"login": username, "password": "hunter22!"}
+    )
+    other_device = login.json()["session_token"]
+    # Prime the auth cache so the change has to evict, not just delete.
+    assert (
+        await client.get("/api/account/me", headers=_bearer(other_device))
+    ).status_code == 200
+
+    wrong = await client.post(
+        "/api/account/password",
+        json={"current_password": "not-it-000", "new_password": "new-pass-99"},
+        headers=_bearer(this_device),
+    )
+    assert (wrong.status_code, wrong.json()["detail"]) == (403, "invalid_credentials")
+    weak = await client.post(
+        "/api/account/password",
+        json={"current_password": "hunter22!", "new_password": "short"},
+        headers=_bearer(this_device),
+    )
+    assert weak.status_code == 422
+
+    r = await client.post(
+        "/api/account/password",
+        json={"current_password": "hunter22!", "new_password": "new-pass-99"},
+        headers=_bearer(this_device),
+    )
+    assert r.status_code == 200, r.text
+
+    assert (
+        await client.get("/api/account/me", headers=_bearer(this_device))
+    ).status_code == 200
+    assert (
+        await client.get("/api/account/me", headers=_bearer(other_device))
+    ).status_code == 401
+    old_pw = await client.post(
+        "/api/account/login", json={"login": email, "password": "hunter22!"}
+    )
+    new_pw = await client.post(
+        "/api/account/login", json={"login": email, "password": "new-pass-99"}
+    )
+    assert (old_pw.status_code, new_pw.status_code) == (401, 200)
+
+
+async def test_password_change_needs_an_account(client):
+    _, guest_token = await _guest(client)
+
+    r = await client.post(
+        "/api/account/password",
+        json={"current_password": "whatever-1", "new_password": "new-pass-99"},
+        headers=_bearer(guest_token),
+    )
+
+    assert (r.status_code, r.json()["detail"]) == (403, "account_required")

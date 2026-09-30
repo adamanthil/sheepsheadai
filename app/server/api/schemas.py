@@ -159,6 +159,14 @@ class ResetPasswordRequest(BaseModel):
     _password = field_validator("password")(validate_password)
 
 
+class ChangePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str
+
+    _new_password = field_validator("new_password")(validate_password)
+
+
 class AccountPublic(BaseModel):
     username: str
     email: str
