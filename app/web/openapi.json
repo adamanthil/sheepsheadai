@@ -153,6 +153,10 @@
             ],
             "title": "Pick Pct"
           },
+          "picks": {
+            "title": "Picks",
+            "type": "integer"
+          },
           "qualifies_in": {
             "anyOf": [
               {
@@ -163,6 +167,17 @@
               }
             ],
             "title": "Qualifies In"
+          },
+          "queens_per_pick": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queens Per Pick"
           },
           "rank": {
             "anyOf": [
@@ -193,6 +208,17 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "trump_per_pick": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trump Per Pick"
           },
           "username": {
             "title": "Username",
@@ -234,7 +260,10 @@
           "min_hands",
           "vs_ai",
           "with_people",
-          "split_margin_min_hands"
+          "split_margin_min_hands",
+          "picks",
+          "trump_per_pick",
+          "queens_per_pick"
         ],
         "title": "AccountStatsResponse",
         "type": "object"

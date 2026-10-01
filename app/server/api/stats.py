@@ -94,6 +94,7 @@ async def account_stats(identity: PlayerIdentity = Depends(current_player)):
         "min_hands": LEADERBOARD_MIN_HANDS,
         **await stats_db.player_splits(pool, identity.id),
         "split_margin_min_hands": SPLIT_MARGIN_MIN_HANDS,
+        **await stats_db.player_picking(pool, identity.id),
     }
 
 

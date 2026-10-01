@@ -101,6 +101,32 @@ _SPLITS = f"""
     GROUP BY vs_ai
 """
 
+# Trump and queens in the six cards dealt to the caller on hands they
+# chose to pick: how strong a hand they pick on, so the blind is left
+# out, as are picks the AI made for them.
+_PICKING = """
+    SELECT count(*)::int                AS picks,
+           avg(t.trump)::float8         AS trump_per_pick,
+           avg(t.queens)::float8        AS queens_per_pick
+    FROM game_player gp
+    JOIN game g ON g.game_id = gp.game_id,
+    LATERAL (
+        SELECT count(*) FILTER (
+                   WHERE left(c.code, -1) IN ('Q', 'J') OR s.code = 'D'
+               ) AS trump,
+               count(*) FILTER (WHERE left(c.code, -1) = 'Q') AS queens
+        FROM cardset_card cc
+        JOIN card c ON c.card_id = cc.card_id
+        JOIN suit s ON s.suit_id = c.suit_id
+        WHERE cc.cardset_id = gp.starting_hand_id
+    ) t
+    WHERE g.time_closed IS NOT NULL
+      AND gp.score IS NOT NULL
+      AND gp.player_id = $1
+      AND gp.is_picker
+      AND NOT gp.is_substituted_pick
+"""
+
 # sort key -> (monotonic time cached, full ranking). The ranking holds every
 # eligible player; only the top rows and the caller's own row are served.
 _cache: dict[SortKey, tuple[float, list[dict]]] = {}
@@ -149,6 +175,12 @@ async def player_splits(pool: asyncpg.Pool, player_id: UUID) -> dict:
     people at the table, with a 95% margin on score/hand."""
     rows = {r["vs_ai"]: r for r in await pool.fetch(_SPLITS, player_id)}
     return {"vs_ai": _split(rows.get(True)), "with_people": _split(rows.get(False))}
+
+
+async def player_picking(pool: asyncpg.Pool, player_id: UUID) -> dict:
+    row = await pool.fetchrow(_PICKING, player_id)
+    assert row is not None  # an aggregate always returns a row
+    return dict(row)
 
 
 async def ranking(pool: asyncpg.Pool, sort: SortKey) -> list[dict]:

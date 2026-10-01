@@ -75,6 +75,11 @@ export default function StatsPanel({ stats }: { stats: AccountStats }) {
     ["Pick rate", pct(stats.pick_pct)],
     ["Leasters", String(stats.leaster_hands)],
   ];
+  const picking: [string, string][] = [
+    ["Picks", String(stats.picks)],
+    ["Trump / pick", stats.trump_per_pick?.toFixed(1) ?? "—"],
+    ["Queens / pick", stats.queens_per_pick?.toFixed(1) ?? "—"],
+  ];
   const completion: [string, string][] = [
     ["Completed*", pct(stats.completion_rate)],
     ["Abandoned*", String(stats.abandoned_hands)],
@@ -104,6 +109,12 @@ export default function StatsPanel({ stats }: { stats: AccountStats }) {
         Vs the AI: all other seats played by the AI. ± is a 95% range, after{" "}
         {stats.split_margin_min_hands} hands.
       </p>
+
+      <div className={`${ds.headRule} ${styles.statsHead} ${styles.subHead}`}>
+        <span className={ds.overline}>When you pick</span>
+      </div>
+      <Tiles tiles={picking} />
+      <p className={styles.note}>Picks the AI made for you are left out.</p>
 
       <div className={`${ds.headRule} ${styles.statsHead} ${styles.subHead}`}>
         <span className={ds.overline}>Hand completion</span>

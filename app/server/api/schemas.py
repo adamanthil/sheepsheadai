@@ -255,6 +255,11 @@ class AccountStatsResponse(BaseModel):
     vs_ai: CompanySplit
     with_people: CompanySplit
     split_margin_min_hands: int
+    # Picks the player made themselves, and the trump and queens among
+    # the six cards they were dealt on those hands (None without picks).
+    picks: int
+    trump_per_pick: Optional[float]
+    queens_per_pick: Optional[float]
 
 
 class HandOpponents(BaseModel):

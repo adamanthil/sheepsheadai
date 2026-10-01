@@ -27,6 +27,7 @@ class Seeder:
         self.pool = pool
         self.table_id = uuid.uuid4()
         self.players: list[uuid.UUID] = []
+        self.cardsets: list[int] = []
 
     async def start(self):
         self.cardset = await self.pool.fetchval(
@@ -70,11 +71,16 @@ class Seeder:
         leaster: list[bool] | None = None,
         ai_actions: list[int] | None = None,
         excused: list[int] | None = None,
+        substituted: list[bool] | None = None,
+        dealt: list[list[str]] | None = None,
         other_humans: list[int] | None = None,
         ai_seat: list[str | None] | None = None,
         closed: bool = True,
     ) -> None:
         n = len(scores)
+        hand_ids = [self.cardset] * n
+        if dealt is not None:
+            hand_ids = [await self.hand(codes) for codes in dealt]
         games = [uuid.uuid4() for _ in range(n)]
         await self.pool.execute(
             """
@@ -94,18 +100,21 @@ class Seeder:
             """
             INSERT INTO game_player (game_id, player_id, name, position,
                                      starting_hand_id, is_picker, score,
-                                     ai_actions, ai_actions_excused)
-            SELECT g, $2, 'p', 1, $3, pk, sc, ai, ex
-            FROM unnest($1::uuid[], $4::bool[], $5::smallint[],
-                        $6::smallint[], $7::smallint[]) AS t(g, pk, sc, ai, ex)
+                                     ai_actions, ai_actions_excused,
+                                     is_substituted_pick)
+            SELECT g, $2, 'p', 1, h, pk, sc, ai, ex, sub
+            FROM unnest($1::uuid[], $3::bigint[], $4::bool[], $5::smallint[],
+                        $6::smallint[], $7::smallint[], $8::bool[])
+                 AS t(g, h, pk, sc, ai, ex, sub)
             """,
             games,
             pid,
-            self.cardset,
+            hand_ids,
             picker or [False] * n,
             scores,
             ai_actions or [0] * n,
             excused or [0] * n,
+            substituted or [False] * n,
         )
         # Other people dealt into the hand; the remaining seats are left
         # empty, which the stats read the same as seats dealt to the AI.
@@ -152,6 +161,20 @@ class Seeder:
             kind == "human_play",
         )
 
+    async def hand(self, codes: list[str]) -> int:
+        cardset = await self.pool.fetchval(
+            "INSERT INTO cardset (cards_hash) VALUES ($1) RETURNING cardset_id",
+            uuid.uuid4().hex,
+        )
+        self.cardsets.append(cardset)
+        await self.pool.execute(
+            "INSERT INTO cardset_card (cardset_id, card_id) "
+            "SELECT $1, card_id FROM card WHERE code = ANY($2)",
+            cardset,
+            codes,
+        )
+        return cardset
+
     async def cleanup(self):
         games = "SELECT game_id FROM game WHERE game_table_id = $1"
         await self.pool.execute(
@@ -173,6 +196,12 @@ class Seeder:
         )
         await self.pool.execute(
             "DELETE FROM player WHERE player_id = ANY($1)", self.players
+        )
+        await self.pool.execute(
+            "DELETE FROM cardset_card WHERE cardset_id = ANY($1)", self.cardsets
+        )
+        await self.pool.execute(
+            "DELETE FROM cardset WHERE cardset_id = ANY($1)", self.cardsets
         )
 
 
@@ -219,6 +248,7 @@ async def test_personal_stats_count_only_finished_scored_hands(seeded):
     assert (s["rank"], s["qualifies_in"], s["min_hands"]) == (None, 46, 50)
     assert (s["abandoned_hands"], s["ai_assisted_hands"]) == (0, 0)
     assert s["completion_rate"] == 1.0
+    assert (s["picks"], s["trump_per_pick"], s["queens_per_pick"]) == (2, 0, 0)
 
 
 async def test_abandoned_hands_count_losses_but_not_wins(seeded):
@@ -318,6 +348,37 @@ async def test_split_margin_is_a_95_percent_interval(seeded):
         "sph_margin": None,
         "win_pct": None,
     }
+
+
+async def test_picking_counts_trump_and_queens_in_the_dealt_hand(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"pick_{_tag()}")
+    await seeder.hands(
+        pid,
+        [2, -4, 2, 1],
+        picker=[True, True, True, False],
+        substituted=[False, False, True, False],
+        dealt=[
+            # 5 trump (QC QS JD AD 7D), 2 queens.
+            ["QC", "QS", "JD", "AD", "7D", "AC"],
+            # 1 trump (JH), no queens.
+            ["JH", "AC", "10S", "KH", "9C", "7S"],
+            # The AI picked for them: left out.
+            ["QC", "QS", "QH", "QD", "JC", "JS"],
+            # Not a pick: left out.
+            ["QC", "QS", "QH", "QD", "JC", "JS"],
+        ],
+    )
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    s = r.json()
+    assert s["picks"] == 2
+    assert s["trump_per_pick"] == pytest.approx(3.0)
+    assert s["queens_per_pick"] == pytest.approx(1.0)
 
 
 async def test_stats_need_a_verified_account(seeded):

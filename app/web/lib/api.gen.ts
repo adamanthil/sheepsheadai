@@ -579,8 +579,12 @@ export interface components {
             min_hands: number;
             /** Pick Pct */
             pick_pct: number | null;
+            /** Picks */
+            picks: number;
             /** Qualifies In */
             qualifies_in: number | null;
+            /** Queens Per Pick */
+            queens_per_pick: number | null;
             /** Rank */
             rank: number | null;
             /** Sph */
@@ -589,6 +593,8 @@ export interface components {
             split_margin_min_hands: number;
             /** Total */
             total: number;
+            /** Trump Per Pick */
+            trump_per_pick: number | null;
             /** Username */
             username: string;
             vs_ai: components["schemas"]["CompanySplit"];
