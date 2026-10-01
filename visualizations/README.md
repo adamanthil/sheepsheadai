@@ -50,7 +50,7 @@ The **⋯** menu holds the per-head attention toggles (H1–H4, filtering
 chords in every attention block: tunnel self-attention, readout gem fans,
 and the gems' default top-3 chords, whose head-average is recomputed over
 the enabled heads), data-flow particles, auto-rotate, the floor stage
-names (off by default), tour speed, the theme, and the color key.
+names (off by default), background stars, tour speed, and the color key.
 **⤢** expands the figure to fill the current window (not OS fullscreen):
 the scene takes the whole window and the caption becomes a floating panel
 on the right (along the bottom on narrow windows) with a vertical chapter
@@ -63,19 +63,11 @@ touch, the page scrolls until a tap hands gestures to the scene, and
 tapping outside hands them back. Rendering pauses while the figure is
 scrolled out of view.
 
-**Themes.** `dark` (default) is the original glow look: additive blending,
-emissive materials, bloom. `light` is a "paper diagram" for white pages in
+**Look.** A dark glowing scene (additive blending, emissive materials,
+bloom, on a near-black grey backdrop) framed by a light page and caption in
 the blog's palette (white ground, #555 ink, Transat type when the host page
-provides it). It uses the same hues pulled down to ink strength, with normal
-blending and no bloom (bloom would wash out a white ground). Depth comes
-from a hemisphere fill plus a key light, soft shadows on an invisible floor
-(cast only by the stage in focus), a faint backdrop fall-off, and bolder
-connection strokes. Pick one at load with `?theme=light` or
-`?theme=dark`, or switch in the ⋯ menu. A third option, **Dark scene**
-(`?theme=mixed`), frames the dark glowing scene in the light page and
-caption: the page chrome (CSS, `<html data-theme>`) and the scene
-(`THEMES`) are chosen independently (`THEME_PARTS`). The light and mixed
-themes are still experiments.
+provides it). The figure gets a thin pale mat so the dark stage sits
+quietly inside a white page.
 
 Cards throughout the scene render in the product app's visual language
 (`app/web/lib/ds/PlayingCard`, copied into the template — no dependency):
@@ -198,8 +190,7 @@ view by replacing the boot line `showStage(0);` (find it with
 `switchScenario(2); showStage(stageIndex('pointer'));`. Prepend
 `switchNetwork(1);` for the oracle walkthrough (its stage labels are
 `oObs`, `oXfL2`, …), `setMenu(true);` to open the options menu, or
-`setExpanded(true);` for the expanded layout, and append `?theme=light`
-to the file URL for the light theme. Then screenshot:
+`setExpanded(true);` for the expanded layout. Then screenshot:
 
 ```sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -226,7 +217,7 @@ asks the host to expand or collapse the frame when **⤢** is used (a frame
 cannot grow past its own box by itself):
 
 ```html
-<iframe id="ppo-viz" src="ppo_architecture_3d.html?theme=light"
+<iframe id="ppo-viz" src="ppo_architecture_3d.html"
   style="width:100%;height:760px;border:0;display:block"
   loading="lazy" title="Sheepshead network architecture"></iframe>
 <script>

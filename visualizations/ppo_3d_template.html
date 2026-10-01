@@ -1,30 +1,16 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sheepshead Network Architecture</title>
 <style>
-  /* Two themes: the original dark "glow" look and a light "paper diagram"
-     look that matches the blog (white card, grey ink, Transat type). The
-     scene reads the same choice from <html data-theme> (see THEMES). */
+  /* A dark glowing scene framed by a light page and caption that match the
+     blog (white card, grey ink, Transat type). */
   :root {
     --sans: TransatStandard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --bold: TransatBold, var(--sans);
     --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    --b-input: #b58bff; --b-enc: #4cc9f0; --b-share: #f4a261;
-    --b-actor: #80ed99; --b-critic: #ff9ec7; --b-output: #ff6b6b;
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --page: #05070f; --stage: #070b1c; --panel: #0d1330; --panel-2: rgba(20, 26, 54, 0.9);
-    --line: #1f2854; --line-2: #34407c;
-    --ink: #c9d1f0; --heading: #eef2ff; --muted: #8e9bd1;
-    --accent: #7cc4ff; --accent-soft: rgba(124, 196, 255, 0.14);
-    --tip: rgba(10, 14, 32, 0.95); --tip-ink: #e6ecff;
-    --tool: rgba(13, 19, 48, 0.72);
-  }
-  :root[data-theme="light"] {
     color-scheme: light;
     --page: #fff; --stage: #fff; --panel: #fff; --panel-2: #f4f4f2;
     --line: #ececec; --line-2: #d6d6d2;
@@ -56,15 +42,15 @@
     overflow: hidden;
   }
   @container (max-width: 560px) { .viz-stage { aspect-ratio: 1 / 1; } }
-  /* A dark scene on a light page (the "Dark scene" theme): soften the hard
-     black edge with a thin pale mat, a hairline outer edge and a low shadow —
-     square corners, like the blog's. */
-  :root[data-theme="light"][data-scene="dark"] .viz-stage {
+  /* A dark scene on a light page: soften the hard black edge with a thin
+     pale mat, a hairline outer edge and a low shadow — square corners, like
+     the blog's. */
+  .viz-stage {
     border: 1px solid #1a1b1e;
     box-shadow: 0 0 0 5px #f4f4f2, 0 0 0 6px #dcdcd7, 0 10px 26px -6px rgba(0, 0, 0, 0.28);
     margin: 6px;
   }
-  :root[data-theme="light"][data-scene="dark"] .viz.expanded .viz-stage { box-shadow: none; margin: 0; }
+  .viz.expanded .viz-stage { box-shadow: none; margin: 0; }
   .viz-stage canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
   .viz-stage.inactive canvas { touch-action: pan-y !important; }
 
@@ -190,8 +176,8 @@
   .viz.expanded .viz-panel {
     position: absolute; top: 12px; right: 12px; bottom: 12px; width: 360px; overflow: auto;
     padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px;
-    /* Near-opaque: over the dark scene ("Dark scene" theme) a see-through
-       light panel turns muddy grey. */
+    /* Near-opaque: over the dark scene a see-through light panel turns
+       muddy grey. */
     background: color-mix(in srgb, var(--panel) 97%, transparent); backdrop-filter: blur(10px);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
   }
@@ -228,10 +214,8 @@
       <label><input type="checkbox" id="chk-flow" checked /> Data-flow particles</label>
       <label><input type="checkbox" id="chk-rotate" /> Auto-rotate</label>
       <label><input type="checkbox" id="chk-floor" /> Stage names on the floor</label>
-      <label><input type="checkbox" id="chk-stars" checked /> Background stars (dark scene)</label>
+      <label><input type="checkbox" id="chk-stars" checked /> Background stars</label>
       <label>Tour speed <input type="range" id="speed" min="1200" max="6000" step="200" value="3500" /></label>
-      <h4>Theme</h4>
-      <div class="seg" id="theme-seg"><button data-theme="dark">Dark</button><button data-theme="light">Light</button><button data-theme="mixed">Dark scene</button></div>
       <h4>Key</h4>
       <div class="legend" id="legend"></div>
     </div>
@@ -285,72 +269,13 @@ const {
 const DATA = __DATA_JSON__;
 
 // ============================================================
-// Themes. The dark theme is the original glow look (additive blending,
-// emissive materials, bloom). The light theme is a matte "paper diagram"
-// for white pages: normal blending, the same hues pulled down to ink
-// strength (paperColor / inkColor), no bloom. <html data-theme> holds the
-// choice; ?theme=light|dark picks it at load.
+// Scene look: additive blending, emissive materials, bloom, on a neutral
+// near-black backdrop that sits quietly inside the light page.
 // ============================================================
-const THEMES = {
-  dark: {
-    dark: true, bg: 0x05070f, dim: 0x223060, grid: [0x27336b, 0x151c3d],
-    labelStrip: "rgba(8,11,28,0.5)", memBg: "#1a2142",
-  },
-  light: {
-    dark: false, bg: 0xffffff, dim: 0xd9dbe3, grid: [0xe4e4e0, 0xf0f0ee],
-    labelStrip: "rgba(255,255,255,0.75)", memBg: "#eef0f4",
-  },
+const TH = {
+  dim: 0x223060, labelStrip: "rgba(8,11,28,0.5)", memBg: "#1a2142",
+  stops: ["#232427", "#1a1b1e", "#131416"], fog: 0x131416, grid: [0x3b3d43, 0x26282c],
 };
-// A theme name picks two things independently: the scene (THEMES) and the
-// page chrome (CSS on <html data-theme>). "mixed" = the dark glowing scene
-// framed by the light page and caption, for a white blog post.
-const THEME_PARTS = {
-  dark: { scene: "dark", chrome: "dark", backdrop: "navy" },
-  light: { scene: "light", chrome: "light", backdrop: "paper" },
-  mixed: { scene: "dark", chrome: "light", backdrop: "grey" },
-};
-// Backdrop of a dark scene: the original navy, or a neutral near-black grey
-// that sits more quietly inside a white page.
-const BACKDROPS = {
-  navy: { stops: ["#0d1330", "#070b1c", "#05070f"], fog: 0x05070f, grid: [0x27336b, 0x151c3d] },
-  grey: { stops: ["#232427", "#1a1b1e", "#131416"], fog: 0x131416, grid: [0x3b3d43, 0x26282c] },
-};
-const themeParam = new URLSearchParams(location.search).get("theme");
-let themeName = THEME_PARTS[themeParam] ? themeParam : "dark";
-let TH = THEMES[THEME_PARTS[themeName].scene];
-function applyThemeAttrs() {
-  const { chrome, scene } = THEME_PARTS[themeName];
-  document.documentElement.dataset.theme = chrome;
-  document.documentElement.dataset.scene = scene; // lets CSS frame a dark scene on a light page
-}
-applyThemeAttrs();
-// Scene hue → a mesh color that holds up under white-ground lighting.
-function paperColor(hex) {
-  const c = new THREE.Color(hex);
-  if (TH.dark) return c;
-  const hsl = {};
-  c.getHSL(hsl);
-  return c.setHSL(hsl.h, Math.min(0.72, hsl.s), 0.24 + hsl.l * 0.26);
-}
-// Unlit ink (lines, labels): lightness in display sRGB, not three's linear
-// working space — there 0.3 would display as a washed-out ~0.6.
-const SRGB = THREE.SRGBColorSpace;
-function lineInk(hex) {
-  const c = new THREE.Color(hex);
-  const hsl = {};
-  c.getHSL(hsl, SRGB);
-  return c.setHSL(hsl.h, Math.min(hsl.s, 0.75), 0.3 + hsl.l * 0.18, SRGB);
-}
-// Label ink: same hue, dark enough to read on white.
-function inkColor(css) {
-  const c = new THREE.Color(css);
-  if (TH.dark) return css;
-  const hsl = {};
-  c.getHSL(hsl, SRGB);
-  c.setHSL(hsl.h, Math.min(hsl.s, 0.6), hsl.s < 0.2 ? 0.3 : 0.36, SRGB);
-  return "#" + c.getHexString(SRGB);
-}
-const flowBlending = () => (TH.dark ? THREE.AdditiveBlending : THREE.NormalBlending);
 
 // ============================================================
 // Color palette
@@ -423,8 +348,7 @@ stageEl.prepend(renderer.domElement);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 }
 
-// Post-processing: bloom makes the dark theme's emissive "glow" real. The
-// light theme turns it off — bloom on a white ground just greys it out.
+// Post-processing: bloom makes the emissive "glow" real.
 const composer = new EffectComposer(renderer);
 composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 composer.addPass(new RenderPass(scene, camera));
@@ -445,7 +369,7 @@ controls.target.set(0, 5, 0);
 // camera well inside the background star shell.
 controls.maxDistance = 300;
 
-// Lights (intensities are per theme — see applyThemeEnvironment)
+// Lights
 const ambLight = new THREE.AmbientLight(0x445588, 0.45);
 scene.add(ambLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -454,30 +378,7 @@ scene.add(dirLight);
 const rim = new THREE.PointLight(0xb58bff, 0.6, 200);
 rim.position.set(-30, 20, -30);
 scene.add(rim);
-// Light theme only: sky/ground fill for shading, and the key light casts
-// soft shadows onto an otherwise invisible floor — paper's stand-in for the
-// dark theme's bloom as the source of depth.
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd9d4c8, 0);
-scene.add(hemiLight);
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.shadowMap.autoUpdate = false;
-dirLight.shadow.mapSize.set(4096, 4096);
-Object.assign(dirLight.shadow.camera, { left: -110, right: 110, top: 70, bottom: -70, near: 1, far: 260 });
-dirLight.shadow.bias = -0.0004;
-dirLight.shadow.normalBias = 0.02;
-dirLight.shadow.radius = 6;
-const shadowFloor = new THREE.Mesh(
-  new THREE.PlaneGeometry(400, 400),
-  new THREE.ShadowMaterial({ opacity: 0.11 }),
-);
-shadowFloor.rotation.x = -Math.PI / 2;
-shadowFloor.position.y = -10.02;
-shadowFloor.receiveShadow = true;
-scene.add(shadowFloor);
 
-// Floor grid for spatial reference — rebuilt per theme, translucent so it
-// recedes.
-let grid = null;
 
 // Background stars (dark scenes): faint points scattered through a volume
 // much larger than the diagram. They carry no meaning — when the camera
@@ -531,61 +432,33 @@ const starfield = (() => {
   return pts;
 })();
 
-function applyThemeEnvironment() {
-  const BD = BACKDROPS[THEME_PARTS[themeName].backdrop];
-  if (TH.dark) {
-    const bgCanvas = document.createElement("canvas");
-    bgCanvas.width = 2; bgCanvas.height = 512;
-    const bctx = bgCanvas.getContext("2d");
-    const grad = bctx.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, BD.stops[0]);
-    grad.addColorStop(0.55, BD.stops[1]);
-    grad.addColorStop(1, BD.stops[2]);
-    bctx.fillStyle = grad;
-    bctx.fillRect(0, 0, 2, 512);
-    const bgTex = new THREE.CanvasTexture(bgCanvas);
-    bgTex.colorSpace = THREE.SRGBColorSpace;
-    scene.background = bgTex;
-  } else {
-    // Faint cool-to-warm fall-off: white at the top, a breath of grey at
-    // the horizon, so the far stages recede into the page.
-    const bgCanvas = document.createElement("canvas");
-    bgCanvas.width = 2; bgCanvas.height = 512;
-    const bctx = bgCanvas.getContext("2d");
-    const grad = bctx.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, "#ffffff");
-    grad.addColorStop(0.6, "#fcfcfb");
-    grad.addColorStop(1, "#f4f3f0");
-    bctx.fillStyle = grad;
-    bctx.fillRect(0, 0, 2, 512);
-    const bgTex = new THREE.CanvasTexture(bgCanvas);
-    bgTex.colorSpace = THREE.SRGBColorSpace;
-    scene.background = bgTex;
-  }
-  scene.fog = TH.dark ? new THREE.Fog(BD.fog, 220, 900) : new THREE.Fog(0xf8f7f5, 200, 700);
-  starfield.visible = TH.dark && showStars;
-  renderer.toneMapping = TH.dark ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-  renderer.toneMappingExposure = TH.dark ? 1.1 : 1.0;
-  bloomPass.enabled = TH.dark;
-  ambLight.color.set(TH.dark ? 0x445588 : 0xffffff);
-  ambLight.intensity = TH.dark ? 0.45 : 0.3;
-  hemiLight.intensity = TH.dark ? 0 : 0.75;
-  dirLight.intensity = TH.dark ? 0.9 : 1.25;
-  dirLight.position.set(TH.dark ? 20 : 40, TH.dark ? 50 : 100, TH.dark ? 40 : 60);
-  rim.intensity = TH.dark ? 0.6 : 0;
-  renderer.shadowMap.enabled = !TH.dark;
-  dirLight.castShadow = !TH.dark;
-  shadowFloor.visible = !TH.dark;
-  renderer.shadowMap.needsUpdate = true;
-  if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
-  const gridCols = TH.dark ? BD.grid : TH.grid;
-  grid = new THREE.GridHelper(220, 44, gridCols[0], gridCols[1]);
+// Backdrop: a vertical gradient, fogged toward its darkest stop.
+{
+  const bgCanvas = document.createElement("canvas");
+  bgCanvas.width = 2; bgCanvas.height = 512;
+  const bctx = bgCanvas.getContext("2d");
+  const grad = bctx.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, TH.stops[0]);
+  grad.addColorStop(0.55, TH.stops[1]);
+  grad.addColorStop(1, TH.stops[2]);
+  bctx.fillStyle = grad;
+  bctx.fillRect(0, 0, 2, 512);
+  const bgTex = new THREE.CanvasTexture(bgCanvas);
+  bgTex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = bgTex;
+}
+scene.fog = new THREE.Fog(TH.fog, 220, 900);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+// Floor grid for spatial reference, translucent so it recedes.
+{
+  const grid = new THREE.GridHelper(220, 44, TH.grid[0], TH.grid[1]);
   grid.position.y = -10;
   grid.material.transparent = true;
-  grid.material.opacity = TH.dark ? 0.45 : 0.55;
+  grid.material.opacity = 0.45;
   scene.add(grid);
 }
-applyThemeEnvironment();
 
 // ============================================================
 // Helpers
@@ -603,13 +476,10 @@ function makeLabel(text, color = "#e6ecff", scale = 1) {
   canvas.width = w;
   canvas.height = px + 24 * SS;
   ctx.font = `600 ${px}px ui-sans-serif, system-ui, -apple-system`;
-  ctx.fillStyle = inkColor(color);
+  ctx.fillStyle = color;
   ctx.textBaseline = "middle";
   ctx.fillText(text, 16 * SS, canvas.height / 2);
   const tex = new THREE.CanvasTexture(canvas);
-  // Light theme: tag the canvas as sRGB so the ink displays as painted (the
-  // dark theme's pastel labels were tuned untagged — leave them be).
-  if (!TH.dark) tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
   const sprite = new THREE.Sprite(mat);
@@ -647,7 +517,7 @@ function makeStageLabel(text, color = "#7cc4ff") {
   ctx.fillStyle = TH.labelStrip;
   if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(4, 10, w - 8, 60, 12); ctx.fill(); }
   ctx.font = "bold 56px ui-sans-serif, system-ui";
-  ctx.fillStyle = inkColor(color);
+  ctx.fillStyle = color;
   ctx.textBaseline = "middle";
   ctx.fillText(text, 30, 42);
   const tex = new THREE.CanvasTexture(canvas);
@@ -964,7 +834,6 @@ function makeCardMesh(code, w, { faceDown = false, withVec = true } = {}) {
       metalness: 0.2, roughness: 0.55,
     }),
   );
-  body.material.userData.keepColor = true;
   grp.add(body);
   const backTex = cardTexture("back", "__");
   const faceTex = faceDown ? backTex
@@ -976,7 +845,7 @@ function makeCardMesh(code, w, { faceDown = false, withVec = true } = {}) {
     const m = new THREE.Mesh(
       new THREE.PlaneGeometry(w * 0.995, h * 0.995),
       new THREE.MeshBasicMaterial({
-        map: tex, transparent: true, color: TH.dark ? 0xc8c5bb : 0xffffff,
+        map: tex, transparent: true, color: 0xc8c5bb,
         // Pulled toward the camera in depth so the face never fights the body.
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
       }),
@@ -1013,8 +882,7 @@ function memoryStripTexture(vec) {
     const col = new THREE.Color();
     for (let i = 0; i < 256; i++) {
       const t = clamp(vec[i] / amax, -1, 1);
-      col.setHSL(t >= 0 ? 0.085 : 0.62, 0.85,
-        TH.dark ? 0.12 + Math.abs(t) * 0.45 : 0.94 - Math.abs(t) * 0.5);
+      col.setHSL(t >= 0 ? 0.085 : 0.62, 0.85, 0.12 + Math.abs(t) * 0.45);
       ctx.fillStyle = "#" + col.getHexString();
       ctx.fillRect(i % 128, i < 128 ? 0 : 8, 1, 8);
     }
@@ -1270,10 +1138,8 @@ function makeFatLine(points, color, opacity, linewidth = 1.7) {
   const geom = new LineGeometry();
   geom.setPositions(positions);
   const mat = new LineMaterial({
-    color, transparent: true, opacity,
-    // Paper strokes get a floor width: the thin rails vanish on white.
-    linewidth: TH.dark ? linewidth : Math.max(1.8, linewidth * 1.3),
-    blending: flowBlending(), depthWrite: false,
+    color, transparent: true, opacity, linewidth,
+    blending: THREE.AdditiveBlending, depthWrite: false,
   });
   mat.resolution.set(stageSize().w, stageSize().h);
   const line = new Line2(geom, mat);
@@ -1328,7 +1194,7 @@ function chordRadius(norm) {
   return 0.035 + norm * 0.18;
 }
 function chordBaseOpacity(norm) {
-  return TH.dark ? 0.18 + norm * 0.5 : 0.3 + norm * 0.6;
+  return 0.18 + norm * 0.5;
 }
 function chordVisible(c) {
   // Readout gem fans: a gem's full per-head fan shows only while selected;
@@ -1345,11 +1211,6 @@ function chordGeometry(curve, norm) {
 // as brightness toward the hot pulse tone plus thickness.
 function chordColor(c) {
   const t = c.norm;
-  if (!TH.dark) {
-    // Paper: ink throughout, strong links a shade deeper; weight reads
-    // mostly through thickness and opacity.
-    return paperColor(c.baseColor).multiplyScalar(1 - t * 0.2);
-  }
   const cold = new THREE.Color(c.baseColor).multiplyScalar(0.42);
   const hot = new THREE.Color(c.baseColor).lerp(new THREE.Color(C.pulse), 0.55);
   return cold.lerp(hot, t);
@@ -1369,9 +1230,8 @@ function styleChords() {
 function addChord(g, curve, norm, baseColor, groupName, head) {
   const mat = new THREE.MeshBasicMaterial({
     color: 0xffffff, transparent: true, opacity: chordBaseOpacity(norm),
-    blending: flowBlending(), depthWrite: false,
+    blending: THREE.AdditiveBlending, depthWrite: false,
   });
-  mat.userData.themed = true; // styleChords owns its color
   const mesh = new THREE.Mesh(chordGeometry(curve, norm), mat);
   mesh.userData.chord = true;
   g.add(mesh);
@@ -1383,12 +1243,8 @@ function addChord(g, curve, norm, baseColor, groupName, head) {
 }
 function styleConn() {
   // Write into baseOpacity: applyStageDim() owns the final material opacity.
-  // Strokes on white need more ink than additive strokes on black, and the
-  // faint ones (rails, entry lines, readout→hub) most of all: lift the low
-  // end instead of scaling, so 0.16 → ~0.52 while strong edges cap at 0.9.
-  const ink = (b) => (TH.dark ? Math.min(0.95, b) : Math.min(0.9, 0.3 + b * 1.4));
   for (const c of connLines) {
-    c.obj.material.userData.baseOpacity = ink(c.base);
+    c.obj.material.userData.baseOpacity = Math.min(0.95, c.base);
     c.obj.material.opacity = c.obj.material.userData.baseOpacity;
   }
 }
@@ -3742,43 +3598,10 @@ function buildScene() {
       o.material.envMapIntensity = 0.45;
     }
   });
-  applyThemeToScene(sceneRoot);
   buildFlowSystem();
   styleChords();
   styleConn();
   applyStageDim();
-}
-
-// Light theme: pull every glowing scene material down to matte ink. Cards,
-// the instanced embedding table (its per-cell colors carry the data), PAD
-// ghosts (already the theme's dim color) and anything a builder themed
-// itself are left alone.
-function applyThemeToScene(root) {
-  if (TH.dark) return;
-  root.traverse((o) => {
-    // Solid meshes cast onto the floor; lines, chords and sprites don't.
-    if (o.isMesh && o.material && o.material.isMeshStandardMaterial) o.userData.casts = true;
-    if (!o.material || o.isSprite || o.isInstancedMesh) return;
-    const mats = Array.isArray(o.material) ? o.material : [o.material];
-    for (const m of mats) {
-      if (m.map || m.userData.keepColor || m.userData.themed) continue;
-      m.userData.themed = true;
-      if (m.isLineMaterial) m.color.copy(lineInk(m.color.getHex()));
-      else if (m.color && m.color.getHex() !== TH.dim) m.color.copy(paperColor(m.color.getHex()));
-      if (m.emissive) {
-        m.emissive.copy(m.color);
-        m.emissiveIntensity *= 0.2;
-      }
-      if (m.isMeshStandardMaterial) {
-        m.metalness = Math.min(m.metalness, 0.1);
-        m.roughness = clamp(m.roughness + 0.1, 0.4, 0.6);
-        // Keep reflections faint: the room environment's light panels
-        // show up as white stripes on flat faces.
-        m.envMapIntensity = 0.35;
-      }
-      if (m.blending === THREE.AdditiveBlending) m.blending = THREE.NormalBlending;
-    }
-  });
 }
 
 // ============================================================
@@ -3814,7 +3637,7 @@ function buildFlowSystem() {
       edges.push({
         curve: o.userData.flowCurve,
         group: name,
-        colorObj: paperColor(o.userData.flowColor),
+        colorObj: new THREE.Color(o.userData.flowColor),
         intensity: o.userData.flowIntensity,
         boost: o.userData.flowBoost || 1,
         length: o.userData.flowCurve.getLength(),
@@ -3834,18 +3657,15 @@ function buildFlowSystem() {
   }
   const geom = new THREE.BufferGeometry();
   const positions = new Float32Array(particles.length * 3);
-  // Dark: RGB brightness under additive blending. Light: RGBA — ink color
-  // with the brightness in alpha, so dim particles fade instead of greying.
-  const cw = TH.dark ? 3 : 4;
-  const colors = new Float32Array(particles.length * cw);
+  // RGB brightness under additive blending.
+  const colors = new Float32Array(particles.length * 3);
   geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geom.setAttribute("color", new THREE.BufferAttribute(colors, cw));
+  geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   const mat = new THREE.PointsMaterial({
-    size: TH.dark ? 0.7 : 0.8, map: makeFlowTexture(), vertexColors: true,
+    size: 0.7, map: makeFlowTexture(), vertexColors: true,
     transparent: true, depthWrite: false,
-    blending: flowBlending(), sizeAttenuation: true,
+    blending: THREE.AdditiveBlending, sizeAttenuation: true,
   });
-  mat.userData.themed = true;
   const points = new THREE.Points(geom, mat);
   points.frustumCulled = false;
   sceneRoot.add(points);
@@ -3875,16 +3695,9 @@ function updateFlow(nowMs, dt) {
     const wave = 0.7 + 0.3 * Math.sin((p.t * 5 + pulseT * 0.4) * Math.PI * 2);
     const b = clamp(e.intensity * 1.7, 0.3, 0.95) * dim * wave
       * (inBurst ? 1 + 2.2 * burstK : 1) * (e.boost > 1 ? 1.25 : 1);
-    if (TH.dark) {
-      col[i * 3] = e.colorObj.r * b;
-      col[i * 3 + 1] = e.colorObj.g * b;
-      col[i * 3 + 2] = e.colorObj.b * b;
-    } else {
-      col[i * 4] = e.colorObj.r * 0.8;
-      col[i * 4 + 1] = e.colorObj.g * 0.8;
-      col[i * 4 + 2] = e.colorObj.b * 0.8;
-      col[i * 4 + 3] = Math.min(1, b * 1.25);
-    }
+    col[i * 3] = e.colorObj.r * b;
+    col[i * 3 + 1] = e.colorObj.g * b;
+    col[i * 3 + 2] = e.colorObj.b * b;
   }
   flowState.geom.attributes.position.needsUpdate = true;
   flowState.geom.attributes.color.needsUpdate = true;
@@ -3926,14 +3739,8 @@ const STAGE_GROUPS = {
   oAux: ["oValue", "oAux"],
 };
 const chordDimMap = {}; // per-group chord dim factors, read by animate()
-// How far out-of-focus stages recede. On black, faint strokes still glow;
-// on white they vanish, so the light theme dims less and desaturates
-// instead — inactive reads as "grey", not "gone".
-const STAGE_DIM = {
-  dark: { chord: 0.12, flow: 0.15, obj: 0.3, emissive: 0.25, sprite: 0.22, desat: 0 },
-  light: { chord: 0.32, flow: 0.3, obj: 0.5, emissive: 0.25, sprite: 0.45, desat: 0.55 },
-};
-const _grey = new THREE.Color();
+// How far out-of-focus stages recede.
+const STAGE_DIM = { chord: 0.12, flow: 0.15, obj: 0.3, emissive: 0.25, sprite: 0.22 };
 // Which side of the network a stage (or scene group) belongs to. Focusing
 // either side pushes the OTHER side much further back than an ordinary
 // inactive stage: from any front-facing actor view the critic lines up
@@ -3942,11 +3749,11 @@ const NET_SIDE = {
   actor: "actor", pointer: "actor", output: "actor",
   criticV: "critic", criticAux: "critic",
 };
-// × the inactive levels. Dark needs more: on near-black even 9% glows.
-const FAR_SIDE_DIM = { dark: 0.16, light: 0.35 };
+// × the inactive levels: on near-black even 9% glows.
+const FAR_SIDE_DIM = 0.16;
 function applyStageDim() {
-  const D0 = STAGE_DIM[TH.dark ? "dark" : "light"];
-  const far = FAR_SIDE_DIM[TH.dark ? "dark" : "light"];
+  const D0 = STAGE_DIM;
+  const far = FAR_SIDE_DIM;
   const focusSide = STAGES[curStage] ? NET_SIDE[STAGES[curStage].label] : undefined;
   const s = STAGES[curStage];
   const active = s ? STAGE_GROUPS[s.label] ?? null : null;
@@ -3967,8 +3774,6 @@ function applyStageDim() {
     const em = on ? 1 : D.emissive;
     grp.traverse((o) => {
       if (o.isSprite) { o.userData.dimFactor = on ? 1 : D.sprite; return; }
-      // Only the stage in focus casts shadows (light theme).
-      if (o.userData.casts) o.castShadow = on;
       const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) {
         if (m.userData.baseOpacity === undefined) {
@@ -3984,22 +3789,12 @@ function applyStageDim() {
         // A receded object must not occlude: faint as it is, writing depth
         // would still cut dark holes in whatever glows behind it.
         m.depthWrite = on ? m.userData.baseDepthWrite : false;
-        // Desaturate toward the color's own grey (textured card faces and
-        // chords, whose color styleChords owns, keep theirs).
-        if (D.desat && m.color && !m.map && !o.userData.chord) {
-          if (!m.userData.baseColor) m.userData.baseColor = m.color.clone();
-          const b = m.userData.baseColor;
-          const lum = 0.3 * b.r + 0.59 * b.g + 0.11 * b.b;
-          m.color.copy(b);
-          if (!on) m.color.lerp(_grey.setRGB(lum, lum, lum), D.desat);
-        }
         if (m.userData.baseEmissive !== undefined) {
           m.emissiveIntensity = m.userData.baseEmissive * em;
         }
       }
     });
   }
-  renderer.shadowMap.needsUpdate = true;
 }
 
 // ============================================================
@@ -4489,7 +4284,7 @@ function showSelection(info) {
 }
 
 // ============================================================
-// Pickers: decision scenario, network, theme
+// Pickers: decision scenario, network
 // ============================================================
 const scenSel = document.getElementById("sel-scenario");
 DATA.scenarios.forEach((sc, i) => scenSel.add(new Option(sc.label, String(i))));
@@ -4533,28 +4328,6 @@ function switchNetwork(m) {
 }
 netButtons.forEach((b) => b.addEventListener("click", () => switchNetwork(parseInt(b.dataset.net, 10))));
 
-const themeButtons = [...document.querySelectorAll("#theme-seg button")];
-function syncThemeButtons() {
-  themeButtons.forEach(b => b.classList.toggle("on", b.dataset.theme === themeName));
-}
-function setTheme(name) {
-  if (name === themeName || !THEME_PARTS[name]) return;
-  themeName = name;
-  applyThemeAttrs();
-  syncThemeButtons();
-  const scene = THEMES[THEME_PARTS[name].scene];
-  if (scene === TH) { applyThemeEnvironment(); return; } // backdrop only: no rebuild
-  TH = scene;
-  C.dim = TH.dim;
-  applyThemeEnvironment();
-  renderLegend();
-  disposeScene();
-  buildScene();
-  applyStageDim();
-}
-themeButtons.forEach(b => b.addEventListener("click", () => setTheme(b.dataset.theme)));
-syncThemeButtons();
-
 // ============================================================
 // Legend (in the options menu; also in the side panel when expanded)
 // ============================================================
@@ -4580,7 +4353,7 @@ const LEGEND_ORACLE = () => [
   [[0xff9ec7], "Value trunk · U(h,s)"],
   ...(ORACLE_AUX ? [[[0xe0b8ff], "Team aux heads · training-only"]] : []),
 ];
-const cssHex = (hex) => "#" + paperColor(hex).getHexString();
+const cssHex = (hex) => "#" + new THREE.Color(hex).getHexString();
 function renderLegend() {
   const rows = (NETWORK_MODE === 1 ? LEGEND_ORACLE() : LEGEND_POLICY).map(([cols, name]) =>
     `<div class="row">${cols.map(c =>
@@ -4614,7 +4387,7 @@ chkFlow.checked = flowEnabled;
 chkFlow.addEventListener("change", (e) => { flowEnabled = e.target.checked; });
 document.getElementById("chk-stars").addEventListener("change", (e) => {
   showStars = e.target.checked;
-  starfield.visible = TH.dark && showStars;
+  starfield.visible = showStars;
 });
 document.getElementById("chk-floor").addEventListener("change", (e) => {
   showFloorLabels = e.target.checked;
@@ -4894,9 +4667,6 @@ function animate(now) {
   // Idle micro-motion: the GRU prism slowly turns. (Cards stay still —
   // any motion makes their fine print shimmer.)
   if (flowEnabled && !reducedMotion && memInfo) memInfo.gru.rotation.y += dt * 0.3;
-
-  // Light theme: shadows are cheap to keep a few frames stale.
-  if (!TH.dark && frameCount % 3 === 0) renderer.shadowMap.needsUpdate = true;
 
   if (frameCount++ % 5 === 0) updateLabelFade();
   composer.render();
