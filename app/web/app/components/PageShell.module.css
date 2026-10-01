@@ -8,21 +8,10 @@
 .inner {
   max-width: 560px;
   margin: 0 auto;
-  padding: 24px 16px 64px;
+  padding: 20px 16px 64px;
 }
 .wide {
   max-width: 880px;
-}
-.nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-top: 14px;
-  font-size: 13px;
-}
-.navLinks {
-  display: flex;
-  gap: 18px;
 }
 .title {
   font-family: var(--font-display);

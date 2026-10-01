@@ -30,16 +30,7 @@ export default function AccountLine() {
       <Link href="/account" className={ds.link}>
         @{account.username}
       </Link>
-      {account.email_verified ? (
-        <>
-          {" · "}
-          <Link href="/leaderboard" className={ds.link}>
-            Leaderboard
-          </Link>
-        </>
-      ) : (
-        <> · confirm your email to unlock stats</>
-      )}
+      {!account.email_verified && <> · confirm your email to unlock stats</>}
     </div>
   );
 }

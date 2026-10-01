@@ -1,0 +1,169 @@
+/* Skybox strip: micro-caps sections under a hairline, spanning the same
+   1440px frame and gutters as the home page grid so the strip never shifts
+   between pages. */
+.strip {
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg-page);
+}
+.inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 clamp(20px, 5vw, 80px);
+  height: 46px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.sections,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+.actions {
+  gap: 18px;
+}
+
+/* A section link fills the strip's height so its active underline sits on
+   the hairline. */
+.item {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding-top: 2px;
+}
+.item:hover {
+  color: var(--ink);
+}
+.itemActive {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.item:focus-visible,
+.donate:focus-visible,
+.account:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+/* The one red thing in the strip. */
+.donate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--accent-2);
+  border-radius: 2px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.donate:hover {
+  background: color-mix(in oklab, var(--accent-2) 8%, transparent);
+}
+.heart {
+  font-family: var(--font-display);
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  background: var(--rule);
+}
+
+.account {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.account:hover .avatar {
+  background: var(--accent-soft);
+}
+.accountActive .avatar {
+  box-shadow:
+    0 0 0 2px var(--bg-page),
+    0 0 0 3px var(--ink);
+}
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--card-paper);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1;
+}
+.accountPending {
+  width: 26px;
+}
+
+/* Responsive labels, CSS-toggled like the masthead's (no hydration flash). */
+.shortLabel {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .inner {
+    height: 44px;
+    padding: 0 16px;
+    gap: 10px;
+  }
+  .sections {
+    gap: 14px;
+  }
+  .actions {
+    gap: 10px;
+  }
+  .item {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  .longLabel {
+    display: none;
+  }
+  .shortLabel {
+    display: inline;
+  }
+  /* Donate collapses to a heart in its red box; the account to its avatar. */
+  .donate {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+  .heart {
+    font-size: 15px;
+  }
+  .divider {
+    display: none;
+  }
+}

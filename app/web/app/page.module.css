@@ -24,8 +24,10 @@
 }
 
 /* ---- Left: hero + create ---- */
+/* Top padding is tight: the site strip above already separates the page
+   from the window edge. */
 .hero {
-  padding: 40px clamp(20px, 5vw, 80px);
+  padding: 24px clamp(20px, 5vw, 80px) 40px;
   display: flex;
   flex-direction: column;
   gap: 26px;
@@ -146,7 +148,7 @@
 
 /* ---- Right: lobby ---- */
 .lobby {
-  padding: 40px clamp(20px, 5vw, 80px);
+  padding: 24px clamp(20px, 5vw, 80px) 40px;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -243,14 +245,9 @@
   margin-top: auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding-top: 16px;
   gap: 12px;
-}
-.footerLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
 }
 .version {
   font-family: var(--font-mono);

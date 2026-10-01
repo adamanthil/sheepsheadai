@@ -8,6 +8,7 @@ import { STORAGE_KEYS } from "../lib/storage";
 import { ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
+import SiteNav from "./components/SiteNav";
 import AccountLine from "./components/home/AccountLine";
 import MastheadBand from "./components/home/MastheadBand";
 import Strapline from "./components/home/Strapline";
@@ -254,6 +255,7 @@ export default function HomePage() {
 
   return (
     <div className={styles.page}>
+      <SiteNav />
       <div className={styles.grid}>
         {/* LEFT — hero + create */}
         <div className={styles.hero}>
@@ -402,18 +404,6 @@ export default function HomePage() {
           </div>
 
           <div className={styles.lobbyFooter}>
-            <span className={styles.footerLinks}>
-              <a
-                className={ds.link}
-                href="/leaderboard"
-                style={{ fontSize: 13 }}
-              >
-                Leaderboard
-              </a>
-              <a className={ds.link} href="/analyze" style={{ fontSize: 13 }}>
-                Inspect AI model decisions ↗
-              </a>
-            </span>
             <div className={styles.version}>v0.7 · Jun 2026</div>
           </div>
         </div>

@@ -95,9 +95,6 @@ function Verified({ username }: { username: string }) {
         >
           See your hand history →
         </Link>
-        <Link href="/leaderboard" className={ds.link}>
-          Leaderboard
-        </Link>
         <Link href="/account/settings" className={ds.link}>
           Settings
         </Link>
