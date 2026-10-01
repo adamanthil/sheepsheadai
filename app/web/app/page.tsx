@@ -8,6 +8,7 @@ import { STORAGE_KEYS } from "../lib/storage";
 import { ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
+import Link from "next/link";
 import SiteNav from "./components/SiteNav";
 import AccountLine from "./components/home/AccountLine";
 import MastheadBand from "./components/home/MastheadBand";
@@ -274,6 +275,13 @@ export default function HomePage() {
             A five‑handed, trick‑taking game from Wisconsin — played here with
             friends and a deep‑learning AI.
           </p>
+
+          <Link
+            href="/how-to-play"
+            className={`${ds.btn} ${ds.btnGhost} ${styles.howTo}`}
+          >
+            How to play →
+          </Link>
 
           {error && <div className={styles.error}>{error}</div>}
 

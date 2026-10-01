@@ -87,6 +87,13 @@
   margin: 0;
 }
 
+/* The newcomer's way in, directly under the lede it follows from. */
+.howTo {
+  align-self: flex-start;
+  text-decoration: none;
+  margin-top: -6px;
+}
+
 .error {
   border: 1px solid var(--accent-2);
   background: color-mix(in oklab, var(--accent-2) 8%, transparent);
