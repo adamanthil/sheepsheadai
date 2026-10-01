@@ -19,7 +19,7 @@ const SECTIONS: {
   { href: "/leaderboard", label: "Leaderboard", short: "Leaderboard" },
   { href: "/about", label: "About", short: "About" },
   // ↗: the analysis tools leave the broadsheet for their own dashboard look.
-  { href: "/analyze", label: "The AI ↗", short: "AI ↗" },
+  { href: "/analyze", label: "Analyze AI ↗", short: "AI ↗" },
 ];
 
 function isActive(pathname: string, href: string, exact = false): boolean {
