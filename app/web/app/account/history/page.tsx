@@ -95,10 +95,6 @@ function History() {
 
   return (
     <>
-      <p className={styles.caption}>
-        Points are card points taken: your team&rsquo;s, or your own in a
-        leaster.
-      </p>
       {error && <p className={accountStyles.error}>{error}</p>}
       <div className={styles.scroller}>
         <table className={styles.table}>

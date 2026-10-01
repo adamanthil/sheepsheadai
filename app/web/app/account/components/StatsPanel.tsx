@@ -62,7 +62,7 @@ export default function StatsPanel({ stats }: { stats: AccountStats }) {
         disconnect, leaving mid-hand, or turn timeouts. In an abandoned hand a
         loss counts in full, but a win counts as 0 and isn&rsquo;t a win. Moves
         the AI makes because the host closed the table, you were removed, or the
-        server restarted don&rsquo;t count against you.
+        server restarted aren&rsquo;t marked as abandoned.
       </p>
     </section>
   );
