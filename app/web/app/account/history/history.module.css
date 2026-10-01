@@ -47,6 +47,13 @@
   text-align: right;
   font-family: var(--font-mono);
 }
+/* The stakes multiplier sits in its own column hugging the score, so
+   the scores themselves line up down the right edge of theirs. */
+.table .mult {
+  padding-left: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
 .when {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -59,6 +66,15 @@
 }
 .muted {
   color: var(--muted);
+}
+/* A losing hand reads in the red suit colour, all but its date. */
+.loss .tone,
+.loss .tone .tableName {
+  color: var(--card-red);
+}
+.loss .tone .muted {
+  color: var(--card-red);
+  opacity: 0.7;
 }
 .srOnly {
   position: absolute;

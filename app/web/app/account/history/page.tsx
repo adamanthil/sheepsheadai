@@ -106,6 +106,9 @@ function History() {
               <th scope="col" className={styles.num}>
                 Score
               </th>
+              <th scope="col" className={styles.mult}>
+                <span className={styles.srOnly}>Stakes</span>
+              </th>
               <th scope="col" className={styles.num}>
                 Points
               </th>
@@ -147,20 +150,20 @@ function Row({ hand }: { hand: HandHistoryRow }) {
   const zeroed = hand.counted_score !== hand.score;
   const { humans, ai } = hand.opponents;
   return (
-    <tr>
+    <tr className={hand.counted_score < 0 ? styles.loss : undefined}>
       <td className={styles.when}>{WHEN.format(new Date(hand.time_closed))}</td>
-      <td>
+      <td className={styles.tone}>
         <span className={styles.tableName} title={hand.table_name}>
           {hand.table_name}
         </span>
       </td>
-      <td>
+      <td className={styles.tone}>
         {ROLE_LABEL[hand.role]}
         {hand.alone && hand.role === "picker" && (
           <span className={styles.muted}> · alone</span>
         )}
       </td>
-      <td className={styles.num}>
+      <td className={`${styles.num} ${styles.tone}`}>
         {zeroed ? (
           <span title="Abandoned: a win counts as 0">
             <s className={styles.muted}>{signed(hand.score)}</s> → 0
@@ -168,17 +171,18 @@ function Row({ hand }: { hand: HandHistoryRow }) {
         ) : (
           signed(hand.score)
         )}
+      </td>
+      <td className={`${styles.mult} ${styles.tone}`}>
         {hand.multiplier > 1 && (
           <span
             className={styles.muted}
             title={`Played for ${hand.multiplier}× stakes (included in the score)`}
           >
-            {" "}
-            · {hand.multiplier}×
+            {hand.multiplier}×
           </span>
         )}
       </td>
-      <td className={styles.num}>
+      <td className={`${styles.num} ${styles.tone}`}>
         {hand.points_taken}
         <span className={styles.muted}> {hand.points_scope}</span>
       </td>
