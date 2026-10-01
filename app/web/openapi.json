@@ -186,6 +186,10 @@
             ],
             "title": "Sph"
           },
+          "split_margin_min_hands": {
+            "title": "Split Margin Min Hands",
+            "type": "integer"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -193,6 +197,9 @@
           "username": {
             "title": "Username",
             "type": "string"
+          },
+          "vs_ai": {
+            "$ref": "#/components/schemas/CompanySplit"
           },
           "win_pct": {
             "anyOf": [
@@ -204,6 +211,9 @@
               }
             ],
             "title": "Win Pct"
+          },
+          "with_people": {
+            "$ref": "#/components/schemas/CompanySplit"
           }
         },
         "required": [
@@ -221,7 +231,10 @@
           "abandon_threshold",
           "rank",
           "qualifies_in",
-          "min_hands"
+          "min_hands",
+          "vs_ai",
+          "with_people",
+          "split_margin_min_hands"
         ],
         "title": "AccountStatsResponse",
         "type": "object"
@@ -1260,6 +1273,55 @@
           "client_id"
         ],
         "title": "CloseTableRequest",
+        "type": "object"
+      },
+      "CompanySplit": {
+        "properties": {
+          "hands": {
+            "title": "Hands",
+            "type": "integer"
+          },
+          "sph": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sph"
+          },
+          "sph_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sph Margin"
+          },
+          "win_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Win Pct"
+          }
+        },
+        "required": [
+          "hands",
+          "sph",
+          "sph_margin",
+          "win_pct"
+        ],
+        "title": "CompanySplit",
         "type": "object"
       },
       "CreateTableRequest": {

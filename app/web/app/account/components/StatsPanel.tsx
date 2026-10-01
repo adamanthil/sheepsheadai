@@ -3,6 +3,8 @@ import { ds } from "../../../lib/ds";
 import type { AccountStats } from "../../../lib/types";
 import styles from "../account.module.css";
 
+type Split = AccountStats["vs_ai"];
+
 export const pct = (x: number | null | undefined) =>
   x == null ? "—" : `${(x * 100).toFixed(1)}%`;
 export const signed = (x: number) => (x > 0 ? `+${x}` : String(x));
@@ -17,6 +19,48 @@ function Tiles({ tiles }: { tiles: [string, string][] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+const perHand = (x: number) => (x > 0 ? `+${x.toFixed(2)}` : x.toFixed(2));
+
+/** Score/hand and win rate against the AI alone and with other people. */
+function Splits({ vsAi, withPeople }: { vsAi: Split; withPeople: Split }) {
+  const rows: [string, Split][] = [
+    ["Vs the AI", vsAi],
+    ["With people", withPeople],
+  ];
+  return (
+    <table className={styles.splits}>
+      <thead>
+        <tr>
+          <td />
+          <th scope="col" className={ds.overline}>
+            Hands
+          </th>
+          <th scope="col" className={ds.overline}>
+            Score / hand
+          </th>
+          <td />
+          <th scope="col" className={ds.overline}>
+            Win rate
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([label, split]) => (
+          <tr key={label}>
+            <th scope="row">{label}</th>
+            <td>{split.hands}</td>
+            <td>{split.sph == null ? "—" : perHand(split.sph)}</td>
+            <td className={styles.margin}>
+              {split.sph_margin != null && `± ${split.sph_margin.toFixed(2)}`}
+            </td>
+            <td>{pct(split.win_pct)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -50,6 +94,15 @@ export default function StatsPanel({ stats }: { stats: AccountStats }) {
       <p className={styles.note}>
         The leaderboard lists confirmed accounts with at least {stats.min_hands}{" "}
         finished hands.
+      </p>
+
+      <div className={`${ds.headRule} ${styles.statsHead} ${styles.subHead}`}>
+        <span className={ds.overline}>Who you played with</span>
+      </div>
+      <Splits vsAi={stats.vs_ai} withPeople={stats.with_people} />
+      <p className={styles.note}>
+        Vs the AI: all other seats played by the AI. ± is a 95% range, after{" "}
+        {stats.split_margin_min_hands} hands.
       </p>
 
       <div className={`${ds.headRule} ${styles.statsHead} ${styles.subHead}`}>

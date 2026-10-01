@@ -70,6 +70,8 @@ class Seeder:
         leaster: list[bool] | None = None,
         ai_actions: list[int] | None = None,
         excused: list[int] | None = None,
+        other_humans: list[int] | None = None,
+        ai_seat: list[str | None] | None = None,
         closed: bool = True,
     ) -> None:
         n = len(scores)
@@ -105,10 +107,63 @@ class Seeder:
             ai_actions or [0] * n,
             excused or [0] * n,
         )
+        # Other people dealt into the hand; the remaining seats are left
+        # empty, which the stats read the same as seats dealt to the AI.
+        for game, count in zip(games, other_humans or [0] * n):
+            for position in range(2, 2 + count):
+                await self.pool.execute(
+                    "INSERT INTO game_player (game_id, player_id, name, position, "
+                    "starting_hand_id) VALUES ($1, $2, 'o', $3, $4)",
+                    game,
+                    await self.player(),
+                    position,
+                    self.cardset,
+                )
+
+        # One AI-dealt seat per hand, left to the AI ("ai") or taken over
+        # by a person who then bid ("human_bid") or played a card
+        # ("human_play") in it.
+        for game, kind in zip(games, ai_seat or [None] * n):
+            if kind is not None:
+                await self.ai_row(game, kind)
+
+    async def ai_row(self, game: uuid.UUID, kind: str) -> None:
+        gp_id = await self.pool.fetchval(
+            "INSERT INTO game_player (game_id, ai_player_id, name, position, "
+            "starting_hand_id, is_substituted_pick) "
+            "VALUES ($1, (SELECT min(ai_player_id) FROM ai_player), 'ai', 5, "
+            "$2, $3) RETURNING game_player_id",
+            game,
+            self.cardset,
+            kind == "human_bid",
+        )
+        trick_id = await self.pool.fetchval(
+            "INSERT INTO trick (game_id, index, lead_player_id, points) "
+            "VALUES ($1, 0, $2, 0) RETURNING trick_id",
+            game,
+            gp_id,
+        )
+        await self.pool.execute(
+            "INSERT INTO trick_card (trick_id, card_id, game_player_id, index, "
+            "is_substituted) "
+            "VALUES ($1, (SELECT card_id FROM card WHERE code = 'QC'), $2, 0, $3)",
+            trick_id,
+            gp_id,
+            kind == "human_play",
+        )
 
     async def cleanup(self):
+        games = "SELECT game_id FROM game WHERE game_table_id = $1"
         await self.pool.execute(
-            "DELETE FROM game_player WHERE player_id = ANY($1)", self.players
+            "DELETE FROM trick_card WHERE trick_id IN "
+            f"(SELECT trick_id FROM trick WHERE game_id IN ({games}))",
+            self.table_id,
+        )
+        await self.pool.execute(
+            f"DELETE FROM trick WHERE game_id IN ({games})", self.table_id
+        )
+        await self.pool.execute(
+            f"DELETE FROM game_player WHERE game_id IN ({games})", self.table_id
         )
         await self.pool.execute(
             "DELETE FROM game WHERE game_table_id = $1", self.table_id
@@ -190,6 +245,79 @@ async def test_abandoned_hands_count_losses_but_not_wins(seeded):
     assert (s["abandoned_hands"], s["ai_assisted_hands"]) == (2, 4)
     assert s["completion_rate"] == pytest.approx(0.6)
     assert s["abandon_threshold"] == 2
+
+
+async def test_splits_by_who_else_was_dealt_in(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"split_{_tag()}")
+    # Vs the AI: two hands alone with the AI, one of them an abandoned win
+    # (counted as 0). With people: one or four other humans dealt in.
+    await seeder.hands(
+        pid,
+        [4, 6, -2, 2, -6],
+        ai_actions=[0, 3, 0, 0, 0],
+        other_humans=[0, 0, 1, 4, 1],
+    )
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    s = r.json()
+    assert s["vs_ai"] == {
+        "hands": 2,
+        "sph": pytest.approx(2.0),
+        "sph_margin": None,  # too few hands for a margin
+        "win_pct": pytest.approx(0.5),
+    }
+    assert s["with_people"]["hands"] == 3
+    assert s["with_people"]["sph"] == pytest.approx(-2.0)
+    assert s["with_people"]["win_pct"] == pytest.approx(1 / 3)
+    # The splits add back up to the headline figures.
+    assert s["vs_ai"]["hands"] + s["with_people"]["hands"] == s["hands"]
+
+
+async def test_a_person_in_an_ai_seat_rules_out_vs_ai(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"takeover_{_tag()}")
+    # All three hands had an AI-dealt seat; in two a person took it over
+    # mid-hand and bid or played in it, which makes them hands with people.
+    await seeder.hands(pid, [2, 4, -6], ai_seat=["ai", "human_bid", "human_play"])
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    s = r.json()
+    assert (s["vs_ai"]["hands"], s["vs_ai"]["sph"]) == (1, pytest.approx(2.0))
+    assert (s["with_people"]["hands"], s["with_people"]["sph"]) == (
+        2,
+        pytest.approx(-1.0),
+    )
+
+
+async def test_split_margin_is_a_95_percent_interval(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"margin_{_tag()}")
+    scores = [2, -2] * 10  # mean 0, sample sd sqrt(80/19)
+    await seeder.hands(pid, scores)
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    vs_ai = r.json()["vs_ai"]
+    assert vs_ai["sph"] == pytest.approx(0.0)
+    assert vs_ai["sph_margin"] == pytest.approx(1.96 * (80 / 19) ** 0.5 / 20**0.5)
+    assert r.json()["with_people"] == {
+        "hands": 0,
+        "sph": None,
+        "sph_margin": None,
+        "win_pct": None,
+    }
 
 
 async def test_stats_need_a_verified_account(seeded):

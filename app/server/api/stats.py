@@ -22,6 +22,7 @@ from server.services.persistence.stats import (
     ABANDON_AI_ACTIONS,
     LEADERBOARD_MIN_HANDS,
     LEADERBOARD_SIZE,
+    SPLIT_MARGIN_MIN_HANDS,
     SortKey,
 )
 
@@ -91,6 +92,8 @@ async def account_stats(identity: PlayerIdentity = Depends(current_player)):
         "rank": mine["rank"] if mine is not None else None,
         "qualifies_in": qualifies_in,
         "min_hands": LEADERBOARD_MIN_HANDS,
+        **await stats_db.player_splits(pool, identity.id),
+        "split_margin_min_hands": SPLIT_MARGIN_MIN_HANDS,
     }
 
 

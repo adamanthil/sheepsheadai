@@ -139,6 +139,54 @@
   margin: 4px 0 0;
   font-variant-numeric: tabular-nums;
 }
+/* Score figures by company: a label column, then numbers set right. */
+.splits {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 16px;
+  font-variant-numeric: tabular-nums;
+}
+.splits th,
+.splits td {
+  padding: 8px 0;
+  text-align: right;
+}
+.splits thead th {
+  padding-top: 0;
+}
+.splits td,
+.splits thead th + th {
+  padding-left: 12px;
+}
+.splits tbody th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+.splits tbody td {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.1;
+}
+.splits tbody tr + tr > * {
+  border-top: 1px solid var(--rule);
+}
+.splits tbody > tr > * {
+  vertical-align: baseline;
+}
+/* The ± sits in its own column hugging the score, so the scores line up
+   whether or not a row has one. */
+.splits .margin {
+  padding-left: 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+.splits tbody .margin {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--muted);
+}
 .form .lede {
   margin: 0;
 }

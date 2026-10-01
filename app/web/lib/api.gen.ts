@@ -585,12 +585,16 @@ export interface components {
             rank: number | null;
             /** Sph */
             sph: number | null;
+            /** Split Margin Min Hands */
+            split_margin_min_hands: number;
             /** Total */
             total: number;
             /** Username */
             username: string;
+            vs_ai: components["schemas"]["CompanySplit"];
             /** Win Pct */
             win_pct: number | null;
+            with_people: components["schemas"]["CompanySplit"];
         };
         /** ActionRequest */
         ActionRequest: {
@@ -949,6 +953,17 @@ export interface components {
         CloseTableRequest: {
             /** Client Id */
             client_id: string;
+        };
+        /** CompanySplit */
+        CompanySplit: {
+            /** Hands */
+            hands: number;
+            /** Sph */
+            sph: number | null;
+            /** Sph Margin */
+            sph_margin: number | null;
+            /** Win Pct */
+            win_pct: number | null;
         };
         /** CreateTableRequest */
         CreateTableRequest: {

@@ -216,6 +216,16 @@ class LeaderboardResponse(BaseModel):
     you: Optional[LeaderboardRow]
 
 
+class CompanySplit(BaseModel):
+    hands: int
+    # None until the first hand in this split.
+    sph: Optional[float]
+    # Half-width of a 95% interval on sph; None below
+    # SPLIT_MARGIN_MIN_HANDS hands.
+    sph_margin: Optional[float]
+    win_pct: Optional[float]
+
+
 class AccountStatsResponse(BaseModel):
     username: str
     hands: int
@@ -240,6 +250,11 @@ class AccountStatsResponse(BaseModel):
     rank: Optional[int]
     qualifies_in: Optional[int]
     min_hands: int
+    # Hands where the other four seats were all dealt to and played by the
+    # AI, and the rest.
+    vs_ai: CompanySplit
+    with_people: CompanySplit
+    split_margin_min_hands: int
 
 
 class HandOpponents(BaseModel):
