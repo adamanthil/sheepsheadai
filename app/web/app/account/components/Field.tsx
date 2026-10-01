@@ -1,5 +1,4 @@
 import React from "react";
-import { ds } from "../../../lib/ds";
 import styles from "../account.module.css";
 
 /** A labelled form control with an optional hint underneath. */
@@ -14,7 +13,7 @@ export default function Field({
 }) {
   return (
     <label className={styles.field}>
-      <span className={ds.overline}>{label}</span>
+      <span className={styles.label}>{label}</span>
       {children}
       {hint && <span className={styles.hint}>{hint}</span>}
     </label>

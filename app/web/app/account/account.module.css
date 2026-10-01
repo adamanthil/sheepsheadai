@@ -41,12 +41,42 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 28px;
+}
+/* A titled block on the settings page: its head sits closer to its
+ * content than the fields sit to each other. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.section > .statsHead {
+  margin-bottom: 0;
 }
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+}
+.label {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+/* A soft well rather than an underline, so fields don't read as more
+ * rules under the section heads. */
+.field input {
+  font-size: 20px;
+  background: var(--bg-sunk);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 4px;
+}
+.field input:focus {
+  border-color: var(--rule-strong);
+  background: var(--bg-card);
 }
 .hint {
   font-size: 12px;

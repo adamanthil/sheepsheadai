@@ -56,7 +56,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section aria-label={title} className={styles.form}>
+    <section aria-label={title} className={styles.section}>
       <div className={`${ds.headRule} ${styles.statsHead}`}>
         <span className={ds.overline}>{title}</span>
       </div>
@@ -70,11 +70,11 @@ function Details({ account }: { account: AccountPublic }) {
     <Section title="Account">
       <dl className={styles.details}>
         <div>
-          <dt className={ds.overline}>Username</dt>
+          <dt className={styles.label}>Username</dt>
           <dd>@{account.username}</dd>
         </div>
         <div>
-          <dt className={ds.overline}>Email</dt>
+          <dt className={styles.label}>Email</dt>
           <dd>
             {account.email}{" "}
             <span className={styles.note}>

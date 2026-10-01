@@ -77,7 +77,7 @@ export default function ResetPage() {
     body = (
       <form className={styles.form} onSubmit={submit}>
         <label className={styles.field}>
-          <span className={ds.overline}>New password</span>
+          <span className={styles.label}>New password</span>
           <input
             className={ds.input}
             type="password"
@@ -91,7 +91,7 @@ export default function ResetPage() {
           <span className={styles.hint}>At least 8 characters.</span>
         </label>
         <label className={styles.field}>
-          <span className={ds.overline}>Again</span>
+          <span className={styles.label}>Again</span>
           <input
             className={ds.input}
             type="password"
