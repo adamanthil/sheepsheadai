@@ -1,17 +1,18 @@
-"""Target-entropy controller invariants (v2 signed controller).
+"""Target-entropy controller invariants (one-sided hold).
 
 Inner loop: bumpless target adoption, integral-feedback sign, per-update
-LINEAR clamp, coefficient bounds, and the v2-only property that sustained
-entropy-above-target drives alpha through zero into the sharpening range
-(v1's log-space step made this impossible — the §12.20 saturation).
-Outer loop (unchanged from v1): hold heads never step, anneal heads step
-geometrically toward their floor and stop at min_step. Persistence:
-sidecar roundtrip plus v1-sidecar migration. Wiring: CLI surfaces.
+LINEAR clamp, and the one-sided bound — sustained entropy-above-target
+drives alpha to exactly zero and no further (a target is a floor; reward
+decides everything above it). Outer loop: hold heads never step, anneal
+heads step geometrically toward their floor and stop at min_step.
+Persistence: sidecar roundtrip plus migration of older sidecars (log-space
+gains; the retired signed controller's penalty range). Wiring: CLI
+surfaces.
 
 Refs: Haarnoja et al. arXiv:1812.05905 (target-entropy temperature);
 Christodoulou arXiv:1910.07207 (discrete fraction-of-max targets);
 Jaderberg et al. arXiv:1711.09846 (perturbation-scale outer steps);
-notebooks/CE_Teacher_Design_202608.md §4 (v2 design)."""
+notebooks/CE_Teacher_Design_202608.md §4 (inner-loop gains)."""
 
 import math
 from types import SimpleNamespace
@@ -87,30 +88,25 @@ class TestInnerLoop:
         ctrl.observe(MEASURED)
         for _ in range(400):
             ctrl.observe({h: v + 0.5 for h, v in MEASURED.items()})
-        assert all(ctrl.alphas[h] >= ctrl.config.alpha_min - 1e-12 for h in HEADS)
+        assert all(ctrl.alphas[h] >= 0.0 for h in HEADS)
         for _ in range(400):
             ctrl.observe({h: v - 0.5 for h, v in MEASURED.items()})
         assert all(ctrl.alphas[h] <= ctrl.config.alpha_max + 1e-12 for h in HEADS)
 
-    def test_sustained_injection_crosses_zero(self):
-        """v2's whole point: against a term that INJECTS entropy the
-        controller keeps authority past alpha=0 into active sharpening.
-        v1's log-space step saturated at a positive floor here."""
+    def test_sustained_above_target_rests_at_zero(self):
+        """The hold is one-sided: a head that reward keeps above its target
+        drives alpha to exactly zero and holds there — no entropy penalty —
+        and relieving the pressure walks it back up."""
         ctrl = _ctrl()
         ctrl.attach(_agent())
         ctrl.observe(MEASURED)
         assert all(ctrl.alphas[h] > 0.0 for h in HEADS)
         for _ in range(200):
             ctrl.observe({h: v + 0.5 for h, v in MEASURED.items()})
-        assert all(ctrl.alphas[h] < 0.0 for h in HEADS)
-        assert all(ctrl.alphas[h] == ctrl.config.alpha_min for h in HEADS)
-        assert all(ctrl.sign_flips[h] == 1 for h in HEADS)
-        # Relieving the pressure walks alpha back up through zero: the
-        # counter tracks crossings, not a one-way latch.
+        assert all(ctrl.alphas[h] == 0.0 for h in HEADS)
         for _ in range(200):
             ctrl.observe({h: v - 0.5 for h, v in MEASURED.items()})
         assert all(ctrl.alphas[h] > 0.0 for h in HEADS)
-        assert all(ctrl.sign_flips[h] == 2 for h in HEADS)
 
     def test_missing_head_measurement_skipped(self):
         ctrl = _ctrl()
@@ -179,7 +175,7 @@ class TestOuterLoop:
 
 class TestPersistence:
     def test_roundtrip(self, tmp_path):
-        ctrl = _ctrl(eta_lin=0.2, max_step=0.02, alpha_min=-0.1, retain=0.7)
+        ctrl = _ctrl(eta_lin=0.2, max_step=0.02, alpha_max=0.3, retain=0.7)
         ctrl.attach(_agent())
         ctrl.observe(MEASURED)
         for _ in range(50):
@@ -191,13 +187,11 @@ class TestPersistence:
         assert back.targets == ctrl.targets
         assert back.alphas == ctrl.alphas
         assert back.config == ctrl.config
-        assert back.sign_flips == ctrl.sign_flips
-        assert any(v > 0 for v in back.sign_flips.values())
 
-    def test_v1_sidecar_migrates(self):
-        """A v1 sidecar (log-space gains, no sign_flips) loads into v2:
-        state carries over, the dead gains are dropped for v2 defaults,
-        and re-attaching an agent is still bumpless in alpha."""
+    def test_legacy_sidecar_migrates(self):
+        """A sidecar from the log-space controller loads: state carries
+        over, the dead gains are dropped for the current defaults, and
+        re-attaching an agent is still bumpless in alpha."""
         v1 = {
             "targets": {"pick": 0.05, "partner": 0.12, "bury": 0.16, "play": 0.61},
             "alphas": {
@@ -223,14 +217,44 @@ class TestPersistence:
         defaults = EntropyControllerConfig()
         assert ctrl.config.eta_lin == defaults.eta_lin
         assert ctrl.config.max_step == defaults.max_step
-        assert ctrl.config.alpha_min == defaults.alpha_min
         assert ctrl.config.alpha_max == defaults.alpha_max
-        assert ctrl.sign_flips == {h: 0 for h in HEADS}
         # Bumpless: the stored alphas win over the agent's coefficients.
         agent = _agent()
         ctrl.attach(agent)
         for h in HEADS:
             assert getattr(agent, f"entropy_coeff_{h}") == v1["alphas"][h]
+
+    def test_signed_sidecar_penalty_clamps_to_zero(self):
+        """A sidecar from the retired signed controller may carry a
+        negative coefficient (an entropy penalty) plus its penalty-floor
+        and sign-flip keys. The penalty loads as zero, the keys are
+        ignored, and the next save writes neither."""
+        signed = {
+            "targets": {"pick": 0.079, "partner": 0.057, "bury": 0.147, "play": 0.58},
+            "alphas": {"pick": 0.233, "partner": -0.05, "bury": -0.05, "play": 0.009},
+            "sign_flips": {"pick": 10, "partner": 10, "bury": 43, "play": 204},
+            "config": {
+                "eta_lin": 0.15,
+                "max_step": 0.015,
+                "alpha_min": -0.05,
+                "alpha_max": 0.25,
+                "retain": 0.75,
+                "min_step": 0.03,
+                "anneal_heads": ["play"],
+                "floors": {"play": 0.28},
+            },
+        }
+        ctrl = EntropyTargetController.from_dict(signed)
+        assert ctrl.alphas == {
+            "pick": 0.233,
+            "partner": 0.0,
+            "bury": 0.0,
+            "play": 0.009,
+        }
+        assert ctrl.targets == signed["targets"]
+        d = ctrl.to_dict()
+        assert "sign_flips" not in d
+        assert "alpha_min" not in d["config"]
 
 
 class TestWiring:

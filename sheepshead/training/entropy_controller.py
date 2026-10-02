@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Target-entropy controller for the league trainer (v2, signed).
+"""Target-entropy controller for the league trainer (one-sided).
 
 Replaces the clock-based entropy-coefficient schedule with feedback control
 of the MEASURED policy entropy, two loops:
@@ -13,21 +13,15 @@ Targets initialize BUMPLESSLY: a head with no explicit target adopts the
 first measured value, so switch-on changes nothing at t=0 (Astrom &
 Wittenmark, *Adaptive Control*, 2nd ed. 1995, ch. 9).
 
-v1 vs v2 — why the step is signed and linear. v1 stepped LOG-alpha
-(``alpha <- alpha * exp(eta * err)``), which keeps alpha > 0 by
-construction: the controller could only ever *reduce* the regularizer
-toward its floor, and against a term that INJECTS entropy it saturated
-there and lost authority (the §12.20 diagnosis in
-notebooks/Search_Teacher_Design_202608.md; fix specified in
-notebooks/CE_Teacher_Design_202608.md §4). v2 steps alpha in LINEAR
-space, ``alpha <- clip(alpha + eta_lin * err, alpha_min, alpha_max)``,
-with ``alpha_min < 0``. A negative coefficient is an entropy PENALTY —
-active sharpening — so the loop retains authority in both directions.
-The negative range is a BACKSTOP, not the operating point: the CE
-teacher is approximately entropy-neutral (prior-preserving at ties), so
-the expected trajectory hovers near the legacy positive values and alpha
-sign flips are logged as telemetry precisely because they are the signal
-that something is injecting entropy.
+The hold is ONE-SIDED: ``alpha <- clip(alpha + eta_lin * err, 0, alpha_max)``.
+A target is an entropy FLOOR. When a head's measured entropy falls below
+its target the coefficient rises and regularizes it back up; when reward
+alone keeps a head above its target the coefficient settles at zero and
+the head rests wherever the reward landscape puts it — softer where
+actions are near-tied in value, sharper where one is clearly better. A
+negative coefficient (an entropy penalty) is never applied: nothing in the
+terminal-reward league injects entropy, so the only thing a penalty could
+oppose is reward (Training_Program_Redesign_202609, 2026-10-02).
 
 Outer loop (``step_targets``, called by the orchestrator at generation
 boundaries on a flat h2h verdict): anneal-head targets step geometrically
@@ -37,13 +31,13 @@ Jaderberg et al., arXiv:1711.09846). Per the 2026-07-28 backfill
 (runs/league_retention_pg/entropy_backfill.json), only the PLAY head
 anneals — it is the one head where the regularizer measurably binds
 (H_norm 0.88 -> 0.75 over 1.8M eps); pick/partner/bury targets HOLD their
-operating point (pick is near-deterministic per node with a thin soft
-boundary band that holding protects; see SOFTBAND_HNORM telemetry). When
-the next step would be smaller than ``min_step`` (checkpoint-noise scale),
-the head is at floor and no longer steps — the orchestrator then lets flat
-generations count toward stopping (targets-at-floor is the precondition
-for "flat means converged", removing the converged-vs-entropy-limited
-confound from the stop rule). This loop is UNCHANGED from v1.
+operating point as floors. When the next step would be smaller than
+``min_step`` (checkpoint-noise scale), the head is at floor and no longer
+steps — the orchestrator then lets flat generations count toward stopping
+(targets-at-floor is the precondition for "flat means converged",
+removing the converged-vs-entropy-limited confound from the stop rule).
+Lowering a target only matters for a head that reward wants sharper than
+the target; a head already resting above it is unaffected.
 
 Floors are never zero: imperfect-information equilibria are genuinely
 mixed (Sokota et al., arXiv:2206.05825; quantal-response equilibria), and
@@ -65,28 +59,25 @@ HEADS = ("pick", "partner", "bury", "play")
 
 @dataclass(frozen=True)
 class EntropyControllerConfig:
-    """Inner-gain and outer-step constants (v2 per CE_Teacher_Design_202608.md
-    §4; outer-loop values pre-registered 2026-07-28,
-    notebooks/Learning_System_Redesign_202607.md Phase 2).
+    """Inner-gain and outer-step constants (inner gains per
+    CE_Teacher_Design_202608.md §4; outer-loop values pre-registered
+    2026-07-28, notebooks/Learning_System_Redesign_202607.md Phase 2).
 
     eta_lin: LINEAR integral gain — d(alpha) = eta_lin * (target - measured)
-        per update. Calibrated to reproduce the legacy log-space response at
-        the reference operating point alpha ~= 0.15: v1's eta=1.0 gave
-        d(log alpha) = err, i.e. d_alpha ~= 0.15 * err there, hence 0.15.
+        per update. Calibrated to reproduce the legacy log-space schedule's
+        response at the reference operating point alpha ~= 0.15: eta=1.0 in
+        log space gave d(log alpha) = err, i.e. d_alpha ~= 0.15 * err there,
+        hence 0.15.
         A sustained error the size of the backfill's organic per-generation
         play drift (0.057) therefore moves alpha ~5.9%/update at that point,
         settling in ~10-20 of a generation's ~61 updates; per-update
         measurement noise (SE ~0.002-0.004 at 16k rows) contributes ~0.4%
         jitter — two orders below the clamp.
     max_step: per-update |d alpha| clamp (safety against transients).
-        Calibrated the same way: v1's max_log_step=0.1 at alpha=0.15 allowed
-        0.15*(exp(0.1)-1) ~= 0.0158 of absolute movement, hence 0.015.
-    alpha_min / alpha_max: coefficient bounds, the SAME for every head
-        (v1's per-head bounds derived from the legacy schedule are gone).
-        alpha_min < 0 is the backstop that gives the loop authority against
-        an entropy-injecting term — v1 could not go there and saturated at
-        its floor instead (§12.20). alpha_max is tighter than the legacy 4x
-        cap precisely because the negative range now exists.
+        Calibrated the same way: a log-space max step of 0.1 at alpha=0.15
+        allowed 0.15*(exp(0.1)-1) ~= 0.0158 of absolute movement, hence 0.015.
+    alpha_max: coefficient cap, the SAME for every head. The lower bound is
+        zero (one-sided hold; module docstring).
     retain: outer-step gap retention — target <- floor + retain*(target-floor).
         1-retain = 0.25 of the gap (~0.12 first play step), ~2x the organic
         drift (distinguishable) and PBT-sized.
@@ -102,7 +93,6 @@ class EntropyControllerConfig:
 
     eta_lin: float = 0.15
     max_step: float = 0.015
-    alpha_min: float = -0.05
     alpha_max: float = 0.25
     retain: float = 0.75
     min_step: float = 0.03
@@ -116,21 +106,17 @@ class EntropyTargetController:
         config: EntropyControllerConfig | None = None,
         targets: dict | None = None,
         alphas: dict | None = None,
-        sign_flips: dict | None = None,
     ):
         self.config = config or EntropyControllerConfig()
         # None target = bumpless: adopt the first measured value.
         self.targets: dict = {h: None for h in HEADS}
         if targets:
             self.targets.update({h: targets[h] for h in targets if h in HEADS})
-        self.alphas: dict = dict(alphas) if alphas else {}
-        # Telemetry: how often each head's coefficient crossed zero, i.e.
-        # switched between regularizing and actively sharpening.
-        self.sign_flips: dict = {h: 0 for h in HEADS}
-        if sign_flips:
-            self.sign_flips.update(
-                {h: int(sign_flips[h]) for h in sign_flips if h in HEADS}
-            )
+        # Coefficients are never negative (one-sided hold); a sidecar written
+        # before 2026-10-02 may carry a penalty and loads clamped to zero.
+        self.alphas: dict = (
+            {h: max(0.0, float(a)) for h, a in alphas.items()} if alphas else {}
+        )
 
     # ------------------------------------------------------------------ #
     # Inner loop
@@ -165,15 +151,13 @@ class EntropyTargetController:
             err = self.targets[h] - measured
             delta = max(-cfg.max_step, min(cfg.max_step, cfg.eta_lin * err))
             old = self.alphas[h]
-            new = max(cfg.alpha_min, min(cfg.alpha_max, old + delta))
-            if (old >= 0.0) != (new >= 0.0):
-                self.sign_flips[h] = self.sign_flips.get(h, 0) + 1
+            new = max(0.0, min(cfg.alpha_max, old + delta))
             self.alphas[h] = new
             deltas[h] = new - old
         return deltas
 
     # ------------------------------------------------------------------ #
-    # Outer loop (generation boundaries) — unchanged from v1
+    # Outer loop (generation boundaries)
     # ------------------------------------------------------------------ #
     def head_at_floor(self, h: str) -> bool:
         """True when the head no longer steps: hold heads always (they have
@@ -210,11 +194,9 @@ class EntropyTargetController:
         return {
             "targets": self.targets,
             "alphas": self.alphas,
-            "sign_flips": self.sign_flips,
             "config": {
                 "eta_lin": self.config.eta_lin,
                 "max_step": self.config.max_step,
-                "alpha_min": self.config.alpha_min,
                 "alpha_max": self.config.alpha_max,
                 "retain": self.config.retain,
                 "min_step": self.config.min_step,
@@ -231,24 +213,17 @@ class EntropyTargetController:
 
     @classmethod
     def from_dict(cls, d: dict) -> "EntropyTargetController":
-        """Rebuild from a sidecar, V1-COMPATIBLE.
-
-        A v1 sidecar carries the log-space gains ``eta`` / ``max_log_step``
-        and no ``eta_lin`` / ``max_step`` / ``alpha_min`` / ``alpha_max``.
-        Those gains are in different units and do not convert per-head, so
-        they are IGNORED and the v2 defaults apply; everything that is
-        state rather than gain — targets, alphas, and the outer-loop
-        settings retain/min_step/anneal_heads/floors — carries over
-        unchanged. A mid-run v1 -> v2 upgrade is therefore bumpless in
-        alpha and continues the same target ladder. ``sign_flips`` is
-        absent in v1 and starts at zero.
-        """
+        """Rebuild from a sidecar. Keys this version does not know — the
+        log-space gains of the original schedule-replacement controller, or
+        the penalty floor and sign-flip counters of the signed controller
+        retired 2026-10-02 — are ignored; state (targets, alphas, outer-loop
+        settings) carries over, and negative alphas load clamped to zero,
+        so an upgrade mid-run is bumpless except for dropping a penalty."""
         cfg = d.get("config", {})
         defaults = EntropyControllerConfig()
         config = EntropyControllerConfig(
             eta_lin=cfg.get("eta_lin", defaults.eta_lin),
             max_step=cfg.get("max_step", defaults.max_step),
-            alpha_min=cfg.get("alpha_min", defaults.alpha_min),
             alpha_max=cfg.get("alpha_max", defaults.alpha_max),
             retain=cfg.get("retain", defaults.retain),
             min_step=cfg.get("min_step", defaults.min_step),
@@ -259,7 +234,6 @@ class EntropyTargetController:
             config=config,
             targets=d.get("targets"),
             alphas=d.get("alphas"),
-            sign_flips=d.get("sign_flips"),
         )
 
     @classmethod
