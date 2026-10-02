@@ -134,3 +134,11 @@ def test_bidding_phase_entropy_preset():
     )
     assert hp.entropy_play == 0.0
     assert hp.update_interval == train_ppo.hyperparams_for("league").update_interval
+
+
+def test_bidding_phase_self_play_share():
+    """Half the bidding phase's opponent seats are the current agent; the
+    league keeps its validated 0.15."""
+    assert train_ppo.league_config_for("bidding").self_play_share == 0.5
+    assert train_ppo.league_config_for("league").self_play_share == 0.15
+    assert train_ppo.league_config_for("bootstrap").self_play_share == 0.15

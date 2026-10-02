@@ -409,7 +409,10 @@ class League:
 
     # ------------------------------------------------------------------
     def summary(self) -> str:
-        lines = [f"League ({len(self.members)} members, dir={self.league_dir})"]
+        lines = [
+            f"League ({len(self.members)} members, "
+            f"self share {self.config.self_play_share:.2f}, dir={self.league_dir})"
+        ]
         for role in ROLES:
             ms = self.by_role(role)
             if not ms:

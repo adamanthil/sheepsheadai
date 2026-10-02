@@ -115,12 +115,21 @@ class BiddingHyperparams(LeagueHyperparams):
     is frozen in this phase. Bury is scored by the same frozen pointer on
     the pointer architectures, so its coefficient only acts on an
     architecture with a separate bury head.
+
+    Opponents: each seat is the current agent with ``self_play_share``
+    (0.5, vs the league's 0.15), else a PFSP draw from the league-era
+    population. The rest of policy iteration improves against theta_k
+    alone (self-play corpus, h2h vs theta_k), so the bidding heads should
+    best-respond mostly to the current agent's play rather than to the
+    weaker league-era field; the other half keeps opponent diversity in
+    the bidding gradient.
     """
 
     entropy_pick: float = 0.01
     entropy_partner: float = 0.026
     entropy_bury: float = 0.013
     entropy_play: float = 0.0
+    self_play_share: float = 0.5
 
 
 @dataclass

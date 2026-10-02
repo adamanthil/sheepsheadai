@@ -21,7 +21,8 @@
               improved play without touching what search installed. Fixed
               low entropy coefficients (BiddingHyperparams), no controller:
               the bidding heads settle at their entropy-regularized
-              optimum; the deployed temperature is probed separately.
+              optimum; the deployed temperature is probed separately. Half
+              the opponent seats are the current agent (self share 0.5).
 
 Every phase produces the same artifacts under runs/<run-name>/:
 checkpoints/checkpoint_<episode>.pt, checkpoints/training_progress.csv,
@@ -307,6 +308,15 @@ def hyperparams_for(phase: str):
     if phase == "bidding":
         return BiddingHyperparams()
     return LeagueHyperparams()
+
+
+def league_config_for(phase: str) -> LeagueConfig:
+    """Roster / table-sampling config for the phase: the bidding phase
+    overrides the self share (BiddingHyperparams.self_play_share)."""
+    hp = hyperparams_for(phase)
+    if isinstance(hp, BiddingHyperparams):
+        return LeagueConfig(self_play_share=hp.self_play_share)
+    return LeagueConfig()
 
 
 # ----------------------------------------------------------------------------
@@ -1005,7 +1015,7 @@ def main(argv=None) -> int:
     checkpoint_dir = os.path.join(run_dir, "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    league = League(args.league_dir, LeagueConfig())
+    league = League(args.league_dir, league_config_for(args.phase))
     if len(league) == 0 and args.seed_checkpoints:
         seed_league_from_checkpoints(league, args.seed_checkpoints)
     if len(league) == 0:
