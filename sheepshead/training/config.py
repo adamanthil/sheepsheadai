@@ -95,26 +95,29 @@ class LeagueHyperparams:
 @dataclass
 class BiddingHyperparams(LeagueHyperparams):
     """The bidding-only PG phase of policy iteration (§4.4): the league
-    cadence with FIXED low entropy coefficients on the bidding heads and no
+    cadence with FIXED entropy coefficients on the bidding heads and no
     target-entropy controller (amended 2026-10-02).
 
-    The objective is reward plus a small entropy term, so the pick /
-    partner / bury heads settle at their entropy-regularized optimum
-    (pi ~ exp(A / alpha) per head) instead of being held at the league's
-    measured operating point; a nonzero alpha keeps the logits calibrated
-    and every action recoverable, and the deployed temperature is chosen
-    afterwards by h2h.
+    The objective is reward plus an entropy term, so the pick / partner
+    heads settle where reward and the regularizer balance instead of being
+    held at the league's measured operating point; the deployed temperature
+    is chosen afterwards by h2h.
 
-    The loss averages each head's entropy over the WHOLE minibatch (other
-    heads' rows contribute ~0), so a head's effective coefficient scales
-    with its share of action rows. Pick is set at 0.01 and the others at
-    0.01 * share_pick / share_head, giving every head the same effective
-    strength. Shares measured 2026-10-02 on `202609_recall_rc`
-    checkpoint_6400000 (1,000 self-play deals, 35.4 rows/deal): pick
-    0.0709, partner 0.0269, bury 0.0547, play 0.8475. Play is 0: its path
-    is frozen in this phase. Bury is scored by the same frozen pointer on
-    the pointer architectures, so its coefficient only acts on an
-    architecture with a separate bury head.
+    Scale. The PG term normalizes each head to equal total weight while the
+    entropy term is a plain mean over all rows, so a head's per-row
+    temperature is coefficient x heads_present x row share; the coefficient
+    is therefore a sharpening RATE relative to the league controller's
+    zero-drift alpha for that head, not a soft-optimum temperature (PPO's
+    trust region never reaches the fixed point in a 200k-episode phase).
+    Values are set at roughly a third of each head's holding alpha in
+    `202609_recall_rc` gens 3-7 (pick 0.14-0.25 near the 0.25 cap, partner
+    0.15-0.25 when positive): reward wants both heads sharper than the
+    league held them and the phase should let it, without going to the
+    ~0 regime where a fixed 0.05 produced near-deterministic bidding in the
+    retention run's first generations. Play is 0: its path is frozen in
+    this phase. Bury is scored by the same frozen pointer on the pointer
+    architectures (inert here; the league value is kept for an
+    architecture with a separate bury head).
 
     Opponents: each seat is the current agent with ``self_play_share``
     (0.5, vs the league's 0.15), else a PFSP draw from the league-era
@@ -125,9 +128,9 @@ class BiddingHyperparams(LeagueHyperparams):
     the bidding gradient.
     """
 
-    entropy_pick: float = 0.01
-    entropy_partner: float = 0.026
-    entropy_bury: float = 0.013
+    entropy_pick: float = 0.08
+    entropy_partner: float = 0.05
+    entropy_bury: float = 0.04
     entropy_play: float = 0.0
     self_play_share: float = 0.5
 

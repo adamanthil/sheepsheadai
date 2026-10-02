@@ -124,13 +124,13 @@ def test_cli_defaults_resolve_per_phase():
 
 
 def test_bidding_phase_entropy_preset():
-    """Fixed share-scaled coefficients keyed to pick 0.01 (no controller),
-    on the league's cadence."""
+    """Fixed coefficients at about a third of the league's holding alphas
+    (no controller), on the league's cadence; bury inert on the pointer."""
     hp = train_ppo.hyperparams_for("bidding")
     assert (hp.entropy_pick, hp.entropy_partner, hp.entropy_bury) == (
-        0.01,
-        0.026,
-        0.013,
+        0.08,
+        0.05,
+        0.04,
     )
     assert hp.entropy_play == 0.0
     assert hp.update_interval == train_ppo.hyperparams_for("league").update_interval

@@ -19,10 +19,11 @@
               head FROZEN (PPOAgent.set_trainable_heads) so the pick /
               partner / call heads re-optimize on terminal reward under the
               improved play without touching what search installed. Fixed
-              low entropy coefficients (BiddingHyperparams), no controller:
-              the bidding heads settle at their entropy-regularized
-              optimum; the deployed temperature is probed separately. Half
-              the opponent seats are the current agent (self share 0.5).
+              entropy coefficients (BiddingHyperparams), no controller: the
+              bidding heads sharpen as far as reward pushes them against a
+              regularizer about a third of the league's; the deployed
+              temperature is probed separately. Half the opponent seats are
+              the current agent (self share 0.5).
 
 Every phase produces the same artifacts under runs/<run-name>/:
 checkpoints/checkpoint_<episode>.pt, checkpoints/training_progress.csv,
