@@ -866,35 +866,9 @@ class Program:
                     f"HANDOFF after gen {g}: theta_0 = gen {settled} ({ckpt})",
                     decision=True,
                 )
-                self._handoff_gate(ckpt)
                 self._save_state()
                 return ckpt
             g += 1
-
-    def _handoff_gate(self, ckpt: str) -> None:
-        ref = self.cfg.gates.handoff_reference
-        if not ref or not os.path.exists(ref):
-            self.log(f"handoff gate skipped (reference {ref!r} not available)")
-            return
-        path = os.path.join(self.program_dir, "h2h_handoff_vs_reference.json")
-        if os.path.exists(path):
-            with open(path) as f:
-                res = json.load(f)
-        else:
-            res = h2h_duplicate(ckpt, ref, n_deals_per_mode=self.cfg.league.h2h_deals)
-            with open(path, "w") as f:
-                json.dump(res, f, indent=2)
-        self.state["league"]["handoff_gate"] = res
-        lower = res["edge"] - 2.0 * res["se"]
-        self._event(
-            f"handoff gate vs {os.path.basename(ref)}: {res['edge']:+.4f}±{res['se']:.4f}",
-            decision=True,
-        )
-        if lower < self.cfg.gates.handoff_h2h_lower_min:
-            raise NeedsReview(
-                f"handoff review gate: h2h lower bound {lower:+.4f} below "
-                f"{self.cfg.gates.handoff_h2h_lower_min:+.3f}"
-            )
 
     # ------------------------------------------------------------------ #
     # Phase 3: policy iteration

@@ -164,7 +164,6 @@ def test_league_loop_steps_once_then_hands_off_from_a_settled_boundary(
 ):
     monkeypatch.chdir(tmp_path)
     cfg = ProgramConfig(run_name="loop")
-    cfg.gates.handoff_reference = ""
     p = Program(cfg)
     # gens 1-2 pay, gen 3 misses (confirmation also misses) -> step;
     # gen 4 misses -> handoff from gen 3's boundary (the pre-step one).
@@ -206,7 +205,6 @@ def test_handoff_waits_for_the_aux_heads(tmp_path, monkeypatch):
     settled)."""
     monkeypatch.chdir(tmp_path)
     cfg = ProgramConfig(run_name="auxwait")
-    cfg.gates.handoff_reference = ""
     p = Program(cfg)
     _Stub(
         p,
@@ -230,7 +228,6 @@ def test_aux_heads_not_ready_at_the_cap_is_a_review(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     cfg = ProgramConfig(run_name="auxcap")
     cfg.league.max_generations = 4
-    cfg.gates.handoff_reference = ""
     p = Program(cfg)
     _Stub(p, {g: (0.08, 0.0) for g in range(1, 5)}, aux_ready_from=99)
     with pytest.raises(rtp.NeedsReview, match="aux heads not ready"):
@@ -242,7 +239,6 @@ def test_confirmation_rescues_a_noise_miss(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     cfg = ProgramConfig(run_name="rescue")
     cfg.league.max_generations = 3
-    cfg.gates.handoff_reference = ""
     p = Program(cfg)
     _Stub(p, {1: (0.08, 0.0), 2: (0.015, 0.05), 3: (0.0, 0.0)})
     p.run_league()

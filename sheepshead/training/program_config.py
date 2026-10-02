@@ -163,14 +163,15 @@ class FinalConfig:
 
 @dataclass
 class GateConfig:
-    """Review gates (§5.3): operator review, never an automatic kill."""
+    """Review gates (§5.3): operator review, never an automatic kill.
+
+    The phase 2 -> 3 handoff has no gate of its own (the h2h against the
+    previous lineage's 8M checkpoint was removed 2026-10-02): it is decided
+    by the stall rule and the aux readiness gate, and the panels already
+    place every boundary checkpoint against the earlier lineages.
+    """
 
     gen2_panel_min: float = 0.06
-    handoff_reference: str = (
-        "runs/league_retention_pg/checkpoints/"
-        "pfsp_perceiver-shared-v2_checkpoint_8000000.pt"
-    )
-    handoff_h2h_lower_min: float = -0.02
 
 
 @dataclass
@@ -286,9 +287,7 @@ class ProgramConfig:
         cfg.final = FinalConfig(
             references={}, h2h_deals=3, exploit_episodes=20, exploit_gate_deals=4
         )
-        cfg.gates = GateConfig(
-            gen2_panel_min=-10.0, handoff_reference="", handoff_h2h_lower_min=-10.0
-        )
+        cfg.gates = GateConfig(gen2_panel_min=-10.0)
         return cfg
 
 

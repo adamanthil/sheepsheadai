@@ -435,11 +435,11 @@ partner ≥ 99.5%),
 because the league is the only phase that builds the trunk memory they
 read. A handoff the rule would make is deferred (`continue`, "handoff
 deferred, aux heads not ready") until they clear; at the cap without
-readiness the program exits NEEDS REVIEW. Two review gates stop the
+readiness the program exits NEEDS REVIEW. One review gate stops the
 program for the operator instead of deciding: the generation-2 panel must
-read at least +0.06, and the handoff checkpoint's h2h vs the July 8M
-reference must have a lower bound above −0.02 (skipped when the reference
-is absent). The B2 bounds (partner trump lead ≥ 50%, defender trick-0 trump
+read at least +0.06 (a handoff h2h vs the July 8M reference was removed on
+2026-10-02; the panels already place every boundary checkpoint against the
+earlier lineages). The B2 bounds (partner trump lead ≥ 50%, defender trick-0 trump
 lead ≤ 10%) are hard health checks at every generation. The log carries an
 `aux readiness gen g: READY` / `NOT READY: <every failing bar>` line and
 the decision line reads:
@@ -571,7 +571,7 @@ population. This is how the pipeline was validated before the fresh run
     "corpus_seed_base": 20260913
   },
   "final": {"references": {}, "exploit_episodes": 0},
-  "gates": {"gen2_panel_min": -10.0, "handoff_reference": "", "handoff_h2h_lower_min": -10.0}
+  "gates": {"gen2_panel_min": -10.0}
 }
 ```
 
