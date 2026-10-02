@@ -39,6 +39,29 @@ def test_smoke_preset_is_small_and_complete():
     assert cfg.final.exploit_episodes > 0  # and so does the audit
 
 
+def test_bidding_command_runs_the_league_greedy_probe(tmp_path, monkeypatch):
+    """The bidding phase (fixed coefficients, no controller) carries the
+    league's greedy-probe cadence so the sharpening of the bidding heads is
+    observed during the phase, not only at the certificate; it still takes
+    no population snapshots and checkpoints once, at the end."""
+    p = _program(tmp_path, monkeypatch)
+    cmd = p.bidding_trainer_cmd(2, "cand.pt")
+    assert cmd[cmd.index("--phase") + 1] == "bidding"
+    assert cmd[cmd.index("--resume") + 1] == "cand.pt"
+    assert cmd[cmd.index("--greedy-eval-interval") + 1] == str(
+        p.cfg.league.greedy_eval_interval
+    )
+    assert cmd[cmd.index("--greedy-eval-games") + 1] == str(
+        p.cfg.league.greedy_eval_games
+    )
+    assert cmd[cmd.index("--snapshot-interval") + 1] == "0"
+    assert cmd[cmd.index("--until") + 1] == str(p.cfg.policy_iteration.bidding_episodes)
+    assert cmd[cmd.index("--save-interval") + 1] == str(
+        p.cfg.policy_iteration.bidding_episodes
+    )
+    assert "/pi/iter2/bidding" in cmd[cmd.index("--run-name") + 1]
+
+
 def test_league_commands_distinguish_generation_one(tmp_path, monkeypatch):
     p = _program(tmp_path, monkeypatch)
     os.makedirs(p.bootstrap_dir)

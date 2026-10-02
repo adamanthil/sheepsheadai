@@ -1058,6 +1058,42 @@ class Program:
         self._save_state()
         return theta_next, rec
 
+    def bidding_trainer_cmd(self, k: int, candidate: str) -> list[str]:
+        """The bidding-only PG phase's trainer command (§4.4 step 6): resume
+        from ``candidate`` with the play path frozen, league cadence, one
+        checkpoint at the end and no population snapshots. The league's
+        greedy health probe runs here too (decision log 10-02): with fixed
+        coefficients and no controller the bidding heads sharpen as far as
+        reward pushes them, and the probe's PICK / ALONE / leaster rates and
+        per-head entropy are the telemetry on that rate during the phase,
+        not only at the certificate."""
+        pi = self.cfg.policy_iteration
+        cmd = self._py(
+            "sheepshead.training.train_ppo",
+            "--phase",
+            "bidding",
+            "--resume",
+            candidate,
+            "--run-name",
+            f"{self.cfg.run_name}/pi/iter{k}/bidding",
+            "--league-dir",
+            pi.league_dir or os.path.join(self.league_dir, "league"),
+            "--until",
+            str(pi.bidding_episodes),
+            "--save-interval",
+            str(max(pi.bidding_episodes, 1)),
+            "--snapshot-interval",
+            "0",
+            "--greedy-eval-interval",
+            str(self.cfg.league.greedy_eval_interval),
+            "--greedy-eval-games",
+            str(self.cfg.league.greedy_eval_games),
+            *self._worker_flags(),
+        )
+        if self.cfg.league.update_interval:
+            cmd += ["--update-interval", str(self.cfg.league.update_interval)]
+        return cmd
+
     def run_bidding_phase(self, k: int, candidate: str, it_dir: str, rec: dict) -> str:
         """Bidding-only PG phase (play heads pinned, oracle critic on) from
         ``candidate`` against the league population; adopted if not
@@ -1069,28 +1105,7 @@ class Program:
         if pi.bidding_episodes > 0 and os.path.exists(bidding_final):
             self.skip(f"iter {k} bidding phase", bidding_final)
         if pi.bidding_episodes > 0 and not os.path.exists(bidding_final):
-            cmd = self._py(
-                "sheepshead.training.train_ppo",
-                "--phase",
-                "bidding",
-                "--resume",
-                candidate,
-                "--run-name",
-                f"{self.cfg.run_name}/pi/iter{k}/bidding",
-                "--league-dir",
-                pi.league_dir or os.path.join(self.league_dir, "league"),
-                "--until",
-                str(pi.bidding_episodes),
-                "--save-interval",
-                str(max(pi.bidding_episodes, 1)),
-                "--snapshot-interval",
-                "0",
-                "--greedy-eval-interval",
-                "0",
-                *self._worker_flags(),
-            )
-            if self.cfg.league.update_interval:
-                cmd += ["--update-interval", str(self.cfg.league.update_interval)]
+            cmd = self.bidding_trainer_cmd(k, candidate)
             self._run(f"iter {k} bidding phase", cmd, f"pi_iter{k}.log")
         theta_next = candidate
         if os.path.exists(bidding_final):
