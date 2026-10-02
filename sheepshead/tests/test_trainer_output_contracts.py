@@ -118,3 +118,19 @@ def test_cli_defaults_resolve_per_phase():
     assert league.snapshot_interval == 50_000
     assert league.entropy_controller is True
     assert league.league_dir == os.path.join("runs", "x", "league")
+    bidding = p.parse_args(["--phase", "bidding", "--run-name", "x", "--until", "1"])
+    train_ppo.resolve_args(bidding)
+    assert bidding.entropy_controller is False
+
+
+def test_bidding_phase_entropy_preset():
+    """Fixed share-scaled coefficients keyed to pick 0.01 (no controller),
+    on the league's cadence."""
+    hp = train_ppo.hyperparams_for("bidding")
+    assert (hp.entropy_pick, hp.entropy_partner, hp.entropy_bury) == (
+        0.01,
+        0.026,
+        0.013,
+    )
+    assert hp.entropy_play == 0.0
+    assert hp.update_interval == train_ppo.hyperparams_for("league").update_interval

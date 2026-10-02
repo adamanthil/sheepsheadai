@@ -4,8 +4,9 @@
 Consumers:
 
 * ``train_ppo.py`` reads ``BootstrapHyperparams`` for the shaped self-play
-  bootstrap (phase 0) and ``LeagueHyperparams`` for the terminal-only league
-  phases (phase 2 and the bidding-only phase). Everything else the trainer
+  bootstrap (phase 0), ``LeagueHyperparams`` for the terminal-only league
+  (phase 2) and its ``BiddingHyperparams`` subclass for the bidding-only
+  phase of policy iteration. Everything else the trainer
   needs is a per-run CLI flag (workers, cadence), not a tuning constant.
 * ``league.League`` reads ``LeagueConfig`` for roster management and table
   sampling.
@@ -89,6 +90,37 @@ class LeagueHyperparams:
     greedy_gate_max_alone: float = 20.0
     greedy_gate_max_trump_lead: float = 8.0
     greedy_gate_min_play_spread: float = 0.5
+
+
+@dataclass
+class BiddingHyperparams(LeagueHyperparams):
+    """The bidding-only PG phase of policy iteration (§4.4): the league
+    cadence with FIXED low entropy coefficients on the bidding heads and no
+    target-entropy controller (amended 2026-10-02).
+
+    The objective is reward plus a small entropy term, so the pick /
+    partner / bury heads settle at their entropy-regularized optimum
+    (pi ~ exp(A / alpha) per head) instead of being held at the league's
+    measured operating point; a nonzero alpha keeps the logits calibrated
+    and every action recoverable, and the deployed temperature is chosen
+    afterwards by h2h.
+
+    The loss averages each head's entropy over the WHOLE minibatch (other
+    heads' rows contribute ~0), so a head's effective coefficient scales
+    with its share of action rows. Pick is set at 0.01 and the others at
+    0.01 * share_pick / share_head, giving every head the same effective
+    strength. Shares measured 2026-10-02 on `202609_recall_rc`
+    checkpoint_6400000 (1,000 self-play deals, 35.4 rows/deal): pick
+    0.0709, partner 0.0269, bury 0.0547, play 0.8475. Play is 0: its path
+    is frozen in this phase. Bury is scored by the same frozen pointer on
+    the pointer architectures, so its coefficient only acts on an
+    architecture with a separate bury head.
+    """
+
+    entropy_pick: float = 0.01
+    entropy_partner: float = 0.026
+    entropy_bury: float = 0.013
+    entropy_play: float = 0.0
 
 
 @dataclass

@@ -57,7 +57,8 @@ class MainPhaseContext:
     tx_counter: TransitionCounter
     start_episode: int
     end_episode: int
-    # Phase hyperparameters (BootstrapHyperparams | LeagueHyperparams).
+    # Phase hyperparameters (BootstrapHyperparams | LeagueHyperparams, or
+    # its BiddingHyperparams subclass).
     hyperparams: object = None
     # "shaped" (bootstrap) or "terminal" (league phases).
     reward_mode: str = "terminal"

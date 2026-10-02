@@ -18,7 +18,10 @@
               (§4.4): the league phase with encoder, actor adapter and play
               head FROZEN (PPOAgent.set_trainable_heads) so the pick /
               partner / call heads re-optimize on terminal reward under the
-              improved play without touching what search installed.
+              improved play without touching what search installed. Fixed
+              low entropy coefficients (BiddingHyperparams), no controller:
+              the bidding heads settle at their entropy-regularized
+              optimum; the deployed temperature is probed separately.
 
 Every phase produces the same artifacts under runs/<run-name>/:
 checkpoints/checkpoint_<episode>.pt, checkpoints/training_progress.csv,
@@ -62,6 +65,7 @@ from sheepshead.agent.architectures.registry import available_architectures
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.game import ACTIONS
 from sheepshead.training.config import (
+    BiddingHyperparams,
     BootstrapHyperparams,
     LeagueConfig,
     LeagueHyperparams,
@@ -298,7 +302,11 @@ PHASE_SPECS = {
 
 
 def hyperparams_for(phase: str):
-    return BootstrapHyperparams() if phase == "bootstrap" else LeagueHyperparams()
+    if phase == "bootstrap":
+        return BootstrapHyperparams()
+    if phase == "bidding":
+        return BiddingHyperparams()
+    return LeagueHyperparams()
 
 
 # ----------------------------------------------------------------------------
@@ -307,9 +315,10 @@ def hyperparams_for(phase: str):
 def apply_schedules(episode: int, context: MainPhaseContext) -> None:
     """Set the agent's learning rates and (schedule-owned) entropy
     coefficients for this update. The bootstrap decays its coefficients
-    linearly over its own length (BootstrapHyperparams); the league phases
-    hold the fixed LeagueHyperparams values unless the entropy controller
-    owns them (it overwrites these right after, see _ppo_update)."""
+    linearly over its own length (BootstrapHyperparams); the league phase
+    holds the fixed LeagueHyperparams values unless the entropy controller
+    owns them (it overwrites these right after, see _ppo_update); the
+    bidding phase holds BiddingHyperparams' fixed values."""
     args = context.args
     hp = context.hyperparams
     agent = context.training_agent
@@ -946,8 +955,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="target-entropy controller owns the coefficients (default: on "
-        "for the league phases, off for the bootstrap; the orchestrator "
-        "passes --no-entropy-controller for league generation 1)",
+        "for the league phase, off for the bootstrap and the bidding phase; "
+        "the orchestrator passes --no-entropy-controller for league "
+        "generation 1)",
     )
     p.add_argument("--entropy-play-floor", type=float, default=0.28)
     p.add_argument(
@@ -982,7 +992,7 @@ def resolve_args(args) -> None:
     if args.snapshot_interval is None:
         args.snapshot_interval = 0 if args.phase == "bootstrap" else 50_000
     if args.entropy_controller is None:
-        args.entropy_controller = args.phase != "bootstrap"
+        args.entropy_controller = args.phase == "league"
     if args.league_dir is None:
         args.league_dir = os.path.join("runs", args.run_name, "league")
 

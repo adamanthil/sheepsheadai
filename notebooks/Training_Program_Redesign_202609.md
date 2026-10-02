@@ -65,6 +65,7 @@ Predecessors (the evidence base; nothing here re-argues them):
 | 09-28 | `aux_det_scale` / `--aux-det-scale` RETIRED: the ×2.5 deterministic aux-head coefficients (seen-trump 0.5, points 0.5, secret 0.25, unseen-higher 0.25) are now the `PPOAgent` defaults in every stage, not a setting. `202609_recall_rc` is unchanged from gen 6 on (the gen-5 resume launches the program without the flag; the stale `config.json` key is ignored) | 5.4 |
 | 09-29 | `202609_recall_rc` GEN 5 (57 h at 4.9 eps/s; first boundary run by the resumed orchestrator, cap 10): primary h2h vs gen 4 −0.0076 ± 0.0124 FAILED the bar, fresh-deal confirmation −0.0292 ± 0.0122 FAILED → improving=False → first failure past the floor → `entropy_step`: play target 0.679 → 0.580 (retain 0.75 toward floor 0.28; pick/partner/bury targets unchanged 0.079/0.057/0.147). PANEL-A +0.2245 (95% CI +0.1948..+0.2547; gen 4 +0.2239), PANEL-B −0.0395 (−0.0674..−0.0108; gen 4 −0.0372): both flat within 0.003 — skill has plateaued at the 30M's level (30M +0.196/−0.041) and 0.02 below v2 8M. Conventions: partner trump-lead 97.4, t0 trump-lead 0.0, called-suit 67.2, pick 40.4, alone 21.1, leaster 3.1. Aux (4 seeds): seen acc 98.93 / false-seen 1.50 (from 96.95 / 5.04), recall t0-5 50.6/96.7/97.5/98.8/99.5/99.9, false-seen t0-5 0.2/1.2/2.5/3.2/3.1/2.9, secret 99.99, points MAE 0.786 (exact 49.9), unseen-higher 99.96 → NOT READY (acc, false-seen overall and t1-5, recall t1-3). New source split: history recall t1-5 97/98/99/100/100, bury 72-77% (n 174-318 per seed). Vs v2's curve (2.7M 95.7/6.2; 4.7M 99.3/0.96; 7.7M 99.8/0.24): ours 5.0M ≈ v2's ~4.3M point — the lag NARROWED from ~1M (gen 4) to ~0.7M; false-seen fell 3.4× in one generation, so ≤0.5 extrapolates to the gen-6 or gen-7 boundary, recall t1 (96.65 → 99) is the slower bar (+4.2/gen → gen 7). Well inside the cap of 10. Gen 6 launched 03:52 at 5.2 eps/s under the baked-in aux coefficients (no `--aux-det-scale`; identical values) and the stepped play target; greedy_health.csv migrated to the source-split schema. Prediction on record (09-27): the step is worth a few hundredths at most; a second failure at gen 6 hands off only if aux is ready, else 'handoff deferred' continues. panel_reference.csv rebuilt (29 rows). |
 | 10-01 | `202609_recall_rc` GEN 6 (54.7 h at 5.1 eps/s; first generation under the stepped play target 0.580): primary h2h vs gen 5 +0.0142 ± 0.0109 and confirmation +0.0152 ± 0.0110 both below the +0.02 bar → improving=False → SECOND failure past the floor → handoff branch, gated on aux readiness → NOT READY → `continue` ("handoff deferred, aux heads not ready"); gen 7 launched 12:07, play target unchanged. The step bought a few hundredths as predicted (gen 5 read −0.008/−0.029): PANEL-A +0.2405 (+0.2111..+0.2702; gen 5 +0.2245) — level with v2 8M (+0.241), 0.02 under release/iter11 — and PANEL-B −0.0021 (−0.0291..+0.0252; gen 5 −0.0395), the largest panel move since gen 2 and now at the strong-agent cluster. Conventions: partner trump-lead 93.7, t0 0.0, called-suit 87.6 (from 67.2), pick 39.5, alone 19.2, leaster 3.5. Aux (4 seeds, boundary ckpt): seen acc 99.58 ✓, false-seen 0.52 (bar 0.5, from 1.50), recall t1-5 99.3/99.2/99.3/99.6/99.9 ✓ (t0 37.1 = bury-only noise), false-seen t1-5 0.23 ✓/0.65/1.27/1.83/2.25, history recall 99.2-99.9, bury recall 68-71% (n 234-288), secret 100, unseen-higher 99.97 ✓, points MAE 1.38 ✗ (bar 1.0). Vs v2 (4.7M 99.3/0.96; 7.7M 99.8/0.24): ours 6.0M ≈ v2's ~5.5M, lag ~0.5M and still narrowing; false-seen t5 2.25 is now the slowest bar (needs ~4.5× — one to two generations at the current ~3×/gen) → readiness extrapolates to the gen-7 or gen-8 boundary, inside the cap of 10. ANOMALY — points MAE: in-trainer greedy reads were 0.752 (5.90M) and 0.738 (5.95M), then 1.381 / exact 37.3% at the 6.00M checkpoint (the orchestrator's 4-seed read agrees, 1.382); seen-trump acc/false-seen also slipped 99.81/0.27 → 99.59/0.52 in the same window. No flush update exists at the boundary (leftover events are discarded), the unweighted points training loss over the last 14 updates was an unremarkable 0.006-0.010, and the probe's greedy ALONE rate at that read was 21.7% (gate warning printed; informational). So the 6.0M checkpoint is one ordinary 50k-episode window past a 0.74 read — a points-head excursion on the greedy distribution, not a code change (gen 6 trained under the baked-in coefficients, identical values). Gen 7 resumed from this checkpoint; watch greedy_health.csv at 6.05M+ for recovery to ~0.75. Had points read ≤1.0 the gate would still have failed on false-seen (overall 0.52, t2-5). panel_reference.csv rebuilt (31 rows). |
+| 10-02 | BIDDING-PHASE ENTROPY = FIXED, LOW, SHARE-SCALED; NO CONTROLLER (operator: the program's objective is the highest-skill STOCHASTIC policy, so the bidding heads should settle where reward pulls them, not be held at the league's operating point). Evidence that the hold resisted reward: in the league the controller needed pick α 0.15-0.25 to hold pick H_norm 0.079 (`202609_recall_rc` gens 3-7, near the 0.25 cap), and the only completed bidding phase (`rc_validate_v2/pi/iter1/bidding`) ended at pick 0.235 / partner 0.25 (AT the cap) / bury 0.109 from 0.05/0.05/0.04 with zero sign flips: under pure terminal reward the bidding heads kept trying to sharpen and the controller pushed back. Change: `BiddingHyperparams` (subclass of `LeagueHyperparams`, same cadence) fixes pick 0.01 / partner 0.026 / bury 0.013, play 0 (frozen path); `--entropy-controller` now defaults on for the league phase ONLY. A fixed α>0 rather than α=0: the heads settle at the entropy-regularized optimum π ∝ exp(Â/α) (logit quantal response)[^softopt], which keeps logits calibrated (logit gaps ≈ advantage/α, so a deploy-time temperature is a meaningful knob) and every action recoverable (α=0 PG sharpens irreversibly: p→0 is never resampled, the always-PASS mechanism); the deployed temperature is then chosen by h2h (§4.5). PER-HEAD SCALE: the loss averages each head's entropy over the WHOLE minibatch (other heads' rows contribute ≈0) while the PG term is per-head reweighted, so a head's effective coefficient scales with its share of action rows — at equal coefficients partner/bury have little authority, visible as rail-to-rail controller limit cycles in `202609_recall_rc` (partner α −0.018 → +0.25 → −0.05 across the gen-5/6/7 starts). The loss is UNCHANGED (operator: coefficients are always environment-scaled, and the domain's row mix is well known; a per-head weighting mode was built and dropped as needless complexity); instead the coefficients are scaled by measured row share, keyed to pick 0.01: α_h = 0.01 · share_pick / share_h. Shares on `202609_recall_rc` checkpoint_6400000 (1,000 self-play deals, hero rows across all seats = the seat-rotated training mix, 35.4 rows/deal): pick 0.0709 (2.51/deal), partner 0.0269 (0.95), bury 0.0547 (1.94), play 0.8475 (30.0) ⇒ partner 0.026, bury 0.013. In legacy units pick 0.01 is 1/5 of the league's gen-1 0.05 and ~1/20 of the controller's held 0.15-0.25. Shares move with the pick rate (fewer offers per deal when picking rises, more partner/bury rows), a second-order effect at these rates. Scope in this architecture: bury is scored by the frozen play pointer, so only pick and partner/call train (bury's 0.013 is inert); the leaster watchdog stays ON in the bidding phase (×10 kick on pick 0.01 = 0.1). Applies to `202609_recall_rc` phase 3 (`train_ppo` is a fresh subprocess per phase; the live orchestrator's command line is unchanged). Watch per bidding phase: pick/leaster rates (two v2 bidding phases already lowered pick ~2 points each), `softband_pick` clearly > 0 at the end, and the bidding cert | 4.4, 4.5, 6 |
 
 ---
 
@@ -367,8 +368,24 @@ cert:
    adapter, play pointer (which also carries bury) and play-under scalar
    FROZEN (`PPOAgent.set_trainable_heads("bidding")`); the pick, partner
    and call heads, limited critic and oracle train against the league
-   population; 200k episodes; certified vs the candidate (non-inferiority
-   on the same battery) and adopted if it passes. Deployment is the
+   population; 200k episodes; FIXED entropy coefficients keyed to pick
+   0.01 and scaled by row share (partner 0.026, bury 0.013), no
+   controller (amended 10-02: the heads settle at their entropy-
+   regularized optimum instead of being held at the league's operating
+   point; `BiddingHyperparams`); certified vs the candidate
+   (non-inferiority on the same battery) and adopted if it passes.
+   KNOWN LIMITATION (10-02): BURY IS NOT IMPROVED ANYWHERE IN PHASE 3.
+   Bury is scored by the play pointer, so this phase cannot train it
+   (pointer frozen); the corpus does not search bury nodes (retention
+   set), so distill only holds it to θ_k (retention KL ×10 against the
+   side effects of the trunk epochs); the cert guards its drift through
+   the bidding-only route but rewards no gain. The released bury is the
+   league's, tuned for the handoff checkpoint's play rather than the
+   improved play, and the chained θ_k anchor bounds its drift per
+   iteration only. Expected stake is small (gen-1 head split: bury-only
+   +0.003 ± 0.007 vs the seed, v2 +0.005 ± 0.005) but UNMEASURED at
+   handoff; follow-up in Appendix A.
+   Deployment is the
    SINGLE network — head routing was a hedge against the λ_ret-1 drift
    and is not needed under the pinned recipe (bidding read +0.0014 /
    −0.0005 on the optimised arms; iteration 1's trunk epoch improved
@@ -401,6 +418,17 @@ underpowered at 2,000); the convention battery; ONE exploitability audit
 tool). Golden capture for the release checkpoint
 (`analysis/capture_arch_goldens`) and the export to the app's model path
 are MANUAL steps after the program finishes (amended 09-16).
+
+Deployment temperature probe (added 10-02; NOT YET BUILT — needs an
+inference-time per-head softmax temperature): the release policy is
+stochastic, and its bidding heads leave phase 3 at the α = 0.01 soft
+optimum, so the deployed temperature is chosen, not inherited. Sweep T
+per head group — bidding (pick, partner/call) and play separately, since
+play's logits come from the search tilt, not a soft optimum — by
+duplicate h2h at cert scale (8,000 deals/mode; the effects near the
+optimum are hundredths, below PANEL-A's MDE ≈ 0.07). A fixed-field h2h
+rewards sharpening by construction, so read it together with the
+exploitability audit before fixing T.
 
 ---
 
@@ -574,6 +602,13 @@ rewritten `test_league_smoke` / `test_trainer_output_contracts` /
 recaptured with the new fixture and every legacy fixture verified
 byte-identical against a pre-change capture. Full suite green; the program
 smoke (`--smoke`) exercises every phase end to end.
+
+10-02 amendment (bidding-phase entropy, §0): `config.BiddingHyperparams`
+carries the fixed share-scaled coefficients (pick 0.01, partner 0.026,
+bury 0.013, play 0) and `train_ppo.hyperparams_for("bidding")` returns
+it; `train_ppo.resolve_args` enables the controller for `--phase league`
+only. The PPO loss is unchanged. Test: the bidding preset in
+`test_trainer_output_contracts`.
 
 ## 7. Pre-registration
 
@@ -776,6 +811,7 @@ epochs, positive-part James–Stein shrinkage, DAgger state distribution.
 [^pfsp]: Vinyals et al., "Grandmaster level in StarCraft II using multi-agent reinforcement learning," Nature 575, 2019, doi:10.1038/s41586-019-1724-z — prioritized fictitious self-play; Lanctot et al., PSRO, arXiv:1711.00832, 2017 — population-based best-response framing (the exploiter role we retire to an audit).
 [^five]: Berner et al., OpenAI Five, arXiv:1912.06680, 2019 — 80/20 self vs past mixture; our 0.15 self share is the validated per-seat analog.
 [^sac]: Haarnoja et al., "Soft Actor-Critic Algorithms and Applications," arXiv:1812.05905, 2018 §5; Christodoulou, "Soft Actor-Critic for Discrete Action Settings," arXiv:1910.07207, 2019; Sokota et al., arXiv:2206.05825, 2023 — mixed equilibria in imperfect information, why the floor is never zero.
+[^softopt]: Haarnoja et al., "Reinforcement Learning with Deep Energy-Based Policies," arXiv:1702.08165, 2017 — the soft-optimal policy π ∝ exp(Q/α); McKelvey & Palfrey, "Quantal Response Equilibria for Normal Form Games," *Games and Economic Behavior* 10, 1995 — the logit quantal response it corresponds to.
 [^bumpless]: Åström & Wittenmark, *Adaptive Control*, 2nd ed., 1995, ch. 9 — bumpless transfer; Learning_System_Redesign §8.5–§8.6.
 [^andry]: Andrychowicz et al., "What Matters in On-Policy Reinforcement Learning?", arXiv:2006.05990, 2020 — LR decay helpful but modest; Learning_System_Redesign §8.7.
 [^duplicate]: Bard, Hawkin, Johanson & Szafron, "The Annual Computer Poker Competition," AI Magazine 34(2), 2013 — duplicate-match format; Burch et al., AIVAT, AAAI 2018 — paired variance reduction; instrument: analysis/rigorous_eval.py + league_progress_eval.h2h_duplicate.
@@ -818,6 +854,18 @@ Also load-bearing but internal: Schrittwieser et al. MuZero (Nature 588, 2020); 
   the addendum-5 mini-calibration gate (P4 leaster determinizer exists).
 - **Bidding-node emission** if the frozen-trunk bidding phase yields
   nothing (§4.4 step 6).
+- **Bury under policy iteration** (added 10-02; §4.4 step 6 known
+  limitation). Before handoff, a cheap diagnostic: ISMCTS on a few hundred
+  sampled bury nodes of the handoff candidate — how often search's
+  preferred bury beats the policy's argmax by a material, significant
+  margin — optionally with a bury-only head-split h2h vs the bootstrap
+  seed. Rarely ⇒ accept (document). Often ⇒ bury emission: search bury
+  nodes and route them through the play machinery as override rows
+  (pointer-scored like play; the teacher already carries a bury budget),
+  behind a calibration gate (bury is the decision farthest from terminal,
+  so its Q is the noisiest) and with bury rows in the advantage fit.
+  Unfreezing the pointer in the bidding phase is NOT an option: it breaks
+  the disjoint-parameter composability of the two operators.
 - **`perceiver-recall-ctxmem` twin**: diagnostic arm only, on a gen-2
   gate failure.
 - **Uniform-window population** in place of PFSP: measured near-
