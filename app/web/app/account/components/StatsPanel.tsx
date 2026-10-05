@@ -122,11 +122,11 @@ export default function StatsPanel({ stats }: { stats: AccountStats }) {
       <Tiles tiles={completion} />
       <p className={styles.note}>
         * A hand counts as abandoned when the AI makes more than{" "}
-        {stats.abandon_threshold} of your decisions in it &mdash; after a
-        disconnect, leaving mid-hand, or turn timeouts. In an abandoned hand a
-        loss counts in full, but a win counts as 0 and isn&rsquo;t a win. Moves
-        the AI makes because the host closed the table, you were removed, or the
-        server restarted aren&rsquo;t marked as abandoned.
+        {stats.abandon_threshold} of your decisions in it (after a disconnect,
+        leaving mid-hand, or turn timeouts). In an abandoned hand a loss counts
+        in full, but a win counts as 0 and isn&rsquo;t a win. Moves the AI makes
+        because the host closed the table, you were removed, or the server
+        restarted aren&rsquo;t marked as abandoned.
       </p>
     </section>
   );
