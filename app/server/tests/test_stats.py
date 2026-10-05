@@ -245,7 +245,7 @@ async def test_personal_stats_count_only_finished_scored_hands(seeded):
     assert s["sph"] == pytest.approx(1.0)
     assert s["win_pct"] == pytest.approx(0.5)
     assert s["pick_pct"] == pytest.approx(0.5)
-    assert (s["rank"], s["qualifies_in"], s["min_hands"]) == (None, 46, 50)
+    assert (s["rank"], s["qualifies_in"], s["min_hands"]) == (None, 16, 20)
     assert (s["abandoned_hands"], s["ai_assisted_hands"]) == (0, 0)
     assert s["completion_rate"] == 1.0
     assert (s["picks"], s["trump_per_pick"], s["queens_per_pick"]) == (2, 0, 0)
@@ -405,7 +405,7 @@ async def test_leaderboard_serves_only_the_top_of_eligible_accounts(seeded):
         await seeder.hands(pid, [i + 1] * (50 - i) + [-1] * i)
         eligible.append(pid)
     short = await seeder.player(username=f"short_{tag}")
-    await seeder.hands(short, [100] * 49)
+    await seeder.hands(short, [100] * 19)
     hidden = await seeder.player(username=f"hidden_{tag}", verified=False)
     await seeder.hands(hidden, [100] * 60)
     guest = await seeder.player()
@@ -414,9 +414,9 @@ async def test_leaderboard_serves_only_the_top_of_eligible_accounts(seeded):
     r = await client.get("/api/leaderboard")
     board = r.json()
     ours = [row for row in board["rows"] if row["username"].endswith(tag)]
-    assert board["sort"] == "total" and board["min_hands"] == 50
+    assert board["sort"] == "total" and board["min_hands"] == 20
     assert len(board["rows"]) == 20
-    # Highest total first, and nobody under 50 hands or unverified.
+    # Highest total first, and nobody under 20 hands or unverified.
     assert [row["username"] for row in ours][:3] == [
         f"lb21_{tag}",
         f"lb20_{tag}",
