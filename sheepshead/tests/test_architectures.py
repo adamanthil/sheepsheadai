@@ -697,7 +697,9 @@ class TestPerceiver:
         assert tuple(out["features"].shape) == (1, 256)
         # LayerNorm pins the feature scale to full's convention (norm =
         # sqrt(d_model) with default affine init).
-        assert float(out["features"].norm()) == pytest.approx(256**0.5, abs=0.5)
+        assert float(out["features"].detach().norm()) == pytest.approx(
+            256**0.5, abs=0.5
+        )
         # Memory driver is the context token (index 0), as in v1/full
         # (operator decision 2026-07-09: keep the game-start prior).
         with torch.no_grad():
