@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import uuid
 
-import httpx
+import httpx2
 import pytest
 
 from server.services.persistence.sessions import create_session
@@ -210,9 +210,9 @@ async def seeded(db_app):
     app, pool = db_app
     seeder = Seeder(pool)
     await seeder.start()
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx2.ASGITransport(app=app)
     try:
-        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+        async with httpx2.AsyncClient(transport=transport, base_url="http://t") as c:
             yield seeder, c
     finally:
         await seeder.cleanup()

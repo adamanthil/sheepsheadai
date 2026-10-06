@@ -15,7 +15,7 @@ import copy
 import types
 import uuid
 
-import httpx
+import httpx2
 import pytest
 import torch
 from fastapi import Request
@@ -105,8 +105,8 @@ async def test_table_memory_matches_the_training_schedule(app, monkeypatch, arch
 
     app.dependency_overrides[current_player] = fake_player
     try:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        async with httpx2.AsyncClient(
+            transport=httpx2.ASGITransport(app=app), base_url="http://test"
         ) as client:
             schedule_ai_turns(table)
             for seat, action in moves:

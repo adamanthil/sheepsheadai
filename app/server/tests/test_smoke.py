@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import pkgutil
 
-import httpx
+import httpx2
 import pytest
 
 
@@ -24,8 +24,10 @@ def test_all_server_modules_import():
 
 @pytest.mark.asyncio
 async def test_health_endpoint(app):
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         resp = await client.get("/health")
     assert resp.status_code == 200
     assert resp.headers["x-content-type-options"] == "nosniff"

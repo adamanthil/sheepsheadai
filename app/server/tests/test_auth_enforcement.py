@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import uuid
 
-import httpx
+import httpx2
 
 from server.api.auth import PlayerIdentity, current_player
 
 
 async def test_mutating_routes_require_token(app):
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         cases = [
             client.post("/api/tables/x/seat", json={"client_id": "c", "seat": 1}),
             client.post("/api/tables/x/start", json={"client_id": "c"}),
@@ -29,8 +31,8 @@ async def test_mutating_routes_require_token(app):
 async def test_players_patch_requires_ownership(app):
     app.dependency_overrides[current_player] = lambda: PlayerIdentity(id=uuid.uuid4())
     try:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
             transport=transport, base_url="http://test"
         ) as client:
             resp = await client.patch(
@@ -58,8 +60,8 @@ async def test_foreign_client_id_is_403(app):
 
     app.dependency_overrides[current_player] = lambda: PlayerIdentity(id=attacker)
     try:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
             transport=transport, base_url="http://test"
         ) as client:
             resp = await client.post(

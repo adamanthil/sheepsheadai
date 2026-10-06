@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import logging
 
-import httpx
+import httpx2
 
 from server.config import get_settings
 
 RESEND_URL = "https://api.resend.com/emails"
-_TIMEOUT = httpx.Timeout(10.0)
+_TIMEOUT = httpx2.Timeout(10.0)
 
 
 async def send_email(to: str, subject: str, text: str, html: str) -> None:
@@ -27,7 +27,7 @@ async def send_email(to: str, subject: str, text: str, html: str) -> None:
             "email (not sent, no RESEND_API_KEY) to %s: %s\n%s", to, subject, text
         )
         return
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with httpx2.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.post(
             RESEND_URL,
             headers={"Authorization": f"Bearer {settings.resend_api_key}"},

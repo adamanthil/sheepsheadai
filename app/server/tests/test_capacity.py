@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-import httpx
+import httpx2
 from starlette.testclient import TestClient
 
 import server.realtime.websocket as ws_module
@@ -15,8 +15,10 @@ from server.runtime.models import ClientConn, Table
 
 async def test_table_cap_returns_503(app, monkeypatch):
     monkeypatch.setattr(manager_module, "MAX_TABLES", 2)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         assert (await client.post("/api/tables", json={"name": "a"})).status_code == 200
         assert (await client.post("/api/tables", json={"name": "b"})).status_code == 200
         resp = await client.post("/api/tables", json={"name": "c"})

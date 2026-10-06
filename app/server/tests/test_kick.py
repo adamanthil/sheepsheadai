@@ -6,7 +6,7 @@ import json
 import time
 import uuid
 
-import httpx
+import httpx2
 import pytest
 from fastapi import Request
 
@@ -64,8 +64,8 @@ async def client(app):
 
     app.dependency_overrides[current_player] = fake_player
     try:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
     finally:
         app.dependency_overrides.clear()

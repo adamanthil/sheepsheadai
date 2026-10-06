@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 
-import httpx
+import httpx2
 import pytest
 
 from server.app import DEV_CORS_ORIGIN_REGEX, parse_cors_origins
@@ -39,9 +39,11 @@ def build_app(monkeypatch, tmp_path, cors_origins: str):
         get_settings.cache_clear()
 
 
-async def preflight(app, origin: str) -> httpx.Response:
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+async def preflight(app, origin: str) -> httpx2.Response:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         return await client.options(
             "/api/tables",
             headers={

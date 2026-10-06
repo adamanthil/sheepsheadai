@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import httpx
+import httpx2
 
 from server.config import get_settings
 
@@ -11,8 +11,10 @@ async def test_create_table_rate_limited(app, monkeypatch):
     # Measure the rate limit alone, not the per-IP open-table cap.
     monkeypatch.setenv("SHEEPSHEAD_MAX_TABLES_PER_IP", "100")
     get_settings.cache_clear()
-    transport = httpx.ASGITransport(app=app, client=("203.0.113.7", 12345))
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app, client=("203.0.113.7", 12345))
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         statuses = []
         for i in range(11):
             resp = await client.post("/api/tables", json={"name": f"t{i}"})

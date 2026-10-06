@@ -37,13 +37,12 @@ server = [
     "slowapi>=0.1.9",
     "argon2-cffi>=25.1.0",
     "email-validator>=2.2.0",
-    "httpx>=0.28",
+    "httpx2>=2.13",
 ]
 dev = [
     "ruff>=0.8.0",
     "pytest>=8.0",
     "pytest-asyncio>=0.25",
-    "httpx>=0.28",
     # Pinned exactly: the pre-commit gate and CI must agree with the editor's
     # language server to the patch level, or a version bump silently reports
     # errors in one place and not the other. Point the editor at

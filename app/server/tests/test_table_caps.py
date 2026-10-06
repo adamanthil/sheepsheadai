@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 
-import httpx
+import httpx2
 
 from server.api import auth
 from server.config import get_settings
@@ -13,13 +13,13 @@ from server.runtime.manager import tables
 from server.services.persistence.sessions import hash_token
 
 
-async def _create(client: httpx.AsyncClient, headers: dict | None = None):
+async def _create(client: httpx2.AsyncClient, headers: dict | None = None):
     return await client.post("/api/tables", json={"name": "t"}, headers=headers)
 
 
-def _client(app) -> httpx.AsyncClient:
-    return httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
+def _client(app) -> httpx2.AsyncClient:
+    return httpx2.AsyncClient(
+        transport=httpx2.ASGITransport(app=app), base_url="http://test"
     )
 
 

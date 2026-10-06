@@ -10,7 +10,7 @@ import asyncio
 import os
 import uuid
 
-import httpx
+import httpx2
 import pytest
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "")
@@ -37,8 +37,8 @@ def outbox(monkeypatch):
 @pytest.fixture
 async def client(db_app):
     app, _ = db_app
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
 
@@ -187,7 +187,7 @@ async def test_login_by_email_or_username_on_another_device(client, outbox, db_a
         assert body["name"] == "Guesty"
         assert body["session_token"] not in (None, token)
 
-    # httpx's ASGITransport reports the client as 127.0.0.1.
+    # httpx2's ASGITransport reports the client as 127.0.0.1.
     last_ip = await pool.fetchval(
         "SELECT host(last_ip) FROM player WHERE player_id = $1", uuid.UUID(player_id)
     )

@@ -9,7 +9,7 @@ import os
 import random
 import uuid
 
-import httpx
+import httpx2
 import pytest
 
 from server.runtime.models import ClientConn, Occupant, Table
@@ -222,8 +222,8 @@ async def test_history_needs_a_verified_account(db_app):
     guest = uuid.uuid4()
     await ensure_player(pool, guest, None)
     token = await create_session(pool, guest)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://t") as client:
         r = await client.get(
             "/api/account/hands", headers={"Authorization": f"Bearer {token}"}
         )
@@ -243,8 +243,8 @@ async def test_history_endpoint_serves_the_callers_hands(db_app):
         f"{pid.hex[:8]}@example.com",
     )
     token = await create_session(pool, pid)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://t") as client:
         r = await client.get(
             "/api/account/hands", headers={"Authorization": f"Bearer {token}"}
         )

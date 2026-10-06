@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-import httpx
+import httpx2
 import pytest
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "")
@@ -24,8 +24,10 @@ pytestmark = pytest.mark.skipif(
 
 async def test_create_join_start_flow(db_app):
     app, pool = db_app
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         created = await client.post("/api/tables", json={"name": "flow"})
         assert created.status_code == 200
         table_id = created.json()["id"]
@@ -97,8 +99,10 @@ async def test_create_join_start_flow(db_app):
 
 async def test_only_the_host_key_takes_host(db_app):
     app, _ = db_app
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         created = (await client.post("/api/tables", json={"name": "keyed"})).json()
         table_id = created["id"]
 
@@ -139,8 +143,10 @@ async def test_only_the_host_key_takes_host(db_app):
 
 async def test_expired_session_is_rejected(db_app):
     app, pool = db_app
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         created = await client.post("/api/tables", json={"name": "exp"})
         table_id = created.json()["id"]
         joined = await client.post(
@@ -177,8 +183,10 @@ async def test_doublers_pass_out_persists_the_thrown_in_deal_and_doubled_stake(d
     from sheepshead.game import ACTION_IDS
 
     app, pool = db_app
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         created = await client.post(
             "/api/tables",
             json={"name": "doublers", "rules": {"allPassMode": "doublers"}},
@@ -238,8 +246,10 @@ async def test_doublers_pass_out_persists_the_thrown_in_deal_and_doubled_stake(d
 
 async def test_host_close_mid_hand_records_the_settled_hand(db_app):
     app, pool = db_app
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
         created = await client.post("/api/tables", json={"name": "closer"})
         table_id = created.json()["id"]
         joined = await client.post(

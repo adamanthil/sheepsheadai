@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import uuid
 
-import httpx
+import httpx2
 import pytest
 from fastapi import Request
 
@@ -144,8 +144,8 @@ async def test_own_move_clears_strikes(app, hooks):
 
     app.dependency_overrides[current_player] = fake_player
     try:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
             transport=transport, base_url="http://test"
         ) as client:
             r = await client.post(

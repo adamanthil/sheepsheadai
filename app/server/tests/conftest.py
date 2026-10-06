@@ -68,7 +68,7 @@ class StubAgent:
 @pytest.fixture
 async def db_app(app, monkeypatch):
     """The hermetic app fixture, but with a live pool wired to TEST_DATABASE_URL
-    (httpx's ASGITransport does not run the lifespan, so do its DB work here)."""
+    (httpx2's ASGITransport does not run the lifespan, so do its DB work here)."""
     import server.app as app_module
     import server.runtime.dealing as dealing_module
     from server.services.persistence.pool import (
