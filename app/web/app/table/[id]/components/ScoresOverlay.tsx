@@ -32,7 +32,12 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
 
   const columns: Array<{ id: string; label: string }> = (
     initialOrder.length === 5 ? initialOrder : Object.keys(labelsById)
-  ).map((id: string) => ({ id, label: labelsById[id] || id }));
+  )
+    // Someone no longer seated keeps the name they were dealt in under.
+    .map((id: string) => ({
+      id,
+      label: labelsById[id] || table?.initialNames?.[id] || id,
+    }));
 
   const scoreFor = (
     row: { bySeat?: Record<string, { id: string; score: number }> },
