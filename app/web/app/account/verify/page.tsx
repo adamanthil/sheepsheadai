@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ds } from "../../../lib/ds";
 import {
@@ -15,7 +15,12 @@ import styles from "../account.module.css";
 export default function VerifyPage() {
   const [status, setStatus] = useState<"working" | "done" | string>("working");
 
+  // Taking the token clears the fragment, so a second effect run (Strict
+  // Mode) would read nothing and report a missing token.
+  const taken = useRef(false);
   useEffect(() => {
+    if (taken.current) return;
+    taken.current = true;
     const token = takeFragmentToken();
     if (!token) {
       setStatus("This link is missing its token. Try the link in the email.");

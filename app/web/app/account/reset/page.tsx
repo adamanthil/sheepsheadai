@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ds } from "../../../lib/ds";
 import {
@@ -22,7 +22,12 @@ export default function ResetPage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  // Taking the token clears the fragment, so a second effect run (Strict
+  // Mode) would read nothing and overwrite it with null.
+  const taken = useRef(false);
   useEffect(() => {
+    if (taken.current) return;
+    taken.current = true;
     setToken(takeFragmentToken());
   }, []);
 
