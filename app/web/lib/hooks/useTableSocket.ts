@@ -20,16 +20,22 @@ export interface TableSocketCallbacks {
   onError?: (message: string) => void;
 }
 
+/** How the player came to be off the table while still on its page: they
+ * left once the hand ended, or the host closed the table after it. */
+export type Departure = "left" | "closed";
+
 export type ConnectionState =
   "connecting" | "connected" | "reconnecting" | "failed";
 
 /** Close codes the server uses for auth/authorization failures — retrying
  * cannot help, so the client must not hammer the server. */
-const TERMINAL_WS_CODES = new Set([4401, 4403, 4404, 4429]);
+const TERMINAL_WS_CODES = new Set([4401, 4403, 4404, 4410, 4429]);
 
 export interface UseTableSocketReturn {
   connected: boolean;
   connectionState: ConnectionState;
+  /** Set once the player is off the table but kept on its final scores. */
+  departure: Departure | null;
   lastState: TableStateMsg | null;
   /** Local-clock ms when the acting human's turn runs out, or null. */
   turnDeadline: number | null;
@@ -38,6 +44,10 @@ export interface UseTableSocketReturn {
   /** POST one action. Resolves true when the server accepted it. */
   takeAction: (actionId: number) => Promise<boolean>;
   closeTable: () => Promise<void>;
+  /** Host only: close the table once the hand in play ends, or not. */
+  setCloseAfterHand: (on: boolean) => Promise<void>;
+  /** Leave the table once the hand in play ends, or not. */
+  setLeaveAfterHand: (on: boolean) => Promise<void>;
   redeal: () => Promise<void>;
   /** Spectator only: take over the AI at ``seat``. */
   takeSeat: (seat: number) => Promise<void>;
@@ -55,6 +65,7 @@ export function useTableSocket(
     useState<ConnectionState>("connecting");
   const connected = connectionState === "connected";
   const [lastState, setLastState] = useState<TableStateMsg | null>(null);
+  const [departure, setDeparture] = useState<Departure | null>(null);
   // Kept on the local clock: the server sends seconds left, not a
   // timestamp, so a skewed device clock can't distort the countdown.
   const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
@@ -113,6 +124,15 @@ export function useTableSocket(
         timer = setTimeout(connect, delay);
       };
 
+      // Off the table for good, but kept on its final scores: no reconnect,
+      // and a rejoin is a fresh join (the server forgot this connection).
+      const departed = (how: Departure) => {
+        disposed = true;
+        window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+        socket.close();
+        setDeparture(how);
+      };
+
       socket.onmessage = (ev) => {
         const data = parseWsMessage(ev.data);
         if (!data) return;
@@ -148,6 +168,11 @@ export function useTableSocket(
             return msg;
           });
         } else if (data.type === "table_closed") {
+          // Ended at the host's word after a hand: stay on the final scores.
+          if (data.reason === "host_closed_after_hand") {
+            departed("closed");
+            return;
+          }
           callbacksRef.current?.onTableClosed?.();
           socket.close();
           // A table the server closed for sitting idle says so on arrival.
@@ -179,6 +204,14 @@ export function useTableSocket(
           window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
           socket.close();
           window.location.href = "/?notice=removed";
+        } else if (data.type === "left_after_hand") {
+          // Carries the table with the hand just finished, which this
+          // player is gone before the broadcast of.
+          const tbl = data.table;
+          setLastState((prev: TableStateMsg | null) =>
+            prev ? { ...prev, table: tbl } : prev,
+          );
+          departed("left");
         } else if (data.type === "turn_timer") {
           setTurnDeadline(Date.now() + data.secondsLeft * 1000);
         } else if (data.type === "server_restart") {
@@ -237,6 +270,38 @@ export function useTableSocket(
       callbacksRef.current?.onError?.("Close failed: network error");
     }
   }, [tableId, clientId]);
+
+  const postAfterHand = useCallback(
+    async (path: string, on: boolean, what: string) => {
+      if (!tableId || !clientId) return;
+      try {
+        const res = await apiFetch(`/api/tables/${tableId}/${path}`, {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId, on }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          callbacksRef.current?.onError?.(
+            `${what} failed: ${j?.detail || res.status}`,
+          );
+        }
+      } catch (err) {
+        console.warn(`${path} POST failed`, err);
+        callbacksRef.current?.onError?.(`${what} failed: network error`);
+      }
+    },
+    [tableId, clientId],
+  );
+
+  const setLeaveAfterHand = useCallback(
+    (on: boolean) => postAfterHand("leave_after_hand", on, "Leave"),
+    [postAfterHand],
+  );
+
+  const setCloseAfterHand = useCallback(
+    (on: boolean) => postAfterHand("close_after_hand", on, "Close"),
+    [postAfterHand],
+  );
 
   const redeal = useCallback(async () => {
     if (!tableId || !clientId) return;
@@ -321,12 +386,15 @@ export function useTableSocket(
   return {
     connected,
     connectionState,
+    departure,
     lastState,
     turnDeadline,
     actionLookup,
     chatMessages,
     takeAction,
     closeTable,
+    setCloseAfterHand,
+    setLeaveAfterHand,
     redeal,
     takeSeat,
     kickPlayer,

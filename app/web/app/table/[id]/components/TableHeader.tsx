@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Wordmark, MiniCardMark, ds } from "../../../../lib/ds";
 import styles from "./TableHeader.module.css";
 
@@ -11,6 +11,10 @@ interface TableHeaderProps {
   connected: boolean;
   isMobile: boolean;
   onLeave: () => void;
+  /** Seated with a hand in play: Leave offers to wait for the hand's end. */
+  canLeaveAfterHand: boolean;
+  leavingAfterHand: boolean;
+  onLeaveAfterHand: (on: boolean) => void;
   onShowScores: () => void;
   onShowLog?: () => void;
 }
@@ -23,27 +27,95 @@ export default function TableHeader({
   phaseLabel,
   isMobile,
   onLeave,
+  canLeaveAfterHand,
+  leavingAfterHand,
+  onLeaveAfterHand,
   onShowScores,
   onShowLog,
 }: TableHeaderProps) {
+  const [choosing, setChoosing] = useState(false);
+  const linkClass = isMobile ? styles.mobLink : ds.link;
+  const leaveClass = isMobile ? styles.mobLeave : `${ds.link} ${styles.leave}`;
+  const fontSize = isMobile ? undefined : 12;
+
+  // Mid-hand, Leave first asks when: now forfeits the hand to the AI, after
+  // the hand waits for it to end. Once asked for, the wait can be undone.
+  let leave: React.ReactNode;
+  if (canLeaveAfterHand && leavingAfterHand) {
+    leave = (
+      <span className={styles.leaveRow}>
+        <span className={styles.armed}>
+          {isMobile ? "Leaving after hand" : "Leaving after this hand"}
+        </span>
+        <a
+          className={linkClass}
+          style={{ fontSize }}
+          onClick={() => onLeaveAfterHand(false)}
+        >
+          Undo
+        </a>
+      </span>
+    );
+  } else if (canLeaveAfterHand && choosing) {
+    leave = (
+      <span className={styles.leaveRow}>
+        <a
+          className={linkClass}
+          style={{ fontSize }}
+          onClick={() => {
+            setChoosing(false);
+            onLeaveAfterHand(true);
+          }}
+        >
+          After this hand
+        </a>
+        <a className={leaveClass} style={{ fontSize }} onClick={onLeave}>
+          Leave now
+        </a>
+        <a
+          className={linkClass}
+          style={{ fontSize }}
+          onClick={() => setChoosing(false)}
+        >
+          Cancel
+        </a>
+      </span>
+    );
+  } else {
+    leave = (
+      <a
+        className={leaveClass}
+        style={{ fontSize }}
+        onClick={canLeaveAfterHand ? () => setChoosing(true) : onLeave}
+      >
+        Leave
+      </a>
+    );
+  }
+  const leaveExpanded = canLeaveAfterHand && choosing && !leavingAfterHand;
+
   if (isMobile) {
     return (
       <div className={styles.mob}>
-        <div className={styles.mobLeft}>
-          <MiniCardMark h={20} />
-          <div className={styles.mobRoom}>{roomName}</div>
-          <div className={styles.mobMeta}>
-            H{handNumber} · {phaseLabel}
+        {/* The choices need the room; the table name comes back after. */}
+        {leaveExpanded ? null : (
+          <div className={styles.mobLeft}>
+            <MiniCardMark h={20} />
+            <div className={styles.mobRoom}>{roomName}</div>
+            {/* Makes room for "Leaving after hand"; the hand still shows. */}
+            {!(canLeaveAfterHand && leavingAfterHand) && (
+              <div className={styles.mobMeta}>
+                H{handNumber} · {phaseLabel}
+              </div>
+            )}
+            {stakeBadge && (
+              <span className={`${ds.badge} ${ds.badgeAccent} ${styles.stake}`}>
+                {stakeBadge}
+              </span>
+            )}
           </div>
-          {stakeBadge && (
-            <span className={`${ds.badge} ${ds.badgeAccent} ${styles.stake}`}>
-              {stakeBadge}
-            </span>
-          )}
-        </div>
-        <a className={styles.mobLeave} onClick={onLeave}>
-          Leave
-        </a>
+        )}
+        {leave}
       </div>
     );
   }
@@ -85,13 +157,7 @@ export default function TableHeader({
               Chat
             </a>
           )}
-          <a
-            className={`${ds.link} ${styles.leave}`}
-            style={{ fontSize: 12 }}
-            onClick={onLeave}
-          >
-            Leave
-          </a>
+          {leave}
         </div>
       </div>
     </div>

@@ -72,8 +72,45 @@
 
 .utilRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+/* Close table and its expanded choices, divided from the buttons before. */
+.closeGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  margin-left: 4px;
+  border-left: 1px solid var(--rule);
+}
+/* Closing now ends the table for everyone, mid-hand or not. */
+.dangerBtn {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: var(--card-paper);
+}
+@media (hover: hover) {
+  .dangerBtn:hover {
+    background: var(--accent-2-soft);
+    border-color: var(--accent-2-soft);
+  }
+}
+/* On a phone the expanded group wraps onto its own line, which sets it
+   apart already; a divider there would dangle at the line's start. */
+.mob .closeGroup {
+  padding-left: 0;
+  margin-left: 0;
+  border-left: none;
+}
+/* A close the host asked for once the hand ends. */
+.armed {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--accent-2);
 }
 .dangerLink {
   color: var(--accent-2);

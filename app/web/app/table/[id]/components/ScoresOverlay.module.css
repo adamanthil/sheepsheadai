@@ -30,6 +30,11 @@
 .mlAuto {
   margin-left: auto;
 }
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .scoresBody {
   overflow: auto;
   padding: 8px 20px 20px;

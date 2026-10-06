@@ -240,6 +240,22 @@ export default function HomePage() {
     }
   };
 
+  // A table's "Rejoin" (after leaving it once a hand ended) lands here:
+  // join it as soon as the player's name is known.
+  const [rejoinId, setRejoinId] = useState<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("rejoin");
+    if (!id) return;
+    setRejoinId(id);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+  useEffect(() => {
+    if (!rejoinId || !displayName) return;
+    setRejoinId(null);
+    void join(rejoinId);
+    // join is redefined every render; the id is what triggers this.
+  }, [rejoinId, displayName]);
+
   const botCount = (t: TableSummary) =>
     Object.entries(t.seats || {}).reduce((acc, [k, seatName]) => {
       const isAI =

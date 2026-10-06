@@ -17,6 +17,8 @@ export interface SeatView {
   account: string | null;
   role: SeatRole;
   you: boolean;
+  /** The player asked to leave once this hand ends. */
+  leaving: boolean;
 }
 
 export interface CallOption {

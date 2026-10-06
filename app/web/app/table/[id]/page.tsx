@@ -106,12 +106,15 @@ export default function TablePage() {
   const {
     connected,
     connectionState,
+    departure,
     lastState,
     turnDeadline,
     actionLookup,
     chatMessages,
     takeAction,
     closeTable,
+    setCloseAfterHand,
+    setLeaveAfterHand,
     redeal,
     takeSeat,
     kickPlayer,
@@ -201,6 +204,7 @@ export default function TablePage() {
   const rulesBadge = rulesBadgeText(table.rules);
   const stakeBadge = stakeBadgeText(table.scoreMultiplier);
   const hasLastTrick = computeHasLastTrick(view);
+  const handInPlay = table.status === "playing" && !view.is_done;
   const prevText = computePrevText(showPrev, hasLastTrick, view, table);
 
   const shownChat = mutes.visible(chatMessages);
@@ -336,6 +340,9 @@ export default function TablePage() {
         confirmClose={confirmClose}
         onConfirmClose={setConfirmClose}
         onCloseTable={closeTable}
+        handInPlay={handInPlay}
+        closingAfterHand={table.closingAfterHand}
+        onCloseAfterHand={(on) => void setCloseAfterHand(on)}
         isMobile={isMobile}
         secondsLeft={secondsLeft}
       />
@@ -343,29 +350,62 @@ export default function TablePage() {
 
   const overlays = (
     <>
-      {(connectionState === "reconnecting" || connectionState === "failed") && (
-        <div
-          role="alert"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 1000,
-            textAlign: "center",
-            padding: "6px 12px",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#fff",
-            background: connectionState === "failed" ? "#7f1d1d" : "#92400e",
-          }}
-        >
-          {connectionState === "failed"
-            ? "Connection rejected — rejoin from the lobby"
-            : "Connection lost — reconnecting…"}
-        </div>
+      {!departure &&
+        (connectionState === "reconnecting" ||
+          connectionState === "failed") && (
+          <div
+            role="alert"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 1000,
+              textAlign: "center",
+              padding: "6px 12px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#fff",
+              background: connectionState === "failed" ? "#7f1d1d" : "#92400e",
+            }}
+          >
+            {connectionState === "failed"
+              ? "Connection rejected — rejoin from the lobby"
+              : "Connection lost — reconnecting…"}
+          </div>
+        )}
+      {departure && (
+        <ScoresOverlay
+          table={table}
+          title={
+            departure === "left"
+              ? `You left after hand ${table.resultsHistory.length}`
+              : "The host ended the table"
+          }
+          onClose={() => router.push("/")}
+          actions={
+            <>
+              {departure === "left" && (
+                <button
+                  className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+                  onClick={() =>
+                    router.push(`/?rejoin=${encodeURIComponent(table.id)}`)
+                  }
+                >
+                  Rejoin
+                </button>
+              )}
+              <button
+                className={`${ds.btn} ${ds.btnSm}`}
+                onClick={() => router.push("/")}
+              >
+                Lobby
+              </button>
+            </>
+          }
+        />
       )}
-      {view.is_done && view.final && (
+      {!departure && view.is_done && view.final && (
         <GameOverBanner
           final={view.final}
           table={table}
@@ -392,6 +432,11 @@ export default function TablePage() {
       connected={connected}
       isMobile={isMobile}
       onLeave={() => router.push("/")}
+      canLeaveAfterHand={handInPlay && yourSeat !== null && !departure}
+      leavingAfterHand={
+        yourSeat !== null && !!table.seatLeavingAfterHand[String(yourSeat)]
+      }
+      onLeaveAfterHand={(on) => void setLeaveAfterHand(on)}
       onShowScores={() => setShowScores(true)}
     />
   );

@@ -37,6 +37,10 @@ interface ActionBarProps {
   confirmClose: boolean;
   onConfirmClose: (v: boolean) => void;
   onCloseTable: () => void;
+  /** A hand is being played, so the table can close once it ends. */
+  handInPlay: boolean;
+  closingAfterHand: boolean;
+  onCloseAfterHand: (on: boolean) => void;
   isMobile: boolean;
   secondsLeft: number | null;
 }
@@ -78,30 +82,56 @@ export default function ActionBar(props: ActionBarProps) {
       >
         Scores
       </button>
-      {props.isHost &&
-        (props.confirmClose ? (
-          <>
+      {/* Its own group, set off from Scores: once expanded, its buttons
+          read as one choice rather than more of the row. */}
+      {props.isHost && (
+        <span className={styles.closeGroup}>
+          {props.closingAfterHand ? (
+            <>
+              <span className={styles.armed}>Table ends after this hand</span>
+              <button
+                className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+                onClick={() => props.onCloseAfterHand(false)}
+              >
+                Undo
+              </button>
+            </>
+          ) : props.confirmClose ? (
+            <>
+              {props.handInPlay && (
+                <button
+                  className={`${ds.btn} ${ds.btnSm}`}
+                  onClick={() => {
+                    props.onConfirmClose(false);
+                    props.onCloseAfterHand(true);
+                  }}
+                >
+                  End after this hand
+                </button>
+              )}
+              <button
+                className={`${ds.btn} ${ds.btnSm} ${styles.dangerBtn}`}
+                onClick={props.onCloseTable}
+              >
+                {props.handInPlay ? "Close now" : "Confirm close"}
+              </button>
+              <button
+                className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+                onClick={() => props.onConfirmClose(false)}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
             <button
-              className={`${ds.btn} ${ds.btnSm}`}
-              onClick={props.onCloseTable}
+              className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm} ${styles.dangerLink}`}
+              onClick={() => props.onConfirmClose(true)}
             >
-              Confirm close
+              Close table
             </button>
-            <button
-              className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-              onClick={() => props.onConfirmClose(false)}
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button
-            className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm} ${styles.dangerLink}`}
-            onClick={() => props.onConfirmClose(true)}
-          >
-            Close table
-          </button>
-        ))}
+          )}
+        </span>
+      )}
     </div>
   );
 

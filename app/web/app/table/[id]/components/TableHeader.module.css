@@ -107,3 +107,43 @@
   cursor: pointer;
   text-decoration: none;
 }
+
+/* Leave's mid-hand choices, and the armed "after this hand" state. */
+.leaveRow {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+}
+/* On desktop the choices sit beside Scores and Chat: set them apart. */
+.desk .leaveRow {
+  padding-left: 12px;
+  border-left: 1px solid var(--rule);
+}
+.armed {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--accent-2);
+  white-space: nowrap;
+}
+.mob .leaveRow {
+  margin-left: auto;
+  gap: 18px;
+  flex-shrink: 0;
+}
+.mob .armed {
+  font-size: 13px;
+}
+.mobLink {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mobLeave {
+  white-space: nowrap;
+}

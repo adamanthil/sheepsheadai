@@ -101,13 +101,16 @@ export function RingChip({
       <div className={styles.chipText}>
         <div
           className={`${styles.chipName} ${compact ? styles.chipNameSm : ""}`}
-          title={seat.name}
+          title={
+            seat.leaving ? `${seat.name} · leaving after this hand` : seat.name
+          }
         >
           {seat.name}
         </div>
         {!compact && (
           <div className={ds.overline} style={{ fontSize: 9 }}>
             Seat {seat.absSeat}
+            {seat.leaving && " · leaving"}
           </div>
         )}
       </div>

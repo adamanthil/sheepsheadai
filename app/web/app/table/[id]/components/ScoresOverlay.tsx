@@ -6,9 +6,17 @@ import styles from "./ScoresOverlay.module.css";
 interface ScoresOverlayProps {
   onClose: () => void;
   table: TableView;
+  title?: string;
+  /** Replace the Close button, for a card the player can't dismiss. */
+  actions?: React.ReactNode;
 }
 
-export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
+export default function ScoresOverlay({
+  onClose,
+  table,
+  title = "Running totals",
+  actions,
+}: ScoresOverlayProps) {
   const history: HandResult[] = table?.resultsHistory || [];
   const seats = table?.seats || {};
 
@@ -66,15 +74,17 @@ export default function ScoresOverlay({ onClose, table }: ScoresOverlayProps) {
       <div className={styles.scoresBox}>
         <div className={styles.scoresHeader}>
           <div>
-            <strong>Running totals</strong>
+            <strong>{title}</strong>
           </div>
-          <div className={styles.mlAuto}>
-            <button
-              className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-              onClick={onClose}
-            >
-              Close
-            </button>
+          <div className={`${styles.mlAuto} ${styles.actions}`}>
+            {actions ?? (
+              <button
+                className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+                onClick={onClose}
+              >
+                Close
+              </button>
+            )}
           </div>
         </div>
         <div className={styles.scoresBody}>

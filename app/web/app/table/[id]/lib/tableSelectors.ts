@@ -129,6 +129,7 @@ export function buildSeats(
     account: accountForSeat(absSeat, table),
     role: getSeatRole(lastState, absSeat, started),
     you: absSeat === yourSeat,
+    leaving: !!table.seatLeavingAfterHand[String(absSeat)],
   }));
 }
 

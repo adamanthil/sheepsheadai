@@ -28,6 +28,8 @@ const looseTable = z.looseObject({
   seatIsAI: z.record(z.string(), z.boolean()),
   seatAccount: z.record(z.string(), z.string().nullable()),
   seatTakeable: z.record(z.string(), z.boolean()),
+  seatLeavingAfterHand: z.record(z.string(), z.boolean()),
+  closingAfterHand: z.boolean(),
   seatOccupants: z.record(z.string(), z.string().nullable()),
   seats: z.record(z.string(), z.string().nullable()),
 });
@@ -121,6 +123,11 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
   }),
   z.looseObject({ type: z.literal("server_restart") }),
   z.looseObject({ type: z.literal("kicked") }),
+  z.looseObject({
+    type: z.literal("left_after_hand"),
+    tableId: z.string().optional(),
+    table: looseTable,
+  }),
   z.looseObject({
     type: z.literal("turn_timer"),
     seat: z.number(),
