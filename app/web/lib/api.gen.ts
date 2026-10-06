@@ -381,6 +381,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/{table_id}/close_after_hand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close After Hand
+         * @description Host asks to close the table once the hand in play ends, or takes
+         *     the request back.
+         */
+        post: operations["close_after_hand_api_tables__table_id__close_after_hand_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{table_id}/fill_ai": {
         parameters: {
             query?: never;
@@ -430,6 +451,27 @@ export interface paths {
          *     and their identity may not rejoin this table.
          */
         post: operations["kick_player_api_tables__table_id__kick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{table_id}/leave_after_hand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave After Hand
+         * @description Ask to leave once the hand in play ends (runtime.departures), or
+         *     take the request back.
+         */
+        post: operations["leave_after_hand_api_tables__table_id__leave_after_hand_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -615,6 +657,16 @@ export interface components {
             action_lookup: {
                 [key: string]: string;
             };
+        };
+        /** AfterHandRequest */
+        AfterHandRequest: {
+            /** Client Id */
+            client_id: string;
+            /**
+             * On
+             * @default true
+             */
+            on: boolean;
         };
         /** AnalyzeActionDetail */
         AnalyzeActionDetail: {
@@ -984,6 +1036,8 @@ export interface components {
         };
         /** CreateTableResponse */
         CreateTableResponse: {
+            /** Closingafterhand */
+            closingAfterHand: boolean;
             /** Fillwithai */
             fillWithAI: boolean;
             /** Host */
@@ -1020,6 +1074,10 @@ export interface components {
             };
             /** Seatisai */
             seatIsAI: {
+                [key: string]: boolean;
+            };
+            /** Seatleavingafterhand */
+            seatLeavingAfterHand: {
                 [key: string]: boolean;
             };
             /** Seatoccupants */
@@ -1279,6 +1337,8 @@ export interface components {
         };
         /** TablePublic */
         TablePublic: {
+            /** Closingafterhand */
+            closingAfterHand: boolean;
             /** Fillwithai */
             fillWithAI: boolean;
             /** Host */
@@ -1313,6 +1373,10 @@ export interface components {
             };
             /** Seatisai */
             seatIsAI: {
+                [key: string]: boolean;
+            };
+            /** Seatleavingafterhand */
+            seatLeavingAfterHand: {
                 [key: string]: boolean;
             };
             /** Seatoccupants */
@@ -2037,6 +2101,41 @@ export interface operations {
             };
         };
     };
+    close_after_hand_api_tables__table_id__close_after_hand_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AfterHandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     fill_ai_api_tables__table_id__fill_ai_post: {
         parameters: {
             query?: never;
@@ -2119,6 +2218,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["KickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leave_after_hand_api_tables__table_id__leave_after_hand_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AfterHandRequest"];
             };
         };
         responses: {

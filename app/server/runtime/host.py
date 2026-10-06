@@ -18,16 +18,35 @@ from server.runtime.tasks import spawn
 HOST_HANDOFF_GRACE_SECONDS = 10.0
 
 
-def _successor(table: Table) -> Optional[ClientConn]:
+def _successor(table: Table, excluding: set[str]) -> Optional[ClientConn]:
     """The connected human who has been at the table longest, preferring
     one with a seat. ``table.clients`` keeps join order."""
     connected = [
         c
         for cid, c in table.clients.items()
-        if c.connected and cid != table.host_client_id
+        if c.connected and cid != table.host_client_id and cid not in excluding
     ]
     seated = [c for c in connected if c.seat is not None]
     return (seated or connected or [None])[0]
+
+
+def pass_host(table: Table, excluding: set[str]) -> Optional[ClientConn]:
+    """Make the successor host now, passing over the clients in
+    ``excluding``; None (and no change) when there is nobody to take it.
+    Caller holds ``table.state_lock``."""
+    successor = _successor(table, excluding)
+    if successor is not None:
+        table.host_client_id = successor.client_id
+    return successor
+
+
+async def announce_new_host(table: Table, successor: ClientConn) -> None:
+    msg_dict = await add_chat_message(
+        table, "system", "is now the host", author=successor.display_name
+    )
+    await broadcast_chat_append(table, msg_dict)
+    await broadcast_table_update(table)
+    await broadcast_table_state(table)
 
 
 def cancel_host_handoff(table: Table) -> None:
@@ -50,17 +69,11 @@ def schedule_host_handoff(table: Table) -> None:
                 host = table.clients.get(table.host_client_id or "")
                 if host is not None and host.connected:
                     return
-                successor = _successor(table)
+                successor = pass_host(table, excluding=set())
                 if successor is None:
                     # Nobody to hand to; the next connection re-arms this.
                     return
-                table.host_client_id = successor.client_id
-            msg_dict = await add_chat_message(
-                table, "system", "is now the host", author=successor.display_name
-            )
-            await broadcast_chat_append(table, msg_dict)
-            await broadcast_table_update(table)
-            await broadcast_table_state(table)
+            await announce_new_host(table, successor)
         except asyncio.CancelledError:
             return
         finally:

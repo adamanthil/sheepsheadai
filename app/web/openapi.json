@@ -302,6 +302,24 @@
         "title": "ActionsLookupResponse",
         "type": "object"
       },
+      "AfterHandRequest": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "on": {
+            "default": true,
+            "title": "On",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "title": "AfterHandRequest",
+        "type": "object"
+      },
       "AnalyzeActionDetail": {
         "properties": {
           "action": {
@@ -1376,6 +1394,10 @@
       },
       "CreateTableResponse": {
         "properties": {
+          "closingAfterHand": {
+            "title": "Closingafterhand",
+            "type": "boolean"
+          },
           "fillWithAI": {
             "title": "Fillwithai",
             "type": "boolean"
@@ -1461,6 +1483,13 @@
             "title": "Seatisai",
             "type": "object"
           },
+          "seatLeavingAfterHand": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Seatleavingafterhand",
+            "type": "object"
+          },
           "seatOccupants": {
             "additionalProperties": {
               "anyOf": [
@@ -1518,6 +1547,8 @@
           "seatIsAI",
           "seatAccount",
           "seatTakeable",
+          "seatLeavingAfterHand",
+          "closingAfterHand",
           "host",
           "resultsHistory",
           "initialSeatOrder",
@@ -2162,6 +2193,10 @@
       },
       "TablePublic": {
         "properties": {
+          "closingAfterHand": {
+            "title": "Closingafterhand",
+            "type": "boolean"
+          },
           "fillWithAI": {
             "title": "Fillwithai",
             "type": "boolean"
@@ -2243,6 +2278,13 @@
             "title": "Seatisai",
             "type": "object"
           },
+          "seatLeavingAfterHand": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Seatleavingafterhand",
+            "type": "object"
+          },
           "seatOccupants": {
             "additionalProperties": {
               "anyOf": [
@@ -2300,6 +2342,8 @@
           "seatIsAI",
           "seatAccount",
           "seatTakeable",
+          "seatLeavingAfterHand",
+          "closingAfterHand",
           "host",
           "resultsHistory",
           "initialSeatOrder",
@@ -3197,6 +3241,56 @@
         "summary": "Api Close Table"
       }
     },
+    "/api/tables/{table_id}/close_after_hand": {
+      "post": {
+        "description": "Host asks to close the table once the hand in play ends, or takes\nthe request back.",
+        "operationId": "close_after_hand_api_tables__table_id__close_after_hand_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_id",
+            "required": true,
+            "schema": {
+              "title": "Table Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AfterHandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Close After Hand"
+      }
+    },
     "/api/tables/{table_id}/fill_ai": {
       "post": {
         "operationId": "fill_ai_api_tables__table_id__fill_ai_post",
@@ -3350,6 +3444,56 @@
           }
         },
         "summary": "Kick Player"
+      }
+    },
+    "/api/tables/{table_id}/leave_after_hand": {
+      "post": {
+        "description": "Ask to leave once the hand in play ends (runtime.departures), or\ntake the request back.",
+        "operationId": "leave_after_hand_api_tables__table_id__leave_after_hand_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_id",
+            "required": true,
+            "schema": {
+              "title": "Table Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AfterHandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leave After Hand"
       }
     },
     "/api/tables/{table_id}/redeal": {

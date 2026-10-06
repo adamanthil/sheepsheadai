@@ -8,10 +8,13 @@ from typing import Callable
 
 from fastapi import WebSocketDisconnect
 
-from server.realtime.broadcast import broadcast_table_event
+from server.realtime.broadcast import broadcast_table_event, broadcast_table_state
+from server.runtime.departures import see_off_departures
 from server.runtime.manager import tables
 from server.runtime.models import Table
 from server.runtime.settle import settle_hand
+from server.runtime.tasks import spawn
+from server.runtime.views import record_hand_result
 from server.services.persistence.game_table import close_game_table
 from server.services.persistence.pool import get_db_pool
 
@@ -108,6 +111,30 @@ async def close_table(
             tables.delete_table(table.id)
         except Exception:
             logging.exception("failed deleting table %s", table.id)
+
+
+async def finish_hand(table: Table) -> None:
+    """A hand was just played out: record it, show everyone, then honor
+    what was asked for after it -- players leaving, or the table closing.
+
+    Idempotent, as the REST move handler and the AI turn loop can both see
+    the same hand end.
+    """
+    table.status = "finished"
+    record_hand_result(table)
+    # Before the finished state goes out: no one can redeal a hand they
+    # haven't seen end, so the leavers are gone before any redeal can
+    # reach their seats.
+    await see_off_departures(table)
+    await broadcast_table_state(table)
+    if table.close_after_hand:
+        table.close_after_hand = False
+        # Its own task: the AI turn loop may be the caller, and close_table
+        # cancels that loop. Nothing is left to settle, so no one is charged.
+        spawn(
+            close_table(table, reason="host_closed_after_hand", charge=charge_no_one),
+            f"close-after-hand:{table.id}",
+        )
 
 
 # Hands still in play at shutdown get this long to be played out; the rest

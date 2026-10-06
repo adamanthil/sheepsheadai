@@ -324,6 +324,12 @@ class KickRequest(BaseModel):
     target_client_id: str
 
 
+class AfterHandRequest(BaseModel):
+    client_id: str
+    # False takes the request back.
+    on: bool = True
+
+
 class CloseTableRequest(BaseModel):
     client_id: str
 
@@ -345,6 +351,8 @@ class TablePublic(BaseModel):
     seatAccount: Dict[int, Optional[str]] | Dict[str, Optional[str]]
     # Whether another player may move into each seat now (Table.seat_takeable).
     seatTakeable: Dict[int, bool] | Dict[str, bool]
+    seatLeavingAfterHand: Dict[int, bool] | Dict[str, bool]
+    closingAfterHand: bool
     host: Optional[str]
     resultsHistory: List[Dict[str, Any]]
     initialSeatOrder: List[str]

@@ -42,6 +42,9 @@ class ClientConn:
     # them to spectator. While it holds a seat, that seat is the only one
     # they may take (an occupant id, not a seat number: redeals rotate seats).
     home_occupant: Optional[str] = None
+    # The player asked to leave once the hand in play ends
+    # (runtime.departures); they are unseated before the next deal.
+    leave_after_hand: bool = False
 
     @property
     def connected(self) -> bool:
@@ -160,6 +163,8 @@ class Table:
     settling: bool = False
     # Set by runtime.lifecycle.close_table; the table takes no new players.
     closed: bool = False
+    # The host asked to close the table once the hand in play ends.
+    close_after_hand: bool = False
 
     @property
     def hand_in_play(self) -> bool:
@@ -238,6 +243,15 @@ class Table:
             "seatIsAI": seat_is_ai,
             "seatAccount": seat_account,
             "seatTakeable": {i: self.seat_takeable(i) for i in self.seats},
+            "seatLeavingAfterHand": {
+                i: bool(
+                    occ_id
+                    and occ_id in self.clients
+                    and self.clients[occ_id].leave_after_hand
+                )
+                for i, occ_id in self.seats.items()
+            },
+            "closingAfterHand": self.close_after_hand,
             "host": (
                 self.clients[self.host_client_id].display_name
                 if self.host_client_id and self.host_client_id in self.clients

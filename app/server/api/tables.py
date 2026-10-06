@@ -9,12 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocketDisconn
 from server.api.auth import PlayerIdentity, current_player, optional_player
 from server.api.ratelimit import (
     CREATE_JOIN,
+    GAME_ACTIONS,
     HOST_ACTIONS,
     client_ip,
     limiter,
     remote_address,
 )
 from server.api.schemas import (
+    AfterHandRequest,
     CloseTableRequest,
     CreateTableRequest,
     CreateTableResponse,
@@ -371,6 +373,55 @@ async def api_close_table(
     await close_table(
         table, reason="host_closed", charge=lambda seat: seat == host_seat
     )
+    return {"ok": True}
+
+
+@router.post("/api/tables/{table_id}/leave_after_hand", response_model=OkResponse)
+@limiter.limit(GAME_ACTIONS)
+async def leave_after_hand(
+    request: Request,
+    table_id: str,
+    req: AfterHandRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """Ask to leave once the hand in play ends (runtime.departures), or
+    take the request back."""
+    try:
+        table = tables.get_table(table_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table_not_found")
+
+    conn = require_client(table, req.client_id, identity)
+    async with table.state_lock:
+        if req.on and not table.hand_in_play:
+            raise HTTPException(status_code=409, detail="no_hand_in_play")
+        if req.on and conn.seat is None:
+            raise HTTPException(status_code=400, detail="not_seated")
+        conn.leave_after_hand = req.on
+    await broadcast_table_update(table)
+    return {"ok": True}
+
+
+@router.post("/api/tables/{table_id}/close_after_hand", response_model=OkResponse)
+@limiter.limit(HOST_ACTIONS)
+async def close_after_hand(
+    request: Request,
+    table_id: str,
+    req: AfterHandRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """Host asks to close the table once the hand in play ends, or takes
+    the request back."""
+    try:
+        table = tables.get_table(table_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table_not_found")
+
+    require_host(table, req.client_id, identity)
+    if req.on and not table.hand_in_play:
+        raise HTTPException(status_code=409, detail="no_hand_in_play")
+    table.close_after_hand = req.on
+    await broadcast_table_update(table)
     return {"ok": True}
 
 

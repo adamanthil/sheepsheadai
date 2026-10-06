@@ -26,7 +26,7 @@ from server.runtime.dealing import (
     redeal_passed_out_hand,
     refresh_table_agent,
 )
-from server.runtime.lifecycle import is_draining
+from server.runtime.lifecycle import finish_hand, is_draining
 from server.runtime.manager import tables
 from server.runtime.models import Occupant
 from server.runtime.occupants import AI_NAME_POOL
@@ -35,7 +35,6 @@ from server.runtime.turn_timer import cancel_turn_timer
 from server.runtime.views import (
     get_actor_seat,
     get_valid_action_ids_for_seat,
-    record_hand_result,
 )
 from server.services.persistence.game_table import ensure_game_table
 from server.services.persistence.games import fire_game_hooks
@@ -258,8 +257,6 @@ async def post_action(
     schedule_ai_turns(table)
 
     if table.game and table.game.is_done():
-        table.status = "finished"
-        record_hand_result(table)
-        await broadcast_table_state(table)
+        await finish_hand(table)
 
     return {"ok": True}
