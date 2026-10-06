@@ -158,6 +158,8 @@ class Table:
     # closes or the server exits (runtime.settle); from then on no human
     # move or AI turn loop may touch the game.
     settling: bool = False
+    # Set by runtime.lifecycle.close_table; the table takes no new players.
+    closed: bool = False
 
     @property
     def hand_in_play(self) -> bool:

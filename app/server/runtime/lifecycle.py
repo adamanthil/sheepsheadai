@@ -48,6 +48,7 @@ async def close_table(
     ``charge`` is passed to settle_hand: whose seats' settlement moves
     count against them. By default everyone's, as when all have left.
     """
+    table.closed = True
     try:
         await settle_hand(table, charge)
     except RuntimeError:
