@@ -27,6 +27,7 @@ from sheepshead.training.search_advantage import (
     class_residual_variances,
     estimate_residual_variance,
     fit_advantage_model,
+    fit_advantage_model_iterated,
     sigma_u2_rows,
     split_rows_by_game,
 )
@@ -543,3 +544,66 @@ def test_fmt_probe_handles_the_per_trick_lists():
         {"pick_rate": 35.25, "seen_trump_recall_by_trick": [100.0, 99.5, 0.0]}
     )
     assert line == "pick_rate 35.2  seen_trump_recall_by_trick 100/100/0"
+
+
+def test_heteroscedastic_fit_is_one_round_and_rejects_extra_var():
+    """The Fay-Herriot reweighting rounds exist for the homoscedastic
+    objective; a heteroscedastic model learns the per-row variance in its
+    NLL, so the iterated wrapper fits it once whatever fh_iterations says
+    and the per-row GLS weight is refused rather than silently dropped."""
+    agent = fresh_agent()
+    shard = _corpus(agent, [3, 4])
+    table = build_row_table(
+        agent,
+        shard["episodes"],
+        shard_idx=0,
+        game_indices=[g["game"] for g in shard["games"] for _ in range(5)],
+    )
+    train_idx, hold_idx = split_rows_by_game(table, 0.5, seed=0)
+    lines = []
+    kwargs: dict = dict(
+        epochs=1,
+        lr=1e-3,
+        weight_decay=0.0,
+        batch_rows=64,
+        patience=5,
+        seed=0,
+    )
+    _, report = fit_advantage_model_iterated(
+        lambda: AdvantageModel(agent, "pointer", heteroscedastic=True),
+        table,
+        train_idx,
+        hold_idx,
+        fh_iterations=2,
+        class_shrink_rows=50.0,
+        var_floor=1e-6,
+        log=lines.append,
+        **kwargs,
+    )
+    assert sum("FH round" in ln for ln in lines) == 1
+    assert any("one round" in ln for ln in lines)
+    assert report.sigma_u2_by_class
+    lines.clear()
+    fit_advantage_model_iterated(
+        lambda: AdvantageModel(agent, "pointer"),
+        table,
+        train_idx,
+        hold_idx,
+        fh_iterations=2,
+        class_shrink_rows=50.0,
+        var_floor=1e-6,
+        log=lines.append,
+        **kwargs,
+    )
+    assert sum("FH round" in ln for ln in lines) == 2
+    with pytest.raises(ValueError, match="homoscedastic"):
+        fit_advantage_model(
+            AdvantageModel(agent, "pointer", heteroscedastic=True),
+            table,
+            train_idx,
+            hold_idx,
+            var_floor=1e-6,
+            log=lambda *_: None,
+            extra_var=torch.full((len(table),), 1e-4),
+            **kwargs,
+        )

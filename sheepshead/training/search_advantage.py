@@ -601,8 +601,16 @@ def fit_advantage_model(
     1 / (noise_var + sigma_u^2 of the row's cell), which keeps cells whose
     true advantages vary a lot (picker follows, ~2e-3 Q^2) from dominating
     the fit over cells whose whole signal is ~1e-4 Q^2 (lead conventions).
-    Held-out diagnostics keep the plain 1 / noise_var weight so reports
-    stay comparable across iterations."""
+    It applies to the homoscedastic objective only: a heteroscedastic
+    model learns that per-row variance itself and its NLL already
+    standardizes every row by it, so passing ``extra_var`` there is an
+    error rather than a silent no-op. Held-out diagnostics keep the plain
+    1 / noise_var weight so reports stay comparable across iterations."""
+    if extra_var is not None and model.heteroscedastic:
+        raise ValueError(
+            "extra_var is the homoscedastic GLS weight; a heteroscedastic model "
+            "learns its own per-row variance (nothing to reweight)"
+        )
     device = ppo_module.device
     model.to(device)
     rng = random.Random(seed)
@@ -706,10 +714,22 @@ def fit_advantage_model_iterated(
     repeat. ``make_model()`` returns a fresh model each round (the fit is
     re-run from scratch so early stopping stays honest). Returns the last
     round's model and report, the report's ``sigma_u2_by_class`` being the
-    all-rows estimate the target stage should use."""
+    all-rows estimate the target stage should use.
+
+    A heteroscedastic model (§20.8) is fit ONCE whatever ``fh_iterations``
+    says: its NLL learns the per-row variance the reweighting rounds were
+    estimating per cell, so a second round would be a fresh-init refit of
+    the same objective (the standing recipe ran that inert round until
+    2026-10-06)."""
     extra = None
     model = make_model()
     report = FitReport(capacity=model.capacity)
+    if model.heteroscedastic and fh_iterations > 1:
+        log(
+            f"[fit {model.capacity}] heteroscedastic model: one round "
+            f"(fh_iterations {fh_iterations} applies to the homoscedastic fit)"
+        )
+        fh_iterations = 1
     for it in range(fh_iterations):
         model = make_model()
         report = fit_advantage_model(
