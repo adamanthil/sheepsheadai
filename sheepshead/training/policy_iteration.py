@@ -73,8 +73,10 @@ from sheepshead.training.search_advantage import (
     RowTable,
     build_row_table,
     class_residual_variances,
+    clipped_disagreement,
     evaluate_rows,
     fit_advantage_model_iterated,
+    floor_class_variances,
     sigma_u2_rows,
     split_rows_by_game,
     targets_for_table,
@@ -271,23 +273,32 @@ def stage_target(args) -> dict:
 
     # §20.6: per-class residual variance re-estimated on EVERY row with Q
     # (train + holdout; the held-out cells are thin and the count shrinkage
-    # would pin gamma near the global), shrunk toward the global value.
+    # would pin gamma near the global), shrunk toward the global value —
+    # floored at the held-out estimate (fit_report per_class), the model's
+    # true out-of-sample error on the class (floor_class_variances).
     ev = evaluate_rows(model, table, torch.arange(len(table)), var_floor=args.var_floor)
-    su2_by_class = class_residual_variances(
+    su2_all_rows = class_residual_variances(
         ev.per_class, sigma_u2, args.class_shrink_rows
     )
+    su2_holdout = class_residual_variances(
+        fit["per_class"], sigma_u2, args.class_shrink_rows
+    )
+    su2_by_class = floor_class_variances(su2_all_rows, su2_holdout)
     su2 = sigma_u2_rows(table.node_class, su2_by_class, sigma_u2)
     log(
         f"[target] capacity {fit['selected']}, per-class sigma_u2 "
-        f"(global {sigma_u2:.3e}; {len(su2_by_class)} classes), kappa {args.kappa}, "
-        f"tilt_max {args.tilt_max}"
+        f"(global {sigma_u2:.3e}; {len(su2_by_class)} classes, "
+        f"{sum(su2_by_class[c] > su2_all_rows[c] for c in su2_by_class)} floored "
+        f"at the held-out estimate), kappa {args.kappa}, tilt_max {args.tilt_max}"
     )
     for cls in sorted(su2_by_class):
         r = ev.per_class.get(cls)
         if r and r["n"] >= 100:
             g = su2_by_class[cls] / (su2_by_class[cls] + r["noise_floor"])
             log(
-                f"    {cls:28s} n={r['n']:5d} sigma_u2 {su2_by_class[cls]:.2e} gamma {g:.2f}"
+                f"    {cls:28s} n={r['n']:5d} sigma_u2 {su2_by_class[cls]:.2e} "
+                f"(all-rows {su2_all_rows[cls]:.2e} held-out "
+                f"{su2_holdout.get(cls, float('nan')):.2e}) gamma {g:.2f}"
             )
     built = targets_for_table(
         model, table, sigma_u2=su2, kappa=args.kappa, tilt_max=args.tilt_max
@@ -295,6 +306,9 @@ def stage_target(args) -> dict:
 
     shards, manifest = load_corpus(args.corpus_dir)
     z_abs = built["z"].abs().amax(dim=1)
+    overconf = clipped_disagreement(
+        built["target"], z_abs, table, tilt_max=args.tilt_max
+    )
     # §20.9 posterior-precision CE weights: 1 / v_post, mean-normalized over
     # the targeted rows (same dose as the uniform loss, different
     # allocation), capped so no row dominates.
@@ -346,20 +360,31 @@ def stage_target(args) -> dict:
         "z_max_p50": float(z_abs.median()),
         "z_max_p90": float(z_abs.quantile(0.9)),
         "frac_z_clipped": float((z_abs >= args.tilt_max - 1e-6).float().mean()),
+        "sigma_u2_by_class": su2_by_class,
+        "sigma_u2_by_class_all_rows": su2_all_rows,
+        "sigma_u2_by_class_holdout": su2_holdout,
+        "clipped": overconf,
     }
     by_class: dict[str, list] = {}
     for r, cls in enumerate(table.node_class):
         by_class.setdefault(cls, []).append(r)
-    report["per_class"] = {
-        cls: {
+    report["per_class"] = {}
+    for cls, idx in by_class.items():
+        if len(idx) < 50:
+            continue
+        sub = torch.tensor(idx)
+        report["per_class"][cls] = {
             "n": len(idx),
-            "kl_p50": float(kl_prior[idx].median()),
-            "z_max_p50": float(z_abs[idx].median()),
-            "gamma_p50": float(built["gamma"][idx].median()),
+            "kl_p50": float(kl_prior[sub].median()),
+            "z_max_p50": float(z_abs[sub].median()),
+            "gamma_p50": float(built["gamma"][sub].median()),
+            "clipped": clipped_disagreement(
+                built["target"][sub],
+                z_abs[sub],
+                table.subset(sub),
+                tilt_max=args.tilt_max,
+            ),
         }
-        for cls, idx in by_class.items()
-        if len(idx) >= 50
-    }
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(
             {
@@ -379,7 +404,29 @@ def stage_target(args) -> dict:
         f"clipped {100 * report['frac_z_clipped']:.1f}%; weight p50/p90 "
         f"{report['weight_p50']:.2f}/{report['weight_p90']:.2f}"
     )
+    log(
+        "[target] clipped rows (near one-hot targets): top card != committee's "
+        + _pct(overconf["clipped_disagree_committee"])
+        + f" of {overconf['n_clipped']}; where the committee is confident "
+        + "(gap > 2 SE) "
+        + _pct(overconf["clipped_disagree_committee_confident"])
+        + f" of {overconf['n_clipped_committee_confident']}; != prior's "
+        + _pct(overconf["clipped_disagree_prior"])
+    )
+    for cls in sorted(report["per_class"]):
+        c = report["per_class"][cls]["clipped"]
+        if c["n_clipped"] >= 50:
+            log(
+                f"    {cls:28s} clipped {c['n_clipped']:5d} disagree "
+                f"{_pct(c['clipped_disagree_committee'])} confident "
+                f"{_pct(c['clipped_disagree_committee_confident'])} "
+                f"(n={c['n_clipped_committee_confident']})"
+            )
     return report
+
+
+def _pct(x: float | None) -> str:
+    return "n/a" if x is None else f"{100 * x:.1f}%"
 
 
 # --------------------------------------------------------------------------- #

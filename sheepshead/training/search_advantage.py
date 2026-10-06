@@ -796,6 +796,23 @@ def class_residual_variances(
     return out
 
 
+def floor_class_variances(
+    all_rows: dict[str, float], holdout: dict[str, float]
+) -> dict[str, float]:
+    """Per-class sigma_u^2 for the blend: the all-rows estimate (§20.6,
+    stable in thin cells) floored at the held-out one. On the rows it was
+    fit to the model's residual can sit BELOW the search noise floor, so
+    the all-rows subtraction bottoms out at SIGMA_U2_FLOOR and the class
+    value collapses to the shrinkage prior alone (std defender follows:
+    3e-6 all-rows vs 1.3e-5 held-out, rc_validate_v2 iteration 1) — a
+    posterior SE set by ``CLASS_SHRINK_ROWS``, not by data. The held-out
+    residual variance is the model's actual out-of-sample error on the
+    class (its u AND its own estimation error, the Prasad-Rao g2 term a
+    flexible model has no closed form for), so the blend's v_post never
+    claims less than it."""
+    return {cls: max(v, holdout.get(cls, v)) for cls, v in all_rows.items()}
+
+
 def sigma_u2_rows(
     node_class: list[str], by_class: dict[str, float], global_sigma_u2: float
 ) -> torch.Tensor:
@@ -847,6 +864,53 @@ def build_tilt_target(
     logits = torch.log(prior.clamp(min=1e-12)) + z
     logits = torch.where(legal, logits, torch.full_like(logits, -1e9))
     return F.softmax(logits, dim=-1), z
+
+
+def clipped_disagreement(
+    target: torch.Tensor,
+    z_abs: torch.Tensor,
+    table: RowTable,
+    *,
+    tilt_max: float,
+    committee_se_mult: float = 2.0,
+) -> dict:
+    """Over-confidence read on the rows whose tilt hit the clip (a near
+    one-hot target): how often the target's top card is not the committee
+    draw's top card — overall, and restricted to rows where the committee
+    itself was confident (top-2 Q gap above ``committee_se_mult`` noise
+    SEs; a disagreement there is a directional error, not a tie) — and
+    how often it is not the prior's top card (the rest is the prior's own
+    argmax sharpened). Counts only rows with Q and at least two labeled
+    actions; the fractions are None when no row qualifies."""
+    lab = table.label_mask
+    eligible = table.has_q & (lab.sum(dim=1) >= 2)
+    clipped = eligible & (z_abs >= tilt_max - 1e-6)
+    neg = torch.finfo(table.advantage.dtype).min
+    adv = torch.where(lab, table.advantage, torch.full_like(table.advantage, neg))
+    top2 = adv.topk(2, dim=1).values
+    gap = top2[:, 0] - top2[:, 1]
+    confident = clipped & (
+        gap > committee_se_mult * torch.sqrt(table.noise_var.nan_to_num(0.0))
+    )
+    t_top = target.argmax(dim=1)
+    q_top = adv.argmax(dim=1)
+    p_top = torch.where(lab, table.prior, torch.zeros_like(table.prior)).argmax(dim=1)
+    dis_q = t_top != q_top
+    dis_p = t_top != p_top
+
+    def frac(mask: torch.Tensor, hit: torch.Tensor):
+        n = int(mask.sum())
+        return float(hit[mask].float().mean()) if n else None
+
+    return {
+        "n_eligible": int(eligible.sum()),
+        "n_clipped": int(clipped.sum()),
+        "n_clipped_committee_confident": int(confident.sum()),
+        "clipped_frac": frac(eligible, clipped),
+        "clipped_disagree_committee": frac(clipped, dis_q),
+        "clipped_disagree_committee_confident": frac(confident, dis_q),
+        "clipped_disagree_prior": frac(clipped, dis_p),
+    }
 
 
 def targets_for_table(

@@ -25,9 +25,11 @@ from sheepshead.training.search_advantage import (
     build_row_table,
     build_tilt_target,
     class_residual_variances,
+    clipped_disagreement,
     estimate_residual_variance,
     fit_advantage_model,
     fit_advantage_model_iterated,
+    floor_class_variances,
     sigma_u2_rows,
     split_rows_by_game,
 )
@@ -271,6 +273,11 @@ def test_end_to_end_stages_on_tiny_corpus(tmp_path):
     assert relabeled == n_targetable
     report = json.loads((out_dir / "target_report.json").read_text())
     assert report["rows"] == n_targetable and report["frac_z_clipped"] <= 1.0
+    assert report["clipped"]["n_eligible"] > 0
+    assert all(
+        report["sigma_u2_by_class"][c] >= report["sigma_u2_by_class_all_rows"][c]
+        for c in report["sigma_u2_by_class"]
+    )
     assert report["weight_p50"] > 0.0
     assert os.path.exists(out_dir / "distill_epoch1.pt")
     log = [
@@ -607,3 +614,75 @@ def test_heteroscedastic_fit_is_one_round_and_rejects_extra_var():
             extra_var=torch.full((len(table),), 1e-4),
             **kwargs,
         )
+
+
+def test_variance_floor_and_clipped_disagreement():
+    """The blend's per-class sigma_u^2 never sits below the held-out
+    estimate (the all-rows value collapses to the shrinkage prior where
+    the model's training residual is under the noise floor), and the
+    over-confidence read counts, on clipped rows only, the target's top
+    card against the committee's and the prior's."""
+    assert floor_class_variances(
+        {"a": 3e-6, "b": 2e-3, "c": 1e-4}, {"a": 1.3e-5, "b": 1e-3}
+    ) == {"a": 1.3e-5, "b": 2e-3, "c": 1e-4}
+
+    adv = torch.tensor(
+        [
+            [0.10, 0.00, -0.10, 0.0],  # committee confident: 0 wins by 0.10
+            [0.01, 0.00, -0.01, 0.0],  # near tie
+            [0.00, 0.05, -0.05, 0.0],  # committee confident: 1 wins
+            [0.00, 0.05, 0.00, 0.0],  # not clipped
+            [0.00, 0.00, 0.00, 0.0],  # single labeled action: ineligible
+        ]
+    )
+    lab = torch.tensor(
+        [
+            [1, 1, 1, 0],
+            [1, 1, 1, 0],
+            [1, 1, 1, 0],
+            [1, 1, 1, 0],
+            [1, 0, 0, 0],
+        ],
+        dtype=torch.bool,
+    )
+    prior = torch.tensor(
+        [
+            [0.6, 0.3, 0.1, 0.0],
+            [0.3, 0.6, 0.1, 0.0],
+            [0.3, 0.6, 0.1, 0.0],
+            [0.3, 0.6, 0.1, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        ]
+    )
+    target = torch.tensor(
+        [
+            [0.99, 0.01, 0.0, 0.0],  # agrees with committee and prior
+            [0.01, 0.99, 0.0, 0.0],  # disagrees with committee (a tie), agrees prior
+            [0.99, 0.01, 0.0, 0.0],  # disagrees with a confident committee AND prior
+            [0.3, 0.6, 0.1, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+        ]
+    )
+    table = RowTable(
+        features=torch.zeros(5, 2),
+        hand_tokens=torch.zeros(5, 8, 2),
+        hand_ids=torch.zeros(5, 8, dtype=torch.long),
+        masks=lab.clone(),
+        advantage=adv,
+        label_mask=lab,
+        noise_var=torch.full((5,), 1e-4),  # SE 0.01
+        prior=prior,
+        has_q=torch.ones(5, dtype=torch.bool),
+        node_class=["x"] * 5,
+        refs=[(0, 0, i) for i in range(5)],
+        game=torch.zeros(5, dtype=torch.long),
+    )
+    z_abs = torch.tensor([8.0, 8.0, 8.0, 2.0, 8.0])
+    out = clipped_disagreement(target, z_abs, table, tilt_max=8.0)
+    assert out["n_eligible"] == 4 and out["n_clipped"] == 3
+    assert out["n_clipped_committee_confident"] == 2  # rows 0 and 2
+    assert out["clipped_disagree_committee"] == pytest.approx(2 / 3)
+    assert out["clipped_disagree_committee_confident"] == pytest.approx(1 / 2)
+    assert out["clipped_disagree_prior"] == pytest.approx(1 / 3)
+    empty = clipped_disagreement(target, torch.zeros(5), table, tilt_max=8.0)
+    assert empty["n_clipped"] == 0 and empty["clipped_disagree_committee"] is None
