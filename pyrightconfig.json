@@ -14,11 +14,13 @@
   "pythonPlatform": "All",
 
   // runs/ and model-history/ are gitignored training artifacts; notebooks/ is
-  // prose. None of them are import targets.
+  // prose. None of them are import targets. .claude/ holds git worktrees,
+  // each with its own .venv: an unexcluded one is a second torch to check.
   "exclude": [
     "**/node_modules",
     "**/__pycache__",
     ".venv",
+    ".claude",
     "runs",
     "model-history",
     "notebooks"
