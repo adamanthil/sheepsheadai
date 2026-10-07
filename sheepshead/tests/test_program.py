@@ -245,3 +245,47 @@ def test_confirmation_rescues_a_noise_miss(tmp_path, monkeypatch):
     gens = p.state["league"]["generations"]
     assert gens["2"]["improving"] is True and gens["2"]["h2h_confirm"]["edge"] == 0.05
     assert p.state["league"]["step_generation"] is None  # gen 3 = cap handoff
+
+
+def test_iteration_panels_read_the_carried_iterate_as_one_checkpoint(
+    tmp_path, monkeypatch
+):
+    """Phase 3 continues the panel series: after each iteration the iterate
+    carried forward is scored on PANEL-A/B in the single-checkpoint form
+    (the path in all three slots — distillation leaves no earlier
+    snapshots to composite), cached as panel_iter<k> / panelB_iter<k>."""
+    p = _program(tmp_path, monkeypatch)
+    p.cfg.league.panel = ["a.pt", "b.pt", "c.pt", "d.pt"]
+    p.cfg.league.panel_b = ["e.pt", "f.pt", "g.pt", "h.pt"]
+    calls = []
+
+    def fake_read(ckpts, members, label, npz_name):
+        calls.append((tuple(ckpts), tuple(members), label, npz_name))
+        return {"mean": 0.1, "lo": 0.0, "hi": 0.2, "se": 0.05, "modes": {}}
+
+    p._panel_read = fake_read
+    rec = {}
+    p._iteration_panels(2, "theta2.pt", rec)
+    assert rec["panel"]["mean"] == 0.1 and rec["panel_b"]["mean"] == 0.1
+    assert calls == [
+        (
+            ("theta2.pt",) * 3,
+            tuple(p.cfg.league.panel),
+            "panel iter 2",
+            "panel_iter2.npz",
+        ),
+        (
+            ("theta2.pt",) * 3,
+            tuple(p.cfg.league.panel_b),
+            "panel-B iter 2",
+            "panelB_iter2.npz",
+        ),
+    ]
+    # Re-entry (resume) does not read again: the record is the cache key.
+    p._iteration_panels(2, "theta2.pt", rec)
+    assert len(calls) == 2
+    # Without a PANEL-B list only PANEL-A is read.
+    p.cfg.league.panel_b = []
+    rec2 = {}
+    p._iteration_panels(3, "theta3.pt", rec2)
+    assert "panel_b" not in rec2 and calls[-1][3] == "panel_iter3.npz"

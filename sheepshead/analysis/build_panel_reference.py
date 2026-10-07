@@ -6,7 +6,9 @@ the frozen member list of ``analysis/panels.py``). Every PANEL-A row shares
 one deal hash and every PANEL-B row another, so rows within a panel are
 paired reads on identical deals. Reference agents are single checkpoints
 (the path repeated three times, the documented single-checkpoint form);
-generation rows are the orchestrator's three-checkpoint composites.
+generation rows are the orchestrator's three-checkpoint composites;
+policy-iteration rows (the iterate carried forward) and the release are
+single checkpoints too, since distillation leaves nothing to composite.
 
 The table exists so write-ups can cite these numbers without recomputing
 them. Sources are the endpoint ``.npz`` files each read wrote; add a
@@ -77,6 +79,32 @@ def _fresh_run() -> list[Source]:
                 "PANEL-B",
                 COMPOSITE,
                 RECALL_RC / f"panelB_gen{g}.npz",
+            )
+        )
+    # Phase 3: the iterate carried forward from each policy iteration
+    # (orchestrator `_iteration_panels`), then the release. Single-checkpoint
+    # form: distillation leaves no earlier snapshots to composite.
+    for k in range(1, 6):
+        for panel, prefix in (("PANEL-A", "panel"), ("PANEL-B", "panelB")):
+            out.append(
+                Source(
+                    f"202609_recall_rc iteration {k} (theta_{k})",
+                    lineage,
+                    8_000_000,
+                    panel,
+                    SINGLE,
+                    RECALL_RC / f"{prefix}_iter{k}.npz",
+                )
+            )
+    for panel, prefix in (("PANEL-A", "panel"), ("PANEL-B", "panelB")):
+        out.append(
+            Source(
+                "202609_recall_rc release",
+                lineage,
+                8_000_000,
+                panel,
+                SINGLE,
+                RECALL_RC / f"{prefix}_final.npz",
             )
         )
     return out

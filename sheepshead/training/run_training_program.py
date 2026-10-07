@@ -1120,9 +1120,42 @@ class Program:
                 f"{'ADOPTED' if non_inferior else 'not adopted'}",
                 decision=True,
             )
+        self._iteration_panels(k, theta_next, rec)
         rec["theta_next"] = theta_next
         self._save_state()
         return theta_next
+
+    def _single_panels(self, ckpt: str, tag: str, label: str, rec: dict) -> None:
+        """PANEL-A / PANEL-B reads of one checkpoint (the path in all three
+        slots: every deal is scored once by that agent) into ``rec``, cached
+        as program/panel_<tag>.npz and panelB_<tag>.npz like the generation
+        reads. Without a configured PANEL-A the run's own bootstrap seeds
+        serve, as for the generation reads. Informational — no rule reads
+        them."""
+        cfg = self.cfg.league
+        panel = cfg.panel or sorted(glob.glob(os.path.join(self.seeds_dir, "*.pt")))
+        for key, members, panel_label, stem in (
+            ("panel", panel, f"panel {label}", f"panel_{tag}"),
+            ("panel_b", cfg.panel_b, f"panel-B {label}", f"panelB_{tag}"),
+        ):
+            if members and key not in rec:
+                rec[key] = self._panel_read(
+                    [ckpt, ckpt, ckpt], members, panel_label, f"{stem}.npz"
+                )
+                if rec[key]:
+                    self._event(
+                        f"{panel_label}: {rec[key]['mean']:+.4f} "
+                        f"[{rec[key]['lo']:+.4f}, {rec[key]['hi']:+.4f}]",
+                        decision=True,
+                    )
+
+    def _iteration_panels(self, k: int, theta_next: str, rec: dict) -> None:
+        """Panel reads of the iterate carried forward (the bidding-phase
+        result when adopted, else the distill candidate), so the panel series
+        continues from the league generations through phase 3. Distillation
+        leaves no earlier snapshots of the iterate, so this is the
+        single-checkpoint form, not the generation composite."""
+        self._single_panels(theta_next, f"iter{k}", f"iter {k}", rec)
 
     @staticmethod
     def _corpus_incomplete(corpus_dir: str, games: int) -> bool:
@@ -1203,23 +1236,7 @@ class Program:
                 decision=True,
             )
         rec["conventions"] = self._conventions(release, "final")
-        for key, members, label in (
-            ("panel", cfg.league.panel, "panel final"),
-            ("panel_b", cfg.league.panel_b, "panel-B final"),
-        ):
-            if members and key not in rec:
-                rec[key] = self._panel_read(
-                    [release, release, release],
-                    members,
-                    label,
-                    f"{label.replace(' ', '_')}.npz",
-                )
-                if rec[key]:
-                    self._event(
-                        f"final {label.split()[0]}: {rec[key]['mean']:+.4f} "
-                        f"[{rec[key]['lo']:+.4f}, {rec[key]['hi']:+.4f}]",
-                        decision=True,
-                    )
+        self._single_panels(release, "final", "final", rec)
         gate_path = os.path.join(
             "runs", f"{cfg.run_name}/final/exploit", "gate_result.json"
         )
@@ -1302,8 +1319,8 @@ class Program:
             "",
             "## Policy iteration",
             "",
-            "| iter | cert h2h vs theta_k | called-suit | bidding phase | theta_next |",
-            "|---|---|---|---|---|",
+            "| iter | cert h2h vs theta_k | called-suit | bidding phase | panel A | panel B | theta_next |",
+            "|---|---|---|---|---|---|---|",
         ]
         for k in sorted(int(x) for x in s["policy_iteration"]["iterations"]):
             rec = s["policy_iteration"]["iterations"][str(k)]
@@ -1315,6 +1332,8 @@ class Program:
                 f"| {k} | {cert['h2h']['edge']:+.4f}±{cert['h2h']['se']:.4f} "
                 f"| {cert['probe_means']['called_suit_lead_rate']:.1f} "
                 f"| {(f'{b["h2h"]["edge"]:+.4f}±{b["h2h"]["se"]:.4f} ' + ('adopted' if rec.get('bidding_adopted') else 'not adopted')) if b else '—'} "
+                f"| {(f'{panel["mean"]:+.4f}') if (panel := rec.get('panel')) else '—'} "
+                f"| {(f'{panel_b["mean"]:+.4f}') if (panel_b := rec.get('panel_b')) else '—'} "
                 f"| `{rec.get('theta_next', '')}` |"
             )
         lines += ["", "## Phase times", "", "```"]
