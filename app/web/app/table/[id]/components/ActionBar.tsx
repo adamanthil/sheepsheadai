@@ -66,9 +66,12 @@ export default function ActionBar(props: ActionBarProps) {
     [validActions, actionLookup],
   );
 
+  // On a phone the expanded close choices take the whole row.
+  const closeOnly = props.isMobile && props.isHost && props.confirmClose;
+
   const utils = (
     <div className={styles.utilRow}>
-      {props.hasLastTrick && (
+      {!closeOnly && props.hasLastTrick && (
         <button
           className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
           onClick={props.onTogglePrev}
@@ -76,12 +79,14 @@ export default function ActionBar(props: ActionBarProps) {
           {props.showPrev ? "Hide prev" : "Show prev"}
         </button>
       )}
-      <button
-        className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-        onClick={props.onShowScores}
-      >
-        Scores
-      </button>
+      {!closeOnly && (
+        <button
+          className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+          onClick={props.onShowScores}
+        >
+          Scores
+        </button>
+      )}
       {/* Its own group, set off from Scores: once expanded, its buttons
           read as one choice rather than more of the row. */}
       {props.isHost && (
