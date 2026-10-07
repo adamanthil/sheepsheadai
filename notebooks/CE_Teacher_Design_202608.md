@@ -5380,3 +5380,58 @@ disagreement against a confident committee fell to 3.0% (from 5.1%).
 - Whether the corrected gamma (defender follows ~0.3-0.4 instead of
   0.01) changes the certified step size: iter34 vs iter32/iter33.
 - The attribution reads of §22.2.
+
+### 22.5 Fifth finding and the build queue (operator-approved 2026-10-07)
+
+**Finding 5 — in-sample pooling.** The target stage runs the one fitted
+model over every row, so on the ~90% of rows in the training games
+a_model was fit partly on the row's own search noise. The blend
+gamma·y + (1−gamma)·a_model assumes independent errors; with the
+correlation the node's own noise carries more than gamma of the weight,
+v_post = gamma·sigma_n^2 is understated (tilts too sharp), and a
+sigma_u^2 measured on training rows is low (the §22.1-2 floor covers
+only this last part). Size, all-rows vs held-out weighted MSE per class:
+the model does better on its own rows by a median 8.8% (iter33) / 12.6%
+(iter34), 20-36% in the partner-follow, late-trick defender and
+picker-follow cells.
+
+Queue, in order; nothing new launches until the arms in flight and the
+live iteration-1 corpus (the first with the centered field) are read:
+
+1. **Read what is in flight.** iter34 (full fix) cert + paired reads;
+   iter32 master control (queued behind the stuck iter33 h2h; a watcher
+   frees it when iter34 finishes); the paired per-deal treatment-vs-
+   control play-only difference on the seed-42 deals; the §22.2
+   attribution at the target stage (β, target vs prior entropy, KL per
+   class, s·c-off and residual-off rebuilds), distilled only if the main
+   comparison is ambiguous.
+2. **Cross-fitting in the advantage fit** (one ablation arm). One
+   ordinary 90/10 fit picks the epoch count; then K = 5 fold models,
+   each trained on the other four folds (80% of games) for exactly that
+   many epochs, no early stopping, no selection leak. Every row's a_model
+   and per-row sigma_u^2(s) come from the model that never saw its game;
+   the per-class sigma_u^2 is estimated on 100% of rows from out-of-fold
+   residuals, which retires floor_class_variances rather than patching
+   it. Cost: ~5 x a few minutes per iteration. The fit is not sample-
+   limited (§20.10: lead-cell error at the floor by ~1,200 rows; iter34
+   best epoch 28/200), so 90 → 80% per model costs little.
+3. **Distill holdout 10% → 2%** (~800 of 40,000 episodes), LAST because
+   it changes the dose. Since add. 31 the held-out target KL selects
+   nothing (the candidate is the last epoch; the cert is the overfitting
+   guard), so 4,000 episodes per iteration buy one fidelity log line.
+   Keep that line on the sliver; the student sees ~8% more rows
+   (§20.13: volume certifies, D8k > D4k). Dropping the holdout entirely
+   and a final all-rows epoch were considered and rejected (lose the
+   dead-distill diagnostic; mixes doses).
+
+Why greedy evaluation does not make the sharpening channel moot
+(operator question 10-07): raising theta_k to a power moves no argmax
+at the fitted states, so any EV from it arrives indirectly — through
+generalization to near-tie states (self-distillation; the §12 reversion
+was the harmful case), through the gradient share the sharpened rows
+take from the ordering rows (82% of the CE weight under the old recipe;
+iter33's margin reads most naturally as the ordering signal no longer
+crowded out), and through the shared trunk the value/aux/bidding heads
+and the retention KL also read. The attribution read of item 1 has to
+go through distill and cert for that reason. The play head's entropy
+still matters downstream regardless: the bidding phase samples from it.
