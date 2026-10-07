@@ -267,18 +267,22 @@ def _log_noise_model(table: RowTable, args, log) -> dict:
     if st["mode"] == "centered" and st.get("rows_centered"):
         log(
             f"[noise] centered-label noise on {st['rows_centered']} rows "
-            f"(mean {st['noise_centered_mean']:.3e} vs raw {st['noise_raw_mean']:.3e}; "
-            f"corpus-wide centered s2 {st['s2_centered_global']:.3e}, nu "
+            f"(corpus-wide centered s2 {st['s2_centered_global']:.3e}, nu "
             f"{args.noise_shrink_nu}); {st['rows_independent']} rows without the "
-            f"field use raw * (1 - 1/n)"
+            f"field use the per-card independence formula; label noise mean "
+            f"{st['noise_mean']:.3e} vs raw {st['noise_raw_mean']:.3e}"
         )
     elif st["mode"] == "centered":
         log(
-            "[noise] corpus predates the centered field: every row uses "
-            "raw * (1 - 1/n_labeled) (independence bound)"
+            "[noise] corpus predates the centered field: every row uses the "
+            f"per-card independence formula; label noise mean {st['noise_mean']:.3e} "
+            f"vs raw {st['noise_raw_mean']:.3e}"
         )
     else:
-        log(f"[noise] model {st['mode']}")
+        log(
+            f"[noise] model {st['mode']}: label noise mean {st['noise_mean']:.3e} "
+            f"vs raw {st['noise_raw_mean']:.3e}"
+        )
     return st
 
 

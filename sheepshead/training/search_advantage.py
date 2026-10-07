@@ -83,7 +83,8 @@ class RowEvidence:
     has_q: bool
     advantage: list[float]  # q̄ centered over the legal set; 0 elsewhere
     label_mask: list[bool]  # legal actions carrying Q (all False if !has_q)
-    noise_var: float  # the corpus's pooled-mean noise of a RAW Q
+    noise_var: float  # the corpus's pooled-mean noise of a RAW Q (row mean)
+    noise_q_var: list[float]  # per action, the pooled-mean noise of its raw Q; nan
     noise_s2c: list[float]  # per-replicate variance of the CENTERED Q, dense; nan
     noise_nobs: list[int]  # replicates that visited the action, dense; 0
     prior: list[float]  # theta_k's act-time policy (anchor_probs), dense
@@ -115,6 +116,9 @@ def row_evidence(source_event: dict, action_size: int) -> RowEvidence | None:
         for a in valid:
             label_mask[a - 1] = True
         noise_var = float(source_event["search_noise_var"])
+        noise_q_var = sorted_valid_to_dense(
+            source_event["search_q_var"], valid, action_size, fill=float("nan")
+        )
         s2c = source_event.get("search_q_s2_centered")
         nobs = source_event.get("search_q_n_obs")
         if s2c is not None and nobs is not None:
@@ -131,6 +135,7 @@ def row_evidence(source_event: dict, action_size: int) -> RowEvidence | None:
         advantage = [0.0] * action_size
         label_mask = [False] * action_size
         noise_var = float("nan")
+        noise_q_var = [float("nan")] * action_size
         noise_s2c = [float("nan")] * action_size
         noise_nobs = [0] * action_size
     return RowEvidence(
@@ -139,6 +144,7 @@ def row_evidence(source_event: dict, action_size: int) -> RowEvidence | None:
         advantage=advantage,
         label_mask=label_mask,
         noise_var=noise_var,
+        noise_q_var=noise_q_var,
         noise_s2c=noise_s2c,
         noise_nobs=noise_nobs,
         prior=prior,
@@ -161,15 +167,17 @@ class RowTable:
     masks: torch.Tensor  # (R, A) legal
     advantage: torch.Tensor  # (R, A)
     label_mask: torch.Tensor  # (R, A) bool
-    noise_var: torch.Tensor  # (R,) the WORKING noise variance (apply_noise_model)
+    noise_var: torch.Tensor  # (R,) WORKING label noise, row mean (apply_noise_model)
     prior: torch.Tensor  # (R, A)
     has_q: torch.Tensor  # (R,) bool
     node_class: list[str]
     refs: list[tuple[int, int, int]]  # (shard_idx, episode_idx, event_idx)
     game: torch.Tensor  # (R,) corpus game index (for game-level splits)
     noise_var_raw: torch.Tensor  # (R,) the corpus's raw-Q noise, nan where !has_q
+    noise_q_var: torch.Tensor  # (R, A) per-action raw-Q pooled-mean noise, nan
     noise_s2c: torch.Tensor  # (R, A) centered per-replicate variance, nan
     noise_nobs: torch.Tensor  # (R, A) replicates per action, 0
+    noise_var_action: torch.Tensor  # (R, A) WORKING label noise per action, nan
 
     def __len__(self) -> int:
         return int(self.features.size(0))
@@ -190,8 +198,10 @@ class RowTable:
             refs=[self.refs[i] for i in idx_list],
             game=self.game[idx],
             noise_var_raw=self.noise_var_raw[idx],
+            noise_q_var=self.noise_q_var[idx],
             noise_s2c=self.noise_s2c[idx],
             noise_nobs=self.noise_nobs[idx],
+            noise_var_action=self.noise_var_action[idx],
         )
 
     def encoded(self, idx: torch.Tensor) -> EncodedRows:
@@ -225,8 +235,10 @@ class RowTable:
             refs=[r for t in tables for r in t.refs],
             game=cat("game"),
             noise_var_raw=cat("noise_var_raw"),
+            noise_q_var=cat("noise_q_var"),
             noise_s2c=cat("noise_s2c"),
             noise_nobs=cat("noise_nobs"),
+            noise_var_action=cat("noise_var_action"),
         )
 
     def save(self, path: str) -> None:
@@ -239,6 +251,12 @@ class RowTable:
             d["noise_var_raw"] = d["noise_var"].clone()
             d["noise_s2c"] = torch.full_like(d["advantage"], float("nan"))
             d["noise_nobs"] = torch.zeros_like(d["advantage"], dtype=torch.long)
+        if "noise_q_var" not in d:  # ... or before the per-action fields
+            lab = d["label_mask"]
+            d["noise_q_var"] = torch.where(
+                lab, d["noise_var_raw"].unsqueeze(1).expand_as(lab), torch.nan
+            )
+            d["noise_var_action"] = d["noise_q_var"].clone()
         return RowTable(**d)
 
 
@@ -293,10 +311,12 @@ def build_row_table(
                     refs=refs,
                     game=torch.tensor(games, dtype=torch.long),
                     noise_var_raw=torch.tensor([e.noise_var for e in evidence]),
+                    noise_q_var=torch.tensor([e.noise_q_var for e in evidence]),
                     noise_s2c=torch.tensor([e.noise_s2c for e in evidence]),
                     noise_nobs=torch.tensor(
                         [e.noise_nobs for e in evidence], dtype=torch.long
                     ),
+                    noise_var_action=torch.tensor([e.noise_q_var for e in evidence]),
                 )
             )
     agent.reset_storage()
@@ -307,61 +327,73 @@ NOISE_MODELS = ("centered", "independent", "raw")
 
 
 def apply_noise_model(table: RowTable, mode: str, shrink_nu: float) -> dict:
-    """Set ``table.noise_var`` — the measurement noise of the LABEL (the
-    pooled Q centered over the legal set) that the fit weights by and the
-    sigma_u^2 subtraction relies on — from the corpus fields:
+    """Set the table's WORKING label noise — ``noise_var_action`` (R, A), the
+    measurement noise of each labeled action's label (the pooled Q centered
+    over the legal set), and ``noise_var`` (R,), its mean over the labeled
+    actions (the Fay-Herriot blend's gamma and the fit weights are per
+    row) — from the corpus fields:
 
-    raw          the corpus's pooled-mean noise of a raw Q (the recipe before
-                 2026-10-07: it over-subtracts, since centering removes 1/n of
-                 independent noise and all common-mode noise, and on the
-                 pooled defender/partner cells that bias (4-9e-5 Q^2) exceeded
-                 the sigma_u^2 it produced 10-30x — gamma ~0.01 was an
-                 estimator artifact).
-    independent  raw * (1 - 1/n_labeled): exact for independent equal-noise
-                 cards, a lower bound on the correction otherwise.
+    raw          the corpus's row-mean pooled noise of a RAW Q on every
+                 action (the recipe before 2026-10-07: it over-subtracts,
+                 since centering removes 1/n of independent noise and all
+                 common-mode noise, and on the pooled defender/partner cells
+                 that bias exceeded the sigma_u^2 it produced 10-30x —
+                 gamma ~0.01 was an estimator artifact).
+    independent  the exact centering under independent per-card noise from
+                 the per-action search_q_var: var(y_a) = s_a^2 (1 - 2/n) +
+                 sum_b s_b^2 / n^2 over the n labeled actions. A lower bound
+                 on the correction when replicates share noise.
     centered     per action, the measured across-replicate variance of the
-                 centered Q, shrunk toward the corpus-wide (df-weighted) mean
-                 with ``shrink_nu`` as the corpus does for raw Q, divided by
-                 the replicate count; the row's noise is the mean over its
-                 actions. Rows whose corpus predates the field fall back to
-                 ``independent``.
+                 centered Q, shrunk toward the corpus-wide (df-weighted)
+                 mean with ``shrink_nu`` as the corpus does for raw Q, over
+                 the replicate count; actions (or rows) without the field —
+                 a corpus written before it — take ``independent``.
     Returns counts and the corpus-wide centered variance for the log."""
     if mode not in NOISE_MODELS:
         raise ValueError(f"noise model must be one of {NOISE_MODELS}, got {mode!r}")
+    lab = table.label_mask
     raw = table.noise_var_raw
-    n_lab = table.label_mask.sum(dim=1).clamp(min=1).to(raw.dtype)
-    independent = torch.where(n_lab >= 2, raw * (1.0 - 1.0 / n_lab), raw)
+    n = lab.sum(dim=1, keepdim=True).to(raw.dtype)
     stats = {"mode": mode, "rows_with_q": int(table.has_q.sum())}
+    nan = torch.full_like(table.noise_q_var, float("nan"))
     if mode == "raw":
-        table.noise_var = raw.clone()
-        return stats
-    if mode == "independent":
-        table.noise_var = independent
-        return stats
-    nobs = table.noise_nobs.to(raw.dtype)
-    ok = (nobs >= 2) & torch.isfinite(table.noise_s2c)
-    df = torch.where(ok, nobs - 1.0, torch.zeros_like(nobs))
-    s2c = torch.where(ok, table.noise_s2c, torch.zeros_like(nobs))
-    df_total = float(df.sum())
-    if df_total <= 0.0:
-        table.noise_var = independent
-        stats.update(rows_centered=0, rows_independent=stats["rows_with_q"])
-        return stats
-    s2_global = float((df * s2c).sum() / df_total)
-    blend = (shrink_nu * s2_global + df * s2c) / (shrink_nu + df)
-    per_action = torch.where(ok, blend / nobs.clamp(min=1), torch.zeros_like(nobs))
-    n_ok = ok.sum(dim=1)
-    row_centered = per_action.sum(dim=1) / n_ok.clamp(min=1).to(raw.dtype)
-    use = table.has_q & (n_ok >= 1)
-    table.noise_var = torch.where(use, row_centered, independent)
-    stats.update(
-        rows_centered=int(use.sum()),
-        rows_independent=int((table.has_q & ~use).sum()),
-        s2_centered_global=s2_global,
-        noise_centered_mean=float(row_centered[use].mean())
-        if bool(use.any())
-        else None,
-        noise_raw_mean=float(raw[table.has_q].mean()),
+        per_action = torch.where(lab, raw.unsqueeze(1).expand_as(lab), nan)
+    else:
+        q_var = torch.where(lab, table.noise_q_var, torch.zeros_like(nan))
+        total = q_var.sum(dim=1, keepdim=True)
+        independent = q_var * (1.0 - 2.0 / n.clamp(min=1)) + total / n.clamp(min=1) ** 2
+        independent = torch.where(
+            lab & (n >= 2), independent, torch.where(lab, q_var, nan)
+        )
+        per_action = independent
+        if mode == "centered":
+            nobs = table.noise_nobs.to(raw.dtype)
+            ok = lab & (nobs >= 2) & torch.isfinite(table.noise_s2c)
+            df = torch.where(ok, nobs - 1.0, torch.zeros_like(nobs))
+            s2c = torch.where(ok, table.noise_s2c, torch.zeros_like(nobs))
+            df_total = float(df.sum())
+            if df_total > 0.0:
+                s2_global = float((df * s2c).sum() / df_total)
+                blend = (shrink_nu * s2_global + df * s2c) / (shrink_nu + df)
+                per_action = torch.where(ok, blend / nobs.clamp(min=1), independent)
+                use = table.has_q & ok.any(dim=1)
+                stats.update(
+                    rows_centered=int(use.sum()),
+                    rows_independent=int((table.has_q & ~use).sum()),
+                    s2_centered_global=s2_global,
+                )
+            else:
+                stats.update(rows_centered=0, rows_independent=stats["rows_with_q"])
+    table.noise_var_action = per_action
+    row = torch.where(lab, per_action, torch.zeros_like(per_action)).sum(
+        dim=1
+    ) / n.squeeze(1).clamp(min=1)
+    table.noise_var = torch.where(table.has_q, row, raw)
+    stats["noise_mean"] = (
+        float(table.noise_var[table.has_q].mean()) if bool(table.has_q.any()) else None
+    )
+    stats["noise_raw_mean"] = (
+        float(raw[table.has_q].mean()) if bool(table.has_q.any()) else None
     )
     return stats
 
@@ -560,13 +592,16 @@ def gaussian_nll_rows(
     var_floor: float,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(loss, per_row_mse): Gaussian negative log-likelihood of the labeled
-    advantages under total variance noise_var + sigma_u^2(s) (both per row),
+    advantages under total variance noise_var + sigma_u^2(s) (``noise_var``
+    per row, or per row AND action as ``RowTable.noise_var_action``),
     the prediction centered over the labeled actions, averaged over labeled
     actions per row and then over rows. Standardizes each row by its own
     learned scale — the taxonomy-free replacement for the per-cell
     Fay-Herriot weights."""
     pred = center_over(pred, label_mask)
-    total = (noise_var + sigma_u2 + var_floor).unsqueeze(1)
+    nv = noise_var if noise_var.dim() == 2 else noise_var.unsqueeze(1)
+    nv = torch.where(label_mask, nv.nan_to_num(0.0), torch.zeros_like(pred))
+    total = nv + (sigma_u2 + var_floor).unsqueeze(1)
     sq = (pred - advantage) ** 2
     nll = 0.5 * (sq / total + torch.log(total))
     n_lab = label_mask.sum(dim=1).clamp(min=1)
@@ -755,7 +790,7 @@ def fit_advantage_model(
                     pred,
                     table.advantage[b].to(device),
                     table.label_mask[b].to(device),
-                    table.noise_var[b].to(device),
+                    table.noise_var_action[b].to(device),
                     su2,
                     var_floor,
                 )
