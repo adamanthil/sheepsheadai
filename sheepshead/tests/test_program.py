@@ -289,3 +289,54 @@ def test_iteration_panels_read_the_carried_iterate_as_one_checkpoint(
     rec2 = {}
     p._iteration_panels(3, "theta3.pt", rec2)
     assert "panel_b" not in rec2 and calls[-1][3] == "panel_iter3.npz"
+
+
+def test_stop_after_pauses_at_the_named_boundary(tmp_path, monkeypatch):
+    """``--stop-after iter<k>.<stage>`` raises at that boundary only; the run
+    loop records the pause (status "paused", exit 0) and a relaunch
+    without the knob resumes through the ordinary skips."""
+    cfg = ProgramConfig(run_name="t", stop_after="iter1.cert")
+    p = _program(tmp_path, monkeypatch, cfg)
+    p._check_stop(1, "corpus")
+    p._check_stop(2, "cert")
+    with pytest.raises(rtp.StopAfter, match="iter1.cert"):
+        p._check_stop(1, "cert")
+    # The run loop: phase 3 entry raises at the boundary -> paused, exit 0.
+    theta = tmp_path / "theta0.pt"
+    theta.write_bytes(b"x")
+    cfg = ProgramConfig(run_name="t", stop_after="iter1.cert")
+    cfg.start_phase = "policy_iteration"
+    cfg.policy_iteration.theta_0 = str(theta)
+    p = Program(cfg)
+
+    def fake_iteration(theta_0):
+        p._check_stop(1, "cert")
+        return theta_0
+
+    p.run_policy_iteration = fake_iteration
+    assert p.run() == 0
+    assert p.state["status"] == "paused"
+    assert any("PAUSED after iter1.cert" in e["msg"] for e in p.state["events"])
+    # Relaunch without the knob: status goes back to running.
+    cfg2 = ProgramConfig(run_name="t")
+    cfg2.start_phase = "policy_iteration"
+    cfg2.policy_iteration.theta_0 = str(theta)
+    p2 = Program(cfg2)
+    assert p2.state["status"] == "paused"
+    seen = []
+    p2.run_policy_iteration = lambda t: seen.append(t) or t
+    p2.run_final = lambda t: None
+    assert p2.run() == 0
+    assert seen == [str(theta)] and p2.state["status"] == "finished"
+
+
+def test_stop_after_cli_validation():
+    args = rtp.parse_args(["--run-name", "x", "--stop-after", "iter3.distill"])
+    assert rtp.build_config(args).stop_after == "iter3.distill"
+    assert rtp.build_config(rtp.parse_args(["--run-name", "x"])).stop_after is None
+    with pytest.raises(SystemExit):
+        rtp.build_config(rtp.parse_args(["--run-name", "x", "--stop-after", "cert"]))
+    with pytest.raises(SystemExit):
+        rtp.build_config(
+            rtp.parse_args(["--run-name", "x", "--stop-after", "iter1.fit"])
+        )

@@ -84,6 +84,10 @@ _REPO_ROOT = os.path.dirname(
 CONVENTION_SEEDS = (98765, 98766, 98767, 98768)
 
 
+class StopAfter(Exception):
+    """The ``stop_after`` boundary was reached: pause for operator work."""
+
+
 class NeedsReview(Exception):
     """The run must halt for operator judgment."""
 
@@ -965,6 +969,7 @@ class Program:
             self._run(f"iter {k} corpus", cmd, f"pi_iter{k}.log")
         else:
             self.skip(f"iter {k} corpus", os.path.join(corpus_dir, "manifest.json"))
+        self._check_stop(k, "corpus")
         if os.path.exists(os.path.join(it_dir, "distill_best.json")):
             self.skip(
                 f"iter {k} fit/target/distill",
@@ -986,6 +991,7 @@ class Program:
                 ),
                 f"pi_iter{k}.log",
             )
+        self._check_stop(k, "distill")
         cert_path = os.path.join(it_dir, "cert.json")
         if os.path.exists(cert_path):
             self.skip(f"iter {k} cert", cert_path)
@@ -1026,8 +1032,12 @@ class Program:
                 f"iteration {k} cert FAILED: {'; '.join(cert['failures'])} "
                 "(WiSE-FT walk-back is an operator decision)"
             )
+        self._save_state()
+        self._check_stop(k, "cert")
         candidate = cert["candidate"]
         theta_next = self.run_bidding_phase(k, candidate, it_dir, rec)
+        self._save_state()
+        self._check_stop(k, "bidding")
         rec["theta_next"] = theta_next
         self._save_state()
         return theta_next, rec
@@ -1156,6 +1166,11 @@ class Program:
         leaves no earlier snapshots of the iterate, so this is the
         single-checkpoint form, not the generation composite."""
         self._single_panels(theta_next, f"iter{k}", f"iter {k}", rec)
+
+    def _check_stop(self, k: int, stage: str) -> None:
+        """Raise StopAfter when ``cfg.stop_after`` names this boundary."""
+        if self.cfg.stop_after and self.cfg.stop_after == f"iter{k}.{stage}":
+            raise StopAfter(f"iter{k}.{stage}")
 
     @staticmethod
     def _corpus_incomplete(corpus_dir: str, games: int) -> bool:
@@ -1392,6 +1407,9 @@ class Program:
         if self.state["status"] == "needs_review":
             self._event("resuming a needs_review run (operator override implied)")
             self.state["status"] = "running"
+        if self.state["status"] == "paused":
+            self._event("resuming a paused run")
+            self.state["status"] = "running"
         try:
             if cfg.start_phase == "policy_iteration":
                 # Validation entry (Training_Program_Redesign §7.0 / §4.4):
@@ -1447,6 +1465,21 @@ class Program:
                 *self.phase_time_lines(),
             )
             return 0
+        except StopAfter as exc:
+            self.state["status"] = "paused"
+            self._event(
+                f"PAUSED after {exc} (stop_after): operator work on the iterate; "
+                "re-run the same command without --stop-after to resume",
+                decision=True,
+            )
+            self._save_state()
+            self._write_report()
+            self.banner(
+                f"PROGRAM PAUSED after {exc}",
+                "re-run the same command (without --stop-after) to resume",
+                *self.phase_time_lines(),
+            )
+            return 0
         except NeedsReview as exc:
             self.state["status"] = "needs_review"
             self._event(f"NEEDS REVIEW: {exc}", log_msg=f"✖ NEEDS REVIEW: {exc}")
@@ -1467,7 +1500,28 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--config", default=None, help="ProgramConfig JSON")
     p.add_argument("--smoke", action="store_true", help="minutes-long end-to-end check")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--stop-after",
+        default=None,
+        metavar="iter<k>.<stage>",
+        help="pause after a phase-3 boundary (corpus, distill, cert, bidding) "
+        "for operator work; re-run without it to resume",
+    )
     return p.parse_args(argv)
+
+
+STOP_STAGES = ("corpus", "distill", "cert", "bidding")
+
+
+def _validate_stop_after(value: str | None) -> str | None:
+    if value is None:
+        return None
+    head, _, stage = value.partition(".")
+    if not (head.startswith("iter") and head[4:].isdigit() and stage in STOP_STAGES):
+        raise SystemExit(
+            f"--stop-after must be iter<k>.<{'|'.join(STOP_STAGES)}>, got {value!r}"
+        )
+    return value
 
 
 def build_config(args) -> ProgramConfig:
@@ -1475,12 +1529,16 @@ def build_config(args) -> ProgramConfig:
         cfg = ProgramConfig.load(args.config)
         if args.run_name:
             cfg.run_name = args.run_name
-        return cfg
-    if args.smoke:
-        return ProgramConfig.smoke_config(args.run_name or "_smoke_program")
-    if not args.run_name:
+    elif args.smoke:
+        cfg = ProgramConfig.smoke_config(args.run_name or "_smoke_program")
+    elif not args.run_name:
         raise SystemExit("--run-name is required (or --config / --smoke)")
-    return ProgramConfig(run_name=args.run_name)
+    else:
+        cfg = ProgramConfig(run_name=args.run_name)
+    stop = _validate_stop_after(getattr(args, "stop_after", None))
+    if stop:
+        cfg.stop_after = stop
+    return cfg
 
 
 def main(argv=None) -> int:

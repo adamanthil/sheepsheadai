@@ -195,6 +195,13 @@ class ProgramConfig:
     # ``policy_iteration.theta_0`` (validation of the final phases on an
     # existing lineage).
     start_phase: str = "bootstrap"
+    # Pause the program after a phase-3 stage boundary — "iter<k>.corpus",
+    # "iter<k>.distill", "iter<k>.cert" or "iter<k>.bidding" — for operator
+    # work on the iterate (an ablation on the iteration's corpus, a recipe
+    # change). The state is saved as "paused"; relaunching without the
+    # knob resumes at the next stage through the ordinary skips. Not
+    # persisted across launches: build_config rebuilds the config.
+    stop_after: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
