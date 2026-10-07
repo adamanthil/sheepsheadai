@@ -345,7 +345,9 @@ def test_stop_after_cli_validation():
 def test_recipe_ablation_knobs_pass_through_to_the_stages(tmp_path, monkeypatch):
     p = _program(tmp_path, monkeypatch)
     flags = p._pi_stage_flags()
-    assert "--cross-fit" not in flags
+    assert "--cross-fit" not in flags and "--distill-holdout-frac" not in flags
     p.cfg.policy_iteration.cross_fit = 5
+    p.cfg.policy_iteration.distill_holdout_frac = 0.02
     flags = p._pi_stage_flags()
     assert flags[flags.index("--cross-fit") + 1] == "5"
+    assert flags[flags.index("--distill-holdout-frac") + 1] == "0.02"

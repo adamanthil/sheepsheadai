@@ -898,9 +898,10 @@ def test_cross_fit_predicts_every_row_from_a_model_that_never_saw_its_game(
         )
 
 
-def test_cross_fit_through_the_stages(tmp_path):
+def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
     """--cross-fit K steers the target stage to the out-of-fold predictions
-    (no floor, the fit report's cross_fit sigma_u2)."""
+    (no floor, the fit report's cross_fit sigma_u2) and --distill-holdout-
+    frac sets the distill split independently of the fit's."""
     agent = fresh_agent()
     ckpt = tmp_path / "theta_k.pt"
     agent.save(str(ckpt))
@@ -941,6 +942,8 @@ def test_cross_fit_through_the_stages(tmp_path):
             "0.25",
             "--cross-fit",
             "2",
+            "--distill-holdout-frac",
+            "0.5",
             "--probe-games",
             "0",
             "--trunk-epochs",
@@ -960,6 +963,8 @@ def test_cross_fit_through_the_stages(tmp_path):
     assert report["sigma_u2"] == pytest.approx(fit["cross_fit"]["sigma_u2"])
     log = (out_dir / "policy_iteration.log").read_text()
     assert "no floor" in log and "[cross-fit] 2 folds" in log
+    assert "holdout 50.0%" in log
+    assert "10 train / 10 holdout episodes" in log
     # Re-running the fit without cross-fitting removes the stale predictions.
     rc = tpi.main(
         [

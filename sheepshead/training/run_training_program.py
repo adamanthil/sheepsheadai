@@ -899,6 +899,7 @@ class Program:
             ("--batch-segments", pi.batch_segments),
             ("--probe-games", pi.probe_games),
             ("--cross-fit", pi.cross_fit),
+            ("--distill-holdout-frac", pi.distill_holdout_frac),
         ):
             if val is not None:
                 flags += [name, str(val)]

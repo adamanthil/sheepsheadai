@@ -988,8 +988,17 @@ def stage_distill(args) -> list[str]:
             f"{args.ckpt} ({agent.arch_name}) has none"
         )
     episodes = load_episodes(targeted_dir)
-    train_eps, holdout = split_by_game(episodes, args.holdout_frac, args.seed)
-    log(f"[distill] {len(train_eps)} train / {len(holdout)} holdout episodes")
+    frac = (
+        args.distill_holdout_frac
+        if args.distill_holdout_frac is not None
+        else args.holdout_frac
+    )
+    train_eps, holdout = split_by_game(episodes, frac, args.seed)
+    log(
+        f"[distill] {len(train_eps)} train / {len(holdout)} holdout episodes "
+        f"(holdout {100 * frac:.1f}%; the held-out target KL is a fidelity read, "
+        "it selects nothing)"
+    )
     log_path = os.path.join(args.out_dir, "distill_log.jsonl")
     saved = []
     with open(log_path, "a") as log_f:
@@ -1269,6 +1278,13 @@ def build_parser() -> argparse.ArgumentParser:
     dst.add_argument("--lambda-ce", type=float, default=1.0)
     dst.add_argument("--lambda-ret", type=float, default=10.0)
     dst.add_argument("--no-oracle", dest="train_oracle", action="store_false")
+    dst.add_argument(
+        "--distill-holdout-frac",
+        type=float,
+        default=None,
+        help="game-level holdout of the distill (default: --holdout-frac); "
+        "the held-out target KL selects nothing since add. 31",
+    )
     dst.add_argument("--probe-games", type=int, default=500)
     crt = ap.add_argument_group("cert")
     crt.add_argument("--candidate", default=None)

@@ -137,10 +137,11 @@ class PolicyIterationConfig:
     buffer_episodes: int | None = None
     batch_segments: int | None = None
     probe_games: int | None = None
-    # Recipe candidate under ablation (CE_Teacher_Design §22.5; None = the
-    # module default, i.e. the pinned recipe): K-fold cross-fitting of the
-    # advantage model.
+    # Recipe candidates under ablation (CE_Teacher_Design §22.5; None = the
+    # module defaults, i.e. the pinned recipe): K-fold cross-fitting of the
+    # advantage model, and the distill's game-level holdout fraction.
     cross_fit: int | None = None
+    distill_holdout_frac: float | None = None
 
 
 @dataclass
