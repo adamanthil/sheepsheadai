@@ -21,6 +21,7 @@ from sheepshead.training.distill_corpus import ROW_SCHEMA_VERSION
 from sheepshead.training.search_advantage import (
     AdvantageModel,
     RowTable,
+    apply_noise_model,
     blend_advantages,
     build_row_table,
     build_tilt_target,
@@ -685,6 +686,9 @@ def test_variance_floor_and_clipped_disagreement():
         node_class=["x"] * 5,
         refs=[(0, 0, i) for i in range(5)],
         game=torch.zeros(5, dtype=torch.long),
+        noise_var_raw=torch.full((5,), 1e-4),
+        noise_s2c=torch.full((5, 4), float("nan")),
+        noise_nobs=torch.zeros(5, 4, dtype=torch.long),
     )
     z_abs = torch.tensor([8.0, 8.0, 8.0, 2.0, 8.0])
     out = clipped_disagreement(target, z_abs, table, tilt_max=8.0)
@@ -695,3 +699,66 @@ def test_variance_floor_and_clipped_disagreement():
     assert out["clipped_disagree_prior"] == pytest.approx(1 / 3)
     empty = clipped_disagreement(target, torch.zeros(5), table, tilt_max=8.0)
     assert empty["n_clipped"] == 0 and empty["clipped_disagree_committee"] is None
+
+
+def _noise_table(raw, label_counts, s2c_rows=None, nobs_rows=None):
+    R, A = len(raw), 4
+    lab = torch.zeros(R, A, dtype=torch.bool)
+    for i, k in enumerate(label_counts):
+        lab[i, :k] = True
+    s2c = torch.full((R, A), float("nan"))
+    nobs = torch.zeros(R, A, dtype=torch.long)
+    if s2c_rows is not None:
+        s2c = torch.tensor(s2c_rows)
+        nobs = torch.tensor(nobs_rows)
+    return RowTable(
+        features=torch.zeros(R, 2),
+        hand_tokens=torch.zeros(R, 8, 2),
+        hand_ids=torch.zeros(R, 8, dtype=torch.long),
+        masks=lab.clone(),
+        advantage=torch.zeros(R, A),
+        label_mask=lab,
+        noise_var=torch.tensor(raw),
+        prior=torch.full((R, A), 0.25),
+        has_q=torch.tensor([k >= 1 for k in label_counts]),
+        node_class=["x"] * R,
+        refs=[(0, 0, i) for i in range(R)],
+        game=torch.zeros(R, dtype=torch.long),
+        noise_var_raw=torch.tensor(raw),
+        noise_s2c=s2c,
+        noise_nobs=nobs,
+    )
+
+
+def test_noise_model_centered_independent_raw():
+    """raw keeps the corpus value; independent removes 1/n of it; centered
+    uses the measured across-replicate variance of the centered Q, shrunk
+    toward the df-weighted corpus mean and divided by the replicate count,
+    and falls back to independent on rows without the field."""
+    nan = float("nan")
+    t = _noise_table(
+        raw=[4e-4, 4e-4, 4e-4],
+        label_counts=[2, 4, 4],
+        s2c_rows=[
+            [1e-4, 3e-4, nan, nan],  # two actions, 3 replicates each
+            [nan, nan, nan, nan],  # no centered field -> independent
+            [2e-4, nan, nan, nan],  # one action with 2 replicates
+        ],
+        nobs_rows=[[3, 3, 0, 0], [0, 0, 0, 0], [2, 1, 0, 0]],
+    )
+    apply_noise_model(t, "raw", 4.0)
+    assert torch.allclose(t.noise_var, torch.tensor([4e-4, 4e-4, 4e-4]))
+    apply_noise_model(t, "independent", 4.0)
+    assert torch.allclose(t.noise_var, torch.tensor([2e-4, 3e-4, 3e-4]))
+    st = apply_noise_model(t, "centered", nu := 4.0)
+    assert st["rows_centered"] == 2 and st["rows_independent"] == 1
+    g = (2 * 1e-4 + 2 * 3e-4 + 1 * 2e-4) / 5  # df-weighted corpus mean
+    assert st["s2_centered_global"] == pytest.approx(g)
+    blend = lambda s2, n: (nu * g + (n - 1) * s2) / (nu + n - 1) / n  # noqa: E731
+    row0 = (blend(1e-4, 3) + blend(3e-4, 3)) / 2
+    row2 = blend(2e-4, 2)
+    assert float(t.noise_var[0]) == pytest.approx(row0)
+    assert float(t.noise_var[1]) == pytest.approx(3e-4)  # fallback
+    assert float(t.noise_var[2]) == pytest.approx(row2)
+    with pytest.raises(ValueError):
+        apply_noise_model(t, "bogus", 4.0)

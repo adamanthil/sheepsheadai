@@ -149,6 +149,16 @@ class CommitteeSummary:
         spread: max - min of ``q_mean``.
         max_visits: mean over replicates of the max root visit count (the
             pi_gumbel tilt-scale input).
+        q_s2_centered: per action, the across-replicate variance (ddof 1,
+            per replicate, UNshrunk) of the CENTERED Q — each replicate's
+            Q minus its mean over the actions it visited — nan where fewer
+            than two replicates visited the action. The label the advantage
+            fit regresses on is the centered pooled Q, whose noise is below
+            ``q_var``: centering removes 1/n of independent noise and all of
+            the common-mode noise the shared determinizations put on every
+            action of a replicate (measured ~45% of it on D8k, 2026-10-07).
+            The fit shrinks these toward a corpus-wide mean itself.
+        q_n_obs: per action, the number of replicates that visited it.
     """
 
     actions: tuple[int, ...]
@@ -162,6 +172,8 @@ class CommitteeSummary:
     gap: float
     spread: float
     max_visits: float
+    q_s2_centered: np.ndarray
+    q_n_obs: np.ndarray
 
     def as_row_fields(self) -> dict:
         """The schema-2 corpus row fields (CE_Teacher_Design §20.3), plain
@@ -176,6 +188,8 @@ class CommitteeSummary:
             "search_w": float(self.w),
             "search_gap": float(self.gap),
             "search_spread": float(self.spread),
+            "search_q_s2_centered": [float(x) for x in self.q_s2_centered],
+            "search_q_n_obs": [int(x) for x in self.q_n_obs],
             "search_stats_source": "committee",
         }
 
@@ -254,6 +268,25 @@ def summarize_committee(
         dtype=np.float64,
     )
     max_visits = float(np.mean([max(r["root_n"].values() or [0.0]) for r in usable]))
+    # Centered observations: each replicate's Q minus its own mean over the
+    # actions it visited (the per-replicate analogue of the label's
+    # centering over the legal set).
+    c_obs: dict = {a: [] for a in acts}
+    for r in usable:
+        seen = [a for a in acts if r["root_n"].get(a, 0.0) > 0.0]
+        if not seen:
+            continue
+        mu = float(np.mean([float(r["root_q"][a]) for a in seen]))
+        for a in seen:
+            c_obs[a].append(float(r["root_q"][a]) - mu)
+    q_s2_centered = np.array(
+        [
+            float(np.var(c_obs[a], ddof=1)) if len(c_obs[a]) >= 2 else float("nan")
+            for a in acts
+        ],
+        dtype=np.float64,
+    )
+    q_n_obs = np.array([len(c_obs[a]) for a in acts], dtype=np.float64)
     q_sorted = np.sort(q_bar)[::-1]
     return CommitteeSummary(
         actions=tuple(acts),
@@ -267,6 +300,8 @@ def summarize_committee(
         gap=float(q_sorted[0] - q_sorted[1]) if len(q_sorted) >= 2 else 0.0,
         spread=float(q_bar.max() - q_bar.min()),
         max_visits=max_visits,
+        q_s2_centered=q_s2_centered,
+        q_n_obs=q_n_obs,
     )
 
 

@@ -196,9 +196,11 @@ def dense_to_sorted_valid(dense: torch.Tensor, valid_actions) -> list[float]:
     return [float(dense[a - 1]) for a in sorted(valid_actions)]
 
 
-def sorted_valid_to_dense(values, valid_actions, action_size: int) -> list[float]:
-    """Inverse of ``dense_to_sorted_valid``: zeros off the legal set."""
-    dense = [0.0] * action_size
+def sorted_valid_to_dense(
+    values, valid_actions, action_size: int, fill: float = 0.0
+) -> list[float]:
+    """Inverse of ``dense_to_sorted_valid``: ``fill`` (zero) off the legal set."""
+    dense = [float(fill)] * action_size
     for a, v in zip(sorted(valid_actions), values):
         dense[a - 1] = float(v)
     return dense

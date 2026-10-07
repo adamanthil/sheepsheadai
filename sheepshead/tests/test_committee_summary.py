@@ -165,6 +165,41 @@ def test_summary_fields_and_completion():
     assert fields["search_stats_source"] == "committee"
     assert len(fields["search_q"]) == len(valid) == len(fields["search_q_var"])
     assert all(isinstance(x, float) for x in fields["search_q"])
+    assert len(fields["search_q_s2_centered"]) == len(valid)
+    assert fields["search_q_n_obs"][3] == 0 and np.isnan(
+        fields["search_q_s2_centered"][3]
+    )
+    assert all(n == 3 for n in fields["search_q_n_obs"][:3])
+
+
+def test_centered_variance_drops_common_mode_noise():
+    """Replicates that agree on the ordering but sit at different levels
+    (the shared-determinization effect) have raw per-action variance but
+    no centered variance; a replicate that visits one action only
+    contributes to what it saw."""
+    valid = [1, 2, 3]
+    reps = []
+    for shift in (0.0, 0.1, -0.1):
+        reps.append(
+            {
+                "ok": True,
+                "root_q": {1: 0.05 + shift, 2: 0.0 + shift, 3: -0.05 + shift},
+                "root_n": {1: 10.0, 2: 10.0, 3: 10.0},
+                "root_prior": {1: 0.5, 2: 0.3, 3: 0.2},
+            }
+        )
+    s = summarize_committee(reps, valid, **SHRINK)
+    assert s is not None
+    assert float(np.var([r["root_q"][1] for r in reps], ddof=1)) > 1e-3
+    assert np.allclose(s.q_s2_centered, 0.0, atol=1e-12)
+    assert list(s.q_n_obs) == [3, 3, 3]
+    reps[2]["root_n"][3] = 0.0  # third replicate did not visit action 3
+    s = summarize_committee(reps, valid, **SHRINK)
+    assert s is not None
+    assert list(s.q_n_obs) == [3, 3, 2]
+    # Its centering now runs over {1, 2}: actions 1 and 2 pick up variance.
+    assert s.q_s2_centered[0] > 0.0 and s.q_s2_centered[1] > 0.0
+    assert s.q_s2_centered[2] == pytest.approx(0.0, abs=1e-12)
 
 
 def test_within_noise_spread_shrinks_to_flat_target():

@@ -68,9 +68,11 @@ from sheepshead.training.corpus_rows import load_shard, shard_paths
 from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     CAPACITIES,
+    NOISE_MODELS,
     AdvantageModel,
     FitReport,
     RowTable,
+    apply_noise_model,
     build_row_table,
     class_residual_variances,
     clipped_disagreement,
@@ -212,6 +214,7 @@ def stage_fit(args) -> FitReport:
             f"[fit] row table: {len(table)} targetable rows, "
             f"{int(table.has_q.sum())} with Q ({(time.time() - t0) / 60:.1f} min)"
         )
+    _log_noise_model(table, args, log)
     train_idx, hold_idx = split_rows_by_game(table, args.holdout_frac, args.seed)
     log(f"[fit] split: {len(train_idx)} train / {len(hold_idx)} holdout rows (by game)")
 
@@ -257,6 +260,28 @@ def stage_fit(args) -> FitReport:
     return report
 
 
+def _log_noise_model(table: RowTable, args, log) -> dict:
+    """Set the table's working noise variance (search_advantage.apply_noise_model)
+    and say what it did; fit and target must agree, so both call this."""
+    st = apply_noise_model(table, args.noise_model, args.noise_shrink_nu)
+    if st["mode"] == "centered" and st.get("rows_centered"):
+        log(
+            f"[noise] centered-label noise on {st['rows_centered']} rows "
+            f"(mean {st['noise_centered_mean']:.3e} vs raw {st['noise_raw_mean']:.3e}; "
+            f"corpus-wide centered s2 {st['s2_centered_global']:.3e}, nu "
+            f"{args.noise_shrink_nu}); {st['rows_independent']} rows without the "
+            f"field use raw * (1 - 1/n)"
+        )
+    elif st["mode"] == "centered":
+        log(
+            "[noise] corpus predates the centered field: every row uses "
+            "raw * (1 - 1/n_labeled) (independence bound)"
+        )
+    else:
+        log(f"[noise] model {st['mode']}")
+    return st
+
+
 # --------------------------------------------------------------------------- #
 # target
 # --------------------------------------------------------------------------- #
@@ -269,6 +294,7 @@ def stage_target(args) -> dict:
     model = AdvantageModel(agent, fit["selected"], heteroscedastic=True, bilinear=True)
     model.load_state_dict(torch.load(os.path.join(args.out_dir, "advantage_model.pt")))
     table = RowTable.load(os.path.join(args.out_dir, "row_table.pt"))
+    _log_noise_model(table, args, log)
     sigma_u2 = float(fit["sigma_u2"])
 
     # §20.6: per-class residual variance re-estimated on EVERY row with Q
@@ -363,6 +389,7 @@ def stage_target(args) -> dict:
         "sigma_u2_by_class": su2_by_class,
         "sigma_u2_by_class_all_rows": su2_all_rows,
         "sigma_u2_by_class_holdout": su2_holdout,
+        "noise_model": args.noise_model,
         "clipped": overconf,
     }
     by_class: dict[str, list] = {}
@@ -1104,6 +1131,19 @@ def build_parser() -> argparse.ArgumentParser:
     fit.add_argument("--fh-iterations", type=int, default=2)
     fit.add_argument("--class-shrink-rows", type=float, default=50.0)
     fit.add_argument("--rebuild-table", action="store_true")
+    fit.add_argument(
+        "--noise-model",
+        default="centered",
+        choices=NOISE_MODELS,
+        help="label noise: centered (measured, 2026-10-07), independent "
+        "(raw * (1 - 1/n)), raw (the recipe before)",
+    )
+    fit.add_argument(
+        "--noise-shrink-nu",
+        type=float,
+        default=4.0,
+        help="shrinkage weight of the corpus-wide centered variance per action",
+    )
     tgt = ap.add_argument_group("target")
     tgt.add_argument(
         "--kappa", type=float, default=1.0, help="tilt temperature in posterior SEs"
