@@ -385,6 +385,19 @@ def stage_target(args) -> dict:
 # --------------------------------------------------------------------------- #
 # distill: rows, channels, losses
 # --------------------------------------------------------------------------- #
+def fmt_probe(probe: dict) -> str:
+    """One log line of a greedy_health_probe dict: scalars to one decimal,
+    the per-trick lists (seen-trump recall / false-seen, 763237e) joined
+    with slashes."""
+    parts = []
+    for k, v in sorted(probe.items()):
+        if isinstance(v, (list, tuple)):
+            parts.append(f"{k} " + "/".join(f"{x:.0f}" for x in v))
+        else:
+            parts.append(f"{k} {v:.1f}")
+    return "  ".join(parts)
+
+
 def densify(probs, valid_actions, action_size: int) -> list:
     """Distribution over sorted(valid) -> fixed-width vector (zeros off the
     legal set), mirroring the target densification in store_episode_events."""
@@ -858,10 +871,7 @@ def stage_distill(args) -> list[str]:
                     best_kl, best_epoch = kl, epoch
             if args.probe_games:
                 probe = greedy_health_probe(agent, n_games=args.probe_games, seed=0)
-                log(
-                    f"[distill epoch {epoch}] probe: "
-                    + "  ".join(f"{k} {v:.1f}" for k, v in sorted(probe.items()))
-                )
+                log(f"[distill epoch {epoch}] probe: " + fmt_probe(probe))
                 log_row({"kind": "probe", "epoch": epoch, **probe})
             ckpt_path = os.path.join(args.out_dir, f"distill_epoch{epoch}.pt")
             agent.save(ckpt_path)

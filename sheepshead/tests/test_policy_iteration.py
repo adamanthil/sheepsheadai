@@ -533,3 +533,13 @@ def test_cert_stage_records_battery_and_enforces_bars(tmp_path):
     assert relaxed["failures"] and not any("inferior" in f for f in relaxed["failures"])
     assert relaxed["compounding"]["source"] in ("h2h", "play_only")
     assert relaxed["h2h"]["edge"] + 2.0 * relaxed["h2h"]["se"] >= 0.0
+
+
+def test_fmt_probe_handles_the_per_trick_lists():
+    """The distill-epoch probe line must survive the probe's list-valued
+    per-trick keys (763237e); a scalar-only format string crashed the
+    stage at epoch 1 on 2026-10-06."""
+    line = tpi.fmt_probe(
+        {"pick_rate": 35.25, "seen_trump_recall_by_trick": [100.0, 99.5, 0.0]}
+    )
+    assert line == "pick_rate 35.2  seen_trump_recall_by_trick 100/100/0"
