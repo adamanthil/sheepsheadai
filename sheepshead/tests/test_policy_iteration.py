@@ -109,7 +109,9 @@ def test_fit_recovers_a_token_readout_to_the_noise_floor():
     gen = torch.Generator().manual_seed(2)
     play_map = agent.actor._map_cid_to_play_action_index
     for r in range(len(table)):
-        slot_val = 0.3 * (table.hand_tokens[r] @ u)  # (8,)
+        # Scaled so the centered signal is well above the noise floor (the
+        # uncentered fit used to "recover" mostly a per-row offset).
+        slot_val = 3.0 * (table.hand_tokens[r] @ u)  # (8,)
         play_idx = play_map[table.hand_ids[r].long()]
         adv = torch.zeros(agent.action_size)
         lab = torch.zeros(agent.action_size, dtype=torch.bool)
@@ -426,8 +428,15 @@ def test_heteroscedastic_head_and_nll():
     nll_a, mse_a = gaussian_nll_rows(
         pred, table.advantage, table.label_mask, nv, same, 1e-6
     )
-    nll_b, _ = gaussian_nll_rows(
+    # A per-row constant is centered away (the tilt never sees one) ...
+    nll_c, _ = gaussian_nll_rows(
         pred * 0 + 0.05, table.advantage, table.label_mask, nv, same, 1e-6
+    )
+    assert float(nll_c) == pytest.approx(float(nll_a))
+    # ... a wrong ordering is not.
+    wrong = -table.advantage
+    nll_b, _ = gaussian_nll_rows(
+        wrong, table.advantage, table.label_mask, nv, same, 1e-6
     )
     assert torch.isfinite(nll_a) and nll_a < nll_b
     assert torch.allclose(

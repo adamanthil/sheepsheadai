@@ -420,6 +420,18 @@ def centered_log_prior(prior: torch.Tensor, legal: torch.Tensor) -> torch.Tensor
 # --------------------------------------------------------------------------- #
 # Stage 1: fit
 # --------------------------------------------------------------------------- #
+def center_over(pred: torch.Tensor, label_mask: torch.Tensor) -> torch.Tensor:
+    """``pred`` minus its mean over the labeled actions of each row (0 off
+    the labeled set). The labels are centered over the legal set and the
+    tilt ignores a per-row constant, so the fit must not spend capacity on
+    one — before 2026-10-07 it did, and any offset it failed to cancel sat
+    in the residuals sigma_u^2 is built from."""
+    lab = label_mask.to(pred.dtype)
+    n = lab.sum(dim=1, keepdim=True).clamp(min=1)
+    mean = (pred * lab).sum(dim=1, keepdim=True) / n
+    return (pred - mean) * lab
+
+
 def weighted_rows_mse(
     pred: torch.Tensor,
     advantage: torch.Tensor,
@@ -428,8 +440,10 @@ def weighted_rows_mse(
     var_floor: float,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(loss, per_row_mse): per row the mean squared error over labeled
-    actions; the loss is the 1/noise_var-weighted mean over rows (the
-    heteroscedastic least-squares objective)."""
+    actions of the prediction CENTERED over them; the loss is the
+    1/noise_var-weighted mean over rows (the heteroscedastic least-squares
+    objective)."""
+    pred = center_over(pred, label_mask)
     sq = (pred - advantage) ** 2 * label_mask
     n_lab = label_mask.sum(dim=1).clamp(min=1)
     per_row = sq.sum(dim=1) / n_lab
@@ -447,9 +461,11 @@ def gaussian_nll_rows(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(loss, per_row_mse): Gaussian negative log-likelihood of the labeled
     advantages under total variance noise_var + sigma_u^2(s) (both per row),
-    averaged over labeled actions per row and then over rows. Standardizes
-    each row by its own learned scale — the taxonomy-free replacement for
-    the per-cell Fay-Herriot weights."""
+    the prediction centered over the labeled actions, averaged over labeled
+    actions per row and then over rows. Standardizes each row by its own
+    learned scale — the taxonomy-free replacement for the per-cell
+    Fay-Herriot weights."""
+    pred = center_over(pred, label_mask)
     total = (noise_var + sigma_u2 + var_floor).unsqueeze(1)
     sq = (pred - advantage) ** 2
     nll = 0.5 * (sq / total + torch.log(total))
