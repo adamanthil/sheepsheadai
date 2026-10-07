@@ -165,6 +165,27 @@ export default function TablePage() {
     takeAction,
   });
 
+  // The last trick leaves one card and no choice: play it for the player
+  // after a beat, exactly as if they had tapped it (it is their move, sent
+  // from here, not an AI move). The beat starts once the previous trick has
+  // been shown and collected, so the table can still be read.
+  const trickOnShow = showPrev || animTrick !== null;
+  const lastTrickPlay =
+    isYourTurn &&
+    !trickOnShow &&
+    lastState?.view.current_trick_index === TOTAL_TRICKS - 1
+      ? [...validActionStrings].filter((a) => a.startsWith("PLAY "))
+      : [];
+  const autoPlayId =
+    lastTrickPlay.length === 1 && validActionStrings.size === 1
+      ? actionIdByString[lastTrickPlay[0]]
+      : undefined;
+  useEffect(() => {
+    if (autoPlayId === undefined) return;
+    const timer = setTimeout(() => void takeAction(autoPlayId), 1000);
+    return () => clearTimeout(timer);
+  }, [autoPlayId, takeAction]);
+
   const handleCardClick = (card: string) => {
     if (!isYourTurn || !card) return;
     if (stageCard(card)) return;
