@@ -340,3 +340,12 @@ def test_stop_after_cli_validation():
         rtp.build_config(
             rtp.parse_args(["--run-name", "x", "--stop-after", "iter1.fit"])
         )
+
+
+def test_recipe_ablation_knobs_pass_through_to_the_stages(tmp_path, monkeypatch):
+    p = _program(tmp_path, monkeypatch)
+    flags = p._pi_stage_flags()
+    assert "--cross-fit" not in flags
+    p.cfg.policy_iteration.cross_fit = 5
+    flags = p._pi_stage_flags()
+    assert flags[flags.index("--cross-fit") + 1] == "5"

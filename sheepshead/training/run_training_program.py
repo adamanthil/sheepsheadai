@@ -898,6 +898,7 @@ class Program:
             ("--buffer-episodes", pi.buffer_episodes),
             ("--batch-segments", pi.batch_segments),
             ("--probe-games", pi.probe_games),
+            ("--cross-fit", pi.cross_fit),
         ):
             if val is not None:
                 flags += [name, str(val)]

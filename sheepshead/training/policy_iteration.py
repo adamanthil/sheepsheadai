@@ -76,6 +76,8 @@ from sheepshead.training.search_advantage import (
     build_row_table,
     class_residual_variances,
     clipped_disagreement,
+    cross_fit_predictions,
+    estimate_residual_variance,
     evaluate_rows,
     fit_advantage_model_iterated,
     floor_class_variances,
@@ -86,6 +88,7 @@ from sheepshead.training.search_advantage import (
 from sheepshead.training.training_utils import greedy_health_probe
 
 TARGETED_SUBDIR = "targeted"
+OOF_FILE = "oof_predictions.pt"
 
 # Partition codes for the per-row policy-loss channel (0 = no policy loss).
 # override  = searched play rows (CE toward the Stage-2 target);
@@ -248,6 +251,65 @@ def stage_fit(args) -> FitReport:
         f"{report.best_holdout_mse:.3e} vs noise floor "
         f"{report.holdout_noise_floor:.3e}; sigma_u2 {report.sigma_u2:.3e}"
     )
+    oof_path = os.path.join(args.out_dir, OOF_FILE)
+    if args.cross_fit > 0:
+        # §22.5 item 2: the held-out fit above chose the epoch count; the
+        # fold models run exactly that many and predict only games they
+        # never saw. sigma_u^2 (global and per class) then comes from
+        # honest residuals on EVERY row.
+        t0 = time.time()
+        a_oof, su2_oof, fold, states = cross_fit_predictions(
+            lambda: AdvantageModel(
+                agent, args.capacity, heteroscedastic=True, bilinear=True
+            ),
+            table,
+            folds=args.cross_fit,
+            epochs=max(report.best_epoch, 1),
+            var_floor=args.var_floor,
+            seed=args.seed,
+            log=log,
+            lr=args.fit_lr,
+            weight_decay=args.weight_decay,
+            batch_rows=args.batch_rows,
+            patience=args.fit_epochs + 1,
+        )
+        torch.save(
+            {
+                "a_model": a_oof,
+                "sigma_u2_head": su2_oof,
+                "fold": fold,
+                "models": states,
+            },
+            oof_path,
+        )
+        ev = evaluate_rows(
+            model,
+            table,
+            torch.arange(len(table)),
+            var_floor=args.var_floor,
+            oof=(a_oof, su2_oof),
+        )
+        su2_oof_global = estimate_residual_variance(
+            ev.residual_sq_mean, ev.noise_var_mean
+        )
+        report.cross_fit = {
+            "folds": args.cross_fit,
+            "epochs": max(report.best_epoch, 1),
+            "sigma_u2": su2_oof_global,
+            "per_class": ev.per_class,
+            "minutes": (time.time() - t0) / 60,
+        }
+        log(
+            f"[cross-fit] {args.cross_fit} folds x {report.cross_fit['epochs']} epochs "
+            f"({report.cross_fit['minutes']:.1f} min): out-of-fold wMSE "
+            f"{ev.per_class['__all__']['weighted_mse']:.3e} vs floor "
+            f"{ev.per_class['__all__']['noise_floor']:.3e}; sigma_u2 "
+            f"{su2_oof_global:.3e} (held-out fit {report.sigma_u2:.3e}); top-agree "
+            f"model {ev.per_class['__all__']['top_agree_model']:.3f} prior "
+            f"{ev.per_class['__all__']['top_agree_prior']:.3f}"
+        )
+    elif os.path.exists(oof_path):
+        os.remove(oof_path)  # a stale cross-fit must not steer the target stage
     for cls in sorted(report.per_class):
         r = report.per_class[cls]
         if r["n"] >= 100 and cls != "__all__":
@@ -304,28 +366,57 @@ def stage_target(args) -> dict:
     model.load_state_dict(torch.load(os.path.join(args.out_dir, "advantage_model.pt")))
     table = RowTable.load(os.path.join(args.out_dir, "row_table.pt"))
     _log_noise_model(table, args, log)
-    sigma_u2 = float(fit["sigma_u2"])
-
-    # §20.6: per-class residual variance re-estimated on EVERY row with Q
-    # (train + holdout; the held-out cells are thin and the count shrinkage
-    # would pin gamma near the global), shrunk toward the global value —
-    # floored at the held-out estimate (fit_report per_class), the model's
-    # true out-of-sample error on the class (floor_class_variances).
-    ev = evaluate_rows(model, table, torch.arange(len(table)), var_floor=args.var_floor)
-    su2_all_rows = class_residual_variances(
-        ev.per_class, sigma_u2, args.class_shrink_rows
-    )
-    su2_holdout = class_residual_variances(
-        fit["per_class"], sigma_u2, args.class_shrink_rows
-    )
-    su2_by_class = floor_class_variances(su2_all_rows, su2_holdout)
+    oof = None
+    oof_path = os.path.join(args.out_dir, OOF_FILE)
+    if os.path.exists(oof_path) and fit.get("cross_fit"):
+        d = torch.load(oof_path, map_location="cpu", weights_only=False)
+        oof = (d["a_model"], d["sigma_u2_head"])
+    if oof is not None:
+        # §22.5 item 2: out-of-fold predictions on every row, so the
+        # residuals are honest everywhere and the per-class sigma_u^2 needs
+        # no floor; the blend's a_model is the one that never saw the row.
+        sigma_u2 = float(fit["cross_fit"]["sigma_u2"])
+        ev = evaluate_rows(
+            model, table, torch.arange(len(table)), var_floor=args.var_floor, oof=oof
+        )
+        su2_all_rows = class_residual_variances(
+            ev.per_class, sigma_u2, args.class_shrink_rows
+        )
+        su2_holdout = class_residual_variances(
+            fit["per_class"], sigma_u2, args.class_shrink_rows
+        )
+        su2_by_class = su2_all_rows
+        log(
+            f"[target] capacity {fit['selected']}, cross-fit "
+            f"{fit['cross_fit']['folds']} folds: out-of-fold per-class sigma_u2 "
+            f"(global {sigma_u2:.3e}; {len(su2_by_class)} classes, no floor), "
+            f"kappa {args.kappa}, tilt_max {args.tilt_max}"
+        )
+    else:
+        sigma_u2 = float(fit["sigma_u2"])
+        # §20.6: per-class residual variance re-estimated on EVERY row with Q
+        # (train + holdout; the held-out cells are thin and the count
+        # shrinkage would pin gamma near the global), shrunk toward the global
+        # value — floored at the held-out estimate (fit_report per_class), the
+        # model's true out-of-sample error on the class
+        # (floor_class_variances).
+        ev = evaluate_rows(
+            model, table, torch.arange(len(table)), var_floor=args.var_floor
+        )
+        su2_all_rows = class_residual_variances(
+            ev.per_class, sigma_u2, args.class_shrink_rows
+        )
+        su2_holdout = class_residual_variances(
+            fit["per_class"], sigma_u2, args.class_shrink_rows
+        )
+        su2_by_class = floor_class_variances(su2_all_rows, su2_holdout)
+        log(
+            f"[target] capacity {fit['selected']}, per-class sigma_u2 "
+            f"(global {sigma_u2:.3e}; {len(su2_by_class)} classes, "
+            f"{sum(su2_by_class[c] > su2_all_rows[c] for c in su2_by_class)} floored "
+            f"at the held-out estimate), kappa {args.kappa}, tilt_max {args.tilt_max}"
+        )
     su2 = sigma_u2_rows(table.node_class, su2_by_class, sigma_u2)
-    log(
-        f"[target] capacity {fit['selected']}, per-class sigma_u2 "
-        f"(global {sigma_u2:.3e}; {len(su2_by_class)} classes, "
-        f"{sum(su2_by_class[c] > su2_all_rows[c] for c in su2_by_class)} floored "
-        f"at the held-out estimate), kappa {args.kappa}, tilt_max {args.tilt_max}"
-    )
     for cls in sorted(su2_by_class):
         r = ev.per_class.get(cls)
         if r and r["n"] >= 100:
@@ -336,7 +427,7 @@ def stage_target(args) -> dict:
                 f"{su2_holdout.get(cls, float('nan')):.2e}) gamma {g:.2f}"
             )
     built = targets_for_table(
-        model, table, sigma_u2=su2, kappa=args.kappa, tilt_max=args.tilt_max
+        model, table, sigma_u2=su2, kappa=args.kappa, tilt_max=args.tilt_max, oof=oof
     )
 
     shards, manifest = load_corpus(args.corpus_dir)
@@ -399,6 +490,7 @@ def stage_target(args) -> dict:
         "sigma_u2_by_class_all_rows": su2_all_rows,
         "sigma_u2_by_class_holdout": su2_holdout,
         "noise_model": args.noise_model,
+        "cross_fit": fit.get("cross_fit", {}).get("folds", 0) if oof is not None else 0,
         "clipped": overconf,
     }
     by_class: dict[str, list] = {}
@@ -1140,6 +1232,14 @@ def build_parser() -> argparse.ArgumentParser:
     fit.add_argument("--fh-iterations", type=int, default=2)
     fit.add_argument("--class-shrink-rows", type=float, default=50.0)
     fit.add_argument("--rebuild-table", action="store_true")
+    fit.add_argument(
+        "--cross-fit",
+        type=int,
+        default=0,
+        metavar="K",
+        help="K-fold cross-fitting (§22.5): fold models at the held-out fit's "
+        "epoch count predict only games they never saw; 0 = off",
+    )
     fit.add_argument(
         "--noise-model",
         default="centered",

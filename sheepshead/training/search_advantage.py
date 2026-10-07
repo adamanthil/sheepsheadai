@@ -622,6 +622,10 @@ class FitReport:
     # Per-class residual variances (§20.6, shrunk toward sigma_u2 by row
     # count); filled by ``class_residual_variances`` after the fit.
     sigma_u2_by_class: dict = field(default_factory=dict)
+    # Cross-fitting (CE_Teacher_Design §22.5 item 2): folds, the fixed epoch
+    # count, and the OUT-OF-FOLD residual variance (global + per class) —
+    # honest on every row, the blend's sigma_u^2 when present.
+    cross_fit: dict = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__, indent=2)
@@ -656,11 +660,14 @@ def evaluate_rows(
     *,
     var_floor: float,
     batch_rows: int = 2048,
+    oof: "tuple[torch.Tensor, torch.Tensor | None] | None" = None,
 ) -> HoldoutEval:
     """Held-out diagnostics on rows WITH Q: weighted MSE vs the noise floor
     (the weighted mean noise variance = a perfect model's expected MSE),
     per-class breakdown, and top-card agreement with the committee draw
-    for the model vs the prior (the pooling diagnostic of §20.4)."""
+    for the model vs the prior (the pooling diagnostic of §20.4). With
+    ``oof`` (out-of-fold a_model and per-row sigma_u^2 aligned with the
+    table) those stand in for the model's own predictions."""
     model.eval()
     device = ppo_module.device
     q_idx = idx[table.has_q[idx]]
@@ -685,9 +692,13 @@ def evaluate_rows(
                 hand_ids=enc.hand_ids.to(device),
                 masks=enc.masks.to(device),
             )
-            pred, su2 = model.forward_with_variance(enc, table.prior[b].to(device))
-            pred = pred.cpu()
-            su2 = su2.cpu() if su2 is not None else None
+            if oof is not None:
+                pred = oof[0][b]
+                su2 = oof[1][b] if oof[1] is not None else None
+            else:
+                pred, su2 = model.forward_with_variance(enc, table.prior[b].to(device))
+                pred = pred.cpu()
+                su2 = su2.cpu() if su2 is not None else None
             adv, lab, nv = table.advantage[b], table.label_mask[b], table.noise_var[b]
             _, per_row = weighted_rows_mse(pred, adv, lab, nv, var_floor)
             w = 1.0 / (nv + var_floor)
@@ -743,9 +754,13 @@ def fit_advantage_model(
     seed: int,
     log=print,
     extra_var: torch.Tensor | None = None,
+    fixed_epochs: bool = False,
 ) -> FitReport:
     """Stage 1 on a cached ``RowTable`` (frozen rungs). Early-stops on the
-    held-out weighted MSE and restores the best epoch's weights.
+    held-out weighted MSE and restores the best epoch's weights — unless
+    ``fixed_epochs``: then every epoch runs and the LAST weights are kept,
+    so ``holdout_idx`` selects nothing (a cross-fitting fold model must not
+    pick its epoch on the rows it will predict).
 
     ``extra_var`` (per row) is added to the noise variance in the training
     weight only: the Fay-Herriot generalized-least-squares weight is
@@ -824,6 +839,11 @@ def fit_advantage_model(
             f"top-agree model {row['holdout_top_agree_model']:.3f} "
             f"prior {row['holdout_top_agree_prior']:.3f}"
         )
+        if fixed_epochs:
+            report.best_holdout_mse = row["holdout_weighted_mse"]
+            report.best_epoch = epoch
+            report.holdout_noise_floor = row["holdout_noise_floor"]
+            continue
         if row["holdout_weighted_mse"] < report.best_holdout_mse:
             report.best_holdout_mse = row["holdout_weighted_mse"]
             report.best_epoch = epoch
@@ -835,7 +855,8 @@ def fit_advantage_model(
             if since_best >= patience:
                 log(f"[fit {model.capacity}] early stop at epoch {epoch}")
                 break
-    model.load_state_dict(best_state)
+    if not fixed_epochs:
+        model.load_state_dict(best_state)
     final = evaluate_rows(model, table, holdout_idx, var_floor=var_floor)
     report.per_class = final.per_class
     report.sigma_u2 = estimate_residual_variance(
@@ -908,6 +929,103 @@ def fit_advantage_model_iterated(
             f"sigma_u2 {report.sigma_u2:.3e}"
         )
     return model, report
+
+
+def predict_rows(
+    model: AdvantageModel, table: RowTable, b: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """(a_model, sigma_u2_head) for rows ``b``: the model's advantages
+    centered over the legal set (the zero the observed advantages live on;
+    0 off-legal) and the heteroscedastic head's per-row variance (None for a
+    homoscedastic model). CPU tensors."""
+    device = ppo_module.device
+    enc = table.encoded(b)
+    enc = EncodedRows(
+        features=enc.features.to(device),
+        hand_tokens=enc.hand_tokens.to(device),
+        hand_ids=enc.hand_ids.to(device),
+        masks=enc.masks.to(device),
+    )
+    a_model, su2_head = model.forward_with_variance(enc, table.prior[b].to(device))
+    a_model = a_model.cpu()
+    legal = table.masks[b].bool()
+    a_model = torch.where(legal, a_model, torch.zeros_like(a_model))
+    n_legal = legal.sum(dim=1).clamp(min=1).unsqueeze(1)
+    a_model = a_model - (a_model.sum(dim=1, keepdim=True) / n_legal)
+    a_model = torch.where(legal, a_model, torch.zeros_like(a_model))
+    return a_model, (su2_head.cpu() if su2_head is not None else None)
+
+
+def fold_rows_by_game(table: RowTable, folds: int, seed: int) -> torch.Tensor:
+    """Fold id per row, assigned at GAME granularity (the five seats of a
+    deal share an outcome) by a seeded shuffle of the games."""
+    games = sorted(set(table.game.tolist()))
+    random.Random(seed).shuffle(games)
+    fold_of_game = {g: i % folds for i, g in enumerate(games)}
+    return torch.tensor(
+        [fold_of_game[g] for g in table.game.tolist()], dtype=torch.long
+    )
+
+
+def cross_fit_predictions(
+    make_model,
+    table: RowTable,
+    *,
+    folds: int,
+    epochs: int,
+    var_floor: float,
+    seed: int,
+    log=print,
+    **fit_kwargs,
+) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor, list[dict]]:
+    """Out-of-fold advantages for every row (CE_Teacher_Design §22.5 item
+    2). ``folds`` models, each trained on the other folds' games for
+    exactly ``epochs`` epochs (the count the ordinary held-out fit chose;
+    no early stopping, so nothing is selected on the predicted fold), and
+    each row's a_model and per-row sigma_u^2(s) come from the model that
+    never saw its game. The blend's two inputs then carry independent
+    errors, and the residual on every row is an honest one for sigma_u^2.
+    Returns (a_oof (R, A), su2_oof (R,) or None, fold per row, the fold
+    models' state dicts)."""
+    if folds < 2:
+        raise ValueError(f"cross-fitting needs at least 2 folds, got {folds}")
+    fold = fold_rows_by_game(table, folds, seed)
+    a_oof = torch.zeros_like(table.advantage)
+    su2_oof: torch.Tensor | None = None
+    states = []
+    for i in range(folds):
+        train_idx = torch.nonzero(fold != i).squeeze(1)
+        pred_idx = torch.nonzero(fold == i).squeeze(1)
+        torch.manual_seed(seed + 1000 + i)
+        model = make_model()
+        report = fit_advantage_model(
+            model,
+            table,
+            train_idx,
+            pred_idx,
+            epochs=epochs,
+            var_floor=var_floor,
+            seed=seed + i,
+            log=lambda *_: None,
+            fixed_epochs=True,
+            **fit_kwargs,
+        )
+        log(
+            f"[cross-fit {i + 1}/{folds}] {len(train_idx)} train rows -> "
+            f"{len(pred_idx)} out-of-fold rows, {epochs} epochs, fold wMSE "
+            f"{report.best_holdout_mse:.3e}"
+        )
+        model.eval()
+        with torch.no_grad():
+            for b in _batches(pred_idx, 2048, False, random.Random(0)):
+                a_b, su2_b = predict_rows(model, table, b)
+                a_oof[b] = a_b
+                if su2_b is not None:
+                    if su2_oof is None:
+                        su2_oof = torch.zeros(len(table), dtype=su2_b.dtype)
+                    su2_oof[b] = su2_b
+        states.append({k: v.cpu() for k, v in model.state_dict().items()})
+    return a_oof, su2_oof, fold, states
 
 
 # --------------------------------------------------------------------------- #
@@ -1073,46 +1191,33 @@ def targets_for_table(
     tilt_max: float,
     batch_rows: int = 2048,
     node_variance: bool = False,
+    oof: "tuple[torch.Tensor, torch.Tensor | None] | None" = None,
 ) -> dict:
     """Stage 1b + 2 over every targetable row. Returns dense tensors
     (targets, z, gamma, v_post, a_hat) aligned with ``table``.
     ``sigma_u2``: one value, or a per-row tensor aligned with ``table``;
     ``node_variance`` uses the heteroscedastic head's per-row sigma_u^2
-    instead (ignored for a homoscedastic model)."""
+    instead (ignored for a homoscedastic model); ``oof`` supplies
+    out-of-fold a_model / per-row sigma_u^2 in place of the model's."""
     su2_rows = (
         sigma_u2
         if isinstance(sigma_u2, torch.Tensor)
         else torch.full((len(table),), float(sigma_u2))
     )
     model.eval()
-    device = ppo_module.device
     out_t, out_z, out_g, out_v, out_a = [], [], [], [], []
     with torch.no_grad():
         for b in _batches(
             torch.arange(len(table)), batch_rows, False, random.Random(0)
         ):
-            enc = table.encoded(b)
-            enc = EncodedRows(
-                features=enc.features.to(device),
-                hand_tokens=enc.hand_tokens.to(device),
-                hand_ids=enc.hand_ids.to(device),
-                masks=enc.masks.to(device),
-            )
-            a_model, su2_head = model.forward_with_variance(
-                enc, table.prior[b].to(device)
-            )
-            a_model = a_model.cpu()
             legal = table.masks[b].bool()
-            # The model predicts over hand slots; center it over the legal
-            # set so it lives on the same zero as the observed advantages.
-            a_model = torch.where(legal, a_model, torch.zeros_like(a_model))
-            n_legal = legal.sum(dim=1).clamp(min=1).unsqueeze(1)
-            a_model = a_model - (a_model.sum(dim=1, keepdim=True) / n_legal)
-            a_model = torch.where(legal, a_model, torch.zeros_like(a_model))
+            if oof is not None:
+                a_model = oof[0][b]
+                su2_head = oof[1][b] if oof[1] is not None else None
+            else:
+                a_model, su2_head = predict_rows(model, table, b)
             su2_b = (
-                su2_head.cpu()
-                if (su2_head is not None and node_variance)
-                else su2_rows[b]
+                su2_head if (su2_head is not None and node_variance) else su2_rows[b]
             )
             a_hat, v_post, gamma = blend_advantages(
                 table.advantage[b],

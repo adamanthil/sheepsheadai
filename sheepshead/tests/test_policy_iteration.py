@@ -801,3 +801,183 @@ def test_nll_accepts_per_action_noise():
         pred, adv, lab, torch.tensor([[2e-4, 2e-3, 9.0]]), su2, 0.0
     )[0]
     assert float(loud) != pytest.approx(float(row))
+
+
+def test_fixed_epochs_runs_every_epoch_and_keeps_the_last():
+    agent = fresh_agent()
+    shard = _corpus(agent, [3, 4])
+    table = build_row_table(
+        agent,
+        shard["episodes"],
+        shard_idx=0,
+        game_indices=[g["game"] for g in shard["games"] for _ in range(5)],
+    )
+    train_idx, hold_idx = split_rows_by_game(table, 0.5, seed=0)
+    model = AdvantageModel(agent, "pointer")
+    report = fit_advantage_model(
+        model,
+        table,
+        train_idx,
+        hold_idx,
+        epochs=3,
+        lr=1e-3,
+        weight_decay=0.0,
+        batch_rows=64,
+        var_floor=1e-6,
+        patience=1,  # would stop at once if early stopping were on
+        seed=0,
+        log=lambda *_: None,
+        fixed_epochs=True,
+    )
+    assert report.best_epoch == 3 and len(report.epochs) == 3
+
+
+def test_cross_fit_predicts_every_row_from_a_model_that_never_saw_its_game(
+    monkeypatch,
+):
+    from sheepshead.training import search_advantage as sa
+
+    agent = fresh_agent()
+    shard = _corpus(agent, [3, 4, 5, 6])
+    table = build_row_table(
+        agent,
+        shard["episodes"],
+        shard_idx=0,
+        game_indices=[g["game"] for g in shard["games"] for _ in range(5)],
+    )
+    seen = []
+    real_fit = sa.fit_advantage_model
+
+    def spy(model, tbl, train_idx, holdout_idx, **kw):
+        seen.append(
+            (set(tbl.game[train_idx].tolist()), set(tbl.game[holdout_idx].tolist()))
+        )
+        assert kw["fixed_epochs"] is True
+        return real_fit(model, tbl, train_idx, holdout_idx, **kw)
+
+    monkeypatch.setattr(sa, "fit_advantage_model", spy)
+    a_oof, su2_oof, fold, states = sa.cross_fit_predictions(
+        lambda: AdvantageModel(agent, "pointer", heteroscedastic=True),
+        table,
+        folds=2,
+        epochs=1,
+        var_floor=1e-6,
+        seed=0,
+        log=lambda *_: None,
+        lr=1e-3,
+        weight_decay=0.0,
+        batch_rows=64,
+        patience=99,
+    )
+    assert len(seen) == 2 and len(states) == 2
+    for train_games, pred_games in seen:
+        assert train_games and pred_games and not (train_games & pred_games)
+    assert set(fold.tolist()) == {0, 1}
+    # Every row of a game sits in one fold, and every row got a prediction
+    # centered over its legal set.
+    for g in set(table.game.tolist()):
+        assert len(set(fold[table.game == g].tolist())) == 1
+    assert a_oof.shape == table.advantage.shape
+    legal = table.masks.bool()
+    assert torch.allclose(
+        (a_oof * legal).sum(dim=1), torch.zeros(len(table)), atol=1e-5
+    )
+    assert su2_oof is not None and bool((su2_oof > 0).all())
+    with pytest.raises(ValueError):
+        sa.cross_fit_predictions(
+            lambda: AdvantageModel(agent, "pointer"),
+            table,
+            folds=1,
+            epochs=1,
+            var_floor=1e-6,
+            seed=0,
+            lr=1e-3,
+            weight_decay=0.0,
+            batch_rows=64,
+            patience=99,
+        )
+
+
+def test_cross_fit_through_the_stages(tmp_path):
+    """--cross-fit K steers the target stage to the out-of-fold predictions
+    (no floor, the fit report's cross_fit sigma_u2)."""
+    agent = fresh_agent()
+    ckpt = tmp_path / "theta_k.pt"
+    agent.save(str(ckpt))
+    shard = _corpus(agent, [3, 4, 5, 6])
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    torch.save(shard, corpus_dir / "corpus_0000.pt")
+    (corpus_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "row_schema": ROW_SCHEMA_VERSION,
+                "ckpt": str(ckpt),
+                "shards": [{"path": "corpus_0000.pt"}],
+            }
+        )
+    )
+    out_dir = tmp_path / "iter1"
+    rc = tpi.main(
+        [
+            "all",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--ckpt",
+            str(ckpt),
+            "--out-dir",
+            str(out_dir),
+            "--capacity",
+            "pointer",
+            "--fit-epochs",
+            "2",
+            "--batch-rows",
+            "32",
+            "--buffer-episodes",
+            "10",
+            "--batch-segments",
+            "4",
+            "--holdout-frac",
+            "0.25",
+            "--cross-fit",
+            "2",
+            "--probe-games",
+            "0",
+            "--trunk-epochs",
+            "1",
+            "--head-epochs",
+            "0",
+            "--no-oracle",
+        ]
+    )
+    assert rc == 0
+    fit = json.loads((out_dir / "fit_report.json").read_text())
+    assert fit["cross_fit"]["folds"] == 2 and fit["cross_fit"]["epochs"] >= 1
+    assert np.isfinite(fit["cross_fit"]["sigma_u2"])
+    assert (out_dir / tpi.OOF_FILE).exists()
+    report = json.loads((out_dir / "target_report.json").read_text())
+    assert report["cross_fit"] == 2
+    assert report["sigma_u2"] == pytest.approx(fit["cross_fit"]["sigma_u2"])
+    log = (out_dir / "policy_iteration.log").read_text()
+    assert "no floor" in log and "[cross-fit] 2 folds" in log
+    # Re-running the fit without cross-fitting removes the stale predictions.
+    rc = tpi.main(
+        [
+            "fit",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--ckpt",
+            str(ckpt),
+            "--out-dir",
+            str(out_dir),
+            "--capacity",
+            "pointer",
+            "--fit-epochs",
+            "1",
+            "--batch-rows",
+            "32",
+            "--holdout-frac",
+            "0.25",
+        ]
+    )
+    assert rc == 0 and not (out_dir / tpi.OOF_FILE).exists()
