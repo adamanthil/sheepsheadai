@@ -5256,3 +5256,127 @@ candidate selection [31]; head routing at deploy [§20.14 step 6].
 - Leaster-play drift across iterations: within noise at every cert so far
   (−0.008 / +0.022 on the leaster stratum); the fixed-reference anchor
   (Training_Program_Redesign App. A) stays a contingency.
+
+## §22 Posterior-honesty review of the §20 fit (2026-10-06/07)
+
+An external review of the policy-iteration code (Opus 5.5, two rounds)
+found four estimator defects in the Stage 1/1b/2 recipe of §20. None
+changes the method; all made the Fay-Herriot posterior claim more
+precision than the data carry, in one direction — toward the model and
+away from the nodes' own searches — so they compound. Each was verified
+in code and, where possible, measured on the D8k corpus
+(`runs/distill_corpus_iter2d_256_202609`, theta_k = iter11/distill_epoch7)
+and on rc_validate_v2 iteration 1. Fixed on branch `fh-posterior-fix`
+(merged 2026-10-07), seven commits; the RC run restarted its iteration-1
+corpus on the new writer at 00:39 (14 h of the old corpus discarded,
+kept at `pi/iter1/corpus_partial_oldwriter`).
+
+### 22.1 Findings
+
+1. **The FH reweighting round was inert** (6faccbb). §20.7 arm 3's
+   second round passes the per-class sigma_u^2 back as a GLS weight, but
+   that weight enters only the homoscedastic objective; the
+   heteroscedastic NLL adopted in §20.8 ignored it. "FH round 2" was a
+   fresh-init refit of the same loss (rc_validate_v2: 6.652e-4 →
+   6.665e-4, the slightly worse round kept). A heteroscedastic model is
+   now fit once; passing extra_var to one raises.
+
+2. **v_post omitted the model's own error** (97536b9). The per-class
+   sigma_u^2 for the blend is re-estimated on every row, train included;
+   where the model's training residual sits under the search noise floor
+   the subtraction bottoms out at the 1e-7 floor and the class value
+   collapses to the shrinkage prior alone (std t0 defender follows:
+   3.1e-6 all-rows vs 1.3e-5 held-out), i.e. a posterior SE set by
+   CLASS_SHRINK_ROWS = 50, not data. Consequences on rc_validate_v2
+   iteration 1: gamma 0.01 on 41% of rows; half of those rows at the ±8
+   tilt clip (target max p50 0.999); 82% of the CE weight on std
+   defender follows (picker rows ~0.03); 19.7% of all rows clipped. The
+   class value is now floored at the held-out estimate — the model's
+   actual out-of-sample error, which stands in for the Prasad-Rao
+   regression-uncertainty term a flexible model has no closed form for.
+   Direct read, new in target_report.json: on clipped rows the target's
+   top card is not the committee's 28%; where the committee is confident
+   (gap > 2 SE) 5.1%; not the prior's 6.7% — the clip was mostly
+   sharpening theta_k's own argmax.
+
+3. **Uncentered predictions against centered labels** (e48935a). Both
+   losses and the held-out evaluation compared raw slot scores with
+   labels centered over the legal set; only the target stage centered.
+   The fit spent capacity on a per-row offset the tilt never sees, and
+   any offset it failed to cancel inflated the residuals (conservative
+   direction). Predictions are centered over the labeled set in both
+   losses.
+
+4. **The noise floor was the noise of a raw Q, not of the label**
+   (038d8b4, 4ff66aa). The label is the pooled Q centered over the legal
+   set. Centering removes 1/n of independent noise and ALL common-mode
+   noise, and ISMCTS replicates share a lot: the node telemetry's
+   per-replicate top-pair differences give, for std t0 defender follows,
+   var(diff) 8.85e-4 per replicate against 1.6e-3 under independence —
+   within-replicate correlation ~0.45. Label noise there: raw 2.66e-4,
+   independence-corrected 1.9e-4, with the common mode removed ~1.0e-4.
+   The over-subtraction (≥ 4-9e-5 Q^2 per std class on the independence
+   bound alone) exceeded the sigma_u^2 it produced on every defender and
+   partner class 10-30x. gamma ~0.01 there — the model overriding the
+   nodes' own searches — was an estimator artifact; the true value is
+   plausibly 0.3-0.4. Also noted: the corpus's per-action variance is
+   shrunk 2/3 toward the CE-era constant 6.95e-4 (nu 4 vs 2 df), so the
+   "known noise" was largely class-blind.
+   Fix: the corpus stores, per action, the across-replicate variance of
+   the CENTERED Q (each replicate's Q minus its mean over the actions it
+   visited) and the replicate count (`search_q_s2_centered`,
+   `search_q_n_obs`, additive schema-2 fields). `--noise-model centered`
+   (default) shrinks each action toward the corpus-wide df-weighted mean
+   (nu 4) over the replicate count; the NLL weighs each labeled action by
+   its own noise; the blend's gamma and the sigma_u^2 subtraction use the
+   row mean over labeled actions. Corpora without the field (every corpus
+   before 10-07, incl. D8k) use the exact independence form from the
+   stored per-action search_q_var, var(y_a) = s_a^2 (1 − 2/n) +
+   Σ_b s_b^2 / n^2 (reviewer's formula) — a lower bound on the correction.
+   `raw` reproduces the old recipe.
+
+Also fixed on master while here: the distill-epoch probe log line
+formatted the probe's per-trick lists (763237e) as floats and would have
+killed the RC run's first distill epoch (988c62b; the smoke config sets
+probe_games 0, the program leaves 500).
+
+### 22.2 The prior-sharpening channel (operator decision 10-06)
+
+With a_model = s·c(log p_θk) + r (s ≈ 0.004 Q/nat on D8k), the target
+factors as p_θk^(1+β)·exp(r/(κ√v_post)) with β = (1−γ)·s/(κ√v_post): a
+"be greedier than theta_k" channel beside the "change the ordering" one.
+Under the standing recipe β p50 1.02, 2.1-2.2 on std defender follows
+(theta_k cubed before the residual enters); with finding 2 fixed, 0.29
+and 0.45-0.54. The covariate STAYS in the blend: the target is the
+posterior mean under the model actually fit, and the sharpening is what
+that estimate implies — its magnitude was the artifact. Any greediness
+beyond the honest posterior belongs in an explicit, separately measured
+knob (target temperature / distill entropy), never in a miscalibrated
+SE. The s·c-off / residual-off rebuilds are attribution reads only
+(β, target entropy vs prior entropy, KL per class at the target stage);
+distill them only if the main comparison is ambiguous.
+
+### 22.3 Arms on D8k vs iter11 (runs/policy_iteration_202609)
+
+| arm | code | clip | w p50/p90 | β p50 | cert h2h | play-only | bid-only |
+|---|---|---|---|---|---|---|---|
+| D8kt6_ep10 (certified, §20.14) | Sep recipe | 21.4% | 0.58/2.12 | 1.02 | +0.0031 ± 0.0030 | +0.0044 ± 0.0028 | −0.0005 ± 0.0013 |
+| iter32_ctrl_master | master 10-06 | 20.2%* | — | 1.02 | running | | |
+| iter33_fhfloor | findings 1+2 | 4.3% | 0.91/1.66 | 0.29 | +0.0049 ± 0.0026 | +0.0054 ± 0.0025 | −0.0005 ± 0.0010 |
+| iter34_noise | all four (independence form on D8k) | | | | running (launched 00:36 10-07) | | |
+
+\* target stage only, before the control's distill. Paired duplicate
+h2h reads between the arms and D8kt6_ep10 (8,000 deals/mode) are in
+each arm's `h2h_vs_*.json`. Conventions held on iter33 (called-suit
+46-53, partner trump 97-99, t0 trump ≤ 0.2, PASS). The clipped-row
+disagreement against a confident committee fell to 3.0% (from 5.1%).
+
+### 22.4 Open
+
+- The centered estimator's first real read is the RC run's iteration-1
+  fit (~10-09): sigma_u^2 / gamma per class against the independence
+  form, and the paired comparison on identical nodes against the old
+  writer's partial corpus (its telemetry has the pair differences).
+- Whether the corrected gamma (defender follows ~0.3-0.4 instead of
+  0.01) changes the certified step size: iter34 vs iter32/iter33.
+- The attribution reads of §22.2.
