@@ -5356,20 +5356,64 @@ SE. The s·c-off / residual-off rebuilds are attribution reads only
 (β, target entropy vs prior entropy, KL per class at the target stage);
 distill them only if the main comparison is ambiguous.
 
-### 22.3 Arms on D8k vs iter11 (runs/policy_iteration_202609)
+### 22.3 Arms on D8k vs iter11 — FINAL (2026-10-08)
 
-| arm | code | clip | w p50/p90 | β p50 | cert h2h | play-only | bid-only |
-|---|---|---|---|---|---|---|---|
-| D8kt6_ep10 (certified, §20.14) | Sep recipe | 21.4% | 0.58/2.12 | 1.02 | +0.0031 ± 0.0030 | +0.0044 ± 0.0028 | −0.0005 ± 0.0013 |
-| iter32_ctrl_master | master 10-06 | 20.2%* | — | 1.02 | running | | |
-| iter33_fhfloor | findings 1+2 | 4.3% | 0.91/1.66 | 0.29 | +0.0049 ± 0.0026 | +0.0054 ± 0.0025 | −0.0005 ± 0.0010 |
-| iter34_noise | all four (independence form on D8k) | | | | running (launched 00:36 10-07) | | |
+Four arms on one corpus (`runs/distill_corpus_iter2d_256_202609`, 8,000
+games, theta_k = iter11/distill_epoch7), the §20.14 distill schedule (6
+trunk epochs @ 3e-5 + 4 head epochs; the candidate is the last epoch),
+cert vs theta_k at 8,000 deals/mode with the routed reads. The master
+control is the pinned recipe on the 10-06 code, so code drift since the
+September artifact is separated from the fixes. On D8k the noise model is
+the per-card independence form (the corpus predates the centered field).
 
-\* target stage only, before the control's distill. Paired duplicate
-h2h reads between the arms and D8kt6_ep10 (8,000 deals/mode) are in
-each arm's `h2h_vs_*.json`. Conventions held on iter33 (called-suit
-46-53, partner trump 97-99, t0 trump ≤ 0.2, PASS). The clipped-row
-disagreement against a confident committee fell to 3.0% (from 5.1%).
+    arm                        code            full h2h          play-only         bidding-only      spread  cert
+    D8kt6_ep10 (Sep, §20.14)   Sep recipe      +0.0031 ± 0.0030  +0.0044 ± 0.0028  −0.0005 ± 0.0013  ~3.6    PASS
+    iter32_ctrl_master         pinned, 10-06   +0.0027 ± 0.0029  +0.0020 ± 0.0028  +0.0003 ± 0.0009  4.92    PASS
+    iter33_fhfloor             findings 1-2    +0.0049 ± 0.0026  +0.0054 ± 0.0025  −0.0005 ± 0.0010  4.62    PASS
+    iter34_noise               findings 1-4    +0.0088 ± 0.0027  +0.0079 ± 0.0024  +0.0006 ± 0.0011  4.24    PASS
+
+Paired reads — per-deal play-only differences on the seed-42 deals
+(bootstrap SE) and direct duplicate h2h between the checkpoints:
+
+    comparison                 paired play-only    direct h2h
+    iter34 vs control          +0.0059 ± 0.0027    +0.0053 ± 0.0028
+    iter33 vs control          +0.0034 ± 0.0028    +0.0036 ± 0.0027
+    iter34 vs iter33           +0.0025 ± 0.0021    +0.0032 ± 0.0024
+    iter34 vs D8kt6_ep10       —                   +0.0039 ± 0.0030
+    iter33 vs D8kt6_ep10       —                   +0.0010 ± 0.0028
+    control vs D8kt6_ep10      —                   +0.0013 ± 0.0028
+
+Target-stage mechanics (std trick-0 defender follows unless noted):
+
+    quantity                               Sep recipe   iter33     iter34
+    sigma_u^2 used in the blend            3.1e-6       1.3e-5     8.3e-5
+    gamma, median                          0.01         ~0.05      0.35
+    prior-sharpening exponent beta (§22.2) 2.2          0.54       0.29
+    rows at the ±8 clip (all classes)      21.4%        4.3%       4.9%
+    CE weight p50 / p90                    0.58 / 2.12  0.91/1.66  1.06/1.48
+    clipped rows vs a confident committee  5.1%         3.0%       3.3%
+    label noise mean (raw 3.37e-4)         3.37e-4      3.37e-4    2.35e-4
+
+Readings. (1) The control reproduces the September artifact on current
+code (every read within 0.5 SE), so the gains below are the fixes, not
+drift. (2) The full fix beats the control by 2.2 SE paired and 1.9 SE
+direct; every comparison points the same way, none reverses; the step
+from the floor alone to the full fix is ~1 SE, so the centering and the
+label-noise form carry roughly half of the total. (3) Conventions held on
+every arm; the control's called-suit lead was the lowest (44.5 vs
+48.7-49.1). Bidding drift nil everywhere. (4) gamma 0.35 on the pooled
+defender follows is the reviewer's 0.3-0.4, reached with the independence
+form alone; the centered estimator (live corpus) removes the common-mode
+share on top. VERDICT: improvement attributable to the fixes, ~+0.005 to
++0.006 per deal on play against the pinned recipe on the same corpus. No
+recipe change before the live iteration-1 fit.
+
+Run notes: the paired-h2h readers launched beside the live corpus became
+pool-spawn churn (the duplicate h2h re-creates its pool per shard; load
+avg ~480 at 0% idle, corpus at 0.02 g/s) and were killed after 19 h / 7.5
+h; the reads were re-run sequentially with a 4-worker pool
+(`runs/policy_iteration_202609/h2h_pair.py`, `arms_finish.sh`). Lesson:
+never run two duplicate-h2h readers beside a corpus; cap the pool.
 
 ### 22.4 Open
 
@@ -5377,8 +5421,8 @@ disagreement against a confident committee fell to 3.0% (from 5.1%).
   fit (~10-09): sigma_u^2 / gamma per class against the independence
   form, and the paired comparison on identical nodes against the old
   writer's partial corpus (its telemetry has the pair differences).
-- Whether the corrected gamma (defender follows ~0.3-0.4 instead of
-  0.01) changes the certified step size: iter34 vs iter32/iter33.
+- (closed 10-08, §22.3) the corrected gamma changes the certified step
+  size: +0.0059 ± 0.0027 paired play-only vs the control.
 - The attribution reads of §22.2.
 
 ### 22.5 Fifth finding and the build queue (operator-approved 2026-10-07)
