@@ -100,7 +100,12 @@ CERT_GAMES = 1000
 CERT_H2H_DEALS = 8000
 CERT_BARS = {
     "partner_trump_lead_min": 96.5,
-    "t0_trump_lead_max": 1.0,
+    # Operator decision 2026-10-09: the D8k lineage certified at 0.0-0.6%
+    # because its theta_0 was already there; the recall lineage's theta_0
+    # leads trump at trick 0 in 3.4-4.1% of greedy defender leads and its
+    # first distill read 1.7%, trending down. The bar guards against a
+    # regression toward the seed's 7%, not for the finished-run value.
+    "t0_trump_lead_max": 4.0,
     "play_logit_spread_min": 3.6,
     # bidding-only route (§20.14 step 6): flag the iteration if the bidding
     # heads drifted below this at 2 SE.
