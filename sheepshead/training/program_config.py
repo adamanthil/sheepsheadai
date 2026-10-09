@@ -110,7 +110,7 @@ class PolicyIterationConfig:
     lr: float = 3e-5
     head_epochs_default: int = 4
     lambda_ret: float = 10.0
-    max_iterations: int = 5
+    max_iterations: int = 10
     stop_se_multiple: float = 2.0
     stop_flat_iterations: int = 2
     bidding_episodes: int = 200_000
